@@ -158,7 +158,8 @@ class WorkDeleteView(CompanyScopedMixin, DeleteView):
         from django.core.exceptions import PermissionDenied
 
         if (
-            self.object.daily_facts.exists()
+            self.object.workmonthallocation_set.exists()
+            or self.object.daily_facts.exists()
             or self.object.monthly_plans.filter(
                 versions__status__in=["APPROVED", "COMPLETED"]
             ).exists()
@@ -185,8 +186,14 @@ class WorkItemDeleteView(CompanyScopedMixin, DeleteView):
         from django.core.exceptions import PermissionDenied
 
         work = self.object.project_work
+        from apps.planning.models import GlobalPlanVersion
+
         if (
-            work.daily_facts.exists()
+            GlobalPlanVersion.objects.filter(
+                work_allocations__work=work,
+                status__in=["SUBMITTED", "APPROVED", "COMPLETED"],
+            ).exists()
+            or work.daily_facts.exists()
             or work.monthly_plans.filter(versions__daily_plans__isnull=False).exists()
         ):
             raise PermissionDenied("Подработы с планом или фактом удалять нельзя.")

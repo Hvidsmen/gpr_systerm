@@ -57,3 +57,16 @@ urlpatterns += [
     path('global/<int:pk>/', GlobalDetail.as_view(), name='global_detail'),
     path('global/<int:pk>/<str:action>/', GlobalAction.as_view(), name='global_action'),
 ]
+
+from .workspace_views import WorkspaceList, WorkspaceCreate, WorkspaceDetail, ForecastCreate, WorkspaceEdit, AddWorkspaceWork, WorkspaceWorkCreate
+urlpatterns += [
+    path('workspace/', WorkspaceList.as_view(), name='workspace_list'),
+    path('workspace/create/', WorkspaceCreate.as_view(), name='workspace_create'),
+    path('workspace/<int:pk>/', WorkspaceDetail.as_view(), name='workspace_detail'),
+    path('workspace/<int:pk>/forecast/', ForecastCreate.as_view(), name='workspace_forecast'),
+    path('workspace/<int:pk>/works/create/', WorkspaceWorkCreate.as_view(), name='workspace_work_create'),
+    path('workspace-versions/<int:pk>/edit/', WorkspaceEdit.as_view(), name='workspace_edit'),
+    path('workspace-versions/<int:pk>/add-work/', AddWorkspaceWork.as_view(), name='workspace_add_work'),
+]
+from .workspace_views import WorkspaceExport
+urlpatterns += [path('workspace-versions/<int:pk>/export/',WorkspaceExport.as_view(),name='workspace_export')]

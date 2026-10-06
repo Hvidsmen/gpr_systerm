@@ -7,7 +7,7 @@ from decimal import Decimal
 
 from apps.projects.models import Project
 from apps.works.models import ProjectWork
-from apps.planning.models import MonthlyPlan, PlanVersion, DailyPlan
+from apps.planning.models import MonthlyPlan, PlanVersion, DailyPlan, GlobalPlanVersion
 from apps.production.models import DailyFact
 
 
@@ -21,6 +21,9 @@ def dashboard_view(request):
     ).count()
     approved_plans_count = PlanVersion.objects.filter(
         company=request.user.company, status="APPROVED"
+    ).count()
+    approved_plans_count += GlobalPlanVersion.objects.filter(
+        company=request.user.company, workspace__isnull=False, status="APPROVED"
     ).count()
     in_progress_count = ProjectWork.objects.filter(
         company=request.user.company, status="IN_PROGRESS"

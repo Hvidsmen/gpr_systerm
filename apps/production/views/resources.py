@@ -242,11 +242,31 @@ class ResourceDaily(View):
     def display(self, request, form, errors=None):
         plans = []
         if form.is_bound and form.is_valid():
-            plans = self.plan_model.objects.filter(
-                company=request.user.company,
-                construction_object=form.cleaned_data["construction_object"],
-                date=form.cleaned_data["date"],
+            from apps.planning.workspace_services import (
+                current_workspace_version,
+                virtual_resource_plan,
             )
+
+            version = current_workspace_version(
+                request.user.company,
+                form.cleaned_data["construction_object"],
+                form.cleaned_data["date"],
+            )
+            if version:
+                kind = self.prefix.split("_")[0]
+                plans = [
+                    virtual_resource_plan(version, kind, index, self.plan_model)
+                    for index, row in enumerate(
+                        version.snapshot.get("resources", {}).get(kind, [])
+                    )
+                    if row["date"] == form.cleaned_data["date"].isoformat()
+                ]
+            else:
+                plans = self.plan_model.objects.filter(
+                    company=request.user.company,
+                    construction_object=form.cleaned_data["construction_object"],
+                    date=form.cleaned_data["date"],
+                )
         return render(
             request,
             "production/resource_daily.html",
@@ -263,13 +283,45 @@ class ResourceDaily(View):
         try:
             with transaction.atomic():
                 for pk in ids:
-                    plan = get_object_or_404(
-                        self.plan_model,
-                        pk=pk,
-                        company=request.user.company,
-                        construction_object=form.cleaned_data["construction_object"],
-                        date=form.cleaned_data["date"],
-                    )
+                    if str(pk).startswith("ws:"):
+                        from apps.planning.models import GlobalPlanVersion
+                        from apps.planning.workspace_services import (
+                            virtual_resource_plan,
+                        )
+
+                        try:
+                            _, version_id, index = str(pk).split(":")
+                            index = int(index)
+                            version_id = int(version_id)
+                        except (ValueError, TypeError):
+                            raise ValidationError("Некорректная строка версии плана.")
+                        version = get_object_or_404(
+                            GlobalPlanVersion,
+                            pk=version_id,
+                            company=request.user.company,
+                            construction_object=form.cleaned_data[
+                                "construction_object"
+                            ],
+                            workspace__isnull=False,
+                            status__in=["APPROVED", "COMPLETED"],
+                        )
+                        plan = virtual_resource_plan(
+                            version, self.prefix.split("_")[0], index, self.plan_model
+                        )
+                        if plan.date != form.cleaned_data["date"]:
+                            raise ValidationError(
+                                "Дата строки не совпадает с выбранной датой."
+                            )
+                    else:
+                        plan = get_object_or_404(
+                            self.plan_model,
+                            pk=pk,
+                            company=request.user.company,
+                            construction_object=form.cleaned_data[
+                                "construction_object"
+                            ],
+                            date=form.cleaned_data["date"],
+                        )
                     lookup = {name: getattr(plan, name) for name in self.identities}
                     lookup.update(
                         company=request.user.company,
@@ -286,6 +338,17 @@ class ResourceDaily(View):
                     for field in ("hourly_rate", "price_per_liter"):
                         if hasattr(plan, field):
                             setattr(fact, field, getattr(plan, field))
+                    hours_field = (
+                        "actual_hours"
+                        if self.prefix.startswith("labor")
+                        else (
+                            "machine_hours"
+                            if self.prefix.startswith("equipment")
+                            else None
+                        )
+                    )
+                    if hours_field and request.POST.get("hours_" + str(pk)) is not None:
+                        setattr(fact, hours_field, request.POST.get("hours_" + str(pk)))
                     fact.full_clean()
                     fact.save()
         except ValidationError as exc:

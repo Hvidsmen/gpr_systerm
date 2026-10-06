@@ -1,0 +1,56 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1>{{ workspace.name }} — v{{ version.version_number }}</h1>
+<p>{{ workspace.construction_object }} · {{ workspace.start_date }} — {{ workspace.end_date }} · {{ version.get_version_kind_display }}</p>
+{% if version.planning_month %}<p>Уточняемый месяц: <strong>{{ version.planning_month|date:'m.Y' }}</strong>. {{ version.get_scenario_display }}.</p>{% endif %}
+<p><a href="{% url 'planning:workspace_detail' workspace.pk %}">Рабочее пространство и история</a> · <a href="{% url 'planning:global_detail' version.pk %}">План на весь период и согласование</a> · <a href="{% url 'planning:calendar_list' %}">Календари</a></p>
+{% if version.version_kind == 'BASELINE' %}
+<div class="card mb-3"><div class="card-body"><h2>Состав работ</h2>
+<form method="post" action="{% url 'planning:workspace_add_work' version.pk %}">{% csrf_token %}{{ add_work_form.as_p }}<button class="btn btn-outline-primary">Добавить работу во все месяцы</button></form>
+<p class="mt-2"><a href="{% url 'planning:workspace_work_create' workspace.pk %}">Создать новую простую или составную работу</a> · <a href="{% url 'works:work_list' %}">Настроить подработы и нормативы</a></p>
+</div></div>{% endif %}
+<nav class="d-flex flex-wrap gap-2 mb-3" aria-label="Месяцы плана">
+{% for month in months %}{% if not version.planning_month or month >= version.planning_month %}{% if not version.planning_month or version.scenario == 'REMAINING' or month == version.planning_month %}
+<a class="btn {% if month == selected_month %}btn-primary{% else %}btn-outline-primary{% endif %}" href="?month={{ month|date:'Y-m-d' }}">{{ month|date:'m.Y' }}{% if version.planning_month and month > version.planning_month %} · остаток{% endif %}</a>
+{% endif %}{% endif %}{% endfor %}</nav>
+<h2>{{ selected_month|date:'m.Y' }}</h2>
+{% if future_manual %}<div class="alert alert-info">Будущее рассчитывается автоматически по пропорциям базового плана. Заполняйте здесь ручное распределение только для работ или ресурсов, у которых будущие базовые объёмы равны нулю. Сумма ручных объёмов должна совпадать с остатком, указанным при формировании плана.</div>{% endif %}
+<form method="post" id="allocation-editor">
+{% csrf_token %}{{ work_forms.management_form }}{{ resource_forms.management_form }}
+{{ work_forms.non_form_errors }}{{ resource_forms.non_form_errors }}
+<h3>Работы</h3><p>Указывайте объём основной работы. Объёмы подработ рассчитываются по нормативам.</p>
+<div id="work-rows">{% for form in work_forms %}<div class="card mb-3 allocation-row"><div class="card-body">{{ form.non_field_errors }}{% for field in form %}<p {% if field.is_hidden %}hidden{% endif %}>{{ field.label_tag }} {{ field }} {{ field.errors }}</p>{% endfor %}</div></div>{% endfor %}</div>
+<button type="button" class="btn btn-outline-primary mb-4" data-add="works">Добавить строку работы</button>
+<h3>Люди, техника и ГСМ</h3><p>Численность и количество машин задаются на рабочий день. Часы и литры задаются за месяц и распределяются по рабочим дням и выбранному профилю; без профиля — равномерно. Для частичного месяца учитываются только даты внутри периода.</p>
+<div id="resource-rows">{% for form in resource_forms %}<div class="card mb-3 resource-row allocation-row"><div class="card-body">{{ form.non_field_errors }}{% for field in form %}<p data-field="{{ field.name }}" {% if field.is_hidden %}hidden{% endif %}>{{ field.label_tag }} {{ field }} {{ field.errors }}</p>{% endfor %}</div></div>{% endfor %}</div>
+<button type="button" class="btn btn-outline-primary mb-4" data-add="resources">Добавить ресурс</button>
+<div class="d-flex gap-2"><button class="btn btn-primary" name="action" value="save">Сохранить этот месяц</button><button class="btn btn-success" name="action" value="preview">Сохранить месяц и сформировать план на весь период</button></div>
+</form>
+<template id="empty-works"><div class="card mb-3 allocation-row"><div class="card-body">{% for field in work_forms.empty_form %}<p {% if field.is_hidden %}hidden{% endif %}>{{ field.label_tag }} {{ field }}</p>{% endfor %}</div></div></template>
+<template id="empty-resources"><div class="card mb-3 resource-row allocation-row"><div class="card-body">{% for field in resource_forms.empty_form %}<p data-field="{{ field.name }}" {% if field.is_hidden %}hidden{% endif %}>{{ field.label_tag }} {{ field }}</p>{% endfor %}</div></div></template>
+<script>
+function showResource(row, clear=false) {
+  const kind = row.querySelector('[name$="-kind"]').value;
+  const fields = {labor:['brigade','count','hours','rate','load_profile'], equipment:['equipment_type','equipment_number','count','hours','rate','load_profile'], fuel:['fuel_type','equipment_ref','liters','rate','load_profile']}[kind] || [];
+  row.querySelectorAll('[data-field]').forEach(group => {
+    const name = group.dataset.field;
+    if (['month','id','kind','DELETE'].includes(name)) return;
+    group.hidden = !fields.includes(name);
+    if (clear && group.hidden) group.querySelectorAll('input,select').forEach(input => input.value=['count','hours','liters','rate','load_profile'].includes(name)?'0':'');
+  });
+}
+function wireResources() { document.querySelectorAll('.resource-row').forEach(row => {
+  showResource(row);
+  row.querySelector('[name$="-kind"]').onchange = () => showResource(row,true);
+}); }
+document.querySelectorAll('[data-add]').forEach(button => button.addEventListener('click', () => {
+  const prefix=button.dataset.add;
+  const count=document.querySelector(`[name="${prefix}-TOTAL_FORMS"]`);
+  const index=Number(count.value);
+  const target=document.getElementById(prefix==='works'?'work-rows':'resource-rows');
+  target.insertAdjacentHTML('beforeend',document.getElementById(`empty-${prefix}`).innerHTML.replaceAll('__prefix__',String(index)));
+  count.value=index+1; wireResources();
+}));
+wireResources();
+</script>
+{% endblock %}

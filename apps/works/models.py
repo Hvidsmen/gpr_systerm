@@ -170,9 +170,16 @@ class ProjectWork(BaseCompanyModel):
                 {"kind": "Нельзя сделать работу простой, пока существуют подработы."}
             )
         if self.pk:
+            from apps.planning.models import GlobalPlanVersion
+
+            workspace_locked = GlobalPlanVersion.objects.filter(
+                work_allocations__work=self,
+                status__in=["SUBMITTED", "APPROVED", "COMPLETED"],
+            ).exists()
             previous = type(self).objects.get(pk=self.pk)
             if previous.template_id != self.template_id and (
                 self.daily_facts.exists()
+                or workspace_locked
                 or self.monthly_plans.filter(
                     versions__daily_plans__isnull=False
                 ).exists()
@@ -185,6 +192,7 @@ class ProjectWork(BaseCompanyModel):
                 self.allow_fractional,
             ) and (
                 self.daily_facts.exists()
+                or workspace_locked
                 or self.monthly_plans.filter(
                     versions__status__in=["APPROVED", "COMPLETED"]
                 ).exists()
@@ -287,11 +295,21 @@ class ProjectWorkItem(BaseCompanyModel):
             and self.project_work.kind != ProjectWork.Kind.COMPOSITE
         ):
             raise ValidationError("Простая работа не может содержать подработы.")
+        from apps.planning.models import GlobalPlanVersion
+
+        workspace_locked = (
+            self.project_work_id
+            and GlobalPlanVersion.objects.filter(
+                work_allocations__work_id=self.project_work_id,
+                status__in=["SUBMITTED", "APPROVED", "COMPLETED"],
+            ).exists()
+        )
         if (
             not self.pk
             and self.project_work_id
             and (
-                self.project_work.daily_facts.exists()
+                workspace_locked
+                or self.project_work.daily_facts.exists()
                 or self.project_work.monthly_plans.filter(
                     versions__daily_plans__isnull=False
                 ).exists()
@@ -304,6 +322,7 @@ class ProjectWorkItem(BaseCompanyModel):
             old = type(self).objects.get(pk=self.pk)
             if old.quantity_per_unit != self.quantity_per_unit and (
                 self.daily_facts.exists()
+                or workspace_locked
                 or self.daily_plans.filter(
                     plan_version__status__in=["APPROVED", "COMPLETED"]
                 ).exists()

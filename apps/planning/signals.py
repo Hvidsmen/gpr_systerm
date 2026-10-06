@@ -50,3 +50,32 @@ def preserve_global_version(sender, instance, **kwargs):
         raise ValidationError(
             "Отправленную или утверждённую глобальную версию удалять нельзя."
         )
+
+
+from .models import WorkMonthAllocation, ResourceMonthAllocation
+
+
+@receiver(pre_delete, sender=WorkMonthAllocation)
+@receiver(pre_delete, sender=ResourceMonthAllocation)
+def preserve_monthly_inputs(sender, instance, **kwargs):
+    if GlobalPlanVersion.objects.get(pk=instance.version_id).status not in [
+        "DRAFT",
+        "REJECTED",
+    ]:
+        raise ValidationError(
+            "Месячные данные отправленного или утверждённого плана удалять нельзя."
+        )
+
+
+from apps.works.models import ProjectWorkItem
+
+
+@receiver(pre_delete, sender=ProjectWorkItem)
+def preserve_workspace_norm(sender, instance, **kwargs):
+    if GlobalPlanVersion.objects.filter(
+        work_allocations__work_id=instance.project_work_id,
+        status__in=["SUBMITTED", "APPROVED", "COMPLETED"],
+    ).exists():
+        raise ValidationError(
+            "Подработы отправленного или утверждённого плана удалять нельзя."
+        )

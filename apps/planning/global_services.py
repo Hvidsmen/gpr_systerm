@@ -47,6 +47,10 @@ def source_versions(obj, start, end):
 
 
 def build_snapshot(version):
+    if version.workspace_id:
+        from .workspace_services import build_workspace_snapshot
+
+        return build_workspace_snapshot(version)
     obj = version.construction_object
     if LegacyResourceRecord.objects.filter(
         company=version.company, resolved=False
@@ -271,6 +275,20 @@ class GlobalPlanService:
         if version.company_id != user.company_id or not version.is_immutable:
             raise ValidationError(
                 "Редакцию можно создать только от своей утверждённой версии."
+            )
+        if version.workspace_id:
+            from .workspace_services import WorkspaceService
+
+            if version.version_kind != "FORECAST":
+                raise ValidationError(
+                    "Для нового базового плана создайте новое рабочее пространство."
+                )
+            return WorkspaceService.forecast(
+                version.workspace,
+                user,
+                version.planning_month,
+                version.scenario,
+                previous=version,
             )
         # Use the currently approved lower versions; the previous snapshot remains unchanged.
         return GlobalPlanService.create(

@@ -82,6 +82,15 @@ class GlobalDetail(CompanyScopedMixin, DetailView):
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         ctx.update(comparison(self.object))
+        if self.object.workspace_id:
+            from .workspace_views import monthly_summary, resource_monthly_summary
+            from .workspace_services import months_between
+
+            ctx["period_summary"] = monthly_summary(self.object)
+            ctx["resource_period_summary"] = resource_monthly_summary(self.object)
+            ctx["period_months"] = months_between(
+                self.object.start_date, self.object.end_date
+            )
         return ctx
 
 
@@ -99,4 +108,10 @@ class GlobalAction(View):
                 )
         except ValidationError as exc:
             messages.error(request, "; ".join(exc.messages))
+        if (
+            action == "revision"
+            and version.workspace_id
+            and version.status in ["DRAFT", "REJECTED"]
+        ):
+            return redirect("planning:workspace_edit", pk=version.pk)
         return redirect("planning:global_detail", pk=version.pk)

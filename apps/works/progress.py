@@ -78,6 +78,7 @@ class WorkProgressService:
     def planned(work, versions=None):
         from apps.planning.models import DailyPlan, PlanVersion
 
+        explicit_versions = versions is not None
         if versions is None:
             candidates = PlanVersion.objects.filter(
                 company=work.company,
@@ -91,4 +92,40 @@ class WorkProgressService:
         rows = DailyPlan.objects.filter(
             company=work.company, plan_version_id__in=versions
         ).values_list("date", "work_item_id", "planned_quantity")
-        return cumulative_series(work_specification(work), rows)
+        result = cumulative_series(work_specification(work), rows)
+        if explicit_versions:
+            return result
+        from apps.planning.models import GlobalPlanVersion
+
+        versions = GlobalPlanVersion.objects.filter(
+            company=work.company,
+            construction_object=work.section.construction_object,
+            workspace__isnull=False,
+            status__in=["APPROVED", "COMPLETED"],
+        ).order_by("-approved_at", "-pk")
+        daily = {day: values["daily"] for day, values in result.items()}
+        covered = []
+        for version in versions:
+            spec = next(
+                (s for s in version.snapshot.get("works", []) if s["id"] == work.pk),
+                None,
+            )
+            for day in list(daily):
+                if version.start_date <= day <= version.end_date and not any(
+                    start <= day <= end for start, end in covered
+                ):
+                    daily.pop(day)
+            if spec:
+                from datetime import date
+
+                for row in spec["daily"]:
+                    day = date.fromisoformat(row["date"])
+                    if not any(start <= day <= end for start, end in covered):
+                        daily[day] = Decimal(row["quantity"])
+            covered.append((version.start_date, version.end_date))
+        total = ZERO
+        result = {}
+        for day in sorted(daily):
+            total += daily[day]
+            result[day] = {"daily": daily[day], "cumulative": total}
+        return result

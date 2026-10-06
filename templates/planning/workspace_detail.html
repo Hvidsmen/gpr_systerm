@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1>{{ workspace.name }}</h1>
+<p>{{ workspace.construction_object }} · {{ workspace.start_date }} — {{ workspace.end_date }}</p>
+<div class="card mb-4"><div class="card-body">
+<h2>Базовый план</h2><p>{{ workspace.baseline_version.get_status_display }}</p>
+{% if workspace.baseline_version.status == 'DRAFT' or workspace.baseline_version.status == 'REJECTED' %}<a class="btn btn-primary" href="{% url 'planning:workspace_edit' workspace.baseline_version_id %}">Ввести планы по месяцам</a>{% endif %}
+<a class="btn btn-outline-primary" href="{% url 'planning:global_detail' workspace.baseline_version_id %}">План на весь период и согласование</a>
+</div></div>
+<div class="card mb-4"><div class="card-body"><h2>Месячное уточнение</h2>
+{% if workspace.baseline_version.is_immutable %}<form method="post" action="{% url 'planning:workspace_forecast' workspace.pk %}">{% csrf_token %}{{ forecast_form.as_p }}<button class="btn btn-primary">Создать месячную версию плана на весь период</button></form>
+{% else %}<p>Сначала сформируйте и утвердите базовый план.</p>{% endif %}
+</div></div>
+<h2>История версий</h2>
+<table class="table"><thead><tr><th>Версия</th><th>Назначение</th><th>Месяц</th><th>Сценарий</th><th>Статус</th><th></th></tr></thead><tbody>
+{% for version in versions %}<tr><td><a href="{% url 'planning:global_detail' version.pk %}">v{{ version.version_number }}</a></td><td>{{ version.get_version_kind_display }}</td><td>{{ version.planning_month|date:'m.Y'|default:'—' }}</td><td>{{ version.get_scenario_display|default:'—' }}</td><td>{{ version.get_status_display }}</td><td>{% if version.status == 'DRAFT' or version.status == 'REJECTED' %}<a href="{% url 'planning:workspace_edit' version.pk %}">Редактировать</a>{% endif %}</td></tr>{% endfor %}
+</tbody></table>
+{% endblock %}
