@@ -47,7 +47,9 @@ class BulkAddForm(CompanyFormMixin, forms.Form):
             if kind == 'equipment':
                 self.fields['equipment_number'] = forms.CharField(label='Номер машины (необязательно)', max_length=50, required=False)
         for name, field in self.fields.items():
-            if name not in ('items', 'months'):
+            if name in ('items', 'months'):
+                field.widget.attrs['class'] = 'form-check-input'
+            else:
                 field.widget.attrs['class'] = 'form-select' if isinstance(field.widget, forms.Select) else 'form-control'
 
 

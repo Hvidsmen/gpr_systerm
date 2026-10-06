@@ -1,5 +1,13 @@
 {% extends 'base.html' %}
 {% block content %}
+<style>
+[data-bulk-month], [data-bulk-item] { cursor:pointer; }
+[data-bulk-month] { display:inline-flex; align-items:center; gap:8px; background:#fff; border:2px solid #cbd5e1 !important; font-weight:600; }
+[data-bulk-month].is-selected, [data-bulk-month]:has(input:checked) { background:#0d6efd; border-color:#0d6efd !important; color:#fff; }
+[data-bulk-item].is-selected, [data-bulk-item]:has(input:checked) { background:#e7f1ff; border-color:#86b7fe; color:#084298; font-weight:600; }
+[data-bulk-month] input[type="checkbox"], [data-bulk-item] input[type="checkbox"] { width:18px !important; height:18px !important; min-height:0; padding:0; margin:0 6px 0 0; flex-shrink:0; vertical-align:middle; }
+[data-bulk-month]:focus-within, [data-bulk-item]:focus-within { outline:3px solid #9ec5fe; outline-offset:2px; }
+</style>
 <h1>Добавить списком: {{ title }}</h1>
 <p>{{ version.workspace.name }} · {{ version.construction_object }}</p>
 <p>Отметьте нужные позиции. Новые строки появятся с нулевыми объёмами; существующие строки и введённые значения сохранятся.</p>
@@ -21,12 +29,12 @@
 <script>
 (() => {
  const months=Array.from(document.querySelectorAll('[data-bulk-month] input'));
- const updateMonths=()=>document.getElementById('months-count').textContent='Месяцев выбрано: '+months.filter(input=>input.checked).length;
+ const updateMonths=()=>{months.forEach(input=>input.closest('[data-bulk-month]').classList.toggle('is-selected',input.checked));document.getElementById('months-count').textContent='Месяцев выбрано: '+months.filter(input=>input.checked).length;};
  document.getElementById('months-select').addEventListener('click',()=>{months.forEach(input=>input.checked=true);updateMonths();});
  document.getElementById('months-clear').addEventListener('click',()=>{months.forEach(input=>input.checked=false);updateMonths();});
  months.forEach(input=>input.addEventListener('change',updateMonths));updateMonths();
  const rows=Array.from(document.querySelectorAll('[data-bulk-item]'));
- const update=()=>document.getElementById('bulk-count').textContent='Выбрано: '+rows.filter(r=>r.querySelector('input').checked).length;
+ const update=()=>{rows.forEach(row=>row.classList.toggle('is-selected',row.querySelector('input').checked));document.getElementById('bulk-count').textContent='Выбрано: '+rows.filter(r=>r.querySelector('input').checked).length;};
  document.getElementById('bulk-search').addEventListener('input',event=>{const term=event.target.value.trim().toLocaleLowerCase();rows.forEach(r=>r.hidden=!r.textContent.toLocaleLowerCase().includes(term));});
  document.getElementById('bulk-select').addEventListener('click',()=>{rows.filter(r=>!r.hidden).forEach(r=>r.querySelector('input').checked=true);update();});
  document.getElementById('bulk-clear').addEventListener('click',()=>{rows.forEach(r=>r.querySelector('input').checked=false);update();});
