@@ -9,22 +9,22 @@ from apps.accounts.models import Company
 from .models import ProjectWork, ProjectWorkItem
 from ..projects.models import Section
 from .forms import ProjectWorkForm, ProjectWorkItemForm, WorkSectionForm
-from core.mixins import CompanyRequiredMixin
+from core.mixins import CompanyRequiredMixin, CompanyScopedMixin
 
-class WorkListView(ListView):
+class WorkListView(CompanyScopedMixin, ListView):
     model = ProjectWork
     template_name = 'works/work_list.html'
     context_object_name = 'works'
     paginate_by = 20
 
     def get_queryset(self):
-        return ProjectWork.objects.annotate(
+        return ProjectWork.objects.filter(company=self.request.user.company).annotate(
             items_count=Count('items'),
             total_quantity=Sum('items__planned_quantity', output_field=DecimalField())
         ).select_related('section', 'section__construction_object', 'section__construction_object__project')
 
 
-class WorkDetailView(DetailView):
+class WorkDetailView(CompanyScopedMixin, DetailView):
     model = ProjectWork
     template_name = 'works/work_tree.html'
     context_object_name = 'work'
@@ -44,6 +44,7 @@ class WorkDetailView(DetailView):
             item.children_count = work.items.filter(parent=item).count()
 
             fact_total = DailyFact.objects.filter(
+                company=self.request.user.company,
                 project_work=work, work_item=item
             ).aggregate(total=Sum('actual_quantity'))['total'] or Decimal('0')
 
@@ -107,7 +108,7 @@ class WorkCreateView(CompanyRequiredMixin, CreateView):
         return reverse_lazy('works:work_detail', kwargs={'pk': self.object.pk})
 
 
-class WorkUpdateView(UpdateView):
+class WorkUpdateView(CompanyScopedMixin, UpdateView):
     model = ProjectWork
     form_class = ProjectWorkForm
     template_name = 'works/work_form.html'
@@ -131,7 +132,7 @@ class WorkUpdateView(UpdateView):
 
 
 # ДОБАВЬТЕ ЭТОТ КЛАСС
-class WorkDeleteView(DeleteView):
+class WorkDeleteView(CompanyScopedMixin, DeleteView):
     model = ProjectWork
     template_name = 'works/work_confirm_delete.html'
     success_url = reverse_lazy('works:work_list')
@@ -144,7 +145,7 @@ class WorkDeleteView(DeleteView):
 
 
 # apps/works/views.py — добавить
-class WorkItemDeleteView(DeleteView):
+class WorkItemDeleteView(CompanyScopedMixin, DeleteView):
     model = ProjectWorkItem
     template_name = 'works/workitem_confirm_delete.html'
 
@@ -187,7 +188,9 @@ class WorkItemCreateView(CompanyRequiredMixin, CreateView):
         work_pk = self.kwargs.get('work_pk')
         if work_pk:
             # Заполняем обязательное поле project_work
-            form.instance.project_work_id = work_pk
+            form.instance.project_work = get_object_or_404(
+                ProjectWork, pk=work_pk, company=self.request.user.company
+            )
             form.instance.company = self.request.user.company
 
             # parent НЕ заполняем автоматически — он берётся из формы
@@ -209,7 +212,7 @@ from django.views.generic import  UpdateView
 
 
 # Добавьте этот класс после WorkItemCreateView
-class WorkItemUpdateView(UpdateView):
+class WorkItemUpdateView(CompanyScopedMixin, UpdateView):
     model = ProjectWorkItem
     form_class = ProjectWorkItemForm
     template_name = 'works/work_item_form.html'

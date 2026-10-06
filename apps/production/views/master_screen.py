@@ -19,6 +19,7 @@ def fact_daily_view(request):
     today = timezone.now().date()
 
     active_versions = PlanVersion.objects.filter(
+        company=request.user.company,
         status='APPROVED',
         monthly_plan__start_date__lte=today,
         monthly_plan__end_date__gte=today
@@ -34,14 +35,17 @@ def fact_daily_view(request):
 
     # Получаем ВСЕ планы ресурсов на сегодня по этим проектам
     all_labor_plans = LaborPlan.objects.filter(
+        company=request.user.company,
         date=today, project__in=projects
     ).select_related('brigade', 'project').order_by('brigade__name')
 
     all_equipment_plans = EquipmentPlan.objects.filter(
+        company=request.user.company,
         date=today, project__in=projects
     ).select_related('equipment_type', 'project').order_by('equipment_type__name')
 
     all_fuel_plans = FuelPlan.objects.filter(
+        company=request.user.company,
         date=today, project__in=projects
     ).select_related('project').order_by('fuel_type', 'equipment_ref')
 
@@ -79,6 +83,7 @@ def fact_daily_view(request):
         items_data = []
         for dp in daily_plans:
             fact = DailyFact.objects.filter(
+                company=request.user.company,
                 project_work=work, work_item=dp.work_item, date=today
             ).first()
             items_data.append({'item': dp.work_item, 'daily_plan': dp, 'fact': fact})
@@ -88,6 +93,7 @@ def fact_daily_view(request):
         labor_rows = []
         for plan in labor_plans:
             fact = LaborFact.objects.filter(
+                company=request.user.company,
                 project=project, date=today, brigade=plan.brigade
             ).first()
             labor_rows.append({
@@ -106,6 +112,7 @@ def fact_daily_view(request):
         equipment_rows = []
         for plan in equipment_plans:
             fact = EquipmentFact.objects.filter(
+                company=request.user.company,
                 project=project, date=today,
                 equipment_type=plan.equipment_type,
                 equipment_number=plan.equipment_number
@@ -127,6 +134,7 @@ def fact_daily_view(request):
         fuel_rows = []
         for plan in fuel_plans:
             fact = FuelFact.objects.filter(
+                company=request.user.company,
                 project=project, date=today,
                 fuel_type=plan.fuel_type,
                 equipment_ref=plan.equipment_ref
@@ -153,7 +161,7 @@ def fact_daily_view(request):
             'fuel_rows': fuel_rows,
         })
 
-    deviation_reasons = DeviationReason.objects.filter(is_active=True)
+    deviation_reasons = DeviationReason.objects.filter(company=request.user.company, is_active=True)
 
     if request.method == 'POST':
         saved_count = 0
@@ -167,10 +175,11 @@ def fact_daily_view(request):
                 if fact_value is not None and fact_value != '':
                     try:
                         qty = Decimal(fact_value)
-                        reason = DeviationReason.objects.get(pk=reason_id) if reason_id else None
+                        reason = DeviationReason.objects.get(company=request.user.company, pk=reason_id) if reason_id else None
                         work = work_data['work']
                         actual_value = qty * work.unit_price
                         DailyFact.objects.update_or_create(
+                            company=request.user.company,
                             project_work=work, work_item=item_data['item'], date=today,
                             defaults={
                                 'actual_quantity': qty, 'actual_value': actual_value,

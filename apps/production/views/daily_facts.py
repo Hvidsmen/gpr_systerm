@@ -5,12 +5,12 @@ from django.contrib import messages
 from django.views.generic import ListView, CreateView, UpdateView, DeleteView
 from django.urls import reverse_lazy
 
-from core.mixins import CompanyRequiredMixin
+from core.mixins import CompanyRequiredMixin, CompanyScopedMixin
 from apps.production.models import DailyFact
 from apps.production.forms import DailyFactForm
 
 
-class FactListView(ListView):
+class FactListView(CompanyScopedMixin, ListView):
     model = DailyFact
     template_name = 'production/fact_list.html'
     context_object_name = 'facts'
@@ -36,7 +36,7 @@ class FactCreateView(CompanyRequiredMixin, CreateView):
         return super().form_valid(form)
 
 
-class FactUpdateView(UpdateView):
+class FactUpdateView(CompanyScopedMixin, UpdateView):
     model = DailyFact
     form_class = DailyFactForm
     template_name = 'production/fact_form.html'
@@ -49,7 +49,7 @@ class FactUpdateView(UpdateView):
         return super().form_valid(form)
 
 
-class FactDeleteView(DeleteView):
+class FactDeleteView(CompanyScopedMixin, DeleteView):
     model = DailyFact
     template_name = 'production/resource_confirm_delete.html'
     success_url = reverse_lazy('production:fact_list')

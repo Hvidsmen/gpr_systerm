@@ -11,7 +11,7 @@ from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import csrf_protect
 from datetime import timedelta
 
-from core.mixins import CompanyRequiredMixin
+from core.mixins import CompanyRequiredMixin, CompanyScopedMixin
 from apps.production.models import FuelPlan
 from apps.production.forms import FuelPlanForm, FuelPlanRangeForm
 from apps.production.views.base import build_update_data, parse_date_safe
@@ -19,7 +19,7 @@ from apps.projects.models import Project
 from apps.works.models import ProjectWork
 
 
-class FuelPlanListView(ListView):
+class FuelPlanListView(CompanyScopedMixin, ListView):
     model = FuelPlan
     template_name = 'production/fuel_plan_list.html'
     context_object_name = 'fuel_plans'
@@ -130,6 +130,7 @@ class FuelPlanRangeCreateView(CompanyRequiredMixin, View):
             current_date, count = date_start, 0
             while current_date <= date_end:
                 FuelPlan.objects.update_or_create(
+                    company=self.request.user.company,
                     project=project, project_work=project_work,
                     date=current_date, fuel_type=fuel_type,
                     equipment_ref=defaults['equipment_ref'], defaults=defaults
@@ -143,7 +144,7 @@ class FuelPlanRangeCreateView(CompanyRequiredMixin, View):
         return render(request, self.template_name, {'form': form})
 
 
-class FuelPlanUpdateView(UpdateView):
+class FuelPlanUpdateView(CompanyScopedMixin, UpdateView):
     model = FuelPlan
     form_class = FuelPlanForm
     template_name = 'production/resource_plan_form.html'
@@ -166,7 +167,7 @@ class FuelPlanUpdateView(UpdateView):
         return reverse_lazy('production:fuel_plan_list')
 
 
-class FuelPlanDeleteView(DeleteView):
+class FuelPlanDeleteView(CompanyScopedMixin, DeleteView):
     model = FuelPlan
     template_name = 'production/resource_confirm_delete.html'
     success_url = reverse_lazy('production:fuel_plan_list')

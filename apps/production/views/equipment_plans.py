@@ -10,7 +10,7 @@ from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import csrf_protect
 from datetime import timedelta
 
-from core.mixins import CompanyRequiredMixin
+from core.mixins import CompanyRequiredMixin, CompanyScopedMixin
 from apps.production.models import EquipmentPlan
 from apps.production.forms import EquipmentPlanForm, EquipmentPlanRangeForm
 from apps.production.views.base import build_update_data, parse_date_safe
@@ -19,7 +19,7 @@ from apps.works.models import ProjectWork
 from apps.resources.models import EquipmentType
 
 
-class EquipmentPlanListView(ListView):
+class EquipmentPlanListView(CompanyScopedMixin, ListView):
     model = EquipmentPlan
     template_name = 'production/equipment_plan_list.html'
     context_object_name = 'equipment_plans'
@@ -131,6 +131,7 @@ class EquipmentPlanRangeCreateView(CompanyRequiredMixin, View):
             current_date, count = date_start, 0
             while current_date <= date_end:
                 EquipmentPlan.objects.update_or_create(
+                    company=self.request.user.company,
                     project=project, project_work=project_work,
                     date=current_date, equipment_type=equipment_type,
                     equipment_number=equipment_number, defaults=defaults
@@ -143,7 +144,7 @@ class EquipmentPlanRangeCreateView(CompanyRequiredMixin, View):
         return render(request, self.template_name, {'form': form})
 
 
-class EquipmentPlanUpdateView(UpdateView):
+class EquipmentPlanUpdateView(CompanyScopedMixin, UpdateView):
     model = EquipmentPlan
     form_class = EquipmentPlanForm
     template_name = 'production/resource_plan_form.html'
@@ -166,7 +167,7 @@ class EquipmentPlanUpdateView(UpdateView):
         return reverse_lazy('production:equipment_plan_list')
 
 
-class EquipmentPlanDeleteView(DeleteView):
+class EquipmentPlanDeleteView(CompanyScopedMixin, DeleteView):
     model = EquipmentPlan
     template_name = 'production/resource_confirm_delete.html'
     success_url = reverse_lazy('production:equipment_plan_list')

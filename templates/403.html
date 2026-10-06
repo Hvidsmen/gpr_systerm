@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+
+{% block title %}Доступ запрещён — ГПР Система{% endblock %}
+
+{% block content %}
+<div class="alert alert-warning" role="alert">
+    <h1 class="h4">Доступ запрещён</h1>
+    <p>{{ exception|default:"У вас нет прав для просмотра этой страницы." }}</p>
+    {% if user.is_authenticated %}
+    <a href="{% url 'accounts:settings' %}" class="btn btn-outline-secondary">Настройки профиля</a>
+    {% else %}
+    <a href="{% url 'accounts:login' %}" class="btn btn-outline-secondary">Войти</a>
+    {% endif %}
+</div>
+{% endblock %}

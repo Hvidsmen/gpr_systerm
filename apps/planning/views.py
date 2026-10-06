@@ -8,7 +8,7 @@ from django.urls import reverse_lazy
 from django.utils import timezone
 from django.db.models import Sum, Count, Q
 from django.shortcuts import get_object_or_404, redirect, render
-from core.mixins import CompanyRequiredMixin
+from core.mixins import CompanyRequiredMixin, CompanyScopedMixin
 
 from .models import (
     MonthlyPlan, PlanVersion, DailyPlan, DailyBaseline,
@@ -30,14 +30,14 @@ from apps.production.models import DailyFact
 # =============================================================================
 
 
-class PlanListView(ListView):
+class PlanListView(CompanyScopedMixin, ListView):
     model = MonthlyPlan
     template_name = 'planning/plan_list.html'
     context_object_name = 'plans'
     paginate_by = 20
 
     def get_queryset(self):
-        qs = MonthlyPlan.objects.select_related(
+        qs = MonthlyPlan.objects.filter(company=self.request.user.company).select_related(
             'project_work',
             'project_work__section',
             'project_work__section__construction_object',
@@ -122,7 +122,7 @@ class PlanListView(ListView):
         return context
 
 
-class PlanDetailView(DetailView):
+class PlanDetailView(CompanyScopedMixin, DetailView):
     """Детали месячного плана с матрицей дневных планов."""
     model = MonthlyPlan
     template_name = 'planning/plan_detail.html'
@@ -176,6 +176,7 @@ class PlanDetailView(DetailView):
 
         # Получаем дневные планы выбранной версии
         daily_plans = DailyPlan.objects.filter(
+            company=self.request.user.company,
             plan_version=selected_version
         ).select_related(
             'work_item', 'work_item__project_work'
@@ -276,10 +277,11 @@ class SetBaselineVersionView(View):
     """Установить версию как актуальную (baseline)."""
 
     def post(self, request, pk):
-        version = get_object_or_404(PlanVersion, pk=pk)
+        version = get_object_or_404(PlanVersion, company=self.request.user.company, pk=pk)
 
         # Снимаем baseline со всех версий этого плана
         PlanVersion.objects.filter(
+            company=self.request.user.company,
             monthly_plan=version.monthly_plan,
             is_baseline=True
         ).update(is_baseline=False)
@@ -343,7 +345,7 @@ class VersionCreateView(View):
 
     def get(self, request, plan_pk):
         """Показываем страницу подтверждения."""
-        plan = get_object_or_404(MonthlyPlan, pk=plan_pk)
+        plan = get_object_or_404(MonthlyPlan, company=self.request.user.company, pk=plan_pk)
         last_version = plan.versions.order_by('-version_number').first()
 
         if not last_version:
@@ -358,7 +360,7 @@ class VersionCreateView(View):
 
     def post(self, request, plan_pk):
         """Создаём новую версию."""
-        plan = get_object_or_404(MonthlyPlan, pk=plan_pk)
+        plan = get_object_or_404(MonthlyPlan, company=self.request.user.company, pk=plan_pk)
         last_version = plan.versions.order_by('-version_number').first()
 
         if not last_version:
@@ -392,7 +394,7 @@ class VersionCreateView(View):
                          f'✅ Создана версия v{new_number}. Теперь вы можете изменить параметры и перегенерировать.')
         return redirect('planning:version_detail', pk=new_version.pk)
 
-class MonthlyPlanUpdateView(UpdateView):
+class MonthlyPlanUpdateView(CompanyScopedMixin, UpdateView):
     """Редактирование месячного плана."""
     model = MonthlyPlan
     form_class = MonthlyPlanForm
@@ -409,7 +411,7 @@ class MonthlyPlanUpdateView(UpdateView):
         return super().form_valid(form)
 
 
-class MonthlyPlanDeleteView(DeleteView):
+class MonthlyPlanDeleteView(CompanyScopedMixin, DeleteView):
     """Удаление месячного плана."""
     model = MonthlyPlan
     template_name = 'planning/plan_confirm_delete.html'
@@ -427,7 +429,7 @@ class VersionRegenerateView(View):
     """Перегенерация версии с новыми параметрами."""
 
     def post(self, request, pk):
-        version = get_object_or_404(PlanVersion, pk=pk)
+        version = get_object_or_404(PlanVersion, company=self.request.user.company, pk=pk)
 
         if version.is_immutable:
             messages.error(request, 'Утверждённую версию нельзя перегенерировать')
@@ -454,7 +456,7 @@ class VersionRegenerateView(View):
             if profile_id:
                 from apps.planning.models import LoadProfile
                 try:
-                    item.load_profile = LoadProfile.objects.get(pk=profile_id)
+                    item.load_profile = LoadProfile.objects.get(company=self.request.user.company, pk=profile_id)
                     item.save()
                 except LoadProfile.DoesNotExist:
                     pass
@@ -468,7 +470,7 @@ class VersionRegenerateView(View):
 
         return redirect('planning:version_detail', pk=pk)
 
-class PlanVersionDetailView(DetailView):
+class PlanVersionDetailView(CompanyScopedMixin, DetailView):
     model = PlanVersion
     template_name = 'planning/version_detail.html'
     context_object_name = 'version'
@@ -488,6 +490,7 @@ class PlanVersionDetailView(DetailView):
         # Аннотируем фактом
         facts_map = {}
         for fact in DailyFact.objects.filter(
+            company=self.request.user.company,
             project_work=v.monthly_plan.project_work,
             date__range=[v.monthly_plan.start_date, v.monthly_plan.end_date]
         ).values('work_item_id', 'date', 'actual_quantity'):
@@ -509,7 +512,7 @@ class PlanVersionDetailView(DetailView):
 class VersionGenerateView(View):
     """Перегенерация дневного плана."""
     def post(self, request, pk):
-        version = get_object_or_404(PlanVersion, pk=pk)
+        version = get_object_or_404(PlanVersion, company=self.request.user.company, pk=pk)
         if version.is_immutable:
             messages.error(request, 'Утверждённую версию нельзя перегенерировать')
             return redirect('planning:version_detail', pk=pk)
@@ -526,7 +529,7 @@ class VersionGenerateView(View):
 class VersionSubmitView(View):
     """Отправка версии на согласование."""
     def post(self, request, pk):
-        version = get_object_or_404(PlanVersion, pk=pk)
+        version = get_object_or_404(PlanVersion, company=self.request.user.company, pk=pk)
         try:
             PlanWorkflowService.submit(version, request.user)
             messages.success(request, 'План отправлен на согласование')
@@ -538,7 +541,7 @@ class VersionSubmitView(View):
 class VersionApproveView(View):
     """Утверждение версии плана."""
     def post(self, request, pk):
-        version = get_object_or_404(PlanVersion, pk=pk)
+        version = get_object_or_404(PlanVersion, company=self.request.user.company, pk=pk)
         if not request.user.is_manager() and not request.user.is_admin():
             messages.error(request, 'Нет прав для утверждения')
             return redirect('planning:version_detail', pk=pk)
@@ -553,7 +556,7 @@ class VersionApproveView(View):
 class VersionRejectView(View):
     """Отклонение версии плана."""
     def post(self, request, pk):
-        version = get_object_or_404(PlanVersion, pk=pk)
+        version = get_object_or_404(PlanVersion, company=self.request.user.company, pk=pk)
         comment = request.POST.get('comment', '')
         try:
             PlanWorkflowService.reject(version, request.user, comment)
@@ -566,7 +569,7 @@ class VersionRejectView(View):
 class VersionRevisionView(View):
     """Создание ревизии утверждённой версии."""
     def post(self, request, pk):
-        version = get_object_or_404(PlanVersion, pk=pk)
+        version = get_object_or_404(PlanVersion, company=self.request.user.company, pk=pk)
         try:
             new_version = PlanRevisionService.create_revision(version, request.user)
             messages.success(request, f'Создана ревизия v{new_version.version_number}')
@@ -576,18 +579,19 @@ class VersionRevisionView(View):
         return redirect('planning:version_detail', pk=pk)
 
 
-class PlanVersionsListView(ListView):
+class PlanVersionsListView(CompanyScopedMixin, ListView):
     """Список всех версий плана."""
     model = PlanVersion
     template_name = 'planning/plan_versions_list.html'
     context_object_name = 'versions'
 
     def dispatch(self, request, *args, **kwargs):
-        self.plan = get_object_or_404(MonthlyPlan, pk=kwargs['plan_pk'])
+        self.plan = get_object_or_404(MonthlyPlan, company=self.request.user.company, pk=kwargs['plan_pk'])
         return super().dispatch(request, *args, **kwargs)
 
     def get_queryset(self):
         return PlanVersion.objects.filter(
+            company=self.request.user.company,
             monthly_plan=self.plan
         ).order_by('-version_number')
 
@@ -600,19 +604,19 @@ class PlanVersionsListView(ListView):
 # =============================================================================
 
 
-class LoadProfileListView(ListView):
+class LoadProfileListView(CompanyScopedMixin, ListView):
     """Список профилей нагрузки."""
     model = LoadProfile
     template_name = 'planning/profile_list.html'
     context_object_name = 'profiles'
 
     def get_queryset(self):
-        return LoadProfile.objects.annotate(
+        return LoadProfile.objects.filter(company=self.request.user.company).annotate(
             total_percentage=Sum('items__percentage')
         )
 
 
-class LoadProfileDetailView(DetailView):
+class LoadProfileDetailView(CompanyScopedMixin, DetailView):
     """Детали профиля нагрузки с элементами."""
     model = LoadProfile
     template_name = 'planning/profile_detail.html'
@@ -642,7 +646,7 @@ class LoadProfileCreateView(CompanyRequiredMixin, CreateView):
         return super().form_valid(form)
 
 
-class LoadProfileUpdateView(UpdateView):
+class LoadProfileUpdateView(CompanyScopedMixin, UpdateView):
     """Редактирование профиля нагрузки."""
     model = LoadProfile
     form_class = LoadProfileForm
@@ -654,7 +658,7 @@ class LoadProfileUpdateView(UpdateView):
         return super().form_valid(form)
 
 
-class LoadProfileDeleteView(DeleteView):
+class LoadProfileDeleteView(CompanyScopedMixin, DeleteView):
     """Удаление профиля нагрузки."""
     model = LoadProfile
     template_name = 'planning/profile_confirm_delete.html'
@@ -666,7 +670,7 @@ class LoadProfileDeleteView(DeleteView):
         return super().delete(request, *args, **kwargs)
 
 
-class LoadProfileItemCreateView(CreateView):
+class LoadProfileItemCreateView(CompanyScopedMixin, CreateView):
     """Добавление элемента (рабочего дня) в профиль."""
     model = LoadProfileItem
     form_class = LoadProfileItemForm
@@ -674,12 +678,12 @@ class LoadProfileItemCreateView(CreateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context['profile'] = get_object_or_404(LoadProfile, pk=self.kwargs['profile_pk'])
+        context['profile'] = get_object_or_404(LoadProfile, company=self.request.user.company, pk=self.kwargs['profile_pk'])
         context['is_edit'] = False
         return context
 
     def form_valid(self, form):
-        profile = get_object_or_404(LoadProfile, pk=self.kwargs['profile_pk'])
+        profile = get_object_or_404(LoadProfile, company=self.request.user.company, pk=self.kwargs['profile_pk'])
         form.instance.profile = profile
         form.instance.company = profile.company
         messages.success(
@@ -692,7 +696,7 @@ class LoadProfileItemCreateView(CreateView):
         return reverse_lazy('planning:profile_detail', kwargs={'pk': self.kwargs['profile_pk']})
 
 
-class LoadProfileItemUpdateView(UpdateView):
+class LoadProfileItemUpdateView(CompanyScopedMixin, UpdateView):
     """Редактирование элемента профиля."""
     model = LoadProfileItem
     form_class = LoadProfileItemForm
@@ -715,7 +719,7 @@ class LoadProfileItemUpdateView(UpdateView):
         return reverse_lazy('planning:profile_detail', kwargs={'pk': self.object.profile_id})
 
 
-class LoadProfileItemDeleteView(DeleteView):
+class LoadProfileItemDeleteView(CompanyScopedMixin, DeleteView):
     """Удаление элемента профиля."""
     model = LoadProfileItem
     template_name = 'planning/profile_item_confirm_delete.html'
@@ -734,20 +738,20 @@ class LoadProfileItemDeleteView(DeleteView):
 # =============================================================================
 
 
-class CalendarListView(ListView):
+class CalendarListView(CompanyScopedMixin, ListView):
     """Список производственных календарей."""
     model = ProductionCalendar
     template_name = 'planning/calendar_list.html'
     context_object_name = 'calendars'
 
     def get_queryset(self):
-        return ProductionCalendar.objects.annotate(
+        return ProductionCalendar.objects.filter(company=self.request.user.company).annotate(
             days_count=Count('days'),
             working_days_count=Count('days', filter=Q(days__is_working=True))
         ).order_by('-year', 'name')
 
 
-class CalendarDetailView(DetailView):
+class CalendarDetailView(CompanyScopedMixin, DetailView):
     """Детали календаря с днями, сгруппированными по месяцам."""
     model = ProductionCalendar
     template_name = 'planning/calendar_detail.html'
@@ -757,7 +761,7 @@ class CalendarDetailView(DetailView):
         context = super().get_context_data(**kwargs)
         calendar = self.object
 
-        days = CalendarDay.objects.filter(calendar=calendar).order_by('date')
+        days = CalendarDay.objects.filter(company=self.request.user.company, calendar=calendar).order_by('date')
         context['days'] = days
         context['total_days'] = days.count()
         context['working_days'] = days.filter(is_working=True).count()
@@ -797,7 +801,7 @@ class CalendarCreateView(CompanyRequiredMixin, CreateView):
         return super().form_valid(form)
 
 
-class CalendarUpdateView(UpdateView):
+class CalendarUpdateView(CompanyScopedMixin, UpdateView):
     """Редактирование календаря."""
     model = ProductionCalendar
     form_class = ProductionCalendarForm
@@ -809,7 +813,7 @@ class CalendarUpdateView(UpdateView):
         return super().form_valid(form)
 
 
-class CalendarDeleteView(DeleteView):
+class CalendarDeleteView(CompanyScopedMixin, DeleteView):
     """Удаление календаря."""
     model = ProductionCalendar
     template_name = 'planning/calendar_confirm_delete.html'
@@ -825,7 +829,7 @@ class CalendarAutoFillView(View):
     """Автоматическое заполнение календаря днями года."""
 
     def post(self, request, pk):
-        calendar = get_object_or_404(ProductionCalendar, pk=pk)
+        calendar = get_object_or_404(ProductionCalendar, company=self.request.user.company, pk=pk)
 
         if calendar.days.exists():
             messages.warning(
@@ -837,6 +841,7 @@ class CalendarAutoFillView(View):
         try:
             count = CalendarAutoFillService.generate_year(calendar, calendar.year)
             working_count = CalendarDay.objects.filter(
+                company=self.request.user.company,
                 calendar=calendar, is_working=True
             ).count()
             messages.success(
@@ -850,7 +855,7 @@ class CalendarAutoFillView(View):
         return redirect('planning:calendar_detail', pk=pk)
 
 
-class CalendarDayUpdateView(UpdateView):
+class CalendarDayUpdateView(CompanyScopedMixin, UpdateView):
     """Редактирование отдельного дня календаря."""
     model = CalendarDay
     form_class = CalendarDayForm
@@ -876,7 +881,7 @@ class CalendarDayBulkEditView(View):
     """Массовое редактирование дней календаря (диапазон дат)."""
 
     def post(self, request, pk):
-        calendar = get_object_or_404(ProductionCalendar, pk=pk)
+        calendar = get_object_or_404(ProductionCalendar, company=self.request.user.company, pk=pk)
 
         start_date = request.POST.get('start_date')
         end_date = request.POST.get('end_date')
@@ -894,6 +899,7 @@ class CalendarDayBulkEditView(View):
             return redirect('planning:calendar_detail', pk=pk)
 
         days = CalendarDay.objects.filter(
+            company=self.request.user.company,
             calendar=calendar,
             date__gte=start,
             date__lte=end
@@ -934,7 +940,7 @@ def daily_plan_inline_update(request):
         field = data.get('field')
         value = data.get('value')
 
-        plan = DailyPlan.objects.get(pk=plan_id)
+        plan = DailyPlan.objects.get(company=request.user.company, pk=plan_id)
 
         # Проверяем, что версия не immutable
         if plan.plan_version.is_immutable:
@@ -984,10 +990,11 @@ class SetBaselineVersionView(View):
     """Установить версию как актуальную (baseline)."""
 
     def post(self, request, pk):
-        version = get_object_or_404(PlanVersion, pk=pk)
+        version = get_object_or_404(PlanVersion, company=self.request.user.company, pk=pk)
 
         # Снимаем baseline со всех версий этого плана
         PlanVersion.objects.filter(
+            company=self.request.user.company,
             monthly_plan=version.monthly_plan,
             is_baseline=True
         ).update(is_baseline=False)
@@ -1017,6 +1024,7 @@ class PlanMatrixView(View):
 
         # Базовый queryset — только утверждённые версии
         daily_plans = DailyPlan.objects.filter(
+            company=self.request.user.company,
             plan_version__status='APPROVED'
         ).select_related(
             'work_item',

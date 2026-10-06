@@ -3,6 +3,7 @@ from django.contrib.auth import login, logout
 from django.contrib import messages
 from django.views.generic import ListView, DetailView
 from django.utils.translation import gettext_lazy as _
+from django.utils.http import url_has_allowed_host_and_scheme
 
 from .models import User
 from .forms import UserRegistrationForm, UserLoginForm
@@ -29,6 +30,10 @@ def login_view(request):
             login(request, user)
             messages.success(request, _('Вы успешно вошли в систему!'))
             next_url = request.GET.get('next', 'dashboard:index')
+            if not url_has_allowed_host_and_scheme(
+                next_url, allowed_hosts={request.get_host()}, require_https=request.is_secure()
+            ):
+                next_url = 'dashboard:index'
             return redirect(next_url)
     else:
         form = UserLoginForm()
@@ -41,14 +46,16 @@ def logout_view(request):
     return redirect('accounts:login')
 
 
-class UserListView(ListView):
+from core.mixins import CompanyScopedMixin
+
+class UserListView(CompanyScopedMixin, ListView):
     model = User
     template_name = 'accounts/user_list.html'
     context_object_name = 'users'
     paginate_by = 20
 
 
-class UserDetailView(DetailView):
+class UserDetailView(CompanyScopedMixin, DetailView):
     model = User
     template_name = 'accounts/user_detail.html'
     context_object_name = 'user'

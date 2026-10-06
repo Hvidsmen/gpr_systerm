@@ -9,7 +9,7 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import csrf_protect
 
-from core.mixins import CompanyRequiredMixin
+from core.mixins import CompanyRequiredMixin, CompanyScopedMixin
 from apps.production.models import LaborFact
 from apps.production.forms import LaborFactForm
 from apps.production.views.base import parse_fk_id, build_update_data
@@ -22,7 +22,7 @@ from apps.resources.models import Brigade
 # СПИСОК (МАТРИЦА)
 # =============================================================================
 
-class LaborFactListView(ListView):
+class LaborFactListView(CompanyScopedMixin, ListView):
     model = LaborFact
     template_name = 'production/labor_fact_list.html'
     context_object_name = 'labor_facts'
@@ -117,7 +117,7 @@ class LaborFactCreateView(CompanyRequiredMixin, CreateView):
         context = super().get_context_data(**kwargs)
         work_pk = self.kwargs.get('work_pk')
         if work_pk:
-            context['work'] = get_object_or_404(ProjectWork, pk=work_pk)
+            context['work'] = get_object_or_404(ProjectWork, company=self.request.user.company, pk=work_pk)
         context['title'] = 'Ввод факта по людям'
         context['resource_type'] = 'labor'
         return context
@@ -132,7 +132,7 @@ class LaborFactCreateView(CompanyRequiredMixin, CreateView):
         return reverse_lazy('production:fact_daily') if work_pk else reverse_lazy('production:labor_fact_list')
 
 
-class LaborFactUpdateView(UpdateView):
+class LaborFactUpdateView(CompanyScopedMixin, UpdateView):
     model = LaborFact
     form_class = LaborFactForm
     template_name = 'production/resource_form.html'
@@ -156,7 +156,7 @@ class LaborFactUpdateView(UpdateView):
         return reverse_lazy('production:labor_fact_list')
 
 
-class LaborFactDeleteView(DeleteView):
+class LaborFactDeleteView(CompanyScopedMixin, DeleteView):
     model = LaborFact
     template_name = 'production/resource_confirm_delete.html'
     success_url = reverse_lazy('production:labor_fact_list')

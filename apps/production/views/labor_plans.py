@@ -10,7 +10,7 @@ from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import csrf_protect
 from datetime import timedelta
 
-from core.mixins import CompanyRequiredMixin
+from core.mixins import CompanyRequiredMixin, CompanyScopedMixin
 from apps.production.models import LaborPlan
 from apps.production.forms import LaborPlanForm, LaborPlanRangeForm
 from apps.production.views.base import parse_fk_id, build_update_data, parse_date_safe
@@ -19,7 +19,7 @@ from apps.works.models import ProjectWork
 from apps.resources.models import Brigade
 
 
-class LaborPlanListView(ListView):
+class LaborPlanListView(CompanyScopedMixin, ListView):
     model = LaborPlan
     template_name = 'production/labor_plan_list.html'
     context_object_name = 'labor_plans'
@@ -131,6 +131,7 @@ class LaborPlanRangeCreateView(CompanyRequiredMixin, View):
             current_date, count = date_start, 0
             while current_date <= date_end:
                 LaborPlan.objects.update_or_create(
+                    company=self.request.user.company,
                     project=project, project_work=project_work,
                     date=current_date, brigade=brigade, defaults=defaults
                 )
@@ -142,7 +143,7 @@ class LaborPlanRangeCreateView(CompanyRequiredMixin, View):
         return render(request, self.template_name, {'form': form})
 
 
-class LaborPlanUpdateView(UpdateView):
+class LaborPlanUpdateView(CompanyScopedMixin, UpdateView):
     model = LaborPlan
     form_class = LaborPlanForm
     template_name = 'production/resource_plan_form.html'
@@ -165,7 +166,7 @@ class LaborPlanUpdateView(UpdateView):
         return reverse_lazy('production:labor_plan_list')
 
 
-class LaborPlanDeleteView(DeleteView):
+class LaborPlanDeleteView(CompanyScopedMixin, DeleteView):
     model = LaborPlan
     template_name = 'production/resource_confirm_delete.html'
     success_url = reverse_lazy('production:labor_plan_list')

@@ -16,13 +16,13 @@ def dashboard_view(request):
     today = timezone.now().date()
 
     # KPI
-    projects_count = Project.objects.filter(status='ACTIVE').count()
-    approved_plans_count = PlanVersion.objects.filter(status='APPROVED').count()
-    in_progress_count = ProjectWork.objects.filter(status='IN_PROGRESS').count()
+    projects_count = Project.objects.filter(company=request.user.company, status='ACTIVE').count()
+    approved_plans_count = PlanVersion.objects.filter(company=request.user.company, status='APPROVED').count()
+    in_progress_count = ProjectWork.objects.filter(company=request.user.company, status='IN_PROGRESS').count()
 
     # Статусы работ
     status_counts = dict(
-        ProjectWork.objects.values_list('status').annotate(
+        ProjectWork.objects.filter(company=request.user.company).values_list('status').annotate(
             count=Count('id')
         ).values_list('status', 'count')
     )
@@ -31,10 +31,10 @@ def dashboard_view(request):
     last_7_days = []
     for i in range(6, -1, -1):
         day = today - timedelta(days=i)
-        plan = DailyPlan.objects.filter(date=day).aggregate(
+        plan = DailyPlan.objects.filter(company=request.user.company, date=day).aggregate(
             total=Sum('planned_quantity')
         )['total'] or Decimal('0')
-        fact = DailyFact.objects.filter(date=day).aggregate(
+        fact = DailyFact.objects.filter(company=request.user.company, date=day).aggregate(
             total=Sum('actual_quantity')
         )['total'] or Decimal('0')
         last_7_days.append({
@@ -45,13 +45,15 @@ def dashboard_view(request):
 
     # Работы с отставанием
     behind_schedule = []
-    for work in ProjectWork.objects.filter(status__in=['PLANNED', 'IN_PROGRESS']):
+    for work in ProjectWork.objects.filter(company=request.user.company, status__in=['PLANNED', 'IN_PROGRESS']):
         plans = DailyPlan.objects.filter(
+            company=request.user.company,
             work_item__project_work=work,
             date__lte=today
         ).aggregate(total=Sum('planned_quantity'))['total'] or Decimal('0')
 
         facts = DailyFact.objects.filter(
+            company=request.user.company,
             project_work=work,
             date__lte=today
         ).aggregate(total=Sum('actual_quantity'))['total'] or Decimal('0')

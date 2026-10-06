@@ -9,7 +9,7 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import csrf_protect
 
-from core.mixins import CompanyRequiredMixin
+from core.mixins import CompanyRequiredMixin, CompanyScopedMixin
 from apps.production.models import FuelFact
 from apps.production.forms import FuelFactForm
 from apps.production.views.base import build_update_data
@@ -17,7 +17,7 @@ from apps.projects.models import Project
 from apps.works.models import ProjectWork
 
 
-class FuelFactListView(ListView):
+class FuelFactListView(CompanyScopedMixin, ListView):
     model = FuelFact
     template_name = 'production/fuel_fact_list.html'
     context_object_name = 'fuel_facts'
@@ -100,7 +100,7 @@ class FuelFactCreateView(CompanyRequiredMixin, CreateView):
         context = super().get_context_data(**kwargs)
         work_pk = self.kwargs.get('work_pk')
         if work_pk:
-            context['work'] = get_object_or_404(ProjectWork, pk=work_pk)
+            context['work'] = get_object_or_404(ProjectWork, company=self.request.user.company, pk=work_pk)
         context['title'] = 'Ввод факта по ГСМ'
         context['resource_type'] = 'fuel'
         return context
@@ -115,7 +115,7 @@ class FuelFactCreateView(CompanyRequiredMixin, CreateView):
         return reverse_lazy('production:fact_daily') if work_pk else reverse_lazy('production:fuel_fact_list')
 
 
-class FuelFactUpdateView(UpdateView):
+class FuelFactUpdateView(CompanyScopedMixin, UpdateView):
     model = FuelFact
     form_class = FuelFactForm
     template_name = 'production/resource_form.html'
@@ -139,7 +139,7 @@ class FuelFactUpdateView(UpdateView):
         return reverse_lazy('production:fuel_fact_list')
 
 
-class FuelFactDeleteView(DeleteView):
+class FuelFactDeleteView(CompanyScopedMixin, DeleteView):
     model = FuelFact
     template_name = 'production/resource_confirm_delete.html'
     success_url = reverse_lazy('production:fuel_fact_list')

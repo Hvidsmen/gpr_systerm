@@ -3,13 +3,13 @@ from django.urls import reverse_lazy
 from django.contrib import messages
 from django.utils.translation import gettext_lazy as _
 
-from core.mixins import CompanyRequiredMixin
+from core.mixins import CompanyRequiredMixin, CompanyScopedMixin
 
 from .models import Employee, Brigade
 from .forms import EmployeeForm, BrigadeForm
 from django.shortcuts import get_object_or_404, redirect  # ← ДОБАВЛЕНО
 
-class EmployeeListView(ListView):
+class EmployeeListView(CompanyScopedMixin, ListView):
     model = Employee
     template_name = 'resources/employee_list.html'
     context_object_name = 'employees'

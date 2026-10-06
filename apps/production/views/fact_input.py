@@ -27,7 +27,7 @@ class FactInputView(View):
             'selected_project': None,
             'selected_object': None,
             'selected_section': None,
-            'deviation_reasons': DeviationReason.objects.filter(is_active=True),
+            'deviation_reasons': DeviationReason.objects.filter(company=self.request.user.company, is_active=True),
         })
 
     def post(self, request):
@@ -44,7 +44,7 @@ class FactInputView(View):
             messages.error(request, 'Проверьте форму')
             return render(request, self.template_name, {
                 'form': form, 'works_data': [],
-                'selected_date': None, 'deviation_reasons': DeviationReason.objects.filter(is_active=True),
+                'selected_date': None, 'deviation_reasons': DeviationReason.objects.filter(company=self.request.user.company, is_active=True),
             })
 
         target_date = form.cleaned_data['date']
@@ -63,6 +63,7 @@ class FactInputView(View):
 
         # Находим планы на выбранную дату
         daily_plans = DailyPlan.objects.filter(
+            company=self.request.user.company,
             date=target_date,
             work_item__project_work__in=works_qs,
             plan_version__status='APPROVED'
@@ -87,6 +88,7 @@ class FactInputView(View):
 
             # Ищем существующий факт
             fact = DailyFact.objects.filter(
+                company=self.request.user.company,
                 project_work=work,
                 work_item=dp.work_item,
                 date=target_date
@@ -103,7 +105,7 @@ class FactInputView(View):
             if fact:
                 works_data[work.pk]['total_fact'] += fact.actual_quantity
 
-        deviation_reasons = DeviationReason.objects.filter(is_active=True)
+        deviation_reasons = DeviationReason.objects.filter(company=self.request.user.company, is_active=True)
 
         return render(request, self.template_name, {
             'form': form,
@@ -140,7 +142,7 @@ class FactInputView(View):
                     continue
 
                 qty = Decimal(fact_value)
-                reason = DeviationReason.objects.get(pk=reason_id) if reason_id else None
+                reason = DeviationReason.objects.get(company=self.request.user.company, pk=reason_id) if reason_id else None
                 actual_value = qty * work.unit_price
 
                 DailyFact.objects.update_or_create(
