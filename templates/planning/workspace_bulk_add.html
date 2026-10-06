@@ -1,0 +1,26 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1>Добавить списком: {{ title }}</h1>
+<p>{{ version.workspace.name }} · {{ version.construction_object }}</p>
+<p>Отметьте нужные позиции. Новые строки появятся с нулевыми объёмами; существующие строки и введённые значения сохранятся.</p>
+<form method="post">{% csrf_token %}{{ form.non_field_errors }}
+<div class="row g-3 mb-3"><div class="col-md-4">{{ form.scope.label_tag }}{{ form.scope }}{{ form.scope.errors }}</div><div class="col-md-4">{{ form.month.label_tag }}{{ form.month }}{{ form.month.errors }}</div></div>
+{% if form.equipment_number %}<p>{{ form.equipment_number.label_tag }}{{ form.equipment_number }}{{ form.equipment_number.errors }}</p>{% endif %}
+{% if form.equipment_ref %}<p>{{ form.equipment_ref.label_tag }}{{ form.equipment_ref }}{{ form.equipment_ref.errors }}</p>{% endif %}
+<label for="bulk-search" class="form-label">Поиск в списке</label><input id="bulk-search" type="search" class="form-control mb-2" placeholder="Введите название или код">
+<div class="d-flex flex-wrap gap-2 mb-2"><button type="button" class="btn btn-sm btn-outline-primary" id="bulk-select">Выбрать найденные</button><button type="button" class="btn btn-sm btn-outline-secondary" id="bulk-clear">Снять выбор</button><span id="bulk-count" role="status" aria-live="polite"></span></div>
+{{ form.items.errors }}
+<div class="list-group mb-3" style="max-height:420px;overflow:auto">{% for option in form.items %}<label class="list-group-item" data-bulk-item>{{ option.tag }} <span>{{ option.choice_label }}</span></label>{% empty %}<p class="text-muted">Доступных позиций пока нет. Сначала заполните справочник.</p>{% endfor %}</div>
+<button class="btn btn-primary">Добавить выбранные</button><a class="btn btn-outline-secondary" href="{% url 'planning:workspace_edit' version.pk %}?month={{ form.month.value|default:'' }}">Отмена</a>
+</form>
+<script>
+(() => {
+ const rows=Array.from(document.querySelectorAll('[data-bulk-item]'));
+ const update=()=>document.getElementById('bulk-count').textContent='Выбрано: '+rows.filter(r=>r.querySelector('input').checked).length;
+ document.getElementById('bulk-search').addEventListener('input',event=>{const term=event.target.value.trim().toLocaleLowerCase();rows.forEach(r=>r.hidden=!r.textContent.toLocaleLowerCase().includes(term));});
+ document.getElementById('bulk-select').addEventListener('click',()=>{rows.filter(r=>!r.hidden).forEach(r=>r.querySelector('input').checked=true);update();});
+ document.getElementById('bulk-clear').addEventListener('click',()=>{rows.forEach(r=>r.querySelector('input').checked=false);update();});
+ rows.forEach(r=>r.querySelector('input').addEventListener('change',update));update();
+})();
+</script>
+{% endblock %}

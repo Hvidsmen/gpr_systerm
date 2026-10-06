@@ -77,3 +77,6 @@ urlpatterns = [
     path('workspace/<int:pk>/delete/', WorkspaceDelete.as_view(), name='workspace_delete'),
     path('global/<int:pk>/delete/', GlobalDelete.as_view(), name='global_delete'),
 ] + urlpatterns
+
+from .bulk_add import WorkspaceBulkAdd
+urlpatterns += [path('workspace-versions/<int:pk>/add-list/<str:kind>/', WorkspaceBulkAdd.as_view(), name='workspace_bulk_add')]

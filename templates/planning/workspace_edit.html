@@ -5,6 +5,10 @@
 <p>{{ workspace.construction_object }} · {{ workspace.start_date }} — {{ workspace.end_date }} · {{ version.get_version_kind_display }}</p>
 {% if version.planning_month %}<p>Уточняемый месяц: <strong>{{ version.planning_month|date:'m.Y' }}</strong>. {{ version.get_scenario_display }}.</p>{% endif %}
 <p>{% if request.user|may:'planning:workspace_detail' %}<a href="{% url 'planning:workspace_detail' workspace.pk %}">Рабочее пространство и история</a>{% endif %} · {% if request.user|may:'planning:global_detail' %}<a href="{% url 'planning:global_detail' version.pk %}">План на весь период и согласование</a>{% endif %} · {% if request.user|may:'planning:calendar_list' %}<a href="{% url 'planning:calendar_list' %}">Календари</a>{% endif %}</p>
+{% if request.user|may:'planning:workspace_bulk_add' %}
+<div class="card mb-3"><div class="card-body"><h2>Добавить списком</h2><p>Сначала сохраните введённые месячные данные. В списке отметьте несколько позиций и выберите добавление в месяц{% if version.version_kind == 'BASELINE' %} или на весь период{% endif %}.</p>
+<div class="d-flex flex-wrap gap-2"><a class="btn btn-outline-primary" href="{% url 'planning:workspace_bulk_add' version.pk 'works' %}?month={{ selected_month|date:'Y-m-d' }}">Работы</a>{% for section in resource_sections %}<a class="btn btn-outline-primary" href="{% url 'planning:workspace_bulk_add' version.pk section.kind %}?month={{ selected_month|date:'Y-m-d' }}">{{ section.title }}</a>{% endfor %}</div>
+</div></div>{% endif %}
 {% if version.version_kind == 'BASELINE' %}
 <div class="card mb-3"><div class="card-body"><h2>Состав работ</h2>
 {% if request.user|may:'planning:workspace_add_work' %}<form method="post" action="{% url 'planning:workspace_add_work' version.pk %}">{% csrf_token %}{{ add_work_form.as_p }}<button class="btn btn-outline-primary">Добавить работу во все месяцы</button></form>{% endif %}
