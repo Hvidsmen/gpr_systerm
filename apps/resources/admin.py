@@ -43,3 +43,7 @@ from .models import EquipmentCategory
 @admin.register(EquipmentCategory)
 class EquipmentCategoryAdmin(admin.ModelAdmin):
     list_display = ['name', 'company']
+
+from .models import BrigadeGroup, BrigadeMacroGroup
+admin.site.register(BrigadeGroup)
+admin.site.register(BrigadeMacroGroup)

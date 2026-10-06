@@ -40,6 +40,32 @@ class Employee(BaseCompanyModel):
 
 
 
+class BrigadeGroup(BaseCompanyModel):
+    name = models.CharField(_('название'), max_length=150)
+
+    class Meta:
+        verbose_name = _('группа бригад')
+        verbose_name_plural = _('группы бригад')
+        ordering = ['name']
+        unique_together = [['company', 'name']]
+
+    def __str__(self):
+        return self.name
+
+
+class BrigadeMacroGroup(BaseCompanyModel):
+    name = models.CharField(_('название'), max_length=150)
+
+    class Meta:
+        verbose_name = _('макрогруппа бригад')
+        verbose_name_plural = _('макрогруппы бригад')
+        ordering = ['name']
+        unique_together = [['company', 'name']]
+
+    def __str__(self):
+        return self.name
+
+
 class Brigade(BaseCompanyModel):
     """Справочник бригад."""
     code = models.CharField(
@@ -48,6 +74,9 @@ class Brigade(BaseCompanyModel):
         help_text=_('Уникальный код, например: БР-001')
     )
     name = models.CharField(_('название бригады'), max_length=150)
+
+    group = models.ForeignKey(BrigadeGroup, on_delete=models.SET_NULL, null=True, blank=True, related_name='brigades', verbose_name=_('группа'))
+    macro_group = models.ForeignKey(BrigadeMacroGroup, on_delete=models.SET_NULL, null=True, blank=True, related_name='brigades', verbose_name=_('макрогруппа'))
 
     description = models.TextField(_('описание'), blank=True)
     is_active = models.BooleanField(_('активна'), default=True)

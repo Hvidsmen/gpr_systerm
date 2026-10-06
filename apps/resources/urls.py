@@ -22,3 +22,10 @@ path('equipment-types/create/', views.EquipmentTypeCreateView.as_view(), name='e
 path('equipment-types/<int:pk>/update/', views.EquipmentTypeUpdateView.as_view(), name='equipment_type_update'),
 path('equipment-types/<int:pk>/delete/', views.EquipmentTypeDeleteView.as_view(), name='equipment_type_delete'),
 ]
+from .brigade_catalogs import BrigadeCatalogList, quick_create
+urlpatterns += [
+    path('brigade-groups/', BrigadeCatalogList.as_view(kind='group'), name='brigade_group_list'),
+    path('brigade-groups/create/', quick_create('group'), name='brigade_group_create'),
+    path('brigade-macro-groups/', BrigadeCatalogList.as_view(kind='macro'), name='brigade_macro_group_list'),
+    path('brigade-macro-groups/create/', quick_create('macro'), name='brigade_macro_group_create'),
+]

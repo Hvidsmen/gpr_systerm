@@ -5,6 +5,7 @@
 {% block title %}Бригады - ГПР Система{% endblock %}
 
 {% block content %}
+{% if request.user|may:'resources:brigade_group_list' %}<a class="btn btn-outline-secondary mb-3" href="{% url 'resources:brigade_group_list' %}">Группы</a><a class="btn btn-outline-secondary mb-3" href="{% url 'resources:brigade_macro_group_list' %}">Макрогруппы</a>{% endif %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
         <h2 class="mb-1">
@@ -30,7 +31,7 @@
                 <thead class="table-light">
                     <tr>
                         <th style="width: 100px;">Код</th>
-                        <th>Название</th>
+                        <th>Название</th><th>Группа</th><th>Макрогруппа</th>
                         <th>Описание</th>
                         <th style="width: 100px;">Статус</th>
                         <th style="width: 150px;">Действия</th>
@@ -48,6 +49,7 @@
                             </small>
                             {% endif %}
                         </td>
+                        <td>{{ brigade.group|default:"—" }}</td><td>{{ brigade.macro_group|default:"—" }}</td>
                         <td>
                             {{ brigade.description|default:"—" }}
                         </td>

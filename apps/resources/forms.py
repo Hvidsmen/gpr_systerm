@@ -1,7 +1,7 @@
 from django import forms
 from django.utils.translation import gettext_lazy as _
 
-from .models import Employee, Brigade,EquipmentType
+from .models import Employee, Brigade, EquipmentType, BrigadeGroup, BrigadeMacroGroup
 
 
 class EmployeeForm(forms.ModelForm):
@@ -17,9 +17,16 @@ class EmployeeForm(forms.ModelForm):
         }
 
 class BrigadeForm(forms.ModelForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for name in ('group', 'macro_group'):
+            self.fields[name].queryset = self.fields[name].queryset.filter(company_id=self.instance.company_id)
+            self.fields[name].widget.attrs['class'] = 'form-select'
+            self.fields[name].empty_label = 'Не выбрана'
+
     class Meta:
         model = Brigade
-        fields = ['name',  'description', 'is_active']
+        fields = ['name', 'group', 'macro_group', 'description', 'is_active']
         widgets = {
             'code': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'БР-001'}),
             'name': forms.TextInput(attrs={'class': 'form-control'}),
@@ -79,3 +86,24 @@ class EquipmentCategoryForm(forms.ModelForm):
         if any(existing.casefold() == name.casefold() for existing in names):
             raise forms.ValidationError('Такая категория уже есть в справочнике.')
         return name
+
+
+class BrigadeCatalogForm(EquipmentCategoryForm):
+    def clean_name(self):
+        name = self.cleaned_data['name']
+        names = type(self.instance).objects.filter(company=self.instance.company).exclude(pk=self.instance.pk).values_list('name', flat=True)
+        if any(existing.casefold() == name.casefold() for existing in names):
+            raise forms.ValidationError('Такая запись уже есть в справочнике.')
+        return name
+
+
+class BrigadeGroupForm(BrigadeCatalogForm):
+    class Meta:
+        model = BrigadeGroup
+        fields = ['name']
+
+
+class BrigadeMacroGroupForm(BrigadeCatalogForm):
+    class Meta:
+        model = BrigadeMacroGroup
+        fields = ['name']

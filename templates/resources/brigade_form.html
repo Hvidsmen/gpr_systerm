@@ -43,14 +43,10 @@
                         </div>
                     </div>
 
-                    <div class="mb-3">
-                        <label for="{{ form.foreman.id_for_label }}" class="form-label">
-                            {{ form.foreman.label }}
-                        </label>
-                        {{ form.foreman }}
-                        <div class="form-text">Необязательное поле</div>
-                    </div>
-
+                    <div class="row g-3 mb-3">
+<div class="col-md-6"><label class="form-label" for="{{ form.group.id_for_label }}">Группа</label><div class="input-group">{{ form.group }}{% if request.user|may:'resources:brigade_group_create' %}<button class="btn btn-outline-primary" type="button" data-catalog-open="brigade-group" aria-label="Создать группу бригад">+</button>{% endif %}</div>{{ form.group.errors }}</div>
+<div class="col-md-6"><label class="form-label" for="{{ form.macro_group.id_for_label }}">Макрогруппа</label><div class="input-group">{{ form.macro_group }}{% if request.user|may:'resources:brigade_macro_group_create' %}<button class="btn btn-outline-primary" type="button" data-catalog-open="brigade-macro" aria-label="Создать макрогруппу бригад">+</button>{% endif %}</div>{{ form.macro_group.errors }}</div>
+</div>
                     <div class="mb-3">
                         <label for="{{ form.description.id_for_label }}" class="form-label">
                             {{ form.description.label }}
@@ -78,4 +74,5 @@
         </div>
     </div>
 </div>
+{% include 'resources/brigade_catalog_quick.html' %}
 {% endblock %}

@@ -1,0 +1,44 @@
+<style>
+.catalog-dialog { width:min(440px,calc(100% - 32px)); border:0; border-radius:16px; padding:24px; box-shadow:0 12px 48px #0003; }
+.catalog-dialog::backdrop { background:#172b4d66; }
+</style>
+<dialog id="catalog-brigade-group" class="catalog-dialog" aria-labelledby="catalog-brigade-group-title">
+<form method="post" action="{% url 'resources:brigade_group_create' %}" data-catalog="brigade-group">{% csrf_token %}
+<h2 id="catalog-brigade-group-title" class="h5">Новая группа бригад</h2>
+<label class="form-label" for="new-brigade-group-name">Название</label><input class="form-control" id="new-brigade-group-name" name="name" maxlength="150" required>
+<div class="text-danger small my-2" data-errors role="alert"></div>
+<div class="d-flex justify-content-end gap-2 mt-3"><button type="button" class="btn btn-outline-secondary" data-close>Отмена</button><button class="btn btn-primary">Создать</button></div>
+</form></dialog>
+<dialog id="catalog-brigade-macro" class="catalog-dialog" aria-labelledby="catalog-brigade-macro-title">
+<form method="post" action="{% url 'resources:brigade_macro_group_create' %}" data-catalog="brigade-macro">{% csrf_token %}
+<h2 id="catalog-brigade-macro-title" class="h5">Новая макрогруппа бригад</h2>
+<label class="form-label" for="new-brigade-macro-name">Название</label><input class="form-control" id="new-brigade-macro-name" name="name" maxlength="150" required>
+<div class="text-danger small my-2" data-errors role="alert"></div>
+<div class="d-flex justify-content-end gap-2 mt-3"><button type="button" class="btn btn-outline-secondary" data-close>Отмена</button><button class="btn btn-primary">Создать</button></div>
+</form></dialog>
+<script>
+(() => {
+    document.querySelectorAll('[data-catalog-open]').forEach(button => button.addEventListener('click', () => document.getElementById('catalog-'+button.dataset.catalogOpen).showModal()));
+    document.querySelectorAll('.catalog-dialog [data-close]').forEach(button => button.addEventListener('click', () => button.closest('dialog').close()));
+    document.querySelectorAll('form[data-catalog]').forEach(form => form.addEventListener('submit', async event => {
+        event.preventDefault();
+        const button = form.querySelector('button[type="submit"], button:not([type])');
+        const errors = form.querySelector('[data-errors]');
+        errors.textContent = ''; button.disabled = true;
+        try {
+            const response = await fetch(form.action, {method:'POST',body:new FormData(form),headers:{'Accept':'application/json'}});
+            if (response.redirected) throw new Error('Сессия истекла. Войдите в систему повторно.');
+            if (response.status === 403) throw new Error('Недостаточно прав или сессия истекла.');
+            const result = await response.json();
+            if (!response.ok) { errors.textContent = Object.values(result.errors || {}).flat().join(' '); return; }
+            const select = document.getElementById(form.dataset.catalog === 'brigade-group' ? 'id_group' : 'id_macro_group');
+            if (select) {
+                select.add(new Option(result.label, result.value)); select.value = result.value;
+                select.dispatchEvent(new Event('change', {bubbles:true}));
+                form.closest('dialog').close(); form.reset(); select.focus();
+            } else { window.location.reload(); }
+        } catch (error) { errors.textContent = error.message || 'Не удалось сохранить. Попробуйте ещё раз.'; }
+        finally { button.disabled = false; }
+    }));
+})();
+</script>

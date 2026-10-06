@@ -46,6 +46,11 @@ class BrigadeCreateView(CompanyRequiredMixin, CreateView):
     form_class = BrigadeForm
     template_name = 'resources/brigade_form.html'
 
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs['instance'] = Brigade(company=self.get_company())
+        return kwargs
+
     def form_valid(self, form):
         form.instance.company = self.request.user.company
         messages.success(self.request, 'Бригада создана!')
