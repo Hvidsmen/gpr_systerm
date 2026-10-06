@@ -81,6 +81,13 @@
                         {% endif %}
                     </div>
 
+                    <div class="mb-3">
+                        <label for="{{ form.unit.id_for_label }}" class="form-label">{{ form.unit.label }}</label>
+                        {{ form.unit }}
+                        <div class="form-text">По умолчанию: ед.</div>
+                        {% if form.unit.errors %}<div class="text-danger small mt-1">{{ form.unit.errors }}</div>{% endif %}
+                    </div>
+
                     <div class="mb-3 form-check form-switch">
                         {{ form.is_active }}
                         <label class="form-check-label" for="{{ form.is_active.id_for_label }}">

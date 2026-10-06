@@ -33,6 +33,7 @@
                         <tr>
                             <th>Название</th>
                             <th>Категория</th>
+                            <th>Ед. измерения</th>
                             <th>Статус</th>
                             <th>Действия</th>
                         </tr>
@@ -42,6 +43,7 @@
                             <tr>
                                 <td><strong>{{ et.name }}</strong></td>
                                 <td>{{ et.category|default:"—" }}</td>
+                                <td>{{ et.unit }}</td>
                                 <td>
                                     {% if et.is_active %}
                                         <span class="badge bg-success">Активна</span>

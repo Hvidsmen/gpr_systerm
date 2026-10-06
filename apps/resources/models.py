@@ -98,6 +98,7 @@ class EquipmentCategory(BaseCompanyModel):
 class EquipmentType(BaseCompanyModel):
     """Справочник видов техники."""
     name = models.CharField(_('название'), max_length=150)
+    unit = models.CharField(_('единица измерения'), max_length=50, default='ед.')
     category = models.ForeignKey(
         EquipmentCategory, on_delete=models.PROTECT, null=True, blank=True,
         related_name='equipment_types', verbose_name=_('категория'),

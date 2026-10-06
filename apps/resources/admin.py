@@ -25,7 +25,7 @@ class BrigadeMemberAdmin(admin.ModelAdmin):
 
 @admin.register(EquipmentType)
 class EquipmentTypeAdmin(admin.ModelAdmin):
-    list_display = [ 'name', 'category','is_active']
+    list_display = ['name', 'category', 'unit', 'is_active']
 
 
 @admin.register(Equipment)

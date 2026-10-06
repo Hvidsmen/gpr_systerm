@@ -27,6 +27,7 @@ class EquipmentCategoryTests(TestCase):
         self.assertEqual(response.status_code, 302)
         row = EquipmentType.objects.get(name='Кран')
         self.assertEqual(row.category, category)
+        self.assertEqual(row.unit, 'ед.')
         response = self.client.get(reverse('resources:equipment_type_update', args=[row.pk]))
         self.assertEqual(response.context['form']['category'].value(), category.pk)
 
@@ -80,4 +81,5 @@ class EquipmentCategoryMigrationTests(TransactionTestCase):
             OldType = executor.loader.project_state(previous).apps.get_model('resources', 'EquipmentType')
             self.assertEqual(OldType.objects.get(pk=first.pk).category, 'Землеройная')
         finally:
-            MigrationExecutor(connection).migrate(current)
+            executor = MigrationExecutor(connection)
+            executor.migrate(executor.loader.graph.leaf_nodes())

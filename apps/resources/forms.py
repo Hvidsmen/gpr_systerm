@@ -40,12 +40,17 @@ class EquipmentTypeForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields['category'].queryset = EquipmentCategory.objects.filter(company_id=self.instance.company_id)
         self.fields['category'].empty_label = 'Выберите категорию'
+        self.fields['unit'].required = False
+
+    def clean_unit(self):
+        return self.cleaned_data.get('unit') or 'ед.'
 
     class Meta:
         model = EquipmentType
-        fields = ['name', 'category', 'is_active']
+        fields = ['name', 'category', 'unit', 'is_active']
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control'}),
+            'unit': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'ед.'}),
             'category': forms.Select(attrs={'class': 'form-select'}),
             'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
