@@ -51,7 +51,7 @@
 <h3>Работы</h3><p>Указывайте объём основной работы. Объёмы подработ рассчитываются по нормативам.</p>
 <div id="work-rows">{% for form in work_forms %}<div class="card mb-3 allocation-row"><div class="card-body allocation-grid">{{ form.non_field_errors }}{% for field in form %}<p data-field="{{ field.name }}" {% if field.is_hidden %}hidden{% endif %}>{{ field.label_tag }} {{ field }} {{ field.errors }}</p>{% endfor %}</div></div>{% endfor %}</div>
 <button type="button" class="btn btn-outline-primary mb-4" data-add="works">Добавить строку работы</button>
-<h3>Ресурсы на {{ selected_month|date:'m.Y' }}</h3><p>Численность и количество машин задаются на рабочий день. Часы и литры — за выбранный месяц; распределение по рабочим дням и профилю, без профиля — равномерно.</p>
+<h3>Ресурсы на {{ selected_month|date:'m.Y' }}</h3><p>Численность людей и количество техники задаются на рабочий день. Часы людей и литры ГСМ — за месяц. Распределение по рабочим дням и профилю, без профиля — равномерно.</p>
 {% for section in resource_sections %}<section class="card mb-4"><div class="card-body"><h3>{{ section.title }}</h3>
 <div id="resource-rows-{{ section.kind }}">{% for form in section.forms %}<div class="card mb-3 resource-row allocation-row"><div class="card-body allocation-grid">{{ form.non_field_errors }}{% for field in form %}<p data-field="{{ field.name }}" {% if field.is_hidden or field.name == 'kind' %}hidden{% endif %}>{{ field.label_tag }} {{ field }} {{ field.errors }}</p>{% endfor %}</div></div>{% endfor %}</div>
 <button type="button" class="btn btn-outline-primary" data-add="resources" data-kind="{{ section.kind }}">Добавить {% if section.kind == 'labor' %}людей{% elif section.kind == 'equipment' %}технику{% else %}ГСМ{% endif %} в этот месяц</button>
@@ -64,7 +64,7 @@
 function showResource(row) {
   const kind = row.querySelector('[name$="-kind"]').value;
   const labels={count:kind==='labor'?'Людей':'Кол-во',hours:'Часы/мес.',liters:'Литры/мес.',rate:kind==='fuel'?'Цена/л':'Ставка/ч',load_profile:'Профиль',equipment_type:'Вид техники',equipment_number:'Номер',equipment_ref:'Техника'};
-  const fields = {labor:['brigade','count','hours','rate','load_profile'], equipment:['equipment_type','equipment_number','count','hours','rate','load_profile'], fuel:['fuel_type','equipment_ref','liters','rate','load_profile']}[kind] || [];
+  const fields = {labor:['brigade','count','hours','rate','load_profile'], equipment:['equipment_type','equipment_number','count','load_profile'], fuel:['fuel_type','equipment_ref','liters','rate','load_profile']}[kind] || [];
   row.querySelectorAll('[data-field]').forEach(group => {
     const name = group.dataset.field;
     const label=group.querySelector('label');
