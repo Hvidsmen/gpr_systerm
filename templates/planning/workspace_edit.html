@@ -1,6 +1,23 @@
 {% extends 'base.html' %}
 {% load access %}
 {% block content %}
+<style>
+.resource-row { margin-bottom:8px !important; box-shadow:none; }
+.resource-row .resource-grid { display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); gap:8px; padding:10px; align-items:end; }
+.resource-grid > [data-field] { margin:0; min-width:0; grid-column:span 1; }
+.resource-grid > [data-field="brigade"], .resource-grid > [data-field="equipment_type"], .resource-grid > [data-field="fuel_type"], .resource-grid > [data-field="load_profile"] { grid-column:span 3; }
+.resource-grid > [data-field="equipment_number"], .resource-grid > [data-field="equipment_ref"] { grid-column:span 2; }
+.resource-grid label { display:block; margin-bottom:3px; font-size:12px; line-height:1.2; }
+.resource-grid input:not([type="checkbox"]), .resource-grid select { width:100%; min-width:0; padding:4px 6px; min-height:30px; font-size:12px; }
+.resource-grid > [data-field="DELETE"] { display:flex; align-items:center; gap:5px; min-height:30px; }
+.resource-grid > [data-field="DELETE"] label { margin:0; }
+.resource-grid input[type="checkbox"] { width:16px; height:16px; margin:0; padding:0; }
+.resource-grid > [hidden] { display:none !important; }
+.resource-grid > .errorlist { grid-column:1/-1; }
+.resource-grid .errorlist { margin:3px 0 0; padding-left:14px; color:#b02a37; }
+@media(max-width:1199px) { .resource-row .resource-grid { grid-template-columns:repeat(6,minmax(0,1fr)); } .resource-grid > [data-field="count"], .resource-grid > [data-field="hours"], .resource-grid > [data-field="liters"], .resource-grid > [data-field="rate"] { grid-column:span 2; } }
+@media(max-width:575px) { .resource-row .resource-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .resource-grid > [data-field] { grid-column:span 1 !important; } .resource-grid > [data-field="brigade"], .resource-grid > [data-field="equipment_type"], .resource-grid > [data-field="fuel_type"], .resource-grid > [data-field="load_profile"] { grid-column:1/-1 !important; } }
+</style>
 <h1>{{ workspace.name }} — v{{ version.version_number }}</h1>
 <p>{{ workspace.construction_object }} · {{ workspace.start_date }} — {{ workspace.end_date }} · {{ version.get_version_kind_display }}</p>
 {% if version.planning_month %}<p>Уточняемый месяц: <strong>{{ version.planning_month|date:'m.Y' }}</strong>. {{ version.get_scenario_display }}.</p>{% endif %}
@@ -34,19 +51,22 @@
 <button type="button" class="btn btn-outline-primary mb-4" data-add="works">Добавить строку работы</button>
 <h3>Ресурсы на {{ selected_month|date:'m.Y' }}</h3><p>Численность и количество машин задаются на рабочий день. Часы и литры — за выбранный месяц; распределение по рабочим дням и профилю, без профиля — равномерно.</p>
 {% for section in resource_sections %}<section class="card mb-4"><div class="card-body"><h3>{{ section.title }}</h3>
-<div id="resource-rows-{{ section.kind }}">{% for form in section.forms %}<div class="card mb-3 resource-row allocation-row"><div class="card-body">{{ form.non_field_errors }}{% for field in form %}<p data-field="{{ field.name }}" {% if field.is_hidden or field.name == 'kind' %}hidden{% endif %}>{{ field.label_tag }} {{ field }} {{ field.errors }}</p>{% endfor %}</div></div>{% endfor %}</div>
+<div id="resource-rows-{{ section.kind }}">{% for form in section.forms %}<div class="card mb-3 resource-row allocation-row"><div class="card-body resource-grid">{{ form.non_field_errors }}{% for field in form %}<p data-field="{{ field.name }}" {% if field.is_hidden or field.name == 'kind' %}hidden{% endif %}>{{ field.label_tag }} {{ field }} {{ field.errors }}</p>{% endfor %}</div></div>{% endfor %}</div>
 <button type="button" class="btn btn-outline-primary" data-add="resources" data-kind="{{ section.kind }}">Добавить {% if section.kind == 'labor' %}людей{% elif section.kind == 'equipment' %}технику{% else %}ГСМ{% endif %} в этот месяц</button>
 </div></section>{% endfor %}
 <div class="d-flex gap-2"><button class="btn btn-primary" name="action" value="save">Сохранить этот месяц</button><button class="btn btn-success" name="action" value="preview">Сохранить месяц и сформировать план на весь период</button></div>
 </form>
 <template id="empty-works"><div class="card mb-3 allocation-row"><div class="card-body">{% for field in work_forms.empty_form %}<p {% if field.is_hidden %}hidden{% endif %}>{{ field.label_tag }} {{ field }}</p>{% endfor %}</div></div></template>
-<template id="empty-resources"><div class="card mb-3 resource-row allocation-row"><div class="card-body">{% for field in resource_forms.empty_form %}<p data-field="{{ field.name }}" {% if field.is_hidden or field.name == 'kind' %}hidden{% endif %}>{{ field.label_tag }} {{ field }}</p>{% endfor %}</div></div></template>
+<template id="empty-resources"><div class="card mb-3 resource-row allocation-row"><div class="card-body resource-grid">{% for field in resource_forms.empty_form %}<p data-field="{{ field.name }}" {% if field.is_hidden or field.name == 'kind' %}hidden{% endif %}>{{ field.label_tag }} {{ field }}</p>{% endfor %}</div></div></template>
 <script>
 function showResource(row) {
   const kind = row.querySelector('[name$="-kind"]').value;
+  const labels={count:kind==='labor'?'Людей':'Кол-во',hours:'Часы/мес.',liters:'Литры/мес.',rate:kind==='fuel'?'Цена/л':'Ставка/ч',load_profile:'Профиль',equipment_type:'Вид техники',equipment_number:'Номер',equipment_ref:'Техника'};
   const fields = {labor:['brigade','count','hours','rate','load_profile'], equipment:['equipment_type','equipment_number','count','hours','rate','load_profile'], fuel:['fuel_type','equipment_ref','liters','rate','load_profile']}[kind] || [];
   row.querySelectorAll('[data-field]').forEach(group => {
     const name = group.dataset.field;
+    const label=group.querySelector('label');
+    if (label && labels[name]) label.textContent=labels[name]+':';
     if (['month','id','kind','DELETE'].includes(name)) return;
     group.hidden = !fields.includes(name);
   });
