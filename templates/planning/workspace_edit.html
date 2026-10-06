@@ -9,7 +9,7 @@
 .allocation-grid > [data-field="brigade"], .allocation-grid > [data-field="equipment_type"], .allocation-grid > [data-field="fuel_type"], .allocation-grid > [data-field="load_profile"] { grid-column:span 3; }
 .allocation-grid > [data-field="work"] { grid-column:span 6; }
 .allocation-grid > [data-field="quantity"] { grid-column:span 2; }
-.allocation-grid > [data-field="equipment_number"], .allocation-grid > [data-field="equipment_ref"] { grid-column:span 2; }
+.allocation-grid > [data-field="equipment_number"] { grid-column:span 2; }
 .allocation-grid label { display:block; margin-bottom:3px; font-size:12px; line-height:1.2; }
 .allocation-grid input:not([type="checkbox"]), .allocation-grid select { width:100%; min-width:0; padding:4px 6px; min-height:30px; font-size:12px; }
 .allocation-grid > [data-field="DELETE"] { display:flex; align-items:center; gap:5px; min-height:30px; }
@@ -79,7 +79,7 @@ function applyRowFilters(panel) {
     total++;
     const input=row.querySelector('[name$="-'+rowIdentity[kind]+'"]');
     const label=input.options[input.selectedIndex]?.text || '';
-    const extra=Array.from(row.querySelectorAll('[name$="-equipment_number"],[name$="-equipment_ref"]')).map(i=>i.value).join(' ');
+    const extra=Array.from(row.querySelectorAll('[name$="-equipment_number"]')).map(i=>i.value).join(' ');
     const meta=planningFilterData[kind][input.value] || {};
     const matches=!input.value || ((label+' '+extra).toLocaleLowerCase().includes(term) && filters.every(f=>!f.value || meta[f.dataset.filterKey]===f.value));
     row.hidden=!matches;if (matches) visible++;
@@ -142,8 +142,8 @@ document.querySelectorAll('.allocation-row').forEach(row=>{
 });
 function showResource(row) {
   const kind = row.querySelector('[name$="-kind"]').value;
-  const labels={count:kind==='labor'?'Людей':'Кол-во',hours:'Часы/мес.',liters:'Литры/мес.',rate:kind==='fuel'?'Цена/л':'Ставка/ч',load_profile:'Профиль',equipment_type:'Вид техники',equipment_number:'Номер',equipment_ref:'Техника'};
-  const fields = {labor:['brigade','count','load_profile'], equipment:['equipment_type','equipment_number','count','load_profile'], fuel:['fuel_type','equipment_ref','liters','rate','load_profile']}[kind] || [];
+  const labels={count:kind==='labor'?'Людей':'Кол-во',hours:'Часы/мес.',liters:'Литры/мес.',rate:kind==='fuel'?'Цена/л':'Ставка/ч',load_profile:'Профиль',equipment_type:'Вид техники',equipment_number:'Номер'};
+  const fields = {labor:['brigade','count','load_profile'], equipment:['equipment_type','equipment_number','count','load_profile'], fuel:['fuel_type','liters','rate','load_profile']}[kind] || [];
   row.querySelectorAll('[data-field]').forEach(group => {
     const name = group.dataset.field;
     const label=group.querySelector('label');

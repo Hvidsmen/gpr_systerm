@@ -40,7 +40,6 @@
                     <form method="post">
                         {% csrf_token %}
                         <input type="hidden" name="fuel_type" value="{{ fuel_type }}">
-                        <input type="hidden" name="equipment_ref" value="{{ equipment_ref }}">
 
                         <div class="mb-3">
                             <label for="planned_liters" class="form-label">
@@ -67,9 +66,7 @@
                                     <li class="list-group-item d-flex justify-content-between align-items-center">
                                         <div>
                                             <strong>{{ plan.get_fuel_type_display }}</strong>
-                                            {% if plan.equipment_ref %}
-                                                <br><small class="text-muted">{{ plan.equipment_ref }}</small>
-                                            {% endif %}
+
                                             {% if plan.project_work %}
                                                 <br><small class="text-muted">{{ plan.project_work.name }}</small>
                                             {% endif %}

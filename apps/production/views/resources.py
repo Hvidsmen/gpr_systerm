@@ -35,7 +35,7 @@ CONFIG = {
     "fuel": (
         models.FuelPlan,
         models.FuelFact,
-        ["fuel_type", "equipment_ref"],
+        ["fuel_type"],
         "planned_liters",
         "actual_liters",
     ),

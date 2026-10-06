@@ -214,7 +214,7 @@
                     <thead class="table-light">
                         <tr>
                             <th>Вид ГСМ</th>
-                            <th>Привязка к технике</th>
+
                             <th class="text-end">План, л</th>
                             <th class="text-end">Факт, л *</th>
                             <th class="text-end">Цена, ₽/л</th>
@@ -225,7 +225,6 @@
                         {% for row in work_data.fuel_rows %}
                         <tr class="{% if row.fact %}table-success{% endif %}">
                             <td><strong>{{ row.fuel_type_display }}</strong></td>
-                            <td>{{ row.equipment_ref|default:"—" }}</td>
                             <td class="text-end">{{ row.planned_liters|default:"—" }}</td>
                             <td class="text-end">
                                 <input type="number" name="fuel_liters_{{ row.plan.pk }}"

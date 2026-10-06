@@ -33,7 +33,7 @@
                             <th>Проект</th>
                             <th>Работа</th>
                             <th>Вид ГСМ</th>
-                            <th>Привязка к технике</th>
+
                             <th class="text-end">Факт, л</th>
                             <th class="text-end">Цена, ₽/л</th>
                             <th class="text-end">Стоимость</th>
@@ -47,7 +47,6 @@
                                 <td>{{ fact.project.name|default:"—" }}</td>
                                 <td>{{ fact.project_work.name|default:"—" }}</td>
                                 <td>{{ fact.get_fuel_type_display }}</td>
-                                <td>{{ fact.equipment_ref|default:"—" }}</td>
                                 <td class="text-end">{{ fact.actual_liters }}</td>
                                 <td class="text-end">{{ fact.price_per_liter|default:"—" }}</td>
                                 <td class="text-end">

@@ -639,7 +639,7 @@ class ResourceMonthAllocation(BaseCompanyModel):
         ],
         blank=True,
     )
-    equipment_ref = models.CharField("Техника для ГСМ", max_length=150, blank=True)
+    equipment_ref = models.CharField("Техника для ГСМ", max_length=150, blank=True, editable=False)
     count = models.PositiveIntegerField(
         "Численность / количество на рабочий день", default=0
     )

@@ -80,7 +80,7 @@ RESOURCE_FIELDS = {
         "planned_machine_hours",
         "hourly_rate",
     ],
-    "fuel": ["fuel_type", "equipment_ref", "planned_liters", "price_per_liter"],
+    "fuel": ["fuel_type", "planned_liters", "price_per_liter"],
 }
 FACT_FIELDS = {
     "labor": ["brigade", "actual_workers", "actual_hours", "hourly_rate"],
@@ -91,11 +91,21 @@ FACT_FIELDS = {
         "machine_hours",
         "hourly_rate",
     ],
-    "fuel": ["fuel_type", "equipment_ref", "actual_liters", "price_per_liter"],
+    "fuel": ["fuel_type", "actual_liters", "price_per_liter"],
 }
 
 
 class ResourceModelForm(CompanyFormMixin, forms.ModelForm):
+    def validate_unique(self):
+        if not isinstance(self.instance, (FuelPlan, FuelFact)):
+            return super().validate_unique()
+        exclude = self._get_validation_exclusions()
+        exclude.discard('equipment_ref')
+        try:
+            self.instance.validate_unique(exclude=exclude)
+        except ValidationError as error:
+            self._update_errors(error)
+
     def clean(self):
         data = super().clean()
         for name, value in list(data.items()):

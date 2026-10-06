@@ -97,7 +97,6 @@ class ResourceAllocationForm(AllocationMixin, forms.ModelForm):
             "equipment_type",
             "equipment_number",
             "fuel_type",
-            "equipment_ref",
             "count",
             "hours",
             "liters",
@@ -144,7 +143,7 @@ class AddWorkForm(CompanyFormMixin, forms.Form):
 RESOURCE_IDENTITIES = {
     'labor': ['brigade'],
     'equipment': ['equipment_type', 'equipment_number'],
-    'fuel': ['fuel_type', 'equipment_ref'],
+    'fuel': ['fuel_type'],
 }
 
 

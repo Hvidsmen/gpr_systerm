@@ -40,7 +40,6 @@
                     <form method="post">
                         {% csrf_token %}
                         <input type="hidden" name="fuel_type" value="{{ fuel_type }}">
-                        <input type="hidden" name="equipment_ref" value="{{ equipment_ref }}">
 
                         <div class="row mb-3">
                             <div class="col-md-6">
@@ -87,9 +86,7 @@
                                         <div>
                                             <strong>{{ fact.date|date:"d.m.Y" }}</strong>
                                             <br><small class="text-muted">{{ fact.get_fuel_type_display }}</small>
-                                            {% if fact.equipment_ref %}
-                                                <br><small class="text-muted">{{ fact.equipment_ref }}</small>
-                                            {% endif %}
+
                                             {% if fact.project_work %}
                                                 <br><small class="text-muted">{{ fact.project_work.name }}</small>
                                             {% endif %}

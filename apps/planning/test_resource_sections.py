@@ -87,3 +87,14 @@ class ResourceSectionsTests(TestCase):
             self.assertNotIn(str(foreign_equipment.pk), data['equipment'])
             self.assertContains(response, category.name)
             self.assertNotContains(response, foreign_category.name)
+
+    def test_fuel_forms_ignore_reference_and_add_without_legacy_ambiguity(self):
+        for reference in ('A1', 'A2'):
+            ResourceMonthAllocation.objects.create(company=self.company, version=self.version,
+                month=date(2026,1,1), kind='fuel', fuel_type='DIESEL', equipment_ref=reference, liters=10)
+        response = self.client.get(reverse('planning:workspace_edit',args=[self.version.pk]))
+        self.assertNotContains(response, 'name="resources-0-equipment_ref"')
+        url = reverse('planning:workspace_add_resource',args=[self.version.pk,'fuel'])
+        self.assertEqual(self.client.post(url,{'period-fuel-fuel_type':'DIESEL','period-fuel-equipment_ref':'Forged'}).status_code,302)
+        self.assertEqual(self.version.resource_allocations.filter(equipment_ref='').count(),3)
+        self.assertEqual(self.version.resource_allocations.filter(equipment_ref__in=['A1','A2']).count(),2)

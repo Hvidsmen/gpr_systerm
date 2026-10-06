@@ -78,7 +78,7 @@
                     <thead class="table-light sticky-top" style="top: 0; z-index: 10;">
                         <tr>
                             <th style="min-width: 150px;">Вид ГСМ</th>
-                            <th style="min-width: 150px;">Привязка к технике</th>
+
                             <th style="min-width: 150px;">Работа</th>
                             <th class="text-center" style="min-width: 90px;">План, л</th>
                             <th class="text-center" style="min-width: 100px;">Факт, л <span class="text-danger">*</span></th>
@@ -92,7 +92,6 @@
                             <tr class="{% if row.fact %}table-success{% endif %}">
                                 <input type="hidden" name="plan_id" value="{{ row.plan.pk }}">
                                 <td><strong>{{ row.fuel_type_display }}</strong></td>
-                                <td>{{ row.equipment_ref|default:"—" }}</td>
                                 <td>{% if row.project_work %}{{ row.project_work.name }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
                                 <td class="text-center"><span class="badge bg-primary">{{ row.planned_liters }}</span></td>
                                 <td class="text-center">

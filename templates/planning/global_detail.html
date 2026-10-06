@@ -20,7 +20,7 @@
 <table class="table">
   <thead><tr><th>Дата</th><th>Ресурс</th><th>План / факт</th><th>Часы: план / факт</th><th>Ставка: план / факт</th><th>Стоимость: план / факт</th></tr></thead>
   <tbody>{% for row in resources %}
-    <tr><td>{{ row.date }}</td><td>{{ row.label }} {{ row.plan_details.equipment_number }} {{ row.plan_details.equipment_ref }}</td>
+    <tr><td>{{ row.date }}</td><td>{{ row.label }} {{ row.plan_details.equipment_number }} </td>
       <td>{{ row.plan }} / {{ row.fact }} {% if row.kind == 'labor' %}чел.{% elif row.kind == 'equipment' %}ед.{% else %}л{% endif %}</td>
       <td>{% if row.kind != 'fuel' %}{{ row.planned_hours }} / {{ row.actual_hours }} {% if row.kind == 'labor' %}чел·ч{% else %}маш·ч{% endif %}{% else %}—{% endif %}</td>
       <td>{{ row.planned_rate }} / {{ row.actual_rate }} {% if row.kind == 'fuel' %}₽/л{% else %}₽/ч{% endif %}</td>

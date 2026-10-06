@@ -568,6 +568,8 @@ class AddWorkspaceResource(View):
                 if locked.status not in ['DRAFT', 'REJECTED']:
                     raise PermissionDenied('Версия уже отправлена на согласование.')
                 identity = {name: form.cleaned_data[name] for name in RESOURCE_IDENTITIES[kind]}
+                if kind == 'fuel':
+                    identity['equipment_ref'] = ''
                 for month in months:
                     ResourceMonthAllocation.objects.get_or_create(
                         company=version.company, version=locked, month=month, kind=kind, **identity)

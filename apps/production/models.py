@@ -344,7 +344,7 @@ class FuelFact(ObjectResourceRecord):
         _("цена за литр, ₽"), max_digits=8, decimal_places=2, null=True, blank=True
     )
     equipment_ref = models.CharField(
-        _("привязка к технике"), max_length=150, blank=True
+        _("привязка к технике"), max_length=150, blank=True, editable=False
     )
     comment = models.TextField(_("комментарий"), blank=True)
 
@@ -385,7 +385,7 @@ class FuelPlan(ObjectResourceRecord):
         _("цена за литр, ₽"), max_digits=8, decimal_places=2, null=True, blank=True
     )
     equipment_ref = models.CharField(
-        _("привязка к технике"), max_length=150, blank=True
+        _("привязка к технике"), max_length=150, blank=True, editable=False
     )
     comment = models.TextField(_("комментарий"), blank=True)
 

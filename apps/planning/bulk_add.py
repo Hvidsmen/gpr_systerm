@@ -33,7 +33,6 @@ class BulkAddForm(CompanyFormMixin, forms.Form):
             self.fields['items'] = forms.MultipleChoiceField(label='Виды ГСМ',
                 choices=ResourceMonthAllocation._meta.get_field('fuel_type').choices,
                 widget=forms.CheckboxSelectMultiple())
-            self.fields['equipment_ref'] = forms.CharField(label='Техника для ГСМ (необязательно)', max_length=150, required=False)
         else:
             querysets = {
                 'works': lambda: ProjectWork.objects.filter(company=self.company, section__construction_object=version.construction_object),
@@ -94,7 +93,7 @@ class WorkspaceBulkAdd(View):
                     else:
                         identity = {'labor':lambda:{'brigade':item},
                             'equipment':lambda:{'equipment_type':item, 'equipment_number':form.cleaned_data['equipment_number']},
-                            'fuel':lambda:{'fuel_type':item, 'equipment_ref':form.cleaned_data['equipment_ref']}}[kind]()
+                            'fuel':lambda:{'fuel_type':item, 'equipment_ref':''}}[kind]()
                         _, created = ResourceMonthAllocation.objects.get_or_create(company=locked.company, version=locked, month=target, kind=kind, **identity)
                     added += int(created)
                     skipped += int(not created)

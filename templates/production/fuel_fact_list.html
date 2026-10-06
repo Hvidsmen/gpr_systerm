@@ -127,7 +127,7 @@
                     <thead class="table-light sticky-top" style="top: 0; z-index: 10;">
                         <tr>
                             <th rowspan="2" class="align-middle" style="min-width: 250px;">
-                                Вид ГСМ / Привязка к технике
+                                Вид ГСМ
                             </th>
                             <th colspan="{{ matrix_dates|length }}" class="text-center">
                                 Даты
@@ -152,12 +152,10 @@
                                     <div class="d-flex justify-content-between align-items-start">
                                         <div>
                                             <strong>{{ row.fuel_type_display }}</strong>
-                                            {% if row.equipment_ref %}
-                                                <br><small class="text-muted">{{ row.equipment_ref }}</small>
-                                            {% endif %}
+
                                         </div>
                                         <div class="btn-group btn-group-sm">
-                                            <a href="{% url 'production:fuel_fact_edit_range' %}?fuel_type={{ row.fuel_type }}&equipment_ref={{ row.equipment_ref|urlencode }}&date_from={{ matrix_dates.0|date:'Y-m-d' }}&date_to={{ matrix_dates|last|date:'Y-m-d' }}"
+                                            <a href="{% url 'production:fuel_fact_edit_range' %}?fuel_type={{ row.fuel_type }}&date_from={{ matrix_dates.0|date:'Y-m-d' }}&date_to={{ matrix_dates|last|date:'Y-m-d' }}"
                                                class="btn btn-outline-primary"
                                                title="Редактировать все даты">
                                                 <i class="bi bi-pencil-square"></i>
@@ -166,9 +164,7 @@
                                                   style="display: inline;"
                                                   onsubmit="return confirm('Удалить ВСЕ факты для {{ row.fuel_type_display }}?');">
                                                 {% csrf_token %}
-                                                {% if row.equipment_ref %}
-                                                    <input type="hidden" name="equipment_ref" value="{{ row.equipment_ref }}">
-                                                {% endif %}
+
                                                 <button type="submit" class="btn btn-outline-danger" title="Удалить все факты">
                                                     <i class="bi bi-trash"></i>
                                                 </button>
@@ -191,7 +187,7 @@
                                             {% endif %}
 
                                             <div class="cell-actions" style="display: none; position: absolute; top: 2px; right: 2px; gap: 2px;">
-                                                <a href="{% url 'production:fuel_fact_edit_by_date' date|date:'Y-m-d' %}?fuel_type={{ row.fuel_type }}&equipment_ref={{ row.equipment_ref|urlencode }}"
+                                                <a href="{% url 'production:fuel_fact_edit_by_date' date|date:'Y-m-d' %}?fuel_type={{ row.fuel_type }}"
                                                    class="btn btn-outline-primary btn-sm"
                                                    style="padding: 1px 4px; font-size: 0.7rem;"
                                                    title="Редактировать на эту дату">
@@ -202,9 +198,7 @@
                                                       onsubmit="event.stopPropagation(); return confirm('Удалить факт на {{ date|date:'d.m.Y' }}?');">
                                                     {% csrf_token %}
                                                     <input type="hidden" name="fuel_type" value="{{ row.fuel_type }}">
-                                                    {% if row.equipment_ref %}
-                                                        <input type="hidden" name="equipment_ref" value="{{ row.equipment_ref }}">
-                                                    {% endif %}
+
                                                     <button type="submit" class="btn btn-outline-danger btn-sm"
                                                             style="padding: 1px 4px; font-size: 0.7rem;"
                                                             title="Удалить на эту дату">

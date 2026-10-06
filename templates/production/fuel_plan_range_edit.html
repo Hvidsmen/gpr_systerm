@@ -40,7 +40,6 @@
                     <form method="post">
                         {% csrf_token %}
                         <input type="hidden" name="fuel_type" value="{{ fuel_type }}">
-                        <input type="hidden" name="equipment_ref" value="{{ equipment_ref }}">
 
                         <div class="row mb-3">
                             <div class="col-md-6">
@@ -87,9 +86,7 @@
                                         <div>
                                             <strong>{{ plan.date|date:"d.m.Y" }}</strong>
                                             <br><small class="text-muted">{{ plan.get_fuel_type_display }}</small>
-                                            {% if plan.equipment_ref %}
-                                                <br><small class="text-muted">{{ plan.equipment_ref }}</small>
-                                            {% endif %}
+
                                             {% if plan.project_work %}
                                                 <br><small class="text-muted">{{ plan.project_work.name }}</small>
                                             {% endif %}
