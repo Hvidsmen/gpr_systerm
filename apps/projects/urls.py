@@ -11,6 +11,8 @@ urlpatterns = [
     path('<int:pk>/delete/', views.ProjectDeleteView.as_view(), name='project_delete'),
     path('<int:project_pk>/objects/', views.ConstructionObjectListView.as_view(), name='object_list'),
     path('<int:project_pk>/objects/create/', views.ConstructionObjectCreateView.as_view(), name='object_create'),
+    path('objects/<int:pk>/edit/', views.ConstructionObjectUpdateView.as_view(), name='object_edit'),
+    path('objects/<int:pk>/delete/', views.ConstructionObjectDeleteView.as_view(), name='object_delete'),
     path(
         'objects/<int:pk>/sections/',
         views.SectionListView.as_view(),

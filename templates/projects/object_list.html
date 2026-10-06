@@ -33,6 +33,8 @@
                             {% if request.user|may:'projects:section_list' %}<a href="{% url 'projects:section_list' obj.pk %}" class="btn btn-sm btn-outline-primary">
                                 <i class="bi bi-list"></i> Разделы
                             </a>{% endif %}
+                            {% if request.user|may:'projects:object_edit' %}<a href="{% url 'projects:object_edit' obj.pk %}" class="btn btn-sm btn-outline-primary">Редактировать</a>{% endif %}
+                            {% if request.user|may:'projects:object_delete' %}<a href="{% url 'projects:object_delete' obj.pk %}" class="btn btn-sm btn-outline-danger">Удалить</a>{% endif %}
                         </td>
                     </tr>
                 {% endfor %}

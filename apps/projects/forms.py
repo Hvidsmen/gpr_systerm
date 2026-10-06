@@ -19,6 +19,29 @@ class ProjectForm(forms.ModelForm):
 
 
 class ConstructionObjectForm(forms.ModelForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['parent'].queryset = ConstructionObject.objects.filter(
+            company_id=self.instance.company_id, project_id=self.instance.project_id,
+        ).exclude(pk=self.instance.pk)
+
+    def clean_parent(self):
+        parent = self.cleaned_data.get('parent')
+        ancestor = parent
+        seen = set()
+        while ancestor:
+            if ancestor.pk == self.instance.pk or ancestor.pk in seen:
+                raise forms.ValidationError('Нельзя создавать цикл родительских объектов.')
+            seen.add(ancestor.pk)
+            ancestor = ancestor.parent
+        return parent
+
+    def clean_code(self):
+        code = self.cleaned_data['code']
+        if ConstructionObject.objects.filter(project_id=self.instance.project_id, code=code).exclude(pk=self.instance.pk).exists():
+            raise forms.ValidationError('Объект с таким кодом уже есть в проекте.')
+        return code
+
     class Meta:
         model = ConstructionObject
         fields = ['code', 'name', 'parent']

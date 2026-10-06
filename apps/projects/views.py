@@ -82,6 +82,12 @@ class ConstructionObjectCreateView(CompanyScopedMixin, CreateView):
     form_class = ConstructionObjectForm
     template_name = 'projects/object_form.html'
 
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        project = get_object_or_404(Project, company=self.get_company(), pk=self.kwargs['project_pk'])
+        kwargs['instance'] = ConstructionObject(company=project.company, project=project)
+        return kwargs
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context['project'] = get_object_or_404(Project, company=self.request.user.company, pk=self.kwargs['project_pk'])
@@ -234,3 +240,55 @@ class SectionDeleteView(CompanyScopedMixin, DeleteView):
         name = section.name
         messages.success(request, f'Раздел "{name}" удалён!')
         return super().delete(request, *args, **kwargs)
+
+
+class ConstructionObjectUpdateView(CompanyScopedMixin, UpdateView):
+    model = ConstructionObject
+    form_class = ConstructionObjectForm
+    template_name = 'projects/object_form.html'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['project'] = self.object.project
+        return context
+
+    def get_success_url(self):
+        return reverse_lazy('projects:object_list', kwargs={'project_pk': self.object.project_id})
+
+    def form_valid(self, form):
+        messages.success(self.request, 'Объект обновлён.')
+        return super().form_valid(form)
+
+
+class ConstructionObjectDeleteView(CompanyScopedMixin, DeleteView):
+    model = ConstructionObject
+    template_name = 'projects/object_confirm_delete.html'
+
+    def has_dependencies(self):
+        return any(
+            relation.related_model.objects.filter(**{relation.field.name: self.object}).exists()
+            for relation in self.object._meta.related_objects if relation.one_to_many
+        )
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['has_dependencies'] = kwargs.get('has_dependencies', self.has_dependencies())
+        return context
+
+    def get_success_url(self):
+        return reverse_lazy('projects:object_list', kwargs={'project_pk': self.object.project_id})
+
+    def form_valid(self, form):
+        from django.db import transaction
+        from django.db.models.deletion import ProtectedError
+        with transaction.atomic():
+            self.object = self.get_queryset().select_for_update().get(pk=self.object.pk)
+            if self.has_dependencies():
+                return self.render_to_response(self.get_context_data(form=form), status=400)
+            try:
+                with transaction.atomic():
+                    response = super().form_valid(form)
+            except ProtectedError:
+                return self.render_to_response(self.get_context_data(form=form, has_dependencies=True), status=400)
+        messages.success(self.request, 'Объект удалён.')
+        return response

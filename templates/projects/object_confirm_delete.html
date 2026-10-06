@@ -1,0 +1,9 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="card"><div class="card-body">
+<h2>Удалить объект «{{ object.name }}»?</h2>
+{% if has_dependencies %}<div class="alert alert-warning">Объект содержит дочерние объекты, разделы, планы или фактические данные. Сначала удалите или перенесите связанные данные. Удаление объекта отменено.</div>
+{% else %}<p>Это действие нельзя отменить.</p><form method="post">{% csrf_token %}<button class="btn btn-danger">Подтвердить удаление</button></form>{% endif %}
+<a class="btn btn-secondary mt-2" href="{% url 'projects:object_list' object.project_id %}">Назад к объектам</a>
+</div></div>
+{% endblock %}
