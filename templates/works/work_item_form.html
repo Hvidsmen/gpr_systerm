@@ -103,7 +103,7 @@
     </div>
     <div class="col-md-4 mb-3">
         <label for="{{ form.load_profile.id_for_label }}" class="form-label">
-            {{ form.load_profile.label }}
+            {{ form.load_profile.label }} <span class="text-danger">*</span>
         </label>
         {{ form.load_profile }}
         {% if form.load_profile.help_text %}

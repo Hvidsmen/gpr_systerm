@@ -68,6 +68,9 @@ class ProjectWorkForm(UnitChoiceMixin, forms.ModelForm):
         for field in self.fields.values():
             if isinstance(field.widget, forms.Select):
                 field.widget.attrs['class'] = 'form-select'
+        kind = self.data.get(self.add_prefix('kind')) if self.is_bound else self.initial.get('kind', self.instance.kind)
+        self.fields['load_profile'].required = kind == ProjectWork.Kind.SIMPLE
+        self.fields['load_profile'].help_text = 'Обязателен для простой работы. Для составной профили задаются в подработах.'
         self.configure_catalog(company)
         self.fields["work_group"].queryset = self.fields["work_group"].queryset.filter(company=company)
         self.fields["work_group"].empty_label = "Без группы"
@@ -81,6 +84,8 @@ class ProjectWorkForm(UnitChoiceMixin, forms.ModelForm):
                 template.versions.filter(is_current=True).first()
                 or template.versions.order_by("-version_number").first()
             )
+            if version and version.items.filter(load_profile__isnull=True).exists():
+                self.add_error('template', 'В шаблоне есть подработы без профиля нагрузки. Заполните их профили перед использованием.')
             if version and version.items.filter(quantity_per_unit__lte=0).exists():
                 self.add_error(
                     "template",
@@ -134,6 +139,11 @@ class ProjectWorkForm(UnitChoiceMixin, forms.ModelForm):
 class ProjectWorkItemForm(UnitChoiceMixin, forms.ModelForm):
     """Форма для создания/редактирования ПОДРАБОТЫ."""
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['load_profile'].required = True
+        self.fields['load_profile'].help_text = 'Выберите профиль распределения объёма по рабочим дням.'
+
     class Meta:
         model = ProjectWorkItem
         fields = ["name", "unit", "load_profile", "weight", "quantity_per_unit"]
@@ -175,6 +185,11 @@ class WorkSectionForm(forms.ModelForm):
 
 
 class WorkTemplateItemForm(UnitChoiceMixin, forms.ModelForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['load_profile'].required = True
+        self.fields['load_profile'].help_text = 'Выберите профиль распределения объёма по рабочим дням.'
+
     class Meta:
         model = WorkTemplateItem
         fields = [

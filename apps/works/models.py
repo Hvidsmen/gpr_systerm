@@ -166,6 +166,8 @@ class ProjectWork(BaseCompanyModel):
             ):
                 raise ValidationError({name: "Связь с другой компанией недопустима."})
 
+        if self.kind == self.Kind.SIMPLE and not self.load_profile_id:
+            raise ValidationError({'load_profile': 'Для простой работы обязателен профиль нагрузки.'})
         if self.kind == self.Kind.SIMPLE and self.template_id:
             raise ValidationError(
                 {"template": "Шаблон подработ допустим только для составной работы."}
@@ -281,6 +283,8 @@ class ProjectWorkItem(BaseCompanyModel):
 
     def clean(self):
         super().clean()
+        if not self.load_profile_id:
+            raise ValidationError({'load_profile': 'Для подработы обязателен профиль нагрузки.'})
         for name in ("project_work", "load_profile"):
             if (
                 getattr(self, name + "_id", None)

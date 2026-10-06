@@ -1,5 +1,6 @@
 from django.test import TestCase
 from django.urls import reverse
+from apps.planning.models import LoadProfile
 from apps.accounts.models import Company, Role, User
 from apps.projects.models import Project, ConstructionObject, Section
 from .models import ProjectWork, WorkGroup, MeasurementUnit
@@ -10,6 +11,7 @@ class WorkCatalogTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.company = Company.objects.create(name='Catalogs')
+        cls.profile = LoadProfile.objects.create(company=cls.company, code="required", name="Profile")
         cls.foreign = Company.objects.create(name='Foreign catalogs')
         cls.user = User.objects.create_user(username='catalog-planner',company=cls.company,role=Role.objects.get(code='PLANNER'))
         project = Project.objects.create(company=cls.company,code='p',name='p')
@@ -20,7 +22,7 @@ class WorkCatalogTests(TestCase):
         self.client.force_login(self.user)
 
     def form(self, **values):
-        data={'code':'w','name':'Work','section':self.section.pk,'unit':'м','unit_price':1,'kind':'SIMPLE','status':'PLANNED'}
+        data={'load_profile':self.profile.pk,'code':'w','name':'Work','section':self.section.pk,'unit':'м','unit_price':1,'kind':'SIMPLE','status':'PLANNED'}
         data.update(values)
         return ProjectWorkForm(data,user=self.user,fixed_object=self.obj,instance=ProjectWork(company=self.company))
 

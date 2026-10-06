@@ -1,0 +1,21 @@
+<script>
+(() => {
+    const kind = document.getElementById('id_kind');
+    const profile = document.getElementById('id_load_profile');
+    if (!kind || !profile) return;
+    let marker = document.getElementById('profile-required');
+    if (!marker) {
+        marker = document.createElement('span');
+        marker.className = 'text-danger'; marker.textContent = ' *';
+        const label = document.querySelector('label[for="id_load_profile"]');
+        if (label) label.append(marker);
+    }
+    function requireProfile() {
+        const required = kind.value === 'SIMPLE';
+        profile.required = required;
+        marker.hidden = !required;
+    }
+    kind.addEventListener('change', requireProfile);
+    requireProfile();
+})();
+</script>

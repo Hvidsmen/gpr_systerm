@@ -1,5 +1,6 @@
 from django.test import TestCase
 from django.urls import reverse
+from apps.planning.models import LoadProfile
 from apps.accounts.models import Company, Role, User
 from apps.projects.models import Project, ConstructionObject, Section
 from .models import ProjectWork
@@ -17,6 +18,7 @@ class WorkLocationTests(TestCase):
             obj = ConstructionObject.objects.create(company=cls.company, project=project, code='o', name='Object')
             section = Section.objects.create(company=cls.company, construction_object=obj, code='s', name='Repeated section name')
             cls.projects.append(project); cls.objects.append(obj); cls.sections.append(section)
+        cls.profile = LoadProfile.objects.create(company=cls.company, code="required", name="Profile")
         cls.foreign = Company.objects.create(name='Foreign')
         cls.foreign_project = Project.objects.create(company=cls.foreign, code='p', name='Foreign project')
         cls.foreign_object = ConstructionObject.objects.create(company=cls.foreign, project=cls.foreign_project, code='o', name='Foreign object')
@@ -27,7 +29,7 @@ class WorkLocationTests(TestCase):
 
     def data(self):
         return {'project':self.projects[0].pk, 'construction_object':self.objects[0].pk, 'section':self.sections[0].pk,
-                'code':'new', 'name':'Work', 'unit':'m', 'unit_price':'10', 'status':'PLANNED', 'kind':'SIMPLE', 'allow_fractional':'on'}
+                'load_profile':self.profile.pk, 'code':'new', 'name':'Work', 'unit':'m', 'unit_price':'10', 'status':'PLANNED', 'kind':'SIMPLE', 'allow_fractional':'on'}
 
     def test_empty_form_starts_with_project_and_scopes_json_to_company(self):
         response=self.client.get(reverse('works:work_create'))

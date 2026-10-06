@@ -52,6 +52,9 @@ class WorkItemGeneratorService:
             if qty_per_unit <= 0:
                 raise ValidationError('Норматив шаблона должен быть больше нуля.')
 
+            if not t_item.load_profile_id or t_item.load_profile.company_id != company.pk:
+                raise ValidationError('У каждой подработы шаблона должен быть профиль нагрузки своей компании.')
+
             # Создаём подработу с нормативом
             item = project_work.items.create(
                 company=company,

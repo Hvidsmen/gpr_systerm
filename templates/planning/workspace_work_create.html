@@ -6,4 +6,5 @@
 <form method="post">{% csrf_token %}{% for field in form %}<div class="mb-3">{{ field.label_tag }}<div class="input-group">{{ field }}{% if field.name == 'work_group' %}<button type="button" class="btn btn-outline-primary" data-catalog-open="group" aria-label="Создать группу работ">+</button>{% elif field.name == 'unit' %}<button type="button" class="btn btn-outline-primary" data-catalog-open="unit" aria-label="Создать единицу измерения">+</button>{% endif %}</div>{{ field.errors }}</div>{% endfor %}{{ form.non_field_errors }}<button class="btn btn-primary">Создать и добавить во все месяцы базы</button></form>
 {% if request.user|may:'planning:workspace_edit' %}<a href="{% url 'planning:workspace_edit' workspace.baseline_version_id %}">Вернуться к базовому плану</a>{% endif %}
 {% include 'works/catalog_quick.html' %}
+{% include 'works/profile_requirement.html' %}
 {% endblock %}

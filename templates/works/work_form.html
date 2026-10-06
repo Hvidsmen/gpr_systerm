@@ -33,7 +33,7 @@
             </div>
             <div class="row g-3 mb-3">
                 <div class="col-md-4">{{ form.kind.label_tag }}{{ form.kind }}{{ form.kind.errors }}</div>
-                <div class="col-md-4">{{ form.load_profile.label_tag }}{{ form.load_profile }}{{ form.load_profile.errors }}</div>
+                <div class="col-md-4">{{ form.load_profile.label_tag }} <span class="text-danger" id="profile-required">*</span>{{ form.load_profile }}{{ form.load_profile.errors }}<div class="form-text">{{ form.load_profile.help_text }}</div></div>
                 <div class="col-md-4 pt-4">{{ form.allow_fractional }} {{ form.allow_fractional.label_tag }}{{ form.allow_fractional.errors }}</div>
             </div>
             {% if form.errors %}
@@ -149,6 +149,7 @@
 </div>
 
 {% include 'works/catalog_quick.html' %}
+{% include 'works/profile_requirement.html' %}
 <!-- Справка -->
 <div class="card mt-4">
     <div class="card-header">
