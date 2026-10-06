@@ -83,7 +83,18 @@ class WorkDetailView(CompanyScopedMixin, DetailView):
         return context
 
 
-class WorkCreateView(CompanyRequiredMixin, CreateView):
+class WorkLocationMixin:
+    def get_form_kwargs(self):
+        return {**super().get_form_kwargs(), 'user': self.request.user}
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['work_hierarchy'] = context['form'].hierarchy
+        context['work'] = getattr(self, 'object', None)
+        return context
+
+
+class WorkCreateView(WorkLocationMixin, CompanyRequiredMixin, CreateView):
     """Создание НОВОЙ РАБОТЫ с автоматической генерацией подработ из шаблона."""
 
     model = ProjectWork
@@ -126,7 +137,7 @@ class WorkCreateView(CompanyRequiredMixin, CreateView):
         return reverse_lazy("works:work_detail", kwargs={"pk": self.object.pk})
 
 
-class WorkUpdateView(CompanyScopedMixin, UpdateView):
+class WorkUpdateView(WorkLocationMixin, CompanyScopedMixin, UpdateView):
     model = ProjectWork
     form_class = ProjectWorkForm
     template_name = "works/work_form.html"

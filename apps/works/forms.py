@@ -2,11 +2,63 @@ from django import forms
 from django.utils.translation import gettext_lazy as _
 
 from .models import ProjectWork, ProjectWorkItem, WorkTemplateItem
-from ..projects.models import Section
+from ..projects.models import Section, Project, ConstructionObject
+from core.permissions import scope_queryset
 
 
 class ProjectWorkForm(forms.ModelForm):
     """Форма для создания/редактирования РАБОТЫ."""
+
+    project = forms.ModelChoiceField(queryset=Project.objects.none(), label='Проект', empty_label='Выберите проект')
+    construction_object = forms.ModelChoiceField(queryset=ConstructionObject.objects.none(), label='Строительный объект', empty_label='Сначала выберите проект')
+
+    def __init__(self, *args, user=None, fixed_object=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        company = user.company if user else self.instance.company if self.instance.company_id else None
+        if company:
+            self.instance.company = company
+        projects = Project.objects.filter(company=company) if company else Project.objects.none()
+        objects = ConstructionObject.objects.filter(company=company) if company else ConstructionObject.objects.none()
+        sections = Section.objects.filter(company=company) if company else Section.objects.none()
+        if user:
+            projects, objects, sections = (scope_queryset(qs, user) for qs in (projects, objects, sections))
+        if fixed_object:
+            projects = projects.filter(pk=fixed_object.project_id)
+            objects = objects.filter(pk=fixed_object.pk)
+            sections = sections.filter(construction_object=fixed_object)
+            self.initial.update(project=fixed_object.project_id, construction_object=fixed_object.pk)
+            self.fields['project'].disabled = self.fields['construction_object'].disabled = True
+        elif self.instance.section_id:
+            obj = self.instance.section.construction_object
+            self.initial.setdefault('project', obj.project_id)
+            self.initial.setdefault('construction_object', obj.pk)
+        self.fields['project'].queryset = projects
+        project_id = self.data.get(self.add_prefix('project')) if self.is_bound and not fixed_object else self.initial.get('project')
+        object_id = self.data.get(self.add_prefix('construction_object')) if self.is_bound and not fixed_object else self.initial.get('construction_object')
+        try:
+            project_id = int(project_id)
+        except (ValueError, TypeError):
+            project_id = None
+        try:
+            object_id = int(object_id)
+        except (ValueError, TypeError):
+            object_id = None
+        self.fields['construction_object'].queryset = objects.filter(project_id=project_id) if project_id else objects.none()
+        self.fields['section'].queryset = sections.filter(construction_object_id=object_id, construction_object__project_id=project_id) if object_id and project_id else sections.none()
+        self.fields['construction_object'].empty_label = 'Выберите объект' if project_id else 'Сначала выберите проект'
+        self.fields['section'].empty_label = 'Выберите раздел' if object_id else 'Сначала выберите объект'
+        for name in ('project', 'construction_object', 'section'):
+            self.fields[name].label_from_instance = lambda row: f'{row.code} — {row.name}'
+        self.hierarchy = {
+            'objects': list(objects.values('id', 'project_id', 'code', 'name')),
+            'sections': list(sections.values('id', 'construction_object_id', 'code', 'name')),
+        }
+        for name in ('template', 'load_profile'):
+            self.fields[name].queryset = self.fields[name].queryset.filter(company=company) if company else self.fields[name].queryset.none()
+        for field in self.fields.values():
+            if isinstance(field.widget, forms.Select):
+                field.widget.attrs['class'] = 'form-select'
+        self.order_fields(['project', 'construction_object', 'section', *self._meta.fields])
 
     def clean(self):
         data = super().clean()

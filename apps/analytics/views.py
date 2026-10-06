@@ -13,7 +13,7 @@ from apps.production.models import DailyFact
 
 @login_required
 def dashboard_view(request):
-    today = timezone.now().date()
+    today = timezone.localdate()
 
     # KPI
     projects_count = Project.objects.filter(

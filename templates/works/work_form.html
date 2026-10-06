@@ -21,8 +21,21 @@
     <div class="card-body">
         <form method="post">
             {% csrf_token %}
-{{ form.non_field_errors }}<div class="mb-3">{{ form.kind.label_tag }} {{ form.kind }} {{ form.kind.errors }}</div><div class="mb-3">{{ form.allow_fractional }} {{ form.allow_fractional.label_tag }} {{ form.allow_fractional.errors }}<p>Для составной работы объём считается накопительно по минимуму выполненных нормативов.</p></div><div class="mb-3">{{ form.load_profile.label_tag }} {{ form.load_profile }} {{ form.load_profile.errors }}</div>
-
+            <div class="work-location mb-4 p-3 rounded-3 border bg-light">
+                <h2 class="h6 mb-3">Где выполняется работа</h2>
+                <div class="row g-3">
+                    <div class="col-md-4"><label for="{{ form.project.id_for_label }}" class="form-label"><span class="badge rounded-pill bg-primary me-2">1</span>Проект <span class="text-danger">*</span></label>{{ form.project }}<div class="text-danger small">{{ form.project.errors }}</div></div>
+                    <div class="col-md-4"><label for="{{ form.construction_object.id_for_label }}" class="form-label"><span class="badge rounded-pill bg-primary me-2">2</span>Строительный объект <span class="text-danger">*</span></label>{{ form.construction_object }}<div class="text-danger small">{{ form.construction_object.errors }}</div></div>
+                    <div class="col-md-4"><label for="{{ form.section.id_for_label }}" class="form-label"><span class="badge rounded-pill bg-primary me-2">3</span>Раздел <span class="text-danger">*</span></label>{{ form.section }}<div class="text-danger small">{{ form.section.errors }}</div></div>
+                </div>
+                <div class="form-text mt-2">Выберите проект, затем объект и раздел. В списках указаны код и название.</div>
+                <div class="form-text" id="location-status" aria-live="polite"></div>
+            </div>
+            <div class="row g-3 mb-3">
+                <div class="col-md-4">{{ form.kind.label_tag }}{{ form.kind }}{{ form.kind.errors }}</div>
+                <div class="col-md-4">{{ form.load_profile.label_tag }}{{ form.load_profile }}{{ form.load_profile.errors }}</div>
+                <div class="col-md-4 pt-4">{{ form.allow_fractional }} {{ form.allow_fractional.label_tag }}{{ form.allow_fractional.errors }}</div>
+            </div>
             {% if form.errors %}
             <div class="alert alert-danger">
                 <h5><i class="bi bi-exclamation-triangle"></i> Ошибки в форме:</h5>
@@ -72,24 +85,6 @@
 
             <!-- Раздел, Шаблон, Единица, Цена -->
             <div class="row">
-                <div class="col-md-4 mb-3">
-                    <label for="{{ form.section.id_for_label }}" class="form-label">
-                        {{ form.section.label }}
-                    </label>
-                    <div class="input-group">
-                        {{ form.section }}
-                        {% if request.user|may:'works:section_create' %}<a href="{% url 'works:section_create' %}" class="btn btn-outline-primary"
-                           title="Создать новый раздел" target="_blank">
-                            <i class="bi bi-plus-lg"></i>
-                        </a>{% endif %}
-                    </div>
-                    {% if form.section.help_text %}
-                    <div class="form-text">{{ form.section.help_text }}</div>
-                    {% endif %}
-                    {% if form.section.errors %}
-                    <div class="text-danger small mt-1">{{ form.section.errors }}</div>
-                    {% endif %}
-                </div>
                 <div class="col-md-4 mb-3">
                     <label for="{{ form.template.id_for_label }}" class="form-label">
                         {{ form.template.label }}
@@ -165,4 +160,44 @@
         </ul>
     </div>
 </div>
+{% endblock %}
+{% block extra_css %}
+<style>
+.work-location .form-select { min-height: 46px; border-radius: 10px; border-color: #ced8e4; }
+.work-location .form-select:focus { border-color: #86b7fe; box-shadow: 0 0 0 .2rem rgba(13,110,253,.12); }
+.work-location .form-select:disabled { background-color: #edf0f4; color: #6c757d; }
+</style>
+{% endblock %}
+{% block extra_js %}
+{{ work_hierarchy|json_script:'work-hierarchy' }}
+<script>
+(() => {
+    const data = JSON.parse(document.getElementById('work-hierarchy').textContent);
+    const project = document.getElementById('id_project');
+    const object = document.getElementById('id_construction_object');
+    const section = document.getElementById('id_section');
+    const status = document.getElementById('location-status');
+    function options(select, rows, placeholder, enabled, selected = '') {
+        select.replaceChildren(new Option(placeholder, ''));
+        rows.forEach(row => select.add(new Option(`${row.code} — ${row.name}`, String(row.id))));
+        select.value = selected;
+        select.disabled = !enabled;
+    }
+    function updateSections(selected = '') {
+        const rows = data.sections.filter(row => String(row.construction_object_id) === object.value);
+        options(section, rows, object.value ? (rows.length ? 'Выберите раздел' : 'На объекте пока нет разделов') : 'Сначала выберите объект', Boolean(object.value), selected);
+        status.textContent = object.value && !rows.length ? 'Создайте раздел в карточке строительного объекта, затем вернитесь к созданию работы.' : '';
+    }
+    function updateObjects(selected = '', selectedSection = '') {
+        const rows = data.objects.filter(row => String(row.project_id) === project.value);
+        options(object, rows, project.value ? (rows.length ? 'Выберите объект' : 'В проекте пока нет объектов') : 'Сначала выберите проект', Boolean(project.value), selected);
+        updateSections(selectedSection);
+        if (project.value && !rows.length) status.textContent = 'В выбранном проекте пока нет строительных объектов.';
+    }
+    const initialObject = object.value, initialSection = section.value;
+    updateObjects(initialObject, initialSection);
+    project.addEventListener('change', () => updateObjects());
+    object.addEventListener('change', () => updateSections());
+})();
+</script>
 {% endblock %}

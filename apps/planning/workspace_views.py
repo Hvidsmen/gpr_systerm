@@ -374,6 +374,7 @@ class WorkspaceWorkCreate(View):
         form = ProjectWorkForm(
             request.POST if bound else None,
             instance=ProjectWork(company=request.user.company),
+            user=request.user, fixed_object=workspace.construction_object,
         )
         form.fields["section"].queryset = form.fields["section"].queryset.filter(
             company=request.user.company,
