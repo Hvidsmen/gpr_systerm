@@ -1,17 +1,19 @@
-"""Delete only editable plans, preserving production facts and approved history."""
+"""Delete plans with role checks while preserving production facts."""
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models.deletion import ProtectedError
 from django.shortcuts import get_object_or_404, render, redirect
 from django.views import View
-from core.permissions import require_roles, PLAN_ROLES
+from core.permissions import require_roles, PLAN_ROLES, role_code
 from .models import PlanningWorkspace, GlobalPlanVersion
 
 EDITABLE = ['DRAFT', 'REJECTED']
 
 
-def workspace_reason(workspace):
+def workspace_reason(workspace, user=None):
+    if user is not None and role_code(user) == 'ADMIN':
+        return ''
     if workspace.versions.exclude(status__in=EDITABLE).exists():
         return 'План содержит версии на согласовании, утверждённые или завершённые версии. Удаление недоступно.'
     return ''
@@ -28,18 +30,22 @@ def version_reason(version):
 
 
 @transaction.atomic
-def delete_workspace(workspace, user):
+def delete_workspace(workspace, user, confirm_history=False):
     require_roles(user, PLAN_ROLES)
     workspace = get_object_or_404(PlanningWorkspace.objects.select_for_update(), pk=workspace.pk, company=user.company)
     versions = list(workspace.versions.select_for_update().order_by('-pk'))
-    reason = workspace_reason(workspace)
+    reason = workspace_reason(workspace, user)
     if reason:
         raise ValidationError(reason)
+    if workspace_reason(workspace) and not confirm_history:
+        raise ValidationError('Подтвердите удаление согласованных версий и истории плана.')
     # Break the baseline link before removing the versions' PROTECT relations.
     PlanningWorkspace.objects.filter(pk=workspace.pk).update(baseline_version=None)
-    for version in versions:
-        version.delete()
-    workspace.delete()
+    from .deletion_context import authorized_workspace_deletion
+    with authorized_workspace_deletion(versions):
+        for version in versions:
+            version.delete()
+        workspace.delete()
 
 
 @transaction.atomic
@@ -59,11 +65,12 @@ class PlanDelete(View):
     def record(self, request, pk):
         return get_object_or_404(self.model, pk=pk, company=request.user.company)
 
-    def display(self, request, record, error=None, status=200):
-        reason = workspace_reason(record) if self.workspace_mode else version_reason(record)
+    def display(self, request, record, error=None, status=200, allow_retry=False):
+        reason = workspace_reason(record, request.user) if self.workspace_mode else version_reason(record)
         return render(request, 'planning/plan_delete.html', {
             'record': record, 'workspace_mode': self.workspace_mode,
-            'reason': error or reason, 'can_delete': not (error or reason),
+            'deleting_history': self.workspace_mode and bool(workspace_reason(record)),
+            'reason': error or reason, 'can_delete': not reason and (not error or allow_retry),
             'back_route': 'planning:workspace_list' if self.workspace_mode else 'planning:global_list',
         }, status=status)
 
@@ -72,8 +79,13 @@ class PlanDelete(View):
 
     def post(self, request, pk):
         record = self.record(request, pk)
+        if self.workspace_mode and role_code(request.user) == 'ADMIN' and workspace_reason(record) and request.POST.get('confirm_history') != 'on':
+            return self.display(request, record, 'Подтвердите удаление согласованных версий и истории плана.', status=400, allow_retry=True)
         try:
-            (delete_workspace if self.workspace_mode else delete_version)(record, request.user)
+            if self.workspace_mode:
+                delete_workspace(record, request.user, confirm_history=request.POST.get('confirm_history') == 'on')
+            else:
+                delete_version(record, request.user)
         except ValidationError as exc:
             return self.display(request, record, '; '.join(exc.messages), status=400)
         except ProtectedError:

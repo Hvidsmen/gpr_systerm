@@ -16,3 +16,11 @@ def may(user, route):
     except PermissionDenied:
         return False
     return True
+
+
+@register.filter
+def can_delete_workspace(workspace, user):
+    from apps.planning.deletion import workspace_reason
+    if not workspace or not may(user, 'planning:workspace_delete'):
+        return False
+    return not workspace_reason(workspace, user)

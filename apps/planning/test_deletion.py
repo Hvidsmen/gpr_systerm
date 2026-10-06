@@ -48,6 +48,45 @@ class PlanningDeletionTests(TestCase):
             self.assertTrue(PlanningWorkspace.objects.filter(pk=self.workspace.pk).exists())
             self.assertTrue(GlobalPlanVersion.objects.filter(pk=self.base.pk).exists())
 
+    def test_admin_can_delete_completed_workspace_with_explicit_confirmation(self):
+        admin = User.objects.create_user(username='history-delete-admin', company=self.company, role=Role.objects.get(code='ADMIN'))
+        self.client.force_login(admin)
+        GlobalPlanVersion.objects.filter(pk=self.base.pk).update(status='COMPLETED')
+        url = reverse('planning:workspace_delete', args=[self.workspace.pk])
+        self.assertContains(self.client.get(reverse('planning:workspace_list')), 'href="' + url + '"')
+        self.assertContains(self.client.get(reverse('planning:workspace_detail', args=[self.workspace.pk])), 'href="' + url + '"')
+        self.assertContains(self.client.get(reverse('planning:global_list')), 'href="' + url + '"')
+        self.assertContains(self.client.get(url), 'name="confirm_history"')
+        self.assertEqual(self.client.post(url).status_code, 400)
+        self.assertTrue(PlanningWorkspace.objects.filter(pk=self.workspace.pk).exists())
+        self.assertEqual(self.client.post(url, {'confirm_history':'on'}).status_code, 302)
+        self.assertFalse(PlanningWorkspace.objects.exists())
+        self.assertFalse(GlobalPlanVersion.objects.exists())
+        self.assertFalse(WorkMonthAllocation.objects.exists())
+        self.assertTrue(DailyFact.objects.filter(pk=self.fact.pk).exists())
+        self.assertTrue(ProjectWork.objects.filter(pk=self.work.pk).exists())
+        self.assertTrue(ConstructionObject.objects.filter(pk=self.obj.pk).exists())
+
+    def test_admin_delete_failure_restores_locked_plan_and_signal_protection(self):
+        from django.core.exceptions import ValidationError
+        from .deletion_context import version_deletion_authorized
+        admin = User.objects.create_user(username='rollback-delete-admin', company=self.company, role=Role.objects.get(code='ADMIN'))
+        self.client.force_login(admin)
+        GlobalPlanVersion.objects.filter(pk=self.base.pk).update(status='COMPLETED')
+        GlobalPlanVersion.objects.create(company=self.company, construction_object=self.obj,
+            version_number=2, start_date=self.workspace.start_date, end_date=self.workspace.end_date,
+            previous_version=self.base)
+        url = reverse('planning:workspace_delete', args=[self.workspace.pk])
+        self.assertEqual(self.client.post(url, {'confirm_history':'on'}).status_code, 400)
+        self.workspace.refresh_from_db()
+        self.base.refresh_from_db()
+        self.assertEqual(self.workspace.baseline_version_id, self.base.pk)
+        self.assertEqual(self.base.status, 'COMPLETED')
+        self.assertTrue(WorkMonthAllocation.objects.filter(version=self.base).exists())
+        self.assertFalse(version_deletion_authorized(self.base.pk))
+        with self.assertRaises(ValidationError):
+            WorkMonthAllocation.objects.get(version=self.base).delete()
+
     def test_baseline_cannot_be_deleted_separately(self):
         self.assertEqual(self.client.post(reverse('planning:global_delete',args=[self.base.pk])).status_code,400)
         self.assertTrue(GlobalPlanVersion.objects.filter(pk=self.base.pk).exists())

@@ -2,6 +2,7 @@ from django.core.exceptions import ValidationError
 from django.db.models.signals import m2m_changed
 from django.dispatch import receiver
 from .models import GlobalPlanVersion
+from .deletion_context import version_deletion_authorized
 
 
 @receiver(m2m_changed, sender=GlobalPlanVersion.source_versions.through)
@@ -46,6 +47,8 @@ def preserve_global_provenance(sender, instance, **kwargs):
 
 @receiver(pre_delete, sender=GlobalPlanVersion)
 def preserve_global_version(sender, instance, **kwargs):
+    if version_deletion_authorized(instance.pk):
+        return
     if instance.status in ["SUBMITTED", "APPROVED", "COMPLETED"]:
         raise ValidationError(
             "Отправленную или утверждённую глобальную версию удалять нельзя."
@@ -58,6 +61,8 @@ from .models import WorkMonthAllocation, ResourceMonthAllocation
 @receiver(pre_delete, sender=WorkMonthAllocation)
 @receiver(pre_delete, sender=ResourceMonthAllocation)
 def preserve_monthly_inputs(sender, instance, **kwargs):
+    if version_deletion_authorized(instance.version_id):
+        return
     if GlobalPlanVersion.objects.get(pk=instance.version_id).status not in [
         "DRAFT",
         "REJECTED",
