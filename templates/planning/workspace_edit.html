@@ -142,8 +142,8 @@ document.querySelectorAll('.allocation-row').forEach(row=>{
 });
 function showResource(row) {
   const kind = row.querySelector('[name$="-kind"]').value;
-  const labels={count:kind==='labor'?'Людей':'Кол-во',hours:'Часы/мес.',liters:'Литры/мес.',rate:kind==='fuel'?'Цена/л':'Ставка/ч',load_profile:'Профиль',equipment_type:'Вид техники',equipment_number:'Номер'};
-  const fields = {labor:['brigade','count','load_profile'], equipment:['equipment_type','equipment_number','count','load_profile'], fuel:['fuel_type','liters','rate','load_profile']}[kind] || [];
+  const labels={count:kind==='labor'?'Людей':'Кол-во',hours:'Часы/мес.',liters:'Литры/мес.',load_profile:'Профиль',equipment_type:'Вид техники',equipment_number:'Номер'};
+  const fields = {labor:['brigade','count','load_profile'], equipment:['equipment_type','equipment_number','count','load_profile'], fuel:['fuel_type','liters','load_profile']}[kind] || [];
   row.querySelectorAll('[data-field]').forEach(group => {
     const name = group.dataset.field;
     const label=group.querySelector('label');
