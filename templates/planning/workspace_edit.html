@@ -61,7 +61,39 @@
 </form>
 <template id="empty-works"><div class="card mb-3 allocation-row"><div class="card-body allocation-grid">{% for field in work_forms.empty_form %}<p data-field="{{ field.name }}" {% if field.is_hidden %}hidden{% endif %}>{% if field.name == 'DELETE' %}<span hidden>{{ field }}</span><button type="button" class="btn btn-sm btn-outline-danger" data-remove-row aria-label="Удалить строку">Удалить</button>{% else %}{{ field.label_tag }} {{ field }}{% endif %}</p>{% endfor %}</div></div></template>
 <template id="empty-resources"><div class="card mb-3 resource-row allocation-row"><div class="card-body allocation-grid">{% for field in resource_forms.empty_form %}<p data-field="{{ field.name }}" {% if field.is_hidden or field.name == 'kind' %}hidden{% endif %}>{% if field.name == 'DELETE' %}<span hidden>{{ field }}</span><button type="button" class="btn btn-sm btn-outline-danger" data-remove-row aria-label="Удалить строку">Удалить</button>{% else %}{{ field.label_tag }} {{ field }}{% endif %}</p>{% endfor %}</div></div></template>
+{{ composite_items|json_script:'composite-items' }}
 <script>
+const compositeItems=JSON.parse(document.getElementById('composite-items').textContent);
+const subworkNumber=new Intl.NumberFormat('ru-RU',{maximumFractionDigits:6});
+function updateSubworks(row) {
+  const work=row.querySelector('[name$="-work"]');
+  if (!work) return;
+  let panel=row.querySelector('[data-subworks]');
+  if (!panel) {
+    panel=document.createElement('div');panel.dataset.subworks='';panel.style.gridColumn='1 / -1';
+    panel.className='table-responsive mt-1';row.querySelector('.allocation-grid').append(panel);
+  }
+  const items=compositeItems[work.value];
+  panel.replaceChildren();panel.hidden=!items;
+  if (!items) return;
+  if (!items.length) {panel.textContent='В составной работе пока нет подработ. Добавьте подработы и нормативы.';return;}
+  const input=row.querySelector('[name$="-quantity"]');
+  const quantity=Number(input.value.replace(',','.'));
+  const valid=input.value.trim()!=='' && Number.isFinite(quantity) && quantity>=0;
+  const table=document.createElement('table');table.className='table table-sm mb-0';
+  const head=table.createTHead().insertRow();
+  ['Подработа','Норматив на единицу работы','План на месяц','Ед. изм.'].forEach(label=>{const th=document.createElement('th');th.textContent=label;head.append(th);});
+  const body=table.createTBody();
+  items.forEach(item=>{const tr=body.insertRow();[item.name,subworkNumber.format(Number(item.norm)),valid?subworkNumber.format(quantity*Number(item.norm)):'—',item.unit].forEach(value=>tr.insertCell().textContent=value);});
+  panel.append(table);
+}
+function wireSubworks() {
+  document.querySelectorAll('#work-rows .allocation-row').forEach(row=>{
+    updateSubworks(row);
+    row.querySelector('[name$="-work"]').onchange=()=>updateSubworks(row);
+    row.querySelector('[name$="-quantity"]').oninput=()=>updateSubworks(row);
+  });
+}
 function removeAllocationRow(row) {
   const deletion=row.querySelector('[name$="-DELETE"]');
   deletion.checked=true;
@@ -101,8 +133,9 @@ document.querySelectorAll('[data-add]').forEach(button => button.addEventListene
   const target=document.getElementById(prefix==='works'?'work-rows':'resource-rows-'+button.dataset.kind);
   target.insertAdjacentHTML('beforeend',document.getElementById(`empty-${prefix}`).innerHTML.replaceAll('__prefix__',String(index)));
   if (prefix==='resources') target.lastElementChild.querySelector('[name$="-kind"]').value=button.dataset.kind;
-  count.value=index+1; wireResources();
+  count.value=index+1; wireResources(); wireSubworks();
 }));
 wireResources();
+wireSubworks();
 </script>
 {% endblock %}

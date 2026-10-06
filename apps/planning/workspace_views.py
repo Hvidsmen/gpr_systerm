@@ -281,6 +281,16 @@ class WorkspaceEdit(View):
             "selected_month": selected,
             "months": months,
             "work_forms": works,
+            "composite_items": {
+                str(work.pk): [
+                    {"name": item.name, "unit": item.unit, "norm": str(item.quantity_per_unit)}
+                    for item in work.items.all() if item.company_id == version.company_id
+                ]
+                for work in ProjectWork.objects.filter(
+                    company=version.company, section__construction_object=version.construction_object,
+                    kind='COMPOSITE',
+                ).prefetch_related('items')
+            },
             "resource_forms": resources,
             "resource_sections": [
                 {
