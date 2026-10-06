@@ -51,6 +51,6 @@ class CatalogFilterMixin:
         context = super().get_context_data(**kwargs)
         params = self.request.GET.copy()
         params.pop('page', None)
-        context.update(filter_form=self.filter_form, filter_query=params.urlencode(),
+        context.update(filter_form=self.filter_form, filter_query=params.urlencode(), export_route=self.export_route,
             filters_active=any(self.request.GET.get(key) for key in self.filter_form.fields))
         return context

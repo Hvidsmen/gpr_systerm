@@ -30,6 +30,7 @@ class EmployeeCreateView(CompanyRequiredMixin, CreateView):
 
 class BrigadeListView(CatalogFilterMixin, CompanyRequiredMixin, ListView):
     filter_form_class = BrigadeFilterForm
+    export_route = 'resources:brigade_export'
     model = Brigade
     template_name = 'resources/brigade_list.html'
     context_object_name = 'brigades'
@@ -116,6 +117,7 @@ from .forms import EquipmentTypeForm
 
 class EquipmentTypeListView(CatalogFilterMixin, CompanyRequiredMixin, ListView):
     filter_form_class = EquipmentFilterForm
+    export_route = 'resources:equipment_type_export'
     model = EquipmentType
     template_name = 'resources/equipment_type_list.html'
     context_object_name = 'equipment_types'

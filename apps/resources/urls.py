@@ -35,3 +35,9 @@ urlpatterns += [
     path('brigades/import/', BrigadeImport.as_view(), name='brigade_import'),
     path('brigades/import/template/', brigade_import_template, name='brigade_import_template'),
 ]
+
+from .catalog_export import BrigadeExport, EquipmentTypeExport
+urlpatterns += [
+    path('brigades/export/', BrigadeExport.as_view(), name='brigade_export'),
+    path('equipment-types/export/', EquipmentTypeExport.as_view(), name='equipment_type_export'),
+]

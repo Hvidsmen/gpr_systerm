@@ -80,6 +80,6 @@ def check_route(user, match, method):
             require_roles(user, PLAN_ROLES)
         return
     if namespace in {'projects', 'works', 'resources'}:
-        require_roles(user, READ_ROLES if name.endswith(('_list', '_detail')) else PLAN_ROLES)
+        require_roles(user, READ_ROLES if name.endswith(('_list', '_detail')) or namespace == 'resources' and name.endswith('_export') else PLAN_ROLES)
         return
     raise PermissionDenied('Доступ к этому разделу не разрешён.')
