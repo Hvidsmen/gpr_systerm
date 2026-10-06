@@ -1,0 +1,78 @@
+{% extends 'base.html' %}
+{% load i18n %}
+
+{% block title %}Разделы объекта {{ construction_object.name }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="mb-1">
+            <i class="bi bi-diagram-3"></i> Разделы объекта {{ construction_object.name }}
+        </h2>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-0">
+                <li class="breadcrumb-item"><a href="{% url 'dashboard:index' %}">Главная</a></li>
+                <li class="breadcrumb-item"><a href="{% url 'projects:object_list' project_pk %}" >Объекты</a></li>
+                <li class="breadcrumb-item active">{{ construction_object.name }}</li>
+            </ol>
+        </nav>
+    </div>
+    <a href="{% url 'projects:section_create' construction_object.pk %}" class="btn btn-primary">
+        <i class="bi bi-plus-circle"></i> Добавить раздел
+    </a>
+</div>
+
+{% if sections %}
+    <div class="card">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width: 100px;">Код</th>
+                            <th>Название</th>
+                            <th style="width: 150px;">Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for section in sections %}
+                            <tr>
+                                <td><strong>{{ section.code }}</strong></td>
+                                <td>{{ section.name }}</td>
+                                <td>
+                                    <div class="btn-group btn-group-sm">
+                                        <a href="{% url 'projects:section_edit' construction_object.pk section.pk %}"
+                                           class="btn btn-outline-primary"
+                                           title="Редактировать">
+                                            <i class="bi bi-pencil"></i>
+                                        </a>
+                                        <a href="{% url 'projects:section_delete' construction_object.pk section.pk %}"
+                                           class="btn btn-outline-danger"
+                                           onclick="return confirm('Удалить раздел «{{ section.name }}»?');"
+                                           title="Удалить">
+                                            <i class="bi bi-trash"></i>
+                                        </a>
+                                    </div>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+{% else %}
+    <div class="alert alert-info">
+        <i class="bi bi-info-circle"></i> Разделы ещё не добавлены.
+        <a href="{% url 'projects:section_create' construction_object.pk %}" class="alert-link">
+            Добавить первый раздел
+        </a>
+    </div>
+{% endif %}
+
+<div class="mt-3">
+    <a href="{% url 'projects:object_list' project_pk %}"  class="btn btn-secondary">
+        <i class="bi bi-arrow-left"></i> Назад к объектам
+    </a>
+</div>
+{% endblock %}

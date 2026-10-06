@@ -1,0 +1,252 @@
+{% extends 'base.html' %}
+{% load i18n %}
+
+{% block title %}Ввод факта работ{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="mb-1">
+            <i class="bi bi-clipboard-check"></i> Ввод факта работ
+        </h2>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-0">
+                <li class="breadcrumb-item"><a href="{% url 'dashboard:index' %}">Главная</a></li>
+                <li class="breadcrumb-item active">Ввод факта</li>
+            </ol>
+        </nav>
+    </div>
+</div>
+
+<!-- Форма фильтрации -->
+<div class="card mb-4">
+    <div class="card-header bg-primary text-white">
+        <h5 class="mb-0"><i class="bi bi-funnel"></i> Шаг 1: Выберите параметры</h5>
+    </div>
+    <div class="card-body">
+        <form method="post">
+            {% csrf_token %}
+            <div class="row g-3 align-items-end">
+                <div class="col-md-3">
+                    <label for="{{ form.date.id_for_label }}" class="form-label">
+                        {{ form.date.label }} <span class="text-danger">*</span>
+                    </label>
+                    {{ form.date }}
+                </div>
+                <div class="col-md-3">
+                    <label for="{{ form.project.id_for_label }}" class="form-label">
+                        {{ form.project.label }}
+                    </label>
+                    {{ form.project }}
+                    <div class="form-text">Оставьте пустым для всех проектов</div>
+                </div>
+                <div class="col-md-3">
+                    <label for="{{ form.construction_object.id_for_label }}" class="form-label">
+                        {{ form.construction_object.label }}
+                    </label>
+                    {{ form.construction_object }}
+                    <div class="form-text">Оставьте пустым для всех объектов</div>
+                </div>
+                <div class="col-md-3">
+                    <label for="{{ form.section.id_for_label }}" class="form-label">
+                        {{ form.section.label }}
+                    </label>
+                    {{ form.section }}
+                    <div class="form-text">Оставьте пустым для всех разделов</div>
+                </div>
+                <div class="col-12">
+                    <button type="submit" name="select_filters" class="btn btn-primary">
+                        <i class="bi bi-search"></i> Показать работы с планами
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if works_data %}
+<!-- Результаты: работы с подработами -->
+<div class="card">
+    <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">
+            <i class="bi bi-table"></i> Шаг 2: Введите факты на {{ selected_date|date:"d.m.Y" }}
+            <span class="badge bg-light text-dark ms-2">{{ plans_count }} подработ</span>
+        </h5>
+        {% if selected_project %}
+            <small class="text-white-50">Проект: {{ selected_project.name }}</small>
+        {% endif %}
+    </div>
+    <div class="card-body p-0">
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="date" value="{{ selected_date|date:'Y-m-d' }}">
+
+            {% for work_data in works_data %}
+            <div class="card mb-3 border-primary">
+                <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="mb-0">
+                            <i class="bi bi-hammer"></i>
+                            {{ work_data.work.name }}
+                            <small class="text-muted">({{ work_data.work.unit }})</small>
+                        </h6>
+                        <small class="text-muted">
+                            {{ work_data.work.section.construction_object.project.name }} →
+                            {{ work_data.work.section.construction_object.name }} →
+                            {{ work_data.work.section.name }}
+                        </small>
+                    </div>
+                    <div class="text-end">
+                        <small class="text-muted d-block">План: <strong>{{ work_data.total_plan|floatformat:1 }}</strong></small>
+                        <small class="text-muted d-block">Факт: <strong>{{ work_data.total_fact|floatformat:1 }}</strong></small>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="min-width: 200px;">Подработа</th>
+                                    <th class="text-center" style="width: 100px;">План</th>
+                                    <th class="text-center" style="width: 120px;">Факт <span class="text-danger">*</span></th>
+                                    <th style="width: 180px;">Причина отклонения</th>
+                                    <th style="min-width: 150px;">Комментарий</th>
+                                    <th class="text-center" style="width: 80px;">Статус</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item_data in work_data.items %}
+                                <tr class="{% if item_data.fact %}table-success{% endif %}">
+                                    <input type="hidden" name="plan_id" value="{{ item_data.plan.pk }}">
+                                    <td>
+                                        <strong>{{ item_data.item.name }}</strong>
+                                        {% if item_data.item.parent %}
+                                        <br><small class="text-muted">↳ {{ item_data.item.parent.name }}</small>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-center">
+                                        <span class="badge bg-primary">{{ item_data.plan_quantity|floatformat:1 }}</span>
+                                    </td>
+                                    <td class="text-center">
+                                        <input type="number"
+                                               name="fact_{{ item_data.plan.pk }}"
+                                               value="{{ item_data.fact_quantity|default:'' }}"
+                                               step="0.001"
+                                               class="form-control form-control-sm text-center"
+                                               placeholder="0.000"
+                                               min="0">
+                                    </td>
+                                    <td>
+                                        <select name="reason_{{ item_data.plan.pk }}" class="form-select form-select-sm">
+                                            <option value="">—</option>
+                                            {% for reason in deviation_reasons %}
+                                            <option value="{{ reason.pk }}"
+                                                {% if item_data.fact and item_data.fact.deviation_reason_id == reason.pk %}selected{% endif %}>
+                                                {{ reason.name }}
+                                            </option>
+                                            {% endfor %}
+                                        </select>
+                                    </td>
+                                    <td>
+                                        <input type="text"
+                                               name="comment_{{ item_data.plan.pk }}"
+                                               value="{{ item_data.fact.comment|default:'' }}"
+                                               class="form-control form-control-sm"
+                                               placeholder="Комментарий">
+                                    </td>
+                                    <td class="text-center">
+                                        {% if item_data.fact %}
+                                        <span class="badge bg-success" title="Факт уже введён">
+                                            <i class="bi bi-check-circle"></i> Есть
+                                        </span>
+                                        {% else %}
+                                        <span class="badge bg-warning text-dark" title="Факт ещё не введён">
+                                            <i class="bi bi-exclamation-circle"></i> Новый
+                                        </span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+
+            <!-- Кнопки сохранения -->
+            <div class="card-footer d-flex justify-content-between align-items-center">
+                <div class="text-muted small">
+                    <i class="bi bi-info-circle"></i>
+                    Строки без заполненного "Факт" будут пропущены.
+                    Существующие факты будут обновлены.
+                </div>
+                <div class="d-flex gap-2">
+                    <a href="{% url 'production:fact_input' %}" class="btn btn-secondary">
+                        <i class="bi bi-arrow-left"></i> Сбросить
+                    </a>
+                    <button type="submit" name="save_facts" class="btn btn-success btn-lg">
+                        <i class="bi bi-save"></i> Сохранить все факты
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% elif selected_date %}
+<div class="alert alert-warning">
+    <i class="bi bi-exclamation-triangle"></i>
+    На дату <strong>{{ selected_date|date:"d.m.Y" }}</strong> не найдено утверждённых планов
+    {% if selected_project %}для проекта "{{ selected_project.name }}"{% endif %}
+    {% if selected_object %}и объекта "{{ selected_object.name }}"{% endif %}
+    {% if selected_section %}и раздела "{{ selected_section.name }}"{% endif %}.
+    <br><br>
+    <a href="{% url 'planning:plan_list' %}" class="btn btn-sm btn-primary">
+        <i class="bi bi-calendar-check"></i> К планам
+    </a>
+    <a href="{% url 'production:fact_input' %}" class="btn btn-sm btn-secondary">
+        <i class="bi bi-arrow-left"></i> Выбрать другие параметры
+    </a>
+</div>
+{% endif %}
+
+<style>
+.table tbody tr:hover { background-color: #f8f9fa; }
+.table tbody tr.table-success { background-color: #d1e7dd !important; }
+input[type="number"]:focus, input[type="text"]:focus {
+    background-color: #fff3cd;
+    border-color: #ffc107;
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Автозаполнение факта из плана при клике на плановое значение
+    document.querySelectorAll('.badge.bg-primary').forEach(function(badge) {
+        badge.style.cursor = 'pointer';
+        badge.title = 'Кликните, чтобы скопировать в факт';
+        badge.addEventListener('click', function() {
+            var row = this.closest('tr');
+            var input = row.querySelector('input[name^="fact_"]');
+            if (input) {
+                input.value = this.textContent.trim();
+                input.focus();
+            }
+        });
+    });
+
+    // Подсветка изменённых строк
+    document.querySelectorAll('input[name^="fact_"]').forEach(function(input) {
+        input.addEventListener('change', function() {
+            var row = this.closest('tr');
+            if (this.value && this.value !== '0') {
+                row.style.backgroundColor = '#fff3cd';
+            } else {
+                row.style.backgroundColor = '';
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

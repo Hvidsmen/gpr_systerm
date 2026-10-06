@@ -1,0 +1,172 @@
+{% extends 'base.html' %}
+{% load i18n %}
+
+{% block title %}Ввод факта по технике{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="mb-1">
+            <i class="bi bi-clipboard-data"></i> Ввод факта по технике
+        </h2>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-0">
+                <li class="breadcrumb-item"><a href="{% url 'dashboard:index' %}">Главная</a></li>
+                <li class="breadcrumb-item"><a href="{% url 'production:equipment_fact_list' %}">Факты по технике</a></li>
+                <li class="breadcrumb-item active">Ввод на дату</li>
+            </ol>
+        </nav>
+    </div>
+</div>
+
+<!-- Форма выбора параметров -->
+<div class="card mb-4">
+    <div class="card-header bg-primary text-white">
+        <h5 class="mb-0"><i class="bi bi-funnel"></i> Шаг 1: Выберите параметры</h5>
+    </div>
+    <div class="card-body">
+        <form method="post">
+            {% csrf_token %}
+            <div class="row g-3 align-items-end">
+                <div class="col-md-3">
+                    <label for="{{ form.date.id_for_label }}" class="form-label">
+                        {{ form.date.label }} <span class="text-danger">*</span>
+                    </label>
+                    {{ form.date }}
+                </div>
+                <div class="col-md-3">
+                    <label for="{{ form.project.id_for_label }}" class="form-label">{{ form.project.label }}</label>
+                    {{ form.project }}
+                    <div class="form-text">Оставьте пустым для всех проектов</div>
+                </div>
+                <div class="col-md-3">
+                    <label for="{{ form.project_work.id_for_label }}" class="form-label">{{ form.project_work.label }}</label>
+                    {{ form.project_work }}
+                    <div class="form-text">Оставьте пустым для всех работ</div>
+                </div>
+                <div class="col-md-3">
+                    <label for="{{ form.equipment_type.id_for_label }}" class="form-label">{{ form.equipment_type.label }}</label>
+                    {{ form.equipment_type }}
+                    <div class="form-text">Оставьте пустым для всех видов</div>
+                </div>
+                <div class="col-12">
+                    <button type="submit" name="select_date" class="btn btn-primary">
+                        <i class="bi bi-search"></i> Показать планы
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if rows %}
+<div class="card">
+    <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">
+            <i class="bi bi-table"></i> Шаг 2: Введите факты на {{ selected_date|date:"d.m.Y" }}
+            <span class="badge bg-light text-dark ms-2">{{ plans_count }} единиц техники</span>
+        </h5>
+    </div>
+    <div class="card-body p-0">
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="date" value="{{ selected_date|date:'Y-m-d' }}">
+
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered mb-0">
+                    <thead class="table-light sticky-top" style="top: 0; z-index: 10;">
+                        <tr>
+                            <th style="min-width: 180px;">Вид техники</th>
+                            <th style="min-width: 100px;">Гос. номер</th>
+                            <th style="min-width: 150px;">Работа</th>
+                            <th class="text-center" style="min-width: 80px;">План, ед</th>
+                            <th class="text-center" style="min-width: 90px;">Факт, ед <span class="text-danger">*</span></th>
+                            <th class="text-center" style="min-width: 100px;">Маш-часы</th>
+                            <th class="text-center" style="min-width: 100px;">Ставка, ₽/час</th>
+                            <th style="min-width: 150px;">Комментарий</th>
+                            <th class="text-center" style="min-width: 80px;">Статус</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in rows %}
+                            <tr class="{% if row.fact %}table-success{% endif %}">
+                                <input type="hidden" name="plan_id" value="{{ row.plan.pk }}">
+                                <td><strong>{{ row.equipment_type.name }}</strong></td>
+                                <td>{{ row.equipment_number|default:"—" }}</td>
+                                <td>{% if row.project_work %}{{ row.project_work.name }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                                <td class="text-center"><span class="badge bg-primary">{{ row.planned_count }}</span></td>
+                                <td class="text-center">
+                                    <input type="number" name="actual_count_{{ row.plan.pk }}" value="{{ row.actual_count }}" class="form-control form-control-sm text-center" min="0" step="1" placeholder="0" {% if not row.actual_count %}required{% endif %}>
+                                </td>
+                                <td class="text-center">
+                                    <input type="number" name="machine_hours_{{ row.plan.pk }}" value="{{ row.machine_hours }}" class="form-control form-control-sm text-center" min="0" step="0.5" placeholder="—">
+                                </td>
+                                <td class="text-center">
+                                    <input type="number" name="hourly_rate_{{ row.plan.pk }}" value="{{ row.hourly_rate }}" class="form-control form-control-sm text-center" min="0" step="0.01" placeholder="—">
+                                </td>
+                                <td><input type="text" name="comment_{{ row.plan.pk }}" value="{{ row.comment }}" class="form-control form-control-sm" placeholder="Комментарий"></td>
+                                <td class="text-center">
+                                    {% if row.fact %}
+                                        <span class="badge bg-success"><i class="bi bi-check-circle"></i> Есть</span>
+                                    {% else %}
+                                        <span class="badge bg-warning text-dark"><i class="bi bi-exclamation-circle"></i> Новый</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="card-footer d-flex justify-content-between align-items-center">
+                <div class="text-muted small">
+                    <i class="bi bi-info-circle"></i> Строки без заполненного "Факт, ед" будут пропущены.
+                </div>
+                <div class="d-flex gap-2">
+                    <a href="{% url 'production:equipment_fact_daily_input' %}" class="btn btn-secondary"><i class="bi bi-arrow-left"></i> Сбросить</a>
+                    <button type="submit" name="save_facts" class="btn btn-success btn-lg"><i class="bi bi-save"></i> Сохранить все факты</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% elif selected_date %}
+<div class="alert alert-warning">
+    <i class="bi bi-exclamation-triangle"></i> На дату <strong>{{ selected_date|date:"d.m.Y" }}</strong> не найдено планов по технике.
+    <br><br>
+    <a href="{% url 'production:equipment_plan_create' %}" class="btn btn-sm btn-primary"><i class="bi bi-plus-circle"></i> Создать план</a>
+    <a href="{% url 'production:equipment_fact_daily_input' %}" class="btn btn-sm btn-secondary"><i class="bi bi-arrow-left"></i> Выбрать другую дату</a>
+</div>
+{% endif %}
+
+<style>
+    .table tbody tr:hover { background-color: #f8f9fa; }
+    .table tbody tr.table-success { background-color: #d1e7dd !important; }
+    input[type="number"]:focus, input[type="text"]:focus { background-color: #fff3cd; border-color: #ffc107; }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('input[name^="actual_count_"]').forEach(function(input) {
+        input.addEventListener('focus', function() {
+            if (!this.value || this.value === '0') {
+                var row = this.closest('tr');
+                var planBadge = row.querySelector('.badge.bg-primary');
+                if (planBadge && !this.dataset.touched) {
+                    this.placeholder = planBadge.textContent.trim();
+                }
+            }
+        });
+        input.addEventListener('input', function() { this.dataset.touched = 'true'; });
+    });
+
+    document.querySelectorAll('input[name^="actual_count_"], input[name^="machine_hours_"]').forEach(function(input) {
+        input.addEventListener('change', function() {
+            var row = this.closest('tr');
+            row.style.backgroundColor = (this.value && this.value !== '0') ? '#fff3cd' : '';
+        });
+    });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,154 @@
+{% extends 'base.html' %}
+{% load i18n %}
+
+{% block title %}Создать месячный план{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-10">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0"><i class="bi bi-calendar-plus"></i> Создание месячного плана</h4>
+            </div>
+            <div class="card-body">
+
+                {# ===== БЛОК ОТОБРАЖЕНИЯ ОШИБОК (САМОЕ ВАЖНОЕ) ===== #}
+               {% if form.errors %}
+    <div class="alert alert-danger border-danger">
+        <h5 class="alert-heading">
+            <i class="bi bi-exclamation-triangle-fill"></i>
+            Ошибки в форме:
+        </h5>
+        <hr>
+        <ul class="mb-0">
+            {# Ошибки отдельных полей #}
+            {% for field in form %}
+                {% if field.errors %}
+                    <li>
+                        <strong>{{ field.label }}:</strong>
+                        <ul>
+                            {% for error in field.errors %}
+                                <li>{{ error }}</li>
+                            {% endfor %}
+                        </ul>
+                    </li>
+                {% endif %}
+            {% endfor %}
+
+            {# ← ДОБАВЛЕН БЛОК: общие ошибки формы #}
+            {% for error in form.non_field_errors %}
+                <li class="text-danger fw-bold">
+                    <i class="bi bi-ban"></i> {{ error }}
+                </li>
+            {% endfor %}
+        </ul>
+    </div>
+{% endif %}
+
+                <form method="post" novalidate>
+                    {% csrf_token %}
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="{{ form.project_work.id_for_label }}" class="form-label">
+                                Работа <span class="text-danger">*</span>
+                            </label>
+                            {{ form.project_work }}
+                            {% if form.project_work.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {% for error in form.project_work.errors %}{{ error }}{% endfor %}
+                                </div>
+                            {% endif %}
+                            {% if not form.project_work.value %}
+                                <div class="form-text text-warning">
+                                    ⚠ Выберите работу из списка. Если список пуст — сначала создайте работу.
+                                </div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label for="{{ form.year.id_for_label }}" class="form-label">
+                                Год <span class="text-danger">*</span>
+                            </label>
+                            {{ form.year }}
+                            {% if form.year.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {% for error in form.year.errors %}{{ error }}{% endfor %}
+                                </div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label for="{{ form.month.id_for_label }}" class="form-label">
+                                Месяц <span class="text-danger">*</span>
+                            </label>
+                            {{ form.month }}
+                            {% if form.month.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {% for error in form.month.errors %}{{ error }}{% endfor %}
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label for="{{ form.planned_quantity.id_for_label }}" class="form-label">
+                                Плановый объём <span class="text-danger">*</span>
+                            </label>
+                            {{ form.planned_quantity }}
+                            {% if form.planned_quantity.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {% for error in form.planned_quantity.errors %}{{ error }}{% endfor %}
+                                </div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="{{ form.start_date.id_for_label }}" class="form-label">
+                                Дата начала <span class="text-danger">*</span>
+                            </label>
+                            {{ form.start_date }}
+                            {% if form.start_date.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {% for error in form.start_date.errors %}{{ error }}{% endfor %}
+                                </div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="{{ form.end_date.id_for_label }}" class="form-label">
+                                Дата окончания <span class="text-danger">*</span>
+                            </label>
+                            {{ form.end_date }}
+                            {% if form.end_date.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {% for error in form.end_date.errors %}{{ error }}{% endfor %}
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="{{ form.mismatch_strategy.id_for_label }}" class="form-label">
+                            Стратегия при несовпадении дней
+                        </label>
+                        {{ form.mismatch_strategy }}
+                        <div class="form-text">
+                            <strong>STRETCH</strong> — растянуть/сжать профиль |
+                            <strong>COMPRESS</strong> — сжать профиль |
+                            <strong>TRUNCATE</strong> — обрезать и нормализовать |
+                            <strong>STRICT</strong> — запретить генерацию
+                        </div>
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-save"></i> Создать и сгенерировать
+                        </button>
+                        <a href="{% url 'planning:plan_list' %}" class="btn btn-secondary">
+                            <i class="bi bi-x-circle"></i> Отмена
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

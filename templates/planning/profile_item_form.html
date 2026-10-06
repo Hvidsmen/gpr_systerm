@@ -1,0 +1,73 @@
+
+{% extends 'base.html' %}
+{% load i18n %}
+
+{% block title %}{% if is_edit %}Редактировать{% else %}Добавить{% endif %} рабочий день - ГПР Система{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">
+                    <i class="bi bi-calendar-day"></i>
+                    {% if is_edit %}Редактировать рабочий день{% else %}Добавить рабочий день{% endif %}
+                    <small class="ms-2">для профиля "{{ profile.name }}"</small>
+                </h4>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="{{ form.workday_number.id_for_label }}" class="form-label">
+                                {{ form.workday_number.label }} <span class="text-danger">*</span>
+                            </label>
+                            {{ form.workday_number }}
+                            {% if form.workday_number.help_text %}
+                                <div class="form-text">{{ form.workday_number.help_text }}</div>
+                            {% endif %}
+                            {% if form.workday_number.errors %}
+                                <div class="text-danger small mt-1">{{ form.workday_number.errors }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="{{ form.percentage.id_for_label }}" class="form-label">
+                                {{ form.percentage.label }} <span class="text-danger">*</span>
+                            </label>
+                            {{ form.percentage }}
+                            {% if form.percentage.help_text %}
+                                <div class="form-text">{{ form.percentage.help_text }}</div>
+                            {% endif %}
+                            {% if form.percentage.errors %}
+                                <div class="text-danger small mt-1">{{ form.percentage.errors }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="d-flex gap-2 mt-4 pt-3 border-top">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-save"></i> Сохранить
+                        </button>
+                        <a href="{% url 'planning:profile_detail' profile.pk %}" class="btn btn-secondary">
+                            <i class="bi bi-x-circle"></i> Отмена
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="card mt-3">
+            <div class="card-body">
+                <h6><i class="bi bi-info-circle"></i> Справка</h6>
+                <ul class="mb-0 small">
+                    <li><strong>Номер рабочего дня</strong> — порядковый номер (1, 2, 3...). Не календарный день, а именно рабочий.</li>
+                    <li><strong>Процент нагрузки</strong> — доля объёма работы, выполняемая в этот день. Сумма всех процентов должна быть 100%.</li>
+                    <li><strong>Пример:</strong> если работа длится 5 дней с равномерной нагрузкой, каждый день = 20%.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

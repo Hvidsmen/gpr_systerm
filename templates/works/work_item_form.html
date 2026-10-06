@@ -1,0 +1,149 @@
+{% extends 'base.html' %}
+{% load i18n %}
+
+{% block title %}
+{% if work_item %}Редактировать подработу{% else %}Создать подработу{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header bg-primary text-white">
+        <h4 class="mb-0">
+            <i class="bi bi-list-nested"></i>
+            {% if work_item %}
+            Редактировать подработку "{{ work_item.name }}"
+            {% else %}
+            Создать подработку{% if work %} для работы "{{ work.name }}"{% endif %}
+            {% endif %}
+        </h4>
+    </div>
+    <div class="card-body">
+        <form method="post">
+            {% csrf_token %}
+            {% if form.errors %}
+            <div class="alert alert-danger">
+                <h5><i class="bi bi-exclamation-triangle"></i> Ошибки в форме:</h5>
+                <ul class="mb-0">
+                    {% for field in form %}
+                        {% for error in field.errors %}
+                        <li><strong>{{ field.label }}:</strong> {{ error }}</li>
+                        {% endfor %}
+                    {% endfor %}
+                    {% for error in form.non_field_errors %}
+                    <li>{{ error }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+
+            <!-- Основная информация -->
+            <h5 class="mb-3 text-primary">
+                <i class="bi bi-info-circle"></i> Основная информация
+            </h5>
+            <div class="row">
+                <div class="col-md-8 mb-3">
+                    <label for="{{ form.name.id_for_label }}" class="form-label">
+                        {{ form.name.label }} <span class="text-danger">*</span>
+                    </label>
+                    {{ form.name }}
+                    {% if form.name.help_text %}
+                    <div class="form-text">{{ form.name.help_text }}</div>
+                    {% endif %}
+                    {% if form.name.errors %}
+                    <div class="text-danger small mt-1">{{ form.name.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label for="{{ form.unit.id_for_label }}" class="form-label">
+                        {{ form.unit.label }} <span class="text-danger">*</span>
+                    </label>
+                    {{ form.unit }}
+                    {% if form.unit.help_text %}
+                    <div class="form-text">{{ form.unit.help_text }}</div>
+                    {% endif %}
+                    {% if form.unit.errors %}
+                    <div class="text-danger small mt-1">{{ form.unit.errors }}</div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Параметры планирования -->
+           <!-- Параметры планирования -->
+<h5 class="mb-3 text-primary mt-4">
+    <i class="bi bi-graph-up"></i> Параметры планирования
+</h5>
+<div class="row">
+    <div class="col-md-4 mb-3">
+        <label for="{{ form.weight.id_for_label }}" class="form-label">
+            {{ form.weight.label }} <span class="text-danger">*</span>
+        </label>
+        {{ form.weight }}
+        {% if form.weight.help_text %}
+        <div class="form-text">{{ form.weight.help_text }}</div>
+        {% endif %}
+        {% if form.weight.errors %}
+        <div class="text-danger small mt-1">{{ form.weight.errors }}</div>
+        {% endif %}
+    </div>
+    <div class="col-md-4 mb-3">
+        <label for="{{ form.quantity_per_unit.id_for_label }}" class="form-label">
+            {{ form.quantity_per_unit.label }} <span class="text-danger">*</span>
+        </label>
+        {{ form.quantity_per_unit }}
+        {% if form.quantity_per_unit.help_text %}
+        <div class="form-text">{{ form.quantity_per_unit.help_text }}</div>
+        {% endif %}
+        {% if form.quantity_per_unit.errors %}
+        <div class="text-danger small mt-1">{{ form.quantity_per_unit.errors }}</div>
+        {% endif %}
+    </div>
+    <div class="col-md-4 mb-3">
+        <label for="{{ form.load_profile.id_for_label }}" class="form-label">
+            {{ form.load_profile.label }}
+        </label>
+        {{ form.load_profile }}
+        {% if form.load_profile.help_text %}
+        <div class="form-text">{{ form.load_profile.help_text }}</div>
+        {% endif %}
+        {% if form.load_profile.errors %}
+        <div class="text-danger small mt-1">{{ form.load_profile.errors }}</div>
+        {% endif %}
+    </div>
+</div>
+
+            <!-- Кнопки -->
+            <div class="d-flex gap-2 mt-4 pt-3 border-top">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-save"></i> Сохранить
+                </button>
+                {% if work %}
+                <a href="{% url 'works:work_detail' work.pk %}" class="btn btn-secondary">
+                    <i class="bi bi-x-circle"></i> Отмена
+                </a>
+                {% else %}
+                <a href="{% url 'works:work_list' %}" class="btn btn-secondary">
+                    <i class="bi bi-x-circle"></i> Отмена
+                </a>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Справка -->
+<!-- Справка -->
+<div class="card mt-4">
+    <div class="card-header">
+        <h6 class="mb-0"><i class="bi bi-info-circle"></i> Справка по полям</h6>
+    </div>
+    <div class="card-body">
+        <ul class="mb-0 small">
+            <li><strong>Название</strong> — наименование подработы</li>
+            <li><strong>Единица измерения</strong> — шт, м, м², м³, т и т.д.</li>
+            <li><strong>Вес, %</strong> — доля стоимости подработы в общей стоимости работы</li>
+            <li><strong>Норматив подработы</strong> — сколько единиц подработы нужно на 1 единицу работы. Например: если работа = 1000 м, а норматив = 10, то плановый объём подработы = 10000.</li>
+            <li><strong>Профиль нагрузки</strong> — определяет, как объём распределяется по рабочим дням</li>
+        </ul>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+{% load i18n %}
+
+{% block title %}Дневные факты - ГПР Система{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="bi bi-clipboard-check"></i> Дневные факты</h2>
+    <a href="{% url 'production:fact_create' %}" class="btn btn-primary">
+        <i class="bi bi-plus-circle"></i> Ввести факт
+    </a>
+</div>
+
+{% if facts %}
+    <div class="table-responsive">
+        <table class="table table-hover">
+            <thead class="table-light">
+                <tr>
+                    <th>Дата</th>
+                    <th>Работа</th>
+                    <th>Элемент</th>
+                    <th>Фактический объем</th>
+                    <th>Ввел</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for fact in facts %}
+                    <tr>
+                        <td>{{ fact.date }}</td>
+                        <td>{{ fact.project_work.name }}</td>
+                        <td>{{ fact.work_item.name }}</td>
+                        <td>{{ fact.actual_quantity }}</td>
+                        <td>{{ fact.reported_by|default:"-" }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% else %}
+    <div class="alert alert-info">Факты не найдены.</div>
+{% endif %}
+{% endblock %}

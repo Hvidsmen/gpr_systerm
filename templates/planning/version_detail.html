@@ -1,0 +1,322 @@
+{% extends 'base.html' %}
+{% load i18n %}
+{% load profile_tags %}
+
+{% block title %}Версия {{ version.version_number }} — {{ version.monthly_plan.project_work.name }}{% endblock %}
+
+{% block content %}
+<!-- Заголовок -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="mb-1">
+            <i class="bi bi-file-earmark-text"></i>
+            Версия {{ version.version_number }}
+            <span class="badge bg-{% if version.status == 'DRAFT' %}secondary{% elif version.status == 'SUBMITTED' %}warning{% elif version.status == 'APPROVED' %}success{% elif version.status == 'REJECTED' %}danger{% else %}info{% endif %} ms-2">
+                {{ version.get_status_display }}
+            </span>
+        </h2>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-0">
+                <li class="breadcrumb-item"><a href="{% url 'dashboard:index' %}">Главная</a></li>
+                <li class="breadcrumb-item"><a href="{% url 'planning:plan_list' %}">Месячные планы</a></li>
+                <li class="breadcrumb-item"><a href="{% url 'planning:plan_detail' version.monthly_plan.pk %}">{{ version.monthly_plan.project_work.name }}</a></li>
+                <li class="breadcrumb-item active">Версия {{ version.version_number }}</li>
+            </ol>
+        </nav>
+    </div>
+    <a href="{% url 'planning:plan_detail' version.monthly_plan.pk %}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> К плану
+    </a>
+</div>
+
+{% if version.is_immutable %}
+    <div class="alert alert-danger">
+        <i class="bi bi-lock-fill"></i>
+        <strong>Версия утверждена и заблокирована от изменений.</strong>
+        Для внесения изменений создайте ревизию.
+    </div>
+{% endif %}
+
+<!-- Информация о версии -->
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-3">
+                <h6 class="text-muted">Создана</h6>
+                <p class="mb-0">{{ version.created_at|date:"d.m.Y H:i" }}</p>
+                <small class="text-muted">{{ version.created_by }}</small>
+            </div>
+            {% if version.approved_at %}
+            <div class="col-md-3">
+                <h6 class="text-muted">Утверждена</h6>
+                <p class="mb-0">{{ version.approved_at|date:"d.m.Y H:i" }}</p>
+                <small class="text-muted">{{ version.approved_by }}</small>
+            </div>
+            {% endif %}
+            <div class="col-md-3">
+                <h6 class="text-muted">Комментарий</h6>
+                <p class="mb-0">{{ version.comment|default:"—" }}</p>
+            </div>
+            <div class="col-md-3">
+                <h6 class="text-muted">Baseline</h6>
+                <p class="mb-0">
+                    {% if version.is_baseline %}
+                        <i class="bi bi-star-fill text-warning"></i> Да
+                    {% else %}
+                        <span class="text-muted">Нет</span>
+                    {% endif %}
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Кнопки workflow -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="bi bi-gear"></i> Действия с версией</h5>
+    </div>
+    <div class="card-body">
+        <div class="d-flex gap-2 flex-wrap">
+            {% if version.status == 'DRAFT' %}
+                <form method="post" action="{% url 'planning:version_submit' version.pk %}" class="d-inline">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-warning" onclick="return confirm('Отправить план на согласование?');">
+                        <i class="bi bi-send"></i> Отправить на согласование
+                    </button>
+                </form>
+            {% endif %}
+
+            {% if version.status == 'SUBMITTED' %}
+                {% if user.is_manager or user.is_admin %}
+                    <form method="post" action="{% url 'planning:version_approve' version.pk %}" class="d-inline">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-success" onclick="return confirm('Утвердить план? Это действие заблокирует версию.');">
+                            <i class="bi bi-check-circle"></i> Утвердить
+                        </button>
+                    </form>
+                    <form method="post" action="{% url 'planning:version_reject' version.pk %}" class="d-inline">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-danger" onclick="return confirm('Отклонить план?');">
+                            <i class="bi bi-x-circle"></i> Отклонить
+                        </button>
+                    </form>
+                {% else %}
+                    <span class="text-muted">Только руководитель может утвердить или отклонить</span>
+                {% endif %}
+            {% endif %}
+
+            {% if version.status == 'APPROVED' %}
+                <form method="post" action="{% url 'planning:version_revision' version.pk %}" class="d-inline">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-info" onclick="return confirm('Создать ревизию плана?');">
+                        <i class="bi bi-arrow-repeat"></i> Создать ревизию
+                    </button>
+                </form>
+            {% endif %}
+
+            {% if version.status == 'REJECTED' %}
+                <form method="post" action="{% url 'planning:version_submit' version.pk %}" class="d-inline">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-warning" onclick="return confirm('Повторно отправить на согласование?');">
+                        <i class="bi bi-send"></i> Повторно отправить
+                    </button>
+                </form>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Форма редактирования параметров (только для DRAFT) -->
+{% if version.status == 'DRAFT' %}
+    <div class="card mb-4">
+        <div class="card-header bg-warning text-dark">
+            <h5 class="mb-0"><i class="bi bi-pencil-square"></i> Редактирование параметров и перегенерация</h5>
+        </div>
+        <div class="card-body">
+            <form method="post" action="{% url 'planning:version_regenerate' version.pk %}">
+                {% csrf_token %}
+
+                <h6 class="mb-3">Параметры плана</h6>
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Дата начала</label>
+                        <input type="date" name="start_date" value="{{ version.monthly_plan.start_date|date:'Y-m-d' }}" class="form-control" required>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Дата окончания</label>
+                        <input type="date" name="end_date" value="{{ version.monthly_plan.end_date|date:'Y-m-d' }}" class="form-control" required>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Плановый объём</label>
+                        <input type="number" name="planned_quantity" value="{{ version.monthly_plan.planned_quantity }}" step="0.001" class="form-control" required>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Стратегия при несовпадении дней</label>
+                    <select name="mismatch_strategy" class="form-control">
+                        <option value="STRETCH" {% if version.monthly_plan.mismatch_strategy == 'STRETCH' %}selected{% endif %}>Растянуть</option>
+                        <option value="COMPRESS" {% if version.monthly_plan.mismatch_strategy == 'COMPRESS' %}selected{% endif %}>Сжать</option>
+                        <option value="TRUNCATE" {% if version.monthly_plan.mismatch_strategy == 'TRUNCATE' %}selected{% endif %}>Обрезать</option>
+                        <option value="STRICT" {% if version.monthly_plan.mismatch_strategy == 'STRICT' %}selected{% endif %}>Строгий режим</option>
+                    </select>
+                </div>
+
+                <h6 class="mt-4 mb-3">Профили нагрузки для подработ</h6>
+                <div class="row">
+                    {% for item in version.monthly_plan.project_work.items.all %}
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">
+                                {{ item.name }}
+                                {% if item.weight %}<small class="text-muted">(вес: {{ item.weight }}%)</small>{% endif %}
+                            </label>
+                            <select name="profile_{{ item.pk }}" class="form-control">
+                                <option value="">— Без профиля —</option>
+                                {% for profile in profiles %}
+                                    <option value="{{ profile.pk }}" {% if item.load_profile_id == profile.pk %}selected{% endif %}>
+                                        {{ profile.name }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    {% endfor %}
+                </div>
+
+                <button type="submit" class="btn btn-warning" onclick="return confirm('Сохранить параметры и перегенерировать дневные планы?');">
+                    <i class="bi bi-magic"></i> Сохранить параметры и перегенерировать
+                </button>
+            </form>
+        </div>
+    </div>
+{% endif %}
+
+<!-- Дневной план -->
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">
+            <i class="bi bi-calendar-day"></i> Дневной план
+            <small class="text-muted ms-2">({{ daily_plans|length }} записей)</small>
+        </h5>
+        {% if version.status == 'DRAFT' %}
+            <form method="post" action="{% url 'planning:version_generate' version.pk %}" class="d-inline">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-primary" onclick="return confirm('Перегенерировать дневные планы с текущими параметрами?');">
+                    <i class="bi bi-arrow-clockwise"></i> Перегенерировать
+                </button>
+            </form>
+        {% endif %}
+    </div>
+    <div class="card-body p-0">
+        {% if daily_plans %}
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Дата</th>
+                            <th>День недели</th>
+                            <th>Раб. день №</th>
+                            <th>Подработа</th>
+                            <th class="text-end">План, {{ version.monthly_plan.project_work.unit }}</th>
+                            <th class="text-end">План, ₽</th>
+                            <th class="text-end">Факт</th>
+                            <th class="text-end">Отклонение</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for dp in daily_plans %}
+                            <tr>
+                                <td><strong>{{ dp.date|date:"d.m.Y" }}</strong></td>
+                                <td>{{ dp.date|date:"D" }}</td>
+                                <td>{{ dp.workday_number }}</td>
+                                <td>{{ dp.work_item.name }}</td>
+                                <td class="text-end">{{ dp.planned_quantity }}</td>
+                                <td class="text-end">{{ dp.planned_value }}</td>
+                                <td class="text-end">
+                                    {% if dp.fact_quantity %}
+                                        <span class="text-success">{{ dp.fact_quantity }}</span>
+                                    {% else %}
+                                        <span class="text-muted">—</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-end">
+                                    {% if dp.fact_quantity %}
+                                        {% with diff=dp.fact_quantity|subtract:dp.planned_quantity %}
+                                            <span class="{% if diff >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                                {{ diff }}
+                                            </span>
+                                        {% endwith %}
+                                    {% else %}
+                                        —
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot class="table-light">
+                        <tr>
+                            <th colspan="4">ИТОГО</th>
+                            <th class="text-end">{{ total_planned_quantity }}</th>
+                            <th class="text-end">{{ total_planned_value }}</th>
+                            <th class="text-end">{{ total_fact }}</th>
+                            <th class="text-end">{{ total_deviation }}</th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        {% else %}
+            <div class="alert alert-warning m-3">
+                <i class="bi bi-exclamation-triangle"></i>
+                Дневные планы не сгенерированы.
+                {% if version.status == 'DRAFT' %}
+                    <form method="post" action="{% url 'planning:version_generate' version.pk %}" class="d-inline ms-2">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm btn-primary">
+                            <i class="bi bi-magic"></i> Сгенерировать
+                        </button>
+                    </form>
+                {% endif %}
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Статистика -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body text-center">
+                <h6 class="text-muted">Всего записей</h6>
+                <p class="fs-3 mb-0">{{ daily_plans|length }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body text-center">
+                <h6 class="text-muted">Плановый объём</h6>
+                <p class="fs-3 mb-0">{{ total_planned_quantity }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body text-center">
+                <h6 class="text-muted">Фактический объём</h6>
+                <p class="fs-3 mb-0">{{ total_fact }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body text-center">
+                <h6 class="text-muted">Отклонение</h6>
+                <p class="fs-3 mb-0 {% if total_deviation >= 0 %}text-success{% else %}text-danger{% endif %}">
+                    {{ total_deviation }}
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

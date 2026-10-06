@@ -1,0 +1,147 @@
+{% extends 'base.html' %}
+{% load i18n %}
+{% load profile_tags %}
+{% block title %}Создать новую версию с изменением параметров{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-10">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">
+                    <i class="bi bi-plus-circle"></i>
+                    Создание новой версии с изменением распределения
+                    <small class="ms-2">{{ plan.project_work.name }}</small>
+                </h4>
+            </div>
+            <div class="card-body">
+                <!-- Информация о текущем плане -->
+                <div class="alert alert-info">
+                    <h6><i class="bi bi-info-circle"></i> Текущие параметры плана</h6>
+                    <ul class="mb-0">
+                        <li><strong>Период:</strong> {{ plan.start_date|date:"d.m.Y" }} — {{ plan.end_date|date:"d.m.Y" }}</li>
+                        <li><strong>Плановый объём:</strong> {{ plan.planned_quantity }} {{ plan.project_work.unit }}</li>
+                        <li><strong>Стратегия:</strong> {{ plan.get_mismatch_strategy_display }}</li>
+                        <li><strong>Версий:</strong> {{ plan.versions.count }}</li>
+                    </ul>
+                </div>
+
+                {% if form.errors %}
+                    <div class="alert alert-danger">
+                        <h5><i class="bi bi-exclamation-triangle"></i> Ошибки в форме:</h5>
+                        <ul class="mb-0">
+                            {% for field in form %}
+                                {% if field.errors %}
+                                    <li><strong>{{ field.label }}:</strong>
+                                        <ul>
+                                            {% for error in field.errors %}
+                                                <li>{{ error }}</li>
+                                            {% endfor %}
+                                        </ul>
+                                    </li>
+                                {% endif %}
+                            {% endfor %}
+                        </ul>
+                    </div>
+                {% endif %}
+
+                <form method="post">
+                    {% csrf_token %}
+
+                    <!-- Параметры плана -->
+                    <h5 class="mb-3 text-primary">
+                        <i class="bi bi-calendar-check"></i> Параметры плана
+                    </h5>
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label for="{{ form.start_date.id_for_label }}" class="form-label">
+                                {{ form.start_date.label }} <span class="text-danger">*</span>
+                            </label>
+                            {{ form.start_date }}
+                            {% if form.start_date.errors %}
+                                <div class="text-danger small">{{ form.start_date.errors }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="{{ form.end_date.id_for_label }}" class="form-label">
+                                {{ form.end_date.label }} <span class="text-danger">*</span>
+                            </label>
+                            {{ form.end_date }}
+                            {% if form.end_date.errors %}
+                                <div class="text-danger small">{{ form.end_date.errors }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="{{ form.planned_quantity.id_for_label }}" class="form-label">
+                                {{ form.planned_quantity.label }} <span class="text-danger">*</span>
+                            </label>
+                            {{ form.planned_quantity }}
+                            {% if form.planned_quantity.errors %}
+                                <div class="text-danger small">{{ form.planned_quantity.errors }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="{{ form.mismatch_strategy.id_for_label }}" class="form-label">
+                            {{ form.mismatch_strategy.label }}
+                        </label>
+                        {{ form.mismatch_strategy }}
+                        <div class="form-text">
+                            <strong>STRETCH</strong> — растянуть/сжать |
+                            <strong>COMPRESS</strong> — сжать |
+                            <strong>TRUNCATE</strong> — обрезать |
+                            <strong>STRICT</strong> — запретить
+                        </div>
+                    </div>
+
+                    <!-- Профили нагрузки для подработ -->
+                    {% if work.items.exists %}
+                        <h5 class="mb-3 text-primary mt-4">
+                            <i class="bi bi-graph-up"></i> Профили нагрузки для подработ
+                        </h5>
+                        <div class="row">
+                            {% for item in work.items.all %}
+                                {% with field_name="profile_"|add:item.pk|stringformat:"d" %}
+                                    {% if field_name in form.fields %}
+                                        <div class="col-md-6 mb-3">
+                                            <label for="id_{{ field_name }}" class="form-label">
+                                                {{ item.name }}
+                                                {% if item.weight %}<small class="text-muted">(вес: {{ item.weight }}%)</small>{% endif %}
+                                            </label>
+                                            {{ form|get_item:field_name }}
+                                        </div>
+                                    {% endif %}
+                                {% endwith %}
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+
+                    <!-- Комментарий -->
+                    <div class="mb-3 mt-4">
+                        <label for="{{ form.comment.id_for_label }}" class="form-label">
+                            {{ form.comment.label }}
+                        </label>
+                        {{ form.comment }}
+                    </div>
+
+                    <div class="alert alert-warning">
+                        <i class="bi bi-exclamation-triangle"></i>
+                        <strong>Внимание!</strong> Новая версия будет создана в статусе <strong>DRAFT</strong>.
+                        Дневные планы будут перегенерированы с новыми параметрами.
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-plus-circle"></i> Создать версию v{{ plan.versions.count|add:1 }}
+                        </button>
+                        <a href="{% url 'planning:plan_detail' plan.pk %}" class="btn btn-secondary">
+                            <i class="bi bi-x-circle"></i> Отмена
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,73 @@
+{% extends 'base.html' %}
+{% load i18n %}
+
+{% block title %}Виды техники{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="mb-1">
+            <i class="bi bi-truck"></i> Виды техники
+        </h2>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-0">
+                <li class="breadcrumb-item"><a href="{% url 'dashboard:index' %}">Главная</a></li>
+                <li class="breadcrumb-item active">Виды техники</li>
+            </ol>
+        </nav>
+    </div>
+    <a href="{% url 'resources:equipment_type_create' %}" class="btn btn-primary">
+        <i class="bi bi-plus-circle"></i> Добавить вид техники
+    </a>
+</div>
+
+{% if equipment_types %}
+    <div class="card">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Название</th>
+                            <th>Категория</th>
+                            <th>Статус</th>
+                            <th>Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for et in equipment_types %}
+                            <tr>
+                                <td><strong>{{ et.name }}</strong></td>
+                                <td>{{ et.category|default:"—" }}</td>
+                                <td>
+                                    {% if et.is_active %}
+                                        <span class="badge bg-success">Активна</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">Неактивна</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="btn-group btn-group-sm">
+                                        <a href="{% url 'resources:equipment_type_update' et.pk %}" class="btn btn-outline-secondary">
+                                            <i class="bi bi-pencil"></i>
+                                        </a>
+                                        <a href="{% url 'resources:equipment_type_delete' et.pk %}" class="btn btn-outline-danger"
+                                           onclick="return confirm('Удалить вид техники?');">
+                                            <i class="bi bi-trash"></i>
+                                        </a>
+                                    </div>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+{% else %}
+    <div class="alert alert-info">
+        <i class="bi bi-info-circle"></i> Виды техники ещё не добавлены.
+        <a href="{% url 'resources:equipment_type_create' %}" class="alert-link">Добавить первый вид техники</a>
+    </div>
+{% endif %}
+{% endblock %}

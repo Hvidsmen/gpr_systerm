@@ -1,0 +1,18 @@
+from django.urls import path
+from . import views
+
+app_name = 'resources'
+
+urlpatterns = [
+    path('employees/', views.EmployeeListView.as_view(), name='employee_list'),
+    path('employees/create/', views.EmployeeCreateView.as_view(), name='employee_create'),
+    path('brigades/', views.BrigadeListView.as_view(), name='brigade_list'),
+    path('brigades/create/', views.BrigadeCreateView.as_view(), name='brigade_create'),
+    path('brigades/<int:pk>/update/', views.BrigadeUpdateView.as_view(), name='brigade_update'),
+    path('brigades/<int:pk>/delete/', views.BrigadeDeleteView.as_view(), name='brigade_delete'),
+# Справочник видов техники
+path('equipment-types/', views.EquipmentTypeListView.as_view(), name='equipment_type_list'),
+path('equipment-types/create/', views.EquipmentTypeCreateView.as_view(), name='equipment_type_create'),
+path('equipment-types/<int:pk>/update/', views.EquipmentTypeUpdateView.as_view(), name='equipment_type_update'),
+path('equipment-types/<int:pk>/delete/', views.EquipmentTypeDeleteView.as_view(), name='equipment_type_delete'),
+]

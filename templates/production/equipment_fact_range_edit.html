@@ -1,0 +1,136 @@
+{% extends 'base.html' %}
+{% load i18n %}
+
+{% block title %}Массовое редактирование фактов по технике{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="mb-1">
+            <i class="bi bi-pencil-square"></i> Массовое редактирование фактов по технике
+        </h2>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-0">
+                <li class="breadcrumb-item"><a href="{% url 'dashboard:index' %}">Главная</a></li>
+                <li class="breadcrumb-item"><a href="{% url 'production:equipment_fact_list' %}">Факты по технике</a></li>
+                <li class="breadcrumb-item active">Редактирование диапазона</li>
+            </ol>
+        </nav>
+    </div>
+</div>
+
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">
+                    <i class="bi bi-calendar-range"></i> Редактирование фактов по технике
+                    <br><small>Найдено записей: {{ facts_count }}</small>
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if facts %}
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i>
+                        Изменения будут применены ко всем выбранным фактам одновременно.
+                        Оставьте поле пустым, если не хотите менять это значение.
+                    </div>
+
+                    <form method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="equipment_type_id" value="{{ equipment_type_id }}">
+                        <input type="hidden" name="equipment_number" value="{{ equipment_number }}">
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="date_from" class="form-label">
+                                    <i class="bi bi-calendar-event"></i> Дата с
+                                </label>
+                                <input type="date" id="date_from" name="date_from"
+                                       class="form-control" value="{{ date_from }}">
+                                <div class="form-text">Оставьте пустым для начала диапазона</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="date_to" class="form-label">
+                                    <i class="bi bi-calendar-event"></i> Дата по
+                                </label>
+                                <input type="date" id="date_to" name="date_to"
+                                       class="form-control" value="{{ date_to }}">
+                                <div class="form-text">Оставьте пустым для конца диапазона</div>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="actual_count" class="form-label">
+                                Факт, ед <span class="text-danger">*</span>
+                            </label>
+                            <input type="number" id="actual_count" name="actual_count"
+                                   class="form-control" min="0" step="1" required>
+                            <div class="form-text">Новое значение для всех записей</div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="machine_hours" class="form-label">
+                                    Маш-часы
+                                </label>
+                                <input type="number" id="machine_hours" name="machine_hours"
+                                       class="form-control" step="0.5">
+                                <div class="form-text">Оставьте пустым, если не менять</div>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="hourly_rate" class="form-label">
+                                    Ставка, ₽/час
+                                </label>
+                                <input type="number" id="hourly_rate" name="hourly_rate"
+                                       class="form-control" step="0.01">
+                                <div class="form-text">Оставьте пустым, если не менять</div>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <h6>Затронутые записи ({{ facts_count }}):</h6>
+                            <div class="list-group" style="max-height: 300px; overflow-y: auto;">
+                                {% for fact in facts %}
+                                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <strong>{{ fact.date|date:"d.m.Y" }}</strong>
+                                            <br><small class="text-muted">{{ fact.equipment_type.name }}</small>
+                                            {% if fact.equipment_number %}
+                                                <br><small class="text-muted">{{ fact.equipment_number }}</small>
+                                            {% endif %}
+                                            {% if fact.project_work %}
+                                                <br><small class="text-muted">{{ fact.project_work.name }}</small>
+                                            {% endif %}
+                                        </div>
+                                        <span class="badge bg-primary rounded-pill">
+                                            {{ fact.actual_count }} ед.
+                                        </span>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+
+                        <div class="d-flex gap-2 mt-4">
+                            <button type="submit" class="btn btn-success btn-lg">
+                                <i class="bi bi-check-circle"></i> Применить изменения
+                            </button>
+                            <a href="{% url 'production:equipment_fact_list' %}" class="btn btn-secondary">
+                                <i class="bi bi-x-circle"></i> Отмена
+                            </a>
+                        </div>
+                    </form>
+                {% else %}
+                    <div class="alert alert-warning">
+                        <i class="bi bi-exclamation-triangle"></i>
+                        Факты не найдены для выбранных параметров.
+                    </div>
+                    <a href="{% url 'production:equipment_fact_list' %}" class="btn btn-secondary">
+                        <i class="bi bi-arrow-left"></i> Вернуться к списку
+                    </a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

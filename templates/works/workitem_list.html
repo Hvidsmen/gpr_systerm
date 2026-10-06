@@ -1,0 +1,46 @@
+{% extends 'base.html' %}
+{% load i18n %}
+
+{% block title %}Элементы работы {{ work.name }} - ГПР Система{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="bi bi-list-task"></i> Элементы работы {{ work.name }}</h2>
+    <a href="{% url 'works:workitem_create' work.pk %}" class="btn btn-primary">
+        <i class="bi bi-plus-circle"></i> Добавить элемент
+    </a>
+</div>
+
+{% if items %}
+    <div class="table-responsive">
+        <table class="table table-hover">
+            <thead class="table-light">
+                <tr>
+                    <th>Название</th>
+                    <th>Ед. изм.</th>
+                    <th>Порядок</th>
+                    <th>Вес (%)</th>
+                    <th>Плановый объем</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in items %}
+                    <tr>
+                        <td>{{ item.name }}</td>
+                        <td>{{ item.unit }}</td>
+                        <td>{{ item.sequence }}</td>
+                        <td>{{ item.weight }}</td>
+                        <td>{{ item.planned_quantity|default:"-" }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% else %}
+    <div class="alert alert-info">Элементы работы не найдены.</div>
+{% endif %}
+
+<a href="{% url 'works:work_detail' work.pk %}" class="btn btn-secondary">
+    <i class="bi bi-arrow-left"></i> Назад к работе
+</a>
+{% endblock %}

@@ -1,0 +1,134 @@
+{% extends 'base.html' %}
+{% load i18n %}
+
+{% block title %}Подтверждение удаления{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card shadow">
+            <div class="card-header bg-danger text-white">
+                <h4 class="mb-0">
+                    <i class="bi bi-exclamation-triangle"></i> Подтверждение удаления
+                </h4>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle-fill"></i>
+                    <strong>Внимание!</strong> Вы собираетесь удалить запись. Это действие нельзя отменить.
+                </div>
+
+                <p class="mb-3">Вы уверены, что хотите удалить следующую запись?</p>
+
+                <div class="card bg-light mb-4">
+                    <div class="card-body">
+                        <dl class="row mb-0">
+                            {% if object.date %}
+                                <dt class="col-sm-4">Дата:</dt>
+                                <dd class="col-sm-8">{{ object.date|date:"d.m.Y" }}</dd>
+                            {% endif %}
+
+                            {% if object.project %}
+                                <dt class="col-sm-4">Проект:</dt>
+                                <dd class="col-sm-8">{{ object.project.name|default:"—" }}</dd>
+                            {% endif %}
+
+                            {% if object.project_work %}
+                                <dt class="col-sm-4">Работа:</dt>
+                                <dd class="col-sm-8">{{ object.project_work.name|default:"—" }}</dd>
+                            {% endif %}
+
+                            {% if object.brigade %}
+                                <dt class="col-sm-4">Бригада:</dt>
+                                <dd class="col-sm-8">{{ object.brigade.name|default:"—" }}</dd>
+                            {% endif %}
+
+                            {% if object.equipment_type %}
+                                <dt class="col-sm-4">Техника:</dt>
+                                <dd class="col-sm-8">{{ object.equipment_type }}{% if object.equipment_number %} ({{ object.equipment_number }}){% endif %}</dd>
+                            {% endif %}
+
+                            {% if object.fuel_type %}
+                                <dt class="col-sm-4">Вид ГСМ:</dt>
+                                <dd class="col-sm-8">{{ object.get_fuel_type_display }}</dd>
+                            {% endif %}
+
+                            {% if object.planned_workers is not None %}
+                                <dt class="col-sm-4">План, чел:</dt>
+                                <dd class="col-sm-8">{{ object.planned_workers|default:"—" }}</dd>
+                            {% endif %}
+
+                            {% if object.actual_workers is not None %}
+                                <dt class="col-sm-4">Факт, чел:</dt>
+                                <dd class="col-sm-8">{{ object.actual_workers|default:"—" }}</dd>
+                            {% endif %}
+
+                            {% if object.planned_hours is not None %}
+                                <dt class="col-sm-4">План, чел-час:</dt>
+                                <dd class="col-sm-8">{{ object.planned_hours|default:"—" }}</dd>
+                            {% endif %}
+
+                            {% if object.actual_hours is not None %}
+                                <dt class="col-sm-4">Факт, чел-час:</dt>
+                                <dd class="col-sm-8">{{ object.actual_hours|default:"—" }}</dd>
+                            {% endif %}
+
+                            {% if object.planned_count is not None %}
+                                <dt class="col-sm-4">План, ед:</dt>
+                                <dd class="col-sm-8">{{ object.planned_count|default:"—" }}</dd>
+                            {% endif %}
+
+                            {% if object.actual_count is not None %}
+                                <dt class="col-sm-4">Факт, ед:</dt>
+                                <dd class="col-sm-8">{{ object.actual_count|default:"—" }}</dd>
+                            {% endif %}
+
+                            {% if object.machine_hours is not None %}
+                                <dt class="col-sm-4">Машино-часы:</dt>
+                                <dd class="col-sm-8">{{ object.machine_hours|default:"—" }}</dd>
+                            {% endif %}
+
+                            {% if object.planned_machine_hours is not None %}
+                                <dt class="col-sm-4">План, маш-час:</dt>
+                                <dd class="col-sm-8">{{ object.planned_machine_hours|default:"—" }}</dd>
+                            {% endif %}
+
+                            {% if object.planned_liters is not None %}
+                                <dt class="col-sm-4">План, л:</dt>
+                                <dd class="col-sm-8">{{ object.planned_liters|default:"—" }}</dd>
+                            {% endif %}
+
+                            {% if object.actual_liters is not None %}
+                                <dt class="col-sm-4">Факт, л:</dt>
+                                <dd class="col-sm-8">{{ object.actual_liters|default:"—" }}</dd>
+                            {% endif %}
+
+                            {% if object.hourly_rate is not None %}
+                                <dt class="col-sm-4">Ставка:</dt>
+                                <dd class="col-sm-8">{{ object.hourly_rate|default:"—" }} ₽</dd>
+                            {% endif %}
+
+                            {% if object.price_per_liter is not None %}
+                                <dt class="col-sm-4">Цена за литр:</dt>
+                                <dd class="col-sm-8">{{ object.price_per_liter|default:"—" }} ₽</dd>
+                            {% endif %}
+                        </dl>
+                    </div>
+                </div>
+
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-danger">
+                            <i class="bi bi-trash"></i> Да, удалить
+                        </button>
+                        <a href="javascript:history.back()" class="btn btn-secondary">
+                            <i class="bi bi-x-circle"></i> Отмена
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

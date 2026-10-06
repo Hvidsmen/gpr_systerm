@@ -1,0 +1,124 @@
+{% extends 'base.html' %}
+{% load i18n %}
+
+{% block title %}Создать план по ГСМ (диапазон){% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">
+                    <i class="bi bi-calendar-range"></i> Создать план по ГСМ (диапазон дат)
+                </h4>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i>
+                    <strong>Внимание!</strong> План будет создан на каждый день в указанном диапазоне.
+                    Если для какого-то дня уже существует план — он будет обновлён.
+                </div>
+
+                <form method="post">
+                    {% csrf_token %}
+
+                    {% if form.errors %}
+                        <div class="alert alert-danger">
+                            <h5><i class="bi bi-exclamation-triangle"></i> Ошибки в форме:</h5>
+                            <ul class="mb-0">
+                                {% for field in form %}
+                                    {% for error in field.errors %}
+                                        <li><strong>{{ field.label }}:</strong> {{ error }}</li>
+                                    {% endfor %}
+                                {% endfor %}
+                                {% for error in form.non_field_errors %}
+                                    <li>{{ error }}</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    {% endif %}
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="{{ form.project.id_for_label }}" class="form-label">
+                                {{ form.project.label }}
+                            </label>
+                            {{ form.project }}
+                            <div class="form-text">Необязательное поле</div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="{{ form.project_work.id_for_label }}" class="form-label">
+                                {{ form.project_work.label }}
+                            </label>
+                            {{ form.project_work }}
+                            <div class="form-text">Необязательное поле</div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="{{ form.fuel_type.id_for_label }}" class="form-label">
+                            {{ form.fuel_type.label }} <span class="text-danger">*</span>
+                        </label>
+                        {{ form.fuel_type }}
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="{{ form.date_start.id_for_label }}" class="form-label">
+                                {{ form.date_start.label }} <span class="text-danger">*</span>
+                            </label>
+                            {{ form.date_start }}
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="{{ form.date_end.id_for_label }}" class="form-label">
+                                {{ form.date_end.label }} <span class="text-danger">*</span>
+                            </label>
+                            {{ form.date_end }}
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="{{ form.planned_liters.id_for_label }}" class="form-label">
+                                {{ form.planned_liters.label }} <span class="text-danger">*</span>
+                            </label>
+                            {{ form.planned_liters }}
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="{{ form.price_per_liter.id_for_label }}" class="form-label">
+                                {{ form.price_per_liter.label }}
+                            </label>
+                            {{ form.price_per_liter }}
+                            <div class="form-text">Необязательное поле</div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="{{ form.equipment_ref.id_for_label }}" class="form-label">
+                            {{ form.equipment_ref.label }}
+                        </label>
+                        {{ form.equipment_ref }}
+                        <div class="form-text">Необязательное поле</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="{{ form.comment.id_for_label }}" class="form-label">
+                            {{ form.comment.label }}
+                        </label>
+                        {{ form.comment }}
+                    </div>
+
+                    <div class="d-flex gap-2 mt-4">
+                        <button type="submit" class="btn btn-success btn-lg">
+                            <i class="bi bi-calendar-check"></i> Создать план на диапазон
+                        </button>
+                        <a href="{% url 'production:fuel_plan_list' %}" class="btn btn-secondary">
+                            <i class="bi bi-x-circle"></i> Отмена
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

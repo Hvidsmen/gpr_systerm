@@ -1,0 +1,66 @@
+{% extends 'base.html' %}
+{% load i18n %}
+
+{% block title %}Удалить работу — ГПР Система{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card shadow border-danger">
+            <div class="card-header bg-danger text-white">
+                <h4 class="mb-0">
+                    <i class="bi bi-exclamation-triangle-fill"></i>
+                    Подтверждение удаления работы
+                </h4>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    <strong>Внимание!</strong> Это действие нельзя отменить.
+                </div>
+
+                <p>Вы действительно хотите удалить работу:</p>
+
+                <div class="card bg-light mb-3">
+                    <div class="card-body">
+                        <h5 class="card-title">{{ object.name }}</h5>
+                        <p class="card-text mb-1">
+                            <strong>Код:</strong> {{ object.code }}
+                        </p>
+                        <p class="card-text mb-1">
+                            <strong>Раздел:</strong> {{ object.section }}
+                        </p>
+                        <p class="card-text mb-1">
+                            <strong>Ед. измерения:</strong> {{ object.unit }}
+                        </p>
+                        <p class="card-text mb-0">
+                            <strong>Подработ:</strong> {{ object.items.count }}
+                        </p>
+                    </div>
+                </div>
+
+                {% if object.items.count > 0 %}
+                    <div class="alert alert-danger">
+                        <i class="bi bi-exclamation-circle"></i>
+                        <strong>У работы есть {{ object.items.count }} подработ(ы)!</strong>
+                        <br>
+                        Все подработы, связанные планы и факты будут удалены вместе с работой.
+                    </div>
+                {% endif %}
+
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-danger">
+                            <i class="bi bi-trash"></i> Да, удалить
+                        </button>
+                        <a href="{% url 'works:work_list' %}" class="btn btn-secondary">
+                            <i class="bi bi-x-circle"></i> Отмена
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

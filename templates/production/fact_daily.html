@@ -1,0 +1,319 @@
+{% extends 'base.html' %}
+{% load i18n %}
+{% load math_tags %}
+
+{% block title %}Ввод факта на {{ today|date:"d.m.Y" }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="mb-1">
+            <i class="bi bi-clipboard-check"></i>
+            Ежедневный отчёт
+            <small class="text-muted">{{ today|date:"d E Y" }}</small>
+        </h2>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-0">
+                <li class="breadcrumb-item"><a href="{% url 'dashboard:index' %}">Главная</a></li>
+                <li class="breadcrumb-item active">Ввод факта</li>
+            </ol>
+        </nav>
+    </div>
+    <div class="text-end">
+        <span class="badge bg-primary fs-6">
+            <i class="bi bi-person-circle"></i> {{ user.full_name }}
+        </span>
+    </div>
+</div>
+
+{% if not works_with_plan %}
+<div class="alert alert-info">
+    <i class="bi bi-info-circle"></i>
+    <strong>На сегодня нет утверждённых плановых работ.</strong>
+    <br>
+    <small class="text-muted">
+        Если работы должны выполняться, проверьте, что планы утверждены и даты соответствуют сегодняшнему дню.
+    </small>
+</div>
+{% else %}
+<form method="post" id="dailyFactForm">
+    {% csrf_token %}
+    {% for work_data in works_with_plan %}
+    <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">
+                <i class="bi bi-hammer"></i>
+                {{ work_data.work.name }}
+                <small class="ms-2">({{ work_data.work.unit }})</small>
+                <br>
+                <small class="text-white-50">
+                    {{ work_data.project.name }} → {{ work_data.work.section.construction_object.name }} → {{ work_data.work.section.name }}
+                </small>
+            </h5>
+        </div>
+        <div class="card-body">
+            <!-- ===== ОБЪЁМЫ РАБОТ ===== -->
+            <h6 class="mb-3"><i class="bi bi-list-check"></i> Фактические объёмы работ</h6>
+            <div class="table-responsive">
+                <table class="table table-sm mb-4">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Подработа</th>
+                            <th class="text-end" style="width: 120px;">План на день</th>
+                            <th class="text-end" style="width: 120px;">Факт</th>
+                            <th style="width: 200px;">Причина отклонения</th>
+                            <th>Комментарий</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item_data in work_data.items %}
+                        <tr>
+                            <td><strong>{{ item_data.item.name }}</strong></td>
+                            <td class="text-end"><strong>{{ item_data.daily_plan.planned_quantity }}</strong></td>
+                            <td class="text-end">
+                                <input type="number" name="fact_{{ item_data.item.pk }}"
+                                       value="{{ item_data.fact.actual_quantity|default:'' }}"
+                                       step="0.001" class="form-control form-control-sm text-end" placeholder="0.000">
+                            </td>
+                            <td>
+                                <select name="reason_{{ item_data.item.pk }}" class="form-select form-select-sm">
+                                    <option value="">—</option>
+                                    {% for reason in deviation_reasons %}
+                                    <option value="{{ reason.pk }}"
+                                        {% if item_data.fact.deviation_reason_id == reason.pk %}selected{% endif %}>
+                                        {{ reason.name }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </td>
+                            <td>
+                                <input type="text" name="comment_{{ item_data.item.pk }}"
+                                       value="{{ item_data.fact.comment|default:'' }}"
+                                       class="form-control form-control-sm" placeholder="Комментарий">
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- ===== ЛЮДИ (из плана по проекту) ===== -->
+            <h6 class="mb-3"><i class="bi bi-people"></i> Люди сегодня (из плана по проекту)</h6>
+            {% if work_data.labor_rows %}
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered mb-4">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Бригада</th>
+                            <th class="text-end">План, чел</th>
+                            <th class="text-end">План, чел-час</th>
+                            <th class="text-end">Факт, чел *</th>
+                            <th class="text-end">Факт, чел-час</th>
+                            <th class="text-end">Ставка, ₽/час</th>
+                            <th class="text-center" style="width: 80px;">Статус</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in work_data.labor_rows %}
+                        <tr class="{% if row.fact %}table-success{% endif %}">
+                            <td><strong>{{ row.brigade.name }}</strong></td>
+                            <td class="text-end">{{ row.planned_workers|default:"—" }}</td>
+                            <td class="text-end">{{ row.planned_hours|default:"—" }}</td>
+                            <td class="text-end">
+                                <input type="number" name="labor_workers_{{ row.plan.pk }}"
+                                       value="{{ row.actual_workers }}"
+                                       class="form-control form-control-sm text-end"
+                                       min="0" step="1" placeholder="{{ row.planned_workers }}">
+                            </td>
+                            <td class="text-end">
+                                <input type="number" name="labor_hours_{{ row.plan.pk }}"
+                                       value="{{ row.actual_hours }}"
+                                       class="form-control form-control-sm text-end"
+                                       min="0" step="0.5" placeholder="{{ row.planned_hours }}">
+                            </td>
+                            <td class="text-end">{{ row.hourly_rate|default:"—" }}</td>
+                            <td class="text-center">
+                                {% if row.fact %}
+                                <span class="badge bg-success"><i class="bi bi-check-circle"></i></span>
+                                {% else %}
+                                <span class="badge bg-warning text-dark"><i class="bi bi-exclamation-circle"></i></span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="alert alert-light text-muted small py-2 mb-4">
+                <i class="bi bi-info-circle"></i> План по людям на сегодня не задан
+            </div>
+            {% endif %}
+
+            <!-- ===== ТЕХНИКА (из плана по проекту) ===== -->
+            <h6 class="mb-3"><i class="bi bi-truck"></i> Техника сегодня (из плана по проекту)</h6>
+            {% if work_data.equipment_rows %}
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered mb-4">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Вид техники</th>
+                            <th>Гос. номер</th>
+                            <th class="text-end">План, ед</th>
+                            <th class="text-end">План, маш-час</th>
+                            <th class="text-end">Факт, ед *</th>
+                            <th class="text-end">Факт, маш-час</th>
+                            <th class="text-end">Ставка, ₽/час</th>
+                            <th class="text-center" style="width: 80px;">Статус</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in work_data.equipment_rows %}
+                        <tr class="{% if row.fact %}table-success{% endif %}">
+                            <td><strong>{{ row.equipment_type.name }}</strong></td>
+                            <td>{{ row.equipment_number|default:"—" }}</td>
+                            <td class="text-end">{{ row.planned_count|default:"—" }}</td>
+                            <td class="text-end">{{ row.planned_machine_hours|default:"—" }}</td>
+                            <td class="text-end">
+                                <input type="number" name="equipment_count_{{ row.plan.pk }}"
+                                       value="{{ row.actual_count }}"
+                                       class="form-control form-control-sm text-end"
+                                       min="0" step="1" placeholder="{{ row.planned_count }}">
+                            </td>
+                            <td class="text-end">
+                                <input type="number" name="equipment_hours_{{ row.plan.pk }}"
+                                       value="{{ row.machine_hours }}"
+                                       class="form-control form-control-sm text-end"
+                                       min="0" step="0.5" placeholder="{{ row.planned_machine_hours }}">
+                            </td>
+                            <td class="text-end">{{ row.hourly_rate|default:"—" }}</td>
+                            <td class="text-center">
+                                {% if row.fact %}
+                                <span class="badge bg-success"><i class="bi bi-check-circle"></i></span>
+                                {% else %}
+                                <span class="badge bg-warning text-dark"><i class="bi bi-exclamation-circle"></i></span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="alert alert-light text-muted small py-2 mb-4">
+                <i class="bi bi-info-circle"></i> План по технике на сегодня не задан
+            </div>
+            {% endif %}
+
+            <!-- ===== ГСМ (из плана по проекту) ===== -->
+            <h6 class="mb-3"><i class="bi bi-fuel-pump"></i> Расход ГСМ сегодня (из плана по проекту)</h6>
+            {% if work_data.fuel_rows %}
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered mb-4">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Вид ГСМ</th>
+                            <th>Привязка к технике</th>
+                            <th class="text-end">План, л</th>
+                            <th class="text-end">Факт, л *</th>
+                            <th class="text-end">Цена, ₽/л</th>
+                            <th class="text-center" style="width: 80px;">Статус</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in work_data.fuel_rows %}
+                        <tr class="{% if row.fact %}table-success{% endif %}">
+                            <td><strong>{{ row.fuel_type_display }}</strong></td>
+                            <td>{{ row.equipment_ref|default:"—" }}</td>
+                            <td class="text-end">{{ row.planned_liters|default:"—" }}</td>
+                            <td class="text-end">
+                                <input type="number" name="fuel_liters_{{ row.plan.pk }}"
+                                       value="{{ row.actual_liters }}"
+                                       class="form-control form-control-sm text-end"
+                                       min="0" step="0.1" placeholder="{{ row.planned_liters }}">
+                            </td>
+                            <td class="text-end">
+                                <input type="number" name="fuel_price_{{ row.plan.pk }}"
+                                       value="{{ row.fact_price|default:row.price_per_liter }}"
+                                       class="form-control form-control-sm text-end"
+                                       min="0" step="0.01" placeholder="{{ row.price_per_liter }}">
+                            </td>
+                            <td class="text-center">
+                                {% if row.fact %}
+                                <span class="badge bg-success"><i class="bi bi-check-circle"></i></span>
+                                {% else %}
+                                <span class="badge bg-warning text-dark"><i class="bi bi-exclamation-circle"></i></span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="alert alert-light text-muted small py-2 mb-4">
+                <i class="bi bi-info-circle"></i> План по ГСМ на сегодня не задан
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+
+    <!-- Кнопки сохранения -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-success btn-lg">
+                    <i class="bi bi-check-circle"></i> Сохранить факт за сегодня
+                </button>
+                <a href="{% url 'dashboard:index' %}" class="btn btn-secondary btn-lg">
+                    <i class="bi bi-x-circle"></i> Отмена
+                </a>
+            </div>
+        </div>
+    </div>
+</form>
+{% endif %}
+
+<!-- Справка -->
+<div class="card">
+    <div class="card-header">
+        <h6 class="mb-0"><i class="bi bi-info-circle"></i> Справка по заполнению</h6>
+    </div>
+    <div class="card-body">
+        <ul class="mb-0 small">
+            <li><strong>Факт</strong> — фактический объём выполненных работ за день</li>
+            <li><strong>Причина отклонения</strong> — выберите из списка, если факт отличается от плана</li>
+            <li><strong>Комментарий</strong> — дополнительная информация о выполнении работ</li>
+            <li><strong>Люди/Техника/ГСМ</strong> — подтягиваются из планов по проекту. Оставьте поле пустым, если ресурс не использовался</li>
+            <li><strong>Зелёная строка</strong> — факт уже был введён ранее и будет обновлён</li>
+            <li><strong>Жёлтый значок</strong> — факт ещё не введён</li>
+        </ul>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Автозаполнение факта = плану при клике на плановое значение
+    document.querySelectorAll('table tbody tr').forEach(function(row) {
+        var planCells = row.querySelectorAll('td');
+        planCells.forEach(function(cell, idx) {
+            if (cell.querySelector('strong') && !cell.querySelector('input')) {
+                var planValue = cell.textContent.trim();
+                var inputs = row.querySelectorAll('input[type="number"]');
+                if (inputs.length > 0 && planValue && planValue !== '—') {
+                    cell.style.cursor = 'pointer';
+                    cell.title = 'Кликните, чтобы скопировать в факт';
+                    cell.addEventListener('click', function() {
+                        if (inputs[0]) {
+                            inputs[0].value = planValue;
+                            inputs[0].focus();
+                        }
+                    });
+                }
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

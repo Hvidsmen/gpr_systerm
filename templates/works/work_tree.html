@@ -1,0 +1,181 @@
+{% extends 'base.html' %}
+{% load i18n %}
+
+{% block title %}{{ work.name }} — структура{% endblock %}
+
+{% block content %}
+<!-- Page header -->
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h1>
+            <i class="bi bi-diagram-3"></i>
+            {{ work.name }}
+            <small class="text-muted">({{ work.code }})</small>
+        </h1>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{% url 'dashboard:index' %}">Главная</a></li>
+                <li class="breadcrumb-item"><a href="{% url 'works:work_list' %}">Работы</a></li>
+                <li class="breadcrumb-item active">{{ work.name }}</li>
+            </ol>
+        </nav>
+    </div>
+    <div>
+        <a href="{% url 'works:work_item_create' work.pk %}" class="btn btn-primary">
+    <i class="bi bi-plus-circle"></i> Добавить подработу
+</a>
+        <a href="{% url 'works:work_update' work.pk %}" class="btn btn-secondary">
+            <i class="bi bi-pencil"></i> Редактировать
+        </a>
+    </div>
+</div>
+
+<!-- KPI карточки -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="text-muted mb-2">Ед. измерения</h6>
+                <p class="fs-4 mb-0">{{ work.unit }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="text-muted mb-2">Цена за единицу</h6>
+                <p class="fs-4 mb-0">{{ work.unit_price }} ₽</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="text-muted mb-2">Статус</h6>
+                <p class="fs-4 mb-0">
+                    <span class="badge bg-{% if work.status == 'PLANNED' %}primary{% elif work.status == 'IN_PROGRESS' %}warning{% elif work.status == 'DONE' %}success{% else %}secondary{% endif %} fs-6">
+                        {{ work.get_status_display }}
+                    </span>
+                </p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="text-muted mb-2">Готовность</h6>
+                <p class="fs-4 mb-0">{{ work.completion_percentage|default:"0" }}%</p>
+                <div class="progress mt-2" style="height: 8px;">
+                    <div class="progress-bar bg-success" style="width: {{ work.completion_percentage|default:0 }}%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Структура работ -->
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="bi bi-diagram-3"></i> Структура работ ({{ items|length }} подработ)</h5>
+    </div>
+    <div class="card-body p-0">
+        {% if items %}
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+<thead class="table-light">
+    <tr>
+        <th style="width: 50px;">№</th>
+        <th>Название</th>
+        <th style="width: 80px;">Ед.</th>
+        <th style="width: 90px;" class="text-end">Норматив</th>
+        <th style="width: 90px;" class="text-end">Вес, %</th>
+        <th style="width: 110px;" class="text-end">Стоимость</th>
+        <th style="width: 110px;" class="text-end">Готовность</th>
+        <th style="width: 140px;">Профиль</th>
+        <th style="width: 100px;">Действия</th>
+    </tr>
+</thead>
+<tbody>
+  {% for item in items %}
+<tr>
+    <td>{{ item.sequence }}</td>
+    <td>
+        {% if item.parent %}
+        <span class="text-muted ms-3">↳ </span>
+        {% endif %}
+        <strong>{{ item.name }}</strong>
+    </td>
+    <td>{{ item.unit }}</td>
+    <td class="text-end">
+        {% if item.quantity_per_unit %}
+            <strong>{{ item.quantity_per_unit|floatformat:3 }}</strong>
+        {% else %}
+            <span class="text-muted">—</span>
+        {% endif %}
+    </td>
+    <td class="text-end">{{ item.weight }}%</td>
+    <td class="text-end">
+        {% load math_tags %}
+        {{ work.unit_price|multiply:item.weight|divide:100|floatformat:2 }} ₽
+    </td>
+    <td class="text-end">
+        <div class="progress" style="min-width: 70px; height: 18px;">
+            <div class="progress-bar bg-{% if item.completion >= 100 %}success{% elif item.completion >= 50 %}warning{% else %}danger{% endif %}"
+                 style="width: {{ item.completion|default:0 }}%">
+                {{ item.completion|default:0 }}%
+            </div>
+        </div>
+    </td>
+    <td>
+        {% if item.load_profile %}
+        <span class="badge bg-info">{{ item.load_profile.name }}</span>
+        {% else %}
+        <span class="badge bg-warning text-dark">Не задан</span>
+        {% endif %}
+    </td>
+    <td>
+        <div class="btn-group btn-group-sm">
+            <a href="{% url 'works:work_item_update' item.pk %}"
+               class="btn btn-outline-secondary btn-sm" title="Редактировать">
+                <i class="bi bi-pencil"></i>
+            </a>
+            <a href="{% url 'works:work_item_create' work.pk %}?parent={{ item.pk }}"
+               class="btn btn-outline-primary btn-sm" title="Добавить подподработу">
+                <i class="bi bi-plus"></i>
+            </a>
+            <a href="{% url 'works:work_item_delete' item.pk %}"
+               class="btn btn-outline-danger btn-sm" title="Удалить"
+               onclick="return confirm('Удалить подработу «{{ item.name }}»?');">
+                <i class="bi bi-trash"></i>
+            </a>
+        </div>
+    </td>
+</tr>
+{% endfor %}
+</tbody>
+
+                </table>
+            </div>
+        {% else %}
+            <div class="alert alert-warning m-3">
+                <i class="bi bi-exclamation-triangle"></i>
+                У работы нет подработ. Добавьте хотя бы одну, чтобы можно было создать план.
+                <br>
+                <a href="{% url 'works:work_item_create' work.pk %}" class="btn btn-sm btn-primary mt-2">
+                    <i class="bi bi-plus-circle"></i> Добавить подработу
+                </a>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Справка -->
+<div class="alert alert-info mt-4">
+    <h6><i class="bi bi-info-circle"></i> Как считается готовность</h6>
+    <p class="mb-0">
+        Готовность верхнеуровневой работы = сумма (вес подработы × готовность подработы).
+        Например: если "Колонны" (вес 30%) выполнены на 100%, а "Балки" (вес 40%) на 50%,
+        то общий вклад = 30 + 20 = 50%.
+    </p>
+</div>
+{% endblock %}

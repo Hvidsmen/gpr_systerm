@@ -1,0 +1,60 @@
+{% extends 'base.html' %}
+{% load i18n %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="mb-1">
+            <i class="bi bi-folder-check"></i> {{ title }}
+        </h2>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-0">
+                <li class="breadcrumb-item"><a href="{% url 'dashboard:index' %}">Главная</a></li>
+                <li class="breadcrumb-item active">Выбор работы</li>
+            </ol>
+        </nav>
+    </div>
+</div>
+
+{% if works %}
+    <div class="card">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Работа</th>
+                            <th>Раздел</th>
+                            <th>Объект</th>
+                            <th>Ед. изм.</th>
+                            <th>Действие</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for work in works %}
+                            <tr>
+                                <td><strong>{{ work.name }}</strong></td>
+                                <td>{{ work.section.name|default:"—" }}</td>
+                                <td>{{ work.section.construction_object.name|default:"—" }}</td>
+                                <td>{{ work.unit }}</td>
+                                <td>
+                                    <a href="{% url create_url_name work.pk %}" class="btn btn-sm btn-primary">
+                                        <i class="bi bi-plus-circle"></i> Создать план
+                                    </a>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+{% else %}
+    <div class="alert alert-warning">
+        <i class="bi bi-exclamation-triangle"></i>
+        Нет доступных работ. Сначала создайте работу.
+    </div>
+{% endif %}
+{% endblock %}

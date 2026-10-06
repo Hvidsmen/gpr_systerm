@@ -1,0 +1,105 @@
+{% extends 'base.html' %}
+{% load i18n %}
+
+{% block title %}{{ work.name }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="mb-1">
+            <i class="bi bi-hammer"></i> {{ work.name }}
+            <small class="text-muted">({{ work.unit }})</small>
+        </h2>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-0">
+                <li class="breadcrumb-item"><a href="{% url 'dashboard:index' %}">Главная</a></li>
+                <li class="breadcrumb-item"><a href="{% url 'works:work_list' %}">Работы</a></li>
+                <li class="breadcrumb-item active">{{ work.name }}</li>
+            </ol>
+        </nav>
+    </div>
+    <div class="btn-group">
+        <a href="{% url 'works:work_update' work.pk %}" class="btn btn-outline-primary">
+            <i class="bi bi-pencil"></i> Редактировать
+        </a>
+        <a href="{% url 'works:work_delete' work.pk %}" class="btn btn-outline-danger">
+            <i class="bi bi-trash"></i> Удалить
+        </a>
+    </div>
+</div>
+
+<!-- Информация о работе -->
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-4">
+                <h6 class="text-muted">Раздел</h6>
+                <p class="mb-0">{{ work.section.name|default:"—" }}</p>
+            </div>
+            <div class="col-md-4">
+                <h6 class="text-muted">Единица измерения</h6>
+                <p class="mb-0">{{ work.unit }}</p>
+            </div>
+            <div class="col-md-4">
+                <h6 class="text-muted">Цена за единицу</h6>
+                <p class="mb-0">{{ work.unit_price }} ₽</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Подработы -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-list-nested"></i> Подработы</h5>
+        <a href="{% url 'works:work_item_create' work.pk %}" class="btn btn-primary btn-sm">
+            <i class="bi bi-plus-circle"></i> Создать подработу
+        </a>
+    </div>
+    <div class="card-body p-0">
+        {% if work_items %}
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Название</th>
+                            <th>Ед. изм.</th>
+                            <th>Вес, %</th>
+                            <th>Плановый объём</th>
+                            <th>Профиль нагрузки</th>
+                            <th>Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in work_items %}
+                            <tr>
+                                <td><strong>{{ item.name }}</strong></td>
+                                <td>{{ item.unit }}</td>
+                                <td>{{ item.weight }}%</td>
+                                <td>{{ item.planned_quantity|default:"—" }}</td>
+                                <td>{{ item.load_profile.name|default:"—" }}</td>
+                                <td>
+                                    <div class="btn-group btn-group-sm">
+                                        <a href="{% url 'works:work_item_update' item.pk %}" class="btn btn-outline-secondary">
+                                            <i class="bi bi-pencil"></i>
+                                        </a>
+                                        <a href="{% url 'works:work_item_delete' item.pk %}" class="btn btn-outline-danger"
+                                           onclick="return confirm('Удалить подработу?');">
+                                            <i class="bi bi-trash"></i>
+                                        </a>
+                                    </div>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="alert alert-info m-3">
+                <i class="bi bi-info-circle"></i> Подработы не созданы.
+                <a href="{% url 'works:work_item_create' work.pk %}" class="alert-link">Создать первую подработу</a>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

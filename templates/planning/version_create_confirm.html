@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+{% load i18n %}
+
+{% block title %}Создать новую версию{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">
+                    <i class="bi bi-plus-circle"></i>
+                    Создание новой версии плана
+                </h4>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <h6><i class="bi bi-info-circle"></i> Текущее состояние</h6>
+                    <ul class="mb-0">
+                        <li><strong>Работа:</strong> {{ plan.project_work.name }}</li>
+                        <li><strong>Период:</strong> {{ plan.start_date|date:"d.m.Y" }} — {{ plan.end_date|date:"d.m.Y" }}</li>
+                        <li><strong>Последняя версия:</strong> v{{ last_version.version_number }} ({{ last_version.get_status_display }})</li>
+                    </ul>
+                </div>
+
+                <p>Будет создана новая версия <strong>v{{ new_version_number }}</strong> путём копирования версии v{{ last_version.version_number }}.</p>
+
+                <p class="text-muted">После создания вы сможете:</p>
+                <ul>
+                    <li>Изменить даты начала/окончания</li>
+                    <li>Изменить плановый объём</li>
+                    <li>Изменить стратегию распределения (STRETCH/COMPRESS/TRUNCATE/STRICT)</li>
+                    <li>Изменить профили нагрузки для подработ</li>
+                    <li>Перегенерировать дневные планы с новыми параметрами</li>
+                </ul>
+
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="d-flex gap-2 mt-4">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-plus-circle"></i> Создать версию v{{ new_version_number }}
+                        </button>
+                        <a href="{% url 'planning:plan_detail' plan.pk %}" class="btn btn-secondary">
+                            <i class="bi bi-x-circle"></i> Отмена
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

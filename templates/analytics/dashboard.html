@@ -1,0 +1,182 @@
+{% extends 'base.html' %}
+{% load i18n %}
+{% load math_tags %}
+{% block title %}Дашборд руководителя{% endblock %}
+
+{% block content %}
+<h2 class="mb-4"><i class="bi bi-speedometer2"></i> Дашборд руководителя</h2>
+
+<!-- KPI карточки -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card text-white bg-primary">
+            <div class="card-body">
+                <h6 class="card-title">Активные проекты</h6>
+                <p class="card-text display-5">{{ projects_count }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-success">
+            <div class="card-body">
+                <h6 class="card-title">Утверждённые планы</h6>
+                <p class="card-text display-5">{{ approved_plans_count }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-warning">
+            <div class="card-body">
+                <h6 class="card-title">В работе</h6>
+                <p class="card-text display-5">{{ in_progress_count }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-danger">
+            <div class="card-body">
+                <h6 class="card-title">Отстают от плана</h6>
+                <p class="card-text display-5">{{ behind_schedule_count }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- План/Факт за период -->
+<div class="row mb-4">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-graph-up"></i> План / Факт (последние 7 дней)</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>Дата</th>
+                            <th class="text-end">План</th>
+                            <th class="text-end">Факт</th>
+                            <th class="text-end">Выполнение</th>
+                            <th class="text-end">Отклонение</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for day in last_7_days %}
+                            <tr>
+                                <td>{{ day.date|date:"d.m.Y" }}</td>
+                                <td class="text-end">{{ day.plan }}</td>
+                                <td class="text-end">{{ day.fact|default:"—" }}</td>
+                                <td class="text-end">
+                                    {% if day.plan > 0 %}
+                                        {% widthratio day.fact day.plan 100 %}%
+                                    {% else %}
+                                        —
+                                    {% endif %}
+                                </td>
+                                <td class="text-end">
+                                    {% if day.fact %}
+                                        {% with diff=day.fact|subtract:day.plan %}
+                                            <span class="{% if diff >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                                {{ diff }}
+                                            </span>
+                                        {% endwith %}
+                                    {% else %}
+                                        —
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-pie-chart"></i> Статусы работ</h5>
+            </div>
+            <div class="card-body">
+                <ul class="list-group list-group-flush">
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span>Запланировано</span>
+                        <span class="badge bg-primary">{{ status_counts.PLANNED|default:0 }}</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span>В работе</span>
+                        <span class="badge bg-warning">{{ status_counts.IN_PROGRESS|default:0 }}</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span>Выполнено</span>
+                        <span class="badge bg-success">{{ status_counts.DONE|default:0 }}</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span>Отменено</span>
+                        <span class="badge bg-secondary">{{ status_counts.CANCELLED|default:0 }}</span>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Работы с отставанием -->
+<div class="card mb-4">
+    <div class="card-header bg-danger text-white">
+        <h5 class="mb-0"><i class="bi bi-exclamation-triangle"></i> Работы с отставанием от плана</h5>
+    </div>
+    <div class="card-body">
+        {% if behind_schedule_works %}
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>Работа</th>
+                        <th>Проект</th>
+                        <th class="text-end">План</th>
+                        <th class="text-end">Факт</th>
+                        <th class="text-end">Отставание</th>
+                        <th>Статус</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for w in behind_schedule_works %}
+                        <tr>
+                            <td><a href="{% url 'works:work_detail' w.work.pk %}">{{ w.work.name }}</a></td>
+                            <td>{{ w.project_name }}</td>
+                            <td class="text-end">{{ w.plan_total }}</td>
+                            <td class="text-end">{{ w.fact_total }}</td>
+                            <td class="text-end text-danger">{{ w.deviation }}</td>
+                            <td>
+                                <span class="badge bg-warning">{{ w.work.get_status_display }}</span>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <div class="alert alert-success mb-0">
+                <i class="bi bi-check-circle"></i> Все работы выполняются по плану или с опережением.
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Быстрые действия -->
+<div class="row">
+    <div class="col-md-4">
+        <a href="{% url 'production:fact_daily' %}" class="btn btn-primary w-100 btn-lg mb-2">
+            <i class="bi bi-clipboard-check"></i> Ввести факт за сегодня
+        </a>
+    </div>
+    <div class="col-md-4">
+        <a href="{% url 'planning:plan_list' %}" class="btn btn-success w-100 btn-lg mb-2">
+            <i class="bi bi-calendar-check"></i> Планы
+        </a>
+    </div>
+    <div class="col-md-4">
+        <a href="{% url 'works:work_list' %}" class="btn btn-info w-100 btn-lg mb-2">
+            <i class="bi bi-list-task"></i> Работы
+        </a>
+    </div>
+</div>
+{% endblock %}

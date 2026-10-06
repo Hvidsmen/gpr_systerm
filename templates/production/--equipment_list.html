@@ -1,0 +1,81 @@
+{% extends 'base.html' %}
+{% load i18n %}
+
+{% block title %}Факты по технике{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="mb-1">
+            <i class="bi bi-truck"></i> Факты по технике
+        </h2>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-0">
+                <li class="breadcrumb-item"><a href="{% url 'dashboard:index' %}">Главная</a></li>
+                <li class="breadcrumb-item active">Факты по технике</li>
+            </ol>
+        </nav>
+    </div>
+   <div class="btn-group">
+    <a href="{% url 'production:equipment_fact_daily_input' %}" class="btn btn-success">
+        <i class="bi bi-clipboard-data"></i> Быстрый ввод на дату
+    </a>
+    <a href="{% url 'production:equipment_fact_create' %}" class="btn btn-primary">
+        <i class="bi bi-plus-circle"></i> Ввести факт
+    </a>
+</div>
+</div>
+
+{% if equipment_facts %}
+    <div class="card">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Дата</th>
+                            <th>Проект</th>
+                            <th>Работа</th>
+                            <th>Техника</th>
+                            <th>Номер</th>
+                            <th class="text-end">Факт, ед</th>
+                            <th class="text-end">Факт, маш-час</th>
+                            <th class="text-end">Ставка, ₽/маш-час</th>
+                            <th>Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for fact in equipment_facts %}
+                            <tr>
+                                <td><strong>{{ fact.date|date:"d.m.Y" }}</strong></td>
+                                <td>{{ fact.project.name|default:"—" }}</td>
+                                <td>{{ fact.project_work.name|default:"—" }}</td>
+                                <td>{{ plan.equipment_type.name }}</td>
+                                <td>{{ fact.equipment_number|default:"—" }}</td>
+                                <td class="text-end">{{ fact.actual_count|default:"—" }}</td>
+                                <td class="text-end">{{ fact.machine_hours|default:"—" }}</td>
+                                <td class="text-end">{{ fact.hourly_rate|default:"—" }}</td>
+                                <td>
+                                    <div class="btn-group btn-group-sm">
+                                        <a href="{% url 'production:equipment_update' fact.pk %}" class="btn btn-outline-secondary" title="Редактировать">
+                                            <i class="bi bi-pencil"></i>
+                                        </a>
+                                        <a href="{% url 'production:equipment_delete' fact.pk %}" class="btn btn-outline-danger" title="Удалить"
+                                           onclick="return confirm('Удалить факт?');">
+                                            <i class="bi bi-trash"></i>
+                                        </a>
+                                    </div>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+{% else %}
+    <div class="alert alert-info">
+        <i class="bi bi-info-circle"></i> Факты по технике ещё не введены.
+    </div>
+{% endif %}
+{% endblock %}

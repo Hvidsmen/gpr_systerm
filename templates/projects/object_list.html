@@ -1,0 +1,48 @@
+{% extends 'base.html' %}
+{% load i18n %}
+
+{% block title %}Объекты проекта {{ project.name }} - ГПР Система{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="bi bi-building"></i> Объекты проекта {{ project.name }}</h2>
+    <a href="{% url 'projects:object_create' project.pk %}" class="btn btn-primary">
+        <i class="bi bi-plus-circle"></i> Добавить объект
+    </a>
+</div>
+
+{% if construction_objects %}
+    <div class="table-responsive">
+        <table class="table table-hover">
+            <thead class="table-light">
+                <tr>
+                    <th>Код</th>
+                    <th>Название</th>
+                    <th>Родитель</th>
+                    <th>Действия</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for obj in construction_objects %}
+                    <tr>
+                        <td>{{ obj.code }}</td>
+                        <td>{{ obj.name }}</td>
+                        <td>{{ obj.parent|default:"-" }}</td>
+                        <td>
+                            <a href="{% url 'projects:section_list' obj.pk %}" class="btn btn-sm btn-outline-primary">
+                                <i class="bi bi-list"></i> Разделы
+                            </a>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% else %}
+    <div class="alert alert-info">Объекты не найдены.</div>
+{% endif %}
+
+<a href="{% url 'projects:project_detail' project.pk %}" class="btn btn-secondary">
+    <i class="bi bi-arrow-left"></i> Назад к проекту
+</a>
+{% endblock %}

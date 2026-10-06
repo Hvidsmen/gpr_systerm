@@ -1,0 +1,76 @@
+{% extends 'base.html' %}
+{% load i18n %}
+
+{% block title %}Редактировать день {{ object.date|date:"d.m.Y" }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">
+                    <i class="bi bi-calendar-day"></i>
+                    Редактировать день {{ object.date|date:"d.m.Y" }}
+                    <small class="ms-2">({{ object.date|date:"l" }})</small>
+                </h4>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+
+                    <div class="mb-3">
+                        <label class="form-label">Дата</label>
+                        <input type="text" class="form-control" value="{{ object.date|date:'d.m.Y' }}" readonly>
+                    </div>
+
+                    <div class="mb-3 form-check form-switch">
+                        {{ form.is_working }}
+                        <label class="form-check-label" for="{{ form.is_working.id_for_label }}">
+                            {{ form.is_working.label }}
+                        </label>
+                    </div>
+
+                    <div class="mb-3 form-check form-switch">
+                        {{ form.is_holiday }}
+                        <label class="form-check-label" for="{{ form.is_holiday.id_for_label }}">
+                            {{ form.is_holiday.label }}
+                        </label>
+                    </div>
+
+                    <div class="mb-3 form-check form-switch">
+                        {{ form.is_shortened }}
+                        <label class="form-check-label" for="{{ form.is_shortened.id_for_label }}">
+                            {{ form.is_shortened.label }}
+                        </label>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="{{ form.note.id_for_label }}" class="form-label">
+                            {{ form.note.label }}
+                        </label>
+                        {{ form.note }}
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-save"></i> Сохранить
+                        </button>
+                        <a href="{% url 'planning:calendar_detail' calendar.pk %}" class="btn btn-secondary">
+                            <i class="bi bi-x-circle"></i> Отмена
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="alert alert-info mt-3">
+            <h6><i class="bi bi-info-circle"></i> Подсказка</h6>
+            <ul class="mb-0 small">
+                <li><strong>Рабочий день</strong> — день, когда ведутся работы</li>
+                <li><strong>Праздник</strong> — официальный нерабочий день</li>
+                <li><strong>Сокращённый</strong> — предпраздничный день (на 1 час меньше)</li>
+            </ul>
+        </div>
+    </div>
+</div>
+{% endblock %}

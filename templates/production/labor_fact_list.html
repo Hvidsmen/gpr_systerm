@@ -1,0 +1,363 @@
+{% extends 'base.html' %}
+{% load i18n %}
+{% load matrix_tags %}
+
+{% block title %}Факты по людям{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="mb-1">
+            <i class="bi bi-people-fill"></i> Факты по людям
+        </h2>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-0">
+                <li class="breadcrumb-item"><a href="{% url 'dashboard:index' %}">Главная</a></li>
+                <li class="breadcrumb-item active">Факты по людям</li>
+            </ol>
+        </nav>
+    </div>
+    <div class="btn-group">
+    <a href="{% url 'production:labor_fact_daily_input' %}" class="btn btn-success">
+        <i class="bi bi-clipboard-data"></i> Быстрый ввод на дату
+    </a>
+    <a href="{% url 'production:labor_fact_create' %}" class="btn btn-primary">
+        <i class="bi bi-plus-circle"></i> Ввести факт
+    </a>
+</div>
+</div>
+
+<!-- Фильтры -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h6 class="mb-0"><i class="bi bi-funnel"></i> Фильтры</h6>
+    </div>
+    <div class="card-body">
+        <form method="get" id="filterForm">
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label for="project" class="form-label">
+                        <i class="bi bi-folder"></i> Проект
+                    </label>
+                    <select id="project" name="project" class="form-select">
+                        <option value="">— Все проекты —</option>
+                        {% for project in projects %}
+                            <option value="{{ project.pk }}" {% if selected_project == project.pk|stringformat:"d" %}selected{% endif %}>
+                                {{ project.name }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label for="project_work" class="form-label">
+                        <i class="bi bi-list-task"></i> Работа
+                    </label>
+                    <select id="project_work" name="project_work" class="form-select">
+                        <option value="">— Все работы —</option>
+                        {% for work in works %}
+                            <option value="{{ work.pk }}" {% if selected_work == work.pk|stringformat:"d" %}selected{% endif %}>
+                                {{ work.name }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label for="brigade" class="form-label">
+                        <i class="bi bi-people"></i> Бригады
+                    </label>
+                    <select id="brigade" name="brigade" class="form-select" multiple size="4">
+                        {% for brigade in brigades %}
+                            <option value="{{ brigade.pk }}" {% if brigade.pk|stringformat:"d" in selected_brigades %}selected{% endif %}>
+                                {{ brigade.name }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                    <div class="form-text">Зажмите Ctrl для выбора нескольких</div>
+                </div>
+                <div class="col-md-3">
+                    <div class="row">
+                        <div class="col-6">
+                            <label for="date_from" class="form-label">
+                                <i class="bi bi-calendar-event"></i> Дата с
+                            </label>
+                            <input type="date" id="date_from" name="date_from"
+                                   class="form-control" value="{{ date_from }}">
+                        </div>
+                        <div class="col-6">
+                            <label for="date_to" class="form-label">
+                                <i class="bi bi-calendar-event"></i> Дата по
+                            </label>
+                            <input type="date" id="date_to" name="date_to"
+                                   class="form-control" value="{{ date_to }}">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="row mt-3">
+                <div class="col-12">
+                    <button type="submit" class="btn btn-primary me-2">
+                        <i class="bi bi-funnel"></i> Применить фильтры
+                    </button>
+                    <a href="{% url 'production:labor_fact_list' %}" class="btn btn-secondary">
+                        <i class="bi bi-x-circle"></i> Сбросить
+                    </a>
+                    <span class="ms-3 text-muted">
+                        <i class="bi bi-info-circle"></i> Найдено записей: {{ labor_facts|length }}
+                    </span>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if matrix_rows %}
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">
+                <i class="bi bi-table"></i> Матрица фактов по людям
+            </h5>
+            <div class="text-muted small">
+                <i class="bi bi-info-circle"></i> Клик по значению — inline редактирование | Наведение — кнопки действий
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive" style="max-height: 70vh; overflow: auto;">
+                <table class="table table-sm table-bordered mb-0" style="min-width: 1200px;">
+                    <thead class="table-light sticky-top" style="top: 0; z-index: 10;">
+                        <tr>
+                            <th rowspan="2" class="align-middle" style="min-width: 250px;">
+                                Бригада / Работа
+                            </th>
+                            <th colspan="{{ matrix_dates|length }}" class="text-center">
+                                Даты
+                            </th>
+                            <th rowspan="2" class="align-middle text-end" style="min-width: 100px;">
+                                Среднее
+                                <br><small class="text-muted fw-normal">(чел/день)</small>
+                            </th>
+                        </tr>
+                        <tr>
+                            {% for date in matrix_dates %}
+                                <th class="text-center" style="min-width: 90px; font-size: 0.8rem;">
+                                    {{ date|date:"d.m" }}
+                                </th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in matrix_rows %}
+                            <tr>
+                                <td class="sticky-left" style="position: sticky; left: 0; background: white; z-index: 5;">
+                                    <div class="d-flex justify-content-between align-items-start">
+                                        <div>
+                                            <strong>{{ row.brigade.name }}</strong>
+                                            {% if row.project_work %}
+                                                <br><small class="text-muted">{{ row.project_work.name }}</small>
+                                            {% endif %}
+                                        </div>
+                                        <div class="btn-group btn-group-sm">
+                                            <a href="{% url 'production:labor_fact_edit_range' %}?brigade_id={{ row.brigade.pk }}{% if row.project_work %}&project_work_id={{ row.project_work.pk }}{% endif %}&date_from={{ matrix_dates.0|date:'Y-m-d' }}&date_to={{ matrix_dates|last|date:'Y-m-d' }}"
+                                               class="btn btn-outline-primary"
+                                               title="Редактировать все даты">
+                                                <i class="bi bi-pencil-square"></i>
+                                            </a>
+                                            <form method="post" action="{% url 'production:labor_fact_delete_by_brigade' row.brigade.pk %}"
+                                                  style="display: inline;"
+                                                  onsubmit="return confirm('Удалить ВСЕ факты для бригады {{ row.brigade.name }}?');">
+                                                {% csrf_token %}
+                                                {% if row.project_work %}
+                                                    <input type="hidden" name="project_work_id" value="{{ row.project_work.pk }}">
+                                                {% endif %}
+                                                <button type="submit" class="btn btn-outline-danger" title="Удалить все факты бригады">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </td>
+                                {% for date in matrix_dates %}
+                                    <td class="text-center matrix-cell"
+                                        style="position: relative; min-width: 90px; padding: 4px;">
+                                        {% with fact=row.facts_by_date|get_labor_fact:date %}
+                                            {% if fact %}
+                                                <div class="cell-value" data-fact-id="{{ fact.pk }}" style="cursor: pointer; padding: 4px 8px; border-radius: 4px; transition: background 0.2s;">
+                                                    {{ fact.actual_workers|default:"0" }}
+                                                </div>
+                                            {% else %}
+                                                <div class="cell-value text-muted" data-fact-id="" style="cursor: pointer; padding: 4px 8px; border-radius: 4px;">
+                                                    —
+                                                </div>
+                                            {% endif %}
+
+                                            <div class="cell-actions" style="display: none; position: absolute; top: 2px; right: 2px; gap: 2px;">
+                                                <a href="{% url 'production:labor_fact_edit_by_date' date|date:'Y-m-d' %}?brigade_id={{ row.brigade.pk }}{% if row.project_work %}&project_work_id={{ row.project_work.pk }}{% endif %}"
+                                                   class="btn btn-outline-primary btn-sm"
+                                                   style="padding: 1px 4px; font-size: 0.7rem;"
+                                                   title="Редактировать на эту дату">
+                                                    <i class="bi bi-pencil"></i>
+                                                </a>
+                                                <form method="post" action="{% url 'production:labor_fact_delete_by_date' date|date:'Y-m-d' %}"
+                                                      style="display: inline;"
+                                                      onsubmit="event.stopPropagation(); return confirm('Удалить факт на {{ date|date:'d.m.Y' }}?');">
+                                                    {% csrf_token %}
+                                                    <input type="hidden" name="brigade_id" value="{{ row.brigade.pk }}">
+                                                    {% if row.project_work %}
+                                                        <input type="hidden" name="project_work_id" value="{{ row.project_work.pk }}">
+                                                    {% endif %}
+                                                    <button type="submit" class="btn btn-outline-danger btn-sm"
+                                                            style="padding: 1px 4px; font-size: 0.7rem;"
+                                                            title="Удалить на эту дату">
+                                                        <i class="bi bi-trash"></i>
+                                                    </button>
+                                                </form>
+                                            </div>
+                                        {% endwith %}
+                                    </td>
+                                {% endfor %}
+                                <td class="text-end fw-bold" title="Среднее фактических человек в день">
+                                    {% with avg=row.facts_by_date|average_actual_workers %}
+                                        {{ avg|default:"0" }}
+                                    {% endwith %}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+{% else %}
+    <div class="alert alert-info">
+        <i class="bi bi-info-circle"></i> Факты по людям не найдены.
+        <div class="mt-2">
+            <a href="{% url 'production:labor_fact_create' %}" class="btn btn-sm btn-primary">
+                <i class="bi bi-plus-circle"></i> Ввести первый факт
+            </a>
+        </div>
+    </div>
+{% endif %}
+
+<style>
+    .matrix-cell { position: relative; }
+    .matrix-cell:hover { background-color: #e7f1ff !important; }
+    .matrix-cell:hover .cell-actions { display: flex !important; }
+    .cell-value:hover { background-color: #cfe2ff !important; }
+    .cell-value input { width: 60px; padding: 2px 4px; border: 2px solid #0d6efd; border-radius: 4px; text-align: center; }
+    .matrix-cell.saving { opacity: 0.5; }
+    .matrix-cell.saved { background-color: #d1e7dd !important; }
+    .matrix-cell.error { background-color: #f8d7da !important; }
+    .cell-actions { z-index: 20; }
+    .sticky-left { position: sticky; left: 0; background: white; z-index: 5; box-shadow: 2px 0 5px rgba(0,0,0,0.1); }
+    thead th { position: sticky; top: 0; background: #f8f9fa; z-index: 10; }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.cell-value').forEach(function(valueEl) {
+        valueEl.addEventListener('click', function(e) {
+            if (e.target.closest('.cell-actions') || e.target.closest('form') || e.target.closest('a')) {
+                return;
+            }
+
+            var valueSpan = this;
+            var cell = valueSpan.closest('.matrix-cell');
+            var factId = valueSpan.dataset.factId;
+            var currentValue = valueSpan.textContent.trim();
+
+            var input = document.createElement('input');
+            input.type = 'number';
+            input.min = '0';
+            input.step = '1';
+            input.value = currentValue === '—' ? '' : currentValue;
+            input.className = 'form-control form-control-sm';
+            input.style.width = '60px';
+            input.style.textAlign = 'center';
+
+            valueSpan.textContent = '';
+            valueSpan.appendChild(input);
+            input.focus();
+            input.select();
+
+            input.addEventListener('blur', function() {
+                saveValue(cell, valueSpan, factId, input.value, currentValue);
+            });
+
+            input.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    input.blur();
+                }
+            });
+
+            input.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape') {
+                    valueSpan.textContent = currentValue;
+                }
+            });
+        });
+    });
+
+    function saveValue(cell, valueSpan, factId, value, originalValue) {
+        if (value === originalValue || value === '') {
+            valueSpan.textContent = originalValue || '—';
+            return;
+        }
+
+        if (!factId) {
+            valueSpan.textContent = originalValue || '—';
+            alert('Для создания нового факта используйте кнопку "Ввести факт"');
+            return;
+        }
+
+        cell.classList.add('saving');
+
+        fetch('{% url "production:labor_fact_inline_update" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({
+                fact_id: factId,
+                field: 'actual_workers',
+                value: value
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            cell.classList.remove('saving');
+            if (data.success) {
+                valueSpan.textContent = value;
+                cell.classList.add('saved');
+                setTimeout(() => cell.classList.remove('saved'), 1000);
+            } else {
+                valueSpan.textContent = originalValue || '—';
+                cell.classList.add('error');
+                setTimeout(() => cell.classList.remove('error'), 1000);
+            }
+        })
+        .catch(error => {
+            cell.classList.remove('saving');
+            valueSpan.textContent = originalValue || '—';
+            cell.classList.add('error');
+            setTimeout(() => cell.classList.remove('error'), 1000);
+        });
+    }
+
+    function getCookie(name) {
+        var cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            var cookies = document.cookie.split(';');
+            for (var i = 0; i < cookies.length; i++) {
+                var cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+});
+</script>
+{% endblock %}

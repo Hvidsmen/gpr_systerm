@@ -1,0 +1,166 @@
+{% extends 'base.html' %}
+{% load i18n %}
+
+{% block title %}
+{% if work %}Редактировать работу{% else %}Создать работу{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header bg-primary text-white">
+        <h4 class="mb-0">
+            <i class="bi bi-hammer"></i>
+            {% if work %}
+            Редактировать работу "{{ work.name }}"
+            {% else %}
+            Создать новую работу
+            {% endif %}
+        </h4>
+    </div>
+    <div class="card-body">
+        <form method="post">
+            {% csrf_token %}
+
+            {% if form.errors %}
+            <div class="alert alert-danger">
+                <h5><i class="bi bi-exclamation-triangle"></i> Ошибки в форме:</h5>
+                <ul class="mb-0">
+                    {% for field in form %}
+                        {% if field.errors %}
+                        <li><strong>{{ field.label }}:</strong>
+                            <ul>
+                                {% for error in field.errors %}
+                                <li>{{ error }}</li>
+                                {% endfor %}
+                            </ul>
+                        </li>
+                        {% endif %}
+                    {% endfor %}
+                    {% for error in form.non_field_errors %}
+                    <li class="text-danger fw-bold"><i class="bi bi-ban"></i> {{ error }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+
+            <!-- Код и Название -->
+            <div class="row">
+                <div class="col-md-3 mb-3">
+                    <label for="{{ form.code.id_for_label }}" class="form-label">
+                        {{ form.code.label }} <span class="text-danger">*</span>
+                    </label>
+                    {{ form.code }}
+                    {% if form.code.help_text %}
+                    <div class="form-text">{{ form.code.help_text }}</div>
+                    {% endif %}
+                    {% if form.code.errors %}
+                    <div class="text-danger small mt-1">{{ form.code.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-9 mb-3">
+                    <label for="{{ form.name.id_for_label }}" class="form-label">
+                        {{ form.name.label }} <span class="text-danger">*</span>
+                    </label>
+                    {{ form.name }}
+                    {% if form.name.errors %}
+                    <div class="text-danger small mt-1">{{ form.name.errors }}</div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Раздел, Шаблон, Единица, Цена -->
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <label for="{{ form.section.id_for_label }}" class="form-label">
+                        {{ form.section.label }}
+                    </label>
+                    <div class="input-group">
+                        {{ form.section }}
+                        <a href="{% url 'works:section_create' %}" class="btn btn-outline-primary"
+                           title="Создать новый раздел" target="_blank">
+                            <i class="bi bi-plus-lg"></i>
+                        </a>
+                    </div>
+                    {% if form.section.help_text %}
+                    <div class="form-text">{{ form.section.help_text }}</div>
+                    {% endif %}
+                    {% if form.section.errors %}
+                    <div class="text-danger small mt-1">{{ form.section.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label for="{{ form.template.id_for_label }}" class="form-label">
+                        {{ form.template.label }}
+                    </label>
+                    {{ form.template }}
+                    {% if form.template.help_text %}
+                    <div class="form-text">{{ form.template.help_text }}</div>
+                    {% endif %}
+                    {% if form.template.errors %}
+                    <div class="text-danger small mt-1">{{ form.template.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-2 mb-3">
+                    <label for="{{ form.unit.id_for_label }}" class="form-label">
+                        {{ form.unit.label }} <span class="text-danger">*</span>
+                    </label>
+                    {{ form.unit }}
+                    {% if form.unit.errors %}
+                    <div class="text-danger small mt-1">{{ form.unit.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-2 mb-3">
+                    <label for="{{ form.unit_price.id_for_label }}" class="form-label">
+                        {{ form.unit_price.label }}
+                    </label>
+                    {{ form.unit_price }}
+                    {% if form.unit_price.errors %}
+                    <div class="text-danger small mt-1">{{ form.unit_price.errors }}</div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Статус -->
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <label for="{{ form.status.id_for_label }}" class="form-label">
+                        {{ form.status.label }}
+                    </label>
+                    {{ form.status }}
+                    {% if form.status.errors %}
+                    <div class="text-danger small mt-1">{{ form.status.errors }}</div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Кнопки -->
+            <div class="d-flex gap-2 mt-4 pt-3 border-top">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-save"></i> Сохранить
+                </button>
+                <a href="{% url 'works:work_list' %}" class="btn btn-secondary">
+                    <i class="bi bi-x-circle"></i> Отмена
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Справка -->
+<div class="card mt-4">
+    <div class="card-header">
+        <h6 class="mb-0"><i class="bi bi-info-circle"></i> Справка по полям</h6>
+    </div>
+    <div class="card-body">
+        <ul class="mb-0 small">
+            <li><strong>Код</strong> — уникальный код работы в рамках раздела (например: 01.01.01)</li>
+            <li><strong>Название</strong> — полное наименование работы</li>
+            <li><strong>Раздел</strong> — раздел объекта, к которому относится работа</li>
+            <li><strong>Шаблон</strong> — если выбран, подработы будут созданы автоматически из шаблона</li>
+            <li><strong>Единица измерения</strong> — шт, м, м², м³, т и т.д.</li>
+            <li><strong>Цена за единицу</strong> — стоимость одной единицы работы в рублях</li>
+            <li><strong>Статус</strong> — текущий статус работы (Запланировано / В работе / Выполнено / Отменено)</li>
+        </ul>
+    </div>
+</div>
+{% endblock %}

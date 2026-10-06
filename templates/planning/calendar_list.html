@@ -1,0 +1,88 @@
+{% extends 'base.html' %}
+{% load i18n %}
+
+{% block title %}Производственные календари - ГПР Система{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h1><i class="bi bi-calendar"></i> Производственные календари</h1>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{% url 'dashboard:index' %}">Главная</a></li>
+                <li class="breadcrumb-item active">Календари</li>
+            </ol>
+        </nav>
+    </div>
+    <div>
+        <a href="{% url 'planning:calendar_create' %}" class="btn btn-primary">
+            <i class="bi bi-plus-circle"></i> Создать календарь
+        </a>
+    </div>
+</div>
+
+{% if calendars %}
+    <div class="card">
+        <div class="card-body p-0">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Код</th>
+                        <th>Название</th>
+                        <th>Год</th>
+                        <th class="text-end">Всего дней</th>
+                        <th class="text-end">Рабочих</th>
+                        <th>По умолчанию</th>
+                        <th>Действия</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for calendar in calendars %}
+                        <tr>
+                            <td><strong>{{ calendar.code }}</strong></td>
+                            <td>
+                                <a href="{% url 'planning:calendar_detail' calendar.pk %}" class="text-decoration-none">
+                                    <strong>{{ calendar.name }}</strong>
+                                </a>
+                            </td>
+                            <td>{{ calendar.year }}</td>
+                            <td class="text-end">
+                                <span class="badge bg-secondary">{{ calendar.days_count|default:0 }}</span>
+                            </td>
+                            <td class="text-end">
+                                <span class="badge bg-success">{{ calendar.working_days_count|default:0 }}</span>
+                            </td>
+                            <td>
+                                {% if calendar.is_default %}
+                                    <i class="bi bi-check-circle-fill text-success"></i>
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="btn-group btn-group-sm">
+                                    <a href="{% url 'planning:calendar_detail' calendar.pk %}" class="btn btn-outline-primary" title="Открыть">
+                                        <i class="bi bi-eye"></i>
+                                    </a>
+                                    <a href="{% url 'planning:calendar_update' calendar.pk %}" class="btn btn-outline-secondary" title="Редактировать">
+                                        <i class="bi bi-pencil"></i>
+                                    </a>
+                                    <a href="{% url 'planning:calendar_delete' calendar.pk %}" class="btn btn-outline-danger" title="Удалить"
+                                       onclick="return confirm('Удалить календарь «{{ calendar.name }}»?');">
+                                        <i class="bi bi-trash"></i>
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+{% else %}
+    <div class="alert alert-info">
+        <i class="bi bi-info-circle"></i> Календари не найдены.
+        <a href="{% url 'planning:calendar_create' %}" class="alert-link">Создать первый календарь</a>
+    </div>
+{% endif %}
+{% endblock %}

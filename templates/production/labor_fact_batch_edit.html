@@ -1,0 +1,113 @@
+{% extends 'base.html' %}
+{% load i18n %}
+
+{% block title %}Массовое редактирование фактов по людям{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="mb-1">
+            <i class="bi bi-pencil-square"></i> Массовое редактирование фактов по людям
+        </h2>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-0">
+                <li class="breadcrumb-item"><a href="{% url 'dashboard:index' %}">Главная</a></li>
+                <li class="breadcrumb-item"><a href="{% url 'production:labor_fact_list' %}">Факты по людям</a></li>
+                <li class="breadcrumb-item active">Редактирование на {{ target_date|date:"d.m.Y" }}</li>
+            </ol>
+        </nav>
+    </div>
+</div>
+
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">
+                    <i class="bi bi-calendar-date"></i> Редактирование фактов на {{ target_date|date:"d.m.Y" }}
+                    <br><small>Найдено записей: {{ facts|length }}</small>
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if facts %}
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i>
+                        Изменения будут применены ко всем выбранным фактам одновременно.
+                        Оставьте поле пустым, если не хотите менять это значение.
+                    </div>
+
+                    <form method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="brigade_id" value="{{ brigade_id }}">
+                        <input type="hidden" name="project_work_id" value="{{ project_work_id }}">
+
+                        <div class="mb-3">
+                            <label for="actual_workers" class="form-label">
+                                Факт, чел <span class="text-danger">*</span>
+                            </label>
+                            <input type="number" id="actual_workers" name="actual_workers"
+                                   class="form-control" min="0" step="1" required>
+                            <div class="form-text">Новое значение для всех записей</div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="actual_hours" class="form-label">
+                                    Факт, чел-час
+                                </label>
+                                <input type="number" id="actual_hours" name="actual_hours"
+                                       class="form-control" step="0.5">
+                                <div class="form-text">Оставьте пустым, если не менять</div>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="hourly_rate" class="form-label">
+                                    Ставка, ₽/час
+                                </label>
+                                <input type="number" id="hourly_rate" name="hourly_rate"
+                                       class="form-control" step="0.01">
+                                <div class="form-text">Оставьте пустым, если не менять</div>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <h6>Затронутые записи:</h6>
+                            <ul class="list-group">
+                                {% for fact in facts %}
+                                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <strong>{{ fact.brigade.name }}</strong>
+                                            {% if fact.project_work %}
+                                                <br><small class="text-muted">{{ fact.project_work.name }}</small>
+                                            {% endif %}
+                                        </div>
+                                        <span class="badge bg-primary rounded-pill">
+                                            {{ fact.actual_workers }} чел.
+                                        </span>
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+
+                        <div class="d-flex gap-2 mt-4">
+                            <button type="submit" class="btn btn-success btn-lg">
+                                <i class="bi bi-check-circle"></i> Применить изменения
+                            </button>
+                            <a href="{% url 'production:labor_fact_list' %}" class="btn btn-secondary">
+                                <i class="bi bi-x-circle"></i> Отмена
+                            </a>
+                        </div>
+                    </form>
+                {% else %}
+                    <div class="alert alert-warning">
+                        <i class="bi bi-exclamation-triangle"></i>
+                        Факты не найдены для выбранных параметров.
+                    </div>
+                    <a href="{% url 'production:labor_fact_list' %}" class="btn btn-secondary">
+                        <i class="bi bi-arrow-left"></i> Вернуться к списку
+                    </a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

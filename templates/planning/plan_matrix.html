@@ -1,0 +1,231 @@
+{% extends 'base.html' %}
+{% load i18n %}
+{% load plan_tags %}
+{% block title %}Матрица дневных планов{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="mb-1">
+            <i class="bi bi-grid-3x3-gap"></i> Матрица дневных планов
+        </h2>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-0">
+                <li class="breadcrumb-item"><a href="{% url 'dashboard:index' %}">Главная</a></li>
+                <li class="breadcrumb-item active">Матрица планов</li>
+            </ol>
+        </nav>
+    </div>
+</div>
+
+<!-- Фильтры -->
+<div class="card mb-4">
+    <div class="card-header bg-primary text-white">
+        <h6 class="mb-0"><i class="bi bi-funnel"></i> Фильтры</h6>
+    </div>
+    <div class="card-body">
+        <form method="get">
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">Проект</label>
+                    <select name="project" class="form-select">
+                        <option value="">— Все проекты —</option>
+                        {% for project in projects %}
+                        <option value="{{ project.pk }}" {% if selected_project == project.pk|stringformat:"d" %}selected{% endif %}>
+                            {{ project.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Объект</label>
+                    <select name="object" class="form-select">
+                        <option value="">— Все объекты —</option>
+                        {% for object in objects %}
+                        <option value="{{ object.pk }}" {% if selected_object == object.pk|stringformat:"d" %}selected{% endif %}>
+                            {{ object.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Раздел</label>
+                    <select name="section" class="form-select">
+                        <option value="">— Все разделы —</option>
+                        {% for section in sections %}
+                        <option value="{{ section.pk }}" {% if selected_section == section.pk|stringformat:"d" %}selected{% endif %}>
+                            {{ section.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <div class="row">
+                        <div class="col-6">
+                            <label class="form-label">Дата с</label>
+                            <input type="date" name="date_from" class="form-control" value="{{ date_from }}">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">Дата по</label>
+                            <input type="date" name="date_to" class="form-control" value="{{ date_to }}">
+                        </div>
+                    </div>
+                </div>
+                <div class="col-12">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-search"></i> Применить фильтры
+                    </button>
+                    <a href="{% url 'planning:plan_matrix' %}" class="btn btn-secondary">
+                        <i class="bi bi-x-circle"></i> Сбросить
+                    </a>
+                    <span class="ms-3 text-muted">
+                        <i class="bi bi-info-circle"></i> Найдено записей: {{ total_records }}
+                    </span>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if hierarchy %}
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">
+            <i class="bi bi-table"></i> Дневные планы по иерархии
+        </h5>
+        <div class="text-muted small">
+            <i class="bi bi-info-circle"></i> Только утверждённые версии
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive" style="max-height: 75vh; overflow: auto;">
+            <table class="table table-sm table-bordered mb-0" style="min-width: 1400px;">
+                <thead class="table-light sticky-top" style="top: 0; z-index: 10;">
+                    <tr>
+                        <th rowspan="2" class="align-middle sticky-left"
+                            style="position: sticky; left: 0; background: #f8f9fa; z-index: 11; min-width: 400px;">
+                            Иерархия
+                        </th>
+                        <th colspan="{{ dates|length }}" class="text-center">
+                            Даты
+                        </th>
+                        <th rowspan="2" class="align-middle text-end sticky-right"
+                            style="position: sticky; right: 0; background: #f8f9fa; z-index: 11; min-width: 100px;">
+                            Итого
+                        </th>
+                    </tr>
+                    <tr>
+                        {% for date_info in dates %}
+                        <th class="text-center" style="min-width: 80px; font-size: 0.75rem;">
+                            <div class="fw-bold">{{ date_info.date|date:"d.m" }}</div>
+                            <div class="text-muted">{{ date_info.weekday }}</div>
+                        </th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for project in hierarchy %}
+                    <!-- Проект -->
+                    <tr class="table-dark">
+                        <td class="sticky-left" style="position: sticky; left: 0; background: #212529; z-index: 5;">
+                            <strong><i class="bi bi-folder"></i> {{ project.project.name }}</strong>
+                        </td>
+                        {% for date_info in dates %}
+                        <td class="text-center fw-bold">
+                            {{ project.total_by_date|get_value:date_info.iso }}
+                        </td>
+                        {% endfor %}
+                        <td class="text-end fw-bold sticky-right" style="position: sticky; right: 0; background: #212529; z-index: 5;">
+                            {{ project.grand_total|floatformat:1 }}
+                        </td>
+                    </tr>
+
+                    {% for object in project.objects %}
+                    <!-- Объект -->
+                    <tr class="table-secondary">
+                        <td class="sticky-left ps-4" style="position: sticky; left: 0; background: #e9ecef; z-index: 5;">
+                            <strong><i class="bi bi-building"></i> {{ object.object.name }}</strong>
+                        </td>
+                        {% for date_info in dates %}
+                        <td class="text-center">
+                            {{ object.total_by_date|get_value:date_info.iso }}
+                        </td>
+                        {% endfor %}
+                        <td class="text-end fw-bold sticky-right" style="position: sticky; right: 0; background: #e9ecef; z-index: 5;">
+                            {{ object.grand_total|floatformat:1 }}
+                        </td>
+                    </tr>
+
+                    {% for section in object.sections %}
+                    <!-- Раздел -->
+                    <tr class="table-info">
+                        <td class="sticky-left ps-5" style="position: sticky; left: 0; background: #cff4fc; z-index: 5;">
+                            <strong><i class="bi bi-diagram-3"></i> {{ section.section.name }}</strong>
+                        </td>
+                        {% for date_info in dates %}
+                        <td class="text-center">
+                            {{ section.total_by_date|get_value:date_info.iso }}
+                        </td>
+                        {% endfor %}
+                        <td class="text-end fw-bold sticky-right" style="position: sticky; right: 0; background: #cff4fc; z-index: 5;">
+                            {{ section.grand_total|floatformat:1 }}
+                        </td>
+                    </tr>
+
+                    {% for work in section.works %}
+                    <!-- Работа -->
+                    <tr class="table-warning">
+                        <td class="sticky-left ps-6" style="position: sticky; left: 0; background: #fff3cd; z-index: 5;">
+                            <strong><i class="bi bi-hammer"></i> {{ work.work.name }}</strong>
+                            <small class="text-muted">({{ work.work.unit }})</small>
+                        </td>
+                        {% for date_info in dates %}
+                        <td class="text-center">
+                            {{ work.total_by_date|get_value:date_info.iso }}
+                        </td>
+                        {% endfor %}
+                        <td class="text-end fw-bold sticky-right" style="position: sticky; right: 0; background: #fff3cd; z-index: 5;">
+                            {{ work.grand_total|floatformat:1 }}
+                        </td>
+                    </tr>
+
+                    {% for item in work.items %}
+                    <!-- Подработа -->
+                    <tr>
+                        <td class="sticky-left ps-5" style="position: sticky; left: 0; background: white; z-index: 5;">
+                            {{ item.item.name }}
+                        </td>
+                        {% for date_info in dates %}
+                        <td class="text-center" style="font-size: 0.85rem;">
+                            {% with plan=item.plans_by_date|get_plan:date_info.iso %}
+                            {% if plan %}
+                            {{ plan.planned_quantity|floatformat:1 }}
+                            {% else %}
+                            <span class="text-muted">—</span>
+                            {% endif %}
+                            {% endwith %}
+                        </td>
+                        {% endfor %}
+                        <td class="text-end fw-bold sticky-right" style="position: sticky; right: 0; background: white; z-index: 5;">
+                            {{ item.grand_total|floatformat:1 }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% endfor %}
+                    {% endfor %}
+                    {% endfor %}
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="alert alert-info">
+    <i class="bi bi-info-circle"></i> Дневные планы не найдены.
+    {% if not date_from and not date_to %}
+    <br>Попробуйте указать диапазон дат.
+    {% endif %}
+</div>
+{% endif %}
+{% endblock %}
