@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1>Загрузка бригад из Excel</h1>
+<div class="card mb-3"><div class="card-body">
+<p>Загрузите файл .xlsx до 5 МБ и 5000 строк. Первая строка — заголовки: <strong>Название, Группа, Макрогруппа, Описание, Активна</strong>.</p>
+<p>Обязательно только название. Коды присваиваются автоматически. Новые группы и макрогруппы создаются в справочниках. Активность по умолчанию — «Да». Для отключения укажите «Нет».</p>
+<p>Существующие названия и повторы пропускаются без изменения данных. Если есть ошибки, весь импорт отменяется.</p>
+<a class="btn btn-outline-primary mb-3" href="{% url 'resources:brigade_import_template' %}">Скачать шаблон Excel</a>
+<form method="post" enctype="multipart/form-data">{% csrf_token %}{{ form.as_p }}<button class="btn btn-primary">Загрузить бригады</button></form>
+</div></div>
+{% if result %}<div class="alert alert-success" role="status">Добавлено бригад: {{ result.created }}. Пропущено повторов: {{ result.skipped }}. Создано групп: {{ result.groups }}. Макрогрупп: {{ result.macros }}.</div>{% endif %}
+{% if errors %}<div class="alert alert-danger" role="alert"><strong>Импорт отменён. Ошибок: {{ error_count }}.</strong><ul>{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul><p>Исправьте файл и загрузите его снова. Показаны первые 100 ошибок.</p></div>{% endif %}
+<a class="btn btn-secondary" href="{% url 'resources:brigade_list' %}">Назад к бригадам</a>
+{% endblock %}

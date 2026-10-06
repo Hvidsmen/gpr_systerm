@@ -29,3 +29,9 @@ urlpatterns += [
     path('brigade-macro-groups/', BrigadeCatalogList.as_view(kind='macro'), name='brigade_macro_group_list'),
     path('brigade-macro-groups/create/', quick_create('macro'), name='brigade_macro_group_create'),
 ]
+
+from .brigade_import import BrigadeImport, brigade_import_template
+urlpatterns += [
+    path('brigades/import/', BrigadeImport.as_view(), name='brigade_import'),
+    path('brigades/import/template/', brigade_import_template, name='brigade_import_template'),
+]
