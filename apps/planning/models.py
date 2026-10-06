@@ -363,6 +363,11 @@ class GlobalPlanVersion(BaseCompanyModel):
         verbose_name_plural = "Глобальные версии объектов"
 
     @property
+    def can_delete(self):
+        from .deletion import version_reason
+        return not version_reason(self)
+
+    @property
     def is_immutable(self):
         return self.status in [PlanStatus.APPROVED, PlanStatus.COMPLETED]
 
@@ -479,6 +484,11 @@ class PlanningWorkspace(BaseCompanyModel):
         ordering = ["-created_at"]
         verbose_name = "Рабочее пространство планирования"
         verbose_name_plural = "Рабочие пространства планирования"
+
+    @property
+    def can_delete(self):
+        from .deletion import workspace_reason
+        return not workspace_reason(self)
 
     def clean(self):
         from django.core.exceptions import ValidationError

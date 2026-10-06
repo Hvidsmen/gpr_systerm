@@ -1,0 +1,9 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1>Удаление {% if workspace_mode %}плана на период{% else %}глобальной версии{% endif %}</h1>
+<p>{% if workspace_mode %}{{ record.name }} · {{ record.construction_object }}{% else %}{{ record }}{% endif %}</p>
+{% if workspace_mode %}<p>Будут удалены все черновые версии этого плана и их плановые распределения.</p>{% else %}<p>Будет удалена выбранная версия и её плановые распределения.</p>{% endif %}
+<p>Работы, строительный объект, исходные месячные планы и фактические данные сохранятся.</p>
+{% if reason %}<div class="alert alert-warning">{{ reason }}</div>{% endif %}
+<form method="post">{% csrf_token %}{% if can_delete %}<button class="btn btn-danger" type="submit">Подтвердить удаление</button>{% endif %} <a class="btn btn-outline-secondary" href="{% url back_route %}">Отмена</a></form>
+{% endblock %}

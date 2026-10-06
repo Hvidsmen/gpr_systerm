@@ -70,3 +70,9 @@ urlpatterns += [
 ]
 from .workspace_views import WorkspaceExport
 urlpatterns += [path('workspace-versions/<int:pk>/export/',WorkspaceExport.as_view(),name='workspace_export')]
+
+from .deletion import WorkspaceDelete, GlobalDelete
+urlpatterns = [
+    path('workspace/<int:pk>/delete/', WorkspaceDelete.as_view(), name='workspace_delete'),
+    path('global/<int:pk>/delete/', GlobalDelete.as_view(), name='global_delete'),
+] + urlpatterns
