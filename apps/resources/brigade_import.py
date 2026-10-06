@@ -10,7 +10,7 @@ from openpyxl import Workbook, load_workbook
 from core.permissions import require_roles, PLAN_ROLES
 from .models import Brigade, BrigadeGroup, BrigadeMacroGroup
 
-HEADERS = ['Название', 'Группа', 'Макрогруппа', 'Описание', 'Активна']
+HEADERS = ['Название', 'Группа', 'Макрогруппа', 'Описание', 'Активна', 'Единица измерения']
 MAX_ROWS = 5000
 
 
@@ -65,8 +65,9 @@ def read_rows(file):
                 if cell is not None and cell.data_type in ('f', 'e'):
                     errors.append(f'Строка {number}, «{title}»: замените формулу или ошибку Excel обычным значением.')
                 values.append(text_value(cell.value) if cell is not None else '')
-            name, group, macro, description, active = values
-            for title, value, limit in [('Название',name,150), ('Группа',group,150), ('Макрогруппа',macro,150)]:
+            name, group, macro, description, active, unit = values
+            unit = unit or 'чел.'
+            for title, value, limit in [('Название',name,150), ('Группа',group,150), ('Макрогруппа',macro,150), ('Единица измерения',unit,50)]:
                 if len(value) > limit:
                     errors.append(f'Строка {number}: «{title}» — не более {limit} символов.')
             if not name:
@@ -74,7 +75,7 @@ def read_rows(file):
             token = active.casefold()
             if token not in ('','да','нет','1','0','true','false','yes','no','активна','неактивна'):
                 errors.append(f'Строка {number}: «Активна» должна быть «Да» или «Нет».')
-            rows.append((name, group, macro, description, token not in ('нет','0','false','no','неактивна')))
+            rows.append((name, group, macro, description, unit, token not in ('нет','0','false','no','неактивна')))
         if not rows and not errors:
             errors.append('В файле нет данных для загрузки.')
         return rows, errors
@@ -92,7 +93,7 @@ def import_rows(company, rows):
     groups = {row.name.strip().casefold(): row for row in BrigadeGroup.objects.filter(company=company)}
     macros = {row.name.strip().casefold(): row for row in BrigadeMacroGroup.objects.filter(company=company)}
     result = {'created':0, 'skipped':0, 'groups':0, 'macros':0}
-    for name, group_name, macro_name, description, active in rows:
+    for name, group_name, macro_name, description, unit, active in rows:
         if name.casefold() in existing:
             result['skipped'] += 1
             continue
@@ -104,7 +105,7 @@ def import_rows(company, rows):
                 catalog[label.casefold()] = row
                 result[key] += 1
             selected.append(row)
-        Brigade.objects.create(company=company, name=name, group=selected[0], macro_group=selected[1], description=description, is_active=active)
+        Brigade.objects.create(company=company, name=name, group=selected[0], macro_group=selected[1], description=description, unit=unit, is_active=active)
         existing.add(name.casefold())
         result['created'] += 1
     return result
@@ -133,14 +134,14 @@ def brigade_import_template(request):
     sheet.title = 'Бригады'
     sheet.append(HEADERS)
     sheet.freeze_panes = 'A2'
-    for column, width in [('A',40),('B',30),('C',30),('D',60),('E',16)]:
+    for column, width in [('A',40),('B',30),('C',30),('D',60),('E',16),('F',24)]:
         sheet.column_dimensions[column].width = width
     guide = workbook.create_sheet('Инструкция')
     for line in [
         'Заполните первый лист. Заголовки первой строки не изменяйте.',
         'Название обязательно. Группа, макрогруппа и описание необязательны.',
         'Новые группы и макрогруппы создаются автоматически в вашей компании.',
-        'Код присваивается автоматически. Активна: Да или Нет, по умолчанию Да.',
+        'Единица измерения по умолчанию: чел. Код присваивается автоматически. Активна: Да или Нет, по умолчанию Да.',
         'Существующие названия и повторы в файле пропускаются без обновления.',
         'При ошибке в любой строке весь импорт отменяется. Не более 5000 строк.',
     ]:

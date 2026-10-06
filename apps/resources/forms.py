@@ -19,16 +19,21 @@ class EmployeeForm(forms.ModelForm):
 class BrigadeForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields['unit'].required = False
         for name in ('group', 'macro_group'):
             self.fields[name].queryset = self.fields[name].queryset.filter(company_id=self.instance.company_id)
             self.fields[name].widget.attrs['class'] = 'form-select'
             self.fields[name].empty_label = 'Не выбрана'
 
+    def clean_unit(self):
+        return self.cleaned_data.get('unit') or 'чел.'
+
     class Meta:
         model = Brigade
-        fields = ['name', 'group', 'macro_group', 'description', 'is_active']
+        fields = ['name', 'group', 'macro_group', 'unit', 'description', 'is_active']
         widgets = {
             'code': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'БР-001'}),
+            'unit': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'чел.'}),
             'name': forms.TextInput(attrs={'class': 'form-control'}),
 
             'description': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),

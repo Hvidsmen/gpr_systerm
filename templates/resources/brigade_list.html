@@ -33,7 +33,7 @@
                     <tr>
                         <th style="width: 100px;">Код</th>
                         <th>Название</th><th>Группа</th><th>Макрогруппа</th>
-                        <th>Описание</th>
+                        <th>Ед. изм.</th><th>Описание</th>
                         <th style="width: 100px;">Статус</th>
                         <th style="width: 150px;">Действия</th>
                     </tr>
@@ -51,6 +51,7 @@
                             {% endif %}
                         </td>
                         <td>{{ brigade.group|default:"—" }}</td><td>{{ brigade.macro_group|default:"—" }}</td>
+                        <td>{{ brigade.unit }}</td>
                         <td>
                             {{ brigade.description|default:"—" }}
                         </td>

@@ -75,6 +75,7 @@ class Brigade(BaseCompanyModel):
     )
     name = models.CharField(_('название бригады'), max_length=150)
 
+    unit = models.CharField(_('единица измерения'), max_length=50, default='чел.')
     group = models.ForeignKey(BrigadeGroup, on_delete=models.SET_NULL, null=True, blank=True, related_name='brigades', verbose_name=_('группа'))
     macro_group = models.ForeignKey(BrigadeMacroGroup, on_delete=models.SET_NULL, null=True, blank=True, related_name='brigades', verbose_name=_('макрогруппа'))
 

@@ -38,6 +38,7 @@ class BrigadeImportTests(TestCase):
         first = Brigade.objects.get(company=self.company,name='Бригада А')
         second = Brigade.objects.get(company=self.company,name='Бригада Б')
         self.assertEqual(first.code,'BR-000001')
+        self.assertEqual(first.unit, 'чел.')
         self.assertTrue(first.is_active)
         self.assertFalse(second.is_active)
         self.assertEqual(first.description,'Описание')
