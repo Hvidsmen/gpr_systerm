@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load access %}
 {% load i18n %}
 
 {% block title %}Удалить работу — ГПР Система{% endblock %}
@@ -54,9 +55,9 @@
                         <button type="submit" class="btn btn-danger">
                             <i class="bi bi-trash"></i> Да, удалить
                         </button>
-                        <a href="{% url 'works:work_list' %}" class="btn btn-secondary">
+                        {% if request.user|may:'works:work_list' %}<a href="{% url 'works:work_list' %}" class="btn btn-secondary">
                             <i class="bi bi-x-circle"></i> Отмена
-                        </a>
+                        </a>{% endif %}
                     </div>
                 </form>
             </div>

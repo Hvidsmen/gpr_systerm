@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load access %}
 {% load i18n %}
 {% load profile_tags %}
 {% block title %}Профили нагрузки - ГПР Система{% endblock %}
@@ -10,15 +11,15 @@
         <h1><i class="bi bi-graph-up"></i> Профили нагрузки</h1>
         <nav aria-label="breadcrumb">
             <ol class="breadcrumb">
-                <li class="breadcrumb-item"><a href="{% url 'dashboard:index' %}">Главная</a></li>
+                <li class="breadcrumb-item">{% if request.user|may:'dashboard:index' %}<a href="{% url 'dashboard:index' %}">Главная</a>{% endif %}</li>
                 <li class="breadcrumb-item active">Профили нагрузки</li>
             </ol>
         </nav>
     </div>
     <div>
-        <a href="{% url 'planning:profile_create' %}" class="btn btn-primary">
+        {% if request.user|may:'planning:profile_create' %}<a href="{% url 'planning:profile_create' %}" class="btn btn-primary">
             <i class="bi bi-plus-circle"></i> Создать профиль
-        </a>
+        </a>{% endif %}
     </div>
 </div>
 
@@ -42,9 +43,9 @@
                             <tr>
                                 <td><strong>{{ profile.code }}</strong></td>
                                 <td>
-                                    <a href="{% url 'planning:profile_detail' profile.pk %}" class="text-decoration-none">
+                                    {% if request.user|may:'planning:profile_detail' %}<a href="{% url 'planning:profile_detail' profile.pk %}" class="text-decoration-none">
                                         <strong>{{ profile.name }}</strong>
-                                    </a>
+                                    </a>{% endif %}
                                 </td>
                                 <td>{{ profile.description|default:"—" }}</td>
                                 <td class="text-end">
@@ -59,16 +60,16 @@
                                 </td>
                                 <td>
                                     <div class="btn-group btn-group-sm">
-                                        <a href="{% url 'planning:profile_detail' profile.pk %}" class="btn btn-outline-primary" title="Открыть">
+                                        {% if request.user|may:'planning:profile_detail' %}<a href="{% url 'planning:profile_detail' profile.pk %}" class="btn btn-outline-primary" title="Открыть">
                                             <i class="bi bi-eye"></i>
-                                        </a>
-                                        <a href="{% url 'planning:profile_update' profile.pk %}" class="btn btn-outline-secondary" title="Редактировать">
+                                        </a>{% endif %}
+                                        {% if request.user|may:'planning:profile_update' %}<a href="{% url 'planning:profile_update' profile.pk %}" class="btn btn-outline-secondary" title="Редактировать">
                                             <i class="bi bi-pencil"></i>
-                                        </a>
-                                        <a href="{% url 'planning:profile_delete' profile.pk %}" class="btn btn-outline-danger" title="Удалить"
+                                        </a>{% endif %}
+                                        {% if request.user|may:'planning:profile_delete' %}<a href="{% url 'planning:profile_delete' profile.pk %}" class="btn btn-outline-danger" title="Удалить"
                                            onclick="return confirm('Удалить профиль «{{ profile.name }}»?');">
                                             <i class="bi bi-trash"></i>
-                                        </a>
+                                        </a>{% endif %}
                                     </div>
                                 </td>
                             </tr>
@@ -81,7 +82,7 @@
 {% else %}
     <div class="alert alert-info">
         <i class="bi bi-info-circle"></i> Профили нагрузки не найдены.
-        <a href="{% url 'planning:profile_create' %}" class="alert-link">Создать первый профиль</a>
+        {% if request.user|may:'planning:profile_create' %}<a href="{% url 'planning:profile_create' %}" class="alert-link">Создать первый профиль</a>{% endif %}
     </div>
 {% endif %}
 {% endblock %}

@@ -2,6 +2,7 @@
 Views для дневных фактов (объёмов работ).
 """
 from django.contrib import messages
+from core.permissions import scope_queryset
 from django.views.generic import ListView, CreateView, UpdateView, DeleteView
 from django.urls import reverse_lazy
 
@@ -18,9 +19,7 @@ class FactListView(CompanyScopedMixin, ListView):
     paginate_by = 20
 
     def get_queryset(self):
-        return DailyFact.objects.filter(
-            company=self.request.user.company
-        ).select_related(
+        return scope_queryset(DailyFact.objects.all(), self.request.user).select_related(
             'project_work', 'work_item', 'reported_by', 'deviation_reason'
         ).order_by('-date', 'project_work__name')
 

@@ -1,5 +1,6 @@
 from django import forms
 from django.core.exceptions import ValidationError
+from core.permissions import scope_queryset
 
 from apps.projects.models import ConstructionObject, Project, Section
 from apps.works.models import ProjectWork, ProjectWorkItem
@@ -28,11 +29,12 @@ class CompanyFormMixin:
                 if field.queryset is not None and any(
                     f.name == "company" for f in field.queryset.model._meta.fields
                 ):
-                    field.queryset = (
-                        field.queryset.filter(company=self.company)
-                        if self.company
-                        else field.queryset.none()
-                    )
+                    if not self.company:
+                        field.queryset = field.queryset.none()
+                    elif user:
+                        field.queryset = scope_queryset(field.queryset, user)
+                    else:
+                        field.queryset = field.queryset.filter(company=self.company)
 
 
 class DailyFactForm(CompanyFormMixin, forms.ModelForm):

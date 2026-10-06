@@ -12,7 +12,9 @@ class CompanyScopedMixin:
         return user.company
 
     def get_queryset(self):
-        return super().get_queryset().filter(company=self.get_company())
+        self.get_company()
+        from .permissions import scope_queryset
+        return scope_queryset(super().get_queryset(), self.request.user)
 
     def get_form(self, form_class=None):
         form = super().get_form(form_class)
@@ -23,7 +25,8 @@ class CompanyScopedMixin:
             if isinstance(field, (forms.ModelChoiceField, forms.ModelMultipleChoiceField)):
                 model = field.queryset.model
                 if any(f.name == 'company' for f in model._meta.fields):
-                    field.queryset = field.queryset.filter(company=company)
+                    from .permissions import scope_queryset
+                    field.queryset = scope_queryset(field.queryset, self.request.user)
         return form
 
 

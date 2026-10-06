@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load access %}
 {% load i18n %}
 
 {% block title %}Бригады - ГПР Система{% endblock %}
@@ -11,14 +12,14 @@
         </h2>
         <nav aria-label="breadcrumb">
             <ol class="breadcrumb mb-0">
-                <li class="breadcrumb-item"><a href="{% url 'dashboard:index' %}">Главная</a></li>
+                <li class="breadcrumb-item">{% if request.user|may:'dashboard:index' %}<a href="{% url 'dashboard:index' %}">Главная</a>{% endif %}</li>
                 <li class="breadcrumb-item active">Бригады</li>
             </ol>
         </nav>
     </div>
-    <a href="{% url 'resources:brigade_create' %}" class="btn btn-primary">
+    {% if request.user|may:'resources:brigade_create' %}<a href="{% url 'resources:brigade_create' %}" class="btn btn-primary">
         <i class="bi bi-plus-circle"></i> Создать бригаду
-    </a>
+    </a>{% endif %}
 </div>
 
 {% if brigades %}
@@ -59,17 +60,17 @@
                         </td>
                         <td>
                             <div class="btn-group btn-group-sm">
-                                <a href="{% url 'resources:brigade_update' brigade.pk %}"
+                                {% if request.user|may:'resources:brigade_update' %}<a href="{% url 'resources:brigade_update' brigade.pk %}"
                                    class="btn btn-outline-secondary"
                                    title="Редактировать">
                                     <i class="bi bi-pencil"></i>
-                                </a>
-                                <a href="{% url 'resources:brigade_delete' brigade.pk %}"
+                                </a>{% endif %}
+                                {% if request.user|may:'resources:brigade_delete' %}<a href="{% url 'resources:brigade_delete' brigade.pk %}"
                                    class="btn btn-outline-danger"
                                    title="Удалить"
                                    onclick="return confirm('Удалить бригаду «{{ brigade.name }}»? Это действие нельзя отменить.');">
                                     <i class="bi bi-trash"></i>
-                                </a>
+                                </a>{% endif %}
                             </div>
                         </td>
                     </tr>
@@ -105,7 +106,7 @@
 {% else %}
 <div class="alert alert-info">
     <i class="bi bi-info-circle"></i> Бригады не найдены.
-    <a href="{% url 'resources:brigade_create' %}" class="alert-link">Создать первую бригаду</a>
+    {% if request.user|may:'resources:brigade_create' %}<a href="{% url 'resources:brigade_create' %}" class="alert-link">Создать первую бригаду</a>{% endif %}
 </div>
 {% endif %}
 {% endblock %}

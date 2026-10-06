@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load access %}
 {% load i18n %}
 
 {% block title %}{{ work.name }} — структура{% endblock %}
@@ -14,19 +15,19 @@
         </h1>
         <nav aria-label="breadcrumb">
             <ol class="breadcrumb">
-                <li class="breadcrumb-item"><a href="{% url 'dashboard:index' %}">Главная</a></li>
-                <li class="breadcrumb-item"><a href="{% url 'works:work_list' %}">Работы</a></li>
+                <li class="breadcrumb-item">{% if request.user|may:'dashboard:index' %}<a href="{% url 'dashboard:index' %}">Главная</a>{% endif %}</li>
+                <li class="breadcrumb-item">{% if request.user|may:'works:work_list' %}<a href="{% url 'works:work_list' %}">Работы</a>{% endif %}</li>
                 <li class="breadcrumb-item active">{{ work.name }}</li>
             </ol>
         </nav>
     </div>
     <div>
-        {% if work.kind == "COMPOSITE" %}<a href="{% url 'works:work_item_create' work.pk %}" class="btn btn-primary">
+        {% if work.kind == "COMPOSITE" %}{% if request.user|may:'works:work_item_create' %}<a href="{% url 'works:work_item_create' work.pk %}" class="btn btn-primary">
     <i class="bi bi-plus-circle"></i> Добавить подработу
-</a>{% endif %}
-        <a href="{% url 'works:work_update' work.pk %}" class="btn btn-secondary">
+</a>{% endif %}{% endif %}
+        {% if request.user|may:'works:work_update' %}<a href="{% url 'works:work_update' work.pk %}" class="btn btn-secondary">
             <i class="bi bi-pencil"></i> Редактировать
-        </a>
+        </a>{% endif %}
     </div>
 </div>
 
@@ -135,19 +136,19 @@
     </td>
     <td>
         <div class="btn-group btn-group-sm">
-            <a href="{% url 'works:work_item_update' item.pk %}"
+            {% if request.user|may:'works:work_item_update' %}<a href="{% url 'works:work_item_update' item.pk %}"
                class="btn btn-outline-secondary btn-sm" title="Редактировать">
                 <i class="bi bi-pencil"></i>
-            </a>
+            </a>{% endif %}
             <a href="{% url 'works:work_item_create' work.pk %}?parent={{ item.pk }}"
                class="btn btn-outline-primary btn-sm" title="Добавить подподработу">
                 <i class="bi bi-plus"></i>
             </a>
-            <a href="{% url 'works:work_item_delete' item.pk %}"
+            {% if request.user|may:'works:work_item_delete' %}<a href="{% url 'works:work_item_delete' item.pk %}"
                class="btn btn-outline-danger btn-sm" title="Удалить"
                onclick="return confirm('Удалить подработу «{{ item.name }}»?');">
                 <i class="bi bi-trash"></i>
-            </a>
+            </a>{% endif %}
         </div>
     </td>
 </tr>
@@ -161,9 +162,9 @@
                 <i class="bi bi-exclamation-triangle"></i>
                 {% if work.kind == "COMPOSITE" %}У работы нет подработ. Добавьте хотя бы одну, чтобы можно было создать план.
                 <br>
-                <a href="{% url 'works:work_item_create' work.pk %}" class="btn btn-sm btn-primary mt-2">
+                {% if request.user|may:'works:work_item_create' %}<a href="{% url 'works:work_item_create' work.pk %}" class="btn btn-sm btn-primary mt-2">
                     <i class="bi bi-plus-circle"></i> Добавить подработу
-                </a>{% else %}Простая работа: план и факт вводятся непосредственно по работе.{% endif %}
+                </a>{% endif %}{% else %}Простая работа: план и факт вводятся непосредственно по работе.{% endif %}
             </div>
         {% endif %}
     </div>

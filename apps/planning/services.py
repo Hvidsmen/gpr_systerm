@@ -1,3 +1,4 @@
+from core.permissions import require_roles, PLAN_ROLES, APPROVAL_ROLES
 """
 Сервисы для планирования.
 Вся бизнес-логика здесь, а не в моделях или views.
@@ -464,6 +465,7 @@ class PlanWorkflowService:
     @transaction.atomic
     def submit(version, user):
         """Отправить версию на согласование."""
+        require_roles(user, PLAN_ROLES)
         if version.status == PlanStatus.REJECTED:
             PlanWorkflowService._transition(version, PlanStatus.DRAFT, user)
         PlanWorkflowService._transition(version, PlanStatus.SUBMITTED, user)
@@ -558,6 +560,7 @@ class PlanRevisionService:
         """
         Создать новую версию на основе предыдущей.
         """
+        require_roles(user, PLAN_ROLES)
         if not previous_version.is_immutable:
             raise PlanImmutableError(
                 "Ревизию можно создавать только от утверждённой версии"

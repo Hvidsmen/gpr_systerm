@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load access %}
 {% load i18n %}
 
 {% block title %}Месячные планы - ГПР Система{% endblock %}
@@ -14,15 +15,15 @@
         </h1>
         <nav aria-label="breadcrumb">
             <ol class="breadcrumb mb-0">
-                <li class="breadcrumb-item"><a href="{% url 'dashboard:index' %}">Главная</a></li>
+                <li class="breadcrumb-item">{% if request.user|may:'dashboard:index' %}<a href="{% url 'dashboard:index' %}">Главная</a>{% endif %}</li>
                 <li class="breadcrumb-item active">Месячные планы</li>
             </ol>
         </nav>
     </div>
     <div>
-        <a href="{% url 'planning:plan_create' %}" class="btn btn-primary">
+        {% if request.user|may:'planning:plan_create' %}<a href="{% url 'planning:plan_create' %}" class="btn btn-primary">
             <i class="bi bi-plus-circle"></i> Создать план
-        </a>
+        </a>{% endif %}
     </div>
 </div>
 
@@ -31,9 +32,9 @@
     <div class="card-header d-flex justify-content-between align-items-center">
         <h6 class="mb-0"><i class="bi bi-funnel"></i> Фильтры</h6>
         {% if filters_count %}
-        <a href="{% url 'planning:plan_list' %}" class="btn btn-sm btn-outline-secondary">
+        {% if request.user|may:'planning:plan_list' %}<a href="{% url 'planning:plan_list' %}" class="btn btn-sm btn-outline-secondary">
             <i class="bi bi-x-circle"></i> Сбросить все
-        </a>
+        </a>{% endif %}
         {% endif %}
     </div>
     <div class="card-body">
@@ -122,9 +123,9 @@
                     <button type="submit" class="btn btn-primary me-2">
                         <i class="bi bi-funnel"></i> Применить фильтры
                     </button>
-                    <a href="{% url 'planning:plan_list' %}" class="btn btn-secondary">
+                    {% if request.user|may:'planning:plan_list' %}<a href="{% url 'planning:plan_list' %}" class="btn btn-secondary">
                         <i class="bi bi-x-circle"></i> Сбросить
-                    </a>
+                    </a>{% endif %}
                     <span class="ms-3 text-muted">
                         <i class="bi bi-info-circle"></i> Найдено планов: {{ plans|length }}
                     </span>
@@ -154,9 +155,9 @@
                     {% for plan in plans %}
                     <tr>
                         <td>
-                            <a href="{% url 'planning:plan_detail' plan.pk %}" class="text-decoration-none">
+                            {% if request.user|may:'planning:plan_detail' %}<a href="{% url 'planning:plan_detail' plan.pk %}" class="text-decoration-none">
                                 <strong>{{ plan.project_work.name }}</strong>
-                            </a>
+                            </a>{% endif %}
                             <br>
                             <small class="text-muted">
                                 {{ plan.project_work.section.construction_object.project.name }}
@@ -191,16 +192,16 @@
                         </td>
                         <td>
                             <div class="btn-group btn-group-sm">
-                                <a href="{% url 'planning:plan_detail' plan.pk %}" class="btn btn-outline-primary" title="Открыть">
+                                {% if request.user|may:'planning:plan_detail' %}<a href="{% url 'planning:plan_detail' plan.pk %}" class="btn btn-outline-primary" title="Открыть">
                                     <i class="bi bi-eye"></i>
-                                </a>
-                                <a href="{% url 'planning:plan_update' plan.pk %}" class="btn btn-outline-secondary" title="Редактировать">
+                                </a>{% endif %}
+                                {% if request.user|may:'planning:plan_update' %}<a href="{% url 'planning:plan_update' plan.pk %}" class="btn btn-outline-secondary" title="Редактировать">
                                     <i class="bi bi-pencil"></i>
-                                </a>
-                                <a href="{% url 'planning:plan_delete' plan.pk %}" class="btn btn-outline-danger" title="Удалить"
+                                </a>{% endif %}
+                                {% if request.user|may:'planning:plan_delete' %}<a href="{% url 'planning:plan_delete' plan.pk %}" class="btn btn-outline-danger" title="Удалить"
                                    onclick="return confirm('Удалить план для работы «{{ plan.project_work.name }}» на {{ plan.month }}/{{ plan.year }}? Это действие нельзя отменить.');">
                                     <i class="bi bi-trash"></i>
-                                </a>
+                                </a>{% endif %}
                             </div>
                         </td>
                     </tr>
@@ -238,9 +239,9 @@
     <i class="bi bi-info-circle"></i> Месячные планы не найдены.
     {% if filters_count %}
     <br>Попробуйте изменить параметры фильтра или
-    <a href="{% url 'planning:plan_list' %}" class="alert-link">сбросить все фильтры</a>.
+    {% if request.user|may:'planning:plan_list' %}<a href="{% url 'planning:plan_list' %}" class="alert-link">сбросить все фильтры</a>{% endif %}.
     {% else %}
-    <a href="{% url 'planning:plan_create' %}" class="alert-link">Создать первый план</a>
+    {% if request.user|may:'planning:plan_create' %}<a href="{% url 'planning:plan_create' %}" class="alert-link">Создать первый план</a>{% endif %}
     {% endif %}
 </div>
 {% endif %}

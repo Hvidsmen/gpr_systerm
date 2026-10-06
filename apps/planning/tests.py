@@ -23,9 +23,9 @@ class PlanningWorkflowTests(TestCase):
     def setUpTestData(cls):
         cls.today = timezone.localdate()
         cls.company = Company.objects.create(name='Workflow company')
-        role = Role.objects.create(code='MANAGER', name='Manager')
+        role = Role.objects.get(code="MANAGER")
         cls.manager = User.objects.create_user(username='manager', company=cls.company, role=role)
-        cls.worker = User.objects.create_user(username='worker', company=cls.company)
+        cls.worker = User.objects.create_user(username='worker', company=cls.company, role=Role.objects.get(code="PLANNER"))
         project = Project.objects.create(company=cls.company, code='p', name='Project')
         obj = ConstructionObject.objects.create(company=cls.company, project=project, code='o', name='Object')
         section = Section.objects.create(company=cls.company, construction_object=obj, code='s', name='Section')
@@ -41,7 +41,7 @@ class PlanningWorkflowTests(TestCase):
 
     def generate_and_approve(self):
         self.assertEqual(PlanGeneratorService.generate(self.version), 1)
-        PlanWorkflowService.submit(self.version, self.manager)
+        PlanWorkflowService.submit(self.version, self.worker)
         PlanWorkflowService.approve(self.version, self.manager)
 
     def test_full_workflow_generates_approves_and_completes_without_changing_baseline(self):
@@ -101,15 +101,15 @@ class PlanningWorkflowTests(TestCase):
             self.assertContains(self.client.get(reverse(name, kwargs={'pk': pk})), target)
 
     def test_rejected_plan_can_be_resubmitted(self):
-        PlanWorkflowService.submit(self.version, self.manager)
+        PlanWorkflowService.submit(self.version, self.worker)
         PlanWorkflowService.reject(self.version, self.manager, 'Correct quantities')
-        PlanWorkflowService.submit(self.version, self.manager)
+        PlanWorkflowService.submit(self.version, self.worker)
         self.version.refresh_from_db()
         self.assertEqual(self.version.status, 'SUBMITTED')
 
     def test_revision_copies_daily_plan_but_keeps_approved_version_immutable(self):
         self.generate_and_approve()
-        revision = PlanRevisionService.create_revision(self.version, self.manager)
+        revision = PlanRevisionService.create_revision(self.version, self.worker)
         self.assertEqual(revision.status, 'DRAFT')
         self.assertEqual(revision.version_number, 2)
         self.assertFalse(revision.is_baseline)

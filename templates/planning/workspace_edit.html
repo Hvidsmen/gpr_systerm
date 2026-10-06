@@ -1,13 +1,14 @@
 {% extends 'base.html' %}
+{% load access %}
 {% block content %}
 <h1>{{ workspace.name }} — v{{ version.version_number }}</h1>
 <p>{{ workspace.construction_object }} · {{ workspace.start_date }} — {{ workspace.end_date }} · {{ version.get_version_kind_display }}</p>
 {% if version.planning_month %}<p>Уточняемый месяц: <strong>{{ version.planning_month|date:'m.Y' }}</strong>. {{ version.get_scenario_display }}.</p>{% endif %}
-<p><a href="{% url 'planning:workspace_detail' workspace.pk %}">Рабочее пространство и история</a> · <a href="{% url 'planning:global_detail' version.pk %}">План на весь период и согласование</a> · <a href="{% url 'planning:calendar_list' %}">Календари</a></p>
+<p>{% if request.user|may:'planning:workspace_detail' %}<a href="{% url 'planning:workspace_detail' workspace.pk %}">Рабочее пространство и история</a>{% endif %} · {% if request.user|may:'planning:global_detail' %}<a href="{% url 'planning:global_detail' version.pk %}">План на весь период и согласование</a>{% endif %} · {% if request.user|may:'planning:calendar_list' %}<a href="{% url 'planning:calendar_list' %}">Календари</a>{% endif %}</p>
 {% if version.version_kind == 'BASELINE' %}
 <div class="card mb-3"><div class="card-body"><h2>Состав работ</h2>
-<form method="post" action="{% url 'planning:workspace_add_work' version.pk %}">{% csrf_token %}{{ add_work_form.as_p }}<button class="btn btn-outline-primary">Добавить работу во все месяцы</button></form>
-<p class="mt-2"><a href="{% url 'planning:workspace_work_create' workspace.pk %}">Создать новую простую или составную работу</a> · <a href="{% url 'works:work_list' %}">Настроить подработы и нормативы</a></p>
+{% if request.user|may:'planning:workspace_add_work' %}<form method="post" action="{% url 'planning:workspace_add_work' version.pk %}">{% csrf_token %}{{ add_work_form.as_p }}<button class="btn btn-outline-primary">Добавить работу во все месяцы</button></form>{% endif %}
+<p class="mt-2">{% if request.user|may:'planning:workspace_work_create' %}<a href="{% url 'planning:workspace_work_create' workspace.pk %}">Создать новую простую или составную работу</a>{% endif %} · {% if request.user|may:'works:work_list' %}<a href="{% url 'works:work_list' %}">Настроить подработы и нормативы</a>{% endif %}</p>
 </div></div>{% endif %}
 <nav class="d-flex flex-wrap gap-2 mb-3" aria-label="Месяцы плана">
 {% for month in months %}{% if not version.planning_month or month >= version.planning_month %}{% if not version.planning_month or version.scenario == 'REMAINING' or month == version.planning_month %}

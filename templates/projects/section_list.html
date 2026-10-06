@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load access %}
 {% load i18n %}
 
 {% block title %}Разделы объекта {{ construction_object.name }}{% endblock %}
@@ -11,15 +12,15 @@
         </h2>
         <nav aria-label="breadcrumb">
             <ol class="breadcrumb mb-0">
-                <li class="breadcrumb-item"><a href="{% url 'dashboard:index' %}">Главная</a></li>
-                <li class="breadcrumb-item"><a href="{% url 'projects:object_list' project_pk %}" >Объекты</a></li>
+                <li class="breadcrumb-item">{% if request.user|may:'dashboard:index' %}<a href="{% url 'dashboard:index' %}">Главная</a>{% endif %}</li>
+                <li class="breadcrumb-item">{% if request.user|may:'projects:object_list' %}<a href="{% url 'projects:object_list' project_pk %}" >Объекты</a>{% endif %}</li>
                 <li class="breadcrumb-item active">{{ construction_object.name }}</li>
             </ol>
         </nav>
     </div>
-    <a href="{% url 'projects:section_create' construction_object.pk %}" class="btn btn-primary">
+    {% if request.user|may:'projects:section_create' %}<a href="{% url 'projects:section_create' construction_object.pk %}" class="btn btn-primary">
         <i class="bi bi-plus-circle"></i> Добавить раздел
-    </a>
+    </a>{% endif %}
 </div>
 
 {% if sections %}
@@ -41,17 +42,17 @@
                                 <td>{{ section.name }}</td>
                                 <td>
                                     <div class="btn-group btn-group-sm">
-                                        <a href="{% url 'projects:section_edit' construction_object.pk section.pk %}"
+                                        {% if request.user|may:'projects:section_edit' %}<a href="{% url 'projects:section_edit' construction_object.pk section.pk %}"
                                            class="btn btn-outline-primary"
                                            title="Редактировать">
                                             <i class="bi bi-pencil"></i>
-                                        </a>
-                                        <a href="{% url 'projects:section_delete' construction_object.pk section.pk %}"
+                                        </a>{% endif %}
+                                        {% if request.user|may:'projects:section_delete' %}<a href="{% url 'projects:section_delete' construction_object.pk section.pk %}"
                                            class="btn btn-outline-danger"
                                            onclick="return confirm('Удалить раздел «{{ section.name }}»?');"
                                            title="Удалить">
                                             <i class="bi bi-trash"></i>
-                                        </a>
+                                        </a>{% endif %}
                                     </div>
                                 </td>
                             </tr>
@@ -64,15 +65,15 @@
 {% else %}
     <div class="alert alert-info">
         <i class="bi bi-info-circle"></i> Разделы ещё не добавлены.
-        <a href="{% url 'projects:section_create' construction_object.pk %}" class="alert-link">
+        {% if request.user|may:'projects:section_create' %}<a href="{% url 'projects:section_create' construction_object.pk %}" class="alert-link">
             Добавить первый раздел
-        </a>
+        </a>{% endif %}
     </div>
 {% endif %}
 
 <div class="mt-3">
-    <a href="{% url 'projects:object_list' project_pk %}"  class="btn btn-secondary">
+    {% if request.user|may:'projects:object_list' %}<a href="{% url 'projects:object_list' project_pk %}"  class="btn btn-secondary">
         <i class="bi bi-arrow-left"></i> Назад к объектам
-    </a>
+    </a>{% endif %}
 </div>
 {% endblock %}

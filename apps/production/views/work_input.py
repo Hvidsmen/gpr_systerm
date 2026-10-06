@@ -1,4 +1,5 @@
 from django.views import View
+from core.permissions import scope_queryset
 from django.shortcuts import render, redirect
 from django.utils import timezone
 from apps.works.models import ProjectWork
@@ -13,7 +14,7 @@ class FactInputView(View):
 
     def display(self, request, form=None):
         filters = FactInputFilterForm(request.GET or None, user=request.user)
-        works = ProjectWork.objects.filter(company=request.user.company)
+        works = scope_queryset(ProjectWork.objects.all(), request.user)
         if filters.is_bound:
             if filters.is_valid():
                 for field, lookup in [

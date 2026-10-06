@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load access %}
 {% load i18n %}
 {% load matrix_tags %}
 
@@ -12,18 +13,18 @@
         </h2>
         <nav aria-label="breadcrumb">
             <ol class="breadcrumb mb-0">
-                <li class="breadcrumb-item"><a href="{% url 'dashboard:index' %}">Главная</a></li>
+                <li class="breadcrumb-item">{% if request.user|may:'dashboard:index' %}<a href="{% url 'dashboard:index' %}">Главная</a>{% endif %}</li>
                 <li class="breadcrumb-item active">Факты по ГСМ</li>
             </ol>
         </nav>
     </div>
     <div class="btn-group">
-    <a href="{% url 'production:fuel_fact_daily_input' %}" class="btn btn-success">
+    {% if request.user|may:'production:fuel_fact_daily_input' %}<a href="{% url 'production:fuel_fact_daily_input' %}" class="btn btn-success">
         <i class="bi bi-clipboard-data"></i> Быстрый ввод на дату
-    </a>
-    <a href="{% url 'production:fuel_fact_create' %}" class="btn btn-primary">
+    </a>{% endif %}
+    {% if request.user|may:'production:fuel_fact_create' %}<a href="{% url 'production:fuel_fact_create' %}" class="btn btn-primary">
         <i class="bi bi-plus-circle"></i> Ввести факт
-    </a>
+    </a>{% endif %}
 </div>
 </div>
 
@@ -98,9 +99,9 @@
                     <button type="submit" class="btn btn-primary me-2">
                         <i class="bi bi-funnel"></i> Применить фильтры
                     </button>
-                    <a href="{% url 'production:fuel_fact_list' %}" class="btn btn-secondary">
+                    {% if request.user|may:'production:fuel_fact_list' %}<a href="{% url 'production:fuel_fact_list' %}" class="btn btn-secondary">
                         <i class="bi bi-x-circle"></i> Сбросить
-                    </a>
+                    </a>{% endif %}
                     <span class="ms-3 text-muted">
                         <i class="bi bi-info-circle"></i> Найдено записей: {{ fuel_facts|length }}
                     </span>
@@ -161,7 +162,7 @@
                                                title="Редактировать все даты">
                                                 <i class="bi bi-pencil-square"></i>
                                             </a>
-                                            <form method="post" action="{% url 'production:fuel_fact_delete_by_type' row.fuel_type %}"
+                                            {% if request.user|may:'production:fuel_fact_delete_by_type' %}<form method="post" action="{% url 'production:fuel_fact_delete_by_type' row.fuel_type %}"
                                                   style="display: inline;"
                                                   onsubmit="return confirm('Удалить ВСЕ факты для {{ row.fuel_type_display }}?');">
                                                 {% csrf_token %}
@@ -171,7 +172,7 @@
                                                 <button type="submit" class="btn btn-outline-danger" title="Удалить все факты">
                                                     <i class="bi bi-trash"></i>
                                                 </button>
-                                            </form>
+                                            </form>{% endif %}
                                         </div>
                                     </div>
                                 </td>
@@ -196,7 +197,7 @@
                                                    title="Редактировать на эту дату">
                                                     <i class="bi bi-pencil"></i>
                                                 </a>
-                                                <form method="post" action="{% url 'production:fuel_fact_delete_by_date' date|date:'Y-m-d' %}"
+                                                {% if request.user|may:'production:fuel_fact_delete_by_date' %}<form method="post" action="{% url 'production:fuel_fact_delete_by_date' date|date:'Y-m-d' %}"
                                                       style="display: inline;"
                                                       onsubmit="event.stopPropagation(); return confirm('Удалить факт на {{ date|date:'d.m.Y' }}?');">
                                                     {% csrf_token %}
@@ -209,7 +210,7 @@
                                                             title="Удалить на эту дату">
                                                         <i class="bi bi-trash"></i>
                                                     </button>
-                                                </form>
+                                                </form>{% endif %}
                                             </div>
                                         {% endwith %}
                                     </td>
@@ -230,9 +231,9 @@
     <div class="alert alert-info">
         <i class="bi bi-info-circle"></i> Факты по ГСМ не найдены.
         <div class="mt-2">
-            <a href="{% url 'production:fuel_fact_create' %}" class="btn btn-sm btn-primary">
+            {% if request.user|may:'production:fuel_fact_create' %}<a href="{% url 'production:fuel_fact_create' %}" class="btn btn-sm btn-primary">
                 <i class="bi bi-plus-circle"></i> Ввести первый факт
-            </a>
+            </a>{% endif %}
         </div>
     </div>
 {% endif %}

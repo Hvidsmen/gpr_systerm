@@ -1,3 +1,4 @@
+from core.permissions import require_roles, PLAN_ROLES, APPROVAL_ROLES
 import json
 from collections import defaultdict
 from datetime import date
@@ -213,6 +214,7 @@ class GlobalPlanService:
     @staticmethod
     @transaction.atomic
     def create(user, obj, start, end, title="", versions=None, previous=None):
+        require_roles(user, PLAN_ROLES)
         if obj.company_id != user.company_id:
             raise PermissionDenied("Объект другой компании.")
         ConstructionObject.objects.select_for_update().get(pk=obj.pk)
@@ -242,6 +244,7 @@ class GlobalPlanService:
     @staticmethod
     @transaction.atomic
     def transition(version, user, action, comment=""):
+        require_roles(user, APPROVAL_ROLES if action in ('approve', 'reject', 'complete') else PLAN_ROLES)
         version = GlobalPlanVersion.objects.select_for_update().get(pk=version.pk)
         if version.company_id != user.company_id:
             raise PermissionDenied("Версия другой компании.")
@@ -272,6 +275,7 @@ class GlobalPlanService:
 
     @staticmethod
     def revision(version, user):
+        require_roles(user, PLAN_ROLES)
         if version.company_id != user.company_id or not version.is_immutable:
             raise ValidationError(
                 "Редакцию можно создать только от своей утверждённой версии."

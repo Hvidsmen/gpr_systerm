@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load access %}
 {% load i18n %}
 
 {% block title %}Виды техники{% endblock %}
@@ -11,14 +12,14 @@
         </h2>
         <nav aria-label="breadcrumb">
             <ol class="breadcrumb mb-0">
-                <li class="breadcrumb-item"><a href="{% url 'dashboard:index' %}">Главная</a></li>
+                <li class="breadcrumb-item">{% if request.user|may:'dashboard:index' %}<a href="{% url 'dashboard:index' %}">Главная</a>{% endif %}</li>
                 <li class="breadcrumb-item active">Виды техники</li>
             </ol>
         </nav>
     </div>
-    <a href="{% url 'resources:equipment_type_create' %}" class="btn btn-primary">
+    {% if request.user|may:'resources:equipment_type_create' %}<a href="{% url 'resources:equipment_type_create' %}" class="btn btn-primary">
         <i class="bi bi-plus-circle"></i> Добавить вид техники
-    </a>
+    </a>{% endif %}
 </div>
 
 {% if equipment_types %}
@@ -48,13 +49,13 @@
                                 </td>
                                 <td>
                                     <div class="btn-group btn-group-sm">
-                                        <a href="{% url 'resources:equipment_type_update' et.pk %}" class="btn btn-outline-secondary">
+                                        {% if request.user|may:'resources:equipment_type_update' %}<a href="{% url 'resources:equipment_type_update' et.pk %}" class="btn btn-outline-secondary">
                                             <i class="bi bi-pencil"></i>
-                                        </a>
-                                        <a href="{% url 'resources:equipment_type_delete' et.pk %}" class="btn btn-outline-danger"
+                                        </a>{% endif %}
+                                        {% if request.user|may:'resources:equipment_type_delete' %}<a href="{% url 'resources:equipment_type_delete' et.pk %}" class="btn btn-outline-danger"
                                            onclick="return confirm('Удалить вид техники?');">
                                             <i class="bi bi-trash"></i>
-                                        </a>
+                                        </a>{% endif %}
                                     </div>
                                 </td>
                             </tr>
@@ -67,7 +68,7 @@
 {% else %}
     <div class="alert alert-info">
         <i class="bi bi-info-circle"></i> Виды техники ещё не добавлены.
-        <a href="{% url 'resources:equipment_type_create' %}" class="alert-link">Добавить первый вид техники</a>
+        {% if request.user|may:'resources:equipment_type_create' %}<a href="{% url 'resources:equipment_type_create' %}" class="alert-link">Добавить первый вид техники</a>{% endif %}
     </div>
 {% endif %}
 {% endblock %}

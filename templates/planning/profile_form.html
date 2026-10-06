@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load access %}
 {% load i18n %}
 
 {% block title %}{% if form.instance.pk %}Редактировать{% else %}Создать{% endif %} профиль нагрузки{% endblock %}
@@ -11,8 +12,8 @@
     </h1>
     <nav aria-label="breadcrumb">
         <ol class="breadcrumb">
-            <li class="breadcrumb-item"><a href="{% url 'dashboard:index' %}">Главная</a></li>
-            <li class="breadcrumb-item"><a href="{% url 'planning:profile_list' %}">Профили нагрузки</a></li>
+            <li class="breadcrumb-item">{% if request.user|may:'dashboard:index' %}<a href="{% url 'dashboard:index' %}">Главная</a>{% endif %}</li>
+            <li class="breadcrumb-item">{% if request.user|may:'planning:profile_list' %}<a href="{% url 'planning:profile_list' %}">Профили нагрузки</a>{% endif %}</li>
             <li class="breadcrumb-item active">{% if form.instance.pk %}Редактирование{% else %}Создание{% endif %}</li>
         </ol>
     </nav>
@@ -42,9 +43,9 @@
                     <button type="submit" class="btn btn-primary">
                         <i class="bi bi-save"></i> Сохранить
                     </button>
-                    <a href="{% url 'planning:profile_list' %}" class="btn btn-secondary">
+                    {% if request.user|may:'planning:profile_list' %}<a href="{% url 'planning:profile_list' %}" class="btn btn-secondary">
                         <i class="bi bi-x-circle"></i> Отмена
-                    </a>
+                    </a>{% endif %}
                 </form>
             </div>
         </div>

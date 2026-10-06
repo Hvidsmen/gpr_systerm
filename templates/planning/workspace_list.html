@@ -1,10 +1,11 @@
 {% extends 'base.html' %}
+{% load access %}
 {% block content %}
 <h1>Планирование на период</h1>
 <p>Базовый план и месячные уточнения работ, людей, техники и ГСМ строительного объекта.</p>
-<p><a class="btn btn-primary" href="{% url 'planning:workspace_create' %}">Новый чистый план на период</a> <a class="btn btn-outline-secondary" href="{% url 'planning:global_list' %}">Все глобальные версии</a></p>
+<p>{% if request.user|may:'planning:workspace_create' %}<a class="btn btn-primary" href="{% url 'planning:workspace_create' %}">Новый чистый план на период</a>{% endif %} {% if request.user|may:'planning:global_list' %}<a class="btn btn-outline-secondary" href="{% url 'planning:global_list' %}">Все глобальные версии</a>{% endif %}</p>
 <table class="table"><thead><tr><th>План</th><th>Объект</th><th>Период</th><th>База</th></tr></thead><tbody>
-{% for workspace in object_list %}<tr><td><a href="{% url 'planning:workspace_detail' workspace.pk %}">{{ workspace.name }}</a></td><td>{{ workspace.construction_object }}</td><td>{{ workspace.start_date }} — {{ workspace.end_date }}</td><td>{{ workspace.baseline_version.get_status_display }}</td></tr>{% empty %}<tr><td colspan="4">Создайте первое рабочее пространство.</td></tr>{% endfor %}
+{% for workspace in object_list %}<tr><td>{% if request.user|may:'planning:workspace_detail' %}<a href="{% url 'planning:workspace_detail' workspace.pk %}">{{ workspace.name }}</a>{% endif %}</td><td>{{ workspace.construction_object }}</td><td>{{ workspace.start_date }} — {{ workspace.end_date }}</td><td>{{ workspace.baseline_version.get_status_display }}</td></tr>{% empty %}<tr><td colspan="4">Создайте первое рабочее пространство.</td></tr>{% endfor %}
 </tbody></table>
 {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}">Назад</a>{% endif %} {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}">Далее</a>{% endif %}
 {% endblock %}

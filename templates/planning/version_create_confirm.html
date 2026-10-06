@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load access %}
 {% load i18n %}
 
 {% block title %}Создать новую версию{% endblock %}
@@ -40,9 +41,9 @@
                         <button type="submit" class="btn btn-primary">
                             <i class="bi bi-plus-circle"></i> Создать версию v{{ new_version_number }}
                         </button>
-                        <a href="{% url 'planning:plan_detail' plan.pk %}" class="btn btn-secondary">
+                        {% if request.user|may:'planning:plan_detail' %}<a href="{% url 'planning:plan_detail' plan.pk %}" class="btn btn-secondary">
                             <i class="bi bi-x-circle"></i> Отмена
-                        </a>
+                        </a>{% endif %}
                     </div>
                 </form>
             </div>

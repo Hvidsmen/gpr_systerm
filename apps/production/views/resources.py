@@ -12,6 +12,7 @@ from django.views import View
 from django.views.generic import ListView, CreateView, UpdateView, DeleteView
 from django.views.decorators.http import require_POST
 from core.mixins import CompanyScopedMixin, CompanyRequiredMixin
+from core.permissions import scope_queryset, role_code, PLAN_ROLES, FACT_ROLES
 from apps.projects.models import ConstructionObject
 from apps.works.models import ProjectWork
 from apps.production import models, forms
@@ -56,7 +57,7 @@ class ResourceList(CompanyScopedMixin, ListView):
         obj = self.request.GET.get("construction_object")
         if obj:
             get_object_or_404(
-                ConstructionObject, pk=obj, company=self.request.user.company
+                scope_queryset(ConstructionObject.objects.all(), self.request.user), pk=obj
             )
             qs = qs.filter(construction_object_id=obj)
         day = self.request.GET.get("date")
@@ -71,12 +72,11 @@ class ResourceList(CompanyScopedMixin, ListView):
         ctx = super().get_context_data(**kwargs)
         ctx.update(
             title=self.model._meta.verbose_name_plural,
-            objects=ConstructionObject.objects.filter(
-                company=self.request.user.company
-            ),
+            objects=scope_queryset(ConstructionObject.objects.all(), self.request.user),
             prefix=self.prefix,
             create_url=reverse("production:" + self.prefix + "_create"),
             field_names=self.field_names,
+            can_edit=role_code(self.request.user) in (PLAN_ROLES if self.prefix.endswith("_plan") else FACT_ROLES),
         )
         ctx["rows"] = [
             {
@@ -104,7 +104,7 @@ class ResourceCreate(UserFormMixin, CompanyRequiredMixin, CreateView):
         initial = super().get_initial()
         if self.kwargs.get("work_pk"):
             work = get_object_or_404(
-                ProjectWork,
+                scope_queryset(ProjectWork.objects.all(), self.request.user),
                 pk=self.kwargs["work_pk"],
                 company=self.request.user.company,
             )
@@ -162,7 +162,7 @@ class ResourceBulk(View):
     """Use ordinary validated forms; never mutate foreign keys from raw input."""
 
     def records(self, request, **kwargs):
-        qs = self.model.objects.filter(company=request.user.company)
+        qs = scope_queryset(self.model.objects.all(), request.user)
         if kwargs.get("date_str"):
             try:
                 qs = qs.filter(date=date.fromisoformat(kwargs["date_str"]))
@@ -184,7 +184,7 @@ class ResourceBulk(View):
             "construction_object"
         )
         if obj:
-            get_object_or_404(ConstructionObject, pk=obj, company=request.user.company)
+            get_object_or_404(scope_queryset(ConstructionObject.objects.all(), request.user), pk=obj)
             qs = qs.filter(construction_object_id=obj)
         for key, lookup in [("date_start", "date__gte"), ("date_end", "date__lte")]:
             if request.GET.get(key):
@@ -362,7 +362,7 @@ def inline_handler(model, allowed):
         try:
             data = json.loads(request.body)
             record = get_object_or_404(
-                model,
+                scope_queryset(model.objects.all(), request.user),
                 pk=data.get("id")
                 or data.get("pk")
                 or data.get("plan_id")

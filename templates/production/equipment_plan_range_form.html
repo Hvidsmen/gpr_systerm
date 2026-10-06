@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load access %}
 {% load i18n %}
 
 {% block title %}Создать план по технике (диапазон){% endblock %}
@@ -118,9 +119,9 @@
                         <button type="submit" class="btn btn-success btn-lg">
                             <i class="bi bi-calendar-check"></i> Создать план на диапазон
                         </button>
-                        <a href="{% url 'production:equipment_plan_list' %}" class="btn btn-secondary">
+                        {% if request.user|may:'production:equipment_plan_list' %}<a href="{% url 'production:equipment_plan_list' %}" class="btn btn-secondary">
                             <i class="bi bi-x-circle"></i> Отмена
-                        </a>
+                        </a>{% endif %}
                     </div>
                 </form>
             </div>

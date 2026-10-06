@@ -1,7 +1,8 @@
 {% extends 'base.html' %}
+{% load access %}
 {% load i18n %}
 
-{% block title %}{{ user.full_name }} - ГПР Система{% endblock %}
+{% block title %}{{ profile_user.full_name }} - ГПР Система{% endblock %}
 
 {% block content %}
 <div class="row">
@@ -14,33 +15,33 @@
                 <div class="row mb-3">
                     <div class="col-md-6">
                         <h6 class="text-muted">Имя пользователя</h6>
-                        <p>{{ user.username }}</p>
+                        <p>{{ profile_user.username }}</p>
                     </div>
                     <div class="col-md-6">
                         <h6 class="text-muted">ФИО</h6>
-                        <p>{{ user.full_name }}</p>
+                        <p>{{ profile_user.full_name }}</p>
                     </div>
                 </div>
                 <div class="row mb-3">
                     <div class="col-md-6">
                         <h6 class="text-muted">Email</h6>
-                        <p>{{ user.email|default:"-" }}</p>
+                        <p>{{ profile_user.email|default:"-" }}</p>
                     </div>
                     <div class="col-md-6">
                         <h6 class="text-muted">Телефон</h6>
-                        <p>{{ user.phone|default:"-" }}</p>
+                        <p>{{ profile_user.phone|default:"-" }}</p>
                     </div>
                 </div>
                 <div class="row mb-3">
                     <div class="col-md-6">
                         <h6 class="text-muted">Должность</h6>
-                        <p>{{ user.position|default:"-" }}</p>
+                        <p>{{ profile_user.position|default:"-" }}</p>
                     </div>
                     <div class="col-md-6">
                         <h6 class="text-muted">Роль</h6>
                         <p>
-                            {% if user.role %}
-                                <span class="badge bg-info">{{ user.role.name }}</span>
+                            {% if profile_user.role %}
+                                <span class="badge bg-info">{{ profile_user.role.name }}</span>
                             {% else %}
                                 <span class="badge bg-secondary">Не назначена</span>
                             {% endif %}
@@ -50,12 +51,12 @@
                 <div class="row mb-3">
                     <div class="col-md-6">
                         <h6 class="text-muted">Компания</h6>
-                        <p>{{ user.company|default:"-" }}</p>
+                        <p>{{ profile_user.company|default:"-" }}</p>
                     </div>
                     <div class="col-md-6">
                         <h6 class="text-muted">Статус</h6>
                         <p>
-                            {% if user.is_active %}
+                            {% if profile_user.is_active %}
                                 <span class="badge bg-success">Активен</span>
                             {% else %}
                                 <span class="badge bg-danger">Неактивен</span>
@@ -66,18 +67,18 @@
                 <div class="row">
                     <div class="col-md-6">
                         <h6 class="text-muted">Дата регистрации</h6>
-                        <p>{{ user.date_joined|date:"d.m.Y H:i" }}</p>
+                        <p>{{ profile_user.date_joined|date:"d.m.Y H:i" }}</p>
                     </div>
                     <div class="col-md-6">
                         <h6 class="text-muted">Последний вход</h6>
-                        <p>{{ user.last_login|date:"d.m.Y H:i"|default:"-" }}</p>
+                        <p>{{ profile_user.last_login|date:"d.m.Y H:i"|default:"-" }}</p>
                     </div>
                 </div>
             </div>
             <div class="card-footer">
-                <a href="{% url 'accounts:user_list' %}" class="btn btn-secondary">
+                {% if request.user|may:'accounts:user_list' %}<a href="{% url 'accounts:user_list' %}" class="btn btn-secondary">
                     <i class="bi bi-arrow-left"></i> Назад к списку
-                </a>
+                </a>{% endif %}
             </div>
         </div>
     </div>

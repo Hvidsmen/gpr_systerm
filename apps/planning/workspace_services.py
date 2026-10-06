@@ -1,3 +1,4 @@
+from core.permissions import require_roles, PLAN_ROLES, APPROVAL_ROLES
 """Period planning from monthly inputs, with immutable baseline and forecasts."""
 
 from collections import defaultdict
@@ -735,6 +736,7 @@ class WorkspaceService:
     @staticmethod
     @transaction.atomic
     def create(user, obj, name, start, end):
+        require_roles(user, PLAN_ROLES)
         if user.company_id != obj.company_id:
             raise PermissionDenied("Объект другой компании.")
         workspace = PlanningWorkspace(
@@ -753,6 +755,7 @@ class WorkspaceService:
 
     @staticmethod
     def new_version(workspace, user, kind, month=None, scenario="", previous=None):
+        require_roles(user, PLAN_ROLES)
         if workspace.company_id != user.company_id:
             raise PermissionDenied("План другой компании.")
         ConstructionObject.objects.select_for_update().get(
@@ -785,6 +788,7 @@ class WorkspaceService:
     @staticmethod
     @transaction.atomic
     def forecast(workspace, user, month, scenario, previous=None):
+        require_roles(user, PLAN_ROLES)
         workspace = PlanningWorkspace.objects.select_for_update().get(pk=workspace.pk)
         if workspace.company_id != user.company_id:
             raise PermissionDenied("План другой компании.")
@@ -841,6 +845,7 @@ class WorkspaceService:
     @staticmethod
     @transaction.atomic
     def refresh(version, user):
+        require_roles(user, PLAN_ROLES)
         version = GlobalPlanVersion.objects.select_for_update().get(pk=version.pk)
         if version.company_id != user.company_id:
             raise PermissionDenied("Версия другой компании.")

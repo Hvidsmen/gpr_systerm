@@ -56,3 +56,27 @@ class UserLoginForm(AuthenticationForm):
         label=_('Пароль'),
         widget=forms.PasswordInput(attrs={'class': 'form-control'})
     )
+
+
+class CompanyUserAccessForm(forms.ModelForm):
+    class Meta:
+        model = User
+        fields = ('first_name', 'last_name', 'email', 'phone', 'position', 'role', 'assigned_objects', 'is_active')
+
+    def __init__(self, *args, company, **kwargs):
+        super().__init__(*args, **kwargs)
+        from core.permissions import ROLES
+        from apps.projects.models import ConstructionObject
+        self.instance.company = company
+        self.fields['role'].required = True
+        self.fields['role'].queryset = self.fields['role'].queryset.filter(code__in=ROLES)
+        self.fields['assigned_objects'].queryset = ConstructionObject.objects.filter(company=company)
+        self.fields['assigned_objects'].help_text = 'Мастер видит и вводит факты только на этих объектах. Без назначения доступных объектов нет.'
+        for field in self.fields.values():
+            if not isinstance(field.widget, forms.CheckboxInput):
+                field.widget.attrs['class'] = 'form-control'
+
+
+class CompanyUserCreateForm(CompanyUserAccessForm, UserCreationForm):
+    class Meta(CompanyUserAccessForm.Meta):
+        fields = ('username', *CompanyUserAccessForm.Meta.fields, 'password1', 'password2')

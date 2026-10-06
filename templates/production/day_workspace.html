@@ -14,6 +14,7 @@
 </nav>
 <form method="post" id="day-facts">
 {% csrf_token %}
+<fieldset {% if not request.user.is_admin and not request.user.is_foreman %}disabled{% endif %}>
 <input type="hidden" name="construction_object" value="{{ selector.cleaned_data.construction_object.pk }}">
 <input type="hidden" name="date" value="{{ selector.cleaned_data.date|date:'Y-m-d' }}">
 <p>Существующие записи заполнены. Строки ресурсов из плана содержат ресурс и ставку; фактическое количество вводится вручную. Пустые строки не сохраняются. Ноль означает нулевой факт.</p>
@@ -38,7 +39,8 @@
 {% endif %}
 </div></section>
 {% endfor %}
-<div class="card card-body sticky-bottom"><span class="mb-2">Сохраняются все четыре раздела вместе. Для удаления записи отметьте «Удалить» и сохраните.</span><button class="btn btn-success" type="submit">Сохранить факт за день</button></div>
+{% if request.user.is_admin or request.user.is_foreman %}<div class="card card-body sticky-bottom"><span class="mb-2">Сохраняются все четыре раздела вместе. Для удаления записи отметьте «Удалить» и сохраните.</span><button class="btn btn-success" type="submit">Сохранить факт за день</button></div>{% endif %}
+</fieldset>
 </form>
 {% else %}
 <div class="alert alert-info">Выберите строительный объект и дату, чтобы открыть работы и ресурсы.</div>

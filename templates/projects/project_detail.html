@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load access %}
 {% load i18n %}
 
 {% block title %}{{ project.name }} - ГПР Система{% endblock %}
@@ -7,12 +8,12 @@
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h2><i class="bi bi-folder"></i> {{ project.name }}</h2>
     <div>
-        <a href="{% url 'projects:project_update' project.pk %}" class="btn btn-secondary">
+        {% if request.user|may:'projects:project_update' %}<a href="{% url 'projects:project_update' project.pk %}" class="btn btn-secondary">
             <i class="bi bi-pencil"></i> Редактировать
-        </a>
-        <a href="{% url 'projects:project_list' %}" class="btn btn-outline-secondary">
+        </a>{% endif %}
+        {% if request.user|may:'projects:project_list' %}<a href="{% url 'projects:project_list' %}" class="btn btn-outline-secondary">
             <i class="bi bi-arrow-left"></i> Назад
-        </a>
+        </a>{% endif %}
     </div>
 </div>
 
@@ -54,9 +55,9 @@
 </div>
 
 <h3>Строительные объекты</h3>
-<a href="{% url 'projects:object_create' project.pk %}" class="btn btn-sm btn-primary mb-3">
+{% if request.user|may:'projects:object_create' %}<a href="{% url 'projects:object_create' project.pk %}" class="btn btn-sm btn-primary mb-3">
     <i class="bi bi-plus-circle"></i> Добавить объект
-</a>
+</a>{% endif %}
 
 {% if construction_objects %}
     <div class="table-responsive">
@@ -74,9 +75,9 @@
                         <td>{{ obj.code }}</td>
                         <td>{{ obj.name }}</td>
                         <td>
-                            <a href="{% url 'projects:section_list' obj.pk %}" class="btn btn-sm btn-outline-primary">
+                            {% if request.user|may:'projects:section_list' %}<a href="{% url 'projects:section_list' obj.pk %}" class="btn btn-sm btn-outline-primary">
                                 <i class="bi bi-list"></i> Разделы
-                            </a>
+                            </a>{% endif %}
                         </td>
                     </tr>
                 {% endfor %}

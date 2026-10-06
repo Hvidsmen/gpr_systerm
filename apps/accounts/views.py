@@ -58,7 +58,7 @@ class UserListView(CompanyScopedMixin, ListView):
 class UserDetailView(CompanyScopedMixin, DetailView):
     model = User
     template_name = 'accounts/user_detail.html'
-    context_object_name = 'user'
+    context_object_name = 'profile_user'
 
 
 from django.contrib.auth.decorators import login_required
@@ -76,3 +76,40 @@ def user_settings_view(request):
         return redirect('accounts:settings')
 
     return render(request, 'accounts/settings.html', {'form': form})
+
+
+from django.views.generic import CreateView, UpdateView
+from django.urls import reverse_lazy
+from .forms import CompanyUserAccessForm, CompanyUserCreateForm
+
+
+class CompanyUserCreateView(CreateView):
+    model = User
+    form_class = CompanyUserCreateForm
+    template_name = 'accounts/user_access_form.html'
+    success_url = reverse_lazy('accounts:user_list')
+
+    def get_form_kwargs(self):
+        return {**super().get_form_kwargs(), 'company': self.request.user.company}
+
+
+class CompanyUserAccessView(CompanyScopedMixin, UpdateView):
+    model = User
+    form_class = CompanyUserAccessForm
+    template_name = 'accounts/user_access_form.html'
+    success_url = reverse_lazy('accounts:user_list')
+
+    def get_queryset(self):
+        # Global administrators are managed only through the global admin panel.
+        return super().get_queryset().filter(is_superuser=False)
+
+    def get_form_kwargs(self):
+        return {**super().get_form_kwargs(), 'company': self.request.user.company}
+
+    def form_valid(self, form):
+        if self.object.pk == self.request.user.pk and (
+            form.cleaned_data['role'].code != 'ADMIN' or not form.cleaned_data['is_active']
+        ):
+            form.add_error(None, 'Нельзя снять собственные права администратора или отключить свою учётную запись.')
+            return self.form_invalid(form)
+        return super().form_valid(form)

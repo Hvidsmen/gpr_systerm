@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load access %}
 {% load i18n %}
 {% load matrix_tags %}
 
@@ -12,18 +13,18 @@
         </h2>
         <nav aria-label="breadcrumb">
             <ol class="breadcrumb mb-0">
-                <li class="breadcrumb-item"><a href="{% url 'dashboard:index' %}">Главная</a></li>
+                <li class="breadcrumb-item">{% if request.user|may:'dashboard:index' %}<a href="{% url 'dashboard:index' %}">Главная</a>{% endif %}</li>
                 <li class="breadcrumb-item active">Планы по людям</li>
             </ol>
         </nav>
     </div>
     <div class="btn-group">
-        <a href="{% url 'production:labor_plan_create' %}" class="btn btn-primary">
+        {% if request.user|may:'production:labor_plan_create' %}<a href="{% url 'production:labor_plan_create' %}" class="btn btn-primary">
             <i class="bi bi-plus-circle"></i> Создать на день
-        </a>
-        <a href="{% url 'production:labor_plan_create_range' %}" class="btn btn-success">
+        </a>{% endif %}
+        {% if request.user|may:'production:labor_plan_create_range' %}<a href="{% url 'production:labor_plan_create_range' %}" class="btn btn-success">
             <i class="bi bi-calendar-range"></i> Создать на диапазон
-        </a>
+        </a>{% endif %}
     </div>
 </div>
 
@@ -98,9 +99,9 @@
                     <button type="submit" class="btn btn-primary me-2">
                         <i class="bi bi-funnel"></i> Применить фильтры
                     </button>
-                    <a href="{% url 'production:labor_plan_list' %}" class="btn btn-secondary">
+                    {% if request.user|may:'production:labor_plan_list' %}<a href="{% url 'production:labor_plan_list' %}" class="btn btn-secondary">
                         <i class="bi bi-x-circle"></i> Сбросить
-                    </a>
+                    </a>{% endif %}
                     <span class="ms-3 text-muted">
                         <i class="bi bi-info-circle"></i> Найдено записей: {{ labor_plans|length }}
                     </span>
@@ -161,7 +162,7 @@
                                                title="Редактировать все даты">
                                                 <i class="bi bi-pencil-square"></i>
                                             </a>
-                                            <form method="post" action="{% url 'production:labor_plan_delete_by_brigade' row.brigade.pk %}"
+                                            {% if request.user|may:'production:labor_plan_delete_by_brigade' %}<form method="post" action="{% url 'production:labor_plan_delete_by_brigade' row.brigade.pk %}"
                                                   style="display: inline;"
                                                   onsubmit="return confirm('Удалить ВСЕ планы для бригады {{ row.brigade.name }}?');">
                                                 {% csrf_token %}
@@ -171,7 +172,7 @@
                                                 <button type="submit" class="btn btn-outline-danger" title="Удалить все планы бригады">
                                                     <i class="bi bi-trash"></i>
                                                 </button>
-                                            </form>
+                                            </form>{% endif %}
                                         </div>
                                     </div>
                                 </td>
@@ -197,7 +198,7 @@
                                                    title="Редактировать на эту дату">
                                                     <i class="bi bi-pencil"></i>
                                                 </a>
-                                                <form method="post" action="{% url 'production:labor_plan_delete_by_date' date|date:'Y-m-d' %}"
+                                                {% if request.user|may:'production:labor_plan_delete_by_date' %}<form method="post" action="{% url 'production:labor_plan_delete_by_date' date|date:'Y-m-d' %}"
                                                       style="display: inline;"
                                                       onsubmit="event.stopPropagation(); return confirm('Удалить план на {{ date|date:'d.m.Y' }}?');">
                                                     {% csrf_token %}
@@ -210,7 +211,7 @@
                                                             title="Удалить на эту дату">
                                                         <i class="bi bi-trash"></i>
                                                     </button>
-                                                </form>
+                                                </form>{% endif %}
                                             </div>
                                         {% endwith %}
                                     </td>
@@ -231,12 +232,12 @@
     <div class="alert alert-info">
         <i class="bi bi-info-circle"></i> Планы по людям не найдены.
         <div class="mt-2">
-            <a href="{% url 'production:labor_plan_create' %}" class="btn btn-sm btn-primary me-2">
+            {% if request.user|may:'production:labor_plan_create' %}<a href="{% url 'production:labor_plan_create' %}" class="btn btn-sm btn-primary me-2">
                 <i class="bi bi-plus-circle"></i> Создать на день
-            </a>
-            <a href="{% url 'production:labor_plan_create_range' %}" class="btn btn-sm btn-success">
+            </a>{% endif %}
+            {% if request.user|may:'production:labor_plan_create_range' %}<a href="{% url 'production:labor_plan_create_range' %}" class="btn btn-sm btn-success">
                 <i class="bi bi-calendar-range"></i> Создать на диапазон
-            </a>
+            </a>{% endif %}
         </div>
     </div>
 {% endif %}

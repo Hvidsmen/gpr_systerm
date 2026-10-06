@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load access %}
 {% load i18n %}
 
 {% block title %}Версии плана — {{ plan.project_work.name }}{% endblock %}
@@ -11,22 +12,22 @@
         </h2>
         <nav aria-label="breadcrumb">
             <ol class="breadcrumb mb-0">
-                <li class="breadcrumb-item"><a href="{% url 'dashboard:index' %}">Главная</a></li>
-                <li class="breadcrumb-item"><a href="{% url 'planning:plan_list' %}">Месячные планы</a></li>
+                <li class="breadcrumb-item">{% if request.user|may:'dashboard:index' %}<a href="{% url 'dashboard:index' %}">Главная</a>{% endif %}</li>
+                <li class="breadcrumb-item">{% if request.user|may:'planning:plan_list' %}<a href="{% url 'planning:plan_list' %}">Месячные планы</a>{% endif %}</li>
                 <li class="breadcrumb-item">
-                    <a href="{% url 'planning:plan_detail' plan.pk %}">{{ plan.project_work.name }}</a>
+                    {% if request.user|may:'planning:plan_detail' %}<a href="{% url 'planning:plan_detail' plan.pk %}">{{ plan.project_work.name }}</a>{% endif %}
                 </li>
                 <li class="breadcrumb-item active">Версии</li>
             </ol>
         </nav>
     </div>
     <div class="btn-group">
-        <a href="{% url 'planning:plan_detail' plan.pk %}" class="btn btn-secondary">
+        {% if request.user|may:'planning:plan_detail' %}<a href="{% url 'planning:plan_detail' plan.pk %}" class="btn btn-secondary">
             <i class="bi bi-arrow-left"></i> К плану
-        </a>
-        <a href="{% url 'planning:version_create' plan.pk %}" class="btn btn-primary">
+        </a>{% endif %}
+        {% if request.user|may:'planning:version_create' %}<a href="{% url 'planning:version_create' plan.pk %}" class="btn btn-primary">
             <i class="bi bi-plus-circle"></i> Новая версия
-        </a>
+        </a>{% endif %}
     </div>
 </div>
 
@@ -99,14 +100,14 @@
                                 </td>
                                 <td>
                                     <div class="btn-group btn-group-sm">
-                                        <a href="{% url 'planning:version_detail' version.pk %}" class="btn btn-outline-primary" title="Открыть">
+                                        {% if request.user|may:'planning:version_detail' %}<a href="{% url 'planning:version_detail' version.pk %}" class="btn btn-outline-primary" title="Открыть">
                                             <i class="bi bi-eye"></i>
-                                        </a>
+                                        </a>{% endif %}
                                         {% if version.status == 'DRAFT' %}
-                                            <a href="{% url 'planning:version_generate' version.pk %}" class="btn btn-outline-success" title="Перегенерировать"
+                                            {% if request.user|may:'planning:version_generate' %}<a href="{% url 'planning:version_generate' version.pk %}" class="btn btn-outline-success" title="Перегенерировать"
                                                onclick="return confirm('Перегенерировать дневные планы?');">
                                                 <i class="bi bi-arrow-clockwise"></i>
-                                            </a>
+                                            </a>{% endif %}
                                         {% endif %}
                                     </div>
                                 </td>
@@ -120,7 +121,7 @@
 {% else %}
     <div class="alert alert-info">
         <i class="bi bi-info-circle"></i> Версии плана ещё не созданы.
-        <a href="{% url 'planning:version_create' plan.pk %}" class="alert-link">Создать первую версию</a>
+        {% if request.user|may:'planning:version_create' %}<a href="{% url 'planning:version_create' plan.pk %}" class="alert-link">Создать первую версию</a>{% endif %}
     </div>
 {% endif %}
 {% endblock %}

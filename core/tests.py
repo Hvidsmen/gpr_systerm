@@ -24,7 +24,7 @@ class CompanyAccessTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.today = timezone.localdate()
-        role = Role.objects.create(code='MANAGER', name='Руководитель')
+        role = Role.objects.get(code="ADMIN")
         cls.tenants = []
         for label in ('own', 'foreign'):
             company = Company.objects.create(name=label, inn=label)

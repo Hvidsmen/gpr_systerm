@@ -43,12 +43,12 @@ class WorkspaceTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.company = Company.objects.create(name="Period planning")
-        role = Role.objects.create(code="MANAGER", name="Manager")
+        role = Role.objects.get(code="MANAGER")
         cls.manager = User.objects.create_user(
             username="period-manager", company=cls.company, role=role
         )
         cls.planner = User.objects.create_user(
-            username="period-planner", company=cls.company
+            username="period-planner", company=cls.company, role=Role.objects.get(code="PLANNER")
         )
         project = Project.objects.create(company=cls.company, code="p", name="p")
         cls.obj = ConstructionObject.objects.create(
@@ -501,7 +501,7 @@ class WorkspaceTests(TestCase):
     def test_editor_and_formset_ids_are_company_scoped(self):
         workspace = self.create()
         other = Company.objects.create(name="other")
-        u = User.objects.create_user(username="other-period", company=other)
+        u = User.objects.create_user(username="other-period", company=other, role=Role.objects.get(code="ADMIN"))
         self.client.force_login(u)
         for name, pk in [
             ("planning:workspace_detail", workspace.pk),
@@ -611,7 +611,9 @@ class WorkspaceTests(TestCase):
         self.assertEqual(
             sum(v["daily"] for day, v in planned.items() if day.month == 1), 250
         )
-        self.client.force_login(self.planner)
+        foreman = User.objects.create_user(username="workspace-foreman", company=self.company, role=Role.objects.get(code="FOREMAN"))
+        foreman.assigned_objects.add(self.obj)
+        self.client.force_login(foreman)
         url = reverse("production:labor_fact_daily_input")
         response = self.client.get(
             url, {"construction_object": self.obj.pk, "date": FEB.replace(day=5)}
@@ -715,7 +717,7 @@ class WorkspaceTests(TestCase):
         self.add_resources(workspace)
         base = self.approve(workspace.baseline_version)
         other = Company.objects.create(name="Foreign virtual")
-        user = User.objects.create_user(username="foreign-virtual", company=other)
+        user = User.objects.create_user(username="foreign-virtual", company=other, role=Role.objects.get(code="ADMIN"))
         p = Project.objects.create(company=other, code="p", name="p")
         obj = ConstructionObject.objects.create(
             company=other, project=p, code="o", name="o"
@@ -777,7 +779,7 @@ class WorkspaceTests(TestCase):
         self.assertIn("01.2026;300", text)
         self.assertIn("03.2026;500", text)
         other = Company.objects.create(name="Export other")
-        user = User.objects.create_user(username="export-other", company=other)
+        user = User.objects.create_user(username="export-other", company=other, role=Role.objects.get(code="ADMIN"))
         self.client.force_login(user)
         self.assertEqual(self.client.get(url).status_code, 404)
 

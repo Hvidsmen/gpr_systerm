@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load access %}
 {% load i18n %}
 
 {% block title %}Факты по людям{% endblock %}
@@ -11,14 +12,14 @@
         </h2>
         <nav aria-label="breadcrumb">
             <ol class="breadcrumb mb-0">
-                <li class="breadcrumb-item"><a href="{% url 'dashboard:index' %}">Главная</a></li>
+                <li class="breadcrumb-item">{% if request.user|may:'dashboard:index' %}<a href="{% url 'dashboard:index' %}">Главная</a>{% endif %}</li>
                 <li class="breadcrumb-item active">Факты по людям</li>
             </ol>
         </nav>
     </div>
-    <a href="{% url 'production:labor_create' %}" class="btn btn-primary">
+    {% if request.user|may:'production:labor_create' %}<a href="{% url 'production:labor_create' %}" class="btn btn-primary">
         <i class="bi bi-plus-circle"></i> Ввести факт
-    </a>
+    </a>{% endif %}
 </div>
 
 {% if labor_facts %}
@@ -50,13 +51,13 @@
                                 <td class="text-end">{{ fact.hourly_rate|default:"—" }}</td>
                                 <td>
                                     <div class="btn-group btn-group-sm">
-                                        <a href="{% url 'production:labor_update' fact.pk %}" class="btn btn-outline-secondary" title="Редактировать">
+                                        {% if request.user|may:'production:labor_update' %}<a href="{% url 'production:labor_update' fact.pk %}" class="btn btn-outline-secondary" title="Редактировать">
                                             <i class="bi bi-pencil"></i>
-                                        </a>
-                                        <a href="{% url 'production:labor_delete' fact.pk %}" class="btn btn-outline-danger" title="Удалить"
+                                        </a>{% endif %}
+                                        {% if request.user|may:'production:labor_delete' %}<a href="{% url 'production:labor_delete' fact.pk %}" class="btn btn-outline-danger" title="Удалить"
                                            onclick="return confirm('Удалить факт?');">
                                             <i class="bi bi-trash"></i>
-                                        </a>
+                                        </a>{% endif %}
                                     </div>
                                 </td>
                             </tr>
@@ -91,7 +92,7 @@
 {% else %}
     <div class="alert alert-info">
         <i class="bi bi-info-circle"></i> Факты по людям ещё не введены.
-        <a href="{% url 'production:labor_create' %}" class="alert-link">Ввести первый факт</a>
+        {% if request.user|may:'production:labor_create' %}<a href="{% url 'production:labor_create' %}" class="alert-link">Ввести первый факт</a>{% endif %}
     </div>
 {% endif %}
 {% endblock %}

@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load access %}
 {% load i18n %}
 
 {% block title %}
@@ -117,13 +118,13 @@
                     <i class="bi bi-save"></i> Сохранить
                 </button>
                 {% if work %}
-                <a href="{% url 'works:work_detail' work.pk %}" class="btn btn-secondary">
+                {% if request.user|may:'works:work_detail' %}<a href="{% url 'works:work_detail' work.pk %}" class="btn btn-secondary">
                     <i class="bi bi-x-circle"></i> Отмена
-                </a>
+                </a>{% endif %}
                 {% else %}
-                <a href="{% url 'works:work_list' %}" class="btn btn-secondary">
+                {% if request.user|may:'works:work_list' %}<a href="{% url 'works:work_list' %}" class="btn btn-secondary">
                     <i class="bi bi-x-circle"></i> Отмена
-                </a>
+                </a>{% endif %}
                 {% endif %}
             </div>
         </form>

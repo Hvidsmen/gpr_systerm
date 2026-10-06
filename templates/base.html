@@ -1,3 +1,4 @@
+{% load access %}
 {% load static %}
 <!DOCTYPE html>
 <html lang="ru">
@@ -392,7 +393,7 @@
         </button>
 
         <!-- Brand -->
-        <a class="navbar-brand" href="{% url 'dashboard:index' %}">
+        <a class="navbar-brand" href="{% if user.is_foreman %}{% url 'production:fact_day_workspace' %}{% else %}{% url 'dashboard:index' %}{% endif %}">
             <i class="bi bi-building"></i> ГПР Система
         </a>
 
@@ -406,11 +407,11 @@
 
             {% if user.is_authenticated %}
                 <!-- Quick action for foreman/planner -->
-                {% if user.is_foreman or user.is_planner or user.is_admin %}
-                    <a href="{% url 'production:fact_day_workspace' %}" class="btn btn-success btn-sm d-none d-md-inline-flex align-items-center gap-2">
+                {% if user.is_foreman or user.is_admin %}
+                    {% if request.user|may:'production:fact_day_workspace' %}<a href="{% url 'production:fact_day_workspace' %}" class="btn btn-success btn-sm d-none d-md-inline-flex align-items-center gap-2">
                         <i class="bi bi-clipboard-check"></i>
                         <span>Ввести факт</span>
-                    </a>
+                    </a>{% endif %}
 
                 {% endif %}
 
@@ -429,10 +430,10 @@
                             <small class="text-muted">{{ user.username }}</small>
                         </li>
                         <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item" href="{% url 'accounts:user_detail' user.pk %}">
+                        <li><a class="dropdown-item" href="{% url 'accounts:settings' %}">
                             <i class="bi bi-person"></i> Профиль
                         </a></li>
-                        {% if user.is_admin %}
+                        {% if user.is_superuser %}
                             <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="{% url 'admin:index' %}">
                                 <i class="bi bi-shield-lock"></i> Админка
@@ -460,11 +461,11 @@
     <nav class="nav flex-column py-2">
 
         <!-- Quick Action -->
-        {% if user.is_foreman or user.is_planner or user.is_admin %}
-            <a href="{% url 'production:fact_day_workspace' %}" class="quick-action">
+        {% if user.is_foreman or user.is_admin %}
+            {% if request.user|may:'production:fact_day_workspace' %}<a href="{% url 'production:fact_day_workspace' %}" class="quick-action">
                 <i class="bi bi-clipboard-check-fill"></i>
                 <span>Факт объекта за день</span>
-            </a>
+            </a>{% endif %}
         {% endif %}
 
         <!-- Главное -->
@@ -476,133 +477,133 @@
 
         <!-- Проекты -->
         <div class="nav-section-title">Проекты</div>
-        <a class="nav-link {% if 'projects' in request.path %}active{% endif %}"
+        {% if request.user|may:'projects:project_list' %}<a class="nav-link {% if 'projects' in request.path %}active{% endif %}"
            href="{% url 'projects:project_list' %}">
             <i class="bi bi-folder"></i> Все проекты
-        </a>
+        </a>{% endif %}
 
         <!-- Работы -->
         <div class="nav-section-title">Работы</div>
-        <a class="nav-link {% if request.resolver_match.url_name == 'work_list' %}active{% endif %}"
+        {% if request.user|may:'works:work_list' %}<a class="nav-link {% if request.resolver_match.url_name == 'work_list' %}active{% endif %}"
            href="{% url 'works:work_list' %}">
             <i class="bi bi-list-task"></i> Список работ
-        </a>
-        <a class="nav-link {% if request.resolver_match.url_name == 'work_create' %}active{% endif %}"
+        </a>{% endif %}
+        {% if request.user|may:'works:work_create' %}<a class="nav-link {% if request.resolver_match.url_name == 'work_create' %}active{% endif %}"
            href="{% url 'works:work_create' %}">
             <i class="bi bi-plus-circle"></i> Новая работа
-        </a>
+        </a>{% endif %}
 
         <!-- Планирование -->
         <div class="nav-section-title">Планирование</div>
-        <a class="nav-link {% if request.resolver_match.url_name == 'plan_list' %}active{% endif %}"
+        {% if request.user|may:'planning:plan_list' %}<a class="nav-link {% if request.resolver_match.url_name == 'plan_list' %}active{% endif %}"
            href="{% url 'planning:plan_list' %}">
             <i class="bi bi-calendar-check"></i> Месячные планы
-        </a>
-        <a class="nav-link {% if request.resolver_match.url_name == 'plan_matrix' %}active{% endif %}"
+        </a>{% endif %}
+        {% if request.user|may:'planning:plan_matrix' %}<a class="nav-link {% if request.resolver_match.url_name == 'plan_matrix' %}active{% endif %}"
    href="{% url 'planning:plan_matrix' %}">
     <i class="bi bi-grid-3x3-gap"></i> Матрица планов
-</a>
-        <a class="nav-link {% if request.resolver_match.url_name == 'plan_create' %}active{% endif %}"
+</a>{% endif %}
+        {% if request.user|may:'planning:plan_create' %}<a class="nav-link {% if request.resolver_match.url_name == 'plan_create' %}active{% endif %}"
            href="{% url 'planning:plan_create' %}">
             <i class="bi bi-calendar-plus"></i> Создать план
-        </a>
-        <a class="nav-link {% if 'profile' in request.path %}active{% endif %}"
+        </a>{% endif %}
+        {% if request.user|may:'planning:profile_list' %}<a class="nav-link {% if 'profile' in request.path %}active{% endif %}"
            href="{% url 'planning:profile_list' %}">
             <i class="bi bi-graph-up"></i> Профили нагрузки
-        </a>
-        <a class="nav-link {% if 'calendar' in request.path %}active{% endif %}"
+        </a>{% endif %}
+        {% if request.user|may:'planning:calendar_list' %}<a class="nav-link {% if 'calendar' in request.path %}active{% endif %}"
            href="{% url 'planning:calendar_list' %}">
             <i class="bi bi-calendar"></i> Календари
-        </a>
+        </a>{% endif %}
 
         <!-- Производство -->
         <div class="nav-section-title">Производство</div>
-        <a class="nav-link {% if request.resolver_match.url_name == 'fact_day_workspace' %}active{% endif %}"
+        {% if request.user|may:'production:fact_day_workspace' %}<a class="nav-link {% if request.resolver_match.url_name == 'fact_day_workspace' %}active{% endif %}"
            href="{% url 'production:fact_day_workspace' %}">
             <i class="bi bi-clipboard-check-fill text-success"></i> Факт объекта за день
-        </a>
-        <a class="nav-link {% if request.resolver_match.url_name == 'fact_list' %}active{% endif %}"
+        </a>{% endif %}
+        {% if request.user|may:'production:fact_list' %}<a class="nav-link {% if request.resolver_match.url_name == 'fact_list' %}active{% endif %}"
            href="{% url 'production:fact_list' %}">
             <i class="bi bi-journal-check"></i> Все факты (объёмы)
-        </a>
-  <a class="nav-link {% if request.resolver_match.url_name == 'fact_input' %}active{% endif %}"
+        </a>{% endif %}
+  {% if request.user|may:'production:fact_input' %}<a class="nav-link {% if request.resolver_match.url_name == 'fact_input' %}active{% endif %}"
    href="{% url 'production:fact_input' %}">
     <i class="bi bi-clipboard-check"></i> Ввод факта работ
-</a>
+</a>{% endif %}
         <!-- Планы ресурсов -->
         <div class="nav-section-title ms-3">Планы ресурсов</div>
-        <a class="nav-link {% if request.resolver_match.url_name == 'labor_plan_list' %}active{% endif %}"
+        {% if request.user|may:'production:labor_plan_list' %}<a class="nav-link {% if request.resolver_match.url_name == 'labor_plan_list' %}active{% endif %}"
            href="{% url 'production:labor_plan_list' %}">
             <i class="bi bi-calendar-check"></i> Планы по людям
-        </a>
-        <a class="nav-link {% if request.resolver_match.url_name == 'equipment_plan_list' %}active{% endif %}"
+        </a>{% endif %}
+        {% if request.user|may:'production:equipment_plan_list' %}<a class="nav-link {% if request.resolver_match.url_name == 'equipment_plan_list' %}active{% endif %}"
            href="{% url 'production:equipment_plan_list' %}">
             <i class="bi bi-calendar-check"></i> Планы по технике
-        </a>
-        <a class="nav-link {% if request.resolver_match.url_name == 'fuel_plan_list' %}active{% endif %}"
+        </a>{% endif %}
+        {% if request.user|may:'production:fuel_plan_list' %}<a class="nav-link {% if request.resolver_match.url_name == 'fuel_plan_list' %}active{% endif %}"
            href="{% url 'production:fuel_plan_list' %}">
             <i class="bi bi-calendar-check"></i> Планы по ГСМ
-        </a>
+        </a>{% endif %}
 
        <!-- Факты ресурсов -->
 <div class="nav-section-title ms-3">Факты ресурсов</div>
-<a class="nav-link {% if request.resolver_match.url_name == 'labor_fact_list' %}active{% endif %}"
+{% if request.user|may:'production:labor_fact_list' %}<a class="nav-link {% if request.resolver_match.url_name == 'labor_fact_list' %}active{% endif %}"
    href="{% url 'production:labor_fact_list' %}">
     <i class="bi bi-people"></i> Факты по людям
-</a>
-<a class="nav-link {% if request.resolver_match.url_name == 'labor_fact_daily_input' %}active{% endif %}"
+</a>{% endif %}
+{% if request.user|may:'production:labor_fact_daily_input' %}<a class="nav-link {% if request.resolver_match.url_name == 'labor_fact_daily_input' %}active{% endif %}"
    href="{% url 'production:labor_fact_daily_input' %}">
     <i class="bi bi-clipboard-data"></i> Быстрый ввод (люди)
-</a>
-<a class="nav-link {% if request.resolver_match.url_name == 'equipment_fact_list' %}active{% endif %}"
+</a>{% endif %}
+{% if request.user|may:'production:equipment_fact_list' %}<a class="nav-link {% if request.resolver_match.url_name == 'equipment_fact_list' %}active{% endif %}"
    href="{% url 'production:equipment_fact_list' %}">
     <i class="bi bi-truck"></i> Факты по технике
-</a>
-<a class="nav-link {% if request.resolver_match.url_name == 'equipment_fact_daily_input' %}active{% endif %}"
+</a>{% endif %}
+{% if request.user|may:'production:equipment_fact_daily_input' %}<a class="nav-link {% if request.resolver_match.url_name == 'equipment_fact_daily_input' %}active{% endif %}"
    href="{% url 'production:equipment_fact_daily_input' %}">
     <i class="bi bi-clipboard-data"></i> Быстрый ввод (техника)
-</a>
-<a class="nav-link {% if request.resolver_match.url_name == 'fuel_fact_list' %}active{% endif %}"
+</a>{% endif %}
+{% if request.user|may:'production:fuel_fact_list' %}<a class="nav-link {% if request.resolver_match.url_name == 'fuel_fact_list' %}active{% endif %}"
    href="{% url 'production:fuel_fact_list' %}">
     <i class="bi bi-fuel-pump"></i> Факты по ГСМ
-</a>
-<a class="nav-link {% if request.resolver_match.url_name == 'fuel_fact_daily_input' %}active{% endif %}"
+</a>{% endif %}
+{% if request.user|may:'production:fuel_fact_daily_input' %}<a class="nav-link {% if request.resolver_match.url_name == 'fuel_fact_daily_input' %}active{% endif %}"
    href="{% url 'production:fuel_fact_daily_input' %}">
     <i class="bi bi-clipboard-data"></i> Быстрый ввод (ГСМ)
-</a>
+</a>{% endif %}
 
         <!-- Ресурсы -->
         <div class="nav-section-title">Ресурсы</div>
-        <a class="nav-link {% if request.resolver_match.url_name == 'employee_list' %}active{% endif %}"
+        {% if request.user|may:'resources:employee_list' %}<a class="nav-link {% if request.resolver_match.url_name == 'employee_list' %}active{% endif %}"
            href="{% url 'resources:employee_list' %}">
             <i class="bi bi-person-badge"></i> Сотрудники
-        </a>
-        <a class="nav-link {% if request.resolver_match.url_name == 'brigade_list' %}active{% endif %}"
+        </a>{% endif %}
+        {% if request.user|may:'resources:brigade_list' %}<a class="nav-link {% if request.resolver_match.url_name == 'brigade_list' %}active{% endif %}"
            href="{% url 'resources:brigade_list' %}">
             <i class="bi bi-people-fill"></i> Бригады
-        </a>
-        <a class="nav-link {% if request.resolver_match.url_name == 'equipment_type_list' %}active{% endif %}"
+        </a>{% endif %}
+        {% if request.user|may:'resources:equipment_type_list' %}<a class="nav-link {% if request.resolver_match.url_name == 'equipment_type_list' %}active{% endif %}"
            href="{% url 'resources:equipment_type_list' %}">
             <i class="bi bi-truck"></i> Виды техники
-        </a>
+        </a>{% endif %}
 
         <!-- Аналитика -->
         {% if user.is_admin or user.is_manager or user.is_planner %}
            <!-- СТАЛО: -->
-<!--<a class="nav-link" href="{% url 'dashboard:index' %}">-->
+<!--{% if request.user|may:'dashboard:index' %}<a class="nav-link" href="{% url 'dashboard:index' %}">-->
 <!--    <i class="bi bi-bar-chart"></i> Дашборд-->
-<!--</a>-->
+<!--</a>{% endif %}-->
         {% endif %}
 
         <!-- Администрирование -->
         {% if user.is_admin %}
             <div class="nav-section-title">Администрирование</div>
-            <a class="nav-link" href="{% url 'admin:index' %}">
+            {% if user.is_superuser %}<a class="nav-link" href="{% url 'admin:index' %}">
                 <i class="bi bi-shield-lock"></i> Админ-панель
-            </a>
-            <a class="nav-link" href="{% url 'accounts:user_list' %}">
+            </a>{% endif %}
+            {% if request.user|may:'accounts:user_list' %}<a class="nav-link" href="{% url 'accounts:user_list' %}">
                 <i class="bi bi-people"></i> Пользователи
-            </a>
+            </a>{% endif %}
 
         {% endif %}
     </nav>
@@ -624,7 +625,7 @@
 {% endif %}
 <!-- ========== MAIN CONTENT ========== -->
 <main class="main-content">
-    <div class="mb-3"><a href="{% url 'planning:workspace_list' %}">Планирование на период</a> · <a href="{% url 'planning:global_list' %}">Глобальные версии объектов</a> · <a href="{% url 'production:legacy_resources' %}">Перенос ресурсных данных</a></div>
+    <div class="mb-3">{% if request.user|may:'planning:workspace_list' %}<a href="{% url 'planning:workspace_list' %}">Планирование на период</a>{% endif %} · {% if request.user|may:'planning:global_list' %}<a href="{% url 'planning:global_list' %}">Глобальные версии объектов</a>{% endif %} · {% if request.user|may:'production:legacy_resources' %}<a href="{% url 'production:legacy_resources' %}">Перенос ресурсных данных</a>{% endif %}</div>
 {% block content %}{% endblock %}
 </main>
 

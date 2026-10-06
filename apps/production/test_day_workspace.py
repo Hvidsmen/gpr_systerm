@@ -2,7 +2,7 @@ from datetime import date
 from decimal import Decimal
 from django.test import TestCase
 from django.urls import reverse
-from apps.accounts.models import Company, User
+from apps.accounts.models import Company, Role, User
 from apps.projects.models import Project, ConstructionObject, Section
 from apps.resources.models import Brigade, EquipmentType
 from apps.works.models import ProjectWork, ProjectWorkItem
@@ -14,9 +14,10 @@ class FactDayWorkspaceTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.company = Company.objects.create(name='Day entry')
-        cls.user = User.objects.create_user(username='day-entry', company=cls.company)
+        cls.user = User.objects.create_user(username='day-entry', company=cls.company, role=Role.objects.get(code='FOREMAN'))
         project = Project.objects.create(company=cls.company, code='p', name='Project')
         cls.obj = ConstructionObject.objects.create(company=cls.company, project=project, code='o', name='Object')
+        cls.user.assigned_objects.add(cls.obj)
         cls.other_obj = ConstructionObject.objects.create(company=cls.company, project=project, code='o2', name='Other object')
         section = Section.objects.create(company=cls.company, construction_object=cls.obj, code='s', name='Section')
         other_section = Section.objects.create(company=cls.company, construction_object=cls.other_obj, code='s', name='Other section')

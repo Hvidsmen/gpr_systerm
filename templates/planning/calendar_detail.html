@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load access %}
 {% load i18n %}
 
 {% block title %}{{ calendar.name }} {{ calendar.year }}{% endblock %}
@@ -15,27 +16,27 @@
         </h1>
         <nav aria-label="breadcrumb">
             <ol class="breadcrumb">
-                <li class="breadcrumb-item"><a href="{% url 'dashboard:index' %}">Главная</a></li>
-                <li class="breadcrumb-item"><a href="{% url 'planning:calendar_list' %}">Календари</a></li>
+                <li class="breadcrumb-item">{% if request.user|may:'dashboard:index' %}<a href="{% url 'dashboard:index' %}">Главная</a>{% endif %}</li>
+                <li class="breadcrumb-item">{% if request.user|may:'planning:calendar_list' %}<a href="{% url 'planning:calendar_list' %}">Календари</a>{% endif %}</li>
                 <li class="breadcrumb-item active">{{ calendar.name }}</li>
             </ol>
         </nav>
     </div>
     <div class="d-flex gap-2">
-        <form method="post" action="{% url 'planning:calendar_autofill' calendar.pk %}" style="display: inline;">
+        {% if request.user|may:'planning:calendar_autofill' %}<form method="post" action="{% url 'planning:calendar_autofill' calendar.pk %}" style="display: inline;">
             {% csrf_token %}
             <button type="submit" class="btn btn-success"
                     onclick="return confirm('Заполнить календарь днями автоматически? Существующие дни будут заменены.');">
                 <i class="bi bi-magic"></i> Автозаполнить год
             </button>
-        </form>
-        <a href="{% url 'planning:calendar_update' calendar.pk %}" class="btn btn-secondary">
+        </form>{% endif %}
+        {% if request.user|may:'planning:calendar_update' %}<a href="{% url 'planning:calendar_update' calendar.pk %}" class="btn btn-secondary">
             <i class="bi bi-pencil"></i> Редактировать
-        </a>
-        <a href="{% url 'planning:calendar_delete' calendar.pk %}" class="btn btn-danger"
+        </a>{% endif %}
+        {% if request.user|may:'planning:calendar_delete' %}<a href="{% url 'planning:calendar_delete' calendar.pk %}" class="btn btn-danger"
            onclick="return confirm('Удалить календарь «{{ calendar.name }}»?');">
             <i class="bi bi-trash"></i> Удалить
-        </a>
+        </a>{% endif %}
     </div>
 </div>
 
@@ -44,12 +45,12 @@
         <i class="bi bi-exclamation-triangle"></i>
         <strong>Календарь пуст!</strong> Нажмите "Автозаполнить год", чтобы создать все 365 дней
         с учётом выходных и праздников РФ.
-        <form method="post" action="{% url 'planning:calendar_autofill' calendar.pk %}" class="mt-3">
+        {% if request.user|may:'planning:calendar_autofill' %}<form method="post" action="{% url 'planning:calendar_autofill' calendar.pk %}" class="mt-3">
             {% csrf_token %}
             <button type="submit" class="btn btn-success">
                 <i class="bi bi-magic"></i> Автозаполнить {{ calendar.year }} год
             </button>
-        </form>
+        </form>{% endif %}
     </div>
 {% else %}
     <!-- Статистика -->
@@ -94,7 +95,7 @@
             <h5 class="mb-0"><i class="bi bi-pencil-square"></i> Массовое редактирование</h5>
         </div>
         <div class="card-body">
-            <form method="post" action="{% url 'planning:calendar_bulk_edit' calendar.pk %}" class="row g-3">
+            {% if request.user|may:'planning:calendar_bulk_edit' %}<form method="post" action="{% url 'planning:calendar_bulk_edit' calendar.pk %}" class="row g-3">
                 {% csrf_token %}
                 <div class="col-md-4">
                     <label class="form-label">С даты</label>
@@ -118,7 +119,7 @@
                         <i class="bi bi-check-circle"></i> Применить
                     </button>
                 </div>
-            </form>
+            </form>{% endif %}
         </div>
     </div>
 
@@ -163,10 +164,10 @@
                                     </td>
                                     <td>{{ day.note|default:"—" }}</td>
                                     <td>
-                                        <a href="{% url 'planning:calendar_day_update' day.pk %}"
+                                        {% if request.user|may:'planning:calendar_day_update' %}<a href="{% url 'planning:calendar_day_update' day.pk %}"
                                            class="btn btn-sm btn-outline-secondary" title="Редактировать">
                                             <i class="bi bi-pencil"></i>
-                                        </a>
+                                        </a>{% endif %}
                                     </td>
                                 </tr>
                             {% endfor %}

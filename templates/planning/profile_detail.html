@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load access %}
 {% load i18n %}
 {% load profile_tags %}
 {% block title %}{{ profile.name }} — Профиль нагрузки{% endblock %}
@@ -14,23 +15,23 @@
         </h1>
         <nav aria-label="breadcrumb">
             <ol class="breadcrumb">
-                <li class="breadcrumb-item"><a href="{% url 'dashboard:index' %}">Главная</a></li>
-                <li class="breadcrumb-item"><a href="{% url 'planning:profile_list' %}">Профили нагрузки</a></li>
+                <li class="breadcrumb-item">{% if request.user|may:'dashboard:index' %}<a href="{% url 'dashboard:index' %}">Главная</a>{% endif %}</li>
+                <li class="breadcrumb-item">{% if request.user|may:'planning:profile_list' %}<a href="{% url 'planning:profile_list' %}">Профили нагрузки</a>{% endif %}</li>
                 <li class="breadcrumb-item active">{{ profile.name }}</li>
             </ol>
         </nav>
     </div>
     <div>
-        <a href="{% url 'planning:profile_item_create' profile.pk %}" class="btn btn-primary">
+        {% if request.user|may:'planning:profile_item_create' %}<a href="{% url 'planning:profile_item_create' profile.pk %}" class="btn btn-primary">
             <i class="bi bi-plus-circle"></i> Добавить рабочий день
-        </a>
-        <a href="{% url 'planning:profile_update' profile.pk %}" class="btn btn-secondary">
+        </a>{% endif %}
+        {% if request.user|may:'planning:profile_update' %}<a href="{% url 'planning:profile_update' profile.pk %}" class="btn btn-secondary">
             <i class="bi bi-pencil"></i> Редактировать
-        </a>
-        <a href="{% url 'planning:profile_delete' profile.pk %}" class="btn btn-danger"
+        </a>{% endif %}
+        {% if request.user|may:'planning:profile_delete' %}<a href="{% url 'planning:profile_delete' profile.pk %}" class="btn btn-danger"
            onclick="return confirm('Удалить профиль «{{ profile.name }}»?');">
             <i class="bi bi-trash"></i> Удалить
-        </a>
+        </a>{% endif %}
     </div>
 </div>
 
@@ -98,15 +99,15 @@
                                 </td>
                                 <td>
                                     <div class="btn-group btn-group-sm">
-                                        <a href="{% url 'planning:profile_item_update' item.pk %}"
+                                        {% if request.user|may:'planning:profile_item_update' %}<a href="{% url 'planning:profile_item_update' item.pk %}"
                                            class="btn btn-outline-secondary" title="Редактировать">
                                             <i class="bi bi-pencil"></i>
-                                        </a>
-                                        <a href="{% url 'planning:profile_item_delete' item.pk %}"
+                                        </a>{% endif %}
+                                        {% if request.user|may:'planning:profile_item_delete' %}<a href="{% url 'planning:profile_item_delete' item.pk %}"
                                            class="btn btn-outline-danger" title="Удалить"
                                            onclick="return confirm('Удалить день {{ item.workday_number }}?');">
                                             <i class="bi bi-trash"></i>
-                                        </a>
+                                        </a>{% endif %}
                                     </div>
                                 </td>
                             </tr>
@@ -133,9 +134,9 @@
                 <i class="bi bi-exclamation-triangle"></i>
                 У профиля нет элементов. Добавьте хотя бы один рабочий день.
                 <br>
-                <a href="{% url 'planning:profile_item_create' profile.pk %}" class="btn btn-sm btn-primary mt-2">
+                {% if request.user|may:'planning:profile_item_create' %}<a href="{% url 'planning:profile_item_create' profile.pk %}" class="btn btn-sm btn-primary mt-2">
                     <i class="bi bi-plus-circle"></i> Добавить рабочий день
-                </a>
+                </a>{% endif %}
             </div>
         {% endif %}
     </div>

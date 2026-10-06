@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load access %}
 {% load i18n %}
 
 {% block title %}Ввести факт - ГПР Система{% endblock %}
@@ -28,9 +29,9 @@
                     <button type="submit" class="btn btn-primary">
                         <i class="bi bi-save"></i> Сохранить
                     </button>
-                    <a href="{% url 'production:fact_list' %}" class="btn btn-secondary">
+                    {% if request.user|may:'production:fact_list' %}<a href="{% url 'production:fact_list' %}" class="btn btn-secondary">
                         <i class="bi bi-x-circle"></i> Отмена
-                    </a>
+                    </a>{% endif %}
                 </form>
             </div>
         </div>

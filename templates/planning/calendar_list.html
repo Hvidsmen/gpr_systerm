@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load access %}
 {% load i18n %}
 
 {% block title %}Производственные календари - ГПР Система{% endblock %}
@@ -9,15 +10,15 @@
         <h1><i class="bi bi-calendar"></i> Производственные календари</h1>
         <nav aria-label="breadcrumb">
             <ol class="breadcrumb">
-                <li class="breadcrumb-item"><a href="{% url 'dashboard:index' %}">Главная</a></li>
+                <li class="breadcrumb-item">{% if request.user|may:'dashboard:index' %}<a href="{% url 'dashboard:index' %}">Главная</a>{% endif %}</li>
                 <li class="breadcrumb-item active">Календари</li>
             </ol>
         </nav>
     </div>
     <div>
-        <a href="{% url 'planning:calendar_create' %}" class="btn btn-primary">
+        {% if request.user|may:'planning:calendar_create' %}<a href="{% url 'planning:calendar_create' %}" class="btn btn-primary">
             <i class="bi bi-plus-circle"></i> Создать календарь
-        </a>
+        </a>{% endif %}
     </div>
 </div>
 
@@ -41,9 +42,9 @@
                         <tr>
                             <td><strong>{{ calendar.code }}</strong></td>
                             <td>
-                                <a href="{% url 'planning:calendar_detail' calendar.pk %}" class="text-decoration-none">
+                                {% if request.user|may:'planning:calendar_detail' %}<a href="{% url 'planning:calendar_detail' calendar.pk %}" class="text-decoration-none">
                                     <strong>{{ calendar.name }}</strong>
-                                </a>
+                                </a>{% endif %}
                             </td>
                             <td>{{ calendar.year }}</td>
                             <td class="text-end">
@@ -61,16 +62,16 @@
                             </td>
                             <td>
                                 <div class="btn-group btn-group-sm">
-                                    <a href="{% url 'planning:calendar_detail' calendar.pk %}" class="btn btn-outline-primary" title="Открыть">
+                                    {% if request.user|may:'planning:calendar_detail' %}<a href="{% url 'planning:calendar_detail' calendar.pk %}" class="btn btn-outline-primary" title="Открыть">
                                         <i class="bi bi-eye"></i>
-                                    </a>
-                                    <a href="{% url 'planning:calendar_update' calendar.pk %}" class="btn btn-outline-secondary" title="Редактировать">
+                                    </a>{% endif %}
+                                    {% if request.user|may:'planning:calendar_update' %}<a href="{% url 'planning:calendar_update' calendar.pk %}" class="btn btn-outline-secondary" title="Редактировать">
                                         <i class="bi bi-pencil"></i>
-                                    </a>
-                                    <a href="{% url 'planning:calendar_delete' calendar.pk %}" class="btn btn-outline-danger" title="Удалить"
+                                    </a>{% endif %}
+                                    {% if request.user|may:'planning:calendar_delete' %}<a href="{% url 'planning:calendar_delete' calendar.pk %}" class="btn btn-outline-danger" title="Удалить"
                                        onclick="return confirm('Удалить календарь «{{ calendar.name }}»?');">
                                         <i class="bi bi-trash"></i>
-                                    </a>
+                                    </a>{% endif %}
                                 </div>
                             </td>
                         </tr>
@@ -82,7 +83,7 @@
 {% else %}
     <div class="alert alert-info">
         <i class="bi bi-info-circle"></i> Календари не найдены.
-        <a href="{% url 'planning:calendar_create' %}" class="alert-link">Создать первый календарь</a>
+        {% if request.user|may:'planning:calendar_create' %}<a href="{% url 'planning:calendar_create' %}" class="alert-link">Создать первый календарь</a>{% endif %}
     </div>
 {% endif %}
 {% endblock %}

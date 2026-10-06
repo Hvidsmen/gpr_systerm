@@ -47,12 +47,12 @@ class GlobalPlanningTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.company = Company.objects.create(name="Planning")
-        manager_role = Role.objects.create(code="MANAGER", name="Manager")
+        manager_role = Role.objects.get(code="MANAGER")
         cls.manager = User.objects.create_user(
             username="global-manager", company=cls.company, role=manager_role
         )
         cls.worker = User.objects.create_user(
-            username="global-worker", company=cls.company
+            username="global-worker", company=cls.company, role=Role.objects.get(code="PLANNER")
         )
         project = Project.objects.create(company=cls.company, code="p", name="Project")
         cls.obj = ConstructionObject.objects.create(
@@ -404,7 +404,7 @@ class GlobalPlanningTests(TestCase):
         self.resource_plans()
         version = GlobalPlanService.create(self.worker, self.obj, self.start, self.end)
         other = Company.objects.create(name="Other")
-        u = User.objects.create_user(username="other-global", company=other)
+        u = User.objects.create_user(username="other-global", company=other, role=Role.objects.get(code="ADMIN"))
         self.client.force_login(u)
         self.assertEqual(
             self.client.get(
@@ -422,7 +422,6 @@ class GlobalPlanningTests(TestCase):
         for route in [
             "planning:global_list",
             "planning:global_create",
-            "production:legacy_resources",
         ]:
             self.assertEqual(self.client.get(reverse(route)).status_code, 200)
         self.assertEqual(
@@ -475,6 +474,8 @@ class GlobalPlanningTests(TestCase):
             planned_hours=24,
             hourly_rate=100,
         )
+        self.worker.role = Role.objects.get(code="ADMIN")
+        self.worker.save()
         self.client.force_login(self.worker)
         url = reverse("production:legacy_resolve", args=[archive.pk])
         self.assertEqual(self.client.get(url).status_code, 200)

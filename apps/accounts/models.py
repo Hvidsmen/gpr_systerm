@@ -44,6 +44,10 @@ class User(AbstractUser):
         related_name='users', verbose_name=_('роль'),
         null=True, blank=True
     )
+    assigned_objects = models.ManyToManyField(
+        'projects.ConstructionObject', blank=True, related_name='assigned_users',
+        verbose_name=_('назначенные строительные объекты'),
+    )
     position = models.CharField(_('должность'), max_length=100, blank=True)
     phone = models.CharField(_('телефон'), max_length=20, blank=True)
 
@@ -60,7 +64,7 @@ class User(AbstractUser):
         return f"{self.last_name} {self.first_name}".strip() or self.username
 
     def has_role(self, role_code):
-        return self.role and self.role.code == role_code
+        return (role_code == 'ADMIN' and self.is_superuser) or (self.role and self.role.code == role_code)
 
     def is_admin(self):
         return self.has_role('ADMIN')
@@ -73,3 +77,26 @@ class User(AbstractUser):
 
     def is_foreman(self):
         return self.has_role('FOREMAN')
+
+from django.core.exceptions import ValidationError
+from django.db.models.signals import m2m_changed, pre_save
+from django.dispatch import receiver
+
+
+@receiver(m2m_changed, sender=User.assigned_objects.through)
+def validate_object_assignments(sender, instance, action, reverse, pk_set, **kwargs):
+    if action != 'pre_add':
+        return
+    if reverse:
+        invalid = User.objects.filter(pk__in=pk_set).exclude(company_id=instance.company_id).exists()
+    else:
+        from apps.projects.models import ConstructionObject
+        invalid = ConstructionObject.objects.filter(pk__in=pk_set).exclude(company_id=instance.company_id).exists()
+    if invalid:
+        raise ValidationError('Нельзя назначить объект другой компании.')
+
+
+@receiver(pre_save, sender=User)
+def protect_assignment_company(sender, instance, **kwargs):
+    if instance.pk and instance.assigned_objects.exclude(company_id=instance.company_id).exists():
+        raise ValidationError('Перед сменой компании удалите назначения строительных объектов.')
