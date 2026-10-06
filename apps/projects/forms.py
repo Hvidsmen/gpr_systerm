@@ -42,3 +42,14 @@ class SectionForm(forms.ModelForm):
             'code': 'Код',
             'name': 'Название',
         }
+
+    def clean_code(self):
+        code = self.cleaned_data['code']
+        if self.instance.construction_object_id:
+            duplicates = Section.objects.filter(
+                construction_object_id=self.instance.construction_object_id,
+                code=code,
+            ).exclude(pk=self.instance.pk)
+            if duplicates.exists():
+                raise forms.ValidationError('Раздел с таким кодом уже есть на этом объекте.')
+        return code
