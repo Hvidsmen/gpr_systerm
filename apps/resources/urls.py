@@ -1,9 +1,13 @@
 from django.urls import path
 from . import views
 
+from .equipment_import import EquipmentTypeImport, equipment_import_template
+
 app_name = 'resources'
 
 urlpatterns = [
+    path('equipment-types/import/', EquipmentTypeImport.as_view(), name='equipment_type_import'),
+    path('equipment-types/import/template/', equipment_import_template, name='equipment_import_template'),
     path('equipment-categories/', views.EquipmentCategoryListView.as_view(), name='equipment_category_list'),
     path('equipment-categories/create/', views.equipment_category_create, name='equipment_category_create'),
     path('employees/', views.EmployeeListView.as_view(), name='employee_list'),

@@ -5,6 +5,7 @@
 {% block title %}Виды техники{% endblock %}
 
 {% block content %}
+{% if request.user|may:'resources:equipment_type_import' %}<a class="btn btn-outline-primary mb-3" href="{% url 'resources:equipment_type_import' %}">Загрузить из Excel</a>{% endif %}
 {% if request.user|may:'resources:equipment_category_list' %}<a class="btn btn-outline-secondary mb-3" href="{% url 'resources:equipment_category_list' %}">Категории техники</a>{% endif %}
 
 <div class="d-flex justify-content-between align-items-center mb-4">
