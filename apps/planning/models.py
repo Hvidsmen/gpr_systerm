@@ -6,7 +6,7 @@ from core.models import BaseCompanyModel
 
 
 class LoadProfile(BaseCompanyModel):
-    code = models.CharField(_("код"), max_length=50)
+    code = models.CharField(_("код"), max_length=50, blank=True, editable=False)
     name = models.CharField(_("название"), max_length=255)
     description = models.TextField(_("описание"), blank=True)
 
@@ -41,7 +41,7 @@ class LoadProfileItem(BaseCompanyModel):
 
 
 class ProductionCalendar(BaseCompanyModel):
-    code = models.CharField(_("код"), max_length=50)
+    code = models.CharField(_("код"), max_length=50, blank=True, editable=False)
     name = models.CharField(_("название"), max_length=255)
     year = models.PositiveIntegerField(_("год"))
     is_default = models.BooleanField(_("по умолчанию"), default=False)

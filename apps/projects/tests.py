@@ -38,23 +38,22 @@ class SectionCreationTests(TestCase):
         self.assertEqual(self.client.post(self.url(self.foreign_obj), {'code': 's', 'name': 'Section'}).status_code, 404)
         self.assertFalse(Section.objects.exists())
 
-    def test_duplicate_code_has_form_error_instead_of_server_error(self):
+    def test_submitted_code_is_ignored_and_new_section_gets_automatic_code(self):
         Section.objects.create(company=self.company, construction_object=self.obj, code='s', name='Original')
-        response = self.client.post(self.url(self.obj), {'code': 's', 'name': 'Duplicate'})
-        self.assertEqual(response.status_code, 200)
-        self.assertIn('code', response.context['form'].errors)
-        self.assertEqual(Section.objects.count(), 1)
-        self.assertEqual(self.client.post(self.url(self.other_obj), {'code': 's', 'name': 'Other section'}).status_code, 302)
+        response = self.client.post(self.url(self.obj), {'code': 's', 'name': 'New'})
+        self.assertEqual(response.status_code, 302)
+        section = Section.objects.get(name='New')
+        self.assertEqual(section.code, 'SEC-000001')
+        self.assertNotIn('code', self.client.get(self.url(self.obj)).context['form'].fields)
 
-    def test_update_can_keep_code_but_cannot_duplicate_another_section(self):
+    def test_update_preserves_existing_code(self):
         section = Section.objects.create(company=self.company, construction_object=self.obj, code='a', name='Section')
         Section.objects.create(company=self.company, construction_object=self.obj, code='b', name='Other section')
         url = reverse('projects:section_edit', args=[self.obj.pk, section.pk])
-        self.assertEqual(self.client.post(url, {'code': 'a', 'name': 'Renamed'}).status_code, 302)
-        response = self.client.post(url, {'code': 'b', 'name': 'Conflict'})
-        self.assertIn('code', response.context['form'].errors)
+        self.assertEqual(self.client.post(url, {'code': 'b', 'name': 'Renamed'}).status_code, 302)
         section.refresh_from_db()
         self.assertEqual(section.code, 'a')
+        self.assertEqual(section.name, 'Renamed')
 
     def test_manager_and_foreman_cannot_create_sections(self):
         for code in ('MANAGER', 'FOREMAN'):

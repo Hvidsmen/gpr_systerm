@@ -7,7 +7,7 @@ from .models import Project, ConstructionObject, Section
 class ProjectForm(forms.ModelForm):
     class Meta:
         model = Project
-        fields = ['code', 'name', 'description', 'status', 'start_date', 'end_date']
+        fields = ['name', 'description', 'status', 'start_date', 'end_date']
         widgets = {
             'code': forms.TextInput(attrs={'class': 'form-control'}),
             'name': forms.TextInput(attrs={'class': 'form-control'}),
@@ -36,19 +36,12 @@ class ConstructionObjectForm(forms.ModelForm):
             ancestor = ancestor.parent
         return parent
 
-    def clean_code(self):
-        code = self.cleaned_data['code']
-        if ConstructionObject.objects.filter(project_id=self.instance.project_id, code=code).exclude(pk=self.instance.pk).exists():
-            raise forms.ValidationError('Объект с таким кодом уже есть в проекте.')
-        return code
-
     class Meta:
         model = ConstructionObject
-        fields = ['code', 'name', 'parent']
+        fields = ['name', 'parent']
         widgets = {
-            'code': forms.TextInput(attrs={'class': 'form-control'}),
             'name': forms.TextInput(attrs={'class': 'form-control'}),
-            'parent': forms.Select(attrs={'class': 'form-control'}),
+            'parent': forms.Select(attrs={'class': 'form-select'}),
         }
 
 
@@ -56,7 +49,7 @@ class SectionForm(forms.ModelForm):
     """Форма редактирования раздела объекта."""
     class Meta:
         model = Section
-        fields = ['code', 'name']
+        fields = ['name']
         widgets = {
             'code': forms.TextInput(attrs={'class': 'form-control'}),
             'name': forms.TextInput(attrs={'class': 'form-control'}),
@@ -65,14 +58,3 @@ class SectionForm(forms.ModelForm):
             'code': 'Код',
             'name': 'Название',
         }
-
-    def clean_code(self):
-        code = self.cleaned_data['code']
-        if self.instance.construction_object_id:
-            duplicates = Section.objects.filter(
-                construction_object_id=self.instance.construction_object_id,
-                code=code,
-            ).exclude(pk=self.instance.pk)
-            if duplicates.exists():
-                raise forms.ValidationError('Раздел с таким кодом уже есть на этом объекте.')
-        return code

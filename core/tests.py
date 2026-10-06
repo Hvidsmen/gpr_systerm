@@ -353,7 +353,8 @@ class CompanyAccessTests(TestCase):
     def test_own_project_creation_and_nested_section_edit_still_work(self):
         response = self.client.post('/projects/create/', {'code': 'created', 'name': 'Created', 'status': 'ACTIVE'})
         self.assertEqual(response.status_code, 302)
-        project = Project.objects.get(code='created')
+        project = Project.objects.get(name='Created')
+        self.assertRegex(project.code, r'^PRJ-\d+$')
         self.assertEqual(project.company_id, self.own.company.pk)
         # Parent and child IDs differ: the URL's pk identifies the object, not the section.
         second = Section.objects.create(company=self.own.company, construction_object=self.own.obj, code='second', name='second')

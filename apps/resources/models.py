@@ -5,7 +5,7 @@ from core.models import BaseCompanyModel
 
 
 class Position(BaseCompanyModel):
-    code = models.CharField(_('код'), max_length=50)
+    code = models.CharField(_('код'), max_length=50, blank=True, editable=False)
     name = models.CharField(_('название'), max_length=100)
     default_hourly_rate = models.DecimalField(_('ставка по умолчанию'), max_digits=10, decimal_places=2, default=0)
 
@@ -44,7 +44,7 @@ class Brigade(BaseCompanyModel):
     """Справочник бригад."""
     code = models.CharField(
         _('код бригады'),
-        max_length=20,
+        max_length=20, blank=True, editable=False,
         help_text=_('Уникальный код, например: БР-001')
     )
     name = models.CharField(_('название бригады'), max_length=150)
@@ -121,7 +121,7 @@ class Equipment(BaseCompanyModel):
 
 
 class FuelType(BaseCompanyModel):
-    code = models.CharField(_('код'), max_length=50)
+    code = models.CharField(_('код'), max_length=50, blank=True, editable=False)
     name = models.CharField(_('название'), max_length=100)
     unit = models.CharField(_('единица измерения'), max_length=20, default='л')
     default_price = models.DecimalField(_('цена по умолчанию'), max_digits=10, decimal_places=2, default=0)

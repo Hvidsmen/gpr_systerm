@@ -14,7 +14,7 @@ from core.models import BaseCompanyModel
 class DeviationReason(BaseCompanyModel):
     """Справочник причин отклонений факта от плана."""
 
-    code = models.CharField(_("код"), max_length=20, unique=True)
+    code = models.CharField(_("код"), max_length=20, blank=True, editable=False, unique=True)
     name = models.CharField(_("название"), max_length=150)
     description = models.TextField(_("описание"), blank=True)
     is_active = models.BooleanField(_("активна"), default=True)

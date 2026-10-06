@@ -6,7 +6,7 @@ from core.models import BaseCompanyModel
 
 
 class Project(BaseCompanyModel):
-    code = models.CharField(_('код проекта'), max_length=50)
+    code = models.CharField(_('код проекта'), max_length=50, blank=True, editable=False)
     name = models.CharField(_('название'), max_length=255)
     description = models.TextField(_('описание'), blank=True)
     status = models.CharField(
@@ -37,7 +37,7 @@ class ConstructionObject(BaseCompanyModel):
         null=True, blank=True, related_name='children',
         verbose_name=_('родительский объект')
     )
-    code = models.CharField(_('код'), max_length=50)
+    code = models.CharField(_('код'), max_length=50, blank=True, editable=False)
     name = models.CharField(_('название'), max_length=255)
 
     class Meta:
@@ -55,7 +55,7 @@ class Section(BaseCompanyModel):
         ConstructionObject, on_delete=models.CASCADE,
         related_name='sections', verbose_name=_('строительный объект')
     )
-    code = models.CharField(_('код'), max_length=50)
+    code = models.CharField(_('код'), max_length=50, blank=True, editable=False)
     name = models.CharField(_('название'), max_length=255)
 
     class Meta:

@@ -19,7 +19,7 @@ class EmployeeForm(forms.ModelForm):
 class BrigadeForm(forms.ModelForm):
     class Meta:
         model = Brigade
-        fields = ['code', 'name',  'description', 'is_active']
+        fields = ['name',  'description', 'is_active']
         widgets = {
             'code': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'БР-001'}),
             'name': forms.TextInput(attrs={'class': 'form-control'}),

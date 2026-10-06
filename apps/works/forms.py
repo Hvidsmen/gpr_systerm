@@ -96,7 +96,6 @@ class ProjectWorkForm(UnitChoiceMixin, forms.ModelForm):
     class Meta:
         model = ProjectWork
         fields = [
-            "code",
             "name",
             "work_group",
             "unit",

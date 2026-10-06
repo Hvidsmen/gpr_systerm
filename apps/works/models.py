@@ -7,7 +7,7 @@ from decimal import Decimal
 
 
 class WorkTemplate(BaseCompanyModel):
-    code = models.CharField(_("код"), max_length=50)
+    code = models.CharField(_("код"), max_length=50, blank=True, editable=False)
     name = models.CharField(_("название"), max_length=255)
     unit = models.CharField(_("единица измерения"), max_length=50)
     description = models.TextField(_("описание"), blank=True)
@@ -222,7 +222,7 @@ class ProjectWork(BaseCompanyModel):
         related_name="project_works",
         verbose_name=_("шаблон"),
     )
-    code = models.CharField(_("код"), max_length=50)
+    code = models.CharField(_("код"), max_length=50, blank=True, editable=False)
     name = models.CharField(_("название"), max_length=255)
     unit = models.CharField(_("единица измерения"), max_length=50)
     unit_price = models.DecimalField(

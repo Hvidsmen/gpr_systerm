@@ -22,7 +22,7 @@ class MonthlyPlanForm(forms.ModelForm):
 class LoadProfileForm(forms.ModelForm):
     class Meta:
         model = LoadProfile
-        fields = ['code', 'name', 'description']
+        fields = ['name', 'description']
         widgets = {
             'code': forms.TextInput(attrs={'class': 'form-control'}),
             'name': forms.TextInput(attrs={'class': 'form-control'}),
@@ -51,7 +51,7 @@ class LoadProfileItemForm(forms.ModelForm):
 class ProductionCalendarForm(forms.ModelForm):
     class Meta:
         model = ProductionCalendar
-        fields = ['code', 'name', 'year', 'is_default']
+        fields = ['name', 'year', 'is_default']
         widgets = {
             'code': forms.TextInput(attrs={'class': 'form-control'}),
             'name': forms.TextInput(attrs={'class': 'form-control'}),

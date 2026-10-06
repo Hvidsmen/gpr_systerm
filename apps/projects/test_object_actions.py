@@ -32,7 +32,7 @@ class ObjectActionsTests(TestCase):
         self.assertTrue(Section.objects.filter(pk=section.pk).exists())
         self.assertTrue(ConstructionObject.objects.filter(pk=self.obj.pk).exists())
 
-    def test_parent_scope_cycles_and_duplicate_codes(self):
+    def test_parent_scope_cycles_and_automatic_codes(self):
         other_project = Project.objects.create(company=self.company, code='other', name='Other')
         other = ConstructionObject.objects.create(company=self.company, project=other_project, code='other', name='Other')
         child = ConstructionObject.objects.create(company=self.company, project=self.project, parent=self.obj, code='child', name='Child')
@@ -42,7 +42,8 @@ class ObjectActionsTests(TestCase):
             self.obj.refresh_from_db()
             self.assertIsNone(self.obj.parent_id)
         create = reverse('projects:object_create', args=[self.project.pk])
-        self.assertEqual(self.client.post(create, {'code': 'o', 'name': 'Duplicate'}).status_code, 200)
+        self.assertEqual(self.client.post(create, {'code': 'o', 'name': 'New automatic code'}).status_code, 302)
+        self.assertEqual(ConstructionObject.objects.get(name='New automatic code').code, 'OBJ-000001')
         self.assertEqual(self.client.post(create, {'code': 'new', 'name': 'New', 'parent': self.obj.pk}).status_code, 302)
 
     def test_company_and_roles(self):
