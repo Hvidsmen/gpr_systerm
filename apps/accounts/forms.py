@@ -5,6 +5,18 @@ from django.utils.translation import gettext_lazy as _
 from .models import User
 
 
+class UserSettingsForm(forms.ModelForm):
+    class Meta:
+        model = User
+        fields = ('last_name', 'first_name', 'email', 'phone')
+        labels = {'last_name': 'Фамилия', 'first_name': 'Имя', 'email': 'Email', 'phone': 'Телефон'}
+        widgets = {
+            name: forms.TextInput(attrs={'class': 'form-control'})
+            for name in ('last_name', 'first_name', 'phone')
+        }
+        widgets['email'] = forms.EmailInput(attrs={'class': 'form-control'})
+
+
 class UserRegistrationForm(UserCreationForm):
     email = forms.EmailField(
         required=True,

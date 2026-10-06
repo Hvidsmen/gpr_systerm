@@ -12,7 +12,7 @@ from django.views.decorators.csrf import csrf_protect
 from core.mixins import CompanyRequiredMixin, CompanyScopedMixin
 from apps.production.models import FuelFact
 from apps.production.forms import FuelFactForm
-from apps.production.views.base import build_update_data
+from apps.production.views.base import setup_resource_form, build_update_data
 from apps.projects.models import Project
 from apps.works.models import ProjectWork
 
@@ -81,9 +81,6 @@ class FuelFactListView(CompanyScopedMixin, ListView):
         return context
 
 
-def _setup_fuel_fact_form(form, company):
-    form.fields['project'].queryset = Project.objects.filter(company=company)
-    form.fields['project_work'].queryset = ProjectWork.objects.filter(company=company)
 
 
 class FuelFactCreateView(CompanyRequiredMixin, CreateView):
@@ -93,7 +90,7 @@ class FuelFactCreateView(CompanyRequiredMixin, CreateView):
 
     def get_form(self, form_class=None):
         form = super().get_form(form_class)
-        _setup_fuel_fact_form(form, self.request.user.company)
+        setup_resource_form(form, self.request.user.company)
         return form
 
     def get_context_data(self, **kwargs):
@@ -122,7 +119,7 @@ class FuelFactUpdateView(CompanyScopedMixin, UpdateView):
 
     def get_form(self, form_class=None):
         form = super().get_form(form_class)
-        _setup_fuel_fact_form(form, self.request.user.company)
+        setup_resource_form(form, self.request.user.company)
         return form
 
     def get_context_data(self, **kwargs):

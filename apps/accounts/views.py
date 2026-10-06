@@ -6,7 +6,7 @@ from django.utils.translation import gettext_lazy as _
 from django.utils.http import url_has_allowed_host_and_scheme
 
 from .models import User
-from .forms import UserRegistrationForm, UserLoginForm
+from .forms import UserRegistrationForm, UserLoginForm, UserSettingsForm
 
 
 def register_view(request):
@@ -69,13 +69,10 @@ from django.contrib import messages
 @login_required
 def user_settings_view(request):
     """Страница настроек пользователя."""
-    if request.method == 'POST':
-        user = request.user
-        user.full_name = request.POST.get('full_name', user.full_name)
-        user.email = request.POST.get('email', user.email)
-        user.phone = request.POST.get('phone', user.phone)
-        user.save()
+    form = UserSettingsForm(request.POST if request.method == 'POST' else None, instance=request.user)
+    if request.method == 'POST' and form.is_valid():
+        form.save()
         messages.success(request, 'Настройки сохранены!')
         return redirect('accounts:settings')
 
-    return render(request, 'accounts/settings.html')
+    return render(request, 'accounts/settings.html', {'form': form})

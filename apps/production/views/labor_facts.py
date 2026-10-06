@@ -12,7 +12,7 @@ from django.views.decorators.csrf import csrf_protect
 from core.mixins import CompanyRequiredMixin, CompanyScopedMixin
 from apps.production.models import LaborFact
 from apps.production.forms import LaborFactForm
-from apps.production.views.base import parse_fk_id, build_update_data
+from apps.production.views.base import setup_resource_form, parse_fk_id, build_update_data
 from apps.projects.models import Project
 from apps.works.models import ProjectWork
 from apps.resources.models import Brigade
@@ -96,11 +96,6 @@ class LaborFactListView(CompanyScopedMixin, ListView):
 # CRUD
 # =============================================================================
 
-def _setup_labor_fact_form(form, company):
-    """Настройка queryset'ов формы факта по людям."""
-    form.fields['project'].queryset = Project.objects.filter(company=company)
-    form.fields['project_work'].queryset = ProjectWork.objects.filter(company=company)
-    form.fields['brigade'].queryset = Brigade.objects.filter(company=company, is_active=True)
 
 
 class LaborFactCreateView(CompanyRequiredMixin, CreateView):
@@ -110,7 +105,7 @@ class LaborFactCreateView(CompanyRequiredMixin, CreateView):
 
     def get_form(self, form_class=None):
         form = super().get_form(form_class)
-        _setup_labor_fact_form(form, self.request.user.company)
+        setup_resource_form(form, self.request.user.company)
         return form
 
     def get_context_data(self, **kwargs):
@@ -139,7 +134,7 @@ class LaborFactUpdateView(CompanyScopedMixin, UpdateView):
 
     def get_form(self, form_class=None):
         form = super().get_form(form_class)
-        _setup_labor_fact_form(form, self.request.user.company)
+        setup_resource_form(form, self.request.user.company)
         return form
 
     def get_context_data(self, **kwargs):

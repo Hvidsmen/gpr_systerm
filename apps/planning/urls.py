@@ -13,12 +13,12 @@ path('<int:plan_pk>/versions/', views.PlanVersionsListView.as_view(), name='plan
     path('versions/<int:pk>/generate/', views.VersionGenerateView.as_view(), name='version_generate'),
     path('versions/<int:pk>/submit/', views.VersionSubmitView.as_view(), name='version_submit'),
     path('versions/<int:pk>/approve/', views.VersionApproveView.as_view(), name='version_approve'),
+    path('versions/<int:pk>/complete/', views.VersionCompleteView.as_view(), name='version_complete'),
     path('versions/<int:pk>/reject/', views.VersionRejectView.as_view(), name='version_reject'),
     path('versions/<int:pk>/revision/', views.VersionRevisionView.as_view(), name='version_revision'),
     path('<int:pk>/update/', views.MonthlyPlanUpdateView.as_view(), name='plan_update'),  # НОВОЕ
     path('<int:pk>/delete/', views.MonthlyPlanDeleteView.as_view(), name='plan_delete'),
     path('plans/<int:plan_pk>/versions/create/', views.VersionCreateView.as_view(), name='version_create'),
-path('plans/<int:plan_pk>/versions/create/', views.VersionCreateView.as_view(), name='version_create'),
 path('versions/<int:pk>/regenerate/', views.VersionRegenerateView.as_view(), name='version_regenerate'),
     # Профили нагрузки
     path('profiles/', views.LoadProfileListView.as_view(), name='profile_list'),

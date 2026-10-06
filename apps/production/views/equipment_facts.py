@@ -12,7 +12,7 @@ from django.views.decorators.csrf import csrf_protect
 from core.mixins import CompanyRequiredMixin, CompanyScopedMixin
 from apps.production.models import EquipmentFact
 from apps.production.forms import EquipmentFactForm
-from apps.production.views.base import parse_fk_id, build_update_data
+from apps.production.views.base import setup_resource_form, parse_fk_id, build_update_data
 from apps.projects.models import Project
 from apps.works.models import ProjectWork
 from apps.resources.models import EquipmentType
@@ -81,10 +81,6 @@ class EquipmentFactListView(CompanyScopedMixin, ListView):
         return context
 
 
-def _setup_equipment_fact_form(form, company):
-    form.fields['project'].queryset = Project.objects.filter(company=company)
-    form.fields['project_work'].queryset = ProjectWork.objects.filter(company=company)
-    form.fields['equipment_type'].queryset = EquipmentType.objects.filter(company=company, is_active=True)
 
 
 class EquipmentFactCreateView(CompanyRequiredMixin, CreateView):
@@ -94,7 +90,7 @@ class EquipmentFactCreateView(CompanyRequiredMixin, CreateView):
 
     def get_form(self, form_class=None):
         form = super().get_form(form_class)
-        _setup_equipment_fact_form(form, self.request.user.company)
+        setup_resource_form(form, self.request.user.company)
         return form
 
     def get_context_data(self, **kwargs):
@@ -123,7 +119,7 @@ class EquipmentFactUpdateView(CompanyScopedMixin, UpdateView):
 
     def get_form(self, form_class=None):
         form = super().get_form(form_class)
-        _setup_equipment_fact_form(form, self.request.user.company)
+        setup_resource_form(form, self.request.user.company)
         return form
 
     def get_context_data(self, **kwargs):

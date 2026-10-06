@@ -81,11 +81,11 @@
                                     </span>
                                 </td>
                                 <td>{{ version.created_at|date:"d.m.Y H:i" }}</td>
-                                <td>{{ version.created_by.full_name|default:version.created_by.username }}</td>
+                                <td>{{ version.created_by.full_name|default:"—" }}</td>
                                 <td>
                                     {% if version.approved_at %}
                                         {{ version.approved_at|date:"d.m.Y H:i" }}
-                                        <br><small class="text-muted">{{ version.approved_by.full_name|default:version.approved_by.username }}</small>
+                                        <br><small class="text-muted">{{ version.approved_by.full_name|default:"—" }}</small>
                                     {% else %}
                                         <span class="text-muted">—</span>
                                     {% endif %}

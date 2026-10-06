@@ -21,7 +21,7 @@ class WorkListView(CompanyScopedMixin, ListView):
         return ProjectWork.objects.filter(company=self.request.user.company).annotate(
             items_count=Count('items'),
             total_quantity=Sum('items__planned_quantity', output_field=DecimalField())
-        ).select_related('section', 'section__construction_object', 'section__construction_object__project')
+        ).select_related('section', 'section__construction_object', 'section__construction_object__project').order_by('code', 'pk')
 
 
 class WorkDetailView(CompanyScopedMixin, DetailView):

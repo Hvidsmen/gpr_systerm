@@ -60,9 +60,8 @@
             {% endif %}
 
             {% if can_complete %}
-            <form method="post" action="{% url 'planning:version_approve' version.pk %}" style="display: inline;">
+            <form method="post" action="{% url 'planning:version_complete' version.pk %}" style="display: inline;">
                 {% csrf_token %}
-                <input type="hidden" name="status" value="COMPLETED">
                 <button type="submit" class="btn btn-info"
                         onclick="return confirm('Завершить версию v{{ version.version_number }}?');">
                     <i class="bi bi-flag-checkered"></i> Завершить
@@ -131,7 +130,7 @@
                             </span>
                         </td>
                         <td>{{ v.created_at|date:"d.m.Y H:i" }}</td>
-                        <td>{{ v.created_by.full_name|default:v.created_by.username }}</td>
+                        <td>{{ v.created_by.full_name|default:"—" }}</td>
                         <td>
                             {% if v.pk != version.pk %}
                             <a href="?version_id={{ v.pk }}" class="btn btn-outline-primary btn-sm" title="Посмотреть">

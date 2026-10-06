@@ -1,5 +1,4 @@
 Django>=5.2,<6.0
-psycopg2-binary>=2.9
-Pillow>=10.0
-
---.\Export-Code.ps1 -SourcePath "C:\Users\Asus21\Desktop\gpr_system" -OutputFile "gpr_export.txt" -ExcludePatterns @(".git", "node_modules", "__pycache__", "*.pyc", "*.dll", "*.exe", "venv", ".venv", "*.pyo", "*.db", "*.sqlite")
+psycopg2-binary>=2.9,<3
+Pillow>=10.0,<13
+python-dotenv>=1.2,<2

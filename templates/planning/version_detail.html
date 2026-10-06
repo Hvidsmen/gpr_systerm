@@ -78,6 +78,16 @@
     </div>
     <div class="card-body">
         <div class="d-flex gap-2 flex-wrap">
+            {% if version.status == 'APPROVED' %}
+                {% if user.is_manager or user.is_admin %}
+                <form method="post" action="{% url 'planning:version_complete' version.pk %}" class="d-inline">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-info" onclick="return confirm('Завершить план?');">
+                        <i class="bi bi-flag-checkered"></i> Завершить
+                    </button>
+                </form>
+                {% endif %}
+            {% endif %}
             {% if version.status == 'DRAFT' %}
                 <form method="post" action="{% url 'planning:version_submit' version.pk %}" class="d-inline">
                     {% csrf_token %}

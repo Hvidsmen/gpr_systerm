@@ -4,6 +4,16 @@
 from django.utils.dateparse import parse_date
 
 
+def setup_resource_form(form, company):
+    """Limit resource choices consistently for plan and fact forms."""
+    for name in ('project', 'project_work', 'brigade', 'equipment_type'):
+        if name in form.fields:
+            field = form.fields[name]
+            field.queryset = field.queryset.filter(company=company)
+            if name in ('brigade', 'equipment_type'):
+                field.queryset = field.queryset.filter(is_active=True)
+
+
 def parse_date_safe(date_str):
     """Безопасный парсинг даты. Возвращает None при ошибке."""
     if not date_str:

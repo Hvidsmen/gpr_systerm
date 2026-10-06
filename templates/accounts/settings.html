@@ -14,20 +14,14 @@
                 <form method="post">
                     {% csrf_token %}
 
+                    {{ form.non_field_errors }}
+                    {% for field in form %}
                     <div class="mb-3">
-                        <label class="form-label">ФИО</label>
-                        <input type="text" name="full_name" value="{{ user.full_name }}" class="form-control">
+                        <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                        {{ field }}
+                        {{ field.errors }}
                     </div>
-
-                    <div class="mb-3">
-                        <label class="form-label">Email</label>
-                        <input type="email" name="email" value="{{ user.email }}" class="form-control">
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label">Телефон</label>
-                        <input type="tel" name="phone" value="{{ user.phone }}" class="form-control">
-                    </div>
+                    {% endfor %}
 
                     <button type="submit" class="btn btn-primary">
                         <i class="bi bi-save"></i> Сохранить

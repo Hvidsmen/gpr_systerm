@@ -13,7 +13,7 @@ from datetime import timedelta
 from core.mixins import CompanyRequiredMixin, CompanyScopedMixin
 from apps.production.models import LaborPlan
 from apps.production.forms import LaborPlanForm, LaborPlanRangeForm
-from apps.production.views.base import parse_fk_id, build_update_data, parse_date_safe
+from apps.production.views.base import setup_resource_form, parse_fk_id, build_update_data, parse_date_safe
 from apps.projects.models import Project
 from apps.works.models import ProjectWork
 from apps.resources.models import Brigade
@@ -82,10 +82,6 @@ class LaborPlanListView(CompanyScopedMixin, ListView):
         return context
 
 
-def _setup_labor_plan_form(form, company):
-    form.fields['project'].queryset = Project.objects.filter(company=company)
-    form.fields['project_work'].queryset = ProjectWork.objects.filter(company=company)
-    form.fields['brigade'].queryset = Brigade.objects.filter(company=company, is_active=True)
 
 
 class LaborPlanCreateView(CompanyRequiredMixin, CreateView):
@@ -95,7 +91,7 @@ class LaborPlanCreateView(CompanyRequiredMixin, CreateView):
 
     def get_form(self, form_class=None):
         form = super().get_form(form_class)
-        _setup_labor_plan_form(form, self.request.user.company)
+        setup_resource_form(form, self.request.user.company)
         return form
 
     def form_valid(self, form):
@@ -150,7 +146,7 @@ class LaborPlanUpdateView(CompanyScopedMixin, UpdateView):
 
     def get_form(self, form_class=None):
         form = super().get_form(form_class)
-        _setup_labor_plan_form(form, self.request.user.company)
+        setup_resource_form(form, self.request.user.company)
         return form
 
     def get_context_data(self, **kwargs):

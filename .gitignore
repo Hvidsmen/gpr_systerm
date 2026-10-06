@@ -5,3 +5,11 @@ node_modules/
 .venv/
 venv/
 __pycache__/
+*.py[cod]
+.dev-secret-key
+staticfiles/
+media/
+.idea/
+gpr_export.txt
+*.sqlite3
+*.sqlite3-*

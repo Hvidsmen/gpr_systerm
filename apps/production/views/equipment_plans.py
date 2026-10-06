@@ -13,7 +13,7 @@ from datetime import timedelta
 from core.mixins import CompanyRequiredMixin, CompanyScopedMixin
 from apps.production.models import EquipmentPlan
 from apps.production.forms import EquipmentPlanForm, EquipmentPlanRangeForm
-from apps.production.views.base import build_update_data, parse_date_safe
+from apps.production.views.base import setup_resource_form, build_update_data, parse_date_safe
 from apps.projects.models import Project
 from apps.works.models import ProjectWork
 from apps.resources.models import EquipmentType
@@ -81,10 +81,6 @@ class EquipmentPlanListView(CompanyScopedMixin, ListView):
         return context
 
 
-def _setup_equipment_plan_form(form, company):
-    form.fields['project'].queryset = Project.objects.filter(company=company)
-    form.fields['project_work'].queryset = ProjectWork.objects.filter(company=company)
-    form.fields['equipment_type'].queryset = EquipmentType.objects.filter(company=company, is_active=True)
 
 
 class EquipmentPlanCreateView(CompanyRequiredMixin, CreateView):
@@ -94,7 +90,7 @@ class EquipmentPlanCreateView(CompanyRequiredMixin, CreateView):
 
     def get_form(self, form_class=None):
         form = super().get_form(form_class)
-        _setup_equipment_plan_form(form, self.request.user.company)
+        setup_resource_form(form, self.request.user.company)
         return form
 
     def form_valid(self, form):
@@ -151,7 +147,7 @@ class EquipmentPlanUpdateView(CompanyScopedMixin, UpdateView):
 
     def get_form(self, form_class=None):
         form = super().get_form(form_class)
-        _setup_equipment_plan_form(form, self.request.user.company)
+        setup_resource_form(form, self.request.user.company)
         return form
 
     def get_context_data(self, **kwargs):

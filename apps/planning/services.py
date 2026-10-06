@@ -8,7 +8,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from core.enums import PlanStatus, MismatchStrategy
-from core.exceptions import PlanImmutableError, PlanGenerationError
+from core.exceptions import PlanImmutableError, PlanGenerationError, InsufficientPermissionsError
 from .models import (
     ProductionCalendar, CalendarDay, MonthlyPlan, PlanVersion,
     DailyPlan, DailyBaseline, LoadProfile
@@ -342,6 +342,8 @@ class PlanGeneratorService:
     @staticmethod
     @transaction.atomic
     def generate(plan_version):
+        if plan_version.is_immutable:
+            raise PlanImmutableError('Утверждённый или завершённый план нельзя перегенерировать.')
         monthly = plan_version.monthly_plan
         work = monthly.project_work
         items = list(work.items.all())
@@ -458,7 +460,17 @@ class PlanWorkflowService:
     @transaction.atomic
     def submit(version, user):
         """Отправить версию на согласование."""
+        if version.status == PlanStatus.REJECTED:
+            PlanWorkflowService._transition(version, PlanStatus.DRAFT, user)
         PlanWorkflowService._transition(version, PlanStatus.SUBMITTED, user)
+
+    @staticmethod
+    @transaction.atomic
+    def complete(version, user):
+        """Завершить утверждённый план, сохранив его данные и baseline."""
+        if user.company_id != version.company_id or not (user.is_manager() or user.is_admin()):
+            raise InsufficientPermissionsError('Нет прав для завершения плана.')
+        PlanWorkflowService._transition(version, PlanStatus.COMPLETED, user)
 
     @staticmethod
     @transaction.atomic
@@ -486,7 +498,8 @@ class PlanWorkflowService:
     @staticmethod
     def _transition(version, new_status, user):
         """Выполнить переход статуса."""
-        if version.is_immutable:
+        completing = version.status == PlanStatus.APPROVED and new_status == PlanStatus.COMPLETED
+        if version.is_immutable and not completing:
             raise PlanImmutableError(
                 f"Версия {version.version_number} утверждена и не может быть изменена"
             )
