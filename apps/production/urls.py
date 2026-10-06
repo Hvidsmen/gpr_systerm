@@ -1,8 +1,10 @@
 from django.urls import path
 from . import views
+from .views.day_workspace import FactDayWorkspaceView
 
 app_name = "production"
 urlpatterns = [
+    path("day-workspace/", FactDayWorkspaceView.as_view(), name="fact_day_workspace"),
     path("", views.FactListView.as_view(), name="fact_list"),
     path("create/", views.FactCreateView.as_view(), name="fact_create"),
     path("facts/<int:pk>/update/", views.FactUpdateView.as_view(), name="fact_update"),

@@ -1,0 +1,69 @@
+{% extends 'base.html' %}
+{% block title %}Факт объекта за день{% endblock %}
+{% block content %}
+<h1>Факт объекта за день</h1>
+<p class="text-muted">Введите объёмы за выбранный день. Выполнение составных работ рассчитывается по подработам накопительно.</p>
+<form method="get" class="card card-body mb-3">
+  {{ selector.as_p }}
+  <button class="btn btn-primary" type="submit">Открыть день</button>
+</form>
+{% if groups %}
+{% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+<nav class="mb-3 d-flex flex-wrap gap-3" aria-label="Разделы факта">
+{% for group in groups %}<a href="#section-{{ group.prefix }}">{{ group.title }}</a>{% endfor %}
+</nav>
+<form method="post" id="day-facts">
+{% csrf_token %}
+<input type="hidden" name="construction_object" value="{{ selector.cleaned_data.construction_object.pk }}">
+<input type="hidden" name="date" value="{{ selector.cleaned_data.date|date:'Y-m-d' }}">
+<p>Существующие записи заполнены. Строки ресурсов из плана содержат ресурс и ставку; фактическое количество вводится вручную. Пустые строки не сохраняются. Ноль означает нулевой факт.</p>
+{% for group in groups %}
+<section id="section-{{ group.prefix }}" class="card mb-4" style="scroll-margin-top:80px">
+<div class="card-header"><h2 class="h4 mb-0">{{ group.title }}</h2></div>
+<div class="card-body">
+{{ group.formset.management_form }}
+<div class="text-danger">{{ group.formset.non_form_errors }}</div>
+<div class="table-responsive">
+<table class="table align-middle">
+<thead><tr>{% for field in group.formset.empty_form.visible_fields %}<th>{{ field.label }}</th>{% endfor %}</tr></thead>
+<tbody data-rows="{{ group.prefix }}">
+{% for row in group.formset %}
+<tr>{% for field in row.visible_fields %}<td>{% if forloop.first %}{% for hidden in row.hidden_fields %}{{ hidden }}{{ hidden.errors }}{% endfor %}<div class="text-danger">{{ row.non_field_errors }}</div><small class="text-muted d-block">{{ row.day_hint }}</small>{% endif %}{{ field }}<div class="text-danger">{{ field.errors }}</div></td>{% endfor %}</tr>
+{% endfor %}
+</tbody></table>
+</div>
+{% if group.prefix != 'works' %}
+<button type="button" class="btn btn-outline-primary" data-add="{{ group.prefix }}">Добавить строку</button>
+<template id="empty-{{ group.prefix }}"><tr>{% for field in group.formset.empty_form.visible_fields %}<td>{% if forloop.first %}{% for hidden in group.formset.empty_form.hidden_fields %}{{ hidden }}{% endfor %}{% endif %}{{ field }}</td>{% endfor %}</tr></template>
+{% endif %}
+</div></section>
+{% endfor %}
+<div class="card card-body sticky-bottom"><span class="mb-2">Сохраняются все четыре раздела вместе. Для удаления записи отметьте «Удалить» и сохраните.</span><button class="btn btn-success" type="submit">Сохранить факт за день</button></div>
+</form>
+{% else %}
+<div class="alert alert-info">Выберите строительный объект и дату, чтобы открыть работы и ресурсы.</div>
+{% endif %}
+{% endblock %}
+{% block extra_js %}
+<script>
+document.querySelectorAll('[data-add]').forEach(button => button.addEventListener('click', () => {
+  const prefix = button.dataset.add;
+  const total = document.getElementById(`id_${prefix}-TOTAL_FORMS`);
+  const index = Number(total.value);
+  if (index >= 2000) return;
+  const template = document.getElementById(`empty-${prefix}`);
+  document.querySelector(`[data-rows="${prefix}"]`).insertAdjacentHTML('beforeend', template.innerHTML.replaceAll('__prefix__', String(index)));
+  total.value = index + 1;
+}));
+const facts = document.getElementById('day-facts');
+let dirty = false;
+if (facts) {
+  facts.addEventListener('input', () => { dirty = true; });
+  facts.addEventListener('change', () => { dirty = true; });
+  facts.addEventListener('submit', () => { dirty = false; });
+}
+window.addEventListener('beforeunload', event => {
+  if (dirty) { event.preventDefault(); event.returnValue = ''; }
+});
+</script>
+{% endblock %}

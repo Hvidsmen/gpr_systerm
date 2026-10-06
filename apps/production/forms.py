@@ -96,7 +96,7 @@ FACT_FIELDS = {
 class ResourceModelForm(CompanyFormMixin, forms.ModelForm):
     def clean(self):
         data = super().clean()
-        for name, value in data.items():
+        for name, value in list(data.items()):
             if (
                 isinstance(self.fields[name], (forms.IntegerField, forms.DecimalField))
                 and value is not None

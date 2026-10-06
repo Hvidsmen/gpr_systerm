@@ -407,7 +407,7 @@
             {% if user.is_authenticated %}
                 <!-- Quick action for foreman/planner -->
                 {% if user.is_foreman or user.is_planner or user.is_admin %}
-                    <a href="{% url 'production:fact_daily' %}" class="btn btn-success btn-sm d-none d-md-inline-flex align-items-center gap-2">
+                    <a href="{% url 'production:fact_day_workspace' %}" class="btn btn-success btn-sm d-none d-md-inline-flex align-items-center gap-2">
                         <i class="bi bi-clipboard-check"></i>
                         <span>Ввести факт</span>
                     </a>
@@ -461,9 +461,9 @@
 
         <!-- Quick Action -->
         {% if user.is_foreman or user.is_planner or user.is_admin %}
-            <a href="{% url 'production:fact_daily' %}" class="quick-action">
+            <a href="{% url 'production:fact_day_workspace' %}" class="quick-action">
                 <i class="bi bi-clipboard-check-fill"></i>
-                <span>Ввод факта за сегодня</span>
+                <span>Факт объекта за день</span>
             </a>
         {% endif %}
 
@@ -517,9 +517,9 @@
 
         <!-- Производство -->
         <div class="nav-section-title">Производство</div>
-        <a class="nav-link {% if request.resolver_match.url_name == 'fact_daily' %}active{% endif %}"
-           href="{% url 'production:fact_daily' %}">
-            <i class="bi bi-clipboard-check-fill text-success"></i> Ввод факта (сегодня)
+        <a class="nav-link {% if request.resolver_match.url_name == 'fact_day_workspace' %}active{% endif %}"
+           href="{% url 'production:fact_day_workspace' %}">
+            <i class="bi bi-clipboard-check-fill text-success"></i> Факт объекта за день
         </a>
         <a class="nav-link {% if request.resolver_match.url_name == 'fact_list' %}active{% endif %}"
            href="{% url 'production:fact_list' %}">
