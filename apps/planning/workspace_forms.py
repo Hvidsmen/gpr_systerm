@@ -70,6 +70,7 @@ class WorkAllocationForm(AllocationMixin, forms.ModelForm):
     class Meta:
         model = WorkMonthAllocation
         fields = ["work", "month", "quantity", "load_profile"]
+        labels = {"quantity": "Объём", "load_profile": "Профиль"}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
