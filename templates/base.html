@@ -14,13 +14,15 @@
 
     <style>
         :root {
-            --sidebar-width: 280px;
-            --navbar-height: 60px;
+            --sidebar-width: 232px;
+            --navbar-height: 54px;
             --primary-color: #0d6efd;
             --success-color: #198754;
             --warning-color: #ffc107;
             --danger-color: #dc3545;
         }
+
+        .without-sidebar { --sidebar-width: 0px; }
 
         body {
             background-color: #f8f9fa;
@@ -43,14 +45,6 @@
 
         .navbar-brand i {
             margin-right: 8px;
-        }
-
-        .nav-date-badge {
-            background: rgba(255,255,255,.15);
-            padding: 6px 12px;
-            border-radius: 20px;
-            font-size: 0.875rem;
-            backdrop-filter: blur(10px);
         }
 
         .nav-user-badge {
@@ -101,31 +95,14 @@
             border-radius: 3px;
         }
 
-        .sidebar .nav-section-title {
-            font-size: 0.7rem;
-            text-transform: uppercase;
-            color: #6c757d;
-            font-weight: 700;
-            padding: 1.25rem 1.25rem 0.5rem;
-            letter-spacing: 1px;
-            border-bottom: 1px solid #f1f3f5;
-            margin-bottom: 0.5rem;
-        }
-
-        .sidebar .nav-section-title.ms-3 {
-            padding-left: 2.5rem;
-            font-size: 0.65rem;
-            color: #adb5bd;
-        }
-
         .sidebar .nav-link {
             color: #495057;
-            padding: 0.75rem 1.25rem;
+            padding: 0.55rem 1rem;
             border-left: 3px solid transparent;
             display: flex;
             align-items: center;
-            gap: 12px;
-            font-size: 0.9rem;
+            gap: 9px;
+            font-size: 0.875rem;
             font-weight: 500;
             transition: all .2s;
         }
@@ -154,37 +131,21 @@
             font-size: 0.7rem;
         }
 
-        /* Quick action button in sidebar */
-        .sidebar .quick-action {
-            margin: 1rem 1.25rem;
-            padding: 0.75rem;
-            background: linear-gradient(135deg, var(--success-color) 0%, #20c997 100%);
-            color: white;
-            border-radius: 8px;
-            text-decoration: none;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-weight: 600;
-            box-shadow: 0 4px 12px rgba(25,135,84,.3);
-            transition: transform .2s, box-shadow .2s;
+        .nav-group { margin-top: 0.35rem; }
+        .nav-group summary {
+            padding: 0.6rem 1rem;
+            font-size: 0.8rem;
+            color: #6c757d;
+            cursor: pointer;
         }
-
-        .sidebar .quick-action:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 16px rgba(25,135,84,.4);
-            color: white;
-        }
-
-        .sidebar .quick-action i {
-            font-size: 1.25rem;
-        }
+        .nav-group summary:hover { background: #f8f9fa; color: var(--primary-color); }
+        .nav-group .nav-link { padding-left: 1.65rem; }
 
         /* ========== MAIN CONTENT ========== */
         .main-content {
             margin-left: var(--sidebar-width);
             margin-top: var(--navbar-height);
-            padding: 1.5rem 2rem;
+            padding: 1.25rem;
             min-height: calc(100vh - var(--navbar-height));
         }
 
@@ -261,17 +222,6 @@
             box-shadow: 0 2px 8px rgba(0,0,0,.05);
         }
 
-        /* ========== FOOTER ========== */
-        .main-footer {
-            margin-left: var(--sidebar-width);
-            padding: 1rem 2rem;
-            background: white;
-            border-top: 1px solid #e9ecef;
-            text-align: center;
-            color: #6c757d;
-            font-size: 0.85rem;
-        }
-
         /* ========== MOBILE TOGGLE ========== */
         .sidebar-toggle {
             display: none;
@@ -293,7 +243,7 @@
                 box-shadow: 4px 0 20px rgba(0,0,0,.1);
             }
 
-            .main-content, .main-footer {
+            .main-content {
                 margin-left: 0;
             }
 
@@ -341,7 +291,7 @@
 
         .dropdown-item {
             padding: 0.6rem 1.25rem;
-            font-size: 0.9rem;
+            font-size: 0.875rem;
         }
 
         .dropdown-item i {
@@ -382,39 +332,24 @@
 
     {% block extra_css %}{% endblock %}
 </head>
-<body>
+<body{% if not user.is_authenticated %} class="without-sidebar"{% endif %}>
 
 <!-- ========== NAVBAR ========== -->
 <nav class="navbar navbar-expand-lg navbar-dark bg-primary fixed-top">
     <div class="container-fluid">
         <!-- Mobile toggle -->
-        <button class="sidebar-toggle me-2" type="button" id="sidebarToggle">
+        {% if user.is_authenticated %}<button class="sidebar-toggle me-2" type="button" id="sidebarToggle" aria-label="Открыть меню" aria-controls="sidebar" aria-expanded="false">
             <i class="bi bi-list"></i>
-        </button>
+        </button>{% endif %}
 
         <!-- Brand -->
-        <a class="navbar-brand" href="{% if user.is_foreman %}{% url 'production:fact_day_workspace' %}{% else %}{% url 'dashboard:index' %}{% endif %}">
+        <a class="navbar-brand" href="{% if request.user|may:'dashboard:index' %}{% url 'dashboard:index' %}{% elif request.user|may:'production:fact_day_workspace' %}{% url 'production:fact_day_workspace' %}{% elif user.is_authenticated %}{% url 'accounts:settings' %}{% else %}{% url 'accounts:login' %}{% endif %}">
             <i class="bi bi-building"></i> ГПР Система
         </a>
 
         <!-- Right side -->
         <div class="d-flex align-items-center gap-2 ms-auto">
-            <!-- Current date -->
-            <span class="nav-date-badge d-none d-md-inline-flex align-items-center gap-2">
-                <i class="bi bi-calendar-day"></i>
-                {% now "d.m.Y" %}
-            </span>
-
             {% if user.is_authenticated %}
-                <!-- Quick action for foreman/planner -->
-                {% if user.is_foreman or user.is_admin %}
-                    {% if request.user|may:'production:fact_day_workspace' %}<a href="{% url 'production:fact_day_workspace' %}" class="btn btn-success btn-sm d-none d-md-inline-flex align-items-center gap-2">
-                        <i class="bi bi-clipboard-check"></i>
-                        <span>Ввести факт</span>
-                    </a>{% endif %}
-
-                {% endif %}
-
                 <!-- User dropdown -->
                 <div class="dropdown">
                     <a class="nav-user-badge dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
@@ -458,189 +393,53 @@
 <!-- ========== SIDEBAR ========== -->
 {% if user.is_authenticated %}
 <aside class="sidebar" id="sidebar">
-    <nav class="nav flex-column py-2">
-
-        <!-- Quick Action -->
-        {% if user.is_foreman or user.is_admin %}
-            {% if request.user|may:'production:fact_day_workspace' %}<a href="{% url 'production:fact_day_workspace' %}" class="quick-action">
-                <i class="bi bi-clipboard-check-fill"></i>
-                <span>Факт объекта за день</span>
-            </a>{% endif %}
-        {% endif %}
-
-        <!-- Главное -->
-        <div class="nav-section-title">Главное</div>
-<!--        <a class="nav-link {% if request.resolver_match.url_name == 'index' %}active{% endif %}"-->
-<!--           href="{% url 'dashboard:index' %}">-->
-<!--            <i class="bi bi-speedometer2"></i> Дашборд-->
-<!--        </a>-->
-
-        <!-- Проекты -->
-        <div class="nav-section-title">Проекты</div>
-        {% if request.user|may:'projects:project_list' %}<a class="nav-link {% if 'projects' in request.path %}active{% endif %}"
-           href="{% url 'projects:project_list' %}">
-            <i class="bi bi-folder"></i> Все проекты
-        </a>{% endif %}
-
-        <!-- Работы -->
-        <div class="nav-section-title">Работы</div>
-        {% if request.user|may:'works:work_list' %}<a class="nav-link {% if request.resolver_match.url_name == 'work_list' %}active{% endif %}"
-           href="{% url 'works:work_list' %}">
-            <i class="bi bi-list-task"></i> Список работ
-        </a>{% endif %}
-        {% if request.user|may:'works:work_create' %}<a class="nav-link {% if request.resolver_match.url_name == 'work_create' %}active{% endif %}"
-           href="{% url 'works:work_create' %}">
-            <i class="bi bi-plus-circle"></i> Новая работа
-        </a>{% endif %}
-
-        <!-- Планирование -->
-        <div class="nav-section-title">Планирование</div>
-        {% if request.user|may:'planning:plan_list' %}<a class="nav-link {% if request.resolver_match.url_name == 'plan_list' %}active{% endif %}"
-           href="{% url 'planning:plan_list' %}">
-            <i class="bi bi-calendar-check"></i> Месячные планы
-        </a>{% endif %}
-        {% if request.user|may:'planning:plan_matrix' %}<a class="nav-link {% if request.resolver_match.url_name == 'plan_matrix' %}active{% endif %}"
-   href="{% url 'planning:plan_matrix' %}">
-    <i class="bi bi-grid-3x3-gap"></i> Матрица планов
-</a>{% endif %}
-        {% if request.user|may:'planning:plan_create' %}<a class="nav-link {% if request.resolver_match.url_name == 'plan_create' %}active{% endif %}"
-           href="{% url 'planning:plan_create' %}">
-            <i class="bi bi-calendar-plus"></i> Создать план
-        </a>{% endif %}
-        {% if request.user|may:'planning:profile_list' %}<a class="nav-link {% if 'profile' in request.path %}active{% endif %}"
-           href="{% url 'planning:profile_list' %}">
-            <i class="bi bi-graph-up"></i> Профили нагрузки
-        </a>{% endif %}
-        {% if request.user|may:'planning:calendar_list' %}<a class="nav-link {% if 'calendar' in request.path %}active{% endif %}"
-           href="{% url 'planning:calendar_list' %}">
-            <i class="bi bi-calendar"></i> Календари
-        </a>{% endif %}
-
-        <!-- Производство -->
-        <div class="nav-section-title">Производство</div>
-        {% if request.user|may:'production:fact_day_workspace' %}<a class="nav-link {% if request.resolver_match.url_name == 'fact_day_workspace' %}active{% endif %}"
-           href="{% url 'production:fact_day_workspace' %}">
-            <i class="bi bi-clipboard-check-fill text-success"></i> Факт объекта за день
-        </a>{% endif %}
-        {% if request.user|may:'production:fact_list' %}<a class="nav-link {% if request.resolver_match.url_name == 'fact_list' %}active{% endif %}"
-           href="{% url 'production:fact_list' %}">
-            <i class="bi bi-journal-check"></i> Все факты (объёмы)
-        </a>{% endif %}
-  {% if request.user|may:'production:fact_input' %}<a class="nav-link {% if request.resolver_match.url_name == 'fact_input' %}active{% endif %}"
-   href="{% url 'production:fact_input' %}">
-    <i class="bi bi-clipboard-check"></i> Ввод факта работ
-</a>{% endif %}
-        <!-- Планы ресурсов -->
-        <div class="nav-section-title ms-3">Планы ресурсов</div>
-        {% if request.user|may:'production:labor_plan_list' %}<a class="nav-link {% if request.resolver_match.url_name == 'labor_plan_list' %}active{% endif %}"
-           href="{% url 'production:labor_plan_list' %}">
-            <i class="bi bi-calendar-check"></i> Планы по людям
-        </a>{% endif %}
-        {% if request.user|may:'production:equipment_plan_list' %}<a class="nav-link {% if request.resolver_match.url_name == 'equipment_plan_list' %}active{% endif %}"
-           href="{% url 'production:equipment_plan_list' %}">
-            <i class="bi bi-calendar-check"></i> Планы по технике
-        </a>{% endif %}
-        {% if request.user|may:'production:fuel_plan_list' %}<a class="nav-link {% if request.resolver_match.url_name == 'fuel_plan_list' %}active{% endif %}"
-           href="{% url 'production:fuel_plan_list' %}">
-            <i class="bi bi-calendar-check"></i> Планы по ГСМ
-        </a>{% endif %}
-
-       <!-- Факты ресурсов -->
-<div class="nav-section-title ms-3">Факты ресурсов</div>
-{% if request.user|may:'production:labor_fact_list' %}<a class="nav-link {% if request.resolver_match.url_name == 'labor_fact_list' %}active{% endif %}"
-   href="{% url 'production:labor_fact_list' %}">
-    <i class="bi bi-people"></i> Факты по людям
-</a>{% endif %}
-{% if request.user|may:'production:labor_fact_daily_input' %}<a class="nav-link {% if request.resolver_match.url_name == 'labor_fact_daily_input' %}active{% endif %}"
-   href="{% url 'production:labor_fact_daily_input' %}">
-    <i class="bi bi-clipboard-data"></i> Быстрый ввод (люди)
-</a>{% endif %}
-{% if request.user|may:'production:equipment_fact_list' %}<a class="nav-link {% if request.resolver_match.url_name == 'equipment_fact_list' %}active{% endif %}"
-   href="{% url 'production:equipment_fact_list' %}">
-    <i class="bi bi-truck"></i> Факты по технике
-</a>{% endif %}
-{% if request.user|may:'production:equipment_fact_daily_input' %}<a class="nav-link {% if request.resolver_match.url_name == 'equipment_fact_daily_input' %}active{% endif %}"
-   href="{% url 'production:equipment_fact_daily_input' %}">
-    <i class="bi bi-clipboard-data"></i> Быстрый ввод (техника)
-</a>{% endif %}
-{% if request.user|may:'production:fuel_fact_list' %}<a class="nav-link {% if request.resolver_match.url_name == 'fuel_fact_list' %}active{% endif %}"
-   href="{% url 'production:fuel_fact_list' %}">
-    <i class="bi bi-fuel-pump"></i> Факты по ГСМ
-</a>{% endif %}
-{% if request.user|may:'production:fuel_fact_daily_input' %}<a class="nav-link {% if request.resolver_match.url_name == 'fuel_fact_daily_input' %}active{% endif %}"
-   href="{% url 'production:fuel_fact_daily_input' %}">
-    <i class="bi bi-clipboard-data"></i> Быстрый ввод (ГСМ)
-</a>{% endif %}
-
-        <!-- Ресурсы -->
-        <div class="nav-section-title">Ресурсы</div>
-        {% if request.user|may:'resources:employee_list' %}<a class="nav-link {% if request.resolver_match.url_name == 'employee_list' %}active{% endif %}"
-           href="{% url 'resources:employee_list' %}">
-            <i class="bi bi-person-badge"></i> Сотрудники
-        </a>{% endif %}
-        {% if request.user|may:'resources:brigade_list' %}<a class="nav-link {% if request.resolver_match.url_name == 'brigade_list' %}active{% endif %}"
-           href="{% url 'resources:brigade_list' %}">
-            <i class="bi bi-people-fill"></i> Бригады
-        </a>{% endif %}
-        {% if request.user|may:'resources:equipment_type_list' %}<a class="nav-link {% if request.resolver_match.url_name == 'equipment_type_list' %}active{% endif %}"
-           href="{% url 'resources:equipment_type_list' %}">
-            <i class="bi bi-truck"></i> Виды техники
-        </a>{% endif %}
-
-        <!-- Аналитика -->
-        {% if user.is_admin or user.is_manager or user.is_planner %}
-           <!-- СТАЛО: -->
-<!--{% if request.user|may:'dashboard:index' %}<a class="nav-link" href="{% url 'dashboard:index' %}">-->
-<!--    <i class="bi bi-bar-chart"></i> Дашборд-->
-<!--</a>{% endif %}-->
-        {% endif %}
-
-        <!-- Администрирование -->
-        {% if user.is_admin %}
-            <div class="nav-section-title">Администрирование</div>
-            {% if user.is_superuser %}<a class="nav-link" href="{% url 'admin:index' %}">
-                <i class="bi bi-shield-lock"></i> Админ-панель
-            </a>{% endif %}
-            {% if request.user|may:'accounts:user_list' %}<a class="nav-link" href="{% url 'accounts:user_list' %}">
-                <i class="bi bi-people"></i> Пользователи
-            </a>{% endif %}
-
-        {% endif %}
+    <nav class="nav flex-column py-2" aria-label="Основное меню">
+        {% if user.company %}<div class="px-3 py-2 text-muted small text-truncate" title="{{ user.company.name }}">{{ user.company.name }}</div>{% endif %}
+        {% if request.user|may:'dashboard:index' %}<a class="nav-link" href="{% url 'dashboard:index' %}" ><i class="bi bi-bar-chart"></i> Обзор</a>{% endif %}
+        {% if request.user|may:'planning:workspace_list' %}<a class="nav-link" href="{% url 'planning:workspace_list' %}" data-paths="/planning/workspace/ /planning/workspace-versions/"><i class="bi bi-calendar-range"></i> Планирование</a>{% endif %}
+        {% if request.user|may:'planning:global_list' %}<a class="nav-link" href="{% url 'planning:global_list' %}" data-paths="/planning/global/"><i class="bi bi-clipboard-check"></i> Версии и согласование</a>{% endif %}
+        {% if request.user|may:'production:fact_day_workspace' %}<a class="nav-link" href="{% url 'production:fact_day_workspace' %}" ><i class="bi bi-clipboard-data"></i> Факт за день</a>{% endif %}
+        {% if request.user|may:'projects:project_list' %}<a class="nav-link" href="{% url 'projects:project_list' %}" data-paths="/projects/"><i class="bi bi-folder"></i> Объекты и проекты</a>{% endif %}
+        {% if request.user|may:'works:work_list' %}<a class="nav-link" href="{% url 'works:work_list' %}" data-paths="/works/"><i class="bi bi-list-task"></i> Работы</a>{% endif %}
+        {% if request.user|may:'production:fact_list' %}<details class="nav-group"><summary>Журнал фактов</summary>
+        {% if request.user|may:'production:fact_list' %}<a class="nav-link" href="{% url 'production:fact_list' %}" ><i class="bi bi-journal-check"></i> Работы</a>{% endif %}
+        {% if request.user|may:'production:labor_fact_list' %}<a class="nav-link" href="{% url 'production:labor_fact_list' %}" ><i class="bi bi-people"></i> Люди</a>{% endif %}
+        {% if request.user|may:'production:equipment_fact_list' %}<a class="nav-link" href="{% url 'production:equipment_fact_list' %}" ><i class="bi bi-truck"></i> Техника</a>{% endif %}
+        {% if request.user|may:'production:fuel_fact_list' %}<a class="nav-link" href="{% url 'production:fuel_fact_list' %}" ><i class="bi bi-fuel-pump"></i> ГСМ</a>{% endif %}
+        </details>{% endif %}
+        {% if request.user|may:'resources:employee_list' %}<details class="nav-group"><summary>Справочники</summary>
+        {% if request.user|may:'resources:employee_list' %}<a class="nav-link" href="{% url 'resources:employee_list' %}" ><i class="bi bi-person-badge"></i> Сотрудники</a>{% endif %}
+        {% if request.user|may:'resources:brigade_list' %}<a class="nav-link" href="{% url 'resources:brigade_list' %}" ><i class="bi bi-people"></i> Бригады</a>{% endif %}
+        {% if request.user|may:'resources:equipment_type_list' %}<a class="nav-link" href="{% url 'resources:equipment_type_list' %}" ><i class="bi bi-truck"></i> Техника</a>{% endif %}
+        {% if request.user|may:'planning:profile_list' %}<a class="nav-link" href="{% url 'planning:profile_list' %}" data-paths="/planning/profiles/ /planning/profile-items/"><i class="bi bi-graph-up"></i> Профили нагрузки</a>{% endif %}
+        {% if request.user|may:'planning:calendar_list' %}<a class="nav-link" href="{% url 'planning:calendar_list' %}" data-paths="/planning/calendars/ /planning/calendar-days/"><i class="bi bi-calendar"></i> Календари</a>{% endif %}
+        </details>{% endif %}
+        {% if request.user|may:'planning:plan_list' %}<details class="nav-group"><summary>Дополнительно</summary>
+        {% if request.user|may:'planning:plan_list' %}<a class="nav-link" href="{% url 'planning:plan_list' %}" ><i class="bi bi-calendar-check"></i> Месячные планы</a>{% endif %}
+        {% if request.user|may:'planning:plan_matrix' %}<a class="nav-link" href="{% url 'planning:plan_matrix' %}" ><i class="bi bi-grid-3x3-gap"></i> Матрица планов</a>{% endif %}
+        {% if request.user|may:'production:labor_plan_list' %}<a class="nav-link" href="{% url 'production:labor_plan_list' %}" ><i class="bi bi-people"></i> Планы людей</a>{% endif %}
+        {% if request.user|may:'production:equipment_plan_list' %}<a class="nav-link" href="{% url 'production:equipment_plan_list' %}" ><i class="bi bi-truck"></i> Планы техники</a>{% endif %}
+        {% if request.user|may:'production:fuel_plan_list' %}<a class="nav-link" href="{% url 'production:fuel_plan_list' %}" ><i class="bi bi-fuel-pump"></i> Планы ГСМ</a>{% endif %}
+        {% if request.user|may:'production:legacy_resources' %}<a class="nav-link" href="{% url 'production:legacy_resources' %}" ><i class="bi bi-archive"></i> Перенос старых данных</a>{% endif %}
+        </details>{% endif %}
+        {% if request.user|may:'accounts:user_list' %}<div class="border-top my-2"></div>{% endif %}
+        {% if request.user|may:'accounts:user_list' %}<a class="nav-link" href="{% url 'accounts:user_list' %}" ><i class="bi bi-person-gear"></i> Пользователи и доступ</a>{% endif %}
     </nav>
 </aside>
 {% endif %}
 
-<!-- ========== MESSAGES ========== -->
-<!-- ========== MESSAGES ========== -->
-{% if messages %}
-<div class="container-fluid px-4 pt-3" style="margin-left: var(--sidebar-width); margin-top: var(--navbar-height);">
-    {% for message in messages %}
-    <div class="alert alert-{{ message.tags }} alert-dismissible fade show shadow-sm" role="alert">
-        <i class="bi bi-{% if message.tags == 'success' %}check-circle-fill{% elif message.tags == 'error' %}exclamation-triangle-fill{% elif message.tags == 'warning' %}exclamation-circle-fill{% else %}info-circle-fill{% endif %}"></i>
-        {{ message }}
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-    </div>
-    {% endfor %}
-</div>
-{% endif %}
 <!-- ========== MAIN CONTENT ========== -->
 <main class="main-content">
-    <div class="mb-3">{% if request.user|may:'planning:workspace_list' %}<a href="{% url 'planning:workspace_list' %}">Планирование на период</a>{% endif %} · {% if request.user|may:'planning:global_list' %}<a href="{% url 'planning:global_list' %}">Глобальные версии объектов</a>{% endif %} · {% if request.user|may:'production:legacy_resources' %}<a href="{% url 'production:legacy_resources' %}">Перенос ресурсных данных</a>{% endif %}</div>
-{% block content %}{% endblock %}
-</main>
-
-<!-- ========== FOOTER ========== -->
-<footer class="main-footer">
-    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <div>
-            <i class="bi bi-building"></i> <strong>ГПР Система</strong> &copy; {% now "Y" %}
-        </div>
-        <div class="text-muted">
-            <i class="bi bi-clock"></i> {% now "H:i" %} |
-            <i class="bi bi-code-slash"></i> Django {{ django_version|default:"5.2" }}
-        </div>
+    {% if messages %}
+    {% for message in messages %}
+    <div class="alert alert-{% if message.tags == 'error' %}danger{% else %}{{ message.tags|default:'info' }}{% endif %} alert-dismissible fade show" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Закрыть"></button>
     </div>
-</footer>
+    {% endfor %}
+    {% endif %}
+    {% block content %}{% endblock %}
+</main>
 
 <!-- Scroll to top button -->
 <button class="scroll-to-top" id="scrollToTop" title="Наверх">
@@ -654,15 +453,6 @@
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // Auto-close alerts after 5 seconds
-        setTimeout(function() {
-            var alerts = document.querySelectorAll('.alert-dismissible');
-            alerts.forEach(function(alert) {
-                var bsAlert = new bootstrap.Alert(alert);
-                bsAlert.close();
-            });
-        }, 5000);
-
         // Mobile sidebar toggle
         var sidebarToggle = document.getElementById('sidebarToggle');
         var sidebar = document.getElementById('sidebar');
@@ -670,13 +460,15 @@
 
         if (sidebarToggle && sidebar) {
             sidebarToggle.addEventListener('click', function() {
-                sidebar.classList.toggle('show');
-                sidebarOverlay.classList.toggle('show');
+                const open = sidebar.classList.toggle('show');
+                sidebarOverlay.classList.toggle('show', open);
+                sidebarToggle.setAttribute('aria-expanded', String(open));
             });
 
             sidebarOverlay.addEventListener('click', function() {
                 sidebar.classList.remove('show');
                 sidebarOverlay.classList.remove('show');
+                sidebarToggle.setAttribute('aria-expanded', 'false');
             });
         }
 
@@ -696,13 +488,25 @@
             });
         }
 
-        // Add active class to current nav link
-        var currentPath = window.location.pathname;
+        // Select the most specific navigation item, including nested pages.
+        const currentPath = window.location.pathname;
+        let activeLink = null;
+        let bestMatch = 0;
         document.querySelectorAll('.sidebar .nav-link').forEach(function(link) {
-            if (link.getAttribute('href') === currentPath) {
-                link.classList.add('active');
-            }
+            const paths = (link.dataset.paths || link.getAttribute('href')).split(' ');
+            paths.forEach(path => {
+                if (currentPath.startsWith(path) && path.length > bestMatch) {
+                    activeLink = link;
+                    bestMatch = path.length;
+                }
+            });
         });
+        if (activeLink) {
+            activeLink.classList.add('active');
+            activeLink.setAttribute('aria-current', 'page');
+            const group = activeLink.closest('details');
+            if (group) group.open = true;
+        }
     });
 </script>
 
