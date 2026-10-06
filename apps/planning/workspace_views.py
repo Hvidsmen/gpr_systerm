@@ -12,13 +12,15 @@ from core.mixins import CompanyScopedMixin
 from apps.works.forms import ProjectWorkForm
 from apps.works.models import ProjectWork
 from apps.works.services import WorkItemGeneratorService
-from .models import PlanningWorkspace, GlobalPlanVersion, WorkMonthAllocation
+from .models import PlanningWorkspace, GlobalPlanVersion, WorkMonthAllocation, ResourceMonthAllocation
 from .workspace_forms import (
     WorkspaceForm,
     ForecastForm,
     WorkAllocationSet,
     ResourceAllocationSet,
     AddWorkForm,
+    AddPeriodResourceForm,
+    RESOURCE_IDENTITIES,
 )
 from .workspace_services import WorkspaceService, months_between, month_start
 from .global_services import comparison
@@ -280,6 +282,16 @@ class WorkspaceEdit(View):
             "months": months,
             "work_forms": works,
             "resource_forms": resources,
+            "resource_sections": [
+                {
+                    "kind": kind, "title": title,
+                    "forms": [form for form in resources if form['kind'].value() == kind],
+                    "period_form": AddPeriodResourceForm(
+                        kind=kind, user=request.user, version=version, month=months[0], prefix='period-'+kind,
+                    ),
+                }
+                for kind, title in ResourceMonthAllocation.Kind.choices
+            ],
             "add_work_form": AddWorkForm(
                 user=request.user, workspace=version.workspace
             ),
@@ -524,3 +536,35 @@ class WorkspaceExport(View):
             f'attachment; filename="period-plan-v{version.version_number}.csv"'
         )
         return response
+
+
+class AddWorkspaceResource(View):
+    def post(self, request, pk, kind):
+        version = version_for(request, pk)
+        if kind not in RESOURCE_IDENTITIES:
+            raise Http404('Неизвестный вид ресурса')
+        if version.version_kind != 'BASELINE' or version.status not in ['DRAFT', 'REJECTED']:
+            raise PermissionDenied('Ресурсы на весь период добавляются в черновик базы.')
+        months = months_between(version.start_date, version.end_date)
+        form = AddPeriodResourceForm(request.POST, kind=kind, user=request.user,
+            version=version, month=months[0], prefix='period-'+kind)
+        if form.is_valid():
+            with transaction.atomic():
+                locked = GlobalPlanVersion.objects.select_for_update().get(pk=version.pk)
+                if locked.status not in ['DRAFT', 'REJECTED']:
+                    raise PermissionDenied('Версия уже отправлена на согласование.')
+                identity = {name: form.cleaned_data[name] for name in RESOURCE_IDENTITIES[kind]}
+                for month in months:
+                    ResourceMonthAllocation.objects.get_or_create(
+                        company=version.company, version=locked, month=month, kind=kind, **identity)
+                locked.snapshot = {}
+                locked.save(update_fields=['snapshot'])
+            messages.success(request, 'Ресурс добавлен во все месяцы. Введите количества и объёмы на вкладках месяцев.')
+            return redirect('planning:workspace_edit', pk=version.pk)
+        editor = WorkspaceEdit()
+        works, resources = editor.forms(request, version, months[0])
+        context = editor.context(request, version, months[0], months, works, resources)
+        for section in context['resource_sections']:
+            if section['kind'] == kind:
+                section['period_form'] = form
+        return render(request, 'planning/workspace_edit.html', context, status=400)

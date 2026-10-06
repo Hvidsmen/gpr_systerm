@@ -138,3 +138,26 @@ class AddWorkForm(CompanyFormMixin, forms.Form):
         self.fields["work"].queryset = self.fields["work"].queryset.filter(
             section__construction_object=workspace.construction_object
         )
+
+
+RESOURCE_IDENTITIES = {
+    'labor': ['brigade'],
+    'equipment': ['equipment_type', 'equipment_number'],
+    'fuel': ['fuel_type', 'equipment_ref'],
+}
+
+
+class AddPeriodResourceForm(ResourceAllocationForm):
+    def __init__(self, *args, kind, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.instance.kind = kind
+        keep = ['kind', 'month', *RESOURCE_IDENTITIES[kind]]
+        for name in list(self.fields):
+            if name not in keep:
+                self.fields.pop(name)
+        self.fields['kind'].initial = kind
+        self.fields['kind'].disabled = True
+        self.fields['kind'].widget = forms.HiddenInput()
+        self.fields['month'].disabled = True
+        for name in RESOURCE_IDENTITIES[kind][:1]:
+            self.fields[name].required = True
