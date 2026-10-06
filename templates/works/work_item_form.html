@@ -58,7 +58,10 @@
                     <label for="{{ form.unit.id_for_label }}" class="form-label">
                         {{ form.unit.label }} <span class="text-danger">*</span>
                     </label>
-                    {{ form.unit }}
+                    <div class="input-group">
+                        {{ form.unit }}
+                        {% if request.user|may:'works:unit_create' %}<button type="button" class="btn btn-outline-primary" data-catalog-open="unit" aria-label="Создать единицу измерения">+</button>{% endif %}
+                    </div>
                     {% if form.unit.help_text %}
                     <div class="form-text">{{ form.unit.help_text }}</div>
                     {% endif %}
@@ -131,7 +134,8 @@
     </div>
 </div>
 
-<!-- Справка -->
+{% include 'works/catalog_quick.html' %}
+
 <!-- Справка -->
 <div class="card mt-4">
     <div class="card-header">
