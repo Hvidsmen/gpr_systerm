@@ -60,6 +60,21 @@ class PlanningDeletionTests(TestCase):
         GlobalPlanVersion.objects.filter(pk=self.base.pk).update(status='APPROVED')
         self.assertEqual(self.client.post(reverse('planning:global_delete',args=[self.base.pk])).status_code,400)
 
+    def test_workspace_history_offers_draft_deletion_with_completed_baseline(self):
+        GlobalPlanVersion.objects.filter(pk=self.base.pk).update(status='COMPLETED')
+        version = GlobalPlanVersion.objects.create(
+            company=self.company, construction_object=self.obj, workspace=self.workspace,
+            version_kind='FORECAST', version_number=2,
+            start_date=self.workspace.start_date, end_date=self.workspace.end_date,
+            previous_version=self.base,
+        )
+        response = self.client.get(reverse('planning:workspace_detail', args=[self.workspace.pk]))
+        self.assertContains(response, reverse('planning:global_delete', args=[version.pk]))
+        self.assertNotContains(response, 'href="' + reverse('planning:global_delete', args=[self.base.pk]) + '"')
+        self.assertContains(response, 'Удаление недоступно')
+        self.assertEqual(self.client.post(reverse('planning:global_delete', args=[version.pk])).status_code, 302)
+        self.assertTrue(GlobalPlanVersion.objects.filter(pk=self.base.pk).exists())
+
     def test_protected_external_revision_rolls_back_entire_workspace_delete(self):
         GlobalPlanVersion.objects.create(company=self.company,construction_object=self.obj,version_number=2,start_date=self.workspace.start_date,end_date=self.workspace.end_date,previous_version=self.base)
         response=self.client.post(reverse('planning:workspace_delete',args=[self.workspace.pk]))

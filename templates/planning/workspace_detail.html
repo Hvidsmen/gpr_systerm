@@ -13,7 +13,12 @@
 {% else %}<p>Сначала сформируйте и утвердите базовый план.</p>{% endif %}
 </div></div>
 <h2>История версий</h2>
-<table class="table"><thead><tr><th>Версия</th><th>Назначение</th><th>Месяц</th><th>Сценарий</th><th>Статус</th><th></th></tr></thead><tbody>
-{% for version in versions %}<tr><td>{% if request.user|may:'planning:global_detail' %}<a href="{% url 'planning:global_detail' version.pk %}">v{{ version.version_number }}</a>{% endif %}</td><td>{{ version.get_version_kind_display }}</td><td>{{ version.planning_month|date:'m.Y'|default:'—' }}</td><td>{{ version.get_scenario_display|default:'—' }}</td><td>{{ version.get_status_display }}</td><td>{% if version.status == 'DRAFT' or version.status == 'REJECTED' %}{% if request.user|may:'planning:workspace_edit' %}<a href="{% url 'planning:workspace_edit' version.pk %}">Редактировать</a>{% endif %}{% endif %}</td></tr>{% endfor %}
+<table class="table"><thead><tr><th>Версия</th><th>Назначение</th><th>Месяц</th><th>Сценарий</th><th>Статус</th><th>Действия</th></tr></thead><tbody>
+{% for version in versions %}<tr><td>{% if request.user|may:'planning:global_detail' %}<a href="{% url 'planning:global_detail' version.pk %}">v{{ version.version_number }}</a>{% endif %}</td><td>{{ version.get_version_kind_display }}</td><td>{{ version.planning_month|date:'m.Y'|default:'—' }}</td><td>{{ version.get_scenario_display|default:'—' }}</td><td>{{ version.get_status_display }}</td><td>{% if version.status == 'DRAFT' or version.status == 'REJECTED' %}{% if request.user|may:'planning:workspace_edit' %}<a href="{% url 'planning:workspace_edit' version.pk %}">Редактировать</a>{% endif %}{% endif %}
+{% if request.user|may:'planning:global_delete' %}
+{% if version.can_delete %}<a class="btn btn-sm btn-outline-danger ms-2" href="{% url 'planning:global_delete' version.pk %}">Удалить</a>
+{% elif version.pk == workspace.baseline_version_id and workspace.can_delete %}<a class="btn btn-sm btn-outline-danger ms-2" href="{% url 'planning:workspace_delete' workspace.pk %}">Удалить план на период</a>
+{% else %}<span class="text-muted ms-2" title="Удаление недоступно для согласуемых, утверждённых и завершённых версий, а также версий с зависимыми редакциями">Удаление недоступно</span>{% endif %}
+{% endif %}</td></tr>{% endfor %}
 </tbody></table>
 {% endblock %}
