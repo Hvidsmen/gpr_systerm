@@ -50,10 +50,12 @@
 {{ work_forms.non_form_errors }}{{ resource_forms.non_form_errors }}
 {% if resource_forms.total_error_count %}<div class="alert alert-danger" role="alert">Проверьте данные ресурсов.<ul>{% for form in resource_forms %}{% for field in form %}{% for error in field.errors %}<li>{{ field.label }}: {{ error }}</li>{% endfor %}{% endfor %}{% for error in form.non_field_errors %}<li>{{ error }}</li>{% endfor %}{% endfor %}</ul></div>{% endif %}
 <h3>Работы</h3><p>Указывайте объём основной работы. Объёмы подработ рассчитываются по нормативам.</p>
+{% include 'planning/row_filters.html' with filter_kind='works' filters=work_filters %}
 <div id="work-rows">{% for form in work_forms %}<div class="card mb-3 allocation-row"><div class="card-body allocation-grid">{{ form.non_field_errors }}{% for field in form %}<p data-field="{{ field.name }}" {% if field.is_hidden %}hidden{% endif %}>{% if field.name == 'DELETE' %}<span hidden>{{ field }}</span><button type="button" class="btn btn-sm btn-outline-danger" data-remove-row aria-label="Удалить строку">Удалить</button>{% else %}{{ field.label_tag }} {{ field }} {{ field.errors }}{% endif %}</p>{% endfor %}</div></div>{% endfor %}</div>
 <button type="button" class="btn btn-outline-primary mb-4" data-add="works">Добавить строку работы</button>
 <h3>Ресурсы на {{ selected_month|date:'m.Y' }}</h3><p>Численность людей и количество техники задаются на рабочий день, литры ГСМ — за месяц. Распределение по рабочим дням и профилю, без профиля — равномерно.</p>
 {% for section in resource_sections %}<section class="card mb-4"><div class="card-body"><h3>{{ section.title }}</h3>
+{% include 'planning/row_filters.html' with filter_kind=section.kind filters=section.filters %}
 <div id="resource-rows-{{ section.kind }}">{% for form in section.forms %}<div class="card mb-3 resource-row allocation-row"><div class="card-body allocation-grid">{{ form.non_field_errors }}{% for field in form %}<p data-field="{{ field.name }}" {% if field.is_hidden or field.name == 'kind' %}hidden{% endif %}>{% if field.name == 'DELETE' %}<span hidden>{{ field }}</span><button type="button" class="btn btn-sm btn-outline-danger" data-remove-row aria-label="Удалить строку">Удалить</button>{% else %}{{ field.label_tag }} {{ field }} {{ field.errors }}{% endif %}</p>{% endfor %}</div></div>{% endfor %}</div>
 <button type="button" class="btn btn-outline-primary" data-add="resources" data-kind="{{ section.kind }}">Добавить {% if section.kind == 'labor' %}людей{% elif section.kind == 'equipment' %}технику{% else %}ГСМ{% endif %} в этот месяц</button>
 </div></section>{% endfor %}
@@ -62,7 +64,34 @@
 <template id="empty-works"><div class="card mb-3 allocation-row"><div class="card-body allocation-grid">{% for field in work_forms.empty_form %}<p data-field="{{ field.name }}" {% if field.is_hidden %}hidden{% endif %}>{% if field.name == 'DELETE' %}<span hidden>{{ field }}</span><button type="button" class="btn btn-sm btn-outline-danger" data-remove-row aria-label="Удалить строку">Удалить</button>{% else %}{{ field.label_tag }} {{ field }}{% endif %}</p>{% endfor %}</div></div></template>
 <template id="empty-resources"><div class="card mb-3 resource-row allocation-row"><div class="card-body allocation-grid">{% for field in resource_forms.empty_form %}<p data-field="{{ field.name }}" {% if field.is_hidden or field.name == 'kind' %}hidden{% endif %}>{% if field.name == 'DELETE' %}<span hidden>{{ field }}</span><button type="button" class="btn btn-sm btn-outline-danger" data-remove-row aria-label="Удалить строку">Удалить</button>{% else %}{{ field.label_tag }} {{ field }}{% endif %}</p>{% endfor %}</div></div></template>
 {{ composite_items|json_script:'composite-items' }}
+{{ planning_filter_data|json_script:'planning-filter-data' }}
 <script>
+const planningFilterData=JSON.parse(document.getElementById('planning-filter-data').textContent);
+const rowIdentity={works:'work',labor:'brigade',equipment:'equipment_type',fuel:'fuel_type'};
+function applyRowFilters(panel) {
+  const kind=panel.dataset.rowFilter;
+  const target=document.getElementById(kind==='works'?'work-rows':'resource-rows-'+kind);
+  const term=panel.querySelector('[data-filter-search]').value.trim().toLocaleLowerCase();
+  const filters=Array.from(panel.querySelectorAll('[data-filter-key]'));
+  let visible=0,total=0;
+  target.querySelectorAll('.allocation-row').forEach(row=>{
+    if (row.querySelector('[name$="-DELETE"]').checked) {row.hidden=true;return;}
+    total++;
+    const input=row.querySelector('[name$="-'+rowIdentity[kind]+'"]');
+    const label=input.options[input.selectedIndex]?.text || '';
+    const extra=Array.from(row.querySelectorAll('[name$="-equipment_number"],[name$="-equipment_ref"]')).map(i=>i.value).join(' ');
+    const meta=planningFilterData[kind][input.value] || {};
+    const matches=!input.value || ((label+' '+extra).toLocaleLowerCase().includes(term) && filters.every(f=>!f.value || meta[f.dataset.filterKey]===f.value));
+    row.hidden=!matches;if (matches) visible++;
+  });
+  panel.querySelector('[data-filter-count]').textContent='Показано: '+visible+' из '+total;
+}
+function refreshRowFilters() {document.querySelectorAll('[data-row-filter]').forEach(applyRowFilters);}
+document.querySelectorAll('[data-row-filter]').forEach(panel=>{
+  panel.addEventListener('input',()=>applyRowFilters(panel));
+  panel.querySelector('[data-reset-filter]').addEventListener('click',()=>{panel.querySelectorAll('input,select').forEach(i=>i.value='');applyRowFilters(panel);});
+});
+document.getElementById('allocation-editor').addEventListener('change',event=>{if(event.target.closest('.allocation-row')) refreshRowFilters();});
 const compositeItems=JSON.parse(document.getElementById('composite-items').textContent);
 const subworkNumber=new Intl.NumberFormat('ru-RU',{maximumFractionDigits:6});
 function updateSubworks(row) {
@@ -106,7 +135,7 @@ function removeAllocationRow(row) {
 }
 document.getElementById('allocation-editor').addEventListener('click',event=>{
   const button=event.target.closest('[data-remove-row]');
-  if (button) removeAllocationRow(button.closest('.allocation-row'));
+  if (button) {removeAllocationRow(button.closest('.allocation-row'));refreshRowFilters();}
 });
 document.querySelectorAll('.allocation-row').forEach(row=>{
   if (row.querySelector('[name$="-DELETE"]').checked) removeAllocationRow(row);
@@ -133,9 +162,10 @@ document.querySelectorAll('[data-add]').forEach(button => button.addEventListene
   const target=document.getElementById(prefix==='works'?'work-rows':'resource-rows-'+button.dataset.kind);
   target.insertAdjacentHTML('beforeend',document.getElementById(`empty-${prefix}`).innerHTML.replaceAll('__prefix__',String(index)));
   if (prefix==='resources') target.lastElementChild.querySelector('[name$="-kind"]').value=button.dataset.kind;
-  count.value=index+1; wireResources(); wireSubworks();
+  count.value=index+1; wireResources(); wireSubworks(); refreshRowFilters();
 }));
 wireResources();
 wireSubworks();
+refreshRowFilters();
 </script>
 {% endblock %}

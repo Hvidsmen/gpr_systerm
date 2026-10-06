@@ -65,3 +65,25 @@ class ResourceSectionsTests(TestCase):
         user = User.objects.create_user(username='foreign-resource-planner', company=other, role=Role.objects.get(code='PLANNER'))
         self.client.force_login(user)
         self.assertEqual(self.client.post(url, {'period-fuel-fuel_type':'DIESEL'}).status_code, 404)
+
+    def test_filter_metadata_and_catalogs_are_company_scoped(self):
+        from apps.resources.models import BrigadeGroup, BrigadeMacroGroup, EquipmentCategory
+        group = BrigadeGroup.objects.create(company=self.company, name='Own filter group')
+        macro = BrigadeMacroGroup.objects.create(company=self.company, name='Own filter macro')
+        category = EquipmentCategory.objects.create(company=self.company, name='Own filter category')
+        self.brigade.group = group
+        self.brigade.macro_group = macro
+        self.brigade.save()
+        self.equipment.category = category
+        self.equipment.save()
+        other = Company.objects.create(name='Foreign filter data')
+        foreign_category = EquipmentCategory.objects.create(company=other, name='Foreign filter category')
+        foreign_equipment = EquipmentType.objects.create(company=other, name='Foreign filter equipment', category=foreign_category)
+        for route, args in [('planning:workspace_edit',[self.version.pk]), ('planning:workspace_bulk_add',[self.version.pk,'equipment'])]:
+            response = self.client.get(reverse(route,args=args))
+            data = response.context['planning_filter_data']
+            self.assertEqual(data['labor'][str(self.brigade.pk)], {'group':str(group.pk),'macro':str(macro.pk)})
+            self.assertEqual(data['equipment'][str(self.equipment.pk)], {'category':str(category.pk)})
+            self.assertNotIn(str(foreign_equipment.pk), data['equipment'])
+            self.assertContains(response, category.name)
+            self.assertNotContains(response, foreign_category.name)

@@ -1,0 +1,5 @@
+<div class="d-flex flex-wrap gap-2 align-items-end mb-2" data-row-filter="{{ filter_kind }}">
+<div style="flex:2;min-width:160px"><label class="form-label small mb-1" for="filter-{{ filter_kind }}-search">Название / код</label><input id="filter-{{ filter_kind }}-search" type="search" class="form-control form-control-sm" data-filter-search placeholder="Поиск в строках плана"></div>
+{% for filter in filters %}<div style="flex:1;min-width:150px"><label class="form-label small mb-1" for="filter-{{ filter_kind }}-{{ filter.name }}">{{ filter.label }}</label><select id="filter-{{ filter_kind }}-{{ filter.name }}" class="form-select form-select-sm" data-filter-key="{{ filter.name }}"><option value="">Все</option>{% for option in filter.options %}<option value="{{ option.value }}">{{ option.label }}</option>{% endfor %}</select></div>{% endfor %}
+<button type="button" class="btn btn-sm btn-outline-secondary" data-reset-filter>Сбросить</button><span class="small text-muted" data-filter-count role="status" aria-live="polite"></span>
+</div>

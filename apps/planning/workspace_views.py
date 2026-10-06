@@ -275,12 +275,16 @@ class WorkspaceEdit(View):
         return works, resources
 
     def context(self, request, version, selected, months, works, resources):
+        from .selection_filters import planning_filters
+        filter_data, filter_specs = planning_filters(version)
         return {
             "version": version,
             "workspace": version.workspace,
             "selected_month": selected,
             "months": months,
             "work_forms": works,
+            "planning_filter_data": filter_data,
+            "work_filters": filter_specs['works'],
             "composite_items": {
                 str(work.pk): [
                     {"name": item.name, "unit": item.unit, "norm": str(item.quantity_per_unit)}
@@ -294,7 +298,7 @@ class WorkspaceEdit(View):
             "resource_forms": resources,
             "resource_sections": [
                 {
-                    "kind": kind, "title": title,
+                    "kind": kind, "title": title, "filters": filter_specs[kind],
                     "forms": [form for form in resources if form['kind'].value() == kind],
                     "period_form": AddPeriodResourceForm(
                         kind=kind, user=request.user, version=version, month=months[0], prefix='period-'+kind,

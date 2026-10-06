@@ -68,7 +68,9 @@ class WorkspaceBulkAdd(View):
         return version, form
 
     def display(self, request, version, form, kind, status=200):
-        return render(request, 'planning/workspace_bulk_add.html', {'version':version, 'form':form, 'title':TITLES[kind], 'kind':kind, 'return_month':(version.planning_month or editable_months(version)[0]).isoformat()}, status=status)
+        from .selection_filters import planning_filters
+        data, specs = planning_filters(version)
+        return render(request, 'planning/workspace_bulk_add.html', {'version':version, 'form':form, 'title':TITLES[kind], 'kind':kind, 'planning_filter_data':data, 'selection_filters':specs[kind], 'return_month':(version.planning_month or editable_months(version)[0]).isoformat()}, status=status)
 
     def get(self, request, pk, kind):
         version, form = self.setup_form(request, pk, kind)
