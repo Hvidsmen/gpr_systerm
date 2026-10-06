@@ -2,6 +2,7 @@
 {% load access %}
 {% block content %}
 <style>
+.allocation-row[hidden] { display:none !important; }
 .allocation-row { margin-bottom:8px !important; box-shadow:none; }
 .allocation-row .allocation-grid { display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); gap:8px; padding:10px; align-items:end; }
 .allocation-grid > [data-field] { margin:0; min-width:0; grid-column:span 1; }
@@ -49,18 +50,35 @@
 {{ work_forms.non_form_errors }}{{ resource_forms.non_form_errors }}
 {% if resource_forms.total_error_count %}<div class="alert alert-danger" role="alert">Проверьте данные ресурсов.<ul>{% for form in resource_forms %}{% for field in form %}{% for error in field.errors %}<li>{{ field.label }}: {{ error }}</li>{% endfor %}{% endfor %}{% for error in form.non_field_errors %}<li>{{ error }}</li>{% endfor %}{% endfor %}</ul></div>{% endif %}
 <h3>Работы</h3><p>Указывайте объём основной работы. Объёмы подработ рассчитываются по нормативам.</p>
-<div id="work-rows">{% for form in work_forms %}<div class="card mb-3 allocation-row"><div class="card-body allocation-grid">{{ form.non_field_errors }}{% for field in form %}<p data-field="{{ field.name }}" {% if field.is_hidden %}hidden{% endif %}>{{ field.label_tag }} {{ field }} {{ field.errors }}</p>{% endfor %}</div></div>{% endfor %}</div>
+<div id="work-rows">{% for form in work_forms %}<div class="card mb-3 allocation-row"><div class="card-body allocation-grid">{{ form.non_field_errors }}{% for field in form %}<p data-field="{{ field.name }}" {% if field.is_hidden %}hidden{% endif %}>{% if field.name == 'DELETE' %}<span hidden>{{ field }}</span><button type="button" class="btn btn-sm btn-outline-danger" data-remove-row aria-label="Удалить строку">Удалить</button>{% else %}{{ field.label_tag }} {{ field }} {{ field.errors }}{% endif %}</p>{% endfor %}</div></div>{% endfor %}</div>
 <button type="button" class="btn btn-outline-primary mb-4" data-add="works">Добавить строку работы</button>
 <h3>Ресурсы на {{ selected_month|date:'m.Y' }}</h3><p>Численность людей и количество техники задаются на рабочий день. Часы людей и литры ГСМ — за месяц. Распределение по рабочим дням и профилю, без профиля — равномерно.</p>
 {% for section in resource_sections %}<section class="card mb-4"><div class="card-body"><h3>{{ section.title }}</h3>
-<div id="resource-rows-{{ section.kind }}">{% for form in section.forms %}<div class="card mb-3 resource-row allocation-row"><div class="card-body allocation-grid">{{ form.non_field_errors }}{% for field in form %}<p data-field="{{ field.name }}" {% if field.is_hidden or field.name == 'kind' %}hidden{% endif %}>{{ field.label_tag }} {{ field }} {{ field.errors }}</p>{% endfor %}</div></div>{% endfor %}</div>
+<div id="resource-rows-{{ section.kind }}">{% for form in section.forms %}<div class="card mb-3 resource-row allocation-row"><div class="card-body allocation-grid">{{ form.non_field_errors }}{% for field in form %}<p data-field="{{ field.name }}" {% if field.is_hidden or field.name == 'kind' %}hidden{% endif %}>{% if field.name == 'DELETE' %}<span hidden>{{ field }}</span><button type="button" class="btn btn-sm btn-outline-danger" data-remove-row aria-label="Удалить строку">Удалить</button>{% else %}{{ field.label_tag }} {{ field }} {{ field.errors }}{% endif %}</p>{% endfor %}</div></div>{% endfor %}</div>
 <button type="button" class="btn btn-outline-primary" data-add="resources" data-kind="{{ section.kind }}">Добавить {% if section.kind == 'labor' %}людей{% elif section.kind == 'equipment' %}технику{% else %}ГСМ{% endif %} в этот месяц</button>
 </div></section>{% endfor %}
 <div class="d-flex gap-2"><button class="btn btn-primary" name="action" value="save">Сохранить этот месяц</button><button class="btn btn-success" name="action" value="preview">Сохранить месяц и сформировать план на весь период</button></div>
 </form>
-<template id="empty-works"><div class="card mb-3 allocation-row"><div class="card-body allocation-grid">{% for field in work_forms.empty_form %}<p data-field="{{ field.name }}" {% if field.is_hidden %}hidden{% endif %}>{{ field.label_tag }} {{ field }}</p>{% endfor %}</div></div></template>
-<template id="empty-resources"><div class="card mb-3 resource-row allocation-row"><div class="card-body allocation-grid">{% for field in resource_forms.empty_form %}<p data-field="{{ field.name }}" {% if field.is_hidden or field.name == 'kind' %}hidden{% endif %}>{{ field.label_tag }} {{ field }}</p>{% endfor %}</div></div></template>
+<template id="empty-works"><div class="card mb-3 allocation-row"><div class="card-body allocation-grid">{% for field in work_forms.empty_form %}<p data-field="{{ field.name }}" {% if field.is_hidden %}hidden{% endif %}>{% if field.name == 'DELETE' %}<span hidden>{{ field }}</span><button type="button" class="btn btn-sm btn-outline-danger" data-remove-row aria-label="Удалить строку">Удалить</button>{% else %}{{ field.label_tag }} {{ field }}{% endif %}</p>{% endfor %}</div></div></template>
+<template id="empty-resources"><div class="card mb-3 resource-row allocation-row"><div class="card-body allocation-grid">{% for field in resource_forms.empty_form %}<p data-field="{{ field.name }}" {% if field.is_hidden or field.name == 'kind' %}hidden{% endif %}>{% if field.name == 'DELETE' %}<span hidden>{{ field }}</span><button type="button" class="btn btn-sm btn-outline-danger" data-remove-row aria-label="Удалить строку">Удалить</button>{% else %}{{ field.label_tag }} {{ field }}{% endif %}</p>{% endfor %}</div></div></template>
 <script>
+function removeAllocationRow(row) {
+  const deletion=row.querySelector('[name$="-DELETE"]');
+  deletion.checked=true;
+  row.hidden=true;
+  // Keep the identity and deletion flag for Django's formset; deleted inputs
+  // must not block browser validation or submission of the remaining rows.
+  row.querySelectorAll('input,select,textarea').forEach(input=>{
+    if (!input.name.endsWith('-id') && !input.name.endsWith('-DELETE')) input.disabled=true;
+  });
+}
+document.getElementById('allocation-editor').addEventListener('click',event=>{
+  const button=event.target.closest('[data-remove-row]');
+  if (button) removeAllocationRow(button.closest('.allocation-row'));
+});
+document.querySelectorAll('.allocation-row').forEach(row=>{
+  if (row.querySelector('[name$="-DELETE"]').checked) removeAllocationRow(row);
+});
 function showResource(row) {
   const kind = row.querySelector('[name$="-kind"]').value;
   const labels={count:kind==='labor'?'Людей':'Кол-во',hours:'Часы/мес.',liters:'Литры/мес.',rate:kind==='fuel'?'Цена/л':'Ставка/ч',load_profile:'Профиль',equipment_type:'Вид техники',equipment_number:'Номер',equipment_ref:'Техника'};
