@@ -8,6 +8,7 @@ from django.urls import reverse_lazy
 from core.mixins import CompanyRequiredMixin, CompanyScopedMixin
 from apps.production.models import DailyFact
 from apps.production.forms import DailyFactForm
+from .resources import UserFormMixin
 
 
 class FactListView(CompanyScopedMixin, ListView):
@@ -24,7 +25,7 @@ class FactListView(CompanyScopedMixin, ListView):
         ).order_by('-date', 'project_work__name')
 
 
-class FactCreateView(CompanyRequiredMixin, CreateView):
+class FactCreateView(UserFormMixin, CompanyRequiredMixin, CreateView):
     model = DailyFact
     form_class = DailyFactForm
     template_name = 'production/fact_form.html'
@@ -36,7 +37,7 @@ class FactCreateView(CompanyRequiredMixin, CreateView):
         return super().form_valid(form)
 
 
-class FactUpdateView(CompanyScopedMixin, UpdateView):
+class FactUpdateView(UserFormMixin, CompanyScopedMixin, UpdateView):
     model = DailyFact
     form_class = DailyFactForm
     template_name = 'production/fact_form.html'

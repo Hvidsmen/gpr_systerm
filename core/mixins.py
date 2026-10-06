@@ -17,6 +17,8 @@ class CompanyScopedMixin:
     def get_form(self, form_class=None):
         form = super().get_form(form_class)
         company = self.get_company()
+        if hasattr(form, "instance") and hasattr(form.instance, "company_id"):
+            form.instance.company = company
         for field in form.fields.values():
             if isinstance(field, (forms.ModelChoiceField, forms.ModelMultipleChoiceField)):
                 model = field.queryset.model

@@ -49,3 +49,11 @@ path('versions/<int:pk>/set-baseline/', views.SetBaselineVersionView.as_view(), 
 # Матрица дневных планов по иерархии
 path('matrix/', views.PlanMatrixView.as_view(), name='plan_matrix'),
 ]
+
+from .global_views import GlobalList, GlobalCreate, GlobalDetail, GlobalAction
+urlpatterns += [
+    path('global/', GlobalList.as_view(), name='global_list'),
+    path('global/create/', GlobalCreate.as_view(), name='global_create'),
+    path('global/<int:pk>/', GlobalDetail.as_view(), name='global_detail'),
+    path('global/<int:pk>/<str:action>/', GlobalAction.as_view(), name='global_action'),
+]

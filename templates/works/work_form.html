@@ -20,6 +20,7 @@
     <div class="card-body">
         <form method="post">
             {% csrf_token %}
+{{ form.non_field_errors }}<div class="mb-3">{{ form.kind.label_tag }} {{ form.kind }} {{ form.kind.errors }}</div><div class="mb-3">{{ form.allow_fractional }} {{ form.allow_fractional.label_tag }} {{ form.allow_fractional.errors }}<p>Для составной работы объём считается накопительно по минимуму выполненных нормативов.</p></div><div class="mb-3">{{ form.load_profile.label_tag }} {{ form.load_profile }} {{ form.load_profile.errors }}</div>
 
             {% if form.errors %}
             <div class="alert alert-danger">

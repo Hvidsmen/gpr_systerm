@@ -63,7 +63,7 @@
                     <tbody>
                         {% for day in last_7_days %}
                             <tr>
-                                <td>{{ day.date|date:"d.m.Y" }}</td>
+                                <td>{{ day.date|date:"d.m.Y" }} {{ day.unit }}</td>
                                 <td class="text-end">{{ day.plan }}</td>
                                 <td class="text-end">{{ day.fact|default:"—" }}</td>
                                 <td class="text-end">

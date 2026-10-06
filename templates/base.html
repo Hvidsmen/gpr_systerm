@@ -624,7 +624,8 @@
 {% endif %}
 <!-- ========== MAIN CONTENT ========== -->
 <main class="main-content">
-    {% block content %}{% endblock %}
+    <div class="mb-3"><a href="{% url 'planning:global_list' %}">Глобальные версии объектов</a> · <a href="{% url 'production:legacy_resources' %}">Перенос ресурсных данных</a></div>
+{% block content %}{% endblock %}
 </main>
 
 <!-- ========== FOOTER ========== -->

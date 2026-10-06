@@ -35,7 +35,7 @@ class CompanyAccessTests(TestCase):
             obj = ConstructionObject.objects.create(company=company, project=project, code=label, name=label)
             section = Section.objects.create(company=company, construction_object=obj, code=label, name=label)
             template = WorkTemplate.objects.create(company=company, code=label, name=label, unit='m')
-            work = ProjectWork.objects.create(company=company, section=section, code=label, name=label, unit='m', unit_price=10)
+            work = ProjectWork.objects.create(kind="COMPOSITE", company=company, section=section, code=label, name=label, unit='m', unit_price=10)
             profile = LoadProfile.objects.create(company=company, code=label, name=label)
             profile_item = LoadProfileItem.objects.create(company=company, profile=profile, workday_number=1, percentage=100)
             item = ProjectWorkItem.objects.create(company=company, project_work=work, name=label, unit='m', load_profile=profile, weight=100)
@@ -55,12 +55,12 @@ class CompanyAccessTests(TestCase):
             employee = Employee.objects.create(company=company, first_name=label, last_name=label, position=position)
             brigade = Brigade.objects.create(company=company, code=label, name=label)
             equipment = EquipmentType.objects.create(company=company, name=label)
-            labor_plan = LaborPlan.objects.create(company=company, project=project, project_work=work, brigade=brigade, date=cls.today, planned_workers=2)
-            labor_fact = LaborFact.objects.create(company=company, project=project, project_work=work, brigade=brigade, date=cls.today, actual_workers=2)
-            equipment_plan = EquipmentPlan.objects.create(company=company, project=project, project_work=work, equipment_type=equipment, date=cls.today, planned_count=2)
-            equipment_fact = EquipmentFact.objects.create(company=company, project=project, project_work=work, equipment_type=equipment, date=cls.today, actual_count=2)
-            fuel_plan = FuelPlan.objects.create(company=company, project=project, project_work=work, date=cls.today, planned_liters=2)
-            fuel_fact = FuelFact.objects.create(company=company, project=project, project_work=work, date=cls.today, actual_liters=2)
+            labor_plan = LaborPlan.objects.create(company=company, construction_object=obj, brigade=brigade, date=cls.today, planned_workers=2)
+            labor_fact = LaborFact.objects.create(company=company, construction_object=obj, brigade=brigade, date=cls.today, actual_workers=2)
+            equipment_plan = EquipmentPlan.objects.create(company=company, construction_object=obj, equipment_type=equipment, date=cls.today, planned_count=2)
+            equipment_fact = EquipmentFact.objects.create(company=company, construction_object=obj, equipment_type=equipment, date=cls.today, actual_count=2)
+            fuel_plan = FuelPlan.objects.create(company=company, construction_object=obj, date=cls.today, planned_liters=2)
+            fuel_fact = FuelFact.objects.create(company=company, construction_object=obj, date=cls.today, actual_liters=2)
             cls.tenants.append(SimpleNamespace(
                 company=company, user=user, project=project, obj=obj, section=section,
                 template=template, work=work, profile=profile, profile_item=profile_item,
@@ -281,12 +281,12 @@ class CompanyAccessTests(TestCase):
         self.assertEqual(response.context['projects_count'], 1)
         self.assertEqual(response.context['approved_plans_count'], 1)
         self.assertEqual(response.context['in_progress_count'], 0)
-        self.assertEqual(response.context['last_7_days'][-1]['plan'], Decimal('20'))
+        self.assertEqual(response.context['last_7_days'][-1]['plan'], Decimal('10'))
         self.assertEqual(response.context['last_7_days'][-1]['fact'], Decimal('3'))
         response = self.client.get('/planning/matrix/')
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, self.foreign.project.name)
-        self.assertContains(response, self.own.project.name)
+        self.assertContains(response, self.own.work.name)
 
     def test_master_screen_and_fact_input_only_show_own_data(self):
         response = self.client.get(reverse('production:fact_daily'))
@@ -298,39 +298,27 @@ class CompanyAccessTests(TestCase):
         self.assertEqual({row['work'].company_id for row in response.context['works_data']}, {self.own.company.pk})
 
     def test_forged_daily_fact_plan_or_reason_cannot_change_foreign_data(self):
-        url = reverse('production:fact_input')
-        for plan, reason in ((self.foreign.daily, self.own.reason), (self.own.daily, self.foreign.reason)):
-            response = self.client.post(url, {
-                'save_facts': '1', 'date': self.today, 'plan_id': [plan.pk],
-                f'fact_{plan.pk}': 9, f'reason_{plan.pk}': reason.pk,
-            })
-            self.assertEqual(response.status_code, 302)
+        for work, item, reason in ((self.foreign.work,self.foreign.item,self.own.reason),(self.own.work,self.own.item,self.foreign.reason)):
+            response = self.client.post(reverse('production:fact_input'), {'project_work':work.pk,'work_item':item.pk,'date':self.today,'actual_quantity':9,'deviation_reason':reason.pk})
+            self.assertEqual(response.status_code,200)
+            self.assertTrue(response.context['form'].errors)
         for tenant in self.tenants:
             tenant.fact.refresh_from_db()
-            self.assertEqual(tenant.fact.actual_quantity, 3)
-            self.assertEqual(tenant.fact.deviation_reason_id, tenant.reason.pk)
+            self.assertEqual(tenant.fact.actual_quantity,3)
 
     def test_mass_input_rejects_foreign_resource_plans_and_accepts_own(self):
-        for resource, attr, field in (
-            ('labor', 'labor_plan', 'actual_workers'),
-            ('equipment', 'equipment_plan', 'actual_count'),
-            ('fuel', 'fuel_plan', 'actual_liters'),
-        ):
-            with self.subTest(resource=resource):
-                own_plan = getattr(self.own, attr)
-                foreign_plan = getattr(self.foreign, attr)
-                response = self.client.post(reverse(f'production:{resource}_fact_daily_input'), {
-                    'save_facts': '1', 'date': self.today,
-                    'plan_id': [own_plan.pk, foreign_plan.pk],
-                    f'{field}_{own_plan.pk}': 8, f'{field}_{foreign_plan.pk}': 9,
-                })
-                self.assertEqual(response.status_code, 302)
-                own_fact = getattr(self.own, f'{resource}_fact')
-                foreign_fact = getattr(self.foreign, f'{resource}_fact')
-                own_fact.refresh_from_db()
-                foreign_fact.refresh_from_db()
-                self.assertEqual(getattr(own_fact, field), 8)
-                self.assertEqual(getattr(foreign_fact, field), 2)
+        for resource, attr, field in [('labor','labor_plan','actual_workers'),('equipment','equipment_plan','actual_count'),('fuel','fuel_plan','actual_liters')]:
+            own_plan,foreign_plan=getattr(self.own,attr),getattr(self.foreign,attr)
+            url=reverse(f'production:{resource}_fact_daily_input')
+            response=self.client.post(url,{'construction_object':self.own.obj.pk,'date':self.today,'plan_ids':[own_plan.pk,foreign_plan.pk],f'value_{own_plan.pk}':8,f'value_{foreign_plan.pk}':9})
+            self.assertEqual(response.status_code,404)
+            own_fact=getattr(self.own,resource+'_fact');foreign_fact=getattr(self.foreign,resource+'_fact')
+            own_fact.refresh_from_db();foreign_fact.refresh_from_db()
+            self.assertEqual(getattr(own_fact,field),2) # whole request rolls back
+            self.assertEqual(getattr(foreign_fact,field),2)
+            response=self.client.post(url,{'construction_object':self.own.obj.pk,'date':self.today,'plan_ids':[own_plan.pk],f'value_{own_plan.pk}':8})
+            self.assertEqual(response.status_code,302)
+            own_fact.refresh_from_db();self.assertEqual(getattr(own_fact,field),8)
 
     def test_bulk_resource_changes_leave_foreign_records_unchanged(self):
         for resource, attr, field in (
@@ -343,7 +331,13 @@ class CompanyAccessTests(TestCase):
         ):
             kind = 'fact' if 'fact' in attr else 'plan'
             route = f'production:{resource}_{kind}_edit_by_date'
-            response = self.client.post(reverse(route, kwargs={'date_str': self.today.isoformat()}), {field: 8})
+            own = getattr(self.own,attr)
+            from apps.production import forms as resource_forms
+            form_class=getattr(resource_forms,type(own).__name__+'Form')
+            form=form_class(instance=own,user=self.own.user)
+            data={str(own.pk)+'-'+name:form[name].value() if form[name].value() is not None else '' for name in form.fields}
+            data[str(own.pk)+'-'+field]=8
+            response = self.client.post(reverse(route, kwargs={'date_str': self.today.isoformat()}), data)
             self.assertEqual(response.status_code, 302)
             foreign = getattr(self.foreign, attr)
             foreign.refresh_from_db()

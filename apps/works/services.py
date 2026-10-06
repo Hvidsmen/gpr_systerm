@@ -19,6 +19,11 @@ class WorkItemGeneratorService:
         if not project_work.template:
             return []
 
+        from django.core.exceptions import ValidationError
+        if project_work.kind != 'COMPOSITE':
+            raise ValidationError('Подработы создаются только для составной работы.')
+        if project_work.daily_facts.exists() or project_work.monthly_plans.filter(versions__daily_plans__isnull=False).exists():
+            raise ValidationError('Нельзя заменять подработы с существующим планом или фактом.')
         # Удаляем старые подработы
         project_work.items.all().delete()
 
@@ -43,7 +48,9 @@ class WorkItemGeneratorService:
             sequence += 1
 
             # Норматив подработы на единицу работы
-            qty_per_unit = Decimal(str(t_item.quantity_per_unit)) if t_item.quantity_per_unit else Decimal('1')
+            qty_per_unit = Decimal(str(t_item.quantity_per_unit))
+            if qty_per_unit <= 0:
+                raise ValidationError('Норматив шаблона должен быть больше нуля.')
 
             # Создаём подработу с нормативом
             item = project_work.items.create(

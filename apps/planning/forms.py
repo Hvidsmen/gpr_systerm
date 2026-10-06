@@ -13,8 +13,8 @@ class MonthlyPlanForm(forms.ModelForm):
             'year': forms.NumberInput(attrs={'class': 'form-control'}),
             'month': forms.NumberInput(attrs={'class': 'form-control', 'min': 1, 'max': 12}),
             'planned_quantity': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.001'}),
-            'start_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
-            'end_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'start_date': forms.DateInput(format='%Y-%m-%d', attrs={'class': 'form-control', 'type': 'date'}),
+            'end_date': forms.DateInput(format='%Y-%m-%d', attrs={'class': 'form-control', 'type': 'date'}),
             'mismatch_strategy': forms.Select(attrs={'class': 'form-control'}),
         }
 
@@ -133,11 +133,11 @@ class VersionCreateForm(forms.Form):
     # Параметры плана (можно изменить)
     start_date = forms.DateField(
         label='Дата начала',
-        widget=forms.DateInput(attrs={'class': 'form-control', 'type': 'date'})
+        widget=forms.DateInput(format='%Y-%m-%d', attrs={'class': 'form-control', 'type': 'date'})
     )
     end_date = forms.DateField(
         label='Дата окончания',
-        widget=forms.DateInput(attrs={'class': 'form-control', 'type': 'date'})
+        widget=forms.DateInput(format='%Y-%m-%d', attrs={'class': 'form-control', 'type': 'date'})
     )
     planned_quantity = forms.DecimalField(
         label='Плановый объём',

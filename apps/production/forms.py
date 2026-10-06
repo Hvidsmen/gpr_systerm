@@ -1,556 +1,208 @@
-"""
-Формы модуля производства.
-"""
 from django import forms
-from .models import DailyFact, LaborFact, EquipmentFact, FuelFact, LaborPlan,EquipmentPlan,FuelPlan
+from django.core.exceptions import ValidationError
+
+from apps.projects.models import ConstructionObject, Project, Section
+from apps.works.models import ProjectWork, ProjectWorkItem
+from .models import (
+    DailyFact,
+    LaborPlan,
+    LaborFact,
+    EquipmentPlan,
+    EquipmentFact,
+    FuelPlan,
+    FuelFact,
+)
 
 
-class DailyFactForm(forms.ModelForm):
+class CompanyFormMixin:
+    def __init__(self, *args, user=None, company=None, **kwargs):
+        self.company = company or (user.company if user else None)
+        super().__init__(*args, **kwargs)
+        if self.company and hasattr(self, "instance"):
+            self.instance.company = self.company
+        for field in self.fields.values():
+            field.widget.attrs.setdefault("class", "form-control")
+            if isinstance(
+                field, (forms.ModelChoiceField, forms.ModelMultipleChoiceField)
+            ):
+                if field.queryset is not None and any(
+                    f.name == "company" for f in field.queryset.model._meta.fields
+                ):
+                    field.queryset = (
+                        field.queryset.filter(company=self.company)
+                        if self.company
+                        else field.queryset.none()
+                    )
+
+
+class DailyFactForm(CompanyFormMixin, forms.ModelForm):
     class Meta:
         model = DailyFact
-        fields = ['project_work', 'work_item', 'date', 'actual_quantity',
-                  'deviation_reason', 'comment']
-        widgets = {
-            'project_work': forms.Select(attrs={'class': 'form-control'}),
-            'work_item': forms.Select(attrs={'class': 'form-control'}),
-            'date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
-            'actual_quantity': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.001'}),
-            'deviation_reason': forms.Select(attrs={'class': 'form-control'}),
-            'comment': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
-        }
-
-class LaborFactForm(forms.ModelForm):
-    class Meta:
-        model = LaborFact
         fields = [
-            'project', 'project_work',
-            'date', 'brigade',
-            'actual_workers',
-            'actual_hours',
-            'hourly_rate', 'comment'
+            "project_work",
+            "work_item",
+            "date",
+            "actual_quantity",
+            "deviation_reason",
+            "comment",
         ]
-        widgets = {
-            'project': forms.Select(attrs={'class': 'form-control'}),
-            'project_work': forms.Select(attrs={'class': 'form-control'}),
-            'date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
-            'brigade': forms.Select(attrs={'class': 'form-control'}),
-            'actual_workers': forms.NumberInput(attrs={'class': 'form-control'}),
-            'actual_hours': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.5'}),
-            'hourly_rate': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
-            'comment': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
-        }
-        labels = {
-            'project': 'Проект',
-            'project_work': 'Работа',
-            'date': 'Дата',
-            'brigade': 'Бригада',
-            'actual_workers': 'Факт, чел',
-            'actual_hours': 'Факт, чел-час',
-            'hourly_rate': 'Ставка, ₽/час',
-            'comment': 'Комментарий',
-        }
+        widgets = {"date": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"})}
 
-
-class EquipmentPlanForm(forms.ModelForm):
-    class Meta:
-        model = EquipmentPlan
-        fields = ['project', 'project_work', 'date', 'equipment_type', 'equipment_number',
-                  'planned_count', 'planned_machine_hours', 'hourly_rate', 'comment']
-        widgets = {
-            'project': forms.Select(attrs={'class': 'form-control'}),
-            'project_work': forms.Select(attrs={'class': 'form-control'}),
-            'date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
-            'equipment_type': forms.Select(attrs={'class': 'form-control'}),  # ← Select вместо TextInput
-            'equipment_number': forms.TextInput(attrs={'class': 'form-control'}),
-            'planned_count': forms.NumberInput(attrs={'class': 'form-control'}),
-            'planned_machine_hours': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.5'}),
-            'hourly_rate': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
-            'comment': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
-        }
-        labels = {
-            'project': 'Проект',
-            'project_work': 'Работа',
-            'date': 'Дата',
-            'equipment_type': 'Вид техники',
-            'equipment_number': 'Гос. номер / инв. №',
-            'planned_count': 'План, ед',
-            'planned_machine_hours': 'План, маш-час',
-            'hourly_rate': 'Ставка, ₽/маш-час',
-            'comment': 'Комментарий',
-        }
-
-
-class EquipmentFactForm(forms.ModelForm):
-    class Meta:
-        model = EquipmentFact
-        fields = ['project', 'project_work', 'date', 'equipment_type', 'equipment_number',
-                  'actual_count', 'machine_hours', 'hourly_rate', 'comment']
-        widgets = {
-            'project': forms.Select(attrs={'class': 'form-control'}),
-            'project_work': forms.Select(attrs={'class': 'form-control'}),
-            'date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
-            'equipment_type': forms.Select(attrs={'class': 'form-control'}),  # ← Select вместо TextInput
-            'equipment_number': forms.TextInput(attrs={'class': 'form-control'}),
-            'actual_count': forms.NumberInput(attrs={'class': 'form-control'}),
-            'machine_hours': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.5'}),
-            'hourly_rate': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
-            'comment': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
-        }
-        labels = {
-            'project': 'Проект',
-            'project_work': 'Работа',
-            'date': 'Дата',
-            'equipment_type': 'Вид техники',
-            'equipment_number': 'Гос. номер / инв. №',
-            'actual_count': 'Факт, ед',
-            'machine_hours': 'Факт, маш-час',
-            'hourly_rate': 'Ставка, ₽/маш-час',
-            'comment': 'Комментарий',
-        }
-
-
-class EquipmentPlanRangeForm(forms.Form):
-    """Форма для создания плана по технике на ДИАПАЗОН дат."""
-    project = forms.ModelChoiceField(
-        queryset=None,
-        label='Проект',
-        widget=forms.Select(attrs={'class': 'form-control'})
-    )
-    project_work = forms.ModelChoiceField(
-        queryset=None,
-        label='Работа (необязательно)',
-        required=False,
-        widget=forms.Select(attrs={'class': 'form-control'})
-    )
-    equipment_type = forms.ModelChoiceField(  # ← ИЗМЕНИЛИ на ModelChoiceField
-        queryset=None,
-        label='Вид техники',
-        widget=forms.Select(attrs={'class': 'form-control'})
-    )
-    equipment_number = forms.CharField(
-        label='Гос. номер / инв. №',
-        required=False,
-        widget=forms.TextInput(attrs={'class': 'form-control'})
-    )
-    date_start = forms.DateField(
-        label='Дата начала',
-        widget=forms.DateInput(attrs={'class': 'form-control', 'type': 'date'})
-    )
-    date_end = forms.DateField(
-        label='Дата окончания',
-        widget=forms.DateInput(attrs={'class': 'form-control', 'type': 'date'})
-    )
-    planned_count = forms.IntegerField(
-        label='Количество единиц',
-        widget=forms.NumberInput(attrs={'class': 'form-control'})
-    )
-    planned_machine_hours = forms.DecimalField(
-        label='Маш-часы (необязательно)',
-        required=False,
-        widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '0.5'})
-    )
-    hourly_rate = forms.DecimalField(
-        label='Ставка, ₽/маш-час (необязательно)',
-        required=False,
-        widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'})
-    )
-    comment = forms.CharField(
-        label='Комментарий',
-        required=False,
-        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 2})
-    )
-
-    def __init__(self, *args, user=None, **kwargs):
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        if user and hasattr(user, 'company'):
-            from apps.projects.models import Project
-            from apps.works.models import ProjectWork
-            from apps.resources.models import EquipmentType
-
-            self.fields['project'].queryset = Project.objects.filter(company=user.company)
-            self.fields['project_work'].queryset = ProjectWork.objects.filter(company=user.company)
-            self.fields['equipment_type'].queryset = EquipmentType.objects.filter(
-                company=user.company, is_active=True
-            )
+        self.fields["work_item"].label_from_instance = (
+            lambda item: f"{item.project_work}: {item.name}"
+        )
 
     def clean(self):
-        cleaned_data = super().clean()
-        date_start = cleaned_data.get('date_start')
-        date_end = cleaned_data.get('date_end')
-
-        if date_start and date_end and date_start > date_end:
-            raise forms.ValidationError('Дата начала не может быть позже даты окончания')
-
-        return cleaned_data
-
-class LaborPlanForm(forms.ModelForm):
-    class Meta:
-        model = LaborPlan
-        fields = ['project', 'project_work', 'date', 'brigade',
-                  'planned_workers', 'planned_hours', 'hourly_rate', 'comment']
-        widgets = {
-            'project': forms.Select(attrs={'class': 'form-control'}),
-            'project_work': forms.Select(attrs={'class': 'form-control'}),
-            'date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
-            'brigade': forms.Select(attrs={'class': 'form-control'}),
-            'planned_workers': forms.NumberInput(attrs={'class': 'form-control'}),
-            'planned_hours': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.5'}),
-            'hourly_rate': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
-            'comment': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
-        }
-        labels = {
-            'project': 'Проект',
-            'project_work': 'Работа',
-            'date': 'Дата',
-            'brigade': 'Бригада',
-            'planned_workers': 'План, чел',
-            'planned_hours': 'План, чел-час',
-            'hourly_rate': 'Ставка, ₽/час',
-            'comment': 'Комментарий',
-        }
+        data = super().clean()
+        work, item = data.get("project_work"), data.get("work_item")
+        if work:
+            if work.kind == "SIMPLE" and item:
+                self.add_error("work_item", "Простая работа не имеет подработ.")
+            if work.kind == "COMPOSITE" and not item:
+                self.add_error("work_item", "Для составной работы выберите подработу.")
+            if item and item.project_work_id != work.pk:
+                self.add_error("work_item", "Подработа принадлежит другой работе.")
+        if data.get("actual_quantity") is not None and data["actual_quantity"] < 0:
+            self.add_error("actual_quantity", "Факт не может быть отрицательным.")
+        return data
 
 
-class LaborPlanRangeForm(forms.Form):
-    """Форма для создания плана по людям на ДИАПАЗОН дат."""
-    project = forms.ModelChoiceField(
-        queryset=None,
-        label='Проект',
-        widget=forms.Select(attrs={'class': 'form-control'})
+RESOURCE_FIELDS = {
+    "labor": ["brigade", "planned_workers", "planned_hours", "hourly_rate"],
+    "equipment": [
+        "equipment_type",
+        "equipment_number",
+        "planned_count",
+        "planned_machine_hours",
+        "hourly_rate",
+    ],
+    "fuel": ["fuel_type", "equipment_ref", "planned_liters", "price_per_liter"],
+}
+FACT_FIELDS = {
+    "labor": ["brigade", "actual_workers", "actual_hours", "hourly_rate"],
+    "equipment": [
+        "equipment_type",
+        "equipment_number",
+        "actual_count",
+        "machine_hours",
+        "hourly_rate",
+    ],
+    "fuel": ["fuel_type", "equipment_ref", "actual_liters", "price_per_liter"],
+}
+
+
+class ResourceModelForm(CompanyFormMixin, forms.ModelForm):
+    def clean(self):
+        data = super().clean()
+        for name, value in data.items():
+            if (
+                isinstance(self.fields[name], (forms.IntegerField, forms.DecimalField))
+                and value is not None
+                and value < 0
+            ):
+                self.add_error(name, "Значение не может быть отрицательным.")
+        return data
+
+
+def resource_form(model, fields):
+    meta = type(
+        "Meta",
+        (),
+        {
+            "model": model,
+            "fields": ["construction_object", "date", *fields, "comment"],
+            "widgets": {
+                "date": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"})
+            },
+        },
     )
-    project_work = forms.ModelChoiceField(
-        queryset=None,
-        label='Работа (необязательно)',
-        required=False,  # ← СДЕЛАЛИ НЕОБЯЗАТЕЛЬНЫМ
-        widget=forms.Select(attrs={'class': 'form-control'})
-    )
-    brigade = forms.ModelChoiceField(
-        queryset=None,
-        label='Бригада',
-        widget=forms.Select(attrs={'class': 'form-control'})
-    )
-    date_start = forms.DateField(
-        label='Дата начала',
-        widget=forms.DateInput(attrs={'class': 'form-control', 'type': 'date'})
-    )
-    date_end = forms.DateField(
-        label='Дата окончания',
-        widget=forms.DateInput(attrs={'class': 'form-control', 'type': 'date'})
-    )
-    planned_workers = forms.IntegerField(
-        label='Количество человек',
-        widget=forms.NumberInput(attrs={'class': 'form-control'})
-    )
-    planned_hours = forms.DecimalField(
-        label='Чел-часы (необязательно)',
-        required=False,
-        widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '0.5'})
-    )
-    hourly_rate = forms.DecimalField(
-        label='Ставка, ₽/час (необязательно)',
-        required=False,
-        widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'})
-    )
-    comment = forms.CharField(
-        label='Комментарий',
-        required=False,
-        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 2})
+    return type(
+        model.__name__ + "Form",
+        (ResourceModelForm,),
+        {"Meta": meta, "__module__": __name__},
     )
 
-    def __init__(self, *args, user=None, **kwargs):
+
+LaborPlanForm = resource_form(LaborPlan, RESOURCE_FIELDS["labor"])
+EquipmentPlanForm = resource_form(EquipmentPlan, RESOURCE_FIELDS["equipment"])
+FuelPlanForm = resource_form(FuelPlan, RESOURCE_FIELDS["fuel"])
+LaborFactForm = resource_form(LaborFact, FACT_FIELDS["labor"])
+EquipmentFactForm = resource_form(EquipmentFact, FACT_FIELDS["equipment"])
+FuelFactForm = resource_form(FuelFact, FACT_FIELDS["fuel"])
+
+
+class ResourceRangeMixin:
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        if user and hasattr(user, 'company'):
-            from apps.projects.models import Project
-            from apps.works.models import ProjectWork
-            from apps.resources.models import Brigade
-
-            self.fields['project'].queryset = Project.objects.filter(company=user.company)
-            self.fields['project_work'].queryset = ProjectWork.objects.filter(company=user.company)
-            self.fields['brigade'].queryset = Brigade.objects.filter(company=user.company, is_active=True)
+        self.fields.pop("date")
+        self.fields["date_start"] = forms.DateField(
+            label="Дата начала",
+            widget=forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"}),
+        )
+        self.fields["date_end"] = forms.DateField(
+            label="Дата окончания",
+            widget=forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"}),
+        )
 
     def clean(self):
-        cleaned_data = super().clean()
-        date_start = cleaned_data.get('date_start')
-        date_end = cleaned_data.get('date_end')
+        data = super().clean()
+        if (
+            data.get("date_start")
+            and data.get("date_end")
+            and data["date_start"] > data["date_end"]
+        ):
+            raise ValidationError("Дата начала не может быть позже окончания.")
+        return data
 
-        if date_start and date_end and date_start > date_end:
-            raise forms.ValidationError('Дата начала не может быть позже даты окончания')
+    def _post_clean(self):
+        # Validate relation/numeric fields, excluding per-day unique checks until saving each date.
+        from django.forms.models import construct_instance
 
-        return cleaned_data
-
-
-class FuelPlanForm(forms.ModelForm):
-    """Форма плана по ГСМ на один день."""
-
-    class Meta:
-        model = FuelPlan
-        fields = ['project', 'project_work', 'date', 'fuel_type',
-                  'planned_liters', 'price_per_liter', 'equipment_ref', 'comment']
-        widgets = {
-            'project': forms.Select(attrs={'class': 'form-control'}),
-            'project_work': forms.Select(attrs={'class': 'form-control'}),
-            'date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
-            'fuel_type': forms.Select(attrs={'class': 'form-control'}),
-            'planned_liters': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.1'}),
-            'price_per_liter': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
-            'equipment_ref': forms.TextInput(attrs={'class': 'form-control'}),
-            'comment': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
-        }
-        labels = {
-            'project': 'Проект',
-            'project_work': 'Работа',
-            'date': 'Дата',
-            'fuel_type': 'Вид ГСМ',
-            'planned_liters': 'План, л',
-            'price_per_liter': 'Цена за литр, ₽',
-            'equipment_ref': 'Привязка к технике',
-            'comment': 'Комментарий',
-        }
+        self.instance = construct_instance(
+            self, self.instance, self._meta.fields, self._meta.exclude
+        )
+        try:
+            self.instance.clean()
+        except ValidationError as error:
+            self._update_errors(error)
 
 
+class LaborPlanRangeForm(ResourceRangeMixin, LaborPlanForm):
+    pass
 
 
-class FuelFactForm(forms.ModelForm):
-    """Форма факта по ГСМ."""
-
-    class Meta:
-        model = FuelFact
-        fields = ['project', 'project_work', 'date', 'fuel_type',
-                  'actual_liters', 'price_per_liter', 'equipment_ref', 'comment']
-        widgets = {
-            'project': forms.Select(attrs={'class': 'form-control'}),
-            'project_work': forms.Select(attrs={'class': 'form-control'}),
-            'date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
-            'fuel_type': forms.Select(attrs={'class': 'form-control'}),
-            'actual_liters': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.1'}),
-            'price_per_liter': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
-            'equipment_ref': forms.TextInput(attrs={'class': 'form-control'}),
-            'comment': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
-        }
-        labels = {
-            'project': 'Проект',
-            'project_work': 'Работа',
-            'date': 'Дата',
-            'fuel_type': 'Вид ГСМ',
-            'actual_liters': 'Факт, л',
-            'price_per_liter': 'Цена за литр, ₽',
-            'equipment_ref': 'Привязка к технике',
-            'comment': 'Комментарий',
-        }
+class EquipmentPlanRangeForm(ResourceRangeMixin, EquipmentPlanForm):
+    pass
 
 
-class FuelPlanRangeForm(forms.Form):
-    """Форма для создания плана по ГСМ на ДИАПАЗОН дат."""
-    project = forms.ModelChoiceField(
-        queryset=None,
-        label='Проект (необязательно)',
-        required=False,
-        widget=forms.Select(attrs={'class': 'form-control'})
+class FuelPlanRangeForm(ResourceRangeMixin, FuelPlanForm):
+    pass
+
+
+class ObjectDateForm(CompanyFormMixin, forms.Form):
+    construction_object = forms.ModelChoiceField(
+        queryset=ConstructionObject.objects.all(), label="Строительный объект"
     )
-    project_work = forms.ModelChoiceField(
-        queryset=None,
-        label='Работа (необязательно)',
-        required=False,
-        widget=forms.Select(attrs={'class': 'form-control'})
-    )
-    fuel_type = forms.ChoiceField(
-        label='Вид ГСМ',
-        choices=[
-            ('DIESEL', 'Дизельное топливо'),
-            ('PETROL_92', 'Бензин АИ-92'),
-            ('PETROL_95', 'Бензин АИ-95'),
-            ('PETROL_98', 'Бензин АИ-98'),
-            ('GAS', 'Газ (пропан/метан)'),
-            ('OIL', 'Масло моторное'),
-            ('OTHER', 'Другое'),
-        ],
-        widget=forms.Select(attrs={'class': 'form-control'})
-    )
-    date_start = forms.DateField(
-        label='Дата начала',
-        widget=forms.DateInput(attrs={'class': 'form-control', 'type': 'date'})
-    )
-    date_end = forms.DateField(
-        label='Дата окончания',
-        widget=forms.DateInput(attrs={'class': 'form-control', 'type': 'date'})
-    )
-    planned_liters = forms.DecimalField(
-        label='План, л',
-        widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '0.1'})
-    )
-    price_per_liter = forms.DecimalField(
-        label='Цена за литр, ₽ (необязательно)',
-        required=False,
-        widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'})
-    )
-    equipment_ref = forms.CharField(
-        label='Привязка к технике',
-        required=False,
-        widget=forms.TextInput(attrs={'class': 'form-control'})
-    )
-    comment = forms.CharField(
-        label='Комментарий',
-        required=False,
-        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 2})
-    )
-
-    def __init__(self, *args, user=None, **kwargs):
-        super().__init__(*args, **kwargs)
-        if user and hasattr(user, 'company'):
-            from apps.projects.models import Project
-            from apps.works.models import ProjectWork
-
-            self.fields['project'].queryset = Project.objects.filter(company=user.company)
-            self.fields['project_work'].queryset = ProjectWork.objects.filter(company=user.company)
-
-    def clean(self):
-        cleaned_data = super().clean()
-        date_start = cleaned_data.get('date_start')
-        date_end = cleaned_data.get('date_end')
-
-        if date_start and date_end and date_start > date_end:
-            raise forms.ValidationError('Дата начала не может быть позже даты окончания')
-
-        return cleaned_data
-
-
-class LaborFactDailyForm(forms.Form):
-    """Форма выбора параметров для массового ввода факта по людям."""
     date = forms.DateField(
-        label='Дата',
-        widget=forms.DateInput(attrs={'class': 'form-control', 'type': 'date'})
-    )
-    project = forms.ModelChoiceField(
-        queryset=None,
-        label='Проект',
-        required=False,
-        widget=forms.Select(attrs={'class': 'form-control'})
-    )
-    project_work = forms.ModelChoiceField(
-        queryset=None,
-        label='Работа',
-        required=False,
-        widget=forms.Select(attrs={'class': 'form-control'})
+        label="Дата", widget=forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"})
     )
 
-    def __init__(self, *args, user=None, **kwargs):
-        super().__init__(*args, **kwargs)
-        if user and hasattr(user, 'company'):
-            from apps.projects.models import Project
-            from apps.works.models import ProjectWork
 
-            self.fields['project'].queryset = Project.objects.filter(company=user.company)
-            self.fields['project_work'].queryset = ProjectWork.objects.filter(company=user.company)
+LaborFactDailyForm = EquipmentFactDailyForm = FuelFactDailyForm = ObjectDateForm
 
 
-class EquipmentFactDailyForm(forms.Form):
-    """Форма выбора параметров для массового ввода факта по технике."""
+class FactInputFilterForm(CompanyFormMixin, forms.Form):
     date = forms.DateField(
-        label='Дата',
-        widget=forms.DateInput(attrs={'class': 'form-control', 'type': 'date'})
-    )
-    project = forms.ModelChoiceField(
-        queryset=None,
-        label='Проект',
-        required=False,
-        widget=forms.Select(attrs={'class': 'form-control'})
-    )
-    project_work = forms.ModelChoiceField(
-        queryset=None,
-        label='Работа',
-        required=False,
-        widget=forms.Select(attrs={'class': 'form-control'})
-    )
-    equipment_type = forms.ModelChoiceField(
-        queryset=None,
-        label='Вид техники',
-        required=False,
-        widget=forms.Select(attrs={'class': 'form-control'})
-    )
-
-    def __init__(self, *args, user=None, **kwargs):
-        super().__init__(*args, **kwargs)
-        if user and hasattr(user, 'company'):
-            from apps.projects.models import Project
-            from apps.works.models import ProjectWork
-            from apps.resources.models import EquipmentType
-
-            self.fields['project'].queryset = Project.objects.filter(company=user.company)
-            self.fields['project_work'].queryset = ProjectWork.objects.filter(company=user.company)
-            self.fields['equipment_type'].queryset = EquipmentType.objects.filter(
-                company=user.company, is_active=True
-            )
-
-
-class FuelFactDailyForm(forms.Form):
-    """Форма выбора параметров для массового ввода факта по ГСМ."""
-    date = forms.DateField(
-        label='Дата',
-        widget=forms.DateInput(attrs={'class': 'form-control', 'type': 'date'})
-    )
-    project = forms.ModelChoiceField(
-        queryset=None,
-        label='Проект',
-        required=False,
-        widget=forms.Select(attrs={'class': 'form-control'})
-    )
-    project_work = forms.ModelChoiceField(
-        queryset=None,
-        label='Работа',
-        required=False,
-        widget=forms.Select(attrs={'class': 'form-control'})
-    )
-    fuel_type = forms.ChoiceField(
-        label='Вид ГСМ',
-        required=False,
-        choices=[('', '— Все виды —')] + FuelFact.FUEL_TYPE_CHOICES,
-        widget=forms.Select(attrs={'class': 'form-control'})
-    )
-
-    def __init__(self, *args, user=None, **kwargs):
-        super().__init__(*args, **kwargs)
-        if user and hasattr(user, 'company'):
-            from apps.projects.models import Project
-            from apps.works.models import ProjectWork
-
-            self.fields['project'].queryset = Project.objects.filter(company=user.company)
-            self.fields['project_work'].queryset = ProjectWork.objects.filter(company=user.company)
-
-
-class FactInputFilterForm(forms.Form):
-    """Форма выбора параметров для ввода факта работ."""
-    date = forms.DateField(
-        label='Дата',
-        widget=forms.DateInput(attrs={'class': 'form-control', 'type': 'date'})
-    )
-    project = forms.ModelChoiceField(
-        label='Проект',
-        required=False,
-        queryset=None,
-        widget=forms.Select(attrs={'class': 'form-control'})
+        label="Дата", widget=forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"})
     )
     construction_object = forms.ModelChoiceField(
-        label='Объект',
-        required=False,
-        queryset=None,
-        widget=forms.Select(attrs={'class': 'form-control'})
+        queryset=ConstructionObject.objects.all(), required=False, label="Объект"
+    )
+    project = forms.ModelChoiceField(
+        queryset=Project.objects.all(), required=False, label="Проект"
     )
     section = forms.ModelChoiceField(
-        label='Раздел',
-        required=False,
-        queryset=None,
-        widget=forms.Select(attrs={'class': 'form-control'})
+        queryset=Section.objects.all(), required=False, label="Раздел"
     )
-
-    def __init__(self, *args, user=None, **kwargs):
-        super().__init__(*args, **kwargs)
-        if user and hasattr(user, 'company'):
-            from apps.projects.models import Project, ConstructionObject, Section
-            self.fields['project'].queryset = Project.objects.filter(
-                company=user.company
-            ).order_by('name')
-            self.fields['construction_object'].queryset = ConstructionObject.objects.filter(
-                company=user.company
-            ).order_by('name')
-            self.fields['section'].queryset = Section.objects.filter(
-                company=user.company
-            ).order_by('name')
