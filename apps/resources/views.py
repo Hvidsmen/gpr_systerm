@@ -125,6 +125,12 @@ class EquipmentTypeCreateView(CompanyRequiredMixin, CreateView):
     form_class = EquipmentTypeForm
     template_name = 'resources/equipment_type_form.html'
 
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        if not kwargs.get('instance'):
+            kwargs['instance'] = EquipmentType(company=self.get_company())
+        return kwargs
+
     def form_valid(self, form):
         form.instance.company = self.request.user.company
         messages.success(self.request, 'Вид техники создан!')
@@ -138,6 +144,12 @@ class EquipmentTypeUpdateView(CompanyRequiredMixin, UpdateView):
     model = EquipmentType
     form_class = EquipmentTypeForm
     template_name = 'resources/equipment_type_form.html'
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        if not kwargs.get('instance'):
+            kwargs['instance'] = EquipmentType(company=self.get_company())
+        return kwargs
 
     def form_valid(self, form):
         messages.success(self.request, 'Вид техники обновлён!')
@@ -156,3 +168,30 @@ class EquipmentTypeDeleteView(CompanyRequiredMixin, DeleteView):
         et = self.get_object()
         messages.success(request, f'Вид техники "{et.name}" удалён')
         return super().delete(request, *args, **kwargs)
+
+from .models import EquipmentCategory
+from .forms import EquipmentCategoryForm
+from django.http import JsonResponse
+from django.db import IntegrityError, transaction
+from django.views.decorators.http import require_POST
+from core.permissions import require_roles, PLAN_ROLES
+
+
+class EquipmentCategoryListView(CompanyScopedMixin, ListView):
+    model = EquipmentCategory
+    template_name = 'resources/equipment_category_list.html'
+    context_object_name = 'categories'
+
+
+@require_POST
+def equipment_category_create(request):
+    require_roles(request.user, PLAN_ROLES)
+    form = EquipmentCategoryForm(request.POST, company=request.user.company)
+    if form.is_valid():
+        try:
+            with transaction.atomic():
+                category = form.save()
+        except IntegrityError:
+            return JsonResponse({'errors': {'name': ['Такая категория уже существует.']}}, status=400)
+        return JsonResponse({'value': str(category.pk), 'label': category.name}, status=201)
+    return JsonResponse({'errors': form.errors}, status=400)

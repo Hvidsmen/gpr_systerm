@@ -37,3 +37,9 @@ class EquipmentAdmin(admin.ModelAdmin):
 @admin.register(FuelType)
 class FuelTypeAdmin(admin.ModelAdmin):
     list_display = ['code', 'name', 'unit', 'default_price']
+
+from .models import EquipmentCategory
+
+@admin.register(EquipmentCategory)
+class EquipmentCategoryAdmin(admin.ModelAdmin):
+    list_display = ['name', 'company']

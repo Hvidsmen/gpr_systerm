@@ -82,14 +82,25 @@ class BrigadeMember(BaseCompanyModel):
         return f"{self.brigade.name} - {self.employee}"
 
 
+class EquipmentCategory(BaseCompanyModel):
+    name = models.CharField(_('название'), max_length=100)
+
+    class Meta:
+        verbose_name = _('категория техники')
+        verbose_name_plural = _('категории техники')
+        ordering = ['name']
+        constraints = [models.UniqueConstraint(fields=['company', 'name'], name='unique_equipment_category_name')]
+
+    def __str__(self):
+        return self.name
+
+
 class EquipmentType(BaseCompanyModel):
     """Справочник видов техники."""
     name = models.CharField(_('название'), max_length=150)
-    category = models.CharField(
-        _('категория'),
-        max_length=100,
-        blank=True,
-        help_text=_('Например: Землеройная, Подъёмная, Транспортная')
+    category = models.ForeignKey(
+        EquipmentCategory, on_delete=models.PROTECT, null=True, blank=True,
+        related_name='equipment_types', verbose_name=_('категория'),
     )
     is_active = models.BooleanField(_('активна'), default=True)
 
