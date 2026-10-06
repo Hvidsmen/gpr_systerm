@@ -25,7 +25,7 @@ class DeviationReason(BaseCompanyModel):
         ordering = ["code"]
 
     def __str__(self):
-        return f"{self.code} — {self.name}"
+        return self.name
 
 
 class DailyFact(BaseCompanyModel):

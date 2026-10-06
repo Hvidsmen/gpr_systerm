@@ -17,7 +17,6 @@
         <table class="table table-hover">
             <thead class="table-light">
                 <tr>
-                    <th>Код</th>
                     <th>Название</th>
                     <th>Статус</th>
                     <th>Дата начала</th>
@@ -28,7 +27,6 @@
             <tbody>
                 {% for project in projects %}
                     <tr>
-                        <td>{{ project.code }}</td>
                         <td>{% if request.user|may:'projects:project_detail' %}<a href="{% url 'projects:project_detail' project.pk %}">{{ project.name }}</a>{% endif %}</td>
                         <td>
                             <span class="badge bg-{% if project.status == 'ACTIVE' %}success{% elif project.status == 'ARCHIVED' %}secondary{% else %}dark{% endif %}">

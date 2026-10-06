@@ -4,7 +4,7 @@ from .models import Position, Employee, Brigade, BrigadeMember, EquipmentType, E
 
 @admin.register(Position)
 class PositionAdmin(admin.ModelAdmin):
-    list_display = ['code', 'name', 'default_hourly_rate']
+    list_display = ['name', 'default_hourly_rate']
 
 
 @admin.register(Employee)
@@ -15,7 +15,7 @@ class EmployeeAdmin(admin.ModelAdmin):
 
 @admin.register(Brigade)
 class BrigadeAdmin(admin.ModelAdmin):
-    list_display =  ['code', 'name',  'description', 'is_active']
+    list_display =  ['name',  'description', 'is_active']
 
 
 @admin.register(BrigadeMember)
@@ -36,7 +36,7 @@ class EquipmentAdmin(admin.ModelAdmin):
 
 @admin.register(FuelType)
 class FuelTypeAdmin(admin.ModelAdmin):
-    list_display = ['code', 'name', 'unit', 'default_price']
+    list_display = ['name', 'unit', 'default_price']
 
 from .models import EquipmentCategory
 

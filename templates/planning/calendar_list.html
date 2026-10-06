@@ -28,7 +28,6 @@
             <table class="table table-hover mb-0">
                 <thead class="table-light">
                     <tr>
-                        <th>Код</th>
                         <th>Название</th>
                         <th>Год</th>
                         <th class="text-end">Всего дней</th>
@@ -40,7 +39,6 @@
                 <tbody>
                     {% for calendar in calendars %}
                         <tr>
-                            <td><strong>{{ calendar.code }}</strong></td>
                             <td>
                                 {% if request.user|may:'planning:calendar_detail' %}<a href="{% url 'planning:calendar_detail' calendar.pk %}" class="text-decoration-none">
                                     <strong>{{ calendar.name }}</strong>

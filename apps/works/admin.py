@@ -4,7 +4,7 @@ from .models import WorkTemplate, WorkTemplateVersion, WorkTemplateItem, Project
 
 @admin.register(WorkTemplate)
 class WorkTemplateAdmin(admin.ModelAdmin):
-    list_display = ['code', 'name', 'unit', 'is_active']
+    list_display = ['name', 'unit', 'is_active']
     list_filter = ['is_active']
     search_fields = ['code', 'name']
 
@@ -23,7 +23,7 @@ class WorkTemplateItemAdmin(admin.ModelAdmin):
 
 @admin.register(ProjectWork)
 class ProjectWorkAdmin(admin.ModelAdmin):
-    list_display = ['code', 'name', 'section', 'unit', 'unit_price', 'status']
+    list_display = ['name', 'section', 'unit', 'unit_price', 'status']
     list_filter = ['status']
     search_fields = ['code', 'name']
 

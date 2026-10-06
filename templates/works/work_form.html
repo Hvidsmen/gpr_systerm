@@ -28,7 +28,7 @@
                     <div class="col-md-4"><label for="{{ form.construction_object.id_for_label }}" class="form-label"><span class="badge rounded-pill bg-primary me-2">2</span>Строительный объект <span class="text-danger">*</span></label>{{ form.construction_object }}<div class="text-danger small">{{ form.construction_object.errors }}</div></div>
                     <div class="col-md-4"><label for="{{ form.section.id_for_label }}" class="form-label"><span class="badge rounded-pill bg-primary me-2">3</span>Раздел <span class="text-danger">*</span></label>{{ form.section }}<div class="text-danger small">{{ form.section.errors }}</div></div>
                 </div>
-                <div class="form-text mt-2">Выберите проект, затем объект и раздел. В списках указаны код и название.</div>
+                <div class="form-text mt-2">Выберите проект, затем объект и раздел. В списках указаны названия.</div>
                 <div class="form-text" id="location-status" aria-live="polite"></div>
             </div>
             <div class="row g-3 mb-3">
@@ -63,9 +63,8 @@
                 <div class="input-group">{{ form.work_group }}{% if request.user|may:'works:group_create' %}<button type="button" class="btn btn-outline-primary" data-catalog-open="group" aria-label="Создать группу работ">+</button>{% endif %}</div>
                 <div class="text-danger small">{{ form.work_group.errors }}</div>
             </div>
-            <!-- Код и Название -->
+            <!-- Название -->
             <div class="row">
-                <p class="text-muted small">Код присваивается автоматически{% if form.instance.pk %}: {{ form.instance.code }}{% endif %}.</p>
                 <div class="col-md-9 mb-3">
                     <label for="{{ form.name.id_for_label }}" class="form-label">
                         {{ form.name.label }} <span class="text-danger">*</span>
@@ -146,7 +145,6 @@
     </div>
     <div class="card-body">
         <ul class="mb-0 small">
-            <li><strong>Код</strong> — уникальный код работы в рамках раздела (например: 01.01.01)</li>
             <li><strong>Название</strong> — полное наименование работы</li>
             <li><strong>Раздел</strong> — раздел объекта, к которому относится работа</li>
             <li><strong>Шаблон</strong> — если выбран, подработы будут созданы автоматически из шаблона</li>
@@ -175,7 +173,7 @@
     const status = document.getElementById('location-status');
     function options(select, rows, placeholder, enabled, selected = '') {
         select.replaceChildren(new Option(placeholder, ''));
-        rows.forEach(row => select.add(new Option(`${row.code} — ${row.name}`, String(row.id))));
+        rows.forEach(row => select.add(new Option(`${row.name}`, String(row.id))));
         select.value = selected;
         select.disabled = !enabled;
     }

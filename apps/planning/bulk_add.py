@@ -42,7 +42,7 @@ class BulkAddForm(CompanyFormMixin, forms.Form):
             self.fields['items'] = forms.ModelMultipleChoiceField(label=TITLES[kind],
                 queryset=querysets[kind]().order_by('name'), widget=forms.CheckboxSelectMultiple())
             if kind == 'works':
-                self.fields['items'].label_from_instance = lambda w: f'{w.code} — {w.name} ({w.unit}, {w.get_kind_display()})'
+                self.fields['items'].label_from_instance = lambda w: f'{w.name} ({w.unit}, {w.get_kind_display()})'
             if kind == 'equipment':
                 self.fields['equipment_number'] = forms.CharField(label='Номер машины (необязательно)', max_length=50, required=False)
         for name, field in self.fields.items():

@@ -13,7 +13,7 @@ from .models import (
 
 @admin.register(LoadProfile)
 class LoadProfileAdmin(admin.ModelAdmin):
-    list_display = ["code", "name"]
+    list_display = ["name"]
     search_fields = ["code", "name"]
 
 
@@ -25,7 +25,7 @@ class LoadProfileItemAdmin(admin.ModelAdmin):
 
 @admin.register(ProductionCalendar)
 class ProductionCalendarAdmin(admin.ModelAdmin):
-    list_display = ["code", "name", "year", "is_default"]
+    list_display = ["name", "year", "is_default"]
     list_filter = ["year", "is_default"]
 
 

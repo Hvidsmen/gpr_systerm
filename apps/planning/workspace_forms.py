@@ -81,7 +81,7 @@ class WorkAllocationForm(AllocationMixin, forms.ModelForm):
 
         self.fields["work"].queryset = works
         self.fields["work"].label_from_instance = (
-            lambda w: f"{w.code} — {w.name} ({w.unit}, {w.get_kind_display()})"
+            lambda w: f"{w.name} ({w.unit}, {w.get_kind_display()})"
         )
         self.fields["quantity"].widget.attrs["min"] = "0"
         self.fields["quantity"].widget.attrs["step"] = "0.001"

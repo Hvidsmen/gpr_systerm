@@ -89,7 +89,7 @@ class Brigade(BaseCompanyModel):
         unique_together = [['company', 'code']]
 
     def __str__(self):
-        return f"{self.code} — {self.name}"
+        return self.name
 
 
 class BrigadeMember(BaseCompanyModel):

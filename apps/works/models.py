@@ -20,7 +20,7 @@ class WorkTemplate(BaseCompanyModel):
         unique_together = [["company", "code"]]
 
     def __str__(self):
-        return f"{self.code} - {self.name}"
+        return self.name
 
 
 class WorkTemplateVersion(BaseCompanyModel):
@@ -247,7 +247,7 @@ class ProjectWork(BaseCompanyModel):
         unique_together = [["section", "code"]]
 
     def __str__(self):
-        return f"{self.code} - {self.name}"
+        return self.name
 
 
 class ProjectWorkItem(BaseCompanyModel):

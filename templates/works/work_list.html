@@ -30,7 +30,6 @@
                 <table class="table table-hover mb-0">
                     <thead class="table-light">
                         <tr>
-                            <th style="width: 60px;">Код</th>
                             <th>Название</th>
                             <th>Проект / Объект / Раздел</th>
                             <th style="width: 100px;">Ед. изм.</th>
@@ -44,7 +43,6 @@
                     <tbody>
                         {% for work in works %}
                             <tr>
-                                <td><strong>{{ work.code }}</strong></td>
                                 <td>
                                     {% if request.user|may:'works:work_detail' %}<a href="{% url 'works:work_detail' work.pk %}" class="text-decoration-none">
                                         <strong>{{ work.name }}</strong>

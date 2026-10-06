@@ -30,7 +30,6 @@
                 <table class="table table-hover mb-0">
                     <thead class="table-light">
                         <tr>
-                            <th style="width: 80px;">Код</th>
                             <th>Название</th>
                             <th>Описание</th>
                             <th style="width: 120px;" class="text-end">Элементов</th>
@@ -41,7 +40,6 @@
                     <tbody>
                         {% for profile in profiles %}
                             <tr>
-                                <td><strong>{{ profile.code }}</strong></td>
                                 <td>
                                     {% if request.user|may:'planning:profile_detail' %}<a href="{% url 'planning:profile_detail' profile.pk %}" class="text-decoration-none">
                                         <strong>{{ profile.name }}</strong>

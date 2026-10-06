@@ -32,7 +32,6 @@
             <table class="table table-hover mb-0">
                 <thead class="table-light">
                     <tr>
-                        <th style="width: 100px;">Код</th>
                         <th>Название</th><th>Группа</th><th>Макрогруппа</th>
                         <th>Ед. изм.</th><th>Описание</th>
                         <th style="width: 100px;">Статус</th>
@@ -42,7 +41,6 @@
                 <tbody>
                     {% for brigade in brigades %}
                     <tr class="{% if not brigade.is_active %}table-secondary text-muted{% endif %}">
-                        <td><strong>{{ brigade.code }}</strong></td>
                         <td>
                             <strong>{{ brigade.name }}</strong>
                             {% if brigade.members.exists %}

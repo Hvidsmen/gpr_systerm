@@ -58,7 +58,7 @@ class ProjectWorkForm(UnitChoiceMixin, forms.ModelForm):
         self.fields['construction_object'].empty_label = 'Выберите объект' if project_id else 'Сначала выберите проект'
         self.fields['section'].empty_label = 'Выберите раздел' if object_id else 'Сначала выберите объект'
         for name in ('project', 'construction_object', 'section'):
-            self.fields[name].label_from_instance = lambda row: f'{row.code} — {row.name}'
+            self.fields[name].label_from_instance = lambda row: f'{row.name}'
         self.hierarchy = {
             'objects': list(objects.values('id', 'project_id', 'code', 'name')),
             'sections': list(sections.values('id', 'construction_object_id', 'code', 'name')),

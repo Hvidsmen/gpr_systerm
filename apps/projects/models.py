@@ -23,7 +23,7 @@ class Project(BaseCompanyModel):
         unique_together = [['company', 'code']]
 
     def __str__(self):
-        return f"{self.code} - {self.name}"
+        return self.name
 
 
 class ConstructionObject(BaseCompanyModel):
@@ -47,7 +47,7 @@ class ConstructionObject(BaseCompanyModel):
         unique_together = [['project', 'code']]
 
     def __str__(self):
-        return f"{self.code} - {self.name}"
+        return self.name
 
 
 class Section(BaseCompanyModel):
@@ -65,4 +65,4 @@ class Section(BaseCompanyModel):
         unique_together = [['construction_object', 'code']]
 
     def __str__(self):
-        return f"{self.code} - {self.name}"
+        return self.name

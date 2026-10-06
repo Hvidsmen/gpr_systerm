@@ -21,7 +21,7 @@
 </div></fieldset>
 {% if form.equipment_number %}<p>{{ form.equipment_number.label_tag }}{{ form.equipment_number }}{{ form.equipment_number.errors }}</p>{% endif %}
 
-<label for="bulk-search" class="form-label">Поиск в списке</label><input id="bulk-search" type="search" class="form-control mb-2" placeholder="Введите название или код">
+<label for="bulk-search" class="form-label">Поиск в списке</label><input id="bulk-search" type="search" class="form-control mb-2" placeholder="Введите название">
 <div class="d-flex flex-wrap gap-2 mb-2">{% for filter in selection_filters %}<div style="flex:1;min-width:160px"><label class="form-label small mb-1" for="bulk-filter-{{ filter.name }}">{{ filter.label }}</label><select class="form-select form-select-sm" id="bulk-filter-{{ filter.name }}" data-bulk-filter="{{ filter.name }}"><option value="">Все</option>{% for option in filter.options %}<option value="{{ option.value }}">{{ option.label }}</option>{% endfor %}</select></div>{% endfor %}<button class="btn btn-sm btn-outline-secondary align-self-end" type="button" id="bulk-reset-filters">Сбросить фильтры</button></div>
 <div class="d-flex flex-wrap gap-2 mb-2"><button type="button" class="btn btn-sm btn-outline-primary" id="bulk-select">Выбрать найденные</button><button type="button" class="btn btn-sm btn-outline-secondary" id="bulk-clear">Снять выбор</button><span id="bulk-count" role="status" aria-live="polite"></span></div>
 {{ form.items.errors }}
