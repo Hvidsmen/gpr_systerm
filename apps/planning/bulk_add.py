@@ -24,14 +24,11 @@ def editable_months(version):
 
 
 class BulkAddForm(CompanyFormMixin, forms.Form):
-    scope = forms.ChoiceField(label='Куда добавить', choices=[('month','В выбранный месяц')])
-    month = forms.ChoiceField(label='Месяц')
+    months = forms.MultipleChoiceField(label='Месяцы', widget=forms.CheckboxSelectMultiple())
 
     def __init__(self, *args, version, kind, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['month'].choices = [(m.isoformat(), m.strftime('%m.%Y')) for m in editable_months(version)]
-        if version.version_kind == 'BASELINE':
-            self.fields['scope'].choices.append(('period','Во весь период'))
+        self.fields['months'].choices = [(m.isoformat(), m.strftime('%m.%Y')) for m in editable_months(version)]
         if kind == 'fuel':
             self.fields['items'] = forms.MultipleChoiceField(label='Виды ГСМ',
                 choices=ResourceMonthAllocation._meta.get_field('fuel_type').choices,
@@ -50,7 +47,7 @@ class BulkAddForm(CompanyFormMixin, forms.Form):
             if kind == 'equipment':
                 self.fields['equipment_number'] = forms.CharField(label='Номер машины (необязательно)', max_length=50, required=False)
         for name, field in self.fields.items():
-            if name != 'items':
+            if name not in ('items', 'months'):
                 field.widget.attrs['class'] = 'form-select' if isinstance(field.widget, forms.Select) else 'form-control'
 
 
@@ -62,12 +59,14 @@ class WorkspaceBulkAdd(View):
         version = version_for(request, pk)
         if version.status not in ['DRAFT','REJECTED']:
             raise PermissionDenied('Редактировать можно только черновик или отклонённый план.')
-        initial = {'scope':request.GET.get('scope','month'), 'month':request.GET.get('month') or (version.planning_month or editable_months(version)[0]).isoformat()}
+        available = [month.isoformat() for month in editable_months(version)]
+        selected = request.GET.get('month')
+        initial = {'months': available if request.GET.get('scope') == 'period' and version.version_kind == 'BASELINE' else [selected if selected in available else available[0]]}
         form = BulkAddForm(request.POST if bound else None, initial=initial, user=request.user, version=version, kind=kind)
         return version, form
 
     def display(self, request, version, form, kind, status=200):
-        return render(request, 'planning/workspace_bulk_add.html', {'version':version, 'form':form, 'title':TITLES[kind], 'kind':kind}, status=status)
+        return render(request, 'planning/workspace_bulk_add.html', {'version':version, 'form':form, 'title':TITLES[kind], 'kind':kind, 'return_month':(version.planning_month or editable_months(version)[0]).isoformat()}, status=status)
 
     def get(self, request, pk, kind):
         version, form = self.setup_form(request, pk, kind)
@@ -77,8 +76,8 @@ class WorkspaceBulkAdd(View):
         version, form = self.setup_form(request, pk, kind, True)
         if not form.is_valid():
             return self.display(request, version, form, kind, 400)
-        month = date.fromisoformat(form.cleaned_data['month'])
-        months = months_between(version.start_date, version.end_date) if form.cleaned_data['scope'] == 'period' else [month]
+        months = sorted({date.fromisoformat(value) for value in form.cleaned_data['months']})
+        month = months[0]
         added = skipped = 0
         with transaction.atomic():
             locked = GlobalPlanVersion.objects.select_for_update().get(pk=version.pk, company=request.user.company)
