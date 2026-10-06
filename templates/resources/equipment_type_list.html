@@ -25,6 +25,7 @@
     </a>{% endif %}
 </div>
 
+{% include 'resources/catalog_filters.html' %}
 {% if equipment_types %}
     <div class="card">
         <div class="card-body p-0">
@@ -70,9 +71,10 @@
             </div>
         </div>
     </div>
+{% include 'resources/catalog_pagination.html' %}
 {% else %}
     <div class="alert alert-info">
-        <i class="bi bi-info-circle"></i> Виды техники ещё не добавлены.
+        <i class="bi bi-info-circle"></i> {% if filters_active %}По выбранным фильтрам виды техники не найдены.{% else %}Виды техники ещё не добавлены.{% endif %}
         {% if request.user|may:'resources:equipment_type_create' %}<a href="{% url 'resources:equipment_type_create' %}" class="alert-link">Добавить первый вид техники</a>{% endif %}
     </div>
 {% endif %}

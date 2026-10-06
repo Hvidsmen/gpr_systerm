@@ -1,0 +1,5 @@
+<form method="get" class="card mb-3"><div class="card-body py-2">
+<div class="d-flex flex-wrap gap-2 align-items-end">{% for field in filter_form %}<div style="flex:1;min-width:180px"><label class="form-label small mb-1" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}<div class="text-danger small">{{ field.errors }}</div></div>{% endfor %}
+<button class="btn btn-sm btn-primary">Применить</button><a class="btn btn-sm btn-outline-secondary" href="{{ request.path }}">Сбросить</a></div>
+<div class="text-muted small mt-1">Найдено: {{ paginator.count }}</div>
+</div></form>

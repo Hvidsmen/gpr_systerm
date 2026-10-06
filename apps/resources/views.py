@@ -1,3 +1,4 @@
+from .filters import CatalogFilterMixin, BrigadeFilterForm, EquipmentFilterForm
 from django.views.generic import ListView, CreateView
 from django.urls import reverse_lazy
 from django.contrib import messages
@@ -27,17 +28,17 @@ class EmployeeCreateView(CompanyRequiredMixin, CreateView):
         return super().form_valid(form)
 
 
-class BrigadeListView(CompanyRequiredMixin, ListView):
+class BrigadeListView(CatalogFilterMixin, CompanyRequiredMixin, ListView):
+    filter_form_class = BrigadeFilterForm
     model = Brigade
     template_name = 'resources/brigade_list.html'
     context_object_name = 'brigades'
     paginate_by = 20
 
     def get_queryset(self):
-        # УБРАЛИ .select_related('foreman')
-        return Brigade.objects.filter(
-            company=self.request.user.company
-        ).order_by('code')
+        return self.filter_queryset(Brigade.objects.filter(
+            company=self.get_company()
+        ).select_related('group', 'macro_group').order_by('code'))
 
 
 
@@ -113,16 +114,17 @@ from .models import EquipmentType
 from .forms import EquipmentTypeForm
 
 
-class EquipmentTypeListView(CompanyRequiredMixin, ListView):
+class EquipmentTypeListView(CatalogFilterMixin, CompanyRequiredMixin, ListView):
+    filter_form_class = EquipmentFilterForm
     model = EquipmentType
     template_name = 'resources/equipment_type_list.html'
     context_object_name = 'equipment_types'
     paginate_by = 20
 
     def get_queryset(self):
-        return EquipmentType.objects.filter(
-            company=self.request.user.company
-        ).order_by('name')
+        return self.filter_queryset(EquipmentType.objects.filter(
+            company=self.get_company()
+        ).select_related('category').order_by('name', 'pk'))
 
 
 class EquipmentTypeCreateView(CompanyRequiredMixin, CreateView):
