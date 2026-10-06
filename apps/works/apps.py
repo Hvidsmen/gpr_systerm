@@ -5,3 +5,5 @@ class WorksConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'apps.works'
     verbose_name = 'Работы'
+    def ready(self):
+        from . import signals

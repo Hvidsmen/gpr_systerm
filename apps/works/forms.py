@@ -1,12 +1,22 @@
 from django import forms
 from django.utils.translation import gettext_lazy as _
 
-from .models import ProjectWork, ProjectWorkItem, WorkTemplateItem
+from .models import ProjectWork, ProjectWorkItem, WorkTemplateItem, MeasurementUnit
 from ..projects.models import Section, Project, ConstructionObject
 from core.permissions import scope_queryset
 
 
-class ProjectWorkForm(forms.ModelForm):
+class UnitChoiceMixin:
+    def configure_catalog(self, company):
+        units = MeasurementUnit.objects.filter(company=company)
+        self.fields['unit'] = forms.ChoiceField(
+            label='Единица измерения',
+            choices=[('', 'Выберите единицу измерения'), *[(unit.symbol, str(unit)) for unit in units]],
+            widget=forms.Select(attrs={'class': 'form-select'}),
+        )
+
+
+class ProjectWorkForm(UnitChoiceMixin, forms.ModelForm):
     """Форма для создания/редактирования РАБОТЫ."""
 
     project = forms.ModelChoiceField(queryset=Project.objects.none(), label='Проект', empty_label='Выберите проект')
@@ -58,6 +68,9 @@ class ProjectWorkForm(forms.ModelForm):
         for field in self.fields.values():
             if isinstance(field.widget, forms.Select):
                 field.widget.attrs['class'] = 'form-select'
+        self.configure_catalog(company)
+        self.fields["work_group"].queryset = self.fields["work_group"].queryset.filter(company=company)
+        self.fields["work_group"].empty_label = "Без группы"
         self.order_fields(['project', 'construction_object', 'section', *self._meta.fields])
 
     def clean(self):
@@ -80,6 +93,7 @@ class ProjectWorkForm(forms.ModelForm):
         fields = [
             "code",
             "name",
+            "work_group",
             "unit",
             "section",
             "unit_price",
@@ -117,7 +131,7 @@ class ProjectWorkForm(forms.ModelForm):
         }
 
 
-class ProjectWorkItemForm(forms.ModelForm):
+class ProjectWorkItemForm(UnitChoiceMixin, forms.ModelForm):
     """Форма для создания/редактирования ПОДРАБОТЫ."""
 
     class Meta:
@@ -160,7 +174,7 @@ class WorkSectionForm(forms.ModelForm):
         }
 
 
-class WorkTemplateItemForm(forms.ModelForm):
+class WorkTemplateItemForm(UnitChoiceMixin, forms.ModelForm):
     class Meta:
         model = WorkTemplateItem
         fields = [

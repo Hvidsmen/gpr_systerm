@@ -139,6 +139,11 @@ class ProjectWork(BaseCompanyModel):
         SIMPLE = "SIMPLE", "Простая"
         COMPOSITE = "COMPOSITE", "Составная"
 
+    work_group = models.ForeignKey(
+        'WorkGroup', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='works', verbose_name='Группа работ',
+    )
+
     kind = models.CharField(
         "Вид работы", max_length=12, choices=Kind.choices, default=Kind.SIMPLE
     )
@@ -153,7 +158,7 @@ class ProjectWork(BaseCompanyModel):
 
     def clean(self):
         super().clean()
-        for name in ("section", "template", "load_profile"):
+        for name in ("section", "template", "load_profile", "work_group"):
             if (
                 getattr(self, name + "_id", None)
                 and self.company_id
@@ -414,3 +419,30 @@ class ProjectWorkItem(BaseCompanyModel):
             * self.weight
             / Decimal("100")
         )
+
+
+class WorkGroup(BaseCompanyModel):
+    name = models.CharField('Название', max_length=150)
+
+    class Meta:
+        verbose_name = 'группа работ'
+        verbose_name_plural = 'группы работ'
+        ordering = ['name']
+        constraints = [models.UniqueConstraint(fields=['company', 'name'], name='unique_company_work_group')]
+
+    def __str__(self):
+        return self.name
+
+
+class MeasurementUnit(BaseCompanyModel):
+    symbol = models.CharField('Обозначение', max_length=50)
+    name = models.CharField('Название', max_length=150)
+
+    class Meta:
+        verbose_name = 'единица измерения'
+        verbose_name_plural = 'единицы измерения'
+        ordering = ['symbol']
+        constraints = [models.UniqueConstraint(fields=['company', 'symbol'], name='unique_company_measurement_unit')]
+
+    def __str__(self):
+        return f'{self.symbol} — {self.name}'

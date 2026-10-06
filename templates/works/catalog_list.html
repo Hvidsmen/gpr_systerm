@@ -1,0 +1,7 @@
+{% extends 'base.html' %}{% load access %}
+{% block content %}
+<h1>{{ title }}</h1>
+{% if request.user|may:'works:group_create' %}<button class="btn btn-primary mb-3" type="button" data-catalog-open="{% if title == 'Группы работ' %}group{% else %}unit{% endif %}">+ Добавить</button>{% endif %}
+<ul class="list-group">{% for record in records %}<li class="list-group-item">{{ record }}</li>{% empty %}<li class="list-group-item text-muted">Справочник пока пуст.</li>{% endfor %}</ul>
+{% include 'works/catalog_quick.html' %}
+{% endblock %}

@@ -1,9 +1,14 @@
 from django.urls import path
 from . import views
+from .catalogs import WorkGroupList, MeasurementUnitList, quick_create
 
 app_name = 'works'
 
 urlpatterns = [
+    path("catalogs/groups/", WorkGroupList.as_view(), name="group_list"),
+    path("catalogs/groups/create/", quick_create("group"), name="group_create"),
+    path("catalogs/units/", MeasurementUnitList.as_view(), name="unit_list"),
+    path("catalogs/units/create/", quick_create("unit"), name="unit_create"),
     # Список всех работ
     path('', views.WorkListView.as_view(), name='work_list'),
 

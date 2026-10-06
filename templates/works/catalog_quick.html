@@ -1,0 +1,45 @@
+<style>
+.catalog-dialog { width:min(440px,calc(100% - 32px)); border:0; border-radius:16px; padding:24px; box-shadow:0 12px 48px #0003; }
+.catalog-dialog::backdrop { background:#172b4d66; }
+</style>
+<dialog id="catalog-group" class="catalog-dialog" aria-labelledby="catalog-group-title">
+<form method="post" action="{% url 'works:group_create' %}" data-catalog="group">{% csrf_token %}
+<h2 id="catalog-group-title" class="h5">Новая группа работ</h2>
+<label class="form-label" for="new-group-name">Название</label><input class="form-control" id="new-group-name" name="name" maxlength="150" required>
+<div class="text-danger small my-2" data-errors role="alert"></div>
+<div class="d-flex justify-content-end gap-2 mt-3"><button type="button" class="btn btn-outline-secondary" data-close>Отмена</button><button class="btn btn-primary">Создать</button></div>
+</form></dialog>
+<dialog id="catalog-unit" class="catalog-dialog" aria-labelledby="catalog-unit-title">
+<form method="post" action="{% url 'works:unit_create' %}" data-catalog="unit">{% csrf_token %}
+<h2 id="catalog-unit-title" class="h5">Новая единица измерения</h2>
+<label class="form-label" for="new-unit-symbol">Обозначение</label><input class="form-control mb-2" id="new-unit-symbol" name="symbol" maxlength="50" placeholder="Например: м³" required>
+<label class="form-label" for="new-unit-name">Название</label><input class="form-control" id="new-unit-name" name="name" maxlength="150" placeholder="Кубический метр" required>
+<div class="text-danger small my-2" data-errors role="alert"></div>
+<div class="d-flex justify-content-end gap-2 mt-3"><button type="button" class="btn btn-outline-secondary" data-close>Отмена</button><button class="btn btn-primary">Создать</button></div>
+</form></dialog>
+<script>
+(() => {
+    document.querySelectorAll('[data-catalog-open]').forEach(button => button.addEventListener('click', () => document.getElementById('catalog-'+button.dataset.catalogOpen).showModal()));
+    document.querySelectorAll('.catalog-dialog [data-close]').forEach(button => button.addEventListener('click', () => button.closest('dialog').close()));
+    document.querySelectorAll('form[data-catalog]').forEach(form => form.addEventListener('submit', async event => {
+        event.preventDefault();
+        const button = form.querySelector('button[type="submit"], button:not([type])');
+        const errors = form.querySelector('[data-errors]');
+        errors.textContent = ''; button.disabled = true;
+        try {
+            const response = await fetch(form.action, {method:'POST',body:new FormData(form),headers:{'Accept':'application/json'}});
+            if (response.redirected) throw new Error('Сессия истекла. Войдите в систему повторно.');
+            if (response.status === 403) throw new Error('Недостаточно прав или сессия истекла.');
+            const result = await response.json();
+            if (!response.ok) { errors.textContent = Object.values(result.errors || {}).flat().join(' '); return; }
+            const select = document.getElementById(form.dataset.catalog === 'group' ? 'id_work_group' : 'id_unit');
+            if (select) {
+                select.add(new Option(result.label, result.value)); select.value = result.value;
+                select.dispatchEvent(new Event('change', {bubbles:true}));
+                form.closest('dialog').close(); form.reset(); select.focus();
+            } else { window.location.reload(); }
+        } catch (error) { errors.textContent = error.message || 'Не удалось сохранить. Попробуйте ещё раз.'; }
+        finally { button.disabled = false; }
+    }));
+})();
+</script>

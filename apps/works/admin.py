@@ -32,3 +32,7 @@ class ProjectWorkAdmin(admin.ModelAdmin):
 class ProjectWorkItemAdmin(admin.ModelAdmin):
     list_display = ['name', 'project_work', 'sequence', 'weight']
     list_filter = ['project_work']
+
+from .models import WorkGroup, MeasurementUnit
+admin.site.register(WorkGroup)
+admin.site.register(MeasurementUnit)
