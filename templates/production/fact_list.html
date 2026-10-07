@@ -25,7 +25,7 @@
 @media(max-width:1199px) { .fact-matrix-filters { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media(max-width:575px) { .fact-matrix-filters { grid-template-columns:1fr; } .fact-matrix .fact-name { min-width:190px; max-width:220px; } }
 </style>
-<div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3"><h1 class="h3 mb-0"><i class="bi bi-clipboard-check"></i> Журнал фактов</h1>{% if request.user|may:'production:fact_create' %}<a href="{% url 'production:fact_create' %}" class="btn btn-primary">Ввести факт</a>{% endif %}</div>
+<div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3"><h1 class="h3 mb-0"><i class="bi bi-clipboard-check"></i> Журнал фактов</h1>{% if request.user|may:'production:fact_create' %}<a href="{% url 'production:fact_create' %}" class="btn btn-primary">Ввести факт</a><a href="{% url 'production:fact_meeting_import' %}" class="btn btn-outline-primary">Импорт факта из Excel</a>{% endif %}</div>
 <form method="get" id="fact-matrix-filters" class="card mb-3"><div class="card-body p-3 fact-matrix-filters">
 {% for field in filter_form %}<div>{{ field.label_tag }}{{ field }}{{ field.errors }}</div>{% endfor %}
 <div class="d-flex gap-2"><button class="btn btn-sm btn-primary">Применить</button><a href="{% url 'production:fact_list' %}" class="btn btn-sm btn-outline-secondary">Сбросить</a></div>

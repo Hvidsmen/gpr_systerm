@@ -78,7 +78,7 @@ def amount(value, count=False):
         )
 
 
-def parse_sheet(sheet, start, end, resource_rule):
+def parse_sheet(sheet, start, end, resource_rule, facts=False):
     result = {
         "name": clean_text(sheet.title),
         "entries": [],
@@ -153,7 +153,9 @@ def parse_sheet(sheet, start, end, resource_rule):
                 f'Строка {rownum}, «{name}»: {"; ".join(error.messages)}'
             )
 
+    previous_plan = None
     for index, row in enumerate(rows):
+        row = list(row)
         texts = {
             j: key(v) for j, v in enumerate(row) if isinstance(v, str) and clean_text(v)
         }
@@ -161,6 +163,7 @@ def parse_sheet(sheet, start, end, resource_rule):
             (j for j, v in texts.items() if "наименование работ" in v), None
         )
         if name_col is not None:
+            previous_plan = None
             headers = {
                 "name": name_col,
                 "unit": next(
@@ -212,7 +215,31 @@ def parse_sheet(sheet, start, end, resource_rule):
             if text.startswith(("гос. номер", "гос.номер")):
                 machine_col = j
         marker = key(row[headers["marker"]]) if headers["marker"] is not None else ""
-        if marker == "факт":
+        if facts:
+            if marker == "план":
+                previous_plan = list(row)
+                for j in dates:
+                    row[j] = None
+            elif marker == "факт":
+                if previous_plan is None:
+                    result["errors"].append(
+                        f"Строка {index+1}: факт без предшествующей строки плана."
+                    )
+                    continue
+                for j in range(headers["marker"]):
+                    if row[j] in (None, ""):
+                        row[j] = previous_plan[j]
+                marker = "план"
+                texts = {
+                    j: key(v)
+                    for j, v in enumerate(row)
+                    if isinstance(v, str) and clean_text(v)
+                }
+            else:
+                # Keep headings, but never infer facts from unlabelled daily values.
+                for j in dates:
+                    row[j] = None
+        elif marker == "факт":
             continue
         # Rows for resources have their own merged name and unit columns.
         resource_unit = next(
@@ -295,6 +322,25 @@ def parse_sheet(sheet, start, end, resource_rule):
             for j, day in dates.items():
                 if start <= day <= end:
                     by_month[day.replace(day=1)].append(j)
+            if facts:
+                for j, day in sorted(dates.items()):
+                    if start <= day <= end:
+                        add(
+                            kind,
+                            name,
+                            "чел" if kind == "labor" else "ед",
+                            row[j],
+                            index + 1,
+                            "Дневной факт",
+                            day,
+                            resource_groups[kind],
+                            (
+                                clean_text(row[machine_col])
+                                if machine_col is not None and kind == "equipment"
+                                else ""
+                            ),
+                        )
+                continue
             for month, chosen in sorted(by_month.items()):
                 try:
                     values = [
@@ -355,6 +401,20 @@ def parse_sheet(sheet, start, end, resource_rule):
         for j, day in dates.items():
             if start <= day <= end:
                 by_month[day.replace(day=1)].append(j)
+        if facts:
+            for j, day in sorted(dates.items()):
+                if start <= day <= end:
+                    add(
+                        "work",
+                        name,
+                        unit,
+                        row[j],
+                        index + 1,
+                        "Дневной факт",
+                        day,
+                        group,
+                    )
+            continue
         for month, chosen in sorted(by_month.items()):
             try:
                 values = [amount(row[j]) for j in chosen if row[j] not in (None, "")]
@@ -392,13 +452,24 @@ def parse_sheet(sheet, start, end, resource_rule):
         )
     if skipped_totals:
         result["warnings"].append(f"Пропущены итоговые строки: {skipped_totals}.")
+    if facts:
+        result["warnings"] = [
+            w for w in result["warnings"] if "план" not in w.casefold()
+        ]
+        result["warnings"].append(
+            "Загружаются только явно отмеченные строки «факт», по точным датам столбцов. Пустые ячейки пропускаются; нули сохраняются."
+        )
     if not result["entries"]:
-        result["errors"].append("Не найден заполненный план работ, людей или техники.")
+        result["errors"].append(
+            "Не найден заполненный факт в выбранном периоде."
+            if facts
+            else "Не найден заполненный план работ, людей или техники."
+        )
     return result
 
 
 def parse_meeting_workbook(
-    upload, start, end, resource_rule="maximum", object_name=None
+    upload, start, end, resource_rule="maximum", object_name=None, facts=False
 ):
     if upload.size > 8 * 1024 * 1024 or not upload.name.lower().endswith(".xlsx"):
         raise ValidationError("Нужен файл .xlsx размером до 8 МБ.")
@@ -425,7 +496,10 @@ def parse_meeting_workbook(
                     raise ValidationError(
                         f"В файле должен быть один лист объекта «{object_name}»."
                     )
-            return [parse_sheet(sheet, start, end, resource_rule) for sheet in sheets]
+            return [
+                parse_sheet(sheet, start, end, resource_rule, facts=facts)
+                for sheet in sheets
+            ]
         finally:
             workbook.close()
     except (BadZipFile, KeyError, ValueError, OSError) as error:
@@ -443,7 +517,7 @@ def unique_match(candidates, name, description):
     return matches[0] if matches else None
 
 
-def resolve_sheet(company, project, sheet, target_object=None):
+def resolve_sheet(company, project, sheet, target_object=None, require_all=True):
     """No writes: resolve identities and surface ambiguity before confirmation."""
     obj = target_object or unique_match(
         ConstructionObject.objects.filter(company=company, project=project),
@@ -463,7 +537,9 @@ def resolve_sheet(company, project, sheet, target_object=None):
     works = (
         list(
             ProjectWork.objects.filter(
-                company=company, merged_source__isnull=True, section__construction_object=obj
+                company=company,
+                merged_source__isnull=True,
+                section__construction_object=obj,
             )
             .select_related("section")
             .prefetch_related("items")
@@ -587,7 +663,7 @@ def resolve_sheet(company, project, sheet, target_object=None):
             by_work[(item.project_work_id, row["month"])].add(item.pk)
     for (work_id, month), item_ids in by_work.items():
         work = next(w for w in works if w.pk == work_id)
-        if item_ids != {c.pk for c in work.items.all()}:
+        if require_all and item_ids != {c.pk for c in work.items.all()}:
             raise ValidationError(
                 f"«{work.name}»: заполните все подработы, включая нулевые объёмы."
             )

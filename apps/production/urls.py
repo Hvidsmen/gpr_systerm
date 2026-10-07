@@ -1,9 +1,13 @@
 from django.urls import path
 from . import views
+from .meeting_import import FactMeetingImportView
 from .views.day_workspace import FactDayWorkspaceView
 
 app_name = "production"
 urlpatterns = [
+    path(
+        "meeting-import/", FactMeetingImportView.as_view(), name="fact_meeting_import"
+    ),
     path("day-workspace/", FactDayWorkspaceView.as_view(), name="fact_day_workspace"),
     path("", views.FactListView.as_view(), name="fact_list"),
     path("create/", views.FactCreateView.as_view(), name="fact_create"),
