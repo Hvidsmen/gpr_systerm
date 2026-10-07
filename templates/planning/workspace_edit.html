@@ -2,7 +2,16 @@
 {% load access %}
 {% block content %}
 <style>
-.allocation-row[hidden] { display:none !important; }
+.allocation-row[hidden], .allocation-group[hidden] { display:none !important; }
+.allocation-section { margin-bottom:12px; border:1px solid #dee2e6; border-radius:8px; background:white; }
+.allocation-section > summary, .allocation-group > summary { cursor:pointer; padding:10px 12px; font-weight:600; }
+.allocation-section > summary { font-size:18px; }
+.allocation-section-body { padding:0 12px 12px; }
+.allocation-group { margin:8px 0; border:1px solid #e5e7eb; border-radius:6px; }
+.allocation-group > summary { background:#f8f9fa; font-size:14px; }
+.allocation-group-body { padding:8px; }
+.allocation-group-count { margin-left:8px; font-size:12px; font-weight:normal; color:#6c757d; }
+
 .allocation-row { margin-bottom:8px !important; box-shadow:none; }
 .allocation-row .allocation-grid { display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); gap:8px; padding:10px; align-items:end; }
 .allocation-grid > [data-field] { margin:0; min-width:0; grid-column:span 1; }
@@ -49,16 +58,18 @@
 {% csrf_token %}{{ work_forms.management_form }}{{ resource_forms.management_form }}
 {{ work_forms.non_form_errors }}{{ resource_forms.non_form_errors }}
 {% if resource_forms.total_error_count %}<div class="alert alert-danger" role="alert">Проверьте данные ресурсов.<ul>{% for form in resource_forms %}{% for field in form %}{% for error in field.errors %}<li>{{ field.label }}: {{ error }}</li>{% endfor %}{% endfor %}{% for error in form.non_field_errors %}<li>{{ error }}</li>{% endfor %}{% endfor %}</ul></div>{% endif %}
-<h3>Работы</h3><p>Указывайте объём основной работы. Объёмы подработ рассчитываются по нормативам.</p>
+<div class="d-flex gap-2 mb-3"><button type="button" class="btn btn-sm btn-outline-secondary" data-expand-allocations>Развернуть всё</button><button type="button" class="btn btn-sm btn-outline-secondary" data-collapse-allocations>Свернуть всё</button></div>
+<details class="allocation-section" data-allocation-section="works"><summary>Работы <span class="allocation-group-count" data-section-count></span></summary><div class="allocation-section-body"><p>Указывайте объём основной работы. Объёмы подработ рассчитываются по нормативам.</p>
 {% include 'planning/row_filters.html' with filter_kind='works' filters=work_filters %}
 <div id="work-rows">{% for form in work_forms %}<div class="card mb-3 allocation-row"><div class="card-body allocation-grid">{{ form.non_field_errors }}{% for field in form %}<p data-field="{{ field.name }}" {% if field.is_hidden %}hidden{% endif %}>{% if field.name == 'DELETE' %}<span hidden>{{ field }}</span><button type="button" class="btn btn-sm btn-outline-danger" data-remove-row aria-label="Удалить строку">Удалить</button>{% else %}{{ field.label_tag }} {{ field }} {{ field.errors }}{% endif %}</p>{% endfor %}</div></div>{% endfor %}</div>
 <button type="button" class="btn btn-outline-primary mb-4" data-add="works">Добавить строку работы</button>
+</div></details>
 <h3>Ресурсы на {{ selected_month|date:'m.Y' }}</h3><p>Численность людей и количество техники повторяются каждый календарный день, включая выходные. Остаток ГСМ повторяется каждый день. Расход ГСМ за месяц распределяется равномерно по всем календарным дням в пределах периода.</p>
-{% for section in resource_sections %}<section class="card mb-4"><div class="card-body"><h3>{{ section.title }}</h3>
+{% for section in resource_sections %}<details class="allocation-section" data-allocation-section="{{ section.kind }}"><summary>{{ section.title }} <span class="allocation-group-count" data-section-count></span></summary><div class="allocation-section-body">
 {% include 'planning/row_filters.html' with filter_kind=section.kind filters=section.filters %}
 <div id="resource-rows-{{ section.kind }}">{% for form in section.forms %}<div class="card mb-3 resource-row allocation-row"><div class="card-body allocation-grid">{{ form.non_field_errors }}{% for field in form %}<p data-field="{{ field.name }}" {% if field.is_hidden or field.name == 'kind' %}hidden{% endif %}>{% if field.name == 'DELETE' %}<span hidden>{{ field }}</span><button type="button" class="btn btn-sm btn-outline-danger" data-remove-row aria-label="Удалить строку">Удалить</button>{% else %}{{ field.label_tag }} {{ field }} {{ field.errors }}{% endif %}</p>{% endfor %}</div></div>{% endfor %}</div>
 <button type="button" class="btn btn-outline-primary" data-add="resources" data-kind="{{ section.kind }}">Добавить {% if section.kind == 'labor' %}людей{% elif section.kind == 'equipment' %}технику{% else %}ГСМ{% endif %} в этот месяц</button>
-</div></section>{% endfor %}
+</div></details>{% endfor %}
 <div class="d-flex gap-2"><button class="btn btn-primary" name="action" value="save">Сохранить этот месяц</button><button class="btn btn-success" name="action" value="preview">Сохранить месяц и сформировать план на весь период</button></div>
 </form>
 <template id="empty-works"><div class="card mb-3 allocation-row"><div class="card-body allocation-grid">{% for field in work_forms.empty_form %}<p data-field="{{ field.name }}" {% if field.is_hidden %}hidden{% endif %}>{% if field.name == 'DELETE' %}<span hidden>{{ field }}</span><button type="button" class="btn btn-sm btn-outline-danger" data-remove-row aria-label="Удалить строку">Удалить</button>{% else %}{{ field.label_tag }} {{ field }}{% endif %}</p>{% endfor %}</div></div></template>
@@ -68,6 +79,56 @@
 <script>
 const planningFilterData=JSON.parse(document.getElementById('planning-filter-data').textContent);
 const rowIdentity={works:'work',labor:'brigade',equipment:'equipment_type',fuel:'fuel_type'};
+function groupAllocationRows(panel) {
+  const kind=panel.dataset.rowFilter;
+  if (kind==='fuel') return;
+  const target=document.getElementById(kind==='works'?'work-rows':'resource-rows-'+kind);
+  const rows=Array.from(target.querySelectorAll('.allocation-row'));
+  const previous=new Map(Array.from(target.querySelectorAll('.allocation-group')).map(group=>[group.dataset.groupKey,group.open]));
+  const fieldNames={works:['group'],labor:['macro','group'],equipment:['category']}[kind];
+  const emptyLabels={works:{group:'Без группы работ'},labor:{macro:'Без макрогруппы',group:'Без группы'},equipment:{category:'Без категории'}};
+  const labels={};
+  fieldNames.forEach(name=>{labels[name]=new Map(Array.from(panel.querySelector('[data-filter-key="'+name+'"]').options).filter(option=>option.value).map(option=>[option.value,option.textContent]));});
+  const root=document.createDocumentFragment(),groups=new Map();
+  rows.forEach(row=>{
+    const input=row.querySelector('[name$="-'+rowIdentity[kind]+'"]');
+    const meta=planningFilterData[kind][input.value] || {};
+    const path=input.value?fieldNames.map(name=>({key:name+':'+(meta[name] || ''),label:labels[name].get(meta[name]) || emptyLabels[kind][name]})):[{key:'new',label:'Новые строки'}];
+    let parent=root,keys=[];
+    path.forEach(part=>{
+      keys.push(part.key);const key=JSON.stringify(keys);
+      if (!groups.has(key)) {
+        const details=document.createElement('details');details.className='allocation-group';details.dataset.groupKey=key;details.open=previous.get(key) || false;
+        const summary=document.createElement('summary');summary.append(document.createTextNode(part.label));
+        const count=document.createElement('span');count.className='allocation-group-count';count.dataset.groupCount='';summary.append(count);
+        const body=document.createElement('div');body.className='allocation-group-body';details.append(summary,body);parent.append(details);groups.set(key,body);
+      }
+      parent=groups.get(key);
+    });
+    parent.append(row);
+  });
+  target.replaceChildren(root);
+}
+function updateGroupCounts(target) {
+  const countRows=node=>{
+    const rows=Array.from(node.querySelectorAll('.allocation-row')).filter(row=>!row.querySelector('[name$="-DELETE"]').checked);
+    return {total:rows.length,visible:rows.filter(row=>!row.hidden).length};
+  };
+  target.querySelectorAll('.allocation-group').forEach(group=>{
+    const count=countRows(group);group.hidden=count.visible===0;
+    group.querySelector(':scope > summary [data-group-count]').textContent=count.visible+' / '+count.total;
+  });
+  const count=countRows(target);
+  target.closest('[data-allocation-section]').querySelector('[data-section-count]').textContent=count.visible+' / '+count.total;
+}
+function revealAllocationRow(row) {
+  for (let node=row.parentElement;node;node=node.parentElement) if (node.tagName==='DETAILS') {node.hidden=false;node.open=true;}
+}
+document.querySelector('[data-expand-allocations]').addEventListener('click',()=>document.querySelectorAll('#allocation-editor details').forEach(node=>node.open=true));
+document.querySelector('[data-collapse-allocations]').addEventListener('click',()=>document.querySelectorAll('#allocation-editor details').forEach(node=>node.open=false));
+document.getElementById('allocation-editor').addEventListener('invalid',event=>{
+  const row=event.target.closest('.allocation-row');if (row) {row.hidden=false;revealAllocationRow(row);}
+},true);
 function applyRowFilters(panel) {
   const kind=panel.dataset.rowFilter;
   const target=document.getElementById(kind==='works'?'work-rows':'resource-rows-'+kind);
@@ -85,13 +146,15 @@ function applyRowFilters(panel) {
     row.hidden=!matches;if (matches) visible++;
   });
   panel.querySelector('[data-filter-count]').textContent='Показано: '+visible+' из '+total;
+  updateGroupCounts(target);
+  if (term || filters.some(f=>f.value)) target.querySelectorAll('.allocation-group:not([hidden])').forEach(group=>group.open=true);
 }
-function refreshRowFilters() {document.querySelectorAll('[data-row-filter]').forEach(applyRowFilters);}
+function refreshRowFilters() {document.querySelectorAll('[data-row-filter]').forEach(panel=>{groupAllocationRows(panel);applyRowFilters(panel);});}
 document.querySelectorAll('[data-row-filter]').forEach(panel=>{
   panel.addEventListener('input',()=>applyRowFilters(panel));
   panel.querySelector('[data-reset-filter]').addEventListener('click',()=>{panel.querySelectorAll('input,select').forEach(i=>i.value='');applyRowFilters(panel);});
 });
-document.getElementById('allocation-editor').addEventListener('change',event=>{if(event.target.closest('.allocation-row')) refreshRowFilters();});
+document.getElementById('allocation-editor').addEventListener('change',event=>{if(event.target.closest('.allocation-row')) {refreshRowFilters();if(event.target.name.endsWith('-'+rowIdentity[event.target.closest('[data-allocation-section]').dataset.allocationSection])) revealAllocationRow(event.target.closest('.allocation-row'));}});
 const compositeItems=JSON.parse(document.getElementById('composite-items').textContent);
 const subworkNumber=new Intl.NumberFormat('ru-RU',{maximumFractionDigits:6});
 function updateSubworks(row) {
@@ -162,10 +225,12 @@ document.querySelectorAll('[data-add]').forEach(button => button.addEventListene
   const target=document.getElementById(prefix==='works'?'work-rows':'resource-rows-'+button.dataset.kind);
   target.insertAdjacentHTML('beforeend',document.getElementById(`empty-${prefix}`).innerHTML.replaceAll('__prefix__',String(index)));
   if (prefix==='resources') target.lastElementChild.querySelector('[name$="-kind"]').value=button.dataset.kind;
-  count.value=index+1; wireResources(); wireSubworks(); refreshRowFilters();
+  const newRow=target.lastElementChild;
+  count.value=index+1; wireResources(); wireSubworks(); refreshRowFilters(); revealAllocationRow(newRow);
 }));
 wireResources();
 wireSubworks();
 refreshRowFilters();
+document.querySelectorAll('.allocation-row .errorlist').forEach(error=>revealAllocationRow(error.closest('.allocation-row')));
 </script>
 {% endblock %}
