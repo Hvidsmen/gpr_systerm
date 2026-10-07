@@ -335,6 +335,10 @@ class ResourceDaily(View):
                         "value_" + str(pk), request.POST.get("actual_" + str(pk), "")
                     )
                     setattr(fact, self.actual_field, value)
+                    if self.prefix.startswith("fuel"):
+                        balance = request.POST.get("balance_" + str(pk))
+                        if balance is not None:
+                            fact.actual_balance = balance or "0"
                     for field in ("hourly_rate", "price_per_liter"):
                         if hasattr(plan, field):
                             setattr(fact, field, getattr(plan, field))

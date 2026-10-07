@@ -169,7 +169,7 @@ def build_snapshot(version):
         (
             "fuel",
             FuelPlan,
-            ["fuel_type", "equipment_ref", "planned_liters", "price_per_liter"],
+            ["fuel_type", "equipment_ref", "planned_balance", "planned_liters", "price_per_liter"],
         ),
     ]
     for kind, model, fields in definitions:
@@ -385,6 +385,8 @@ def comparison(version):
                         if fact
                         else Decimal("0")
                     ),
+                    "planned_balance": Decimal(str(planned.get("planned_balance") or 0)) if planned and kind == "fuel" else Decimal("0"),
+                    "actual_balance": fact.actual_balance if fact and kind == "fuel" else Decimal("0"),
                     "plan_details": planned,
                     "fact_record": fact,
                 }

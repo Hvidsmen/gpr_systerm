@@ -338,8 +338,9 @@ class FuelFact(ObjectResourceRecord):
         _("вид ГСМ"), max_length=20, choices=FUEL_TYPE_CHOICES, default="DIESEL"
     )
     actual_liters = models.DecimalField(
-        _("факт, л"), max_digits=10, decimal_places=2, default=0
+        _("Расход за день, л"), max_digits=10, decimal_places=2, default=0
     )
+    actual_balance = models.DecimalField("Остаток, л", max_digits=15, decimal_places=2, default=0, blank=True)
     price_per_liter = models.DecimalField(
         _("цена за литр, ₽"), max_digits=8, decimal_places=2, null=True, blank=True
     )
@@ -379,8 +380,9 @@ class FuelPlan(ObjectResourceRecord):
         _("вид ГСМ"), max_length=20, choices=FUEL_TYPE_CHOICES, default="DIESEL"
     )
     planned_liters = models.DecimalField(
-        _("план, л"), max_digits=10, decimal_places=2, default=0
+        _("Расход за день, л"), max_digits=10, decimal_places=2, default=0
     )
+    planned_balance = models.DecimalField("Остаток, л", max_digits=15, decimal_places=2, default=0, blank=True)
     price_per_liter = models.DecimalField(
         _("цена за литр, ₽"), max_digits=8, decimal_places=2, null=True, blank=True
     )

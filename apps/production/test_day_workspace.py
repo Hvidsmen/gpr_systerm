@@ -63,7 +63,7 @@ class FactDayWorkspaceTests(TestCase):
         data[self.work_row(data, self.composite) + 'actual_quantity'] = '4'
         data.update({'labor-0-brigade': str(self.brigade.pk), 'labor-0-actual_workers': '5', 'labor-0-actual_hours': '40',
                      'equipment-0-equipment_type': str(self.equipment.pk), 'equipment-0-actual_count': '2', 'equipment-0-machine_hours': '12',
-                     'fuel-0-fuel_type': 'DIESEL', 'fuel-0-actual_liters': '30'})
+                     'fuel-0-fuel_type': 'DIESEL', 'fuel-0-actual_balance': '500', 'fuel-0-actual_liters': '30'})
         return data
 
     def test_create_all_categories_and_repeat_without_duplicates(self):
@@ -75,12 +75,21 @@ class FactDayWorkspaceTests(TestCase):
         self.assertEqual(LaborFact.objects.get().actual_hours, Decimal('40'))
         self.assertEqual(EquipmentFact.objects.get().machine_hours, Decimal('12'))
         self.assertEqual(FuelFact.objects.get().actual_liters, Decimal('30'))
+        self.assertEqual(FuelFact.objects.get().actual_balance, Decimal('500'))
         data = self.payload()
         data[self.work_row(data, self.work) + 'actual_quantity'] = '9'
         self.assertEqual(self.client.post(self.url, data).status_code, 302)
         self.assertEqual(DailyFact.objects.count(), 2)
         self.assertEqual(DailyFact.objects.get(project_work=self.work).actual_quantity, Decimal('9'))
         self.assertEqual(FuelFact.objects.count(), 1)
+
+    def test_negative_fuel_balance_rolls_back_all_fact_categories(self):
+        data = self.fill(self.payload())
+        data['fuel-0-actual_balance'] = '-1'
+        response = self.client.post(self.url, data)
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(FuelFact.objects.exists())
+        self.assertFalse(DailyFact.objects.exists())
 
     def test_empty_rows_do_not_create_zero_facts_but_explicit_zero_does(self):
         self.assertEqual(self.client.post(self.url, self.payload()).status_code, 302)

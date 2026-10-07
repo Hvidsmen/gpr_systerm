@@ -271,6 +271,7 @@ def resource_input(row):
         "count": row.count,
         "hours": str(row.hours),
         "liters": str(row.liters),
+        "balance": str(row.balance),
         "rate": str(row.rate),
         "label": (
             str(row.brigade)
@@ -292,7 +293,7 @@ def resource_rows(workspace, source, month, total=None, days=None, rate=None):
         else total
     )
     count = source["count"] if kind != "fuel" else 0
-    if not amount and not count:
+    if not amount and not count and not Decimal(str(source.get("balance") or 0)):
         return []
     start, end = month_bounds(workspace, month)
     days = [start + timedelta(days=i) for i in range((end - start).days + 1)]
@@ -305,6 +306,8 @@ def resource_rows(workspace, source, month, total=None, days=None, rate=None):
             date=day.isoformat(), label=source["label"], comment="", origin="PLAN"
         )
         row[field] = str(value)
+        if kind == "fuel":
+            row["planned_balance"] = str(source.get("balance") or 0)
         row["price_per_liter" if kind == "fuel" else "hourly_rate"] = (
             source["rate"] if rate is None else rate
         )
@@ -347,6 +350,8 @@ def resource_facts(version, before):
                 fact_id=fact.pk,
             )
             row[plan_field] = str(getattr(fact, actual_field) or 0)
+            if kind == "fuel":
+                row["planned_balance"] = str(fact.actual_balance)
             row["price_per_liter" if kind == "fuel" else "hourly_rate"] = str(
                 getattr(fact, "price_per_liter" if kind == "fuel" else "hourly_rate")
                 or 0

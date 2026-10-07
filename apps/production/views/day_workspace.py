@@ -98,6 +98,8 @@ class FactDayWorkspaceView(CompanyRequiredMixin, View):
                 hours = getattr(plan, hours_field) if hours_field else None
                 units = {'labor': 'чел.', 'equipment': 'ед.', 'fuel': 'л'}
                 hint = f'План за день: {getattr(plan, planned)} {units[kind]}'
+                if kind == 'fuel':
+                    hint = f'План: остаток {plan.planned_balance} л; расход {plan.planned_liters} л'
                 if hours is not None:
                     hint += f'; {hours} ' + ('чел-час' if kind == 'labor' else 'маш-час')
                 hints[kind][tuple(str(value or '') for value in key)] = hint

@@ -80,7 +80,7 @@ RESOURCE_FIELDS = {
         "planned_machine_hours",
         "hourly_rate",
     ],
-    "fuel": ["fuel_type", "planned_liters", "price_per_liter"],
+    "fuel": ["fuel_type", "planned_balance", "planned_liters"],
 }
 FACT_FIELDS = {
     "labor": ["brigade", "actual_workers", "actual_hours", "hourly_rate"],
@@ -91,7 +91,7 @@ FACT_FIELDS = {
         "machine_hours",
         "hourly_rate",
     ],
-    "fuel": ["fuel_type", "actual_liters", "price_per_liter"],
+    "fuel": ["fuel_type", "actual_balance", "actual_liters"],
 }
 
 
@@ -108,6 +108,9 @@ class ResourceModelForm(CompanyFormMixin, forms.ModelForm):
 
     def clean(self):
         data = super().clean()
+        for name in ("planned_balance", "actual_balance"):
+            if name in self.fields and data.get(name) is None:
+                data[name] = 0
         for name, value in list(data.items()):
             if (
                 isinstance(self.fields[name], (forms.IntegerField, forms.DecimalField))

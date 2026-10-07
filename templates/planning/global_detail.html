@@ -18,13 +18,14 @@
 <h2>Люди, техника и ГСМ</h2>
 <p>В каждой паре значений первым указан план, вторым — факт. Работники и машины учитываются по дням.</p>
 <table class="table">
-  <thead><tr><th>Дата</th><th>Ресурс</th><th>План / факт</th><th>Часы: план / факт</th><th>Ставка: план / факт</th><th>Стоимость: план / факт</th></tr></thead>
+  <thead><tr><th>Дата</th><th>Ресурс</th><th>Количество / расход: план / факт</th><th>Остаток ГСМ: план / факт</th><th>Часы: план / факт</th><th>Ставка: план / факт</th><th>Стоимость: план / факт</th></tr></thead>
   <tbody>{% for row in resources %}
     <tr><td>{{ row.date }}</td><td>{{ row.label }} {{ row.plan_details.equipment_number }} </td>
       <td>{{ row.plan }} / {{ row.fact }} {% if row.kind == 'labor' %}чел.{% elif row.kind == 'equipment' %}ед.{% else %}л{% endif %}</td>
+      <td>{% if row.kind == 'fuel' %}{{ row.planned_balance }} / {{ row.actual_balance }} л{% else %}—{% endif %}</td>
       <td>{% if row.kind != 'fuel' %}{{ row.planned_hours }} / {{ row.actual_hours }} {% if row.kind == 'labor' %}чел·ч{% else %}маш·ч{% endif %}{% else %}—{% endif %}</td>
       <td>{{ row.planned_rate }} / {{ row.actual_rate }} {% if row.kind == 'fuel' %}₽/л{% else %}₽/ч{% endif %}</td>
       <td>{{ row.plan_value }} / {{ row.fact_value }} ₽</td></tr>
-  {% empty %}<tr><td colspan="6">Ресурсных записей нет.</td></tr>{% endfor %}</tbody>
+  {% empty %}<tr><td colspan="7">Ресурсных записей нет.</td></tr>{% endfor %}</tbody>
 </table>
 {% endblock %}

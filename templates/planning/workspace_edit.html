@@ -18,7 +18,7 @@
 .allocation-grid > [hidden] { display:none !important; }
 .allocation-grid > .errorlist { grid-column:1/-1; }
 .allocation-grid .errorlist { margin:3px 0 0; padding-left:14px; color:#b02a37; }
-@media(max-width:1199px) { .allocation-row .allocation-grid { grid-template-columns:repeat(6,minmax(0,1fr)); } .allocation-grid > [data-field="count"], .allocation-grid > [data-field="hours"], .allocation-grid > [data-field="liters"], .allocation-grid > [data-field="rate"] { grid-column:span 2; } }
+@media(max-width:1199px) { .allocation-row .allocation-grid { grid-template-columns:repeat(6,minmax(0,1fr)); } .allocation-grid > [data-field="count"], .allocation-grid > [data-field="hours"], .allocation-grid > [data-field="liters"], .allocation-grid > [data-field="balance"], .allocation-grid > [data-field="rate"] { grid-column:span 2; } }
 @media(max-width:575px) { .allocation-row .allocation-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .allocation-grid > [data-field] { grid-column:span 1 !important; } .allocation-grid > [data-field="work"], .allocation-grid > [data-field="brigade"], .allocation-grid > [data-field="equipment_type"], .allocation-grid > [data-field="fuel_type"], .allocation-grid > [data-field="load_profile"] { grid-column:1/-1 !important; } }
 </style>
 <h1>{{ workspace.name }} — v{{ version.version_number }}</h1>
@@ -53,7 +53,7 @@
 {% include 'planning/row_filters.html' with filter_kind='works' filters=work_filters %}
 <div id="work-rows">{% for form in work_forms %}<div class="card mb-3 allocation-row"><div class="card-body allocation-grid">{{ form.non_field_errors }}{% for field in form %}<p data-field="{{ field.name }}" {% if field.is_hidden %}hidden{% endif %}>{% if field.name == 'DELETE' %}<span hidden>{{ field }}</span><button type="button" class="btn btn-sm btn-outline-danger" data-remove-row aria-label="Удалить строку">Удалить</button>{% else %}{{ field.label_tag }} {{ field }} {{ field.errors }}{% endif %}</p>{% endfor %}</div></div>{% endfor %}</div>
 <button type="button" class="btn btn-outline-primary mb-4" data-add="works">Добавить строку работы</button>
-<h3>Ресурсы на {{ selected_month|date:'m.Y' }}</h3><p>Численность людей и количество техники повторяются каждый календарный день, включая выходные. Литры ГСМ за месяц распределяются равномерно по всем дням месяца в пределах периода.</p>
+<h3>Ресурсы на {{ selected_month|date:'m.Y' }}</h3><p>Численность людей и количество техники повторяются каждый календарный день, включая выходные. Остаток ГСМ повторяется каждый день. Расход ГСМ за месяц распределяется равномерно по всем календарным дням в пределах периода.</p>
 {% for section in resource_sections %}<section class="card mb-4"><div class="card-body"><h3>{{ section.title }}</h3>
 {% include 'planning/row_filters.html' with filter_kind=section.kind filters=section.filters %}
 <div id="resource-rows-{{ section.kind }}">{% for form in section.forms %}<div class="card mb-3 resource-row allocation-row"><div class="card-body allocation-grid">{{ form.non_field_errors }}{% for field in form %}<p data-field="{{ field.name }}" {% if field.is_hidden or field.name == 'kind' %}hidden{% endif %}>{% if field.name == 'DELETE' %}<span hidden>{{ field }}</span><button type="button" class="btn btn-sm btn-outline-danger" data-remove-row aria-label="Удалить строку">Удалить</button>{% else %}{{ field.label_tag }} {{ field }} {{ field.errors }}{% endif %}</p>{% endfor %}</div></div>{% endfor %}</div>
@@ -142,8 +142,8 @@ document.querySelectorAll('.allocation-row').forEach(row=>{
 });
 function showResource(row) {
   const kind = row.querySelector('[name$="-kind"]').value;
-  const labels={count:kind==='labor'?'Людей':'Кол-во',hours:'Часы/мес.',liters:'Литры/мес.',load_profile:'Профиль',equipment_type:'Вид техники',equipment_number:'Номер'};
-  const fields = {labor:['brigade','count'], equipment:['equipment_type','equipment_number','count'], fuel:['fuel_type','liters']}[kind] || [];
+  const labels={count:kind==='labor'?'Людей':'Кол-во',hours:'Часы/мес.',balance:'Остаток, л',liters:'Расход/мес., л',load_profile:'Профиль',equipment_type:'Вид техники',equipment_number:'Номер'};
+  const fields = {labor:['brigade','count'], equipment:['equipment_type','equipment_number','count'], fuel:['fuel_type','balance','liters']}[kind] || [];
   row.querySelectorAll('[data-field]').forEach(group => {
     const name = group.dataset.field;
     const label=group.querySelector('label');

@@ -647,8 +647,9 @@ class ResourceMonthAllocation(BaseCompanyModel):
         "Часы за месяц", max_digits=15, decimal_places=2, default=0
     )
     liters = models.DecimalField(
-        "Литры за месяц", max_digits=15, decimal_places=2, default=0
+        "Расход за месяц, л", max_digits=15, decimal_places=2, default=0
     )
+    balance = models.DecimalField("Остаток на каждый день, л", max_digits=15, decimal_places=2, default=0, blank=True)
     rate = models.DecimalField(
         "Ставка за час / цена литра", max_digits=12, decimal_places=2, default=0
     )
@@ -684,7 +685,7 @@ class ResourceMonthAllocation(BaseCompanyModel):
         from django.core.exceptions import ValidationError
 
         errors = {}
-        for name in ("count", "hours", "liters", "rate"):
+        for name in ("count", "hours", "liters", "rate", "balance"):
             value = getattr(self, name)
             if value is not None and value < 0:
                 errors[name] = "Значение не может быть отрицательным."
@@ -697,6 +698,7 @@ class ResourceMonthAllocation(BaseCompanyModel):
                 or self.equipment_number
                 or self.equipment_ref
                 or self.liters
+                or self.balance
             ):
                 errors["kind"] = (
                     "Для людей заполняются только бригада, численность, часы и ставка."
@@ -704,7 +706,7 @@ class ResourceMonthAllocation(BaseCompanyModel):
         elif self.kind == "equipment":
             if not self.equipment_type_id:
                 errors["equipment_type"] = "Выберите тип техники."
-            if self.brigade_id or self.fuel_type or self.equipment_ref or self.liters:
+            if self.brigade_id or self.fuel_type or self.equipment_ref or self.liters or self.balance:
                 errors["kind"] = (
                     "Для техники заполняются тип, номер, количество, часы и ставка."
                 )

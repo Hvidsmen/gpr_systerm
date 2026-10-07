@@ -99,9 +99,13 @@ class ResourceAllocationForm(AllocationMixin, forms.ModelForm):
             "fuel_type",
             "count",
             "hours",
+            "balance",
             "liters",
             "rate",
         ]
+
+    def clean_balance(self):
+        return self.cleaned_data.get("balance") or 0
 
 
 class AllocationFormset(BaseModelFormSet):

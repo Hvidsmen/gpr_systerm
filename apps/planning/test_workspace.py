@@ -693,6 +693,53 @@ class WorkspaceTests(TestCase):
         self.assertEqual(sum(D(r["planned_liters"]) for r in fuel), D(200))
         self.assertTrue(any(r["date"] == "2026-02-01" for r in fuel))
 
+    def test_fuel_balance_repeats_daily_and_expense_preserves_monthly_total(self):
+        workspace = self.create()
+        row = ResourceMonthAllocation.objects.create(company=self.company, version=workspace.baseline_version, month=JAN, kind="fuel", fuel_type="DIESEL", balance=D("700"), liters=D("3100"))
+        version = WorkspaceService.refresh(workspace.baseline_version, self.planner)
+        rows = version.snapshot["resources"]["fuel"]
+        self.assertEqual(len(rows), 31)
+        self.assertTrue(all(D(r["planned_balance"]) == D(700) for r in rows))
+        self.assertTrue(all(D(r["planned_liters"]) == D(100) for r in rows))
+        self.approve(version)
+        FuelFact.objects.create(company=self.company, construction_object=self.obj, date=JAN, fuel_type="DIESEL", actual_balance=650, actual_liters=90)
+        fuel_comparison = next(r for r in comparison(version)["resources"] if r["kind"] == "fuel" and r["date"] == JAN.isoformat())
+        self.assertEqual(fuel_comparison["planned_balance"], D(700))
+        self.assertEqual(fuel_comparison["actual_balance"], D(650))
+        self.assertEqual(fuel_comparison["fact"], D(90))
+        forecast = WorkspaceService.forecast(workspace, self.planner, JAN, "BASELINE")
+        self.assertEqual(forecast.resource_allocations.get(kind="fuel").balance, D(700))
+        row.balance = -1
+        with self.assertRaises(ValidationError):
+            row.full_clean()
+
+    def test_daily_fuel_fact_entry_accepts_balance_and_expense_from_virtual_plan(self):
+        workspace = self.create()
+        ResourceMonthAllocation.objects.create(company=self.company, version=workspace.baseline_version, month=JAN, kind="fuel", fuel_type="DIESEL", balance=700, liters=3100)
+        self.approve(workspace.baseline_version)
+        foreman = User.objects.create_user(username="fuel-balance-foreman", company=self.company, role=Role.objects.get(code="FOREMAN"))
+        foreman.assigned_objects.add(self.obj)
+        self.client.force_login(foreman)
+        url = reverse("production:fuel_fact_daily_input")
+        response = self.client.get(url, {"construction_object": self.obj.pk, "date": JAN})
+        self.assertEqual(response.status_code, 200)
+        plan = list(response.context["plans"])[0]
+        self.assertEqual(D(plan.planned_balance), D(700))
+        token = str(plan.pk)
+        self.assertContains(response, "balance_" + token)
+        response = self.client.post(url, {"construction_object": self.obj.pk, "date": JAN, "plan_ids": [token], "balance_" + token: 650, "value_" + token: 90})
+        self.assertEqual(response.status_code, 302)
+        fact = FuelFact.objects.get()
+        self.assertEqual(fact.actual_balance, D(650))
+        self.assertEqual(fact.actual_liters, D(90))
+
+    def test_fuel_zero_expense_still_has_daily_balance(self):
+        workspace = self.create()
+        ResourceMonthAllocation.objects.create(company=self.company, version=workspace.baseline_version, month=JAN, kind="fuel", fuel_type="DIESEL", balance=50, liters=0)
+        version = WorkspaceService.refresh(workspace.baseline_version, self.planner)
+        self.assertEqual(len(version.snapshot["resources"]["fuel"]), 31)
+        self.assertTrue(all(D(r["planned_balance"]) == D(50) and D(r["planned_liters"]) == 0 for r in version.snapshot["resources"]["fuel"]))
+
     def test_resource_distribution_stays_inside_partial_period(self):
         from .workspace_services import resource_rows
         workspace = self.create()
