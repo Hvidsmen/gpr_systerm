@@ -22,6 +22,8 @@ def require_roles(user, roles):
 
 
 def approval_role(user):
+    if role_code(user) == 'ADMIN':
+        return 'ADMIN'
     code = user.role.code if user.role_id else None
     return code if code in GLOBAL_APPROVAL_ROLES else role_code(user)
 
@@ -37,8 +39,8 @@ def require_global_action(user, action):
     }.get(action)
     if roles is None:
         require_roles(user, PLAN_ROLES)
-    elif not user.is_authenticated or not user.company_id or approval_role(user) not in roles:
-        raise PermissionDenied('Действие доступно только ответственному руководителю или генеральному директору.')
+    elif not user.is_authenticated or not user.company_id or approval_role(user) not in roles | {'ADMIN'}:
+        raise PermissionDenied('Действие доступно ответственному руководителю, генеральному директору или администратору.')
 
 
 def scope_queryset(queryset, user):

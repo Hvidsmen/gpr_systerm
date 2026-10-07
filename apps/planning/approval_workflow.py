@@ -43,6 +43,8 @@ def transition(version, user, action, comment=''):
     role = approval_role(user)
     review = current_review(version)
     section = dict((r, s) for s, _, r, _ in SECTIONS).get(role, 'CEO')
+    if action in {s[3] for s in SECTIONS}:
+        section = {a: s for s, _, _, a in SECTIONS}[action]
     event = 'APPROVE'
     if action == 'submit':
         if version.status not in ['DRAFT', 'REJECTED']:
@@ -72,7 +74,7 @@ def transition(version, user, action, comment=''):
         version.approved_at = timezone.now()
     elif action == 'reject':
         permitted = version.status == 'SUBMITTED' and (role != 'CEO' or ready(review))
-        permitted |= version.status == 'APPROVED' and role == 'CEO'
+        permitted |= version.status == 'APPROVED' and role in {'CEO', 'ADMIN'}
         if not permitted:
             raise ValidationError('На этом этапе возврат на доработку недоступен.')
         if not comment:
@@ -106,9 +108,9 @@ def panel(version, user):
     for section, label, assigned, action in SECTIONS:
         decision = review.decisions.filter(section=section, action='APPROVE').first() if review else None
         sections.append({'label': label, 'decision': decision, 'approved': section in approved and version.status not in ['DRAFT', 'REJECTED'],
-                         'action': action, 'can_approve': submitted and role == assigned and not decision})
+                         'action': action, 'can_approve': submitted and role in {assigned, 'ADMIN'} and not decision})
     return {'legacy_review': bool(review and review.legacy_approved and version.status not in ['DRAFT', 'REJECTED']), 'approval_sections': sections, 'approval_ready': ready(review),
-            'can_final_approve': submitted and role == 'CEO' and ready(review),
-            'can_return': (submitted and (role in {'PRODUCTION_HEAD', 'HR_HEAD', 'TECH_HEAD'} or role == 'CEO' and ready(review))) or version.status == 'APPROVED' and role == 'CEO',
-            'can_complete': version.status == 'APPROVED' and role == 'CEO',
+            'can_final_approve': submitted and role in {'CEO', 'ADMIN'} and ready(review),
+            'can_return': (submitted and (role in {'PRODUCTION_HEAD', 'HR_HEAD', 'TECH_HEAD', 'ADMIN'} or role == 'CEO' and ready(review))) or version.status == 'APPROVED' and role in {'CEO', 'ADMIN'},
+            'can_complete': version.status == 'APPROVED' and role in {'CEO', 'ADMIN'},
             'review_history': version.review_rounds.prefetch_related('decisions').order_by('-number')}

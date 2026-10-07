@@ -41,7 +41,7 @@ class ApprovalWorkflowTests(TestCase):
 
     def test_wrong_roles_cannot_approve_other_sections_or_final_plan(self):
         version = self.submit()
-        for user in [self.planner, self.admin, self.manager, *self.approvers.values()]:
+        for user in [self.planner, self.manager, *self.approvers.values()]:
             for code, action in [('TECH_HEAD','approve_tech'), ('PRODUCTION_HEAD','approve_production'), ('HR_HEAD','approve_hr'), ('CEO','approve'), ('CEO','complete')]:
                 if user == self.approvers[code]:
                     continue
@@ -212,12 +212,58 @@ class ApprovalWorkflowTests(TestCase):
         delete_workspace(version.workspace, self.admin, confirm_history=True)
         self.assertFalse(GlobalPlanReview.objects.filter(version_id=version.pk).exists())
 
-    def test_superuser_needs_explicit_ceo_assignment_to_finalize(self):
+    def test_superuser_can_finalize_without_changing_assigned_role(self):
         version = departments(self.submit(), self.approvers)
         self.admin.is_superuser = True
+        self.admin.role = Role.objects.get(code='HR_HEAD')
         self.admin.save()
+        version = GlobalPlanService.transition(version, self.admin, 'approve')
+        self.assertEqual(version.status, 'APPROVED')
+        self.assertEqual(current_review(version).decisions.get(section='CEO').actor_role, 'ADMIN')
+
+    def test_admin_can_approve_each_section_with_correct_audit_and_required_order(self):
+        version = self.submit()
+        for section, action in [('PRODUCTION', 'approve_production'), ('HR', 'approve_hr'), ('TECH', 'approve_tech')]:
+            with self.assertRaises(ValidationError):
+                GlobalPlanService.transition(version, self.admin, 'approve')
+            version = GlobalPlanService.transition(version, self.admin, action)
+            decision = current_review(version).decisions.get(section=section)
+            self.assertEqual(decision.actor, self.admin)
+            self.assertEqual(decision.actor_role, 'ADMIN')
+            with self.assertRaises(ValidationError):
+                GlobalPlanService.transition(version, self.admin, action)
+        version = GlobalPlanService.transition(version, self.admin, 'approve')
+        self.assertEqual(version.approved_by, self.admin)
+        self.assertEqual(current_review(version).decisions.count(), 5)
+
+    def test_admin_rework_and_completion_keep_history_and_terminal_status(self):
+        version = self.submit()
+        with self.assertRaises(ValidationError):
+            GlobalPlanService.transition(version, self.admin, 'reject', '')
+        version = GlobalPlanService.transition(version, self.admin, 'reject', 'Fix plan')
+        self.assertEqual(version.status, 'REJECTED')
+        version = self.approve(version)
+        version = GlobalPlanService.transition(version, self.admin, 'reject', 'New estimate')
+        self.assertEqual(version.status, 'REJECTED')
+        version = self.approve(version)
+        version = GlobalPlanService.transition(version, self.admin, 'complete')
+        for action in ['submit','approve_production','approve_hr','approve_tech','approve','reject','complete']:
+            with self.assertRaises(ValidationError):
+                GlobalPlanService.transition(version, self.admin, action, 'Reason')
+
+    def test_admin_buttons_follow_stage_and_do_not_cross_company(self):
+        version = self.submit()
+        self.client.force_login(self.admin)
+        url = reverse('planning:global_detail', args=[version.pk])
+        response = self.client.get(url)
+        for action in ['approve_production', 'approve_hr', 'approve_tech', 'reject']:
+            self.assertContains(response, reverse('planning:global_action', args=[version.pk, action]))
+        self.assertNotContains(response, reverse('planning:global_action', args=[version.pk, 'approve'])+'"')
+        for action in ['approve_production', 'approve_hr', 'approve_tech']:
+            self.assertEqual(self.client.post(reverse('planning:global_action',args=[version.pk,action])).status_code,302)
+        self.assertContains(self.client.get(url),reverse('planning:global_action',args=[version.pk,'approve']))
+        foreign_admin = User.objects.create_user(username='other-admin',company=self.foreign_ceo.company,role=Role.objects.get(code='ADMIN'))
+        self.client.force_login(foreign_admin)
+        self.assertEqual(self.client.post(reverse('planning:global_action',args=[version.pk,'approve'])).status_code,404)
         with self.assertRaises(PermissionDenied):
-            GlobalPlanService.transition(version, self.admin, 'approve')
-        self.admin.role = Role.objects.get(code='CEO')
-        self.admin.save()
-        self.assertEqual(GlobalPlanService.transition(version, self.admin, 'approve').status, 'APPROVED')
+            GlobalPlanService.transition(version,foreign_admin,'approve')
