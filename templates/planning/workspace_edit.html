@@ -29,6 +29,20 @@
 .allocation-grid .errorlist { margin:3px 0 0; padding-left:14px; color:#b02a37; }
 @media(max-width:1199px) { .allocation-row .allocation-grid { grid-template-columns:repeat(6,minmax(0,1fr)); } .allocation-grid > [data-field="count"], .allocation-grid > [data-field="hours"], .allocation-grid > [data-field="liters"], .allocation-grid > [data-field="balance"], .allocation-grid > [data-field="rate"] { grid-column:span 2; } }
 @media(max-width:575px) { .allocation-row .allocation-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .allocation-grid > [data-field] { grid-column:span 1 !important; } .allocation-grid > [data-field="work"], .allocation-grid > [data-field="brigade"], .allocation-grid > [data-field="equipment_type"], .allocation-grid > [data-field="fuel_type"], .allocation-grid > [data-field="load_profile"] { grid-column:1/-1 !important; } }
+
+.period-composition .card-body { padding:12px; }
+.period-composition h2 { font-size:18px; margin-bottom:6px; }
+.period-composition-note, .period-composition-links { font-size:12px; margin:0 0 8px; }
+.period-add-row { display:flex; gap:10px; align-items:center; padding:8px 0; border-top:1px solid #eef0f2; }
+.period-add-row h3 { flex:0 0 75px; font-size:14px; margin:0; }
+.period-add-form { display:flex; align-items:end; gap:8px; flex:1; min-width:0; }
+.period-add-form > p { flex:1; min-width:0; margin:0; }
+.period-add-form label { display:block; font-size:12px; margin-bottom:3px; }
+.period-add-form select, .period-add-form input:not([type="hidden"]) { width:100%; min-height:30px; padding:4px 6px; font-size:12px; }
+.period-add-form > button { flex:none; white-space:nowrap; }
+.period-add-form .errorlist { color:#b02a37; font-size:12px; margin:0; }
+.period-composition-links { margin:6px 0 0 85px; }
+@media(max-width:575px) { .period-add-row { align-items:start; } .period-add-row h3 { flex-basis:55px; padding-top:20px; } .period-add-form { flex-wrap:wrap; } .period-add-form > p { flex-basis:100%; } .period-composition-links { margin-left:65px; } }
 </style>
 <h1>{{ workspace.name }} — v{{ version.version_number }}</h1>
 <p>{{ workspace.construction_object }} · {{ workspace.start_date }} — {{ workspace.end_date }} · {{ version.get_version_kind_display }}</p>
@@ -39,15 +53,17 @@
 <div class="d-flex flex-wrap gap-2"><a class="btn btn-outline-primary" href="{% url 'planning:workspace_bulk_add' version.pk 'works' %}?month={{ selected_month|date:'Y-m-d' }}">Работы</a>{% for section in resource_sections %}<a class="btn btn-outline-primary" href="{% url 'planning:workspace_bulk_add' version.pk section.kind %}?month={{ selected_month|date:'Y-m-d' }}">{{ section.title }}</a>{% endfor %}</div>
 </div></div>{% endif %}
 {% if version.version_kind == 'BASELINE' %}
-<div class="card mb-3"><div class="card-body"><h2>Состав работ</h2>
-{% if request.user|may:'planning:workspace_add_work' %}<form method="post" action="{% url 'planning:workspace_add_work' version.pk %}">{% csrf_token %}{{ add_work_form.as_p }}<button class="btn btn-outline-primary">Добавить работу во все месяцы</button></form>{% endif %}
-<p class="mt-2">{% if request.user|may:'planning:workspace_work_create' %}<a href="{% url 'planning:workspace_work_create' workspace.pk %}">Создать новую простую или составную работу</a>{% endif %} · {% if request.user|may:'works:work_list' %}<a href="{% url 'works:work_list' %}">Настроить подработы и нормативы</a>{% endif %}</p>
+<div class="card mb-3 period-composition"><div class="card-body">
+<h2>Состав на весь период</h2>
+<p class="period-composition-note">Добавьте позиции во все месяцы, затем задайте объёмы по месяцам. Уже введённые значения сохраняются.</p>
+<div class="period-add-row"><h3>Работы</h3>
+{% if request.user|may:'planning:workspace_add_work' %}<form class="period-add-form" method="post" action="{% url 'planning:workspace_add_work' version.pk %}">{% csrf_token %}{{ add_work_form.as_p }}<button class="btn btn-sm btn-outline-primary">Добавить во весь период</button></form>{% endif %}
+</div>
+{% for section in resource_sections %}<div class="period-add-row"><h3>{{ section.title }}</h3>
+{% if request.user|may:'planning:workspace_add_resource' %}<form class="period-add-form" method="post" action="{% url 'planning:workspace_add_resource' version.pk section.kind %}">{% csrf_token %}{{ section.period_form.as_p }}<button class="btn btn-sm btn-outline-primary">Добавить во весь период</button></form>{% endif %}
+</div>{% endfor %}
+<p class="period-composition-links">{% if request.user|may:'planning:workspace_work_create' %}<a href="{% url 'planning:workspace_work_create' workspace.pk %}">Создать новую простую или составную работу</a>{% endif %} · {% if request.user|may:'works:work_list' %}<a href="{% url 'works:work_list' %}">Настроить подработы и нормативы</a>{% endif %}</p>
 </div></div>{% endif %}
-{% if version.version_kind == 'BASELINE' %}
-<h2>Состав ресурсов на весь период</h2><p>Добавьте ресурс во все месяцы, затем задайте его количество и объёмы по месяцам. Уже введённые значения сохраняются.</p>
-<div class="row g-3 mb-4">{% for section in resource_sections %}<div class="col-lg-4"><div class="card h-100"><div class="card-body"><h3>{{ section.title }}</h3>
-{% if request.user|may:'planning:workspace_add_resource' %}<form method="post" action="{% url 'planning:workspace_add_resource' version.pk section.kind %}">{% csrf_token %}{{ section.period_form.as_p }}<button class="btn btn-outline-primary">Добавить во весь период</button></form>{% endif %}
-</div></div></div>{% endfor %}</div>{% endif %}
 <details class="card mb-3"><summary class="p-3 fw-semibold">Excel: импорт, экспорт и шаблон</summary><div class="card-body pt-0"><p>Сначала сохраните введённые данные. Файл содержит четыре листа: работы, люди, техника, ГСМ.</p><div class="d-flex flex-wrap gap-2">
 {% if request.user|may:'planning:workspace_excel_export' %}
 <a class="btn btn-sm btn-outline-primary" href="{% url 'planning:workspace_excel_export' version.pk %}?scope=period">Экспорт всего периода</a>
