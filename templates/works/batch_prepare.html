@@ -1,0 +1,32 @@
+{% extends 'base.html' %}
+{% block title %}Подготовка работ и цен{% endblock %}
+{% block content %}
+<h1 class="h3">Подготовка работ и цен</h1>
+{% if report %}
+<h2 class="h5">Предварительный просмотр · цены действуют с {{ report.effective }}</h2>
+<div class="alert alert-info">Объединение переносит всю историю выбранных работ, включая план и факт за пределами фильтра. Утверждённые версии сохраняются; при необходимости создаются новые черновики. История цен сохраняется. Цены исходных работ, входящих в объединение, не изменяются отдельно.</div>
+{% for group in report.groups %}<section class="card card-body mb-3"><h3 class="h5">{{ group.name }}</h3><p>Цена: {{ group.price }} ₽ / {{ group.unit }}. Дробные единицы учитываются.</p><p>Раздел новой работы: {{ group.section }}</p><table class="table table-sm"><thead><tr><th>Подработа</th><th>Норматив на единицу работы</th><th>Ед.</th></tr></thead><tbody>{% for member in group.members %}<tr><td>{{ member.name }}</td><td>{{ member.norm }}</td><td>{{ member.unit }}</td></tr>{% endfor %}</tbody></table><p>Накопительный факт: {{ group.fact_quantity }}. Переносимых записей факта: {{ group.fact_records }}. Месячных строк плана: {{ group.plan_count }}.</p></section>{% endfor %}
+{% if report.prices %}<div class="table-responsive"><table class="table table-sm"><thead><tr><th>Работа</th><th>Текущая цена на дату</th><th>Новая цена</th></tr></thead><tbody>{% for row in report.prices %}<tr><td>{{ row.name }}</td><td>{{ row.old }}</td><td>{{ row.price }}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
+<form method="post">{% csrf_token %}<input type="hidden" name="action" value="confirm"><input type="hidden" name="preview" value="{{ preview }}"><button class="btn btn-primary">Подтвердить объединение и цены</button> <a class="btn btn-outline-secondary" href="{% url 'works:batch_prepare' %}">Отмена</a></form>
+{% else %}
+<form method="get" class="card card-body mb-3" id="batch-select">{{ selection.non_field_errors }}<div class="row g-3 align-items-end">{% for field in selection %}<div class="col-md-3">{{ field.label_tag }}{{ field }}{{ field.errors }}</div>{% endfor %}</div><div class="mt-3"><button class="btn btn-primary">Показать работы</button></div></form>
+<p class="text-muted small">Объект обязателен. Версия и даты ограничивают состав списка по планам. Без них показаны все действующие работы объекта. Цена относится к основной работе, в том числе при отображении её подработ.</p>
+{% if loaded %}
+<div class="d-flex flex-wrap gap-3 mb-3 align-items-center"><strong>{{ object.project.name }} / {{ object.name }} · строк: {{ rows|length }}</strong><a class="btn btn-outline-primary" href="?{{ export_query }}&amp;action=export">Выгрузить в Excel</a></div>
+<form method="post" enctype="multipart/form-data" class="card card-body mb-3">{% csrf_token %}
+{% for field in selection %}<input type="hidden" name="{{ field.name }}" value="{{ field.value|default_if_none:'' }}">{% endfor %}
+<input type="hidden" name="action" value="import"><div class="row g-2 align-items-end"><div class="col-md-6"><label for="batch-file">Заполненный Excel</label><input id="batch-file" class="form-control" type="file" name="file" accept=".xlsx" required></div><div class="col-md-3"><label for="import-effective">Дата действия новых цен</label><input id="import-effective" class="form-control" type="date" name="effective" value="{{ effective|date:'Y-m-d' }}" required></div><div class="col-md-3"><button class="btn btn-primary">Прочитать Excel</button></div></div>
+</form>
+{% if rows %}
+<p class="small text-muted">Для объединения заполните одинаковое имя составной работы у двух или более простых работ и норматив каждой. Единицу и общую цену можно указать один раз или повторить одинаково во всех строках группы. Раздел новой работы берётся от первой исходной работы по ID. Пустая цена сохраняет существующую.</p>
+<form method="post" id="batch-table">{% csrf_token %}<input type="hidden" name="table_data" id="batch-table-data"><input type="hidden" name="meta" value="{{ meta }}"><input type="hidden" name="action" value="table">
+{% for field in selection %}<input type="hidden" name="{{ field.name }}" value="{{ field.value|default_if_none:'' }}">{% endfor %}
+<div class="table-responsive" style="max-height:65vh"><table class="table table-sm align-middle" style="min-width:1600px"><thead><tr><th>Проект</th><th>Объект</th><th>Раздел</th><th>Работа</th><th>Подработа</th><th>Тип работы</th><th>Ед. изм.</th><th>Цена</th><th>Сделать составной работой</th><th>Цена составной работы</th><th>Норматив</th><th>Единица составной работы</th></tr></thead><tbody>
+{% for row in rows %}<tr>{% for cell in row.cells %}{% if forloop.counter0 < 7 %}<td style="min-width:100px;max-width:240px;white-space:normal">{{ cell }}</td>{% elif forloop.counter0 < 12 %}<td><input class="form-control form-control-sm" style="min-width:{% if forloop.counter0 == 8 %}220{% else %}110{% endif %}px" name="cell_{{ row.id }}_{{ forloop.counter0 }}" value="{{ cell }}" aria-label="{{ row.cells.3 }}: столбец {{ forloop.counter }}" {% if row.item and forloop.counter0 != 7 %}readonly{% endif %}></td>{% endif %}{% endfor %}</tr>{% endfor %}
+</tbody></table></div><div class="mt-3 d-flex flex-wrap gap-2 align-items-end"><div><label for="table-effective">Дата действия новых цен</label><input id="table-effective" class="form-control" type="date" name="effective" value="{{ effective|date:'Y-m-d' }}" required></div><button class="btn btn-primary">Проверить изменения таблицы</button></div>
+</form>
+{% else %}<div class="alert alert-info">В выбранной версии или периоде работы не найдены.</div>{% endif %}
+{% endif %}
+<script>(()=>{const f=document.getElementById('batch-select');f.elements.construction_object.addEventListener('change',()=>{f.elements.version.value='';f.requestSubmit();});const table=document.getElementById('batch-table');if(table)table.addEventListener('submit',()=>{const data={};table.querySelectorAll('input[name^=cell_]').forEach(i=>{data[i.name]=i.value;i.removeAttribute('name');});document.getElementById('batch-table-data').value=JSON.stringify(data);});})();</script>
+{% endif %}
+{% endblock %}

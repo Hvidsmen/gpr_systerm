@@ -48,3 +48,6 @@ urlpatterns += [path("bulk-delete/<str:kind>/", BulkDelete.as_view(allowed_kinds
 
 from .merge_views import WorkMergeView
 urlpatterns += [path("merge/", WorkMergeView.as_view(), name="work_merge")]
+
+from .batch_prepare import WorkBatchPrepareView
+urlpatterns += [path("batch-prepare/", WorkBatchPrepareView.as_view(), name="batch_prepare")]
