@@ -62,7 +62,7 @@ class CatalogList(View):
 
     def get(self, request):
         model, form_class, title = CONFIG[self.kind]
-        return render(request, 'works/catalog_list.html', {'title':title, 'kind':self.kind, 'records':model.objects.filter(company=request.user.company), 'form':form_class(company=request.user.company)})
+        return render(request, 'works/catalog_list.html', {'title':title, 'kind':self.kind, 'bulk_catalog_kind':'units' if self.kind == 'unit' else 'work_groups', 'records':model.objects.filter(company=request.user.company), 'form':form_class(company=request.user.company)})
 
 
 class WorkGroupList(CatalogList):

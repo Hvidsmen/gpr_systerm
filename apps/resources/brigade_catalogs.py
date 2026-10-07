@@ -16,7 +16,7 @@ class BrigadeCatalogList(View):
 
     def get(self, request):
         model, form, title = CONFIG[self.kind]
-        return render(request, 'resources/brigade_catalog_list.html', {'kind':self.kind, 'title':title, 'records':model.objects.filter(company=request.user.company)})
+        return render(request, 'resources/brigade_catalog_list.html', {'kind':self.kind, 'bulk_catalog_kind':'brigade_groups' if self.kind == 'group' else 'brigade_macros', 'title':title, 'records':model.objects.filter(company=request.user.company)})
 
 
 def quick_create(kind):

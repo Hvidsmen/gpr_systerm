@@ -1,0 +1,4 @@
+{% load access static %}{% if request.user|may:bulk_route %}
+<form method="post" action="{% url bulk_route kind=bulk_kind %}" id="bulk-delete-form" class="d-flex flex-wrap align-items-center gap-2 mb-3">{% csrf_token %}<input type="hidden" name="return_query" value="{{ request.GET.urlencode }}"><button type="button" class="btn btn-sm btn-outline-secondary" data-bulk-select>Выбрать все на странице</button><button type="button" class="btn btn-sm btn-outline-secondary" data-bulk-clear>Снять выбор</button><span class="small" data-bulk-count>Выбрано: 0</span><button class="btn btn-sm btn-outline-danger" data-bulk-submit disabled>Удалить выбранные</button></form>
+<script src="{% static 'core/bulk_delete.js' %}" defer></script>
+{% endif %}

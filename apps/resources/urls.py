@@ -41,3 +41,6 @@ urlpatterns += [
     path('brigades/export/', BrigadeExport.as_view(), name='brigade_export'),
     path('equipment-types/export/', EquipmentTypeExport.as_view(), name='equipment_type_export'),
 ]
+
+from core.bulk_delete import BulkDelete
+urlpatterns += [path("bulk-delete/<str:kind>/", BulkDelete.as_view(allowed_kinds=('brigades', 'brigade_groups', 'brigade_macros', 'equipment', 'equipment_categories', 'employees')), name="bulk_delete")]

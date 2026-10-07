@@ -5,6 +5,8 @@
 {% block title %}Бригады - ГПР Система{% endblock %}
 
 {% block content %}
+{% with bulk_route='resources:bulk_delete' bulk_kind='brigades' %}
+{% include 'bulk/toolbar.html' %}
 {% if request.user|may:'resources:brigade_import' %}<a class="btn btn-outline-primary mb-3" href="{% url 'resources:brigade_import' %}">Загрузить из Excel</a>{% endif %}
 {% if request.user|may:'resources:brigade_group_list' %}<a class="btn btn-outline-secondary mb-3" href="{% url 'resources:brigade_group_list' %}">Группы</a><a class="btn btn-outline-secondary mb-3" href="{% url 'resources:brigade_macro_group_list' %}">Макрогруппы</a>{% endif %}
 <div class="d-flex justify-content-between align-items-center mb-4">
@@ -31,7 +33,7 @@
         <div class="table-responsive">
             <table class="table table-hover mb-0">
                 <thead class="table-light">
-                    <tr>
+                    <tr>{% if request.user|may:bulk_route %}<th style="width:36px" aria-label="Выбор строк"></th>{% endif %}
                         <th>Название</th><th>Группа</th><th>Макрогруппа</th>
                         <th>Ед. изм.</th><th>Описание</th>
                         <th style="width: 100px;">Статус</th>
@@ -40,7 +42,7 @@
                 </thead>
                 <tbody>
                     {% for brigade in brigades %}
-                    <tr class="{% if not brigade.is_active %}table-secondary text-muted{% endif %}">
+                    <tr class="{% if not brigade.is_active %}table-secondary text-muted{% endif %}">{% if request.user|may:bulk_route %}<td>{% include 'bulk/checkbox.html' with record=brigade %}</td>{% endif %}
                         <td>
                             <strong>{{ brigade.name }}</strong>
                             {% if brigade.members.exists %}
@@ -92,4 +94,5 @@
     {% if request.user|may:'resources:brigade_create' %}<a href="{% url 'resources:brigade_create' %}" class="alert-link">Создать первую бригаду</a>{% endif %}
 </div>
 {% endif %}
+{% endwith %}
 {% endblock %}

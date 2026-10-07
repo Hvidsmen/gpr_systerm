@@ -106,3 +106,6 @@ from .meeting_import import MeetingImportView
 urlpatterns += [path("meeting-import/", MeetingImportView.as_view(), name="meeting_import")]
 
 urlpatterns += [path("workspace-versions/<int:pk>/meeting-import/", MeetingImportView.as_view(), name="workspace_meeting_import")]
+
+from core.bulk_delete import BulkDelete
+urlpatterns += [path("bulk-delete/<str:kind>/", BulkDelete.as_view(allowed_kinds=('profiles', 'calendars')), name="bulk_delete")]

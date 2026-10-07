@@ -5,6 +5,8 @@
 {% block title %}Профили нагрузки - ГПР Система{% endblock %}
 
 {% block content %}
+{% with bulk_route='planning:bulk_delete' bulk_kind='profiles' %}
+{% include 'bulk/toolbar.html' %}
 <!-- Page header -->
 <div class="page-header d-flex justify-content-between align-items-center">
     <div>
@@ -29,7 +31,7 @@
             <div class="table-responsive">
                 <table class="table table-hover mb-0">
                     <thead class="table-light">
-                        <tr>
+                        <tr>{% if request.user|may:bulk_route %}<th style="width:36px" aria-label="Выбор строк"></th>{% endif %}
                             <th>Название</th>
                             <th>Описание</th>
                             <th style="width: 120px;" class="text-end">Элементов</th>
@@ -39,7 +41,7 @@
                     </thead>
                     <tbody>
                         {% for profile in profiles %}
-                            <tr>
+                            <tr>{% if request.user|may:bulk_route %}<td>{% include 'bulk/checkbox.html' with record=profile %}</td>{% endif %}
                                 <td>
                                     {% if request.user|may:'planning:profile_detail' %}<a href="{% url 'planning:profile_detail' profile.pk %}" class="text-decoration-none">
                                         <strong>{{ profile.name }}</strong>
@@ -83,4 +85,5 @@
         {% if request.user|may:'planning:profile_create' %}<a href="{% url 'planning:profile_create' %}" class="alert-link">Создать первый профиль</a>{% endif %}
     </div>
 {% endif %}
+{% endwith %}
 {% endblock %}

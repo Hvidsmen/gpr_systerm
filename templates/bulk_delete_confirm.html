@@ -1,0 +1,7 @@
+{% extends 'base.html' %}{% block content %}<div class="card p-3"><h1 class="h4">Удалить выбранные: {{ title }}</h1>
+<p>Выбрано записей: {{ records|length }}.</p>
+{% if blocked %}<div class="alert alert-warning"><strong>Удаление всей выбранной группы заблокировано.</strong>{% for error in blocked %}<div>{{ error }}</div>{% endfor %}</div>{% endif %}
+<ul>{% for record in records %}<li>{{ record }}</li>{% endfor %}</ul>
+<h2 class="h6">Будут удалены вместе с выбранными записями</h2><ul>{% for row in summary %}<li>{{ row.label }}: {{ row.count }}</li>{% endfor %}</ul>
+{% if detached %}<h2 class="h6">Связи будут очищены, записи сохранятся</h2><ul>{% for row in detached %}<li>{{ row.label }} · {{ row.field }}: {{ row.count }}</li>{% endfor %}</ul>{% endif %}
+<form method="post">{% csrf_token %}<input type="hidden" name="confirm" value="1"><input type="hidden" name="selection" value="{{ selection }}"><input type="hidden" name="return_query" value="{{ return_query }}"><button class="btn btn-danger" {% if blocked %}disabled{% endif %}>Подтвердить удаление</button> <a class="btn btn-outline-secondary" href="{{ back }}">Отмена</a></form></div>{% endblock %}

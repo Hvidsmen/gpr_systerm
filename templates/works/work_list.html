@@ -5,6 +5,8 @@
 {% block title %}Работы - ГПР Система{% endblock %}
 
 {% block content %}
+{% with bulk_route='works:bulk_delete' bulk_kind='works' %}
+{% include 'bulk/toolbar.html' %}
 <style>
 .work-list-filters { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)) auto; gap:10px; align-items:end; }
 .work-list-filters label { font-size:12px; margin-bottom:4px; }
@@ -58,9 +60,9 @@
         <div class="card-body p-0">
             <div class="table-responsive">
                 <table class="table table-hover mb-0 work-list-table">
-                    <colgroup><col style="width:35%"><col><col style="width:60px"><col style="width:95px"><col style="width:75px"><col style="width:110px"><col style="width:130px"><col style="width:110px"></colgroup>
+                    <colgroup>{% if request.user|may:bulk_route %}<col style="width:36px">{% endif %}<col style="width:35%"><col><col style="width:60px"><col style="width:95px"><col style="width:75px"><col style="width:110px"><col style="width:130px"><col style="width:110px"></colgroup>
                     <thead class="table-light">
-                        <tr>
+                        <tr>{% if request.user|may:bulk_route %}<th style="width:36px" aria-label="Выбор строк"></th>{% endif %}
                             <th>Название</th>
                             <th>Проект / Объект / Раздел</th>
                             <th>Ед. изм.</th>
@@ -73,7 +75,7 @@
                     </thead>
                     <tbody>
                         {% for work in works %}
-                            <tr>
+                            <tr>{% if request.user|may:bulk_route %}<td>{% include 'bulk/checkbox.html' with record=work %}</td>{% endif %}
                                 <td>
                                     {% if request.user|may:'works:work_detail' %}<a href="{% url 'works:work_detail' work.pk %}" class="work-name text-decoration-none" title="{{ work.name }}">{{ work.name }}</a>{% else %}<span class="work-name" title="{{ work.name }}">{{ work.name }}</span>{% endif %}
                                     <small class="work-meta {% if work.kind == 'COMPOSITE' and not work.items_count %}text-warning{% else %}text-muted{% endif %}">
@@ -153,4 +155,5 @@
         {% if request.user|may:'works:work_create' %}<a href="{% url 'works:work_create' %}" class="alert-link">Создать первую работу</a>{% endif %}
     </div>
 {% endif %}
+{% endwith %}
 {% endblock %}

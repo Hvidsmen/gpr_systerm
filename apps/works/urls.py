@@ -41,3 +41,5 @@ urlpatterns = [
 
 path('section/create/', views.WorkSectionCreateView.as_view(), name='section_create'),
 ]
+from core.bulk_delete import BulkDelete
+urlpatterns += [path("bulk-delete/<str:kind>/", BulkDelete.as_view(allowed_kinds=('works', 'work_groups', 'units')), name="bulk_delete")]

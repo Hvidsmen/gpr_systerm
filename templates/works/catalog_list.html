@@ -1,7 +1,7 @@
 {% extends 'base.html' %}{% load access %}
-{% block content %}
+{% block content %}{% with bulk_route='works:bulk_delete' bulk_kind=bulk_catalog_kind %}{% include 'bulk/toolbar.html' %}
 <h1>{{ title }}</h1>
 {% if request.user|may:'works:group_create' %}<button class="btn btn-primary mb-3" type="button" data-catalog-open="{% if title == 'Группы работ' %}group{% else %}unit{% endif %}">+ Добавить</button>{% endif %}
-<ul class="list-group">{% for record in records %}<li class="list-group-item d-flex flex-wrap justify-content-between align-items-center gap-2"><span>{{ record }}</span>{% if kind == 'unit' %}<span class="d-flex gap-2">{% if request.user|may:'works:unit_update' %}<a class="btn btn-sm btn-outline-primary" href="{% url 'works:unit_update' record.pk %}">Редактировать</a>{% endif %}{% if request.user|may:'works:unit_delete' %}<a class="btn btn-sm btn-outline-danger" href="{% url 'works:unit_delete' record.pk %}">Удалить</a>{% endif %}</span>{% endif %}</li>{% empty %}<li class="list-group-item text-muted">Справочник пока пуст.</li>{% endfor %}</ul>
+<ul class="list-group">{% for record in records %}<li class="list-group-item d-flex flex-wrap justify-content-between align-items-center gap-2">{% include 'bulk/checkbox.html' with record=record %} <span>{{ record }}</span>{% if kind == 'unit' %}<span class="d-flex gap-2">{% if request.user|may:'works:unit_update' %}<a class="btn btn-sm btn-outline-primary" href="{% url 'works:unit_update' record.pk %}">Редактировать</a>{% endif %}{% if request.user|may:'works:unit_delete' %}<a class="btn btn-sm btn-outline-danger" href="{% url 'works:unit_delete' record.pk %}">Удалить</a>{% endif %}</span>{% endif %}</li>{% empty %}<li class="list-group-item text-muted">Справочник пока пуст.</li>{% endfor %}</ul>
 {% include 'works/catalog_quick.html' %}
-{% endblock %}
+{% endwith %}{% endblock %}
