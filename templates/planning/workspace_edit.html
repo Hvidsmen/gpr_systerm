@@ -34,17 +34,6 @@
 <p>{{ workspace.construction_object }} · {{ workspace.start_date }} — {{ workspace.end_date }} · {{ version.get_version_kind_display }}</p>
 {% if version.planning_month %}<p>Уточняемый месяц: <strong>{{ version.planning_month|date:'m.Y' }}</strong>. {{ version.get_scenario_display }}.</p>{% endif %}
 <p>{% if request.user|may:'planning:workspace_detail' %}<a href="{% url 'planning:workspace_detail' workspace.pk %}">Рабочее пространство и история</a>{% endif %} · {% if request.user|may:'planning:global_detail' %}<a href="{% url 'planning:global_detail' version.pk %}">План на весь период и согласование</a>{% endif %} · {% if request.user|may:'planning:calendar_list' %}<a href="{% url 'planning:calendar_list' %}">Календари</a>{% endif %}</p>
-<details class="card mb-3"><summary class="p-3 fw-semibold">Excel: импорт, экспорт и шаблон</summary><div class="card-body pt-0"><p>Сначала сохраните введённые данные. Файл содержит четыре листа: работы, люди, техника, ГСМ.</p><div class="d-flex flex-wrap gap-2">
-{% if request.user|may:'planning:workspace_excel_export' %}
-<a class="btn btn-sm btn-outline-primary" href="{% url 'planning:workspace_excel_export' version.pk %}?scope=period">Экспорт всего периода</a>
-<a class="btn btn-sm btn-outline-primary" href="{% url 'planning:workspace_excel_export' version.pk %}?scope=year&year={{ selected_month.year }}">Экспорт {{ selected_month.year }} года</a>
-<a class="btn btn-sm btn-outline-primary" href="{% url 'planning:workspace_excel_export' version.pk %}?scope=month&month={{ selected_month|date:'Y-m-d' }}">Экспорт {{ selected_month|date:'m.Y' }}</a>
-<a class="btn btn-sm btn-outline-secondary" href="{% url 'planning:workspace_excel_export' version.pk %}?template=1&scope=period">Шаблон всего периода</a>
-<a class="btn btn-sm btn-outline-secondary" href="{% url 'planning:workspace_excel_export' version.pk %}?template=1&scope=year&year={{ selected_month.year }}">Шаблон {{ selected_month.year }} года</a>
-<a class="btn btn-sm btn-outline-secondary" href="{% url 'planning:workspace_excel_export' version.pk %}?template=1&scope=month&month={{ selected_month|date:'Y-m-d' }}">Шаблон месяца</a>
-{% endif %}
-{% if request.user|may:'planning:workspace_excel_import' %}<a class="btn btn-sm btn-primary" href="{% url 'planning:workspace_excel_import' version.pk %}?scope=period">Импорт всего периода</a><a class="btn btn-sm btn-primary" href="{% url 'planning:workspace_excel_import' version.pk %}?scope=year&year={{ selected_month.year }}">Импорт {{ selected_month.year }} года</a><a class="btn btn-sm btn-primary" href="{% url 'planning:workspace_excel_import' version.pk %}?scope=month&month={{ selected_month|date:'Y-m-d' }}">Импорт {{ selected_month|date:'m.Y' }}</a>{% endif %}
-</div></div></details>
 {% if request.user|may:'planning:workspace_bulk_add' %}
 <div class="card mb-3"><div class="card-body"><h2>Добавить списком</h2><p>Сначала сохраните введённые месячные данные. В списке отметьте несколько позиций и отметьте нужные месяцы или выберите все доступные.</p>
 <div class="d-flex flex-wrap gap-2"><a class="btn btn-outline-primary" href="{% url 'planning:workspace_bulk_add' version.pk 'works' %}?month={{ selected_month|date:'Y-m-d' }}">Работы</a>{% for section in resource_sections %}<a class="btn btn-outline-primary" href="{% url 'planning:workspace_bulk_add' version.pk section.kind %}?month={{ selected_month|date:'Y-m-d' }}">{{ section.title }}</a>{% endfor %}</div>
@@ -59,6 +48,17 @@
 <div class="row g-3 mb-4">{% for section in resource_sections %}<div class="col-lg-4"><div class="card h-100"><div class="card-body"><h3>{{ section.title }}</h3>
 {% if request.user|may:'planning:workspace_add_resource' %}<form method="post" action="{% url 'planning:workspace_add_resource' version.pk section.kind %}">{% csrf_token %}{{ section.period_form.as_p }}<button class="btn btn-outline-primary">Добавить во весь период</button></form>{% endif %}
 </div></div></div>{% endfor %}</div>{% endif %}
+<details class="card mb-3"><summary class="p-3 fw-semibold">Excel: импорт, экспорт и шаблон</summary><div class="card-body pt-0"><p>Сначала сохраните введённые данные. Файл содержит четыре листа: работы, люди, техника, ГСМ.</p><div class="d-flex flex-wrap gap-2">
+{% if request.user|may:'planning:workspace_excel_export' %}
+<a class="btn btn-sm btn-outline-primary" href="{% url 'planning:workspace_excel_export' version.pk %}?scope=period">Экспорт всего периода</a>
+<a class="btn btn-sm btn-outline-primary" href="{% url 'planning:workspace_excel_export' version.pk %}?scope=year&year={{ selected_month.year }}">Экспорт {{ selected_month.year }} года</a>
+<a class="btn btn-sm btn-outline-primary" href="{% url 'planning:workspace_excel_export' version.pk %}?scope=month&month={{ selected_month|date:'Y-m-d' }}">Экспорт {{ selected_month|date:'m.Y' }}</a>
+<a class="btn btn-sm btn-outline-secondary" href="{% url 'planning:workspace_excel_export' version.pk %}?template=1&scope=period">Шаблон всего периода</a>
+<a class="btn btn-sm btn-outline-secondary" href="{% url 'planning:workspace_excel_export' version.pk %}?template=1&scope=year&year={{ selected_month.year }}">Шаблон {{ selected_month.year }} года</a>
+<a class="btn btn-sm btn-outline-secondary" href="{% url 'planning:workspace_excel_export' version.pk %}?template=1&scope=month&month={{ selected_month|date:'Y-m-d' }}">Шаблон месяца</a>
+{% endif %}
+{% if request.user|may:'planning:workspace_excel_import' %}<a class="btn btn-sm btn-primary" href="{% url 'planning:workspace_excel_import' version.pk %}?scope=period">Импорт всего периода</a><a class="btn btn-sm btn-primary" href="{% url 'planning:workspace_excel_import' version.pk %}?scope=year&year={{ selected_month.year }}">Импорт {{ selected_month.year }} года</a><a class="btn btn-sm btn-primary" href="{% url 'planning:workspace_excel_import' version.pk %}?scope=month&month={{ selected_month|date:'Y-m-d' }}">Импорт {{ selected_month|date:'m.Y' }}</a>{% endif %}
+</div></div></details>
 <nav class="d-flex flex-wrap gap-2 mb-3" aria-label="Месяцы плана">
 {% for month in months %}{% if not version.planning_month or month >= version.planning_month %}{% if not version.planning_month or version.scenario == 'REMAINING' or month == version.planning_month %}
 <a class="btn {% if month == selected_month %}btn-primary{% else %}btn-outline-primary{% endif %}" href="?month={{ month|date:'Y-m-d' }}">{{ month|date:'m.Y' }}{% if version.planning_month and month > version.planning_month %} · остаток{% endif %}</a>
