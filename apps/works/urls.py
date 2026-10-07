@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from .unit_views import UnitUpdate, UnitDelete
 from .catalogs import WorkGroupList, MeasurementUnitList, quick_create
 
 app_name = 'works'
@@ -9,6 +10,8 @@ urlpatterns = [
     path("catalogs/groups/create/", quick_create("group"), name="group_create"),
     path("catalogs/units/", MeasurementUnitList.as_view(), name="unit_list"),
     path("catalogs/units/create/", quick_create("unit"), name="unit_create"),
+    path("catalogs/units/<int:pk>/update/", UnitUpdate.as_view(), name="unit_update"),
+    path("catalogs/units/<int:pk>/delete/", UnitDelete.as_view(), name="unit_delete"),
     # Список всех работ
     path('', views.WorkListView.as_view(), name='work_list'),
 

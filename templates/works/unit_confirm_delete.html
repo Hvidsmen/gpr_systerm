@@ -1,0 +1,6 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="card p-3"><h1 class="h4">Удалить единицу измерения?</h1><p>{{ object }}</p>
+{% if usage %}<div class="alert alert-warning">Единица используется в {{ usage }} записях работ, шаблонов или ресурсов. Чтобы удалить её, сначала назначьте им другую единицу измерения.</div>{% endif %}
+<form method="post">{% csrf_token %}<div class="d-flex gap-2"><button class="btn btn-danger" {% if usage %}disabled{% endif %}>Удалить</button><a class="btn btn-outline-secondary" href="{% url 'works:unit_list' %}">Отмена</a></div></form></div>
+{% endblock %}
