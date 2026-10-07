@@ -5,6 +5,18 @@
 {% block title %}Работы - ГПР Система{% endblock %}
 
 {% block content %}
+<style>
+.work-list-table { table-layout:fixed; width:100%; min-width:1150px; }
+.work-list-table th, .work-list-table td { padding:10px 12px; vertical-align:top; }
+.work-list-table .work-name { display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; overflow-wrap:anywhere; font-weight:600; line-height:1.45; }
+.work-list-table .work-meta { display:block; margin-top:4px; font-size:12px; }
+.work-list-table .work-location { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; line-height:1.5; }
+.work-list-table .work-section { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; overflow-wrap:anywhere; margin-top:3px; color:#6c757d; line-height:1.35; }
+.work-list-table .work-number { white-space:nowrap; font-size:13px; }
+.work-list-table .work-actions { display:inline-flex; white-space:nowrap; }
+.work-list-table .work-actions .btn { padding:4px 7px; }
+.work-list-table .badge { white-space:normal; line-height:1.25; }
+</style>
 <!-- Page header -->
 <div class="page-header d-flex justify-content-between align-items-center">
     <div>
@@ -27,53 +39,40 @@
     <div class="card">
         <div class="card-body p-0">
             <div class="table-responsive">
-                <table class="table table-hover mb-0">
+                <table class="table table-hover mb-0 work-list-table">
+                    <colgroup><col style="width:35%"><col><col style="width:60px"><col style="width:95px"><col style="width:75px"><col style="width:110px"><col style="width:130px"><col style="width:110px"></colgroup>
                     <thead class="table-light">
                         <tr>
                             <th>Название</th>
                             <th>Проект / Объект / Раздел</th>
-                            <th style="width: 100px;">Ед. изм.</th>
-                            <th style="width: 120px;" class="text-end">Цена</th>
-                            <th style="width: 100px;" class="text-end">Подработ</th>
-                            <th style="width: 150px;" class="text-end">Общий объём</th>
-                            <th style="width: 120px;">Статус</th>
-                            <th style="width: 150px;">Действия</th>
+                            <th>Ед. изм.</th>
+                            <th class="text-end">Цена</th>
+                            <th class="text-end">Подработ</th>
+                            <th class="text-end">Общий объём</th>
+                            <th>Статус</th>
+                            <th>Действия</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for work in works %}
                             <tr>
                                 <td>
-                                    {% if request.user|may:'works:work_detail' %}<a href="{% url 'works:work_detail' work.pk %}" class="text-decoration-none">
-                                        <strong>{{ work.name }}</strong>
-                                    </a>{% endif %}
-                                    {% if work.items_count > 0 %}
-                                        <br>
-                                        <small class="text-muted">
-                                            <i class="bi bi-diagram-3"></i>
-                                            {{ work.items_count }} подработ
-                                        </small>
-                                    {% else %}
-                                        <br>
-                                        <small class="text-warning">
-                                            <i class="bi bi-exclamation-triangle"></i>
-                                            Нет подработ
-                                        </small>
-                                    {% endif %}
+                                    {% if request.user|may:'works:work_detail' %}<a href="{% url 'works:work_detail' work.pk %}" class="work-name text-decoration-none" title="{{ work.name }}">{{ work.name }}</a>{% else %}<span class="work-name" title="{{ work.name }}">{{ work.name }}</span>{% endif %}
+                                    <small class="work-meta {% if work.kind == 'COMPOSITE' and not work.items_count %}text-warning{% else %}text-muted{% endif %}">
+                                        {% if work.kind == 'COMPOSITE' %}<i class="bi bi-diagram-3"></i> Составная · {% if work.items_count %}{{ work.items_count }} подработ{% else %}подработы не заданы{% endif %}{% else %}Простая работа{% endif %}
+                                    </small>
                                 </td>
                                 <td>
                                     <small>
-                                        <strong>{{ work.section.construction_object.project.name }}</strong><br>
-                                        <span class="text-muted">{{ work.section.construction_object.name }}</span><br>
-                                        <span class="badge bg-secondary">{{ work.section.name }}</span>
+                                        <strong class="work-location" title="{{ work.section.construction_object.project.name }}">{{ work.section.construction_object.project.name }}</strong>
+                                        <span class="work-location text-muted" title="{{ work.section.construction_object.name }}">{{ work.section.construction_object.name }}</span>
+                                        <span class="work-section" title="{{ work.section.name }}">{{ work.section.name }}</span>
                                     </small>
                                 </td>
                                 <td>{{ work.unit }}</td>
-                                <td class="text-end">{{ work.unit_price }} ₽</td>
+                                <td class="text-end work-number">{{ work.unit_price }} ₽</td>
                                 <td class="text-end">
-                                    <span class="badge bg-{% if work.items_count > 0 %}success{% else %}warning{% endif %}">
-                                        {{ work.items_count }}
-                                    </span>
+                                    {% if work.kind == 'COMPOSITE' %}<span class="badge bg-{% if work.items_count > 0 %}success{% else %}warning{% endif %}">{{ work.items_count }}</span>{% else %}<span class="text-muted">—</span>{% endif %}
                                 </td>
                                 <td class="text-end">
                                     {% if work.total_quantity %}
@@ -88,16 +87,15 @@
                                     </span>
                                 </td>
                                <td>
-    <div class="btn-group btn-group-sm">
+    <div class="btn-group btn-group-sm work-actions">
         {% if request.user|may:'works:work_detail' %}<a href="{% url 'works:work_detail' work.pk %}" class="btn btn-outline-primary" title="Дерево работ">
             <i class="bi bi-diagram-3"></i>
         </a>{% endif %}
         {% if request.user|may:'works:work_update' %}<a href="{% url 'works:work_update' work.pk %}" class="btn btn-outline-secondary" title="Редактировать">
             <i class="bi bi-pencil"></i>
         </a>{% endif %}
-        <!-- ДОБАВЛЕНА КНОПКА УДАЛЕНИЯ -->
         {% if request.user|may:'works:work_delete' %}<a href="{% url 'works:work_delete' work.pk %}" class="btn btn-outline-danger" title="Удалить"
-           onclick="return confirm('Вы действительно хотите удалить работу «{{ work.name }}»? Это действие нельзя отменить.');">
+>
             <i class="bi bi-trash"></i>
         </a>{% endif %}
     </div>
