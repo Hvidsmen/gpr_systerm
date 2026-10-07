@@ -157,3 +157,6 @@ HSTS-поддомены и preload требуют решения с учётом
 [матричный отчёт](docs/plan-fact-matrix.md).
 После обновления выполните `python manage.py migrate` и перезапустите сервер.
 На рабочем сервере обновите статические файлы: `python manage.py collectstatic --noinput`.
+
+Импорт плана из файлов совещаний с отдельным листом на объект:
+[инструкция](docs/meeting-plan-import.md).
