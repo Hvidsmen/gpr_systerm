@@ -1,13 +1,12 @@
 {% extends 'base.html' %}
-{% load access %}{% block content %}
+{% load access static %}{% block extra_css %}<link rel="stylesheet" href="{% static 'planning/report_matrix.css' %}">{% endblock %}{% block content %}
 {% if request.user|may:'planning:global_delete' %}{% if object.can_delete %}<a class="btn btn-outline-danger mb-3" href="{% url 'planning:global_delete' object.pk %}">Удалить версию</a>{% endif %}{% endif %}
 <h1>{{ object }}</h1>{% if object.is_immutable %}{% if request.user|may:'planning:report_matrix' %}<p><a class="btn btn-outline-primary btn-sm" href="{% url 'planning:report_matrix' %}?objects={{ object.construction_object_id }}&amp;version_{{ object.construction_object_id }}={{ object.pk }}&amp;start={{ object.start_date|date:'Y-m-d' }}&amp;end={{ object.end_date|date:'Y-m-d' }}">Матрица план / факт этой версии</a></p>{% endif %}{% endif %}<p>{{ object.title }} · {{ object.start_date }} — {{ object.end_date }}</p>{% if object.workspace_id %}
 <p>{% if request.user|may:'planning:workspace_detail' %}<a href="{% url 'planning:workspace_detail' object.workspace_id %}">Рабочее пространство: {{ object.workspace.name }}</a>{% endif %} · {% if request.user|may:'planning:workspace_excel_export' %}<a href="{% url 'planning:workspace_excel_export' object.pk %}?scope=period">Скачать план на период (Excel)</a>{% endif %} · {{ object.get_version_kind_display }}{% if object.planning_month %} · {{ object.planning_month|date:'m.Y' }} · {{ object.get_scenario_display }}{% endif %}</p>
 {% if object.status == 'DRAFT' or object.status == 'REJECTED' %}<p>{% if request.user|may:'planning:workspace_edit' %}<a class="btn btn-primary" href="{% url 'planning:workspace_edit' object.pk %}">Редактировать месячные планы</a>{% endif %}</p>{% endif %}
-{% if resource_period_summary %}<h2>Ресурсы на весь период по месяцам</h2><div class="table-responsive"><table class="table"><thead><tr><th>Ресурс</th>{% for month in period_months %}<th>{{ month|date:'m.Y' }}</th>{% endfor %}<th>Итого</th><th>База</th><th>Отклонение</th></tr></thead><tbody>{% for row in resource_period_summary %}<tr><td>{{ row.label }} ({{ row.unit }})</td>{% for cell in row.cells %}<td>{{ cell.quantity }}{% if cell.count_days != None %}<br><small>{{ cell.count_days }} {{ row.count_unit }}</small>{% endif %}</td>{% endfor %}<td>{{ row.total }}</td><td>{{ row.base_total }}</td><td>{{ row.deviation }}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
-{% for warning in object.snapshot.warnings %}<div class="alert alert-warning">{{ warning }}</div>{% endfor %}
-{% if period_summary %}<h2>План на весь период по месяцам</h2><div class="table-responsive"><table class="table"><thead><tr><th>Работа</th>{% for month in period_months %}<th>{{ month|date:'m.Y' }}</th>{% endfor %}<th>Итого</th><th>База</th><th>Отклонение</th></tr></thead><tbody>{% for row in period_summary %}<tr><td>{{ row.name }} ({{ row.unit }})</td>{% for cell in row.cells %}<td>{{ cell.quantity }}</td>{% endfor %}<td>{{ row.total }}</td><td>{{ row.base_total|default_if_none:'—' }}</td><td>{{ row.deviation|default_if_none:'—' }}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
 {% endif %}
+<h2>{% if daily %}План по дням · {{ start|date:"m.Y" }}{% else %}План на весь период по месяцам{% endif %}</h2>
+{% include 'planning/global_matrix.html' %}
 {% if object.baseline_review_id %}<p class="text-muted">Зафиксированная база: раунд {{ object.baseline_review.number }} согласования базового плана.</p>{% endif %}
 {% if object.previous_version %}<p>Редакция {% if request.user|may:'planning:global_detail' %}<a href="{% url 'planning:global_detail' object.previous_version.pk %}">v{{ object.previous_version.version_number }}</a>{% endif %}</p>{% endif %}
 {% if object.status == 'DRAFT' or object.status == 'REJECTED' %}{% if request.user|may:'planning:version_submit' %}<form method="post" action="{% url 'planning:global_action' object.pk 'submit' %}">{% csrf_token %}<button>Отправить на согласование</button></form>{% endif %}{% endif %}
@@ -15,18 +14,4 @@
 {% include 'planning/project_assignment.html' %}
 {% if object.is_immutable and object.version_kind != 'BASELINE' %}{% if request.user|may:'planning:version_revision' %}<form method="post" action="{% url 'planning:global_action' object.pk 'revision' %}">{% csrf_token %}<button>Создать новую редакцию</button></form>{% endif %}{% endif %}
 <p>{% if object.status == 'DRAFT' or object.status == 'REJECTED' %}Показан предварительный расчёт. При отправке на согласование он пересчитывается и фиксируется.{% else %}План зафиксирован в версии.{% endif %} Факт пересчитывается накопительно по всей истории, включая исправления прошлых дат.</p>
-{% for row in works %}<h2>{{ row.spec.name }}</h2><p>{{ row.spec.unit }} · {% if row.spec.kind == 'COMPOSITE' %}Составная · дробные единицы: {{ row.spec.allow_fractional|yesno:'да,нет' }}{% else %}Простая{% endif %}</p><p>План за период: {{ row.plan }} · Факт: {{ row.fact }} · Стоимость объёма по цене версии: {{ row.plan_value }} / {{ row.fact_value }} ₽</p><details><summary>Нормативы и исходные версии</summary>{% for item in row.spec.items %}<p>{{ item.name }}: {{ item.norm }} {{ item.unit }} на единицу работы</p>{% endfor %}{% for version in row.spec.versions %}{% if request.user|may:'planning:version_detail' %}<a href="{% url 'planning:version_detail' version.id %}">v{{ version.number }}{% if version.historical %} (предыдущий период){% endif %}</a>{% endif %} {% endfor %}</details><table class="table"><tr><th>Дата</th><th>План</th><th>Факт</th></tr>{% for day in row.days %}<tr><td>{{ day.date }}</td><td>{{ day.plan }}</td><td>{{ day.fact }}</td></tr>{% endfor %}</table>{% endfor %}
-<h2>Люди, техника и ГСМ</h2>
-<p>В каждой паре значений первым указан план, вторым — факт. Работники и машины учитываются по дням.</p>
-<table class="table">
-  <thead><tr><th>Дата</th><th>Ресурс</th><th>Количество / расход: план / факт</th><th>Остаток ГСМ: план / факт</th><th>Часы: план / факт</th><th>Ставка: план / факт</th><th>Стоимость: план / факт</th></tr></thead>
-  <tbody>{% for row in resources %}
-    <tr><td>{{ row.date }}</td><td>{{ row.label }} {{ row.plan_details.equipment_number }} </td>
-      <td>{{ row.plan }} / {{ row.fact }} {% if row.kind == 'labor' %}чел.{% elif row.kind == 'equipment' %}ед.{% else %}л{% endif %}</td>
-      <td>{% if row.kind == 'fuel' %}{{ row.planned_balance }} / {{ row.actual_balance }} л{% else %}—{% endif %}</td>
-      <td>{% if row.kind != 'fuel' %}{{ row.planned_hours }} / {{ row.actual_hours }} {% if row.kind == 'labor' %}чел·ч{% else %}маш·ч{% endif %}{% else %}—{% endif %}</td>
-      <td>{{ row.planned_rate }} / {{ row.actual_rate }} {% if row.kind == 'fuel' %}₽/л{% else %}₽/ч{% endif %}</td>
-      <td>{{ row.plan_value }} / {{ row.fact_value }} ₽</td></tr>
-  {% empty %}<tr><td colspan="7">Ресурсных записей нет.</td></tr>{% endfor %}</tbody>
-</table>
 {% endblock %}

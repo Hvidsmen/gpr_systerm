@@ -180,7 +180,7 @@ def work_matches(spec, filters):
     )
 
 
-def build_matrix(user, filters):
+def build_matrix(user, filters, *, source_overrides=None):
     start, end = filters["start"], filters["end"]
     if filters.get("month"):
         month = filters["month"]
@@ -206,7 +206,21 @@ def build_matrix(user, filters):
             )
     all_days = [day for bucket in buckets for day in bucket["dates"]]
     objects = selected_objects(user, filters)
-    sources = select_sources(user, filters, objects)
+    if source_overrides is None:
+        sources = select_sources(user, filters, objects)
+    else:
+        # Only internal detail views supply drafts; ordinary reports still require approval.
+        from django.core.exceptions import PermissionDenied
+
+        allowed = {obj.pk for obj in objects}
+        for object_id, entries in source_overrides.items():
+            if object_id not in allowed or any(
+                source.version.company_id != user.company_id
+                or source.version.construction_object_id != object_id
+                for source in entries
+            ):
+                raise PermissionDenied
+        sources = source_overrides
     work_catalog = {
         w.pk: w
         for w in ProjectWork.objects.filter(

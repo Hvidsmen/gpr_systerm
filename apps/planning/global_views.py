@@ -8,7 +8,7 @@ from core.mixins import CompanyScopedMixin
 from apps.production.forms import CompanyFormMixin
 from apps.projects.models import ConstructionObject
 from .models import GlobalPlanVersion, PlanVersion
-from .global_services import GlobalPlanService, comparison
+from .global_services import GlobalPlanService
 
 
 class GlobalForm(CompanyFormMixin, forms.Form):
@@ -85,18 +85,10 @@ class GlobalDetail(CompanyScopedMixin, DetailView):
         ctx['project_assignment_form'] = AssignmentForm(user=self.request.user, version=self.object)
         ctx['assignment_version'] = self.object
         ctx['project_memberships'] = self.object.project_plan_members.select_related('consolidated_version__project')
-        ctx.update(comparison(self.object))
         from .approval_workflow import panel
         ctx.update(panel(self.object, self.request.user))
-        if self.object.workspace_id:
-            from .workspace_views import monthly_summary, resource_monthly_summary
-            from .workspace_services import months_between
-
-            ctx["period_summary"] = monthly_summary(self.object)
-            ctx["resource_period_summary"] = resource_monthly_summary(self.object)
-            ctx["period_months"] = months_between(
-                self.object.start_date, self.object.end_date
-            )
+        from .global_matrix import detail_matrix
+        ctx.update(detail_matrix(self.request, self.object))
         return ctx
 
 

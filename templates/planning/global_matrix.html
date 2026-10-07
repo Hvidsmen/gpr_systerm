@@ -1,0 +1,30 @@
+{% load static %}
+{% for warning in matrix_warnings %}<div class="alert alert-warning">{{ warning }}</div>{% endfor %}
+{% if matrix_error %}<div class="alert alert-warning">{{ matrix_error }}</div>{% endif %}
+<p class="small text-muted">Нажмите на месяц для просмотра по дням. Люди и техника — средняя численность за период; расход ГСМ — сумма, остаток — последнее значение.</p>
+<form method="get" id="matrix-filters" class="card p-3 mb-3">
+{% if form.errors %}<div class="alert alert-danger">{{ form.non_field_errors }}{% for field in form %}{% for error in field.errors %}<div>{{ field.label }}: {{ error }}</div>{% endfor %}{% endfor %}</div>{% endif %}
+<input type="hidden" name="sections_set" value="1">{{ form.month }}
+<div class="row g-2"><div class="col-md-4">{{ form.start.label_tag }}{{ form.start }}</div><div class="col-md-4">{{ form.end.label_tag }}{{ form.end }}</div></div>
+<div class="d-flex flex-wrap gap-2 my-3" role="group" aria-label="Показываемые разделы">{% for switch in section_switches %}<input class="btn-check" type="checkbox" name="sections" id="show-{{ switch.kind }}" value="{{ switch.kind }}" data-section-toggle {% if switch.checked %}checked{% endif %}><label class="btn btn-outline-primary btn-sm" for="show-{{ switch.kind }}">{{ switch.label }}</label>{% endfor %}</div>
+<div class="row g-2">
+<details class="col-lg-6 matrix-section-filter" data-filter-section="works" {% if 'works' not in shown %}hidden{% endif %}><summary>Фильтры работ</summary><div class="row g-2 mt-1"><div class="col-md-6">{{ form.works_q.label_tag }}{{ form.works_q }}</div><div class="col-md-3">{{ form.work_group.label_tag }}{{ form.work_group }}</div><div class="col-md-3">{{ form.work_kind.label_tag }}{{ form.work_kind }}</div></div></details>
+<details class="col-lg-6 matrix-section-filter" data-filter-section="labor" {% if 'labor' not in shown %}hidden{% endif %}><summary>Фильтры людей</summary><div class="row g-2 mt-1"><div class="col-md-6">{{ form.labor_q.label_tag }}{{ form.labor_q }}</div><div class="col-md-3">{{ form.macro_group.label_tag }}{{ form.macro_group }}</div><div class="col-md-3">{{ form.brigade_group.label_tag }}{{ form.brigade_group }}</div></div></details>
+<details class="col-lg-6 matrix-section-filter" data-filter-section="equipment" {% if 'equipment' not in shown %}hidden{% endif %}><summary>Фильтры техники</summary><div class="row g-2 mt-1"><div class="col-md-6">{{ form.equipment_q.label_tag }}{{ form.equipment_q }}</div><div class="col-md-6">{{ form.equipment_category.label_tag }}{{ form.equipment_category }}</div></div></details>
+<details class="col-lg-6 matrix-section-filter" data-filter-section="fuel" {% if 'fuel' not in shown %}hidden{% endif %}><summary>Фильтры ГСМ</summary><div class="mt-1">{{ form.fuel_type.label_tag }}{{ form.fuel_type }}</div></details>
+</div>
+<div class="d-flex flex-wrap gap-2 mt-3"><button class="btn btn-primary btn-sm">Применить</button><a class="btn btn-outline-secondary btn-sm" href="{% url 'planning:global_detail' object.pk %}">Сбросить</a>{% if daily %}<a class="btn btn-outline-primary btn-sm" href="{{ monthly_url }}">← К месяцам</a>{% endif %}</div>
+</form>
+{% if not form.errors and not matrix_error %}
+<div class="d-flex gap-2 mb-3"><button type="button" class="btn btn-outline-secondary btn-sm" data-expand-matrix="true">Развернуть группы</button><button type="button" class="btn btn-outline-secondary btn-sm" data-expand-matrix="false">Свернуть группы</button></div>
+{% if not shown %}<div class="alert alert-info">Все разделы скрыты. Включите нужный раздел кнопкой сверху.</div>{% endif %}
+<div id="plan-fact-matrix">
+{% for entry in objects %}<details class="matrix-object card p-3 mb-3" open><summary class="h5 mb-2">{{ entry.object.project }} · {{ entry.name }}</summary>
+{% for warning in entry.warnings %}<div class="alert alert-warning py-2">{{ warning }}</div>{% endfor %}
+<p class="small text-muted">План: {% for source in entry.sources %}<a href="{% url 'planning:global_detail' source.version.pk %}">v{{ source.version.version_number }}</a>{% if source.member.review_id %} (сохранён раунд {{ source.member.review.number }}){% endif %}{% if not forloop.last %}, {% endif %}{% empty %}нет согласованной версии{% endfor %}</p>
+{% for section in entry.sections %}<details class="matrix-section mb-2" data-matrix-section="{{ section.kind }}" open><summary class="h6">{{ section.label }}</summary>{% for node in section.groups %}{% include 'planning/report_group.html' %}{% empty %}<p class="text-muted small ms-3">Нет строк по выбранным условиям.</p>{% endfor %}</details>{% endfor %}
+</details>{% empty %}<div class="alert alert-info">Нет доступных строительных объектов по выбранным условиям.</div>{% endfor %}
+</div>
+<p class="small text-muted">Отклонение = факт − план. Прочерк означает отсутствие данных, введённый ноль отображается как 0. Для среднего факта показано количество заполненных дней. Цвет отклонений нейтральный: превышение ресурса не считается улучшением.</p>
+{% endif %}
+<script src="{% static 'planning/report_matrix.js' %}" defer></script>
