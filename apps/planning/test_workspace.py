@@ -392,7 +392,7 @@ class WorkspaceTests(TestCase):
             for r in version.snapshot["resources"]["labor"]
             if r["date"][:7] == "2026-03"
         ]
-        self.assertEqual([r["planned_workers"] for r in future], [10, 10])
+        self.assertEqual([r["planned_workers"] for r in future], [10] * 31)
 
     def test_resources_in_scenario_two_preserve_other_months_exactly(self):
         workspace = self.create()
@@ -645,7 +645,7 @@ class WorkspaceTests(TestCase):
         self.assertEqual(fact.actual_workers, 7)
         self.assertEqual(fact.actual_hours, 55)
 
-    def test_resource_profile_distributes_hours_and_preserves_monthly_total(self):
+    def test_resources_ignore_profiles_and_include_every_calendar_day(self):
         workspace = self.create()
         profile = LoadProfile.objects.create(
             company=self.company, code="resource-profile", name="30/70"
@@ -669,10 +669,39 @@ class WorkspaceTests(TestCase):
             load_profile=profile,
         )
         version = WorkspaceService.refresh(workspace.baseline_version, self.planner)
-        self.assertEqual(
-            [D(r["planned_hours"]) for r in version.snapshot["resources"]["labor"]],
-            [D(24), D(56)],
-        )
+        rows = version.snapshot["resources"]["labor"]
+        self.assertEqual(len(rows), 31)
+        self.assertEqual(rows[0]["date"], "2026-01-01")
+        self.assertEqual(rows[-1]["date"], "2026-01-31")
+        self.assertTrue(all(r["planned_workers"] == 5 for r in rows))
+        self.assertEqual(sum(D(r["planned_hours"]) for r in rows), D(80))
+        self.assertLessEqual(max(D(r["planned_hours"]) for r in rows) - min(D(r["planned_hours"]) for r in rows), D(".31"))
+
+    def test_resource_daily_counts_and_fuel_include_weekends_without_calendar(self):
+        workspace = self.create()
+        self.add_resources(workspace)
+        workspace.baseline_version.work_allocations.all().delete()
+        CalendarDay.objects.all().delete()
+        ProductionCalendar.objects.all().delete()
+        version = WorkspaceService.refresh(workspace.baseline_version, self.planner)
+        for kind, count_field, count in [("labor", "planned_workers", 10), ("equipment", "planned_count", 2)]:
+            rows = [r for r in version.snapshot["resources"][kind] if r["date"].startswith("2026-01")]
+            self.assertEqual(len(rows), 31)
+            self.assertTrue(all(r[count_field] == count for r in rows))
+        fuel = [r for r in version.snapshot["resources"]["fuel"] if r["date"].startswith("2026-02")]
+        self.assertEqual(len(fuel), 28)
+        self.assertEqual(sum(D(r["planned_liters"]) for r in fuel), D(200))
+        self.assertTrue(any(r["date"] == "2026-02-01" for r in fuel))
+
+    def test_resource_distribution_stays_inside_partial_period(self):
+        from .workspace_services import resource_rows
+        workspace = self.create()
+        workspace.start_date = date(2026, 1, 10)
+        workspace.end_date = date(2026, 1, 12)
+        source = {"kind": "fuel", "liters": "30", "count": 0, "fuel_type": "DIESEL", "equipment_ref": "", "label": "Diesel", "rate": "0", "profile": ["100", "0"]}
+        rows = resource_rows(workspace, source, JAN)
+        self.assertEqual([r["date"] for r in rows], ["2026-01-10", "2026-01-11", "2026-01-12"])
+        self.assertEqual([D(r["planned_liters"]) for r in rows], [D(10)] * 3)
 
     def test_unplanned_past_work_and_resource_facts_are_included_in_scenario_one(self):
         workspace = self.create()

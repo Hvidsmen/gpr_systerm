@@ -101,7 +101,6 @@ class ResourceAllocationForm(AllocationMixin, forms.ModelForm):
             "hours",
             "liters",
             "rate",
-            "load_profile",
         ]
 
 

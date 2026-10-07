@@ -260,7 +260,7 @@ def resource_identity(row, kind):
 
 def resource_input(row):
     return {
-        "profile": captured_profile(row.load_profile),
+        "profile": [],
         "month": row.month.isoformat(),
         "kind": row.kind,
         "brigade_id": row.brigade_id,
@@ -294,10 +294,9 @@ def resource_rows(workspace, source, month, total=None, days=None, rate=None):
     count = source["count"] if kind != "fuel" else 0
     if not amount and not count:
         return []
-    days = days or working_days(workspace, month)
-    amounts = allocate(
-        amount, profile_weights(source.get("profile", []), len(days)), Decimal(".01")
-    )
+    start, end = month_bounds(workspace, month)
+    days = [start + timedelta(days=i) for i in range((end - start).days + 1)]
+    amounts = allocate(amount, [Decimal("1")] * len(days), Decimal(".01"))
     field = RESOURCE_CONFIG[kind][0]
     result = []
     for day, value in zip(days, amounts):
