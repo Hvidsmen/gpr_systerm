@@ -1,0 +1,10 @@
+<section class="card p-3 my-3" id="daily-distribution">
+<h2 class="h5">Итоговое распределение по дням</h2>
+{% if distribution_error %}<div class="alert alert-warning">{{ distribution_error }}</div>{% else %}
+{% if not distribution_generated %}<div class="alert alert-info">Дневной план этой версии ещё не сформирован. Откройте версию и нажмите «Сформировать дневной план».</div>{% endif %}
+<div class="matrix-scroll"><table class="matrix-table table table-sm table-bordered"><thead><tr><th class="matrix-label">Работа / подработа</th>{% for day in distribution_dates %}<th>{{ day|date:'d.m' }}</th>{% endfor %}<th>Итого</th></tr></thead><tbody>
+{% for row in distribution_rows %}<tr class="{% if row.main %}table-primary fw-semibold{% endif %}"><th class="matrix-label {% if not row.main %}ps-4{% endif %}">{{ row.label }} <small>({{ row.unit }}){% if row.norm %} · норматив {{ row.norm|floatformat:3 }}{% endif %}</small></th>{% for value in row.values %}<td class="text-end">{% if value is None %}—{% else %}{{ value|floatformat:3 }}{% endif %}</td>{% endfor %}<td class="text-end fw-semibold">{% if row.total is None %}—{% else %}{{ row.total|floatformat:3 }}{% endif %}</td></tr>{% endfor %}
+</tbody></table></div>
+<p class="small text-muted mb-0">Показаны все дни периода, включая дни с нулевым объёмом. Объём составной работы рассчитан накопительно по нормативам с учётом предыдущих периодов; итоги подработ показаны в их собственных единицах.</p>
+{% if distribution_generated %}<p class="mt-2 mb-0">Месячный объём: {{ work.unit }} · задано {{ distribution_target|floatformat:3 }} · распределено {{ total_planned_quantity|floatformat:3 }}{% if distribution_difference %} · <span class="text-warning">расхождение {{ distribution_difference|floatformat:3 }}</span>{% endif %}</p>{% endif %}
+{% endif %}</section>

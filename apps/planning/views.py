@@ -137,6 +137,18 @@ class PlanDetailView(CompanyScopedMixin, DetailView):
         context["versions"] = self.object.versions.filter(
             company=self.request.user.company
         ).order_by("-version_number")
+        selected = self.request.GET.get("version")
+        if selected:
+            chosen = get_object_or_404(context["versions"], pk=selected) if selected.isdigit() else None
+            if chosen is None:
+                from django.http import Http404
+                raise Http404("Неизвестная версия")
+        else:
+            chosen = context["versions"].first()
+        context["selected_version"] = chosen
+        if chosen:
+            from .daily_summary import daily_summary
+            context.update(daily_summary(chosen))
         return context
 
 
@@ -226,41 +238,10 @@ class PlanVersionDetailView(CompanyScopedMixin, DetailView):
     context_object_name = "version"
 
     def get_context_data(self, **kwargs):
-        from apps.works.progress import WorkProgressService
-        from .global_services import source_versions
-        from datetime import date
+        from .daily_summary import daily_summary
 
         context = super().get_context_data(**kwargs)
-        v = self.object
-        work = v.monthly_plan.project_work
-        history = [
-            p
-            for p in source_versions(
-                work.section.construction_object, date.min, v.monthly_plan.start_date
-            )
-            if p.monthly_plan.project_work_id == work.pk
-            and p.monthly_plan.end_date < v.monthly_plan.start_date
-        ]
-        planned = WorkProgressService.planned(work, history + [v])
-        facts = WorkProgressService.facts(work, until=v.monthly_plan.end_date)
-        start, end = v.monthly_plan.start_date, v.monthly_plan.end_date
-        days = sorted(day for day in set(planned) | set(facts) if start <= day <= end)
-        context["work"] = work
-        context["days"] = [
-            {
-                "date": day,
-                "plan": planned.get(day, {}).get("daily", 0),
-                "fact": facts.get(day, {}).get("daily", 0),
-            }
-            for day in days
-        ]
-        context["daily_plans"] = v.daily_plans.select_related("work_item")
-        context["total_planned_quantity"] = sum(
-            (row["plan"] for row in context["days"]), Decimal("0")
-        )
-        context["total_fact"] = sum(
-            (row["fact"] for row in context["days"]), Decimal("0")
-        )
+        context.update(daily_summary(self.object))
         return context
 
 
