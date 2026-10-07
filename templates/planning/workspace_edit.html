@@ -34,6 +34,17 @@
 <p>{{ workspace.construction_object }} · {{ workspace.start_date }} — {{ workspace.end_date }} · {{ version.get_version_kind_display }}</p>
 {% if version.planning_month %}<p>Уточняемый месяц: <strong>{{ version.planning_month|date:'m.Y' }}</strong>. {{ version.get_scenario_display }}.</p>{% endif %}
 <p>{% if request.user|may:'planning:workspace_detail' %}<a href="{% url 'planning:workspace_detail' workspace.pk %}">Рабочее пространство и история</a>{% endif %} · {% if request.user|may:'planning:global_detail' %}<a href="{% url 'planning:global_detail' version.pk %}">План на весь период и согласование</a>{% endif %} · {% if request.user|may:'planning:calendar_list' %}<a href="{% url 'planning:calendar_list' %}">Календари</a>{% endif %}</p>
+<details class="card mb-3"><summary class="p-3 fw-semibold">Excel: импорт, экспорт и шаблон</summary><div class="card-body pt-0"><p>Сначала сохраните введённые данные. Файл содержит четыре листа: работы, люди, техника, ГСМ.</p><div class="d-flex flex-wrap gap-2">
+{% if request.user|may:'planning:workspace_excel_export' %}
+<a class="btn btn-sm btn-outline-primary" href="{% url 'planning:workspace_excel_export' version.pk %}?scope=period">Экспорт всего периода</a>
+<a class="btn btn-sm btn-outline-primary" href="{% url 'planning:workspace_excel_export' version.pk %}?scope=year&year={{ selected_month.year }}">Экспорт {{ selected_month.year }} года</a>
+<a class="btn btn-sm btn-outline-primary" href="{% url 'planning:workspace_excel_export' version.pk %}?scope=month&month={{ selected_month|date:'Y-m-d' }}">Экспорт {{ selected_month|date:'m.Y' }}</a>
+<a class="btn btn-sm btn-outline-secondary" href="{% url 'planning:workspace_excel_export' version.pk %}?template=1&scope=period">Шаблон всего периода</a>
+<a class="btn btn-sm btn-outline-secondary" href="{% url 'planning:workspace_excel_export' version.pk %}?template=1&scope=year&year={{ selected_month.year }}">Шаблон {{ selected_month.year }} года</a>
+<a class="btn btn-sm btn-outline-secondary" href="{% url 'planning:workspace_excel_export' version.pk %}?template=1&scope=month&month={{ selected_month|date:'Y-m-d' }}">Шаблон месяца</a>
+{% endif %}
+{% if request.user|may:'planning:workspace_excel_import' %}<a class="btn btn-sm btn-primary" href="{% url 'planning:workspace_excel_import' version.pk %}?scope=period">Импорт всего периода</a><a class="btn btn-sm btn-primary" href="{% url 'planning:workspace_excel_import' version.pk %}?scope=year&year={{ selected_month.year }}">Импорт {{ selected_month.year }} года</a><a class="btn btn-sm btn-primary" href="{% url 'planning:workspace_excel_import' version.pk %}?scope=month&month={{ selected_month|date:'Y-m-d' }}">Импорт {{ selected_month|date:'m.Y' }}</a>{% endif %}
+</div></div></details>
 {% if request.user|may:'planning:workspace_bulk_add' %}
 <div class="card mb-3"><div class="card-body"><h2>Добавить списком</h2><p>Сначала сохраните введённые месячные данные. В списке отметьте несколько позиций и отметьте нужные месяцы или выберите все доступные.</p>
 <div class="d-flex flex-wrap gap-2"><a class="btn btn-outline-primary" href="{% url 'planning:workspace_bulk_add' version.pk 'works' %}?month={{ selected_month|date:'Y-m-d' }}">Работы</a>{% for section in resource_sections %}<a class="btn btn-outline-primary" href="{% url 'planning:workspace_bulk_add' version.pk section.kind %}?month={{ selected_month|date:'Y-m-d' }}">{{ section.title }}</a>{% endfor %}</div>
@@ -59,7 +70,7 @@
 {{ work_forms.non_form_errors }}{{ resource_forms.non_form_errors }}
 {% if resource_forms.total_error_count %}<div class="alert alert-danger" role="alert">Проверьте данные ресурсов.<ul>{% for form in resource_forms %}{% for field in form %}{% for error in field.errors %}<li>{{ field.label }}: {{ error }}</li>{% endfor %}{% endfor %}{% for error in form.non_field_errors %}<li>{{ error }}</li>{% endfor %}{% endfor %}</ul></div>{% endif %}
 <div class="d-flex gap-2 mb-3"><button type="button" class="btn btn-sm btn-outline-secondary" data-expand-allocations>Развернуть всё</button><button type="button" class="btn btn-sm btn-outline-secondary" data-collapse-allocations>Свернуть всё</button></div>
-<details class="allocation-section" data-allocation-section="works"><summary>Работы <span class="allocation-group-count" data-section-count></span></summary><div class="allocation-section-body"><p>Указывайте объём основной работы. Объёмы подработ рассчитываются по нормативам.</p>
+<details class="allocation-section" data-allocation-section="works"><summary>Работы <span class="allocation-group-count" data-section-count></span></summary><div class="allocation-section-body"><p>Указывайте объём основной работы. Объёмы подработ рассчитываются по нормативам; при импорте Excel сохраняются отдельные объёмы подработ. Изменение объёма основной работы возвращает расчёт по нормативам.</p>
 {% include 'planning/row_filters.html' with filter_kind='works' filters=work_filters %}
 <div id="work-rows">{% for form in work_forms %}<div class="card mb-3 allocation-row"><div class="card-body allocation-grid">{{ form.non_field_errors }}{% for field in form %}<p data-field="{{ field.name }}" {% if field.is_hidden %}hidden{% endif %}>{% if field.name == 'DELETE' %}<span hidden>{{ field }}</span><button type="button" class="btn btn-sm btn-outline-danger" data-remove-row aria-label="Удалить строку">Удалить</button>{% else %}{{ field.label_tag }} {{ field }} {{ field.errors }}{% endif %}</p>{% endfor %}</div></div>{% endfor %}</div>
 <button type="button" class="btn btn-outline-primary mb-4" data-add="works">Добавить строку работы</button>
@@ -75,6 +86,7 @@
 <template id="empty-works"><div class="card mb-3 allocation-row"><div class="card-body allocation-grid">{% for field in work_forms.empty_form %}<p data-field="{{ field.name }}" {% if field.is_hidden %}hidden{% endif %}>{% if field.name == 'DELETE' %}<span hidden>{{ field }}</span><button type="button" class="btn btn-sm btn-outline-danger" data-remove-row aria-label="Удалить строку">Удалить</button>{% else %}{{ field.label_tag }} {{ field }}{% endif %}</p>{% endfor %}</div></div></template>
 <template id="empty-resources"><div class="card mb-3 resource-row allocation-row"><div class="card-body allocation-grid">{% for field in resource_forms.empty_form %}<p data-field="{{ field.name }}" {% if field.is_hidden or field.name == 'kind' %}hidden{% endif %}>{% if field.name == 'DELETE' %}<span hidden>{{ field }}</span><button type="button" class="btn btn-sm btn-outline-danger" data-remove-row aria-label="Удалить строку">Удалить</button>{% else %}{{ field.label_tag }} {{ field }}{% endif %}</p>{% endfor %}</div></div></template>
 {{ composite_items|json_script:'composite-items' }}
+{{ work_item_quantities|json_script:'work-item-quantities' }}
 {{ planning_filter_data|json_script:'planning-filter-data' }}
 <script>
 const planningFilterData=JSON.parse(document.getElementById('planning-filter-data').textContent);
@@ -156,6 +168,7 @@ document.querySelectorAll('[data-row-filter]').forEach(panel=>{
 });
 document.getElementById('allocation-editor').addEventListener('change',event=>{if(event.target.closest('.allocation-row')) {refreshRowFilters();if(event.target.name.endsWith('-'+rowIdentity[event.target.closest('[data-allocation-section]').dataset.allocationSection])) revealAllocationRow(event.target.closest('.allocation-row'));}});
 const compositeItems=JSON.parse(document.getElementById('composite-items').textContent);
+const importedItemQuantities=JSON.parse(document.getElementById('work-item-quantities').textContent);
 const subworkNumber=new Intl.NumberFormat('ru-RU',{maximumFractionDigits:6});
 function updateSubworks(row) {
   const work=row.querySelector('[name$="-work"]');
@@ -170,20 +183,22 @@ function updateSubworks(row) {
   if (!items) return;
   if (!items.length) {panel.textContent='В составной работе пока нет подработ. Добавьте подработы и нормативы.';return;}
   const input=row.querySelector('[name$="-quantity"]');
+  const prefix=input.name.slice(0,-'-quantity'.length);
+  const imported=importedItemQuantities[prefix];
   const quantity=Number(input.value.replace(',','.'));
   const valid=input.value.trim()!=='' && Number.isFinite(quantity) && quantity>=0;
   const table=document.createElement('table');table.className='table table-sm mb-0';
   const head=table.createTHead().insertRow();
   ['Подработа','Норматив на единицу работы','План на месяц','Ед. изм.'].forEach(label=>{const th=document.createElement('th');th.textContent=label;head.append(th);});
   const body=table.createTBody();
-  items.forEach(item=>{const tr=body.insertRow();[item.name,subworkNumber.format(Number(item.norm)),valid?subworkNumber.format(quantity*Number(item.norm)):'—',item.unit].forEach(value=>tr.insertCell().textContent=value);});
+  items.forEach(item=>{const tr=body.insertRow();[item.name,subworkNumber.format(Number(item.norm)),imported?subworkNumber.format(Number(imported[String(item.id)] || 0)):(valid?subworkNumber.format(quantity*Number(item.norm)):'—'),item.unit].forEach(value=>tr.insertCell().textContent=value);});
   panel.append(table);
 }
 function wireSubworks() {
   document.querySelectorAll('#work-rows .allocation-row').forEach(row=>{
     updateSubworks(row);
-    row.querySelector('[name$="-work"]').onchange=()=>updateSubworks(row);
-    row.querySelector('[name$="-quantity"]').oninput=()=>updateSubworks(row);
+    row.querySelector('[name$="-work"]').onchange=()=>{delete importedItemQuantities[row.querySelector('[name$="-quantity"]').name.slice(0,-'-quantity'.length)];row.querySelector('[name$="-reset_item_quantities"]').value='on';updateSubworks(row);};
+    row.querySelector('[name$="-quantity"]').oninput=()=>{delete importedItemQuantities[row.querySelector('[name$="-quantity"]').name.slice(0,-'-quantity'.length)];row.querySelector('[name$="-reset_item_quantities"]').value='on';updateSubworks(row);};
   });
 }
 function removeAllocationRow(row) {

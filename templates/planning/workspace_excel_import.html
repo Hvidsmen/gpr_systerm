@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% load access %}
+{% block content %}
+<h1>Импорт плана из Excel</h1>
+<p>{{ version.workspace.name }} · v{{ version.version_number }} · {{ version.start_date }} — {{ version.end_date }}</p>
+<div class="card mb-3"><div class="card-body">
+<p>Файл содержит четыре листа: <strong>Работы, Люди, Техника, ГСМ</strong>. Каждому месяцу соответствует отдельный столбец; у ГСМ — два столбца: остаток и расход.</p>
+<p>Для составных работ заполняйте объёмы всех подработ, включая нули. План основной работы считается по минимуму выполнения нормативов; исходные объёмы подработ сохраняются. Учитывается настройка дробных единиц.</p>
+<p>Численность людей, количество техники и остаток ГСМ повторяются каждый день. Расход ГСМ распределяется равномерно по календарным дням.</p>
+<p>Заполненные ячейки заменяют значения соответствующих месяцев; пустые ячейки и отсутствующие строки сохраняют прежний план. Явный ноль обнуляет объём. Для ГСМ заполняйте одновременно остаток и расход. Справочные названия, группы, единицы и нормативы не изменяются при импорте. В столбцы объёмов вводите обычные значения. Столбцы «План работы» рассчитываются в Excel автоматически и при импорте не считываются.</p>
+{% if version.planning_month %}<p>В месячной версии импортируются только месяцы, доступные для редактирования. Прошлое и месяцы, рассчитываемые автоматически по базовым пропорциям, сохраняются. В выгрузке прошлого по факту для людей и техники показывается среднее по зарегистрированным дням, для ГСМ — остаток на последнюю зарегистрированную дату; расход суммируется.</p>{% endif %}
+<div class="d-flex flex-wrap gap-2">
+<a class="btn btn-outline-primary" id="download-excel-template" href="{% url 'planning:workspace_excel_export' version.pk %}?template=1&scope=period">Скачать шаблон</a>
+<a class="btn btn-outline-secondary" href="{% url 'planning:workspace_excel_export' version.pk %}?scope=period">Выгрузить текущий план</a>
+</div>
+</div></div>
+<form method="post" enctype="multipart/form-data" class="card"><div class="card-body">
+{% csrf_token %}{{ form.as_p }}
+<button class="btn btn-primary">Импортировать</button>
+<a class="btn btn-outline-secondary" href="{% url 'planning:workspace_edit' version.pk %}?month={{ return_month }}">Отмена</a>
+</div></form>
+<script>
+const scope=document.getElementById('id_scope'),month=document.getElementById('id_month'),year=document.getElementById('id_year');
+function updateExcelScope(){month.parentElement.hidden=scope.value!=='month';year.parentElement.hidden=scope.value!=='year';document.getElementById('download-excel-template').href="{% url 'planning:workspace_excel_export' version.pk %}?template=1&scope="+scope.value+"&month="+encodeURIComponent(month.value)+"&year="+encodeURIComponent(year.value);}
+scope.addEventListener('change',updateExcelScope);month.addEventListener('change',updateExcelScope);year.addEventListener('change',updateExcelScope);updateExcelScope();
+</script>
+{% endblock %}

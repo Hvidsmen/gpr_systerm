@@ -67,6 +67,7 @@ class AllocationMixin(CompanyFormMixin):
 
 
 class WorkAllocationForm(AllocationMixin, forms.ModelForm):
+    reset_item_quantities = forms.BooleanField(required=False, widget=forms.HiddenInput())
     class Meta:
         model = WorkMonthAllocation
         fields = ["work", "month", "quantity", "load_profile"]
@@ -85,6 +86,20 @@ class WorkAllocationForm(AllocationMixin, forms.ModelForm):
         )
         self.fields["quantity"].widget.attrs["min"] = "0"
         self.fields["quantity"].widget.attrs["step"] = "0.001"
+
+    def clean(self):
+        data = super().clean()
+        if data.get('reset_item_quantities') or 'quantity' in self.changed_data or 'work' in self.changed_data:
+            self.instance.item_quantities = {}
+        return data
+
+    def _update_errors(self, errors):
+        if hasattr(errors, 'error_dict') and 'item_quantities' in errors.error_dict:
+            from django.core.exceptions import ValidationError
+            data = dict(errors.error_dict)
+            data.setdefault('__all__', []).extend(data.pop('item_quantities'))
+            errors = ValidationError(data)
+        super()._update_errors(errors)
 
 
 class ResourceAllocationForm(AllocationMixin, forms.ModelForm):

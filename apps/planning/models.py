@@ -545,6 +545,7 @@ class WorkMonthAllocation(BaseCompanyModel):
     quantity = models.DecimalField(
         "Объём основной работы", max_digits=15, decimal_places=3, default=0
     )
+    item_quantities = models.JSONField("Месячные объёмы подработ", default=dict, blank=True)
     load_profile = models.ForeignKey(
         LoadProfile,
         on_delete=models.PROTECT,
@@ -578,6 +579,30 @@ class WorkMonthAllocation(BaseCompanyModel):
             raise ValidationError({"quantity": "Объём не может быть отрицательным."})
         if self.load_profile_id and self.load_profile.company_id != self.company_id:
             raise ValidationError({"load_profile": "Профиль другой компании."})
+
+        if not isinstance(self.item_quantities, dict):
+            raise ValidationError({"item_quantities": "Объёмы подработ должны быть словарём."})
+        if self.item_quantities:
+            from decimal import Decimal, InvalidOperation
+            from apps.works.progress import work_specification, quantity_from_totals
+            if self.work.kind != "COMPOSITE" or not isinstance(self.item_quantities, dict):
+                raise ValidationError({"item_quantities": "Отдельные объёмы допустимы только для составной работы."})
+            items = list(self.work.items.filter(company=self.company))
+            if set(self.item_quantities) != {str(item.pk) for item in items}:
+                raise ValidationError({"item_quantities": "Укажите объёмы всех подработ этой работы."})
+            if self.version.version_kind == "FORECAST":
+                baseline = self.version.workspace.baseline_version
+                frozen = next((spec for spec in baseline.snapshot.get("works", []) if spec["id"] == self.work_id), None) if baseline else None
+                if frozen and {item.pk: item.quantity_per_unit for item in items} != {item["id"]: Decimal(item["norm"]) for item in frozen["items"]}:
+                    raise ValidationError({"item_quantities": "Состав подработ или нормативы отличаются от утверждённой базы. Создайте новый базовый план."})
+            try:
+                values = {int(key): Decimal(str(value)) for key, value in self.item_quantities.items()}
+                if any(not value.is_finite() or value < 0 or value > Decimal("999999999999.999999") or value != value.quantize(Decimal(".000001")) for value in values.values()):
+                    raise ValueError
+            except (InvalidOperation, ValueError, TypeError):
+                raise ValidationError({"item_quantities": "Объёмы подработ должны быть неотрицательными числами, до 6 знаков после запятой."})
+            self.quantity = quantity_from_totals(work_specification(self.work), values)
+            self._meta.get_field("quantity").clean(self.quantity, self)
 
     def save(self, *args, **kwargs):
         from django.core.exceptions import ValidationError

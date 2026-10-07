@@ -4,7 +4,7 @@
 <div class="d-flex justify-content-between align-items-center"><h1>{{ workspace.name }}</h1>{% if request.user|may:'planning:workspace_delete' %}{% if workspace|can_delete_workspace:request.user %}<a class="btn btn-outline-danger" href="{% url 'planning:workspace_delete' workspace.pk %}">Удалить план</a>{% endif %}{% endif %}</div>
 <p>{{ workspace.construction_object }} · {{ workspace.start_date }} — {{ workspace.end_date }}</p>
 <div class="card mb-4"><div class="card-body">
-<h2>Базовый план</h2><p>{{ workspace.baseline_version.get_status_display }}</p>
+<h2>Базовый план</h2>{% if request.user|may:'planning:workspace_excel_export' %}<p><a href="{% url 'planning:workspace_excel_export' workspace.baseline_version_id %}">Экспорт Excel на весь период</a></p>{% endif %}<p>{{ workspace.baseline_version.get_status_display }}</p>
 {% if workspace.baseline_version.status == 'DRAFT' or workspace.baseline_version.status == 'REJECTED' %}{% if request.user|may:'planning:workspace_edit' %}<a class="btn btn-primary" href="{% url 'planning:workspace_edit' workspace.baseline_version_id %}">Ввести планы по месяцам</a>{% endif %}{% endif %}
 {% if request.user|may:'planning:global_detail' %}<a class="btn btn-outline-primary" href="{% url 'planning:global_detail' workspace.baseline_version_id %}">План на весь период и согласование</a>{% endif %}
 </div></div>
@@ -14,7 +14,7 @@
 </div></div>
 <h2>История версий</h2>
 <table class="table"><thead><tr><th>Версия</th><th>Назначение</th><th>Месяц</th><th>Сценарий</th><th>Статус</th><th>Действия</th></tr></thead><tbody>
-{% for version in versions %}<tr><td>{% if request.user|may:'planning:global_detail' %}<a href="{% url 'planning:global_detail' version.pk %}">v{{ version.version_number }}</a>{% endif %}</td><td>{{ version.get_version_kind_display }}</td><td>{{ version.planning_month|date:'m.Y'|default:'—' }}</td><td>{{ version.get_scenario_display|default:'—' }}</td><td>{{ version.get_status_display }}</td><td>{% if version.status == 'DRAFT' or version.status == 'REJECTED' %}{% if request.user|may:'planning:workspace_edit' %}<a href="{% url 'planning:workspace_edit' version.pk %}">Редактировать</a>{% endif %}{% endif %}
+{% for version in versions %}<tr><td>{% if request.user|may:'planning:global_detail' %}<a href="{% url 'planning:global_detail' version.pk %}">v{{ version.version_number }}</a>{% endif %}</td><td>{{ version.get_version_kind_display }}</td><td>{{ version.planning_month|date:'m.Y'|default:'—' }}</td><td>{{ version.get_scenario_display|default:'—' }}</td><td>{{ version.get_status_display }}</td><td>{% if request.user|may:'planning:workspace_excel_export' %}<a href="{% url 'planning:workspace_excel_export' version.pk %}">Excel</a> · {% endif %}{% if version.status == 'DRAFT' or version.status == 'REJECTED' %}{% if request.user|may:'planning:workspace_edit' %}<a href="{% url 'planning:workspace_edit' version.pk %}">Редактировать</a>{% endif %}{% endif %}
 {% if request.user|may:'planning:global_delete' %}
 {% if version.can_delete %}<a class="btn btn-sm btn-outline-danger ms-2" href="{% url 'planning:global_delete' version.pk %}">Удалить</a>
 {% elif version.pk == workspace.baseline_version_id and workspace|can_delete_workspace:request.user %}<a class="btn btn-sm btn-outline-danger ms-2" href="{% url 'planning:workspace_delete' workspace.pk %}">Удалить план на период</a>

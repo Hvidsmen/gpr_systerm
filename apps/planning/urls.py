@@ -80,3 +80,9 @@ urlpatterns = [
 
 from .bulk_add import WorkspaceBulkAdd
 urlpatterns += [path('workspace-versions/<int:pk>/add-list/<str:kind>/', WorkspaceBulkAdd.as_view(), name='workspace_bulk_add')]
+
+from .workspace_excel import WorkspaceExcelExport, WorkspaceExcelImport
+urlpatterns += [
+    path('workspace-versions/<int:pk>/excel/', WorkspaceExcelExport.as_view(), name='workspace_excel_export'),
+    path('workspace-versions/<int:pk>/excel/import/', WorkspaceExcelImport.as_view(), name='workspace_excel_import'),
+]

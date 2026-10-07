@@ -130,9 +130,9 @@ def profile_weights(percentages, count):
     ]
 
 
-def work_rows(workspace, spec, month, quantity, override_profile=None):
+def work_rows(workspace, spec, month, quantity, override_profile=None, item_quantities=None):
     quantity = Decimal(str(quantity))
-    if quantity == 0:
+    if quantity == 0 and not any(Decimal(str(value)) for value in (item_quantities or {}).values()):
         return []
     days = working_days(workspace, month)
     override = captured_profile(override_profile) if override_profile else None
@@ -149,13 +149,14 @@ def work_rows(workspace, spec, month, quantity, override_profile=None):
             else spec.get("profiles", {}).get(str(item["id"]), [])
         )
         weights = profile_weights(percentages, len(days))
+        item_total = Decimal(item_quantities[str(item["id"])]) if item_quantities else quantity * Decimal(item["norm"])
         quantities = allocate(
-            quantity * Decimal(item["norm"]),
+            item_total,
             weights,
             Decimal(".000001") if spec["kind"] == "COMPOSITE" else Decimal(".001"),
         )
         values = allocate(
-            quantity * Decimal(spec["unit_price"]) * Decimal(item["weight"]) / 100,
+            item_total / Decimal(item["norm"]) * Decimal(spec["unit_price"]) * Decimal(item["weight"]) / 100,
             weights,
             Decimal(".01"),
         )
@@ -407,6 +408,7 @@ def build_workspace_snapshot(version):
                         allocation.month,
                         allocation.quantity,
                         allocation.load_profile,
+                        allocation.item_quantities,
                     )
             works.append(finalize_work(spec, rows, workspace))
         resource_plans = {kind: [] for kind in RESOURCE_CONFIG}
@@ -444,6 +446,7 @@ def build_workspace_snapshot(version):
                         "work_id": r.work_id,
                         "month": r.month.isoformat(),
                         "quantity": str(r.quantity),
+                        "item_quantities": r.item_quantities,
                         "load_profile_id": r.load_profile_id,
                         "profile": (
                             captured_profile(r.load_profile)
@@ -489,7 +492,7 @@ def build_forecast(version, inputs, resources, base):
                 f'Укажите план на выбранный месяц для работы «{spec["name"]}», включая нулевой объём.'
             )
         rows = work_rows(
-            workspace, spec, target, current.quantity, current.load_profile
+            workspace, spec, target, current.quantity, current.load_profile, current.item_quantities
         )
         context = []
         if version.scenario == "BASELINE":
@@ -523,7 +526,9 @@ def build_forecast(version, inputs, resources, base):
                 v["daily"] for d, v in series.items() if d >= workspace.start_date
             )
             goal = sum(Decimal(r["quantity"]) for r in spec["daily"])
-            rest = goal - past_total - current.quantity
+            current_series = cumulative_series(spec, [(date.fromisoformat(r["date"]), r["item_id"], Decimal(r["quantity"])) for r in facts + rows])
+            current_total = sum(v["daily"] for day, v in current_series.items() if day >= target)
+            rest = goal - past_total - current_total
             if rest < 0:
                 warnings.append(
                     f'{spec["name"]}: превышение общего объёма {abs(rest)} {spec["unit"]}; будущий остаток равен нулю.'
@@ -581,12 +586,14 @@ def build_forecast(version, inputs, resources, base):
                         if spec["kind"] == "COMPOSITE"
                         else {"None": base_month["profile"]}
                     )
+                item_quantities = manual[month].item_quantities if month in manual else {}
                 rows += work_rows(
                     workspace,
                     future_spec,
                     month,
                     qty,
                     manual[month].load_profile if month in manual else None,
+                    item_quantities,
                 )
             rows += past
         works.append(finalize_work(spec, rows, workspace, context))
@@ -832,6 +839,7 @@ class WorkspaceService:
                 work_id=spec["id"],
                 month=month,
                 quantity=prior.quantity if prior else 0,
+                item_quantities=deepcopy(prior.item_quantities) if prior else {},
                 load_profile=prior.load_profile if prior else None,
             )
         for row in source.resource_allocations.filter(month=month):

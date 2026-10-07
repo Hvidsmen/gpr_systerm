@@ -521,8 +521,8 @@ class WorkspaceTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context['composite_items'][str(self.composite.pk)], [
-            {'name': 'A', 'unit': 'm', 'norm': '2.000'},
-            {'name': 'B', 'unit': 'm3', 'norm': '3.000'},
+            {'id': self.a.pk, 'name': 'A', 'unit': 'm', 'norm': '2.000'},
+            {'id': self.b.pk, 'name': 'B', 'unit': 'm3', 'norm': '3.000'},
         ])
         self.assertNotIn(str(self.simple.pk), response.context['composite_items'])
         form = response.context["work_forms"].forms[0]
