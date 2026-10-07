@@ -1,3 +1,4 @@
+from .approval_test_helpers import approval_users, departments
 from datetime import date, timedelta
 from decimal import Decimal
 from copy import deepcopy
@@ -47,6 +48,7 @@ class GlobalPlanningTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.company = Company.objects.create(name="Planning")
+        cls.approvers = approval_users(cls.company)
         manager_role = Role.objects.get(code="MANAGER")
         cls.manager = User.objects.create_user(
             username="global-manager", company=cls.company, role=manager_role
@@ -300,7 +302,7 @@ class GlobalPlanningTests(TestCase):
         LaborPlan.objects.filter(company=self.company).update(planned_workers=10)
         with self.assertRaises(PermissionDenied):
             GlobalPlanService.transition(version, self.worker, "approve")
-        version = GlobalPlanService.transition(version, self.manager, "approve")
+        version = GlobalPlanService.transition(departments(version, self.approvers), self.approvers["CEO"], "approve")
         self.assertEqual(version.snapshot, frozen)
         revision = GlobalPlanService.revision(version, self.worker)
         self.assertEqual(
@@ -332,7 +334,7 @@ class GlobalPlanningTests(TestCase):
             list(version.source_versions.values_list("pk", flat=True)), [latest.pk]
         )
         version = GlobalPlanService.transition(version, self.worker, "submit")
-        version = GlobalPlanService.transition(version, self.manager, "approve")
+        version = GlobalPlanService.transition(departments(version, self.approvers), self.approvers["CEO"], "approve")
         with self.assertRaises(ValidationError), transaction.atomic():
             version.source_versions.add(old)
         version.snapshot["works"][0]["name"] = "Tampered"
@@ -501,3 +503,19 @@ class GlobalPlanningTests(TestCase):
         self.assertEqual(archive.payload, payload)
         self.assertTrue(archive.resolved)
         self.assertEqual(archive.restored_pk, existing.pk)
+
+
+    def test_lower_source_referenced_only_by_past_review_cannot_be_deleted(self):
+        old = self.approved(self.work, self.start, self.end,
+            [(self.start, self.a, 2), (self.end, self.b, 3)])
+        version = GlobalPlanService.create(self.worker, self.obj, self.start, self.end)
+        version = GlobalPlanService.transition(version, self.worker, "submit")
+        version = GlobalPlanService.transition(departments(version, self.approvers), self.approvers["CEO"], "approve")
+        version = GlobalPlanService.transition(version, self.approvers["CEO"], "reject", "Новая версия работ")
+        self.approved(self.work, self.start, self.end,
+            [(self.start, self.a, 4), (self.end, self.b, 6)], number=2)
+        version.source_versions.clear()
+        version = GlobalPlanService.transition(version, self.worker, "submit")
+        self.assertNotIn(old.pk, [source["id"] for spec in version.snapshot["works"] for source in spec["versions"]])
+        with self.assertRaises(ValidationError), transaction.atomic():
+            old.delete()

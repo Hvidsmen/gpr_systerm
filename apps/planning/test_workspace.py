@@ -1,3 +1,4 @@
+from .approval_test_helpers import approval_users, departments
 from datetime import date
 from decimal import Decimal
 from copy import deepcopy
@@ -43,6 +44,7 @@ class WorkspaceTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.company = Company.objects.create(name="Period planning")
+        cls.approvers = approval_users(cls.company)
         role = Role.objects.get(code="MANAGER")
         cls.manager = User.objects.create_user(
             username="period-manager", company=cls.company, role=role
@@ -129,7 +131,7 @@ class WorkspaceTests(TestCase):
 
     def approve(self, version):
         version = GlobalPlanService.transition(version, self.planner, "submit")
-        return GlobalPlanService.transition(version, self.manager, "approve")
+        return GlobalPlanService.transition(departments(version, self.approvers), self.approvers["CEO"], "approve")
 
     def fact(self, work, item, day, qty):
         return DailyFact.objects.create(
@@ -481,14 +483,14 @@ class WorkspaceTests(TestCase):
         with self.assertRaises(ValidationError):
             self.composite.clean()
 
-    def test_only_manager_can_approve_and_month_must_be_in_period(self):
+    def test_only_ceo_can_approve_and_month_must_be_in_period(self):
         workspace = self.create()
         version = GlobalPlanService.transition(
             workspace.baseline_version, self.planner, "submit"
         )
         with self.assertRaises(PermissionDenied):
             GlobalPlanService.transition(version, self.planner, "approve")
-        GlobalPlanService.transition(version, self.manager, "approve")
+        GlobalPlanService.transition(departments(version, self.approvers), self.approvers["CEO"], "approve")
         with self.assertRaises(ValidationError):
             WorkspaceService.forecast(
                 workspace, self.planner, date(2026, 4, 1), "REMAINING"

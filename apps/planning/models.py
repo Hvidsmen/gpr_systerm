@@ -329,6 +329,8 @@ class GlobalPlanVersion(BaseCompanyModel):
     status = models.CharField(
         "Статус", max_length=20, choices=PlanStatus.choices, default=PlanStatus.DRAFT
     )
+    approval_round = models.PositiveIntegerField("Раунд согласования", default=0, editable=False)
+    baseline_review = models.ForeignKey("GlobalPlanReview", on_delete=models.PROTECT, null=True, blank=True, editable=False, related_name="dependent_versions", verbose_name="Зафиксированная база")
     source_versions = models.ManyToManyField(
         PlanVersion, blank=True, related_name="global_versions"
     )
@@ -361,6 +363,9 @@ class GlobalPlanVersion(BaseCompanyModel):
         unique_together = [["construction_object", "version_number"]]
         verbose_name = "Глобальная версия объекта"
         verbose_name_plural = "Глобальные версии объектов"
+
+    def get_status_display(self):
+        return "На доработке" if self.status == "REJECTED" else dict(PlanStatus.choices).get(self.status, self.status)
 
     @property
     def can_delete(self):
@@ -418,6 +423,8 @@ class GlobalPlanVersion(BaseCompanyModel):
                     or self.scenario not in ["REMAINING", "BASELINE"]
                 ):
                     raise ValidationError("Укажите месяц периода и сценарий уточнения.")
+            if self.baseline_review_id and (self.version_kind != "FORECAST" or self.baseline_review.version_id != workspace.baseline_version_id or not self.baseline_review.was_approved):
+                raise ValidationError({"baseline_review": "Используйте согласованный раунд базы этого рабочего пространства."})
         elif self.version_kind != "LEGACY":
             raise ValidationError(
                 "Базовый план и уточнение требуют рабочего пространства."
@@ -428,11 +435,17 @@ class GlobalPlanVersion(BaseCompanyModel):
 
         if self.pk:
             old = type(self).objects.get(pk=self.pk)
+            from .approval_context import transition_authorized
+            metadata = ("status", "approved_by_id", "approved_at", "approval_round")
+            if any(getattr(old,key)!=getattr(self,key) for key in metadata) and not transition_authorized(self.pk):
+                raise ValidationError("Статус и согласование изменяются только через маршрут согласования.")
+            if old.status == PlanStatus.COMPLETED and any(getattr(old,field.attname)!=getattr(self,field.attname) for field in self._meta.fields if field.name != "updated_at"):
+                raise ValidationError("Завершённый план нельзя изменять.")
             allowed = {
                 "DRAFT": ["DRAFT", "SUBMITTED"],
                 "REJECTED": ["REJECTED", "SUBMITTED"],
                 "SUBMITTED": ["SUBMITTED", "APPROVED", "REJECTED"],
-                "APPROVED": ["APPROVED", "COMPLETED"],
+                "APPROVED": ["APPROVED", "COMPLETED", "REJECTED"],
                 "COMPLETED": ["COMPLETED"],
             }
             if self.status not in allowed[old.status]:
@@ -451,6 +464,7 @@ class GlobalPlanVersion(BaseCompanyModel):
                     "version_kind",
                     "planning_month",
                     "scenario",
+                    "baseline_review_id",
                 )
                 if any(getattr(old, key) != getattr(self, key) for key in protected):
                     raise ValidationError(
@@ -592,7 +606,8 @@ class WorkMonthAllocation(BaseCompanyModel):
                 raise ValidationError({"item_quantities": "Укажите объёмы всех подработ этой работы."})
             if self.version.version_kind == "FORECAST":
                 baseline = self.version.workspace.baseline_version
-                frozen = next((spec for spec in baseline.snapshot.get("works", []) if spec["id"] == self.work_id), None) if baseline else None
+                base_snapshot = self.version.baseline_review.snapshot if self.version.baseline_review_id else (baseline.snapshot if baseline else {})
+                frozen = next((spec for spec in base_snapshot.get("works", []) if spec["id"] == self.work_id), None) if baseline else None
                 if frozen and {item.pk: item.quantity_per_unit for item in items} != {item["id"]: Decimal(item["norm"]) for item in frozen["items"]}:
                     raise ValidationError({"item_quantities": "Состав подработ или нормативы отличаются от утверждённой базы. Создайте новый базовый план."})
             try:
@@ -796,3 +811,63 @@ def validate_workspace_allocation(row):
             raise ValidationError(
                 {"month": "Прошлые месяцы формируются автоматически."}
             )
+
+
+class GlobalPlanReview(BaseCompanyModel):
+    version = models.ForeignKey(GlobalPlanVersion, on_delete=models.CASCADE, related_name="review_rounds")
+    number = models.PositiveIntegerField("Раунд")
+    snapshot = models.JSONField("Согласуемый состав", default=dict, editable=False)
+    submitted_by = models.ForeignKey("accounts.User", on_delete=models.SET_NULL, null=True, related_name="submitted_plan_reviews")
+    legacy_approved = models.BooleanField("Историческое утверждение", default=False, editable=False)
+
+    class Meta:
+        ordering = ["number"]
+        constraints = [models.UniqueConstraint(fields=["version", "number"], name="unique_global_review_round")]
+        verbose_name = "Раунд согласования плана"
+        verbose_name_plural = "Раунды согласования планов"
+
+    @property
+    def was_approved(self):
+        return self.legacy_approved or self.decisions.filter(section="CEO", action="APPROVE").exists()
+
+    def clean(self):
+        if self.version_id and self.version.company_id != self.company_id:
+            from django.core.exceptions import ValidationError
+            raise ValidationError("Раунд другой компании.")
+
+    def save(self, *args, **kwargs):
+        from django.core.exceptions import ValidationError
+        if self.pk:
+            raise ValidationError("Историю раунда согласования изменять нельзя.")
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+
+class GlobalPlanDecision(BaseCompanyModel):
+    review = models.ForeignKey(GlobalPlanReview, on_delete=models.CASCADE, related_name="decisions")
+    section = models.CharField("Раздел", max_length=20, choices=[("PRODUCTION","Работы"),("HR","Люди"),("TECH","Техника и ГСМ"),("CEO","Генеральный директор"),("PLANNER","Подготовка")])
+    action = models.CharField("Решение", max_length=20, choices=[("SUBMIT","Отправлен"),("APPROVE","Согласовано"),("REJECT","Возвращён на доработку"),("COMPLETE","Завершён")])
+    actor = models.ForeignKey("accounts.User", on_delete=models.SET_NULL, null=True, related_name="global_plan_decisions")
+    actor_name = models.CharField("Пользователь", max_length=300)
+    actor_role = models.CharField("Роль на момент решения", max_length=50)
+    comment = models.TextField("Комментарий", blank=True, max_length=4000)
+
+    class Meta:
+        ordering = ["created_at", "pk"]
+        constraints = [models.UniqueConstraint(fields=["review", "section"], condition=models.Q(action="APPROVE"), name="unique_section_review_approval")]
+        verbose_name = "Решение по плану"
+        verbose_name_plural = "Решения по планам"
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if self.review_id and self.review.company_id != self.company_id:
+            raise ValidationError("Решение другого раунда или компании.")
+        if self.actor_id and self.actor.company_id != self.company_id:
+            raise ValidationError("Пользователь другой компании.")
+
+    def save(self, *args, **kwargs):
+        from django.core.exceptions import ValidationError
+        if self.pk:
+            raise ValidationError("Решение в истории изменять нельзя.")
+        self.full_clean()
+        return super().save(*args, **kwargs)

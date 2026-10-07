@@ -1,4 +1,4 @@
-from core.permissions import require_roles, PLAN_ROLES, APPROVAL_ROLES
+from core.permissions import require_roles, PLAN_ROLES
 """Period planning from monthly inputs, with immutable baseline and forecasts."""
 
 from collections import defaultdict
@@ -26,6 +26,7 @@ from apps.production.models import (
     FuelFact,
     LegacyResourceRecord,
 )
+from .approval_workflow import baseline_snapshot, current_review
 from .models import (
     PlanningWorkspace,
     GlobalPlanVersion,
@@ -419,10 +420,10 @@ def build_workspace_snapshot(version):
         warnings = []
     else:
         baseline = workspace.baseline_version
-        if not baseline or not baseline.is_immutable:
+        if not baseline or (not version.baseline_review_id and not baseline.is_immutable):
             raise ValidationError("Сначала утвердите базовую версию периода.")
         works, resource_plans, warnings = build_forecast(
-            version, inputs, resources, baseline.snapshot
+            version, inputs, resources, baseline_snapshot(version)
         )
     return json_copy(
         {
@@ -825,8 +826,12 @@ class WorkspaceService:
         version = WorkspaceService.new_version(
             workspace, user, "FORECAST", month, scenario, previous
         )
+        version.baseline_review = previous.baseline_review if previous else current_review(workspace.baseline_version)
+        if version.baseline_review is None:
+            raise ValidationError("У утверждённой базы отсутствует раунд согласования. Выполните миграции базы.")
+        version.save(update_fields=["baseline_review"])
         source = previous or workspace.baseline_version
-        specs = {s["id"]: s for s in workspace.baseline_version.snapshot["works"]}
+        specs = {s["id"]: s for s in baseline_snapshot(version)["works"]}
         if previous:
             specs.update({s["id"]: s for s in previous.snapshot.get("works", [])})
         for spec in specs.values():

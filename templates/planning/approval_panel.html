@@ -1,0 +1,14 @@
+<section class="card p-3 my-3">
+<h2 class="h5">Согласование · раунд {{ object.approval_round }}</h2>
+<p>{% if object.status == 'REJECTED' %}На доработке: {{ object.comment }}{% else %}{{ object.get_status_display }}{% endif %}</p>
+{% if object.status == 'COMPLETED' %}<div class="alert alert-success">План завершён. Дальнейшее изменение статуса и содержания запрещено.</div>{% endif %}
+<div class="row g-2">{% for section in approval_sections %}<div class="col-md-4"><div class="border rounded p-2"><strong>{{ section.label }}</strong><br>
+{% if legacy_review %}<span class="text-muted">Прежнее утверждение сохранено</span>{% elif section.approved %}<span class="text-success">Согласовано</span> · {{ section.decision.actor_name }}{% else %}<span class="text-muted">{% if object.status == 'REJECTED' %}Требуется повторное согласование{% else %}Ожидает согласования{% endif %}</span>{% endif %}
+{% if section.can_approve %}<form method="post" action="{% url 'planning:global_action' object.pk section.action %}">{% csrf_token %}<button class="btn btn-success btn-sm mt-2">Согласовать раздел</button></form>{% endif %}
+</div></div>{% endfor %}</div>
+{% if object.status == 'SUBMITTED' %}<p class="mt-2 mb-0">{% if approval_ready %}Все службы согласовали. Ожидает решения генерального директора.{% else %}После согласования всех трёх служб план поступит генеральному директору.{% endif %}</p>{% endif %}
+{% if can_final_approve %}<form class="mt-3" method="post" action="{% url 'planning:global_action' object.pk 'approve' %}">{% csrf_token %}<button class="btn btn-success">Утвердить весь план</button></form>{% endif %}
+{% if can_return %}<form class="d-flex gap-2 mt-3" method="post" action="{% url 'planning:global_action' object.pk 'reject' %}">{% csrf_token %}<input class="form-control" name="comment" maxlength="4000" required placeholder="Обязательная причина возврата на доработку" aria-label="Причина возврата"><button class="btn btn-outline-danger text-nowrap">На доработку</button></form>{% endif %}
+{% if can_complete %}<form class="mt-3" method="post" action="{% url 'planning:global_action' object.pk 'complete' %}" onsubmit="return confirm('Завершить план? Изменение статуса и содержания станет недоступно.');">{% csrf_token %}<button class="btn btn-primary">Завершить план</button></form>{% endif %}
+{% if review_history %}<details class="mt-3"><summary>История согласования</summary>{% for round in review_history %}<h3 class="h6 mt-3">Раунд {{ round.number }} · {{ round.created_at }}</h3><ul>{% for decision in round.decisions.all %}<li>{{ decision.created_at }} · {{ decision.get_section_display }} · {{ decision.get_action_display }} · {{ decision.actor_name }}{% if decision.comment %}: {{ decision.comment }}{% endif %}</li>{% empty %}<li>Прежний раунд согласования.</li>{% endfor %}</ul>{% endfor %}</details>{% endif %}
+</section>

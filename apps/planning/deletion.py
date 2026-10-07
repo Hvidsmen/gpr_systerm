@@ -14,12 +14,14 @@ EDITABLE = ['DRAFT', 'REJECTED']
 def workspace_reason(workspace, user=None):
     if user is not None and role_code(user) == 'ADMIN':
         return ''
-    if workspace.versions.exclude(status__in=EDITABLE).exists():
+    if workspace.versions.exclude(status__in=EDITABLE).exists() or workspace.versions.filter(review_rounds__isnull=False).exists():
         return 'План содержит версии на согласовании, утверждённые или завершённые версии. Удаление недоступно.'
     return ''
 
 
 def version_reason(version):
+    if version.review_rounds.exists():
+        return "Версия содержит историю согласования. Удаление доступно администратору вместе с планом на период."
     if version.status not in EDITABLE:
         return 'Версию на согласовании, утверждённую или завершённую версию удалять нельзя.'
     if PlanningWorkspace.objects.filter(baseline_version=version).exists():
@@ -42,6 +44,7 @@ def delete_workspace(workspace, user, confirm_history=False):
     # Break the baseline link before removing the versions' PROTECT relations.
     PlanningWorkspace.objects.filter(pk=workspace.pk).update(baseline_version=None)
     from .deletion_context import authorized_workspace_deletion
+    GlobalPlanVersion.objects.filter(pk__in=[v.pk for v in versions]).update(baseline_review=None)
     with authorized_workspace_deletion(versions):
         for version in versions:
             version.delete()

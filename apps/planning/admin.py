@@ -94,10 +94,10 @@ class GlobalPlanVersionAdmin(admin.ModelAdmin):
         return False
 
 
-from .models import PlanningWorkspace, WorkMonthAllocation, ResourceMonthAllocation
+from .models import PlanningWorkspace, WorkMonthAllocation, ResourceMonthAllocation, GlobalPlanReview, GlobalPlanDecision
 
 
-@admin.register(PlanningWorkspace, WorkMonthAllocation, ResourceMonthAllocation)
+@admin.register(PlanningWorkspace, WorkMonthAllocation, ResourceMonthAllocation, GlobalPlanReview, GlobalPlanDecision)
 class WorkspaceDataAdmin(admin.ModelAdmin):
     def get_readonly_fields(self, request, obj=None):
         return [field.name for field in self.model._meta.fields]

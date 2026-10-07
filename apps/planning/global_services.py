@@ -1,4 +1,4 @@
-from core.permissions import require_roles, PLAN_ROLES, APPROVAL_ROLES
+from core.permissions import require_roles, PLAN_ROLES
 import json
 from collections import defaultdict
 from datetime import date
@@ -8,7 +8,6 @@ from django.core.exceptions import ValidationError, PermissionDenied
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import transaction
 from django.db.models import Max
-from django.utils import timezone
 
 from apps.projects.models import ConstructionObject
 from apps.production.models import (
@@ -244,34 +243,8 @@ class GlobalPlanService:
     @staticmethod
     @transaction.atomic
     def transition(version, user, action, comment=""):
-        require_roles(user, APPROVAL_ROLES if action in ('approve', 'reject', 'complete') else PLAN_ROLES)
-        version = GlobalPlanVersion.objects.select_for_update().get(pk=version.pk)
-        if version.company_id != user.company_id:
-            raise PermissionDenied("Версия другой компании.")
-        if action in ("approve", "reject", "complete") and not (
-            user.is_manager() or user.is_admin()
-        ):
-            raise PermissionDenied(
-                "Действие доступно руководителю или администратору компании."
-            )
-        transitions = {
-            "submit": (["DRAFT", "REJECTED"], "SUBMITTED"),
-            "approve": (["SUBMITTED"], "APPROVED"),
-            "reject": (["SUBMITTED"], "REJECTED"),
-            "complete": (["APPROVED"], "COMPLETED"),
-        }
-        if action not in transitions or version.status not in transitions[action][0]:
-            raise ValidationError("Недопустимый переход статуса глобальной версии.")
-        if action == "submit":
-            version.snapshot = build_snapshot(version)
-        if action == "approve":
-            version.approved_by = user
-            version.approved_at = timezone.now()
-        version.status = transitions[action][1]
-        if comment:
-            version.comment = comment
-        version.save()
-        return version
+        from .approval_workflow import transition
+        return transition(version, user, action, comment)
 
     @staticmethod
     def revision(version, user):

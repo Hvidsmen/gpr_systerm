@@ -12,6 +12,7 @@ from core.mixins import CompanyScopedMixin
 from apps.works.forms import ProjectWorkForm
 from apps.works.models import ProjectWork
 from apps.works.services import WorkItemGeneratorService
+from .approval_workflow import baseline_snapshot
 from .models import PlanningWorkspace, GlobalPlanVersion, WorkMonthAllocation, ResourceMonthAllocation
 from .workspace_forms import (
     WorkspaceForm,
@@ -62,7 +63,7 @@ def monthly_summary(version):
             for m in months
         }
         baseline = (
-            version.workspace.baseline_version.snapshot
+            baseline_snapshot(version)
             if version.workspace.baseline_version
             else {}
         )
@@ -96,7 +97,7 @@ def resource_monthly_summary(version):
     rows = []
     months = months_between(version.start_date, version.end_date)
     baseline = (
-        version.workspace.baseline_version.snapshot
+        baseline_snapshot(version)
         if version.workspace.baseline_version
         else {}
     )

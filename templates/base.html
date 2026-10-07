@@ -397,7 +397,8 @@
         {% if user.company %}<div class="px-3 py-2 text-muted small text-truncate" title="{{ user.company.name }}">{{ user.company.name }}</div>{% endif %}
         {% if request.user|may:'dashboard:index' %}<a class="nav-link" href="{% url 'dashboard:index' %}" ><i class="bi bi-bar-chart"></i> Обзор</a>{% endif %}
         {% if request.user|may:'planning:workspace_list' %}<a class="nav-link" href="{% url 'planning:workspace_list' %}" data-paths="/planning/workspace/ /planning/workspace-versions/"><i class="bi bi-calendar-range"></i> Планирование</a>{% endif %}
-        {% if request.user|may:'planning:global_list' %}<a class="nav-link" href="{% url 'planning:global_list' %}" data-paths="/planning/global/"><i class="bi bi-clipboard-check"></i> Версии и согласование</a>{% endif %}
+        {% if request.user|may:'planning:approval_list' %}<a class="nav-link" href="{% url 'planning:approval_list' %}" data-paths="/planning/approvals/"><i class="bi bi-clipboard-check"></i> Согласование планов</a>{% endif %}
+        {% if request.user|may:'planning:global_list' %}<a class="nav-link" href="{% url 'planning:global_list' %}" data-paths="/planning/global/"><i class="bi bi-clipboard-check"></i> Все версии</a>{% endif %}
         {% if request.user|may:'production:fact_day_workspace' %}<a class="nav-link" href="{% url 'production:fact_day_workspace' %}" ><i class="bi bi-clipboard-data"></i> Факт за день</a>{% endif %}
         {% if request.user|may:'projects:project_list' %}<a class="nav-link" href="{% url 'projects:project_list' %}" data-paths="/projects/"><i class="bi bi-folder"></i> Объекты и проекты</a>{% endif %}
         {% if request.user|may:'works:work_list' %}<a class="nav-link" href="{% url 'works:work_list' %}" data-paths="/works/"><i class="bi bi-list-task"></i> Работы</a>{% endif %}

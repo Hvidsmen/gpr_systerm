@@ -50,8 +50,9 @@ path('versions/<int:pk>/set-baseline/', views.SetBaselineVersionView.as_view(), 
 path('matrix/', views.PlanMatrixView.as_view(), name='plan_matrix'),
 ]
 
-from .global_views import GlobalList, GlobalCreate, GlobalDetail, GlobalAction
+from .global_views import GlobalList, GlobalCreate, GlobalDetail, GlobalAction, ApprovalList
 urlpatterns += [
+    path('approvals/', ApprovalList.as_view(), name='approval_list'),
     path('global/', GlobalList.as_view(), name='global_list'),
     path('global/create/', GlobalCreate.as_view(), name='global_create'),
     path('global/<int:pk>/', GlobalDetail.as_view(), name='global_detail'),

@@ -1,0 +1,6 @@
+{% extends 'base.html' %}{% block content %}
+<h1>Согласование планов</h1>
+<p>Планы вашей компании, ожидающие решения. Генеральному директору доступны планы после согласования всех служб и утверждённые планы для завершения.</p>
+<div class="table-responsive"><table class="table align-middle"><thead><tr><th>План</th><th>Объект / период</th><th>Работы</th><th>Люди</th><th>Техника и ГСМ</th><th>Статус</th></tr></thead><tbody>
+{% for row in rows %}<tr><td><a href="{% url 'planning:global_detail' row.version.pk %}">{{ row.version.title }} · v{{ row.version.version_number }}</a></td><td>{{ row.version.construction_object }}<br>{{ row.version.start_date }} — {{ row.version.end_date }}</td>{% for section in row.sections %}<td>{% if row.legacy %}Прежний маршрут{% elif section.done %}<span class="text-success">Согласовано</span>{% else %}Ожидает{% endif %}</td>{% endfor %}<td>{{ row.version.get_status_display }}</td></tr>{% empty %}<tr><td colspan="6">Планов, ожидающих вашего решения, нет.</td></tr>{% endfor %}</tbody></table></div>
+{% endblock %}

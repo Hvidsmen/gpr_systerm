@@ -1,7 +1,7 @@
 from django.core.exceptions import ValidationError
 from django.db.models.signals import m2m_changed
 from django.dispatch import receiver
-from .models import GlobalPlanVersion
+from .models import GlobalPlanVersion, GlobalPlanReview, GlobalPlanDecision
 from .deletion_context import version_deletion_authorized
 
 
@@ -29,9 +29,12 @@ from .models import PlanVersion
 def preserve_global_provenance(sender, instance, **kwargs):
     referenced = instance.global_versions.exists()
     if not referenced:
-        for snapshot in GlobalPlanVersion.objects.filter(
-            company=instance.company
-        ).values_list("snapshot", flat=True):
+        from itertools import chain
+        snapshots = chain(
+            GlobalPlanVersion.objects.filter(company=instance.company).values_list("snapshot", flat=True),
+            GlobalPlanReview.objects.filter(company=instance.company).values_list("snapshot", flat=True),
+        )
+        for snapshot in snapshots:
             if any(
                 source["id"] == instance.pk
                 for work in snapshot.get("works", [])
@@ -49,7 +52,7 @@ def preserve_global_provenance(sender, instance, **kwargs):
 def preserve_global_version(sender, instance, **kwargs):
     if version_deletion_authorized(instance.pk):
         return
-    if instance.status in ["SUBMITTED", "APPROVED", "COMPLETED"]:
+    if instance.status in ["SUBMITTED", "APPROVED", "COMPLETED"] or instance.review_rounds.exists():
         raise ValidationError(
             "Отправленную или утверждённую глобальную версию удалять нельзя."
         )
@@ -84,3 +87,11 @@ def preserve_workspace_norm(sender, instance, **kwargs):
         raise ValidationError(
             "Подработы отправленного или утверждённого плана удалять нельзя."
         )
+
+
+@receiver(pre_delete, sender=GlobalPlanReview)
+@receiver(pre_delete, sender=GlobalPlanDecision)
+def preserve_review_history(sender, instance, **kwargs):
+    version_id = instance.version_id if sender is GlobalPlanReview else instance.review.version_id
+    if not version_deletion_authorized(version_id):
+        raise ValidationError("Историю согласования нельзя удалять отдельно от плана.")

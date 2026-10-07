@@ -82,6 +82,8 @@ class GlobalDetail(CompanyScopedMixin, DetailView):
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         ctx.update(comparison(self.object))
+        from .approval_workflow import panel
+        ctx.update(panel(self.object, self.request.user))
         if self.object.workspace_id:
             from .workspace_views import monthly_summary, resource_monthly_summary
             from .workspace_services import months_between
@@ -115,3 +117,23 @@ class GlobalAction(View):
         ):
             return redirect("planning:workspace_edit", pk=version.pk)
         return redirect("planning:global_detail", pk=version.pk)
+
+
+class ApprovalList(View):
+    def get(self, request):
+        from core.permissions import approval_role, require_roles, READ_ROLES
+        from .approval_workflow import current_review, ready, approved_sections, SECTIONS
+        require_roles(request.user, READ_ROLES)
+        role = approval_role(request.user)
+        section = {assigned: section for section, _, assigned, _ in SECTIONS}.get(role)
+        rows = []
+        versions = GlobalPlanVersion.objects.filter(company=request.user.company, status__in=['SUBMITTED', 'APPROVED']).select_related('construction_object').prefetch_related('review_rounds__decisions')
+        for version in versions:
+            review = current_review(version)
+            approved = approved_sections(review)
+            if section and (version.status != 'SUBMITTED' or section in approved):
+                continue
+            if role == 'CEO' and version.status == 'SUBMITTED' and not ready(review):
+                continue
+            rows.append({'version': version, 'sections': [{'label': label, 'done': part in approved} for part, label, _, _ in SECTIONS], 'ready': ready(review), 'legacy': bool(review and review.legacy_approved)})
+        return render(request, 'planning/approval_list.html', {'rows': rows})

@@ -79,9 +79,9 @@ class RoleAccessTests(TestCase):
                 GlobalPlanService.transition(version, self.users[role], 'approve')
         self.login('MANAGER')
         self.assertEqual(self.client.post(reverse('planning:global_action', args=[version.pk, 'submit'])).status_code, 403)
-        self.assertEqual(self.client.post(reverse('planning:global_action', args=[version.pk, 'approve'])).status_code, 302)
+        self.assertEqual(self.client.post(reverse('planning:global_action', args=[version.pk, 'approve'])).status_code, 403)
         version.refresh_from_db()
-        self.assertEqual(version.status, 'APPROVED')
+        self.assertEqual(version.status, 'SUBMITTED')
         with self.assertRaises(PermissionDenied):
             GlobalPlanService.create(self.users['MANAGER'], self.objects[0], self.day, self.day)
 

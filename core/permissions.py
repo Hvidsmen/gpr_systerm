@@ -1,8 +1,10 @@
 """Central role policy and construction-object scope for fact entry."""
 from django.core.exceptions import PermissionDenied
 
-ROLES = {'ADMIN', 'PLANNER', 'MANAGER', 'FOREMAN'}
-READ_ROLES = {'ADMIN', 'PLANNER', 'MANAGER'}
+DEPARTMENT_ROLES = {'PRODUCTION_HEAD', 'HR_HEAD', 'TECH_HEAD'}
+GLOBAL_APPROVAL_ROLES = DEPARTMENT_ROLES | {'CEO'}
+ROLES = {'ADMIN', 'PLANNER', 'MANAGER', 'FOREMAN'} | GLOBAL_APPROVAL_ROLES
+READ_ROLES = {'ADMIN', 'PLANNER', 'MANAGER'} | GLOBAL_APPROVAL_ROLES
 PLAN_ROLES = {'ADMIN', 'PLANNER'}
 FACT_ROLES = {'ADMIN', 'FOREMAN'}
 APPROVAL_ROLES = {'ADMIN', 'MANAGER'}
@@ -17,6 +19,26 @@ def role_code(user):
 def require_roles(user, roles):
     if not user.is_authenticated or not user.company_id or role_code(user) not in roles:
         raise PermissionDenied('Роль пользователя не разрешает это действие.')
+
+
+def approval_role(user):
+    code = user.role.code if user.role_id else None
+    return code if code in GLOBAL_APPROVAL_ROLES else role_code(user)
+
+
+def require_global_action(user, action):
+    roles = {
+        'approve_production': {'PRODUCTION_HEAD'},
+        'approve_hr': {'HR_HEAD'},
+        'approve_tech': {'TECH_HEAD'},
+        'approve': {'CEO'},
+        'complete': {'CEO'},
+        'reject': GLOBAL_APPROVAL_ROLES,
+    }.get(action)
+    if roles is None:
+        require_roles(user, PLAN_ROLES)
+    elif not user.is_authenticated or not user.company_id or approval_role(user) not in roles:
+        raise PermissionDenied('Действие доступно только ответственному руководителю или генеральному директору.')
 
 
 def scope_queryset(queryset, user):
@@ -72,7 +94,9 @@ def check_route(user, match, method):
         return
     if namespace == 'planning':
         action = match.kwargs.get('action') if name == 'global_action' else None
-        if name in {'version_approve', 'version_reject', 'version_complete'} or action in {'approve', 'reject', 'complete'}:
+        if name == 'global_action':
+            require_global_action(user, action)
+        elif name in {'version_approve', 'version_reject', 'version_complete'}:
             require_roles(user, APPROVAL_ROLES)
         elif name.endswith(('_list', '_detail', '_export', '_versions')) or name == 'plan_matrix':
             require_roles(user, READ_ROLES)

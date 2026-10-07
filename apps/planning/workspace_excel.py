@@ -20,6 +20,7 @@ from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 from openpyxl.comments import Comment
 
+from .approval_workflow import baseline_snapshot
 from core.permissions import require_roles, PLAN_ROLES, READ_ROLES
 from apps.resources.models import Brigade, EquipmentType
 from apps.works.models import ProjectWork
@@ -89,8 +90,9 @@ def make_workbook(version, months, template=False):
             cell.font = Font(color='FFFFFF', bold=True)
             cell.fill = PatternFill('solid', fgColor='6C757D' if cell.column>len(headers(sheet,months)) else '1263D6')
         worksheets[sheet] = ws
-    snapshot = version.snapshot if version.is_immutable else {}
-    if not template and not version.is_immutable and version.version_kind == 'FORECAST':
+    frozen = version.status in ["SUBMITTED", "APPROVED", "COMPLETED"]
+    snapshot = version.snapshot if frozen else {}
+    if not template and not frozen and version.version_kind == 'FORECAST':
         snapshot = build_workspace_snapshot(version)
     allocations = {(row.work_id, row.month): row for row in version.work_allocations.select_related('work')}
     specs = {spec['id']: spec for spec in snapshot.get('works', [])}
@@ -251,7 +253,7 @@ def automatic_future(version, kind, identity, month):
     if not version.planning_month or version.scenario != 'REMAINING' or month <= version.planning_month:
         return False
     if not hasattr(version, '_excel_automatic_inputs'):
-        inputs=version.workspace.baseline_version.snapshot.get('monthly_inputs', {})
+        inputs=baseline_snapshot(version).get('monthly_inputs', {})
         identities={'work':set(),'labor':set(),'equipment':set(),'fuel':set()}
         for row in inputs.get('works', []):
             if date.fromisoformat(row['month'])>version.planning_month and Decimal(row['quantity'])>0:
