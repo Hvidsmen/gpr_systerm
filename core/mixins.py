@@ -26,6 +26,8 @@ class CompanyScopedMixin:
         for field in form.fields.values():
             if isinstance(field, (forms.ModelChoiceField, forms.ModelMultipleChoiceField)):
                 model = field.queryset.model
+                if model._meta.label == 'works.ProjectWork':
+                    field.queryset=field.queryset.filter(merged_source__isnull=True)
                 if any(f.name == 'company' for f in model._meta.fields):
                     from .permissions import scope_queryset
                     field.queryset = scope_queryset(field.queryset, self.request.user)

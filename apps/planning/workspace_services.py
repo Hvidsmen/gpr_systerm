@@ -386,6 +386,11 @@ def check_inputs(version):
 def build_workspace_snapshot(version):
     workspace = version.workspace
     check_inputs(version)
+    from apps.works.models import WorkMergePlanRevision
+    from apps.works.merge_planning import input_fingerprint
+    revision=WorkMergePlanRevision.objects.filter(company=version.company,target_version=version).first()
+    if revision and revision.seed_snapshot and revision.seed_snapshot.get('_merge_input_fingerprint') == input_fingerprint(version):
+        return deepcopy(revision.seed_snapshot)
     inputs = list(version.work_allocations.select_related("work", "load_profile"))
     resources = [
         resource_input(r)
@@ -403,7 +408,7 @@ def build_workspace_snapshot(version):
             rows = []
             for allocation in inputs:
                 if allocation.work_id == work_id:
-                    rows += work_rows(
+                    rows += allocation.daily_override if allocation.daily_override is not None else work_rows(
                         workspace,
                         spec,
                         allocation.month,
@@ -422,8 +427,9 @@ def build_workspace_snapshot(version):
         baseline = workspace.baseline_version
         if not baseline or (not version.baseline_review_id and not baseline.is_immutable):
             raise ValidationError("Сначала утвердите базовую версию периода.")
+        from apps.works.merge_planning import transform_snapshot
         works, resource_plans, warnings = build_forecast(
-            version, inputs, resources, baseline_snapshot(version)
+            version, inputs, resources, transform_snapshot(baseline_snapshot(version), version.company)
         )
     return json_copy(
         {
@@ -448,6 +454,7 @@ def build_workspace_snapshot(version):
                         "month": r.month.isoformat(),
                         "quantity": str(r.quantity),
                         "item_quantities": r.item_quantities,
+                        "daily_override": r.daily_override,
                         "load_profile_id": r.load_profile_id,
                         "profile": (
                             captured_profile(r.load_profile)
@@ -492,7 +499,7 @@ def build_forecast(version, inputs, resources, base):
             raise ValidationError(
                 f'Укажите план на выбранный месяц для работы «{spec["name"]}», включая нулевой объём.'
             )
-        rows = work_rows(
+        rows = deepcopy(current.daily_override) if current.daily_override is not None else work_rows(
             workspace, spec, target, current.quantity, current.load_profile, current.item_quantities
         )
         context = []
@@ -831,22 +838,26 @@ class WorkspaceService:
             raise ValidationError("У утверждённой базы отсутствует раунд согласования. Выполните миграции базы.")
         version.save(update_fields=["baseline_review"])
         source = previous or workspace.baseline_version
-        specs = {s["id"]: s for s in baseline_snapshot(version)["works"]}
+        from apps.works.merge_planning import transform_snapshot
+        base = transform_snapshot(baseline_snapshot(version),workspace.company)
+        specs={s['id']:s for s in base['works']}
         if previous:
-            specs.update({s["id"]: s for s in previous.snapshot.get("works", [])})
+            specs.update({s['id']:s for s in transform_snapshot(previous.snapshot,workspace.company).get('works',[])})
+        from apps.works.models import WorkMergeSource
         for spec in specs.values():
-            prior = source.work_allocations.filter(
-                work_id=spec["id"], month=month
-            ).first()
-            WorkMonthAllocation.objects.create(
-                company=workspace.company,
-                version=version,
-                work_id=spec["id"],
-                month=month,
-                quantity=prior.quantity if prior else 0,
-                item_quantities=deepcopy(prior.item_quantities) if prior else {},
-                load_profile=prior.load_profile if prior else None,
-            )
+            prior=source.work_allocations.filter(work_id=spec['id'],month=month).first()
+            quantities=deepcopy(prior.item_quantities) if prior else {}
+            quantity=prior.quantity if prior else ZERO
+            daily=deepcopy(prior.daily_override) if prior else None
+            if not prior:
+                links=list(WorkMergeSource.objects.filter(company=workspace.company,item__project_work_id=spec['id']))
+                if links:
+                    values={link.item_id: (source.work_allocations.filter(work_id=link.source_work_id,month=month).values_list('quantity',flat=True).first() or ZERO) for link in links}
+                    quantities={str(k):str(v) for k,v in values.items()}
+                    quantity=quantity_from_totals(spec,values)
+                    daily=[deepcopy(r) for r in spec['plans'] if r['date'][:7]==month.isoformat()[:7]]
+            WorkMonthAllocation.objects.create(company=workspace.company,version=version,work_id=spec['id'],month=month,
+                quantity=quantity,item_quantities=quantities,daily_override=daily,load_profile=prior.load_profile if prior else None)
         for row in source.resource_allocations.filter(month=month):
             fields = {
                 f.name: getattr(row, f.name)

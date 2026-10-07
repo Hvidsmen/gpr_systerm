@@ -158,6 +158,8 @@ class ProjectWork(BaseCompanyModel):
 
     def clean(self):
         super().clean()
+        if self.pk and hasattr(self,'merged_source'):
+            raise ValidationError('Исходная работа архивная после объединения. Редактируйте составную работу.')
         for name in ("section", "template", "load_profile", "work_group"):
             if (
                 getattr(self, name + "_id", None)
@@ -183,6 +185,7 @@ class ProjectWork(BaseCompanyModel):
                 work_allocations__work=self,
                 status__in=["SUBMITTED", "APPROVED", "COMPLETED"],
             ).exists()
+            workspace_locked = workspace_locked or WorkMergePlanRevision.objects.filter(parent_work=self,target_version__status__in=['SUBMITTED','APPROVED','COMPLETED']).exists()
             previous = type(self).objects.get(pk=self.pk)
             if previous.template_id != self.template_id and (
                 self.daily_facts.exists()
@@ -313,6 +316,7 @@ class ProjectWorkItem(BaseCompanyModel):
                 status__in=["SUBMITTED", "APPROVED", "COMPLETED"],
             ).exists()
         )
+        workspace_locked = workspace_locked or (self.project_work_id and WorkMergePlanRevision.objects.filter(parent_work_id=self.project_work_id,target_version__status__in=['SUBMITTED','APPROVED','COMPLETED']).exists())
         if (
             not self.pk
             and self.project_work_id
@@ -450,3 +454,29 @@ class MeasurementUnit(BaseCompanyModel):
 
     def __str__(self):
         return f'{self.symbol} — {self.name}'
+
+
+class WorkMergeSource(BaseCompanyModel):
+    source_work = models.OneToOneField(ProjectWork, on_delete=models.PROTECT, related_name='merged_source')
+    item = models.OneToOneField(ProjectWorkItem, on_delete=models.PROTECT, related_name='merge_origin')
+    created_by = models.ForeignKey('accounts.User', on_delete=models.SET_NULL, null=True)
+
+    class Meta:
+        verbose_name = 'источник объединённой работы'
+        verbose_name_plural = 'источники объединённых работ'
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if self.source_work.company_id != self.company_id or self.item.company_id != self.company_id:
+            raise ValidationError('Работы другой компании.')
+        if self.source_work.kind != 'SIMPLE' or self.item.project_work.kind != 'COMPOSITE':
+            raise ValidationError('Объединяются только простые работы в составную.')
+        if self.source_work.section.construction_object_id != self.item.project_work.section.construction_object_id:
+            raise ValidationError('Работы разных объектов объединять нельзя.')
+
+
+class WorkMergePlanRevision(BaseCompanyModel):
+    source_version = models.ForeignKey('planning.GlobalPlanVersion', on_delete=models.SET_NULL, null=True, blank=True, related_name='merge_revisions')
+    target_version = models.OneToOneField('planning.GlobalPlanVersion', on_delete=models.SET_NULL, null=True, blank=True, related_name='merge_revision')
+    parent_work = models.ForeignKey(ProjectWork, on_delete=models.PROTECT, related_name='merge_plan_revisions')
+    seed_snapshot = models.JSONField(default=dict, blank=True)

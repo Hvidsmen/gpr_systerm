@@ -30,7 +30,7 @@ class WorkListView(CompanyScopedMixin, ListView):
 
     def get_queryset(self):
         self.filter_form = WorkListFilterForm(self.request.GET, company=self.request.user.company)
-        queryset = ProjectWork.objects.filter(company=self.request.user.company)
+        queryset = ProjectWork.objects.filter(company=self.request.user.company, merged_source__isnull=True)
         if self.filter_form.is_valid():
             values = self.filter_form.cleaned_data
             for field, path in [('project', 'section__construction_object__project'), ('construction_object', 'section__construction_object'), ('section', 'section')]:
@@ -81,6 +81,8 @@ class WorkDetailView(CompanyScopedMixin, DetailView):
         from decimal import Decimal
 
         context = super().get_context_data(**kwargs)
+        context['merge_sources']=self.object.items.filter(merge_origin__isnull=False).select_related('merge_origin__source_work')
+        context['merge_plans']=self.object.merge_plan_revisions.select_related('target_version','source_version')
         work = self.object
         planned = WorkProgressService.planned(work)
         fact = WorkProgressService.completed(work)
@@ -191,6 +193,8 @@ class WorkDeleteView(CompanyScopedMixin, DeleteView):
     def form_valid(self, form):
         from django.core.exceptions import PermissionDenied
 
+        if hasattr(self.object,'merged_source') or self.object.items.filter(merge_origin__isnull=False).exists():
+            raise PermissionDenied('Работа участвует в объединении и сохраняется для истории.')
         if (
             self.object.workmonthallocation_set.exists()
             or self.object.daily_facts.exists()
@@ -219,6 +223,8 @@ class WorkItemDeleteView(CompanyScopedMixin, DeleteView):
     def form_valid(self, form):
         from django.core.exceptions import PermissionDenied
 
+        if hasattr(self.object,'merge_origin'):
+            raise PermissionDenied('Подработа сохраняет историю объединения и не может быть удалена.')
         work = self.object.project_work
         from apps.planning.models import GlobalPlanVersion
 

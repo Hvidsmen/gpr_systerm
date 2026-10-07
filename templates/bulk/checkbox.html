@@ -1,1 +1,1 @@
-{% load access %}{% if request.user|may:bulk_route %}<input type="checkbox" class="form-check-input" name="selected" value="{{ record.pk }}" form="bulk-delete-form" data-bulk-row aria-label="Выбрать {{ record }}">{% endif %}
+{% load access %}{% if request.user|may:bulk_route %}<input type="checkbox" class="form-check-input" name="selected" value="{{ record.pk }}" form="bulk-delete-form" data-bulk-row data-work-kind="{{ record.kind }}" data-work-object="{{ record.section.construction_object_id }}" aria-label="Выбрать {{ record }}">{% endif %}

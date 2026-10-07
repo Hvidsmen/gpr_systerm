@@ -52,7 +52,7 @@ class FactMatrixFilterForm(forms.Form):
             lambda obj: f"{obj.project.name} / {obj.name}"
         )
         works = (
-            scope_queryset(ProjectWork.objects.all(), user)
+            scope_queryset(ProjectWork.objects.filter(merged_source__isnull=True), user)
             .select_related("section__construction_object")
             .order_by("name", "pk")
         )

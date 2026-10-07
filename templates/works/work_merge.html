@@ -1,0 +1,14 @@
+{% extends 'base.html' %}{% block content %}
+<h1 class="h3">Объединить простые работы</h1><p>{{ object.project }} · {{ object.name }}</p>
+<p>Исходные работы станут подработами. Их объёмы, даты, авторы и комментарии факта сохраняются. Результат основной работы считается накопительно по минимуму выполненных нормативов.</p>
+<p class="text-muted">Согласованная история сохраняется. Для актуальных согласованных планов создаются новые черновики; для согласованной базы — новое рабочее пространство. Черновики обновляются. Исходные работы остаются архивными.</p>
+<form method="post" class="card p-3 mb-3">{% csrf_token %}<input type="hidden" name="merge_stage" value="preview">{% for work in sources %}<input type="hidden" name="selected" value="{{ work.pk }}">{% endfor %}
+{{ form.non_field_errors }}<div class="row g-2">{% for field in form %}{% if field.name == 'name' or field.name == 'section' or field.name == 'unit' or field.name == 'work_group' or field.name == 'allow_fractional' %}<div class="col-md-4">{{ field.label_tag }} {{ field }}{{ field.errors }}</div>{% endif %}{% endfor %}</div>
+<div class="table-responsive my-3"><table class="table table-sm"><thead><tr><th>Подработа / единица</th><th>Норматив на единицу составной работы</th><th>Профиль</th></tr></thead><tbody>{% for row in norm_rows %}<tr><td>{{ row.work.name }} ({{ row.work.unit }})</td><td>{{ row.norm }}{{ row.norm.errors }}</td><td>{{ row.profile }}{{ row.profile.errors }}</td></tr>{% endfor %}</tbody></table></div>
+<button class="btn btn-primary">Предварительный расчёт</button></form>
+{% if preview %}<section class="card p-3"><h2 class="h5">Результат объединения</h2><p>Будет перенесено записей факта: {{ fact_records }}. Накопленный факт основной работы: <strong>{{ fact_quantity }}</strong> {{ form.unit.value }}.</p>
+<details><summary>Пересчёт факта по дням</summary><table class="table table-sm"><tr><th>Дата</th><th>За день</th><th>Накопительно</th></tr>{% for day in fact_days %}<tr><td>{{ day.date }}</td><td>{{ day.daily }}</td><td>{{ day.cumulative }}</td></tr>{% endfor %}</table></details>
+<details><summary>Месячные объёмы по нормативам</summary><table class="table table-sm"><tr><th>Версия</th><th>Месяц</th><th>Объём основной работы</th></tr>{% for row in plans %}<tr><td>{{ row.version }}</td><td>{{ row.month|date:'m.Y' }}</td><td>{{ row.quantity }}{% if row.incomplete %}<small class="text-muted"> · Недостающие подработы считаются нулевыми</small>{% endif %}</td></tr>{% endfor %}</table></details>
+<form method="post" class="mt-3">{% csrf_token %}<input type="hidden" name="merge_stage" value="confirm"><input type="hidden" name="preview" value="{{ preview }}"><button class="btn btn-success">Подтвердить объединение</button></form></section>{% endif %}
+<a class="btn btn-outline-secondary mt-3" href="{% url 'works:work_list' %}">К списку работ</a>
+{% endblock %}

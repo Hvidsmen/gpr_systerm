@@ -75,7 +75,7 @@ class WorkAllocationForm(AllocationMixin, forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        works = ProjectWork.objects.filter(
+        works = ProjectWork.objects.filter(merged_source__isnull=True,
             company=self.company,
             section__construction_object=self.version.construction_object,
         )
@@ -91,6 +91,8 @@ class WorkAllocationForm(AllocationMixin, forms.ModelForm):
         data = super().clean()
         if data.get('reset_item_quantities') or 'quantity' in self.changed_data or 'work' in self.changed_data:
             self.instance.item_quantities = {}
+        if data.get('reset_item_quantities') or any(name in self.changed_data for name in ['work','month','quantity','load_profile']):
+            self.instance.daily_override = None
         return data
 
     def _update_errors(self, errors):
@@ -148,7 +150,7 @@ ResourceAllocationSet = modelformset_factory(
 
 class AddWorkForm(CompanyFormMixin, forms.Form):
     work = forms.ModelChoiceField(
-        queryset=ProjectWork.objects.all(), label="Работа для всех месяцев"
+        queryset=ProjectWork.objects.filter(merged_source__isnull=True), label="Работа для всех месяцев"
     )
 
     def __init__(self, *args, workspace, **kwargs):

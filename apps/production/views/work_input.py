@@ -14,7 +14,7 @@ class FactInputView(View):
 
     def display(self, request, form=None):
         filters = FactInputFilterForm(request.GET or None, user=request.user)
-        works = scope_queryset(ProjectWork.objects.all(), request.user)
+        works = scope_queryset(ProjectWork.objects.filter(merged_source__isnull=True), request.user)
         if filters.is_bound:
             if filters.is_valid():
                 for field, lookup in [

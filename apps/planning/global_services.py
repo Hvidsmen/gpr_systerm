@@ -1,3 +1,4 @@
+from copy import deepcopy
 from core.permissions import require_roles, PLAN_ROLES
 import json
 from collections import defaultdict
@@ -34,7 +35,7 @@ def json_copy(value):
 
 def source_versions(obj, start, end):
     candidates = PlanVersion.objects.filter(
-        company=obj.company,
+        company=obj.company, monthly_plan__project_work__merged_source__isnull=True,
         monthly_plan__project_work__section__construction_object=obj,
         status__in=["APPROVED", "COMPLETED"],
         monthly_plan__start_date__lte=end,
@@ -47,6 +48,11 @@ def source_versions(obj, start, end):
 
 
 def build_snapshot(version):
+    if not version.workspace_id:
+        from apps.works.models import WorkMergePlanRevision
+        revision = WorkMergePlanRevision.objects.filter(company=version.company, target_version=version).first()
+        if revision and revision.seed_snapshot:
+            return deepcopy(revision.seed_snapshot)
     if version.workspace_id:
         from .workspace_services import build_workspace_snapshot
 
@@ -282,12 +288,8 @@ def comparison(version):
     start, end = version.start_date, version.end_date
     works = []
     for spec in version.snapshot.get("works", []):
-        series = cumulative_series(
-            spec,
-            DailyFact.objects.filter(
-                company=version.company, project_work_id=spec["id"], date__lte=end
-            ).values_list("date", "work_item_id", "actual_quantity"),
-        )
+        from apps.works.progress import historical_fact_rows
+        series = cumulative_series(spec, historical_fact_rows(version.company, spec["id"], end))
         planned = {row["date"]: Decimal(row["quantity"]) for row in spec["daily"]}
         actual = {
             day.isoformat(): values["daily"]

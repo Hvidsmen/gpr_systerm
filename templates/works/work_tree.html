@@ -4,7 +4,10 @@
 
 {% block title %}{{ work.name }} — структура{% endblock %}
 
-{% block content %}<p>{{ work.get_kind_display }} · Выполнено {{ completed_quantity }} {{ work.unit }} накопительно{% if work.kind == 'COMPOSITE' %} · Дробные единицы: {{ work.allow_fractional|yesno:'да,нет' }}{% endif %}</p>
+{% block content %}
+{% if work.merged_source %}<div class="alert alert-info">Исходная работа объединена в <a href="{% url 'works:work_detail' work.merged_source.item.project_work_id %}">{{ work.merged_source.item.project_work }}</a>. Запись сохранена для истории.</div>{% endif %}
+{% if merge_sources %}<details class="card p-3 mb-3"><summary>История объединения и новые планы</summary><ul>{% for item in merge_sources %}{% if item.merge_origin %}<li>{{ item.merge_origin.source_work.name }} → {{ item.name }} · норматив {{ item.quantity_per_unit }} {{ item.unit }}</li>{% endif %}{% endfor %}</ul>{% for revision in merge_plans %}<p>{% if revision.target_version_id %}<a href="{% url 'planning:global_detail' revision.target_version_id %}">{{ revision.target_version }}</a> · {{ revision.target_version.get_status_display }}{% else %}Черновик объединённого плана удалён.{% endif %}</p>{% endfor %}</details>{% endif %}
+<p>{{ work.get_kind_display }} · Выполнено {{ completed_quantity }} {{ work.unit }} накопительно{% if work.kind == 'COMPOSITE' %} · Дробные единицы: {{ work.allow_fractional|yesno:'да,нет' }}{% endif %}</p>
 <!-- Page header -->
 <div class="page-header d-flex justify-content-between align-items-center">
     <div>

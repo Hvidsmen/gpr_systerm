@@ -68,7 +68,7 @@ class FactDayWorkspaceView(CompanyRequiredMixin, View):
         existing = set(work_facts.values_list('project_work_id', 'work_item_id'))
         initial = []
         hints = {"works": {}}
-        for work in ProjectWork.objects.filter(company=company, section__construction_object=obj).prefetch_related('items'):
+        for work in ProjectWork.objects.filter(merged_source__isnull=True,company=company, section__construction_object=obj).prefetch_related('items'):
             items = [item for item in work.items.all() if item.company_id == company.pk] if work.kind == 'COMPOSITE' else [None]
             for item in items:
                 key = (work.pk, item.pk if item else None)

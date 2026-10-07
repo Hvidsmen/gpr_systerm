@@ -3,7 +3,7 @@
 Хранят факты выполнения работ: объёмы, люди, техника, топливо.
 """
 
-from django.db import models
+from django.db import models, transaction
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.utils.translation import gettext_lazy as _
@@ -91,6 +91,8 @@ class DailyFact(BaseCompanyModel):
         super().clean()
         if self.project_work_id:
             work = self.project_work
+            if hasattr(work,'merged_source'):
+                raise ValidationError({'project_work':'Исходная работа архивная. Вводите факт в подработу составной работы.'})
             if self.company_id != work.company_id:
                 raise ValidationError({"project_work": "Работа другой компании."})
             if work.kind == "SIMPLE" and self.work_item_id:
@@ -118,9 +120,13 @@ class DailyFact(BaseCompanyModel):
                 {"actual_quantity": "Объём не может быть отрицательным."}
             )
 
+    @transaction.atomic
     def save(self, *args, **kwargs):
         from decimal import Decimal
 
+        from apps.works.models import ProjectWork
+        if self.project_work_id:
+            self.project_work=ProjectWork.objects.select_for_update().get(pk=self.project_work_id)
         # Composite value is a cost allocation; completion is calculated separately.
         factor = Decimal("1")
         self.full_clean(exclude=["actual_value"])

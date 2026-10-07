@@ -463,7 +463,7 @@ def resolve_sheet(company, project, sheet, target_object=None):
     works = (
         list(
             ProjectWork.objects.filter(
-                company=company, section__construction_object=obj
+                company=company, merged_source__isnull=True, section__construction_object=obj
             )
             .select_related("section")
             .prefetch_related("items")

@@ -241,6 +241,13 @@ def build_matrix(user, filters, *, source_overrides=None):
             "category"
         )
     }
+    from apps.works.models import WorkMergeSource
+    merge_links = list(WorkMergeSource.objects.filter(company=user.company).select_related('item'))
+    item_sources = {link.item_id: link.source_work_id for link in merge_links}
+    source_parents = {link.source_work_id: link.item.project_work_id for link in merge_links}
+    parent_sources = defaultdict(set)
+    for source_id, parent_id in source_parents.items():
+        parent_sources[parent_id].add(source_id)
     work_facts = defaultdict(list)
     for row in DailyFact.objects.filter(
         company=user.company,
@@ -250,6 +257,8 @@ def build_matrix(user, filters, *, source_overrides=None):
         work_facts[row["project_work_id"]].append(
             (row["date"], row["work_item_id"], row["actual_quantity"])
         )
+        if row['work_item_id'] in item_sources:
+            work_facts[item_sources[row['work_item_id']]].append((row['date'], None, row['actual_quantity']))
     resource_facts = {
         kind: defaultdict(lambda: defaultdict(lambda: ZERO))
         for kind in ["labor", "equipment", "fuel", "balance"]
@@ -375,9 +384,19 @@ def build_matrix(user, filters, *, source_overrides=None):
                 resource_index[kind][idx] = data
                 if kind == "fuel":
                     resource_index["balance"][idx] = balances
+        def actual_visible(work_id, day):
+            selected=chosen.get(day)
+            ids=set(plan_index[id(selected)]) if selected else set()
+            parent=source_parents.get(work_id)
+            if parent:
+                return work_id in ids or bool(parent not in ids and ids.intersection(parent_sources[parent]))
+            if work_id in parent_sources:
+                return work_id in ids or not ids.intersection(parent_sources[work_id])
+            return True
+
         for work_id, work in work_catalog.items():
             if work.section.construction_object_id == obj.pk and any(
-                start <= day <= end for day, _, _ in work_facts[work_id]
+                start <= day <= end and actual_visible(work_id, day) for day, _, _ in work_facts[work_id]
             ):
                 work_specs.setdefault(work_id, work_specification(work))
         sections = []
@@ -401,7 +420,7 @@ def build_matrix(user, filters, *, source_overrides=None):
                 actual_by_item = defaultdict(dict)
                 actual_days = set()
                 for day, item, quantity in actual_rows:
-                    if start <= day <= end:
+                    if start <= day <= end and actual_visible(work_id, day):
                         actual_by_item[item][day] = (
                             actual_by_item[item].get(day, ZERO) + quantity
                         )

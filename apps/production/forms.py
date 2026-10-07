@@ -52,6 +52,7 @@ class DailyFactForm(CompanyFormMixin, forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields['project_work'].queryset=self.fields['project_work'].queryset.filter(merged_source__isnull=True)
         self.fields["work_item"].label_from_instance = (
             lambda item: f"{item.project_work}: {item.name}"
         )

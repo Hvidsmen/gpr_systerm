@@ -560,6 +560,7 @@ class WorkMonthAllocation(BaseCompanyModel):
         "Объём основной работы", max_digits=15, decimal_places=3, default=0
     )
     item_quantities = models.JSONField("Месячные объёмы подработ", default=dict, blank=True)
+    daily_override = models.JSONField("Сохранённый дневной план объединения", null=True, blank=True, default=None)
     load_profile = models.ForeignKey(
         LoadProfile,
         on_delete=models.PROTECT,
@@ -619,6 +620,21 @@ class WorkMonthAllocation(BaseCompanyModel):
             self.quantity = quantity_from_totals(work_specification(self.work), values)
             self._meta.get_field("quantity").clean(self.quantity, self)
 
+        if self.daily_override is not None and self.work_id and self.month and self.version_id:
+            from decimal import Decimal, InvalidOperation
+            from datetime import date
+            try:
+                allowed=set(self.work.items.values_list('pk',flat=True)) if self.work.kind == 'COMPOSITE' else {None}
+                if not isinstance(self.daily_override,list):
+                    raise ValueError
+                for row in self.daily_override:
+                    day=date.fromisoformat(row['date'])
+                    value=Decimal(str(row['quantity']))
+                    if row['item_id'] not in allowed or day.replace(day=1)!=self.month or day < self.version.start_date or day > self.version.end_date or not value.is_finite() or value<0:
+                        raise ValueError
+            except (KeyError,TypeError,ValueError,InvalidOperation):
+                raise ValidationError({'daily_override':'Некорректный сохранённый дневной план.'})
+
     def save(self, *args, **kwargs):
         from django.core.exceptions import ValidationError
 
@@ -628,6 +644,12 @@ class WorkMonthAllocation(BaseCompanyModel):
                 raise ValidationError(
                     "Месячные данные отправленной или утверждённой версии менять нельзя."
                 )
+        if self.pk and self.daily_override is not None:
+            previous = type(self).objects.get(pk=self.pk)
+            if (previous.quantity, previous.load_profile_id, previous.item_quantities) != (self.quantity, self.load_profile_id, self.item_quantities):
+                self.daily_override = None
+                if kwargs.get('update_fields') is not None:
+                    kwargs['update_fields']=set(kwargs['update_fields']) | {'daily_override'}
         self.full_clean()
         return super().save(*args, **kwargs)
 

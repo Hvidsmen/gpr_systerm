@@ -35,7 +35,7 @@ class BulkAddForm(CompanyFormMixin, forms.Form):
                 widget=forms.CheckboxSelectMultiple())
         else:
             querysets = {
-                'works': lambda: ProjectWork.objects.filter(company=self.company, section__construction_object=version.construction_object),
+                'works': lambda: ProjectWork.objects.filter(merged_source__isnull=True,company=self.company, section__construction_object=version.construction_object),
                 'labor': lambda: Brigade.objects.filter(company=self.company, is_active=True),
                 'equipment': lambda: EquipmentType.objects.filter(company=self.company, is_active=True),
             }

@@ -58,15 +58,23 @@ def cumulative_series(spec, rows):
     return result
 
 
+def historical_fact_rows(company, work_id, until=None):
+    from apps.production.models import DailyFact
+    from .models import WorkMergeSource
+    link = WorkMergeSource.objects.filter(company=company,source_work_id=work_id).first()
+    qs = DailyFact.objects.filter(company=company)
+    qs = qs.filter(work_item_id=link.item_id) if link else qs.filter(project_work_id=work_id)
+    if until:
+        qs=qs.filter(date__lte=until)
+    return [(day,None if link else item,quantity) for day,item,quantity in qs.values_list('date','work_item_id','actual_quantity')]
+
+
 class WorkProgressService:
     @staticmethod
     def facts(work, until=None, specification=None):
-        qs = work.daily_facts.filter(company=work.company)
-        if until:
-            qs = qs.filter(date__lte=until)
         return cumulative_series(
             specification or work_specification(work),
-            qs.values_list("date", "work_item_id", "actual_quantity"),
+            historical_fact_rows(work.company, work.pk, until),
         )
 
     @staticmethod

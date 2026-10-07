@@ -96,7 +96,7 @@ def make_workbook(version, months, template=False):
         snapshot = build_workspace_snapshot(version)
     allocations = {(row.work_id, row.month): row for row in version.work_allocations.select_related('work')}
     specs = {spec['id']: spec for spec in snapshot.get('works', [])}
-    works = ProjectWork.objects.filter(company=version.company, section__construction_object=version.construction_object).select_related('section', 'work_group').prefetch_related('items').order_by('work_group__name', 'name', 'pk')
+    works = ProjectWork.objects.filter(merged_source__isnull=True,company=version.company, section__construction_object=version.construction_object).select_related('section', 'work_group').prefetch_related('items').order_by('work_group__name', 'name', 'pk')
     for work in works:
         relevant = any(key[0] == work.pk for key in allocations) or work.pk in specs
         if not template and not relevant:
@@ -279,7 +279,7 @@ def parse_workbook(upload, version, months):
     except Exception:
         raise ValidationError('Не удалось прочитать файл Excel.')
     errors=[];work_values=defaultdict(dict);resource_values=[];seen=set();total_cells=0
-    works={w.pk:w for w in ProjectWork.objects.filter(company=version.company,section__construction_object=version.construction_object).select_related('section').prefetch_related('items')}
+    works={w.pk:w for w in ProjectWork.objects.filter(merged_source__isnull=True,company=version.company,section__construction_object=version.construction_object).select_related('section').prefetch_related('items')}
     brigades={r.pk:r for r in Brigade.objects.filter(company=version.company)}
     equipment={r.pk:r for r in EquipmentType.objects.filter(company=version.company)}
     fuel_names=dict(ResourceMonthAllocation._meta.get_field('fuel_type').choices)
