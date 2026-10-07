@@ -1,43 +1,47 @@
 {% extends 'base.html' %}
 {% load access %}
-{% load i18n %}
-
-{% block title %}Дневные факты - ГПР Система{% endblock %}
-
+{% block title %}Журнал фактов — ГПР Система{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h2><i class="bi bi-clipboard-check"></i> Дневные факты</h2>
-    {% if request.user|may:'production:fact_create' %}<a href="{% url 'production:fact_create' %}" class="btn btn-primary">
-        <i class="bi bi-plus-circle"></i> Ввести факт
-    </a>{% endif %}
-</div>
-
-{% if facts %}
-    <div class="table-responsive">
-        <table class="table table-hover">
-            <thead class="table-light">
-                <tr>
-                    <th>Дата</th>
-                    <th>Работа</th>
-                    <th>Элемент</th>
-                    <th>Фактический объем</th>
-                    <th>Ввел</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for fact in facts %}
-                    <tr>
-                        <td>{{ fact.date }}</td>
-                        <td>{{ fact.project_work.name }}</td>
-                        <td>{{ fact.work_item.name }}</td>
-                        <td>{{ fact.actual_quantity }}</td>
-                        <td>{{ fact.reported_by|default:"-" }}</td>
-                    </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-{% else %}
-    <div class="alert alert-info">Факты не найдены.</div>
-{% endif %}
+<style>
+.fact-matrix-filters { display:grid; grid-template-columns:2fr 1fr 1fr 2fr auto; gap:10px; align-items:end; }
+.fact-matrix-filters label { display:block; font-size:12px; margin-bottom:4px; }
+.fact-matrix-filters .errorlist { color:#b02a37; font-size:12px; margin:4px 0 0; padding-left:16px; }
+.fact-matrix-wrap { max-height:70vh; overflow:auto; border:1px solid #dee2e6; border-radius:8px; }
+.fact-matrix { margin:0; width:max-content; min-width:100%; border-collapse:separate; border-spacing:0; font-size:13px; }
+.fact-matrix th, .fact-matrix td { padding:8px; border-right:1px solid #eef0f2; border-bottom:1px solid #dee2e6; vertical-align:middle; }
+.fact-matrix thead th { position:sticky; top:0; z-index:2; background:#f4f6f9; text-align:center; }
+.fact-matrix .fact-name { position:sticky; left:0; z-index:1; min-width:280px; max-width:360px; width:320px; background:white; white-space:normal; overflow-wrap:anywhere; }
+.fact-matrix thead .fact-name { z-index:3; background:#f4f6f9; }
+.fact-matrix .fact-day { min-width:105px; text-align:right; }
+.fact-matrix .fact-unit, .fact-matrix .fact-total { min-width:70px; white-space:nowrap; }
+.fact-matrix .fact-total { font-weight:600; background:#f8f9fa; }
+.fact-matrix .fact-weekend { background:#fafbfc; }
+.fact-matrix .fact-entry { display:flex; gap:6px; justify-content:end; align-items:center; white-space:nowrap; }
+.fact-matrix .fact-delete { color:#b02a37; padding:3px 5px; border:1px solid #f1d6d9; border-radius:4px; }
+.fact-matrix .fact-delete:hover, .fact-matrix .fact-delete:focus { background:#f8d7da; }
+.fact-matrix .fact-location { color:#6c757d; font-size:11px; margin-bottom:3px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.fact-matrix .fact-workname { display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+.fact-matrix .fact-subwork { font-size:12px; margin-top:3px; }
+@media(max-width:1199px) { .fact-matrix-filters { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:575px) { .fact-matrix-filters { grid-template-columns:1fr; } .fact-matrix .fact-name { min-width:190px; max-width:220px; } }
+</style>
+<div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3"><h1 class="h3 mb-0"><i class="bi bi-clipboard-check"></i> Журнал фактов</h1>{% if request.user|may:'production:fact_create' %}<a href="{% url 'production:fact_create' %}" class="btn btn-primary">Ввести факт</a>{% endif %}</div>
+<form method="get" id="fact-matrix-filters" class="card mb-3"><div class="card-body p-3 fact-matrix-filters">
+{% for field in filter_form %}<div>{{ field.label_tag }}{{ field }}{{ field.errors }}</div>{% endfor %}
+<div class="d-flex gap-2"><button class="btn btn-sm btn-primary">Применить</button><a href="{% url 'production:fact_list' %}" class="btn btn-sm btn-outline-secondary">Сбросить</a></div>
+</div></form>
+<p class="text-muted small">Даты — по столбцам, работы и подработы — по строкам. «—» означает отсутствие записи, ноль — введённый нулевой факт. В строках составных работ показаны объёмы подработ в их единицах.{% if request.user|may:'production:fact_delete' %} Кнопка корзины удаляет отдельную запись после подтверждения.{% endif %}</p>
+{% if matrix_rows %}
+<div class="fact-matrix-wrap" role="region" aria-label="Матрица дневных фактов" tabindex="0"><table class="fact-matrix table">
+<thead><tr><th class="fact-name" scope="col">Объект / Работа / Подработа</th><th class="fact-unit" scope="col">Ед.</th><th class="fact-total" scope="col">Итого</th>{% for day in matrix_days %}<th scope="col" class="fact-day {% if day.weekday >= 5 %}fact-weekend{% endif %}">{{ day|date:'d.m.Y' }}<div class="small text-muted">{{ day|date:'D' }}</div></th>{% endfor %}</tr></thead>
+<tbody>{% for row in matrix_rows %}<tr>
+<th scope="row" class="fact-name"><div class="fact-location" title="{{ row.object.project.name }} / {{ row.object.name }}">{{ row.object.project.name }} / {{ row.object.name }}</div><div class="fact-workname" title="{{ row.work.name }}">{{ row.work.name }}</div>{% if row.item %}<div class="fact-subwork text-muted">↳ {{ row.item.name }}</div>{% endif %}</th>
+<td class="fact-unit">{{ row.unit }}</td><td class="fact-total text-end">{{ row.total }}</td>
+{% for fact in row.cells %}<td class="fact-day">{% if fact %}<div class="fact-entry"><span title="Ввёл: {{ fact.reported_by|default:'—' }}{% if fact.comment %}. {{ fact.comment }}{% endif %}">{{ fact.actual_quantity }}</span>{% if request.user|may:'production:fact_delete' %}<a class="fact-delete" href="{% url 'production:fact_delete' fact.pk %}?return_query={{ matrix_query|urlencode }}" title="Удалить факт за {{ fact.date|date:'d.m.Y' }}" aria-label="Удалить факт: {{ row.work.name }}{% if row.item %}, {{ row.item.name }}{% endif %}, {{ fact.date|date:'d.m.Y' }}"><i class="bi bi-trash"></i></a>{% endif %}</div>{% else %}<span class="text-muted">—</span>{% endif %}</td>{% endfor %}
+</tr>{% endfor %}</tbody></table></div>
+{% if is_paginated %}<nav aria-label="Страницы матрицы фактов" class="d-flex gap-3 mt-3">{% if page_obj.has_previous %}<a href="?{{ filter_query }}&amp;page={{ page_obj.previous_page_number }}">Назад</a>{% endif %}<span>{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>{% if page_obj.has_next %}<a href="?{{ filter_query }}&amp;page={{ page_obj.next_page_number }}">Далее</a>{% endif %}</nav>{% endif %}
+{% else %}<div class="alert alert-info">За выбранный период факты не найдены.</div>{% endif %}
+<script>
+(() => { const form=document.getElementById('fact-matrix-filters'); form.elements.construction_object.addEventListener('change', () => { form.elements.work.value=''; form.requestSubmit(); }); })();
+</script>
 {% endblock %}

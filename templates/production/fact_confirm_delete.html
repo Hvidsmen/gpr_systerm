@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="card mx-auto" style="max-width:650px"><div class="card-body">
+<h1 class="h4">Удалить факт?</h1>
+<p class="text-muted">Будет удалена только эта запись за выбранную дату. Итоги факта будут пересчитаны.</p>
+<dl class="row">
+<dt class="col-sm-4">Объект</dt><dd class="col-sm-8">{{ object.project_work.section.construction_object }}</dd>
+<dt class="col-sm-4">Работа</dt><dd class="col-sm-8">{{ object.project_work.name }}</dd>
+{% if object.work_item %}<dt class="col-sm-4">Подработа</dt><dd class="col-sm-8">{{ object.work_item.name }}</dd>{% endif %}
+<dt class="col-sm-4">Дата</dt><dd class="col-sm-8">{{ object.date|date:'d.m.Y' }}</dd>
+<dt class="col-sm-4">Объём</dt><dd class="col-sm-8">{{ object.actual_quantity }} {% if object.work_item %}{{ object.work_item.unit }}{% else %}{{ object.project_work.unit }}{% endif %}</dd>
+<dt class="col-sm-4">Ввёл</dt><dd class="col-sm-8">{{ object.reported_by|default:'—' }}</dd>
+</dl>
+<form method="post">{% csrf_token %}<input type="hidden" name="return_query" value="{{ return_query }}"><button class="btn btn-danger">Удалить факт</button> <a class="btn btn-outline-secondary" href="{{ cancel_url }}">Отмена</a></form>
+</div></div>
+{% endblock %}
