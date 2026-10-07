@@ -1,3 +1,6 @@
+import re
+
+from django.db import connection
 from django.shortcuts import get_object_or_404
 from django.contrib import messages
 from django.views.generic import (
@@ -9,7 +12,8 @@ from django.views.generic import (
 )
 from django.urls import reverse_lazy
 from django.utils.translation import gettext_lazy as _
-from django.db.models import Count, Sum, DecimalField
+from django.db.models import Count, Sum, DecimalField, Exists, OuterRef
+from .list_filters import WorkListFilterForm
 from .services import WorkItemGeneratorService
 from apps.accounts.models import Company
 from .models import ProjectWork, ProjectWorkItem
@@ -25,21 +29,40 @@ class WorkListView(CompanyScopedMixin, ListView):
     paginate_by = 20
 
     def get_queryset(self):
-        return (
-            ProjectWork.objects.filter(company=self.request.user.company)
-            .annotate(items_count=Count("items"))
-            .select_related(
-                "section",
-                "section__construction_object",
-                "section__construction_object__project",
-            )
-            .order_by("code", "pk")
-        )
+        self.filter_form = WorkListFilterForm(self.request.GET, company=self.request.user.company)
+        queryset = ProjectWork.objects.filter(company=self.request.user.company)
+        if self.filter_form.is_valid():
+            values = self.filter_form.cleaned_data
+            for field, path in [('project', 'section__construction_object__project'), ('construction_object', 'section__construction_object'), ('section', 'section')]:
+                if values[field]:
+                    queryset = queryset.filter(**{path: values[field]})
+            # SQLite LIKE does not fold Cyrillic case. Its regex implementation
+            # does; escape the query so punctuation remains literal.
+            lookup = 'iregex' if connection.vendor == 'sqlite' else 'icontains'
+            if values['work']:
+                value = re.escape(values['work']) if lookup == 'iregex' else values['work']
+                queryset = queryset.filter(**{'name__' + lookup: value})
+            if values['subwork']:
+                value = re.escape(values['subwork']) if lookup == 'iregex' else values['subwork']
+                matching_items = ProjectWorkItem.objects.filter(
+                    company=self.request.user.company, project_work_id=OuterRef('pk'),
+                    **{'name__' + lookup: value},
+                )
+                queryset = queryset.filter(Exists(matching_items))
+        else:
+            queryset = queryset.none()
+        return queryset.annotate(items_count=Count('items')).select_related(
+            'section', 'section__construction_object', 'section__construction_object__project'
+        ).order_by('code', 'pk')
 
     def get_context_data(self, **kwargs):
         from apps.works.progress import WorkProgressService
 
         context = super().get_context_data(**kwargs)
+        context['filter_form'] = self.filter_form
+        params = self.request.GET.copy()
+        params.pop('page', None)
+        context['filter_query'] = params.urlencode()
         for work in context["works"]:
             planned = WorkProgressService.planned(work)
             work.total_quantity = (
