@@ -221,3 +221,52 @@ class MeetingVersionImportTests(TestCase):
         )
         self.assertEqual(len(response.context["sheets"]), 1)
         self.assertFalse(response.context["sheets"][0]["errors"])
+
+    def test_trailing_unit_dot_removed_before_preview_and_creation(self):
+        response = self.preview(
+            file=upload(work_names=[("New dotted work", "  кв.м.  ", 2)])
+        )
+        entry = next(
+            row
+            for row in response.context["sheets"][0]["entries"]
+            if row["kind"] == "work"
+        )
+        self.assertEqual(entry["unit"], "кв.м")
+        self.client.post(
+            self.url, {"action": "confirm", "preview": response.context["preview"]}
+        )
+        row = self.version.work_allocations.get(work__name="New dotted work")
+        self.assertEqual(row.work.unit, "кв.м")
+        from apps.works.models import MeasurementUnit
+
+        self.assertTrue(
+            MeasurementUnit.objects.filter(company=self.company, symbol="кв.м").exists()
+        )
+        self.assertFalse(
+            MeasurementUnit.objects.filter(
+                company=self.company, symbol="кв.м."
+            ).exists()
+        )
+
+    def test_dotted_units_match_existing_works_and_subworks(self):
+        response = self.preview(
+            file=upload(
+                work_names=[("Simple", "m.", 2), ("A", "m.", 10), ("B", "m3.", 12)]
+            )
+        )
+        self.assertFalse(response.context["sheets"][0]["errors"])
+        self.client.post(
+            self.url, {"action": "confirm", "preview": response.context["preview"]}
+        )
+        self.assertEqual(
+            self.version.work_allocations.get(work=self.simple, month=JAN).quantity, 5
+        )
+        self.assertEqual(
+            self.version.work_allocations.get(work=self.composite, month=JAN).quantity,
+            5,
+        )
+        from apps.works.models import ProjectWork
+
+        self.assertEqual(
+            ProjectWork.objects.filter(company=self.company, name="Simple").count(), 1
+        )

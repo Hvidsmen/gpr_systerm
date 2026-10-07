@@ -44,6 +44,10 @@ def clean_text(value):
     return " ".join(str(value or "").split())
 
 
+def clean_unit(value):
+    return clean_text(value).rstrip(" .")
+
+
 def key(value):
     return clean_text(value).casefold().rstrip(" .:-")
 
@@ -330,7 +334,7 @@ def parse_sheet(sheet, start, end, resource_rule):
         name = clean_text(row[headers["name"]])
         if not name or "итого" in key(name):
             continue
-        unit = clean_text(row[headers["unit"]]) if headers["unit"] is not None else ""
+        unit = clean_unit(row[headers["unit"]]) if headers["unit"] is not None else ""
         if "в том числе" in key(name):
             group = name.rstrip(" :")
             skipped_totals += 1
@@ -484,6 +488,7 @@ def resolve_sheet(company, project, sheet, target_object=None):
         row = dict(entry)
         kind = row["kind"]
         if kind == "work":
+            row["unit"] = clean_unit(row["unit"])
             matches = [
                 w
                 for w in works
