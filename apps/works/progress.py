@@ -7,11 +7,12 @@ ZERO = Decimal("0")
 
 
 def work_specification(work):
+    from .prices import price_on
     return {
         "id": work.pk,
         "name": work.name,
         "unit": work.unit,
-        "unit_price": str(work.unit_price),
+        "unit_price": str(price_on(work)),
         "kind": work.kind,
         "allow_fractional": work.allow_fractional,
         "items": [

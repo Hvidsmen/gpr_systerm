@@ -47,7 +47,7 @@
         <div class="card">
             <div class="card-body">
                 <h6 class="text-muted mb-2">Цена за единицу</h6>
-                <p class="fs-4 mb-0">{{ work.unit_price }} ₽</p>
+                <p class="fs-4 mb-0">{{ current_price }} ₽</p>
             </div>
         </div>
     </div>
@@ -75,6 +75,10 @@
         </div>
     </div>
 </div>
+
+<details class="card p-3 mb-3" id="price-history"><summary class="fw-semibold">История цен</summary>
+{% if not work.merged_source %}{% if request.user|may:'works:price_change' %}<a class="btn btn-sm btn-outline-primary my-3" href="{% url 'works:price_change' work.pk %}">Изменить цену</a>{% endif %}{% endif %}
+<div class="table-responsive"><table class="table table-sm"><thead><tr><th>Действует с</th><th>Цена, ₽</th><th>Кто изменил</th><th>Когда</th><th>Основание</th></tr></thead><tbody>{% for entry in price_history %}<tr><td>{% if entry.effective_from.year == 1 %}Первоначальная{% else %}{{ entry.effective_from|date:'d.m.Y' }}{% endif %}</td><td>{{ entry.price }}</td><td>{{ entry.created_by|default:'Система' }}</td><td>{{ entry.created_at|date:'d.m.Y H:i' }}</td><td>{{ entry.reason }}{% if entry.corrects_id %} · Исправление записи {{ entry.corrects_id }}{% endif %}{% if entry.corrections.exists %} · Есть исправление{% endif %}</td></tr>{% empty %}<tr><td colspan="5">История ещё не заведена.</td></tr>{% endfor %}</tbody></table></div></details>
 
 <!-- Структура работ -->
 <div class="card">
@@ -176,9 +180,7 @@
 <div class="alert alert-info mt-4">
     <h6><i class="bi bi-info-circle"></i> Как считается готовность</h6>
     <p class="mb-0">
-        Готовность верхнеуровневой работы = сумма (вес подработы × готовность подработы).
-        Например: если "Колонны" (вес 30%) выполнены на 100%, а "Балки" (вес 40%) на 50%,
-        то общий вклад = 30 + 20 = 50%.
+        Объём составной работы равен минимуму накопленных объёмов подработ, делённых на их нормативы. Выручка равна объёму основной работы × цене на дату выполнения.
     </p>
 </div>
 {% endblock %}

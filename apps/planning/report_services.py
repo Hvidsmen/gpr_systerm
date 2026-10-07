@@ -187,6 +187,7 @@ def build_matrix(user, filters, *, source_overrides=None):
         start, end = max(start, month), min(
             end, month.replace(day=monthrange(month.year, month.month)[1])
         )
+    if filters.get("month") or filters.get("daily"):
         buckets = [
             {"label": day.strftime("%d.%m"), "date": day, "dates": [day]}
             for day in days_between(start, end)

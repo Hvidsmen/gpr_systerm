@@ -48,6 +48,11 @@ def source_versions(obj, start, end):
 
 
 def build_snapshot(version):
+    from apps.works.prices import freeze_prices
+    return freeze_prices(_build_snapshot(version), version.company)
+
+
+def _build_snapshot(version):
     if not version.workspace_id:
         from apps.works.models import WorkMergePlanRevision
         revision = WorkMergePlanRevision.objects.filter(company=version.company, target_version=version).first()

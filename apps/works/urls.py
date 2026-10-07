@@ -1,11 +1,13 @@
 from django.urls import path
 from . import views
+from .price_views import WorkPriceChange
 from .unit_views import UnitUpdate, UnitDelete
 from .catalogs import WorkGroupList, MeasurementUnitList, quick_create
 
 app_name = 'works'
 
 urlpatterns = [
+    path("<int:pk>/price/", WorkPriceChange.as_view(), name="price_change"),
     path("catalogs/groups/", WorkGroupList.as_view(), name="group_list"),
     path("catalogs/groups/create/", quick_create("group"), name="group_create"),
     path("catalogs/units/", MeasurementUnitList.as_view(), name="unit_list"),

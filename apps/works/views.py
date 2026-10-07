@@ -84,6 +84,9 @@ class WorkDetailView(CompanyScopedMixin, DetailView):
         context['merge_sources']=self.object.items.filter(merge_origin__isnull=False).select_related('merge_origin__source_work')
         context['merge_plans']=self.object.merge_plan_revisions.select_related('target_version','source_version')
         work = self.object
+        from .prices import price_on
+        context["current_price"] = price_on(work)
+        context["price_history"] = work.price_history.select_related("created_by", "corrects").order_by("-effective_from", "-pk")
         planned = WorkProgressService.planned(work)
         fact = WorkProgressService.completed(work)
         total = (
@@ -128,6 +131,7 @@ class WorkCreateView(WorkLocationMixin, CompanyRequiredMixin, CreateView):
 
     def form_valid(self, form):
         form.instance.company = self.request.user.company
+        form.instance._price_actor = self.request.user
 
         # Сохраняем работу
         response = super().form_valid(form)

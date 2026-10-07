@@ -158,6 +158,8 @@ class ProjectWork(BaseCompanyModel):
 
     def clean(self):
         super().clean()
+        if self.unit_price is not None and self.unit_price < 0:
+            raise ValidationError({'unit_price': 'Цена не может быть отрицательной.'})
         if self.pk and hasattr(self,'merged_source'):
             raise ValidationError('Исходная работа архивная после объединения. Редактируйте составную работу.')
         for name in ("section", "template", "load_profile", "work_group"):
@@ -210,6 +212,37 @@ class ProjectWork(BaseCompanyModel):
                 raise ValidationError(
                     "Вид и округление работы с фактом или утверждённым планом менять нельзя. Создайте новую работу."
                 )
+
+    def save(self, *args, **kwargs):
+        from datetime import date
+        from django.db import transaction
+        from django.utils import timezone
+
+        with transaction.atomic():
+            previous = (
+                type(self).objects.select_for_update().filter(pk=self.pk).first()
+                if self.pk
+                else None
+            )
+            changed = (
+                previous
+                and previous.unit_price != self.unit_price
+                and (
+                    kwargs.get("update_fields") is None
+                    or "unit_price" in kwargs["update_fields"]
+                )
+            )
+            result = super().save(*args, **kwargs)
+            if previous is None or changed:
+                WorkPrice.objects.create(
+                    company=self.company,
+                    work=self,
+                    price=self.unit_price,
+                    effective_from=timezone.localdate() if previous else date.min,
+                    created_by=getattr(self, "_price_actor", None),
+                    reason="Изменение цены" if previous else "Первоначальная цена",
+                )
+            return result
 
     section = models.ForeignKey(
         "projects.Section",
@@ -480,3 +513,58 @@ class WorkMergePlanRevision(BaseCompanyModel):
     target_version = models.OneToOneField('planning.GlobalPlanVersion', on_delete=models.SET_NULL, null=True, blank=True, related_name='merge_revision')
     parent_work = models.ForeignKey(ProjectWork, on_delete=models.PROTECT, related_name='merge_plan_revisions')
     seed_snapshot = models.JSONField(default=dict, blank=True)
+
+
+class WorkPrice(BaseCompanyModel):
+    work = models.ForeignKey(
+        ProjectWork, on_delete=models.CASCADE, related_name="price_history"
+    )
+    price = models.DecimalField("Цена за единицу, ₽", max_digits=12, decimal_places=2)
+    effective_from = models.DateField("Действует с")
+    created_by = models.ForeignKey(
+        "accounts.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="work_price_entries",
+    )
+    reason = models.CharField("Основание", max_length=500, blank=True)
+    corrects = models.ForeignKey(
+        "self",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="corrections",
+    )
+
+    class Meta:
+        ordering = ["effective_from", "pk"]
+        indexes = [models.Index(fields=["work", "effective_from"])]
+        verbose_name = "история цены работы"
+
+    def clean(self):
+        if self.price is not None and self.price < 0:
+            raise ValidationError({"price": "Цена не может быть отрицательной."})
+        if self.work_id and self.company_id != self.work.company_id:
+            raise ValidationError("Работа другой компании.")
+        if self.created_by_id and self.created_by.company_id != self.company_id:
+            raise ValidationError("Автор другой компании.")
+        if self.corrects_id and (
+            self.corrects.work_id != self.work_id
+            or self.corrects.effective_from != self.effective_from
+            or not self.reason.strip()
+        ):
+            raise ValidationError(
+                "Укажите исходную цену этой работы, ту же дату и основание исправления."
+            )
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise ValidationError(
+                "История цен неизменяема. Создайте отдельное исправление."
+            )
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Запись истории цены удалять нельзя.")

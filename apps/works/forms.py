@@ -71,6 +71,9 @@ class ProjectWorkForm(UnitChoiceMixin, forms.ModelForm):
         kind = self.data.get(self.add_prefix('kind')) if self.is_bound else self.initial.get('kind', self.instance.kind)
         self.fields['load_profile'].required = kind == ProjectWork.Kind.SIMPLE
         self.fields['load_profile'].help_text = 'Обязателен для простой работы. Для составной профили задаются в подработах.'
+        if self.instance.pk and "unit_price" in self.fields:
+            self.fields["unit_price"].disabled = True
+            self.fields["unit_price"].help_text = "Цена меняется в карточке работы с сохранением истории."
         self.configure_catalog(company)
         self.fields["work_group"].queryset = self.fields["work_group"].queryset.filter(company=company)
         self.fields["work_group"].empty_label = "Без группы"

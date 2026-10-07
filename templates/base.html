@@ -396,6 +396,7 @@
     <nav class="nav flex-column py-2" aria-label="Основное меню">
         {% if user.company %}<div class="px-3 py-2 text-muted small text-truncate" title="{{ user.company.name }}">{{ user.company.name }}</div>{% endif %}
         {% if request.user|may:'dashboard:index' %}<a class="nav-link" href="{% url 'dashboard:index' %}" ><i class="bi bi-bar-chart"></i> Обзор</a>{% endif %}
+        {% if request.user|may:'dashboard:revenue' %}<a class="nav-link" href="{% url 'dashboard:revenue' %}" data-paths="/dashboard/revenue/"><i class="bi bi-currency-ruble"></i> Выручка и ресурсы</a>{% endif %}
         {% if request.user|may:'planning:workspace_list' %}<a class="nav-link" href="{% url 'planning:workspace_list' %}" data-paths="/planning/workspace/ /planning/workspace-versions/"><i class="bi bi-calendar-range"></i> Планирование</a>{% endif %}
         {% if request.user|may:'planning:report_matrix' %}<a class="nav-link" href="{% url 'planning:report_matrix' %}" data-paths="/planning/reports/"><i class="bi bi-table"></i> План / факт</a>{% endif %}
         {% if request.user|may:'planning:project_plan_list' %}<a class="nav-link" href="{% url 'planning:project_plan_list' %}" data-paths="/planning/project-plans/"><i class="bi bi-layers"></i> Сводные версии проектов</a>{% endif %}

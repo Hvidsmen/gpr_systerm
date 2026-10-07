@@ -384,6 +384,11 @@ def check_inputs(version):
 
 
 def build_workspace_snapshot(version):
+    from apps.works.prices import freeze_prices
+    return freeze_prices(_build_workspace_snapshot(version), version.company)
+
+
+def _build_workspace_snapshot(version):
     workspace = version.workspace
     check_inputs(version)
     from apps.works.models import WorkMergePlanRevision
