@@ -104,3 +104,5 @@ urlpatterns += [path('reports/plan-fact/', MatrixReport.as_view(), name='report_
 
 from .meeting_import import MeetingImportView
 urlpatterns += [path("meeting-import/", MeetingImportView.as_view(), name="meeting_import")]
+
+urlpatterns += [path("workspace-versions/<int:pk>/meeting-import/", MeetingImportView.as_view(), name="workspace_meeting_import")]

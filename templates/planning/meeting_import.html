@@ -1,16 +1,22 @@
 {% extends 'base.html' %}
 {% block content %}
 <h1>Импорт плана из файла совещания</h1>
+{% if target_version %}
+<p><strong>Объект:</strong> {{ target_version.construction_object.name }} · <strong>Версия:</strong> v{{ target_version.version_number }} · {{ target_version.title }}</p>
+<p>Выберите период и загрузите файл. Читается только лист этого объекта; после проверки данные записываются в эту же версию.</p>
+<p class="text-muted">Для найденных позиций месячные значения заменяются данными выбранных дат. Остальные позиции и месяцы сохраняются.</p>
+{% else %}
 <p>Каждый выбранный лист — отдельный строительный объект. Загрузка создаёт новый черновик плана на выбранный период; существующие планы сохраняются.</p>
+{% endif %}
 <p>Читаются только дневные столбцы с датами внутри выбранного периода. Месячные итоги из шапки не используются.</p>
-<p>Загружаются только плановые работы, люди и техника. Факт, накопительное выполнение и сведения о наличии техники не загружаются. Строительные объекты берутся только из выбранного проекта в базе: название листа должно совпадать с названием объекта. Недостающие разделы и справочные позиции создаются после подтверждения. Новые работы создаются простыми с равномерным профилем. Существующие подработы сопоставляются по названию, единице и разделу; основная составная работа рассчитывается по нормативам всех подработ.</p>
+<p>Загружаются только плановые работы, люди и техника. Факт, накопительное выполнение и сведения о наличии техники не загружаются. Название листа должно совпадать с названием строительного объекта в базе. Недостающие разделы и справочные позиции создаются после подтверждения. Новые работы создаются простыми с равномерным профилем. Существующие подработы сопоставляются по названию, единице и разделу; основная составная работа рассчитывается по нормативам всех подработ.</p>
 {% if errors %}<div class="alert alert-danger">{% for error in errors %}<div>{{ error }}</div>{% endfor %}</div>{% endif %}
 {% if preview %}
 <h2>{{ project.name }} · {{ start|date:'d.m.Y' }} — {{ end|date:'d.m.Y' }}</h2>
-<p>Проверьте строки и выберите листы для загрузки. Листы с ошибками недоступны. Нулевые объёмы загружаются, пустые значения пропускаются. Дневной план работ формируется системой по профилям, количество ресурсов повторяется каждый день в пределах периода плана.</p>
+<p>{% if target_version %}Проверьте строки перед записью в текущую версию.{% else %}Проверьте строки и выберите листы для загрузки.{% endif %} Листы с ошибками недоступны. Нулевые объёмы загружаются, пустые значения пропускаются. Дневной план работ формируется системой по профилям, количество ресурсов повторяется каждый день в пределах периода плана.</p>
 <form method="post">{% csrf_token %}<input type="hidden" name="action" value="confirm"><input type="hidden" name="preview" value="{{ preview }}">
 {% for sheet in sheets %}
-<details class="card mb-2"><summary class="p-2 d-flex gap-2 align-items-center"><input class="form-check-input m-0" type="checkbox" name="sheets" value="{{ sheet.index }}" aria-label="Загрузить {{ sheet.name }}" {% if sheet.errors %}disabled{% endif %}><strong>{{ sheet.name }}</strong><span class="text-muted small">{{ sheet.object_action }} · Строк: {{ sheet.entries|length }}{% if sheet.errors %} · Есть ошибки{% endif %}</span></summary>
+<details class="card mb-2"><summary class="p-2 d-flex gap-2 align-items-center">{% if not target_version %}<input class="form-check-input m-0" type="checkbox" name="sheets" value="{{ sheet.index }}" aria-label="Загрузить {{ sheet.name }}" {% if sheet.errors %}disabled{% endif %}>{% endif %}<strong>{{ sheet.name }}</strong><span class="text-muted small">{{ sheet.object_action }} · Строк: {{ sheet.entries|length }}{% if sheet.errors %} · Есть ошибки{% endif %}</span></summary>
 <div class="card-body pt-0">
 {% for error in sheet.errors %}<div class="text-danger mb-1">{{ error }}</div>{% endfor %}
 {% for warning in sheet.warnings %}<div class="text-muted small mb-1">{{ warning }}</div>{% endfor %}
@@ -18,10 +24,10 @@
 {% for row in sheet.entries %}<tr><td>{{ row.row }}</td><td>{{ row.month }}</td><td>{{ row.section }}</td><td>{% if row.kind == 'work' %}Работа{% elif row.kind == 'labor' %}Люди{% else %}Техника{% endif %}</td><td>{{ row.name }}</td><td>{{ row.equipment_number }}</td><td>{{ row.unit }}</td><td>{{ row.quantity }}</td><td>{{ row.action }}</td><td>{{ row.source }}</td></tr>{% endfor %}
 </tbody></table></div>
 </div></details>{% endfor %}
-<button class="btn btn-primary">Загрузить выбранные листы</button><a class="btn btn-outline-secondary" href="{% url 'planning:meeting_import' %}">Выбрать другой файл</a>
+<button class="btn btn-primary" {% if target_version and sheets.0.errors %}disabled{% endif %}>{% if target_version %}Записать в текущую версию{% else %}Загрузить выбранные листы{% endif %}</button><a class="btn btn-outline-secondary" href="{% if target_version %}{% url 'planning:workspace_meeting_import' target_version.pk %}{% else %}{% url 'planning:meeting_import' %}{% endif %}">Выбрать другой файл</a>
 </form>
 {% else %}
 <form method="post" enctype="multipart/form-data" class="card"><div class="card-body">{% csrf_token %}{{ form.as_p }}<button class="btn btn-primary">Предварительный просмотр</button></div></form>
 {% endif %}
-<p class="mt-3"><a href="{% url 'planning:workspace_list' %}">Вернуться к планам</a></p>
+<p class="mt-3">{% if target_version %}<a href="{% url 'planning:workspace_edit' target_version.pk %}">Вернуться к текущей версии</a>{% else %}<a href="{% url 'planning:workspace_list' %}">Вернуться к планам</a>{% endif %}</p>
 {% endblock %}

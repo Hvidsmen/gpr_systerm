@@ -1,4 +1,4 @@
-"""Import object-per-sheet meeting schedules into new, reviewable period plans."""
+"""Import meeting schedules into a current version or new object period plans."""
 
 from calendar import monthrange
 from collections import defaultdict
@@ -31,6 +31,7 @@ from .models import (
     LoadProfileItem,
     WorkMonthAllocation,
     ResourceMonthAllocation,
+    GlobalPlanVersion,
 )
 from .workspace_services import WorkspaceService, months_between
 
@@ -392,7 +393,9 @@ def parse_sheet(sheet, start, end, resource_rule):
     return result
 
 
-def parse_meeting_workbook(upload, start, end, resource_rule="maximum"):
+def parse_meeting_workbook(
+    upload, start, end, resource_rule="maximum", object_name=None
+):
     if upload.size > 8 * 1024 * 1024 or not upload.name.lower().endswith(".xlsx"):
         raise ValidationError("Нужен файл .xlsx размером до 8 МБ.")
     try:
@@ -409,7 +412,16 @@ def parse_meeting_workbook(upload, start, end, resource_rule="maximum"):
         try:
             if len(workbook.sheetnames) > 100:
                 raise ValidationError("В одном файле допускается до 100 листов.")
-            return [parse_sheet(sheet, start, end, resource_rule) for sheet in workbook]
+            sheets = list(workbook)
+            if object_name is not None:
+                sheets = [
+                    sheet for sheet in sheets if key(sheet.title) == key(object_name)
+                ]
+                if len(sheets) != 1:
+                    raise ValidationError(
+                        f"В файле должен быть один лист объекта «{object_name}»."
+                    )
+            return [parse_sheet(sheet, start, end, resource_rule) for sheet in sheets]
         finally:
             workbook.close()
     except (BadZipFile, KeyError, ValueError, OSError) as error:
@@ -427,13 +439,19 @@ def unique_match(candidates, name, description):
     return matches[0] if matches else None
 
 
-def resolve_sheet(company, project, sheet):
+def resolve_sheet(company, project, sheet, target_object=None):
     """No writes: resolve identities and surface ambiguity before confirmation."""
-    obj = unique_match(
+    obj = target_object or unique_match(
         ConstructionObject.objects.filter(company=company, project=project),
         sheet["name"],
         "Объект",
     )
+    if target_object and (
+        obj.company_id != company.pk
+        or obj.project_id != project.pk
+        or key(obj.name) != key(sheet["name"])
+    ):
+        raise ValidationError("Лист не соответствует объекту текущей версии.")
     if not obj:
         raise ValidationError(
             f'Объект «{sheet["name"]}» не найден в выбранном проекте. Лист нельзя загрузить.'
@@ -572,11 +590,22 @@ def resolve_sheet(company, project, sheet):
 
 
 @transaction.atomic
-def apply_meeting_import(user, project_id, sheets, selected, start, end):
+def apply_meeting_import(
+    user, project_id, sheets, selected, start, end, target_version=None
+):
     require_roles(user, PLAN_ROLES)
     project = Project.objects.select_for_update().get(
         pk=project_id, company=user.company
     )
+    if target_version is not None:
+        target_version = GlobalPlanVersion.objects.select_for_update().get(
+            pk=target_version.pk, company=user.company, workspace__isnull=False
+        )
+        validate_target_period(target_version, start, end)
+        if target_version.construction_object.project_id != project.pk:
+            raise ValidationError("Проект не соответствует текущей версии.")
+        if len(sheets) != 1 or selected != {"0"}:
+            raise ValidationError("Загружается только лист объекта текущей версии.")
     chosen = [s for i, s in enumerate(sheets) if str(i) in selected]
     if not chosen or len(chosen) != len(selected):
         raise ValidationError("Выберите листы для загрузки.")
@@ -587,10 +616,24 @@ def apply_meeting_import(user, project_id, sheets, selected, start, end):
     for sheet in chosen:
         if sheet["errors"]:
             raise ValidationError(f'Лист «{sheet["name"]}» содержит ошибки.')
-        obj, rows = resolve_sheet(user.company, project, sheet)
-        workspace = WorkspaceService.create(
-            user, obj, f"Импорт совещания — {start:%d.%m.%Y}–{end:%d.%m.%Y}", start, end
+        obj, rows = resolve_sheet(
+            user.company,
+            project,
+            sheet,
+            target_version.construction_object if target_version else None,
         )
+        workspace = (
+            target_version.workspace
+            if target_version
+            else WorkspaceService.create(
+                user,
+                obj,
+                f"Импорт совещания — {start:%d.%m.%Y}–{end:%d.%m.%Y}",
+                start,
+                end,
+            )
+        )
+        version = target_version or workspace.baseline_version
         profile = None
         totals = defaultdict(dict)
         for row in rows:
@@ -659,12 +702,15 @@ def apply_meeting_import(user, project_id, sheets, selected, start, end):
                     )
                     work.full_clean()
                     work.save()
-                WorkMonthAllocation.objects.create(
+                WorkMonthAllocation.objects.update_or_create(
                     company=user.company,
-                    version=workspace.baseline_version,
+                    version=version,
                     work=work,
                     month=month,
-                    quantity=Decimal(row["quantity"]),
+                    defaults={
+                        "quantity": Decimal(row["quantity"]),
+                        "item_quantities": {},
+                    },
                 )
             else:
                 model = Brigade if row["kind"] == "labor" else EquipmentType
@@ -714,26 +760,49 @@ def apply_meeting_import(user, project_id, sheets, selected, start, end):
                         "equipment_number": row.get("equipment_number", ""),
                     }
                 )
-                ResourceMonthAllocation.objects.create(
+                ResourceMonthAllocation.objects.update_or_create(
                     company=user.company,
-                    version=workspace.baseline_version,
+                    version=version,
                     kind=row["kind"],
                     month=month,
-                    count=int(Decimal(row["quantity"])),
                     **identity,
+                    defaults={"count": int(Decimal(row["quantity"]))},
                 )
         for (work_id, month), values in totals.items():
             work = ProjectWork.objects.get(pk=work_id, company=user.company)
-            WorkMonthAllocation.objects.create(
+            WorkMonthAllocation.objects.update_or_create(
                 company=user.company,
-                version=workspace.baseline_version,
+                version=version,
                 work=work,
                 month=month,
-                quantity=quantity_from_totals(work_specification(work), values),
-                item_quantities={str(k): str(v) for k, v in values.items()},
+                defaults={
+                    "quantity": quantity_from_totals(work_specification(work), values),
+                    "item_quantities": {str(k): str(v) for k, v in values.items()},
+                },
             )
+        if target_version:
+            target_version.snapshot = {}
+            target_version.save(update_fields=["snapshot"])
         plans.append(workspace)
     return plans
+
+
+def validate_target_period(version, start, end):
+    from .bulk_add import editable_months
+
+    if version.status not in ["DRAFT", "REJECTED"]:
+        raise PermissionDenied(
+            "Импорт доступен только для черновика или версии на доработке."
+        )
+    if start > end or start < version.start_date or end > version.end_date:
+        raise ValidationError(
+            "Период загрузки должен находиться внутри периода версии."
+        )
+    allowed = set(editable_months(version))
+    if any(month not in allowed for month in months_between(start, end)):
+        raise ValidationError(
+            "В выбранном периоде есть месяцы, недоступные для редактирования."
+        )
 
 
 class MeetingImportForm(forms.Form):
@@ -764,40 +833,77 @@ class MeetingImportForm(forms.Form):
                 self.add_error("end", "Конец периода раньше начала.")
             elif len(months_between(values["start"], values["end"])) > 120:
                 self.add_error("end", "Период не должен превышать десять лет.")
+            if self.version:
+                try:
+                    validate_target_period(self.version, values["start"], values["end"])
+                except ValidationError as error:
+                    self.add_error("end", error)
         return values
 
-    def __init__(self, *args, company, **kwargs):
+    def __init__(self, *args, company, version=None, **kwargs):
         super().__init__(*args, **kwargs)
+        self.version = version
         self.fields["project"].queryset = Project.objects.filter(company=company)
+        if version:
+            del self.fields["project"]
         for field in self.fields.values():
             field.widget.attrs["class"] = "form-control"
 
 
 class MeetingImportView(View):
-    def get(self, request):
+    def target(self, request, pk):
+        if pk is None:
+            return None
+        from .workspace_views import version_for
+
+        version = version_for(request, pk)
+        if version.status not in ["DRAFT", "REJECTED"]:
+            raise PermissionDenied(
+                "Импорт доступен только для черновика или версии на доработке."
+            )
+        return version
+
+    def get(self, request, pk=None):
         require_roles(request.user, PLAN_ROLES)
+        self.target_version = self.target(request, pk)
+        from .bulk_add import editable_months
+
+        if self.target_version:
+            months = editable_months(self.target_version)
+            initial_start = max(self.target_version.start_date, months[0])
+            initial_end = min(
+                self.target_version.end_date,
+                months[-1].replace(
+                    day=monthrange(months[-1].year, months[-1].month)[1]
+                ),
+            )
+        else:
+            initial_start = date.today().replace(day=1)
+            initial_end = initial_start.replace(
+                day=monthrange(initial_start.year, initial_start.month)[1]
+            )
         return self.display(
             request,
             MeetingImportForm(
                 company=request.user.company,
+                version=self.target_version,
                 initial={
-                    "start": date.today().replace(day=1),
-                    "end": date(
-                        date.today().year,
-                        date.today().month,
-                        monthrange(date.today().year, date.today().month)[1],
-                    ),
+                    "start": initial_start,
+                    "end": initial_end,
                 },
             ),
         )
 
     def display(self, request, form, **context):
         return render(
-            request, "planning/meeting_import.html", {"form": form, **context}
+            request,
+            "planning/meeting_import.html",
+            {"form": form, "target_version": self.target_version, **context},
         )
 
-    def post(self, request):
+    def post(self, request, pk=None):
         require_roles(request.user, PLAN_ROLES)
+        self.target_version = self.target(request, pk)
         if request.POST.get("action") == "confirm":
             try:
                 payload = signing.loads(
@@ -810,9 +916,17 @@ class MeetingImportView(View):
                     raise PermissionDenied(
                         "Предварительный просмотр принадлежит другому пользователю."
                     )
+                if payload.get("version") != (
+                    self.target_version.pk if self.target_version else None
+                ):
+                    raise signing.BadSignature("Preview belongs to another version")
                 if request.session.get("meeting_import_nonce") != payload.get("nonce"):
                     raise signing.BadSignature("Preview already used")
-                selected = set(request.POST.getlist("sheets"))
+                selected = (
+                    {"0"}
+                    if self.target_version
+                    else set(request.POST.getlist("sheets"))
+                )
                 plans = apply_meeting_import(
                     request.user,
                     payload["project"],
@@ -820,8 +934,24 @@ class MeetingImportView(View):
                     selected,
                     date.fromisoformat(payload["start"]),
                     date.fromisoformat(payload["end"]),
+                    target_version=self.target_version,
                 )
                 request.session.pop("meeting_import_nonce", None)
+                if self.target_version:
+                    messages.success(
+                        request,
+                        "План загружен в текущую версию. Проверьте обновлённые месячные значения.",
+                    )
+                    from django.urls import reverse
+
+                    return redirect(
+                        reverse(
+                            "planning:workspace_edit", args=[self.target_version.pk]
+                        )
+                        + "?month="
+                        + payload["start"][:7]
+                        + "-01"
+                    )
                 messages.success(
                     request,
                     f"Создано черновиков планов: {len(plans)}. Проверьте состав и сформируйте дневной план перед согласованием.",
@@ -832,11 +962,20 @@ class MeetingImportView(View):
                     request,
                     "Предварительный просмотр устарел или изменён. Загрузите файл заново.",
                 )
-                return redirect("planning:meeting_import")
+                return (
+                    redirect(
+                        "planning:workspace_meeting_import", pk=self.target_version.pk
+                    )
+                    if self.target_version
+                    else redirect("planning:meeting_import")
+                )
             except ValidationError as error:
                 return self.preview(request, payload, error.messages)
         form = MeetingImportForm(
-            request.POST, request.FILES, company=request.user.company
+            request.POST,
+            request.FILES,
+            company=request.user.company,
+            version=self.target_version,
         )
         if form.is_valid():
             try:
@@ -845,6 +984,11 @@ class MeetingImportView(View):
                     form.cleaned_data["start"],
                     form.cleaned_data["end"],
                     form.cleaned_data["resource_rule"],
+                    object_name=(
+                        self.target_version.construction_object.name
+                        if self.target_version
+                        else None
+                    ),
                 )
                 nonce = uuid4().hex
                 request.session["meeting_import_nonce"] = nonce
@@ -852,7 +996,12 @@ class MeetingImportView(View):
                     "nonce": nonce,
                     "user": request.user.pk,
                     "company": request.user.company_id,
-                    "project": form.cleaned_data["project"].pk,
+                    "version": self.target_version.pk if self.target_version else None,
+                    "project": (
+                        self.target_version.construction_object.project_id
+                        if self.target_version
+                        else form.cleaned_data["project"].pk
+                    ),
                     "start": form.cleaned_data["start"].isoformat(),
                     "end": form.cleaned_data["end"].isoformat(),
                     "sheets": sheets,
@@ -871,7 +1020,14 @@ class MeetingImportView(View):
             item = {**sheet, "index": index, "errors": list(sheet["errors"])}
             try:
                 obj, item["entries"] = resolve_sheet(
-                    request.user.company, project, sheet
+                    request.user.company,
+                    project,
+                    sheet,
+                    (
+                        self.target_version.construction_object
+                        if self.target_version
+                        else None
+                    ),
                 )
                 item["object_action"] = "Существующий объект"
             except ValidationError as error:

@@ -74,7 +74,7 @@
 <a class="btn btn-sm btn-outline-secondary" href="{% url 'planning:workspace_excel_export' version.pk %}?template=1&scope=month&month={{ selected_month|date:'Y-m-d' }}">Шаблон месяца</a>
 {% endif %}
 {% if request.user|may:'planning:workspace_excel_import' %}<a class="btn btn-sm btn-primary" href="{% url 'planning:workspace_excel_import' version.pk %}?scope=period">Импорт всего периода</a><a class="btn btn-sm btn-primary" href="{% url 'planning:workspace_excel_import' version.pk %}?scope=year&year={{ selected_month.year }}">Импорт {{ selected_month.year }} года</a><a class="btn btn-sm btn-primary" href="{% url 'planning:workspace_excel_import' version.pk %}?scope=month&month={{ selected_month|date:'Y-m-d' }}">Импорт {{ selected_month|date:'m.Y' }}</a>{% endif %}
-{% if request.user|may:'planning:meeting_import' %}<a class="btn btn-sm btn-outline-primary" href="{% url 'planning:meeting_import' %}">Импорт файла совещания по объектам</a>{% endif %}
+{% if request.user|may:'planning:meeting_import' %}<a class="btn btn-sm btn-outline-primary" href="{% url 'planning:workspace_meeting_import' version.pk %}">Импорт файла совещания в эту версию</a>{% endif %}
 </div></div></details>
 <nav class="d-flex flex-wrap gap-2 mb-3" aria-label="Месяцы плана">
 {% for month in months %}{% if not version.planning_month or month >= version.planning_month %}{% if not version.planning_month or version.scenario == 'REMAINING' or month == version.planning_month %}
