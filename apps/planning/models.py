@@ -871,3 +871,218 @@ class GlobalPlanDecision(BaseCompanyModel):
             raise ValidationError("Решение в истории изменять нельзя.")
         self.full_clean()
         return super().save(*args, **kwargs)
+
+
+class ProjectPlanVersion(BaseCompanyModel):
+    """A project-wide selection of approved object plans, frozen without approval."""
+
+    project = models.ForeignKey(
+        "projects.Project",
+        on_delete=models.PROTECT,
+        related_name="consolidated_plans",
+        verbose_name="Проект",
+    )
+    title = models.CharField("Название", max_length=255)
+    version_number = models.PositiveIntegerField("Номер версии")
+    start_date = models.DateField("Начало периода")
+    end_date = models.DateField("Конец периода")
+    status = models.CharField(
+        "Статус",
+        max_length=10,
+        choices=[("DRAFT", "Черновик"), ("FIXED", "Зафиксирована")],
+        default="DRAFT",
+    )
+    previous_version = models.ForeignKey(
+        "self",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="revisions",
+        verbose_name="Предыдущая сводная версия",
+    )
+    created_by = models.ForeignKey(
+        "accounts.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_project_plans",
+    )
+    fixed_by = models.ForeignKey(
+        "accounts.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="fixed_project_plans",
+    )
+    fixed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-pk"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project", "version_number"], name="unique_project_plan_version"
+            )
+        ]
+        verbose_name = "Сводная версия плана проекта"
+        verbose_name_plural = "Сводные версии планов проектов"
+
+    def __str__(self):
+        return f"{self.project.name} · {self.title} · v{self.version_number} ({self.get_status_display()})"
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+
+        if self.project_id and self.project.company_id != self.company_id:
+            raise ValidationError({"project": "Проект другой компании."})
+        if self.start_date and self.end_date:
+            from .workspace_services import months_between
+
+            if self.start_date > self.end_date:
+                raise ValidationError({"end_date": "Конец периода раньше начала."})
+            if len(months_between(self.start_date, self.end_date)) > 120:
+                raise ValidationError(
+                    {"end_date": "Период не должен превышать 120 месяцев."}
+                )
+        if self.previous_version_id and (
+            self.previous_version.project_id != self.project_id
+            or self.previous_version.company_id != self.company_id
+        ):
+            raise ValidationError("Исходная сводная версия другого проекта.")
+        if self.pk:
+            for member in self.members.select_related("version", "construction_object"):
+                if member.construction_object.project_id != self.project_id:
+                    raise ValidationError("В составе есть объект другого проекта.")
+                if (
+                    member.version.start_date > self.start_date
+                    or member.version.end_date < self.end_date
+                ):
+                    raise ValidationError(
+                        "Планы объектов должны покрывать весь период сводной версии."
+                    )
+
+    def save(self, *args, **kwargs):
+        from django.core.exceptions import ValidationError
+        from .project_plan_services import fixation_authorized
+
+        if self.pk:
+            old = type(self).objects.get(pk=self.pk)
+            if old.status == "FIXED" and any(
+                getattr(old, f.attname) != getattr(self, f.attname)
+                for f in self._meta.fields
+                if f.name != "updated_at"
+            ):
+                raise ValidationError("Зафиксированную сводную версию изменять нельзя.")
+            if any(
+                getattr(old, f) != getattr(self, f)
+                for f in ["status", "fixed_by_id", "fixed_at"]
+            ) and not fixation_authorized(self.pk):
+                raise ValidationError(
+                    "Зафиксируйте состав через действие «Зафиксировать состав»."
+                )
+        elif self.status != "DRAFT":
+            raise ValidationError("Новая сводная версия должна быть черновиком.")
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+
+class ProjectPlanMember(BaseCompanyModel):
+    consolidated_version = models.ForeignKey(
+        ProjectPlanVersion, on_delete=models.CASCADE, related_name="members"
+    )
+    construction_object = models.ForeignKey(
+        "projects.ConstructionObject",
+        on_delete=models.PROTECT,
+        related_name="project_plan_members",
+    )
+    version = models.ForeignKey(
+        GlobalPlanVersion,
+        on_delete=models.PROTECT,
+        related_name="project_plan_members",
+        verbose_name="Версия плана объекта",
+    )
+    review = models.ForeignKey(
+        GlobalPlanReview,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        editable=False,
+        related_name="project_plan_members",
+    )
+    snapshot = models.JSONField(default=dict, blank=True, editable=False)
+
+    class Meta:
+        ordering = ["construction_object__name", "pk"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["consolidated_version", "construction_object"],
+                name="unique_object_in_project_plan",
+            )
+        ]
+        verbose_name = "Объект сводной версии проекта"
+        verbose_name_plural = "Объекты сводной версии проекта"
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+
+        if (
+            not self.consolidated_version_id
+            or not self.version_id
+            or not self.construction_object_id
+        ):
+            return
+        parent = self.consolidated_version
+        version = self.version
+        if any(
+            row.company_id != self.company_id
+            for row in [parent, version, self.construction_object]
+        ):
+            raise ValidationError("План или объект другой компании.")
+        if self.construction_object.project_id != parent.project_id:
+            raise ValidationError(
+                "Строительный объект не принадлежит выбранному проекту."
+            )
+        if version.construction_object_id != self.construction_object_id:
+            raise ValidationError("Версия плана относится к другому объекту.")
+        if not version.is_immutable:
+            raise ValidationError(
+                "Включать можно только полностью согласованные планы объектов."
+            )
+        if version.start_date > parent.start_date or version.end_date < parent.end_date:
+            raise ValidationError(
+                "План объекта должен покрывать весь период сводной версии."
+            )
+        if self.review_id and (
+            self.review.version_id != self.version_id or not self.review.was_approved
+        ):
+            raise ValidationError(
+                "Снимок не соответствует утверждённому раунду плана объекта."
+            )
+
+    def save(self, *args, **kwargs):
+        from django.core.exceptions import ValidationError
+        from .project_plan_services import fixation_authorized
+
+        if (
+            type(self.consolidated_version)
+            .objects.get(pk=self.consolidated_version_id)
+            .status
+            == "FIXED"
+        ):
+            raise ValidationError(
+                "Состав зафиксированной сводной версии изменять нельзя."
+            )
+        if self.pk:
+            old = type(self).objects.get(pk=self.pk)
+            if (
+                old.consolidated_version_id != self.consolidated_version_id
+                or old.construction_object_id != self.construction_object_id
+            ):
+                raise ValidationError(
+                    "Объект и сводную версию строки состава менять нельзя."
+                )
+        if (self.review_id or self.snapshot) and not fixation_authorized(
+            self.consolidated_version_id
+        ):
+            raise ValidationError("Снимки заполняются при фиксации состава.")
+        self.full_clean()
+        return super().save(*args, **kwargs)

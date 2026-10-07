@@ -1,0 +1,17 @@
+.matrix-scroll { overflow:auto; max-height:65vh; border:1px solid #dee2e6; border-radius:.35rem; }
+.matrix-table { width:max-content; min-width:100%; border-collapse:separate; border-spacing:0; margin:0; font-variant-numeric:tabular-nums; }
+.matrix-table th,.matrix-table td { min-width:88px; padding:.3rem .45rem; text-align:right; vertical-align:middle; white-space:nowrap; background:#fff; }
+.matrix-table .matrix-label { position:sticky; left:0; min-width:260px; max-width:360px; white-space:normal; text-align:left; z-index:2; box-shadow:1px 0 0 #dee2e6; }
+.matrix-table thead th { position:sticky; top:0; height:34px; background:#eaf2ff; z-index:3; text-align:center; }
+.matrix-table thead tr:nth-child(2) th { top:34px; }
+.matrix-table thead .matrix-label { z-index:4; }
+.matrix-table td small { display:block; color:#64748b; font-size:.65rem; }
+.matrix-table .matrix-plan { background:#f4f8ff; }
+.matrix-table .matrix-delta { color:#475569; }
+.matrix-child .matrix-label { font-weight:normal; background:#f8fafc; }
+.matrix-work-toggle { border:0; background:transparent; color:#1263d6; padding:0 .25rem 0 0; }
+.matrix-group > summary,.matrix-section > summary,.matrix-object > summary { cursor:pointer; }
+.matrix-group > summary { padding:.35rem; background:#f0f3f7; border-radius:.3rem; }
+.matrix-section-filter > summary { cursor:pointer; font-size:.85rem; }
+[hidden] { display:none !important; }
+@media(max-width:576px) { .matrix-table .matrix-label { min-width:180px; max-width:200px; } }

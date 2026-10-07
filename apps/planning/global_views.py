@@ -81,6 +81,10 @@ class GlobalDetail(CompanyScopedMixin, DetailView):
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
+        from .project_plan_views import AssignmentForm
+        ctx['project_assignment_form'] = AssignmentForm(user=self.request.user, version=self.object)
+        ctx['assignment_version'] = self.object
+        ctx['project_memberships'] = self.object.project_plan_members.select_related('consolidated_version__project')
         ctx.update(comparison(self.object))
         from .approval_workflow import panel
         ctx.update(panel(self.object, self.request.user))

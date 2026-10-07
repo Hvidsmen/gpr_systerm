@@ -187,11 +187,14 @@ class WorkspaceCreate(View):
 class WorkspaceDetail(View):
     def get(self, request, pk):
         workspace = workspace_for(request, pk)
+        from .project_plan_views import AssignmentForm
         return render(
             request,
             "planning/workspace_detail.html",
             {
                 "workspace": workspace,
+                "project_assignment_form": AssignmentForm(user=request.user, workspace=workspace),
+                "assignment_workspace": workspace,
                 "versions": workspace.versions.order_by("-version_number"),
                 "forecast_form": ForecastForm(workspace=workspace),
                 "months": months_between(workspace.start_date, workspace.end_date),

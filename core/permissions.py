@@ -96,9 +96,11 @@ def check_route(user, match, method):
         action = match.kwargs.get('action') if name == 'global_action' else None
         if name == 'global_action':
             require_global_action(user, action)
+        elif name == 'project_plan_detail' and method not in {'GET', 'HEAD'}:
+            require_roles(user, PLAN_ROLES)
         elif name in {'version_approve', 'version_reject', 'version_complete'}:
             require_roles(user, APPROVAL_ROLES)
-        elif name.endswith(('_list', '_detail', '_export', '_versions')) or name == 'plan_matrix':
+        elif name.endswith(('_list', '_detail', '_export', '_versions')) or name in {'plan_matrix','report_matrix'}:
             require_roles(user, READ_ROLES)
         else:
             require_roles(user, PLAN_ROLES)

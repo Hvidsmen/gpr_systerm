@@ -1,0 +1,5 @@
+{% load access %}
+{% if project_memberships %}<details class="mb-3"><summary>Входит в сводные версии проекта</summary>{% for member in project_memberships %}<p><a href="{% url 'planning:project_plan_detail' member.consolidated_version_id %}">{{ member.consolidated_version }}</a></p>{% endfor %}</details>{% endif %}
+{% if project_assignment_form %}{% if request.user|may:'planning:project_plan_create' %}<details class="card p-3 mb-3"><summary>Сводная версия проекта</summary>
+<p class="text-muted mt-2">Включите полностью согласованную версию плана объекта в черновик сводной версии. Один объект может входить в её состав только один раз.</p>
+<form method="post" action="{% if assignment_workspace %}{% url 'planning:workspace_project_assign' assignment_workspace.pk %}{% else %}{% url 'planning:global_project_assign' assignment_version.pk %}{% endif %}">{% csrf_token %}{{ project_assignment_form.as_p }}<button class="btn btn-outline-primary">Включить в сводную версию</button> <a href="{% url 'planning:project_plan_create' %}">Создать сводную версию</a></form></details>{% endif %}{% endif %}

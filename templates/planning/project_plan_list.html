@@ -1,0 +1,7 @@
+{% extends 'base.html' %}{% load access %}{% block content %}
+<h1>Сводные версии планов проектов</h1>
+<p>Согласованные планы строительных объектов. Фиксация состава не требует отдельного согласования.</p>
+{% if request.user|may:'planning:project_plan_create' %}<a class="btn btn-primary mb-3" href="{% url 'planning:project_plan_create' %}">Новая сводная версия</a>{% endif %}
+<div class="table-responsive"><table class="table"><thead><tr><th>Версия</th><th>Проект</th><th>Период</th><th>Объектов</th><th>Статус</th></tr></thead><tbody>{% for row in object_list %}<tr><td><a href="{% url 'planning:project_plan_detail' row.pk %}">{{ row.title }} · v{{ row.version_number }}</a></td><td>{{ row.project }}</td><td>{{ row.start_date }} — {{ row.end_date }}</td><td>{{ row.members.count }}</td><td>{{ row.get_status_display }}</td></tr>{% empty %}<tr><td colspan="5">Сводных версий ещё нет.</td></tr>{% endfor %}</tbody></table></div>
+{% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}">Назад</a>{% endif %} {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}">Далее</a>{% endif %}
+{% endblock %}

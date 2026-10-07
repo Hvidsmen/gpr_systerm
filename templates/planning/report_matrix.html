@@ -1,0 +1,41 @@
+{% extends 'base.html' %}{% load static %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'planning/report_matrix.css' %}">{% endblock %}
+{% block content %}
+<h1>План / факт{% if daily %} · {{ start|date:'m.Y' }} по дням{% endif %}</h1>
+<p class="text-muted">Месяцы → дни. Работы и расход — объём за период; люди и техника — среднее за заполненные дни; остаток ГСМ — последнее значение периода.</p>
+<form method="get" id="matrix-filters" class="card p-3 mb-3">
+{% if form.errors %}<div class="alert alert-danger">{{ form.non_field_errors }}{% for field in form %}{% for error in field.errors %}<div>{{ field.label }}: {{ error }}</div>{% endfor %}{% endfor %}</div>{% endif %}
+<input type="hidden" name="sections_set" value="1">{{ form.month }}
+<div class="row g-2">
+<div class="col-md-3"><label for="{{ form.project.id_for_label }}">{{ form.project.label }}</label>{{ form.project }}</div>
+<div class="col-md-3"><label for="{{ form.start.id_for_label }}">{{ form.start.label }}</label>{{ form.start }}</div>
+<div class="col-md-3"><label for="{{ form.end.id_for_label }}">{{ form.end.label }}</label>{{ form.end }}</div>
+<div class="col-md-3"><label for="{{ form.mode.id_for_label }}">{{ form.mode.label }}</label>{{ form.mode }}</div>
+<div class="col-md-6"><label for="{{ form.objects.id_for_label }}">{{ form.objects.label }}</label>{{ form.objects }}<small>{{ form.objects.help_text }}</small></div>
+<div class="col-md-6"><label for="{{ form.consolidated.id_for_label }}">{{ form.consolidated.label }}</label>{{ form.consolidated }}<small>Выбор сводной версии задаёт сохранённые планы и состав объектов.</small>
+{% if version_fields %}<details class="mt-2" id="matrix-version-choices"><summary>Выбрать отдельные версии объектов</summary><p class="small text-muted">Автоматически выбирается последний согласованный план для каждой даты. Явный выбор использует только выбранную версию.</p><div class="row g-2">{% for field in version_fields %}<div class="col-12"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}</div>{% endfor %}</div></details>{% endif %}</div>
+</div>
+<div class="d-flex flex-wrap gap-2 my-3" role="group" aria-label="Показываемые разделы">{% for switch in section_switches %}<input class="btn-check" type="checkbox" name="sections" id="show-{{ switch.kind }}" value="{{ switch.kind }}" data-section-toggle {% if switch.checked %}checked{% endif %}><label class="btn btn-outline-primary btn-sm" for="show-{{ switch.kind }}">{{ switch.label }}</label>{% endfor %}</div>
+<div class="row g-2">
+<details class="col-lg-6 matrix-section-filter" data-filter-section="works" {% if 'works' not in shown %}hidden{% endif %}><summary>Фильтры работ</summary><div class="row g-2 mt-1"><div class="col-md-6">{{ form.works_q.label_tag }}{{ form.works_q }}</div><div class="col-md-3">{{ form.work_group.label_tag }}{{ form.work_group }}</div><div class="col-md-3">{{ form.work_kind.label_tag }}{{ form.work_kind }}</div></div></details>
+<details class="col-lg-6 matrix-section-filter" data-filter-section="labor" {% if 'labor' not in shown %}hidden{% endif %}><summary>Фильтры людей</summary><div class="row g-2 mt-1"><div class="col-md-6">{{ form.labor_q.label_tag }}{{ form.labor_q }}</div><div class="col-md-3">{{ form.macro_group.label_tag }}{{ form.macro_group }}</div><div class="col-md-3">{{ form.brigade_group.label_tag }}{{ form.brigade_group }}</div></div></details>
+<details class="col-lg-6 matrix-section-filter" data-filter-section="equipment" {% if 'equipment' not in shown %}hidden{% endif %}><summary>Фильтры техники</summary><div class="row g-2 mt-1"><div class="col-md-6">{{ form.equipment_q.label_tag }}{{ form.equipment_q }}</div><div class="col-md-6">{{ form.equipment_category.label_tag }}{{ form.equipment_category }}</div></div></details>
+<details class="col-lg-6 matrix-section-filter" data-filter-section="fuel" {% if 'fuel' not in shown %}hidden{% endif %}><summary>Фильтры ГСМ</summary><div class="mt-1">{{ form.fuel_type.label_tag }}{{ form.fuel_type }}</div></details>
+</div>
+<div class="d-flex flex-wrap gap-2 mt-3"><button class="btn btn-primary btn-sm">Применить</button><a class="btn btn-outline-secondary btn-sm" href="{% url 'planning:report_matrix' %}">Сбросить</a>{% if daily %}<a class="btn btn-outline-primary btn-sm" href="{{ monthly_url }}">← К месяцам</a>{% endif %}</div>
+</form>
+{% if not form.errors %}
+{% if consolidated %}<p><strong>Сводная версия:</strong> <a href="{% url 'planning:project_plan_detail' consolidated.pk %}">{{ consolidated }}</a></p>{% endif %}
+<div class="d-flex gap-2 mb-3"><button type="button" class="btn btn-outline-secondary btn-sm" data-expand-matrix="true">Развернуть группы</button><button type="button" class="btn btn-outline-secondary btn-sm" data-expand-matrix="false">Свернуть группы</button></div>
+{% if not shown %}<div class="alert alert-info">Все разделы скрыты. Включите нужный раздел кнопкой сверху.</div>{% endif %}
+<div id="plan-fact-matrix">
+{% for entry in objects %}<details class="matrix-object card p-3 mb-3" open><summary class="h5 mb-2">{{ entry.object.project }} · {{ entry.name }}</summary>
+{% for warning in entry.warnings %}<div class="alert alert-warning py-2">{{ warning }}</div>{% endfor %}
+<p class="small text-muted">План: {% for source in entry.sources %}<a href="{% url 'planning:global_detail' source.version.pk %}">v{{ source.version.version_number }}</a>{% if source.member.review_id %} (сохранён раунд {{ source.member.review.number }}){% endif %}{% if not forloop.last %}, {% endif %}{% empty %}нет согласованной версии{% endfor %}</p>
+{% for section in entry.sections %}<details class="matrix-section mb-2" data-matrix-section="{{ section.kind }}" open><summary class="h6">{{ section.label }}</summary>{% for node in section.groups %}{% include 'planning/report_group.html' %}{% empty %}<p class="text-muted small ms-3">Нет строк по выбранным условиям.</p>{% endfor %}</details>{% endfor %}
+</details>{% empty %}<div class="alert alert-info">Нет доступных строительных объектов по выбранным условиям.</div>{% endfor %}
+</div>
+<p class="small text-muted">Отклонение = факт − план. Прочерк означает отсутствие данных, введённый ноль отображается как 0. Для среднего факта показано количество заполненных дней. Цвет отклонений нейтральный: превышение ресурса не считается улучшением.</p>
+{% endif %}
+<script src="{% static 'planning/report_matrix.js' %}" defer></script>
+{% endblock %}

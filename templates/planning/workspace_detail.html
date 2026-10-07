@@ -12,6 +12,7 @@
 {% if workspace.baseline_version.is_immutable %}{% if request.user|may:'planning:workspace_forecast' %}<form method="post" action="{% url 'planning:workspace_forecast' workspace.pk %}">{% csrf_token %}{{ forecast_form.as_p }}<button class="btn btn-primary">Создать месячную версию плана на весь период</button></form>{% endif %}
 {% else %}<p>Сначала сформируйте и утвердите базовый план.</p>{% endif %}
 </div></div>
+{% include 'planning/project_assignment.html' %}
 <h2>История версий</h2>
 <table class="table"><thead><tr><th>Версия</th><th>Назначение</th><th>Месяц</th><th>Сценарий</th><th>Статус</th><th>Действия</th></tr></thead><tbody>
 {% for version in versions %}<tr><td>{% if request.user|may:'planning:global_detail' %}<a href="{% url 'planning:global_detail' version.pk %}">v{{ version.version_number }}</a>{% endif %}</td><td>{{ version.get_version_kind_display }}</td><td>{{ version.planning_month|date:'m.Y'|default:'—' }}</td><td>{{ version.get_scenario_display|default:'—' }}</td><td>{{ version.get_status_display }}</td><td>{% if request.user|may:'planning:workspace_excel_export' %}<a href="{% url 'planning:workspace_excel_export' version.pk %}">Excel</a> · {% endif %}{% if version.status == 'DRAFT' or version.status == 'REJECTED' %}{% if request.user|may:'planning:workspace_edit' %}<a href="{% url 'planning:workspace_edit' version.pk %}">Редактировать</a>{% endif %}{% endif %}

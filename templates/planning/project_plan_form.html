@@ -1,0 +1,4 @@
+{% extends 'base.html' %}{% block content %}
+<h1>{% if object %}Изменить сводную версию{% else %}Новая сводная версия плана проекта{% endif %}</h1>
+<form method="post" class="card p-3">{% csrf_token %}{{ form.as_p }}<div><button class="btn btn-primary">Сохранить</button> <a class="btn btn-outline-secondary" href="{% url 'planning:project_plan_list' %}">Отмена</a></div></form>
+{% endblock %}

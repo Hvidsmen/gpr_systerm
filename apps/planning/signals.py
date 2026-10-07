@@ -95,3 +95,13 @@ def preserve_review_history(sender, instance, **kwargs):
     version_id = instance.version_id if sender is GlobalPlanReview else instance.review.version_id
     if not version_deletion_authorized(version_id):
         raise ValidationError("Историю согласования нельзя удалять отдельно от плана.")
+
+
+from .models import ProjectPlanVersion, ProjectPlanMember
+
+@receiver(pre_delete, sender=ProjectPlanVersion)
+@receiver(pre_delete, sender=ProjectPlanMember)
+def preserve_project_composition(sender, instance, **kwargs):
+    parent = instance if sender is ProjectPlanVersion else instance.consolidated_version
+    if ProjectPlanVersion.objects.filter(pk=parent.pk, status='FIXED').exists():
+        raise ValidationError('Зафиксированную сводную версию и её состав удалять нельзя.')

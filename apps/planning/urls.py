@@ -87,3 +87,17 @@ urlpatterns += [
     path('workspace-versions/<int:pk>/excel/', WorkspaceExcelExport.as_view(), name='workspace_excel_export'),
     path('workspace-versions/<int:pk>/excel/import/', WorkspaceExcelImport.as_view(), name='workspace_excel_import'),
 ]
+
+
+from .project_plan_views import ProjectPlanList, ProjectPlanCreate, ProjectPlanUpdate, ProjectPlanDetail, AssignProjectPlan
+urlpatterns += [
+    path('project-plans/', ProjectPlanList.as_view(), name='project_plan_list'),
+    path('project-plans/create/', ProjectPlanCreate.as_view(), name='project_plan_create'),
+    path('project-plans/<int:pk>/', ProjectPlanDetail.as_view(), name='project_plan_detail'),
+    path('project-plans/<int:pk>/update/', ProjectPlanUpdate.as_view(), name='project_plan_update'),
+    path('workspace/<int:pk>/project-plan/', AssignProjectPlan.as_view(), {'workspace_mode': True}, name='workspace_project_assign'),
+    path('global/<int:pk>/project-plan/assign/', AssignProjectPlan.as_view(), name='global_project_assign'),
+]
+
+from .report_views import MatrixReport
+urlpatterns += [path('reports/plan-fact/', MatrixReport.as_view(), name='report_matrix')]
