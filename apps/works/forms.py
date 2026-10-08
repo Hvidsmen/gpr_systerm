@@ -4,6 +4,8 @@ from django.utils.translation import gettext_lazy as _
 from .models import ProjectWork, ProjectWorkItem, WorkTemplateItem, MeasurementUnit
 from ..projects.models import Section, Project, ConstructionObject
 from core.permissions import scope_queryset
+from .price_sources import source_field, identity
+from .prices import price_on
 
 
 class UnitChoiceMixin:
@@ -74,6 +76,10 @@ class ProjectWorkForm(UnitChoiceMixin, forms.ModelForm):
         if self.instance.pk and "unit_price" in self.fields:
             self.fields["unit_price"].disabled = True
             self.fields["unit_price"].help_text = "Цена меняется в карточке работы с сохранением истории."
+        if not self.instance.pk:
+            self.fields['price_source'] = source_field(company)
+            if self.is_bound and self.data.get(self.add_prefix('price_source')):
+                self.fields['unit_price'].required = False
         self.configure_catalog(company)
         self.fields["work_group"].queryset = self.fields["work_group"].queryset.filter(company=company)
         self.fields["work_group"].empty_label = "Без группы"
@@ -81,6 +87,12 @@ class ProjectWorkForm(UnitChoiceMixin, forms.ModelForm):
 
     def clean(self):
         data = super().clean()
+        source = data.get('price_source')
+        if source:
+            if identity(source.unit) != identity(data.get('unit') or ''):
+                self.add_error('price_source', 'Единицы измерения работ не совпадают.')
+            else:
+                data['unit_price'] = price_on(source)
         template = data.get("template")
         if template and data.get("kind") == "COMPOSITE":
             version = (

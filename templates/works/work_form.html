@@ -110,6 +110,16 @@
                 </div>
             </div>
 
+            {% if form.price_source %}
+            <div class="card bg-light p-3 mb-3">
+                <label class="form-label" for="{{ form.price_source.id_for_label }}">{{ form.price_source.label }}</label>
+                {{ form.price_source }}
+                <div class="form-text mb-2">{{ form.price_source.help_text }}</div>
+                {% if form.price_source.errors %}<div class="text-danger">{{ form.price_source.errors }}</div>{% endif %}
+                {% include 'works/price_source_actions.html' %}
+            </div>
+            {% endif %}
+
             <!-- Статус -->
             <div class="row">
                 <div class="col-md-4 mb-3">

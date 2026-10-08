@@ -1,0 +1,6 @@
+{% load static %}
+<div class="mb-3" data-price-inheritance data-url="{% url 'works:price_sources' %}" data-source="{{ form.price_source.id_for_label }}" data-price="{% if form.unit_price %}{{ form.unit_price.id_for_label }}{% else %}{{ form.price.id_for_label }}{% endif %}" data-name="{{ work.name|default:'' }}" data-unit="{{ work.unit|default:'' }}" data-exclude="{{ work.pk|default:'' }}">
+<div class="d-flex flex-wrap gap-2 mb-2"><button type="button" class="btn btn-outline-primary btn-sm" data-find-price>Найти одинаковые работы</button><button type="button" class="btn btn-outline-secondary btn-sm" data-all-prices>Все работы</button></div>
+<div class="small text-muted" data-price-status role="status" aria-live="polite">Цена источника применяется только после сохранения формы.</div>
+</div>
+<script src="{% static 'works/price_inheritance.js' %}" defer></script>

@@ -135,6 +135,10 @@ class WorkCreateView(WorkLocationMixin, CompanyRequiredMixin, CreateView):
 
         # Сохраняем работу
         response = super().form_valid(form)
+        source = form.cleaned_data.get('price_source')
+        if source:
+            from .price_sources import source_note
+            self.object.price_history.update(reason=source_note(source))
 
         # Автоматически создаём подработы из шаблона
         if self.object.template:

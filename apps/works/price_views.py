@@ -1,3 +1,4 @@
+import json
 from django import forms
 from django.contrib import messages
 from django.core.exceptions import ValidationError
@@ -7,6 +8,7 @@ from django.views import View
 from core.permissions import PLAN_ROLES, require_roles
 from .models import ProjectWork, WorkPrice
 from .prices import change_price, price_on
+from .price_sources import source_field, source_note, identity
 
 
 class PriceForm(forms.Form):
@@ -31,7 +33,12 @@ class PriceForm(forms.Form):
 
     def __init__(self, *args, work, **kwargs):
         super().__init__(*args, **kwargs)
+        self.work = work
+        self.fields["price_source"] = source_field(work.company, work.pk)
+        if self.is_bound and self.data.get(self.add_prefix("price_source")):
+            self.fields["price"].required = False
         self.fields["corrects"].queryset = work.price_history.all()
+        self.fields["corrects"].widget.attrs["data-effective-dates"] = json.dumps({str(entry.pk): entry.effective_from.isoformat() for entry in work.price_history.all()})
         self.fields["corrects"].label_from_instance = (
             lambda entry: f"{'Первоначальная' if entry.effective_from.year == 1 else entry.effective_from.strftime('%d.%m.%Y')} · {entry.price} ₽ · запись {entry.pk}"
         )
@@ -52,6 +59,13 @@ class PriceForm(forms.Form):
                 "effective_from",
                 "Для изменения прошлой цены выберите исправляемую запись.",
             )
+        source = data.get("price_source")
+        if source:
+            if identity(source.unit) != identity(self.work.unit):
+                self.add_error("price_source", "Единицы измерения работ не совпадают.")
+            elif data.get("effective_from"):
+                data["price"] = price_on(source, data["effective_from"])
+                data["reason"] = (source_note(source) + (" · " + data["reason"] if data.get("reason") else ""))[:500]
         return data
 
 
@@ -82,7 +96,7 @@ class WorkPriceChange(View):
         form = PriceForm(request.POST, work=self.work)
         if form.is_valid():
             try:
-                change_price(request.user, self.work.pk, **form.cleaned_data)
+                change_price(request.user, self.work.pk, **{key: value for key, value in form.cleaned_data.items() if key != "price_source"})
                 messages.success(
                     request,
                     "Цена сохранена в истории. Согласованные планы не изменены.",
