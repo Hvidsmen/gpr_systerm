@@ -98,3 +98,35 @@ class ResourceSectionsTests(TestCase):
         self.assertEqual(self.client.post(url,{'period-fuel-fuel_type':'DIESEL','period-fuel-equipment_ref':'Forged'}).status_code,302)
         self.assertEqual(self.version.resource_allocations.filter(equipment_ref='').count(),3)
         self.assertEqual(self.version.resource_allocations.filter(equipment_ref__in=['A1','A2']).count(),2)
+
+    def test_work_groups_are_replaced_by_object_sections_in_editor_and_bulk_selection(self):
+        from apps.projects.models import Section
+        from apps.works.models import ProjectWork, WorkGroup
+        from .models import WorkMonthAllocation
+        obj = self.workspace.construction_object
+        sections = [Section.objects.create(company=self.company, construction_object=obj, name=name)
+                    for name in ['Буровые работы', 'Сварочные работы']]
+        group = WorkGroup.objects.create(company=self.company, name='Old shared work group')
+        works = [ProjectWork.objects.create(company=self.company, section=section, work_group=group,
+                                          name='Испытание свай', unit='шт') for section in sections]
+        for work in works:
+            WorkMonthAllocation.objects.create(company=self.company, version=self.version,
+                                               work=work, month=date(2026, 1, 1), quantity=1)
+        other_obj = ConstructionObject.objects.create(company=self.company, project=obj.project, name='Other object')
+        other_section = Section.objects.create(company=self.company, construction_object=other_obj, name='Other object section')
+        other_work = ProjectWork.objects.create(company=self.company, section=other_section, name='Other work', unit='шт')
+        for route, args in [('planning:workspace_edit', [self.version.pk]),
+                            ('planning:workspace_bulk_add', [self.version.pk, 'works'])]:
+            response = self.client.get(reverse(route, args=args))
+            self.assertEqual(response.status_code, 200)
+            metadata = response.context['planning_filter_data']['works']
+            self.assertEqual([metadata[str(work.pk)]['section'] for work in works],
+                             [str(section.pk) for section in sections])
+            self.assertNotIn(str(other_work.pk), metadata)
+            filters = response.context['work_filters' if route.endswith('workspace_edit') else 'selection_filters']
+            section_filter = next(field for field in filters if field['name'] == 'section')
+            self.assertEqual({option['value'] for option in section_filter['options']},
+                             {str(section.pk) for section in sections})
+            self.assertContains(response, 'Раздел')
+            self.assertNotContains(response, 'Old shared work group')
+            self.assertNotContains(response, 'Без группы работ')

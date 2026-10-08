@@ -114,8 +114,8 @@ function groupAllocationRows(panel) {
   const target=document.getElementById(kind==='works'?'work-rows':'resource-rows-'+kind);
   const rows=Array.from(target.querySelectorAll('.allocation-row'));
   const previous=new Map(Array.from(target.querySelectorAll('.allocation-group')).map(group=>[group.dataset.groupKey,group.open]));
-  const fieldNames={works:['group'],labor:['macro','group'],equipment:['category']}[kind];
-  const emptyLabels={works:{group:'Без группы работ'},labor:{macro:'Без макрогруппы',group:'Без группы'},equipment:{category:'Без категории'}};
+  const fieldNames={works:['section'],labor:['macro','group'],equipment:['category']}[kind];
+  const emptyLabels={works:{section:'Без раздела'},labor:{macro:'Без макрогруппы',group:'Без группы'},equipment:{category:'Без категории'}};
   const labels={};
   fieldNames.forEach(name=>{labels[name]=new Map(Array.from(panel.querySelector('[data-filter-key="'+name+'"]').options).filter(option=>option.value).map(option=>[option.value,option.textContent]));});
   const root=document.createDocumentFragment(),groups=new Map();
