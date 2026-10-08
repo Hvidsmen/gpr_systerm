@@ -3,7 +3,7 @@
 <h1>Импорт плана из файла совещания</h1>
 {% if target_version %}
 <p><strong>Объект:</strong> {{ target_version.construction_object.name }} · <strong>Версия:</strong> v{{ target_version.version_number }} · {{ target_version.title }}</p>
-<p>Выберите период и загрузите файл. Читается только лист этого объекта; после проверки данные записываются в эту же версию.</p>
+<p>Добавьте файлы и задайте отдельный период для каждого. Читается только лист этого объекта; после проверки данные записываются в эту же версию.</p>
 <p class="text-muted">Для найденных позиций месячные значения заменяются данными выбранных дат. Остальные позиции и месяцы сохраняются.</p>
 {% else %}
 <p>Каждый выбранный лист — отдельный строительный объект. Загрузка создаёт новый черновик плана на выбранный период; существующие планы сохраняются.</p>
@@ -16,7 +16,7 @@
 <p>{% if target_version %}Проверьте строки перед записью в текущую версию.{% else %}Проверьте строки и выберите листы для загрузки.{% endif %} Листы с ошибками недоступны. Нулевые объёмы загружаются, пустые значения пропускаются. Дневной план работ формируется системой по профилям, количество ресурсов повторяется каждый день в пределах периода плана.</p>
 <form method="post">{% csrf_token %}<input type="hidden" name="action" value="confirm"><input type="hidden" name="preview" value="{{ preview }}">
 {% for sheet in sheets %}
-<details class="card mb-2"><summary class="p-2 d-flex gap-2 align-items-center">{% if not target_version %}<input class="form-check-input m-0" type="checkbox" name="sheets" value="{{ sheet.index }}" aria-label="Загрузить {{ sheet.name }}" {% if sheet.errors %}disabled{% endif %}>{% endif %}<strong>{{ sheet.name }}</strong><span class="text-muted small">{{ sheet.object_action }} · Строк: {{ sheet.entries|length }}{% if sheet.errors %} · Есть ошибки{% endif %}</span></summary>
+<details class="card mb-2"><summary class="p-2 d-flex gap-2 align-items-center">{% if not target_version %}<input class="form-check-input m-0" type="checkbox" name="sheets" value="{{ sheet.index }}" aria-label="Загрузить {{ sheet.name }}" {% if sheet.errors %}disabled{% endif %}>{% endif %}<strong>{% if sheet.file %}{{ sheet.file }} · {{ sheet.start|date:"d.m.Y" }} — {{ sheet.end|date:"d.m.Y" }} · {% endif %}{{ sheet.name }}</strong><span class="text-muted small">{{ sheet.object_action }} · Строк: {{ sheet.entries|length }}{% if sheet.errors %} · Есть ошибки{% endif %}</span></summary>
 <div class="card-body pt-0">
 {% for error in sheet.errors %}<div class="text-danger mb-1">{{ error }}</div>{% endfor %}
 {% for warning in sheet.warnings %}<div class="text-muted small mb-1">{{ warning }}</div>{% endfor %}
@@ -24,10 +24,38 @@
 {% for row in sheet.entries %}<tr><td>{{ row.row }}</td><td>{{ row.month }}</td><td>{{ row.section }}</td><td>{% if row.kind == 'work' %}Работа{% elif row.kind == 'labor' %}Люди{% else %}Техника{% endif %}</td><td>{{ row.name }}</td><td>{{ row.equipment_number }}</td><td>{{ row.unit }}</td><td>{{ row.quantity }}</td><td>{{ row.action }}</td><td>{{ row.source }}</td></tr>{% endfor %}
 </tbody></table></div>
 </div></details>{% endfor %}
-<button class="btn btn-primary" {% if target_version and sheets.0.errors %}disabled{% endif %}>{% if target_version %}Записать в текущую версию{% else %}Загрузить выбранные листы{% endif %}</button><a class="btn btn-outline-secondary" href="{% if target_version %}{% url 'planning:workspace_meeting_import' target_version.pk %}{% else %}{% url 'planning:meeting_import' %}{% endif %}">Выбрать другой файл</a>
+<button class="btn btn-primary" {% if target_version and blocked %}disabled{% endif %}>{% if target_version %}Записать в текущую версию{% else %}Загрузить выбранные листы{% endif %}</button><a class="btn btn-outline-secondary" href="{% if target_version %}{% url 'planning:workspace_meeting_import' target_version.pk %}{% else %}{% url 'planning:meeting_import' %}{% endif %}">Выбрать другой файл</a>
 </form>
 {% else %}
-<form method="post" enctype="multipart/form-data" class="card"><div class="card-body">{% csrf_token %}{{ form.as_p }}<button class="btn btn-primary">Предварительный просмотр</button></div></form>
+<form method="post" enctype="multipart/form-data" class="card"><div class="card-body">{% csrf_token %}{% if formset %}
+{{ form.non_field_errors }}
+{{ formset.management_form }}{{ formset.non_form_errors }}
+<div class="table-responsive"><table class="table"><thead><tr><th>Файл</th><th>Начало периода</th><th>Конец периода</th><th>Действие</th></tr></thead><tbody id="meeting-files">
+{% for file_form in formset %}{% include 'planning/meeting_file_row.html' with file_form=file_form %}{% endfor %}
+</tbody></table></div>
+<button type="button" id="add-meeting-file" class="btn btn-outline-primary mb-3">Добавить файл</button>
+<template id="meeting-file-template">{% include 'planning/meeting_file_row.html' with file_form=formset.empty_form %}</template>
+<script>
+(() => {
+ const rows = document.getElementById('meeting-files');
+ const total = document.getElementById('id_files-TOTAL_FORMS');
+ document.getElementById('add-meeting-file').addEventListener('click', () => {
+   if (rows.querySelectorAll('tr:not([hidden])').length >= 20) return;
+   const html = document.getElementById('meeting-file-template').innerHTML.replaceAll('__prefix__', total.value);
+   rows.insertAdjacentHTML('beforeend', html);
+   total.value = Number(total.value) + 1;
+ });
+ rows.addEventListener('click', event => {
+   const button = event.target.closest('[data-remove-file]');
+   if (!button) return;
+   const row = button.closest('tr');
+   row.querySelector('[name$="-DELETE"]').checked = true;
+   row.hidden = true;
+   row.querySelectorAll('input:not([name$="-DELETE"]), select').forEach(input => input.required = false);
+ });
+})();
+</script>
+{% else %}{{ form.as_p }}{% endif %}<button class="btn btn-primary">Предварительный просмотр</button></div></form>
 {% endif %}
 <p class="mt-3">{% if target_version %}<a href="{% url 'planning:workspace_edit' target_version.pk %}">Вернуться к текущей версии</a>{% else %}<a href="{% url 'planning:workspace_list' %}">Вернуться к планам</a>{% endif %}</p>
 {% endblock %}

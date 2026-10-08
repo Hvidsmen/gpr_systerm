@@ -931,6 +931,60 @@ class MeetingImportForm(forms.Form):
             field.widget.attrs["class"] = "form-control"
 
 
+
+MeetingFileFormSet = forms.formset_factory(
+    MeetingImportForm, extra=0, min_num=1, max_num=20,
+    validate_min=True, validate_max=True, can_delete=True,
+)
+
+
+def batch_conflicts(company, project, batches, version):
+    """Resolve again at confirmation and reject writes to the same monthly cell."""
+    seen = {}
+    errors = []
+    for batch in batches:
+        validate_target_period(version, date.fromisoformat(batch["start"]),
+                               date.fromisoformat(batch["end"]))
+        for sheet in batch["sheets"]:
+            if sheet["errors"]:
+                errors.append(f'{batch["file"]}: лист содержит ошибки.')
+                continue
+            try:
+                _, rows = resolve_sheet(company, project, sheet, version.construction_object)
+            except ValidationError as error:
+                errors.extend(f'{batch["file"]}: {message}' for message in error.messages)
+                continue
+            for row in rows:
+                identity = (row["kind"], row["target_type"], row["target_id"]) if row["target_id"] else (
+                    row["kind"], key(row["section"]), key(row["name"]), key(row["unit"])
+                )
+                identity = (*identity, row.get("equipment_number", ""), row["month"])
+                if identity in seen:
+                    errors.append(
+                        f'Конфликт файлов «{seen[identity]}» и «{batch["file"]}»: '
+                        f'«{row["name"]}», месяц {row["month"][:7]}. '
+                        'Одна позиция за месяц должна быть только в одном файле.'
+                    )
+                seen[identity] = batch["file"]
+    return errors
+
+
+@transaction.atomic
+def apply_meeting_batch(user, project_id, batches, version):
+    project = Project.objects.select_for_update().get(pk=project_id, company=user.company)
+    version = GlobalPlanVersion.objects.select_for_update().get(pk=version.pk, company=user.company)
+    errors = batch_conflicts(user.company, project, batches, version)
+    if errors:
+        raise ValidationError(errors)
+    plans = []
+    for batch in batches:
+        plans.extend(apply_meeting_import(
+            user, project_id, batch["sheets"], {"0"},
+            date.fromisoformat(batch["start"]), date.fromisoformat(batch["end"]),
+            target_version=version,
+        ))
+    return plans
+
 class MeetingImportView(View):
     def target(self, request, pk):
         if pk is None:
@@ -976,6 +1030,11 @@ class MeetingImportView(View):
         )
 
     def display(self, request, form, **context):
+        if self.target_version and form is not None and "formset" not in context:
+            context["formset"] = MeetingFileFormSet(
+                prefix="files", initial=[form.initial],
+                form_kwargs={"company": request.user.company, "version": self.target_version},
+            )
         return render(
             request,
             "planning/meeting_import.html",
@@ -1008,15 +1067,19 @@ class MeetingImportView(View):
                     if self.target_version
                     else set(request.POST.getlist("sheets"))
                 )
-                plans = apply_meeting_import(
-                    request.user,
-                    payload["project"],
-                    payload["sheets"],
-                    selected,
-                    date.fromisoformat(payload["start"]),
-                    date.fromisoformat(payload["end"]),
-                    target_version=self.target_version,
-                )
+                if self.target_version and payload.get("batches"):
+                    plans = apply_meeting_batch(request.user, payload["project"],
+                                                payload["batches"], self.target_version)
+                else:
+                    plans = apply_meeting_import(
+                        request.user,
+                        payload["project"],
+                        payload["sheets"],
+                        selected,
+                        date.fromisoformat(payload["start"]),
+                        date.fromisoformat(payload["end"]),
+                        target_version=self.target_version,
+                    )
                 request.session.pop("meeting_import_nonce", None)
                 if self.target_version:
                     messages.success(
@@ -1052,6 +1115,40 @@ class MeetingImportView(View):
                 )
             except ValidationError as error:
                 return self.preview(request, payload, error.messages)
+        if self.target_version and "files-TOTAL_FORMS" in request.POST:
+            formset = MeetingFileFormSet(
+                request.POST, request.FILES, prefix="files",
+                form_kwargs={"company": request.user.company, "version": self.target_version},
+            )
+            if formset.is_valid():
+                batches = []
+                for file_form in formset:
+                    if file_form.cleaned_data.get("DELETE"):
+                        continue
+                    values = file_form.cleaned_data
+                    try:
+                        sheets = parse_meeting_workbook(
+                            values["file"], values["start"], values["end"],
+                            values["resource_rule"], object_name=self.target_version.construction_object.name,
+                        )
+                        batches.append({"file": values["file"].name,
+                                        "start": values["start"].isoformat(),
+                                        "end": values["end"].isoformat(), "sheets": sheets})
+                    except ValidationError as error:
+                        file_form.add_error("file", error)
+                if all(not f.errors for f in formset if not f.cleaned_data.get("DELETE")):
+                    nonce = uuid4().hex
+                    request.session["meeting_import_nonce"] = nonce
+                    payload = {"nonce": nonce, "user": request.user.pk,
+                               "company": request.user.company_id,
+                               "version": self.target_version.pk,
+                               "project": self.target_version.construction_object.project_id,
+                               "start": min(b["start"] for b in batches),
+                               "end": max(b["end"] for b in batches),
+                               "sheets": [sheet for b in batches for sheet in b["sheets"]],
+                               "batches": batches}
+                    return self.preview(request, payload)
+            return self.display(request, None, formset=formset)
         form = MeetingImportForm(
             request.POST,
             request.FILES,
@@ -1097,6 +1194,9 @@ class MeetingImportView(View):
             pk=payload["project"], company=request.user.company
         )
         display = []
+        if payload.get("batches"):
+            errors = list(errors or []) + batch_conflicts(
+                request.user.company, project, payload["batches"], self.target_version)
         for index, sheet in enumerate(payload["sheets"]):
             item = {**sheet, "index": index, "errors": list(sheet["errors"])}
             try:
@@ -1113,6 +1213,10 @@ class MeetingImportView(View):
                 item["object_action"] = "Существующий объект"
             except ValidationError as error:
                 item["errors"].extend(error.messages)
+            if payload.get("batches"):
+                batch = payload["batches"][index]
+                item.update(file=batch["file"], start=date.fromisoformat(batch["start"]),
+                            end=date.fromisoformat(batch["end"]))
             display.append(item)
         return self.display(
             request,
@@ -1122,5 +1226,6 @@ class MeetingImportView(View):
             start=date.fromisoformat(payload["start"]),
             end=date.fromisoformat(payload["end"]),
             errors=errors,
+            blocked=bool(errors) or any(s["errors"] for s in display),
             preview=signing.dumps(payload, salt=SALT, compress=True),
         )

@@ -270,3 +270,66 @@ class MeetingVersionImportTests(TestCase):
         self.assertEqual(
             ProjectWork.objects.filter(company=self.company, name="Simple").count(), 1
         )
+
+    def batch_preview(self, second_start=FEB, second_end=date(2026, 2, 28), **extra):
+        return self.client.post(self.url, {
+            "files-TOTAL_FORMS": "2", "files-INITIAL_FORMS": "0",
+            "files-0-start": JAN, "files-0-end": date(2026, 1, 31),
+            "files-0-resource_rule": "maximum", "files-0-file": upload(),
+            "files-1-start": second_start, "files-1-end": second_end,
+            "files-1-resource_rule": "maximum", "files-1-file": upload(), **extra,
+        })
+
+    def test_batch_separate_periods_preview_and_confirmation(self):
+        response = self.batch_preview()
+        self.assertEqual(len(response.context["sheets"]), 2)
+        self.assertFalse(response.context["blocked"])
+        self.assertFalse(self.version.work_allocations.filter(work__name="Imported work").exists())
+        self.client.post(self.url, {"action": "confirm", "preview": response.context["preview"]})
+        self.assertEqual(self.version.work_allocations.get(work__name="Imported work", month=JAN).quantity, 5)
+        self.assertEqual(self.version.work_allocations.get(work__name="Imported work", month=FEB).quantity, 4)
+
+    def test_batch_conflict_blocks_all_writes_even_with_manual_confirmation(self):
+        response = self.batch_preview(JAN, date(2026, 1, 31))
+        self.assertTrue(response.context["blocked"])
+        self.assertContains(response, "Конфликт файлов")
+        result = self.client.post(self.url, {"action": "confirm", "preview": response.context["preview"]})
+        self.assertEqual(result.status_code, 200)
+        self.assertFalse(self.version.work_allocations.filter(work__name="Imported work").exists())
+        self.assertFalse(self.version.resource_allocations.exists())
+
+    def test_batch_deleted_file_and_invalid_period(self):
+        response = self.batch_preview(second_start=date(2025, 1, 1))
+        self.assertTrue(response.context["formset"].errors[1])
+        response = self.batch_preview(second_start=date(2025, 1, 1), **{"files-1-DELETE": "on"})
+        self.assertEqual(len(response.context["sheets"]), 1)
+        self.assertFalse(response.context["blocked"])
+
+    def test_batch_table_and_empty_submission(self):
+        response = self.client.get(self.url)
+        self.assertContains(response, "Добавить файл")
+        self.assertContains(response, "Удалить")
+        response = self.client.post(self.url, {"files-TOTAL_FORMS": "0", "files-INITIAL_FORMS": "0"})
+        self.assertTrue(response.context["formset"].non_form_errors())
+
+    def test_batch_rolls_back_first_file_when_second_apply_fails(self):
+        from unittest.mock import patch
+        from django.core.exceptions import ValidationError
+        from .meeting_import import apply_meeting_batch
+        response = self.batch_preview()
+        from django.core import signing
+        from .meeting_import import SALT
+        payload = signing.loads(response.context["preview"], salt=SALT)
+        original = apply_meeting_import
+        calls = 0
+        def failing_apply(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise ValidationError("Second file failed")
+            return original(*args, **kwargs)
+        with patch("apps.planning.meeting_import.apply_meeting_import", side_effect=failing_apply):
+            with self.assertRaises(ValidationError):
+                apply_meeting_batch(self.planner, self.obj.project_id, payload["batches"], self.version)
+        self.assertFalse(self.version.work_allocations.filter(work__name="Imported work").exists())
+        self.assertFalse(self.version.resource_allocations.exists())

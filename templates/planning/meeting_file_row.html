@@ -1,0 +1,6 @@
+<tr {% if file_form.DELETE.value %}hidden{% endif %}>
+<td>{{ file_form.non_field_errors }}{{ file_form.file.errors }}{{ file_form.file }}<div class="mt-2">{{ file_form.resource_rule.label_tag }}{{ file_form.resource_rule }}</div></td>
+<td>{{ file_form.start.errors }}{{ file_form.start }}</td>
+<td>{{ file_form.end.errors }}{{ file_form.end }}</td>
+<td><span hidden>{{ file_form.DELETE }}</span><button type="button" data-remove-file class="btn btn-outline-danger">Удалить</button></td>
+</tr>
