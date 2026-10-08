@@ -68,8 +68,12 @@ def matrix(plan, start, end):
     days = [start+timedelta(days=i) for i in range((end-start).days+1)]
     demand = {(row['brigade_id'], row['date']): row['count'] for row in plan.demand}
     result = []
-    for position in plan.positions.select_related('brigade').prefetch_related('people'):
-        people = [{'person': person, 'cells': [on_shift(person, day) for day in days]} for person in position.people.all()]
+    for position in plan.positions.select_related('brigade').prefetch_related('people__overrides'):
+        people = []
+        for person in position.people.all():
+            overrides = {entry.day: entry.status for entry in person.overrides.all()}
+            statuses = [{'date': day, 'present': overrides[day] == 'ON' if day in overrides else on_shift(person, day), 'manual': day in overrides} for day in days]
+            people.append({'person': person, 'cells': [cell['present'] for cell in statuses], 'statuses': statuses})
         needed = [demand.get((position.brigade_id, day.isoformat()), None) for day in days]
         present = [sum(row['cells'][i] for row in people) for i in range(len(days))]
         result.append({'position': position, 'people': people, 'needed': needed, 'present': present,

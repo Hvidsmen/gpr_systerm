@@ -131,3 +131,58 @@ class PersonDelete(View):
         plan_id = person.position.plan_id
         person.delete()
         return redirect('rotation:plan_detail', pk=plan_id)
+
+
+class StatusEdit(View):
+    def dispatch(self, request, pk, *args, **kwargs):
+        self.person = get_object_or_404(RotationPerson.objects.select_related('position__plan'), pk=pk, company=request.user.company)
+        return super().dispatch(request, pk, *args, **kwargs)
+
+    def get(self, request, pk):
+        from .forms import StatusForm
+        from .models import RotationStatus
+        try:
+            day = date.fromisoformat(request.GET.get('date', self.person.position.plan.start.isoformat()))
+        except ValueError:
+            from django.http import HttpResponseBadRequest
+            return HttpResponseBadRequest('Некорректная дата')
+        entry = RotationStatus.objects.filter(person=self.person, day=day).first()
+        form = StatusForm(person=self.person, initial={'day':day, 'status':entry.status if entry else 'AUTO'})
+        return self.display(request, form)
+
+    def post(self, request, pk):
+        from .forms import StatusForm
+        from .models import RotationStatus
+        form = StatusForm(request.POST, person=self.person)
+        if form.is_valid():
+            day, status = form.cleaned_data['day'], form.cleaned_data['status']
+            if status == 'AUTO':
+                RotationStatus.objects.filter(person=self.person, day=day, company=request.user.company).delete()
+            else:
+                RotationStatus.objects.update_or_create(person=self.person, day=day, company=request.user.company, defaults={'status':status})
+            messages.success(request, 'Статус обновлён. Численность и нехватка пересчитаны.')
+            return redirect(reverse('rotation:plan_detail', args=[self.person.position.plan_id]) + '?' + urlencode({'month':day.strftime('%Y-%m')}))
+        return self.display(request, form)
+
+    def display(self, request, form):
+        return render(request, 'rotation/form.html', {'form':form, 'title':f'Статус перевахты · {self.person.name}', 'plan':self.person.position.plan})
+
+
+class PlanExport(View):
+    def get(self, request, pk):
+        from django.http import HttpResponse, HttpResponseBadRequest
+        from .excel import export_matrix
+        plan = get_object_or_404(RotationPlan, pk=pk, company=request.user.company)
+        start, end = plan.start, plan.end
+        month = request.GET.get('month')
+        if month:
+            try:
+                chosen = date.fromisoformat(month+'-01')
+                start = max(start, chosen)
+                end = min(end, chosen.replace(day=calendar.monthrange(chosen.year, chosen.month)[1]))
+                if start > end: raise ValueError()
+            except ValueError:
+                return HttpResponseBadRequest('Некорректный месяц')
+        response = HttpResponse(export_matrix(plan,start,end), content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        response['Content-Disposition'] = f'attachment; filename="rotation-{plan.pk}-{month or "all"}.xlsx"'
+        return response

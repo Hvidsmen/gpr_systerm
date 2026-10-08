@@ -70,3 +70,21 @@ class RotationPerson(RotationModel):
 
     def __str__(self):
         return self.name
+
+
+class RotationStatus(RotationModel):
+    person = models.ForeignKey(RotationPerson, on_delete=models.CASCADE, related_name='overrides')
+    day = models.DateField('Дата')
+    status = models.CharField('Статус', max_length=3, choices=[('ON', 'Вахта'), ('OFF', 'Отдых')])
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['person', 'day'], name='rotation_unique_person_day')]
+        ordering = ['day']
+
+    def clean(self):
+        if self.person_id:
+            if self.person.company_id != self.company_id:
+                raise ValidationError('Человек другой компании.')
+            plan = self.person.position.plan
+            if self.day and not plan.start <= self.day <= plan.end:
+                raise ValidationError('Дата за пределами плана перевахты.')

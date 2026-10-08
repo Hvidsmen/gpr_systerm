@@ -95,7 +95,7 @@ def check_route(user, match, method):
         require_roles(user, roles)
         return
     if namespace == 'rotation':
-        require_roles(user, READ_ROLES if name in {'plan_list', 'plan_detail'} and method in {'GET', 'HEAD'} else PLAN_ROLES)
+        require_roles(user, READ_ROLES if name in {'plan_list', 'plan_detail', 'plan_export'} and method in {'GET', 'HEAD'} else PLAN_ROLES)
         return
     if namespace == 'planning':
         action = match.kwargs.get('action') if name == 'global_action' else None

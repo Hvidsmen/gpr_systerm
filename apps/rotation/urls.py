@@ -2,6 +2,8 @@ from django.urls import path
 from . import views
 app_name = 'rotation'
 urlpatterns = [
+    path('<int:pk>/excel/', views.PlanExport.as_view(), name='plan_export'),
+    path('people/<int:pk>/status/', views.StatusEdit.as_view(), name='status_update'),
     path('', views.PlanList.as_view(), name='plan_list'),
     path('create/', views.PlanCreate.as_view(), name='plan_create'),
     path('<int:pk>/', views.PlanDetail.as_view(), name='plan_detail'),

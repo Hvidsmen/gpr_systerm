@@ -29,3 +29,22 @@ class PersonForm(forms.ModelForm):
         model = RotationPerson
         fields = ['name', 'on_days', 'off_days', 'anchor']
         widgets = {'anchor': forms.DateInput(format='%Y-%m-%d', attrs={'type':'date'})}
+
+
+class StatusForm(forms.Form):
+    day = forms.DateField(label='Дата', widget=forms.DateInput(format='%Y-%m-%d', attrs={'type':'date'}))
+    status = forms.ChoiceField(label='Статус', choices=[('AUTO','По графику'),('ON','Вахта'),('OFF','Отдых')])
+
+    def __init__(self, *args, person, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.person = person
+        plan = person.position.plan
+        self.fields['day'].widget.attrs.update(min=plan.start.isoformat(), max=plan.end.isoformat())
+        self.fields['status'].help_text = 'Ручной статус перекрывает график на выбранный день. «По графику» удаляет ручное изменение.'
+
+    def clean_day(self):
+        day = self.cleaned_data['day']
+        plan = self.person.position.plan
+        if not plan.start <= day <= plan.end:
+            raise forms.ValidationError('Дата за пределами плана перевахты.')
+        return day
