@@ -48,3 +48,8 @@ class StatusForm(forms.Form):
         if not plan.start <= day <= plan.end:
             raise forms.ValidationError('Дата за пределами плана перевахты.')
         return day
+
+
+class ResetForm(forms.Form):
+    confirm = forms.BooleanField(label='Подтверждаю сброс ручных статусов в указанной области',
+        error_messages={'required':'Подтвердите сброс ручных статусов.'})

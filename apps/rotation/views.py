@@ -186,3 +186,57 @@ class PlanExport(View):
         response = HttpResponse(export_matrix(plan,start,end), content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         response['Content-Disposition'] = f'attachment; filename="rotation-{plan.pk}-{month or "all"}.xlsx"'
         return response
+
+
+class StatusReset(View):
+    """Preview exact scope; deleting overrides requires an explicit POST confirmation."""
+    def dispatch(self, request, scope, pk, *args, **kwargs):
+        from .models import RotationStatus
+        from apps.projects.models import ConstructionObject
+        require_roles(request.user, PLAN_ROLES)
+        self.plan = None
+        self.scope = scope
+        self.statuses = RotationStatus.objects.filter(company=request.user.company)
+        if scope == 'all' and pk == 0:
+            self.label = 'Все планы перевахты вашей компании'
+        elif scope == 'plan':
+            self.plan = get_object_or_404(RotationPlan, pk=pk, company=request.user.company)
+            self.label = f'План перевахты: {self.plan.title}'
+            self.statuses = self.statuses.filter(person__position__plan=self.plan)
+        elif scope == 'role':
+            position = get_object_or_404(RotationRole.objects.select_related('plan', 'brigade'), pk=pk, company=request.user.company)
+            self.plan = position.plan
+            self.label = f'Должность: {position.brigade} · {position.plan.title}'
+            self.statuses = self.statuses.filter(person__position=position)
+        elif scope == 'object':
+            obj = get_object_or_404(ConstructionObject, pk=pk, company=request.user.company)
+            self.label = f'Строительный объект: {obj}'
+            self.statuses = self.statuses.filter(person__position__plan__source__construction_object=obj)
+        else:
+            from django.http import Http404
+            raise Http404()
+        return super().dispatch(request, scope, pk, *args, **kwargs)
+
+    def get(self, request, scope, pk):
+        from .forms import ResetForm
+        return self.display(request, ResetForm())
+
+    def post(self, request, scope, pk):
+        from .forms import ResetForm
+        form = ResetForm(request.POST)
+        if form.is_valid():
+            with transaction.atomic():
+                deleted, _ = self.statuses.delete()
+            messages.success(request, f'Сброшено ручных статусов: {deleted}. Расчёт выполняется по сохранённым личным графикам.')
+            return redirect(self.back_url(request))
+        return self.display(request, form)
+
+    def back_url(self, request):
+        if self.plan:
+            return reverse('rotation:plan_detail', args=[self.plan.pk])+'?'+urlencode({'month':request.POST.get('month',request.GET.get('month',''))})
+        return reverse('rotation:plan_list')
+
+    def display(self, request, form):
+        return render(request, 'rotation/reset.html', {'form':form, 'label':self.label, 'scope':self.scope,
+            'count':self.statuses.count(), 'plan_count':self.statuses.values('person__position__plan_id').distinct().count(),
+            'back_url':self.back_url(request), 'month':request.POST.get('month',request.GET.get('month',''))})

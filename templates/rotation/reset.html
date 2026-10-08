@@ -1,0 +1,11 @@
+{% extends 'base.html' %}
+{% block title %}Сброс ручных статусов · Перевахта{% endblock %}
+{% block content %}
+<h1 class="h3">Сброс ручных статусов</h1>
+<div class="app-form-card"><h2 class="h5">{{ label }}</h2>
+<p>Ручных статусов к сбросу: <strong>{{ count }}</strong>. Затронуто планов: {{ plan_count }}.</p>
+<p>Сброс применяется <strong>ко всему периоду</strong>, включая месяцы, которые сейчас не показаны в матрице.{% if scope == 'object' %} Будут обработаны все планы перевахты этого строительного объекта.{% elif scope == 'all' %} Будут обработаны все планы перевахты вашей компании.{% endif %}</p>
+<p>После сброса статусы «Вахта / Отдых», численность и нехватка рассчитываются по личным графикам. Люди, даты начала, длительность вахты и отдыха, потребность сохраняются.</p>
+{% if count %}<div class="alert alert-warning">Удалённые ручные изменения нельзя восстановить этой кнопкой.</div><form method="post">{% csrf_token %}<input type="hidden" name="month" value="{{ month }}">{% include 'forms/fields.html' %}<div class="app-form-actions"><button class="btn btn-danger">Сбросить {{ count }} ручных статусов</button><a class="btn btn-outline-secondary" href="{{ back_url }}">Отмена</a></div></form>{% else %}<div class="alert alert-info">В выбранной области ручных статусов нет.</div><a class="btn btn-outline-secondary" href="{{ back_url }}">Вернуться</a>{% endif %}
+</div>
+{% endblock %}
