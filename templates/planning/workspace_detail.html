@@ -9,7 +9,7 @@
 {% if request.user|may:'planning:global_detail' %}<a class="btn btn-outline-primary" href="{% url 'planning:global_detail' workspace.baseline_version_id %}">План на весь период и согласование</a>{% endif %}
 </div></div>
 <div class="card mb-4"><div class="card-body"><h2>Месячное уточнение</h2>
-{% if workspace.baseline_version.is_immutable %}{% if request.user|may:'planning:workspace_forecast' %}<form method="post" action="{% url 'planning:workspace_forecast' workspace.pk %}">{% csrf_token %}{{ forecast_form.as_p }}<button class="btn btn-primary">Создать месячную версию плана на весь период</button></form>{% endif %}
+{% if workspace.baseline_version.is_immutable %}{% if request.user|may:'planning:workspace_forecast' %}<form method="post" action="{% url 'planning:workspace_forecast' workspace.pk %}">{% csrf_token %}{% include 'forms/fields.html' with form=forecast_form %}<button class="btn btn-primary">Создать месячную версию плана на весь период</button></form>{% endif %}
 {% else %}<p>Сначала сформируйте и утвердите базовый план.</p>{% endif %}
 </div></div>
 {% include 'planning/project_assignment.html' %}

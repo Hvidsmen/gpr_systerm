@@ -57,7 +57,7 @@
  });
 })();
 </script>
-{% else %}{{ form.as_p }}{% endif %}<button class="btn btn-primary">Предварительный просмотр</button></div></form>
+{% else %}{% include 'forms/fields.html' with form=form %}{% endif %}<button class="btn btn-primary">Предварительный просмотр</button></div></form>
 {% endif %}
 <p class="mt-3">{% if target_version %}<a href="{% url 'planning:workspace_edit' target_version.pk %}">Вернуться к текущей версии</a>{% else %}<a href="{% url 'planning:workspace_list' %}">Вернуться к планам</a>{% endif %}</p>
 <script src="{% static 'planning/meeting_file_period.js' %}" defer></script>

@@ -2,5 +2,5 @@
 {% block content %}
 <div class="card p-3"><h1 class="h4">Редактировать единицу измерения</h1>
 {% if usage %}<p class="text-muted">Единица используется в {{ usage }} записях. Доступно изменение названия; обозначение сохраняется для связанных данных.</p>{% endif %}
-<form method="post">{% csrf_token %}{{ form.as_p }}<div class="d-flex gap-2"><button class="btn btn-primary">Сохранить</button><a class="btn btn-outline-secondary" href="{% url 'works:unit_list' %}">Отмена</a></div></form></div>
+<form method="post">{% csrf_token %}{% include 'forms/fields.html' with form=form %}<div class="d-flex gap-2"><button class="btn btn-primary">Сохранить</button><a class="btn btn-outline-secondary" href="{% url 'works:unit_list' %}">Отмена</a></div></form></div>
 {% endblock %}

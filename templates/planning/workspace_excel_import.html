@@ -15,7 +15,7 @@
 </div>
 </div></div>
 <form method="post" enctype="multipart/form-data" class="card"><div class="card-body">
-{% csrf_token %}{{ form.as_p }}
+{% csrf_token %}{% include 'forms/fields.html' with form=form %}
 <button class="btn btn-primary">Импортировать</button>
 <a class="btn btn-outline-secondary" href="{% url 'planning:workspace_edit' version.pk %}?month={{ return_month }}">Отмена</a>
 </div></form>

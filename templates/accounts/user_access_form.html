@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
 {% block content %}
 <h1>{% if object %}Доступ пользователя {{ object.username }}{% else %}Новый пользователь{% endif %}</h1>
-<form method="post" class="card card-body">{% csrf_token %}{{ form.as_p }}<button class="btn btn-primary">Сохранить</button></form>
+<form method="post" class="card card-body">{% csrf_token %}{% include 'forms/fields.html' with form=form %}<button class="btn btn-primary">Сохранить</button></form>
 {% endblock %}

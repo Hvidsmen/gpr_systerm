@@ -1,0 +1,12 @@
+{% load form_ui %}
+{% for hidden in form.hidden_fields %}{{ hidden }}{% if hidden.errors %}<div class="app-form-errors" role="alert">{{ hidden.errors }}</div>{% endif %}{% endfor %}
+{% if form.non_field_errors %}<div class="app-form-errors" role="alert">{{ form.non_field_errors }}</div>{% endif %}
+<div class="app-form-fields">
+{% for field in form.visible_fields %}
+<div class="app-form-field {% if field|wide_field %}app-form-wide{% endif %} {% if field.errors %}app-field-invalid{% endif %}">
+{% if field|checkbox_field %}<div class="app-form-check">{{ field }}{{ field.label_tag }}</div>{% else %}<div class="app-form-label">{{ field.label_tag }}{% if field.field.required %}<span class="app-required" aria-hidden="true">*</span>{% endif %}</div>{{ field }}{% endif %}
+{% if field.help_text %}<div class="app-form-help" id="{{ field.auto_id }}_helptext">{{ field.help_text|safe }}</div>{% endif %}
+{% if field.errors %}<div class="app-form-errors" id="{{ field.auto_id }}_error" role="alert">{{ field.errors }}</div>{% endif %}
+</div>
+{% endfor %}
+</div>

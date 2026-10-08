@@ -6,7 +6,7 @@
 <p>Обязательно только название. Новые категории создаются автоматически. По умолчанию единица измерения — <strong>ед.</strong>, активность — «Да». Для отключения укажите «Нет».</p>
 <p>Существующие названия и повторы пропускаются без изменения данных. Если есть ошибки, весь импорт отменяется.</p>
 <a class="btn btn-outline-primary mb-3" href="{% url 'resources:equipment_import_template' %}">Скачать шаблон Excel</a>
-<form method="post" enctype="multipart/form-data">{% csrf_token %}{{ form.as_p }}<button class="btn btn-primary">Загрузить виды техники</button></form>
+<form method="post" enctype="multipart/form-data">{% csrf_token %}{% include 'forms/fields.html' with form=form %}<button class="btn btn-primary">Загрузить виды техники</button></form>
 </div></div>
 {% if result %}<div class="alert alert-success" role="status">Добавлено видов техники: {{ result.created }}. Пропущено повторов: {{ result.skipped }}. Создано категорий: {{ result.categories }}.</div>{% endif %}
 {% if errors %}<div class="alert alert-danger" role="alert"><strong>Импорт отменён. Ошибок: {{ error_count }}.</strong><ul>{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul><p>Исправьте файл и загрузите его снова. Показаны первые 100 ошибок.</p></div>{% endif %}

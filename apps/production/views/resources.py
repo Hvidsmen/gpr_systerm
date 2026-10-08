@@ -43,6 +43,13 @@ CONFIG = {
 
 
 class UserFormMixin:
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        if getattr(self, 'prefix', None):
+            context['title'] = self.model._meta.verbose_name
+            context['cancel_url'] = reverse('production:' + self.prefix + '_list')
+        return context
+
     def get_form_kwargs(self):
         return {**super().get_form_kwargs(), "user": self.request.user}
 
