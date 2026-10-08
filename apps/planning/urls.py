@@ -109,3 +109,7 @@ urlpatterns += [path("workspace-versions/<int:pk>/meeting-import/", MeetingImpor
 
 from core.bulk_delete import BulkDelete
 urlpatterns += [path("bulk-delete/<str:kind>/", BulkDelete.as_view(allowed_kinds=('profiles', 'calendars')), name="bulk_delete")]
+
+from apps.production.journal_delete import JournalBulkDelete
+urlpatterns += [path('journals/<str:kind>/delete/', JournalBulkDelete.as_view(
+    allowed_kinds=('monthly_plans',)), name='journal_bulk_delete')]

@@ -84,6 +84,8 @@ class FactListView(CompanyScopedMixin, ListView):
         params = self.filter_form.data.copy()
         params.pop("page", None)
         context.update(
+            bulk_route="production:journal_fact_bulk_delete",
+            bulk_kind="work_facts",
             filter_form=self.filter_form,
             matrix_days=days,
             matrix_rows=page.object_list,

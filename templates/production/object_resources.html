@@ -1,8 +1,23 @@
 {% extends 'base.html' %}
-{% load access %}{% block content %}
-<h1>{{ title|capfirst }}</h1>
-<p>{% if can_edit %}<a class="btn btn-primary" href="{{ create_url }}">Добавить</a> {% if range_url %}<a href="{{ range_url }}">Создать на период</a>{% endif %} {% if daily_url %}<a href="{{ daily_url }}">Ввод за день из плана</a>{% endif %}{% endif %} · {% if request.user|may:'production:legacy_resources' %}<a href="{% url 'production:legacy_resources' %}">Перенос старых записей</a>{% endif %} · {% if request.user|may:'planning:global_list' %}<a href="{% url 'planning:global_list' %}">Глобальные версии</a>{% endif %}</p>
-<form method="get"><select name="construction_object"><option value="">Все объекты</option>{% for obj in objects %}<option value="{{ obj.pk }}" {% if request.GET.construction_object == obj.pk|stringformat:'s' %}selected{% endif %}>{{ obj }}</option>{% endfor %}</select> <input type="date" name="date" value="{{ request.GET.date }}"><button>Показать</button></form>
-<table class="table"><thead><tr><th>Дата</th><th>Объект</th>{% for label in field_labels %}<th>{{ label }}</th>{% endfor %}<th></th></tr></thead><tbody>{% for row in rows %}<tr><td>{{ row.record.date }}</td><td>{{ row.record.construction_object }}</td>{% for value in row.values %}<td>{{ value }}</td>{% endfor %}<td>{% if can_edit %}<a href="{{ row.edit }}">Изменить</a> · <a href="{{ row.delete }}">Удалить</a>{% endif %}</td></tr>{% empty %}<tr><td>Записей нет.</td></tr>{% endfor %}</tbody></table>
-{% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}&construction_object={{ request.GET.construction_object }}&date={{ request.GET.date }}">Назад</a>{% endif %} {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}&construction_object={{ request.GET.construction_object }}&date={{ request.GET.date }}">Далее</a>{% endif %}
+{% load access %}
+{% block content %}
+<h1 class="h3">{{ title|capfirst }}</h1>
+<div class="d-flex flex-wrap gap-2 mb-3">{% if can_edit %}<a class="btn btn-primary" href="{{ create_url }}">Добавить</a>{% if range_url %}<a class="btn btn-outline-primary" href="{{ range_url }}">Создать на период</a>{% endif %}{% if daily_url %}<a class="btn btn-outline-primary" href="{{ daily_url }}">Ввод за день из плана</a>{% endif %}{% endif %}</div>
+<form method="get" class="card card-body mb-3"><div class="d-flex flex-wrap gap-3 align-items-end">{% for field in filter_form %}<div>{{ field.label_tag }}{{ field }}{{ field.errors }}</div>{% endfor %}<button class="btn btn-primary">Показать</button><a class="btn btn-outline-secondary" href="?">Сбросить</a></div></form>
+<p class="small text-muted">Даты — по столбцам, объекты и ресурсы — по строкам. «—» означает отсутствие записи. Нулевые значения сохраняются. Сумма по дням складывает количество за каждый день; остатки ГСМ не суммируются.</p>
+{% include 'bulk/toolbar.html' %}
+{% if matrix_rows %}<div class="journal-wrap" tabindex="0" role="region" aria-label="{{ title }}"><table class="table journal-matrix"><thead><tr><th class="journal-name">Объект / Ресурс</th><th>Сумма по дням</th>{% for day in matrix_days %}<th>{{ day|date:'d.m.Y' }}</th>{% endfor %}</tr></thead><tbody>
+{% for row in matrix_rows %}<tr><th class="journal-name"><div class="text-muted small">{{ row.object.project.name }} / {{ row.object.name }}</div>{{ row.label }}</th><td>{{ row.total }}</td>
+{% for cell in row.cells %}<td>{% if cell %}<div class="d-flex gap-2 align-items-start">{% include 'bulk/checkbox.html' with record=cell.record %}<div>{% for metric in cell.values %}<div class="small"><span class="text-muted">{{ metric.label }}:</span> <strong>{{ metric.value|default_if_none:'—' }}</strong></div>{% endfor %}</div></div>{% if can_edit %}<div class="d-flex gap-2 mt-2"><a href="{{ cell.edit }}" class="btn btn-sm btn-outline-primary" aria-label="Изменить {{ row.label }} за {{ cell.record.date|date:'d.m.Y' }}">Изменить</a><a href="{{ cell.delete }}?return_query={{ matrix_query|urlencode }}" class="btn btn-sm btn-outline-danger" aria-label="Удалить {{ row.label }} за {{ cell.record.date|date:'d.m.Y' }}">Удалить</a></div>{% endif %}{% else %}<span class="text-muted">—</span>{% endif %}</td>{% endfor %}</tr>{% endfor %}
+</tbody></table></div>
+{% if page_obj.has_other_pages %}<nav class="d-flex gap-3 mt-3" aria-label="Страницы матрицы">{% if page_obj.has_previous %}<a href="?{{ filter_query }}&amp;page={{ page_obj.previous_page_number }}">Назад</a>{% endif %}<span>{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>{% if page_obj.has_next %}<a href="?{{ filter_query }}&amp;page={{ page_obj.next_page_number }}">Далее</a>{% endif %}</nav>{% endif %}
+{% else %}<div class="alert alert-info">За выбранный период записей нет.</div>{% endif %}
+<style>
+.journal-wrap{overflow:auto;max-height:70vh;border:1px solid #dee2e6;border-radius:8px}
+.journal-matrix{width:max-content;min-width:100%;border-collapse:separate;border-spacing:0;margin:0;font-size:13px}
+.journal-matrix th,.journal-matrix td{padding:8px;min-width:180px;border-right:1px solid #eee;vertical-align:top}
+.journal-matrix thead th{position:sticky;top:0;background:#f4f6f9;z-index:2}
+.journal-matrix .journal-name{position:sticky;left:0;background:white;z-index:1;min-width:240px;max-width:320px;white-space:normal;overflow-wrap:anywhere}
+.journal-matrix thead .journal-name{z-index:3;background:#f4f6f9}
+</style>
 {% endblock %}

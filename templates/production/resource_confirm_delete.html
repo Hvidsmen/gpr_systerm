@@ -117,12 +117,13 @@
                 </div>
 
                 <form method="post">
+<input type="hidden" name="return_query" value="{{ return_query }}">
                     {% csrf_token %}
                     <div class="d-flex gap-2">
                         <button type="submit" class="btn btn-danger">
                             <i class="bi bi-trash"></i> Да, удалить
                         </button>
-                        <a href="javascript:history.back()" class="btn btn-secondary">
+                        <a href="{{ cancel_url }}" class="btn btn-secondary">
                             <i class="bi bi-x-circle"></i> Отмена
                         </a>
                     </div>

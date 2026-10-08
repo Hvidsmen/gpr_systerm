@@ -357,3 +357,13 @@ urlpatterns = [
         name="legacy_resolve",
     ),
 ]
+
+from .journal_delete import JournalBulkDelete
+urlpatterns += [
+    path('journal/facts/<str:kind>/delete/', JournalBulkDelete.as_view(
+        allowed_kinds=('work_facts', 'labor_fact', 'equipment_fact', 'fuel_fact')),
+        name='journal_fact_bulk_delete'),
+    path('journal/plans/<str:kind>/delete/', JournalBulkDelete.as_view(
+        allowed_kinds=('labor_plan', 'equipment_plan', 'fuel_plan')),
+        name='journal_plan_bulk_delete'),
+]

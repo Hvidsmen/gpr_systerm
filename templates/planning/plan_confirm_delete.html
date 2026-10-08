@@ -45,17 +45,18 @@
                         <i class="bi bi-exclamation-circle"></i>
                         <strong>У плана есть {{ object.versions.count }} версия(ий)!</strong>
                         <br>
-                        Все версии, дневные планы и связанные факты будут удалены вместе с планом.
+                        Версии и дневные планы будут удалены вместе с планом. Факты сохранятся. Если план включён в сводную версию, удаление будет заблокировано.
                     </div>
                 {% endif %}
 
-                <form method="post">
+                {% if delete_error %}<div class="alert alert-danger">{{ delete_error }}</div>{% endif %}
+                <form method="post"><input type="hidden" name="return_query" value="{{ return_query }}">
                     {% csrf_token %}
                     <div class="d-flex gap-2">
-                        <button type="submit" class="btn btn-danger">
+                        <button type="submit" class="btn btn-danger" {% if delete_error %}disabled{% endif %}>
                             <i class="bi bi-trash"></i> Да, удалить
                         </button>
-                        {% if request.user|may:'planning:plan_list' %}<a href="{% url 'planning:plan_list' %}" class="btn btn-secondary">
+                        {% if request.user|may:'planning:plan_list' %}<a href="{{ cancel_url }}" class="btn btn-secondary">
                             <i class="bi bi-x-circle"></i> Отмена
                         </a>{% endif %}
                     </div>

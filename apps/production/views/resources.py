@@ -50,50 +50,53 @@ class UserFormMixin:
 class ResourceList(CompanyScopedMixin, ListView):
     template_name = "production/object_resources.html"
     context_object_name = "records"
-    paginate_by = 100
+    paginate_by = None
 
     def get_queryset(self):
-        qs = super().get_queryset().select_related("construction_object")
-        obj = self.request.GET.get("construction_object")
-        if obj:
-            get_object_or_404(
-                scope_queryset(ConstructionObject.objects.all(), self.request.user), pk=obj
-            )
-            qs = qs.filter(construction_object_id=obj)
-        day = self.request.GET.get("date")
-        if day:
-            try:
-                qs = qs.filter(date=date.fromisoformat(day))
-            except ValueError:
-                raise Http404("Некорректная дата")
-        return qs.order_by("-date", "pk")
+        from ..resource_matrix import ResourceMatrixFilterForm
+        from ..fact_matrix import default_period
+        self.kind = self.prefix.split('_')[0]
+        self.identities = CONFIG[self.kind][2] + (['equipment_ref'] if self.kind == 'fuel' else [])
+        data = self.request.GET.copy()
+        start, end = default_period()
+        data.setdefault('start', data.get('date') or data.get('date_from') or data.get('date_start') or start.isoformat())
+        data.setdefault('end', data.get('date') or data.get('date_to') or data.get('date_end') or end.isoformat())
+        self.filter_form = ResourceMatrixFilterForm(data, user=self.request.user,
+            model=self.model, identities=self.identities)
+        qs = super().get_queryset().select_related('construction_object__project')
+        for name in self.identities:
+            if self.model._meta.get_field(name).is_relation:
+                qs = qs.select_related(name)
+        if not self.filter_form.is_valid():
+            return qs.none()
+        values = self.filter_form.cleaned_data
+        qs = qs.filter(date__range=(values['start'], values['end']))
+        for name in ['construction_object', *self.identities]:
+            if values.get(name):
+                qs = qs.filter(**{name: values[name]})
+        return qs.order_by('construction_object__name', 'construction_object_id', 'date', 'pk')
 
     def get_context_data(self, **kwargs):
+        from django.core.paginator import Paginator
+        from ..fact_matrix import period_days
+        from ..resource_matrix import resource_rows
         ctx = super().get_context_data(**kwargs)
-        ctx.update(
-            title=self.model._meta.verbose_name_plural,
-            objects=scope_queryset(ConstructionObject.objects.all(), self.request.user),
-            prefix=self.prefix,
-            create_url=reverse("production:" + self.prefix + "_create"),
-            field_names=self.field_names,
-            can_edit=role_code(self.request.user) in (PLAN_ROLES if self.prefix.endswith("_plan") else FACT_ROLES),
-        )
-        ctx["rows"] = [
-            {
-                "record": r,
-                "values": [str(getattr(r, n) or 0) for n in self.field_names],
-                "edit": reverse("production:" + self.prefix + "_update", args=[r.pk]),
-                "delete": reverse("production:" + self.prefix + "_delete", args=[r.pk]),
-            }
-            for r in ctx["records"]
-        ]
-        if self.prefix.endswith("_plan"):
-            ctx["range_url"] = reverse("production:" + self.prefix + "_create_range")
-        else:
-            ctx["daily_url"] = reverse("production:" + self.prefix + "_daily_input")
-        ctx["field_labels"] = [
-            self.model._meta.get_field(n).verbose_name for n in self.field_names
-        ]
+        is_plan = self.prefix.endswith('_plan')
+        days = period_days(self.filter_form.cleaned_data['start'], self.filter_form.cleaned_data['end']) if self.filter_form.is_valid() else []
+        quantity = CONFIG[self.kind][3 if is_plan else 4]
+        rows = resource_rows(ctx['records'], days, self.identities, self.field_names, quantity, self.prefix)
+        page = Paginator(rows, 25).get_page(self.request.GET.get('page'))
+        params = self.filter_form.data.copy()
+        params.pop('page', None)
+        ctx.update(objects=self.filter_form.fields['construction_object'].queryset,
+            title=self.model._meta.verbose_name_plural, filter_form=self.filter_form,
+            prefix=self.prefix, create_url=reverse('production:' + self.prefix + '_create'),
+            can_edit=role_code(self.request.user) in (PLAN_ROLES if is_plan else FACT_ROLES),
+            matrix_days=days, matrix_rows=page.object_list, page_obj=page,
+            filter_query=params.urlencode(), matrix_query=self.filter_form.data.urlencode(),
+            bulk_route='production:journal_' + ('plan' if is_plan else 'fact') + '_bulk_delete',
+            bulk_kind=self.prefix)
+        ctx['range_url' if is_plan else 'daily_url'] = reverse('production:' + self.prefix + ('_create_range' if is_plan else '_daily_input'))
         return ctx
 
 
@@ -126,7 +129,19 @@ class ResourceDelete(CompanyScopedMixin, DeleteView):
     template_name = "production/resource_confirm_delete.html"
 
     def get_success_url(self):
-        return reverse("production:" + self.prefix + "_list")
+        query = self.request.POST.get('return_query', self.request.GET.get('return_query', ''))[:4096]
+        return reverse('production:' + self.prefix + '_list') + ('?' + query if query else '')
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx.update(return_query=self.request.GET.get('return_query', '')[:4096], cancel_url=self.get_success_url())
+        return ctx
+
+    def form_valid(self, form):
+        from django.contrib import messages
+        response = super().form_valid(form)
+        messages.success(self.request, 'Запись удалена.')
+        return response
 
 
 class ResourceRange(ResourceCreate):
@@ -409,7 +424,8 @@ for kind, (plan, fact, identities, planned, actual) in CONFIG.items():
             ("Delete", ResourceDelete),
         ]:
             globals()[name + operation + "View"] = type(
-                name + operation + "View", (base,), attributes.copy()
+                name + operation + "View", (base,),
+                {**attributes, **({"form_class": django_forms.Form} if operation == "Delete" else {})}
             )
         globals()[prefix + "_inline_update"] = inline_handler(
             model, [n for n in fields if n not in identities] + ["comment"]

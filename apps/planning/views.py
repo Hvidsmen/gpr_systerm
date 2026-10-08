@@ -27,7 +27,7 @@ class PlanListView(CompanyScopedMixin, ListView):
     model = MonthlyPlan
     template_name = "planning/plan_list.html"
     context_object_name = "plans"
-    paginate_by = 20
+    paginate_by = None
 
     def get_queryset(self):
         qs = (
@@ -124,6 +124,26 @@ class PlanListView(CompanyScopedMixin, ListView):
                 ),
             }
         )
+        from collections import OrderedDict
+        from datetime import date
+        from django.core.paginator import Paginator
+        grouped = OrderedDict()
+        months = set()
+        for plan in context['plans'].prefetch_related('versions'):
+            month = date(plan.year, plan.month, 1)
+            months.add(month)
+            row = grouped.setdefault(plan.project_work_id,
+                {'work': plan.project_work, 'by_month': {}})
+            row['by_month'].setdefault(month, []).append(plan)
+        months = sorted(months)
+        for row in grouped.values():
+            row['cells'] = [row['by_month'].get(month, []) for month in months]
+        page = Paginator(list(grouped.values()), 25).get_page(self.request.GET.get('page'))
+        params = self.request.GET.copy()
+        params.pop('page', None)
+        context.update(matrix_months=months, matrix_rows=page.object_list,
+                       page_obj=page, filter_query=params.urlencode(),
+                       is_paginated=page.has_other_pages())
         return context
 
 
@@ -218,13 +238,31 @@ class MonthlyPlanDeleteView(CompanyScopedMixin, DeleteView):
     template_name = "planning/plan_confirm_delete.html"
     success_url = reverse_lazy("planning:plan_list")
 
-    def delete(self, request, *args, **kwargs):
-        plan = self.get_object()
-        messages.success(
-            request,
-            f'План "{plan.project_work.name}" за {plan.month}/{plan.year} удалён',
-        )
-        return super().delete(request, *args, **kwargs)
+    def get_success_url(self):
+        query = self.request.POST.get('return_query', self.request.GET.get('return_query', ''))[:4096]
+        return str(self.success_url) + ('?' + query if query else '')
+
+    def get_context_data(self, **kwargs):
+        from apps.production.journal_delete import monthly_plan_delete_errors
+        context = super().get_context_data(**kwargs)
+        context['delete_error'] = '; '.join(monthly_plan_delete_errors([self.object]))
+        context['return_query'] = self.request.GET.get('return_query', '')[:4096]
+        context['cancel_url'] = self.get_success_url()
+        return context
+
+    def form_valid(self, form):
+        from django.db import transaction
+        from django.core.exceptions import ValidationError
+        from django.db.models.deletion import ProtectedError, RestrictedError
+        try:
+            with transaction.atomic():
+                response = super().form_valid(form)
+        except (ValidationError, ProtectedError, RestrictedError) as error:
+            context = self.get_context_data()
+            context['delete_error'] = '; '.join(error.messages) if isinstance(error, ValidationError) else 'План связан с другими данными. Удаление отменено.'
+            return render(self.request, self.template_name, context, status=400)
+        messages.success(self.request, 'Месячный план удалён. Факты сохранены.')
+        return response
 
 
 # =============================================================================
