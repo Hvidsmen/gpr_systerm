@@ -11,6 +11,7 @@ urlpatterns = [
     path('projects/', include('apps.projects.urls')),
     path('works/', include('apps.works.urls')),
     path('planning/', include('apps.planning.urls')),
+    path('rotation/', include('apps.rotation.urls')),
     path('production/', include('apps.production.urls')),
     path('resources/', include('apps.resources.urls')),
     path('dashboard/', include('apps.analytics.urls')),

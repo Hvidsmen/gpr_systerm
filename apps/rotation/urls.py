@@ -1,0 +1,12 @@
+from django.urls import path
+from . import views
+app_name = 'rotation'
+urlpatterns = [
+    path('', views.PlanList.as_view(), name='plan_list'),
+    path('create/', views.PlanCreate.as_view(), name='plan_create'),
+    path('<int:pk>/', views.PlanDetail.as_view(), name='plan_detail'),
+    path('positions/<int:pk>/', views.RoleEdit.as_view(), name='role_update'),
+    path('positions/<int:pk>/people/add/', views.PersonEdit.as_view(), name='person_create'),
+    path('people/<int:pk>/', views.PersonEdit.as_view(), name='person_update'),
+    path('people/<int:pk>/delete/', views.PersonDelete.as_view(), name='person_delete'),
+]

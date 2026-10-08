@@ -1,0 +1,12 @@
+.rotation-scroll{overflow:auto;max-height:650px;border:1px solid #dbe3ee;border-radius:8px}
+.rotation-table{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%;font-size:13px}
+.rotation-table th,.rotation-table td{padding:8px;text-align:center;min-width:48px;border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0}
+.rotation-table thead th{position:sticky;top:0;background:#f1f5f9;z-index:2}
+.rotation-table .rotation-label{position:sticky;left:0;text-align:left;min-width:240px;max-width:300px;background:#fff;z-index:1;white-space:normal}
+.rotation-table thead .rotation-label{z-index:3;background:#f1f5f9}
+.rotation-label small{display:block;color:#64748b;font-weight:400;font-size:11px;margin-top:4px}
+.rotation-delete{font-size:11px;font-weight:400;color:#b42318;display:inline-block;margin-top:4px}
+.rotation-on{background:#e6f5ee;color:#166534}.rotation-off{background:#f8fafc;color:#94a3b8}
+.rotation-demand td,.rotation-total td{background:#edf4ff;font-weight:600}
+.rotation-shortage{background:#fee2e2;color:#b91c1c;font-weight:700}.rotation-excess{background:#fff4d8;color:#92400e}
+@media(max-width:767px){.rotation-table .rotation-label{min-width:170px;max-width:190px}.rotation-table th,.rotation-table td{padding:6px;font-size:12px}}
