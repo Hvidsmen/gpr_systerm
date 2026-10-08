@@ -333,3 +333,54 @@ class MeetingVersionImportTests(TestCase):
                 apply_meeting_batch(self.planner, self.obj.project_id, payload["batches"], self.version)
         self.assertFalse(self.version.work_allocations.filter(work__name="Imported work").exists())
         self.assertFalse(self.version.resource_allocations.exists())
+
+    def test_same_work_name_in_different_sections_is_imported_separately(self):
+        from apps.works.models import ProjectWork
+        first_name = self.simple.section.name
+        for _ in range(2):
+            response = self.preview(file=upload(
+                work_names=[('Simple', 'm', 2), ('Simple', 'm', 7)],
+                sections=[first_name, 'Another section']))
+            self.assertFalse(response.context['blocked'])
+            rows = [r for r in response.context['sheets'][0]['entries'] if r['kind'] == 'work']
+            self.assertEqual(rows[0]['target_id'], self.simple.pk)
+            self.assertEqual(rows[1]['section'], 'Another section')
+            self.assertNotEqual(rows[0]['target_id'], rows[1]['target_id'])
+            confirmed = self.client.post(self.url, {'action': 'confirm', 'preview': response.context['preview']})
+            self.assertEqual(confirmed.status_code, 302)
+            other = ProjectWork.objects.get(section__construction_object=self.obj,
+                                           section__name='Another section', name='Simple')
+            self.assertEqual(self.version.work_allocations.get(work=self.simple, month=JAN).quantity, 5)
+            self.assertEqual(self.version.work_allocations.get(work=other, month=JAN).quantity, 10)
+        self.assertEqual(ProjectWork.objects.filter(section__construction_object=self.obj, name='Simple').count(), 2)
+
+    def test_same_work_twice_in_one_section_still_blocks_import(self):
+        response = self.preview(file=upload(
+            work_names=[('Simple', 'm', 2), ('Simple', 'm', 7)],
+            sections=[self.simple.section.name, self.simple.section.name]))
+        self.assertTrue(response.context['blocked'])
+        self.assertContains(response, 'повторная позиция')
+
+    def test_subwork_in_another_section_does_not_match_existing_composite(self):
+        response = self.preview(file=upload(work_names=[('A', 'm', 2)], sections=['New section']))
+        self.assertFalse(response.context['blocked'])
+        row = next(r for r in response.context['sheets'][0]['entries'] if r['kind'] == 'work')
+        self.assertIsNone(row['target_id'])
+        self.assertEqual(row['target_type'], 'work')
+
+    def test_batch_same_work_name_in_different_sections_is_not_a_conflict(self):
+        response = self.batch_preview(JAN, date(2026, 1, 31), **{
+            'files-0-file': upload(work_names=[('Simple', 'm', 2)], sections=[self.simple.section.name]),
+            'files-1-file': upload(work_names=[('Simple', 'm', 7)], sections=['New section']),
+        })
+        # Resource rows target the same monthly cells; exclude them to isolate work identity.
+        from django.core import signing
+        from .meeting_import import SALT, apply_meeting_batch, batch_conflicts
+        payload = signing.loads(response.context['preview'], salt=SALT)
+        for batch in payload['batches']:
+            for sheet in batch['sheets']:
+                sheet['entries'] = [r for r in sheet['entries'] if r['kind'] == 'work']
+        self.assertFalse(batch_conflicts(self.company, self.obj.project, payload['batches'], self.version))
+        apply_meeting_batch(self.planner, self.obj.project_id, payload['batches'], self.version)
+        rows = self.version.work_allocations.filter(work__name='Simple', month=JAN)
+        self.assertEqual(set(rows.values_list('quantity', flat=True)), {Decimal(5), Decimal(10)})

@@ -179,3 +179,17 @@ class FactMeetingTests(TestCase):
             apply_facts(self.admin, payload)
         self.assertFalse(ProjectWork.objects.filter(name="Imported work").exists())
         self.assertFalse(DailyFact.objects.exists())
+
+    def test_same_named_work_in_another_section_creates_separate_facts(self):
+        sheet = self.sheet(work_names=[('Simple', 'm', 2), ('Simple', 'm', 7)],
+                           sections=[self.simple.section.name, 'Another section'])
+        payload = self.payload(sheet)
+        work_rows = [r for r in payload['rows'] if r['kind'] == 'work']
+        self.assertEqual({r['target_id'] for r in work_rows if r['section'] == self.simple.section.name}, {self.simple.pk})
+        self.assertTrue(all(r['target_id'] is None for r in work_rows if r['section'] == 'Another section'))
+        apply_facts(self.admin, payload)
+        other = ProjectWork.objects.get(section__construction_object=self.obj,
+                                       section__name='Another section', name='Simple')
+        self.assertNotEqual(other.pk, self.simple.pk)
+        self.assertEqual(DailyFact.objects.filter(project_work=self.simple).count(), 2)
+        self.assertEqual(DailyFact.objects.filter(project_work=other).count(), 2)

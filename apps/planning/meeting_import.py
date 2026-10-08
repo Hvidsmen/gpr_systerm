@@ -571,7 +571,9 @@ def resolve_sheet(company, project, sheet, target_object=None, require_all=True)
                 if key(w.name) == key(row["name"]) and key(w.unit) == key(row["unit"])
             ]
             scoped = [w for w in matches if key(w.section.name) == key(row["section"])]
-            matches = scoped or matches
+            # An explicit section belongs to the identity; never fall back
+            # to a same-named work from another section.
+            matches = scoped if row["section"] else matches
             child_matches = [
                 c
                 for c in children
@@ -583,7 +585,7 @@ def resolve_sheet(company, project, sheet, target_object=None, require_all=True)
                 if key(c.project_work.section.name) == key(row["section"])
                 or key(c.project_work.name) == key(row["section"])
             ]
-            child_matches = scoped_children or child_matches
+            child_matches = scoped_children if row["section"] else child_matches
             if len(matches) + len(child_matches) > 1:
                 raise ValidationError(
                     f'Строка {row["row"]}: работа/подработа «{row["name"]}» неоднозначна. Уточните раздел или название.'

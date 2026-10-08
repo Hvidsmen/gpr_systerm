@@ -24,7 +24,7 @@ JAN = date(2026, 1, 1)
 FEB = date(2026, 2, 1)
 
 
-def upload(name="o", work_names=None, variable=False, invalid=False):
+def upload(name="o", work_names=None, variable=False, invalid=False, sections=None):
     book = Workbook()
     sheet = book.active
     sheet.title = name
@@ -47,7 +47,9 @@ def upload(name="o", work_names=None, variable=False, invalid=False):
     )
     sheet.append([None] * 13 + [date(2025, 1, 1), JAN, date(2026, 1, 2), FEB])
     sheet.append([None, "s"])
-    for work, unit, volume in work_names or [("Imported work", "м", 2)]:
+    for index, (work, unit, volume) in enumerate(work_names or [("Imported work", "м", 2)]):
+        if sections:
+            sheet.append([None, sections[index]])
         sheet.append(
             [
                 "1",
