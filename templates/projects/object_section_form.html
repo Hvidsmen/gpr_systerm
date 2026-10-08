@@ -15,7 +15,7 @@
                 <li class="breadcrumb-item">{% if request.user|may:'dashboard:index' %}<a href="{% url 'dashboard:index' %}">Главная</a>{% endif %}</li>
                 <li class="breadcrumb-item">{% if request.user|may:'projects:object_list' %}<a href="{% url 'projects:object_list' %}">Объекты</a>{% endif %}</li>
                 <li class="breadcrumb-item">
-                    {% if request.user|may:'projects:object_sections' %}<a href="{% url 'projects:object_sections' object.pk %}">Разделы объекта {{ object.name }}</a>{% endif %}
+                    {% if request.user|may:'projects:section_list' %}<a href="{% url 'projects:section_list' object.pk %}">Разделы объекта {{ object.name }}</a>{% endif %}
                 </li>
                 <li class="breadcrumb-item active">Редактирование</li>
             </ol>
@@ -62,7 +62,7 @@
                         <button type="submit" class="btn btn-success">
                             <i class="bi bi-save"></i> Сохранить
                         </button>
-                        {% if request.user|may:'projects:object_sections' %}<a href="{% url 'projects:object_sections' object.pk %}" class="btn btn-secondary">
+                        {% if request.user|may:'projects:section_list' %}<a href="{% url 'projects:section_list' object.pk %}" class="btn btn-secondary">
                             <i class="bi bi-x-circle"></i> Отмена
                         </a>{% endif %}
                     </div>

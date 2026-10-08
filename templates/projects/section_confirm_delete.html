@@ -40,7 +40,7 @@
                         <button type="submit" class="btn btn-danger">
                             <i class="bi bi-trash"></i> Да, удалить
                         </button>
-                        {% if request.user|may:'projects:object_sections' %}<a href="{% url 'projects:object_sections' object.construction_object.pk %}" class="btn btn-secondary">
+                        {% if request.user|may:'projects:section_list' %}<a href="{% url 'projects:section_list' object.construction_object.pk %}" class="btn btn-secondary">
                             <i class="bi bi-x-circle"></i> Отмена
                         </a>{% endif %}
                     </div>

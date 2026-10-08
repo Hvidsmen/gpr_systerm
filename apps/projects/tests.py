@@ -61,3 +61,18 @@ class SectionCreationTests(TestCase):
             self.client.force_login(user)
             self.assertEqual(self.client.post(self.url(self.obj), {'code': 's', 'name': 'Section'}).status_code, 403)
         self.assertFalse(Section.objects.exists())
+
+    def test_delete_confirmation_renders_cancel_link_and_deletes_only_on_post(self):
+        section = Section.objects.create(company=self.company, construction_object=self.obj,
+                                         code='delete-section', name='Section to delete')
+        keep = Section.objects.create(company=self.company, construction_object=self.obj,
+                                      code='keep-section', name='Section to keep')
+        url = reverse('projects:section_delete', args=[self.obj.pk, section.pk])
+        back = reverse('projects:section_list', args=[self.obj.pk])
+        response = self.client.get(url)
+        self.assertContains(response, f'href="{back}"')
+        self.assertContains(response, 'Отмена')
+        self.assertTrue(Section.objects.filter(pk=section.pk).exists())
+        self.assertRedirects(self.client.post(url), back)
+        self.assertFalse(Section.objects.filter(pk=section.pk).exists())
+        self.assertTrue(Section.objects.filter(pk=keep.pk).exists())
