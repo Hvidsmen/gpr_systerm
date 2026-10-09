@@ -378,3 +378,30 @@ class MeetingImportTests(TestCase):
             ).count(),
             2,
         )
+
+    def test_numbered_work_sections_with_units_skip_totals(self):
+        book = Workbook()
+        sheet = book.active
+        sheet.title = self.obj.name
+        sheet.append(['№', 'Наименование работ', 'Ед. изм.', 'План/Факт'])
+        sheet.append([None, None, None, None, JAN, date(2026, 1, 2)])
+        sheet.append([None, 'Линейная часть'])
+        sheet.append(['1', 'Разработка грунта траншей переходов', 'м3', 'план', 999, 999])
+        sheet.append([None, None, None, 'факт', 9999, 9999])
+        sheet.append(['1.1', 'Переход ПК 2619', 'м3', 'план', 10, 20])
+        sheet.append(['1.2', 'Переход ПК 2545', 'м3', 'план', 30, 40])
+        sheet.append(['2', 'Раскладка свайной трубы, в т.ч:', 'шт', 'план', 999, 999])
+        sheet.append(['2.1', 'УЗА №32', 'шт', 'план', 1, 2])
+        sheet.append(['3', 'Бурение скважин, в т.ч:', 'шт', 'план', 999, 999])
+        sheet.append(['3.1', 'УЗА №32', 'шт', 'план', 3, 4])
+        stream = BytesIO(); book.save(stream)
+        result = parse_meeting_workbook(SimpleUploadedFile('sections.xlsx', stream.getvalue()), JAN, date(2026, 1, 2))[0]
+        self.assertEqual(result['errors'], [])
+        works = [r for r in result['entries'] if r['kind'] == 'work']
+        self.assertEqual(len(works), 4)
+        self.assertEqual([Decimal(r['quantity']) for r in works], [30, 70, 3, 7])
+        self.assertEqual(works[0]['section'], 'Разработка грунта траншей переходов')
+        self.assertEqual(works[2]['section'], 'Раскладка свайной трубы, в т.ч')
+        self.assertEqual(works[3]['section'], 'Бурение скважин, в т.ч')
+        _, resolved = resolve_sheet(self.company, self.obj.project, result, self.obj)
+        self.assertEqual(len(resolved), 4)

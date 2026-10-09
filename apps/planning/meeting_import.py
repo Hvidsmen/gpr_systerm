@@ -381,7 +381,20 @@ def parse_sheet(sheet, start, end, resource_rule, facts=False):
         if not name or "итого" in key(name):
             continue
         unit = clean_unit(row[headers["unit"]]) if headers["unit"] is not None else ""
-        if "в том числе" in key(name):
+        # Numbered parent rows are section totals even when they have units,
+        # volumes and no explicit «в том числе» label (e.g. 1 -> 1.1).
+        code = key(row[headers["name"] - 1]) if headers["name"] else ""
+        next_code = ""
+        if code:
+            for following in rows[index + 1 :]:
+                following_marker = key(following[headers["marker"]]) if headers["marker"] is not None else ""
+                if following_marker == "факт":
+                    continue
+                if clean_text(following[headers["name"]]):
+                    next_code = key(following[headers["name"] - 1])
+                    break
+        numbered_subtotal = bool(code and next_code.startswith(code.rstrip(".") + "."))
+        if numbered_subtotal or "в том числе" in key(name):
             group = name.rstrip(" :")
             skipped_totals += 1
             continue
