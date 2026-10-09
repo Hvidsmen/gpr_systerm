@@ -3,6 +3,10 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# Monthly editors contain multiple fields per work/resource row. Allow the
+# supported formsets to submit together while keeping a finite parser limit.
+DATA_UPLOAD_MAX_NUMBER_FIELDS = 25000
+
 from dotenv import load_dotenv
 from config.runtime import env_bool, get_secret_key
 

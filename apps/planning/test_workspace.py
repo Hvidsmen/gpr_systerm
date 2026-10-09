@@ -909,3 +909,30 @@ class WorkspaceTests(TestCase):
         self.assertEqual(Decimal(february.context["work_prices"][str(self.simple.pk)]), Decimal(25))
         self.assertContains(january, 'id="work-prices"')
         self.assertContains(january, 'planning/work_amounts.js')
+
+    def test_large_monthly_editor_saves_more_than_one_thousand_fields(self):
+        workspace = self.create()
+        version = workspace.baseline_version
+        ResourceMonthAllocation.objects.bulk_create([
+            ResourceMonthAllocation(company=self.company,version=version,month=JAN,kind='equipment',
+                equipment_type=self.equipment,equipment_number=str(index),count=1)
+            for index in range(100)
+        ])
+        self.client.force_login(self.planner)
+        url=reverse('planning:workspace_edit',args=[version.pk])+'?month=2026-01-01'
+        response=self.client.get(url)
+        data={'action':'save'}
+        for name in ['work_forms','resource_forms']:
+            formset=response.context[name]
+            for form in [formset.management_form,*formset.forms]:
+                for field in form:
+                    value=field.value()
+                    data[field.html_name]=value if value is not None else ''
+        self.assertGreater(len(data),1000)
+        resource=response.context['resource_forms'].forms[0]
+        data[resource['count'].html_name]='7'
+        response=self.client.post(url,data)
+        self.assertEqual(response.status_code,302)
+        saved=ResourceMonthAllocation.objects.get(pk=resource.instance.pk)
+        self.assertEqual(saved.count,7)
+        self.assertEqual(version.resource_allocations.count(),100)
