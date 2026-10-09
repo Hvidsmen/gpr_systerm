@@ -32,9 +32,6 @@
                         <p class="card-text mb-1">
                             <strong>Вес:</strong> {{ object.weight }}%
                         </p>
-                        <p class="card-text mb-0">
-                            <strong>Плановый объём:</strong> {{ object.planned_quantity|default:"—" }}
-                        </p>
                     </div>
                 </div>
                 {% if object.children.exists %}

@@ -21,7 +21,6 @@
                     <th>Ед. изм.</th>
                     <th>Порядок</th>
                     <th>Вес (%)</th>
-                    <th>Плановый объем</th>
                 </tr>
             </thead>
             <tbody>
@@ -31,7 +30,6 @@
                         <td>{{ item.unit }}</td>
                         <td>{{ item.sequence }}</td>
                         <td>{{ item.weight }}</td>
-                        <td>{{ item.planned_quantity|default:"-" }}</td>
                     </tr>
                 {% endfor %}
             </tbody>
