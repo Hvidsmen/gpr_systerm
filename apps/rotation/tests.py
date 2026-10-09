@@ -36,6 +36,8 @@ class RotationTests(TestCase):
         self.plan = RotationPlan.objects.create(company=self.company, source=self.source, title='Перевахта', start=self.start, end=self.end)
         refresh_demand(self.plan)
         self.position = self.plan.positions.get()
+        # Generator tests start from an empty roster. Production refresh creates it automatically.
+        self.position.people.all().delete()
 
     def test_continuous_45_45_has_two_people_and_no_month_reset(self):
         self.assertEqual(generate_people(self.position), 2)
@@ -90,7 +92,7 @@ class RotationTests(TestCase):
         response = self.client.get(reverse('rotation:plan_detail',args=[self.plan.pk]), {'month':'2026-02'})
         self.assertContains(response,'Нехватка')
         self.assertEqual(len(response.context['days']),28)
-        self.assertContains(response,'Водитель №1')
+        self.assertContains(response,'Работник 1')
         person = self.position.people.first()
         response = self.client.post(reverse('rotation:person_update',args=[person.pk]),{'name':'Водитель А','on_days':20,'off_days':20,'anchor':'2026-01-10'})
         self.assertEqual(response.status_code,302)

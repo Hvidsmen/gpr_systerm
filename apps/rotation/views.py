@@ -30,7 +30,7 @@ class PlanCreate(View):
                 with transaction.atomic():
                     plan = form.save()
                     refresh_demand(plan)
-                messages.success(request, 'Перевахта создана. Настройте графики должностей и сформируйте места.')
+                messages.success(request, 'Перевахта создана. Работники сформированы автоматически по потребности и графикам должностей.')
                 return redirect('rotation:plan_detail', pk=plan.pk)
             except ValidationError as error:
                 form.add_error(None, error)
@@ -106,7 +106,7 @@ class PersonEdit(View):
         return super().dispatch(request, pk, *args, **kwargs)
 
     def get(self, request, pk):
-        initial = {'name':f'{self.position} №{self.position.people.count()+1}', 'on_days':self.position.on_days, 'off_days':self.position.off_days, 'anchor':self.position.anchor}
+        initial = {'name':f'Работник {self.position.people.count()+1}', 'on_days':self.position.on_days, 'off_days':self.position.off_days, 'anchor':self.position.anchor}
         return self.display(request, PersonForm(instance=self.person, initial=initial if not self.person else None))
 
     def post(self, request, pk):

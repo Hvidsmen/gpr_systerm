@@ -30,6 +30,7 @@ def refresh_demand(plan):
     plan.save(update_fields=['demand', 'updated_at'])
     for brigade in {row['brigade_id'] for row in plan.demand}:
         RotationRole.objects.get_or_create(company=plan.company, plan=plan, brigade_id=brigade, defaults={'anchor': plan.start})
+    ensure_people(plan)
 
 
 def on_shift(person, day):
@@ -54,14 +55,25 @@ def generate_people(position):
         anchor = position.anchor - timedelta(days=index*cycle//count)
         if anchor > position.plan.start:
             anchor -= timedelta(days=((anchor-position.plan.start).days+cycle-1)//cycle*cycle)
-        while f'{position.brigade.name} №{next_number}' in used_names:
+        while f'Работник {next_number}' in used_names:
             next_number += 1
-        name = f'{position.brigade.name} №{next_number}'
+        name = f'Работник {next_number}'
         used_names.add(name)
         people.append(RotationPerson(company=position.company, position=position,
             name=name, on_days=position.on_days, off_days=position.off_days, anchor=anchor))
     RotationPerson.objects.bulk_create(people)
     return len(people)
+
+
+@transaction.atomic
+def ensure_people(plan):
+    added = 0
+    for position in plan.positions.filter(people__isnull=True):
+        # The role lock prevents simultaneous updates from creating duplicate rosters.
+        position = RotationRole.objects.select_for_update().get(pk=position.pk)
+        if not position.people.exists():
+            added += generate_people(position)
+    return added
 
 
 def matrix(plan, start, end):
