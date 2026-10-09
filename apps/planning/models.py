@@ -988,7 +988,16 @@ class ProjectPlanVersion(BaseCompanyModel):
 
         if self.pk:
             old = type(self).objects.get(pk=self.pk)
-            if old.status == "FIXED" and any(
+            reopening = (
+                fixation_authorized(self.pk) and self.status == "DRAFT"
+                and self.fixed_by_id is None and self.fixed_at is None
+                and all(
+                    getattr(old, f.attname) == getattr(self, f.attname)
+                    for f in self._meta.fields
+                    if f.name not in {"status", "fixed_by", "fixed_at", "updated_at"}
+                )
+            )
+            if old.status == "FIXED" and not reopening and any(
                 getattr(old, f.attname) != getattr(self, f.attname)
                 for f in self._meta.fields
                 if f.name != "updated_at"

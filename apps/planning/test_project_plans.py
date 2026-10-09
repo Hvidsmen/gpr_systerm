@@ -149,6 +149,54 @@ class ProjectPlanTests(TestCase):
         with self.assertRaises(ValidationError):
             member.save()
 
+    def test_reopen_edits_same_version_and_can_fix_again(self):
+        parent = self.parent()
+        version = self.approve(self.create().baseline_version)
+        member = ProjectPlanService.assign(self.planner, parent, version)
+        parent = ProjectPlanService.fix(self.planner, parent)
+        self.client.force_login(self.planner)
+        url = reverse("planning:project_plan_detail", args=[parent.pk])
+        self.assertContains(self.client.get(url), "Редактировать состав")
+        self.assertRedirects(self.client.post(url, {"action": "reopen"}), url)
+        parent.refresh_from_db()
+        member.refresh_from_db()
+        self.assertEqual(parent.status, "DRAFT")
+        self.assertIsNone(parent.fixed_at)
+        self.assertIsNone(parent.fixed_by_id)
+        self.assertEqual(member.snapshot, {})
+        self.assertIsNone(member.review_id)
+        ProjectPlanService.remove(self.planner, parent, member.pk)
+        ProjectPlanService.assign(self.planner, parent, version)
+        fixed = ProjectPlanService.fix(self.planner, parent)
+        self.assertEqual(fixed.pk, parent.pk)
+        self.assertEqual(fixed.version_number, 1)
+        self.assertTrue(fixed.members.get().snapshot)
+
+    def test_reopen_with_revoked_source_allows_removal_but_not_refixation(self):
+        parent = self.parent()
+        version = self.approve(self.create().baseline_version)
+        member = ProjectPlanService.assign(self.planner, parent, version)
+        parent = ProjectPlanService.fix(self.planner, parent)
+        GlobalPlanService.transition(version, self.approvers["CEO"], "reject", "Rework")
+        parent = ProjectPlanService.reopen(self.planner, parent)
+        with self.assertRaises(ValidationError):
+            ProjectPlanService.fix(self.planner, parent)
+        ProjectPlanService.remove(self.planner, parent, member.pk)
+        self.assertFalse(parent.members.exists())
+
+    def test_reopen_rejects_foreign_user_and_direct_status_change(self):
+        parent = self.parent()
+        version = self.approve(self.create().baseline_version)
+        ProjectPlanService.assign(self.planner, parent, version)
+        parent = ProjectPlanService.fix(self.planner, parent)
+        with self.assertRaises(PermissionDenied):
+            ProjectPlanService.reopen(self.foreign_user, parent)
+        parent.status = "DRAFT"
+        parent.fixed_at = None
+        parent.fixed_by = None
+        with self.assertRaises(ValidationError):
+            parent.save()
+
     def test_new_revision_copies_composition_but_has_independent_fixation(self):
         parent = self.parent()
         version = self.approve(self.create().baseline_version)

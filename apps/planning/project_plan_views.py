@@ -208,6 +208,9 @@ class ProjectPlanDetail(View):
                 messages.success(
                     request, "Состав и согласованные снимки планов зафиксированы."
                 )
+            elif action == "reopen":
+                ProjectPlanService.reopen(request.user, row)
+                messages.success(request, "Сводный план возвращён в черновик. Измените состав и зафиксируйте его снова.")
             elif action == "revision":
                 result = ProjectPlanService.revision(request.user, row)
                 missing = row.members.count() - result.members.count()

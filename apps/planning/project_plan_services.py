@@ -125,7 +125,7 @@ class ProjectPlanService:
         )
         if parent.status != "DRAFT":
             raise ValidationError(
-                "Состав уже зафиксирован. Создайте новую сводную версию."
+                "Состав зафиксирован. Нажмите «Редактировать состав», чтобы внести изменения."
             )
         existing = parent.members.filter(
             construction_object=version.construction_object
@@ -187,6 +187,23 @@ class ProjectPlanService:
             parent.fixed_by = user
             parent.fixed_at = timezone.now()
             parent.save()
+        return parent
+
+    @staticmethod
+    @transaction.atomic
+    def reopen(user, parent):
+        check_company(user, parent)
+        parent = ProjectPlanVersion.objects.select_for_update().get(pk=parent.pk)
+        if parent.status != "FIXED":
+            raise ValidationError("Состав уже доступен для редактирования.")
+        with authorized_fixation(parent.pk):
+            parent.status = "DRAFT"
+            parent.fixed_by = None
+            parent.fixed_at = None
+            parent.save()
+            # Revoked source plans may remain in the draft for replacement or
+            # removal; their previous fixed snapshots must no longer be used.
+            parent.members.update(snapshot={}, review=None)
         return parent
 
     @staticmethod
