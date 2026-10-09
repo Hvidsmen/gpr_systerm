@@ -40,17 +40,30 @@ class PlanCreate(View):
 class PlanDetail(View):
     def get(self, request, pk):
         plan = get_object_or_404(RotationPlan, pk=pk, company=request.user.company)
-        try:
-            chosen = date.fromisoformat(request.GET.get('month', plan.start.strftime('%Y-%m')+'-01') + ('-01' if len(request.GET.get('month', '')) == 7 else ''))
-        except ValueError:
-            chosen = plan.start
-        start = max(plan.start, chosen.replace(day=1))
-        end = min(plan.end, chosen.replace(day=calendar.monthrange(chosen.year, chosen.month)[1]))
-        if start > end:
-            start = plan.start
-            end = min(plan.end, start.replace(day=calendar.monthrange(start.year, start.month)[1]))
+        all_months = request.GET.get('month') == 'all'
+        if all_months:
+            start, end = plan.start, plan.end
+        else:
+            try:
+                chosen = date.fromisoformat(request.GET.get('month', plan.start.strftime('%Y-%m')+'-01') + ('-01' if len(request.GET.get('month', '')) == 7 else ''))
+            except ValueError:
+                chosen = plan.start
+            start = max(plan.start, chosen.replace(day=1))
+            end = min(plan.end, chosen.replace(day=calendar.monthrange(chosen.year, chosen.month)[1]))
+            if start > end:
+                start = plan.start
+                end = min(plan.end, start.replace(day=calendar.monthrange(start.year, start.month)[1]))
+
         days, rows = matrix(plan, start, end)
-        return render(request, 'rotation/detail.html', {'plan':plan, 'days':days, 'rows':rows, 'month':start.strftime('%Y-%m')})
+        months = []
+        for day in days:
+            key = day.strftime('%Y-%m')
+            if not months or months[-1]['key'] != key:
+                months.append({'key':key, 'date':day, 'count':0})
+            months[-1]['count'] += 1
+        return render(request, 'rotation/detail.html', {'plan':plan, 'days':days, 'rows':rows,
+            'month':'all' if all_months else start.strftime('%Y-%m'), 'visible_month':start.strftime('%Y-%m'),
+            'all_months':all_months, 'months':months})
 
     def post(self, request, pk):
         require_roles(request.user, PLAN_ROLES)
@@ -161,11 +174,11 @@ class StatusEdit(View):
             else:
                 RotationStatus.objects.update_or_create(person=self.person, day=day, company=request.user.company, defaults={'status':status})
             messages.success(request, 'Статус обновлён. Численность и нехватка пересчитаны.')
-            return redirect(reverse('rotation:plan_detail', args=[self.person.position.plan_id]) + '?' + urlencode({'month':day.strftime('%Y-%m')}))
+            return redirect(reverse('rotation:plan_detail', args=[self.person.position.plan_id]) + '?' + urlencode({'month':'all' if request.POST.get('view') == 'all' else day.strftime('%Y-%m')}))
         return self.display(request, form)
 
     def display(self, request, form):
-        return render(request, 'rotation/form.html', {'form':form, 'title':f'Статус перевахты · {self.person.name}', 'plan':self.person.position.plan})
+        return render(request, 'rotation/form.html', {'form':form, 'title':f'Статус перевахты · {self.person.name}', 'plan':self.person.position.plan, 'return_month':'all' if request.POST.get('view',request.GET.get('view')) == 'all' else ''})
 
 
 class PlanExport(View):
