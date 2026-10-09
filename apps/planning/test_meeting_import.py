@@ -123,6 +123,25 @@ class MeetingImportTests(TestCase):
     def parse(self, **kwargs):
         return parse_meeting_workbook(upload(**kwargs), JAN, date(2026, 2, 1))
 
+    def test_equipment_plate_list_keeps_aggregate_quantity(self):
+        from openpyxl import load_workbook
+        book = load_workbook(upload())
+        sheet = book.active
+        rownum = next(row[0].row for row in sheet if row[6].value == "Imported equipment")
+        sheet.cell(rownum - 1, 10, "Гос. Номер")
+        plates = "А 069 ЕУ797, Т 972 КР 72, А 069 ЕВ797, Е 163 ВТ797, Х 159 ВМ797, О 103 ВО797"
+        sheet.cell(rownum, 10, plates)
+        sheet.cell(rownum, 15, 6)
+        sheet.cell(rownum, 16, 6)
+        data = BytesIO()
+        book.save(data)
+        parsed = parse_meeting_workbook(SimpleUploadedFile("test.xlsx", data.getvalue()), JAN, date(2026, 1, 31))[0]
+        self.assertEqual(parsed["errors"], [])
+        row = next(row for row in parsed["entries"] if row["kind"] == "equipment")
+        self.assertEqual(Decimal(row["quantity"]), 6)
+        self.assertEqual(row["equipment_number"], "")
+        self.assertTrue(any(plates in warning for warning in parsed["warnings"]))
+
     def test_shared_subheading_preserves_distinct_numbered_sections(self):
         from openpyxl import load_workbook
         from io import BytesIO

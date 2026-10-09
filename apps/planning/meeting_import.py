@@ -1,5 +1,7 @@
 """Import meeting schedules into a current version or new object period plans."""
 
+import re
+
 from calendar import monthrange
 from collections import defaultdict
 from datetime import date, datetime
@@ -128,6 +130,21 @@ def parse_sheet(sheet, start, end, resource_rule, facts=False):
             skipped_empty += 1
             return
         try:
+            if kind == "equipment" and equipment_number:
+                numbers = [part.strip() for part in re.split(r"[,;\n]+", equipment_number) if part.strip()]
+                if len(numbers) > 1:
+                    warning = (
+                        f'Строка {rownum}, «{name}»: перечислено несколько госномеров '
+                        f'({equipment_number}). Загружается общее количество техники без отдельного '
+                        'госномера; распределение по машинам не задано в файле.'
+                    )
+                    if warning not in result["warnings"]:
+                        result["warnings"].append(warning)
+                    equipment_number = ""
+                elif numbers:
+                    equipment_number = numbers[0]
+                if len(equipment_number) > 50:
+                    raise ValidationError("Госномер длиннее 50 символов. Укажите один номер либо разделите список запятыми.")
             limit = 255 if kind == "work" else 150
             if (
                 not name
