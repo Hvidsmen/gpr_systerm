@@ -60,3 +60,16 @@ class EquipmentTypeMergeAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+from .models import BrigadeMerge
+
+@admin.register(BrigadeMerge)
+class BrigadeMergeAdmin(admin.ModelAdmin):
+    list_display = ['source', 'target', 'created_by', 'created_at']
+    readonly_fields = ['company', 'source', 'target', 'created_by', 'created_at', 'updated_at', 'audit']
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False

@@ -390,9 +390,9 @@ def check_inputs(version):
 
 def build_workspace_snapshot(version, *, validate_inputs=True):
     from apps.works.prices import freeze_prices
-    from apps.resources.equipment_merge import equipment_aliases, normalize_equipment_snapshot
+    from apps.resources.brigade_merge import normalize_resource_snapshot
     snapshot = _build_workspace_snapshot(version, validate_inputs=validate_inputs)
-    return freeze_prices(normalize_equipment_snapshot(snapshot, equipment_aliases(version.company)), version.company)
+    return freeze_prices(normalize_resource_snapshot(snapshot, version.company), version.company)
 
 
 def _build_workspace_snapshot(version, *, validate_inputs=True):
@@ -878,6 +878,8 @@ class WorkspaceService:
                 quantity=quantity,item_quantities=quantities,daily_override=daily,load_profile=prior.load_profile if prior else None)
         from apps.resources.equipment_merge import equipment_aliases
         aliases = equipment_aliases(workspace.company)
+        from apps.resources.brigade_merge import brigade_aliases
+        labor_aliases = brigade_aliases(workspace.company)
         for row in source.resource_allocations.filter(month=month):
             fields = {
                 f.name: getattr(row, f.name)
@@ -885,11 +887,15 @@ class WorkspaceService:
                 if f.name
                 not in ["id", "created_at", "updated_at", "version", "company"]
             }
-            if row.kind == 'equipment' and aliases:
-                fields.pop('equipment_type')
-                fields['equipment_type_id'] = aliases.get(row.equipment_type_id, row.equipment_type_id)
-                existing = version.resource_allocations.filter(kind='equipment', month=month,
-                    equipment_type_id=fields['equipment_type_id'], equipment_number=row.equipment_number).first()
+            if row.kind == 'equipment' and aliases or row.kind == 'labor' and labor_aliases:
+                fk = 'equipment_type' if row.kind == 'equipment' else 'brigade'
+                mapping = aliases if row.kind == 'equipment' else labor_aliases
+                fields.pop(fk)
+                original_id = getattr(row, fk+'_id')
+                fields[fk+'_id'] = mapping.get(original_id, original_id)
+                identity = {fk+'_id': fields[fk+'_id']}
+                if row.kind == 'equipment': identity['equipment_number'] = row.equipment_number
+                existing = version.resource_allocations.filter(kind=row.kind, month=month, **identity).first()
                 if existing:
                     total_hours = existing.hours + row.hours
                     if total_hours:

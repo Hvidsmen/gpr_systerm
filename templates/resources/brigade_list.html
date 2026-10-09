@@ -7,6 +7,8 @@
 {% block content %}
 {% with bulk_route='resources:bulk_delete' bulk_kind='brigades' %}
 {% include 'bulk/toolbar.html' %}
+{% if request.user|may:'resources:brigade_merge' %}<a class="btn btn-outline-primary mb-3" href="{% url 'resources:brigade_merge' %}">Объединить должности</a>{% endif %}
+{% for duplicates in brigade_duplicates %}<div class="alert alert-warning">Должность «{{ duplicates.0.name }}» имеет {{ duplicates|length }} записей в справочнике. При импорте выбирается первая (ID {{ duplicates.0.pk }}). Дубли можно объединить.</div>{% endfor %}
 {% if request.user|may:'resources:brigade_import' %}<a class="btn btn-outline-primary mb-3" href="{% url 'resources:brigade_import' %}">Загрузить из Excel</a>{% endif %}
 {% if request.user|may:'resources:brigade_group_list' %}<a class="btn btn-outline-secondary mb-3" href="{% url 'resources:brigade_group_list' %}">Группы</a><a class="btn btn-outline-secondary mb-3" href="{% url 'resources:brigade_macro_group_list' %}">Макрогруппы</a>{% endif %}
 <div class="d-flex justify-content-between align-items-center mb-4">

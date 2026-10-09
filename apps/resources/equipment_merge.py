@@ -88,13 +88,13 @@ class EquipmentMergeForm(forms.Form):
         return data
 
 
-def transfer_rows(model, company, source, target, identity, fields, rate, audit):
-    for row in model.objects.select_for_update().filter(company=company, equipment_type=source).order_by('pk'):
+def transfer_rows(model, company, source, target, identity, fields, rate, audit, *, relation="equipment_type"):
+    for row in model.objects.select_for_update().filter(company=company, **{relation: source}).order_by('pk'):
         # Frozen inputs are kept for history; aliases normalize them when read.
         if model._meta.label_lower == 'planning.resourcemonthallocation' and row.version.status not in ['DRAFT', 'REJECTED']:
             continue
         audit.append({'model': model._meta.label_lower, 'source': model_to_dict(row)})
-        existing = model.objects.select_for_update().filter(company=company, equipment_type=target, **{key: getattr(row, key) for key in identity}).first()
+        existing = model.objects.select_for_update().filter(company=company, **{relation: target}, **{key: getattr(row, key) for key in identity}).first()
         if existing:
             first, second = getattr(existing, rate), getattr(row, rate)
             if first is not None and second is not None and first != second:
@@ -112,7 +112,7 @@ def transfer_rows(model, company, source, target, identity, fields, rate, audit)
             existing.save()
             row.delete()
         else:
-            row.equipment_type = target
+            setattr(row, relation, target)
             row.full_clean()
             row.save()
 

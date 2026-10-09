@@ -1,0 +1,5 @@
+{% extends 'base.html' %}
+{% block content %}<h1 class="h3">Объединение должностей (бригад)</h1>
+<p>Выберите запись, которую оставить, и дубли. Название, группа и макрогруппа оставляемой записи сохраняются.</p>
+<div class="alert alert-info">План, факт, состав людей и перевахта переносятся. Количества и часы за одинаковый объект и день/месяц суммируются. Разные ставки или профили блокируют объединение. Сотрудники сохраняют личные графики и ручные статусы. Общий график должности берётся из оставляемой записи. История согласованных версий сохраняется, исходные записи архивируются.</div>
+<form method="post" class="card card-body">{% csrf_token %}{% include 'forms/fields.html' with form=form %}<div class="mt-3"><button class="btn btn-primary">Объединить должности</button> <a class="btn btn-outline-secondary" href="{% url 'resources:brigade_list' %}">Отмена</a></div></form>{% endblock %}

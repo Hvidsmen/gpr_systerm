@@ -10,6 +10,8 @@ from .models import RotationRole, RotationPerson
 def get_demand(plan):
     from apps.planning.global_services import build_snapshot
     snapshot = (plan.source.snapshot if plan.source.status in {'SUBMITTED', 'APPROVED', 'COMPLETED'} else None) or build_snapshot(plan.source)
+    from apps.resources.brigade_merge import brigade_aliases, normalize_brigade_snapshot
+    snapshot = normalize_brigade_snapshot(snapshot, brigade_aliases(plan.company))
     result = defaultdict(int)
     for row in snapshot.get('resources', {}).get('labor', []):
         day = date.fromisoformat(row['date'])

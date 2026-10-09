@@ -35,7 +35,7 @@ class CompanyFormMixin:
                         field.queryset = scope_queryset(field.queryset, user)
                     else:
                         field.queryset = field.queryset.filter(company=self.company)
-                    if field.queryset.model._meta.label_lower == 'resources.equipmenttype':
+                    if field.queryset.model._meta.label_lower in {'resources.equipmenttype', 'resources.brigade'}:
                         field.queryset = field.queryset.filter(merge_source__isnull=True)
 
 

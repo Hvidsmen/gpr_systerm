@@ -224,8 +224,10 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
         sources = source_overrides
     from apps.resources.equipment_merge import equipment_aliases, normalize_equipment_snapshot
     aliases = equipment_aliases(user.company)
-    if aliases:
-        sources = {pk: [Source(source.version, normalize_equipment_snapshot(source.snapshot, aliases), source.start, source.end, source.member) for source in entries] for pk, entries in sources.items()}
+    from apps.resources.brigade_merge import brigade_aliases, normalize_brigade_snapshot
+    labor_aliases = brigade_aliases(user.company)
+    if aliases or labor_aliases:
+        sources = {pk: [Source(source.version, normalize_brigade_snapshot(normalize_equipment_snapshot(source.snapshot, aliases), labor_aliases), source.start, source.end, source.member) for source in entries] for pk, entries in sources.items()}
     work_catalog = {
         w.pk: w
         for w in ProjectWork.objects.filter(

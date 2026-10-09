@@ -370,13 +370,13 @@ class MeetingImportTests(TestCase):
             ResourceMonthAllocation.objects.filter(
                 version=plans[0].baseline_version, kind="labor", month=JAN
             ).count(),
-            2,
+            1,
         )
         self.assertEqual(
             Brigade.objects.filter(
                 name="Imported brigade", group__isnull=False
             ).count(),
-            2,
+            1,
         )
 
     def test_numbered_work_sections_with_units_skip_totals(self):

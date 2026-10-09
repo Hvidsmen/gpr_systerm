@@ -92,7 +92,8 @@ def make_workbook(version, months, template=False):
         worksheets[sheet] = ws
     frozen = version.status in ["SUBMITTED", "APPROVED", "COMPLETED"]
     from apps.resources.equipment_merge import equipment_aliases, normalize_equipment_snapshot
-    snapshot = normalize_equipment_snapshot(version.snapshot, equipment_aliases(version.company)) if frozen else {}
+    from apps.resources.brigade_merge import brigade_aliases, normalize_resource_snapshot
+    snapshot = normalize_resource_snapshot(version.snapshot, version.company) if frozen else {}
     if not template and not frozen and version.version_kind == 'FORECAST':
         snapshot = build_workspace_snapshot(version)
     allocations = {(row.work_id, row.month): row for row in version.work_allocations.select_related('work')}
@@ -131,7 +132,10 @@ def make_workbook(version, months, template=False):
                 cell.comment=Comment('Расчёт основной работы по минимуму нормативов. Этот столбец вычисляется, при импорте не считывается.','ГПР')
     resource_inputs = list(version.resource_allocations.select_related('brigade', 'equipment_type'))
     aliases = equipment_aliases(version.company)
+    labor_aliases = brigade_aliases(version.company)
     for row in resource_inputs:
+        if row.brigade_id in labor_aliases:
+            row.brigade_id = labor_aliases[row.brigade_id]
         if row.equipment_type_id in aliases:
             row.equipment_type_id = aliases[row.equipment_type_id]
     for kind, sheet, catalog, fk in [('labor','Люди',Brigade,'brigade_id'),('equipment','Техника',EquipmentType,'equipment_type_id')]:

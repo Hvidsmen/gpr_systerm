@@ -24,9 +24,9 @@ def ready(review):
 
 
 def baseline_snapshot(version):
-    from apps.resources.equipment_merge import equipment_aliases, normalize_equipment_snapshot
+    from apps.resources.brigade_merge import normalize_resource_snapshot
     snapshot = version.baseline_review.snapshot if version.baseline_review_id else version.workspace.baseline_version.snapshot
-    return normalize_equipment_snapshot(snapshot, equipment_aliases(version.company))
+    return normalize_resource_snapshot(snapshot, version.company)
 
 
 @transaction.atomic

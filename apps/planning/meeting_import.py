@@ -566,13 +566,13 @@ def resolve_sheet(company, project, sheet, target_object=None, require_all=True)
         ).select_related("project_work")
     )
     catalogs = {
-        "labor": list(Brigade.objects.filter(company=company).select_related("group")),
+        "labor": list(Brigade.objects.filter(company=company, merge_source__isnull=True).select_related("group").order_by("pk")),
         "equipment": list(
             EquipmentType.objects.filter(company=company, merge_source__isnull=True).select_related("category").order_by("pk")
         ),
     }
     resolved = []
-    seen = set()
+    seen = {}
     for entry in sheet["entries"]:
         row = dict(entry)
         kind = row["kind"]
@@ -652,7 +652,12 @@ def resolve_sheet(company, project, sheet, target_object=None, require_all=True)
                     if warning not in sheet["warnings"]:
                         sheet["warnings"].append(warning)
             else:
-                target = unique_match(scoped if row["section"] else matches, row["name"], "Бригада")
+                target = matches[0] if matches else None
+                if len(matches) > 1:
+                    warning = (f'Должность «{row["name"]}»: в справочнике {len(matches)} записей с одним названием. '
+                        f'Выбрана первая: ID {target.pk}, группа «{target.group or "Без группы"}». '
+                        'Дубли можно объединить в справочнике бригад (должностей).')
+                    if warning not in sheet["warnings"]: sheet["warnings"].append(warning)
             if target and not target.is_active:
                 raise ValidationError(
                     f"Ресурс «{target.name}» неактивен. Активируйте его в справочнике перед загрузкой."
@@ -661,17 +666,22 @@ def resolve_sheet(company, project, sheet, target_object=None, require_all=True)
             row["target_type"] = kind
             identity = (
                 kind,
-                target.pk if target else (key(row["name"]), key(row["section"])),
+                target.pk if target else ((key(row["name"]),) if kind == "labor" else (key(row["name"]), key(row["section"]))),
                 row.get("equipment_number", ""),
             )
         identity = (*identity, row["month"])
         if identity in seen:
+            if kind == "labor":
+                warning = (f'Должность «{row["name"]}»: повторная строка {row["row"]} пропущена. '
+                    f'Для периода {row["month"]} используется первое вхождение, строка {seen[identity]}.')
+                if warning not in sheet["warnings"]: sheet["warnings"].append(warning)
+                continue
             # Different work sections are separate; duplicate resource rows would
             # silently inflate a count. Ask users to fix the source instead.
             raise ValidationError(
                 f'Строка {row["row"]}: повторная позиция «{row["name"]}». Разделите или переименуйте строки.'
             )
-        seen.add(identity)
+        seen[identity] = row["row"]
         row["action"] = (
             "Существующая подработа"
             if row["target_type"] == "item"
@@ -824,16 +834,8 @@ def apply_meeting_import(
                 )
                 if not item:
                     field = "group" if row["kind"] == "labor" else "category"
-                    candidates = list(
-                        model.objects.filter(company=user.company).select_related(field)
-                    )
-                    candidates = [
-                        v
-                        for v in candidates
-                        if key(getattr(v, field).name if getattr(v, field) else "")
-                        == key(row["section"])
-                    ]
-                    item = unique_match(candidates, row["name"], "Ресурс")
+                    candidates = model.objects.filter(company=user.company, merge_source__isnull=True).order_by("pk")
+                    item = next((v for v in candidates if key(v.name) == key(row["name"])), None)
                 if not item:
                     extra = {}
                     if row["section"]:
@@ -980,6 +982,8 @@ def batch_conflicts(company, project, batches, version):
                 identity = (row["kind"], row["target_type"], row["target_id"]) if row["target_id"] else (
                     row["kind"], key(row["section"]), key(row["name"]), key(row["unit"])
                 )
+                if row["kind"] == "labor" and not row["target_id"]:
+                    identity = ("labor", key(row["name"]))
                 identity = (*identity, row.get("equipment_number", ""), row["month"])
                 if identity in seen:
                     errors.append(

@@ -198,3 +198,26 @@ class EquipmentTypeMerge(BaseCompanyModel):
 
     class Meta:
         ordering = ["pk"]
+
+
+class BrigadeMerge(BaseCompanyModel):
+    """Alias and audit trail; frozen planning snapshots keep their original IDs."""
+    source = models.OneToOneField(Brigade, on_delete=models.PROTECT, related_name="merge_source")
+    target = models.ForeignKey(Brigade, on_delete=models.PROTECT, related_name="merged_types")
+    created_by = models.ForeignKey("accounts.User", on_delete=models.PROTECT)
+    audit = models.JSONField(default=dict)
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if self.source_id == self.target_id:
+            raise ValidationError("Нельзя объединить запись с самой собой.")
+        for item in [self.source, self.target, self.created_by]:
+            if item.company_id != self.company_id:
+                raise ValidationError("Объединение должно принадлежать одной компании.")
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+    class Meta:
+        ordering = ["pk"]
