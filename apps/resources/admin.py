@@ -47,3 +47,16 @@ class EquipmentCategoryAdmin(admin.ModelAdmin):
 from .models import BrigadeGroup, BrigadeMacroGroup
 admin.site.register(BrigadeGroup)
 admin.site.register(BrigadeMacroGroup)
+
+from .models import EquipmentTypeMerge
+
+@admin.register(EquipmentTypeMerge)
+class EquipmentTypeMergeAdmin(admin.ModelAdmin):
+    list_display = ['source', 'target', 'created_by', 'created_at']
+    readonly_fields = ['company', 'source', 'target', 'created_by', 'created_at', 'updated_at', 'audit']
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False

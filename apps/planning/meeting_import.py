@@ -555,7 +555,7 @@ def resolve_sheet(company, project, sheet, target_object=None, require_all=True)
     catalogs = {
         "labor": list(Brigade.objects.filter(company=company).select_related("group")),
         "equipment": list(
-            EquipmentType.objects.filter(company=company).select_related("category")
+            EquipmentType.objects.filter(company=company, merge_source__isnull=True).select_related("category").order_by("pk")
         ),
     }
     resolved = []
@@ -628,11 +628,18 @@ def resolve_sheet(company, project, sheet, target_object=None, require_all=True)
                 )
                 == key(row["section"])
             ]
-            target = unique_match(
-                scoped if row["section"] else matches,
-                row["name"],
-                "Бригада" if kind == "labor" else "Техника",
-            )
+            if kind == "equipment":
+                target = matches[0] if matches else None
+                if len(matches) > 1:
+                    warning = (
+                        f'Техника «{row["name"]}»: в справочнике {len(matches)} записей с одним названием. '
+                        f'Выбрана первая запись: ID {target.pk}, категория «{target.category or "Без категории"}». '
+                        'Дубли можно объединить в справочнике видов техники.'
+                    )
+                    if warning not in sheet["warnings"]:
+                        sheet["warnings"].append(warning)
+            else:
+                target = unique_match(scoped if row["section"] else matches, row["name"], "Бригада")
             if target and not target.is_active:
                 raise ValidationError(
                     f"Ресурс «{target.name}» неактивен. Активируйте его в справочнике перед загрузкой."

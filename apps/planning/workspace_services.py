@@ -390,7 +390,9 @@ def check_inputs(version):
 
 def build_workspace_snapshot(version, *, validate_inputs=True):
     from apps.works.prices import freeze_prices
-    return freeze_prices(_build_workspace_snapshot(version, validate_inputs=validate_inputs), version.company)
+    from apps.resources.equipment_merge import equipment_aliases, normalize_equipment_snapshot
+    snapshot = _build_workspace_snapshot(version, validate_inputs=validate_inputs)
+    return freeze_prices(normalize_equipment_snapshot(snapshot, equipment_aliases(version.company)), version.company)
 
 
 def _build_workspace_snapshot(version, *, validate_inputs=True):
@@ -874,6 +876,8 @@ class WorkspaceService:
                     daily=[deepcopy(r) for r in spec['plans'] if r['date'][:7]==month.isoformat()[:7]]
             WorkMonthAllocation.objects.create(company=workspace.company,version=version,work_id=spec['id'],month=month,
                 quantity=quantity,item_quantities=quantities,daily_override=daily,load_profile=prior.load_profile if prior else None)
+        from apps.resources.equipment_merge import equipment_aliases
+        aliases = equipment_aliases(workspace.company)
         for row in source.resource_allocations.filter(month=month):
             fields = {
                 f.name: getattr(row, f.name)
@@ -881,6 +885,19 @@ class WorkspaceService:
                 if f.name
                 not in ["id", "created_at", "updated_at", "version", "company"]
             }
+            if row.kind == 'equipment' and aliases:
+                fields.pop('equipment_type')
+                fields['equipment_type_id'] = aliases.get(row.equipment_type_id, row.equipment_type_id)
+                existing = version.resource_allocations.filter(kind='equipment', month=month,
+                    equipment_type_id=fields['equipment_type_id'], equipment_number=row.equipment_number).first()
+                if existing:
+                    total_hours = existing.hours + row.hours
+                    if total_hours:
+                        existing.rate = ((existing.rate * existing.hours + row.rate * row.hours) / total_hours).quantize(Decimal("0.01"))
+                    existing.count += row.count
+                    existing.hours = total_hours
+                    existing.save()
+                    continue
             ResourceMonthAllocation.objects.create(
                 company=workspace.company, version=version, **fields
             )

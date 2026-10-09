@@ -125,8 +125,17 @@ class EquipmentTypeListView(CatalogFilterMixin, CompanyRequiredMixin, ListView):
 
     def get_queryset(self):
         return self.filter_queryset(EquipmentType.objects.filter(
-            company=self.get_company()
+            company=self.get_company(), merge_source__isnull=True
         ).select_related('category').order_by('name', 'pk'))
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        from apps.planning.meeting_import import key
+        groups = {}
+        for item in EquipmentType.objects.filter(company=self.get_company(), merge_source__isnull=True).order_by('pk'):
+            groups.setdefault(key(item.name), []).append(item)
+        context['equipment_duplicates'] = [items for items in groups.values() if len(items) > 1]
+        return context
 
 
 class EquipmentTypeCreateView(CompanyRequiredMixin, CreateView):

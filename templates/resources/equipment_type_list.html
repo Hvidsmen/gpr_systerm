@@ -27,6 +27,8 @@
     </a>{% endif %}
 </div>
 
+{% if request.user|may:'resources:equipment_type_merge' %}<a class="btn btn-outline-primary mb-3" href="{% url 'resources:equipment_type_merge' %}">Объединить виды техники</a>{% endif %}
+{% for duplicates in equipment_duplicates %}<div class="alert alert-warning">В справочнике несколько видов техники «{{ duplicates.0.name }}»: {{ duplicates|length }}. При импорте совещания выбирается первая запись (ID {{ duplicates.0.pk }}). Используйте «Объединить виды техники» для устранения дублей.</div>{% endfor %}
 {% include 'resources/catalog_filters.html' %}
 {% if equipment_types %}
     <div class="card">

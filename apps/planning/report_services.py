@@ -222,6 +222,10 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
             ):
                 raise PermissionDenied
         sources = source_overrides
+    from apps.resources.equipment_merge import equipment_aliases, normalize_equipment_snapshot
+    aliases = equipment_aliases(user.company)
+    if aliases:
+        sources = {pk: [Source(source.version, normalize_equipment_snapshot(source.snapshot, aliases), source.start, source.end, source.member) for source in entries] for pk, entries in sources.items()}
     work_catalog = {
         w.pk: w
         for w in ProjectWork.objects.filter(

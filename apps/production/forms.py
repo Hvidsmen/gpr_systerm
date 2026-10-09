@@ -35,6 +35,8 @@ class CompanyFormMixin:
                         field.queryset = scope_queryset(field.queryset, user)
                     else:
                         field.queryset = field.queryset.filter(company=self.company)
+                    if field.queryset.model._meta.label_lower == 'resources.equipmenttype':
+                        field.queryset = field.queryset.filter(merge_source__isnull=True)
 
 
 class DailyFactForm(CompanyFormMixin, forms.ModelForm):
