@@ -44,6 +44,10 @@ def clean_text(value):
     return " ".join(str(value or "").split())
 
 
+def empty_value(value):
+    return value is None or isinstance(value, str) and not value.strip()
+
+
 def clean_unit(value):
     return clean_text(value).rstrip(" .")
 
@@ -119,7 +123,7 @@ def parse_sheet(sheet, start, end, resource_rule, facts=False):
         kind, name, unit, value, rownum, source, month, section="", equipment_number=""
     ):
         nonlocal skipped_empty
-        if value in (None, ""):
+        if empty_value(value):
             skipped_empty += 1
             return
         try:
@@ -281,7 +285,7 @@ def parse_sheet(sheet, start, end, resource_rule, facts=False):
                 col = resource_name_col
             if col is None or not clean_text(row[col]):
                 if any(
-                    row[j] not in (None, "", 0, "0")
+                    not empty_value(row[j]) and row[j] not in (0, "0")
                     for j, day in dates.items()
                     if start <= day <= end
                 ):
@@ -344,7 +348,7 @@ def parse_sheet(sheet, start, end, resource_rule, facts=False):
             for month, chosen in sorted(by_month.items()):
                 try:
                     values = [
-                        amount(row[j], True) for j in chosen if row[j] not in (None, "")
+                        amount(row[j], True) for j in chosen if not empty_value(row[j])
                     ]
                     value = (
                         (max(values) if resource_rule == "maximum" else values[0])
@@ -430,7 +434,7 @@ def parse_sheet(sheet, start, end, resource_rule, facts=False):
             continue
         for month, chosen in sorted(by_month.items()):
             try:
-                values = [amount(row[j]) for j in chosen if row[j] not in (None, "")]
+                values = [amount(row[j]) for j in chosen if not empty_value(row[j])]
                 value = sum(values) if values else None
                 add(
                     "work",

@@ -405,3 +405,17 @@ class MeetingImportTests(TestCase):
         self.assertEqual(works[3]['section'], 'Бурение скважин, в т.ч')
         _, resolved = resolve_sheet(self.company, self.obj.project, result, self.obj)
         self.assertEqual(len(resolved), 4)
+
+    def test_whitespace_daily_values_are_empty_and_zero_is_preserved(self):
+        book = Workbook()
+        sheet = book.active
+        sheet.title = self.obj.name
+        sheet.append(['№', 'Наименование работ', 'Ед. изм.', 'План/Факт'])
+        sheet.append([None, None, None, None, JAN, date(2026,1,2), date(2026,1,3), date(2026,1,4)])
+        sheet.append(['1','Work','тн','план',' ', '\xa0', '\t',29])
+        sheet.append(['2','Zero','тн','план',' ', 0, None, None])
+        sheet.append(['3','Empty','тн','план',' ', '\xa0', '\t',None])
+        stream=BytesIO();book.save(stream)
+        result=parse_meeting_workbook(SimpleUploadedFile('spaces.xlsx',stream.getvalue()),JAN,date(2026,1,4))[0]
+        self.assertEqual(result['errors'],[])
+        self.assertEqual([(r['name'],Decimal(r['quantity'])) for r in result['entries']],[('Work',Decimal(29)),('Zero',Decimal(0))])
