@@ -17,7 +17,8 @@ class WorkTemplateVersionAdmin(admin.ModelAdmin):
 
 @admin.register(WorkTemplateItem)
 class WorkTemplateItemAdmin(admin.ModelAdmin):
-    list_display = ['name', 'version', 'sequence', 'weight']
+    exclude = ["weight"]
+    list_display = ['name', 'version', 'sequence']
     list_filter = ['version']
 
 
@@ -30,8 +31,8 @@ class ProjectWorkAdmin(admin.ModelAdmin):
 
 @admin.register(ProjectWorkItem)
 class ProjectWorkItemAdmin(admin.ModelAdmin):
-    exclude = ["planned_quantity"]
-    list_display = ['name', 'project_work', 'sequence', 'weight']
+    exclude = ["planned_quantity", "weight"]
+    list_display = ['name', 'project_work', 'sequence']
     list_filter = ['project_work']
 
 from .models import WorkGroup, MeasurementUnit

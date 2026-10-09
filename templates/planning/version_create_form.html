@@ -108,7 +108,6 @@
                                         <div class="col-md-6 mb-3">
                                             <label for="id_{{ field_name }}" class="form-label">
                                                 {{ item.name }}
-                                                {% if item.weight %}<small class="text-muted">(вес: {{ item.weight }}%)</small>{% endif %}
                                             </label>
                                             {{ form|get_item:field_name }}
                                         </div>

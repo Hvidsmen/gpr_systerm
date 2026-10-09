@@ -160,14 +160,11 @@ class ProjectWorkItemForm(UnitChoiceMixin, forms.ModelForm):
 
     class Meta:
         model = ProjectWorkItem
-        fields = ["name", "unit", "load_profile", "weight", "quantity_per_unit"]
+        fields = ["name", "unit", "load_profile", "quantity_per_unit"]
         widgets = {
             "name": forms.TextInput(attrs={"class": "form-control"}),
             "unit": forms.TextInput(attrs={"class": "form-control"}),
             "load_profile": forms.Select(attrs={"class": "form-control"}),
-            "weight": forms.NumberInput(
-                attrs={"class": "form-control", "step": "0.01"}
-            ),
             "quantity_per_unit": forms.NumberInput(
                 attrs={"class": "form-control", "step": "0.001"}
             ),
@@ -176,11 +173,9 @@ class ProjectWorkItemForm(UnitChoiceMixin, forms.ModelForm):
             "name": "Название подработы",
             "unit": "Единица измерения",
             "load_profile": "Профиль нагрузки",
-            "weight": "Вес (%)",
             "quantity_per_unit": "Норматив подработы (на ед. работы)",
         }
         help_texts = {
-            "weight": "Доля стоимости подработы в общей стоимости работы",
             "quantity_per_unit": "Сколько единиц подработы нужно на 1 единицу работы",
         }
 
@@ -210,7 +205,6 @@ class WorkTemplateItemForm(UnitChoiceMixin, forms.ModelForm):
             "name",
             "unit",
             "sequence",
-            "weight",
             "quantity_per_unit",
             "load_profile",
         ]
@@ -218,9 +212,6 @@ class WorkTemplateItemForm(UnitChoiceMixin, forms.ModelForm):
             "name": forms.TextInput(attrs={"class": "form-control"}),
             "unit": forms.TextInput(attrs={"class": "form-control"}),
             "sequence": forms.NumberInput(attrs={"class": "form-control"}),
-            "weight": forms.NumberInput(
-                attrs={"class": "form-control", "step": "0.01"}
-            ),
             "quantity_per_unit": forms.NumberInput(
                 attrs={"class": "form-control", "step": "0.001"}
             ),
@@ -230,11 +221,9 @@ class WorkTemplateItemForm(UnitChoiceMixin, forms.ModelForm):
             "name": "Название подработы",
             "unit": "Единица измерения",
             "sequence": "Порядок",
-            "weight": "Вес (%)",
             "quantity_per_unit": "Норматив подработы (на ед. работы)",
             "load_profile": "Профиль нагрузки",
         }
         help_texts = {
-            "weight": "Доля стоимости подработы в общей стоимости работы",
             "quantity_per_unit": "Сколько единиц подработы нужно на 1 единицу работы",
         }

@@ -95,8 +95,6 @@
         <th>Название</th>
         <th style="width: 80px;">Ед.</th>
         <th style="width: 90px;" class="text-end">Норматив</th>
-        <th style="width: 90px;" class="text-end">Вес, %</th>
-        <th style="width: 110px;" class="text-end">Стоимость</th>
         <th style="width: 110px;" class="text-end">Готовность</th>
         <th style="width: 140px;">Профиль</th>
         <th style="width: 100px;">Действия</th>
@@ -119,11 +117,6 @@
         {% else %}
             <span class="text-muted">—</span>
         {% endif %}
-    </td>
-    <td class="text-end">{{ item.weight }}%</td>
-    <td class="text-end">
-        {% load math_tags %}
-        {{ work.unit_price|multiply:item.weight|divide:100|floatformat:2 }} ₽
     </td>
     <td class="text-end">
         <div class="progress" style="min-width: 70px; height: 18px;">
