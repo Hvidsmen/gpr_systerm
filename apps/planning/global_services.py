@@ -47,7 +47,10 @@ def source_versions(obj, start, end):
     return list(chosen.values())
 
 
-def build_snapshot(version):
+def build_snapshot(version, *, validate_inputs=True):
+    if version.workspace_id:
+        from .workspace_services import build_workspace_snapshot
+        return build_workspace_snapshot(version, validate_inputs=validate_inputs)
     from apps.works.prices import freeze_prices
     return freeze_prices(_build_snapshot(version), version.company)
 

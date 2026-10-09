@@ -69,7 +69,7 @@ def detail_matrix(request, version):
         return context
     try:
         snapshot = (
-            build_snapshot(version)
+            build_snapshot(version, validate_inputs=False)
             if version.status in ["DRAFT", "REJECTED"]
             else version.snapshot
         )
@@ -86,6 +86,7 @@ def detail_matrix(request, version):
         build_matrix(
             request.user,
             filters,
+            plan_only=True,
             source_overrides={
                 version.construction_object_id: [
                     Source(version, snapshot, version.start_date, version.end_date)

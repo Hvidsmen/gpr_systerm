@@ -13,5 +13,5 @@
 {% include 'planning/approval_panel.html' %}
 {% include 'planning/project_assignment.html' %}
 {% if object.is_immutable and object.version_kind != 'BASELINE' %}{% if request.user|may:'planning:version_revision' %}<form method="post" action="{% url 'planning:global_action' object.pk 'revision' %}">{% csrf_token %}<button>Создать новую редакцию</button></form>{% endif %}{% endif %}
-<p>{% if object.status == 'DRAFT' or object.status == 'REJECTED' %}Показан предварительный расчёт. При отправке на согласование он пересчитывается и фиксируется.{% else %}План зафиксирован в версии.{% endif %} Факт пересчитывается накопительно по всей истории, включая исправления прошлых дат.</p>
+<p>{% if object.status == 'DRAFT' or object.status == 'REJECTED' %}Показан предварительный расчёт. При отправке на согласование он пересчитывается и фиксируется.{% else %}План зафиксирован в версии.{% endif %}</p>
 {% endblock %}

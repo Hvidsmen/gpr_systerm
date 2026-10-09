@@ -1,7 +1,6 @@
 """Plan/fact matrices. Calendar averages and cumulative composite completion."""
 
 from collections import defaultdict
-from copy import deepcopy
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
@@ -9,6 +8,7 @@ from calendar import monthrange
 from apps.projects.models import ConstructionObject
 from apps.works.models import ProjectWork
 from apps.works.progress import work_specification, cumulative_series
+from apps.works.prices import rate_on
 from apps.resources.models import Brigade, EquipmentType
 from apps.production.models import DailyFact, LaborFact, EquipmentFact, FuelFact
 from .models import GlobalPlanVersion
@@ -180,7 +180,7 @@ def work_matches(spec, filters):
     )
 
 
-def build_matrix(user, filters, *, source_overrides=None):
+def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
     start, end = filters["start"], filters["end"]
     if filters.get("month"):
         month = filters["month"]
@@ -250,11 +250,11 @@ def build_matrix(user, filters, *, source_overrides=None):
     for source_id, parent_id in source_parents.items():
         parent_sources[parent_id].add(source_id)
     work_facts = defaultdict(list)
-    for row in DailyFact.objects.filter(
+    for row in (DailyFact.objects.none() if plan_only else DailyFact.objects.filter(
         company=user.company,
         project_work__section__construction_object__in=objects,
         date__lte=end,
-    ).values("project_work_id", "date", "work_item_id", "actual_quantity"):
+    )).values("project_work_id", "date", "work_item_id", "actual_quantity"):
         work_facts[row["project_work_id"]].append(
             (row["date"], row["work_item_id"], row["actual_quantity"])
         )
@@ -264,16 +264,16 @@ def build_matrix(user, filters, *, source_overrides=None):
         kind: defaultdict(lambda: defaultdict(lambda: ZERO))
         for kind in ["labor", "equipment", "fuel", "balance"]
     }
-    for row in LaborFact.objects.filter(
+    for row in (LaborFact.objects.none() if plan_only else LaborFact.objects.filter(
         company=user.company, construction_object__in=objects, date__range=(start, end)
-    ).values("construction_object_id", "brigade_id", "date", "actual_workers"):
+    )).values("construction_object_id", "brigade_id", "date", "actual_workers"):
         if row["actual_workers"] is not None:
             resource_facts["labor"][(row["construction_object_id"], row["brigade_id"])][
                 row["date"]
             ] += Decimal(row["actual_workers"])
-    for row in EquipmentFact.objects.filter(
+    for row in (EquipmentFact.objects.none() if plan_only else EquipmentFact.objects.filter(
         company=user.company, construction_object__in=objects, date__range=(start, end)
-    ).values(
+    )).values(
         "construction_object_id",
         "equipment_type_id",
         "equipment_number",
@@ -287,9 +287,9 @@ def build_matrix(user, filters, *, source_overrides=None):
                 row["equipment_number"],
             )
         ][row["date"]] += Decimal(row["actual_count"])
-    for row in FuelFact.objects.filter(
+    for row in (FuelFact.objects.none() if plan_only else FuelFact.objects.filter(
         company=user.company, construction_object__in=objects, date__range=(start, end)
-    ).values(
+    )).values(
         "construction_object_id", "fuel_type", "date", "actual_liters", "actual_balance"
     ):
         key = (row["construction_object_id"], row["fuel_type"])
@@ -404,7 +404,7 @@ def build_matrix(user, filters, *, source_overrides=None):
         if "works" in filters["sections"]:
             rows = []
             for work_id, stored in work_specs.items():
-                spec = deepcopy(stored)
+                spec = dict(stored)
                 work = work_catalog.get(work_id)
                 if "group_name" not in spec:
                     spec.update(
@@ -427,7 +427,8 @@ def build_matrix(user, filters, *, source_overrides=None):
                         )
                         actual_days.add(day)
                 series_cache = {}
-                plan, fact = {}, {}
+                plan, fact, money = {}, {}, {}
+                priced = False
                 for day in all_days:
                     source = chosen[day]
                     entry = plan_index[id(source)].get(work_id) if source else None
@@ -437,6 +438,11 @@ def build_matrix(user, filters, *, source_overrides=None):
                         else empty_plan_value(source, day)
                     )
                     day_spec = entry["spec"] if entry else spec
+                    if plan_only:
+                        rate = rate_on(day_spec.get("revenue_prices", []), day, Decimal(day_spec.get("unit_price") or 0))
+                        priced = priced or rate > ZERO
+                        money[day] = plan[day] * rate if plan[day] is not None else None
+                        continue
                     fingerprint = (
                         day_spec["kind"],
                         day_spec["allow_fractional"],
@@ -482,20 +488,18 @@ def build_matrix(user, filters, *, source_overrides=None):
                                 buckets,
                             )
                         )
-                rows.append(
-                    (
-                        [spec.get("group_name", "Без группы")],
-                        make_row(
-                            f"o{obj.pk}-w{work_id}",
-                            spec["name"],
-                            spec["unit"],
-                            plan,
-                            fact,
-                            buckets,
-                            children=children,
-                        ),
-                    )
+                row = make_row(
+                    f"o{obj.pk}-w{work_id}", spec["name"], spec["unit"],
+                    plan, fact, buckets, children=children,
                 )
+                row["has_amount"] = plan_only and priced
+                if plan_only and priced:
+                    for cell, bucket in zip(row["cells"], buckets):
+                        amount, _, _ = aggregate(money, bucket["dates"], "sum")
+                        cell["amount"] = amount.quantize(Decimal("0.01")) if amount is not None else None
+                    amount, _, _ = aggregate(money, all_days, "sum")
+                    row["total"]["amount"] = amount.quantize(Decimal("0.01")) if amount is not None else None
+                rows.append(([spec.get("group_name", "Без группы")], row))
             sections.append(
                 {"kind": "works", "label": "Работы", "groups": grouped(rows)}
             )
@@ -675,5 +679,6 @@ def build_matrix(user, filters, *, source_overrides=None):
         "daily": bool(filters.get("month")),
         "start": start,
         "end": end,
-        "column_count": 1 + 3 * (len(buckets) + 1),
+        "column_count": 1 + (1 if plan_only else 3) * (len(buckets) + 1),
+        "plan_only": plan_only,
     }

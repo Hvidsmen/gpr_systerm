@@ -144,3 +144,47 @@ class GlobalMatrixTests(TestCase):
                     ]
                 },
             )
+
+    def test_plan_pages_hide_facts_and_show_parent_money_only(self):
+        from apps.production.models import DailyFact
+        from apps.works.models import WorkPrice
+        from .global_services import GlobalPlanService
+        from apps.works.prices import rate_on
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        WorkPrice.objects.create(company=self.company, work=self.simple, price=20,
+                                 effective_from=date(2026, 1, 16), created_by=self.planner)
+        DailyFact.objects.create(company=self.company, project_work=self.simple,
+                                 date=date(2026, 1, 1), actual_quantity=999, reported_by=self.planner)
+        self.version = GlobalPlanService.transition(self.version, self.planner, "submit")
+        spec = next(s for s in self.version.snapshot["works"] if s["id"] == self.simple.pk)
+        expected = sum(
+            Decimal(day["quantity"]) * rate_on(spec["revenue_prices"], date.fromisoformat(day["date"]), Decimal(spec["unit_price"]))
+            for day in spec["daily"] if day["date"][:7] == "2026-01"
+        ).quantize(Decimal("0.01"))
+        for params in [{}, {"month": "2026-01-01"}]:
+            with CaptureQueriesContext(connection) as queries:
+                response = self.client.get(self.url, params)
+            self.assertEqual(response.status_code, 200)
+            self.assertNotContains(response, '<th>Факт</th>')
+            self.assertNotContains(response, '<th>Δ</th>')
+            self.assertNotContains(response, 'class="matrix-fact"')
+            self.assertNotContains(response, 'Отклонение =')
+            self.assertContains(response, '₽')
+            self.assertFalse(any('production_dailyfact' in q['sql'] for q in queries))
+            self.assertFalse(any('production_laborfact' in q['sql'] for q in queries))
+            row = next(r for r in self.rows(response, "works") if r["label"] == self.simple.name)
+            cells = row["cells"] if params else row["cells"][:1]
+            self.assertEqual(sum(c["amount"] or 0 for c in cells), expected)
+            composite = next(r for r in self.rows(response, "works") if r["label"] == self.composite.name)
+            self.assertTrue(composite["has_amount"])
+            self.assertTrue(all("amount" not in c for child in composite["children"] for c in child["cells"]))
+
+    def test_preview_skips_revalidation_but_submission_validates(self):
+        with patch("apps.planning.workspace_services.check_inputs") as validate:
+            self.client.get(self.url)
+            validate.assert_not_called()
+            from .global_services import build_snapshot
+            build_snapshot(self.version)
+            validate.assert_called_once_with(self.version)

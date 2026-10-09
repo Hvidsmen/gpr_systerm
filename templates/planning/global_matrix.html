@@ -25,6 +25,6 @@
 {% for section in entry.sections %}<details class="matrix-section mb-2" data-matrix-section="{{ section.kind }}" open><summary class="h6">{{ section.label }}</summary>{% for node in section.groups %}{% include 'planning/report_group.html' %}{% empty %}<p class="text-muted small ms-3">Нет строк по выбранным условиям.</p>{% endfor %}</details>{% endfor %}
 </details>{% empty %}<div class="alert alert-info">Нет доступных строительных объектов по выбранным условиям.</div>{% endfor %}
 </div>
-<p class="small text-muted">Отклонение = факт − план. Прочерк означает отсутствие данных, введённый ноль отображается как 0. Для среднего факта показано количество заполненных дней. Цвет отклонений нейтральный: превышение ресурса не считается улучшением.</p>
+<p class="small text-muted">Под объёмом работы показана сумма в рублях по цене на дату планирования. Стоимость подработ отдельно не показывается.</p>
 {% endif %}
 <script src="{% static 'planning/report_matrix.js' %}" defer></script>

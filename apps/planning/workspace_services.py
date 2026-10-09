@@ -131,11 +131,16 @@ def profile_weights(percentages, count):
     ]
 
 
-def work_rows(workspace, spec, month, quantity, override_profile=None, item_quantities=None):
+def work_rows(workspace, spec, month, quantity, override_profile=None, item_quantities=None, *, day_cache=None):
     quantity = Decimal(str(quantity))
     if quantity == 0 and not any(Decimal(str(value)) for value in (item_quantities or {}).values()):
         return []
-    days = working_days(workspace, month)
+    if day_cache is None:
+        days = working_days(workspace, month)
+    else:
+        if month not in day_cache:
+            day_cache[month] = working_days(workspace, month)
+        days = day_cache[month]
     override = captured_profile(override_profile) if override_profile else None
     items = (
         spec["items"]
@@ -383,14 +388,15 @@ def check_inputs(version):
         row.full_clean()
 
 
-def build_workspace_snapshot(version):
+def build_workspace_snapshot(version, *, validate_inputs=True):
     from apps.works.prices import freeze_prices
-    return freeze_prices(_build_workspace_snapshot(version), version.company)
+    return freeze_prices(_build_workspace_snapshot(version, validate_inputs=validate_inputs), version.company)
 
 
-def _build_workspace_snapshot(version):
+def _build_workspace_snapshot(version, *, validate_inputs=True):
     workspace = version.workspace
-    check_inputs(version)
+    if validate_inputs:
+        check_inputs(version)
     from apps.works.models import WorkMergePlanRevision
     from apps.works.merge_planning import input_fingerprint
     revision=WorkMergePlanRevision.objects.filter(company=version.company,target_version=version).first()
@@ -407,11 +413,15 @@ def _build_workspace_snapshot(version):
         if not inputs and not resources:
             raise ValidationError("Добавьте месячные планы работ или ресурсов.")
         works = []
-        for work_id in sorted({r.work_id for r in inputs}):
-            work = next(r.work for r in inputs if r.work_id == work_id)
+        day_cache = {}
+        allocations_by_work = defaultdict(list)
+        for allocation in inputs:
+            allocations_by_work[allocation.work_id].append(allocation)
+        for work_id, allocations in sorted(allocations_by_work.items()):
+            work = allocations[0].work
             spec = specification(work)
             rows = []
-            for allocation in inputs:
+            for allocation in allocations:
                 if allocation.work_id == work_id:
                     rows += allocation.daily_override if allocation.daily_override is not None else work_rows(
                         workspace,
@@ -420,6 +430,7 @@ def _build_workspace_snapshot(version):
                         allocation.quantity,
                         allocation.load_profile,
                         allocation.item_quantities,
+                        day_cache=day_cache,
                     )
             works.append(finalize_work(spec, rows, workspace))
         resource_plans = {kind: [] for kind in RESOURCE_CONFIG}
