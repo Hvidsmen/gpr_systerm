@@ -16,7 +16,7 @@ from django.core import signing
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.http import HttpResponse
-from django.shortcuts import render, redirect, get_object_or_404
+from django.shortcuts import render, redirect
 from django.utils import timezone
 from django.views import View
 from openpyxl import Workbook, load_workbook
@@ -33,7 +33,7 @@ from .merge_service import (
     fingerprint,
 )
 from .merge_views import MergeForm
-from .prices import price_on, change_price
+from .prices import price_on, change_price, can_backdate_price
 
 SALT = "works.batch-worksheet.v1"
 PREVIEW_SALT = "works.batch-preview.v1"
@@ -198,12 +198,25 @@ def metadata(user, obj, rows):
     return {"company": user.company_id, "object": obj.pk, "rows": rows}
 
 
+def batch_object(user, object_id, *, lock=False):
+    queryset = ConstructionObject.objects.filter(company=user.company)
+    if lock:
+        queryset = queryset.select_for_update()
+    try:
+        return queryset.get(pk=object_id)
+    except ConstructionObject.DoesNotExist:
+        raise ValidationError(
+            "Объект из файла или предварительного просмотра больше недоступен. "
+            "Выберите текущий объект и выгрузите новый шаблон Excel."
+        )
+
+
 def decode_metadata(user, token):
     try:
         data = signing.loads(token, salt=SALT, max_age=30 * 86400)
         if data["company"] != user.company_id:
             raise signing.BadSignature()
-        get_object_or_404(ConstructionObject, pk=data["object"], company=user.company)
+        batch_object(user, data["object"])
         return data
     except (signing.BadSignature, KeyError, TypeError):
         raise ValidationError(
@@ -342,8 +355,8 @@ def current_state(user, works):
 
 def build_preview(user, meta, entries, effective):
     require_roles(user, PLAN_ROLES)
-    obj = get_object_or_404(ConstructionObject, company=user.company, pk=meta["object"])
-    if effective < timezone.localdate():
+    obj = batch_object(user, meta["object"])
+    if effective < timezone.localdate() and not can_backdate_price(user):
         raise ValidationError("Для новой цены выберите сегодняшнюю или будущую дату.")
     originals = {r["id"]: r for r in meta["rows"]}
     seen = set()
@@ -524,11 +537,7 @@ def build_preview(user, meta, entries, effective):
 @transaction.atomic
 def apply_batch(user, payload):
     require_roles(user, PLAN_ROLES)
-    get_object_or_404(
-        ConstructionObject.objects.select_for_update(),
-        company=user.company,
-        pk=payload["object"],
-    )
+    batch_object(user, payload["object"], lock=True)
     works = list(
         ProjectWork.objects.select_for_update()
         .filter(
@@ -547,7 +556,7 @@ def apply_batch(user, payload):
         )
     effective = date.fromisoformat(payload["effective"])
     revision_count = 0
-    if effective < timezone.localdate():
+    if effective < timezone.localdate() and not can_backdate_price(user):
         raise ValidationError(
             "Дата действия цены уже прошла. Подготовьте импорт заново."
         )

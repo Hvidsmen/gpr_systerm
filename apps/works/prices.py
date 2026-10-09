@@ -6,7 +6,11 @@ from copy import deepcopy
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
-from core.permissions import PLAN_ROLES, require_roles
+from core.permissions import PLAN_ROLES, require_roles, role_code
+
+
+def can_backdate_price(user):
+    return bool(user and user.is_authenticated and role_code(user) == 'ADMIN')
 
 
 def history_prices(work):
@@ -68,7 +72,7 @@ def change_price(user, work_id, price, effective_from, reason="", corrects=None)
             raise ValidationError(
                 "Исправление сохраняет дату действия цены и требует основания."
             )
-    elif effective_from < timezone.localdate():
+    elif effective_from < timezone.localdate() and not can_backdate_price(user):
         raise ValidationError(
             "Прошлую цену можно изменить только отдельным исправлением с основанием."
         )

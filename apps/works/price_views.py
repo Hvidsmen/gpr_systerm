@@ -7,7 +7,7 @@ from django.utils import timezone
 from django.views import View
 from core.permissions import PLAN_ROLES, require_roles
 from .models import ProjectWork, WorkPrice
-from .prices import change_price, price_on
+from .prices import change_price, price_on, can_backdate_price
 from .price_sources import source_field, source_note, identity
 
 
@@ -31,9 +31,12 @@ class PriceForm(forms.Form):
         empty_label="Новая цена",
     )
 
-    def __init__(self, *args, work, **kwargs):
+    def __init__(self, *args, work, user=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.work = work
+        self.user = user
+        if can_backdate_price(user):
+            self.fields["effective_from"].help_text = "Администратор может указать прошедшую дату. Запись сохранится в истории; цены зафиксированных планов сохранятся."
         self.fields["price_source"] = source_field(work.company, work.pk)
         if self.is_bound and self.data.get(self.add_prefix("price_source")):
             self.fields["price"].required = False
@@ -54,7 +57,7 @@ class PriceForm(forms.Form):
                 self.add_error("reason", "Укажите основание исправления.")
         elif not day:
             self.add_error("effective_from", "Укажите дату начала действия новой цены.")
-        elif day < timezone.localdate():
+        elif day < timezone.localdate() and not can_backdate_price(self.user):
             self.add_error(
                 "effective_from",
                 "Для изменения прошлой цены выберите исправляемую запись.",
@@ -83,6 +86,7 @@ class WorkPriceChange(View):
     def get(self, request, pk):
         form = PriceForm(
             work=self.work,
+            user=request.user,
             initial={
                 "price": price_on(self.work),
                 "effective_from": timezone.localdate(),
@@ -93,7 +97,7 @@ class WorkPriceChange(View):
         )
 
     def post(self, request, pk):
-        form = PriceForm(request.POST, work=self.work)
+        form = PriceForm(request.POST, work=self.work, user=request.user)
         if form.is_valid():
             try:
                 change_price(request.user, self.work.pk, **{key: value for key, value in form.cleaned_data.items() if key != "price_source"})

@@ -331,3 +331,33 @@ class BatchPrepareTests(TestCase):
         entries[0][7] = -1
         with self.assertRaises(ValidationError):
             build_preview(self.planner, self.meta, entries, self.today)
+
+    def test_import_stale_object_returns_message_without_changes(self):
+        stale = deepcopy(self.meta)
+        stale["object"] = self.obj.pk + 99999
+        before = self.simple.price_history.count()
+        response = self.client.post(
+            self.url,
+            {
+                "action": "import",
+                "construction_object": self.obj.pk,
+                "effective": self.today.isoformat(),
+                "file": SimpleUploadedFile("old.xlsx", export_book(stale).content),
+            },
+            follow=True,
+        )
+        self.assertContains(response, "выгрузите новый шаблон Excel")
+        self.assertEqual(self.simple.price_history.count(), before)
+        self.assertFalse(WorkMergeSource.objects.exists())
+
+    def test_missing_object_rejected_at_preview_and_confirmation(self):
+        stale = deepcopy(self.meta)
+        stale["object"] = self.obj.pk + 99999
+        with self.assertRaisesMessage(ValidationError, "больше недоступен"):
+            build_preview(self.planner, stale, self.entries, self.today)
+        entries = deepcopy(self.entries)
+        entries[0][7] = "77"
+        payload = build_preview(self.planner, self.meta, entries, self.today)
+        payload["object"] = stale["object"]
+        with self.assertRaisesMessage(ValidationError, "больше недоступен"):
+            apply_batch(self.planner, payload)
