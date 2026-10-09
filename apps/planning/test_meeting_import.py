@@ -123,6 +123,30 @@ class MeetingImportTests(TestCase):
     def parse(self, **kwargs):
         return parse_meeting_workbook(upload(**kwargs), JAN, date(2026, 2, 1))
 
+    def test_shared_subheading_preserves_distinct_numbered_sections(self):
+        from openpyxl import load_workbook
+        from io import BytesIO
+        file = upload(work_names=[("Расчистка", "м2", 2), ("Расчистка", "м2", 3)])
+        book = load_workbook(file)
+        sheet = book.active
+        sheet.insert_rows(4, 2)
+        sheet.cell(4, 1, "2.")
+        sheet.cell(4, 2, "Площадка ПК2383")
+        sheet.cell(5, 2, "Инженерная подготовка")
+        sheet.insert_rows(8, 2)
+        sheet.cell(8, 1, "3.")
+        sheet.cell(8, 2, "Площадка ПК2371")
+        sheet.cell(9, 2, "Инженерная подготовка")
+        data = BytesIO()
+        book.save(data)
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        parsed = parse_meeting_workbook(SimpleUploadedFile("test.xlsx", data.getvalue()), JAN, date(2026, 1, 31))[0]
+        entries = [row for row in parsed["entries"] if row["kind"] == "work"]
+        self.assertEqual([row["section"] for row in entries], [
+            "Площадка ПК2383 / Инженерная подготовка",
+            "Площадка ПК2371 / Инженерная подготовка",
+        ])
+
     def test_exact_period_daily_plan_only_and_monthly_totals_ignored(self):
         sheet = self.parse()[0]
         self.assertEqual(sheet["errors"], [])

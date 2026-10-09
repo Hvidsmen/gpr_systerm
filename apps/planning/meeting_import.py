@@ -111,6 +111,7 @@ def parse_sheet(sheet, start, end, resource_rule, facts=False):
     headers = None
     dates = {}
     group = "Работы из Excel"
+    parent_group = ""
     resource_groups = {"labor": "", "equipment": ""}
     summary = False
     resource_kind = None
@@ -400,13 +401,18 @@ def parse_sheet(sheet, start, end, resource_rule, facts=False):
         numbered_subtotal = bool(code and next_code.startswith(code.rstrip(".") + "."))
         if numbered_subtotal or "в том числе" in key(name):
             group = name.rstrip(" :")
+            parent_group = group
             skipped_totals += 1
             continue
         if not unit:
             if len(name) <= 255 and not key(name).startswith(
                 ("примечание", "дата", "температура")
             ):
-                group = name
+                if code:
+                    parent_group = name
+                    group = name
+                else:
+                    group = f"{parent_group} / {name}" if parent_group else name
             continue
         # Only work units from the actual work table, not date/annotation grids.
         if headers["marker"] is not None and marker != "план":
