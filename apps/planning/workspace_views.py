@@ -280,11 +280,23 @@ class WorkspaceEdit(View):
 
     def context(self, request, version, selected, months, works, resources):
         from .selection_filters import planning_filters
+        from apps.works.prices import rate_on
+        from apps.works.models import WorkPrice
+        from django.db.models import Prefetch
+        priced_works = ProjectWork.objects.filter(
+            company=version.company,
+            section__construction_object=version.construction_object,
+        ).prefetch_related(Prefetch("price_history", queryset=WorkPrice.objects.order_by("effective_from", "pk")))
+        work_prices = {
+            str(work.pk): str(rate_on(work.price_history.all(), selected, work.unit_price))
+            for work in priced_works
+        }
         filter_data, filter_specs = planning_filters(version)
         return {
             "version": version,
             "workspace": version.workspace,
             "selected_month": selected,
+            "work_prices": work_prices,
             "months": months,
             "work_forms": works,
             "work_item_quantities": {form.prefix: form.instance.item_quantities for form in works if form.instance.item_quantities},

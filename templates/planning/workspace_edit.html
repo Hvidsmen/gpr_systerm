@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% load access %}
+{% load access static %}
 {% block content %}
 <style>
 .allocation-row[hidden], .allocation-group[hidden] { display:none !important; }
@@ -24,6 +24,7 @@
 .allocation-grid > [data-field="DELETE"] { display:flex; align-items:center; gap:5px; min-height:30px; }
 .allocation-grid > [data-field="DELETE"] label { margin:0; }
 .allocation-grid input[type="checkbox"] { width:16px; height:16px; margin:0; padding:0; }
+.allocation-grid > [data-work-amount] { grid-column:1/-1; margin:0; font-size:13px; color:#198754; }
 .allocation-grid > [hidden] { display:none !important; }
 .allocation-grid > .errorlist { grid-column:1/-1; }
 .allocation-grid .errorlist { margin:3px 0 0; padding-left:14px; color:#b02a37; }
@@ -102,6 +103,8 @@
 </form>
 <template id="empty-works"><div class="card mb-3 allocation-row"><div class="card-body allocation-grid">{% for field in work_forms.empty_form %}<p data-field="{{ field.name }}" {% if field.is_hidden %}hidden{% endif %}>{% if field.name == 'DELETE' %}<span hidden>{{ field }}</span><button type="button" class="btn btn-sm btn-outline-danger" data-remove-row aria-label="Удалить строку">Удалить</button>{% else %}{{ field.label_tag }} {{ field }}{% endif %}</p>{% endfor %}</div></div></template>
 <template id="empty-resources"><div class="card mb-3 resource-row allocation-row"><div class="card-body allocation-grid">{% for field in resource_forms.empty_form %}<p data-field="{{ field.name }}" {% if field.is_hidden or field.name == 'kind' %}hidden{% endif %}>{% if field.name == 'DELETE' %}<span hidden>{{ field }}</span><button type="button" class="btn btn-sm btn-outline-danger" data-remove-row aria-label="Удалить строку">Удалить</button>{% else %}{{ field.label_tag }} {{ field }}{% endif %}</p>{% endfor %}</div></div></template>
+{{ work_prices|json_script:'work-prices' }}
+<script src="{% static 'planning/work_amounts.js' %}"></script>
 {{ composite_items|json_script:'composite-items' }}
 {{ work_item_quantities|json_script:'work-item-quantities' }}
 {{ planning_filter_data|json_script:'planning-filter-data' }}
@@ -183,11 +186,21 @@ document.querySelectorAll('[data-row-filter]').forEach(panel=>{
   panel.addEventListener('input',()=>applyRowFilters(panel));
   panel.querySelector('[data-reset-filter]').addEventListener('click',()=>{panel.querySelectorAll('input,select').forEach(i=>i.value='');applyRowFilters(panel);});
 });
-document.getElementById('allocation-editor').addEventListener('change',event=>{if(event.target.closest('.allocation-row')) {refreshRowFilters();if(event.target.name.endsWith('-'+rowIdentity[event.target.closest('[data-allocation-section]').dataset.allocationSection])) revealAllocationRow(event.target.closest('.allocation-row'));}});
+document.getElementById('allocation-editor').addEventListener('change',event=>{
+  const row=event.target.closest('.allocation-row');
+  if (!row) return;
+  const kind=event.target.closest('[data-allocation-section]').dataset.allocationSection;
+  if (event.target.name.endsWith('-'+rowIdentity[kind])) {
+    requestAnimationFrame(()=>{refreshRowFilters();revealAllocationRow(row);});
+  } else if (event.target.name.endsWith("-equipment_number")) {
+    applyRowFilters(document.querySelector('[data-row-filter="'+kind+'"]'));
+  }
+});
 const compositeItems=JSON.parse(document.getElementById('composite-items').textContent);
 const importedItemQuantities=JSON.parse(document.getElementById('work-item-quantities').textContent);
 const subworkNumber=new Intl.NumberFormat('ru-RU',{maximumFractionDigits:6});
 function updateSubworks(row) {
+  updateWorkAmount(row);
   const work=row.querySelector('[name$="-work"]');
   if (!work) return;
   let panel=row.querySelector('[data-subworks]');

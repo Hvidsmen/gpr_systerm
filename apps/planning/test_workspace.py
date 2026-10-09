@@ -891,3 +891,21 @@ class WorkspaceTests(TestCase):
             if r["date"][:7] == "2026-03"
         ]
         self.assertEqual([D(r["quantity"]) for r in future], [D("132.5"), D("397.5")])
+
+    def test_editor_amount_prices_follow_selected_month(self):
+        from apps.works.models import WorkPrice
+
+        workspace = self.create()
+        for day, price in [(JAN, 15), (FEB, 25)]:
+            WorkPrice.objects.create(
+                company=self.company, work=self.simple, price=price,
+                effective_from=day, created_by=self.planner,
+            )
+        self.client.force_login(self.planner)
+        url = reverse("planning:workspace_edit", args=[workspace.baseline_version_id])
+        january = self.client.get(url, {"month": JAN.isoformat()})
+        february = self.client.get(url, {"month": FEB.isoformat()})
+        self.assertEqual(Decimal(january.context["work_prices"][str(self.simple.pk)]), Decimal(15))
+        self.assertEqual(Decimal(february.context["work_prices"][str(self.simple.pk)]), Decimal(25))
+        self.assertContains(january, 'id="work-prices"')
+        self.assertContains(january, 'planning/work_amounts.js')
