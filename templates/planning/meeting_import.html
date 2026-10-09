@@ -4,21 +4,21 @@
 <h1>Импорт плана из файла совещания</h1>
 {% if target_version %}
 <p><strong>Объект:</strong> {{ target_version.construction_object.name }} · <strong>Версия:</strong> v{{ target_version.version_number }} · {{ target_version.title }}</p>
-<p>Добавьте файлы и задайте отдельный период для каждого. Читается только лист этого объекта; после проверки данные записываются в эту же версию.</p>
+<p>Добавьте файлы и задайте отдельный период для каждого. По умолчанию читается лист с названием объекта. Для каждого файла можно указать другое название листа; после проверки данные записываются в эту же версию.</p>
 <p class="text-muted">Для найденных позиций месячные значения заменяются данными выбранных дат. Остальные позиции и месяцы сохраняются.</p>
 {% else %}
 <p>Каждый выбранный лист — отдельный строительный объект. Загрузка создаёт новый черновик плана на выбранный период; существующие планы сохраняются.</p>
 {% endif %}
 <p class="text-muted">При выборе файла дата в его названии автоматически задаёт начало и конец месяца. Например, 30.06.2026 → 01.06.2026 — 30.06.2026. Период можно изменить вручную.</p>
 <p>Читаются только дневные столбцы с датами внутри выбранного периода. Месячные итоги из шапки не используются.</p>
-<p>Загружаются только плановые работы, люди и техника. Факт, накопительное выполнение и сведения о наличии техники не загружаются. Название листа должно совпадать с названием строительного объекта в базе. Недостающие разделы и справочные позиции создаются после подтверждения. Новые работы создаются простыми с равномерным профилем. Существующие подработы сопоставляются по названию, единице и разделу; основная составная работа рассчитывается по нормативам всех подработ.</p>
+<p>Загружаются только плановые работы, люди и техника. Факт, накопительное выполнение и сведения о наличии техники не загружаются. {% if not target_version %}Название листа должно совпадать с названием строительного объекта в базе.{% endif %} Недостающие разделы и справочные позиции создаются после подтверждения. Новые работы создаются простыми с равномерным профилем. Существующие подработы сопоставляются по названию, единице и разделу; основная составная работа рассчитывается по нормативам всех подработ.</p>
 {% if errors %}<div class="alert alert-danger">{% for error in errors %}<div>{{ error }}</div>{% endfor %}</div>{% endif %}
 {% if preview %}
 <h2>{{ project.name }} · {{ start|date:'d.m.Y' }} — {{ end|date:'d.m.Y' }}</h2>
 <p>{% if target_version %}Проверьте строки перед записью в текущую версию.{% else %}Проверьте строки и выберите листы для загрузки.{% endif %} Листы с ошибками недоступны. Нулевые объёмы загружаются, пустые значения пропускаются. Дневной план работ формируется системой по профилям, количество ресурсов повторяется каждый день в пределах периода плана.</p>
 <form method="post">{% csrf_token %}<input type="hidden" name="action" value="confirm"><input type="hidden" name="preview" value="{{ preview }}">
 {% for sheet in sheets %}
-<details class="card mb-2"><summary class="p-2 d-flex gap-2 align-items-center">{% if not target_version %}<input class="form-check-input m-0" type="checkbox" name="sheets" value="{{ sheet.index }}" aria-label="Загрузить {{ sheet.name }}" {% if sheet.errors %}disabled{% endif %}>{% endif %}<strong>{% if sheet.file %}{{ sheet.file }} · {{ sheet.start|date:"d.m.Y" }} — {{ sheet.end|date:"d.m.Y" }} · {% endif %}{{ sheet.name }}</strong><span class="text-muted small">{{ sheet.object_action }} · Строк: {{ sheet.entries|length }}{% if sheet.errors %} · Есть ошибки{% endif %}</span></summary>
+<details class="card mb-2"><summary class="p-2 d-flex gap-2 align-items-center">{% if not target_version %}<input class="form-check-input m-0" type="checkbox" name="sheets" value="{{ sheet.index }}" aria-label="Загрузить {{ sheet.name }}" {% if sheet.errors %}disabled{% endif %}>{% endif %}<strong>{% if sheet.file %}{{ sheet.file }} · {{ sheet.start|date:"d.m.Y" }} — {{ sheet.end|date:"d.m.Y" }} · {% endif %}{{ sheet.name }}</strong><span class="text-muted small">{% if sheet.source_sheet %}Лист Excel: {{ sheet.source_sheet }} · {% endif %}{{ sheet.object_action }} · Строк: {{ sheet.entries|length }}{% if sheet.errors %} · Есть ошибки{% endif %}</span></summary>
 <div class="card-body pt-0">
 {% for error in sheet.errors %}<div class="text-danger mb-1">{{ error }}</div>{% endfor %}
 {% for warning in sheet.warnings %}<div class="text-muted small mb-1">{{ warning }}</div>{% endfor %}

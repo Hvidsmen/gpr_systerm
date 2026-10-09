@@ -44,6 +44,25 @@ class MeetingVersionImportTests(TestCase):
         self.assertContains(response, "Версия:")
         self.assertContains(response, "данные записываются в эту же версию")
 
+    def test_sheet_name_defaults_to_object(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.context["form"].fields["sheet_name"].initial, self.obj.name)
+        self.assertContains(response, "Лист Excel")
+
+    def test_renamed_sheet_imports_into_current_object(self):
+        response = self.preview(file=upload(name="Новое название"), sheet_name="Новое название")
+        self.assertEqual(len(response.context["sheets"]), 1)
+        self.assertContains(response, "Лист Excel: Новое название")
+        confirmed = self.client.post(self.url, {"action": "confirm", "preview": response.context["preview"]})
+        self.assertEqual(confirmed.status_code, 302)
+        self.assertEqual(self.version.work_allocations.get(work__name="Imported work", month=JAN).quantity, Decimal(5))
+        self.assertFalse(type(self.obj).objects.filter(name="Новое название").exists())
+
+    def test_missing_selected_sheet_is_form_error(self):
+        response = self.preview(sheet_name="Несуществующий лист")
+        self.assertContains(response, "Проверьте название листа")
+        self.assertIsNone(response.context.get("preview"))
+
     def test_preview_no_writes_confirm_same_version_and_repeat_updates(self):
         original = WorkMonthAllocation.objects.count()
         preview = self.preview()
@@ -287,6 +306,19 @@ class MeetingVersionImportTests(TestCase):
         self.assertFalse(self.version.work_allocations.filter(work__name="Imported work").exists())
         self.client.post(self.url, {"action": "confirm", "preview": response.context["preview"]})
         self.assertEqual(self.version.work_allocations.get(work__name="Imported work", month=JAN).quantity, 5)
+        self.assertEqual(self.version.work_allocations.get(work__name="Imported work", month=FEB).quantity, 4)
+
+    def test_batch_files_can_have_different_sheet_names(self):
+        response = self.batch_preview(**{
+            "files-0-file": upload(name="Январь"), "files-0-sheet_name": "Январь",
+            "files-1-file": upload(name="Февраль"), "files-1-sheet_name": "Февраль",
+        })
+        self.assertEqual(len(response.context["sheets"]), 2)
+        self.assertFalse(response.context["blocked"])
+        self.assertContains(response, "Лист Excel: Январь")
+        self.assertContains(response, "Лист Excel: Февраль")
+        result = self.client.post(self.url, {"action": "confirm", "preview": response.context["preview"]})
+        self.assertEqual(result.status_code, 302)
         self.assertEqual(self.version.work_allocations.get(work__name="Imported work", month=FEB).quantity, 4)
 
     def test_batch_conflict_blocks_all_writes_even_with_manual_confirmation(self):

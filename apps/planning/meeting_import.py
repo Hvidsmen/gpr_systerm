@@ -486,7 +486,7 @@ def parse_sheet(sheet, start, end, resource_rule, facts=False):
 
 
 def parse_meeting_workbook(
-    upload, start, end, resource_rule="maximum", object_name=None, facts=False
+    upload, start, end, resource_rule="maximum", object_name=None, facts=False, sheet_name=None
 ):
     if upload.size > 8 * 1024 * 1024 or not upload.name.lower().endswith(".xlsx"):
         raise ValidationError("Нужен файл .xlsx размером до 8 МБ.")
@@ -507,16 +507,23 @@ def parse_meeting_workbook(
             sheets = list(workbook)
             if object_name is not None:
                 sheets = [
-                    sheet for sheet in sheets if key(sheet.title) == key(object_name)
+                    sheet for sheet in sheets if key(sheet.title) == key(sheet_name or object_name)
                 ]
                 if len(sheets) != 1:
                     raise ValidationError(
-                        f"В файле должен быть один лист объекта «{object_name}»."
+                        (f"В файле должен быть один лист «{sheet_name}»." if sheet_name else
+                         f"В файле должен быть один лист объекта «{object_name}».")
+                        + " Проверьте название листа."
                     )
-            return [
+            parsed = [
                 parse_sheet(sheet, start, end, resource_rule, facts=facts)
                 for sheet in sheets
             ]
+            if object_name is not None:
+                for sheet in parsed:
+                    sheet["source_sheet"] = sheet["name"]
+                    sheet["name"] = object_name
+            return parsed
         finally:
             workbook.close()
     except (BadZipFile, KeyError, ValueError, OSError) as error:
@@ -934,6 +941,10 @@ class MeetingImportForm(forms.Form):
         ],
     )
     file = forms.FileField(label="Файл совещания (.xlsx)")
+    sheet_name = forms.CharField(
+        label="Лист Excel", required=False, max_length=31,
+        help_text="Если лист переименован, укажите его название из Excel.",
+    )
 
     def clean(self):
         values = super().clean()
@@ -955,6 +966,9 @@ class MeetingImportForm(forms.Form):
         self.fields["project"].queryset = Project.objects.filter(company=company)
         if version:
             del self.fields["project"]
+            self.fields["sheet_name"].initial = version.construction_object.name
+        else:
+            del self.fields["sheet_name"]
         for field in self.fields.values():
             field.widget.attrs["class"] = "form-control"
 
@@ -1160,6 +1174,7 @@ class MeetingImportView(View):
                         sheets = parse_meeting_workbook(
                             values["file"], values["start"], values["end"],
                             values["resource_rule"], object_name=self.target_version.construction_object.name,
+                            sheet_name=values.get("sheet_name"),
                         )
                         batches.append({"file": values["file"].name,
                                         "start": values["start"].isoformat(),
@@ -1192,6 +1207,7 @@ class MeetingImportView(View):
                     form.cleaned_data["start"],
                     form.cleaned_data["end"],
                     form.cleaned_data["resource_rule"],
+                    sheet_name=form.cleaned_data.get("sheet_name"),
                     object_name=(
                         self.target_version.construction_object.name
                         if self.target_version
