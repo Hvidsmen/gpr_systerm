@@ -155,6 +155,24 @@ class EquipmentMergeView(View):
 
     def post(self, request):
         require_roles(request.user, PLAN_ROLES)
+        if request.POST.get('merge_stage') == 'select':
+            raw_ids = request.POST.getlist('selected')
+            try:
+                ids = sorted({int(value) for value in raw_ids})
+            except (ValueError, TypeError):
+                ids = []
+            selected = list(EquipmentType.objects.filter(company=request.user.company,
+                pk__in=ids, merge_source__isnull=True).order_by('pk'))
+            active = [item for item in selected if item.is_active]
+            if len(ids) < 2 or len(selected) != len(ids) or not active:
+                form = EquipmentMergeForm(user=request.user)
+                messages.error(request, 'Выберите не менее двух доступных видов техники, включая хотя бы один активный.')
+            else:
+                target = active[0]
+                form = EquipmentMergeForm(user=request.user, initial={
+                    'target': target.pk, 'sources': [item.pk for item in selected if item.pk != target.pk],
+                })
+            return render(request, 'resources/equipment_merge.html', {'form': form})
         form = EquipmentMergeForm(request.POST, user=request.user)
         if form.is_valid():
             try:

@@ -137,3 +137,18 @@ class EquipmentMergeTests(TestCase):
         row=rows_in(report['objects'][0]['sections'][0]['groups'])[0]
         self.assertEqual(row['cells'][0]['plan'],4)
         self.assertEqual(row['cells'][0]['fact'],6)
+
+    def test_selection_from_catalog_prefills_without_merging(self):
+        response=self.client.get(reverse('resources:equipment_type_list'))
+        self.assertContains(response,'Объединить выбранные')
+        response=self.client.post(reverse('resources:equipment_type_merge'),
+            {'merge_stage':'select','selected':[self.equipment.pk,self.source.pk]})
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(response.context['form'].initial['target'],self.equipment.pk)
+        self.assertEqual(response.context['form'].initial['sources'],[self.source.pk])
+        self.assertFalse(EquipmentTypeMerge.objects.exists())
+        response=self.client.post(reverse('resources:equipment_type_merge'),
+            {'merge_stage':'select','selected':[self.equipment.pk,999999]})
+        self.assertEqual(response.status_code,200)
+        self.assertFalse(response.context['form'].initial)
+        self.assertFalse(EquipmentTypeMerge.objects.exists())

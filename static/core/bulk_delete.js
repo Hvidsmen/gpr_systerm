@@ -11,6 +11,8 @@
       const chosen = rows.filter(row => row.checked);
       merge.disabled = count < 2 || chosen.some(row => row.dataset.workKind !== 'SIMPLE') || new Set(chosen.map(row => row.dataset.workObject)).size > 1;
     }
+    const equipmentMerge = form.querySelector('[data-bulk-equipment-merge]');
+    if (equipmentMerge) equipmentMerge.disabled = count < 2;
     rows.forEach(row => {
       const record = row.closest('tr,li');
       record?.classList.toggle('table-active', row.checked);
