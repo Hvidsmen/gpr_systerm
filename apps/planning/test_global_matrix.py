@@ -36,6 +36,14 @@ class GlobalMatrixTests(TestCase):
         )
         return rows_in(section["groups"])
 
+    def test_zero_work_money_totals_are_hidden(self):
+        self.version.work_allocations.update(quantity=0)
+        response = self.client.get(self.url)
+        section = next(s for s in response.context["objects"][0]["sections"] if s["kind"] == "works")
+        self.assertFalse(section["has_amount"])
+        self.assertTrue(all(not node["has_amount"] for node in section["groups"]))
+        self.assertNotContains(response, "Итого:")
+
     def test_work_money_totals_sum_main_rows_once(self):
         response = self.client.get(self.url)
         section = next(s for s in response.context["objects"][0]["sections"] if s["kind"] == "works")
