@@ -38,6 +38,30 @@ class BrigadeCatalogTests(TestCase):
         self.user.save()
         self.assertEqual(self.client.post(url, {'selected': [self.group.pk, other.pk]}).status_code, 403)
 
+    def test_group_rename_preserves_positions_and_rejects_duplicates(self):
+        brigade = Brigade.objects.create(company=self.company, name='Worker', group=self.group)
+        url = reverse('resources:brigade_group_update', args=[self.group.pk])
+        self.assertContains(self.client.get(reverse('resources:brigade_group_list')), 'Изменить название')
+        self.assertEqual(self.client.get(url).status_code, 200)
+        self.assertRedirects(self.client.post(url, {'name': 'Новая группа'}), reverse('resources:brigade_group_list'))
+        self.group.refresh_from_db()
+        brigade.refresh_from_db()
+        self.assertEqual(self.group.name, 'Новая группа')
+        self.assertEqual(brigade.group_id, self.group.pk)
+        BrigadeGroup.objects.create(company=self.company, name='Занято')
+        self.assertContains(self.client.post(url, {'name': 'занято'}), 'Такая запись уже есть')
+        self.group.refresh_from_db()
+        self.assertEqual(self.group.name, 'Новая группа')
+
+    def test_group_rename_scoped_and_role_protected(self):
+        foreign = BrigadeGroup.objects.create(company=Company.objects.create(name='Foreign rename'), name='Foreign')
+        self.assertEqual(self.client.post(reverse('resources:brigade_group_update', args=[foreign.pk]), {'name': 'Changed'}).status_code, 404)
+        self.user.role = Role.objects.get(code='MANAGER')
+        self.user.save()
+        url = reverse('resources:brigade_group_update', args=[self.group.pk])
+        self.assertEqual(self.client.get(url).status_code, 403)
+        self.assertEqual(self.client.post(url, {'name': 'Changed'}).status_code, 403)
+
     def test_optional_fields_create_edit_and_list(self):
         url = reverse('resources:brigade_create')
         self.assertContains(self.client.get(url), 'data-catalog-open="brigade-group"')

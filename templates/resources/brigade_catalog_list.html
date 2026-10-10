@@ -1,6 +1,6 @@
 {% extends 'base.html' %}{% load access %}
 {% block content %}{% with bulk_route='resources:bulk_delete' bulk_kind=bulk_catalog_kind %}{% include 'bulk/toolbar.html' %}<h1>{{ title }}</h1>
 {% if request.user|may:'resources:brigade_group_create' %}<button type="button" class="btn btn-primary mb-3" data-catalog-open="brigade-{{ kind }}">+ Добавить</button>{% endif %}
-<ul class="list-group">{% for record in records %}<li class="list-group-item">{% include 'bulk/checkbox.html' with record=record %} {{ record.name }}</li>{% empty %}<li class="list-group-item">Справочник пока пуст.</li>{% endfor %}</ul>
+<ul class="list-group">{% for record in records %}<li class="list-group-item">{% include 'bulk/checkbox.html' with record=record %} {{ record.name }}{% if kind == 'group' %}{% if request.user|may:'resources:brigade_group_update' %}<a class="btn btn-sm btn-outline-secondary float-end" href="{% url 'resources:brigade_group_update' record.pk %}">Изменить название</a>{% endif %}{% endif %}</li>{% empty %}<li class="list-group-item">Справочник пока пуст.</li>{% endfor %}</ul>
 <a class="btn btn-secondary mt-3" href="{% url 'resources:brigade_list' %}">Бригады</a>
 {% include 'resources/brigade_catalog_quick.html' %}{% endwith %}{% endblock %}
