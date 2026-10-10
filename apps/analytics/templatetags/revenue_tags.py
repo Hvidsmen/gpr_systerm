@@ -28,3 +28,10 @@ def percent(value):
 @register.filter
 def resource_number(value, kind):
     return number(value, 0 if kind in ("labor", "equipment") else 1)
+
+
+@register.filter
+def volume(value):
+    if value is None:
+        return "—"
+    return f"{Decimal(value):,.3f}".rstrip("0").rstrip(".").replace(",", " ").replace(".", ",")

@@ -161,11 +161,10 @@ def build_dashboard(user, filters, today=None):
                 "name": row["label"],
                 "unit": row["unit"],
                 "work": work,
-                "group": (
-                    work.work_group.name
-                    if work and work.work_group_id
-                    else "Без группы"
-                ),
+                "group": next((specs[id(source)][work_id].get("section_name") for source in sources if work_id in specs[id(source)] and specs[id(source)][work_id].get("section_name")), work.section.name if work else "Без раздела"),
+                "volume_plan": sum((cell["plan_quantity"] for cell in daily if cell["plan_quantity"] is not None), ZERO) if any(cell["plan_quantity"] is not None for cell in daily) else None,
+                "volume_plan_to_date": sum((cell["plan_quantity"] for cell in daily if cell["date"] <= cutoff and cell["plan_quantity"] is not None), ZERO) if any(cell["date"] <= cutoff and cell["plan_quantity"] is not None for cell in daily) else None,
+                "volume_fact": sum((cell["fact_quantity"] for cell in daily if cell["date"] <= cutoff and cell["fact_quantity"] is not None), ZERO) if any(cell["date"] <= cutoff and cell["fact_quantity"] is not None for cell in daily) else None,
                 "daily": daily,
                 "children": row["children"],
                 "sources": sources,

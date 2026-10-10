@@ -53,6 +53,11 @@ class RevenueTests(TestCase):
             row["plan"], sum((r["plan_quantity"] or 0 for r in row["daily"]), D(0)) * 10
         )
         self.assertEqual(report["fact"], D(80))
+        self.assertEqual(row["volume_plan"], D(300))
+        self.assertEqual(row["volume_fact"], D(4))
+        self.assertEqual(row["volume_plan_to_date"], sum((cell["plan_quantity"] or 0 for cell in row["daily"] if cell["date"] <= date(2026, 1, 15)), D(0)))
+        self.assertEqual(row["group"], work.section.name)
+        self.assertEqual(list(report["objects"][0]["groups"]), [work.section.name])
         self.assertEqual(report["percent_date"], D(80) / report["plan_to_date"] * 100)
         self.assertEqual(report["percent_full"], D(80) / report["plan"] * 100)
         self.assertEqual(
