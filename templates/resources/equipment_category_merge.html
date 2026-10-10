@@ -1,0 +1,9 @@
+{% extends 'base.html' %}{% block content %}
+<h1>Объединение категорий техники</h1>
+<form method="post" class="card p-3">{% csrf_token %}
+<p>Выберите категорию, которую оставить. Все виды техники из остальных выбранных категорий будут перенесены в неё, затем пустые категории будут удалены. Сохранённые снимки согласованных планов сохранят прежние названия категорий.</p>
+<label class="form-label" for="merge-target">Основная категория</label>
+<select name="target" id="merge-target" class="form-select mb-3" required>{% for group in groups %}<option value="{{ group.pk }}">{{ group.name }}</option>{% endfor %}</select>
+{% for group in groups %}<input type="hidden" name="selected" value="{{ group.pk }}">{% endfor %}
+<div class="d-flex gap-2"><button class="btn btn-primary" name="merge_stage" value="confirm">Подтвердить объединение</button><a class="btn btn-outline-secondary" href="{% url 'resources:equipment_category_list' %}">Отмена</a></div>
+</form>{% endblock %}

@@ -1,0 +1,6 @@
+{% extends 'base.html' %}{% block content %}
+<h1>Название категории техники</h1>
+<form method="post" class="card p-3">{% csrf_token %}
+{% include 'forms/fields.html' with form=form %}
+<div class="d-flex gap-2"><button class="btn btn-primary">Сохранить</button><a class="btn btn-outline-secondary" href="{% url 'resources:equipment_category_list' %}">Отмена</a></div>
+</form>{% endblock %}
