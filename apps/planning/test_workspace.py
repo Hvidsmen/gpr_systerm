@@ -910,6 +910,33 @@ class WorkspaceTests(TestCase):
         self.assertContains(january, 'id="work-prices"')
         self.assertContains(january, 'planning/work_amounts.js')
 
+    def test_editor_catalogue_queries_do_not_grow_per_resource_row(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        from .workspace_forms import ResourceAllocationSet
+        workspace = self.create()
+        version = workspace.baseline_version
+        allocations = []
+        for index in range(12):
+            allocations.append(ResourceMonthAllocation.objects.create(
+                company=self.company, version=version, month=JAN, kind="equipment",
+                equipment_type=self.equipment, equipment_number=str(index), count=1,
+            ))
+        def render_queries(ids):
+            with CaptureQueriesContext(connection) as captured:
+                formset = ResourceAllocationSet(
+                    prefix="resources", queryset=version.resource_allocations.filter(pk__in=ids),
+                    form_kwargs={"user": self.planner, "version": version, "month": JAN},
+                )
+                for form in formset:
+                    str(form["brigade"])
+                    str(form["equipment_type"])
+                str(formset.empty_form["equipment_type"])
+            return len(captured)
+        one = render_queries([allocations[0].pk])
+        many = render_queries([row.pk for row in allocations])
+        self.assertLessEqual(many, one + 1)
+
     def test_large_monthly_editor_saves_more_than_one_thousand_fields(self):
         workspace = self.create()
         version = workspace.baseline_version

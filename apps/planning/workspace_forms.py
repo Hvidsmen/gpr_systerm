@@ -126,8 +126,19 @@ class ResourceAllocationForm(AllocationMixin, forms.ModelForm):
 
 
 class AllocationFormset(BaseModelFormSet):
+    def __init__(self, *args, **kwargs):
+        self._choice_cache = {}
+        super().__init__(*args, **kwargs)
+
     def add_fields(self, form, index):
         super().add_fields(form, index)
+        # Every row has the same company-scoped catalogues. Render their choices
+        # once per request, while keeping each field's queryset for POST validation.
+        for name, field in form.fields.items():
+            if isinstance(field, forms.ModelChoiceField) and not field.widget.is_hidden:
+                if name not in self._choice_cache:
+                    self._choice_cache[name] = list(field.choices)
+                field.choices = self._choice_cache[name]
         if "id" in form.fields:
             form.fields["id"].queryset = self.get_queryset()
 
