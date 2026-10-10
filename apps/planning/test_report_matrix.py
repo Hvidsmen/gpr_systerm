@@ -72,6 +72,17 @@ class MatrixReportTests(TestCase):
             if row["label"] == label
         )
 
+    def test_object_without_approved_plan_survives_resource_alias_normalization(self):
+        from unittest.mock import patch
+        # A merged catalogue normalizes source mappings into a plain dictionary.
+        # Objects without approved plans still need an empty source list.
+        with patch("apps.resources.equipment_merge.equipment_aliases", return_value={101: 102}):
+            report = build_matrix(self.planner, self.data())
+        self.assertTrue(report["objects"])
+        with patch("apps.resources.brigade_merge.brigade_aliases", return_value={101: 102}):
+            report = build_matrix(self.planner, self.data())
+        self.assertTrue(report["objects"])
+
     def resource_plan(self):
         workspace = self.create([self.simple, self.composite])
         for kind, kwargs in [

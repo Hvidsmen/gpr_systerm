@@ -303,7 +303,7 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
         resource_facts["balance"][key][row["date"]] += row["actual_balance"]
     result = []
     for obj in objects:
-        available = sources[obj.pk]
+        available = sources.get(obj.pk, [])
         chosen = {
             day: next(
                 (source for source in available if source.start <= day <= source.end),
