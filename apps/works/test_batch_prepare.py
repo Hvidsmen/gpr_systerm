@@ -62,6 +62,30 @@ class BatchPrepareTests(TestCase):
         with self.assertRaises(ValidationError):
             number("1.0001", "Норматив", digits=3, positive=True)
 
+    def test_multiple_objects_preview_and_price_updates(self):
+        from apps.projects.models import ConstructionObject, Section
+        obj = ConstructionObject.objects.create(company=self.company, project=self.obj.project, name="Второй объект")
+        section = Section.objects.create(company=self.company, construction_object=obj, name="Другой раздел")
+        work = ProjectWork.objects.create(company=self.company, section=section, name="Другая работа", unit="шт", load_profile=self.simple.load_profile)
+        form = SelectionForm({"construction_object": [self.obj.pk, obj.pk]}, user=self.planner)
+        self.assertTrue(form.is_valid(), form.errors)
+        works = selected_works(self.planner, form.cleaned_data)
+        self.assertIn(work.pk, {row.pk for row in works})
+        rows = table_rows(works)
+        meta = metadata(self.planner, form.cleaned_data["construction_object"], rows)
+        entries = [list(row["cells"]) for row in rows]
+        for cells in entries:
+            if cells[12] in [f"{self.simple.pk}:0", f"{work.pk}:0"]:
+                cells[7] = "123.45"
+        payload = build_preview(self.planner, meta, entries, self.today)
+        apply_batch(self.planner, payload)
+        self.assertEqual(price_on(work), Decimal("123.45"))
+        self.assertEqual(price_on(self.simple), Decimal("123.45"))
+        self.client.force_login(self.planner)
+        response = self.client.get(self.url, {"construction_object": [self.obj.pk, obj.pk]})
+        self.assertContains(response, "Второй объект")
+        self.assertContains(response, 'multiple')
+
     def test_selection_all_and_optional_version_period(self):
         allworks = selected_works(self.planner, {"construction_object": self.obj})
         self.assertEqual(

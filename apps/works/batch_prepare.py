@@ -55,8 +55,8 @@ HEADERS = [
 
 
 class SelectionForm(forms.Form):
-    construction_object = forms.ModelChoiceField(
-        queryset=ConstructionObject.objects.none(), label="Строительный объект"
+    construction_object = forms.ModelMultipleChoiceField(
+        queryset=ConstructionObject.objects.none(), label="Строительные объекты"
     )
     version = forms.ModelChoiceField(
         queryset=GlobalPlanVersion.objects.none(),
@@ -76,11 +76,17 @@ class SelectionForm(forms.Form):
     )
 
     def __init__(self, *args, user, **kwargs):
+        if args and args[0] is not None and not hasattr(args[0], "getlist"):
+            data = dict(args[0])
+            if data.get("construction_object") and not isinstance(data["construction_object"], (list, tuple)):
+                data["construction_object"] = [data["construction_object"]]
+            args = (data, *args[1:])
         super().__init__(*args, **kwargs)
         self.fields["construction_object"].queryset = ConstructionObject.objects.filter(
             company=user.company
         ).select_related("project")
-        object_id = self.data.get("construction_object") if self.is_bound else None
+        object_ids = (self.data.getlist("construction_object") if hasattr(self.data, "getlist") else self.data.get("construction_object", [])) if self.is_bound else []
+        object_id = object_ids[0] if len(object_ids) == 1 else None
         if str(object_id or "").isdigit():
             self.fields["version"].queryset = GlobalPlanVersion.objects.filter(
                 company=user.company, construction_object_id=object_id
@@ -88,7 +94,7 @@ class SelectionForm(forms.Form):
         for field in self.fields.values():
             field.widget.attrs["class"] = (
                 "form-select form-select-sm"
-                if isinstance(field, forms.ModelChoiceField)
+                if isinstance(field, (forms.ModelChoiceField, forms.ModelMultipleChoiceField))
                 else "form-control form-control-sm"
             )
 
@@ -101,10 +107,11 @@ class SelectionForm(forms.Form):
 
 def selected_works(user, values):
     obj = values["construction_object"]
+    objects = [obj] if isinstance(obj, ConstructionObject) else list(obj)
     qs = (
         ProjectWork.objects.filter(
             company=user.company,
-            section__construction_object=obj,
+            section__construction_object__in=objects,
             merged_source__isnull=True,
         )
         .select_related("section__construction_object__project", "load_profile")
@@ -115,10 +122,10 @@ def selected_works(user, values):
     if version or start or end:
         ids = set()
         allocations = WorkMonthAllocation.objects.filter(
-            company=user.company, version__construction_object=obj
+            company=user.company, version__construction_object__in=objects
         )
         plans = MonthlyPlan.objects.filter(
-            company=user.company, project_work__section__construction_object=obj
+            company=user.company, project_work__section__construction_object__in=objects
         )
         if version:
             allocations = allocations.filter(version=version)
@@ -135,7 +142,7 @@ def selected_works(user, values):
             [version]
             if version
             else GlobalPlanVersion.objects.filter(
-                company=user.company, construction_object=obj
+                company=user.company, construction_object__in=objects
             )
         )
         for v in versions:
@@ -195,7 +202,15 @@ def table_rows(works):
 
 
 def metadata(user, obj, rows):
-    return {"company": user.company_id, "object": obj.pk, "rows": rows}
+    return {"company": user.company_id, "object": obj.pk if isinstance(obj, ConstructionObject) else sorted(row.pk for row in obj), "rows": rows}
+
+
+def object_ids(value):
+    return sorted(value if isinstance(value, list) else [value])
+
+
+def batch_objects(user, value, lock=False):
+    return [batch_object(user, pk, lock=lock) for pk in object_ids(value)]
 
 
 def batch_object(user, object_id, *, lock=False):
@@ -216,7 +231,7 @@ def decode_metadata(user, token):
         data = signing.loads(token, salt=SALT, max_age=30 * 86400)
         if data["company"] != user.company_id:
             raise signing.BadSignature()
-        batch_object(user, data["object"])
+        batch_objects(user, data["object"])
         return data
     except (signing.BadSignature, KeyError, TypeError):
         raise ValidationError(
@@ -279,7 +294,7 @@ def import_book(user, upload, object_id):
                 str(r[0] or "") for r in info.iter_rows(max_col=1, values_only=True)
             )
             meta = decode_metadata(user, token)
-            if meta["object"] != object_id:
+            if object_ids(meta["object"]) != object_ids(object_id):
                 raise ValidationError("Файл принадлежит другому объекту.")
             sheet = book["Работы"]
             if sheet.max_row > 5001 or sheet.max_column > 13:
@@ -359,7 +374,7 @@ def current_state(user, works):
 
 def build_preview(user, meta, entries, effective):
     require_roles(user, PLAN_ROLES)
-    obj = batch_object(user, meta["object"])
+    objects = batch_objects(user, meta["object"])
     if effective < timezone.localdate() and not can_backdate_price(user):
         raise ValidationError("Для новой цены выберите сегодняшнюю или будущую дату.")
     originals = {r["id"]: r for r in meta["rows"]}
@@ -371,7 +386,7 @@ def build_preview(user, meta, entries, effective):
         w.pk: w
         for w in ProjectWork.objects.filter(
             company=user.company,
-            section__construction_object=obj,
+            section__construction_object__in=objects,
             merged_source__isnull=True,
         )
         .select_related("section", "load_profile")
@@ -529,7 +544,7 @@ def build_preview(user, meta, entries, effective):
         )
     works = [active[wid] for wid in sorted(selected)]
     return {
-        "object": obj.pk,
+        "object": meta["object"],
         "ids": [w.pk for w in works],
         "groups": groups,
         "prices": changes,
@@ -541,12 +556,12 @@ def build_preview(user, meta, entries, effective):
 @transaction.atomic
 def apply_batch(user, payload):
     require_roles(user, PLAN_ROLES)
-    batch_object(user, payload["object"], lock=True)
+    batch_objects(user, payload["object"], lock=True)
     works = list(
         ProjectWork.objects.select_for_update()
         .filter(
             company=user.company,
-            section__construction_object_id=payload["object"],
+            section__construction_object_id__in=object_ids(payload["object"]),
             pk__in=payload["ids"],
         )
         .order_by("pk")
@@ -649,11 +664,11 @@ class WorkBatchPrepareView(View):
                 if not upload:
                     raise ValidationError("Выберите заполненный Excel.")
                 meta, entries = import_book(
-                    request.user, upload, form.cleaned_data["construction_object"].pk
+                    request.user, upload, sorted(obj.pk for obj in form.cleaned_data["construction_object"])
                 )
             else:
                 meta = decode_metadata(request.user, request.POST.get("meta", ""))
-                if meta["object"] != form.cleaned_data["construction_object"].pk:
+                if object_ids(meta["object"]) != sorted(obj.pk for obj in form.cleaned_data["construction_object"]):
                     raise ValidationError("Таблица другого объекта.")
                 edits = json.loads(request.POST.get("table_data", "{}"))
                 if not isinstance(edits, dict):
