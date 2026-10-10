@@ -507,7 +507,7 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
                     row["total"]["amount"] = amount.quantize(Decimal("0.01")) if amount is not None else None
                 group_label = (
                     spec.get("section_name") or (work.section.name if work else "Без раздела")
-                    if plan_only else spec.get("group_name", "Без группы")
+
                 )
                 rows.append(([group_label], row))
             work_groups = grouped(rows)
@@ -568,10 +568,7 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
                         and filters["brigade_group"].pk != meta.get("group_id")
                     ):
                         continue
-                    path = ([meta.get("group_name", "Без группы")] if plan_only else [
-                        meta.get("macro_group_name", "Без макрогруппы"),
-                        meta.get("group_name", "Без группы"),
-                    ])
+                    path = [meta.get("group_name", "Без группы")]
                     identity = (obj.pk, key)
                     row_label, unit = meta["name"], meta.get("unit", "чел.")
                 elif kind == "equipment":

@@ -467,7 +467,7 @@ class MatrixReportTests(TestCase):
         self.group.save()
         fixed = build_matrix(self.planner, self.data(consolidated=parent))
         self.assertEqual(self.row(fixed, "labor", old_name)["cells"][0]["plan"], 10)
-        group = self.section(fixed, "labor")["groups"][0]["children"][0]
+        group = self.section(fixed, "labor")["groups"][0]
         self.assertEqual(group["label"], "Workers group")
         self.client.force_login(self.planner)
         response = self.client.get(
