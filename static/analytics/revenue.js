@@ -15,7 +15,7 @@
   function lineChart(chartData=data, targetId="revenue-line", divisor=1e6, unit="Млн ₽") {
     const target=document.getElementById(targetId);
     if (!target) return;
-    const canvas=svg('svg',{viewBox:'0 0 1100 270',role:'img','aria-label':'Накопительная выручка: план и факт'});
+    const canvas=svg('svg',{viewBox:'0 0 1100 270',role:'img','aria-label':chartData.label||'Накопительная выручка: план и факт'});
     const width=1000,height=210,left=70,top=10;
     const maximum=Math.max(1,...chartData.plan.filter(v=>v!==null),...chartData.fact.filter(v=>v!==null));
     const x=i=>left+i*width/Math.max(1,chartData.labels.length-1), y=v=>top+height-v*height/maximum;
@@ -80,8 +80,28 @@
     document.querySelectorAll('[data-share-mode]').forEach(b=>{b.classList.toggle('btn-primary',b===button);b.classList.toggle('btn-outline-primary',b!==button);b.setAttribute('aria-pressed',String(b===button));});
     shares(button.dataset.shareMode);
   }));
+  let currentOwner=null;
+  function selectRevenue(key){
+    const trend=key?data.selections?.[key]:null;
+    if(key&&!trend)return;
+    currentOwner=trend?.owner||null;
+    document.querySelectorAll('[data-revenue-select]').forEach(item=>{
+      item.classList.toggle('revenue-selected',item.dataset.revenueSelect===key);
+      if(item.dataset.revenueSelect===key)item.setAttribute('aria-current','true');else item.removeAttribute('aria-current');
+    });
+    document.querySelector('[data-revenue-caption]').textContent=trend?
+      `${trend.label} · ${trend.volume?'Объём':'Выручка'} · накопительно`:'Выручка за период · накопительно';
+    lineChart(trend||data,'revenue-line',trend?.volume?1:1e6,trend?.volume?trend.unit:'Млн ₽');
+  }
+  document.querySelectorAll('[data-revenue-select]').forEach(item=>item.addEventListener('click',event=>{
+    if(event.ctrlKey||event.metaKey||event.shiftKey||event.altKey)return;
+    event.preventDefault();selectRevenue(item.dataset.revenueSelect);
+  }));
+  document.querySelector('[data-revenue-reset]')?.addEventListener('click',()=>selectRevenue(null));
   document.querySelectorAll('[data-object-toggle]').forEach(button=>button.addEventListener('click',()=>{
-    const open=button.getAttribute('aria-expanded')!=='true';button.setAttribute('aria-expanded',String(open));button.textContent=open?'▾':'▸';
+    const open=button.getAttribute('aria-expanded')!=='true';
+    if(open)selectRevenue('object-'+button.dataset.objectToggle);else if(currentOwner===button.dataset.objectToggle)selectRevenue(null);
+button.setAttribute('aria-expanded',String(open));button.textContent=open?'▾':'▸';
     document.querySelectorAll('[data-object-child]').forEach(row=>{if(row.dataset.objectChild===button.dataset.objectToggle)row.hidden=!open;});
   }));
   lineChart();

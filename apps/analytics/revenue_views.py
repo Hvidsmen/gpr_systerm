@@ -101,6 +101,31 @@ class RevenueDashboard(View):
                             "url": row["url"],
                         }
                     )
+            chart["selections"] = {}
+            def selection(key, rows, label, owner, volume=False, unit="₽"):
+                plan_key, fact_key = ("plan_quantity", "fact_quantity") if volume else ("plan", "fact")
+                planned = actual = 0
+                trend = {"labels": chart["labels"], "plan": [], "fact": [],
+                         "label": label, "owner": str(owner), "unit": unit, "volume": volume}
+                for index in range(len(chart["labels"])):
+                    cells = [row["daily"][index] for row in rows]
+                    plan_values = [cell[plan_key] for cell in cells if cell.get(plan_key) is not None]
+                    fact_values = [cell[fact_key] for cell in cells if cell.get(fact_key) is not None]
+                    planned += float(sum(plan_values))
+                    actual += float(sum(fact_values))
+                    trend["plan"].append(planned if plan_values else None)
+                    trend["fact"].append(actual if fact_values and cells[0]["date"] <= data["cutoff"] else None)
+                chart["selections"][key] = trend
+            for obj in data["objects"]:
+                selection(f"object-{obj['object'].pk}", [obj], obj["name"], obj["object"].pk)
+                for index, (name, rows) in enumerate(obj["groups"].items()):
+                    key = f"group-{obj['object'].pk}-{index}"
+                    selection(key, rows, obj["name"] + " · " + name, obj["object"].pk)
+                    for row in rows:
+                        row["group_key"] = key
+                        row["chart_key"] = f"work-{obj['object'].pk}-{row['id']}"
+                        volume = not row["has_price"]
+                        selection(row["chart_key"], [row], obj["name"] + " · " + row["name"], obj["object"].pk, volume, row["unit"] if volume else "₽")
             if context.get("detail"):
                 trend = context["detail"]["days"]
                 chart["detail"] = {

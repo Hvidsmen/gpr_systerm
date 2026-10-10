@@ -34,6 +34,25 @@ class RevenueTests(TestCase):
             **kwargs,
         }
 
+    def test_unpriced_work_selects_quantity_trend_without_navigation(self):
+        from apps.works.models import WorkPrice
+        self.simple.unit_price = 0
+        self.simple.save()
+        WorkPrice.objects.filter(work=self.simple).update(price=0)
+        version = self.approve(self.create([self.simple]).baseline_version)
+        DailyFact.objects.create(company=self.company, project_work=self.simple, date=JAN, actual_quantity=4)
+        self.client.force_login(self.planner)
+        response = self.client.get(reverse("dashboard:revenue"), {"start": str(JAN), "end": str(END)})
+        self.assertEqual(response.status_code, 200)
+        key = f"work-{self.obj.pk}-{self.simple.pk}"
+        trend = response.context["chart"]["selections"][key]
+        self.assertTrue(trend["volume"])
+        self.assertEqual(trend["unit"], "m")
+        self.assertEqual(trend["plan"][-1], 300)
+        self.assertEqual(trend["fact"][0], 4)
+        self.assertContains(response, f'data-revenue-select="{key}"')
+        self.assertContains(response, "Разбор")
+
     def test_month_plan_and_cutoff_percentages_and_price_history(self):
         work = self.simple
         workspace = self.create([work])

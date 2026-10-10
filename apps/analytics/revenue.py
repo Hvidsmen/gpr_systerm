@@ -166,6 +166,7 @@ def build_dashboard(user, filters, today=None):
                 "volume_plan_to_date": sum((cell["plan_quantity"] for cell in daily if cell["date"] <= cutoff and cell["plan_quantity"] is not None), ZERO) if any(cell["date"] <= cutoff and cell["plan_quantity"] is not None for cell in daily) else None,
                 "volume_fact": sum((cell["fact_quantity"] for cell in daily if cell["date"] <= cutoff and cell["fact_quantity"] is not None), ZERO) if any(cell["date"] <= cutoff and cell["fact_quantity"] is not None for cell in daily) else None,
                 "daily": daily,
+                "has_price": any(cell["plan_rate"] > ZERO or cell["fact_rate"] > ZERO for cell in daily),
                 "children": row["children"],
                 "sources": sources,
                 **metrics(daily, cutoff),
