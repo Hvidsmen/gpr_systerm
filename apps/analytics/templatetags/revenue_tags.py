@@ -8,7 +8,7 @@ register = template.Library()
 def money(value):
     if value is None:
         return "—"
-    return f"{Decimal(value):,.2f}".replace(",", " ").replace(".", ",")
+    return f"{Decimal(value):,.0f}".replace(",", " ").replace(".", ",")
 
 
 @register.filter
