@@ -1,0 +1,1 @@
+{% if money.has_amount %}<strong class="ms-3">Итого: {{ money.amount|floatformat:"0g"|default:'—' }} ₽{% if not plan_only %} · Факт: {{ money.fact_amount|floatformat:"0g"|default:'—' }} ₽ · Δ: {{ money.delta_amount|floatformat:"0g"|default:'—' }} ₽{% endif %}</strong>{% endif %}

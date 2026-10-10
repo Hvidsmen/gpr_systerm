@@ -6,7 +6,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from calendar import monthrange
 from apps.projects.models import ConstructionObject
-from apps.works.models import ProjectWork
+from apps.works.models import ProjectWork, WorkPrice
 from apps.works.progress import work_specification, cumulative_series
 from apps.works.prices import rate_on
 from apps.resources.models import Brigade, EquipmentType
@@ -236,6 +236,10 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
         .select_related("work_group", "section")
         .prefetch_related("items")
     }
+    actual_prices = defaultdict(list)
+    if not plan_only:
+        for price in WorkPrice.objects.filter(company=user.company, work_id__in=work_catalog).order_by("effective_from", "pk"):
+            actual_prices[price.work_id].append(price)
     brigade_catalog = {
         r.pk: r
         for r in Brigade.objects.filter(company=user.company).select_related(
@@ -433,7 +437,7 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
                         )
                         actual_days.add(day)
                 series_cache = {}
-                plan, fact, money = {}, {}, {}
+                plan, fact, money, actual_money = {}, {}, {}, {}
                 priced = False
                 for day in all_days:
                     source = chosen[day]
@@ -444,10 +448,10 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
                         else empty_plan_value(source, day)
                     )
                     day_spec = entry["spec"] if entry else spec
+                    rate = rate_on(day_spec.get("revenue_prices", []), day, Decimal(day_spec.get("unit_price") or 0))
+                    priced = priced or rate > ZERO
+                    money[day] = plan[day] * rate if plan[day] is not None else None
                     if plan_only:
-                        rate = rate_on(day_spec.get("revenue_prices", []), day, Decimal(day_spec.get("unit_price") or 0))
-                        priced = priced or rate > ZERO
-                        money[day] = plan[day] * rate if plan[day] is not None else None
                         continue
                     fingerprint = (
                         day_spec["kind"],
@@ -462,6 +466,10 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
                         fact[day] = (
                             series_cache[fingerprint].get(day, {}).get("daily", ZERO)
                         )
+                    if day in fact:
+                        fact_rate = rate_on(actual_prices[work_id], day, work.unit_price if work else Decimal(day_spec.get("unit_price") or 0))
+                        priced = priced or fact_rate > ZERO
+                        actual_money[day] = fact[day] * fact_rate
                 children = []
                 items = {item["id"]: item for item in spec.get("items", [])}
                 for source in available:
@@ -498,30 +506,29 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
                     f"o{obj.pk}-w{work_id}", spec["name"], spec["unit"],
                     plan, fact, buckets, children=children,
                 )
-                row["has_amount"] = plan_only and priced
-                if plan_only and priced:
+                row["has_amount"] = priced
+                if priced:
                     for cell, bucket in zip(row["cells"], buckets):
                         amount, _, _ = aggregate(money, bucket["dates"], "sum")
                         cell["amount"] = amount.quantize(Decimal("0.01")) if amount is not None else None
                     amount, _, _ = aggregate(money, all_days, "sum")
                     row["total"]["amount"] = amount.quantize(Decimal("0.01")) if amount is not None else None
+                    if not plan_only:
+                        for cell, dates in [*[(cell, bucket["dates"]) for cell, bucket in zip(row["cells"], buckets)], (row["total"], all_days)]:
+                            fact_amount, _, _ = aggregate(actual_money, dates, "sum")
+                            cell["fact_amount"] = fact_amount
+                            cell["delta_amount"] = fact_amount - cell["amount"] if fact_amount is not None and cell["amount"] is not None else None
                 group_label = (
                     spec.get("section_name") or (work.section.name if work else "Без раздела")
 
                 )
                 rows.append(([group_label], row))
             work_groups = grouped(rows)
-            if plan_only:
-                for node in work_groups:
-                    priced_rows = [row for row in node["rows"] if row.get("has_amount")]
-                    node["has_amount"] = any(cell.get("amount") for row in priced_rows for cell in row["cells"])
-                    node["amount"] = sum((row["total"].get("amount") or ZERO for row in priced_rows), ZERO)
-                priced_rows = [row for _, row in rows if row.get("has_amount")]
-            sections.append(
-                {"kind": "works", "label": "Работы", "groups": work_groups,
-                 "has_amount": plan_only and any(cell.get("amount") for row in priced_rows for cell in row["cells"]),
-                 "amount": sum((row["total"].get("amount") or ZERO for row in priced_rows), ZERO) if plan_only else None}
-            )
+            for node in work_groups:
+                attach_money_totals(node, node["rows"])
+            work_section = {"kind": "works", "label": "Работы", "groups": work_groups}
+            attach_money_totals(work_section, [row for _, row in rows])
+            sections.append(work_section)
         for kind, label in [
             ("labor", "Люди"),
             ("equipment", "Техника"),
@@ -737,3 +744,12 @@ def resource_subtotal_rows(rows):
             "total": cell_sum([row["total"] for row in entries]),
         })
     return result
+
+
+def attach_money_totals(target, rows):
+    priced_rows = [row for row in rows if row.get("has_amount")]
+    target["has_amount"] = any(cell.get("amount") or cell.get("fact_amount") for row in priced_rows for cell in row["cells"])
+    for key in ("amount", "fact_amount"):
+        values = [row["total"].get(key) for row in priced_rows if row["total"].get(key) is not None]
+        target[key] = sum(values, ZERO) if values else None
+    target["delta_amount"] = target["fact_amount"] - target["amount"] if all(target[key] is not None for key in ("amount", "fact_amount")) else None

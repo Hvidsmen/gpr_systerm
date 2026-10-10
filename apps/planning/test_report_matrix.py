@@ -26,6 +26,27 @@ def rows_in(nodes):
 
 
 class MatrixReportTests(TestCase):
+    def test_work_money_uses_frozen_plan_and_effective_actual_prices(self):
+        from apps.works.models import WorkPrice
+        version = self.approve(self.create([self.simple]).baseline_version)
+        WorkPrice.objects.create(company=self.company, work=self.simple, price=20, effective_from=JAN)
+        DailyFact.objects.create(company=self.company, project_work=self.simple, date=JAN, actual_quantity=3)
+        report = build_matrix(self.planner, self.data())
+        row = self.row(report, "works", self.simple.name)
+        self.assertEqual(row["total"]["amount"], D(3000))
+        self.assertEqual(row["total"]["fact_amount"], D(60))
+        self.assertEqual(row["total"]["delta_amount"], D(-2940))
+        section = self.section(report, "works")
+        self.assertEqual(section["amount"], D(3000))
+        self.assertEqual(section["fact_amount"], D(60))
+        self.assertEqual(section["groups"][0]["fact_amount"], D(60))
+        self.client.force_login(self.planner)
+        response = self.client.get(reverse("planning:report_matrix"), {"start": str(JAN), "end": "2026-01-31"})
+        self.assertContains(response, "60 ₽")
+        DailyFact.objects.filter(project_work=self.simple).delete()
+        missing = self.row(build_matrix(self.planner, self.data()), "works", self.simple.name)
+        self.assertIsNone(missing["total"]["fact_amount"])
+
     def test_resource_subtotals_preserve_missing_facts_and_separate_fuel(self):
         from .report_services import add_resource_subtotals, resource_subtotal_rows
         def row(plan, fact, operation="average", unit="чел."):
