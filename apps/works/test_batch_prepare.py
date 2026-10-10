@@ -73,7 +73,21 @@ class BatchPrepareTests(TestCase):
         self.assertIn(work.pk, {row.pk for row in works})
         rows = table_rows(works)
         meta = metadata(self.planner, form.cleaned_data["construction_object"], rows)
-        entries = [list(row["cells"]) for row in rows]
+        book = load_workbook(BytesIO(export_book(meta).content))
+        visible = [sheet for sheet in book if sheet.sheet_state == "visible"]
+        self.assertEqual({sheet.title for sheet in visible}, {self.obj.name, obj.name})
+        for sheet in visible:
+            for row in sheet.iter_rows(min_row=2, values_only=True):
+                self.assertEqual(row[1], sheet.title)
+            for row in sheet.iter_rows(min_row=2):
+                if row[12].value in [f"{self.simple.pk}:0", f"{work.pk}:0"]:
+                    row[7].value = "123.45"
+        stream = BytesIO()
+        book.save(stream)
+        meta, entries = import_book(
+            self.planner, SimpleUploadedFile("filled.xlsx", stream.getvalue()),
+            [self.obj.pk, obj.pk],
+        )
         for cells in entries:
             if cells[12] in [f"{self.simple.pk}:0", f"{work.pk}:0"]:
                 cells[7] = "123.45"
@@ -125,10 +139,47 @@ class BatchPrepareTests(TestCase):
         )
         self.assertTrue(form.is_valid())
 
+    def test_sheet_names_are_valid_unique_and_include_empty_objects(self):
+        meta = deepcopy(self.meta)
+        meta["objects"] = [
+            {"id": self.obj.pk, "name": "A/B" + "x" * 40},
+            {"id": -1, "name": "A?B" + "x" * 40},
+            {"id": -2, "name": "_Служебное"},
+        ]
+        book = load_workbook(BytesIO(export_book(meta).content))
+        visible = [sheet for sheet in book if sheet.sheet_state == "visible"]
+        self.assertEqual(len(visible), 3)
+        self.assertEqual(len({sheet.title.casefold() for sheet in book}), 4)
+        self.assertTrue(all(len(sheet.title) <= 31 for sheet in visible))
+        self.assertTrue(all("/" not in sheet.title and "?" not in sheet.title for sheet in visible))
+        self.assertEqual(visible[1].max_row, 1)
+        self.assertEqual(visible[2].max_row, 1)
+
+    def test_legacy_single_sheet_template_can_still_be_imported(self):
+        from django.core import signing
+        from .batch_prepare import SALT
+
+        meta = deepcopy(self.meta)
+        meta.pop("objects")
+        for row in meta["rows"]:
+            row.pop("object")
+        book = load_workbook(BytesIO(export_book(self.meta).content))
+        book.worksheets[0].title = "Работы"
+        info = book["_Служебное"]
+        info.delete_rows(1, info.max_row)
+        info.append([signing.dumps(meta, salt=SALT, compress=True)])
+        stream = BytesIO()
+        book.save(stream)
+        imported_meta, entries = import_book(
+            self.planner, SimpleUploadedFile("old.xlsx", stream.getvalue()), self.obj.pk,
+        )
+        self.assertEqual(imported_meta, meta)
+        self.assertEqual(len(entries), len(self.rows))
+
     def test_excel_round_trip_and_formula_rejected(self):
         response = export_book(self.meta)
         book = load_workbook(BytesIO(response.content))
-        sheet = book["Работы"]
+        sheet = book.worksheets[0]
         self.assertTrue(sheet.column_dimensions["M"].hidden)
         sheet.cell(2, 8).value = 45
         stream = BytesIO()
@@ -308,7 +359,7 @@ class BatchPrepareTests(TestCase):
         book = load_workbook(BytesIO(response.content))
         for index, cells in enumerate(self.group_entries(), 2):
             for col, value in enumerate(cells, 1):
-                book["Работы"].cell(index, col).value = value
+                book.worksheets[0].cell(index, col).value = value
         stream = BytesIO()
         book.save(stream)
         response = self.client.post(
@@ -326,8 +377,8 @@ class BatchPrepareTests(TestCase):
         # Invalid values remain editable instead of discarding the entered group.
         for index, cells in enumerate(self.group_entries(), 2):
             for col, value in enumerate(cells, 1):
-                book["Работы"].cell(index, col).value = value
-        book["Работы"].cell(2, 11).value = None
+                book.worksheets[0].cell(index, col).value = value
+        book.worksheets[0].cell(2, 11).value = None
         stream = BytesIO()
         book.save(stream)
         response = self.client.post(

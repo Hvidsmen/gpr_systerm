@@ -1,11 +1,13 @@
 """Editable work/price worksheet and atomic Excel round trip."""
 
 from collections import defaultdict
+from copy import deepcopy
 from datetime import date
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from hashlib import sha256
 from io import BytesIO
 import json
+import re
 from uuid import uuid4
 from urllib.parse import urlencode
 from zipfile import ZipFile, BadZipFile
@@ -191,6 +193,7 @@ def table_rows(works):
             rows.append(
                 {
                     "id": row_id,
+                    "object": obj.pk,
                     "work": work.pk,
                     "item": item.pk if item else None,
                     "cells": cells,
@@ -202,7 +205,13 @@ def table_rows(works):
 
 
 def metadata(user, obj, rows):
-    return {"company": user.company_id, "object": obj.pk if isinstance(obj, ConstructionObject) else sorted(row.pk for row in obj), "rows": rows}
+    objects = [obj] if isinstance(obj, ConstructionObject) else list(obj)
+    return {
+        "company": user.company_id,
+        "object": obj.pk if isinstance(obj, ConstructionObject) else sorted(row.pk for row in objects),
+        "objects": [{"id": row.pk, "name": row.name} for row in objects],
+        "rows": rows,
+    }
 
 
 def object_ids(value):
@@ -241,24 +250,46 @@ def decode_metadata(user, token):
 
 def export_book(meta):
     book = Workbook()
-    sheet = book.active
-    sheet.title = "Работы"
-    sheet.append(HEADERS)
+    book.remove(book.active)
+    meta = deepcopy(meta)
+    objects = meta.get("objects") or [
+        {"id": key, "name": name} for key, name in dict(
+            (row.get("object", row["cells"][1]), row["cells"][1])
+            for row in meta["rows"]
+        ).items()
+    ]
+    grouped_rows = defaultdict(list)
     for row in meta["rows"]:
-        sheet.append(row["cells"])
-        for cell in sheet[sheet.max_row]:
-            if isinstance(cell.value, str):
-                cell.data_type = "s"
-    for c in sheet[1]:
-        c.font = Font(bold=True, color="FFFFFF")
-        c.fill = PatternFill("solid", fgColor="1769AA")
-    sheet.freeze_panes = "D2"
-    sheet.auto_filter.ref = sheet.dimensions
-    for col, width in zip(
-        "ABCDEFGHIJKLM", [22, 25, 35, 55, 40, 18, 12, 16, 40, 22, 15, 24, 15]
-    ):
-        sheet.column_dimensions[col].width = width
-    sheet.column_dimensions["M"].hidden = True
+        grouped_rows[row.get("object", row["cells"][1])].append(row)
+    used_names = {"_служебное"}
+    meta["sheets"] = []
+    for obj in objects:
+        base = re.sub(r"[\\/*?:\[\]]", "_", obj["name"]).strip().strip("'")[:31] or "Объект"
+        title = base
+        number = 2
+        while title.casefold() in used_names:
+            suffix = f" ({number})"
+            title = base[:31 - len(suffix)] + suffix
+            number += 1
+        used_names.add(title.casefold())
+        meta["sheets"].append(title)
+        sheet = book.create_sheet(title)
+        sheet.append(HEADERS)
+        for row in grouped_rows[obj["id"]]:
+            sheet.append(row["cells"])
+            for cell in sheet[sheet.max_row]:
+                if isinstance(cell.value, str):
+                    cell.data_type = "s"
+        for c in sheet[1]:
+            c.font = Font(bold=True, color="FFFFFF")
+            c.fill = PatternFill("solid", fgColor="1769AA")
+        sheet.freeze_panes = "D2"
+        sheet.auto_filter.ref = sheet.dimensions
+        for col, width in zip(
+            "ABCDEFGHIJKLM", [22, 25, 35, 55, 40, 18, 12, 16, 40, 22, 15, 24, 15]
+        ):
+            sheet.column_dimensions[col].width = width
+        sheet.column_dimensions["M"].hidden = True
     info = book.create_sheet("_Служебное")
     info.sheet_state = "veryHidden"
     token = signing.dumps(meta, salt=SALT, compress=True)
@@ -296,21 +327,21 @@ def import_book(user, upload, object_id):
             meta = decode_metadata(user, token)
             if object_ids(meta["object"]) != object_ids(object_id):
                 raise ValidationError("Файл принадлежит другому объекту.")
-            sheet = book["Работы"]
-            if sheet.max_row > 5001 or sheet.max_column > 13:
-                raise ValidationError("Неверный размер таблицы.")
-            if (
-                list(next(sheet.iter_rows(max_row=1, max_col=13, values_only=True)))
-                != HEADERS
-            ):
-                raise ValidationError("Не изменяйте заголовки столбцов шаблона.")
             entries = []
-            for num, row in enumerate(sheet.iter_rows(min_row=2, max_col=13), 2):
-                if any(cell.data_type == "f" for cell in row):
-                    raise ValidationError(f"Строка {num}: замените формулы значениями.")
-                cells = [cell.value if cell.value is not None else "" for cell in row]
-                if any(v != "" for v in cells):
-                    entries.append(cells)
+            for title in meta.get("sheets", ["Работы"]):
+                sheet = book[title]
+                if sheet.max_row > 5001 or sheet.max_column > 13:
+                    raise ValidationError("Неверный размер таблицы.")
+                if list(next(sheet.iter_rows(max_row=1, max_col=13, values_only=True))) != HEADERS:
+                    raise ValidationError(f"Лист «{title}»: не изменяйте заголовки столбцов шаблона.")
+                for num, row in enumerate(sheet.iter_rows(min_row=2, max_col=13), 2):
+                    if any(cell.data_type == "f" for cell in row):
+                        raise ValidationError(f"Лист «{title}», строка {num}: замените формулы значениями.")
+                    cells = [cell.value if cell.value is not None else "" for cell in row]
+                    if any(v != "" for v in cells):
+                        entries.append(cells)
+                        if len(entries) > 5000:
+                            raise ValidationError("Больше 5000 строк в файле.")
             return meta, entries
         finally:
             book.close()
