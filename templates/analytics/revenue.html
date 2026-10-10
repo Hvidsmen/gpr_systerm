@@ -1,6 +1,6 @@
 {% extends 'base.html' %}{% load static revenue_tags %}
 {% block title %}Выручка и ресурсы{% endblock %}
-{% block extra_css %}<link href="{% static 'analytics/revenue.css' %}" rel="stylesheet">{% endblock %}
+{% block extra_css %}<link href="{% static 'analytics/revenue.css' %}?v=resources2" rel="stylesheet">{% endblock %}
 {% block content %}
 <div class="revenue-dashboard">
 <header class="d-flex justify-content-between align-items-center mb-3"><h1 class="h3 mb-0">Выручка и ресурсы</h1>{% if cutoff %}<span class="text-muted">Дата среза: <strong>{{ cutoff|date:'d.m.Y' }}</strong></span>{% endif %}</header>
@@ -28,11 +28,7 @@
 </tbody></table></div></section>
 <section class="mb-3"><div class="d-flex justify-content-between"><h2 class="h5">Доли выручки</h2><div class="btn-group btn-group-sm"><button class="btn btn-outline-primary" type="button" data-share-mode="plan">План</button><button class="btn btn-primary" type="button" data-share-mode="fact">Факт</button></div></div><small class="text-muted">План — весь период; факт — на дату среза. Нажмите на долю для детализации.</small><div class="revenue-shares mt-2"><div class="card p-3"><h3 class="h6">По строительным объектам</h3><div id="object-shares" class="revenue-donut"></div></div><div class="card p-3"><h3 class="h6">По работам</h3><div id="work-shares" class="revenue-donut"></div></div></div></section>
 {% if detail %}{% include 'analytics/revenue_detail.html' %}{% endif %}
-<section class="card p-3"><h2 class="h5">Ресурсы на {{ cutoff|date:'d.m.Y' }}</h2><p class="text-muted small">Люди, техника и остаток ГСМ — на дату среза. Прочерк означает отсутствие данных; частичный факт помечен отдельно.</p>
-<div class="revenue-kpis resources-kpis">{% include 'analytics/resource_card.html' with label='Люди, чел.' cell=resources.labor kind='labor' %}{% include 'analytics/resource_card.html' with label='Техника, ед.' cell=resources.equipment kind='equipment' %}{% include 'analytics/resource_card.html' with label='ГСМ: остаток, л' cell=resources.fuel kind='fuel' %}</div>
-<div class="table-responsive mt-3"><table class="table table-sm"><thead><tr><th rowspan="2">Объект</th><th colspan="2">Люди, чел.</th><th colspan="2">Техника, ед.</th><th colspan="2">Остаток ГСМ, л</th></tr><tr><th>План</th><th>Факт</th><th>План</th><th>Факт</th><th>План</th><th>Факт</th></tr></thead><tbody>{% for obj in resource_objects %}<tr><td>{{ obj.name }}</td><td>{{ obj.totals.labor.plan|resource_number:'labor' }}</td><td>{{ obj.totals.labor.fact|resource_number:'labor' }}{% if obj.totals.labor.partial %} *{% endif %}</td><td>{{ obj.totals.equipment.plan|resource_number:'equipment' }}</td><td>{{ obj.totals.equipment.fact|resource_number:'equipment' }}{% if obj.totals.equipment.partial %} *{% endif %}</td><td>{{ obj.totals.fuel.plan|number }}</td><td>{{ obj.totals.fuel.fact|number }}{% if obj.totals.fuel.partial %} *{% endif %}</td></tr>{% endfor %}<tr class="fw-bold"><td>Итого</td><td>{{ resources.labor.plan|resource_number:'labor' }}</td><td>{{ resources.labor.fact|resource_number:'labor' }}</td><td>{{ resources.equipment.plan|resource_number:'equipment' }}</td><td>{{ resources.equipment.fact|resource_number:'equipment' }}</td><td>{{ resources.fuel.plan|number }}</td><td>{{ resources.fuel.fact|number }}</td></tr></tbody></table></div>
-{% for obj in resource_objects %}<details class="border rounded p-2 mt-2"><summary>{{ obj.name }} — детализация ресурсов</summary>{% for section in obj.groups %}<details class="ms-2 mt-2"><summary>{{ section.label }}</summary>{% for group in section.groups %}{% include 'analytics/resource_group.html' %}{% endfor %}</details>{% endfor %}</details>{% endfor %}
-</section>{% endif %}</div>
+{% include 'analytics/resource_sections.html' %}{% endif %}</div>
 {{ chart|json_script:'revenue-data' }}
 {% endblock %}
-{% block extra_js %}<script src="{% static 'analytics/revenue.js' %}" defer></script>{% endblock %}
+{% block extra_js %}<script src="{% static 'analytics/revenue.js' %}" defer></script><script src="{% static 'analytics/resource_trends.js' %}" defer></script>{% endblock %}

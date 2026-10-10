@@ -123,6 +123,19 @@ class RevenueTests(TestCase):
         self.assertIsNone(report["resources"]["equipment"]["fact"])
         self.assertEqual(report["resources"]["fuel"]["plan"], D(500))
         self.assertEqual(report["resources"]["fuel"]["fact"], D(400))
+        import json
+        sections = {section["kind"]: section for section in report["resource_sections"]}
+        labor_trend = json.loads(sections["labor"]["trend"])
+        self.assertEqual(len(labor_trend["labels"]), 31)
+        self.assertEqual(labor_trend["plan"], [10.0] * 31)
+        self.assertIsNone(labor_trend["fact"][0])
+        self.assertEqual(labor_trend["fact"][-1], 0.0)
+        self.assertEqual(json.loads(sections["fuel"]["trend"])["plan"], [500.0] * 31)
+        self.assertEqual(sections["labor"]["objects"][0]["total"]["plan"], D(10))
+        self.assertEqual(sections["labor"]["objects"][0]["groups"][0]["total"]["plan"], D(10))
+        partial_period = build_dashboard(self.planner, self.data(), today=JAN)
+        future_trend = json.loads(partial_period["resource_sections"][0]["trend"])
+        self.assertTrue(all(value is None for value in future_trend["fact"][1:]))
         self.assertTrue(
             all(r["label"] != "Расход" for r in report["resource_objects"][0]["rows"])
         )

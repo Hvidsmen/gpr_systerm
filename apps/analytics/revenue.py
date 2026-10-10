@@ -2,6 +2,7 @@
 
 from collections import defaultdict
 from datetime import date
+import json
 from decimal import Decimal
 from django.utils import timezone
 from apps.planning.report_services import build_matrix, days_between
@@ -212,14 +213,18 @@ def build_dashboard(user, filters, today=None):
             user,
             {
                 **filters,
-                "start": cutoff,
-                "end": cutoff,
+                "start": start,
+                "end": end,
                 "daily": True,
                 "month": None,
                 "sections": ["labor", "equipment", "fuel"],
             },
         )
+        cutoff_index = (cutoff - start).days
         for obj in resource_report["objects"]:
+            for section in obj["sections"]:
+                for row in rows_in(section["groups"]):
+                    row["total"] = row["cells"][cutoff_index]
             entries = []
             for section in obj["sections"]:
                 for row in rows_in(section["groups"]):
@@ -256,6 +261,7 @@ def build_dashboard(user, filters, today=None):
     data["resources"] = resource_totals(
         [r for obj in resource_objects for r in obj["rows"]]
     )
+    data["resource_sections"] = resource_sections(resource_objects, data["resources"], days, cutoff)
     return data
 
 
@@ -283,3 +289,39 @@ def resource_group_totals(groups, kind):
             "total": totals,
         })
     return result
+
+
+def resource_sections(objects, totals, days, cutoff):
+    labels = [day.strftime("%d.%m.%Y") for day in days]
+
+    def trend(rows, kind):
+        plan, fact = [], []
+        for index, day in enumerate(days):
+            cell = resource_totals([
+                {"kind": kind, "cell": row["cells"][index]} for row in rows
+            ])[kind]
+            plan.append(float(cell["plan"]) if cell["plan"] is not None else None)
+            fact.append(float(cell["fact"]) if day <= cutoff and cell["fact"] is not None else None)
+        return json.dumps({"labels": labels, "plan": plan, "fact": fact}, ensure_ascii=False)
+
+    def groups(nodes, kind):
+        return [{
+            **node, "trend": trend(rows_in([node]), kind),
+            "children": groups(node["children"], kind),
+            "rows": [{**row, "trend": trend([row], kind)} for row in node["rows"]],
+        } for node in nodes]
+
+    sections = []
+    for kind, label in [("labor", "Люди"), ("equipment", "Техника"), ("fuel", "ГСМ: остаток")]:
+        sites, all_rows = [], []
+        for obj in objects:
+            section = next((section for section in obj["groups"] if section["kind"] == kind), None)
+            if not section:
+                continue
+            rows = rows_in(section["groups"])
+            all_rows.extend(rows)
+            sites.append({"name": obj["name"], "total": obj["totals"][kind],
+                          "trend": trend(rows, kind), "groups": groups(section["groups"], kind)})
+        sections.append({"kind": kind, "label": label, "total": totals[kind],
+                         "trend": trend(all_rows, kind), "objects": sites})
+    return sections
