@@ -177,6 +177,7 @@ def build_dashboard(user, filters, today=None):
         if not rows:
             for cell in daily:
                 cell["plan"] = ZERO if chosen[cell["date"]] else None
+        rows.sort(key=lambda row: (row["plan"] is None, -(row["plan"] or ZERO), row["name"].casefold()))
         groups = defaultdict(list)
         for row in rows:
             groups[row["group"]].append(row)
@@ -185,12 +186,14 @@ def build_dashboard(user, filters, today=None):
                 "object": obj["object"],
                 "name": obj["name"],
                 "rows": rows,
-                "groups": dict(groups),
+                "groups": dict(sorted(groups.items(), key=lambda group: (-sum((row["plan"] or ZERO for row in group[1]), ZERO), group[0].casefold()))),
                 "warnings": obj["warnings"],
                 "daily": daily,
                 **metrics(daily, cutoff),
             }
         )
+    objects.sort(key=lambda obj: (obj["plan"] is None, -(obj["plan"] or ZERO), obj["name"].casefold()))
+    all_rows.sort(key=lambda row: (row["plan"] is None, -(row["plan"] or ZERO), row["name"].casefold()))
     total_daily = combined_daily(objects, days)
     data = {
         "objects": objects,
