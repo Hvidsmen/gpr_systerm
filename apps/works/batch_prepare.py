@@ -2,7 +2,7 @@
 
 from collections import defaultdict
 from datetime import date
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from hashlib import sha256
 from io import BytesIO
 import json
@@ -305,7 +305,7 @@ def import_book(user, upload, object_id):
         ) from error
 
 
-def number(value, label, digits=2, positive=False):
+def number(value, label, digits=2, positive=False, round_price=False):
     try:
         result = Decimal(
             str(value).replace(" ", "").replace("\xa0", "").replace(",", ".")
@@ -316,9 +316,13 @@ def number(value, label, digits=2, positive=False):
             or positive
             and result <= 0
             or result >= (Decimal("10000000") if positive else Decimal("10000000000"))
-            or result.as_tuple().exponent < -digits
+            or (not round_price and result.as_tuple().exponent < -digits)
         ):
             raise ValueError()
+        if round_price and result.as_tuple().exponent < -2:
+            result = result.quantize(Decimal(".01"), rounding=ROUND_HALF_UP)
+            if result >= Decimal("10000000000"):
+                raise ValueError()
         return result
     except (ValueError, TypeError, InvalidOperation):
         raise ValidationError(
@@ -400,7 +404,7 @@ def build_preview(user, meta, entries, effective):
             )
         selected.add(work.pk)
         if cells[7] != "":
-            price = number(cells[7], f"Строка {index}, цена")
+            price = number(cells[7], f"Строка {index}, цена", round_price=True)
             if work.pk in prices and prices[work.pk] != price:
                 raise ValidationError(
                     f"«{work.name}»: укажите одну цену основной работы во всех её строках."
@@ -430,7 +434,7 @@ def build_preview(user, meta, entries, effective):
                     "price": (
                         str(
                             number(
-                                cells[9], f"Строка {index}, цена составной работы"
+                                cells[9], f"Строка {index}, цена составной работы", round_price=True
                             ).quantize(Decimal(".01"))
                         )
                         if cells[9] != ""

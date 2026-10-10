@@ -18,6 +18,7 @@ from . import test_merge
 from .models import ProjectWork, WorkMergeSource
 from .prices import change_price, price_on
 from .batch_prepare import (
+    number,
     table_rows,
     metadata,
     selected_works,
@@ -48,6 +49,18 @@ class BatchPrepareTests(TestCase):
             cells[10] = 2 if index == 0 else 3
             cells[11] = "шт" if index == 0 else ""
         return entries
+
+    def test_excel_prices_round_half_up_and_norms_remain_strict(self):
+        for value, expected in [
+            (167971.0475, "167971.05"), (108600.8017, "108600.80"),
+            (6651.372791, "6651.37"), ("534939,395", "534939.40"),
+        ]:
+            self.assertEqual(number(value, "Цена", round_price=True), Decimal(expected))
+        for value in ["-0.001", "NaN", "Infinity", "не число", "9999999999.999"]:
+            with self.assertRaises(ValidationError):
+                number(value, "Цена", round_price=True)
+        with self.assertRaises(ValidationError):
+            number("1.0001", "Норматив", digits=3, positive=True)
 
     def test_selection_all_and_optional_version_period(self):
         allworks = selected_works(self.planner, {"construction_object": self.obj})
