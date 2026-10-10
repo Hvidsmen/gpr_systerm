@@ -29,10 +29,9 @@
     if(!target)return;
     const overall=target.dataset.resourceTrend;
     const initialLabel=section.querySelector('[data-resource-caption]').textContent;
-    section.addEventListener('click',event=>{
-      const selected=event.target.closest('[data-resource-select]');
-      const reset=event.target.closest('[data-resource-reset]');
-      if(!selected&&!reset)return;
+    let current=null;
+    function select(selected){
+      current=selected;
       section.querySelectorAll('[data-resource-select]').forEach(item=>{
         item.classList.toggle('resource-selected',item===selected);
         if(item===selected)item.setAttribute('aria-current','true');else item.removeAttribute('aria-current');
@@ -43,7 +42,29 @@
       target.setAttribute('aria-label','Динамика: '+label);
       delete target.dataset.rendered;
       draw(target);
+    }
+    section.addEventListener('click',event=>{
+      if(event.target.closest('[data-resource-reset]')){select(null);return;}
+      const selected=event.target.closest('[data-resource-select]');
+      if(selected && selected.tagName!=='SUMMARY')select(selected);
     });
+    section.addEventListener('toggle',event=>{
+      const details=event.target;
+      if(details.tagName!=='DETAILS')return;
+      const summary=details.querySelector(':scope > summary[data-resource-select]');
+      if(!summary)return;
+      if(details.open){select(summary);return;}
+      if(!current || !details.contains(current))return;
+      let parent=details.parentElement.closest('details');
+      while(parent && section.contains(parent)){
+        if(parent.open){
+          const parentSummary=parent.querySelector(':scope > summary[data-resource-select]');
+          if(parentSummary){select(parentSummary);return;}
+        }
+        parent=parent.parentElement.closest('details');
+      }
+      select(null);
+    },true);
   });
   const observer=new IntersectionObserver(entries=>entries.forEach(entry=>{if(entry.isIntersecting){draw(entry.target);observer.unobserve(entry.target);}}),{rootMargin:'100px'});
   document.querySelectorAll('[data-resource-trend]').forEach(target=>observer.observe(target));
