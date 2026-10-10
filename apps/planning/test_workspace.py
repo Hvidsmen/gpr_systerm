@@ -129,6 +129,23 @@ class WorkspaceTests(TestCase):
                 )
         return workspace
 
+    def test_fresh_snapshot_conversion_keeps_rows_without_copying(self):
+        from .global_services import json_copy, json_ready_in_place
+        from apps.works.prices import freeze_prices
+
+        rows = [{"date": JAN, "quantity": D("123.45")}]
+        snapshot = {"works": [{"id": self.simple.pk, "plans": rows}], "built_at": JAN}
+        expected = json_copy(snapshot)
+        self.assertIs(json_ready_in_place(snapshot), snapshot)
+        self.assertEqual(snapshot, expected)
+        self.assertIs(snapshot["works"][0]["plans"], rows)
+        frozen = freeze_prices(snapshot, self.company, in_place=True)
+        self.assertIs(frozen, snapshot)
+        self.assertIs(frozen["works"][0]["plans"], rows)
+        detached = freeze_prices(snapshot, self.company)
+        detached["works"][0]["plans"][0]["quantity"] = "0"
+        self.assertEqual(snapshot["works"][0]["plans"][0]["quantity"], "123.45")
+
     def test_submission_validation_queries_do_not_grow_with_resource_rows(self):
         from django.db import connection
         from django.test.utils import CaptureQueriesContext
@@ -152,6 +169,8 @@ class WorkspaceTests(TestCase):
         with CaptureQueriesContext(connection) as large:
             check_inputs(version)
         self.assertEqual(len(small), len(large))
+        allocation_queries = [query["sql"] for query in large if "monthallocation" in query["sql"]]
+        self.assertTrue(all('"planning_globalplanversion"."snapshot"' not in query for query in allocation_queries))
         ResourceMonthAllocation.objects.filter(version=version).update(hours=-1)
         with self.assertRaises(ValidationError):
             check_inputs(version)

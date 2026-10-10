@@ -33,6 +33,21 @@ def json_copy(value):
     return json.loads(json.dumps(value, cls=DjangoJSONEncoder))
 
 
+def json_ready_in_place(value):
+    """Convert a newly built snapshot without serializing and duplicating its rows."""
+    if isinstance(value, dict):
+        for key in value:
+            value[key] = json_ready_in_place(value[key])
+    elif isinstance(value, list):
+        for index in range(len(value)):
+            value[index] = json_ready_in_place(value[index])
+    elif isinstance(value, tuple):
+        return [json_ready_in_place(item) for item in value]
+    elif value is not None and not isinstance(value, (str, int, float, bool)):
+        return DjangoJSONEncoder().default(value)
+    return value
+
+
 def source_versions(obj, start, end):
     candidates = PlanVersion.objects.filter(
         company=obj.company, monthly_plan__project_work__merged_source__isnull=True,

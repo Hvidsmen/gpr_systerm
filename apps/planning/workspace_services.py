@@ -2,6 +2,7 @@ from core.permissions import require_roles, PLAN_ROLES
 """Period planning from monthly inputs, with immutable baseline and forecasts."""
 
 from collections import defaultdict
+from itertools import chain
 from copy import deepcopy
 from calendar import monthrange
 from datetime import date, timedelta
@@ -36,7 +37,7 @@ from .models import (
     ProductionCalendar,
     LoadProfile,
 )
-from .global_services import json_copy
+from .global_services import json_copy, json_ready_in_place
 
 ZERO = Decimal("0")
 
@@ -379,15 +380,17 @@ def check_inputs(version):
     # Persisted rows already satisfy database foreign keys and unique constraints.
     # Validate their contents and ownership without repeating existence queries.
     status = GlobalPlanVersion.objects.values_list("status", flat=True).get(pk=version.pk)
-    for row in list(
+    for row in chain(
         version.work_allocations.select_related(
-            "company", "version", "work__section", "load_profile"
-        )
-    ) + list(
+            "company", "work__section", "load_profile"
+        ).iterator(chunk_size=1000),
         version.resource_allocations.select_related(
-            "company", "version", "brigade", "equipment_type", "load_profile"
-        )
+            "company", "brigade", "equipment_type", "load_profile"
+        ).iterator(chunk_size=1000),
     ):
+        # Every row comes from this version; do not join its potentially huge JSON
+        # snapshot into every allocation row or reload the baseline per allocation.
+        row.version = version
         foreign_keys = [field for field in row._meta.fields if field.many_to_one]
         for field in foreign_keys:
             models.Field.validate(field, getattr(row, field.attname), row)
@@ -403,7 +406,7 @@ def build_workspace_snapshot(version, *, validate_inputs=True):
     from apps.works.prices import freeze_prices
     from apps.resources.brigade_merge import normalize_resource_snapshot
     snapshot = _build_workspace_snapshot(version, validate_inputs=validate_inputs)
-    return freeze_prices(normalize_resource_snapshot(snapshot, version.company), version.company)
+    return freeze_prices(normalize_resource_snapshot(snapshot, version.company, in_place=True), version.company, in_place=True)
 
 
 def _build_workspace_snapshot(version, *, validate_inputs=True):
@@ -460,7 +463,7 @@ def _build_workspace_snapshot(version, *, validate_inputs=True):
         works, resource_plans, warnings = build_forecast(
             version, inputs, resources, transform_snapshot(baseline_snapshot(version), version.company)
         )
-    return json_copy(
+    return json_ready_in_place(
         {
             "schema": 2,
             "workspace_id": workspace.pk,

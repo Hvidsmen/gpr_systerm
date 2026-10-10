@@ -434,7 +434,7 @@ class GlobalPlanVersion(BaseCompanyModel):
         from django.core.exceptions import ValidationError
 
         if self.pk:
-            old = type(self).objects.get(pk=self.pk)
+            old = type(self).objects.defer("snapshot").get(pk=self.pk)
             from .approval_context import transition_authorized
             metadata = ("status", "approved_by_id", "approved_at", "approval_round")
             if any(getattr(old,key)!=getattr(self,key) for key in metadata) and not transition_authorized(self.pk):

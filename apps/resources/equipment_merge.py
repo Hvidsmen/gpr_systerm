@@ -16,11 +16,11 @@ def equipment_aliases(company):
     return dict(EquipmentTypeMerge.objects.filter(company=company).values_list('source_id', 'target_id'))
 
 
-def normalize_equipment_snapshot(snapshot, aliases):
+def normalize_equipment_snapshot(snapshot, aliases, *, in_place=False):
     """Interpret archived IDs without rewriting approved snapshots or reviews."""
     if not aliases:
         return snapshot
-    result = deepcopy(snapshot)
+    result = snapshot if in_place else deepcopy(snapshot)
     for rows in [result.get('resources', {}).get('equipment', []),
                  result.get('monthly_inputs', {}).get('resources', [])]:
         for row in rows:

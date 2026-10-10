@@ -49,11 +49,11 @@ def transition(version, user, action, comment=''):
     if action == 'submit':
         if version.status not in ['DRAFT', 'REJECTED']:
             raise ValidationError('На согласование отправляется только черновик или план на доработке.')
-        from .global_services import build_snapshot, json_copy
+        from .global_services import build_snapshot
         version.snapshot = build_snapshot(version)
         version.approval_round += 1
         review = GlobalPlanReview.objects.create(company=version.company, version=version,
-            number=version.approval_round, snapshot=json_copy(version.snapshot), submitted_by=user)
+            number=version.approval_round, snapshot=version.snapshot, submitted_by=user)
         version.status = 'SUBMITTED'
         version.approved_by = None
         version.approved_at = None

@@ -16,11 +16,11 @@ def brigade_aliases(company):
     return dict(BrigadeMerge.objects.filter(company=company).values_list('source_id', 'target_id'))
 
 
-def normalize_brigade_snapshot(snapshot, aliases):
+def normalize_brigade_snapshot(snapshot, aliases, *, in_place=False):
     """Interpret archived IDs without rewriting approved snapshots or reviews."""
     if not aliases:
         return snapshot
-    result = deepcopy(snapshot)
+    result = snapshot if in_place else deepcopy(snapshot)
     for rows in [result.get('resources', {}).get('labor', []),
                  result.get('monthly_inputs', {}).get('resources', [])]:
         for row in rows:
@@ -176,6 +176,6 @@ class BrigadeMergeView(View):
         return render(request,'resources/brigade_merge.html',{'form':form})
 
 
-def normalize_resource_snapshot(snapshot, company):
+def normalize_resource_snapshot(snapshot, company, *, in_place=False):
     from .equipment_merge import equipment_aliases, normalize_equipment_snapshot
-    return normalize_brigade_snapshot(normalize_equipment_snapshot(snapshot, equipment_aliases(company)), brigade_aliases(company))
+    return normalize_brigade_snapshot(normalize_equipment_snapshot(snapshot, equipment_aliases(company), in_place=in_place), brigade_aliases(company), in_place=in_place)

@@ -35,10 +35,10 @@ def price_on(work, day=None):
     return rate_on(history_prices(work), day or timezone.localdate(), work.unit_price)
 
 
-def freeze_prices(snapshot, company):
+def freeze_prices(snapshot, company, *, in_place=False):
     from .models import WorkPrice
 
-    result = deepcopy(snapshot)
+    result = snapshot if in_place else deepcopy(snapshot)
     entries = {}
     for entry in WorkPrice.objects.filter(
         company=company, work_id__in=[s["id"] for s in result.get("works", [])]
