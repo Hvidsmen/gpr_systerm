@@ -26,6 +26,21 @@ def rows_in(nodes):
 
 
 class MatrixReportTests(TestCase):
+    def test_resource_subtotals_preserve_missing_facts_and_separate_fuel(self):
+        from .report_services import add_resource_subtotals, resource_subtotal_rows
+        def row(plan, fact, operation="average", unit="чел."):
+            cell = {"plan": D(plan), "fact": D(fact) if fact is not None else None, "delta": None}
+            return {"unit": unit, "operation": operation, "cells": [cell], "total": cell, "children": []}
+        node = {"rows": [row(2, 1)], "children": [{"rows": [row(3, None)], "children": []}]}
+        totals = add_resource_subtotals([node])
+        self.assertEqual(totals[0]["total"]["plan"], D(5))
+        self.assertEqual(totals[0]["total"]["fact"], D(1))
+        self.assertTrue(totals[0]["total"]["partial"])
+        self.assertEqual(node["subtotals"][0]["cells"][0]["plan"], D(5))
+        fuel = resource_subtotal_rows([row(100, 80, "sum", "л"), row(500, 400, "last", "л")])
+        self.assertEqual(len(fuel), 2)
+        self.assertEqual({r["total"]["plan"] for r in fuel}, {D(100), D(500)})
+
     @classmethod
     def setUpTestData(cls):
         fixtures.WorkspaceTests.setUpTestData.__func__(cls)

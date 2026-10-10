@@ -42,7 +42,9 @@ class GlobalMatrixTests(TestCase):
         section = next(s for s in response.context["objects"][0]["sections"] if s["kind"] == "works")
         self.assertFalse(section["has_amount"])
         self.assertTrue(all(not node["has_amount"] for node in section["groups"]))
-        self.assertNotContains(response, "Итого:")
+        self.assertNotContains(response, "Итого: 0,00 ₽")
+        labor = next(s for s in response.context["objects"][0]["sections"] if s["kind"] == "labor")
+        self.assertEqual(labor["subtotals"][0]["total"]["plan"], sum((row["total"]["plan"] or Decimal(0) for row in self.rows(response, "labor")), Decimal(0)))
 
     def test_work_money_totals_sum_main_rows_once(self):
         response = self.client.get(self.url)

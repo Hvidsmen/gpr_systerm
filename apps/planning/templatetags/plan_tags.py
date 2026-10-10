@@ -37,3 +37,13 @@ def get_plan(plans_by_date, date_str):
     if not date_str:
         return None
     return plans_by_date.get(date_str)
+
+@register.filter
+def matrix_number(value, kind):
+    from decimal import Decimal
+    if value is None:
+        return "—"
+    value = Decimal(value)
+    if kind in ("labor", "equipment"):
+        return f"{value:,.0f}".replace(",", " ")
+    return f"{value:,.3f}".rstrip("0").rstrip(".").replace(",", " ").replace(".", ",")

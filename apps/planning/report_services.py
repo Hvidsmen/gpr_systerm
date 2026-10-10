@@ -653,6 +653,13 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
                         )
                     )
             sections.append({"kind": kind, "label": label, "groups": grouped(rows)})
+        for section in sections:
+            if section["kind"] != "works":
+                section["subtotals"] = add_resource_subtotals(section["groups"])
+                section["total_node"] = {
+                    "label": "Итого: " + section["label"], "children": [],
+                    "rows": section["subtotals"],
+                } if section["subtotals"] else None
         used = [s for s in available if any(chosen[day] is s for day in all_days)]
         warnings = []
         for source in used:
@@ -698,3 +705,35 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
         "column_count": 1 + (1 if plan_only else 3) * (len(buckets) + 1),
         "plan_only": plan_only,
     }
+
+
+def add_resource_subtotals(nodes):
+    rows = []
+    for node in nodes:
+        child_rows = add_resource_subtotals(node["children"])
+        node["subtotals"] = resource_subtotal_rows(node["rows"] + child_rows)
+        rows.extend(node["rows"] + child_rows)
+    return resource_subtotal_rows(rows)
+
+
+def resource_subtotal_rows(rows):
+    by_type = defaultdict(list)
+    for row in rows:
+        by_type[(row["operation"], row["unit"])].append(row)
+    result = []
+    for (operation, unit), entries in by_type.items():
+        def cell_sum(cells):
+            values = {}
+            for key in ("plan", "fact"):
+                known = [cell[key] for cell in cells if cell[key] is not None]
+                values[key] = sum(known, ZERO) if known else None
+            values["delta"] = values["fact"] - values["plan"] if all(values[key] is not None for key in ("plan", "fact")) else None
+            values["partial"] = any(cell.get("partial") or cell["fact"] is None for cell in cells)
+            return values
+        result.append({
+            "label": "Итого: остаток" if operation == "last" else "Итого: расход" if unit == "л" else "Итого",
+            "unit": unit, "operation": operation, "children": [],
+            "cells": [cell_sum([row["cells"][index] for row in entries]) for index in range(len(entries[0]["cells"]))],
+            "total": cell_sum([row["total"] for row in entries]),
+        })
+    return result
