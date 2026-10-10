@@ -15,13 +15,15 @@ class GlobalMatrixForm(MatrixReportForm):
     def __init__(self, *args, user, version, **kwargs):
         # Use the shared fields/validation without report-wide version selectors.
         forms.Form.__init__(self, *args, **kwargs)
+        self.fields.pop("work_group")
+        self.fields.pop("macro_group")
         self.version = version
         self.version_fields = []
         for name in ["project", "objects", "mode", "consolidated"]:
             del self.fields[name]
         for name, model in [
-            ("work_group", WorkGroup),
-            ("macro_group", BrigadeMacroGroup),
+            
+            
             ("brigade_group", BrigadeGroup),
             ("equipment_category", EquipmentCategory),
         ]:

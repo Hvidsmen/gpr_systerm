@@ -43,8 +43,10 @@ class GlobalMatrixTests(TestCase):
         labor = self.rows(response, "labor")[0]
         self.assertEqual(labor["unit"], "чел.")
         self.assertEqual(labor["cells"][0]["plan"], Decimal(10))
-        self.assertContains(response, "Workers macro")
-        self.assertContains(response, "Civil works")
+        self.assertNotContains(response, "Workers macro")
+        self.assertContains(response, "Workers group")
+        self.assertNotContains(response, "Civil works")
+        self.assertContains(response, self.simple.section.name)
         self.assertContains(response, "data-work-toggle")
         self.assertNotContains(response, "Часы: план / факт")
         self.resource.count = 7
@@ -80,15 +82,15 @@ class GlobalMatrixTests(TestCase):
         self.assertContains(response, "Все разделы скрыты")
 
     def test_bounds_and_foreign_group_are_rejected(self):
-        from apps.resources.models import BrigadeMacroGroup
+        from apps.resources.models import BrigadeGroup
 
         other = Company.objects.create(name="Foreign matrix")
-        group = BrigadeMacroGroup.objects.create(company=other, name="Foreign")
+        group = BrigadeGroup.objects.create(company=other, name="Foreign")
         for params in [
             {"start": "2025-12-31"},
             {"end": "2026-04-01"},
             {"month": "2026-04-01"},
-            {"macro_group": group.pk},
+            {"brigade_group": group.pk},
         ]:
             response = self.client.get(self.url, params)
             self.assertTrue(response.context["form"].errors)
