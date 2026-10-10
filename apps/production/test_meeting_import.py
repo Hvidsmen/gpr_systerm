@@ -173,6 +173,36 @@ class FactMeetingTests(TestCase):
         self.assertNotEqual(matching[0]['quantity'], '88')
         self.assertTrue(any('169' in warning for warning in sheet['warnings']))
 
+    def test_repeated_people_fact_keeps_first_across_groups(self):
+        sheet = self.sheet()
+        row = next(row for row in sheet['entries'] if row['kind'] == 'labor')
+        sheet['entries'].append(dict(row, row=314, section='Другая группа', quantity='88'))
+        rows = resolved_preview(self.admin, self.obj, sheet)
+        matching = [r for r in rows if r['kind'] == 'labor' and r['month'] == row['month']]
+        self.assertEqual(len(matching), 1)
+        self.assertNotEqual(matching[0]['quantity'], '88')
+        self.assertTrue(any('314' in warning for warning in sheet['warnings']))
+
+    def test_new_resources_in_different_groups_create_one_catalogue_position(self):
+        sheet = self.sheet()
+        for row in sheet['entries']:
+            if row['kind'] in {'labor', 'equipment'}:
+                row['section'] = 'Первая' if row['month'] == '2026-01-01' else 'Вторая'
+        payload = self.payload(sheet)
+        apply_facts(self.admin, payload)
+        from apps.resources.models import Brigade, EquipmentType
+        self.assertEqual(Brigade.objects.filter(company=self.company, name='Imported brigade').count(), 1)
+        self.assertEqual(EquipmentType.objects.filter(company=self.company, name='Imported equipment').count(), 1)
+
+    def test_new_equipment_repeat_across_categories_uses_first(self):
+        sheet = self.sheet()
+        row = next(row for row in sheet['entries'] if row['kind'] == 'equipment')
+        sheet['entries'].append(dict(row, row=169, section='Другая категория', quantity='88'))
+        rows = resolved_preview(self.admin, self.obj, sheet)
+        matching = [r for r in rows if r['kind'] == 'equipment' and r['month'] == row['month']]
+        self.assertEqual(len(matching), 1)
+        self.assertNotEqual(matching[0]['quantity'], '88')
+
     def test_admin_imports_renamed_sheet_in_past(self):
         from unittest.mock import patch
         self.client.force_login(self.admin)

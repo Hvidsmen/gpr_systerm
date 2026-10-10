@@ -28,6 +28,7 @@ from apps.planning.meeting_import import (
     parse_meeting_workbook,
     resolve_sheet,
     unique_match,
+    key,
 )
 from .models import DailyFact, LaborFact, EquipmentFact
 
@@ -234,7 +235,8 @@ def apply_facts(user, payload):
             skipped += 1
             continue
         if row["target_id"] is None:
-            identity = (row["kind"], row["section"], row["name"], row["unit"])
+            identity = ((row["kind"], key(row["name"])) if row["kind"] in {"labor", "equipment"}
+                        else (row["kind"], key(row["section"]), key(row["name"]), key(row["unit"])))
             if identity not in created_targets:
                 created_targets[identity] = create_missing(user, obj, row)
             row["target_id"] = created_targets[identity]
@@ -330,7 +332,7 @@ class FactMeetingImportView(View):
                     if parsed["errors"]:
                         raise ValidationError([f'{upload.name}: {error}' for error in parsed["errors"]])
                     for row in resolved_preview(request.user, obj, parsed):
-                        identity = (row["kind"], row["target_type"], row["target_id"] or (row["section"].casefold(), row["name"].casefold(), row["unit"].casefold()), row.get("equipment_number", ""), row["month"])
+                        identity = (row["kind"], row["target_type"], row["target_id"] or ((key(row["name"]),) if row["kind"] in {"labor", "equipment"} else (key(row["section"]), key(row["name"]), key(row["unit"]))), row.get("equipment_number", ""), row["month"])
                         if identity in seen_files:
                             raise ValidationError(f'Конфликт файлов «{seen_files[identity]}» и «{upload.name}»: «{row["name"]}», дата {row["month"]}.')
                         seen_files[identity] = upload.name

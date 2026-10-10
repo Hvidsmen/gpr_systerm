@@ -700,7 +700,7 @@ def resolve_sheet(company, project, sheet, target_object=None, require_all=True)
             row["target_type"] = kind
             identity = (
                 kind,
-                target.pk if target else ((key(row["name"]),) if kind == "labor" else (key(row["name"]), key(row["section"]))),
+                target.pk if target else (key(row["name"]),),
                 row.get("equipment_number", ""),
             )
         identity = (*identity, row["month"])
@@ -1024,8 +1024,8 @@ def batch_conflicts(company, project, batches, version):
                 identity = (row["kind"], row["target_type"], row["target_id"]) if row["target_id"] else (
                     row["kind"], key(row["section"]), key(row["name"]), key(row["unit"])
                 )
-                if row["kind"] == "labor" and not row["target_id"]:
-                    identity = ("labor", key(row["name"]))
+                if row["kind"] in {"labor", "equipment"} and not row["target_id"]:
+                    identity = (row["kind"], key(row["name"]))
                 identity = (*identity, row.get("equipment_number", ""), row["month"])
                 if identity in seen:
                     errors.append(
