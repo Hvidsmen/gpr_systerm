@@ -241,11 +241,11 @@ def build_dashboard(user, filters, today=None):
                     "groups": [
                         {
                             **section,
-                            "groups": (
+                            "groups": resource_group_totals((
                                 balance_groups(section["groups"])
                                 if section["kind"] == "fuel"
                                 else section["groups"]
-                            ),
+                            ), section["kind"]),
                         }
                         for section in obj["sections"]
                     ],
@@ -268,3 +268,18 @@ def balance_groups(groups):
         }
         for g in groups
     ]
+
+
+def resource_group_totals(groups, kind):
+    result = []
+    for group in groups:
+        totals = resource_totals([
+            {"kind": kind, "cell": row["total"]}
+            for row in rows_in([group])
+        ])[kind]
+        result.append({
+            **group,
+            "children": resource_group_totals(group["children"], kind),
+            "total": totals,
+        })
+    return result
