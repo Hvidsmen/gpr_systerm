@@ -8,3 +8,5 @@
 .revenue-selected{background:#eaf3ff;border-radius:4px;box-shadow:0 0 0 3px #eaf3ff}
 
 .resource-details-layout{display:grid;grid-template-columns:minmax(0,2fr) minmax(260px,1fr);gap:24px;align-items:start}.resource-summary{float:none;display:inline-block;margin-left:18px;font-size:.8rem}.resource-site>summary>strong{display:inline-block;min-width:200px}.resource-share-panel{padding:14px;border:1px solid #dfe7f2;border-radius:10px;position:sticky;top:70px}.resource-share-chart>svg{width:100%;max-height:230px}.resource-share-legend{display:grid;gap:6px}.resource-share-item{border:0;background:transparent;text-align:left;color:#40536c;font-size:.8rem;padding:5px;border-radius:5px}.resource-share-item:hover{background:#eaf3ff}.resource-share-chart circle[role=button]{cursor:pointer}@media(max-width:1000px){.resource-details-layout{grid-template-columns:1fr}.resource-share-panel{position:static}.resource-summary{display:block;margin-left:0;margin-top:4px}}
+
+.revenue-volume{display:block;font-size:.75rem;color:#6b7789;font-weight:400;margin-top:3px}.revenue-group button{text-align:left;white-space:normal}

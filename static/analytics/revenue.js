@@ -80,11 +80,11 @@
     document.querySelectorAll('[data-share-mode]').forEach(b=>{b.classList.toggle('btn-primary',b===button);b.classList.toggle('btn-outline-primary',b!==button);b.setAttribute('aria-pressed',String(b===button));});
     shares(button.dataset.shareMode);
   }));
-  let currentOwner=null;
+  let currentOwner=null,currentKey=null;
   function selectRevenue(key){
     const trend=key?data.selections?.[key]:null;
     if(key&&!trend)return;
-    currentOwner=trend?.owner||null;
+    currentOwner=trend?.owner||null;currentKey=key;
     document.querySelectorAll('[data-revenue-select]').forEach(item=>{
       item.classList.toggle('revenue-selected',item.dataset.revenueSelect===key);
       if(item.dataset.revenueSelect===key)item.setAttribute('aria-current','true');else item.removeAttribute('aria-current');
@@ -94,15 +94,36 @@
     lineChart(trend||data,'revenue-line',trend?.volume?1:1e6,trend?.volume?trend.unit:'Млн ₽');
   }
   document.querySelectorAll('[data-revenue-select]').forEach(item=>item.addEventListener('click',event=>{
-    if(event.ctrlKey||event.metaKey||event.shiftKey||event.altKey)return;
+    if(item.hasAttribute('data-group-toggle')||event.ctrlKey||event.metaKey||event.shiftKey||event.altKey)return;
     event.preventDefault();selectRevenue(item.dataset.revenueSelect);
   }));
   document.querySelector('[data-revenue-reset]')?.addEventListener('click',()=>selectRevenue(null));
-  document.querySelectorAll('[data-object-toggle]').forEach(button=>button.addEventListener('click',()=>{
+  const objectButtons=new Map([...document.querySelectorAll('[data-object-toggle]')].map(button=>[button.dataset.objectToggle,button]));
+  const groupButtons=new Map([...document.querySelectorAll('[data-group-toggle]')].map(button=>[button.dataset.groupToggle,button]));
+  function syncRows(){
+    document.querySelectorAll('[data-object-child]').forEach(row=>{
+      const objectOpen=objectButtons.get(row.dataset.objectChild)?.getAttribute('aria-expanded')==='true';
+      const groupOpen=!row.dataset.groupChild||groupButtons.get(row.dataset.groupChild)?.getAttribute('aria-expanded')==='true';
+      row.hidden=!objectOpen||!groupOpen;
+    });
+  }
+  groupButtons.forEach((button,key)=>button.addEventListener('click',()=>{
+    const open=button.getAttribute('aria-expanded')!=='true';
+    button.setAttribute('aria-expanded',String(open));
+    button.querySelector('[data-group-arrow]').textContent=open?'▾':'▸';
+    if(open)selectRevenue(key);
+    else {
+      const selected=[...document.querySelectorAll('[data-revenue-select]')].find(item=>item.dataset.revenueSelect===currentKey);
+      if(currentKey===key||selected?.closest('[data-group-child]')?.dataset.groupChild===key)
+        selectRevenue('object-'+button.closest('[data-object-child]').dataset.objectChild);
+    }
+    syncRows();
+  }));
+  objectButtons.forEach(button=>button.addEventListener('click',()=>{
     const open=button.getAttribute('aria-expanded')!=='true';
     if(open)selectRevenue('object-'+button.dataset.objectToggle);else if(currentOwner===button.dataset.objectToggle)selectRevenue(null);
-button.setAttribute('aria-expanded',String(open));button.textContent=open?'▾':'▸';
-    document.querySelectorAll('[data-object-child]').forEach(row=>{if(row.dataset.objectChild===button.dataset.objectToggle)row.hidden=!open;});
+    button.setAttribute('aria-expanded',String(open));button.textContent=open?'▾':'▸';
+    syncRows();
   }));
   lineChart();
   if(data.detail && data.detail.labels.length)lineChart(data.detail,'work-trend',1,'Объём');
