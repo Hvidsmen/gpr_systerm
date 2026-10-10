@@ -2,10 +2,9 @@
 <section aria-label="Ресурсы за период">
 <p class="text-muted small">Динамика за выбранный период. Карточки и итоги — на {{ cutoff|date:'d.m.Y' }}. План — линия, факт — столбцы.</p>
 {% for section in resource_sections %}
-<section class="card p-3 mb-3 resource-section"><h2 class="h4">{{ section.label }}</h2>
+<section class="card p-3 mb-3 resource-section"><h2 class="h4">{{ section.label }}</h2><div class="d-flex justify-content-between align-items-center mb-2"><span class="small text-muted" data-resource-caption>{{ section.label }} · Все объекты</span><button type="button" class="btn btn-sm btn-outline-primary" data-resource-reset>Все объекты</button></div>
 <div class="resource-overview">{% include 'analytics/resource_card.html' with label=section.label cell=section.total kind=section.kind %}<div class="resource-trend" data-resource-trend="{{ section.trend }}" aria-label="Динамика: {{ section.label }}"></div></div>
-<div class="resource-sites mt-3">{% for obj in section.objects %}<details class="resource-site mb-2"><summary><strong>{{ obj.name }}</strong><span class="resource-summary">План {{ obj.total.plan|resource_number:section.kind }} · Факт {{ obj.total.fact|resource_number:section.kind }}</span></summary>
-<div class="resource-trend resource-trend-small" data-resource-trend="{{ obj.trend }}" aria-label="Динамика объекта {{ obj.name }}"></div>
+<div class="resource-sites mt-3">{% for obj in section.objects %}<details class="resource-site mb-2"><summary data-resource-select="{{ obj.trend }}" data-resource-label="{{ obj.name }}"><strong>{{ obj.name }}</strong><span class="resource-summary">План {{ obj.total.plan|resource_number:section.kind }} · Факт {{ obj.total.fact|resource_number:section.kind }}</span></summary>
 {% for group in obj.groups %}{% include 'analytics/resource_group.html' %}{% empty %}<p class="text-muted small">Нет ресурсов по выбранным условиям.</p>{% endfor %}
 </details>{% empty %}<p class="text-muted">Нет ресурсов по выбранным условиям.</p>{% endfor %}</div></section>
 {% endfor %}</section>

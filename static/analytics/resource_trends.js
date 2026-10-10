@@ -4,6 +4,7 @@
   const node=(tag,attrs={},text)=>{const n=document.createElementNS(ns,tag);Object.entries(attrs).forEach(([k,v])=>n.setAttribute(k,v));if(text!==undefined)n.textContent=text;return n;};
   function draw(target){
     if(target.dataset.rendered)return;
+    target.classList.remove('resource-trend-empty');
     const data=JSON.parse(target.dataset.resourceTrend);
     target.dataset.rendered='1';
     if(!data.labels.length||!data.plan.some(v=>v!==null)&&!data.fact.some(v=>v!==null)){target.textContent='Нет данных за выбранный период';target.classList.add('resource-trend-empty');return;}
@@ -23,6 +24,27 @@
     chart.append(node('text',{x:left,y:13,fill:'#087cff'},'План — линия'),node('text',{x:left+130,y:13,fill:'#18b7a5'},'Факт — столбцы'));
     target.replaceChildren(chart);
   }
+  document.querySelectorAll('.resource-section').forEach(section=>{
+    const target=section.querySelector('[data-resource-trend]');
+    if(!target)return;
+    const overall=target.dataset.resourceTrend;
+    const initialLabel=section.querySelector('[data-resource-caption]').textContent;
+    section.addEventListener('click',event=>{
+      const selected=event.target.closest('[data-resource-select]');
+      const reset=event.target.closest('[data-resource-reset]');
+      if(!selected&&!reset)return;
+      section.querySelectorAll('[data-resource-select]').forEach(item=>{
+        item.classList.toggle('resource-selected',item===selected);
+        if(item===selected)item.setAttribute('aria-current','true');else item.removeAttribute('aria-current');
+      });
+      const label=selected?selected.dataset.resourceLabel:initialLabel;
+      section.querySelector('[data-resource-caption]').textContent=label;
+      target.dataset.resourceTrend=selected?selected.dataset.resourceSelect:overall;
+      target.setAttribute('aria-label','Динамика: '+label);
+      delete target.dataset.rendered;
+      draw(target);
+    });
+  });
   const observer=new IntersectionObserver(entries=>entries.forEach(entry=>{if(entry.isIntersecting){draw(entry.target);observer.unobserve(entry.target);}}),{rootMargin:'100px'});
   document.querySelectorAll('[data-resource-trend]').forEach(target=>observer.observe(target));
 })();
