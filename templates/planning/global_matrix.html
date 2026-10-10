@@ -22,7 +22,7 @@
 {% for entry in objects %}<details class="matrix-object card p-3 mb-3" open><summary class="h5 mb-2">{{ entry.object.project }} · {{ entry.name }}</summary>
 {% for warning in entry.warnings %}<div class="alert alert-warning py-2">{{ warning }}</div>{% endfor %}
 <p class="small text-muted">План: {% for source in entry.sources %}<a href="{% url 'planning:global_detail' source.version.pk %}">v{{ source.version.version_number }}</a>{% if source.member.review_id %} (сохранён раунд {{ source.member.review.number }}){% endif %}{% if not forloop.last %}, {% endif %}{% empty %}нет согласованной версии{% endfor %}</p>
-{% for section in entry.sections %}<details class="matrix-section mb-2" data-matrix-section="{{ section.kind }}" open><summary class="h6">{{ section.label }}</summary>{% for node in section.groups %}{% include 'planning/report_group.html' %}{% empty %}<p class="text-muted small ms-3">Нет строк по выбранным условиям.</p>{% endfor %}</details>{% endfor %}
+{% for section in entry.sections %}<details class="matrix-section mb-2" data-matrix-section="{{ section.kind }}" open><summary class="h6">{{ section.label }}{% if section.has_amount %}<strong class="ms-3">Итого: {{ section.amount|floatformat:2 }} ₽</strong>{% endif %}</summary>{% for node in section.groups %}{% include 'planning/report_group.html' %}{% empty %}<p class="text-muted small ms-3">Нет строк по выбранным условиям.</p>{% endfor %}</details>{% endfor %}
 </details>{% empty %}<div class="alert alert-info">Нет доступных строительных объектов по выбранным условиям.</div>{% endfor %}
 </div>
 <p class="small text-muted">Под объёмом работы показана сумма в рублях по цене на дату планирования. Стоимость подработ отдельно не показывается.</p>

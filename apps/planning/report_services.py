@@ -510,8 +510,17 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
                     if plan_only else spec.get("group_name", "Без группы")
                 )
                 rows.append(([group_label], row))
+            work_groups = grouped(rows)
+            if plan_only:
+                for node in work_groups:
+                    priced_rows = [row for row in node["rows"] if row.get("has_amount")]
+                    node["has_amount"] = bool(priced_rows)
+                    node["amount"] = sum((row["total"].get("amount") or ZERO for row in priced_rows), ZERO)
+                priced_rows = [row for _, row in rows if row.get("has_amount")]
             sections.append(
-                {"kind": "works", "label": "Работы", "groups": grouped(rows)}
+                {"kind": "works", "label": "Работы", "groups": work_groups,
+                 "has_amount": plan_only and bool(priced_rows),
+                 "amount": sum((row["total"].get("amount") or ZERO for row in priced_rows), ZERO) if plan_only else None}
             )
         for kind, label in [
             ("labor", "Люди"),

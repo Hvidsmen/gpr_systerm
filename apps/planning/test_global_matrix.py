@@ -36,6 +36,15 @@ class GlobalMatrixTests(TestCase):
         )
         return rows_in(section["groups"])
 
+    def test_work_money_totals_sum_main_rows_once(self):
+        response = self.client.get(self.url)
+        section = next(s for s in response.context["objects"][0]["sections"] if s["kind"] == "works")
+        expected = sum((row["total"].get("amount") or Decimal(0) for row in self.rows(response, "works")), Decimal(0))
+        self.assertTrue(section["has_amount"])
+        self.assertEqual(section["amount"], expected)
+        self.assertEqual(sum(node["amount"] for node in section["groups"]), expected)
+        self.assertContains(response, "Итого:")
+
     def test_draft_matrix_uses_current_counts_and_does_not_save_preview(self):
         original = deepcopy(self.version.snapshot)
         response = self.client.get(self.url)
