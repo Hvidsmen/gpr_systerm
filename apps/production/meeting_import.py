@@ -325,10 +325,16 @@ class FactMeetingImportView(View):
                         raise ValidationError(f"{upload.name}: неверный период.")
                     if end < start or (end - start).days > 730:
                         raise ValidationError(f"{upload.name}: выберите период от одного дня до двух лет.")
-                    parsed = parse_meeting_workbook(
-                        upload, start, end, object_name=obj.name,
-                        sheet_name=option("file_sheet", form.cleaned_data.get("sheet_name")), facts=True,
-                    )[0]
+                    try:
+                        parsed = parse_meeting_workbook(
+                            upload, start, end, object_name=obj.name,
+                            sheet_name=option("file_sheet", form.cleaned_data.get("sheet_name")), facts=True,
+                        )[0]
+                    except ValidationError as error:
+                        if getattr(error, "code", None) != "missing_sheet":
+                            raise
+                        sheet["warnings"].append(f'{upload.name}: нет выбранного листа, файл пропущен.')
+                        continue
                     if parsed["errors"]:
                         raise ValidationError([f'{upload.name}: {error}' for error in parsed["errors"]])
                     if not parsed["entries"]:

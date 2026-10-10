@@ -138,6 +138,28 @@ class FactMeetingTests(TestCase):
             2,
         )
 
+    def test_missing_sheet_file_is_skipped_and_valid_file_imports(self):
+        self.client.force_login(self.admin)
+        url = reverse("production:fact_meeting_import")
+        response = self.client.post(url, {
+            "construction_object": self.obj.pk, "start": "2026-01-01", "end": "2026-01-02",
+            "existing": "keep", "file": [upload(name="Нет нужного листа"), upload()],
+        })
+        self.assertContains(response, "нет выбранного листа, файл пропущен")
+        self.assertContains(response, "Подтвердить импорт факта")
+        self.assertEqual(self.client.post(url, {"action": "confirm", "preview": response.context["preview"]}).status_code, 302)
+        self.assertTrue(DailyFact.objects.filter(date=JAN).exists())
+
+    def test_all_files_missing_sheet_show_notice_without_writes(self):
+        self.client.force_login(self.admin)
+        response = self.client.post(reverse("production:fact_meeting_import"), {
+            "construction_object": self.obj.pk, "start": "2026-01-01", "end": "2026-01-02",
+            "existing": "keep", "file": upload(name="Нет нужного листа"),
+        })
+        self.assertContains(response, "нет выбранного листа, файл пропущен")
+        self.assertFalse(response.context["form"].errors)
+        self.assertFalse(DailyFact.objects.exists())
+
     def test_empty_fact_file_is_skipped_while_other_file_imports(self):
         self.client.force_login(self.admin)
         url = reverse("production:fact_meeting_import")

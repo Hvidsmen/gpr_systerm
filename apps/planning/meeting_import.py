@@ -531,6 +531,12 @@ def parse_meeting_workbook(
                 sheets = [
                     sheet for sheet in sheets if key(sheet.title) == key(sheet_name or object_name)
                 ]
+                if not sheets:
+                    raise ValidationError(
+                        (f"В файле должен быть один лист «{sheet_name}»." if sheet_name else
+                         f"В файле должен быть один лист объекта «{object_name}».")
+                        + " Проверьте название листа.", code="missing_sheet"
+                    )
                 if len(sheets) != 1:
                     raise ValidationError(
                         (f"В файле должен быть один лист «{sheet_name}»." if sheet_name else
