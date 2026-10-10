@@ -817,7 +817,10 @@ def validate_workspace_allocation(row):
     version = row.version
     if not version.workspace_id or version.company_id != row.company_id:
         raise ValidationError("Версия другого рабочего пространства или компании.")
-    if GlobalPlanVersion.objects.get(pk=version.pk).status not in ["DRAFT", "REJECTED"]:
+    status = getattr(row, "_validated_workspace_status", None)
+    if status is None:
+        status = GlobalPlanVersion.objects.values_list("status", flat=True).get(pk=version.pk)
+    if status not in ["DRAFT", "REJECTED"]:
         raise ValidationError("Отправленную или утверждённую версию менять нельзя.")
     if row.month:
         if row.month.day != 1:

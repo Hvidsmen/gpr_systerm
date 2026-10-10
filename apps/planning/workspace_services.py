@@ -8,7 +8,7 @@ from datetime import date, timedelta
 from decimal import Decimal, ROUND_DOWN
 
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.db import transaction
+from django.db import models, transaction
 from django.db.models import Max
 from django.utils import timezone
 
@@ -376,16 +376,27 @@ def check_inputs(version):
         raise ValidationError(
             "Сначала завершите перенос ресурсных записей без объекта."
         )
+    # Persisted rows already satisfy database foreign keys and unique constraints.
+    # Validate their contents and ownership without repeating existence queries.
+    status = GlobalPlanVersion.objects.values_list("status", flat=True).get(pk=version.pk)
     for row in list(
         version.work_allocations.select_related(
-            "version", "work__section", "load_profile"
+            "company", "version", "work__section", "load_profile"
         )
     ) + list(
         version.resource_allocations.select_related(
-            "version", "brigade", "equipment_type"
+            "company", "version", "brigade", "equipment_type", "load_profile"
         )
     ):
-        row.full_clean()
+        foreign_keys = [field for field in row._meta.fields if field.many_to_one]
+        for field in foreign_keys:
+            models.Field.validate(field, getattr(row, field.attname), row)
+        row._validated_workspace_status = status
+        row.full_clean(
+            exclude=[field.name for field in foreign_keys],
+            validate_unique=False,
+            validate_constraints=False,
+        )
 
 
 def build_workspace_snapshot(version, *, validate_inputs=True):

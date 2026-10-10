@@ -129,6 +129,33 @@ class WorkspaceTests(TestCase):
                 )
         return workspace
 
+    def test_submission_validation_queries_do_not_grow_with_resource_rows(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        from .workspace_services import check_inputs
+
+        version = self.create().baseline_version
+        ResourceMonthAllocation.objects.create(
+            company=self.company, version=version, month=JAN,
+            kind="equipment", equipment_type=self.equipment, equipment_number="1",
+            count=1,
+        )
+        with CaptureQueriesContext(connection) as small:
+            check_inputs(version)
+        ResourceMonthAllocation.objects.bulk_create([
+            ResourceMonthAllocation(
+                company=self.company, version=version, month=JAN,
+                kind="equipment", equipment_type=self.equipment,
+                equipment_number=str(number), count=1,
+            ) for number in range(2, 102)
+        ])
+        with CaptureQueriesContext(connection) as large:
+            check_inputs(version)
+        self.assertEqual(len(small), len(large))
+        ResourceMonthAllocation.objects.filter(version=version).update(hours=-1)
+        with self.assertRaises(ValidationError):
+            check_inputs(version)
+
     def approve(self, version):
         version = GlobalPlanService.transition(version, self.planner, "submit")
         return GlobalPlanService.transition(departments(version, self.approvers), self.approvers["CEO"], "approve")
