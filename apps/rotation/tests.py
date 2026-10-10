@@ -39,6 +39,20 @@ class RotationTests(TestCase):
         # Generator tests start from an empty roster. Production refresh creates it automatically.
         self.position.people.all().delete()
 
+    def test_detail_groups_positions_and_has_filter_controls(self):
+        from apps.resources.models import BrigadeGroup
+        self.brigade.group = BrigadeGroup.objects.create(company=self.company, name='Водители')
+        self.brigade.save()
+        generate_people(self.position)
+        response = self.client.get(reverse('rotation:plan_detail', args=[self.plan.pk]))
+        self.assertContains(response, 'data-group="Водители"')
+        self.assertContains(response, 'id="rotation-search"')
+        self.assertContains(response, 'id="rotation-group"')
+        self.assertContains(response, 'Свернуть всё')
+        self.assertContains(response, 'Развернуть всё')
+        self.assertEqual(response.content.decode().count('rotation/filters.js'), 1)
+        self.assertEqual(response.context['rows'][0]['group_name'], 'Водители')
+
     def test_continuous_45_45_has_two_people_and_no_month_reset(self):
         self.assertEqual(generate_people(self.position), 2)
         first, second = list(self.position.people.all())

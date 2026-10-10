@@ -55,6 +55,9 @@ class PlanDetail(View):
                 end = min(plan.end, start.replace(day=calendar.monthrange(start.year, start.month)[1]))
 
         days, rows = matrix(plan, start, end)
+        for row in rows:
+            row['group_name'] = str(row['position'].brigade.group or 'Без группы')
+        rows.sort(key=lambda row: (row['group_name'].casefold(), row['position'].brigade.name.casefold()))
         months = []
         for day in days:
             key = day.strftime('%Y-%m')
