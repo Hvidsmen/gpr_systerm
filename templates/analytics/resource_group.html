@@ -1,8 +1,8 @@
 {% load revenue_tags %}
-<details class="resource-group ms-3 mt-2"><summary>{{ group.label }}<span class="resource-summary">План {{ group.total.plan|resource_number:section.kind }} · Факт {{ group.total.fact|resource_number:section.kind }}{% if group.total.partial %} *{% endif %}</span></summary>
+<details class="resource-group ms-3 mt-2"><summary>{{ group.label }}<span class="resource-summary">План {{ group.total.plan|resource_number:section.kind }} · Факт {{ group.total.fact|resource_number:section.kind }}</span></summary>
 <div class="resource-trend resource-trend-small" data-resource-trend="{{ group.trend }}" aria-label="Динамика группы {{ group.label }}"></div>
 {% for child in group.children %}{% include 'analytics/resource_group.html' with group=child %}{% endfor %}
 {% for row in group.rows %}<div class="resource-position ms-3 mt-2"><div class="resource-trend resource-trend-small" data-resource-trend="{{ row.trend }}" aria-label="Динамика {{ row.label }}"></div>
 <div class="resource-position-values"><strong>{{ row.label }}</strong><span>{{ row.unit }}</span><span>План {{ row.total.plan|resource_number:section.kind }}</span><span>Факт {{ row.total.fact|resource_number:section.kind }}</span><span>Δ {{ row.total.delta|resource_number:section.kind }}</span></div></div>{% endfor %}
-<div class="resource-position-values fw-bold mt-2"><span>Итого: {{ group.label }}</span><span>План {{ group.total.plan|resource_number:section.kind }}</span><span>Факт {{ group.total.fact|resource_number:section.kind }}{% if group.total.partial %} *{% endif %}</span><span>Δ {{ group.total.delta|resource_number:section.kind }}</span></div>
+<div class="resource-position-values fw-bold mt-2"><span>Итого: {{ group.label }}</span><span>План {{ group.total.plan|resource_number:section.kind }}</span><span>Факт {{ group.total.fact|resource_number:section.kind }}</span><span>Δ {{ group.total.delta|resource_number:section.kind }}</span></div>
 </details>
