@@ -418,7 +418,7 @@
         {% if request.user|may:'works:group_list' %}<a class="nav-link" href="{% url 'works:group_list' %}"><i class="bi bi-collection"></i> Группы работ</a>{% endif %}
         {% if request.user|may:'works:unit_list' %}<a class="nav-link" href="{% url 'works:unit_list' %}"><i class="bi bi-rulers"></i> Единицы измерения</a>{% endif %}
         {% if request.user|may:'resources:employee_list' %}<a class="nav-link" href="{% url 'resources:employee_list' %}" ><i class="bi bi-person-badge"></i> Сотрудники</a>{% endif %}
-        {% if request.user|may:'resources:brigade_list' %}<a class="nav-link" href="{% url 'resources:brigade_list' %}" ><i class="bi bi-people"></i> Бригады</a>{% endif %}
+        {% if request.user|may:'resources:brigade_list' %}<a class="nav-link" href="{% url 'resources:brigade_list' %}" ><i class="bi bi-people"></i> Люди</a>{% endif %}
         {% if request.user|may:'resources:equipment_type_list' %}<a class="nav-link" href="{% url 'resources:equipment_type_list' %}" ><i class="bi bi-truck"></i> Техника</a>{% endif %}
         {% if request.user|may:'planning:profile_list' %}<a class="nav-link" href="{% url 'planning:profile_list' %}" data-paths="/planning/profiles/ /planning/profile-items/"><i class="bi bi-graph-up"></i> Профили нагрузки</a>{% endif %}
         {% if request.user|may:'planning:calendar_list' %}<a class="nav-link" href="{% url 'planning:calendar_list' %}" data-paths="/planning/calendars/ /planning/calendar-days/"><i class="bi bi-calendar"></i> Календари</a>{% endif %}
