@@ -138,6 +138,32 @@ class FactMeetingTests(TestCase):
             2,
         )
 
+    def test_empty_fact_file_is_skipped_while_other_file_imports(self):
+        self.client.force_login(self.admin)
+        url = reverse("production:fact_meeting_import")
+        response = self.client.post(url, {
+            "construction_object": self.obj.pk, "start": "2026-01-01", "end": "2026-01-02",
+            "existing": "keep", "file": [upload(), upload()],
+            "file_start": ["2026-01-01", "2026-10-01"],
+            "file_end": ["2026-01-02", "2026-10-31"],
+        })
+        self.assertContains(response, "файл пропущен")
+        self.assertContains(response, "Подтвердить импорт факта")
+        result = self.client.post(url, {"action": "confirm", "preview": response.context["preview"]})
+        self.assertEqual(result.status_code, 302)
+        self.assertTrue(DailyFact.objects.filter(date=JAN).exists())
+
+    def test_all_empty_fact_files_show_notice_without_error_or_confirmation(self):
+        self.client.force_login(self.admin)
+        response = self.client.post(reverse("production:fact_meeting_import"), {
+            "construction_object": self.obj.pk, "start": "2026-10-01", "end": "2026-10-31",
+            "existing": "keep", "file": upload(),
+        })
+        self.assertContains(response, "файл пропущен")
+        self.assertNotContains(response, "Подтвердить импорт факта")
+        self.assertFalse(response.context["form"].errors)
+        self.assertFalse(DailyFact.objects.exists())
+
     def test_multiple_fact_files_with_individual_periods(self):
         self.client.force_login(self.admin)
         url = reverse("production:fact_meeting_import")

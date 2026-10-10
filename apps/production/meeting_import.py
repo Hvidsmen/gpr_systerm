@@ -331,6 +331,9 @@ class FactMeetingImportView(View):
                     )[0]
                     if parsed["errors"]:
                         raise ValidationError([f'{upload.name}: {error}' for error in parsed["errors"]])
+                    if not parsed["entries"]:
+                        sheet["warnings"].append(f'{upload.name}: нет заполненного факта в выбранном периоде, файл пропущен.')
+                        continue
                     for row in resolved_preview(request.user, obj, parsed):
                         identity = (row["kind"], row["target_type"], row["target_id"] or ((key(row["name"]),) if row["kind"] in {"labor", "equipment"} else (key(row["section"]), key(row["name"]), key(row["unit"]))), row.get("equipment_number", ""), row["month"])
                         if identity in seen_files:
@@ -341,6 +344,10 @@ class FactMeetingImportView(View):
                     sheet["warnings"].append(f'{upload.name}: лист «{parsed.get("source_sheet", obj.name)}», {start:%d.%m.%Y} — {end:%d.%m.%Y}.')
                     starts.append(start)
                     ends.append(end)
+                if not starts:
+                    for warning in sheet["warnings"]:
+                        messages.info(request, warning)
+                    return render(request, self.template_name, {"form": form})
                 form.cleaned_data["start"], form.cleaned_data["end"] = min(starts), max(ends)
                 rows = resolved_preview(request.user, obj, sheet)
                 nonce = uuid4().hex
