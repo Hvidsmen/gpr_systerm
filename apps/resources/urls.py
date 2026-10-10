@@ -50,3 +50,6 @@ urlpatterns += [path('equipment-types/merge/', EquipmentMergeView.as_view(), nam
 
 from .brigade_merge import BrigadeMergeView
 urlpatterns += [path('brigades/merge/', BrigadeMergeView.as_view(), name='brigade_merge')]
+
+from .brigade_group_merge import BrigadeGroupMerge
+urlpatterns += [path('brigade-groups/merge/', BrigadeGroupMerge.as_view(), name='brigade_group_merge')]

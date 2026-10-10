@@ -1,0 +1,9 @@
+{% extends 'base.html' %}{% block content %}
+<h1>Объединение групп бригад</h1>
+<form method="post" class="card p-3">{% csrf_token %}
+<p>Выберите группу, которую оставить. Все должности из остальных выбранных групп будут перенесены в неё, затем пустые группы будут удалены. Сохранённые снимки согласованных планов сохранят прежние названия групп.</p>
+<label class="form-label" for="merge-target">Основная группа</label>
+<select name="target" id="merge-target" class="form-select mb-3" required>{% for group in groups %}<option value="{{ group.pk }}">{{ group.name }}</option>{% endfor %}</select>
+{% for group in groups %}<input type="hidden" name="selected" value="{{ group.pk }}">{% endfor %}
+<div class="d-flex gap-2"><button class="btn btn-primary" name="merge_stage" value="confirm">Подтвердить объединение</button><a class="btn btn-outline-secondary" href="{% url 'resources:brigade_group_list' %}">Отмена</a></div>
+</form>{% endblock %}

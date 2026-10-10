@@ -12,6 +12,32 @@ class BrigadeCatalogTests(TestCase):
         self.group = BrigadeGroup.objects.create(company=self.company, name='Монтаж')
         self.macro = BrigadeMacroGroup.objects.create(company=self.company, name='Производство')
 
+    def test_group_merge_preview_then_moves_positions(self):
+        other = BrigadeGroup.objects.create(company=self.company, name='Монтажники')
+        brigade = Brigade.objects.create(company=self.company, name='Сварщик', group=other)
+        url = reverse('resources:brigade_group_merge')
+        selected = [self.group.pk, other.pk]
+        self.assertContains(self.client.get(reverse('resources:brigade_group_list')), 'Объединить выбранные')
+        response = self.client.post(url, {'selected': selected, 'merge_stage': 'select'})
+        self.assertContains(response, 'Основная группа')
+        brigade.refresh_from_db()
+        self.assertEqual(brigade.group, other)
+        self.assertRedirects(self.client.post(url, {'selected': selected, 'target': self.group.pk, 'merge_stage': 'confirm'}), reverse('resources:brigade_group_list'))
+        brigade.refresh_from_db()
+        self.assertEqual(brigade.group, self.group)
+        self.assertFalse(BrigadeGroup.objects.filter(pk=other.pk).exists())
+
+    def test_group_merge_rejects_foreign_or_unselected_target(self):
+        other = BrigadeGroup.objects.create(company=self.company, name='Other')
+        foreign = BrigadeGroup.objects.create(company=Company.objects.create(name='Foreign merge'), name='Foreign')
+        url = reverse('resources:brigade_group_merge')
+        for selected, target in [([self.group.pk, foreign.pk], self.group.pk), ([self.group.pk, other.pk], foreign.pk)]:
+            self.assertEqual(self.client.post(url, {'selected': selected, 'target': target, 'merge_stage': 'confirm'}).status_code, 404)
+        self.assertTrue(BrigadeGroup.objects.filter(pk=other.pk).exists())
+        self.user.role = Role.objects.get(code='MANAGER')
+        self.user.save()
+        self.assertEqual(self.client.post(url, {'selected': [self.group.pk, other.pk]}).status_code, 403)
+
     def test_optional_fields_create_edit_and_list(self):
         url = reverse('resources:brigade_create')
         self.assertContains(self.client.get(url), 'data-catalog-open="brigade-group"')
