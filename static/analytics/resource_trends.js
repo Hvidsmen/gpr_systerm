@@ -43,6 +43,39 @@
       delete target.dataset.rendered;
       draw(target);
     }
+    const shareTarget=section.querySelector('[data-resource-shares]');
+    function shares(mode){
+      if(!shareTarget)return;
+      shareTarget.replaceChildren();
+      const colors=['#087cff','#18b7a5','#8247fa','#ff9800','#26bdf5','#e76588','#718399'];
+      const rows=[...section.querySelectorAll('.resource-site > summary')].map(summary=>({
+        summary,name:summary.dataset.resourceLabel,
+        value:Number(mode==='plan'?summary.dataset.resourcePlan:summary.dataset.resourceFact)
+      })).filter(row=>Number.isFinite(row.value)&&row.value>0).sort((a,b)=>b.value-a.value);
+      const total=rows.reduce((sum,row)=>sum+row.value,0);
+      if(!total){shareTarget.textContent='Нет данных для диаграммы';return;}
+      const chart=node('svg',{viewBox:'0 0 220 220',role:'img','aria-label':'Доли ресурсов по объектам: '+(mode==='plan'?'план':'факт')});
+      const circumference=2*Math.PI*76;let offset=0;
+      const legend=document.createElement('div');legend.className='resource-share-legend';
+      rows.forEach((row,index)=>{
+        const share=row.value/total,color=colors[index%colors.length];
+        const choose=()=>{row.summary.parentElement.open=true;select(row.summary);};
+        const segment=node('circle',{cx:110,cy:110,r:76,fill:'none',stroke:color,'stroke-width':32,'stroke-dasharray':`${share*circumference} ${circumference}`,'stroke-dashoffset':-offset*circumference,transform:'rotate(-90 110 110)',tabindex:0,role:'button','aria-label':row.name});
+        segment.append(node('title',{},`${row.name}: ${format(row.value)} (${format(share*100)}%)`));
+        segment.addEventListener('click',choose);segment.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();choose();}});chart.append(segment);offset+=share;
+        const button=document.createElement('button');button.type='button';button.className='resource-share-item';
+        const dot=document.createElement('span');dot.className='share-color';dot.style.backgroundColor=color;
+        button.append(dot,document.createTextNode(`${row.name} — ${format(row.value)} · ${format(share*100)}%`));button.addEventListener('click',choose);legend.append(button);
+      });
+      chart.append(node('text',{x:110,y:110,'text-anchor':'middle','font-size':22,'font-weight':700},format(total)),node('text',{x:110,y:132,'text-anchor':'middle','font-size':12},mode==='plan'?'План':'Факт'));
+      shareTarget.append(chart,legend);
+    }
+    section.querySelectorAll('[data-resource-share-mode]').forEach(button=>button.addEventListener('click',()=>{
+      section.querySelectorAll('[data-resource-share-mode]').forEach(item=>{
+        item.classList.toggle('btn-primary',item===button);item.classList.toggle('btn-outline-primary',item!==button);item.setAttribute('aria-pressed',String(item===button));
+      });shares(button.dataset.resourceShareMode);
+    }));
+    shares('plan');
     section.addEventListener('click',event=>{
       if(event.target.closest('[data-resource-reset]')){select(null);return;}
       const selected=event.target.closest('[data-resource-select]');
