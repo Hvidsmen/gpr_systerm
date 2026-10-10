@@ -138,6 +138,22 @@ class FactMeetingTests(TestCase):
             2,
         )
 
+    def test_admin_imports_renamed_sheet_in_past(self):
+        from unittest.mock import patch
+        self.client.force_login(self.admin)
+        url = reverse("production:fact_meeting_import")
+        with patch("django.utils.timezone.localdate", return_value=date(2026, 10, 10)):
+            response = self.client.post(url, {
+                "construction_object": self.obj.pk, "start": "2026-01-01",
+                "end": "2026-01-02", "existing": "keep",
+                "sheet_name": "Переименованный лист", "file": upload(name="Переименованный лист"),
+            })
+            self.assertContains(response, "Подтвердить импорт факта")
+            result = self.client.post(url, {"action": "confirm", "preview": response.context["preview"]})
+            self.assertEqual(result.status_code, 302)
+        self.assertTrue(DailyFact.objects.filter(project_work__section__construction_object=self.obj, date=JAN).exists())
+        self.assertFalse(type(self.obj).objects.filter(name="Переименованный лист").exists())
+
     def test_permissions_assignment_and_replay(self):
         url = reverse("production:fact_meeting_import")
         self.client.force_login(self.planner)

@@ -51,6 +51,8 @@ class FactMeetingForm(forms.Form):
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
     )
     file = forms.FileField(label="Файл совещания (.xlsx)")
+    sheet_name = forms.CharField(label="Лист Excel", required=False, max_length=31,
+        help_text="По умолчанию — название выбранного объекта. Можно указать другое название листа.")
     existing = forms.ChoiceField(
         label="Уже введённые факты",
         choices=[
@@ -297,6 +299,7 @@ class FactMeetingImportView(View):
                     form.cleaned_data["start"],
                     form.cleaned_data["end"],
                     object_name=obj.name,
+                    sheet_name=form.cleaned_data.get("sheet_name"),
                     facts=True,
                 )[0]
                 rows = resolved_preview(request.user, obj, sheet)
