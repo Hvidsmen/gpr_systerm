@@ -705,8 +705,9 @@ def resolve_sheet(company, project, sheet, target_object=None, require_all=True)
             )
         identity = (*identity, row["month"])
         if identity in seen:
-            if kind == "labor":
-                warning = (f'Должность «{row["name"]}»: повторная строка {row["row"]} пропущена. '
+            if kind in {"labor", "equipment"}:
+                label = "Должность" if kind == "labor" else "Техника"
+                warning = (f'{label} «{row["name"]}»: повторная строка {row["row"]} пропущена. '
                     f'Для периода {row["month"]} используется первое вхождение, строка {seen[identity]}.')
                 if warning not in sheet["warnings"]: sheet["warnings"].append(warning)
                 continue

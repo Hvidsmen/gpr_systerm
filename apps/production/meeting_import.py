@@ -38,6 +38,19 @@ def objects_for(user):
     return scope_queryset(ConstructionObject.objects.select_related("project"), user)
 
 
+class MeetingFilesWidget(forms.ClearableFileInput):
+    allow_multiple_selected = True
+
+
+class MeetingFilesField(forms.FileField):
+    def clean(self, data, initial=None):
+        if isinstance(data, (list, tuple)):
+            if len(data) > 20:
+                raise ValidationError("Выберите не более 20 файлов.")
+            return [super(MeetingFilesField, self).clean(item, initial) for item in data]
+        return super().clean(data, initial)
+
+
 class FactMeetingForm(forms.Form):
     construction_object = forms.ModelChoiceField(
         queryset=ConstructionObject.objects.none(), label="Строительный объект"
@@ -50,7 +63,7 @@ class FactMeetingForm(forms.Form):
         label="Конец периода",
         widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
     )
-    file = forms.FileField(label="Файл совещания (.xlsx)")
+    file = MeetingFilesField(label="Файлы совещаний (.xlsx)", widget=MeetingFilesWidget())
     sheet_name = forms.CharField(label="Лист Excel", required=False, max_length=31,
         help_text="По умолчанию — название выбранного объекта. Можно указать другое название листа.")
     existing = forms.ChoiceField(
@@ -294,14 +307,39 @@ class FactMeetingImportView(View):
         if form.is_valid():
             obj = form.cleaned_data["construction_object"]
             try:
-                sheet = parse_meeting_workbook(
-                    form.cleaned_data["file"],
-                    form.cleaned_data["start"],
-                    form.cleaned_data["end"],
-                    object_name=obj.name,
-                    sheet_name=form.cleaned_data.get("sheet_name"),
-                    facts=True,
-                )[0]
+                uploads = form.cleaned_data["file"]
+                uploads = uploads if isinstance(uploads, list) else [uploads]
+                sheet = {"name": obj.name, "entries": [], "warnings": [], "errors": []}
+                starts, ends = [], []
+                seen_files = {}
+                for index, upload in enumerate(uploads):
+                    def option(name, fallback):
+                        values = request.POST.getlist(name)
+                        return values[index] if index < len(values) and values[index] else fallback
+                    try:
+                        start = date.fromisoformat(option("file_start", form.cleaned_data["start"].isoformat()))
+                        end = date.fromisoformat(option("file_end", form.cleaned_data["end"].isoformat()))
+                    except ValueError:
+                        raise ValidationError(f"{upload.name}: неверный период.")
+                    if end < start or (end - start).days > 730:
+                        raise ValidationError(f"{upload.name}: выберите период от одного дня до двух лет.")
+                    parsed = parse_meeting_workbook(
+                        upload, start, end, object_name=obj.name,
+                        sheet_name=option("file_sheet", form.cleaned_data.get("sheet_name")), facts=True,
+                    )[0]
+                    if parsed["errors"]:
+                        raise ValidationError([f'{upload.name}: {error}' for error in parsed["errors"]])
+                    for row in resolved_preview(request.user, obj, parsed):
+                        identity = (row["kind"], row["target_type"], row["target_id"] or (row["section"].casefold(), row["name"].casefold(), row["unit"].casefold()), row.get("equipment_number", ""), row["month"])
+                        if identity in seen_files:
+                            raise ValidationError(f'Конфликт файлов «{seen_files[identity]}» и «{upload.name}»: «{row["name"]}», дата {row["month"]}.')
+                        seen_files[identity] = upload.name
+                    sheet["entries"].extend(parsed["entries"])
+                    sheet["warnings"].extend(f'{upload.name}: {warning}' for warning in parsed["warnings"])
+                    sheet["warnings"].append(f'{upload.name}: лист «{parsed.get("source_sheet", obj.name)}», {start:%d.%m.%Y} — {end:%d.%m.%Y}.')
+                    starts.append(start)
+                    ends.append(end)
+                form.cleaned_data["start"], form.cleaned_data["end"] = min(starts), max(ends)
                 rows = resolved_preview(request.user, obj, sheet)
                 nonce = uuid4().hex
                 request.session["fact_import_nonce"] = nonce

@@ -138,6 +138,41 @@ class FactMeetingTests(TestCase):
             2,
         )
 
+    def test_multiple_fact_files_with_individual_periods(self):
+        self.client.force_login(self.admin)
+        url = reverse("production:fact_meeting_import")
+        response = self.client.post(url, {
+            "construction_object": self.obj.pk, "start": "2026-01-01", "end": "2026-01-02",
+            "existing": "keep", "file": [upload(name="Один"), upload(name="Два")],
+            "file_start": ["2026-01-01", "2026-01-02"], "file_end": ["2026-01-01", "2026-01-02"],
+            "file_sheet": ["Один", "Два"],
+        })
+        self.assertContains(response, "Подтвердить импорт факта")
+        result = self.client.post(url, {"action": "confirm", "preview": response.context["preview"]})
+        self.assertEqual(result.status_code, 302)
+        self.assertTrue(DailyFact.objects.filter(date=JAN).exists())
+        self.assertTrue(DailyFact.objects.filter(date=date(2026, 1, 2)).exists())
+
+    def test_multiple_fact_files_conflict_blocks_preview(self):
+        self.client.force_login(self.admin)
+        response = self.client.post(reverse("production:fact_meeting_import"), {
+            "construction_object": self.obj.pk, "start": "2026-01-01", "end": "2026-01-02",
+            "existing": "keep", "file": [upload(), upload()],
+        })
+        self.assertContains(response, "Конфликт файлов")
+        self.assertFalse(DailyFact.objects.exists())
+
+    def test_repeated_equipment_fact_keeps_first_and_warns(self):
+        sheet = self.sheet()
+        row = next(row for row in sheet['entries'] if row['kind'] == 'equipment')
+        duplicate = dict(row, row=169, quantity='88')
+        sheet['entries'].append(duplicate)
+        resolved = resolved_preview(self.admin, self.obj, sheet)
+        matching = [r for r in resolved if r['kind'] == 'equipment' and r['month'] == row['month']]
+        self.assertEqual(len(matching), 1)
+        self.assertNotEqual(matching[0]['quantity'], '88')
+        self.assertTrue(any('169' in warning for warning in sheet['warnings']))
+
     def test_admin_imports_renamed_sheet_in_past(self):
         from unittest.mock import patch
         self.client.force_login(self.admin)
