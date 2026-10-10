@@ -27,6 +27,17 @@ class ApprovalWorkflowTests(TestCase):
     def submit(self):
         return GlobalPlanService.transition(self.create().baseline_version, self.planner, 'submit')
 
+    def test_approval_list_shows_ceo_stage_before_and_after_decision(self):
+        version = self.submit()
+        self.client.force_login(self.admin)
+        url = reverse('planning:approval_list')
+        self.assertContains(self.client.get(url), 'Генеральный директор')
+        self.assertContains(self.client.get(url), 'После согласования служб')
+        departments(version, self.approvers)
+        self.assertContains(self.client.get(url), 'Ожидает утверждения')
+        GlobalPlanService.transition(version, self.approvers['CEO'], 'approve')
+        self.assertContains(self.client.get(url), 'Утверждено')
+
     def test_three_parallel_sections_are_required_and_independent(self):
         version = self.submit()
         for code, action in [('TECH_HEAD','approve_tech'), ('PRODUCTION_HEAD','approve_production'), ('HR_HEAD','approve_hr')]:
