@@ -423,14 +423,6 @@
         {% if request.user|may:'planning:profile_list' %}<a class="nav-link" href="{% url 'planning:profile_list' %}" data-paths="/planning/profiles/ /planning/profile-items/"><i class="bi bi-graph-up"></i> Профили нагрузки</a>{% endif %}
         {% if request.user|may:'planning:calendar_list' %}<a class="nav-link" href="{% url 'planning:calendar_list' %}" data-paths="/planning/calendars/ /planning/calendar-days/"><i class="bi bi-calendar"></i> Календари</a>{% endif %}
         </details>{% endif %}
-        {% if request.user|may:'planning:plan_list' %}<details class="nav-group"><summary>Дополнительно</summary>
-        {% if request.user|may:'planning:plan_list' %}<a class="nav-link" href="{% url 'planning:plan_list' %}" ><i class="bi bi-calendar-check"></i> Месячные планы</a>{% endif %}
-        {% if request.user|may:'planning:plan_matrix' %}<a class="nav-link" href="{% url 'planning:plan_matrix' %}" ><i class="bi bi-grid-3x3-gap"></i> Матрица планов</a>{% endif %}
-        {% if request.user|may:'production:labor_plan_list' %}<a class="nav-link" href="{% url 'production:labor_plan_list' %}" ><i class="bi bi-people"></i> Планы людей</a>{% endif %}
-        {% if request.user|may:'production:equipment_plan_list' %}<a class="nav-link" href="{% url 'production:equipment_plan_list' %}" ><i class="bi bi-truck"></i> Планы техники</a>{% endif %}
-        {% if request.user|may:'production:fuel_plan_list' %}<a class="nav-link" href="{% url 'production:fuel_plan_list' %}" ><i class="bi bi-fuel-pump"></i> Планы ГСМ</a>{% endif %}
-        {% if request.user|may:'production:legacy_resources' %}<a class="nav-link" href="{% url 'production:legacy_resources' %}" ><i class="bi bi-archive"></i> Перенос старых данных</a>{% endif %}
-        </details>{% endif %}
         {% if request.user|may:'accounts:user_list' %}<div class="border-top my-2"></div>{% endif %}
         {% if request.user|may:'accounts:user_list' %}<a class="nav-link" href="{% url 'accounts:user_list' %}" ><i class="bi bi-person-gear"></i> Пользователи и доступ</a>{% endif %}
     </nav>
