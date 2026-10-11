@@ -21,8 +21,12 @@
     chart.append(node('path',{d:path,fill:'none',stroke:'#087cff','stroke-width':2.5}));
     data.plan.forEach((value,i)=>{if(value===null)return;const point=node('circle',{cx:x(i),cy:y(value),r:data.labels.length>90?1.5:3,fill:'#087cff'});point.append(node('title',{},`${data.labels[i]} · План: ${format(value)}`));chart.append(point);});
     [...new Set([0,Math.floor((data.labels.length-1)/2),data.labels.length-1])].forEach(i=>chart.append(node('text',{x:x(i),y:h-8,'text-anchor':i===0?'start':i===data.labels.length-1?'end':'middle'},data.labels[i])));
-    chart.append(node('text',{x:left,y:13,fill:'#087cff'},'План — линия'),node('text',{x:left+130,y:13,fill:'#18b7a5'},'Факт — столбцы'));
-    target.replaceChildren(chart);
+    const legend=document.createElement('div');legend.className='chart-series-legend chart-series-legend-top';
+    [['План — линия','#087cff','chart-series-line'],['Факт — столбцы','#18b7a5','chart-series-bar']].forEach(([label,color,shape])=>{
+      const item=document.createElement('span'),mark=document.createElement('i');mark.className=shape;mark.style.backgroundColor=color;
+      item.append(mark,document.createTextNode(label));legend.append(item);
+    });
+    target.replaceChildren(chart,legend);
   }
   document.querySelectorAll('.resource-section').forEach(section=>{
     const target=section.querySelector('[data-resource-trend]');

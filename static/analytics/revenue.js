@@ -39,11 +39,17 @@
         const dot=svg('circle',{cx:x(i),cy:y(value),r:3,fill:color});
         dot.append(svg('title',{},`${chartData.labels[i]} · ${label}: ${format(value)} ${unit === "Млн ₽" ? "₽" : unit}`));canvas.append(dot);
       });
-      canvas.append(svg('text',{x:450+seriesIndex*130,y:265,fill:color},label));
+
     });
     const last=chartData.fact.map((v,i)=>v!==null?i:-1).filter(i=>i>=0).pop();
     if(last!==undefined){canvas.append(svg('line',{x1:x(last),x2:x(last),y1:top,y2:top+height,stroke:'#8699b0','stroke-dasharray':'4 4'}));}
-    target.replaceChildren(canvas);
+    const legend=document.createElement('div');legend.className='chart-series-legend';
+    [['План',colors[0]],['Факт',colors[1]]].forEach(([label,color])=>{
+      const item=document.createElement('span'),mark=document.createElement('i');
+      mark.className='chart-series-line';mark.style.backgroundColor=color;
+      item.append(mark,document.createTextNode(label));legend.append(item);
+    });
+    target.replaceChildren(canvas,legend);
   }
   function shareChart(targetId, rows, mode, limit, unit="₽") {
     const target=document.getElementById(targetId);target.replaceChildren();
