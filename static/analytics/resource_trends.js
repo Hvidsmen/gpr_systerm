@@ -27,6 +27,16 @@
       item.append(mark,document.createTextNode(label));legend.append(item);
     });
     target.replaceChildren(chart,legend);
+    window.GprChartTooltip?.attach(chart,point=>{
+      if(point.x<left||point.x>w-right||point.y<top||point.y>h-bottom||!data.labels.length)return null;
+      const index=Math.max(0,Math.min(data.labels.length-1,Math.floor((point.x-left)/step)));
+      const plan=data.plan[index],fact=data.fact[index];
+      const kind=target.closest('.resource-section')?.dataset.resourceKind;
+      const suffix=kind==='labor'?'чел.':kind==='equipment'?'ед.':kind==='fuel'?'л':'';
+      const number=new Intl.NumberFormat('ru-RU',{maximumFractionDigits:kind==='fuel'?1:0});
+      const value=v=>v===null?'—':`${number.format(v)} ${suffix}`.trim();
+      return `${data.labels[index]}\nПлан: ${value(plan)}\nФакт: ${value(fact)}\nОтклонение: ${value(plan!==null&&fact!==null?fact-plan:null)}`;
+    });
   }
   document.querySelectorAll('.resource-section').forEach(section=>{
     const target=section.querySelector('[data-resource-trend]');
@@ -85,9 +95,9 @@
         const share=row.value/total,color=colors[index%colors.length];
         const choose=()=>{row.summary.parentElement.open=true;select(row.summary);};
         const segment=node('circle',{cx:110,cy:110,r:76,fill:'none',stroke:color,'stroke-width':32,'stroke-dasharray':`${share*circumference} ${circumference}`,'stroke-dashoffset':-offset*circumference,transform:'rotate(-90 110 110)',tabindex:0,role:'button','aria-label':row.name});
-        segment.append(node('title',{},`${row.name}: ${format(row.value)} (${format(share*100)}%)`));
+        segment.setAttribute('data-chart-tooltip',`${row.name}\n${mode==='plan'?'План':'Факт'}: ${format(row.value)}\nДоля: ${format(share*100)}%`);
         segment.addEventListener('click',choose);segment.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();choose();}});chart.append(segment);offset+=share;
-        const button=document.createElement('button');button.type='button';button.className='resource-share-item';
+        const button=document.createElement('button');button.type='button';button.className='resource-share-item';button.dataset.chartTooltip=segment.getAttribute('data-chart-tooltip');
         const dot=document.createElement('span');dot.className='share-color';dot.style.backgroundColor=color;
         button.append(dot,document.createTextNode(`${row.name} — ${format(row.value)} · ${format(share*100)}%`));button.addEventListener('click',choose);legend.append(button);
       });

@@ -28,3 +28,5 @@
 .resource-content-layout .resource-overview{display:block}.resource-table-total{margin-bottom:12px}.resource-table-total .resource-card-values{flex-direction:row;justify-content:space-between;gap:16px}.resource-table-total .revenue-kpi{padding:12px 16px}.resource-table-total .revenue-kpi strong{font-size:1.4rem}.resource-table-total .revenue-kpi>span{margin-bottom:10px}.resource-table-total .resource-card-values>div{min-width:0;flex:1}@media(max-width:750px){.resource-table-total .resource-card-values{gap:8px}}
 
 .resource-table-total{position:sticky;top:calc(var(--navbar-height,54px) + 8px);z-index:19;background:#fff;padding-bottom:6px;box-shadow:0 5px 12px rgba(32,55,85,.08);border-radius:10px}.resource-table-total .revenue-kpi{margin-bottom:0}
+
+.gpr-chart-tooltip{position:fixed;z-index:10000;pointer-events:none;white-space:pre-line;background:#23384f;color:#fff;padding:10px 12px;border-radius:8px;font-size:13px;line-height:1.6;max-width:min(360px,calc(100vw - 16px));overflow-wrap:anywhere;box-shadow:0 4px 18px rgba(0,0,0,.2)}.gpr-chart-tooltip[hidden]{display:none}

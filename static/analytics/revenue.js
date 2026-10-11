@@ -50,6 +50,13 @@
       item.append(mark,document.createTextNode(label));legend.append(item);
     });
     target.replaceChildren(canvas,legend);
+    window.GprChartTooltip?.attach(canvas,point=>{
+      if(point.x<left||point.x>left+width||point.y<top||point.y>top+height||!chartData.labels.length)return null;
+      const index=Math.max(0,Math.min(chartData.labels.length-1,Math.round((point.x-left)/width*Math.max(1,chartData.labels.length-1))));
+      const plan=chartData.plan[index],fact=chartData.fact[index],suffix=unit==='Млн ₽'?'₽':unit;
+      const value=v=>v===null?'—':`${format(v)} ${suffix}`;
+      return `${chartData.labels[index]}\nПлан: ${value(plan)}\nФакт: ${value(fact)}\nОтклонение: ${value(plan!==null&&fact!==null?fact-plan:null)}`;
+    });
   }
   function shareChart(targetId, rows, mode, limit, unit="₽") {
     const target=document.getElementById(targetId);target.replaceChildren();
@@ -66,13 +73,14 @@
     shown.forEach((row,i)=>{
       const share=row[mode]/total,color=colors[i%colors.length];
       const ring=svg('circle',{cx:100,cy:100,r:radius,fill:'none',stroke:color,'stroke-width':38,'stroke-dasharray':`${share*circumference} ${circumference}`,'stroke-dashoffset':-offset*circumference,transform:'rotate(-90 100 100)'});
-      ring.append(svg('title',{},`${row.name}: ${format(row[mode])} ${unit} (${format(share*100)}%)`));
+      ring.setAttribute('data-chart-tooltip',`${row.name}\n${mode==='plan'?'План':'Факт'}: ${format(row[mode])} ${unit}\nДоля: ${format(share*100)}%`);ring.setAttribute('aria-label',ring.getAttribute('data-chart-tooltip'));
       if(row.key){ring.setAttribute('tabindex','0');ring.setAttribute('role','button');ring.style.cursor='pointer';ring.addEventListener('click',()=>selectRevenue(row.key));ring.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();selectRevenue(row.key);}});}canvas.append(ring);
       offset+=share;
       const entry=document.createElement(row.others?'details':'a');
       const label=document.createElement(row.others?'summary':'span');
       const dot=document.createElement('span');dot.className='share-color';dot.style.backgroundColor=color;label.append(dot);
       label.append(document.createTextNode(`${row.name} — ${format(share*100)}%`));entry.append(label);
+      entry.dataset.chartTooltip=ring.getAttribute('data-chart-tooltip');
       if(row.key){entry.href='#';entry.addEventListener('click',event=>{event.preventDefault();selectRevenue(row.key);});}
       if(row.others)row.others.forEach(other=>{const a=document.createElement('a');a.href=other.url;a.style.display='block';a.textContent=`${other.name} — ${format(other[mode]/total*100)}%`;entry.append(a);});
       legend.append(entry);
