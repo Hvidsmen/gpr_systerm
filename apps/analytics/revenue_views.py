@@ -126,6 +126,24 @@ class RevenueDashboard(View):
                         row["chart_key"] = f"work-{obj['object'].pk}-{row['id']}"
                         volume = not row["has_price"]
                         selection(row["chart_key"], [row], obj["name"] + " · " + row["name"], obj["object"].pk, volume, row["unit"] if volume else "₽")
+            def share_entry(key, name):
+                trend = chart["selections"][key]
+                return {"key": key, "name": name,
+                        "plan": next((v for v in reversed(trend["plan"]) if v is not None), 0),
+                        "fact": next((v for v in reversed(trend["fact"]) if v is not None), 0)}
+            chart["shares"] = []
+            for obj in data["objects"]:
+                object_key = f"object-{obj['object'].pk}"
+                chart["shares"].append(share_entry(object_key, obj["name"]))
+                object_shares = []
+                for rows in obj["groups"].values():
+                    group_key = rows[0]["group_key"]
+                    object_shares.append(share_entry(group_key, rows[0]["group"]))
+                    chart["selections"][group_key]["shares"] = [
+                        share_entry(row["chart_key"], row["name"]) for row in rows if row["has_price"]]
+                    for row in rows:
+                        chart["selections"][row["chart_key"]]["shares"] = [share_entry(row["chart_key"], row["name"])]
+                chart["selections"][object_key]["shares"] = object_shares
             if context.get("detail"):
                 trend = context["detail"]["days"]
                 chart["detail"] = {

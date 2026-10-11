@@ -45,11 +45,11 @@
     if(last!==undefined){canvas.append(svg('line',{x1:x(last),x2:x(last),y1:top,y2:top+height,stroke:'#8699b0','stroke-dasharray':'4 4'}));}
     target.replaceChildren(canvas);
   }
-  function shareChart(targetId, rows, mode, limit) {
+  function shareChart(targetId, rows, mode, limit, unit="₽") {
     const target=document.getElementById(targetId);target.replaceChildren();
     const all=rows.filter(r=>r[mode]>0).sort((a,b)=>b[mode]-a[mode]);
     const total=all.reduce((sum,r)=>sum+r[mode],0);
-    if(!total){target.textContent='Нет выручки для расчёта долей';return;}
+    if(!total){target.textContent='Нет данных для расчёта долей';return;}
     const shown=limit?all.slice(0,limit):all;
     const others=limit?all.slice(limit):[];
     if(others.length)shown.push({name:'Прочие', [mode]:others.reduce((sum,r)=>sum+r[mode],0), others});
@@ -60,22 +60,28 @@
     shown.forEach((row,i)=>{
       const share=row[mode]/total,color=colors[i%colors.length];
       const ring=svg('circle',{cx:100,cy:100,r:radius,fill:'none',stroke:color,'stroke-width':38,'stroke-dasharray':`${share*circumference} ${circumference}`,'stroke-dashoffset':-offset*circumference,transform:'rotate(-90 100 100)'});
-      ring.append(svg('title',{},`${row.name}: ${format(row[mode])} ₽ (${format(share*100)}%)`));
-      if(row.url){const link=svg('a',{href:row.url});link.append(ring);canvas.append(link);}else canvas.append(ring);
+      ring.append(svg('title',{},`${row.name}: ${format(row[mode])} ${unit} (${format(share*100)}%)`));
+      if(row.key){ring.setAttribute('tabindex','0');ring.setAttribute('role','button');ring.style.cursor='pointer';ring.addEventListener('click',()=>selectRevenue(row.key));ring.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();selectRevenue(row.key);}});}canvas.append(ring);
       offset+=share;
       const entry=document.createElement(row.others?'details':'a');
       const label=document.createElement(row.others?'summary':'span');
       const dot=document.createElement('span');dot.className='share-color';dot.style.backgroundColor=color;label.append(dot);
       label.append(document.createTextNode(`${row.name} — ${format(share*100)}%`));entry.append(label);
-      if(row.url)entry.href=row.url;
+      if(row.key){entry.href='#';entry.addEventListener('click',event=>{event.preventDefault();selectRevenue(row.key);});}
       if(row.others)row.others.forEach(other=>{const a=document.createElement('a');a.href=other.url;a.style.display='block';a.textContent=`${other.name} — ${format(other[mode]/total*100)}%`;entry.append(a);});
       legend.append(entry);
     });
-    canvas.append(svg('text',{x:100,y:96,'text-anchor':'middle','font-size':20,'font-weight':700},format(total/1e6)));
-    canvas.append(svg('text',{x:100,y:117,'text-anchor':'middle','font-size':12},'млн ₽'));
+    canvas.append(svg('text',{x:100,y:96,'text-anchor':'middle','font-size':20,'font-weight':700},format(unit==="₽"?total/1e6:total)));
+    canvas.append(svg('text',{x:100,y:117,'text-anchor':'middle','font-size':12},unit==="₽"?'млн ₽':unit));
     target.append(canvas,legend);
   }
-  function shares(mode){shareChart('object-shares',data.objects,mode);shareChart('work-shares',data.works,mode,5);}
+  let shareMode='fact';
+  function shares(mode){
+    shareMode=mode;
+    const trend=currentKey?data.selections?.[currentKey]:null;
+    document.querySelector('[data-share-caption]').textContent=trend?.volume?'Доли объёма':'Доли выручки';
+    shareChart('revenue-shares',trend?.shares||data.shares||[],mode,undefined,trend?.volume?trend.unit:'₽');
+  }
   document.querySelectorAll('[data-share-mode]').forEach(button=>button.addEventListener('click',()=>{
     document.querySelectorAll('[data-share-mode]').forEach(b=>{b.classList.toggle('btn-primary',b===button);b.classList.toggle('btn-outline-primary',b!==button);b.setAttribute('aria-pressed',String(b===button));});
     shares(button.dataset.shareMode);
@@ -92,6 +98,7 @@
     document.querySelector('[data-revenue-caption]').textContent=trend?
       `${trend.label} · ${trend.volume?'Объём':'Выручка'} · накопительно`:'Выручка за период · накопительно';
     lineChart(trend||data,'revenue-line',trend?.volume?1:1e6,trend?.volume?trend.unit:'Млн ₽');
+    shares(shareMode);
   }
   document.querySelectorAll('[data-revenue-select]').forEach(item=>item.addEventListener('click',event=>{
     if(item.hasAttribute('data-group-toggle')||event.ctrlKey||event.metaKey||event.shiftKey||event.altKey)return;
