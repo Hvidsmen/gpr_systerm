@@ -87,16 +87,18 @@ def build_dashboard(user, filters, today=None):
     cutoff = min(today or timezone.localdate(), end)
     days = days_between(start, end)
     report = build_matrix(
-        user, {**filters, "daily": True, "month": None, "sections": ["works"]}
+        user, {**filters, "daily": True, "month": None, "sections": ["works", "labor", "equipment", "fuel"]}
     )
+    work_ids = {int(row["key"].split("-w")[1]) for obj in report["objects"]
+                for row in rows_in(obj["sections"][0]["groups"])}
     catalog = {
         w.pk: w
-        for w in ProjectWork.objects.filter(company=user.company)
+        for w in ProjectWork.objects.filter(company=user.company, pk__in=work_ids)
         .select_related("section__construction_object", "work_group")
         .prefetch_related("items")
     }
     prices = defaultdict(list)
-    for price in WorkPrice.objects.filter(company=user.company).order_by(
+    for price in WorkPrice.objects.filter(company=user.company, work_id__in=work_ids).order_by(
         "effective_from", "pk"
     ):
         prices[price.work_id].append(price)
@@ -211,19 +213,10 @@ def build_dashboard(user, filters, today=None):
     # Snapshot values, never sum headcounts or fuel balance across dates.
     resource_objects = []
     if cutoff >= start:
-        resource_report = build_matrix(
-            user,
-            {
-                **filters,
-                "start": start,
-                "end": end,
-                "daily": True,
-                "month": None,
-                "sections": ["labor", "equipment", "fuel"],
-            },
-        )
+        resource_report = report
         cutoff_index = (cutoff - start).days
-        for obj in resource_report["objects"]:
+        for original in resource_report["objects"]:
+            obj = {**original, "sections": [section for section in original["sections"] if section["kind"] != "works"]}
             for section in obj["sections"]:
                 for row in rows_in(section["groups"]):
                     row["total"] = row["cells"][cutoff_index]
@@ -299,11 +292,11 @@ def resource_sections(objects, totals, days, cutoff):
     def trend(rows, kind):
         plan, fact = [], []
         for index, day in enumerate(days):
-            cell = resource_totals([
-                {"kind": kind, "cell": row["cells"][index]} for row in rows
-            ])[kind]
-            plan.append(float(cell["plan"]) if cell["plan"] is not None else None)
-            fact.append(float(cell["fact"]) if day <= cutoff and cell["fact"] is not None else None)
+            cells = [row["cells"][index] for row in rows]
+            planned = [cell["plan"] for cell in cells if cell["plan"] is not None]
+            actual = [cell["fact"] for cell in cells if cell["fact"] is not None] if day <= cutoff else []
+            plan.append(float(sum(planned, ZERO)) if planned else None)
+            fact.append(float(sum(actual, ZERO)) if actual else None)
         return json.dumps({"labels": labels, "plan": plan, "fact": fact}, ensure_ascii=False)
 
     def active(row):
