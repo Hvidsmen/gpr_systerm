@@ -57,8 +57,10 @@ def journal_matrix(user, filters, kind):
     objects = selected_objects(user, filters)
     selected = defaultdict(list)
     candidates = GlobalPlanVersion.objects.filter(company=user.company, construction_object__in=objects,
-                  status='DRAFT', start_date__lte=filters['end'], end_date__gte=filters['start']).defer('snapshot').select_related(
+                  start_date__lte=filters['end'], end_date__gte=filters['start']).defer('snapshot').select_related(
                   'workspace__construction_object', 'company').order_by('-version_number', '-pk')
+    if filters.get('plan_status'):
+        candidates = candidates.filter(status=filters['plan_status'])
     if filters['mode']=='baseline':
         candidates = candidates.filter(version_kind='BASELINE')
     versions = {}
@@ -69,11 +71,15 @@ def journal_matrix(user, filters, kind):
         if version is None:
             continue
         try:
-            snapshot = draft_snapshot(version, filters['start'], filters['end'])
+            if version.status in ('APPROVED', 'COMPLETED', 'SUBMITTED'):
+                from .report_projection import period_snapshot
+                snapshot = period_snapshot(version, filters['start'], filters['end'], **({'member': version, 'source_key': 'journal-submitted-' + version.updated_at.isoformat()} if version.status == 'SUBMITTED' else {}))
+            else:
+                snapshot = draft_snapshot(version, filters['start'], filters['end'])
         except ValidationError as exc:
             raise ValidationError(f'{obj.name}: {"; ".join(exc.messages)}') from exc
         selected[obj.pk].append(Source(version, snapshot, version.start_date, version.end_date))
     result = build_matrix(user, filters, source_overrides=selected, plan_only=True)
     for obj in result["objects"]:
-        obj["warnings"] = [warning.replace("Согласованный план", "Черновой план") for warning in obj["warnings"]]
+        obj["warnings"] = [warning.replace("Согласованный план", "План") for warning in obj["warnings"]]
     return result

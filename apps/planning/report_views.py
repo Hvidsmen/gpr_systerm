@@ -43,7 +43,7 @@ class MatrixReport(View):
         if "sections_set" not in params:
             params.setlist("sections", [kind for kind, _ in SECTIONS])
         params["sections_set"] = "1"
-        form = MatrixReportForm(params, user=request.user, version_statuses=("DRAFT",) if self.journal_kind == "plans" else () if self.journal_kind == "facts" else ("APPROVED", "COMPLETED"))
+        form = MatrixReportForm(params, user=request.user, version_statuses=None if self.journal_kind == "plans" else () if self.journal_kind == "facts" else ("APPROVED", "COMPLETED"))
         context = {
             "title": self.title, "journal_kind": self.journal_kind, "reset_url": request.path,
             "form": form,
@@ -88,7 +88,7 @@ class MatrixReport(View):
 
 class PlanJournal(MatrixReport):
     journal_kind = "plans"
-    title = "Журналы планов · черновики"
+    title = "Журналы планов"
 
 
 class FactJournal(MatrixReport):

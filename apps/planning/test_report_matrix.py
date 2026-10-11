@@ -26,6 +26,19 @@ def rows_in(nodes):
 
 
 class MatrixReportTests(TestCase):
+    def test_plan_journal_supports_approved_status_and_filters_drafts(self):
+        self.approve(self.create([self.simple]).baseline_version)
+        self.client.force_login(self.planner)
+        params = {"start": str(JAN), "end": "2026-01-31", "plan_status": "APPROVED"}
+        response = self.client.get(reverse("planning:journal_plan_list"), params)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.row(response.context, "works", self.simple.name)["total"]["plan"], D(300))
+        self.assertEqual(response.context["objects"][0]["sources"][0].version.status, "APPROVED")
+        response = self.client.get(reverse("planning:journal_plan_list"), {**params, "plan_status": "DRAFT"})
+        self.assertEqual(response.context["objects"][0]["sources"], [])
+        response = self.client.get(reverse("planning:journal_plan_list"), {**params, "plan_status": "INVALID"})
+        self.assertTrue(response.context["form"].errors)
+
     def test_draft_journal_shows_unapproved_plan_and_single_column_export(self):
         from io import BytesIO
         from openpyxl import load_workbook

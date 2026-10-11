@@ -1,6 +1,7 @@
 from calendar import monthrange
 from datetime import date
 from django import forms
+from core.enums import PlanStatus
 from apps.projects.models import Project, ConstructionObject
 from apps.works.models import WorkGroup
 from apps.resources.models import BrigadeGroup, BrigadeMacroGroup, EquipmentCategory
@@ -104,6 +105,11 @@ class MatrixReportForm(forms.Form):
             self.fields["objects"].queryset = self.fields["objects"].queryset.filter(
                 project_id=project_id
             )
+        if version_statuses is None:
+            self.fields["plan_status"] = forms.ChoiceField(required=False, label="Статус плана", choices=[("", "Все статусы"), *[(value, "На доработке" if value == "REJECTED" else label) for value, label in PlanStatus.choices]])
+            selected_status = self.data.get("plan_status")
+            version_statuses = (selected_status,) if selected_status in PlanStatus.values else tuple(PlanStatus.values)
+            self.fields["mode"].choices = [("latest", "Последняя версия"), ("baseline", "Базовый план")]
         # Each object has its own approved version choices; IDs cannot cross objects/companies.
         self.version_fields = []
         candidates = (
@@ -136,7 +142,7 @@ class MatrixReportForm(forms.Form):
                 *[
                     (
                         v.pk,
-                        f"v{v.version_number} · {v.title or v.get_version_kind_display()} · {v.start_date:%d.%m.%Y} — {v.end_date:%d.%m.%Y}",
+                        f"v{v.version_number} · {v.title or v.get_version_kind_display()} · {v.get_status_display()} · {v.start_date:%d.%m.%Y} — {v.end_date:%d.%m.%Y}",
                     )
                     for v in by_object[obj.pk]
                 ],
