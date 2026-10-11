@@ -1,5 +1,7 @@
 """Revenue uses parent completion, frozen plan rates and effective dated actual rates."""
 
+import logging
+from time import perf_counter
 from collections import defaultdict
 from datetime import date
 import json
@@ -83,12 +85,16 @@ def resource_totals(rows):
 
 
 def build_dashboard(user, filters, today=None):
+    started = perf_counter()
+    log = logging.getLogger("gpr.report")
+    log.warning("GPR revenue: work matrix %s — %s", filters["start"], filters["end"])
     start, end = filters["start"], filters["end"]
     cutoff = min(today or timezone.localdate(), end)
     days = days_between(start, end)
     report = build_matrix(
         user, {**filters, "daily": True, "month": None, "dashboard_compact": True, "sections": ["works"]}
     )
+    log.warning("GPR revenue: work matrix ready %.1fs", perf_counter()-started)
     work_ids = {int(row["key"].split("-w")[1]) for obj in report["objects"]
                 for row in rows_in(obj["sections"][0]["groups"])}
     catalog = {
@@ -212,6 +218,7 @@ def build_dashboard(user, filters, today=None):
     }
     # Release the detailed work matrix before building the resource matrix.
     del report
+    log.warning("GPR revenue: work metrics ready %.1fs; works=%s", perf_counter()-started, len(all_rows))
     # Snapshot values, never sum headcounts or fuel balance across dates.
     resource_objects = []
     if cutoff >= start:
@@ -257,11 +264,13 @@ def build_dashboard(user, filters, today=None):
                     "totals": resource_totals(entries),
                 }
             )
+    log.warning("GPR revenue: resource matrix ready %.1fs", perf_counter()-started)
     data["resource_objects"] = resource_objects
     data["resources"] = resource_totals(
         [r for obj in resource_objects for r in obj["rows"]]
     )
     data["resource_sections"] = resource_sections(resource_objects, data["resources"], days, cutoff)
+    log.warning("GPR revenue: dashboard data ready %.1fs", perf_counter()-started)
     return data
 
 

@@ -1,3 +1,5 @@
+import logging
+from time import perf_counter
 from calendar import monthrange
 from datetime import date
 from django.core.exceptions import PermissionDenied
@@ -37,7 +39,10 @@ def dashboard_form(request):
 class RevenueDashboard(View):
     def get(self, request):
         require_roles(request.user, READ_ROLES)
+        started = perf_counter()
+        logging.getLogger("gpr.report").warning("GPR revenue: preparing filters")
         params, form = dashboard_form(request)
+        logging.getLogger("gpr.report").warning("GPR revenue: filters ready %.1fs", perf_counter()-started)
         context = {"form": form, "versions": [form[n] for n in form.version_fields]}
         if form.is_valid():
             data = build_dashboard(request.user, form.cleaned_data)
@@ -165,13 +170,17 @@ class RevenueDashboard(View):
                     "plan": [float(d["cumulative_plan"]) for d in trend],
                     "fact": [float(d["cumulative_fact"]) for d in trend],
                 }
+            logging.getLogger("gpr.report").warning("GPR revenue: charts ready %.1fs; selections=%s", perf_counter()-started, len(chart["selections"]))
             context["chart"] = chart
             export = params.copy()
             export.pop("work", None)
             context["export_url"] = (
                 reverse("dashboard:revenue_export") + "?" + export.urlencode()
             )
-        return render(request, "analytics/revenue.html", context)
+        logging.getLogger("gpr.report").warning("GPR revenue: rendering page %.1fs", perf_counter()-started)
+        response = render(request, "analytics/revenue.html", context)
+        logging.getLogger("gpr.report").warning("GPR revenue: response ready %.1fs; bytes=%s", perf_counter()-started, len(response.content))
+        return response
 
 
 class RevenueExport(View):

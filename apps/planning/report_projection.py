@@ -1,4 +1,6 @@
 """Period-sized projections of immutable snapshots, without Python decoding the full plan."""
+import logging
+from time import perf_counter
 from django.db import connection
 from .models import GlobalPlanVersion, ReportSnapshotProjection
 
@@ -6,10 +8,14 @@ from .models import GlobalPlanVersion, ReportSnapshotProjection
 def period_snapshot(version, start, end, *, member=None, source_key="version"):
     if connection.vendor != 'sqlite' or (member is None and version.status not in ('APPROVED', 'COMPLETED')):
         return member.snapshot if member is not None else version.snapshot
+    started = perf_counter()
+    log = logging.getLogger("gpr.report")
+    log.warning("GPR projection: lookup version=%s period=%s — %s", version.pk, start, end)
     revision = version.approval_round
     cached = ReportSnapshotProjection.objects.filter(version_id=version.pk, approval_round=revision,
                                                      source_key=source_key, start=start, end=end).first()
     if cached:
+        log.warning("GPR projection: cached version=%s %.1fs", version.pk, perf_counter()-started)
         return cached.snapshot
     # SQLite performs JSON projection in its native engine. The 10M-row source is
     # never transferred to or deserialized by Python. Keep all work metadata so
@@ -30,8 +36,10 @@ def period_snapshot(version, start, end, *, member=None, source_key="version"):
     target = connection.ops.quote_name(ReportSnapshotProjection._meta.db_table)
     insert = f"INSERT OR IGNORE INTO {target} (version_id, approval_round, source_key, start, end, snapshot) "
     sql = sql.replace("SELECT json_set", "SELECT %s, %s, %s, %s, %s, json_set", 1)
+    log.warning("GPR projection: building in SQLite version=%s", version.pk)
     with connection.cursor() as cursor:
         cursor.execute(insert + sql, [version.pk, revision, source_key, start.isoformat(), end.isoformat(), *parameters])
+    log.warning("GPR projection: stored version=%s %.1fs", version.pk, perf_counter()-started)
     return ReportSnapshotProjection.objects.get(
         version_id=version.pk, approval_round=revision, source_key=source_key, start=start, end=end).snapshot
 
