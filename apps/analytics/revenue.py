@@ -306,6 +306,19 @@ def resource_sections(objects, totals, days, cutoff):
             fact.append(float(cell["fact"]) if day <= cutoff and cell["fact"] is not None else None)
         return json.dumps({"labels": labels, "plan": plan, "fact": fact}, ensure_ascii=False)
 
+    def active(row):
+        return any(cell.get("plan") or (day <= cutoff and cell.get("fact"))
+                   for day, cell in zip(days, row["cells"]))
+
+    def visible_groups(nodes):
+        result = []
+        for node in nodes:
+            rows = [row for row in node["rows"] if active(row)]
+            children = visible_groups(node["children"])
+            if rows or children:
+                result.append({**node, "rows": rows, "children": children})
+        return result
+
     def groups(nodes, kind):
         return [{
             **node, "trend": trend(rows_in([node]), kind),
@@ -320,10 +333,15 @@ def resource_sections(objects, totals, days, cutoff):
             section = next((section for section in obj["groups"] if section["kind"] == kind), None)
             if not section:
                 continue
-            rows = rows_in(section["groups"])
+            visible = visible_groups(section["groups"])
+            rows = rows_in(visible)
+            if not rows:
+                continue
             all_rows.extend(rows)
             sites.append({"name": obj["name"], "total": obj["totals"][kind],
-                          "trend": trend(rows, kind), "groups": groups(section["groups"], kind)})
+                          "trend": trend(rows, kind), "groups": groups(visible, kind)})
+        if not sites:
+            continue
         sections.append({"kind": kind, "label": label, "total": totals[kind],
                          "trend": trend(all_rows, kind), "objects": sites})
     return sections

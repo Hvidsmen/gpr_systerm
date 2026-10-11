@@ -53,6 +53,23 @@ class RevenueTests(TestCase):
         self.assertContains(response, f'data-revenue-select="{key}"')
         self.assertContains(response, "Разбор")
 
+    def test_dashboard_hides_zero_rows_but_keeps_unpriced_volume(self):
+        self.approve(self.create([self.simple]).baseline_version)
+        report = build_dashboard(self.planner, self.data(), today=END)
+        row = report["objects"][0]["rows"][0]
+        for cell in row["daily"]:
+            cell.update(plan=D(0), fact=D(0), plan_quantity=D(0), fact_quantity=D(0))
+        self.client.force_login(self.planner)
+        with patch("apps.analytics.revenue_views.build_dashboard", return_value=deepcopy(report)):
+            response = self.client.get(reverse("dashboard:revenue"), {"start": str(JAN), "end": str(END)})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["objects"], [])
+        self.assertEqual(response.context["chart"]["shares"], [])
+        row["daily"][0]["plan_quantity"] = D(1)
+        with patch("apps.analytics.revenue_views.build_dashboard", return_value=report):
+            response = self.client.get(reverse("dashboard:revenue"), {"start": str(JAN), "end": str(END)})
+        self.assertEqual(len(response.context["objects"][0]["rows"]), 1)
+
     def test_month_plan_and_cutoff_percentages_and_price_history(self):
         work = self.simple
         workspace = self.create([work])

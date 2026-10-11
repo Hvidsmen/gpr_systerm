@@ -65,6 +65,20 @@ class RevenueDashboard(View):
                 context["detail"] = work_detail(
                     request.user, row, data["start"], data["cutoff"]
                 )
+            def active_work(row):
+                return any(cell.get("plan_quantity") or
+                           (cell["date"] <= data["cutoff"] and cell.get("fact_quantity"))
+                           or cell.get("plan") or
+                           (cell["date"] <= data["cutoff"] and cell.get("fact"))
+                           for cell in row["daily"])
+            visible_objects = []
+            for obj in data["objects"]:
+                obj["rows"] = [row for row in obj["rows"] if active_work(row)]
+                obj["groups"] = {name: visible for name, rows in obj["groups"].items()
+                                 if (visible := [row for row in rows if active_work(row)])}
+                if obj["rows"]:
+                    visible_objects.append(obj)
+            data["objects"] = visible_objects
             context.update(data)
             chart = {
                 "labels": [c["date"].strftime("%d.%m.%Y") for c in data["daily"]],
