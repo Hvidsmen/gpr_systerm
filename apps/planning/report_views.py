@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from calendar import monthrange
 from django.shortcuts import render
 from django.urls import reverse
@@ -12,6 +12,7 @@ from .report_services import build_matrix
 
 
 class MatrixReport(View):
+    rolling_days = None
     journal_kind = None
     title = "План / факт"
 
@@ -19,6 +20,10 @@ class MatrixReport(View):
         if self.journal_kind:
             from .journal_services import journal_matrix
             return journal_matrix(user, filters, self.journal_kind)
+        if self.rolling_days:
+            report = build_matrix(user, {**filters, "daily": True})
+            report["daily"] = True
+            return report
         return build_matrix(user, filters)
 
     def get(self, request):
@@ -37,6 +42,12 @@ class MatrixReport(View):
             ).first()
             if parent:
                 start, end = parent.start_date, parent.end_date
+        if self.rolling_days:
+            end = timezone.localdate()
+            start = end - timedelta(days=self.rolling_days - 1)
+            params["start"], params["end"] = start.isoformat(), end.isoformat()
+            params.pop("month", None)
+            params.pop("consolidated", None)
         params.setdefault("start", start.isoformat())
         params.setdefault("end", end.isoformat())
         params.setdefault("mode", "latest")
@@ -44,8 +55,11 @@ class MatrixReport(View):
             params.setlist("sections", [kind for kind, _ in SECTIONS])
         params["sections_set"] = "1"
         form = MatrixReportForm(params, user=request.user, version_statuses=None if self.journal_kind == "plans" else () if self.journal_kind == "facts" else ("APPROVED", "COMPLETED"))
+        if self.rolling_days:
+            for name in ("start", "end"):
+                form.fields[name].widget.attrs["readonly"] = True
         context = {
-            "title": self.title, "journal_kind": self.journal_kind, "reset_url": request.path,
+            "overview": bool(self.rolling_days), "title": self.title, "journal_kind": self.journal_kind, "reset_url": request.path,
             "form": form,
             "version_fields": [form[name] for name in form.version_fields],
             "section_switches": [
@@ -71,17 +85,17 @@ class MatrixReport(View):
             context["consolidated"] = form.cleaned_data.get("consolidated")
             export = params.copy()
             export["export"] = "xlsx"
-            context["export_url"] = reverse("planning:journal_plan_list" if self.journal_kind == "plans" else "planning:journal_fact_list" if self.journal_kind == "facts" else "planning:report_matrix") + "?" + export.urlencode()
+            context["export_url"] = request.path + "?" + export.urlencode()
             back = params.copy()
             back.pop("month", None)
             context["monthly_url"] = (
-                reverse("planning:journal_plan_list" if self.journal_kind == "plans" else "planning:journal_fact_list" if self.journal_kind == "facts" else "planning:report_matrix") + "?" + back.urlencode()
+                request.path + "?" + back.urlencode()
             )
             for column in context["columns"]:
                 drill = params.copy()
                 drill["month"] = column["date"].replace(day=1).isoformat()
                 column["url"] = (
-                    reverse("planning:journal_plan_list" if self.journal_kind == "plans" else "planning:journal_fact_list" if self.journal_kind == "facts" else "planning:report_matrix") + "?" + drill.urlencode()
+                    request.path + "?" + drill.urlencode()
                 )
         return render(request, "planning/report_matrix.html", context)
 
@@ -94,3 +108,8 @@ class PlanJournal(MatrixReport):
 class FactJournal(MatrixReport):
     journal_kind = "facts"
     title = "Журналы фактов"
+
+
+class OverviewReport(MatrixReport):
+    rolling_days = 7
+    title = "Обзор · План/Факт за последние 7 дней"

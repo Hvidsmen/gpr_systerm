@@ -26,6 +26,19 @@ def rows_in(nodes):
 
 
 class MatrixReportTests(TestCase):
+    def test_overview_is_daily_table_for_seven_days_across_month_boundary(self):
+        from unittest.mock import patch
+        self.approve(self.create([self.simple]).baseline_version)
+        self.client.force_login(self.planner)
+        with patch("apps.planning.report_views.timezone.localdate", return_value=date(2026, 2, 3)):
+            response = self.client.get(reverse("dashboard:index"), {"start": "2020-01-01", "month": "2026-02-01"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["start"], date(2026, 1, 28))
+        self.assertEqual(response.context["end"], date(2026, 2, 3))
+        self.assertEqual(len(response.context["columns"]), 7)
+        self.assertTrue(response.context["daily"])
+        self.assertIn('/dashboard/?', response.context["export_url"])
+
     def test_plan_journal_supports_approved_status_and_filters_drafts(self):
         self.approve(self.create([self.simple]).baseline_version)
         self.client.force_login(self.planner)

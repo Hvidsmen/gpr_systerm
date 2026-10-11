@@ -2,8 +2,8 @@
 {% block title %}{{ title|default:'План/Факт' }}{% endblock %}
 {% block extra_css %}<link rel="stylesheet" href="{% static 'planning/report_matrix.css' %}">{% endblock %}
 {% block content %}
-<h1>{{ title|default:"План / факт" }}{% if daily %} · {{ start|date:'m.Y' }} по дням{% endif %}</h1>
-<p class="text-muted">Месяцы → дни. Работы и расход — объём за период; люди и техника — среднее за заполненные дни; остаток ГСМ — последнее значение периода.</p>
+<h1>{{ title|default:"План / факт" }}{% if daily and not overview %} · {{ start|date:'m.Y' }} по дням{% endif %}</h1>
+<p class="text-muted">{% if overview %}Последние 7 дней, включая сегодня.{% else %}Месяцы → дни.{% endif %} Работы и расход — объём за период; люди и техника — среднее за заполненные дни; остаток ГСМ — последнее значение периода.</p>
 <form method="get" id="matrix-filters" class="card p-3 mb-3">
 {% if form.errors %}<div class="alert alert-danger">{{ form.non_field_errors }}{% for field in form %}{% for error in field.errors %}<div>{{ field.label }}: {{ error }}</div>{% endfor %}{% endfor %}</div>{% endif %}
 <input type="hidden" name="sections_set" value="1">{{ form.month }}
@@ -14,7 +14,7 @@
 {% if journal_kind != "facts" %}<div class="col-md-3"><label for="{{ form.mode.id_for_label }}">{{ form.mode.label }}</label>{{ form.mode }}</div>{% endif %}
 {% if journal_kind == "plans" %}<div class="col-md-3">{{ form.plan_status.label_tag }}{{ form.plan_status }}</div>{% endif %}
 <div class="col-md-6"><label for="{{ form.objects.id_for_label }}">{{ form.objects.label }}</label>{{ form.objects }}<small>{{ form.objects.help_text }}</small></div>
-{% if not journal_kind %}<div class="col-md-6"><label for="{{ form.consolidated.id_for_label }}">{{ form.consolidated.label }}</label>{{ form.consolidated }}<small>Выбор сводной версии задаёт сохранённые планы и состав объектов.</small>
+{% if not journal_kind and not overview %}<div class="col-md-6"><label for="{{ form.consolidated.id_for_label }}">{{ form.consolidated.label }}</label>{{ form.consolidated }}<small>Выбор сводной версии задаёт сохранённые планы и состав объектов.</small>
 </div>{% endif %}{% if journal_kind != "facts" %}<div class="col-md-6">{% if version_fields %}<details class="mt-2" id="matrix-version-choices"><summary>Выбрать отдельные версии объектов</summary><p class="small text-muted">{% if journal_kind == "plans" %}Автоматически выбирается последняя версия каждого объекта с выбранным статусом. Можно выбрать другую версию.{% else %}Автоматически выбирается последний согласованный план для каждой даты. Явный выбор использует только выбранную версию.{% endif %}</p><div class="row g-2">{% for field in version_fields %}<div class="col-12"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}</div>{% endfor %}</div></details>{% endif %}</div>{% endif %}
 </div>
 <div class="d-flex flex-wrap gap-2 my-3" role="group" aria-label="Показываемые разделы">{% for switch in section_switches %}<input class="btn-check" type="checkbox" name="sections" id="show-{{ switch.kind }}" value="{{ switch.kind }}" data-section-toggle {% if switch.checked %}checked{% endif %}><label class="btn btn-outline-primary btn-sm" for="show-{{ switch.kind }}">{{ switch.label }}</label>{% endfor %}</div>
@@ -24,7 +24,7 @@
 <details class="col-lg-6 matrix-section-filter" data-filter-section="equipment" {% if 'equipment' not in shown %}hidden{% endif %}><summary>Фильтры техники</summary><div class="row g-2 mt-1"><div class="col-md-6">{{ form.equipment_q.label_tag }}{{ form.equipment_q }}</div><div class="col-md-6">{{ form.equipment_category.label_tag }}{{ form.equipment_category }}</div></div></details>
 <details class="col-lg-6 matrix-section-filter" data-filter-section="fuel" {% if 'fuel' not in shown %}hidden{% endif %}><summary>Фильтры ГСМ</summary><div class="mt-1">{{ form.fuel_type.label_tag }}{{ form.fuel_type }}</div></details>
 </div>
-<div class="d-flex flex-wrap gap-2 mt-3"><button class="btn btn-primary btn-sm">Применить</button><a class="btn btn-outline-secondary btn-sm" href="{{ reset_url|default:'/planning/reports/plan-fact/' }}">Сбросить</a>{% if daily %}<a class="btn btn-outline-primary btn-sm" href="{{ monthly_url }}">← К месяцам</a>{% endif %}</div>
+<div class="d-flex flex-wrap gap-2 mt-3"><button class="btn btn-primary btn-sm">Применить</button><a class="btn btn-outline-secondary btn-sm" href="{{ reset_url|default:'/planning/reports/plan-fact/' }}">Сбросить</a>{% if daily and not overview %}<a class="btn btn-outline-primary btn-sm" href="{{ monthly_url }}">← К месяцам</a>{% endif %}</div>
 </form>
 {% if not form.errors %}
 {% if consolidated %}<p><strong>Сводная версия:</strong> <a href="{% url 'planning:project_plan_detail' consolidated.pk %}">{{ consolidated }}</a></p>{% endif %}
