@@ -11,7 +11,7 @@ from django.views import View
 from core.permissions import READ_ROLES, require_roles
 from apps.planning.report_forms import MatrixReportForm
 from apps.planning.models import ProjectPlanVersion
-from .revenue import build_dashboard
+from .revenue import build_dashboard, combined_daily, metrics
 from .revenue_detail import work_detail
 
 
@@ -81,6 +81,9 @@ class RevenueDashboard(View):
                 obj["rows"] = [row for row in obj["rows"] if active_work(row)]
                 obj["groups"] = {name: visible for name, rows in obj["groups"].items()
                                  if (visible := [row for row in rows if active_work(row)])}
+                # The previous subtotal owner may have been hidden as a zero row.
+                for rows in obj["groups"].values():
+                    rows[0]["section_total"] = metrics(combined_daily(rows, [cell["date"] for cell in data["daily"]]), data["cutoff"])
                 if obj["rows"]:
                     visible_objects.append(obj)
             data["objects"] = visible_objects
@@ -177,6 +180,17 @@ class RevenueDashboard(View):
             context["export_url"] = (
                 reverse("dashboard:revenue_export") + "?" + export.urlencode()
             )
+        # Never expose source snapshots/daily calculation graphs to Django's
+        # template resolver: missing optional keys can stringify their entire repr.
+        def display_row(row):
+            return {key: value for key, value in row.items() if key not in {"sources", "daily", "children"}}
+        context["objects"] = [
+            {**{key: value for key, value in obj.items() if key not in {"daily", "rows", "groups"}},
+             "rows": [display_row(row) for row in obj["rows"]],
+             "groups": {name: [display_row(row) for row in rows] for name, rows in obj["groups"].items()}}
+            for obj in context.get("objects", [])]
+        for key in ("works", "daily", "resource_objects"):
+            context.pop(key, None)
         logging.getLogger("gpr.report").warning("GPR revenue: rendering page %.1fs", perf_counter()-started)
         response = render(request, "analytics/revenue.html", context)
         logging.getLogger("gpr.report").warning("GPR revenue: response ready %.1fs; bytes=%s", perf_counter()-started, len(response.content))

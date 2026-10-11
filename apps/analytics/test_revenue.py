@@ -118,6 +118,35 @@ class RevenueTests(TestCase):
                          {"labor", "equipment", "fuel"})
         self.assertTrue(report["works"])
 
+    def test_hidden_subtotal_owner_does_not_expose_snapshot_to_template(self):
+        class LargeSnapshotReference:
+            def __repr__(self):
+                raise AssertionError("Template attempted to stringify the source snapshot")
+        self.approve(self.create([self.simple]).baseline_version)
+        report = build_dashboard(self.planner, self.data(), today=END)
+        obj = report["objects"][0]
+        zero = obj["rows"][0]
+        visible = deepcopy(zero)
+        visible.pop("section_total", None)
+        visible["id"] += 100000
+        visible["sources"] = [LargeSnapshotReference()]
+        zero["sources"] = [LargeSnapshotReference()]
+        for cell in zero["daily"]:
+            cell.update(plan=D(0), fact=D(0), plan_quantity=D(0), fact_quantity=D(0))
+        obj["rows"] = [zero, visible]
+        obj["groups"] = {zero["group"]: [zero, visible]}
+        report["works"] = [zero, visible]
+        self.client.force_login(self.planner)
+        with patch("apps.analytics.revenue_views.build_dashboard", return_value=report):
+            response = self.client.get(reverse("dashboard:revenue"), {"start": str(JAN), "end": str(END)})
+        self.assertEqual(response.status_code, 200)
+        rendered = response.context["objects"][0]["rows"][0]
+        self.assertNotIn("sources", rendered)
+        self.assertNotIn("daily", rendered)
+        self.assertEqual(rendered["section_total"]["plan"], visible["plan"])
+        with self.assertRaises(KeyError):
+            response.context["works"]
+
     def test_dashboard_hides_zero_rows_but_keeps_unpriced_volume(self):
         self.approve(self.create([self.simple]).baseline_version)
         report = build_dashboard(self.planner, self.data(), today=END)
