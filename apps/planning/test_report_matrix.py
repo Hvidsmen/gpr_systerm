@@ -26,6 +26,41 @@ def rows_in(nodes):
 
 
 class MatrixReportTests(TestCase):
+    def test_excel_export_preserves_numeric_money_outlines_and_subtotals(self):
+        from io import BytesIO
+        from openpyxl import load_workbook
+        self.approve(self.create([self.simple]).baseline_version)
+        DailyFact.objects.create(company=self.company, project_work=self.simple, date=JAN, actual_quantity=3)
+        self.client.force_login(self.planner)
+        response = self.client.get(reverse("planning:report_matrix"), {"start": str(JAN), "end": "2026-01-31", "export": "xlsx"})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("spreadsheetml", response['Content-Type'])
+        sheet = load_workbook(BytesIO(response.content)).active
+        self.assertEqual(sheet.freeze_panes, "C5")
+        self.assertFalse(sheet.sheet_properties.outlinePr.summaryBelow)
+        money = next(row for row in sheet.iter_rows() if row[0].value == "Стоимость: " + self.simple.name)
+        self.assertEqual(money[-3].value, 3000)
+        self.assertEqual(money[-2].value, 30)
+        self.assertEqual(money[-1].value, -2970)
+        self.assertGreater(sheet.row_dimensions[money[0].row].outlineLevel, 0)
+        self.assertEqual(money[-3].number_format, "#,##0")
+        self.assertTrue(any(row[0].value == "Итого: работы" for row in sheet.iter_rows()))
+        self.assertEqual(sheet['A3'].value, "Объект / раздел / показатель")
+
+    def test_excel_resource_subtotals_keep_fuel_balance_separate(self):
+        from io import BytesIO
+        from openpyxl import load_workbook
+        from .report_export import matrix_workbook
+        self.resource_plan()
+        sheet = load_workbook(BytesIO(matrix_workbook(build_matrix(self.planner, self.data())).content)).active
+        balance = [row for row in sheet.iter_rows() if row[0].value == "Итого: остаток"]
+        expense = [row for row in sheet.iter_rows() if row[0].value == "Итого: расход"]
+        self.assertTrue(balance)
+        self.assertTrue(expense)
+        self.assertEqual(balance[-1][-3].value, 100)
+        self.assertEqual(expense[-1][-3].value, 31)
+        self.assertEqual(balance[-1][-2].value, "—")
+
     def test_work_money_uses_frozen_plan_and_effective_actual_prices(self):
         from apps.works.models import WorkPrice
         version = self.approve(self.create([self.simple]).baseline_version)

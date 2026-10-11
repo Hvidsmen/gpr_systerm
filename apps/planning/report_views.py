@@ -44,8 +44,14 @@ class MatrixReport(View):
         }
         if form.is_valid():
             report = build_matrix(request.user, form.cleaned_data)
+            if request.GET.get("export") == "xlsx":
+                from .report_export import matrix_workbook
+                return matrix_workbook({**report, "start": form.cleaned_data["start"], "end": form.cleaned_data["end"]})
             context.update(report)
             context["consolidated"] = form.cleaned_data.get("consolidated")
+            export = params.copy()
+            export["export"] = "xlsx"
+            context["export_url"] = reverse("planning:report_matrix") + "?" + export.urlencode()
             back = params.copy()
             back.pop("month", None)
             context["monthly_url"] = (

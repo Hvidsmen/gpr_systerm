@@ -26,7 +26,7 @@
 </form>
 {% if not form.errors %}
 {% if consolidated %}<p><strong>Сводная версия:</strong> <a href="{% url 'planning:project_plan_detail' consolidated.pk %}">{{ consolidated }}</a></p>{% endif %}
-<div class="d-flex gap-2 mb-3"><button type="button" class="btn btn-outline-secondary btn-sm" data-expand-matrix="true">Развернуть группы</button><button type="button" class="btn btn-outline-secondary btn-sm" data-expand-matrix="false">Свернуть группы</button></div>
+<div class="d-flex gap-2 mb-3"><a class="btn btn-outline-primary btn-sm" href="{{ export_url }}">Экспорт Excel</a><button type="button" class="btn btn-outline-secondary btn-sm" data-expand-matrix="true">Развернуть группы</button><button type="button" class="btn btn-outline-secondary btn-sm" data-expand-matrix="false">Свернуть группы</button></div>
 {% if not shown %}<div class="alert alert-info">Все разделы скрыты. Включите нужный раздел кнопкой сверху.</div>{% endif %}
 <div id="plan-fact-matrix">
 {% for entry in objects %}<details class="matrix-object card p-3 mb-3" open><summary class="h5 mb-2">{{ entry.object.project }} · {{ entry.name }}</summary>
