@@ -81,14 +81,15 @@ class RevenueTests(TestCase):
                             '"snapshot"' in q["sql"]]
         self.assertEqual(len(snapshot_queries), 1)
 
-    def test_dashboard_builds_work_and_resource_matrix_once(self):
+    def test_dashboard_builds_work_and_resources_in_separate_matrices(self):
         from apps.planning.report_services import build_matrix
         self.approve(self.create([self.simple]).baseline_version)
         with patch("apps.analytics.revenue.build_matrix", wraps=build_matrix) as matrix:
             report = build_dashboard(self.planner, self.data(), today=END)
-        self.assertEqual(matrix.call_count, 1)
-        self.assertEqual(set(matrix.call_args.args[1]["sections"]),
-                         {"works", "labor", "equipment", "fuel"})
+        self.assertEqual(matrix.call_count, 2)
+        self.assertEqual(matrix.call_args_list[0].args[1]["sections"], ["works"])
+        self.assertEqual(set(matrix.call_args_list[1].args[1]["sections"]),
+                         {"labor", "equipment", "fuel"})
         self.assertTrue(report["works"])
 
     def test_dashboard_hides_zero_rows_but_keeps_unpriced_volume(self):
