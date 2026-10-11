@@ -33,9 +33,29 @@
     if(!target)return;
     const overall=target.dataset.resourceTrend;
     const initialLabel=section.querySelector('[data-resource-caption]').textContent;
+    const totalFields=[...section.querySelectorAll('[data-resource-total]')];
+    const totalLabel=section.querySelector('[data-resource-total-label]');
+    const originalTotals=totalFields.map(field=>({field,text:field.textContent,negative:field.classList.contains('text-danger')}));
+    const originalTotalLabel=totalLabel?.textContent;
+    function updateTotals(selected){
+      if(!totalFields.length)return;
+      if(!selected){
+        originalTotals.forEach(({field,text,negative})=>{field.textContent=text;field.classList.toggle('text-danger',negative);});
+        if(totalLabel)totalLabel.textContent=originalTotalLabel;
+        return;
+      }
+      const trend=JSON.parse(selected.dataset.resourceSelect);
+      const index=trend.labels.indexOf(section.dataset.resourceCutoff);
+      const plan=index>=0?trend.plan[index]:null,fact=index>=0?trend.fact[index]:null;
+      const values={plan,fact,delta:plan!==null&&fact!==null?fact-plan:null};
+      const number=new Intl.NumberFormat('ru-RU',{maximumFractionDigits:section.dataset.resourceKind==='fuel'?1:0});
+      totalFields.forEach(field=>{const value=values[field.dataset.resourceTotal];field.textContent=value===null?'—':number.format(value);field.classList.toggle('text-danger',field.dataset.resourceTotal==='delta'&&value!==null&&value<0);});
+      if(totalLabel)totalLabel.textContent=selected.dataset.resourceLabel;
+    }
     let current=null;
     function select(selected){
       current=selected;
+      updateTotals(selected);
       section.querySelectorAll('[data-resource-select]').forEach(item=>{
         item.classList.toggle('resource-selected',item===selected);
         if(item===selected)item.setAttribute('aria-current','true');else item.removeAttribute('aria-current');
