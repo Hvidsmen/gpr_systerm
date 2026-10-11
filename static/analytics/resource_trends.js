@@ -38,6 +38,7 @@
       return `${data.labels[index]}\nПлан: ${value(plan)}\nФакт: ${value(fact)}\nОтклонение: ${value(plan!==null&&fact!==null?fact-plan:null)}`;
     });
   }
+  window.addEventListener('beforeprint',()=>document.querySelectorAll('[data-resource-trend]').forEach(draw));
   document.querySelectorAll('.resource-section').forEach(section=>{
     const target=section.querySelector('[data-resource-trend]');
     if(!target)return;

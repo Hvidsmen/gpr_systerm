@@ -1,9 +1,9 @@
 {% extends 'base.html' %}{% load static revenue_tags %}
 {% block title %}Выручка и ресурсы{% endblock %}
-{% block extra_css %}<link href="{% static 'analytics/revenue.css' %}?v=resources15" rel="stylesheet">{% endblock %}
+{% block extra_css %}<link href="{% static 'analytics/revenue.css' %}?v=resources16" rel="stylesheet">{% endblock %}
 {% block content %}
 <div class="revenue-dashboard">
-<header class="d-flex justify-content-between align-items-center mb-3"><h1 class="h3 mb-0">Выручка и ресурсы</h1>{% if cutoff %}<span class="text-muted">Дата среза: <strong>{{ cutoff|date:'d.m.Y' }}</strong></span>{% endif %}</header>
+<header class="d-flex justify-content-between align-items-center mb-3"><h1 class="h3 mb-0">Выручка и ресурсы</h1><button type="button" class="btn btn-outline-secondary btn-sm" data-dashboard-print>Печать / PDF</button>{% if cutoff %}<span class="text-muted">Дата среза: <strong>{{ cutoff|date:'d.m.Y' }}</strong></span>{% endif %}</header>
 <form method="get" class="card p-3 mb-3" id="revenue-filters">
 <div class="revenue-filters">{% for field in form %}{% if field.name == 'project' or field.name == 'objects' or field.name == 'start' or field.name == 'end' or field.name == 'mode' %}<div><label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{{ field.errors }}</div>{% endif %}{% endfor %}<button class="btn btn-primary align-self-end">Применить</button></div>
 <details class="mt-2"><summary>Версии объектов и фильтры работ и ресурсов</summary><div class="revenue-filters mt-2"><div>{{ form.consolidated.label_tag }}{{ form.consolidated }}{{ form.consolidated.errors }}</div>{% for field in versions %}<div>{{ field.label_tag }}{{ field }}{{ field.errors }}</div>{% endfor %}{% for field in form %}{% if field.name == 'works_q' or field.name == 'work_group' or field.name == 'work_kind' or field.name == 'labor_q' or field.name == 'macro_group' or field.name == 'brigade_group' or field.name == 'equipment_q' or field.name == 'equipment_category' or field.name == 'fuel_type' %}<div>{{ field.label_tag }}{{ field }}{{ field.errors }}</div>{% endif %}{% endfor %}</div></details>{{ form.non_field_errors }}
@@ -30,4 +30,4 @@
 {% include 'analytics/resource_sections.html' %}{% endif %}</div>
 {{ chart|json_script:'revenue-data' }}
 {% endblock %}
-{% block extra_js %}<script src="{% static 'analytics/chart_tooltips.js' %}?v=1" defer></script><script src="{% static 'analytics/revenue.js' %}?v=dynamic6" defer></script><script src="{% static 'analytics/resource_trends.js' %}?v=8" defer></script>{% endblock %}
+{% block extra_js %}<script src="{% static 'analytics/chart_tooltips.js' %}?v=1" defer></script><script src="{% static 'analytics/revenue.js' %}?v=dynamic6" defer></script><script src="{% static 'analytics/resource_trends.js' %}?v=9" defer></script><script src="{% static 'analytics/print_dashboard.js' %}?v=1" defer></script>{% endblock %}
