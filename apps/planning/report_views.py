@@ -23,7 +23,8 @@ class MatrixReport(View):
         if self.rolling_days:
             report = build_matrix(user, {**filters, "daily": True})
             report["daily"] = True
-            return report
+            from .overview_services import compact_overview
+            return compact_overview(report)
         return build_matrix(user, filters)
 
     def get(self, request):

@@ -60,7 +60,7 @@ def matrix_workbook(report):
         number = sheet.max_row
         style(number, depth, category)
         for cell in list(sheet[number])[2:]:
-            cell.number_format = '#,##0' if money or kind in ('labor', 'equipment') else '#,##0.###'
+            cell.number_format = '#,##0' if money or kind in ('labor', 'equipment', 'money') else '#,##0.###'
             if isinstance(cell.value, (int, float, Decimal)) and cell.value < 0:
                 cell.font = Font(name='Calibri', size=11, color='B54747', bold=category!='data')
 
@@ -99,7 +99,7 @@ def matrix_workbook(report):
         return rows
 
     for obj in report['objects']:
-        header(str(obj['object'].project) + ' · ' + obj['name'], 0, 'object')
+        header(obj['name'] if obj.get('overview_total') else str(obj['object'].project) + ' · ' + obj['name'], 0, 'object')
         for section in obj['sections']:
             header(section['label'], 1, 'section')
             rows = []

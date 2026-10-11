@@ -44,6 +44,6 @@ def matrix_number(value, kind):
     if value is None:
         return "—"
     value = Decimal(value)
-    if kind in ("labor", "equipment"):
+    if kind in ("labor", "equipment", "money"):
         return f"{value:,.0f}".replace(",", " ")
     return f"{value:,.3f}".rstrip("0").rstrip(".").replace(",", " ").replace(".", ",")

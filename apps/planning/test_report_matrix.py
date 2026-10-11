@@ -26,6 +26,24 @@ def rows_in(nodes):
 
 
 class MatrixReportTests(TestCase):
+    def test_overview_has_only_money_and_resource_group_totals(self):
+        from unittest.mock import patch
+        self.resource_plan()
+        self.client.force_login(self.planner)
+        with patch("apps.planning.report_views.timezone.localdate", return_value=date(2026, 1, 7)):
+            response = self.client.get(reverse("dashboard:index"))
+        self.assertEqual(response.status_code, 200)
+        entries = response.context["objects"]
+        self.assertTrue(entries[0]["overview_total"])
+        self.assertEqual(entries[0]["sections"][0]["kind"], "money")
+        for entry in entries:
+            for section in entry["sections"]:
+                for node in section["groups"]:
+                    self.assertFalse(node["children"])
+                    if section["kind"] != "money":
+                        self.assertFalse(node["rows"] if not entry.get("overview_total") else [])
+        self.assertNotContains(response, self.simple.name)
+
     def test_overview_is_daily_table_for_seven_days_across_month_boundary(self):
         from unittest.mock import patch
         self.approve(self.create([self.simple]).baseline_version)
