@@ -68,11 +68,21 @@ def select_sources(user, filters, objects):
         status__in=["APPROVED", "COMPLETED"],
         start_date__lte=filters["end"],
         end_date__gte=filters["start"],
-    ).order_by("-approved_at", "-pk")
+    ).defer("snapshot").order_by("-approved_at", "-pk")
     if filters["mode"] == "baseline":
         candidates = candidates.filter(version_kind="BASELINE")
+    remaining = {obj.pk: set(days_between(filters["start"], filters["end"])) for obj in objects}
+    explicit_objects = {obj.pk for obj in objects if filters.get(f"version_{obj.pk}")}
     for version in candidates:
-        result[version.construction_object_id].append(
+        object_id = version.construction_object_id
+        if object_id in explicit_objects:
+            continue
+        selected_days = {day for day in remaining[object_id]
+                         if version.start_date <= day <= version.end_date}
+        if not selected_days:
+            continue
+        remaining[object_id].difference_update(selected_days)
+        result[object_id].append(
             Source(version, version.snapshot, version.start_date, version.end_date)
         )
     for obj in objects:
@@ -395,9 +405,10 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
                 resource_index[kind][idx] = data
                 if kind == "fuel":
                     resource_index["balance"][idx] = balances
+        selected_work_ids = {idx: set(entries) for idx, entries in plan_index.items()}
         def actual_visible(work_id, day):
             selected=chosen.get(day)
-            ids=set(plan_index[id(selected)]) if selected else set()
+            ids=selected_work_ids[id(selected)] if selected else set()
             parent=source_parents.get(work_id)
             if parent:
                 return work_id in ids or bool(parent not in ids and ids.intersection(parent_sources[parent]))

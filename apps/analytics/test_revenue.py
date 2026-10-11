@@ -53,6 +53,20 @@ class RevenueTests(TestCase):
         self.assertContains(response, f'data-revenue-select="{key}"')
         self.assertContains(response, "Разбор")
 
+    def test_report_version_choices_do_not_load_plan_snapshots(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        from apps.planning.report_forms import MatrixReportForm
+        from apps.planning.models import GlobalPlanVersion
+        self.approve(self.create([self.simple]).baseline_version)
+        with CaptureQueriesContext(connection) as queries:
+            form = MatrixReportForm(user=self.planner)
+            self.assertTrue(form.version_fields)
+            for name in form.version_fields:
+                list(form.fields[name].choices)
+        self.assertFalse(any(GlobalPlanVersion._meta.db_table in q["sql"] and
+                             '"snapshot"' in q["sql"] for q in queries))
+
     def test_home_dashboard_loads_global_snapshots_once(self):
         from django.db import connection
         from django.test.utils import CaptureQueriesContext

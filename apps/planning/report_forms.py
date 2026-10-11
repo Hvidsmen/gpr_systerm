@@ -111,6 +111,7 @@ class MatrixReportForm(forms.Form):
                 company=user.company, status__in=["APPROVED", "COMPLETED"]
             )
             .select_related("construction_object")
+            .defer("snapshot")
             .order_by("construction_object__name", "-version_number")
         )
         by_object = {}
