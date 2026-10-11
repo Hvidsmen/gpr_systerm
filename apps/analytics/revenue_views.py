@@ -229,7 +229,7 @@ class RevenueExport(View):
                 "Выполнение на дату, %",
                 "Выполнение периода, %",
                 "Отклонение на дату, ₽",
-                "Раздел", "Единица", "Объём: план периода", "Объём: план на дату", "Объём: факт на дату",
+                "Раздел", "Единица", "Объём: план периода", "Объём: план на дату", "Объём: факт на дату", "Объём: отклонение на дату",
             ]
         )
         for obj in data["objects"]:
@@ -247,7 +247,7 @@ class RevenueExport(View):
                                 "percent_date",
                                 "percent_full",
                                 "delta",
-                                "group", "unit", "volume_plan", "volume_plan_to_date", "volume_fact",
+                                "group", "unit", "volume_plan", "volume_plan_to_date", "volume_fact", "volume_deviation",
                             ]
                         ],
                     ]

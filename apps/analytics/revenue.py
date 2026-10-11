@@ -179,6 +179,10 @@ def build_dashboard(user, filters, today=None):
                 "sources": sources,
                 **metrics(daily, cutoff),
             }
+            entry["volume_deviation"] = (
+                entry["volume_fact"] - entry["volume_plan_to_date"]
+                if entry["volume_fact"] is not None and entry["volume_plan_to_date"] is not None else None
+            )
             rows.append(entry)
             all_rows.append(entry)
         daily = combined_daily(rows, days)
