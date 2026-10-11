@@ -182,6 +182,8 @@ def build_dashboard(user, filters, today=None):
         groups = defaultdict(list)
         for row in rows:
             groups[row["group"]].append(row)
+        for section_rows in groups.values():
+            section_rows[0]["section_total"] = metrics(combined_daily(section_rows, days), cutoff)
         objects.append(
             {
                 "object": obj["object"],

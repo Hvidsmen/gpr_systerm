@@ -72,6 +72,10 @@ class RevenueTests(TestCase):
             row["plan"], sum((r["plan_quantity"] or 0 for r in row["daily"]), D(0)) * 10
         )
         self.assertEqual(report["fact"], D(80))
+        section_total = row["section_total"]
+        self.assertEqual(section_total["plan"], row["plan"])
+        self.assertEqual(section_total["fact"], D(80))
+        self.assertEqual(section_total["delta"], section_total["fact"] - section_total["plan_to_date"])
         self.assertEqual(row["volume_plan"], D(300))
         self.assertEqual(row["volume_fact"], D(4))
         self.assertEqual(row["volume_plan_to_date"], sum((cell["plan_quantity"] or 0 for cell in row["daily"] if cell["date"] <= date(2026, 1, 15)), D(0)))
