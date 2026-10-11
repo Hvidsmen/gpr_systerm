@@ -398,22 +398,20 @@
     <nav class="nav flex-column py-2" aria-label="Основное меню">
         {% if user.company %}<div class="px-3 py-2 text-muted small text-truncate" title="{{ user.company.name }}">{{ user.company.name }}</div>{% endif %}
         {% if request.user|may:'dashboard:index' %}<a class="nav-link" href="{% url 'dashboard:index' %}" ><i class="bi bi-bar-chart"></i> Обзор</a>{% endif %}
-        {% if request.user|may:'dashboard:revenue' %}<a class="nav-link" href="{% url 'dashboard:revenue' %}" data-paths="/dashboard/revenue/"><i class="bi bi-currency-ruble"></i> План/Факт дашборд</a>{% endif %}
+        {% if request.user|may:'dashboard:revenue' or request.user|may:'planning:report_matrix' %}<details class="nav-group"><summary>План/Факт</summary>
+        {% if request.user|may:'dashboard:revenue' %}<a class="nav-link" href="{% url 'dashboard:revenue' %}" data-paths="/dashboard/revenue/"><i class="bi bi-bar-chart"></i> Дашборд</a>{% endif %}
+        {% if request.user|may:'planning:report_matrix' %}<a class="nav-link" href="{% url 'planning:report_matrix' %}" data-paths="/planning/reports/"><i class="bi bi-table"></i> Таблица</a>{% endif %}
+        </details>{% endif %}
         {% if request.user|may:'planning:workspace_list' %}<a class="nav-link" href="{% url 'planning:workspace_list' %}" data-paths="/planning/workspace/ /planning/workspace-versions/"><i class="bi bi-calendar-range"></i> Планирование</a>{% endif %}
         {% if request.user|may:'rotation:plan_list' %}<a class="nav-link" href="{% url 'rotation:plan_list' %}" data-paths="/rotation/"><i class="bi bi-arrow-repeat"></i> Перевахта</a>{% endif %}
-        {% if request.user|may:'planning:report_matrix' %}<a class="nav-link" href="{% url 'planning:report_matrix' %}" data-paths="/planning/reports/"><i class="bi bi-table"></i> План / факт</a>{% endif %}
         {% if request.user|may:'planning:project_plan_list' %}<a class="nav-link" href="{% url 'planning:project_plan_list' %}" data-paths="/planning/project-plans/"><i class="bi bi-layers"></i> Сводные версии проектов</a>{% endif %}
         {% if request.user|may:'planning:approval_list' %}<a class="nav-link" href="{% url 'planning:approval_list' %}" data-paths="/planning/approvals/"><i class="bi bi-clipboard-check"></i> Согласование планов</a>{% endif %}
         {% if request.user|may:'planning:global_list' %}<a class="nav-link" href="{% url 'planning:global_list' %}" data-paths="/planning/global/"><i class="bi bi-clipboard-check"></i> Все версии</a>{% endif %}
         {% if request.user|may:'production:fact_day_workspace' %}<a class="nav-link" href="{% url 'production:fact_day_workspace' %}" ><i class="bi bi-clipboard-data"></i> Факт за день</a>{% endif %}
         {% if request.user|may:'projects:project_list' %}<a class="nav-link" href="{% url 'projects:project_list' %}" data-paths="/projects/"><i class="bi bi-folder"></i> Объекты и проекты</a>{% endif %}
         {% if request.user|may:'works:work_list' %}<a class="nav-link" href="{% url 'works:work_list' %}" data-paths="/works/"><i class="bi bi-list-task"></i> Работы</a>{% endif %}
-        {% if request.user|may:'production:fact_list' %}<details class="nav-group"><summary>Журнал фактов</summary>
-        {% if request.user|may:'production:fact_list' %}<a class="nav-link" href="{% url 'production:fact_list' %}" ><i class="bi bi-journal-check"></i> Работы</a>{% endif %}
-        {% if request.user|may:'production:labor_fact_list' %}<a class="nav-link" href="{% url 'production:labor_fact_list' %}" ><i class="bi bi-people"></i> Люди</a>{% endif %}
-        {% if request.user|may:'production:equipment_fact_list' %}<a class="nav-link" href="{% url 'production:equipment_fact_list' %}" ><i class="bi bi-truck"></i> Техника</a>{% endif %}
-        {% if request.user|may:'production:fuel_fact_list' %}<a class="nav-link" href="{% url 'production:fuel_fact_list' %}" ><i class="bi bi-fuel-pump"></i> ГСМ</a>{% endif %}
-        </details>{% endif %}
+        {% if request.user|may:'planning:journal_fact_list' %}<a class="nav-link" href="{% url 'planning:journal_fact_list' %}" data-paths="/planning/journals/facts/"><i class="bi bi-journal-check"></i> Журналы фактов</a>{% endif %}
+        {% if request.user|may:'planning:journal_plan_list' %}<a class="nav-link" href="{% url 'planning:journal_plan_list' %}" data-paths="/planning/journals/plans/"><i class="bi bi-journal-text"></i> Журналы планов</a>{% endif %}
         {% if request.user|may:'resources:employee_list' %}<details class="nav-group"><summary>Справочники</summary>
         {% if request.user|may:'works:group_list' %}<a class="nav-link" href="{% url 'works:group_list' %}"><i class="bi bi-collection"></i> Группы работ</a>{% endif %}
         {% if request.user|may:'works:unit_list' %}<a class="nav-link" href="{% url 'works:unit_list' %}"><i class="bi bi-rulers"></i> Единицы измерения</a>{% endif %}

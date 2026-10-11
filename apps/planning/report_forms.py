@@ -84,7 +84,7 @@ class MatrixReportForm(forms.Form):
         label="Вид ГСМ",
     )
 
-    def __init__(self, *args, user, **kwargs):
+    def __init__(self, *args, user, version_statuses=("APPROVED", "COMPLETED"), **kwargs):
         super().__init__(*args, **kwargs)
         self.user = user
         for name, model in [
@@ -108,12 +108,16 @@ class MatrixReportForm(forms.Form):
         self.version_fields = []
         candidates = (
             GlobalPlanVersion.objects.filter(
-                company=user.company, status__in=["APPROVED", "COMPLETED"]
+                company=user.company, status__in=version_statuses
             )
             .select_related("construction_object")
             .defer("snapshot")
             .order_by("construction_object__name", "-version_number")
         )
+        if version_statuses == ("DRAFT",):
+            self.fields["mode"].choices = [("latest", "Последний черновик"), ("baseline", "Черновик базового плана")]
+        if version_statuses != ("APPROVED", "COMPLETED"):
+            self.fields["consolidated"].queryset = ProjectPlanVersion.objects.none()
         by_object = {}
         for version in candidates:
             by_object.setdefault(version.construction_object_id, []).append(version)

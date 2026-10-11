@@ -10,23 +10,26 @@ from django.http import HttpResponse
 def matrix_workbook(report):
     book = Workbook()
     sheet = book.active
-    sheet.title = 'План-факт'
+    fact_only, plan_only = report.get('fact_only'), report.get('plan_only')
+    titles = ['Факт'] if fact_only else ['План'] if plan_only else ['План', 'Факт', 'Отклонение']
+    stride = len(titles)
+    sheet.title = 'Журнал фактов' if fact_only else 'Журнал планов' if plan_only else 'План-факт'
     columns = report['columns']
-    width = 2 + 3 * (len(columns) + 1)
+    width = 2 + stride * (len(columns) + 1)
     sheet.sheet_properties.outlinePr.summaryBelow = False
     sheet.sheet_view.showGridLines = False
     sheet.freeze_panes = 'C5'
-    sheet.append(['План / факт'])
+    sheet.append([sheet.title])
     sheet.merge_cells(start_row=1, start_column=1, end_row=1, end_column=width)
     sheet.append(['Период: ' + str(report.get('start', '')) + ' — ' + str(report.get('end', ''))])
     sheet.merge_cells(start_row=2, start_column=1, end_row=2, end_column=width)
     sheet.append(['Объект / раздел / показатель', 'Ед. изм.'])
     sheet.append(['', ''])
     for index, label in enumerate([column['label'] for column in columns] + ['За период / среднее']):
-        first = 3 + index*3
+        first = 3 + index*stride
         sheet.cell(3, first, label)
-        sheet.merge_cells(start_row=3, start_column=first, end_row=3, end_column=first+2)
-        for offset, title in enumerate(['План', 'Факт', 'Отклонение']):
+        sheet.merge_cells(start_row=3, start_column=first, end_row=3, end_column=first+stride-1)
+        for offset, title in enumerate(titles):
             sheet.cell(4, first+offset, title)
     edge = Side(style='hair', color='DCE4EE')
 
@@ -51,6 +54,7 @@ def matrix_workbook(report):
         result = [row['label'], '₽' if money else row.get('unit', '')]
         for cell in [*row['cells'], row['total']]:
             keys = ('amount', 'fact_amount', 'delta_amount') if money else ('plan', 'fact', 'delta')
+            keys = (keys[1],) if fact_only else (keys[0],) if plan_only else keys
             result.extend(cell.get(key) if cell.get(key) is not None else '—' for key in keys)
         sheet.append(result)
         number = sheet.max_row

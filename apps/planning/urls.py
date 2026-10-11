@@ -113,3 +113,6 @@ urlpatterns += [path("bulk-delete/<str:kind>/", BulkDelete.as_view(allowed_kinds
 from apps.production.journal_delete import JournalBulkDelete
 urlpatterns += [path('journals/<str:kind>/delete/', JournalBulkDelete.as_view(
     allowed_kinds=('monthly_plans',)), name='journal_bulk_delete')]
+
+from .report_views import PlanJournal, FactJournal
+urlpatterns += [path('journals/plans/', PlanJournal.as_view(), name='journal_plan_list'), path('journals/facts/', FactJournal.as_view(), name='journal_fact_list')]

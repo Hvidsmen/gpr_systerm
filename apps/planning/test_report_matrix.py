@@ -26,6 +26,45 @@ def rows_in(nodes):
 
 
 class MatrixReportTests(TestCase):
+    def test_draft_journal_shows_unapproved_plan_and_single_column_export(self):
+        from io import BytesIO
+        from openpyxl import load_workbook
+        workspace = self.create([self.simple])
+        self.client.force_login(self.planner)
+        params = {"start": str(JAN), "end": "2026-01-31"}
+        response = self.client.get(reverse("planning:journal_plan_list"), params)
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context["plan_only"])
+        row = self.row(response.context, "works", self.simple.name)
+        self.assertEqual(row["total"]["plan"], D(300))
+        workspace.baseline_version.refresh_from_db()
+        self.assertEqual(workspace.baseline_version.status, "DRAFT")
+        response = self.client.get(reverse("planning:journal_plan_list"), {**params, "export": "xlsx"})
+        sheet = load_workbook(BytesIO(response.content)).active
+        self.assertEqual(sheet.max_column, 4)
+        self.assertEqual(sheet['C4'].value, "План")
+        self.assertNotContains(self.client.get(reverse("planning:journal_plan_list"), params), '<th>Факт</th>', html=True)
+
+    def test_fact_journal_does_not_include_approved_plan(self):
+        from io import BytesIO
+        from openpyxl import load_workbook
+        self.approve(self.create([self.simple]).baseline_version)
+        DailyFact.objects.create(company=self.company, project_work=self.simple, date=JAN, actual_quantity=3)
+        self.client.force_login(self.planner)
+        params = {"start": str(JAN), "end": "2026-01-31"}
+        response = self.client.get(reverse("planning:journal_fact_list"), params)
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context["fact_only"])
+        row = self.row(response.context, "works", self.simple.name)
+        self.assertEqual(row["total"]["fact"], D(3))
+        self.assertIsNone(row["total"]["plan"])
+        self.assertNotContains(response, '<th>План</th>', html=True)
+        self.assertNotContains(response, '<th>Δ</th>', html=True)
+        response = self.client.get(reverse("planning:journal_fact_list"), {**params, "export": "xlsx"})
+        sheet = load_workbook(BytesIO(response.content)).active
+        self.assertEqual(sheet.max_column, 4)
+        self.assertEqual(sheet['C4'].value, "Факт")
+
     def test_excel_export_preserves_numeric_money_outlines_and_subtotals(self):
         from io import BytesIO
         from openpyxl import load_workbook
