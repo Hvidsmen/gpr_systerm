@@ -25,7 +25,9 @@ def matrix_workbook(report):
     sheet.merge_cells(start_row=2, start_column=1, end_row=2, end_column=width)
     sheet.append(['Объект / раздел / показатель', 'Ед. изм.'])
     sheet.append(['', ''])
-    for index, label in enumerate([column['label'] for column in columns] + ['За период / среднее']):
+    labels = [column['label'] for column in columns]
+    labels = ['За период / среднее', *labels] if report.get('total_first') else [*labels, 'За период / среднее']
+    for index, label in enumerate(labels):
         first = 3 + index*stride
         sheet.cell(3, first, label)
         sheet.merge_cells(start_row=3, start_column=first, end_row=3, end_column=first+stride-1)
@@ -52,7 +54,8 @@ def matrix_workbook(report):
 
     def values(row, depth, kind, category='data', money=False):
         result = [row['label'], '₽' if money else row.get('unit', '')]
-        for cell in [*row['cells'], row['total']]:
+        cells = [row['total'], *row['cells']] if report.get('total_first') else [*row['cells'], row['total']]
+        for cell in cells:
             keys = ('amount', 'fact_amount', 'delta_amount') if money else ('plan', 'fact', 'delta')
             keys = (keys[1],) if fact_only else (keys[0],) if plan_only else keys
             result.extend(cell.get(key) if cell.get(key) is not None else '—' for key in keys)

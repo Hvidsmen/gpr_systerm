@@ -17,6 +17,7 @@ def money_row(rows, label):
 
 
 def compact_overview(report):
+    report['total_first'] = True
     all_money, resource_totals = [], {}
     for entry in report['objects']:
         for section in entry['sections']:
