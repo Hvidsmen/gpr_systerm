@@ -84,7 +84,7 @@ class WorkProgressService:
         return list(series.values())[-1]["cumulative"] if series else ZERO
 
     @staticmethod
-    def planned(work, versions=None):
+    def planned(work, versions=None, *, global_versions=None):
         from apps.planning.models import DailyPlan, PlanVersion
 
         explicit_versions = versions is not None
@@ -106,7 +106,7 @@ class WorkProgressService:
             return result
         from apps.planning.models import GlobalPlanVersion
 
-        versions = GlobalPlanVersion.objects.filter(
+        versions = global_versions if global_versions is not None else GlobalPlanVersion.objects.filter(
             company=work.company,
             construction_object=work.section.construction_object,
             workspace__isnull=False,
@@ -115,10 +115,9 @@ class WorkProgressService:
         daily = {day: values["daily"] for day, values in result.items()}
         covered = []
         for version in versions:
-            spec = next(
-                (s for s in version.snapshot.get("works", []) if s["id"] == work.pk),
-                None,
-            )
+            if not hasattr(version, "_progress_work_specs"):
+                version._progress_work_specs = {s["id"]: s for s in version.snapshot.get("works", [])}
+            spec = version._progress_work_specs.get(work.pk)
             for day in list(daily):
                 if version.start_date <= day <= version.end_date and not any(
                     start <= day <= end for start, end in covered

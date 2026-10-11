@@ -46,8 +46,15 @@ def dashboard_view(request):
         lambda: {day: {"plan": Decimal("0"), "fact": Decimal("0")} for day in dates}
     )
     behind_schedule = []
-    for work in ProjectWork.objects.filter(company=request.user.company):
-        plans = WorkProgressService.planned(work)
+    # Decode each large frozen plan only once per request, rather than once per work.
+    global_versions = defaultdict(list)
+    for version in GlobalPlanVersion.objects.filter(
+        company=request.user.company, workspace__isnull=False,
+        status__in=["APPROVED", "COMPLETED"],
+    ).order_by("-approved_at", "-pk"):
+        global_versions[version.construction_object_id].append(version)
+    for work in ProjectWork.objects.filter(company=request.user.company).select_related("company", "section__construction_object__project"):
+        plans = WorkProgressService.planned(work, global_versions=global_versions[work.section.construction_object_id])
         facts = WorkProgressService.facts(work, until=today)
         for day in dates:
             by_unit[work.unit][day]["plan"] += plans.get(day, {}).get("daily", 0)

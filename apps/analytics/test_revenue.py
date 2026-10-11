@@ -53,6 +53,20 @@ class RevenueTests(TestCase):
         self.assertContains(response, f'data-revenue-select="{key}"')
         self.assertContains(response, "Разбор")
 
+    def test_home_dashboard_loads_global_snapshots_once(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        from apps.planning.models import GlobalPlanVersion
+        self.approve(self.create([self.simple]).baseline_version)
+        self.client.force_login(self.planner)
+        with CaptureQueriesContext(connection) as queries:
+            response = self.client.get(reverse("dashboard:index"))
+        self.assertEqual(response.status_code, 200)
+        snapshot_queries = [q["sql"] for q in queries if
+                            GlobalPlanVersion._meta.db_table in q["sql"] and
+                            '"snapshot"' in q["sql"]]
+        self.assertEqual(len(snapshot_queries), 1)
+
     def test_dashboard_builds_work_and_resource_matrix_once(self):
         from apps.planning.report_services import build_matrix
         self.approve(self.create([self.simple]).baseline_version)
