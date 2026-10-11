@@ -15,13 +15,8 @@ ZERO = Decimal(0)
 def work_detail(user, row, start, cutoff):
     work = row["work"]
     source = next((s for s in row["sources"] if s.start <= cutoff <= s.end), None)
-    spec = (
-        next(
-            (s for s in source.snapshot.get("works", []) if s["id"] == row["id"]), None
-        )
-        if source
-        else None
-    )
+    from apps.planning.report_projection import work_snapshot_spec
+    spec = work_snapshot_spec(source, row["id"]) if source else None
     spec = spec or work_specification(work)
     facts = historical_fact_rows(user.company, row["id"], cutoff)
     totals = defaultdict(lambda: ZERO)

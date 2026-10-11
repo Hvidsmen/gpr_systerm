@@ -1120,3 +1120,17 @@ class ProjectPlanMember(BaseCompanyModel):
             raise ValidationError("Снимки заполняются при фиксации состава.")
         self.full_clean()
         return super().save(*args, **kwargs)
+
+
+class ReportSnapshotProjection(models.Model):
+    """Rebuildable, period-sized report data for an immutable approval round."""
+    version = models.ForeignKey(GlobalPlanVersion, on_delete=models.CASCADE)
+    approval_round = models.PositiveIntegerField()
+    source_key = models.CharField(max_length=255, default="version")
+    start = models.DateField()
+    end = models.DateField()
+    snapshot = models.JSONField(default=dict)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['version', 'approval_round', 'source_key', 'start', 'end'],
+                                               name='unique_report_snapshot_period')]

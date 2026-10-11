@@ -46,16 +46,18 @@ def selected_objects(user, filters):
 
 
 def select_sources(user, filters, objects):
+    from .report_projection import period_snapshot
     result = defaultdict(list)
     if filters.get("consolidated"):
         parent = filters["consolidated"]
         for member in parent.members.filter(
             construction_object__in=objects
-        ).select_related("version", "review"):
+        ).select_related("version", "review").defer("snapshot", "version__snapshot", "review__snapshot"):
             result[member.construction_object_id].append(
                 Source(
                     member.version,
-                    member.snapshot,
+                    period_snapshot(member.version, filters["start"], filters["end"], member=member,
+                                    source_key=f"member-{member.pk}-{member.review_id}-{parent.fixed_at}"),
                     parent.start_date,
                     parent.end_date,
                     member,
@@ -83,14 +85,14 @@ def select_sources(user, filters, objects):
             continue
         remaining[object_id].difference_update(selected_days)
         result[object_id].append(
-            Source(version, version.snapshot, version.start_date, version.end_date)
+            Source(version, period_snapshot(version, filters["start"], filters["end"]), version.start_date, version.end_date)
         )
     for obj in objects:
         explicit = filters.get(f"version_{obj.pk}")
         if explicit:
             result[obj.pk] = [
                 Source(
-                    explicit, explicit.snapshot, explicit.start_date, explicit.end_date
+                    explicit, period_snapshot(explicit, filters["start"], filters["end"]), explicit.start_date, explicit.end_date
                 )
             ]
     return result
@@ -488,7 +490,7 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
                     if entry:
                         for item in entry["spec"].get("items", []):
                             items.setdefault(item["id"], item)
-                if spec["kind"] == "COMPOSITE":
+                if spec["kind"] == "COMPOSITE" and not filters.get("dashboard_compact"):
                     for item_id, item in items.items():
                         item_plan = {}
                         for day in all_days:
@@ -672,7 +674,7 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
                     )
             sections.append({"kind": kind, "label": label, "groups": grouped(rows)})
         for section in sections:
-            if section["kind"] != "works":
+            if section["kind"] != "works" and not filters.get("dashboard_compact"):
                 section["subtotals"] = add_resource_subtotals(section["groups"])
                 section["total_node"] = {
                     "label": "Итого: " + section["label"], "children": [],

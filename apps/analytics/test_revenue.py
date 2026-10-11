@@ -53,6 +53,32 @@ class RevenueTests(TestCase):
         self.assertContains(response, f'data-revenue-select="{key}"')
         self.assertContains(response, "Разбор")
 
+    def test_period_projection_filters_days_and_reuses_saved_data(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        from apps.planning.models import GlobalPlanVersion, ReportSnapshotProjection
+        from apps.planning.report_projection import period_snapshot
+        if connection.vendor != "sqlite":
+            self.skipTest("Native projection uses SQLite JSON functions")
+        version = self.approve(self.create([self.simple]).baseline_version)
+        version.refresh_from_db()
+        original = deepcopy(version.snapshot)
+        version = GlobalPlanVersion.objects.defer("snapshot").get(pk=version.pk)
+        with CaptureQueriesContext(connection) as queries:
+            projected = period_snapshot(version, JAN, date(2026, 1, 3))
+        self.assertIn("snapshot", version.get_deferred_fields())
+        self.assertNotIn("works", projected.get("monthly_inputs", {}))
+        for spec, old in zip(projected["works"], original["works"]):
+            self.assertEqual(spec["daily"], [row for row in old["daily"] if str(JAN) <= row["date"] <= "2026-01-03"])
+            self.assertEqual(spec.get("items"), old.get("items"))
+            self.assertEqual(spec.get("revenue_prices"), old.get("revenue_prices"))
+        self.assertEqual(ReportSnapshotProjection.objects.count(), 1)
+        with CaptureQueriesContext(connection) as queries:
+            again = period_snapshot(version, JAN, date(2026, 1, 3))
+        self.assertEqual(again, projected)
+        self.assertEqual(len(queries), 1)
+        self.assertNotIn(GlobalPlanVersion._meta.db_table, queries[0]["sql"])
+
     def test_report_version_choices_do_not_load_plan_snapshots(self):
         from django.db import connection
         from django.test.utils import CaptureQueriesContext

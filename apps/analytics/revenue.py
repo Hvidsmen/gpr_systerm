@@ -87,7 +87,7 @@ def build_dashboard(user, filters, today=None):
     cutoff = min(today or timezone.localdate(), end)
     days = days_between(start, end)
     report = build_matrix(
-        user, {**filters, "daily": True, "month": None, "sections": ["works"]}
+        user, {**filters, "daily": True, "month": None, "dashboard_compact": True, "sections": ["works"]}
     )
     work_ids = {int(row["key"].split("-w")[1]) for obj in report["objects"]
                 for row in rows_in(obj["sections"][0]["groups"])}
@@ -217,7 +217,7 @@ def build_dashboard(user, filters, today=None):
     if cutoff >= start:
         resource_report = build_matrix(
             user, {**filters, "start": start, "end": end, "daily": True,
-                   "month": None, "sections": ["labor", "equipment", "fuel"]}
+                   "month": None, "dashboard_compact": True, "sections": ["labor", "equipment", "fuel"]}
         )
         cutoff_index = (cutoff - start).days
         for original in resource_report["objects"]:
