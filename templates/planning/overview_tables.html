@@ -1,0 +1,11 @@
+{% for section in overview_tables %}
+<section class="card p-3 mb-3 overview-table-section" aria-label="{{ section.label }}">
+<h2 class="h5 mb-3">{{ section.label }}</h2>
+<div class="matrix-scroll"><table class="matrix-table table table-sm table-bordered">
+<thead><tr><th class="matrix-label" rowspan="2">Объект / группа</th><th colspan="3">{% if section.kind == 'labor' or section.kind == 'equipment' %}Среднее за период{% else %}За период{% endif %}</th>{% for column in columns %}<th colspan="3">{{ column.label }}</th>{% endfor %}</tr>
+<tr><th>План</th><th>Факт</th><th>Δ</th>{% for column in columns %}<th>План</th><th>Факт</th><th>Δ</th>{% endfor %}</tr></thead>
+<tbody>{% for row in section.rows %}
+<tr {% if row.is_total %}class="fw-bold"{% endif %}><th class="matrix-label">{% if row.children %}<button type="button" class="matrix-work-toggle" data-overview-toggle="{{ row.key }}" aria-expanded="false" aria-label="Группы: {{ row.label }}">▸</button>{% endif %}{{ row.label }} <small>({{ row.unit }})</small></th>{% include 'planning/report_cell.html' with cell=row.total %}{% for cell in row.cells %}{% include 'planning/report_cell.html' %}{% endfor %}</tr>
+{% for child in row.children %}<tr class="matrix-child" data-overview-parent="{{ row.key }}" hidden><th class="matrix-label ps-4">{{ child.label }} <small>({{ child.unit }})</small></th>{% include 'planning/report_cell.html' with cell=child.total row=child %}{% for cell in child.cells %}{% include 'planning/report_cell.html' with row=child %}{% endfor %}</tr>{% endfor %}
+{% empty %}<tr><td colspan="{{ column_count }}">Нет данных по выбранным условиям.</td></tr>{% endfor %}</tbody></table></div>
+</section>{% empty %}<div class="alert alert-info">Нет данных по выбранным условиям.</div>{% endfor %}

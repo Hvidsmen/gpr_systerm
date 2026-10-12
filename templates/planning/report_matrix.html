@@ -31,13 +31,16 @@
 <div class="d-flex gap-2 mb-3"><a class="btn btn-outline-primary btn-sm" href="{{ export_url }}">Экспорт Excel</a><button type="button" class="btn btn-outline-secondary btn-sm" data-expand-matrix="true">Развернуть группы</button><button type="button" class="btn btn-outline-secondary btn-sm" data-expand-matrix="false">Свернуть группы</button></div>
 {% if not shown %}<div class="alert alert-info">Все разделы скрыты. Включите нужный раздел кнопкой сверху.</div>{% endif %}
 <div id="plan-fact-matrix">
+{% if overview %}{% include "planning/overview_tables.html" %}{% else %}
 {% for entry in objects %}<details class="matrix-object card p-3 mb-3" open><summary class="h5 mb-2">{% if not entry.overview_total %}{{ entry.object.project }} · {% endif %}{{ entry.name }}</summary>
 {% for warning in entry.warnings %}<div class="alert alert-warning py-2">{{ warning }}</div>{% endfor %}
 {% if not fact_only and not overview %}<p class="small text-muted">План: {% for source in entry.sources %}<a href="{% url 'planning:global_detail' source.version.pk %}">v{{ source.version.version_number }}</a>{% if source.member.review_id %} (сохранён раунд {{ source.member.review.number }}){% endif %}{% if not forloop.last %}, {% endif %}{% empty %}{% if journal_kind == "plans" %}нет версии с выбранным статусом{% else %}нет согласованной версии{% endif %}{% endfor %}</p>{% endif %}
 {% for section in entry.sections %}<details class="matrix-section mb-2" data-matrix-section="{{ section.kind }}" open><summary class="h6">{{ section.label }}{% include 'planning/money_totals_summary.html' with money=section %}{% include 'planning/resource_totals_summary.html' with totals=section.subtotals %}</summary>{% for node in section.groups %}{% include 'planning/report_group.html' %}{% empty %}<p class="text-muted small ms-3">Нет строк по выбранным условиям.</p>{% endfor %}{% if section.total_node %}{% include 'planning/report_group.html' with node=section.total_node %}{% endif %}</details>{% endfor %}
 </details>{% empty %}<div class="alert alert-info">Нет доступных строительных объектов по выбранным условиям.</div>{% endfor %}
+{% endif %}
 </div>
 {% if not journal_kind %}<p class="small text-muted">Отклонение = факт − план. Прочерк означает отсутствие данных, введённый ноль отображается как 0. Для среднего факта показано количество заполненных дней. Цвет отклонений нейтральный: превышение ресурса не считается улучшением.</p>{% endif %}
 {% endif %}
 <script src="{% static 'planning/report_matrix.js' %}" defer></script>
+{% if overview %}<script src="{% static 'planning/overview_tables.js' %}" defer></script>{% endif %}
 {% endblock %}

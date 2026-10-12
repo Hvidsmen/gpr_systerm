@@ -45,3 +45,28 @@ def compact_overview(report):
             if section['kind'] == 'works':
                 section['kind'] = 'money'
     return report
+
+
+def overview_tables(report):
+    tables = {}
+    for entry in report['objects']:
+        for section in entry['sections']:
+            kind = section['kind']
+            table = tables.setdefault(kind, {'kind': kind, 'label': section['label'], 'rows': []})
+            if kind == 'money' or entry.get('overview_total'):
+                totals = [row for node in section['groups'] for row in node['rows']]
+            else:
+                totals = section.get('subtotals', [])
+            for index, total in enumerate(totals):
+                label = 'Все объекты · итого' if entry.get('overview_total') else str(entry['object'].project) + ' · ' + entry['name']
+                if kind == 'fuel':
+                    label += ' · ' + total['label'].removeprefix('Итого: ')
+                children = []
+                if not entry.get('overview_total') and kind != 'money':
+                    for node in section['groups']:
+                        for subtotal in node.get('subtotals', []):
+                            if subtotal['operation'] == total['operation'] and subtotal['unit'] == total['unit']:
+                                children.append({**subtotal, 'label': node['label']})
+                table['rows'].append({**total, 'label': label, 'is_total': bool(entry.get('overview_total')),
+                                      'key': f"overview-{kind}-{entry['object'].pk}-{index}", 'children': children})
+    return list(tables.values())

@@ -35,6 +35,10 @@ class MatrixReportTests(TestCase):
         self.assertEqual(response.status_code, 200)
         entries = response.context["objects"]
         self.assertTrue(entries[0]["overview_total"])
+        self.assertEqual(len(response.context["overview_tables"]), 4)
+        self.assertContains(response, 'overview-table-section', count=4)
+        self.assertContains(response, 'data-overview-toggle')
+        self.assertNotContains(response, '<summary class="h5')
         self.assertEqual(entries[0]["sections"][0]["kind"], "money")
         for entry in entries:
             for section in entry["sections"]:

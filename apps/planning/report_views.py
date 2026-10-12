@@ -24,7 +24,10 @@ class MatrixReport(View):
             report = build_matrix(user, {**filters, "daily": True})
             report["daily"] = True
             from .overview_services import compact_overview
-            return compact_overview(report)
+            report = compact_overview(report)
+            from .overview_services import overview_tables
+            report["overview_tables"] = overview_tables(report)
+            return report
         return build_matrix(user, filters)
 
     def get(self, request):
