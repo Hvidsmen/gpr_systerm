@@ -120,6 +120,27 @@ class FactDayWorkspaceTests(TestCase):
         self.assertEqual(self.client.post(self.url, data).status_code, 302)
         self.assertEqual(LaborFact.objects.get().hourly_rate, 350)
 
+    def test_imported_global_plan_populates_people_and_equipment_without_overwriting_facts(self):
+        LaborFact.objects.create(company=self.company, construction_object=self.obj, date=self.day, brigade=self.brigade, actual_workers=3)
+        GlobalPlanVersion.objects.create(company=self.company, construction_object=self.obj, version_number=1,
+            start_date=self.day, end_date=self.day, status='APPROVED', snapshot={'resources': {
+                'labor': [{'date': self.day.isoformat(), 'brigade_id': self.brigade.pk, 'planned_workers': 5, 'hourly_rate': '420'}],
+                'equipment': [{'date': self.day.isoformat(), 'equipment_type_id': self.equipment.pk, 'equipment_number': 'A123', 'planned_count': 2, 'hourly_rate': '750'},
+                              {'date': '2026-10-07', 'equipment_type_id': self.equipment.pk, 'equipment_number': 'OTHER', 'planned_count': 1}]}})
+        response = self.screen()
+        self.assertEqual(response.status_code, 200)
+        groups = {group['prefix']: group['formset'] for group in response.context['groups']}
+        people = [form for form in groups['labor'] if form['brigade'].value()]
+        self.assertEqual(len(people), 1)
+        self.assertEqual(people[0]['actual_workers'].value(), 3)
+        machines = [form for form in groups['equipment'] if form['equipment_type'].value()]
+        self.assertEqual(len(machines), 1)
+        self.assertEqual(machines[0]['equipment_number'].value(), 'A123')
+        self.assertIsNone(machines[0]['actual_count'].value())
+        self.assertEqual(str(machines[0]['hourly_rate'].value()), '750')
+        self.assertIn('2', machines[0].day_hint)
+        self.assertFalse(EquipmentFact.objects.exists())
+
     def test_approved_workspace_resource_plan_overrides_legacy(self):
         workspace = PlanningWorkspace.objects.create(company=self.company, construction_object=self.obj, name='Period', start_date=self.day, end_date=self.day)
         GlobalPlanVersion.objects.create(company=self.company, construction_object=self.obj, workspace=workspace, version_number=1, start_date=self.day, end_date=self.day, status='APPROVED', snapshot={'resources': {'labor': [{'date': self.day.isoformat(), 'brigade_id': self.brigade.pk, 'planned_workers': 5, 'hourly_rate': '420'}]}})

@@ -1,5 +1,6 @@
 """One object/day transaction for all four fact categories."""
 from urllib.parse import urlencode
+from types import SimpleNamespace
 
 from django import forms
 from django.contrib import messages
@@ -13,7 +14,8 @@ from django.views import View
 
 from core.mixins import CompanyRequiredMixin
 from apps.works.models import ProjectWork
-from apps.planning.workspace_services import current_workspace_version, virtual_resource_plan
+from apps.planning.workspace_services import virtual_resource_plan
+from apps.planning.report_services import select_sources
 from apps.production import forms as production_forms
 from apps.production.models import DailyFact
 from .resources import CONFIG
@@ -79,7 +81,9 @@ class FactDayWorkspaceView(CompanyRequiredMixin, View):
                 if key not in existing:
                     initial.append({'project_work': key[0], 'work_item': key[1], 'actual_quantity': None})
         configs = [('works', 'Работы и подработы', DailyFact, production_forms.DailyFactForm, work_facts, initial)]
-        version = current_workspace_version(company, obj, day)
+        sources = select_sources(request.user, {"start": day, "end": day, "mode": "latest"}, [obj]).get(obj.pk, [])
+        source = sources[0] if sources else None
+        version = SimpleNamespace(pk=source.version.pk, company=company, construction_object=obj, snapshot=source.snapshot) if source else None
         for kind, (plan_model, model, identities, planned, actual) in CONFIG.items():
             facts = model.objects.filter(company=company, construction_object=obj, date=day).order_by('pk')
             keys = set(tuple(getattr(row, name + '_id' if name in ('brigade', 'equipment_type') else name) for name in identities) for row in facts)
