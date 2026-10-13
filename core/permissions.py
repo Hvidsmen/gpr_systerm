@@ -3,8 +3,8 @@ from django.core.exceptions import PermissionDenied
 
 DEPARTMENT_ROLES = {'PRODUCTION_HEAD', 'HR_HEAD', 'TECH_HEAD'}
 GLOBAL_APPROVAL_ROLES = DEPARTMENT_ROLES | {'CEO'}
-ROLES = {'ADMIN', 'PLANNER', 'MANAGER', 'FOREMAN'} | GLOBAL_APPROVAL_ROLES
-READ_ROLES = {'ADMIN', 'PLANNER', 'MANAGER'} | GLOBAL_APPROVAL_ROLES
+ROLES = {'ADMIN', 'PLANNER', 'MANAGER', 'FOREMAN', 'OBSERVER'} | GLOBAL_APPROVAL_ROLES
+READ_ROLES = {'ADMIN', 'PLANNER', 'MANAGER', 'OBSERVER'} | GLOBAL_APPROVAL_ROLES
 PLAN_ROLES = {'ADMIN', 'PLANNER'}
 FACT_ROLES = {'ADMIN', 'FOREMAN'}
 APPROVAL_ROLES = {'ADMIN', 'MANAGER'}
@@ -68,6 +68,19 @@ def scope_queryset(queryset, user):
 def check_route(user, match, method):
     namespace, name = match.namespace, match.url_name
     role = role_code(user)
+    if role == 'OBSERVER':
+        require_roles(user, READ_ROLES)
+        if namespace == 'accounts' and name == 'logout':
+            return
+        if method not in {'GET', 'HEAD', 'OPTIONS'}:
+            raise PermissionDenied('Наблюдателю доступен только просмотр данных.')
+        if namespace == 'accounts':
+            if name == 'settings' or name == 'user_detail' and match.kwargs.get('pk') == user.pk:
+                return
+        elif namespace in {'dashboard', 'planning', 'production', 'rotation', 'projects', 'works', 'resources'}:
+            if name.endswith(('_list', '_detail', '_export', '_versions')) or name in {'index', 'revenue', 'report_matrix', 'plan_matrix', 'fact_day_workspace', 'fact_daily', 'fact_input'}:
+                return
+        raise PermissionDenied('Наблюдателю доступен только просмотр данных.')
     if namespace == 'accounts':
         if name in {'settings', 'logout'}:
             return

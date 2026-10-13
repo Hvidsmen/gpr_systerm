@@ -7,6 +7,7 @@ class UserRole(models.TextChoices):
     PLANNER = 'PLANNER', _('Планировщик')
     MANAGER = 'MANAGER', _('Руководитель')
     FOREMAN = 'FOREMAN', _('Мастер')
+    OBSERVER = 'OBSERVER', _('Наблюдатель')
     PRODUCTION_HEAD = 'PRODUCTION_HEAD', _('Руководитель производства')
     HR_HEAD = 'HR_HEAD', _('Руководитель кадровой службы')
     TECH_HEAD = 'TECH_HEAD', _('Руководитель технической службы')
