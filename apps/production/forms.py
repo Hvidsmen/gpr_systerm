@@ -224,3 +224,17 @@ class FactInputFilterForm(CompanyFormMixin, forms.Form):
     section = forms.ModelChoiceField(
         queryset=Section.objects.all(), required=False, label="Раздел"
     )
+
+
+class DayActuationForm(forms.Form):
+    actuated = forms.BooleanField(required=False, label='Актировка объекта за день')
+    actuation_type = forms.ChoiceField(required=False, label='Тип актировки', choices=[('', 'Выберите тип'), ('DAY', 'Дневная'), ('NIGHT', 'Ночная'), ('FULL_DAY', 'Суточная')])
+    reason = forms.CharField(required=False, label='Причина актировки', widget=forms.Textarea(attrs={'rows': 2, 'class': 'form-control'}))
+
+    def clean(self):
+        data = super().clean()
+        if data.get('actuated'):
+            for name in ('actuation_type', 'reason'):
+                if not data.get(name):
+                    self.add_error(name, 'Обязательное поле при актировке.')
+        return data

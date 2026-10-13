@@ -66,6 +66,38 @@ class FactDayWorkspaceTests(TestCase):
                      'fuel-0-fuel_type': 'DIESEL', 'fuel-0-actual_balance': '500', 'fuel-0-actual_liters': '30'})
         return data
 
+    def test_actuation_zeros_all_work_but_preserves_resources(self):
+        from apps.production.models import DayActuation
+        for kind in ('DAY', 'NIGHT', 'FULL_DAY'):
+            data = self.fill(self.payload())
+            data.update({'actuated': 'on', 'actuation_type': kind, 'reason': 'Сильный ветер'})
+            response = self.client.post(self.url, data)
+            self.assertEqual(response.status_code, 302)
+            self.assertTrue(DailyFact.objects.exists())
+            self.assertFalse(DailyFact.objects.exclude(actual_quantity=0, actual_value=0).exists())
+            self.assertEqual(LaborFact.objects.get().actual_workers, 5)
+            record = DayActuation.objects.get()
+            self.assertEqual(record.actuation_type, kind)
+            self.assertEqual(record.reason, 'Сильный ветер')
+            self.assertTrue(self.screen().context['actuation'].initial['actuated'])
+            DayActuation.objects.all().delete()
+
+    def test_actuation_requires_reason_and_type_without_partial_save(self):
+        from apps.production.models import DayActuation
+        data = self.fill(self.payload())
+        data['actuated'] = 'on'
+        self.assertEqual(self.client.post(self.url, data).status_code, 400)
+        self.assertFalse(DayActuation.objects.exists())
+        self.assertFalse(DailyFact.objects.exists())
+        self.assertFalse(LaborFact.objects.exists())
+
+    def test_other_entry_cannot_write_nonzero_during_actuation(self):
+        from apps.production.models import DayActuation
+        from django.core.exceptions import ValidationError
+        DayActuation.objects.create(company=self.company, construction_object=self.obj, date=self.day, actuation_type='DAY', reason='Мороз')
+        with self.assertRaises(ValidationError):
+            DailyFact(company=self.company, project_work=self.work, date=self.day, actual_quantity=1).save()
+
     def test_yesterday_is_default_and_foreman_can_save_it(self):
         from unittest.mock import patch
         with patch('apps.production.views.day_workspace.timezone.localdate', return_value=date(2026, 10, 7)):

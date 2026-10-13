@@ -115,6 +115,8 @@ class DailyFact(BaseCompanyModel):
             and self.deviation_reason.company_id != self.company_id
         ):
             raise ValidationError({"deviation_reason": "Причина другой компании."})
+        if self.project_work_id and self.date and self.actual_quantity and DayActuation.objects.filter(company_id=self.company_id, construction_object_id=self.project_work.section.construction_object_id, date=self.date).exists():
+            raise ValidationError({'actual_quantity': 'В день актировки факт работ должен быть нулевым.'})
         if self.actual_quantity is not None and self.actual_quantity < 0:
             raise ValidationError(
                 {"actual_quantity": "Объём не может быть отрицательным."}
@@ -424,3 +426,24 @@ class LegacyResourceRecord(BaseCompanyModel):
     class Meta:
         unique_together = [["source_model", "source_pk"]]
         ordering = ["source_model", "source_pk"]
+
+
+class DayActuation(BaseCompanyModel):
+    """Recorded shutdown of all work on a construction object for one day."""
+    TYPES = [('DAY', 'Дневная'), ('NIGHT', 'Ночная'), ('FULL_DAY', 'Суточная')]
+    construction_object = models.ForeignKey('projects.ConstructionObject', on_delete=models.CASCADE, verbose_name='Строительный объект')
+    date = models.DateField('Дата')
+    actuation_type = models.CharField('Тип актировки', max_length=16, choices=TYPES)
+    reason = models.TextField('Причина актировки')
+    reported_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['construction_object', 'date'], name='unique_object_day_actuation')]
+        verbose_name = 'Актировка объекта за день'
+
+    def clean(self):
+        super().clean()
+        if self.construction_object_id and self.construction_object.company_id != self.company_id:
+            raise ValidationError({'construction_object': 'Объект другой компании.'})
+        if not self.reason.strip():
+            raise ValidationError({'reason': 'Укажите причину актировки.'})

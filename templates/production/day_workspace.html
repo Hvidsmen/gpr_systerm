@@ -17,6 +17,9 @@
 <fieldset {% if not request.user.is_admin and not request.user.is_foreman %}disabled{% endif %}>
 <input type="hidden" name="construction_object" value="{{ selector.cleaned_data.construction_object.pk }}">
 <input type="hidden" name="date" value="{{ selector.cleaned_data.date|date:'Y-m-d' }}">
+<section class="card card-body mb-3"><h2 class="h4">Актировка</h2>
+{% include 'forms/fields.html' with form=actuation %}
+<p class="text-muted mb-0">При любом типе актировки все работы объекта за выбранный день сохраняются с нулевым фактом. Введённые объёмы будут заменены нулями. Люди, техника и ГСМ заполняются отдельно. Снятие отметки не восстанавливает прежние объёмы.</p></section>
 <p>Существующие записи заполнены. Строки ресурсов из плана содержат ресурс и ставку; фактическое количество вводится вручную. Пустые строки не сохраняются. Ноль означает нулевой факт.</p>
 {% for group in groups %}
 <section id="section-{{ group.prefix }}" class="card mb-4" style="scroll-margin-top:80px">
