@@ -1,6 +1,6 @@
 {% extends 'base.html' %}{% load static revenue_tags %}
 {% block title %}План/Факт дашборд{% endblock %}
-{% block extra_css %}<link href="{% static 'analytics/revenue.css' %}?v=resources16" rel="stylesheet">{% endblock %}
+{% block extra_css %}<link href="{% static 'analytics/revenue.css' %}?v=resources17" rel="stylesheet">{% endblock %}
 {% block content %}
 <div class="revenue-dashboard">
 <header class="d-flex justify-content-between align-items-center mb-3"><h1 class="h3 mb-0">План/Факт дашборд</h1><button type="button" class="btn btn-outline-secondary btn-sm" data-dashboard-print>Печать / PDF</button>{% if cutoff %}<span class="text-muted">Дата среза: <strong>{{ cutoff|date:'d.m.Y' }}</strong></span>{% endif %}</header>
@@ -30,4 +30,4 @@
 {% include 'analytics/resource_sections.html' %}{% endif %}</div>
 {{ chart|json_script:'revenue-data' }}
 {% endblock %}
-{% block extra_js %}<script src="{% static 'analytics/chart_tooltips.js' %}?v=1" defer></script><script src="{% static 'analytics/revenue.js' %}?v=dynamic6" defer></script><script src="{% static 'analytics/resource_trends.js' %}?v=10" defer></script><script src="{% static 'analytics/print_dashboard.js' %}?v=2" defer></script>{% endblock %}
+{% block extra_js %}<script src="{% static 'analytics/chart_tooltips.js' %}?v=1" defer></script><script src="{% static 'analytics/revenue.js' %}?v=dynamic6" defer></script><script src="{% static 'analytics/resource_trends.js' %}?v=10" defer></script><script src="{% static 'analytics/print_dashboard.js' %}?v=3" defer></script>{% endblock %}

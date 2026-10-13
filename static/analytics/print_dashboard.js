@@ -5,7 +5,8 @@
     clean();
     const copy=dashboard.cloneNode(true);copy.id='gpr-print-document';
     copy.querySelectorAll('details').forEach(item=>item.open=true);
-    copy.querySelectorAll('tr[data-group-child]').forEach(item=>item.remove());
+    copy.querySelectorAll('tr[data-group-child],.revenue-table tbody tr[data-object-child]:not(.revenue-group)').forEach(item=>item.remove());
+    copy.querySelectorAll('[data-group-arrow]').forEach(item=>item.remove());
     copy.querySelectorAll('tr[hidden]').forEach(item=>item.removeAttribute('hidden'));
     copy.querySelectorAll('.resource-section[data-resource-kind="labor"] .resource-group,.resource-section[data-resource-kind="equipment"] .resource-group').forEach(group=>{
       [...group.children].forEach(item=>{if(item.tagName!=='SUMMARY')item.remove();});
@@ -24,7 +25,7 @@
     }
     copy.querySelectorAll('button,.btn,.chart-series-legend').forEach(item=>{
       if(item.matches('[data-revenue-select],[data-resource-select],.resource-share-item')){
-        const label=document.createElement('span');label.className=item.className;label.replaceChildren(...item.childNodes);item.replaceWith(label);
+        const label=document.createElement('span');label.className=item.className;label.classList.remove('btn','btn-link','btn-sm');label.replaceChildren(...item.childNodes);item.replaceWith(label);
       }else if(!item.classList.contains('chart-series-legend'))item.remove();
     });
     copy.querySelectorAll('[id]').forEach(item=>item.removeAttribute('id'));
