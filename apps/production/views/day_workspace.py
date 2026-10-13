@@ -1,4 +1,5 @@
 """One object/day transaction for all four fact categories."""
+from datetime import timedelta
 from urllib.parse import urlencode
 from types import SimpleNamespace
 
@@ -58,7 +59,7 @@ class FactDayWorkspaceView(CompanyRequiredMixin, View):
 
     def get(self, request):
         selector = production_forms.ObjectDateForm(
-            request.GET or None, user=request.user, initial={'date': timezone.localdate()}
+            request.GET or None, user=request.user, initial={'date': timezone.localdate() - timedelta(days=1)}
         )
         return self.display(request, selector)
 

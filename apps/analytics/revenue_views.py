@@ -253,7 +253,7 @@ class RevenueExport(View):
                     ]
                 )
         resources = workbook.create_sheet("Ресурсы")
-        resources.append(["Дата среза", str(data["cutoff"])])
+        resources.append(["Дата среза", str(data["resource_cutoff"])])
         resources.append(["Объект", "Ресурс", "План", "Факт", "Отклонение", "Единица"])
         for obj in data["resource_objects"]:
             for row in obj["rows"]:

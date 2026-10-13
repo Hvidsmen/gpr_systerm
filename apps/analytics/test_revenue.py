@@ -105,7 +105,7 @@ class RevenueTests(TestCase):
         snapshot_queries = [q["sql"] for q in queries if
                             GlobalPlanVersion._meta.db_table in q["sql"] and
                             '"snapshot"' in q["sql"]]
-        self.assertEqual(len(snapshot_queries), 1)
+        self.assertEqual(len(snapshot_queries), 0)
 
     def test_dashboard_builds_work_and_resources_in_separate_matrices(self):
         from apps.planning.report_services import build_matrix
@@ -273,6 +273,11 @@ class RevenueTests(TestCase):
         self.assertEqual(json.loads(sections["fuel"]["trend"])["plan"], [500.0] * 31)
         self.assertEqual(sections["labor"]["objects"][0]["total"]["plan"], D(10))
         self.assertEqual(sections["labor"]["objects"][0]["groups"][0]["total"]["plan"], D(10))
+        current = build_dashboard(self.planner, self.data(), today=JAN.replace(day=15))
+        self.assertEqual(current["resource_cutoff"], JAN.replace(day=14))
+        self.assertEqual(current["cutoff"], JAN.replace(day=15))
+        self.assertEqual(current["resources"]["labor"]["plan"], D(10))
+        self.assertIsNone(current["resources"]["labor"]["fact"])
         partial_period = build_dashboard(self.planner, self.data(), today=JAN)
         future_trend = json.loads(partial_period["resource_sections"][0]["trend"])
         self.assertTrue(all(value is None for value in future_trend["fact"][1:]))

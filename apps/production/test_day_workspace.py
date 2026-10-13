@@ -66,6 +66,14 @@ class FactDayWorkspaceTests(TestCase):
                      'fuel-0-fuel_type': 'DIESEL', 'fuel-0-actual_balance': '500', 'fuel-0-actual_liters': '30'})
         return data
 
+    def test_yesterday_is_default_and_foreman_can_save_it(self):
+        from unittest.mock import patch
+        with patch('apps.production.views.day_workspace.timezone.localdate', return_value=date(2026, 10, 7)):
+            response = self.client.get(self.url)
+            self.assertEqual(response.context['selector'].initial['date'], self.day)
+            self.assertEqual(self.client.post(self.url, self.fill(self.payload())).status_code, 302)
+        self.assertEqual(LaborFact.objects.get().date, self.day)
+
     def test_create_all_categories_and_repeat_without_duplicates(self):
         response = self.client.post(self.url, self.fill(self.payload()))
         self.assertEqual(response.status_code, 302)

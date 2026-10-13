@@ -1,3 +1,4 @@
+from datetime import timedelta
 from django.views import View
 from core.permissions import scope_queryset
 from django.shortcuts import render, redirect
@@ -37,7 +38,7 @@ class FactInputView(View):
                 "filter_form": filters,
                 "form": form
                 or DailyFactForm(
-                    user=request.user, initial={"date": timezone.localdate()}
+                    user=request.user, initial={"date": timezone.localdate() - timedelta(days=1)}
                 ),
                 "works_data": data,
                 "works_with_plan": data,

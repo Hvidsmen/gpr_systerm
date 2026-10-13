@@ -3,7 +3,7 @@
 import logging
 from time import perf_counter
 from collections import defaultdict
-from datetime import date
+from datetime import date, timedelta
 import json
 from decimal import Decimal
 from django.utils import timezone
@@ -89,7 +89,9 @@ def build_dashboard(user, filters, today=None):
     log = logging.getLogger("gpr.report")
     log.warning("GPR revenue: work matrix %s — %s", filters["start"], filters["end"])
     start, end = filters["start"], filters["end"]
-    cutoff = min(today or timezone.localdate(), end)
+    current_day = today or timezone.localdate()
+    cutoff = min(current_day, end)
+    resource_cutoff = min(current_day - timedelta(days=1), end) if (start.year, start.month) == (current_day.year, current_day.month) else cutoff
     days = days_between(start, end)
     report = build_matrix(
         user, {**filters, "daily": True, "month": None, "dashboard_compact": True, "sections": ["works"]}
@@ -225,17 +227,18 @@ def build_dashboard(user, filters, today=None):
     log.warning("GPR revenue: work metrics ready %.1fs; works=%s", perf_counter()-started, len(all_rows))
     # Snapshot values, never sum headcounts or fuel balance across dates.
     resource_objects = []
+    data["resource_cutoff"] = resource_cutoff
     if cutoff >= start:
         resource_report = build_matrix(
             user, {**filters, "start": start, "end": end, "daily": True,
                    "month": None, "dashboard_compact": True, "sections": ["labor", "equipment", "fuel"]}
         )
-        cutoff_index = (cutoff - start).days
+        cutoff_index = (resource_cutoff - start).days
         for original in resource_report["objects"]:
             obj = {**original, "sections": [section for section in original["sections"] if section["kind"] != "works"]}
             for section in obj["sections"]:
                 for row in rows_in(section["groups"]):
-                    row["total"] = row["cells"][cutoff_index]
+                    row["total"] = row["cells"][cutoff_index] if cutoff_index >= 0 else {"plan": None, "fact": None, "delta": None}
             entries = []
             for section in obj["sections"]:
                 for row in rows_in(section["groups"]):
@@ -273,7 +276,7 @@ def build_dashboard(user, filters, today=None):
     data["resources"] = resource_totals(
         [r for obj in resource_objects for r in obj["rows"]]
     )
-    data["resource_sections"] = resource_sections(resource_objects, data["resources"], days, cutoff)
+    data["resource_sections"] = resource_sections(resource_objects, data["resources"], days, resource_cutoff)
     log.warning("GPR revenue: dashboard data ready %.1fs", perf_counter()-started)
     return data
 
