@@ -5,7 +5,11 @@
     clean();
     const copy=dashboard.cloneNode(true);copy.id='gpr-print-document';
     copy.querySelectorAll('details').forEach(item=>item.open=true);
+    copy.querySelectorAll('tr[data-group-child]').forEach(item=>item.remove());
     copy.querySelectorAll('tr[hidden]').forEach(item=>item.removeAttribute('hidden'));
+    copy.querySelectorAll('.resource-section[data-resource-kind="labor"] .resource-group,.resource-section[data-resource-kind="equipment"] .resource-group').forEach(group=>{
+      [...group.children].forEach(item=>{if(item.tagName!=='SUMMARY')item.remove();});
+    });
     const form=copy.querySelector('#revenue-filters');
     if(form){
       const summary=document.createElement('p');summary.className='print-filter-summary';
