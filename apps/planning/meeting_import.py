@@ -569,7 +569,7 @@ def unique_match(candidates, name, description):
     return matches[0] if matches else None
 
 
-def resolve_sheet(company, project, sheet, target_object=None, require_all=True):
+def resolve_sheet(company, project, sheet, target_object=None, require_all=True, allow_parent_quantity=False):
     """No writes: resolve identities and surface ambiguity before confirmation."""
     obj = target_object or unique_match(
         ConstructionObject.objects.filter(company=company, project=project),
@@ -645,7 +645,7 @@ def resolve_sheet(company, project, sheet, target_object=None, require_all=True)
             target = (
                 matches[0] if matches else child_matches[0] if child_matches else None
             )
-            if matches and target.kind == "COMPOSITE":
+            if matches and target.kind == "COMPOSITE" and not allow_parent_quantity:
                 raise ValidationError(
                     f"«{target.name}»: для составной работы нужны строки всех её подработ, а не объём основной работы."
                 )
@@ -744,7 +744,7 @@ def resolve_sheet(company, project, sheet, target_object=None, require_all=True)
 
 @transaction.atomic
 def apply_meeting_import(
-    user, project_id, sheets, selected, start, end, target_version=None
+    user, project_id, sheets, selected, start, end, target_version=None, allow_parent_quantity=False
 ):
     require_roles(user, PLAN_ROLES)
     project = Project.objects.select_for_update().get(
@@ -774,6 +774,7 @@ def apply_meeting_import(
             project,
             sheet,
             target_version.construction_object if target_version else None,
+            allow_parent_quantity=allow_parent_quantity,
         )
         workspace = (
             target_version.workspace

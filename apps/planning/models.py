@@ -1167,3 +1167,9 @@ class SmgWorkMapping(BaseCompanyModel):
             raise ValidationError('Работы должны принадлежать ГПР макрообъекта и СМГ субобъекта.')
         if self.gpr_work.unit != self.smg_work.unit or self.gpr_work.kind != self.smg_work.kind:
             raise ValidationError('Единица и тип работ ГПР и СМГ должны совпадать.')
+
+
+class GprImportReceipt(BaseCompanyModel):
+    nonce = models.UUIDField(unique=True)
+    workspace = models.ForeignKey(PlanningWorkspace, on_delete=models.SET_NULL, null=True, blank=True)
+    imported_by = models.ForeignKey('accounts.User', on_delete=models.PROTECT)

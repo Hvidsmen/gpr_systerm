@@ -122,3 +122,6 @@ urlpatterns += [path('gpr/<int:pk>/distribution/', DistributionDetail.as_view(),
 
 from .hierarchy_views import SmgDaysEdit
 urlpatterns += [path('smg/<int:pk>/days/edit/', SmgDaysEdit.as_view(), name='smg_days_edit')]
+
+from .gpr_excel_views import GprExcelImport
+urlpatterns += [path('gpr/excel-import/', GprExcelImport.as_view(), name='gpr_excel_import')]

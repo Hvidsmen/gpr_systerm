@@ -3,3 +3,5 @@ psycopg2-binary>=2.9,<3
 Pillow>=10.0,<13
 python-dotenv>=1.2,<2
 openpyxl>=3.1,<4
+
+xlrd>=2.0,<3
