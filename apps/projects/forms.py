@@ -21,6 +21,8 @@ class ProjectForm(forms.ModelForm):
 class ConstructionObjectForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields['parent'].label = 'Макрообъект (родитель)'
+        self.fields['parent'].help_text = 'Например, для КТП-1 и КТП-2 выберите КТП. Для макрообъекта оставьте поле пустым.'
         self.fields['parent'].queryset = ConstructionObject.objects.filter(
             company_id=self.instance.company_id, project_id=self.instance.project_id,
         ).exclude(pk=self.instance.pk)

@@ -42,7 +42,11 @@ def selected_objects(user, filters):
         query = query.filter(project=filters["project"])
     if filters.get("objects"):
         query = query.filter(pk__in=filters["objects"].values("pk"))
-    return list(query.order_by("project__name", "name", "pk"))
+    result = list(query.order_by("project__name", "name", "pk"))
+    from .models import PlanningWorkspace
+    selected_ids = {obj.pk for obj in result}
+    subobjects = set(PlanningWorkspace.objects.filter(company=user.company, parent_gpr__construction_object_id__in=selected_ids, start_date__lte=filters['end'], end_date__gte=filters['start']).values_list('construction_object_id', flat=True))
+    return result if filters.get('flat_objects') else [obj for obj in result if obj.pk not in subobjects or obj.parent_id not in selected_ids]
 
 
 def select_sources(user, filters, objects):
@@ -317,6 +321,9 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
         key = (row["construction_object_id"], row["fuel_type"])
         resource_facts["fuel"][key][row["date"]] += row["actual_liters"]
         resource_facts["balance"][key][row["date"]] += row["actual_balance"]
+    if not plan_only:
+        from .hierarchy_services import rollup_subobject_facts
+        rollup_subobject_facts(user, objects, sources, start, end, work_facts, resource_facts)
     result = []
     for obj in objects:
         available = sources.get(obj.pk, [])

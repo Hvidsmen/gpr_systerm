@@ -463,8 +463,12 @@ def _build_workspace_snapshot(version, *, validate_inputs=True):
         works, resource_plans, warnings = build_forecast(
             version, inputs, resources, transform_snapshot(baseline_snapshot(version), version.company)
         )
+    from .hierarchy_services import smg_warnings
+    warnings.extend(smg_warnings(workspace))
     return json_ready_in_place(
         {
+            "parent_gpr_id": workspace.parent_gpr_id,
+            "gpr_work_mappings": list(workspace.gpr_work_mappings.values("gpr_work_id", "smg_work_id")),
             "schema": 2,
             "workspace_id": workspace.pk,
             "object_id": workspace.construction_object_id,

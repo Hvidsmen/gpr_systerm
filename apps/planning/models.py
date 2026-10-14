@@ -494,7 +494,11 @@ class PlanningWorkspace(BaseCompanyModel):
         verbose_name="Базовая версия",
     )
 
+    parent_gpr = models.ForeignKey(GlobalPlanVersion, on_delete=models.PROTECT, null=True, blank=True,
+                                   related_name='subobject_smg_workspaces', verbose_name='Версия ГПР макрообъекта')
+
     class Meta:
+        constraints = [models.UniqueConstraint(fields=['parent_gpr', 'construction_object', 'start_date'], name='unique_gpr_subobject_smg_month')]
         ordering = ["-created_at"]
         verbose_name = "Рабочее пространство планирования"
         verbose_name_plural = "Рабочие пространства планирования"
@@ -515,6 +519,13 @@ class PlanningWorkspace(BaseCompanyModel):
             and self.construction_object.company_id != self.company_id
         ):
             raise ValidationError({"construction_object": "Объект другой компании."})
+        if self.parent_gpr_id:
+            from calendar import monthrange
+            parent = GlobalPlanVersion.objects.defer("snapshot").get(pk=self.parent_gpr_id)
+            if parent.company_id != self.company_id or self.construction_object.parent_id != parent.construction_object_id:
+                raise ValidationError({'parent_gpr': 'СМГ должен относиться к субобъекту выбранного ГПР своей компании.'})
+            if self.start_date and self.end_date and (self.start_date.day != 1 or self.end_date != self.start_date.replace(day=monthrange(self.start_date.year, self.start_date.month)[1]) or self.start_date < parent.start_date or self.end_date > parent.end_date):
+                raise ValidationError('СМГ должен охватывать один полный месяц внутри периода ГПР.')
         if self.baseline_version_id and (
             self.baseline_version.workspace_id != self.pk
             or self.baseline_version.version_kind != "BASELINE"
@@ -536,6 +547,7 @@ class PlanningWorkspace(BaseCompanyModel):
                     "start_date",
                     "end_date",
                     "baseline_version_id",
+                    "parent_gpr_id",
                 ]:
                     if getattr(old, name) != getattr(self, name):
                         raise ValidationError(
@@ -590,6 +602,8 @@ class WorkMonthAllocation(BaseCompanyModel):
             raise ValidationError(
                 {"work": "Выберите работу этого строительного объекта."}
             )
+        if self.version_id and self.version.workspace_id and self.version.workspace.parent_gpr_id and self.work_id and not self.version.workspace.gpr_work_mappings.filter(smg_work_id=self.work_id).exists():
+            raise ValidationError({'work': 'Работы СМГ должны быть связаны с работами исходного ГПР.'})
         if self.quantity is not None and self.quantity < 0:
             raise ValidationError({"quantity": "Объём не может быть отрицательным."})
         if self.load_profile_id and self.load_profile.company_id != self.company_id:
@@ -1134,3 +1148,22 @@ class ReportSnapshotProjection(models.Model):
     class Meta:
         constraints = [models.UniqueConstraint(fields=['version', 'approval_round', 'source_key', 'start', 'end'],
                                                name='unique_report_snapshot_period')]
+
+
+class SmgWorkMapping(BaseCompanyModel):
+    item_mapping = models.JSONField(default=dict, blank=True)
+    workspace = models.ForeignKey(PlanningWorkspace, on_delete=models.CASCADE, related_name='gpr_work_mappings')
+    gpr_work = models.ForeignKey('works.ProjectWork', on_delete=models.PROTECT, related_name='smg_mappings')
+    smg_work = models.ForeignKey('works.ProjectWork', on_delete=models.PROTECT, related_name='gpr_mappings')
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['workspace', 'gpr_work'], name='unique_smg_gpr_work'), models.UniqueConstraint(fields=['workspace', 'smg_work'], name='unique_smg_target_work')]
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if not self.workspace.parent_gpr_id or self.workspace.company_id != self.company_id or self.gpr_work.company_id != self.company_id or self.smg_work.company_id != self.company_id:
+            raise ValidationError('Связь работ допустима только внутри СМГ своей компании.')
+        if self.gpr_work.section.construction_object_id != self.workspace.parent_gpr.construction_object_id or self.smg_work.section.construction_object_id != self.workspace.construction_object_id:
+            raise ValidationError('Работы должны принадлежать ГПР макрообъекта и СМГ субобъекта.')
+        if self.gpr_work.unit != self.smg_work.unit or self.gpr_work.kind != self.smg_work.kind:
+            raise ValidationError('Единица и тип работ ГПР и СМГ должны совпадать.')

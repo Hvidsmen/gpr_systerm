@@ -1,0 +1,7 @@
+{% extends 'base.html' %}{% block content %}<h1>Создание СМГ субобъекта</h1><p>ГПР {{ version.construction_object }} · v{{ version.version_number }} · {{ month|date:'m.Y' }}</p>
+<form method="get" class="card card-body mb-3">{% include 'forms/fields.html' with form=filter_form %}<button class="btn btn-outline-primary">Выбрать месяц</button></form>
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+<form method="post">{% csrf_token %}{% include 'forms/fields.html' with form=child_form %}{{ formset.management_form }}{{ formset.non_form_errors }}
+<p class="text-muted">Укажите месячные объёмы вручную, включая нулевые. Работы и подработы будут перенесены в субобъект со связью с работами ГПР. Затем задайте распределение по дням через профиль или импорт дневного плана Excel. Людей, технику и ГСМ добавьте в редакторе СМГ.</p>
+<table class="table"><thead><tr><th>Работа ГПР</th><th>Объём СМГ</th></tr></thead><tbody>{% for row in formset %}<tr><td>{{ row.work }}{{ row.gpr_label }}{{ row.work.errors }}</td><td>{{ row.quantity }}{{ row.quantity.errors }}{{ row.non_field_errors }}</td></tr>{% endfor %}</tbody></table>
+<button class="btn btn-primary">Создать СМГ и открыть редактор</button></form>{% endblock %}

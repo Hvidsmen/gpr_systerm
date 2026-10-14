@@ -47,6 +47,7 @@ def draft_snapshot(version, start, end):
 
 
 def journal_matrix(user, filters, kind):
+    filters = {**filters, 'flat_objects': True}
     if kind == 'facts':
         result = build_matrix(user, filters, source_overrides={})
         result['fact_only'] = True

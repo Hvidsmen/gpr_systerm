@@ -1,4 +1,5 @@
 from django.db import models
+from django.core.exceptions import ValidationError
 from django.utils.translation import gettext_lazy as _
 
 from core.enums import ProjectStatus
@@ -45,6 +46,23 @@ class ConstructionObject(BaseCompanyModel):
         verbose_name_plural = _('строительные объекты')
         ordering = ['name']
         unique_together = [['project', 'code']]
+
+    def clean(self):
+        super().clean()
+        if self.pk:
+            old_parent = type(self).objects.values_list('parent_id', flat=True).get(pk=self.pk)
+            if old_parent != self.parent_id:
+                from apps.planning.models import PlanningWorkspace
+                if PlanningWorkspace.objects.filter(construction_object=self, parent_gpr__isnull=False).exists():
+                    raise ValidationError({'parent': 'Объект связан с СМГ: менять родительский объект нельзя.'})
+        ancestor, seen = self.parent, set()
+        while ancestor:
+            if ancestor.company_id != self.company_id or ancestor.project_id != self.project_id:
+                raise ValidationError({'parent': 'Родитель должен принадлежать той же компании и проекту.'})
+            if ancestor.pk == self.pk or ancestor.pk in seen:
+                raise ValidationError({'parent': 'Нельзя создавать цикл объектов.'})
+            seen.add(ancestor.pk)
+            ancestor = ancestor.parent
 
     def __str__(self):
         return self.name

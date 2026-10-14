@@ -116,3 +116,9 @@ urlpatterns += [path('journals/<str:kind>/delete/', JournalBulkDelete.as_view(
 
 from .report_views import PlanJournal, FactJournal
 urlpatterns += [path('journals/plans/', PlanJournal.as_view(), name='journal_plan_list'), path('journals/facts/', FactJournal.as_view(), name='journal_fact_list')]
+
+from .hierarchy_views import DistributionDetail, SmgCreate
+urlpatterns += [path('gpr/<int:pk>/distribution/', DistributionDetail.as_view(), name='gpr_distribution_detail'), path('gpr/<int:pk>/smg/create/', SmgCreate.as_view(), name='smg_create')]
+
+from .hierarchy_views import SmgDaysEdit
+urlpatterns += [path('smg/<int:pk>/days/edit/', SmgDaysEdit.as_view(), name='smg_days_edit')]

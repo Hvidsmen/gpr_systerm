@@ -12,6 +12,8 @@ EDITABLE = ['DRAFT', 'REJECTED']
 
 
 def workspace_reason(workspace, user=None):
+    if workspace.versions.filter(subobject_smg_workspaces__isnull=False).exists():
+        return 'С ГПР связаны СМГ субобъектов. Сначала удалите связанные СМГ.'
     if user is not None and role_code(user) == 'ADMIN':
         return ''
     if workspace.versions.exclude(status__in=EDITABLE).exists() or workspace.versions.filter(review_rounds__isnull=False).exists():
@@ -20,6 +22,8 @@ def workspace_reason(workspace, user=None):
 
 
 def version_reason(version):
+    if version.subobject_smg_workspaces.exists():
+        return 'С этой версией ГПР связаны СМГ субобъектов.'
     if version.review_rounds.exists():
         return "Версия содержит историю согласования. Удаление доступно администратору вместе с планом на период."
     if version.status not in EDITABLE:
