@@ -77,7 +77,7 @@ def check_route(user, match, method):
         if namespace == 'accounts':
             if name == 'settings' or name == 'user_detail' and match.kwargs.get('pk') == user.pk:
                 return
-        elif namespace in {'dashboard', 'planning', 'production', 'rotation', 'projects', 'works', 'resources'}:
+        elif namespace in {'dashboard', 'planning', 'production', 'rotation', 'projects', 'works', 'resources', 'estimates'}:
             if name.endswith(('_list', '_detail', '_export', '_versions')) or name in {'index', 'revenue', 'report_matrix', 'plan_matrix', 'fact_day_workspace', 'fact_daily', 'fact_input'}:
                 return
         raise PermissionDenied('Наблюдателю доступен только просмотр данных.')
@@ -106,6 +106,9 @@ def check_route(user, match, method):
         else:
             roles = FACT_ROLES
         require_roles(user, roles)
+        return
+    if namespace == 'estimates':
+        require_roles(user, READ_ROLES if name in {'estimate_list', 'estimate_detail', 'catalog_list', 'estimate_export'} and method in {'GET', 'HEAD'} else PLAN_ROLES)
         return
     if namespace == 'rotation':
         require_roles(user, READ_ROLES if name in {'plan_list', 'plan_detail', 'plan_export'} and method in {'GET', 'HEAD'} else PLAN_ROLES)

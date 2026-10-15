@@ -414,6 +414,7 @@
         {% if request.user|may:'production:fact_day_workspace' %}<a class="nav-link" href="{% url 'production:fact_day_workspace' %}" ><i class="bi bi-clipboard-data"></i> Факт за день</a>{% endif %}
         {% if request.user|may:'planning:journal_fact_list' %}<a class="nav-link" href="{% url 'planning:journal_fact_list' %}" data-paths="/planning/journals/facts/"><i class="bi bi-journal-check"></i> Журналы фактов</a>{% endif %}
         </details>{% endif %}
+        {% if request.user|may:'estimates:estimate_list' %}<a class="nav-link" href="{% url 'estimates:estimate_list' %}" data-paths="/estimates/"><i class="bi bi-file-earmark-spreadsheet"></i> Сметы</a>{% endif %}
         {% if request.user|may:'resources:employee_list' or request.user|may:'projects:project_list' or request.user|may:'works:work_list' %}<details class="nav-group"><summary>Справочники</summary>
         {% if request.user|may:'projects:project_list' %}<a class="nav-link" href="{% url 'projects:project_list' %}" data-paths="/projects/"><i class="bi bi-folder"></i> Объекты и проекты</a>{% endif %}
         {% if request.user|may:'works:work_list' %}<a class="nav-link" href="{% url 'works:work_list' %}" data-paths="/works/"><i class="bi bi-list-task"></i> Работы</a>{% endif %}
