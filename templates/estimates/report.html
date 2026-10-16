@@ -1,0 +1,12 @@
+{% extends 'base.html' %}{% load revenue_tags estimate_tags %}{% block content %}
+<h1>Сводный отчет по сметам</h1>
+<form method="get" class="card p-3 mb-3"><label for="estimate-object">Объект</label><select id="estimate-object" name="object" class="form-select"><option value="">Все объекты</option>{% for obj in objects %}<option value="{{ obj.pk }}" {% if selected_object == obj.pk|stringformat:'s' %}selected{% endif %}>{{ obj.name }}</option>{% endfor %}</select><button class="btn btn-primary mt-2">Применить</button></form>
+<p><a class="btn btn-outline-primary" href="{% url 'estimates:estimate_export' %}?mode=full&amp;object={{ selected_object|urlencode }}">Полный Excel</a> <a class="btn btn-outline-primary" href="{% url 'estimates:estimate_export' %}?mode=works&amp;object={{ selected_object|urlencode }}">Excel: работы и подработы</a></p>
+<div class="card p-3 mb-3"><strong>Итого по выбранным сметам</strong><span>Базисная стоимость: {{ totals.base|money }} ₽ · текущая: {{ totals.current|money }} ₽</span></div>
+<p class="text-muted">Прочерк означает недостаточность данных для полного итога. Отдельные загруженные документы суммируются, в том числе измененные варианты одной сметы.</p>
+{% for group in groups %}<details open class="card p-3 mb-3"><summary><strong>{{ group.name }}</strong> · {{ group.current|money }} ₽</summary>
+{% for entry in group.documents %}<details class="p-3 border-bottom"><summary><a href="{% url 'estimates:estimate_detail' entry.document.pk %}">{{ entry.document.title }}</a> · {{ entry.report.current|money }} ₽</summary>
+<p>Базисная: {{ entry.report.base|money }} ₽ · текущая: {{ entry.report.current|money }} ₽</p>
+{% for warning in entry.report.diagnostics %}<p class="alert alert-warning">{{ warning }}</p>{% endfor %}
+{% for work in entry.report.works %}<details class="p-2"><summary><strong>{{ work.name }}</strong> · {{ work.current|money }} ₽</summary><div class="table-responsive"><table class="table table-sm"><thead><tr><th>Подработа</th><th>Ед.</th><th>Объем</th><th>Базисная, ₽</th><th>Текущая, ₽</th></tr></thead><tbody>{% for sub in work.subworks %}<tr><td>{{ sub.name }}{% for warning in sub.warnings %}<p class="text-danger">{{ warning }}</p>{% endfor %}</td><td>{{ sub.unit }}</td><td>{{ sub.quantity|estimate_quantity }}</td><td>{{ sub.base|money }}</td><td>{{ sub.current|money }}</td></tr>{% endfor %}</tbody></table></div></details>{% endfor %}</details>{% endfor %}</details>{% empty %}<p>Сметы не найдены.</p>{% endfor %}
+{% endblock %}

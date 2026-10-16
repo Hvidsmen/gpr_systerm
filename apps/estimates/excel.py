@@ -79,7 +79,7 @@ def safe(value):
     return "'" + value if isinstance(value, str) and value.startswith(('=', '+', '-', '@')) else value
 
 
-def export(documents):
+def export(documents, mode="full"):
     from .report import build_report
     book = Workbook(); summary = book.active; summary.title = 'Свод смет'
     summary.append(['Смета / файл', 'Наименование', 'Базисная стоимость, ₽', 'Текущая стоимость, ₽', 'Позиций', 'Ресурсов', 'Примечания'])
@@ -88,14 +88,14 @@ def export(documents):
         s.append(['Файл', 'Лист', 'Строка', 'Раздел', 'Тип', 'Родительская строка'] + COLUMNS)
     catalogs = {'work': {}, 'resource': {}, 'unit': {}}
     hierarchy = book.create_sheet('Работы и подработы')
-    hierarchy.append(['Файл', 'Работа / подработа', 'Обоснование', 'Ед.', 'Объем', 'Базисная стоимость, ₽', 'Текущая стоимость, ₽', 'Примечания'])
+    hierarchy.append(['Объект', 'Смета', 'Файл', 'Работа / подработа', 'Обоснование', 'Ед.', 'Объем', 'Базисная стоимость, ₽', 'Текущая стоимость, ₽', 'Примечания'])
     for n, doc in enumerate(documents, 1):
         report = build_report(doc['rows'])
         doc = dict(doc, base_total=report['base'], current_total=report['current'], warnings=doc['warnings'] + report['diagnostics'])
         for work in report['works']:
-            hierarchy.append([safe(doc['filename']), safe(work['name']), None, None, None, work['base'], work['current']])
+            hierarchy.append([safe(doc.get('object_name', '')), safe(doc['title']), safe(doc['filename']), safe(work['name']), None, None, None, work['base'], work['current']])
             for sub in work['subworks']:
-                hierarchy.append([safe(doc['filename']), safe(sub['name']), safe(sub['code']), safe(sub['unit']), sub['quantity'], sub['base'], sub['current'], '; '.join(sub['warnings'])])
+                hierarchy.append([safe(doc.get('object_name', '')), safe(doc['title']), safe(doc['filename']), safe(sub['name']), safe(sub['code']), safe(sub['unit']), sub['quantity'], sub['base'], sub['current'], '; '.join(sub['warnings'])])
                 hierarchy.row_dimensions[hierarchy.max_row].outlineLevel = 1
         hierarchy.sheet_properties.outlinePr.summaryBelow = False
         summary.append([safe(doc['filename']), safe(doc['title']), number(doc['base_total']), number(doc['current_total']), sum(r['kind']=='item' for r in doc['rows']), sum(r['kind']=='resource' for r in doc['rows']), '; '.join(doc['warnings'])])
@@ -117,6 +117,17 @@ def export(documents):
         s=book.create_sheet(title);s.append(['Обоснование','Наименование','Ед. изм.'] if kind!='unit' else ['Ед. изм.'])
         for key in sorted(catalogs[kind]): s.append([safe(v) for v in key])
     info=book.create_sheet('Описание');info.append(['Правила']);info.append(['Справочники смет независимы от ГПР. Итоги вычислены по подработам; строки Итого и Всего не участвуют в расчете.']);info.append(['Ресурсная расшифровка входит в стоимость позиции: повторно не суммировать.']);info.append(['Материалы заказчика, справочные итоги и начисления сохранены в расчетах.']);info.append(['Исходные коэффициенты и значения сохранены; формулы не вычисляются, используются сохраненные значения Excel.'])
+    if summary.max_row > 1:
+        totals = []
+        for col in [3,4]:
+            vals = [summary.cell(row,col).value for row in range(2,summary.max_row+1)]
+            totals.append(sum(vals, Decimal('0')) if all(v is not None for v in vals) else None)
+        summary.append(['Итого', None] + totals)
+    if mode == 'works':
+        for sheet in list(book):
+            if sheet.title not in {'Свод смет', 'Работы и подработы'}:
+                book.remove(sheet)
+        summary.delete_cols(6)  # Resource counts are excluded from the concise report.
     for s in book:
         s.freeze_panes='D2';s.auto_filter.ref=s.dimensions
         s.sheet_view.showGridLines=False
@@ -127,7 +138,8 @@ def export(documents):
         for row in s.iter_rows(min_row=2):
             for c in row:
                 c.alignment=Alignment(vertical='top',wrap_text=True)
-                if isinstance(c.value,(float,Decimal)):c.number_format='#,##0.00####'
+                if isinstance(c.value,(int,float,Decimal)):
+                    c.number_format = '#,##0' if '₽' in str(s.cell(1,c.column).value) else '#,##0.########'
                 if c.row%2==0:c.fill=PatternFill('solid',fgColor='F0F5FB')
         s.sheet_properties.pageSetUpPr.fitToPage=True
         s.page_setup.orientation='landscape';s.page_setup.paperSize=s.PAPERSIZE_A3;s.page_setup.fitToWidth=1;s.page_setup.fitToHeight=0;s.print_title_rows='1:1'

@@ -106,16 +106,49 @@ def catalog_list(request):
     return render(request,'estimates/catalog.html',{'page':Paginator(rows,100).get_page(request.GET.get('page')),'kind':kind})
 
 
+def selected_documents(request):
+    docs = EstimateDocument.objects.filter(company=request.user.company).select_related('estimate_object').prefetch_related('rows').order_by('estimate_object__name','pk')
+    obj = request.GET.get('object')
+    if obj:
+        get_object_or_404(EstimateObject, company=request.user.company, pk=obj if obj.isdigit() else None)
+        docs = docs.filter(estimate_object_id=obj)
+    if request.GET.get('id'):
+        raw = request.GET['id']
+        doc = get_object_or_404(docs, pk=raw if raw.isdigit() else None)
+        docs = [doc]
+    return docs
+
+
+def document_data(doc):
+    return dict(filename=doc.filename,title=doc.title,object_name=doc.estimate_object.name,sheet=doc.sheet,base_total=doc.base_total,current_total=doc.current_total,warnings=doc.warnings,rows=[dict(source_row=r.source_row,section=r.section,kind=r.kind,parent_row=r.parent_row,values=r.values) for r in doc.rows.all()])
+
+
 def estimate_export(request):
     require_roles(request.user,READ_ROLES)
-    docs=EstimateDocument.objects.filter(company=request.user.company).prefetch_related('rows')
-    if request.GET.get('id'): docs=docs.filter(pk=request.GET['id'])
-    data=[]
-    for d in docs:
-        data.append(dict(filename=d.filename,title=d.title,sheet=d.sheet,base_total=d.base_total,current_total=d.current_total,warnings=d.warnings,rows=list(d.rows.values('source_row','section','kind','parent_row','values'))))
-    response=HttpResponse(export(data),content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-    response['Content-Disposition']='attachment; filename="estimates.xlsx"'
+    mode=request.GET.get('mode','full')
+    if mode not in {'full','works'}:
+        from django.http import HttpResponseBadRequest
+        return HttpResponseBadRequest('Неизвестный вид выгрузки.')
+    data=[document_data(d) for d in selected_documents(request)]
+    response=HttpResponse(export(data,mode=mode),content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    response['Content-Disposition']=f'attachment; filename="estimates_{mode}.xlsx"'
     return response
+
+
+def estimate_report_list(request):
+    require_roles(request.user,READ_ROLES)
+    groups={}
+    for doc in selected_documents(request):
+        group=groups.setdefault(doc.estimate_object_id,dict(name=doc.estimate_object.name,documents=[]))
+        group['documents'].append(dict(document=doc,report=build_report(document_data(doc)['rows'])))
+    def total(items,key):
+        vals=[item[key] for item in items]
+        return sum(vals,0) if all(v is not None for v in vals) else None
+    for group in groups.values():
+        for key in ['base','current']:
+            group[key]=total([d['report'] for d in group['documents']],key)
+    totals={key:total(list(groups.values()),key) for key in ['base','current']}
+    return render(request,'estimates/report.html',dict(groups=list(groups.values()),totals=totals,objects=EstimateObject.objects.filter(company=request.user.company).order_by('name'),selected_object=request.GET.get('object','')))
 
 
 from django.views.decorators.http import require_http_methods

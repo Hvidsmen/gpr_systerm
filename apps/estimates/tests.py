@@ -125,3 +125,30 @@ class NumberTests(SimpleTestCase):
         self.assertEqual(estimate_quantity('0.000008'),'0,000008')
         self.assertEqual(estimate_quantity(None),'—')
         self.assertEqual(money(4047806),'4 047 806')
+
+
+class ExportReportTests(AccessTests):
+    def test_two_exports_and_summary_filter(self):
+        from .models import EstimateObject
+        for obj in ['First','Second']:
+            self.client.post(reverse('estimates:estimate_import'),{'object_name':obj,'file':SimpleUploadedFile('a.xlsx',sample())})
+        doc=EstimateDocument.objects.filter(estimate_object__name='First').get()
+        for mode in ['full','works']:
+            for params in [{'mode':mode},{'mode':mode,'id':doc.pk}]:
+                response=self.client.get(reverse('estimates:estimate_export'),params)
+                self.assertEqual(response.status_code,200)
+                w=load_workbook(BytesIO(response.content))
+                self.assertEqual(w['Свод смет'].max_row,3 if 'id' in params else 4)
+                if mode=='works':
+                    self.assertEqual(set(w.sheetnames),{'Свод смет','Работы и подработы'})
+                    self.assertNotIn('Ресурсов',[c.value for c in w['Свод смет'][1]])
+                else:self.assertIn('Ресурсы',w.sheetnames)
+        response=self.client.get(reverse('estimates:estimate_report_list'),{'object':doc.estimate_object_id})
+        self.assertContains(response,'First');self.assertEqual(len(response.context['groups']),1)
+        self.assertContains(response,'mode=works')
+        self.user.role=Role.objects.get(code='OBSERVER');self.user.save()
+        self.assertEqual(self.client.get(reverse('estimates:estimate_report_list')).status_code,200)
+        other=EstimateObject.objects.create(company=Company.objects.create(name='Secret'),name='Hidden')
+        self.assertEqual(self.client.get(reverse('estimates:estimate_report_list'),{'object':other.pk}).status_code,404)
+        self.assertEqual(self.client.get(reverse('estimates:estimate_export'),{'object':other.pk}).status_code,404)
+        self.assertEqual(self.client.get(reverse('estimates:estimate_export'),{'mode':'unknown'}).status_code,400)

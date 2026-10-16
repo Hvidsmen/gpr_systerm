@@ -3,7 +3,8 @@
 <p>Рассчитано: базисная стоимость {{ report.base|money }} ₽ · текущая {{ report.current|money }} ₽</p>
 <p class="text-muted">Итоги вычисляются по подработам. Строки «Итого» и «Всего» из файла в расчет не входят. ОТм входит в ЭМ и повторно не прибавляется.</p>
 {% for warning in report.diagnostics %}<p class="alert alert-warning">{{ warning }}</p>{% endfor %}
-<a class="btn btn-outline-primary" href="{% url 'estimates:estimate_export' %}?id={{ document.pk }}">Excel</a>
+<a class="btn btn-outline-primary" href="{% url 'estimates:estimate_export' %}?id={{ document.pk }}">Полный Excel</a>
+<a class="btn btn-outline-primary" href="{% url 'estimates:estimate_export' %}?id={{ document.pk }}&amp;mode=works">Excel: работы и подработы</a>
 {% if can_delete %}<a class="btn btn-outline-danger" href="{% url 'estimates:estimate_delete' document.pk %}">Удалить смету</a>{% endif %}
 {% for work in report.works %}<details open class="card p-3 mt-3"><summary><strong>{{ work.name }}</strong> · {{ work.current|money }} ₽</summary>
 {% for sub in work.subworks %}<details class="p-3 border-bottom"><summary>{{ sub.name }} · {{ sub.quantity|estimate_quantity }} {{ sub.unit }} · <strong>{{ sub.current|money }} ₽</strong></summary><p class="text-muted">{{ sub.code }} · {{ sub.method }}</p>
