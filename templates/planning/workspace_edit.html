@@ -90,6 +90,7 @@
 <div class="d-flex gap-2 mb-3"><button type="button" class="btn btn-sm btn-outline-secondary" data-expand-allocations>Развернуть всё</button><button type="button" class="btn btn-sm btn-outline-secondary" data-collapse-allocations>Свернуть всё</button></div>
 <details class="allocation-section" data-allocation-section="works"><summary>Работы <span class="allocation-group-count" data-section-count></span></summary><div class="allocation-section-body"><p>Указывайте объём основной работы. Объёмы подработ рассчитываются по нормативам; при импорте Excel сохраняются отдельные объёмы подработ. Изменение объёма основной работы возвращает расчёт по нормативам.</p>
 {% include 'planning/row_filters.html' with filter_kind='works' filters=work_filters %}
+<p><button type="submit" name="action" value="remove_zero_works" class="btn btn-outline-danger" onclick="return confirm('Сохранить изменения и удалить работы с нулевыми объемами только за выбранный месяц? Справочник и другие месяцы сохранятся.')">Сохранить и удалить нулевые работы за {{ selected_month|date:'m.Y' }}</button></p>
 <div id="work-rows">{% for form in work_forms %}<div class="card mb-3 allocation-row"><div class="card-body allocation-grid">{{ form.non_field_errors }}{% for field in form %}<p data-field="{{ field.name }}" {% if field.is_hidden %}hidden{% endif %}>{% if field.name == 'DELETE' %}<span hidden>{{ field }}</span><button type="button" class="btn btn-sm btn-outline-danger" data-remove-row aria-label="Удалить строку">Удалить</button>{% else %}{{ field.label_tag }} {{ field }} {{ field.errors }}{% endif %}</p>{% endfor %}</div></div>{% endfor %}</div>
 <button type="button" class="btn btn-outline-primary mb-4" data-add="works">Добавить строку работы</button>
 </div></details>
@@ -142,17 +143,24 @@ function groupAllocationRows(panel) {
   target.replaceChildren(root);
 }
 function updateGroupCounts(target) {
+  const resourceKind=target.id==='resource-rows-labor'?'labor':target.id==='resource-rows-equipment'?'equipment':null;
+  const sumLabel=node=>{
+    if (!resourceKind) return '';
+    const amount=Array.from(node.querySelectorAll('.allocation-row')).filter(row=>!row.hidden&&!row.querySelector('[name$="-DELETE"]').checked).reduce((sum,row)=>sum+(Number((row.querySelector('[name$="-count"]')?.value||'0').replace(',','.'))||0),0);
+    return ' · Итого: '+new Intl.NumberFormat('ru-RU').format(amount)+(resourceKind==='labor'?' чел.':' ед.');
+  };
   const countRows=node=>{
     const rows=Array.from(node.querySelectorAll('.allocation-row')).filter(row=>!row.querySelector('[name$="-DELETE"]').checked);
     return {total:rows.length,visible:rows.filter(row=>!row.hidden).length};
   };
   target.querySelectorAll('.allocation-group').forEach(group=>{
     const count=countRows(group);group.hidden=count.visible===0;
-    group.querySelector(':scope > summary [data-group-count]').textContent=count.visible+' / '+count.total;
+    group.querySelector(':scope > summary [data-group-count]').textContent=count.visible+' / '+count.total+sumLabel(group);
   });
   const count=countRows(target);
-  target.closest('[data-allocation-section]').querySelector('[data-section-count]').textContent=count.visible+' / '+count.total;
+  target.closest('[data-allocation-section]').querySelector('[data-section-count]').textContent=count.visible+' / '+count.total+sumLabel(target);
 }
+document.getElementById('allocation-editor').addEventListener('input',event=>{if (event.target.name?.endsWith('-count')) {const target=event.target.closest('[id^="resource-rows-"]');if(target) updateGroupCounts(target);}});
 function revealAllocationRow(row) {
   for (let node=row.parentElement;node;node=node.parentElement) if (node.tagName==='DETAILS') {node.hidden=false;node.open=true;}
 }

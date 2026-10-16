@@ -354,10 +354,14 @@ class WorkspaceEdit(View):
                         raise ValidationError("Версия уже отправлена на согласование.")
                     works.save()
                     resources.save()
+                    removed = None
+                    if request.POST.get('action') == 'remove_zero_works':
+                        from .zero_works import remove_zero_works
+                        removed = remove_zero_works(locked, selected)
                     # Clear a stale preview atomically with changed monthly inputs.
                     locked.snapshot = {}
                     locked.save(update_fields=["snapshot"])
-                messages.success(request, "Месячные данные сохранены.")
+                messages.success(request, f"Месячные данные сохранены. Удалено нулевых работ: {removed}." if removed is not None else "Месячные данные сохранены.")
                 if request.POST.get("action") == "preview":
                     try:
                         WorkspaceService.refresh(version, request.user)
