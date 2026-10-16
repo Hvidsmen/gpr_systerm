@@ -296,6 +296,7 @@ class WorkspaceEdit(View):
             "version": version,
             "workspace": version.workspace,
             "selected_month": selected,
+            "remaining_work_issue": request.session.get(f'workspace_remainder_issue_{version.pk}'),
             "work_prices": work_prices,
             "months": months,
             "work_forms": works,
@@ -366,8 +367,11 @@ class WorkspaceEdit(View):
                 if request.POST.get("action") == "preview":
                     try:
                         WorkspaceService.refresh(version, request.user)
+                        request.session.pop(f'workspace_remainder_issue_{version.pk}',None)
                         return redirect("planning:global_detail", pk=version.pk)
                     except ValidationError as exc:
+                        if getattr(exc, 'code', None) == 'manual_work_remainder':
+                            request.session[f'workspace_remainder_issue_{version.pk}'] = exc.params
                         messages.error(request, "; ".join(exc.messages))
                 return redirect(
                     reverse("planning:workspace_edit", args=[version.pk])
@@ -606,3 +610,27 @@ class AddWorkspaceResource(View):
             if section['kind'] == kind:
                 section['period_form'] = form
         return render(request, 'planning/workspace_edit.html', context, status=400)
+
+
+class AddRemainingWork(View):
+    def post(self,request,pk):
+        from core.permissions import require_roles, PLAN_ROLES
+        from .meeting_import import validate_target_period
+        from calendar import monthrange
+        require_roles(request.user,PLAN_ROLES)
+        version=version_for(request,pk)
+        issue=request.session.get(f'workspace_remainder_issue_{version.pk}')
+        if not issue:
+            raise Http404('Сначала сформируйте план, чтобы определить остаток.')
+        raw=request.POST.get('month','')
+        if raw not in issue['months']:
+            raise Http404('Выберите месяц распределения.')
+        month=date.fromisoformat(raw)
+        with transaction.atomic():
+            version=GlobalPlanVersion.objects.select_for_update().defer('snapshot').get(pk=version.pk,company=request.user.company)
+            validate_target_period(version,month,month.replace(day=monthrange(month.year,month.month)[1]))
+            work=get_object_or_404(ProjectWork,pk=issue['work_id'],company=request.user.company,section__construction_object_id=version.construction_object_id)
+            row,created=WorkMonthAllocation.objects.get_or_create(company=request.user.company,version=version,month=month,work=work,defaults={'quantity':0})
+            version.snapshot={};version.save(update_fields=['snapshot'])
+        messages.info(request,f'Работа «{work.name}» '+('добавлена. Укажите объем для этого месяца и сохраните.' if created else 'уже есть в этом месяце. Проверьте и сохраните объем.'))
+        return redirect(reverse('planning:workspace_edit',args=[version.pk])+'?month='+raw+'&focus_work='+str(work.pk))

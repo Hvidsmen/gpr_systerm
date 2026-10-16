@@ -603,7 +603,9 @@ def build_forecast(version, inputs, resources, base):
                 ]
                 if sum(quantities) != rest:
                     raise ValidationError(
-                        f'{spec["name"]}: базовые пропорции будущих месяцев нулевые. Распределите вручную остаток {rest} {spec["unit"]}.'
+                        f'{spec["name"]}: базовые пропорции будущих месяцев нулевые. Распределите вручную остаток {rest} {spec["unit"]}.',
+                        code='manual_work_remainder',
+                        params={'work_id':work_id,'name':spec['name'],'remaining':str(rest),'unit':spec['unit'],'months':[m.isoformat() for m in future]},
                     )
             else:
                 if manual and any(r.quantity for r in manual.values()):

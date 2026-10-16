@@ -130,3 +130,6 @@ urlpatterns += [path('workspace-versions/<int:pk>/gpr-import/', GprExcelImport.a
 
 from .carryover_views import CarryoverView
 urlpatterns += [path('workspace-versions/<int:pk>/carryover/', CarryoverView.as_view(), name='workspace_carryover')]
+
+from .workspace_views import AddRemainingWork
+urlpatterns += [path('workspace-versions/<int:pk>/remaining-work/', AddRemainingWork.as_view(), name='workspace_remaining_work')]
