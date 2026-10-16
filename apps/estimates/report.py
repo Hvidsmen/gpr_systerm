@@ -72,8 +72,10 @@ def build_report(rows):
                 if sub['current'] is None and sub['base'] is not None and number(v[10]) is not None:
                     sub['current'] = rounded(sub['base'] * number(v[10]),'1')
                 sub['method'] = 'Стоимость отдельного материала / оборудования из строки подработы'
-                if sub['base'] is None or sub['current'] is None:
-                    warnings.append('Недостаточно данных для расчета стоимости. Итог из файла не подставлялся.')
+                # Blank cost cells in individual source lines represent zero cost.
+                # Do not derive an amount from the quantity when the source cost is blank.
+                sub['base'] = sub['base'] if sub['base'] is not None else ZERO
+                sub['current'] = sub['current'] if sub['current'] is not None else ZERO
             # Source totals are diagnostics only, never operands.
         work['base'] = sum((s['base'] for s in work['subworks']),ZERO) if all(s['base'] is not None for s in work['subworks']) else None
         work['current'] = sum((s['current'] for s in work['subworks']),ZERO) if all(s['current'] is not None for s in work['subworks']) else None

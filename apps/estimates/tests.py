@@ -24,7 +24,7 @@ class ParserTests(SimpleTestCase):
         self.assertEqual([r['kind'] for r in d['rows']],['section','item','resource','detail','total','appendix','total'])
         self.assertEqual(d['rows'][2]['parent_row'],8)
         w=load_workbook(BytesIO(export([d])),data_only=False)
-        self.assertIsNone(w['Свод смет']['D2'].value)
+        self.assertEqual(w['Свод смет']['D2'].value,0)
         self.assertEqual(w['Ресурсы'].max_row,2)
         self.assertEqual(w['Позиции'].max_row,2)
     def test_unknown_format(self):
@@ -93,10 +93,10 @@ class CalculationTests(SimpleTestCase):
         rows[-1]['values'][11]=0;rows[-2]['values'][11]=0
         self.assertEqual(build_report(rows)['current'],760)
         self.assertTrue(report['diagnostics'])
-    def test_incomplete_is_unknown_not_zero(self):
+    def test_blank_cost_is_zero_and_does_not_block_totals(self):
         from .report import build_report
         d=parse(sample(),'sample.xlsx');report=build_report(d['rows'])
-        self.assertIsNone(report['current']);self.assertTrue(report['diagnostics'])
+        self.assertEqual(report['current'],0);self.assertEqual(report['base'],0)
 
 
 class DeleteTests(AccessTests):
@@ -152,3 +152,17 @@ class ExportReportTests(AccessTests):
         self.assertEqual(self.client.get(reverse('estimates:estimate_report_list'),{'object':other.pk}).status_code,404)
         self.assertEqual(self.client.get(reverse('estimates:estimate_export'),{'object':other.pk}).status_code,404)
         self.assertEqual(self.client.get(reverse('estimates:estimate_export'),{'mode':'unknown'}).status_code,400)
+
+
+class ZeroCostTests(SimpleTestCase):
+    def test_zero_and_nonzero_subworks_sum_without_using_source_totals(self):
+        from .report import build_report
+        def item(n,base,current):
+            v=[None]*12;v[2]='Материал';v[6]=0.000008;v[7]=31459.22;v[9]=base;v[10]=13.6;v[11]=current
+            return dict(source_row=n,kind='item',parent_row=None,values=v)
+        rows=[item(1,None,None),item(2,10,136),item(3,0,0)]
+        report=build_report(rows)
+        self.assertEqual(report['base'],10)
+        self.assertEqual(report['current'],136)
+        self.assertEqual(report['works'][0]['subworks'][0]['current'],0)
+        self.assertEqual(report['works'][0]['subworks'][2]['current'],0)
