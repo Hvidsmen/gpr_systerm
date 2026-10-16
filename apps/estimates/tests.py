@@ -53,3 +53,27 @@ class AccessTests(TestCase):
         self.assertEqual(self.client.get(reverse('estimates:estimate_list')).status_code,200)
         self.assertEqual(self.client.get(reverse('estimates:catalog_list')).status_code,200)
         self.assertEqual(self.client.post(reverse('estimates:estimate_import')).status_code,403)
+
+    def test_upload_button_and_multiple_selection(self):
+        response=self.client.get(reverse('estimates:estimate_list'))
+        self.assertContains(response,'Загрузить сметы (несколько файлов)')
+        self.assertContains(self.client.get(reverse('estimates:estimate_import')),' multiple')
+        from openpyxl import load_workbook
+        second=load_workbook(BytesIO(sample()));second.active['C8']='Другая работа';out=BytesIO();second.save(out)
+        response=self.client.post(reverse('estimates:estimate_import'),{'object_name':'Batch','file':[SimpleUploadedFile('one.xlsx',sample()),SimpleUploadedFile('two.xlsx',out.getvalue()),SimpleUploadedFile('repeat.xlsx',sample())]})
+        self.assertRedirects(response,reverse('estimates:estimate_list'))
+        self.assertEqual(EstimateDocument.objects.count(),2)
+
+    def test_invalid_batch_saves_nothing_and_names_bad_file(self):
+        response=self.client.post(reverse('estimates:estimate_import'),{'object_name':'Batch','file':[SimpleUploadedFile('one.xlsx',sample()),SimpleUploadedFile('broken.xlsx',b'broken')]})
+        self.assertEqual(response.status_code,200)
+        self.assertContains(response,'broken.xlsx')
+        self.assertEqual(EstimateDocument.objects.count(),0)
+
+    def test_empty_batch_and_read_only_explanation(self):
+        response=self.client.post(reverse('estimates:estimate_import'),{'object_name':'Batch'})
+        self.assertEqual(response.status_code,200)
+        self.user.role=Role.objects.get(code='OBSERVER');self.user.save()
+        response=self.client.get(reverse('estimates:estimate_list'))
+        self.assertContains(response,'Ваша роль разрешает просмотр')
+        self.assertNotContains(response,'Загрузить сметы (несколько файлов)')

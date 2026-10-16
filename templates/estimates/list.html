@@ -1,8 +1,9 @@
 {% extends 'base.html' %}{% load access %}{% block content %}
 <h1>Сметы</h1><p>Самостоятельный учет ЛСР. Справочники смет не связаны со справочниками ГПР.</p>
-{% if request.user|may:'estimates:estimate_import' %}<a class="btn btn-primary" href="{% url 'estimates:estimate_import' %}">Импорт ЛСР</a>{% endif %}
+{% if can_import %}<a class="btn btn-primary" href="{% url 'estimates:estimate_import' %}">Загрузить сметы (несколько файлов)</a>{% endif %}
 <a class="btn btn-outline-primary" href="{% url 'estimates:estimate_export' %}">Сводный Excel</a>
 <a class="btn btn-outline-secondary" href="{% url 'estimates:catalog_list' %}">Справочники смет</a>
+{% if not can_import %}<p class="text-muted mt-3">Загрузка смет доступна администратору и планировщику. Ваша роль разрешает просмотр.</p>{% endif %}
 <div class="card mt-3 p-3"><table class="table"><thead><tr><th>Объект</th><th>Смета</th><th>Базисная стоимость, ₽</th><th>Текущая стоимость, ₽</th></tr></thead><tbody>
 {% for d in documents %}<tr><td>{{ d.estimate_object }}</td><td><a href="{% url 'estimates:estimate_detail' d.pk %}">{{ d.title }}</a></td><td>{{ d.base_total|floatformat:0 }}</td><td>{{ d.current_total|floatformat:0 }}</td></tr>{% empty %}<tr><td colspan="4">Загрузите первую смету.</td></tr>{% endfor %}
 </tbody><tfoot><tr><th colspan="2">Итого</th><th>{{ totals.base|floatformat:0 }}</th><th>{{ totals.current|floatformat:0 }}</th></tr></tfoot></table></div>{% endblock %}

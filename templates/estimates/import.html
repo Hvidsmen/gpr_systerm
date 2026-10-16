@@ -1,1 +1,6 @@
-{% extends 'base.html' %}{% block content %}<h1>Импорт сметы ЛСР</h1><p>Выберите XLSX формы №421. Объект создается в отдельном справочнике смет. Повторная загрузка того же файла не создает дубликат.</p><div class="card p-3"><form method="post" enctype="multipart/form-data">{% csrf_token %}{{ form.as_p }}<button class="btn btn-primary">Импортировать</button></form></div>{% endblock %}
+{% extends 'base.html' %}{% block content %}
+<h1>Загрузка смет</h1>
+<p>Укажите общий объект смет и выберите несколько файлов XLSX через Ctrl или Shift. До 50 файлов за раз, до 12 МБ каждый и 100 МБ суммарно.</p>
+<div class="card p-3"><form method="post" enctype="multipart/form-data">{% csrf_token %}{{ form.as_p }}<p id="selected-files" class="text-muted" aria-live="polite"></p><p>Повторные файлы пропускаются. Если в одном из файлов ошибка, вся загрузка отменяется — исправьте файл и повторите.</p><button class="btn btn-primary" type="submit">Загрузить сметы</button></form></div>
+<script>const input=document.querySelector('input[type=file]');input.addEventListener('change',()=>{document.getElementById('selected-files').textContent='Выбрано файлов: '+input.files.length+' — '+Array.from(input.files,f=>f.name).join('; ');});</script>
+{% endblock %}
