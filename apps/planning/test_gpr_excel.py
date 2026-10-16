@@ -168,3 +168,33 @@ class GprImportTests(TestCase):
         workspace=apply_gpr(self.planner,self.obj,payload,dates,str(uuid4()))
         self.assertEqual(workspace.baseline_version.work_allocations.filter(work=self.composite).count(),2)
         self.assertEqual(workspace.baseline_version.work_allocations.filter(work=self.composite,month=date(2027,1,1)).get().quantity,Decimal(10))
+
+    def test_import_into_existing_version_and_update_resources(self):
+        from .workspace_services import WorkspaceService
+        workspace=WorkspaceService.create(self.planner,self.obj,'Existing',date(2027,1,1),date(2027,2,28))
+        version=workspace.baseline_version
+        url=reverse('planning:workspace_gpr_import',args=[version.pk])
+        self.assertEqual(self.client.get(url).status_code,200)
+        for qty in [10,25]:
+            preview=self.client.post(url,{'file':SimpleUploadedFile('gpr.xlsx',classic(first=qty)),'year':2027})
+            self.assertEqual(preview.status_code,200)
+            self.assertTrue(preview.context['token'])
+            data={'preview_token':preview.context['token'],'month_0':'2027-01-01','month_1':'2027-02-01'}
+            response=self.client.post(url,data)
+            self.assertEqual(response.status_code,302)
+            self.assertEqual(response.url,reverse('planning:workspace_edit',args=[version.pk]))
+        self.assertEqual(PlanningWorkspace.objects.count(),1)
+        self.assertEqual(version.work_allocations.count(),2)
+        self.assertEqual(version.work_allocations.get(month=date(2027,1,1)).quantity,25)
+        self.assertEqual(version.resource_allocations.count(),4)
+
+    def test_existing_target_outside_period_and_token_binding(self):
+        from .workspace_services import WorkspaceService
+        workspace=WorkspaceService.create(self.planner,self.obj,'Existing',date(2027,1,1),date(2027,1,31))
+        url=reverse('planning:workspace_gpr_import',args=[workspace.baseline_version_id])
+        preview=self.client.post(url,{'file':SimpleUploadedFile('gpr.xlsx',classic()),'year':2027})
+        data={'preview_token':preview.context['token'],'month_0':'2027-01-01','month_1':'2027-02-01'}
+        self.assertEqual(self.client.post(reverse('planning:gpr_excel_import'),data).status_code,400)
+        self.assertEqual(self.client.post(url,data).status_code,400)
+        self.assertEqual(workspace.baseline_version.work_allocations.count(),0)
+        self.assertEqual(workspace.baseline_version.resource_allocations.count(),0)

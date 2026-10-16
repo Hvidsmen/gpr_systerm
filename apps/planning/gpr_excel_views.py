@@ -15,7 +15,7 @@ from apps.production.forms import CompanyFormMixin
 from apps.resources.models import Brigade, BrigadeGroup, EquipmentType, EquipmentCategory
 from .models import ResourceMonthAllocation, GprImportReceipt
 from .workspace_services import WorkspaceService
-from .meeting_import import resolve_sheet, apply_meeting_import, unique_match
+from .meeting_import import resolve_sheet, apply_meeting_import, unique_match, validate_target_period
 from .gpr_excel import parse_gpr, number, norm
 
 SALT = 'planning.contractor-gpr.v1'
@@ -87,7 +87,7 @@ def resolved_preview(user, obj, payload):
 
 
 @transaction.atomic
-def apply_gpr(user, obj, payload, dates, nonce):
+def apply_gpr(user, obj, payload, dates, nonce, target_version=None):
     require_roles(user, PLAN_ROLES)
     obj = ConstructionObject.objects.select_for_update().get(pk=obj.pk, company=user.company)
     receipt = GprImportReceipt.objects.filter(nonce=nonce, company=user.company, imported_by=user).first()
@@ -102,16 +102,25 @@ def apply_gpr(user, obj, payload, dates, nonce):
         raise ValidationError('Нет данных для импорта.')
     start, last = min(dates.values()), max(dates.values())
     end = last.replace(day=monthrange(last.year,last.month)[1])
-    workspace = WorkspaceService.create(user,obj,payload.get('title') or f'ГПР {obj.name} · импорт Excel',start,end)
+    if target_version is not None:
+        from .models import GlobalPlanVersion
+        target_version = GlobalPlanVersion.objects.select_for_update().defer('snapshot').get(pk=target_version.pk, company=user.company, workspace__isnull=False)
+        if target_version.construction_object_id != obj.pk:
+            raise ValidationError('Объект версии не совпадает с объектом импорта.')
+        validate_target_period(target_version, start, end)
+        workspace = target_version.workspace
+    else:
+        workspace = WorkspaceService.create(user,obj,payload.get('title') or f'ГПР {obj.name} · импорт Excel',start,end)
+    version = target_version or workspace.baseline_version
     works = [row for row in rows if row['kind']=='work']
     if works:
-        apply_meeting_import(user,obj.project_id,[{'name':obj.name,'entries':works,'warnings':[],'errors':[]}],{'0'},start,end,target_version=workspace.baseline_version, allow_parent_quantity=True)
+        apply_meeting_import(user,obj.project_id,[{'name':obj.name,'entries':works,'warnings':[],'errors':[]}],{'0'},start,end,target_version=version, allow_parent_quantity=True)
     cached = {}
     for row in resolved:
         if row['kind']=='work': continue
         month = date.fromisoformat(row['month'])
         if row['kind']=='fuel':
-            ResourceMonthAllocation.objects.create(company=user.company,version=workspace.baseline_version,month=month,kind='fuel',fuel_type=row['fuel_type'],liters=number(row['quantity']))
+            ResourceMonthAllocation.objects.update_or_create(company=user.company,version=version,month=month,kind='fuel',fuel_type=row['fuel_type'],defaults={'liters':number(row['quantity'])})
             continue
         model = Brigade if row['kind']=='labor' else EquipmentType
         cache_key = row['kind'],norm(row['name']),norm(row['section'])
@@ -125,39 +134,60 @@ def apply_gpr(user, obj, payload, dates, nonce):
                 target = model.objects.create(company=user.company,name=row['name'],**{'group' if row['kind']=='labor' else 'category':group})
             cached[cache_key] = target
         identity = {'brigade':target} if row['kind']=='labor' else {'equipment_type':target,'equipment_number':row.get('equipment_number','')}
-        allocation = ResourceMonthAllocation(company=user.company,version=workspace.baseline_version,month=month,kind=row['kind'],count=int(number(row['quantity'],count=True)),**identity)
+        allocation = ResourceMonthAllocation(company=user.company,version=version,month=month,kind=row['kind'],count=int(number(row['quantity'],count=True)),**identity)
+        existing = ResourceMonthAllocation.objects.filter(company=user.company,version=version,month=month,kind=row['kind'],**identity).first()
+        if existing:
+            existing.count = allocation.count
+            allocation = existing
         allocation.full_clean()
         allocation.save()
+    if target_version is not None:
+        version.snapshot = {}
+        version.save(update_fields=['snapshot'])
     GprImportReceipt.objects.create(company=user.company,nonce=nonce,workspace=workspace,imported_by=user)
     return workspace
 
 
 class GprExcelImport(View):
-    def get(self, request):
-        require_roles(request.user,PLAN_ROLES)
-        return render(request,'planning/gpr_excel_import.html',{'form':GprUploadForm(user=request.user,initial={'year':timezone.localdate().year+1})})
+    def dispatch(self, request, *args, **kwargs):
+        require_roles(request.user, PLAN_ROLES)
+        from .meeting_import import MeetingImportView
+        self.target_version = MeetingImportView().target(request, kwargs.get('pk'))
+        return super().dispatch(request, *args, **kwargs)
 
-    def post(self, request):
+    def upload_form(self, request, *args, **kwargs):
+        form = GprUploadForm(*args, user=request.user, **kwargs)
+        if self.target_version:
+            form.fields['construction_object'].initial = self.target_version.construction_object
+            form.fields['construction_object'].disabled = True
+            form.fields.pop('title')
+        return form
+
+    def get(self, request, pk=None):
+        require_roles(request.user,PLAN_ROLES)
+        return render(request,'planning/gpr_excel_import.html',{'form':self.upload_form(request,initial={'year':self.target_version.start_date.year if self.target_version else timezone.localdate().year+1}),'target_version':self.target_version})
+
+    def post(self, request, pk=None):
         require_roles(request.user,PLAN_ROLES)
         token = request.POST.get('preview_token')
         if token:
             try:
                 payload = signing.loads(token,salt=SALT,max_age=3600)
-                if payload['user']!=request.user.pk or payload['company']!=request.user.company_id:
+                if payload['user']!=request.user.pk or payload['company']!=request.user.company_id or payload.get('target_version') != (self.target_version.pk if self.target_version else None):
                     raise signing.BadSignature()
                 obj = get_object_or_404(ConstructionObject,pk=payload['object'],company=request.user.company)
                 form = MonthMapForm(request.POST,payload=payload)
                 if form.is_valid():
-                    workspace = apply_gpr(request.user,obj,payload,form.cleaned_data,payload['nonce'])
-                    return redirect('planning:workspace_detail',pk=workspace.pk)
+                    workspace = apply_gpr(request.user,obj,payload,form.cleaned_data,payload['nonce'],target_version=self.target_version)
+                    return redirect('planning:workspace_edit',pk=self.target_version.pk) if self.target_version else redirect('planning:workspace_detail',pk=workspace.pk)
                 rows, warnings = resolved_preview(request.user,obj,payload)
                 return self.preview(request,obj,payload,token,form,rows,warnings)
             except (signing.BadSignature,ValidationError) as exc:
-                form = GprUploadForm({},user=request.user)
+                form = self.upload_form(request,{})
                 form.is_valid()
                 form.add_error(None,exc if isinstance(exc,ValidationError) else 'Предварительный просмотр устарел. Прочитайте файл заново.')
-                return render(request,'planning/gpr_excel_import.html',{'form':form},status=400)
-        form = GprUploadForm(request.POST,request.FILES,user=request.user)
+                return render(request,'planning/gpr_excel_import.html',{'form':form,'target_version':self.target_version},status=400)
+        form = self.upload_form(request,request.POST,request.FILES)
         if form.is_valid():
             try:
                 data=form.cleaned_data
@@ -165,13 +195,13 @@ class GprExcelImport(View):
                 if uploaded.size>8*1024*1024:raise ValidationError('Размер файла превышает 8 МБ.')
                 payload=parse_gpr(uploaded.read(),uploaded.name,data['sheet'],data['year'])
                 obj=data['construction_object']
-                payload.update({'title':data['title'],'user':request.user.pk,'company':request.user.company_id,'object':obj.pk,'nonce':str(uuid4())})
+                payload.update({'title':data.get('title',''),'target_version':self.target_version.pk if self.target_version else None,'user':request.user.pk,'company':request.user.company_id,'object':obj.pk,'nonce':str(uuid4())})
                 rows,warnings=resolved_preview(request.user,obj,payload)
                 token=signing.dumps(payload,salt=SALT,compress=True)
                 return self.preview(request,obj,payload,token,MonthMapForm(payload=payload),rows,warnings)
             except ValidationError as exc:
                 form.add_error(None,exc)
-        return render(request,'planning/gpr_excel_import.html',{'form':form},status=400)
+        return render(request,'planning/gpr_excel_import.html',{'form':form,'target_version':self.target_version},status=400)
 
     def preview(self, request,obj,payload,token,month_form,rows,warnings):
-        return render(request,'planning/gpr_excel_preview.html',{'object':obj,'payload':payload,'token':token,'month_form':month_form,'rows':rows[:300],'row_count':len(rows),'warnings':payload['warnings']+warnings,'counts':dict(Counter(row['kind'] for row in rows))})
+        return render(request,'planning/gpr_excel_preview.html',{'target_version':self.target_version,'object':obj,'payload':payload,'token':token,'month_form':month_form,'rows':rows[:300],'row_count':len(rows),'warnings':payload['warnings']+warnings,'counts':dict(Counter(row['kind'] for row in rows))})

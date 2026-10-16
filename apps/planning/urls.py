@@ -125,3 +125,5 @@ urlpatterns += [path('smg/<int:pk>/days/edit/', SmgDaysEdit.as_view(), name='smg
 
 from .gpr_excel_views import GprExcelImport
 urlpatterns += [path('gpr/excel-import/', GprExcelImport.as_view(), name='gpr_excel_import')]
+
+urlpatterns += [path('workspace-versions/<int:pk>/gpr-import/', GprExcelImport.as_view(), name='workspace_gpr_import')]
