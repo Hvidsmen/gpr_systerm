@@ -93,7 +93,7 @@ def estimate_detail(request,pk):
     require_roles(request.user,READ_ROLES)
     doc=get_object_or_404(EstimateDocument,company=request.user.company,pk=pk)
     report = build_report(list(doc.rows.values('source_row','kind','parent_row','values')))
-    return render(request,'estimates/detail.html',{'document':doc,'report':report})
+    return render(request,'estimates/detail.html',{'document':doc,'report':report,'can_delete':role_code(request.user) in PLAN_ROLES})
 
 
 def catalog_list(request):
@@ -116,3 +116,18 @@ def estimate_export(request):
     response=HttpResponse(export(data),content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     response['Content-Disposition']='attachment; filename="estimates.xlsx"'
     return response
+
+
+from django.views.decorators.http import require_http_methods
+
+
+@require_http_methods(['GET', 'POST'])
+def estimate_delete(request, pk):
+    require_roles(request.user, PLAN_ROLES)
+    doc = get_object_or_404(EstimateDocument, company=request.user.company, pk=pk)
+    if request.method == 'POST':
+        with transaction.atomic():
+            doc.delete()
+        messages.success(request, 'Смета удалена. Справочники сохранены.')
+        return redirect('estimates:estimate_list')
+    return render(request, 'estimates/delete.html', {'document': doc})

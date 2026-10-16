@@ -1,13 +1,14 @@
-{% extends 'base.html' %}{% block content %}
+{% extends 'base.html' %}{% load revenue_tags estimate_tags %}{% block content %}
 <h1>{{ document.title }}</h1><p>{{ document.estimate_object }} · {{ document.filename }}</p>
-<p>Рассчитано: базисная стоимость {{ report.base|floatformat:0|default:'—' }} ₽ · текущая {{ report.current|floatformat:0|default:'—' }} ₽</p>
+<p>Рассчитано: базисная стоимость {{ report.base|money }} ₽ · текущая {{ report.current|money }} ₽</p>
 <p class="text-muted">Итоги вычисляются по подработам. Строки «Итого» и «Всего» из файла в расчет не входят. ОТм входит в ЭМ и повторно не прибавляется.</p>
 {% for warning in report.diagnostics %}<p class="alert alert-warning">{{ warning }}</p>{% endfor %}
 <a class="btn btn-outline-primary" href="{% url 'estimates:estimate_export' %}?id={{ document.pk }}">Excel</a>
-{% for work in report.works %}<details open class="card p-3 mt-3"><summary><strong>{{ work.name }}</strong> · {{ work.current|floatformat:0|default:'—' }} ₽</summary>
-{% for sub in work.subworks %}<details class="p-3 border-bottom"><summary>{{ sub.name }} · {{ sub.quantity|default_if_none:'—' }} {{ sub.unit }} · <strong>{{ sub.current|floatformat:0|default:'—' }} ₽</strong></summary><p class="text-muted">{{ sub.code }} · {{ sub.method }}</p>
-<p>Базисная стоимость: {{ sub.base|floatformat:2|default:'—' }} ₽ · текущая: {{ sub.current|floatformat:0|default:'—' }} ₽</p>
-{% for charge in sub.charges %}<p class="text-muted">{{ charge.2 }}: {{ charge.6 }}% от ФОТ</p>{% endfor %}
+{% if can_delete %}<a class="btn btn-outline-danger" href="{% url 'estimates:estimate_delete' document.pk %}">Удалить смету</a>{% endif %}
+{% for work in report.works %}<details open class="card p-3 mt-3"><summary><strong>{{ work.name }}</strong> · {{ work.current|money }} ₽</summary>
+{% for sub in work.subworks %}<details class="p-3 border-bottom"><summary>{{ sub.name }} · {{ sub.quantity|estimate_quantity }} {{ sub.unit }} · <strong>{{ sub.current|money }} ₽</strong></summary><p class="text-muted">{{ sub.code }} · {{ sub.method }}</p>
+<p>Базисная стоимость: {{ sub.base|money }} ₽ · текущая: {{ sub.current|money }} ₽</p>
+{% for charge in sub.charges %}<p class="text-muted">{{ charge.2 }}: {{ charge.6|estimate_quantity }}% от ФОТ</p>{% endfor %}
 {% for warning in sub.warnings %}<p class="text-danger">{{ warning }}</p>{% endfor %}
-<table class="table table-sm"><thead><tr><th>Ресурс</th><th>Обоснование</th><th>Ед.</th><th>Количество</th><th>Цена базисная</th><th>Базисная стоимость</th></tr></thead><tbody>{% for r in sub.resources %}<tr><td>{{ r.values.2 }}</td><td>{{ r.values.1 }}</td><td>{{ r.values.3 }}</td><td>{{ r.values.6|default_if_none:'—' }}</td><td>{{ r.values.7|default_if_none:'—' }}</td><td>{{ r.values.9|default_if_none:'—' }}</td></tr>{% empty %}<tr><td colspan="6">Отдельная материальная позиция или ресурсная расшифровка отсутствует.</td></tr>{% endfor %}</tbody></table></details>{% endfor %}</details>{% endfor %}
+<table class="table table-sm"><thead><tr><th>Ресурс</th><th>Обоснование</th><th>Ед.</th><th>Количество</th><th>Цена базисная</th><th>Базисная стоимость</th></tr></thead><tbody>{% for r in sub.resources %}<tr><td>{{ r.values.2 }}</td><td>{{ r.values.1 }}</td><td>{{ r.values.3 }}</td><td>{{ r.values.6|estimate_quantity }}</td><td>{{ r.values.7|money }}</td><td>{{ r.values.9|money }}</td></tr>{% empty %}<tr><td colspan="6">Отдельная материальная позиция или ресурсная расшифровка отсутствует.</td></tr>{% endfor %}</tbody></table></details>{% endfor %}</details>{% endfor %}
 {% endblock %}

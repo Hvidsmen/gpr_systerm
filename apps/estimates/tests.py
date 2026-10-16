@@ -97,3 +97,31 @@ class CalculationTests(SimpleTestCase):
         from .report import build_report
         d=parse(sample(),'sample.xlsx');report=build_report(d['rows'])
         self.assertIsNone(report['current']);self.assertTrue(report['diagnostics'])
+
+
+class DeleteTests(AccessTests):
+    def test_delete_confirmation_scope_and_catalog_preservation(self):
+        self.client.post(reverse('estimates:estimate_import'),{'object_name':'Test','file':SimpleUploadedFile('a.xlsx',sample())})
+        doc=EstimateDocument.objects.get();url=reverse('estimates:estimate_delete',args=[doc.pk]);count=EstimateCatalog.objects.count()
+        self.assertContains(self.client.get(url),'Удалить смету?')
+        self.assertTrue(EstimateDocument.objects.filter(pk=doc.pk).exists())
+        self.user.role=Role.objects.get(code='OBSERVER');self.user.save()
+        self.assertEqual(self.client.post(url).status_code,403)
+        self.user.role=self.role;self.user.save()
+        other=Company.objects.create(name='Hidden');self.user.company=other;self.user.save()
+        self.assertEqual(self.client.post(url).status_code,404)
+        self.user.company=self.company;self.user.save()
+        self.assertEqual(self.client.post(url).status_code,302)
+        self.assertFalse(EstimateDocument.objects.filter(pk=doc.pk).exists())
+        self.assertEqual(EstimateCatalog.objects.count(),count)
+
+
+class NumberTests(SimpleTestCase):
+    def test_precision_grouping_and_zero(self):
+        from .templatetags.estimate_tags import estimate_quantity
+        from apps.analytics.templatetags.revenue_tags import money
+        self.assertEqual(estimate_quantity('1234.000008'),'1\u00a0234,000008')
+        self.assertEqual(estimate_quantity(0),'0')
+        self.assertEqual(estimate_quantity('0.000008'),'0,000008')
+        self.assertEqual(estimate_quantity(None),'—')
+        self.assertEqual(money(4047806),'4 047 806')
