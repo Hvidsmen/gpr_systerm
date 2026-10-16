@@ -88,14 +88,14 @@ def export(documents, mode="full"):
         s.append(['Файл', 'Лист', 'Строка', 'Раздел', 'Тип', 'Родительская строка'] + COLUMNS)
     catalogs = {'work': {}, 'resource': {}, 'unit': {}}
     hierarchy = book.create_sheet('Работы и подработы')
-    hierarchy.append(['Объект', 'Смета', 'Файл', 'Работа / подработа', 'Обоснование', 'Ед.', 'Объем', 'Базисная стоимость, ₽', 'Текущая стоимость, ₽', 'Примечания'])
+    hierarchy.append(['Объект', 'Смета', 'Файл', 'Раздел / работа', 'Подработа', 'Обоснование', 'Ед.', 'Объем', 'Базисная стоимость, ₽', 'Текущая стоимость, ₽', 'Примечания'])
     for n, doc in enumerate(documents, 1):
         report = build_report(doc['rows'])
         doc = dict(doc, base_total=report['base'], current_total=report['current'], warnings=doc['warnings'] + report['diagnostics'])
         for work in report['works']:
-            hierarchy.append([safe(doc.get('object_name', '')), safe(doc['filename']), safe(doc['filename']), safe(work['name']), None, None, None, work['base'], work['current']])
+            hierarchy.append([safe(doc.get('object_name', '')), safe(doc['filename']), safe(doc['filename']), safe(work['name']), None, None, None, None, work['base'], work['current']])
             for sub in work['subworks']:
-                hierarchy.append([safe(doc.get('object_name', '')), safe(doc['filename']), safe(doc['filename']), safe(sub['name']), safe(sub['code']), safe(sub['unit']), sub['quantity'], sub['base'], sub['current'], '; '.join(sub['warnings'])])
+                hierarchy.append([safe(doc.get('object_name', '')), safe(doc['filename']), safe(doc['filename']), safe(work['name']), safe(sub['name']), safe(sub['code']), safe(sub['unit']), sub['quantity'], sub['base'], sub['current'], '; '.join(sub['warnings'])])
                 hierarchy.row_dimensions[hierarchy.max_row].outlineLevel = 1
         hierarchy.sheet_properties.outlinePr.summaryBelow = False
         summary.append([safe(doc['filename']), safe(doc['filename']), number(doc['base_total']), number(doc['current_total']), sum(r['kind']=='item' for r in doc['rows']), sum(r['kind']=='resource' for r in doc['rows']), '; '.join(doc['warnings'])])
@@ -134,7 +134,7 @@ def export(documents, mode="full"):
         for c in s[1]:c.font=Font(color='FFFFFF',bold=True);c.fill=PatternFill('solid',fgColor='1765A0');c.alignment=Alignment(wrap_text=True)
         s.row_dimensions[1].height=34
         for col in range(1,s.max_column+1):
-            name=str(s.cell(1,col).value or '');s.column_dimensions[get_column_letter(col)].width=65 if 'Наименование' in name else 38 if name in {'Файл','Смета / файл','Раздел'} else 19
+            name=str(s.cell(1,col).value or '');s.column_dimensions[get_column_letter(col)].width=65 if 'Наименование' in name or name == 'Подработа' else 38 if name in {'Файл','Смета','Смета / файл','Раздел','Раздел / работа'} else 19
         for row in s.iter_rows(min_row=2):
             for c in row:
                 c.alignment=Alignment(vertical='top',wrap_text=True)
