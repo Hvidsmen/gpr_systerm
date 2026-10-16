@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied, ValidationError
@@ -41,7 +41,7 @@ def version_for(request, pk):
     return get_object_or_404(
         GlobalPlanVersion.objects.select_related(
             "workspace__baseline_version", "workspace__construction_object"
-        ),
+        ).defer("snapshot", "workspace__baseline_version__snapshot"),
         pk=pk,
         company=request.user.company,
         workspace__isnull=False,
@@ -299,6 +299,7 @@ class WorkspaceEdit(View):
             "work_prices": work_prices,
             "months": months,
             "work_forms": works,
+            "work_carryover_notes": {str(r.work_id): {'quantity':str(r.quantity),'unit':r.work.unit,'items':r.item_quantities,'added':r.added,'previous_month':(selected.replace(day=1)-timedelta(days=1)).strftime('%m.%Y')} for r in version.work_carryovers.filter(month=selected).select_related('work')},
             "work_item_quantities": {form.prefix: form.instance.item_quantities for form in works if form.instance.item_quantities},
             "planning_filter_data": filter_data,
             "work_filters": filter_specs['works'],

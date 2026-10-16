@@ -127,3 +127,6 @@ from .gpr_excel_views import GprExcelImport
 urlpatterns += [path('gpr/excel-import/', GprExcelImport.as_view(), name='gpr_excel_import')]
 
 urlpatterns += [path('workspace-versions/<int:pk>/gpr-import/', GprExcelImport.as_view(), name='workspace_gpr_import')]
+
+from .carryover_views import CarryoverView
+urlpatterns += [path('workspace-versions/<int:pk>/carryover/', CarryoverView.as_view(), name='workspace_carryover')]

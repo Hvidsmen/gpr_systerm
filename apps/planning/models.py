@@ -1173,3 +1173,17 @@ class GprImportReceipt(BaseCompanyModel):
     nonce = models.UUIDField(unique=True)
     workspace = models.ForeignKey(PlanningWorkspace, on_delete=models.SET_NULL, null=True, blank=True)
     imported_by = models.ForeignKey('accounts.User', on_delete=models.PROTECT)
+
+
+class WorkCarryover(BaseCompanyModel):
+    added = models.BooleanField(default=True)
+    version = models.ForeignKey(GlobalPlanVersion, on_delete=models.CASCADE, related_name='work_carryovers')
+    source_version = models.ForeignKey(GlobalPlanVersion, on_delete=models.PROTECT, related_name='carried_work_sources')
+    month = models.DateField()
+    work = models.ForeignKey('works.ProjectWork', on_delete=models.PROTECT)
+    quantity = models.DecimalField(max_digits=15, decimal_places=3)
+    item_quantities = models.JSONField(default=dict)
+    imported_by = models.ForeignKey('accounts.User', on_delete=models.PROTECT)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['version','month','work'], name='unique_work_carryover_month')]

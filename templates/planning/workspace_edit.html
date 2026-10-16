@@ -91,6 +91,7 @@
 <details class="allocation-section" data-allocation-section="works"><summary>Работы <span class="allocation-group-count" data-section-count></span></summary><div class="allocation-section-body"><p>Указывайте объём основной работы. Объёмы подработ рассчитываются по нормативам; при импорте Excel сохраняются отдельные объёмы подработ. Изменение объёма основной работы возвращает расчёт по нормативам.</p>
 {% include 'planning/row_filters.html' with filter_kind='works' filters=work_filters %}
 <p><button type="submit" name="action" value="remove_zero_works" class="btn btn-outline-danger" onclick="return confirm('Сохранить изменения и удалить работы с нулевыми объемами только за выбранный месяц? Справочник и другие месяцы сохранятся.')">Сохранить и удалить нулевые работы за {{ selected_month|date:'m.Y' }}</button></p>
+<p><a class="btn btn-outline-primary" href="{% url 'planning:workspace_carryover' version.pk %}?month={{ selected_month|date:'Y-m-d' }}">Добавить остаток работ из прошлого месяца</a></p>
 <div id="work-rows">{% for form in work_forms %}<div class="card mb-3 allocation-row"><div class="card-body allocation-grid">{{ form.non_field_errors }}{% for field in form %}<p data-field="{{ field.name }}" {% if field.is_hidden %}hidden{% endif %}>{% if field.name == 'DELETE' %}<span hidden>{{ field }}</span><button type="button" class="btn btn-sm btn-outline-danger" data-remove-row aria-label="Удалить строку">Удалить</button>{% else %}{{ field.label_tag }} {{ field }} {{ field.errors }}{% endif %}</p>{% endfor %}</div></div>{% endfor %}</div>
 <button type="button" class="btn btn-outline-primary mb-4" data-add="works">Добавить строку работы</button>
 </div></details>
@@ -106,6 +107,7 @@
 <template id="empty-resources"><div class="card mb-3 resource-row allocation-row"><div class="card-body allocation-grid">{% for field in resource_forms.empty_form %}<p data-field="{{ field.name }}" {% if field.is_hidden or field.name == 'kind' %}hidden{% endif %}>{% if field.name == 'DELETE' %}<span hidden>{{ field }}</span><button type="button" class="btn btn-sm btn-outline-danger" data-remove-row aria-label="Удалить строку">Удалить</button>{% else %}{{ field.label_tag }} {{ field }}{% endif %}</p>{% endfor %}</div></div></template>
 {{ work_prices|json_script:'work-prices' }}
 <script src="{% static 'planning/work_amounts.js' %}"></script>
+{{ work_carryover_notes|json_script:'work-carryover-notes' }}
 {{ composite_items|json_script:'composite-items' }}
 {{ work_item_quantities|json_script:'work-item-quantities' }}
 {{ planning_filter_data|json_script:'planning-filter-data' }}
@@ -204,6 +206,7 @@ document.getElementById('allocation-editor').addEventListener('change',event=>{
     applyRowFilters(document.querySelector('[data-row-filter="'+kind+'"]'));
   }
 });
+const workCarryoverNotes=JSON.parse(document.getElementById('work-carryover-notes').textContent);
 const compositeItems=JSON.parse(document.getElementById('composite-items').textContent);
 const importedItemQuantities=JSON.parse(document.getElementById('work-item-quantities').textContent);
 const subworkNumber=new Intl.NumberFormat('ru-RU',{maximumFractionDigits:6});
@@ -211,6 +214,10 @@ function updateSubworks(row) {
   updateWorkAmount(row);
   const work=row.querySelector('[name$="-work"]');
   if (!work) return;
+  let note=row.querySelector('[data-carryover-note]');
+  if (!note) {note=document.createElement('div');note.dataset.carryoverNote='';note.className='alert alert-warning py-2';note.style.gridColumn='1 / -1';row.querySelector('.allocation-grid').append(note);}
+  const carry=workCarryoverNotes[work.value];note.hidden=!carry;
+  if(carry){note.textContent=(carry.added?'Добавлено из остатка за ':'Есть недовыполненный остаток за ')+carry.previous_month+': '+subworkNumber.format(Number(carry.quantity))+' '+carry.unit+(carry.added?'':' · текущий план не изменен');if(Object.keys(carry.items).length){const details=document.createElement('span');details.textContent=' · Подработы: '+Object.entries(carry.items).map(([id,q])=>(compositeItems[work.value]?.find(i=>String(i.id)===id)?.name||id)+' — '+subworkNumber.format(Number(q))).join('; ');note.append(details);}}
   let panel=row.querySelector('[data-subworks]');
   if (!panel) {
     panel=document.createElement('div');panel.dataset.subworks='';panel.style.gridColumn='1 / -1';
