@@ -25,7 +25,7 @@ class GprUploadForm(CompanyFormMixin, forms.Form):
     construction_object = forms.ModelChoiceField(queryset=ConstructionObject.objects.all(), label='Строительный объект')
     file = forms.FileField(label='Файл ГПР (.xls / .xlsx)', widget=forms.ClearableFileInput(attrs={'accept':'.xls,.xlsx'}))
     sheet = forms.CharField(required=False, label='Лист Excel', help_text='Можно указать другой лист. Автоматически выбирается «ГПР» или первый лист с месячными столбцами.')
-    year = forms.IntegerField(required=False, min_value=1900, max_value=2100, label='Плановый год', help_text='Год января в плане. Например, 2027: ноябрь и декабрь перед январём относятся к 2026. Пустое поле сохраняет годы Excel.')
+    year = forms.IntegerField(required=False, min_value=1900, max_value=2100, label='Заменить годы Excel (необязательно)', help_text='По умолчанию годы берутся из файла. Заполняйте только для намеренного переноса плана. Год января в плане. Например, 2027: ноябрь и декабрь перед январём относятся к 2026. Пустое поле сохраняет годы Excel.')
     title = forms.CharField(required=False, max_length=255, label='Название нового ГПР')
 
 
@@ -165,7 +165,7 @@ class GprExcelImport(View):
 
     def get(self, request, pk=None):
         require_roles(request.user,PLAN_ROLES)
-        return render(request,'planning/gpr_excel_import.html',{'form':self.upload_form(request,initial={'year':self.target_version.start_date.year if self.target_version else timezone.localdate().year+1}),'target_version':self.target_version})
+        return render(request,'planning/gpr_excel_import.html',{'form':self.upload_form(request),'target_version':self.target_version})
 
     def post(self, request, pk=None):
         require_roles(request.user,PLAN_ROLES)

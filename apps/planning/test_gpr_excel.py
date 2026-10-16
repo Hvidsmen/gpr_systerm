@@ -215,3 +215,19 @@ class GprImportTests(TestCase):
         self.assertEqual(self.client.post(url,data).status_code,400)
         self.assertEqual(workspace.baseline_version.work_allocations.count(),0)
         self.assertEqual(workspace.baseline_version.resource_allocations.count(),0)
+
+    def test_import_year_is_not_overridden_by_workspace_start(self):
+        from .workspace_services import WorkspaceService
+        workspace=WorkspaceService.create(self.planner,self.obj,'Existing',date(2026,11,1),date(2027,9,30))
+        url=reverse('planning:workspace_gpr_import',args=[workspace.baseline_version_id])
+        response=self.client.get(url)
+        self.assertIsNone(response.context['form']['year'].value())
+        w=Workbook();s=w.active
+        s.append(['№','Вид ресурса','Наименование','Ед. изм.']+[None]*9+[2026,None,2027])
+        s.append([None]*13+['ноябрь','декабрь','январь'])
+        s.append([1,None,'Монтаж','шт']+[None]*9+[26,50,10])
+        out=BytesIO();w.save(out)
+        preview=self.client.post(url,{'file':SimpleUploadedFile('gpr.xlsx',out.getvalue())})
+        self.assertEqual(preview.status_code,200)
+        self.assertEqual([m['month'] for m in preview.context['payload']['months']],['2026-11-01','2026-12-01','2027-01-01'])
+        self.assertEqual(preview.context['rows'][0]['month'],'2026-11-01')
