@@ -78,6 +78,23 @@ class GprParserTests(SimpleTestCase):
         with self.assertRaises(ValidationError):parse_gpr(b'invalid','plan.xls')
 
 
+class SuzunHeaderTests(SimpleTestCase):
+    def test_unit_header_and_aggregate_work_children(self):
+        w=Workbook();s=w.active;s.title='ГПР_23км без МОП'
+        s.append(['№','Вид ресурса','Наименование','Ед. изм.','Проектный объем',None,None,None,None,None,None,None,None,2026,None,2027])
+        s.append([None]*13+['ноябрь','декабрь','январь'])
+        s.append([1,None,'Расключение','точка',20]+[None]*8+[5,10,5])
+        s.append([None,None,'УЗА 1','точка',10]+[None]*8+[5,5,None])
+        s.append([None,None,'УЗА 2','точка',10]+[None]*8+[None,5,5])
+        s.append([2,None,'Проезд','шт',2]+[None]*8+[None,'проезд',2])
+        out=BytesIO();w.save(out)
+        d=parse_gpr(out.getvalue(),'test.xlsx',sheet_name=s.title)
+        self.assertEqual({r['name'] for r in d['entries']},{'УЗА 1','УЗА 2','Проезд'})
+        self.assertEqual(next(r for r in d['entries'] if r['name']=='Проезд')['section'],s.title)
+        self.assertTrue(any('проезд' in warning for warning in d['warnings']))
+        self.assertTrue(all(r['unit'] in {'точка','шт'} for r in d['entries']))
+
+
 class GprImportTests(TestCase):
     @classmethod
     def setUpTestData(cls):fixtures.WorkspaceTests.setUpTestData.__func__(cls)

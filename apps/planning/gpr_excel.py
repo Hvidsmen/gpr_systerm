@@ -56,7 +56,7 @@ def header(rows):
             if len(dates) >= 2 and names:
                 name = names[0]
                 kind_col = next((col for col,value in enumerate(above) if norm(value)=='вид ресурса'), None)
-                return {'row': index, 'name': name, 'unit': name+2 if kind_col is not None else name+1, 'type': kind_col, 'dates': dates, 'layout': 'mixed'}
+                return {'row': index, 'name': name, 'unit': next((col for col,value in enumerate(above) if norm(value) in ('ед. изм', 'ед.изм', 'единица измерения', 'ед. измерения')), name+2 if kind_col is not None else name+1), 'type': kind_col, 'dates': dates, 'layout': 'mixed'}
     return None
 
 
@@ -143,6 +143,7 @@ def parse_gpr(content, filename, sheet_name='', year=None):
     entries, section, resource_group, mode = [], sheet, '', None
     major_section, resource_col, number_col = '', config['name'], None
     ignored_work = 0
+    aggregate_section = False
     for index, row in enumerate(rows[config['row']+1:], config['row']+2):
         def value(col): return row[col] if col is not None and col<len(row) else None
         prefix = row[:first_month_col]
@@ -166,6 +167,18 @@ def parse_gpr(content, filename, sheet_name='', year=None):
             resource_col = next(col for col,cell in enumerate(prefix) if re.fullmatch(r'(?:\d+(?:\.\d+)*[ .]*)?(?:гсм|горюче-смазочные материалы):?', norm(cell)))
             mode, resource_group = 'fuel', 'ГСМ'; continue
         is_work = label and isinstance(value(config['unit']),str) and unit and not re.fullmatch(r'[+-]?\d+(?:[.,]\d+)?', unit) and resource_type not in ('техника','персонал','люди') and mode is None
+        if is_work and aggregate_section and text(value(0)):
+            section = sheet
+            aggregate_section = False
+        if is_work and config['layout'] == 'mixed' and text(value(0)) and index < len(rows):
+            following = rows[index]
+            child_unit = text(following[config['unit']]) if config['unit'] < len(following) else ''
+            child_type = norm(following[config['type']]) if config['type'] is not None and config['type'] < len(following) else ''
+            if not text(following[0]) and child_unit == unit and child_type not in ('техника','персонал','люди'):
+                section = label
+                aggregate_section = True
+                warnings.append(f'Строка {index}: общая работа «{label}» используется как раздел; импортируются детальные строки ниже без повторного сложения.')
+                continue
         if is_work:
             kind, group, row_name = 'work', section, label
         else:
@@ -197,6 +210,9 @@ def parse_gpr(content, filename, sheet_name='', year=None):
             try:
                 quantity = number(value(col), count=kind in ('labor','equipment'))
             except ValidationError as exc:
+                if is_work and isinstance(value(col), str) and re.search(r'[А-Яа-яA-Za-z]', value(col)) and not re.match(r'^[+-]?(?:nan|inf)', value(col).strip(), re.I):
+                    warnings.append(f'Строка {index}, столбец {col+1}: текстовая пометка «{text(value(col))}» пропущена; объем не вычислялся.')
+                    continue
                 raise ValidationError(f'Лист «{sheet}», строка {index}, столбец {col+1}: {"; ".join(exc.messages)}') from exc
             if quantity is None or quantity==0:
                 continue
