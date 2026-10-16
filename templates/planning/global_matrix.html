@@ -1,5 +1,5 @@
 {% load static %}
-{% for warning in matrix_warnings %}<div class="alert alert-warning">{{ warning }}</div>{% endfor %}
+{% if matrix_warnings %}<details class="card border-warning p-3 mb-3" data-version-warnings><summary class="fw-semibold text-warning-emphasis">Предупреждения расчета всей версии: {{ matrix_warnings|length }}</summary><p class="small text-muted mt-2">Относятся ко всему периоду версии, а не только к открытому месяцу. Переключение месяца не пересчитывает план. После изменения месячных данных сформируйте план заново — список предупреждений обновится.</p>{% for warning in matrix_warnings %}<div class="alert alert-warning mb-2">{{ warning }}</div>{% endfor %}</details>{% endif %}
 {% if matrix_error %}<div class="alert alert-warning">{{ matrix_error }}</div>{% endif %}
 <p class="small text-muted">Нажмите на месяц для просмотра по дням. Люди и техника — средняя численность за период; расход ГСМ — сумма, остаток — последнее значение.</p>
 <form method="get" id="matrix-filters" class="card p-3 mb-3">
