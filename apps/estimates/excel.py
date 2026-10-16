@@ -8,7 +8,7 @@ from openpyxl import load_workbook, Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils import get_column_letter
 
-LABELS = {'section': 'Раздел', 'item': 'Позиция', 'resource': 'Ресурс', 'detail': 'Расчет / пояснение', 'total': 'Итог', 'appendix': 'Ведомость / итоговая расшифровка'}
+LABELS = {'section': 'Работа', 'item': 'Подработа', 'resource': 'Ресурс', 'detail': 'Расчет / пояснение', 'total': 'Итог', 'appendix': 'Ведомость / итоговая расшифровка'}
 COLUMNS = ['№ / отметки', 'Обоснование', 'Наименование', 'Ед. изм.', 'Количество на единицу', 'Коэффициент количества', 'Количество всего', 'Цена базисная', 'Коэффициент цены', 'Стоимость базисная, ₽', 'Индекс', 'Стоимость текущая, ₽']
 
 def number(value):
@@ -67,7 +67,7 @@ def parse(data, filename=''):
                 result['current_total'] = str(number(vals[11])) if number(vals[11]) is not None else None
             result['rows'].append(dict(source_row=index, section=section, kind=kind, parent_row=parent if kind not in {'item','section','total','appendix'} else None, values=vals))
         if result['current_total'] is None:
-            result['warnings'].append('Итог «ВСЕГО по смете» не найден; стоимость автоматически не суммировалась.')
+            result['warnings'].append('Контрольный итог «ВСЕГО по смете» не найден; расчет отчета выполняется по подработам.')
         if not any(r['kind']=='item' for r in result['rows']):
             raise ValueError('В файле не найдены позиции сметы.')
         return result
@@ -80,13 +80,24 @@ def safe(value):
 
 
 def export(documents):
+    from .report import build_report
     book = Workbook(); summary = book.active; summary.title = 'Свод смет'
     summary.append(['Смета / файл', 'Наименование', 'Базисная стоимость, ₽', 'Текущая стоимость, ₽', 'Позиций', 'Ресурсов', 'Примечания'])
     positions = book.create_sheet('Позиции'); resources = book.create_sheet('Ресурсы'); detail = book.create_sheet('Расчеты и итоги')
     for s in (positions, resources, detail):
         s.append(['Файл', 'Лист', 'Строка', 'Раздел', 'Тип', 'Родительская строка'] + COLUMNS)
     catalogs = {'work': {}, 'resource': {}, 'unit': {}}
+    hierarchy = book.create_sheet('Работы и подработы')
+    hierarchy.append(['Файл', 'Работа / подработа', 'Обоснование', 'Ед.', 'Объем', 'Базисная стоимость, ₽', 'Текущая стоимость, ₽', 'Примечания'])
     for n, doc in enumerate(documents, 1):
+        report = build_report(doc['rows'])
+        doc = dict(doc, base_total=report['base'], current_total=report['current'], warnings=doc['warnings'] + report['diagnostics'])
+        for work in report['works']:
+            hierarchy.append([safe(doc['filename']), safe(work['name']), None, None, None, work['base'], work['current']])
+            for sub in work['subworks']:
+                hierarchy.append([safe(doc['filename']), safe(sub['name']), safe(sub['code']), safe(sub['unit']), sub['quantity'], sub['base'], sub['current'], '; '.join(sub['warnings'])])
+                hierarchy.row_dimensions[hierarchy.max_row].outlineLevel = 1
+        hierarchy.sheet_properties.outlinePr.summaryBelow = False
         summary.append([safe(doc['filename']), safe(doc['title']), number(doc['base_total']), number(doc['current_total']), sum(r['kind']=='item' for r in doc['rows']), sum(r['kind']=='resource' for r in doc['rows']), '; '.join(doc['warnings'])])
         sheet = book.create_sheet('ЛСР %02d' % n)
         sheet.append(['Строка', 'Раздел', 'Тип', 'Родительская строка'] + COLUMNS)
@@ -105,7 +116,7 @@ def export(documents):
     for kind, title in [('work','Справочник позиций'),('resource','Справочник ресурсов'),('unit','Единицы измерения')]:
         s=book.create_sheet(title);s.append(['Обоснование','Наименование','Ед. изм.'] if kind!='unit' else ['Ед. изм.'])
         for key in sorted(catalogs[kind]): s.append([safe(v) for v in key])
-    info=book.create_sheet('Описание');info.append(['Правила']);info.append(['Справочники смет независимы от ГПР. Суммы взяты из ВСЕГО по смете, в рублях.']);info.append(['Ресурсная расшифровка входит в стоимость позиции: повторно не суммировать.']);info.append(['Материалы заказчика, справочные итоги и начисления сохранены в расчетах.']);info.append(['Исходные коэффициенты и значения сохранены; формулы не вычисляются, используются сохраненные значения Excel.'])
+    info=book.create_sheet('Описание');info.append(['Правила']);info.append(['Справочники смет независимы от ГПР. Итоги вычислены по подработам; строки Итого и Всего не участвуют в расчете.']);info.append(['Ресурсная расшифровка входит в стоимость позиции: повторно не суммировать.']);info.append(['Материалы заказчика, справочные итоги и начисления сохранены в расчетах.']);info.append(['Исходные коэффициенты и значения сохранены; формулы не вычисляются, используются сохраненные значения Excel.'])
     for s in book:
         s.freeze_panes='D2';s.auto_filter.ref=s.dimensions
         s.sheet_view.showGridLines=False

@@ -8,6 +8,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from core.permissions import require_roles, READ_ROLES, PLAN_ROLES, role_code
 from .models import EstimateObject, EstimateDocument, EstimateRow, EstimateCatalog
 from .excel import parse, export
+from .report import build_report
 
 
 class MultipleFileInput(forms.ClearableFileInput):
@@ -37,7 +38,12 @@ class ImportForm(forms.Form):
 def estimate_list(request):
     require_roles(request.user, READ_ROLES)
     docs = EstimateDocument.objects.filter(company=request.user.company).select_related('estimate_object')
-    return render(request, 'estimates/list.html', {'can_import': role_code(request.user) in PLAN_ROLES, 'documents': docs, 'totals': docs.aggregate(base=Sum('base_total'), current=Sum('current_total'))})
+    docs = list(docs.prefetch_related('rows'))
+    for doc in docs:
+        report = build_report(list(doc.rows.values('source_row','kind','parent_row','values')))
+        doc.base_total = report['base']; doc.current_total = report['current']
+    totals = {key: sum((getattr(d, field) for d in docs), 0) if all(getattr(d, field) is not None for d in docs) else None for key, field in [('base','base_total'),('current','current_total')]}
+    return render(request, 'estimates/list.html', {'can_import': role_code(request.user) in PLAN_ROLES, 'documents': docs, 'totals': totals})
 
 
 def estimate_import(request):
@@ -86,7 +92,8 @@ def estimate_import(request):
 def estimate_detail(request,pk):
     require_roles(request.user,READ_ROLES)
     doc=get_object_or_404(EstimateDocument,company=request.user.company,pk=pk)
-    return render(request,'estimates/detail.html',{'document':doc,'rows':doc.rows.all()})
+    report = build_report(list(doc.rows.values('source_row','kind','parent_row','values')))
+    return render(request,'estimates/detail.html',{'document':doc,'report':report})
 
 
 def catalog_list(request):

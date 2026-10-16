@@ -24,7 +24,7 @@ class ParserTests(SimpleTestCase):
         self.assertEqual([r['kind'] for r in d['rows']],['section','item','resource','detail','total','appendix','total'])
         self.assertEqual(d['rows'][2]['parent_row'],8)
         w=load_workbook(BytesIO(export([d])),data_only=False)
-        self.assertEqual(w['Свод смет']['D2'].value,100)
+        self.assertIsNone(w['Свод смет']['D2'].value)
         self.assertEqual(w['Ресурсы'].max_row,2)
         self.assertEqual(w['Позиции'].max_row,2)
     def test_unknown_format(self):
@@ -77,3 +77,23 @@ class AccessTests(TestCase):
         response=self.client.get(reverse('estimates:estimate_list'))
         self.assertContains(response,'Ваша роль разрешает просмотр')
         self.assertNotContains(response,'Загрузить сметы (несколько файлов)')
+
+
+class CalculationTests(SimpleTestCase):
+    def test_components_charges_and_no_double_counting(self):
+        from .report import build_report
+        def row(n,kind,name,base=None,index=None,cur=None,percent=None,parent=2):
+            v=[None]*12;v[2]=name;v[9]=base;v[10]=index;v[11]=cur;v[6]=percent
+            if kind=='section':v[0]=name
+            return dict(source_row=n,kind=kind,parent_row=parent,values=v)
+        rows=[row(1,'section','Работа'),row(2,'item','Подработа'),row(3,'detail','ОТ',100,2),row(4,'detail','ЭМ',50,3),row(5,'detail','в т.ч. ОТм',10,2),row(6,'detail','М',20,4),row(7,'detail','НР Работы',percent=100),row(8,'detail','СП Работы',percent=50),row(9,'detail','Всего по позиции',999999,None,999999),row(10,'total','ВСЕГО по смете',999999,None,999999)]
+        report=build_report(rows)
+        self.assertEqual(report['base'],335)
+        self.assertEqual(report['current'],760)
+        rows[-1]['values'][11]=0;rows[-2]['values'][11]=0
+        self.assertEqual(build_report(rows)['current'],760)
+        self.assertTrue(report['diagnostics'])
+    def test_incomplete_is_unknown_not_zero(self):
+        from .report import build_report
+        d=parse(sample(),'sample.xlsx');report=build_report(d['rows'])
+        self.assertIsNone(report['current']);self.assertTrue(report['diagnostics'])
