@@ -312,6 +312,7 @@ class GlobalPlanVersion(BaseCompanyModel):
         max_length=12,
         choices=[
             ("REMAINING", "Факт и распределение остатка"),
+            ("ENTERED", "Факт и только введенные объемы, без переноса остатков"),
             ("BASELINE", "Сохранение базового плана"),
         ],
         blank=True,
@@ -420,7 +421,7 @@ class GlobalPlanVersion(BaseCompanyModel):
                     or self.planning_month.day != 1
                     or self.planning_month
                     not in months_between(self.start_date, self.end_date)
-                    or self.scenario not in ["REMAINING", "BASELINE"]
+                    or self.scenario not in ["REMAINING", "BASELINE", "ENTERED"]
                 ):
                     raise ValidationError("Укажите месяц периода и сценарий уточнения.")
             if self.baseline_review_id and (self.version_kind != "FORECAST" or self.baseline_review.version_id != workspace.baseline_version_id or not self.baseline_review.was_approved):

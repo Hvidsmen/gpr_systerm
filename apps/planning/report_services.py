@@ -108,7 +108,7 @@ def empty_plan_value(source, day):
     snapshot = source.snapshot
     if (
         snapshot.get("version_kind") == "FORECAST"
-        and snapshot.get("scenario") == "REMAINING"
+        and snapshot.get("scenario") in {"REMAINING", "ENTERED"}
     ):
         target = snapshot.get("planning_month")
         if target and day < date.fromisoformat(target):

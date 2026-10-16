@@ -315,21 +315,13 @@ class WorkspaceTests(TestCase):
         self.approve(workspace.baseline_version)
         self.fact(self.simple, None, JAN.replace(day=5), 250)
         version = self.choose(workspace)
-        with self.assertRaisesMessage(ValidationError, "Распределите вручную"):
-            WorkspaceService.refresh(version, self.planner)
-        row = WorkMonthAllocation.objects.create(
-            company=self.company,
-            version=version,
-            work=self.simple,
-            month=MAR,
-            quantity=500,
-        )
-        with self.assertRaises(ValidationError):
-            WorkspaceService.refresh(version, self.planner)
-        row.quantity = 530
-        row.save()
         version = WorkspaceService.refresh(version, self.planner)
-        self.assertEqual(self.amounts(version, self.simple), [D(250), D(220), D(530)])
+        row = version.work_allocations.get(work=self.simple,month=MAR)
+        self.assertEqual(row.quantity,530)
+        row.quantity=500;row.save()
+        version=WorkspaceService.refresh(version,self.planner)
+        row.refresh_from_db();self.assertEqual(row.quantity,530)
+        self.assertEqual(self.amounts(version,self.simple),[D(250),D(220),D(530)])
 
     def test_negative_remainder_becomes_zero_and_warns(self):
         workspace = self.create()
@@ -1009,3 +1001,37 @@ class WorkspaceTests(TestCase):
         saved=ResourceMonthAllocation.objects.get(pk=resource.instance.pk)
         self.assertEqual(saved.count,7)
         self.assertEqual(version.resource_allocations.count(),100)
+
+    def test_entered_scenario_keeps_only_explicit_future_inputs(self):
+        workspace=self.create()
+        ResourceMonthAllocation.objects.create(company=self.company,version=workspace.baseline_version,month=JAN,kind='labor',brigade=self.brigade,count=2,hours=100,rate=100)
+        self.approve(workspace.baseline_version)
+        self.fact(self.simple,None,JAN.replace(day=5),250)
+        version=self.choose(workspace,'ENTERED',qty=220)
+        version=WorkspaceService.refresh(version,self.planner)
+        self.assertEqual(self.amounts(version,self.simple),[D(250),D(220),D(0)])
+        self.assertFalse(version.work_allocations.filter(month=MAR).exists())
+        WorkMonthAllocation.objects.create(company=self.company,version=version,work=self.simple,month=MAR,quantity=50)
+        ResourceMonthAllocation.objects.create(company=self.company,version=version,month=MAR,kind='labor',brigade=self.brigade,count=3,hours=7,rate=100)
+        version=WorkspaceService.refresh(version,self.planner)
+        self.assertEqual(self.amounts(version,self.simple),[D(250),D(220),D(50)])
+        self.assertEqual(sum(D(r['planned_hours']) for r in version.snapshot['resources']['labor'] if r['date'][:7]=='2026-03'),7)
+        self.client.force_login(self.planner)
+        response=self.client.get(reverse('planning:workspace_edit',args=[version.pk])+'?month=2026-03-01')
+        self.assertEqual(response.status_code,200)
+        self.assertContains(response,'Невведенные остатки не переносятся автоматически')
+
+    def test_two_zero_weight_future_months_still_require_manual_split(self):
+        workspace=self.create()
+        workspace.baseline_version.work_allocations.filter(month=JAN).update(quantity=1000)
+        workspace.baseline_version.work_allocations.filter(month__in=[FEB,MAR]).update(quantity=0)
+        self.approve(workspace.baseline_version)
+        version=WorkspaceService.forecast(workspace,self.planner,JAN,'REMAINING')
+        version.work_allocations.update(quantity=100)
+        with self.assertRaises(ValidationError) as ctx:
+            WorkspaceService.refresh(version,self.planner)
+        self.assertEqual(ctx.exception.code,'manual_work_remainder')
+        for month,qty in [(FEB,200),(MAR,700)]:
+            WorkMonthAllocation.objects.create(company=self.company,version=version,work=self.simple,month=month,quantity=qty)
+        version=WorkspaceService.refresh(version,self.planner)
+        self.assertEqual(self.amounts(version,self.simple),[D(100),D(200),D(700)])

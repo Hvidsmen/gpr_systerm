@@ -6,7 +6,7 @@ from itertools import chain
 from copy import deepcopy
 from calendar import monthrange
 from datetime import date, timedelta
-from decimal import Decimal, ROUND_DOWN
+from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
 
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import models, transaction
@@ -523,7 +523,7 @@ def build_forecast(version, inputs, resources, base):
             new_spec = specification(row.work)
             new_spec.update(plans=[], daily=[])
             base_specs[row.work_id] = new_spec
-    if any(r.month != target for r in inputs) and version.scenario != "REMAINING":
+    if any(r.month != target for r in inputs) and version.scenario not in {"REMAINING", "ENTERED"}:
         raise ValidationError(
             "В сценарии сохранения базы редактируется только выбранный месяц."
         )
@@ -532,9 +532,10 @@ def build_forecast(version, inputs, resources, base):
             (r for r in inputs if r.work_id == work_id and r.month == target), None
         )
         if not current:
-            raise ValidationError(
-                f'Укажите план на выбранный месяц для работы «{spec["name"]}», включая нулевой объём.'
-            )
+            if version.scenario in {'REMAINING','ENTERED'}:
+                current = WorkMonthAllocation(company=version.company,version=version,work_id=work_id,month=target,quantity=ZERO)
+            else:
+                raise ValidationError(f'Укажите план на выбранный месяц для работы «{spec["name"]}», включая нулевой объём.')
         rows = deepcopy(current.daily_override) if current.daily_override is not None else work_rows(
             workspace, spec, target, current.quantity, current.load_profile, current.item_quantities
         )
@@ -545,6 +546,13 @@ def build_forecast(version, inputs, resources, base):
                 for r in spec["plans"]
                 if month_start(date.fromisoformat(r["date"])) != target
             ]
+        elif version.scenario == 'ENTERED':
+            facts = work_fact_rows(version, spec, target)
+            context = [r for r in facts if date.fromisoformat(r['date']) < workspace.start_date]
+            rows += [r for r in facts if date.fromisoformat(r['date']) >= workspace.start_date]
+            for allocation in inputs:
+                if allocation.work_id == work_id and allocation.month > target:
+                    rows += deepcopy(allocation.daily_override) if allocation.daily_override is not None else work_rows(workspace,spec,allocation.month,allocation.quantity,allocation.load_profile,allocation.item_quantities)
         else:
             facts = work_fact_rows(version, spec, target)
             past = [
@@ -589,7 +597,7 @@ def build_forecast(version, inputs, resources, base):
             manual = {
                 r.month: r for r in inputs if r.work_id == work_id and r.month > target
             }
-            if manual and sum(weights) > 0:
+            if manual and sum(weights) > 0 and len(future) != 1:
                 raise ValidationError(
                     f'{spec["name"]}: будущие месяцы распределяются по базовым пропорциям; ручные строки удалите.'
                 )
@@ -597,7 +605,9 @@ def build_forecast(version, inputs, resources, base):
                 raise ValidationError(
                     f'{spec["name"]}: остаток {rest} {spec["unit"]} не помещается в период. Увеличьте план последнего месяца.'
                 )
-            if sum(weights) == 0 and rest:
+            if len(future) == 1:
+                quantities = [rest.quantize(Decimal('.001'),rounding=ROUND_HALF_UP)]
+            elif sum(weights) == 0 and rest:
                 quantities = [
                     manual[m].quantity if m in manual else ZERO for m in future
                 ]
@@ -632,7 +642,7 @@ def build_forecast(version, inputs, resources, base):
                         if spec["kind"] == "COMPOSITE"
                         else {"None": base_month["profile"]}
                     )
-                item_quantities = manual[month].item_quantities if month in manual else {}
+                item_quantities = manual[month].item_quantities if month in manual and len(future) != 1 else {}
                 rows += work_rows(
                     workspace,
                     future_spec,
@@ -643,7 +653,7 @@ def build_forecast(version, inputs, resources, base):
                 )
             rows += past
         works.append(finalize_work(spec, rows, workspace, context))
-    if version.scenario == "REMAINING":
+    if version.scenario in {"REMAINING", "ENTERED"}:
         extra_works = (
             ProjectWork.objects.filter(
                 company=version.company,
@@ -679,14 +689,14 @@ def forecast_resources(version, inputs, base, future, warnings):
     workspace = version.workspace
     if (
         any(date.fromisoformat(r["month"]) != target for r in inputs)
-        and version.scenario != "REMAINING"
+        and version.scenario not in {"REMAINING", "ENTERED"}
     ):
         raise ValidationError(
             "В сценарии сохранения базы ресурсы редактируются только в выбранном месяце."
         )
     result = (
         resource_facts(version, target)
-        if version.scenario == "REMAINING"
+        if version.scenario in {"REMAINING", "ENTERED"}
         else {
             kind: [
                 deepcopy(r)
@@ -700,6 +710,12 @@ def forecast_resources(version, inputs, base, future, warnings):
         if date.fromisoformat(source["month"]) == target:
             result[source["kind"]] += resource_rows(workspace, source, target)
     if version.scenario == "BASELINE":
+        return result
+    if version.scenario == 'ENTERED':
+        for source in inputs:
+            month = date.fromisoformat(source['month'])
+            if month > target:
+                result[source['kind']] += resource_rows(workspace,source,month)
         return result
     base_sources = base.get("monthly_inputs", {}).get("resources", [])
     for kind, config in RESOURCE_CONFIG.items():
@@ -858,7 +874,7 @@ class WorkspaceService:
             workspace.start_date, workspace.end_date
         ):
             raise ValidationError("Выберите месяц внутри периода.")
-        if scenario not in ["BASELINE", "REMAINING"]:
+        if scenario not in ["BASELINE", "REMAINING", "ENTERED"]:
             raise ValidationError("Неизвестный сценарий.")
         if previous and (
             previous.workspace_id != workspace.pk
@@ -939,6 +955,20 @@ class WorkspaceService:
         if version.status not in ["DRAFT", "REJECTED"]:
             raise ValidationError("Версия уже отправлена или утверждена.")
         version.snapshot = build_workspace_snapshot(version)
+        if version.version_kind == 'FORECAST' and version.scenario == 'REMAINING':
+            future = [m for m in months_between(version.start_date,version.end_date) if m > version.planning_month]
+            if len(future) == 1:
+                month = future[0]
+                for spec in version.snapshot.get('works',[]):
+                    quantity = sum((Decimal(str(r['quantity'])) for r in spec.get('daily',[]) if str(r['date'])[:7] == month.isoformat()[:7]),ZERO).quantize(Decimal('.001'),rounding=ROUND_HALF_UP)
+                    items = defaultdict(lambda: ZERO)
+                    if spec['kind'] == 'COMPOSITE':
+                        for row in spec.get('plans',[]):
+                            if str(row['date'])[:7] == month.isoformat()[:7] and row.get('item_id') is not None:
+                                items[str(row['item_id'])] += Decimal(str(row['quantity']))
+                        items = {str(item['id']):str(items[str(item['id'])].quantize(Decimal('.000001'),rounding=ROUND_HALF_UP)) for item in spec['items']}
+                    if quantity or any(Decimal(v) for v in items.values()) or version.work_allocations.filter(work_id=spec['id'],month=month).exists():
+                        WorkMonthAllocation.objects.update_or_create(company=version.company,version=version,work_id=spec['id'],month=month,defaults={'quantity':quantity,'item_quantities':dict(items),'daily_override':None})
         version.save(update_fields=["snapshot"])
         return version
 

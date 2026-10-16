@@ -20,7 +20,7 @@ TITLES = {'works':'Работы', 'labor':'Люди — бригады', 'equipm
 def editable_months(version):
     return [month for month in months_between(version.start_date, version.end_date)
         if not version.planning_month or month >= version.planning_month
-        and (version.scenario == 'REMAINING' or month == version.planning_month)]
+        and (version.scenario in {'REMAINING','ENTERED'} or month == version.planning_month)]
 
 
 class BulkAddForm(CompanyFormMixin, forms.Form):

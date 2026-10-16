@@ -118,7 +118,7 @@ def input_fingerprint(version):
         ).order_by("pk")
     ]
     history = []
-    if version.version_kind == "FORECAST" and version.scenario == "REMAINING":
+    if version.version_kind == "FORECAST" and version.scenario in {"REMAINING", "ENTERED"}:
         from apps.production.models import DailyFact, LaborFact, EquipmentFact, FuelFact
 
         for model in [DailyFact, LaborFact, EquipmentFact, FuelFact]:
