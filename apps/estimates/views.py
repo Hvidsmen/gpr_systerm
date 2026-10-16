@@ -164,3 +164,25 @@ def estimate_delete(request, pk):
         messages.success(request, 'Смета удалена. Справочники сохранены.')
         return redirect('estimates:estimate_list')
     return render(request, 'estimates/delete.html', {'document': doc})
+
+
+@require_http_methods(['POST'])
+def estimate_bulk_delete(request):
+    require_roles(request.user, PLAN_ROLES)
+    from django.http import HttpResponseBadRequest, Http404
+    raw = request.POST.getlist('selected')
+    if not raw:
+        messages.warning(request, 'Выберите хотя бы одну смету.')
+        return redirect('estimates:estimate_list')
+    if len(raw) > 5000 or any(not value.isascii() or not value.isdigit() or len(value) > 18 for value in raw):
+        return HttpResponseBadRequest('Некорректный список смет.')
+    ids = {int(value) for value in raw}
+    with transaction.atomic():
+        docs = list(EstimateDocument.objects.select_for_update().filter(company=request.user.company, pk__in=ids).select_related('estimate_object').order_by('pk'))
+        if len(docs) != len(ids):
+            raise Http404('Одна из выбранных смет не найдена.')
+        if request.POST.get('confirm') == 'yes':
+            EstimateDocument.objects.filter(company=request.user.company, pk__in=ids).delete()
+            messages.success(request, f'Удалено смет: {len(docs)}. Справочники сохранены.')
+            return redirect('estimates:estimate_list')
+    return render(request, 'estimates/bulk_delete.html', {'documents': docs})

@@ -166,3 +166,30 @@ class ZeroCostTests(SimpleTestCase):
         self.assertEqual(report['current'],136)
         self.assertEqual(report['works'][0]['subworks'][0]['current'],0)
         self.assertEqual(report['works'][0]['subworks'][2]['current'],0)
+
+
+class BulkDeleteTests(AccessTests):
+    def test_selection_confirmation_and_only_selected_deleted(self):
+        for name in ['A','B','C']:
+            self.client.post(reverse('estimates:estimate_import'),{'object_name':name,'file':SimpleUploadedFile('a.xlsx',sample())})
+        ids=list(EstimateDocument.objects.order_by('pk').values_list('pk',flat=True));url=reverse('estimates:estimate_bulk_delete')
+        self.assertContains(self.client.get(reverse('estimates:estimate_list')),'Выбрать все')
+        self.assertEqual(self.client.get(url).status_code,405)
+        self.assertContains(self.client.post(url,{'selected':ids[:2]}),'Удалить выбранные сметы?')
+        self.assertEqual(EstimateDocument.objects.count(),3)
+        self.assertEqual(self.client.post(url,{'selected':ids[:2],'confirm':'yes'}).status_code,302)
+        self.assertEqual(list(EstimateDocument.objects.values_list('pk',flat=True)),ids[2:])
+
+    def test_foreign_selection_rolls_back_and_observer_denied(self):
+        from .models import EstimateObject
+        other=Company.objects.create(name='Foreign')
+        obj=EstimateObject.objects.create(company=other,name='Foreign')
+        doc=EstimateDocument.objects.create(company=other,estimate_object=obj,filename='x',digest='a',title='Private',sheet='s')
+        self.client.post(reverse('estimates:estimate_import'),{'object_name':'Mine','file':SimpleUploadedFile('a.xlsx',sample())})
+        own=EstimateDocument.objects.get(company=self.company);url=reverse('estimates:estimate_bulk_delete')
+        self.assertEqual(self.client.post(url,{'selected':[own.pk,doc.pk],'confirm':'yes'}).status_code,404)
+        self.assertTrue(EstimateDocument.objects.filter(pk=own.pk).exists())
+        self.assertEqual(self.client.post(url,{'selected':['invalid']}).status_code,400)
+        self.assertEqual(self.client.post(url,{}).status_code,302)
+        self.user.role=Role.objects.get(code='OBSERVER');self.user.save()
+        self.assertEqual(self.client.post(url,{'selected':[own.pk],'confirm':'yes'}).status_code,403)

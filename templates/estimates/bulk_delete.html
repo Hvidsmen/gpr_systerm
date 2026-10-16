@@ -1,0 +1,4 @@
+{% extends 'base.html' %}{% block content %}<h1>Удалить выбранные сметы?</h1>
+<div class="card p-3"><p>Выбрано смет: <strong>{{ documents|length }}</strong>. Будут удалены только эти сметы и их строки. Объекты и справочники сохранятся.</p>
+<ul>{% for doc in documents %}<li>{{ doc.estimate_object }} · {{ doc.title }} · {{ doc.filename }}</li>{% endfor %}</ul>
+<form method="post">{% csrf_token %}{% for doc in documents %}<input type="hidden" name="selected" value="{{ doc.pk }}">{% endfor %}<input type="hidden" name="confirm" value="yes"><button class="btn btn-danger" type="submit">Удалить выбранные ({{ documents|length }})</button> <a class="btn btn-outline-secondary" href="{% url 'estimates:estimate_list' %}">Отмена</a></form></div>{% endblock %}
