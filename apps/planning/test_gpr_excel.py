@@ -231,3 +231,20 @@ class GprImportTests(TestCase):
         self.assertEqual(preview.status_code,200)
         self.assertEqual([m['month'] for m in preview.context['payload']['months']],['2026-11-01','2026-12-01','2027-01-01'])
         self.assertEqual(preview.context['rows'][0]['month'],'2026-11-01')
+
+    def test_month_scope_only_updates_chosen_month_and_blocks_remap(self):
+        from .workspace_services import WorkspaceService
+        workspace=WorkspaceService.create(self.planner,self.obj,'Monthly',date(2027,1,1),date(2027,2,28))
+        version=workspace.baseline_version
+        url=reverse('planning:workspace_gpr_import',args=[version.pk])+'?scope=month&month=2027-01-01'
+        preview=self.client.post(url,{'file':SimpleUploadedFile('gpr.xlsx',classic()),'year':2027})
+        self.assertEqual(preview.status_code,200)
+        self.assertEqual({r['month'] for r in preview.context['rows']},{'2027-01-01'})
+        token=preview.context['token']
+        invalid=self.client.post(url,{'preview_token':token,'month_0':'2027-02-01'})
+        self.assertEqual(invalid.status_code,200)
+        self.assertTrue(invalid.context['month_form'].errors)
+        self.assertEqual(self.client.post(reverse('planning:workspace_gpr_import',args=[version.pk]),{'preview_token':token,'month_0':'2027-01-01'}).status_code,400)
+        self.assertEqual(self.client.post(url,{'preview_token':token,'month_0':'2027-01-01'}).status_code,302)
+        self.assertEqual(set(version.work_allocations.values_list('month',flat=True)),{date(2027,1,1)})
+        self.assertEqual(set(version.resource_allocations.values_list('month',flat=True)),{date(2027,1,1)})

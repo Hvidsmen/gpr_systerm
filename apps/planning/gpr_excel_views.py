@@ -153,6 +153,21 @@ class GprExcelImport(View):
         require_roles(request.user, PLAN_ROLES)
         from .meeting_import import MeetingImportView
         self.target_version = MeetingImportView().target(request, kwargs.get('pk'))
+        self.import_month = None
+        scope = request.GET.get('scope', 'period')
+        if scope not in {'period', 'month'}:
+            from django.http import HttpResponseBadRequest
+            return HttpResponseBadRequest('Неизвестный режим импорта.')
+        if scope == 'month':
+            try:
+                self.import_month = date.fromisoformat(request.GET.get('month', ''))
+            except ValueError:
+                from django.http import HttpResponseBadRequest
+                return HttpResponseBadRequest('Укажите месяц загрузки.')
+            if self.target_version is None or self.import_month.day != 1:
+                from django.http import HttpResponseBadRequest
+                return HttpResponseBadRequest('Месячный импорт доступен из версии плана; укажите первое число месяца.')
+            validate_target_period(self.target_version, self.import_month, self.import_month.replace(day=monthrange(self.import_month.year,self.import_month.month)[1]))
         return super().dispatch(request, *args, **kwargs)
 
     def upload_form(self, request, *args, **kwargs):
@@ -165,7 +180,7 @@ class GprExcelImport(View):
 
     def get(self, request, pk=None):
         require_roles(request.user,PLAN_ROLES)
-        return render(request,'planning/gpr_excel_import.html',{'form':self.upload_form(request),'target_version':self.target_version})
+        return render(request,'planning/gpr_excel_import.html',{'form':self.upload_form(request),'target_version':self.target_version,'import_month':self.import_month})
 
     def post(self, request, pk=None):
         require_roles(request.user,PLAN_ROLES)
@@ -173,11 +188,15 @@ class GprExcelImport(View):
         if token:
             try:
                 payload = signing.loads(token,salt=SALT,max_age=3600)
-                if payload['user']!=request.user.pk or payload['company']!=request.user.company_id or payload.get('target_version') != (self.target_version.pk if self.target_version else None):
+                if payload['user']!=request.user.pk or payload['company']!=request.user.company_id or payload.get('target_version') != (self.target_version.pk if self.target_version else None) or payload.get('import_month') != (self.import_month.isoformat() if self.import_month else None):
                     raise signing.BadSignature()
                 obj = get_object_or_404(ConstructionObject,pk=payload['object'],company=request.user.company)
                 form = MonthMapForm(request.POST,payload=payload)
-                if form.is_valid():
+                valid = form.is_valid()
+                if valid and self.import_month and any(day != self.import_month for day in form.cleaned_data.values()):
+                    form.add_error(None, 'Месячный импорт ограничен выбранным месяцем. Для других месяцев используйте импорт всего периода.')
+                    valid = False
+                if valid:
                     workspace = apply_gpr(request.user,obj,payload,form.cleaned_data,payload['nonce'],target_version=self.target_version)
                     return redirect('planning:workspace_edit',pk=self.target_version.pk) if self.target_version else redirect('planning:workspace_detail',pk=workspace.pk)
                 rows, warnings = resolved_preview(request.user,obj,payload)
@@ -186,7 +205,7 @@ class GprExcelImport(View):
                 form = self.upload_form(request,{})
                 form.is_valid()
                 form.add_error(None,exc if isinstance(exc,ValidationError) else 'Предварительный просмотр устарел. Прочитайте файл заново.')
-                return render(request,'planning/gpr_excel_import.html',{'form':form,'target_version':self.target_version},status=400)
+                return render(request,'planning/gpr_excel_import.html',{'form':form,'target_version':self.target_version,'import_month':self.import_month},status=400)
         form = self.upload_form(request,request.POST,request.FILES)
         if form.is_valid():
             try:
@@ -194,14 +213,23 @@ class GprExcelImport(View):
                 uploaded=data['file']
                 if uploaded.size>8*1024*1024:raise ValidationError('Размер файла превышает 8 МБ.')
                 payload=parse_gpr(uploaded.read(),uploaded.name,data['sheet'],data['year'])
+                if self.import_month:
+                    selected = [m for m in payload['months'] if m['month'] == self.import_month.isoformat()]
+                    if len(selected) != 1:
+                        raise ValidationError('В файле должен быть ровно один столбец выбранного месяца. Проверьте лист и годы.')
+                    columns = {m['column'] for m in selected}
+                    payload['months'] = selected
+                    payload['entries'] = [r for r in payload['entries'] if r['column'] in columns]
+                    if not payload['entries']:
+                        raise ValidationError('В выбранном месяце нет ненулевых данных для загрузки.')
                 obj=data['construction_object']
-                payload.update({'title':data.get('title',''),'target_version':self.target_version.pk if self.target_version else None,'user':request.user.pk,'company':request.user.company_id,'object':obj.pk,'nonce':str(uuid4())})
+                payload.update({'title':data.get('title',''),'import_month':self.import_month.isoformat() if self.import_month else None,'target_version':self.target_version.pk if self.target_version else None,'user':request.user.pk,'company':request.user.company_id,'object':obj.pk,'nonce':str(uuid4())})
                 rows,warnings=resolved_preview(request.user,obj,payload)
                 token=signing.dumps(payload,salt=SALT,compress=True)
                 return self.preview(request,obj,payload,token,MonthMapForm(payload=payload),rows,warnings)
             except ValidationError as exc:
                 form.add_error(None,exc)
-        return render(request,'planning/gpr_excel_import.html',{'form':form,'target_version':self.target_version},status=400)
+        return render(request,'planning/gpr_excel_import.html',{'form':form,'target_version':self.target_version,'import_month':self.import_month},status=400)
 
     def preview(self, request,obj,payload,token,month_form,rows,warnings):
-        return render(request,'planning/gpr_excel_preview.html',{'target_version':self.target_version,'object':obj,'payload':payload,'token':token,'month_form':month_form,'rows':rows[:300],'row_count':len(rows),'warnings':payload['warnings']+warnings,'counts':dict(Counter(row['kind'] for row in rows))})
+        return render(request,'planning/gpr_excel_preview.html',{'import_month':self.import_month,'target_version':self.target_version,'object':obj,'payload':payload,'token':token,'month_form':month_form,'rows':rows[:300],'row_count':len(rows),'warnings':payload['warnings']+warnings,'counts':dict(Counter(row['kind'] for row in rows))})
