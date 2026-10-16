@@ -144,6 +144,15 @@ function groupAllocationRows(panel) {
   });
   target.replaceChildren(root);
 }
+function appendWorkOrigins(summary, node) {
+  let badges=summary.querySelector('[data-work-origins]');
+  if(!badges){badges=document.createElement('span');badges.dataset.workOrigins='';badges.className='ms-2';summary.append(badges);}
+  badges.replaceChildren();
+  const rows=Array.from(node.querySelectorAll('.allocation-row')).filter(row=>!row.hidden&&!row.querySelector('[name$="-DELETE"]').checked);
+  let carryCount=0,planCount=0;
+  rows.forEach(row=>{const id=row.querySelector('[name$="-work"]')?.value;if(!id)return;if(workCarryoverNotes[id]?.added)carryCount++;else planCount++;});
+  [[planCount,'План — ГПР / вручную','bg-primary'],[carryCount,'Из остатка','bg-warning text-dark']].forEach(([count,label,color])=>{if(count){const badge=document.createElement('span');badge.className='badge ms-1 '+color;badge.textContent=label+': '+count;badges.append(badge);}});
+}
 function updateGroupCounts(target) {
   const resourceKind=target.id==='resource-rows-labor'?'labor':target.id==='resource-rows-equipment'?'equipment':null;
   const sumLabel=node=>{
@@ -158,9 +167,11 @@ function updateGroupCounts(target) {
   target.querySelectorAll('.allocation-group').forEach(group=>{
     const count=countRows(group);group.hidden=count.visible===0;
     group.querySelector(':scope > summary [data-group-count]').textContent=count.visible+' / '+count.total+sumLabel(group);
+    if(target.id==='work-rows')appendWorkOrigins(group.querySelector(':scope > summary'),group);
   });
   const count=countRows(target);
   target.closest('[data-allocation-section]').querySelector('[data-section-count]').textContent=count.visible+' / '+count.total+sumLabel(target);
+  if(target.id==='work-rows')appendWorkOrigins(target.closest('[data-allocation-section]').querySelector(':scope > summary'),target);
 }
 document.getElementById('allocation-editor').addEventListener('input',event=>{if (event.target.name?.endsWith('-count')) {const target=event.target.closest('[id^="resource-rows-"]');if(target) updateGroupCounts(target);}});
 function revealAllocationRow(row) {
@@ -217,6 +228,10 @@ function updateSubworks(row) {
   let note=row.querySelector('[data-carryover-note]');
   if (!note) {note=document.createElement('div');note.dataset.carryoverNote='';note.className='alert alert-warning py-2';note.style.gridColumn='1 / -1';row.querySelector('.allocation-grid').append(note);}
   const carry=workCarryoverNotes[work.value];note.hidden=!carry;
+  let origin=row.querySelector('[data-work-origin]');
+  if(!origin){origin=document.createElement('span');origin.dataset.workOrigin='';origin.style.gridColumn='1 / -1';row.querySelector('.allocation-grid').prepend(origin);}
+  origin.hidden=!work.value;origin.replaceChildren();
+  const badge=document.createElement('span');badge.className='badge '+(carry?.added?'bg-warning text-dark':'bg-primary');badge.textContent=carry?.added?'Из остатка':'План — ГПР / вручную';origin.append(badge);
   if(carry){note.textContent=(carry.added?'Добавлено из остатка за ':'Есть недовыполненный остаток за ')+carry.previous_month+': '+subworkNumber.format(Number(carry.quantity))+' '+carry.unit+(carry.added?'':' · текущий план не изменен');if(Object.keys(carry.items).length){const details=document.createElement('span');details.textContent=' · Подработы: '+Object.entries(carry.items).map(([id,q])=>(compositeItems[work.value]?.find(i=>String(i.id)===id)?.name||id)+' — '+subworkNumber.format(Number(q))).join('; ');note.append(details);}}
   let panel=row.querySelector('[data-subworks]');
   if (!panel) {
