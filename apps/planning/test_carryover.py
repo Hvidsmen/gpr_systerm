@@ -89,3 +89,24 @@ class CarryoverTests(TestCase):
         self.assertEqual(self.client.get(reverse('planning:workspace_carryover',args=[self.target.pk])+'?month=2026-01-01').status_code,404)
         GlobalPlanVersion.objects.filter(pk=self.target.pk).update(status='APPROVED')
         self.assertEqual(self.client.get(url).status_code,403)
+
+    def test_daily_decimal_artifacts_round_to_monthly_precision(self):
+        self.prepare()
+        spec=work_specification(self.work)
+        spec['plans']=[{'date':f'2026-01-{i:02d}','item_id':None,'quantity':'0.3333333333333333'} for i in range(1,4)]
+        GlobalPlanVersion.objects.filter(pk=self.source.pk).update(snapshot={'works':[spec]})
+        self.source.refresh_from_db()
+        rows=preview(self.target,fixtures.FEB,self.source)
+        self.assertEqual(rows[0]['quantity'],'1.000')
+        self.assertEqual(apply(self.planner,self.target,fixtures.FEB,self.source,'missing',{str(self.work.pk)}),1)
+        self.assertEqual(self.target.work_allocations.get().quantity,Decimal('1.000'))
+        self.assertEqual(WorkCarryover.objects.get().quantity,Decimal('1.000'))
+
+    def test_confirm_error_does_not_show_required_source_errors(self):
+        self.prepare()
+        url=reverse('planning:workspace_carryover',args=[self.target.pk])+'?month=2026-02-01'
+        token=self.client.post(url,{'source':self.source.pk,'mode':'missing'}).context['token']
+        response=self.client.post(url,{'token':token})
+        self.assertEqual(response.status_code,200)
+        self.assertFalse(response.context['form'].is_bound)
+        self.assertNotContains(response,'Обязательное поле')

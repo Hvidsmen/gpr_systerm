@@ -1,7 +1,7 @@
 from calendar import monthrange
 from collections import defaultdict
 from datetime import timedelta
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Sum, Q
@@ -48,6 +48,9 @@ def preview(version, month, source):
         for row in spec.get('plans',[]):
             if start.isoformat() <= str(row['date'])[:10] <= end.isoformat():
                 plans[row.get('item_id')]+=Decimal(str(row['quantity']))
+        precision = Decimal('0.001') if spec['kind']=='SIMPLE' else Decimal('0.000001')
+        plans = defaultdict(lambda: ZERO, {key:value.quantize(precision,rounding=ROUND_HALF_UP) for key,value in plans.items()})
+        facts[work.pk] = {key:value.quantize(Decimal('0.001'),rounding=ROUND_HALF_UP) for key,value in facts[work.pk].items()}
         if spec['kind']=='SIMPLE':
             planned=plans[None];actual=facts[work.pk].get(None,ZERO);quantity=max(planned-actual,ZERO);items={}
         else:
@@ -70,7 +73,7 @@ def apply(user, version, month, source, mode, selected):
     count=0
     for data in rows:
         if str(data['work_id']) not in selected or data['done']:continue
-        delta=Decimal(data['quantity'])
+        delta=Decimal(data['quantity']).quantize(Decimal('0.001'),rounding=ROUND_HALF_UP)
         if data['exists']:
             WorkCarryover.objects.create(company=user.company,version=version,source_version=source,month=month,work_id=data['work_id'],quantity=delta,item_quantities=data['items'],imported_by=user,added=False)
             count+=1
@@ -78,13 +81,16 @@ def apply(user, version, month, source, mode, selected):
         row,created=WorkMonthAllocation.objects.get_or_create(company=user.company,version=version,month=month,work_id=data['work_id'])
         if row.daily_override is not None:
             raise ValidationError(f'«{data["name"]}»: сохранен отдельный дневной план. Сначала согласуйте его изменение.')
-        delta=Decimal(data['quantity'])
+        delta=Decimal(data['quantity']).quantize(Decimal('0.001'),rounding=ROUND_HALF_UP)
         if data['items']:
             spec=data['spec'];old=row.item_quantities or {str(i['id']):str(row.quantity*Decimal(i['norm'])) for i in spec['items']}
             row.item_quantities={k:str(Decimal(old.get(k,'0'))+Decimal(v)) for k,v in data['items'].items()}
             row.quantity=quantity_from_totals(spec,{int(k):Decimal(v) for k,v in row.item_quantities.items()})
         else:row.quantity+=delta
-        row.full_clean();row.save()
+        try:
+            row.full_clean();row.save()
+        except ValidationError as exc:
+            raise ValidationError(f'Не удалось сохранить остаток работы «{data["name"]}»: '+ '; '.join(exc.messages)) from exc
         WorkCarryover.objects.create(company=user.company,version=version,source_version=source,month=month,work_id=data['work_id'],quantity=delta,item_quantities=data['items'],imported_by=user)
         count+=1
     version.snapshot={};version.save(update_fields=['snapshot'])

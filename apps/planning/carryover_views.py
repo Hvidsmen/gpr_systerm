@@ -30,7 +30,7 @@ class CarryoverView(View):
             source=forms.ModelChoiceField(queryset=carryover.source_versions(self.version,self.month),label='Утвержденный план прошлого месяца')
             mode=forms.ChoiceField(choices=[('missing','Добавить отсутствующие; существующие пометить остатком')],label='Режим переноса')
         first = carryover.source_versions(self.version,self.month).first()
-        return SelectionForm(request.POST or None,initial={'source':first.pk if first else None,'mode':'missing'})
+        return SelectionForm(request.POST if request.method=='POST' and not request.POST.get('token') else None,initial={'source':first.pk if first else None,'mode':'missing'})
 
     def get(self,request,pk):
         return self.display(request,self.form(request))
@@ -43,6 +43,7 @@ class CarryoverView(View):
                 if (payload['version'],payload['month'],payload['user'],payload['company'])!=(self.version.pk,self.month.isoformat(),request.user.pk,request.user.company_id):
                     raise signing.BadSignature()
                 source=carryover.source_versions(self.version,self.month).get(pk=payload['source'])
+                form.initial['source']=source.pk
                 rows=carryover.preview(self.version,self.month,source)
                 if fingerprint(rows)!=payload['fingerprint']:
                     raise ValidationError('План, факт или остатки изменились. Сформируйте предварительный просмотр заново.')
@@ -53,7 +54,7 @@ class CarryoverView(View):
                 messages.success(request,f'Обработано работ: {count}. Отсутствующие добавлены; у существующих сохранена пометка остатка.')
                 return redirect(reverse('planning:workspace_edit',args=[self.version.pk])+'?month='+self.month.isoformat())
             except (signing.BadSignature,ValidationError,carryover.GlobalPlanVersion.DoesNotExist) as exc:
-                messages.error(request,'Предварительный просмотр устарел.' if isinstance(exc,signing.BadSignature) else str(exc))
+                messages.error(request,'Предварительный просмотр устарел.' if isinstance(exc,signing.BadSignature) else '; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Исходная версия не найдена.')
                 return self.display(request,form)
         if form.is_valid():
             try:
