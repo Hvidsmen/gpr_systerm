@@ -84,6 +84,7 @@ class GlobalDetail(CompanyScopedMixin, DetailView):
         from .project_plan_views import AssignmentForm
         ctx['project_assignment_form'] = AssignmentForm(user=self.request.user, version=self.object)
         ctx['assignment_version'] = self.object
+        ctx['daily_schedules'] = self.object.daily_schedules.only('pk','month','revision','status').order_by('-month','-revision')
         ctx['project_memberships'] = self.object.project_plan_members.select_related('consolidated_version__project')
         from .approval_workflow import panel
         ctx.update(panel(self.object, self.request.user))

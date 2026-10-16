@@ -99,6 +99,11 @@ def select_sources(user, filters, objects):
                     explicit, period_snapshot(explicit, filters["start"], filters["end"]), explicit.start_date, explicit.end_date
                 )
             ]
+    from .daily_schedule import overlay
+    for object_id, entries in result.items():
+        if filters.get('mode') != 'baseline' and not filters.get(f'version_{object_id}'):
+            for source in entries:
+                source.snapshot = overlay(source.version,source.snapshot,filters['start'],filters['end'])
     return result
 
 

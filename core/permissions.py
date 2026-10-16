@@ -78,7 +78,7 @@ def check_route(user, match, method):
             if name == 'settings' or name == 'user_detail' and match.kwargs.get('pk') == user.pk:
                 return
         elif namespace in {'dashboard', 'planning', 'production', 'rotation', 'projects', 'works', 'resources', 'estimates'}:
-            if name.endswith(('_list', '_detail', '_export', '_versions')) or name in {'index', 'revenue', 'report_matrix', 'plan_matrix', 'fact_day_workspace', 'fact_daily', 'fact_input'}:
+            if name.endswith(('_list', '_detail', '_export', '_versions')) or name in {'daily_schedule_edit', 'index', 'revenue', 'report_matrix', 'plan_matrix', 'fact_day_workspace', 'fact_daily', 'fact_input'}:
                 return
         raise PermissionDenied('Наблюдателю доступен только просмотр данных.')
     if namespace == 'accounts':
@@ -114,6 +114,9 @@ def check_route(user, match, method):
         require_roles(user, READ_ROLES if name in {'plan_list', 'plan_detail', 'plan_export'} and method in {'GET', 'HEAD'} else PLAN_ROLES)
         return
     if namespace == 'planning':
+        if name == 'daily_schedule_edit':
+            require_roles(user, READ_ROLES if method in {'GET','HEAD'} else PLAN_ROLES)
+            return
         action = match.kwargs.get('action') if name == 'global_action' else None
         if name == 'global_action':
             require_global_action(user, action)

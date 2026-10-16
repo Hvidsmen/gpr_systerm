@@ -1188,3 +1188,29 @@ class WorkCarryover(BaseCompanyModel):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['version','month','work'], name='unique_work_carryover_month')]
+
+
+class DailySchedule(BaseCompanyModel):
+    source = models.ForeignKey(GlobalPlanVersion, on_delete=models.PROTECT, related_name='daily_schedules')
+    month = models.DateField()
+    revision = models.PositiveIntegerField()
+    status = models.CharField(max_length=12, default='DRAFT', choices=[('DRAFT','Черновик'),('APPLIED','Применен'),('ARCHIVED','Предыдущая редакция')])
+    created_by = models.ForeignKey('accounts.User', on_delete=models.PROTECT)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['source','month','revision'], name='unique_daily_schedule_revision'), models.UniqueConstraint(fields=['source','month'], condition=models.Q(status='APPLIED'), name='unique_applied_daily_schedule')]
+
+
+class DailyScheduleEntry(models.Model):
+    schedule = models.ForeignKey(DailySchedule,on_delete=models.CASCADE,related_name='entries')
+    key = models.CharField(max_length=80)
+    kind = models.CharField(max_length=12)
+    label = models.TextField()
+    metadata = models.JSONField(default=dict)
+    original = models.JSONField(default=list)
+    rows = models.JSONField(default=list)
+    revision = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['kind','label','pk']
+        constraints = [models.UniqueConstraint(fields=['schedule','key'],name='unique_daily_schedule_entry')]

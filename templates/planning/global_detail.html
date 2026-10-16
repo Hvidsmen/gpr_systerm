@@ -5,6 +5,8 @@
 <p>{% if request.user|may:'planning:workspace_detail' %}<a href="{% url 'planning:workspace_detail' object.workspace_id %}">Рабочее пространство: {{ object.workspace.name }}</a>{% endif %} · {% if request.user|may:'planning:workspace_excel_export' %}<a href="{% url 'planning:workspace_excel_export' object.pk %}?scope=period">Скачать план на период (Excel)</a>{% endif %} · {{ object.get_version_kind_display }}{% if object.planning_month %} · {{ object.planning_month|date:'m.Y' }} · {{ object.get_scenario_display }}{% endif %}</p>
 {% if object.status == 'DRAFT' or object.status == 'REJECTED' %}<p>{% if request.user|may:'planning:workspace_edit' %}<a class="btn btn-primary" href="{% url 'planning:workspace_edit' object.pk %}">Редактировать месячные планы</a>{% endif %}</p>{% endif %}
 {% endif %}
+{% if object.is_immutable %}{% if request.user|may:'planning:daily_schedule_create' %}<p><a class="btn btn-primary" href="{% url 'planning:daily_schedule_create' object.pk %}">Дневной СМГ из этого ГПР</a></p>{% endif %}{% endif %}
+<p>{% for s in daily_schedules %}<a class="btn btn-sm btn-outline-primary mb-1" href="{% url 'planning:daily_schedule_detail' s.pk %}">СМГ {{ s.month|date:'m.Y' }} · ред. {{ s.revision }} · {{ s.get_status_display }}</a> {% endfor %}</p>
 <h2>{% if daily %}План по дням · {{ start|date:"m.Y" }}{% else %}План на весь период по месяцам{% endif %}</h2>
 {% include 'planning/global_matrix.html' %}
 {% if object.baseline_review_id %}<p class="text-muted">Зафиксированная база: раунд {{ object.baseline_review.number }} согласования базового плана.</p>{% endif %}

@@ -35,3 +35,9 @@ def volume(value):
     if value is None:
         return "—"
     return f"{Decimal(value):,.3f}".rstrip("0").rstrip(".").replace(",", " ").replace(".", ",")
+
+
+@register.filter
+def compact_number(value, digits=6):
+    result = number(value, digits)
+    return result.rstrip('0').rstrip(',') if int(digits) > 0 and ',' in result else result

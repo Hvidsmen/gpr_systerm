@@ -133,3 +133,11 @@ urlpatterns += [path('workspace-versions/<int:pk>/carryover/', CarryoverView.as_
 
 from .workspace_views import AddRemainingWork
 urlpatterns += [path('workspace-versions/<int:pk>/remaining-work/', AddRemainingWork.as_view(), name='workspace_remaining_work')]
+
+from .daily_schedule_views import DailyScheduleCreate, DailyScheduleDetail, DailyScheduleEdit, DailyScheduleApply
+urlpatterns += [
+    path('global/<int:pk>/daily-schedule/',DailyScheduleCreate.as_view(),name='daily_schedule_create'),
+    path('daily-schedule/<int:pk>/',DailyScheduleDetail.as_view(),name='daily_schedule_detail'),
+    path('daily-schedule/entry/<int:pk>/',DailyScheduleEdit.as_view(),name='daily_schedule_edit'),
+    path('daily-schedule/<int:pk>/apply/',DailyScheduleApply.as_view(),name='daily_schedule_apply'),
+]
