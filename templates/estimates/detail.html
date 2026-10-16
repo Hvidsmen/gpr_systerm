@@ -1,5 +1,5 @@
 {% extends 'base.html' %}{% load revenue_tags estimate_tags %}{% block content %}
-<h1>{{ document.title }}</h1><p>{{ document.estimate_object }} · {{ document.filename }}</p>
+<h1>{{ document.filename }}</h1><p>{{ document.estimate_object }} · {{ document.filename }}</p>
 <p>Рассчитано: базисная стоимость {{ report.base|money }} ₽ · текущая {{ report.current|money }} ₽</p>
 <p class="text-muted">Итоги вычисляются по подработам. Строки «Итого» и «Всего» из файла в расчет не входят. ОТм входит в ЭМ и повторно не прибавляется.</p>
 {% for warning in report.diagnostics %}<p class="alert alert-warning">{{ warning }}</p>{% endfor %}

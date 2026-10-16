@@ -1,5 +1,5 @@
 {% extends 'base.html' %}{% block content %}
 <h1>Удалить смету?</h1>
-<div class="card p-3"><p><strong>{{ document.title }}</strong></p><p>{{ document.estimate_object }} · {{ document.filename }}</p><p>Смета и все ее строки будут удалены. Объект и записи справочников останутся. Для восстановления смету можно загрузить заново.</p>
+<div class="card p-3"><p><strong>{{ document.filename }}</strong></p><p>{{ document.estimate_object }} · {{ document.filename }}</p><p>Смета и все ее строки будут удалены. Объект и записи справочников останутся. Для восстановления смету можно загрузить заново.</p>
 <form method="post">{% csrf_token %}<button type="submit" class="btn btn-danger">Удалить смету</button> <a class="btn btn-outline-secondary" href="{% url 'estimates:estimate_detail' document.pk %}">Отмена</a></form></div>
 {% endblock %}

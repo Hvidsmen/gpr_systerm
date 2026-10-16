@@ -93,12 +93,12 @@ def export(documents, mode="full"):
         report = build_report(doc['rows'])
         doc = dict(doc, base_total=report['base'], current_total=report['current'], warnings=doc['warnings'] + report['diagnostics'])
         for work in report['works']:
-            hierarchy.append([safe(doc.get('object_name', '')), safe(doc['title']), safe(doc['filename']), safe(work['name']), None, None, None, work['base'], work['current']])
+            hierarchy.append([safe(doc.get('object_name', '')), safe(doc['filename']), safe(doc['filename']), safe(work['name']), None, None, None, work['base'], work['current']])
             for sub in work['subworks']:
-                hierarchy.append([safe(doc.get('object_name', '')), safe(doc['title']), safe(doc['filename']), safe(sub['name']), safe(sub['code']), safe(sub['unit']), sub['quantity'], sub['base'], sub['current'], '; '.join(sub['warnings'])])
+                hierarchy.append([safe(doc.get('object_name', '')), safe(doc['filename']), safe(doc['filename']), safe(sub['name']), safe(sub['code']), safe(sub['unit']), sub['quantity'], sub['base'], sub['current'], '; '.join(sub['warnings'])])
                 hierarchy.row_dimensions[hierarchy.max_row].outlineLevel = 1
         hierarchy.sheet_properties.outlinePr.summaryBelow = False
-        summary.append([safe(doc['filename']), safe(doc['title']), number(doc['base_total']), number(doc['current_total']), sum(r['kind']=='item' for r in doc['rows']), sum(r['kind']=='resource' for r in doc['rows']), '; '.join(doc['warnings'])])
+        summary.append([safe(doc['filename']), safe(doc['filename']), number(doc['base_total']), number(doc['current_total']), sum(r['kind']=='item' for r in doc['rows']), sum(r['kind']=='resource' for r in doc['rows']), '; '.join(doc['warnings'])])
         sheet = book.create_sheet('ЛСР %02d' % n)
         sheet.append(['Строка', 'Раздел', 'Тип', 'Родительская строка'] + COLUMNS)
         for r in doc['rows']:
