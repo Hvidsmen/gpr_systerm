@@ -525,6 +525,10 @@ def build_forecast(version, inputs, resources, base):
     warnings = []
     base_inputs = base.get("monthly_inputs", {}).get("works", [])
     base_specs = {spec["id"]: spec for spec in base["works"]}
+    if workspace.is_macro_consolidation:
+        # Connected history is immutable and reattached by merge_macro_history;
+        # it must not become a new remainder in the macro object's catalog.
+        base_specs = {key:spec for key,spec in base_specs.items() if not spec.get('history_source_object_id')}
     for row in inputs:
         if row.work_id not in base_specs:
             new_spec = specification(row.work)
@@ -908,6 +912,8 @@ class WorkspaceService:
             specs.update({s['id']:s for s in transform_snapshot(previous.snapshot,workspace.company).get('works',[])})
         from apps.works.models import WorkMergeSource
         for spec in specs.values():
+            if workspace.is_macro_consolidation and spec.get('history_source_object_id'):
+                continue
             prior=source.work_allocations.filter(work_id=spec['id'],month=month).first()
             quantities=deepcopy(prior.item_quantities) if prior else {}
             quantity=prior.quantity if prior else ZERO

@@ -23,12 +23,21 @@ def previous_period(month):
 
 
 def source_versions(version, month):
+    from .macro_carryover import history_links
+    links=history_links(version,month)
+    if links.exists():
+        return GlobalPlanVersion.objects.filter(company=version.company,pk__in=links.values('review__version_id')).select_related('construction_object').defer('snapshot').order_by('construction_object__name','pk')
     start,end=previous_period(month)
     return GlobalPlanVersion.objects.filter(company=version.company,construction_object_id=version.construction_object_id,status__in=['APPROVED','COMPLETED'],start_date__lte=start,end_date__gte=end).filter(Q(planning_month__isnull=True)|Q(planning_month__lte=start)).exclude(pk=version.pk).defer('snapshot').order_by('-planning_month','-approved_at','-pk')
 
 
 def preview(version, month, source, *, as_of=None, include_zero=False):
     validate_target_period(version,month,month.replace(day=monthrange(month.year,month.month)[1]))
+    from .macro_carryover import history_links,remap
+    links=history_links(version,month)
+    if source is None:
+        if not links.exists():raise ValidationError('Для выбранного месяца нет подключенной истории.')
+        return [row for link in links for row in preview(version,month,link.review.version,as_of=as_of,include_zero=include_zero)]
     if not source_versions(version,month).filter(pk=source.pk).exists():
         raise ValidationError('Выберите утвержденный план этого объекта за предыдущий месяц.')
     start,end=previous_period(month)
@@ -37,10 +46,13 @@ def preview(version, month, source, *, as_of=None, include_zero=False):
     cutoff=min(end,today-timedelta(days=1)) if is_forecast else end
     elapsed=max(0,(cutoff-start).days+1)
     factor=Decimal(end.day)/elapsed if is_forecast and elapsed else Decimal(1)
-    snapshot=period_snapshot(source,start,end)
+    link=links.filter(review__version_id=source.pk).first()
+    snapshot=period_snapshot(source,start,end,member=link.review,source_key=f'macro-carryover-{link.review_id}') if link else period_snapshot(source,start,end)
     specs=snapshot.get('works',[])
     work_ids=[s['id'] for s in specs]
-    works={w.pk:w for w in ProjectWork.objects.filter(company=version.company,section__construction_object_id=version.construction_object_id,pk__in=work_ids).prefetch_related('items')}
+    works={w.pk:w for w in ProjectWork.objects.filter(company=version.company,section__construction_object_id=source.construction_object_id,pk__in=work_ids).prefetch_related('items')}
+    from .models import MacroCarryoverWork
+    mappings={m.source_work_id:m for m in MacroCarryoverWork.objects.filter(company=version.company,workspace_id=version.workspace_id,source_work_id__in=work_ids)}
     facts=defaultdict(dict)
     for row in DailyFact.objects.filter(company=version.company,project_work_id__in=work_ids,date__range=(start,cutoff)).values('project_work_id','work_item_id').annotate(total=Sum('actual_quantity')):
         facts[row['project_work_id']][row['work_item_id']]=row['total']
@@ -67,7 +79,10 @@ def preview(version, month, source, *, as_of=None, include_zero=False):
             planned=quantity_from_totals(spec,plans);actual=quantity_from_totals(spec,facts[work.pk]);expected=quantity_from_totals(spec,{k:(v*factor).quantize(precision,rounding=ROUND_HALF_UP) for k,v in facts[work.pk].items()})
         if quantity<=0 and not any(Decimal(v)>0 for v in items.values()) and not include_zero and not (is_forecast and planned>0):continue
         children=[dict(name=i['name'],unit=i['unit'],planned=str(plans[i['id']]),actual=str(facts[work.pk].get(i['id'],ZERO)),quantity=items[str(i['id'])]) for i in spec.get('items',[]) if str(i['id']) in items]
-        result.append(dict(is_forecast=is_forecast,cutoff=cutoff.isoformat(),elapsed_days=elapsed,total_days=end.day,expected=str(expected),children=children,work_id=work.pk,name=work.name,unit=work.unit,planned=str(planned),actual=str(actual),quantity=str(quantity),items=items,current=str(existing[work.pk].quantity if work.pk in existing else ZERO),exists=work.pk in existing,done=work.pk in transferred,spec=spec))
+        mapping=mappings.get(work.pk)
+        target_id=mapping.target_work_id if mapping else work.pk
+        result.append(dict(source_work_id=work.pk,source_version_id=source.pk,source_object_name=source.construction_object.name,is_forecast=is_forecast,cutoff=cutoff.isoformat(),elapsed_days=elapsed,total_days=end.day,expected=str(expected),children=children,work_id=work.pk,name=work.name,unit=work.unit,planned=str(planned),actual=str(actual),quantity=str(quantity),items=items,current=str(existing[target_id].quantity if target_id in existing else ZERO),exists=target_id in existing,done=target_id in transferred,spec=spec))
+        if mapping:result[-1]=remap(result[-1],mapping)
     return result
 
 
@@ -75,14 +90,21 @@ def preview(version, month, source, *, as_of=None, include_zero=False):
 def apply(user, version, month, source, mode, selected):
     require_roles(user,PLAN_ROLES)
     version=GlobalPlanVersion.objects.select_for_update().defer('snapshot').get(pk=version.pk,company=user.company)
+    if version.workspace_id:
+        from .models import PlanningWorkspace
+        PlanningWorkspace.objects.select_for_update().only('pk').get(pk=version.workspace_id,company=user.company)
     rows=preview(version,month,source)
     count=0
+    forecast_sources=set()
     for data in rows:
         if str(data['work_id']) not in selected or data['done']:continue
+        if data['is_forecast']:forecast_sources.add(data['source_version_id'])
+        from .macro_carryover import ensure_work
+        data=ensure_work(user,version,month,data)
         delta=Decimal(data['quantity']).quantize(Decimal('0.001'),rounding=ROUND_HALF_UP)
         evidence=dict(is_forecast=data['is_forecast'],forecast_as_of=data['cutoff'],forecast_quantity=delta if data['is_forecast'] else None,actual_quantity=Decimal(data['actual']).quantize(Decimal('.001')),expected_completion=Decimal(data['expected']).quantize(Decimal('.001')))
         if data['exists']:
-            WorkCarryover.objects.create(company=user.company,version=version,source_version=source,month=month,work_id=data['work_id'],quantity=delta,item_quantities=data['items'],imported_by=user,added=False,**evidence)
+            WorkCarryover.objects.create(company=user.company,version=version,source_version_id=data['source_version_id'],month=month,work_id=data['work_id'],quantity=delta,item_quantities=data['items'],imported_by=user,added=False,**evidence)
             count+=1
             continue
         row,created=WorkMonthAllocation.objects.get_or_create(company=user.company,version=version,month=month,work_id=data['work_id'])
@@ -98,12 +120,16 @@ def apply(user, version, month, source, mode, selected):
             row.full_clean();row.save()
         except ValidationError as exc:
             raise ValidationError(f'Не удалось сохранить остаток работы «{data["name"]}»: '+ '; '.join(exc.messages)) from exc
-        WorkCarryover.objects.create(company=user.company,version=version,source_version=source,month=month,work_id=data['work_id'],quantity=delta,item_quantities=data['items'],imported_by=user,**evidence)
+        WorkCarryover.objects.create(company=user.company,version=version,source_version_id=data['source_version_id'],month=month,work_id=data['work_id'],quantity=delta,item_quantities=data['items'],imported_by=user,**evidence)
         count+=1
-    if count and any(r['is_forecast'] for r in rows):
+    if count and forecast_sources:
         from .models import CarryoverReviewTask
         from apps.accounts.models import User
         assigned=user if user.role and user.role.code=='PLANNER' else User.objects.filter(company=user.company,role__code='PLANNER',is_active=True).order_by('pk').first() or user
-        CarryoverReviewTask.objects.get_or_create(company=user.company,version=version,source_version=source,month=month,defaults={'due_date':month,'assigned_to':assigned})
+        from .macro_carryover import history_links
+        # One reconciliation/correction for the whole macro history avoids divergent revisions.
+        task_sources={None} if history_links(version,month).exists() else forecast_sources
+        for source_id in task_sources:
+            CarryoverReviewTask.objects.get_or_create(company=user.company,version=version,source_version_id=source_id,month=month,defaults={'due_date':month,'assigned_to':assigned})
     version.snapshot={};version.save(update_fields=['snapshot'])
     return count

@@ -27,12 +27,28 @@ class CarryoverView(View):
         self.version,self.month,_=WorkspaceEdit().setup_version(request,kwargs['pk'])
         return super().dispatch(request,*args,**kwargs)
 
+    def resolve_source(self,value):
+        from .macro_carryover import history_links
+        if value=='history':
+            if not history_links(self.version,self.month).exists():raise ValidationError('Подключенная история недоступна для этого месяца.')
+            return None
+        return carryover.source_versions(self.version,self.month).get(pk=value)
+
     def form(self,request):
+        from .macro_carryover import history_links
+        links=list(history_links(self.version,self.month))
+        linked={link.review.version_id:link for link in links}
+        choices=[]
+        if links:choices.append(('history','Подключенная история: '+', '.join(link.construction_object.name for link in links)))
+        for source in carryover.source_versions(self.version,self.month):
+            link=linked.get(source.pk)
+            label=f'{source.construction_object} · v{source.version_number}'
+            if link:label+=f' · подключенный утвержденный раунд {link.review.number}'
+            choices.append((str(source.pk),label))
         class SelectionForm(forms.Form):
-            source=forms.ModelChoiceField(queryset=carryover.source_versions(self.version,self.month),label='Утвержденный план прошлого месяца')
+            source=forms.ChoiceField(choices=[('','Выберите значение'),*choices],label='Утвержденный план прошлого месяца / подключенная история')
             mode=forms.ChoiceField(choices=[('missing','Добавить отсутствующие; существующие пометить остатком')],label='Режим переноса')
-        first = carryover.source_versions(self.version,self.month).first()
-        return SelectionForm(request.POST if request.method=='POST' and not request.POST.get('token') else None,initial={'source':first.pk if first else None,'mode':'missing'})
+        return SelectionForm(request.POST if request.method=='POST' and not request.POST.get('token') else None,initial={'source':choices[0][0] if choices else None,'mode':'missing'})
 
     def get(self,request,pk):
         return self.display(request,self.form(request))
@@ -44,8 +60,8 @@ class CarryoverView(View):
                 payload=signing.loads(request.POST['token'],salt=SALT,max_age=3600)
                 if (payload['version'],payload['month'],payload['user'],payload['company'])!=(self.version.pk,self.month.isoformat(),request.user.pk,request.user.company_id):
                     raise signing.BadSignature()
-                source=carryover.source_versions(self.version,self.month).get(pk=payload['source'])
-                form.initial['source']=source.pk
+                source=self.resolve_source(payload['source'])
+                form.initial['source']=payload['source']
                 rows=carryover.preview(self.version,self.month,source)
                 if fingerprint(rows)!=payload['fingerprint']:
                     raise ValidationError('План, факт или остатки изменились. Сформируйте предварительный просмотр заново.')
@@ -60,9 +76,9 @@ class CarryoverView(View):
                 return self.display(request,form)
         if form.is_valid():
             try:
-                source=form.cleaned_data['source'];mode=form.cleaned_data['mode']
+                source_key=form.cleaned_data['source'];source=self.resolve_source(source_key);mode=form.cleaned_data['mode']
                 rows=carryover.preview(self.version,self.month,source)
-                token=signing.dumps(dict(version=self.version.pk,month=self.month.isoformat(),user=request.user.pk,company=request.user.company_id,source=source.pk,mode=mode,fingerprint=fingerprint(rows)),salt=SALT,compress=True)
+                token=signing.dumps(dict(version=self.version.pk,month=self.month.isoformat(),user=request.user.pk,company=request.user.company_id,source=source_key,mode=mode,fingerprint=fingerprint(rows)),salt=SALT,compress=True)
                 return self.display(request,form,rows=rows,token=token,mode=mode)
             except ValidationError as exc:form.add_error(None,exc)
         return self.display(request,form)

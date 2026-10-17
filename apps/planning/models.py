@@ -1245,7 +1245,8 @@ class DailyScheduleEntry(models.Model):
 
 class CarryoverReviewTask(BaseCompanyModel):
     version = models.ForeignKey(GlobalPlanVersion, on_delete=models.CASCADE, related_name='carryover_tasks')
-    source_version = models.ForeignKey(GlobalPlanVersion, on_delete=models.PROTECT, related_name='carryover_source_tasks')
+    # Null denotes the explicitly connected, frozen history of all sub-objects.
+    source_version = models.ForeignKey(GlobalPlanVersion, on_delete=models.PROTECT, related_name='carryover_source_tasks', null=True, blank=True)
     month = models.DateField()
     due_date = models.DateField()
     assigned_to = models.ForeignKey('accounts.User', on_delete=models.PROTECT, related_name='carryover_tasks')
@@ -1253,7 +1254,7 @@ class CarryoverReviewTask(BaseCompanyModel):
     corrected_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
-        constraints = [models.UniqueConstraint(fields=['version','source_version','month'], name='unique_carryover_review_task')]
+        constraints = [models.UniqueConstraint(fields=['version','source_version','month'], name='unique_carryover_review_task'), models.UniqueConstraint(fields=['version','month'],condition=models.Q(source_version__isnull=True),name='unique_macro_carryover_review_task')]
 
 
 class EstimateReviewTask(BaseCompanyModel):
@@ -1342,3 +1343,13 @@ class DailyTaskCursor(models.Model):
 
     class Meta:
         constraints=[models.UniqueConstraint(fields=['user','construction_object'],name='unique_dispatcher_daily_cursor')]
+
+
+class MacroCarryoverWork(BaseCompanyModel):
+    workspace = models.ForeignKey(PlanningWorkspace,on_delete=models.CASCADE,related_name='macro_carryover_works')
+    source_work = models.ForeignKey('works.ProjectWork',on_delete=models.PROTECT,related_name='macro_carryover_sources')
+    target_work = models.ForeignKey('works.ProjectWork',on_delete=models.PROTECT,related_name='macro_carryover_targets')
+    item_mapping = models.JSONField(default=dict)
+
+    class Meta:
+        constraints=[models.UniqueConstraint(fields=['workspace','source_work'],name='unique_macro_carryover_source'),models.UniqueConstraint(fields=['workspace','target_work'],name='unique_macro_carryover_target')]

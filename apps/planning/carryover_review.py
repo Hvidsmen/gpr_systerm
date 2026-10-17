@@ -36,7 +36,9 @@ def preview(task):
     version=candidate(task)
     version.status='DRAFT' # read-only calculation even while the correction is submitted.
     data=carryover.preview(version,task.month,task.source_version,include_zero=True)
-    receipts={r.work_id:r for r in task.version.work_carryovers.filter(month=task.month,source_version=task.source_version)}
+    receipts_query=task.version.work_carryovers.filter(month=task.month)
+    if task.source_version_id:receipts_query=receipts_query.filter(source_version=task.source_version)
+    receipts={r.work_id:r for r in receipts_query}
     current={r.work_id:r for r in (task.correction_version or task.version).work_allocations.filter(month=task.month)}
     finalized={r.work_id:r for r in task.correction_version.work_carryovers.filter(month=task.month)} if task.correction_version_id else receipts
     result=[]
@@ -56,6 +58,10 @@ def clone_revision(user,source,month):
     if source.status=='SUBMITTED':raise ValidationError('План еще на согласовании. Дождитесь решения или возврата на доработку.')
     if source.status in {'DRAFT','REJECTED'}:return source
     scenario=source.scenario if source.version_kind=='FORECAST' else 'REMAINING'
+    if source.workspace.is_macro_consolidation and source.version_kind=='BASELINE':
+        # Finalizing a transferred forecast changes the new month's total;
+        # keep the other months of the approved macro baseline intact.
+        scenario='BASELINE'
     version=WorkspaceService.new_version(source.workspace,user,'FORECAST',month,scenario,previous=source)
     review_id=source.baseline_review_id
     if not review_id:
@@ -70,6 +76,14 @@ def clone_revision(user,source,month):
         fields=[f.attname for f in model._meta.fields if f.name not in {'id','created_at','updated_at','company','version'}]
         copies=[model(company=user.company,version=version,**{key:deepcopy(getattr(row,key)) for key in fields}) for row in query.iterator()]
         model.objects.bulk_create(copies,batch_size=200)
+    if source.workspace.is_macro_consolidation and scenario=='BASELINE':
+        from .report_projection import period_snapshot
+        snapshot=period_snapshot(source,month,month)
+        existing=set(version.work_allocations.values_list('work_id',flat=True))
+        WorkMonthAllocation.objects.bulk_create([
+            WorkMonthAllocation(company=user.company,version=version,work_id=spec['id'],month=month,quantity=0)
+            for spec in snapshot.get('works',[]) if not spec.get('history_source_object_id') and spec['id'] not in existing
+        ])
     fields=[f.attname for f in WorkCarryover._meta.fields if f.name not in {'id','created_at','updated_at','company','version'}]
     WorkCarryover.objects.bulk_create([WorkCarryover(company=user.company,version=version,**{key:deepcopy(getattr(row,key)) for key in fields}) for row in source.work_carryovers.all()],batch_size=200)
     return version
