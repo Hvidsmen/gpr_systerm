@@ -140,7 +140,7 @@ def parse_gpr(content, filename, sheet_name='', year=None):
     first_month_col = min(col for col,_ in dates)
     footer_starts = [i for i,row in enumerate(rows) if i>config['row'] and any('технические ресурсы' in norm(value) for value in row[:first_month_col])]
     footer = footer_starts[-1] if footer_starts else next((i for i,row in enumerate(rows) if i>config['row'] and any('специализированная техника' in norm(value) or re.fullmatch(r'(?:\d+(?:\.\d+)*[ .]*)?(?:гсм|горюче-смазочные материалы):?', norm(value)) for value in row[:first_month_col])), None)
-    entries, section, resource_group, mode = [], sheet, '', None
+    entries, section, resource_group, mode = [], 'Линейная часть', '', None
     major_section, resource_col, number_col = '', config['name'], None
     ignored_work = 0
     aggregate_section = False
@@ -168,7 +168,7 @@ def parse_gpr(content, filename, sheet_name='', year=None):
             mode, resource_group = 'fuel', 'ГСМ'; continue
         is_work = label and isinstance(value(config['unit']),str) and unit and not re.fullmatch(r'[+-]?\d+(?:[.,]\d+)?', unit) and resource_type not in ('техника','персонал','люди') and mode is None
         if is_work and aggregate_section and text(value(0)):
-            section = sheet
+            section = 'Линейная часть'
             aggregate_section = False
         if is_work and config['layout'] == 'mixed' and text(value(0)) and index < len(rows):
             following = rows[index]

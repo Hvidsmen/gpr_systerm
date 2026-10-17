@@ -90,7 +90,8 @@ class SuzunHeaderTests(SimpleTestCase):
         out=BytesIO();w.save(out)
         d=parse_gpr(out.getvalue(),'test.xlsx',sheet_name=s.title)
         self.assertEqual({r['name'] for r in d['entries']},{'УЗА 1','УЗА 2','Проезд'})
-        self.assertEqual(next(r for r in d['entries'] if r['name']=='Проезд')['section'],s.title)
+        self.assertEqual(next(r for r in d['entries'] if r['name']=='Проезд')['section'],'Линейная часть')
+        self.assertEqual({r['section'] for r in d['entries'] if r['name'] in {'УЗА 1','УЗА 2'}},{'Расключение'})
         self.assertTrue(any('проезд' in warning for warning in d['warnings']))
         self.assertTrue(all(r['unit'] in {'точка','шт'} for r in d['entries']))
 
