@@ -109,6 +109,12 @@ def transition(version, user, action, comment=''):
         actor_role=role, comment=comment)
     with authorized_transition(version.pk):
         version.save()
+    from .task_services import sync_version,create_repair,state
+    sync_version(version)
+    if action=='reject':create_repair(version,user,comment)
+    if action=='submit':
+        from .models import WorkTask
+        for task in WorkTask.objects.filter(version=version,key__startswith='repair:',status__in=['OPEN','IN_REVIEW']):state(task,'DONE',user,'Исправленный план отправлен на новый раунд согласования.')
     return version
 
 

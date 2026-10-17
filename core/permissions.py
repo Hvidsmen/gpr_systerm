@@ -3,10 +3,10 @@ from django.core.exceptions import PermissionDenied
 
 DEPARTMENT_ROLES = {'PRODUCTION_HEAD', 'HR_HEAD', 'TECH_HEAD'}
 GLOBAL_APPROVAL_ROLES = DEPARTMENT_ROLES | {'CEO'}
-ROLES = {'ADMIN', 'PLANNER', 'MANAGER', 'FOREMAN', 'OBSERVER', 'ESTIMATOR'} | GLOBAL_APPROVAL_ROLES
+ROLES = {'ADMIN', 'PLANNER', 'MANAGER', 'FOREMAN', 'DISPATCHER', 'OBSERVER', 'ESTIMATOR'} | GLOBAL_APPROVAL_ROLES
 READ_ROLES = {'ADMIN', 'PLANNER', 'MANAGER', 'OBSERVER', 'ESTIMATOR'} | GLOBAL_APPROVAL_ROLES
 PLAN_ROLES = {'ADMIN', 'PLANNER'}
-FACT_ROLES = {'ADMIN', 'FOREMAN'}
+FACT_ROLES = {'ADMIN', 'FOREMAN', 'DISPATCHER'}
 APPROVAL_ROLES = {'ADMIN', 'MANAGER'}
 
 
@@ -46,7 +46,7 @@ def require_global_action(user, action):
 def scope_queryset(queryset, user):
     """Always company scope; masters additionally see assigned construction objects."""
     queryset = queryset.filter(company=user.company)
-    if role_code(user) != 'FOREMAN':
+    if role_code(user) not in {'FOREMAN','DISPATCHER'}:
         return queryset
     name = queryset.model._meta.label
     paths = {
@@ -114,6 +114,9 @@ def check_route(user, match, method):
         require_roles(user, READ_ROLES if name in {'plan_list', 'plan_detail', 'plan_export'} and method in {'GET', 'HEAD'} else PLAN_ROLES)
         return
     if namespace == 'planning':
+        if name.startswith('task_'):
+            require_roles(user,ROLES)
+            return
         if name.startswith('estimate_review_'):
             require_roles(user, {'ADMIN','PLANNER','ESTIMATOR'})
             return

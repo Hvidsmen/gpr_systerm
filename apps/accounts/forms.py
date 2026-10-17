@@ -71,7 +71,7 @@ class CompanyUserAccessForm(forms.ModelForm):
         self.fields['role'].required = True
         self.fields['role'].queryset = self.fields['role'].queryset.filter(code__in=ROLES)
         self.fields['assigned_objects'].queryset = ConstructionObject.objects.filter(company=company)
-        self.fields['assigned_objects'].help_text = 'Мастер видит и вводит факты только на этих объектах. Без назначения доступных объектов нет.'
+        self.fields['assigned_objects'].help_text = 'Мастер и диспетчер видят и вводят факты только на этих объектах. Диспетчеру ежедневно создаются задания за вчера по каждому назначенному объекту.'
         for field in self.fields.values():
             if not isinstance(field.widget, forms.CheckboxInput):
                 field.widget.attrs['class'] = 'form-control'

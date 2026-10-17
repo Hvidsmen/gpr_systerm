@@ -1287,3 +1287,58 @@ class MacroHistorySource(BaseCompanyModel):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['workspace','construction_object'],name='unique_macro_history_child')]
+
+
+class WorkTask(BaseCompanyModel):
+    key = models.CharField(max_length=180)
+    kind = models.CharField(max_length=20,choices=[('ESTIMATE','Проверка сметчика'),('REMARK','Замечание'),('APPROVAL','Согласование'),('FACT','Факт за день'),('CARRYOVER','Уточнение остатков'),('MANUAL','Задание')])
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    status = models.CharField(max_length=20,default='OPEN',choices=[('OPEN','Открыто'),('IN_REVIEW','На проверке автора'),('DONE','Выполнено'),('SUPERSEDED','Заменено / отменено')])
+    assigned_to = models.ForeignKey('accounts.User',null=True,blank=True,on_delete=models.SET_NULL,related_name='work_tasks')
+    target_role = models.CharField(max_length=50,blank=True)
+    created_by = models.ForeignKey('accounts.User',null=True,blank=True,on_delete=models.SET_NULL,related_name='authored_work_tasks')
+    due_date = models.DateField(null=True,blank=True)
+    construction_object = models.ForeignKey('projects.ConstructionObject',null=True,blank=True,on_delete=models.PROTECT)
+    fact_date = models.DateField(null=True,blank=True)
+    version = models.ForeignKey(GlobalPlanVersion,null=True,blank=True,on_delete=models.CASCADE,related_name='work_tasks')
+    schedule = models.ForeignKey(DailySchedule,null=True,blank=True,on_delete=models.CASCADE)
+    review = models.ForeignKey(GlobalPlanReview,null=True,blank=True,on_delete=models.CASCADE,related_name='work_tasks')
+    estimate = models.ForeignKey(EstimateReviewTask,null=True,blank=True,on_delete=models.SET_NULL,related_name='work_tasks')
+    carryover = models.ForeignKey(CarryoverReviewTask,null=True,blank=True,on_delete=models.SET_NULL)
+    work = models.ForeignKey('works.ProjectWork',null=True,blank=True,on_delete=models.SET_NULL)
+    parent = models.ForeignKey('self',null=True,blank=True,on_delete=models.SET_NULL,related_name='children')
+
+    class Meta:
+        ordering=['due_date','-created_at','-pk']
+        constraints=[models.UniqueConstraint(fields=['company','key'],name='unique_company_work_task')]
+        indexes=[models.Index(fields=['company','assigned_to','status'])]
+
+    @property
+    def role_label(self):
+        return {'ESTIMATOR':'Сметчик','PRODUCTION_HEAD':'Руководитель производства','HR_HEAD':'Руководитель кадровой службы','TECH_HEAD':'Руководитель технической службы','CEO':'Генеральный директор'}.get(self.target_role,'Не назначен')
+
+    @property
+    def overdue(self):
+        from django.utils import timezone
+        return self.status in {'OPEN','IN_REVIEW'} and self.due_date and self.due_date<timezone.localdate()
+
+
+class WorkTaskEvent(BaseCompanyModel):
+    actor_name = models.CharField(max_length=350,blank=True)
+    task = models.ForeignKey(WorkTask,on_delete=models.CASCADE,related_name='events')
+    actor = models.ForeignKey('accounts.User',null=True,blank=True,on_delete=models.SET_NULL)
+    action = models.CharField(max_length=80)
+    text = models.TextField(blank=True)
+
+    class Meta:
+        ordering=['created_at','pk']
+
+
+class DailyTaskCursor(models.Model):
+    user = models.ForeignKey('accounts.User',on_delete=models.CASCADE)
+    construction_object = models.ForeignKey('projects.ConstructionObject',on_delete=models.CASCADE)
+    last_date = models.DateField()
+
+    class Meta:
+        constraints=[models.UniqueConstraint(fields=['user','construction_object'],name='unique_dispatcher_daily_cursor')]

@@ -63,6 +63,9 @@ def assign(user,obj,estimator):
     else:
         task=EstimateReviewTask.objects.create(company=user.company,created_by=user,assigned_to=estimator,**({'schedule':obj} if isinstance(obj,DailySchedule) else {'version':obj}))
     event(task,user,'ASSIGN',{'estimator':estimator.pk})
+    from .task_services import estimate_task,sync_version
+    estimate_task(task)
+    if task.version_id:sync_version(obj)
     return task
 
 
@@ -94,6 +97,9 @@ def return_to_draft(task,user,comment):
     GlobalPlanDecision.objects.create(company=user.company,review=review,section='ESTIMATE',action='REJECT',actor=user,actor_name=user.get_full_name() or user.username,actor_role='ESTIMATOR',comment=comment)
     obj.status='REJECTED';obj.comment=comment;obj.approved_at=None;obj.approved_by=None
     with authorized_transition(obj.pk):obj.save(update_fields=['status','comment','approved_at','approved_by','updated_at'])
+    from .task_services import sync_version,create_repair
+    sync_version(obj)
+    create_repair(obj,user,comment)
 
 
 def scoped_work(task,work_id):
@@ -197,6 +203,8 @@ def finish(user,task,approve,comment=''):
     task=lock_task(user,task);obj=target(task)
     works=ProjectWork.objects.filter(company=user.company,pk__in=work_ids(obj))
     if approve:
+        from .task_services import require_no_remarks
+        require_no_remarks(task)
         if isinstance(obj,GlobalPlanVersion) and obj.status=='SUBMITTED':
             from .approval_workflow import current_review
             review=current_review(obj)
@@ -218,4 +226,9 @@ def finish(user,task,approve,comment=''):
         return_to_draft(task,user,comment.strip())
         task.status='REJECTED';task.fingerprint=''
     task.comment=comment.strip();task.save();event(task,user,task.status,{'comment':comment})
+    from .task_services import estimate_task,sync_version,create_repair
+    estimate_task(task)
+    if task.version_id:
+        sync_version(obj)
+        if not approve:create_repair(obj,user,comment)
     return task

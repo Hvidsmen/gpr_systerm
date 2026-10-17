@@ -160,3 +160,6 @@ urlpatterns += [path('workspace/continue/',ContinueGpr.as_view(),name='workspace
 
 from .macro_history_views import MacroCreate,MacroDetail
 urlpatterns += [path('macro/create/',MacroCreate.as_view(),name='macro_history_create'),path('macro/<int:pk>/',MacroDetail.as_view(),name='macro_history_detail')]
+
+from .task_views import TaskList,TaskDetail,TaskCreate
+urlpatterns += [path('tasks/',TaskList.as_view(),name='task_list'),path('tasks/create/',TaskCreate.as_view(),name='task_create'),path('tasks/<int:pk>/',TaskDetail.as_view(),name='task_detail')]

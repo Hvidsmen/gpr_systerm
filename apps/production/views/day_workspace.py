@@ -142,7 +142,9 @@ class FactDayWorkspaceView(CompanyRequiredMixin, View):
                 if record:
                     initial = {'actuated': True, 'actuation_type': record.actuation_type, 'reason': record.reason}
             actuation = production_forms.DayActuationForm(initial=initial)
-        return render(request, self.template_name, {'selector': selector, 'groups': groups, 'error': error, 'actuation': actuation}, status=status)
+        from apps.planning.task_services import visible
+        tasks=visible(request.user).filter(kind='FACT',construction_object=selector.cleaned_data['construction_object'],fact_date=selector.cleaned_data['date']) if selector.is_bound and selector.is_valid() else []
+        return render(request, self.template_name, {'selector': selector, 'groups': groups, 'error': error, 'actuation': actuation,'fact_tasks':tasks}, status=status)
 
     def post(self, request):
         selector = production_forms.ObjectDateForm(request.POST, user=request.user)

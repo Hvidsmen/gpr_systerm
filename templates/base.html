@@ -397,6 +397,7 @@
 <aside class="sidebar" id="sidebar">
     <nav class="nav flex-column py-2" aria-label="Основное меню">
         {% if user.company %}<div class="px-3 py-2 text-muted small text-truncate" title="{{ user.company.name }}">{{ user.company.name }}</div>{% endif %}
+{% if task_inbox_access %}<a class="nav-link" href="{% url 'planning:task_list' %}"><i class="bi bi-inbox"></i> Задания {% if task_inbox_count %}<span class="badge bg-danger">{{ task_inbox_count }}</span>{% endif %}</a>{% endif %}
         {% if request.user|may:'dashboard:index' %}<a class="nav-link" href="{% url 'dashboard:index' %}" ><i class="bi bi-bar-chart"></i> Обзор</a>{% endif %}
         {% if request.user|may:'dashboard:revenue' or request.user|may:'planning:report_matrix' %}<details class="nav-group"><summary>План/Факт</summary>
         {% if request.user|may:'dashboard:revenue' %}<a class="nav-link" href="{% url 'dashboard:revenue' %}" data-paths="/dashboard/revenue/"><i class="bi bi-bar-chart"></i> Дашборд</a>{% endif %}

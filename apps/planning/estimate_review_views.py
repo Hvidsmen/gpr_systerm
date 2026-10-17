@@ -86,7 +86,13 @@ class ReviewDetail(View):
         task=get_object_or_404(tasks(request.user),pk=pk);action=request.POST.get('action');work_id=request.POST.get('work_id')
         try:
             if action in {'approve','reject'}:service.finish(request.user,task,action=='approve',request.POST.get('comment',''))
-            elif action in {'work_approve','work_reject'}:service.review_work(request.user,task,work_id,action=='work_approve',request.POST.get('comment',''))
+            elif action=='work_approve':service.review_work(request.user,task,work_id,True,request.POST.get('comment',''))
+            elif action=='work_reject':
+                from .task_services import create_remark
+                planner=task.created_by
+                if not planner or role_code(planner) not in {'PLANNER','ADMIN'}:raise ValidationError('Назначьте замечание планировщику через кнопку создания задания.')
+                create_remark(request.user,task,planner,'Исправить замечание по работе',request.POST.get('comment',''),work_id=work_id)
+
             elif action=='replace':service.replace_work(request.user,task,work_id,request.POST.get('replacement'))
             elif action=='change':
                 form=WorkChangeForm(request.POST)

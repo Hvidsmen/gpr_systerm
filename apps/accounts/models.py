@@ -100,3 +100,13 @@ def validate_object_assignments(sender, instance, action, reverse, pk_set, **kwa
 def protect_assignment_company(sender, instance, **kwargs):
     if instance.pk and instance.assigned_objects.exclude(company_id=instance.company_id).exists():
         raise ValidationError('Перед сменой компании удалите назначения строительных объектов.')
+
+
+@receiver(m2m_changed,sender=User.assigned_objects.through)
+def reset_daily_task_subscriptions(sender,instance,action,reverse,**kwargs):
+    if action not in {'post_remove','post_clear'} or reverse:return
+    from apps.planning.models import DailyTaskCursor,WorkTask
+    from apps.planning.task_services import state
+    ids=instance.assigned_objects.values_list('pk',flat=True)
+    DailyTaskCursor.objects.filter(user=instance).exclude(construction_object_id__in=ids).delete()
+    for task in WorkTask.objects.filter(assigned_to=instance,kind='FACT',status='OPEN').exclude(construction_object_id__in=ids):state(task,'SUPERSEDED',text='Объект больше не закреплен за исполнителем.')

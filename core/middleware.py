@@ -28,6 +28,9 @@ class CompanyAccessMiddleware:
         if match.view_name not in self.account_views and not request.user.company_id:
             raise PermissionDenied('Для доступа к данным администратор должен назначить вам компанию.')
         from core.permissions import check_route, role_code
+        if match.namespace == 'dashboard' and role_code(request.user) == 'DISPATCHER':
+            from django.shortcuts import redirect
+            return redirect('planning:task_list')
         if match.namespace == 'dashboard' and role_code(request.user) == 'FOREMAN':
             from django.shortcuts import redirect
             return redirect('production:fact_day_workspace')
