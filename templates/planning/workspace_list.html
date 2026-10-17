@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 {% load access %}
-{% block content %}
+{% block content %}{% load access %}{% if request.user|may:'planning:workspace_continue' %}<p><a class="btn btn-outline-primary" href="{% url 'planning:workspace_continue' %}">Продолжить предыдущий ГПР</a></p>{% endif %}
 <h1>Планирование на период</h1>
 {% if request.user|may:'planning:gpr_excel_import' %}<p><a class="btn btn-outline-primary" href="{% url 'planning:gpr_excel_import' %}">Импорт ГПР из Excel (XLS / XLSX)</a></p>{% endif %}
 <p>Базовый план и месячные уточнения работ, людей, техники и ГСМ строительного объекта.</p>

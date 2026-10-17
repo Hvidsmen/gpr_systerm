@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% block content %}
+{% block content %}{% load access %}{% if request.user|may:'planning:workspace_continue' %}<p><a class="btn btn-outline-primary" href="{% url 'planning:workspace_continue' %}">Продолжить предыдущий ГПР</a></p>{% endif %}
 <h1>Новый чистый план на период</h1>
 <p>Задайте объект и период. Работы и ресурсы вводятся по месяцам; планы по дням формируются по календарям и профилям нагрузки. Ранее созданные планы автоматически не копируются.</p>
 <form method="post">{% csrf_token %}{% include 'forms/fields.html' with form=form %}<button class="btn btn-primary">Создать рабочее пространство</button></form>

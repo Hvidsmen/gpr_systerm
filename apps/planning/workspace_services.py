@@ -406,7 +406,11 @@ def build_workspace_snapshot(version, *, validate_inputs=True):
     from apps.works.prices import freeze_prices
     from apps.resources.brigade_merge import normalize_resource_snapshot
     snapshot = _build_workspace_snapshot(version, validate_inputs=validate_inputs)
-    return freeze_prices(normalize_resource_snapshot(snapshot, version.company, in_place=True), version.company, in_place=True)
+    snapshot = freeze_prices(normalize_resource_snapshot(snapshot, version.company, in_place=True), version.company, in_place=True)
+    if version.workspace.continued_from_review_id:
+        from .continuation import merge_history
+        snapshot = merge_history(version, snapshot)
+    return snapshot
 
 
 def _build_workspace_snapshot(version, *, validate_inputs=True):
@@ -426,7 +430,7 @@ def _build_workspace_snapshot(version, *, validate_inputs=True):
         )
     ]
     if version.version_kind == "BASELINE":
-        if not inputs and not resources:
+        if not inputs and not resources and not workspace.continued_from_review_id:
             raise ValidationError("Добавьте месячные планы работ или ресурсов.")
         works = []
         day_cache = {}
@@ -831,6 +835,8 @@ class WorkspaceService:
         require_roles(user, PLAN_ROLES)
         if workspace.company_id != user.company_id:
             raise PermissionDenied("План другой компании.")
+        if month and workspace.continuation_start and month < workspace.continuation_start:
+            raise ValidationError("Унаследованные месяцы не уточняются в продолжении ГПР.")
         ConstructionObject.objects.select_for_update().get(
             pk=workspace.construction_object_id
         )

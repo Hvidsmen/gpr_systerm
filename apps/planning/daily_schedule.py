@@ -25,6 +25,8 @@ def bounds(month):return month,month.replace(day=monthrange(month.year,month.mon
 
 
 def validate_source(source,month):
+    if source.workspace_id and source.workspace.continuation_start and month < source.workspace.continuation_start:
+        raise ValidationError('Прошлый период сохранен из предыдущего ГПР. Создайте СМГ для нового периода.')
     start,end=bounds(month)
     if source.status not in {'APPROVED','COMPLETED'}:raise ValidationError('Дневной СМГ создается из утвержденного ГПР.')
     if month.day!=1 or start<source.start_date or end>source.end_date:raise ValidationError('Выберите полный месяц внутри периода ГПР.')

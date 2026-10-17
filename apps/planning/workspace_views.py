@@ -30,8 +30,8 @@ from .global_services import comparison
 def workspace_for(request, pk):
     return get_object_or_404(
         PlanningWorkspace.objects.select_related(
-            "baseline_version", "construction_object"
-        ),
+            "baseline_version", "construction_object", "continued_from_review"
+        ).defer("baseline_version__snapshot", "continued_from_review__snapshot"),
         pk=pk,
         company=request.user.company,
     )
@@ -40,8 +40,8 @@ def workspace_for(request, pk):
 def version_for(request, pk):
     return get_object_or_404(
         GlobalPlanVersion.objects.select_related(
-            "workspace__baseline_version", "workspace__construction_object"
-        ).defer("snapshot", "workspace__baseline_version__snapshot"),
+            "workspace__baseline_version", "workspace__construction_object", "workspace__continued_from_review"
+        ).defer("snapshot", "workspace__baseline_version__snapshot", "workspace__continued_from_review__snapshot"),
         pk=pk,
         company=request.user.company,
         workspace__isnull=False,
@@ -236,7 +236,7 @@ class WorkspaceEdit(View):
             raise PermissionDenied(
                 "Отправленную или утверждённую версию редактировать нельзя."
             )
-        months = months_between(version.start_date, version.end_date)
+        months = months_between(version.workspace.continuation_start or version.start_date, version.end_date)
         selected = (
             request.GET.get("month")
             or (version.planning_month or months[0]).isoformat()
@@ -403,7 +403,7 @@ class AddWorkspaceWork(View):
                 )
                 if locked.status not in ["DRAFT", "REJECTED"]:
                     raise PermissionDenied("Версия уже отправлена.")
-                for month in months_between(version.start_date, version.end_date):
+                for month in months_between(version.workspace.continuation_start or version.start_date, version.end_date):
                     WorkMonthAllocation.objects.get_or_create(
                         company=version.company,
                         version=version,
@@ -585,7 +585,7 @@ class AddWorkspaceResource(View):
             raise Http404('Неизвестный вид ресурса')
         if version.version_kind != 'BASELINE' or version.status not in ['DRAFT', 'REJECTED']:
             raise PermissionDenied('Ресурсы на весь период добавляются в черновик базы.')
-        months = months_between(version.start_date, version.end_date)
+        months = months_between(version.workspace.continuation_start or version.start_date, version.end_date)
         form = AddPeriodResourceForm(request.POST, kind=kind, user=request.user,
             version=version, month=months[0], prefix='period-'+kind)
         if form.is_valid():

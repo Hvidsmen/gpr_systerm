@@ -46,7 +46,7 @@ class ForecastForm(forms.Form):
         super().__init__(*args, **kwargs)
         self.fields["month"].choices = [
             (month.isoformat(), month.strftime("%m.%Y"))
-            for month in months_between(workspace.start_date, workspace.end_date)
+            for month in months_between(workspace.continuation_start or workspace.start_date, workspace.end_date)
         ]
 
 

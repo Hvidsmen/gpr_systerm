@@ -154,3 +154,6 @@ urlpatterns += [
     path('estimate-reviews/assign/<str:kind>/<int:pk>/', ReviewAssign.as_view(), name='estimate_review_assign'),
     path('estimate-reviews/<int:pk>/', ReviewDetail.as_view(), name='estimate_review_detail'),
 ]
+
+from .continuation_views import ContinueGpr
+urlpatterns += [path('workspace/continue/',ContinueGpr.as_view(),name='workspace_continue')]

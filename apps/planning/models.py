@@ -478,6 +478,8 @@ class GlobalPlanVersion(BaseCompanyModel):
 
 
 class PlanningWorkspace(BaseCompanyModel):
+    continued_from_review = models.ForeignKey('GlobalPlanReview', on_delete=models.PROTECT, null=True, blank=True, related_name='continued_workspaces', verbose_name='Предыдущий утвержденный ГПР')
+    continuation_start = models.DateField(null=True, blank=True, verbose_name='Начало нового периода')
     name = models.CharField("Название плана", max_length=255)
     construction_object = models.ForeignKey(
         "projects.ConstructionObject",
@@ -520,6 +522,15 @@ class PlanningWorkspace(BaseCompanyModel):
             and self.construction_object.company_id != self.company_id
         ):
             raise ValidationError({"construction_object": "Объект другой компании."})
+        if bool(self.continued_from_review_id) != bool(self.continuation_start):
+            raise ValidationError('Укажите исходный согласованный план и начало продолжения.')
+        if self.continued_from_review_id:
+            source = self.continued_from_review.version
+            if source.company_id != self.company_id or source.construction_object_id != self.construction_object_id or not self.continued_from_review.was_approved:
+                raise ValidationError('Выберите согласованный ГПР этого объекта своей компании.')
+            from datetime import timedelta
+            if self.start_date != source.start_date or self.continuation_start != source.end_date + timedelta(days=1) or self.end_date < self.continuation_start or self.parent_gpr_id:
+                raise ValidationError('Продолжение должно следовать сразу за предыдущим ГПР.')
         if self.parent_gpr_id:
             from calendar import monthrange
             parent = GlobalPlanVersion.objects.defer("snapshot").get(pk=self.parent_gpr_id)
@@ -537,7 +548,7 @@ class PlanningWorkspace(BaseCompanyModel):
         from django.core.exceptions import ValidationError
 
         if self.pk:
-            old = type(self).objects.select_related("baseline_version").get(pk=self.pk)
+            old = type(self).objects.select_related("baseline_version").defer("baseline_version__snapshot").get(pk=self.pk)
             if old.baseline_version and old.baseline_version.status not in [
                 "DRAFT",
                 "REJECTED",
@@ -549,6 +560,8 @@ class PlanningWorkspace(BaseCompanyModel):
                     "end_date",
                     "baseline_version_id",
                     "parent_gpr_id",
+                    "continued_from_review_id",
+                    "continuation_start",
                 ]:
                     if getattr(old, name) != getattr(self, name):
                         raise ValidationError(
@@ -837,6 +850,8 @@ def validate_workspace_allocation(row):
         status = GlobalPlanVersion.objects.values_list("status", flat=True).get(pk=version.pk)
     if status not in ["DRAFT", "REJECTED"]:
         raise ValidationError("Отправленную или утверждённую версию менять нельзя.")
+    if row.month and version.workspace.continuation_start and row.month < version.workspace.continuation_start:
+        raise ValidationError('Прошлый период сохранен из утвержденного ГПР и недоступен для редактирования.')
     if row.month:
         if row.month.day != 1:
             raise ValidationError({"month": "Укажите первое число месяца."})

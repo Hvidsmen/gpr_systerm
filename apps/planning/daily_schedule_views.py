@@ -42,7 +42,7 @@ class DailyScheduleCreate(View):
     def display(self,request,pk,bound=False):
         require_roles(request.user,PLAN_ROLES)
         source=get_object_or_404(GlobalPlanVersion.objects.defer('snapshot'),pk=pk,company=request.user.company)
-        form=MonthForm(request.POST if bound else None,initial={'month':source.planning_month or source.start_date.replace(day=1)})
+        form=MonthForm(request.POST if bound else None,initial={'month':source.planning_month or (source.workspace.continuation_start if source.workspace_id else None) or source.start_date.replace(day=1)})
         if bound and form.is_valid():
             try:return redirect('planning:daily_schedule_detail',pk=service.create(request.user,source,form.cleaned_data['month']).pk)
             except ValidationError as exc:form.add_error(None,exc)
