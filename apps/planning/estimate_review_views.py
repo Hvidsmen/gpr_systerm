@@ -76,7 +76,9 @@ class ReviewDetail(View):
     def show(self,request,task,change_form=None,item_form=None,work_id=None):
         obj=service.target(task)
         works=list(ProjectWork.objects.filter(company=request.user.company,pk__in=service.work_ids(obj)).select_related('section').prefetch_related('items','price_history'))
+        replacements=list(ProjectWork.objects.filter(company=request.user.company,section__construction_object_id=(obj.source.construction_object_id if isinstance(obj,DailySchedule) else obj.construction_object_id),merged_source__isnull=True).select_related('section').order_by('section__name','name','pk'))
         for w in works:
+            w.replacements=[r for r in replacements if r.pk!=w.pk and r.unit==w.unit and r.kind==w.kind]
             w.change_form=WorkChangeForm(initial={'name':w.name})
             w.item_form=ItemForm(company=request.user.company)
             for item in w.items.all():item.edit_form=ItemForm(instance=item,company=request.user.company)

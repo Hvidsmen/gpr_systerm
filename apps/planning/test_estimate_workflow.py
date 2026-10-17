@@ -39,6 +39,18 @@ class EstimateWorkflowTests(TestCase):
         self.task.refresh_from_db();self.assertEqual(len(self.task.decisions),2)
         service.finish(self.estimator,self.task,True)
 
+    def test_replacement_excludes_itself_and_identifies_same_named_records(self):
+        self.prepare();other=self.add_work()
+        other.name=self.simple.name;other.save()
+        incompatible=ProjectWork.objects.create(company=self.company,section=self.simple.section,name='Wrong unit',unit='шт')
+        self.client.force_login(self.estimator)
+        response=self.client.get(reverse('planning:estimate_review_detail',args=[self.task.pk]))
+        work=next(w for w in response.context['works'] if w.pk==self.simple.pk)
+        self.assertIn(other.pk,{r.pk for r in work.replacements})
+        self.assertNotIn(self.simple.pk,{r.pk for r in work.replacements})
+        self.assertNotIn(incompatible.pk,{r.pk for r in work.replacements})
+        self.assertContains(response,f'ID {other.pk}')
+
     def test_month_scope_ignores_other_months_and_cannot_check_them(self):
         self.prepare();other=self.add_work()
         approved=self.approve(self.version)
