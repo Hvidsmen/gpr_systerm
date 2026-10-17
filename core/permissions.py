@@ -3,8 +3,8 @@ from django.core.exceptions import PermissionDenied
 
 DEPARTMENT_ROLES = {'PRODUCTION_HEAD', 'HR_HEAD', 'TECH_HEAD'}
 GLOBAL_APPROVAL_ROLES = DEPARTMENT_ROLES | {'CEO'}
-ROLES = {'ADMIN', 'PLANNER', 'MANAGER', 'FOREMAN', 'OBSERVER'} | GLOBAL_APPROVAL_ROLES
-READ_ROLES = {'ADMIN', 'PLANNER', 'MANAGER', 'OBSERVER'} | GLOBAL_APPROVAL_ROLES
+ROLES = {'ADMIN', 'PLANNER', 'MANAGER', 'FOREMAN', 'OBSERVER', 'ESTIMATOR'} | GLOBAL_APPROVAL_ROLES
+READ_ROLES = {'ADMIN', 'PLANNER', 'MANAGER', 'OBSERVER', 'ESTIMATOR'} | GLOBAL_APPROVAL_ROLES
 PLAN_ROLES = {'ADMIN', 'PLANNER'}
 FACT_ROLES = {'ADMIN', 'FOREMAN'}
 APPROVAL_ROLES = {'ADMIN', 'MANAGER'}
@@ -114,6 +114,9 @@ def check_route(user, match, method):
         require_roles(user, READ_ROLES if name in {'plan_list', 'plan_detail', 'plan_export'} and method in {'GET', 'HEAD'} else PLAN_ROLES)
         return
     if namespace == 'planning':
+        if name.startswith('estimate_review_'):
+            require_roles(user, {'ADMIN','PLANNER','ESTIMATOR'})
+            return
         if name == 'daily_schedule_edit':
             require_roles(user, READ_ROLES if method in {'GET','HEAD'} else PLAN_ROLES)
             return

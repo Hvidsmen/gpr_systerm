@@ -300,7 +300,7 @@ class WorkspaceEdit(View):
             "work_prices": work_prices,
             "months": months,
             "work_forms": works,
-            "work_carryover_notes": {str(r.work_id): {'quantity':str(r.quantity),'unit':r.work.unit,'items':r.item_quantities,'added':r.added,'previous_month':(selected.replace(day=1)-timedelta(days=1)).strftime('%m.%Y')} for r in version.work_carryovers.filter(month=selected).select_related('work')},
+            "work_carryover_notes": {str(r.work_id): {'is_forecast':r.is_forecast,'as_of':str(r.forecast_as_of or ''),'quantity':str(r.quantity),'unit':r.work.unit,'items':r.item_quantities,'added':r.added,'previous_month':(selected.replace(day=1)-timedelta(days=1)).strftime('%m.%Y')} for r in version.work_carryovers.filter(month=selected).select_related('work')},
             "work_item_quantities": {form.prefix: form.instance.item_quantities for form in works if form.instance.item_quantities},
             "planning_filter_data": filter_data,
             "work_filters": filter_specs['works'],

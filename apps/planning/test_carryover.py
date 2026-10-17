@@ -110,3 +110,36 @@ class CarryoverTests(TestCase):
         self.assertEqual(response.status_code,200)
         self.assertFalse(response.context['form'].is_bound)
         self.assertNotContains(response,'Обязательное поле')
+
+
+class ForecastCarryoverTests(CarryoverTests):
+    def test_forecast_average_and_day_one_actual_reconciliation(self):
+        from unittest.mock import patch
+        from .models import CarryoverReviewTask
+        from .carryover_review import reconcile
+        self.prepare()
+        DailyFact.objects.create(company=self.company,project_work=self.work,date=fixtures.JAN,actual_quantity=14)
+        with patch('django.utils.timezone.localdate',return_value=date(2026,1,15)):
+            rows=preview(self.target,fixtures.FEB,self.source)
+            self.assertEqual(Decimal(rows[0]['expected']),31)
+            self.assertEqual(Decimal(rows[0]['quantity']),69)
+            apply(self.planner,self.target,fixtures.FEB,self.source,'missing',{str(self.work.pk)})
+        task=CarryoverReviewTask.objects.get()
+        self.assertEqual(task.due_date,fixtures.FEB)
+        DailyFact.objects.create(company=self.company,project_work=self.work,date=date(2026,1,31),actual_quantity=56)
+        with patch('django.utils.timezone.localdate',return_value=fixtures.FEB):
+            corrected=reconcile(self.planner,task,{str(self.work.pk)})
+        self.assertEqual(corrected.work_allocations.get().quantity,30)
+        receipt=corrected.work_carryovers.get()
+        self.assertEqual(receipt.forecast_quantity,69)
+        self.assertFalse(receipt.is_forecast)
+
+    def test_forecast_zero_still_creates_followup_task(self):
+        from unittest.mock import patch
+        from .models import CarryoverReviewTask
+        self.prepare()
+        DailyFact.objects.create(company=self.company,project_work=self.work,date=fixtures.JAN,actual_quantity=100)
+        with patch('django.utils.timezone.localdate',return_value=date(2026,1,15)):
+            apply(self.planner,self.target,fixtures.FEB,self.source,'missing',{str(self.work.pk)})
+        self.assertEqual(WorkCarryover.objects.get().quantity,0)
+        self.assertEqual(CarryoverReviewTask.objects.count(),1)

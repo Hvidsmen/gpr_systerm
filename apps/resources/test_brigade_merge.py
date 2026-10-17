@@ -91,6 +91,8 @@ class BrigadeMergeTests(TestCase):
         forecast=WorkspaceService.forecast(ws,self.planner,date(2026,2,1),'BASELINE')
         self.assertEqual(forecast.resource_allocations.get(kind='labor').count,5)
         self.assertEqual(forecast.resource_allocations.get(kind='labor').brigade_id,self.brigade.pk)
+        from apps.planning.approval_test_helpers import estimator_check
+        estimator_check(forecast,self.planner)
         GlobalPlanService.transition(forecast,self.planner,'submit')
         plan=RotationPlan.objects.create(company=self.company,source=ws.baseline_version,title='Demand',start=JAN,end=date(2026,1,31))
         demand=get_demand(plan)

@@ -147,6 +147,8 @@ def activate(user,schedule):
     schedule=DailySchedule.objects.select_for_update().select_related('source').defer('source__snapshot').get(pk=schedule.pk,company=user.company)
     if schedule.status!='DRAFT':raise ValidationError('Создайте новую редакцию для изменения СМГ.')
     validate_source(schedule.source,schedule.month)
+    from .estimate_review import require_approved
+    require_approved(schedule)
     if not ALLOW_MONTH_CHANGES and any(differences(e,e.rows) for e in schedule.entries.select_related('schedule')):raise ValidationError('Месячные итоги СМГ должны совпадать с ГПР.')
     DailySchedule.objects.filter(source=schedule.source,month=schedule.month,status='APPLIED').update(status='ARCHIVED')
     schedule.status='APPLIED';schedule.save(update_fields=['status','updated_at']);return schedule
@@ -163,6 +165,8 @@ def overlay(source,snapshot,start,end):
                 spec=specs.get(entry.metadata['id'])
                 if not spec:continue
                 generated=finalize_work(entry.metadata,entry.rows,SimpleNamespace(start_date=schedule.month,end_date=bounds(schedule.month)[1]),entry.metadata.get('history',[]))
+                for field in ['name','unit_price','revenue_prices','items']:
+                    if field in entry.metadata:spec[field]=deepcopy(entry.metadata[field])
                 for field in ['plans','daily']:
                     spec[field]=[r for r in spec.get(field,[]) if not a.isoformat()<=r['date'][:10]<=b.isoformat()]+[r for r in generated[field] if a.isoformat()<=r['date'][:10]<=b.isoformat()]
             else:

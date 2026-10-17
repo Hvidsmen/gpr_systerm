@@ -158,6 +158,8 @@ class MeetingVersionImportTests(TestCase):
         response = self.preview(start=date(2025, 12, 31))
         self.assertTrue(response.context["form"].errors)
         preview = self.preview()
+        from apps.planning.approval_test_helpers import estimator_check
+        estimator_check(self.version,self.planner)
         GlobalPlanService.transition(self.version, self.planner, "submit")
         response = self.client.post(
             self.url, {"action": "confirm", "preview": preview.context["preview"]}
@@ -168,6 +170,8 @@ class MeetingVersionImportTests(TestCase):
     def test_forecast_period_cannot_edit_locked_months(self):
         from .approval_test_helpers import departments
 
+        from apps.planning.approval_test_helpers import estimator_check
+        estimator_check(self.version,self.planner)
         approved = GlobalPlanService.transition(self.version, self.planner, "submit")
         approved = GlobalPlanService.transition(
             departments(approved, self.approvers), self.approvers["CEO"], "approve"

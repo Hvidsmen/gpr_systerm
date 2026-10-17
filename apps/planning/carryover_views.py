@@ -1,4 +1,6 @@
 from datetime import date
+from django.utils import timezone
+from datetime import timedelta
 import hashlib
 import json
 from django import forms
@@ -67,4 +69,6 @@ class CarryoverView(View):
 
     def display(self,request,form,**context):
         start,end=carryover.previous_period(self.month)
-        return render(request,'planning/carryover.html',dict(form=form,version=self.version,month=self.month,previous_month=start,**context))
+        forecast=timezone.localdate()<=end
+        cutoff=min(end,timezone.localdate()-timedelta(days=1)) if forecast else end
+        return render(request,'planning/carryover.html',dict(forecast=forecast,cutoff=cutoff,form=form,version=self.version,month=self.month,previous_month=start,**context))

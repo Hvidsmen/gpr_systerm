@@ -176,6 +176,8 @@ class WorkspaceTests(TestCase):
             check_inputs(version)
 
     def approve(self, version):
+        from .approval_test_helpers import estimator_check
+        estimator_check(version,self.planner)
         version = GlobalPlanService.transition(version, self.planner, "submit")
         return GlobalPlanService.transition(departments(version, self.approvers), self.approvers["CEO"], "approve")
 
@@ -523,6 +525,8 @@ class WorkspaceTests(TestCase):
 
     def test_only_ceo_can_approve_and_month_must_be_in_period(self):
         workspace = self.create()
+        from .approval_test_helpers import estimator_check
+        estimator_check(workspace.baseline_version,self.planner)
         version = GlobalPlanService.transition(
             workspace.baseline_version, self.planner, "submit"
         )

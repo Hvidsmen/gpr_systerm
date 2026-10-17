@@ -92,6 +92,8 @@ class EquipmentMergeTests(TestCase):
         self.assertEqual(forecast.resource_allocations.get(kind='equipment').count,5)
         self.assertEqual(forecast.resource_allocations.get(kind='equipment').rate,Decimal('10.67'))
         self.assertEqual(forecast.resource_allocations.get(kind='equipment').equipment_type_id,self.equipment.pk)
+        from apps.planning.approval_test_helpers import estimator_check
+        estimator_check(forecast,self.planner)
         GlobalPlanService.transition(forecast,self.planner,'submit')
 
     def test_authorization_company_and_confirmation(self):

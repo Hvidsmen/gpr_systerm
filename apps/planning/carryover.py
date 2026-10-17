@@ -5,6 +5,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Sum, Q
+from django.utils import timezone
 from apps.production.models import DailyFact
 from apps.works.models import ProjectWork
 from apps.works.progress import quantity_from_totals
@@ -26,17 +27,22 @@ def source_versions(version, month):
     return GlobalPlanVersion.objects.filter(company=version.company,construction_object_id=version.construction_object_id,status__in=['APPROVED','COMPLETED'],start_date__lte=start,end_date__gte=end).filter(Q(planning_month__isnull=True)|Q(planning_month__lte=start)).exclude(pk=version.pk).defer('snapshot').order_by('-planning_month','-approved_at','-pk')
 
 
-def preview(version, month, source):
+def preview(version, month, source, *, as_of=None, include_zero=False):
     validate_target_period(version,month,month.replace(day=monthrange(month.year,month.month)[1]))
     if not source_versions(version,month).filter(pk=source.pk).exists():
         raise ValidationError('Выберите утвержденный план этого объекта за предыдущий месяц.')
     start,end=previous_period(month)
+    today=as_of or timezone.localdate()
+    is_forecast=today<=end
+    cutoff=min(end,today-timedelta(days=1)) if is_forecast else end
+    elapsed=max(0,(cutoff-start).days+1)
+    factor=Decimal(end.day)/elapsed if is_forecast and elapsed else Decimal(1)
     snapshot=period_snapshot(source,start,end)
     specs=snapshot.get('works',[])
     work_ids=[s['id'] for s in specs]
     works={w.pk:w for w in ProjectWork.objects.filter(company=version.company,section__construction_object_id=version.construction_object_id,pk__in=work_ids).prefetch_related('items')}
     facts=defaultdict(dict)
-    for row in DailyFact.objects.filter(company=version.company,project_work_id__in=work_ids,date__range=(start,end)).values('project_work_id','work_item_id').annotate(total=Sum('actual_quantity')):
+    for row in DailyFact.objects.filter(company=version.company,project_work_id__in=work_ids,date__range=(start,cutoff)).values('project_work_id','work_item_id').annotate(total=Sum('actual_quantity')):
         facts[row['project_work_id']][row['work_item_id']]=row['total']
     existing={r.work_id:r for r in version.work_allocations.filter(month=month)}
     transferred=set(WorkCarryover.objects.filter(version=version,month=month).values_list('work_id',flat=True))
@@ -52,16 +58,16 @@ def preview(version, month, source):
         plans = defaultdict(lambda: ZERO, {key:value.quantize(precision,rounding=ROUND_HALF_UP) for key,value in plans.items()})
         facts[work.pk] = {key:value.quantize(Decimal('0.001'),rounding=ROUND_HALF_UP) for key,value in facts[work.pk].items()}
         if spec['kind']=='SIMPLE':
-            planned=plans[None];actual=facts[work.pk].get(None,ZERO);quantity=max(planned-actual,ZERO);items={}
+            planned=plans[None];actual=facts[work.pk].get(None,ZERO);expected=(actual*factor).quantize(precision,rounding=ROUND_HALF_UP);quantity=max(planned-expected,ZERO);items={}
         else:
             if {i.pk for i in work.items.all()} != {i['id'] for i in spec['items']}:
                 raise ValidationError(f'Изменен состав подработ «{work.name}». Перенос требует сопоставления.')
-            items={str(i['id']):str(max(plans[i['id']]-facts[work.pk].get(i['id'],ZERO),ZERO)) for i in spec['items']}
+            items={str(i['id']):str(max(plans[i['id']]-(facts[work.pk].get(i['id'],ZERO)*factor).quantize(precision,rounding=ROUND_HALF_UP),ZERO)) for i in spec['items']}
             quantity=quantity_from_totals(spec,{int(k):Decimal(v) for k,v in items.items()})
-            planned=quantity_from_totals(spec,plans);actual=quantity_from_totals(spec,facts[work.pk])
-        if quantity<=0 and not any(Decimal(v)>0 for v in items.values()):continue
+            planned=quantity_from_totals(spec,plans);actual=quantity_from_totals(spec,facts[work.pk]);expected=quantity_from_totals(spec,{k:(v*factor).quantize(precision,rounding=ROUND_HALF_UP) for k,v in facts[work.pk].items()})
+        if quantity<=0 and not any(Decimal(v)>0 for v in items.values()) and not include_zero and not (is_forecast and planned>0):continue
         children=[dict(name=i['name'],unit=i['unit'],planned=str(plans[i['id']]),actual=str(facts[work.pk].get(i['id'],ZERO)),quantity=items[str(i['id'])]) for i in spec.get('items',[]) if str(i['id']) in items]
-        result.append(dict(children=children,work_id=work.pk,name=work.name,unit=work.unit,planned=str(planned),actual=str(actual),quantity=str(quantity),items=items,current=str(existing[work.pk].quantity if work.pk in existing else ZERO),exists=work.pk in existing,done=work.pk in transferred,spec=spec))
+        result.append(dict(is_forecast=is_forecast,cutoff=cutoff.isoformat(),elapsed_days=elapsed,total_days=end.day,expected=str(expected),children=children,work_id=work.pk,name=work.name,unit=work.unit,planned=str(planned),actual=str(actual),quantity=str(quantity),items=items,current=str(existing[work.pk].quantity if work.pk in existing else ZERO),exists=work.pk in existing,done=work.pk in transferred,spec=spec))
     return result
 
 
@@ -74,8 +80,9 @@ def apply(user, version, month, source, mode, selected):
     for data in rows:
         if str(data['work_id']) not in selected or data['done']:continue
         delta=Decimal(data['quantity']).quantize(Decimal('0.001'),rounding=ROUND_HALF_UP)
+        evidence=dict(is_forecast=data['is_forecast'],forecast_as_of=data['cutoff'],forecast_quantity=delta if data['is_forecast'] else None,actual_quantity=Decimal(data['actual']).quantize(Decimal('.001')),expected_completion=Decimal(data['expected']).quantize(Decimal('.001')))
         if data['exists']:
-            WorkCarryover.objects.create(company=user.company,version=version,source_version=source,month=month,work_id=data['work_id'],quantity=delta,item_quantities=data['items'],imported_by=user,added=False)
+            WorkCarryover.objects.create(company=user.company,version=version,source_version=source,month=month,work_id=data['work_id'],quantity=delta,item_quantities=data['items'],imported_by=user,added=False,**evidence)
             count+=1
             continue
         row,created=WorkMonthAllocation.objects.get_or_create(company=user.company,version=version,month=month,work_id=data['work_id'])
@@ -91,7 +98,12 @@ def apply(user, version, month, source, mode, selected):
             row.full_clean();row.save()
         except ValidationError as exc:
             raise ValidationError(f'Не удалось сохранить остаток работы «{data["name"]}»: '+ '; '.join(exc.messages)) from exc
-        WorkCarryover.objects.create(company=user.company,version=version,source_version=source,month=month,work_id=data['work_id'],quantity=delta,item_quantities=data['items'],imported_by=user)
+        WorkCarryover.objects.create(company=user.company,version=version,source_version=source,month=month,work_id=data['work_id'],quantity=delta,item_quantities=data['items'],imported_by=user,**evidence)
         count+=1
+    if count and any(r['is_forecast'] for r in rows):
+        from .models import CarryoverReviewTask
+        from apps.accounts.models import User
+        assigned=user if user.role and user.role.code=='PLANNER' else User.objects.filter(company=user.company,role__code='PLANNER',is_active=True).order_by('pk').first() or user
+        CarryoverReviewTask.objects.get_or_create(company=user.company,version=version,source_version=source,month=month,defaults={'due_date':month,'assigned_to':assigned})
     version.snapshot={};version.save(update_fields=['snapshot'])
     return count

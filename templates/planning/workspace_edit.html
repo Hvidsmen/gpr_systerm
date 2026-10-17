@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 {% load access static %}
-{% block content %}
+{% block content %}<p><a class="btn btn-outline-primary" href="{% url 'planning:estimate_review_list' %}">Задания сметчика</a></p>
 {% if remaining_work_issue %}<div class="alert alert-warning"><strong>Нужно распределить остаток</strong><p>{{ remaining_work_issue.name }} — {{ remaining_work_issue.remaining }} {{ remaining_work_issue.unit }}.</p><p>Работа есть в базовом плане, но в будущем месяце строка может отсутствовать. Добавьте ее и укажите объем. Сумма объемов будущих месяцев должна совпасть с остатком.</p><form method="post" action="{% url 'planning:workspace_remaining_work' version.pk %}">{% csrf_token %}<label>Месяц <select name="month">{% for month in remaining_work_issue.months %}<option value="{{ month }}">{{ month|slice:'5:7' }}.{{ month|slice:':4' }}</option>{% endfor %}</select></label> <button class="btn btn-outline-primary">Добавить работу для распределения остатка</button></form></div>{% endif %}
 <style>
 .allocation-row[hidden], .allocation-group[hidden] { display:none !important; }
@@ -233,7 +233,7 @@ function updateSubworks(row) {
   if(!origin){origin=document.createElement('span');origin.dataset.workOrigin='';origin.style.gridColumn='1 / -1';row.querySelector('.allocation-grid').prepend(origin);}
   origin.hidden=!work.value;origin.replaceChildren();
   const badge=document.createElement('span');badge.className='badge '+(carry?.added?'bg-warning text-dark':'bg-primary');badge.textContent=carry?.added?'Из остатка':'План — ГПР / вручную';origin.append(badge);
-  if(carry){note.textContent=(carry.added?'Добавлено из остатка за ':'Есть недовыполненный остаток за ')+carry.previous_month+': '+subworkNumber.format(Number(carry.quantity))+' '+carry.unit+(carry.added?'':' · текущий план не изменен');if(Object.keys(carry.items).length){const details=document.createElement('span');details.textContent=' · Подработы: '+Object.entries(carry.items).map(([id,q])=>(compositeItems[work.value]?.find(i=>String(i.id)===id)?.name||id)+' — '+subworkNumber.format(Number(q))).join('; ');note.append(details);}}
+  if(carry){note.textContent=(carry.is_forecast?(carry.added?'Добавлено из прогнозного остатка за ':'Есть прогнозный остаток за '):(carry.added?'Добавлено из остатка за ':'Есть недовыполненный остаток за '))+carry.previous_month+': '+subworkNumber.format(Number(carry.quantity))+' '+carry.unit+(carry.added?'':' · текущий план не изменен');if(Object.keys(carry.items).length){const details=document.createElement('span');details.textContent=' · Подработы: '+Object.entries(carry.items).map(([id,q])=>(compositeItems[work.value]?.find(i=>String(i.id)===id)?.name||id)+' — '+subworkNumber.format(Number(q))).join('; ');note.append(details);}}
   let panel=row.querySelector('[data-subworks]');
   if (!panel) {
     panel=document.createElement('div');panel.dataset.subworks='';panel.style.gridColumn='1 / -1';

@@ -296,6 +296,8 @@ class GlobalPlanningTests(TestCase):
         self.assertEqual(version.status, "DRAFT")
         # Edits before submitting are collected into the snapshot.
         LaborPlan.objects.filter(company=self.company).update(planned_workers=3)
+        from apps.planning.approval_test_helpers import estimator_check
+        estimator_check(version,self.worker)
         version = GlobalPlanService.transition(version, self.worker, "submit")
         frozen = deepcopy(version.snapshot)
         self.assertEqual(frozen["resources"]["labor"][0]["planned_workers"], 3)
@@ -333,6 +335,8 @@ class GlobalPlanningTests(TestCase):
         self.assertEqual(
             list(version.source_versions.values_list("pk", flat=True)), [latest.pk]
         )
+        from apps.planning.approval_test_helpers import estimator_check
+        estimator_check(version,self.worker)
         version = GlobalPlanService.transition(version, self.worker, "submit")
         version = GlobalPlanService.transition(departments(version, self.approvers), self.approvers["CEO"], "approve")
         with self.assertRaises(ValidationError), transaction.atomic():
@@ -509,12 +513,16 @@ class GlobalPlanningTests(TestCase):
         old = self.approved(self.work, self.start, self.end,
             [(self.start, self.a, 2), (self.end, self.b, 3)])
         version = GlobalPlanService.create(self.worker, self.obj, self.start, self.end)
+        from apps.planning.approval_test_helpers import estimator_check
+        estimator_check(version,self.worker)
         version = GlobalPlanService.transition(version, self.worker, "submit")
         version = GlobalPlanService.transition(departments(version, self.approvers), self.approvers["CEO"], "approve")
         version = GlobalPlanService.transition(version, self.approvers["CEO"], "reject", "Новая версия работ")
         self.approved(self.work, self.start, self.end,
             [(self.start, self.a, 4), (self.end, self.b, 6)], number=2)
         version.source_versions.clear()
+        from apps.planning.approval_test_helpers import estimator_check
+        estimator_check(version,self.worker)
         version = GlobalPlanService.transition(version, self.worker, "submit")
         self.assertNotIn(old.pk, [source["id"] for spec in version.snapshot["works"] for source in spec["versions"]])
         with self.assertRaises(ValidationError), transaction.atomic():

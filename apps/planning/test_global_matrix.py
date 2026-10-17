@@ -178,6 +178,8 @@ class GlobalMatrixTests(TestCase):
                                  effective_from=date(2026, 1, 16), created_by=self.planner)
         DailyFact.objects.create(company=self.company, project_work=self.simple,
                                  date=date(2026, 1, 1), actual_quantity=999, reported_by=self.planner)
+        from apps.planning.approval_test_helpers import estimator_check
+        estimator_check(self.version,self.planner)
         self.version = GlobalPlanService.transition(self.version, self.planner, "submit")
         spec = next(s for s in self.version.snapshot["works"] if s["id"] == self.simple.pk)
         expected = sum(

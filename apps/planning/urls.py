@@ -141,3 +141,16 @@ urlpatterns += [
     path('daily-schedule/entry/<int:pk>/',DailyScheduleEdit.as_view(),name='daily_schedule_edit'),
     path('daily-schedule/<int:pk>/apply/',DailyScheduleApply.as_view(),name='daily_schedule_apply'),
 ]
+
+from .carryover_task_views import CarryoverTaskList,CarryoverTaskDetail
+urlpatterns += [
+    path('carryover-tasks/',CarryoverTaskList.as_view(),name='carryover_task_list'),
+    path('carryover-tasks/<int:pk>/',CarryoverTaskDetail.as_view(),name='carryover_task_detail'),
+]
+
+from .estimate_review_views import ReviewList, ReviewAssign, ReviewDetail
+urlpatterns += [
+    path('estimate-reviews/', ReviewList.as_view(), name='estimate_review_list'),
+    path('estimate-reviews/assign/<str:kind>/<int:pk>/', ReviewAssign.as_view(), name='estimate_review_assign'),
+    path('estimate-reviews/<int:pk>/', ReviewDetail.as_view(), name='estimate_review_detail'),
+]

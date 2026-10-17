@@ -6,7 +6,7 @@ from apps.accounts.models import User, Role, Company
 from .models import GlobalPlanVersion, GlobalPlanReview, GlobalPlanDecision, WorkMonthAllocation
 from . import test_workspace as fixtures
 from .test_workspace import JAN, FEB
-from .approval_test_helpers import departments
+from .approval_test_helpers import departments, estimator_check
 from .approval_workflow import current_review, baseline_snapshot
 from .global_services import GlobalPlanService
 from .workspace_services import WorkspaceService, build_workspace_snapshot
@@ -25,7 +25,9 @@ class ApprovalWorkflowTests(TestCase):
     approve = fixtures.WorkspaceTests.approve
 
     def submit(self):
-        return GlobalPlanService.transition(self.create().baseline_version, self.planner, 'submit')
+        version=self.create().baseline_version
+        estimator_check(version,self.planner)
+        return GlobalPlanService.transition(version, self.planner, 'submit')
 
     def test_approval_list_shows_ceo_stage_before_and_after_decision(self):
         version = self.submit()
@@ -48,7 +50,7 @@ class ApprovalWorkflowTests(TestCase):
         version = GlobalPlanService.transition(version, self.approvers['CEO'], 'approve')
         self.assertEqual(version.status, 'APPROVED')
         self.assertEqual(version.approved_by, self.approvers['CEO'])
-        self.assertEqual(current_review(version).decisions.count(), 5)
+        self.assertEqual(current_review(version).decisions.count(), 6)
 
     def test_wrong_roles_cannot_approve_other_sections_or_final_plan(self):
         version = self.submit()
@@ -66,7 +68,7 @@ class ApprovalWorkflowTests(TestCase):
         version = GlobalPlanService.transition(version, self.approvers['HR_HEAD'], 'approve_hr')
         with self.assertRaises(ValidationError):
             GlobalPlanService.transition(version, self.approvers['HR_HEAD'], 'approve_hr')
-        self.assertEqual(current_review(version).decisions.count(), 2)
+        self.assertEqual(current_review(version).decisions.count(), 3)
 
     def test_every_head_can_return_whole_plan_with_required_reason(self):
         for code in ['PRODUCTION_HEAD', 'HR_HEAD', 'TECH_HEAD']:
@@ -88,9 +90,10 @@ class ApprovalWorkflowTests(TestCase):
         row = version.work_allocations.first()
         row.quantity = 100
         row.save()
+        estimator_check(version,self.planner)
         version = GlobalPlanService.transition(version, self.planner, 'submit')
         self.assertEqual(version.approval_round, 2)
-        self.assertEqual(current_review(version).decisions.count(), 1)
+        self.assertEqual(current_review(version).decisions.count(), 2)
         self.assertEqual(version.review_rounds.get(number=1).snapshot, old)
         self.assertNotEqual(current_review(version).snapshot, old)
         with self.assertRaises(ValidationError):
@@ -245,7 +248,7 @@ class ApprovalWorkflowTests(TestCase):
                 GlobalPlanService.transition(version, self.admin, action)
         version = GlobalPlanService.transition(version, self.admin, 'approve')
         self.assertEqual(version.approved_by, self.admin)
-        self.assertEqual(current_review(version).decisions.count(), 5)
+        self.assertEqual(current_review(version).decisions.count(), 6)
 
     def test_admin_rework_and_completion_keep_history_and_terminal_status(self):
         version = self.submit()

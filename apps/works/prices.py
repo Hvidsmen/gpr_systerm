@@ -56,10 +56,18 @@ def freeze_prices(snapshot, company, *, in_place=False):
 
 
 @transaction.atomic
-def change_price(user, work_id, price, effective_from, reason="", corrects=None):
+def change_price(user, work_id, price, effective_from, reason="", corrects=None, review_task=None):
     from .models import ProjectWork, WorkPrice
 
-    require_roles(user, PLAN_ROLES)
+    if role_code(user) == 'ESTIMATOR':
+        if review_task is None:
+            from django.core.exceptions import PermissionDenied
+            raise PermissionDenied('Изменение цены доступно только в назначенном задании.')
+        from apps.planning.estimate_review import lock_task, scoped_work
+        review_task = lock_task(user, review_task)
+        scoped_work(review_task, work_id)
+    else:
+        require_roles(user, PLAN_ROLES)
     work = ProjectWork.objects.select_for_update().get(pk=work_id, company=user.company)
     if hasattr(work, "merged_source"):
         raise ValidationError(

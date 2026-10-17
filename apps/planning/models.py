@@ -854,6 +854,7 @@ def validate_workspace_allocation(row):
 
 
 class GlobalPlanReview(BaseCompanyModel):
+    input_fingerprint = models.CharField(max_length=64, blank=True, editable=False)
     version = models.ForeignKey(GlobalPlanVersion, on_delete=models.CASCADE, related_name="review_rounds")
     number = models.PositiveIntegerField("Раунд")
     snapshot = models.JSONField("Согласуемый состав", default=dict, editable=False)
@@ -885,7 +886,7 @@ class GlobalPlanReview(BaseCompanyModel):
 
 class GlobalPlanDecision(BaseCompanyModel):
     review = models.ForeignKey(GlobalPlanReview, on_delete=models.CASCADE, related_name="decisions")
-    section = models.CharField("Раздел", max_length=20, choices=[("PRODUCTION","Работы"),("HR","Люди"),("TECH","Техника и ГСМ"),("CEO","Генеральный директор"),("PLANNER","Подготовка")])
+    section = models.CharField("Раздел", max_length=20, choices=[("ESTIMATE","Сметчик"),("PRODUCTION","Работы"),("HR","Люди"),("TECH","Техника и ГСМ"),("CEO","Генеральный директор"),("PLANNER","Подготовка")])
     action = models.CharField("Решение", max_length=20, choices=[("SUBMIT","Отправлен"),("APPROVE","Согласовано"),("REJECT","Возвращён на доработку"),("COMPLETE","Завершён")])
     actor = models.ForeignKey("accounts.User", on_delete=models.SET_NULL, null=True, related_name="global_plan_decisions")
     actor_name = models.CharField("Пользователь", max_length=300)
@@ -1177,6 +1178,11 @@ class GprImportReceipt(BaseCompanyModel):
 
 
 class WorkCarryover(BaseCompanyModel):
+    is_forecast = models.BooleanField(default=False)
+    forecast_as_of = models.DateField(null=True, blank=True)
+    forecast_quantity = models.DecimalField(max_digits=15, decimal_places=3, null=True, blank=True)
+    actual_quantity = models.DecimalField(max_digits=15, decimal_places=3, default=0)
+    expected_completion = models.DecimalField(max_digits=15, decimal_places=3, default=0)
     added = models.BooleanField(default=True)
     version = models.ForeignKey(GlobalPlanVersion, on_delete=models.CASCADE, related_name='work_carryovers')
     source_version = models.ForeignKey(GlobalPlanVersion, on_delete=models.PROTECT, related_name='carried_work_sources')
@@ -1214,3 +1220,38 @@ class DailyScheduleEntry(models.Model):
     class Meta:
         ordering = ['kind','label','pk']
         constraints = [models.UniqueConstraint(fields=['schedule','key'],name='unique_daily_schedule_entry')]
+
+
+class CarryoverReviewTask(BaseCompanyModel):
+    version = models.ForeignKey(GlobalPlanVersion, on_delete=models.CASCADE, related_name='carryover_tasks')
+    source_version = models.ForeignKey(GlobalPlanVersion, on_delete=models.PROTECT, related_name='carryover_source_tasks')
+    month = models.DateField()
+    due_date = models.DateField()
+    assigned_to = models.ForeignKey('accounts.User', on_delete=models.PROTECT, related_name='carryover_tasks')
+    correction_version = models.ForeignKey(GlobalPlanVersion, on_delete=models.SET_NULL, null=True, blank=True, related_name='carryover_corrections')
+    corrected_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['version','source_version','month'], name='unique_carryover_review_task')]
+
+
+class EstimateReviewTask(BaseCompanyModel):
+    version = models.ForeignKey(GlobalPlanVersion, null=True, blank=True, on_delete=models.CASCADE, related_name='estimate_reviews')
+    schedule = models.ForeignKey(DailySchedule, null=True, blank=True, on_delete=models.CASCADE, related_name='estimate_reviews')
+    assigned_to = models.ForeignKey('accounts.User', on_delete=models.PROTECT, related_name='estimate_reviews')
+    created_by = models.ForeignKey('accounts.User', on_delete=models.PROTECT, related_name='requested_estimate_reviews')
+    status = models.CharField(max_length=12, default='OPEN', choices=[('OPEN','На проверке'),('APPROVED','Проверено'),('REJECTED','На доработке')])
+    fingerprint = models.CharField(max_length=64, blank=True)
+    decisions = models.JSONField(default=dict, blank=True)
+    comment = models.TextField(blank=True)
+    approved_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [models.CheckConstraint(condition=(models.Q(version__isnull=False, schedule__isnull=True) | models.Q(version__isnull=True, schedule__isnull=False)), name='estimate_review_one_target')]
+
+
+class EstimateReviewEvent(BaseCompanyModel):
+    task = models.ForeignKey(EstimateReviewTask, on_delete=models.CASCADE, related_name='events')
+    actor = models.ForeignKey('accounts.User', on_delete=models.PROTECT)
+    action = models.CharField(max_length=40)
+    details = models.JSONField(default=dict)

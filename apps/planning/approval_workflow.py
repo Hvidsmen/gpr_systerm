@@ -20,7 +20,7 @@ def approved_sections(review):
 
 
 def ready(review):
-    return {'PRODUCTION', 'HR', 'TECH'} <= approved_sections(review)
+    return {'ESTIMATE', 'PRODUCTION', 'HR', 'TECH'} <= approved_sections(review)
 
 
 def baseline_snapshot(version):
@@ -49,11 +49,22 @@ def transition(version, user, action, comment=''):
     if action == 'submit':
         if version.status not in ['DRAFT', 'REJECTED']:
             raise ValidationError('На согласование отправляется только черновик или план на доработке.')
+        from .estimate_review import require_approved, signature
+        submitted_fingerprint = signature(version)
+        try:
+            estimator_review = require_approved(version)
+        except ValidationError:
+            estimator_review = None
         from .global_services import build_snapshot
         version.snapshot = build_snapshot(version)
         version.approval_round += 1
         review = GlobalPlanReview.objects.create(company=version.company, version=version,
-            number=version.approval_round, snapshot=version.snapshot, submitted_by=user)
+            number=version.approval_round, snapshot=version.snapshot, submitted_by=user, input_fingerprint=submitted_fingerprint)
+        if estimator_review:
+            GlobalPlanDecision.objects.create(company=version.company, review=review, section='ESTIMATE',
+                action='APPROVE', actor=estimator_review.assigned_to,
+                actor_name=estimator_review.assigned_to.get_full_name() or estimator_review.assigned_to.username,
+                actor_role='ESTIMATOR', comment=estimator_review.comment or 'Цены, названия и состав работ проверены.')
         version.status = 'SUBMITTED'
         version.approved_by = None
         version.approved_at = None
@@ -68,7 +79,9 @@ def transition(version, user, action, comment=''):
             raise ValidationError('Раздел уже согласован в этом раунде.')
     elif action == 'approve':
         if version.status != 'SUBMITTED' or not ready(review):
-            raise ValidationError('Сначала требуются все три согласования служб.')
+            raise ValidationError('Требуются согласования сметчика и всех трех профильных служб.')
+        from .estimate_review import require_approved
+        require_approved(version)
         version.status = 'APPROVED'
         version.approved_by = user
         version.approved_at = timezone.now()
@@ -105,6 +118,8 @@ def panel(version, user):
     role = approval_role(user)
     submitted = version.status == 'SUBMITTED'
     sections = []
+    estimator_decision = review.decisions.filter(section='ESTIMATE', action='APPROVE').first() if review else None
+    sections.append({'label':'Сметчик — цены и состав работ','decision':estimator_decision,'approved':bool(estimator_decision) and version.status not in {'DRAFT','REJECTED'},'can_approve':False})
     for section, label, assigned, action in SECTIONS:
         decision = review.decisions.filter(section=section, action='APPROVE').first() if review else None
         sections.append({'label': label, 'decision': decision, 'approved': section in approved and version.status not in ['DRAFT', 'REJECTED'],

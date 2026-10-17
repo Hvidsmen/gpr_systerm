@@ -9,7 +9,12 @@ from apps.works.progress import work_specification
 from . import test_workspace as fixtures
 from .models import GlobalPlanVersion,DailySchedule,DailyScheduleEntry
 from .workspace_services import WorkspaceService
-from .daily_schedule import create,save_entry,activate,overlay,identities,differences
+from .daily_schedule import create,save_entry,activate as apply_schedule,overlay,identities,differences
+from .approval_test_helpers import estimator_check
+
+def activate(user,schedule):
+    estimator_check(schedule,user)
+    return apply_schedule(user,schedule)
 from .report_services import select_sources
 
 
