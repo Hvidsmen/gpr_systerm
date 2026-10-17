@@ -410,6 +410,9 @@ def build_workspace_snapshot(version, *, validate_inputs=True):
     if version.workspace.continued_from_review_id:
         from .continuation import merge_history
         snapshot = merge_history(version, snapshot)
+    if version.workspace.is_macro_consolidation:
+        from .macro_history import merge_macro_history
+        snapshot = merge_macro_history(version,snapshot)
     return snapshot
 
 
@@ -430,7 +433,7 @@ def _build_workspace_snapshot(version, *, validate_inputs=True):
         )
     ]
     if version.version_kind == "BASELINE":
-        if not inputs and not resources and not workspace.continued_from_review_id:
+        if not inputs and not resources and not workspace.continued_from_review_id and not workspace.is_macro_consolidation:
             raise ValidationError("Добавьте месячные планы работ или ресурсов.")
         works = []
         day_cache = {}

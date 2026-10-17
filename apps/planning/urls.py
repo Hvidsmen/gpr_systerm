@@ -157,3 +157,6 @@ urlpatterns += [
 
 from .continuation_views import ContinueGpr
 urlpatterns += [path('workspace/continue/',ContinueGpr.as_view(),name='workspace_continue')]
+
+from .macro_history_views import MacroCreate,MacroDetail
+urlpatterns += [path('macro/create/',MacroCreate.as_view(),name='macro_history_create'),path('macro/<int:pk>/',MacroDetail.as_view(),name='macro_history_detail')]

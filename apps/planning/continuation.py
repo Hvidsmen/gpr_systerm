@@ -38,6 +38,12 @@ def merge_history(version,snapshot):
     workspace=version.workspace
     cutoff=workspace.continuation_start.isoformat()
     parent=workspace.continued_from_review.snapshot
+    return merge_parent(version,snapshot,parent,cutoff)
+
+
+def merge_parent(version,snapshot,parent,cutoff):
+    from .workspace_services import finalize_work
+    workspace=version.workspace
     historical={s['id']:s for s in parent.get('works',[])}
     current={s['id']:s for s in snapshot.get('works',[])}
     result=[]
@@ -70,6 +76,7 @@ def merge_history(version,snapshot):
     inputs=snapshot.setdefault('monthly_inputs',{})
     for kind in ('works','resources'):
         inputs[kind]=deepcopy([r for r in parent.get('monthly_inputs',{}).get(kind,[]) if r['month']<cutoff])+[r for r in inputs.get(kind,[]) if r['month']>=cutoff]
-    snapshot['continued_from_review_id']=workspace.continued_from_review_id
+    if workspace.continued_from_review_id:snapshot['continued_from_review_id']=workspace.continued_from_review_id
+    if parent.get('macro_history_sources'):snapshot['macro_history_sources']=deepcopy(parent['macro_history_sources'])
     snapshot['continuation_start']=cutoff
     return snapshot

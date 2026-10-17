@@ -243,6 +243,10 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
             ):
                 raise PermissionDenied
         sources = source_overrides
+    from .macro_history import history_coverage
+    history_owned = history_coverage(objects,sources,all_days)
+    history_objects = {link['object_id'] for entries in sources.values() for source in entries for link in source.snapshot.get('macro_history_sources',[])}
+    fact_object_ids = {obj.pk for obj in objects} | history_objects
     from apps.resources.equipment_merge import equipment_aliases, normalize_equipment_snapshot
     aliases = equipment_aliases(user.company)
     from apps.resources.brigade_merge import brigade_aliases, normalize_brigade_snapshot
@@ -252,7 +256,7 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
     work_catalog = {
         w.pk: w
         for w in ProjectWork.objects.filter(
-            company=user.company, section__construction_object__in=objects
+            company=user.company, section__construction_object_id__in=fact_object_ids
         )
         .select_related("work_group", "section")
         .prefetch_related("items")
@@ -283,7 +287,7 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
     work_facts = defaultdict(list)
     for row in (DailyFact.objects.none() if plan_only else DailyFact.objects.filter(
         company=user.company,
-        project_work__section__construction_object__in=objects,
+        project_work__section__construction_object_id__in=fact_object_ids,
         date__lte=end,
     )).values("project_work_id", "date", "work_item_id", "actual_quantity"):
         work_facts[row["project_work_id"]].append(
@@ -329,12 +333,20 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
     if not plan_only:
         from .hierarchy_services import rollup_subobject_facts
         rollup_subobject_facts(user, objects, sources, start, end, work_facts, resource_facts)
+    if not plan_only:
+        from .macro_history import rollup_history_resources
+        rollup_history_resources(user,sources,start,end,resource_facts)
+    for kind, values in resource_facts.items():
+        for key, by_day in values.items():
+            for day in history_owned.get(key[0],set()):by_day.pop(day,None)
     result = []
     for obj in objects:
+        suppressed = history_owned.get(obj.pk,set())
+        if set(all_days)<=suppressed:continue
         available = sources.get(obj.pk, [])
         chosen = {
             day: next(
-                (source for source in available if source.start <= day <= source.end),
+                (source for source in available if source.start <= day <= source.end and day not in suppressed),
                 None,
             )
             for day in all_days
@@ -421,6 +433,9 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
                     resource_index["balance"][idx] = balances
         selected_work_ids = {idx: set(entries) for idx, entries in plan_index.items()}
         def actual_visible(work_id, day):
+            if day in suppressed:return False
+            historical = work_specs.get(work_id,{})
+            if historical.get('history_end') and day > date.fromisoformat(historical['history_end']):return False
             selected=chosen.get(day)
             ids=selected_work_ids[id(selected)] if selected else set()
             parent=source_parents.get(work_id)
@@ -431,6 +446,11 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
             return True
 
         for work_id, work in work_catalog.items():
+            historical_link = next((link for source in available for link in source.snapshot.get('macro_history_sources',[]) if link['object_id']==work.section.construction_object_id),None)
+            if historical_link and work_id not in work_specs and any(start<=day<=end and historical_link['start']<=day.isoformat()<=historical_link['end'] for day,_,_ in work_facts[work_id]):
+                inherited=work_specification(work)
+                inherited.update(history_source_object_id=historical_link['object_id'],history_end=historical_link['end'])
+                work_specs[work_id]=inherited
             if work.section.construction_object_id == obj.pk and any(
                 start <= day <= end and actual_visible(work_id, day) for day, _, _ in work_facts[work_id]
             ):

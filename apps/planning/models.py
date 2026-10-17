@@ -478,6 +478,7 @@ class GlobalPlanVersion(BaseCompanyModel):
 
 
 class PlanningWorkspace(BaseCompanyModel):
+    is_macro_consolidation = models.BooleanField(default=False)
     continued_from_review = models.ForeignKey('GlobalPlanReview', on_delete=models.PROTECT, null=True, blank=True, related_name='continued_workspaces', verbose_name='Предыдущий утвержденный ГПР')
     continuation_start = models.DateField(null=True, blank=True, verbose_name='Начало нового периода')
     name = models.CharField("Название плана", max_length=255)
@@ -522,8 +523,12 @@ class PlanningWorkspace(BaseCompanyModel):
             and self.construction_object.company_id != self.company_id
         ):
             raise ValidationError({"construction_object": "Объект другой компании."})
-        if bool(self.continued_from_review_id) != bool(self.continuation_start):
+        if not self.is_macro_consolidation and bool(self.continued_from_review_id) != bool(self.continuation_start):
             raise ValidationError('Укажите исходный согласованный план и начало продолжения.')
+        if self.is_macro_consolidation:
+            from calendar import monthrange
+            if self.continued_from_review_id or self.parent_gpr_id or not self.continuation_start or self.continuation_start.day != 1 or not self.start_date or not self.end_date or not self.start_date < self.continuation_start <= self.end_date or self.end_date.day != monthrange(self.end_date.year,self.end_date.month)[1]:
+                raise ValidationError('Укажите исторический период и новые полные месяцы ГПР макрообъекта.')
         if self.continued_from_review_id:
             source = self.continued_from_review.version
             if source.company_id != self.company_id or source.construction_object_id != self.construction_object_id or not self.continued_from_review.was_approved:
@@ -562,6 +567,7 @@ class PlanningWorkspace(BaseCompanyModel):
                     "parent_gpr_id",
                     "continued_from_review_id",
                     "continuation_start",
+                    "is_macro_consolidation",
                 ]:
                     if getattr(old, name) != getattr(self, name):
                         raise ValidationError(
@@ -1270,3 +1276,14 @@ class EstimateReviewEvent(BaseCompanyModel):
     actor = models.ForeignKey('accounts.User', on_delete=models.PROTECT)
     action = models.CharField(max_length=40)
     details = models.JSONField(default=dict)
+
+
+class MacroHistorySource(BaseCompanyModel):
+    workspace = models.ForeignKey(PlanningWorkspace,on_delete=models.CASCADE,related_name='macro_history_sources')
+    review = models.ForeignKey(GlobalPlanReview,on_delete=models.PROTECT,related_name='macro_history_sources')
+    construction_object = models.ForeignKey('projects.ConstructionObject',on_delete=models.PROTECT)
+    start = models.DateField()
+    end = models.DateField()
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['workspace','construction_object'],name='unique_macro_history_child')]

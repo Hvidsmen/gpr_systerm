@@ -21,8 +21,8 @@ class DistributionDetail(View):
     def get(self, request, pk):
         require_roles(request.user, READ_ROLES)
         version = source_for(request, pk)
-        form = DistributionFilter(request.GET or {'month': version.start_date.replace(day=1).isoformat()})
-        month = version.start_date.replace(day=1)
+        form = DistributionFilter(request.GET or {'month': (version.planning_month or (version.workspace.continuation_start if version.workspace_id and version.workspace.continuation_start else version.start_date.replace(day=1))).isoformat()})
+        month = (version.planning_month or (version.workspace.continuation_start if version.workspace_id and version.workspace.continuation_start else version.start_date.replace(day=1)))
         if request.GET and form.is_valid():
             month = form.cleaned_data['month']
         workspaces, rows, resource_rows = [], [], []
@@ -45,8 +45,8 @@ class SmgCreate(View):
     def display(self, request, pk, data=None):
         require_roles(request.user, PLAN_ROLES)
         version = source_for(request, pk)
-        filter_form = DistributionFilter(request.GET or {'month': version.start_date.replace(day=1).isoformat()})
-        month = version.start_date.replace(day=1)
+        filter_form = DistributionFilter(request.GET or {'month': (version.planning_month or (version.workspace.continuation_start if version.workspace_id and version.workspace.continuation_start else version.start_date.replace(day=1))).isoformat()})
+        month = (version.planning_month or (version.workspace.continuation_start if version.workspace_id and version.workspace.continuation_start else version.start_date.replace(day=1)))
         if request.GET and filter_form.is_valid():
             month = filter_form.cleaned_data['month']
         specs, error = [], None

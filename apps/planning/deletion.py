@@ -12,6 +12,8 @@ EDITABLE = ['DRAFT', 'REJECTED']
 
 
 def workspace_reason(workspace, user=None):
+    if workspace.versions.filter(review_rounds__macro_history_sources__isnull=False).exists():
+        return "История этого ГПР подключена к макрообъекту. Сначала удалите объединенный план."
     if PlanningWorkspace.objects.filter(continued_from_review__version__workspace=workspace).exists():
         return "Из этого ГПР создан объединенный план. Сначала удалите его продолжение."
     if workspace.versions.filter(subobject_smg_workspaces__isnull=False).exists():

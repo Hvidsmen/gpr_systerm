@@ -13,6 +13,8 @@ from .report_projection import period_snapshot
 
 
 def month_specs(version, month):
+    if version.workspace_id and version.workspace.continuation_start and month < version.workspace.continuation_start:
+        raise ValidationError('История сохранена из предыдущих ГПР. Распределяйте СМГ только для нового периода.')
     end = month.replace(day=monthrange(month.year, month.month)[1])
     if month.day != 1 or month < version.start_date or end > version.end_date:
         raise ValidationError('Выберите полный месяц внутри периода ГПР.')
@@ -20,7 +22,8 @@ def month_specs(version, month):
         raise ValidationError('Распределение СМГ создаётся из утверждённой версии ГПР.')
     if version.workspace_id and version.workspace.parent_gpr_id:
         raise ValidationError('Выберите ГПР макрообъекта, а не СМГ субобъекта.')
-    return period_snapshot(version, month, end).get('works', [])
+    snapshot=period_snapshot(version, month, end)
+    return [s for s in snapshot.get('works',[]) if not s.get('history_source_object_id')]
 
 
 def work_volume(spec):
@@ -161,6 +164,8 @@ def rollup_subobject_facts(user, objects, sources, start, end, work_facts, resou
     if not workspaces:
         return
     def active(workspace, day):
+        chosen=next((s for s in selected.get(workspace.parent_gpr.construction_object_id,[]) if s.start<=day<=s.end),None)
+        if chosen and any(link['object_id']==workspace.construction_object_id and link['start']<=day.isoformat()<=link['end'] for link in chosen.snapshot.get('macro_history_sources',[])):return False
         return workspace.start_date <= day <= workspace.end_date and any(source.start <= day <= source.end for source in selected.get(workspace.parent_gpr.construction_object_id, []))
     mappings = list(SmgWorkMapping.objects.filter(company=user.company, workspace__in=workspaces).select_related('workspace__parent_gpr').defer('workspace__parent_gpr__snapshot'))
     by_work = defaultdict(list)
