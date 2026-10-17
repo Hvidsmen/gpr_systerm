@@ -4,6 +4,18 @@ from collections import defaultdict,Counter
 from difflib import SequenceMatcher
 
 
+def ranked_replacements(work,candidates):
+    def normalized(name):return ' '.join(re.findall(r'[\w]+',name.casefold().replace('ё','е')))
+    source=normalized(work.name);tokens=set(source.split())
+    result=[]
+    for candidate in candidates:
+        if candidate.pk==work.pk or candidate.unit!=work.unit or candidate.kind!=work.kind:continue
+        name=normalized(candidate.name);other=set(name.split())
+        score=.7*SequenceMatcher(None,source,name,autojunk=False).ratio()+.3*len(tokens&other)/max(1,len(tokens|other))
+        result.append({'work':candidate,'score':round(score*100)})
+    return sorted(result,key=lambda row:(-row['score'],row['work'].name.casefold(),row['work'].pk))
+
+
 def suggestions(works,limit=20):
     works=list(works)
     names={w.pk:' '.join(re.findall(r'[\w]+',w.name.casefold().replace('ё','е'))) for w in works}

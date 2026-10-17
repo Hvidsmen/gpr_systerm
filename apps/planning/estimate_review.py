@@ -175,6 +175,18 @@ def retire_allocation(row):
 
 
 @transaction.atomic
+def replacement_comment(user,task,work_id,replacement_id,comment):
+    task=lock_task(user,task);work=scoped_work(task,work_id)
+    if not replacement_id:return comment
+    try:replacement_id=int(replacement_id)
+    except (TypeError,ValueError):raise ValidationError('Выберите работу из списка рекомендаций.')
+    replacement=ProjectWork.objects.filter(pk=replacement_id,company=user.company,section__construction_object_id=work.section.construction_object_id,unit=work.unit,kind=work.kind,merged_source__isnull=True).select_related('section').exclude(pk=work.pk).first()
+    if replacement is None:raise ValidationError('Рекомендуемая работа недоступна или несовместима с исходной.')
+    recommendation=f'Рекомендуемая замена: {replacement.section.name} · {replacement.name} · {replacement.unit} · ID {replacement.pk}.'
+    return recommendation+('\n'+comment.strip() if comment.strip() else '')
+
+
+@transaction.atomic
 def replace_work(user,task,work_id,replacement_id):
     """Merge duplicates in this draft only; facts and approved versions stay intact."""
     task=lock_task(user,task,editing=True);work=scoped_work(task,work_id);obj=target(task)

@@ -51,6 +51,28 @@ class EstimateWorkflowTests(TestCase):
         self.assertNotIn(incompatible.pk,{r.pk for r in work.replacements})
         self.assertContains(response,f'ID {other.pk}')
 
+    def test_replacement_remark_is_ranked_and_sent_to_planner(self):
+        from .models import WorkTask
+        self.prepare();other=self.add_work();other.name=self.simple.name+' 1';other.save()
+        ProjectWork.objects.create(company=self.company,section=self.simple.section,name='Completely unrelated',unit=self.simple.unit)
+        self.client.force_login(self.estimator)
+        url=reverse('planning:estimate_review_detail',args=[self.task.pk])
+        response=self.client.get(url)
+        work=next(w for w in response.context['works'] if w.pk==self.simple.pk)
+        self.assertEqual(work.replacement_options[0]['work'].pk,other.pk)
+        response=self.client.post(url,{'action':'work_reject','work_id':self.simple.pk,'recommended_work':other.pk,'comment':'Используйте существующую позицию'})
+        self.assertEqual(response.status_code,302)
+        remark=WorkTask.objects.get(kind='REMARK')
+        self.assertIn(f'ID {other.pk}',remark.description)
+        self.assertIn('Используйте существующую позицию',remark.description)
+        self.assertEqual(remark.assigned_to_id,self.planner.pk)
+        self.assertTrue(self.version.work_allocations.filter(work=self.simple).exists())
+
+    def test_replacement_remark_rejects_self(self):
+        self.prepare()
+        with self.assertRaises(ValidationError):
+            service.replacement_comment(self.estimator,self.task,self.simple.pk,self.simple.pk,'Заменить')
+
     def test_month_scope_ignores_other_months_and_cannot_check_them(self):
         self.prepare();other=self.add_work()
         approved=self.approve(self.version)

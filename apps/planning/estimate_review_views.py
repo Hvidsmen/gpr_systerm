@@ -78,7 +78,9 @@ class ReviewDetail(View):
         works=list(ProjectWork.objects.filter(company=request.user.company,pk__in=service.work_ids(obj)).select_related('section').prefetch_related('items','price_history'))
         replacements=list(ProjectWork.objects.filter(company=request.user.company,section__construction_object_id=(obj.source.construction_object_id if isinstance(obj,DailySchedule) else obj.construction_object_id),merged_source__isnull=True).select_related('section').order_by('section__name','name','pk'))
         for w in works:
-            w.replacements=[r for r in replacements if r.pk!=w.pk and r.unit==w.unit and r.kind==w.kind]
+            from .estimate_similarity import ranked_replacements
+            w.replacement_options=ranked_replacements(w,replacements)
+            w.replacements=[row['work'] for row in w.replacement_options]
             w.change_form=WorkChangeForm(initial={'name':w.name})
             w.item_form=ItemForm(company=request.user.company)
             for item in w.items.all():item.edit_form=ItemForm(instance=item,company=request.user.company)
@@ -118,7 +120,8 @@ class ReviewDetail(View):
                 from .task_services import create_remark
                 planner=task.created_by
                 if not planner or role_code(planner) not in {'PLANNER','ADMIN'}:raise ValidationError('Назначьте замечание планировщику через кнопку создания задания.')
-                create_remark(request.user,task,planner,'Исправить замечание по работе',request.POST.get('comment',''),work_id=work_id)
+                comment=service.replacement_comment(request.user,task,work_id,request.POST.get('recommended_work'),request.POST.get('comment',''))
+                create_remark(request.user,task,planner,'Исправить замечание по работе',comment,work_id=work_id)
 
             elif action=='replace':service.replace_work(request.user,task,work_id,request.POST.get('replacement'))
             elif action=='change':
