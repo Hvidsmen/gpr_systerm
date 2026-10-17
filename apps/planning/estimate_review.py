@@ -54,7 +54,7 @@ def assign(user,obj,estimator):
     require_roles(user,PLAN_ROLES)
     if obj.company_id!=user.company_id:raise PermissionDenied
     editable(obj)
-    if not estimator.is_active or estimator.company_id!=user.company_id or role_code(estimator)!='ESTIMATOR':raise ValidationError('Выберите действующего сметчика своей компании.')
+    if not estimator.is_active or estimator.company_id!=user.company_id or role_code(estimator) not in {'ESTIMATOR','ADMIN'}:raise ValidationError('Выберите действующего сметчика своей компании.')
     if isinstance(obj,DailySchedule):DailySchedule.objects.select_for_update().get(pk=obj.pk)
     else:GlobalPlanVersion.objects.select_for_update().only('pk').get(pk=obj.pk)
     task=obj.estimate_reviews.filter(status='OPEN').order_by('-pk').first()
@@ -74,9 +74,9 @@ def event(task,user,action,details):
 
 
 def lock_task(user,task,*,editing=False):
-    require_roles(user,{'ESTIMATOR'})
+    require_roles(user,{'ESTIMATOR','ADMIN'})
     task=EstimateReviewTask.objects.select_for_update().select_related('version','schedule').defer('version__snapshot').get(pk=task.pk,company=user.company)
-    if task.assigned_to_id!=user.pk:raise PermissionDenied('Задание назначено другому сметчику.')
+    if role_code(user)!='ADMIN' and task.assigned_to_id!=user.pk:raise PermissionDenied('Задание назначено другому сметчику.')
     editable(target(task))
     if task.status!='OPEN':raise ValidationError('Для дальнейших исправлений планировщик должен повторно назначить проверку.')
     obj=target(task)
@@ -94,7 +94,7 @@ def return_to_draft(task,user,comment):
     from .approval_context import authorized_transition
     from .models import GlobalPlanDecision
     review=current_review(obj)
-    GlobalPlanDecision.objects.create(company=user.company,review=review,section='ESTIMATE',action='REJECT',actor=user,actor_name=user.get_full_name() or user.username,actor_role='ESTIMATOR',comment=comment)
+    GlobalPlanDecision.objects.create(company=user.company,review=review,section='ESTIMATE',action='REJECT',actor=user,actor_name=user.get_full_name() or user.username,actor_role=role_code(user),comment=comment)
     obj.status='REJECTED';obj.comment=comment;obj.approved_at=None;obj.approved_by=None
     with authorized_transition(obj.pk):obj.save(update_fields=['status','comment','approved_at','approved_by','updated_at'])
     from .task_services import sync_version,create_repair
@@ -220,7 +220,7 @@ def finish(user,task,approve,comment=''):
             from .models import GlobalPlanDecision
             review=current_review(obj)
             if not review.decisions.filter(section='ESTIMATE',action='APPROVE').exists():
-                GlobalPlanDecision.objects.create(company=user.company,review=review,section='ESTIMATE',action='APPROVE',actor=user,actor_name=user.get_full_name() or user.username,actor_role='ESTIMATOR',comment=comment or 'Названия, цены и состав работ проверены.')
+                GlobalPlanDecision.objects.create(company=user.company,review=review,section='ESTIMATE',action='APPROVE',actor=user,actor_name=user.get_full_name() or user.username,actor_role=role_code(user),comment=comment or 'Названия, цены и состав работ проверены.')
     else:
         if not comment.strip():raise ValidationError('Укажите, что необходимо исправить.')
         return_to_draft(task,user,comment.strip())

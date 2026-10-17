@@ -1,4 +1,5 @@
 from datetime import date,timedelta
+from decimal import Decimal
 from unittest.mock import patch
 from django.test import TestCase
 from django.urls import reverse
@@ -25,6 +26,39 @@ class TaskTests(TestCase):
         cls.estimator=User.objects.create_user(username='task-estimator',company=cls.company,role=Role.objects.get(code='ESTIMATOR'))
     create=fixtures.WorkspaceTests.create
     approve=fixtures.WorkspaceTests.approve
+
+    def test_admin_can_claim_and_complete_estimator_review(self):
+        admin=User.objects.create_user(username='estimate-admin',company=self.company,role=Role.objects.get(code='ADMIN'))
+        version=GlobalPlanService.transition(self.create().baseline_version,self.planner,'submit')
+        queue=WorkTask.objects.get(kind='ESTIMATE',estimate__isnull=True)
+        estimate=tasks.claim_estimate(admin,queue)
+        self.client.force_login(admin)
+        response=self.client.get(reverse('planning:estimate_review_detail',args=[estimate.pk]))
+        self.assertTrue(response.context['can_review'])
+        for wid in estimate_review.work_ids(version):estimate_review.review_work(admin,estimate,wid,True)
+        estimate_review.finish(admin,estimate,True)
+        estimate.refresh_from_db();self.assertEqual(estimate.status,'APPROVED')
+        self.assertTrue(version.review_rounds.get().decisions.filter(section='ESTIMATE',actor=admin,action='APPROVE').exists())
+
+    def test_superuser_can_edit_another_estimators_review_and_create_remarks(self):
+        admin=User.objects.create_user(username='estimate-superuser',company=self.company,is_superuser=True)
+        from .models import LoadProfile,LoadProfileItem
+        profile=LoadProfile.objects.create(company=self.company,name='Admin review profile')
+        LoadProfileItem.objects.create(company=self.company,profile=profile,workday_number=1,percentage=100)
+        self.simple.load_profile=profile;self.simple.save()
+        version=self.create().baseline_version
+        estimate=estimate_review.assign(self.planner,version,self.estimator)
+        self.client.force_login(admin)
+        response=self.client.get(reverse('planning:task_create')+f'?estimate={estimate.pk}&work={self.simple.pk}')
+        self.assertEqual(response.status_code,200)
+        estimate_review.change(admin,estimate,self.simple.pk,name='Admin reviewed',price=Decimal('12.00'),effective_from=fixtures.JAN,reason='Проверка цены')
+        self.simple.refresh_from_db();self.assertEqual(self.simple.name,'Admin reviewed')
+        for wid in estimate_review.work_ids(version):estimate_review.review_work(admin,estimate,wid,True)
+        estimate_review.finish(admin,estimate,True)
+        estimate.refresh_from_db();self.assertEqual(estimate.assigned_to_id,self.estimator.pk)
+        other=User.objects.create_user(username='other-company-admin',company=Company.objects.create(name='Other admin'),is_superuser=True)
+        self.client.force_login(other)
+        self.assertEqual(self.client.get(reverse('planning:estimate_review_detail',args=[estimate.pk])).status_code,404)
 
     def test_daily_generation_is_scoped_idempotent_and_preserves_backlog(self):
         tasks.generate_daily(self.dispatcher,today=TODAY)

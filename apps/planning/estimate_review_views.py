@@ -1,5 +1,6 @@
 from decimal import Decimal
 from django import forms
+from django.db.models import Q
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.shortcuts import get_object_or_404, redirect, render
@@ -15,7 +16,7 @@ class AssignForm(forms.Form):
     estimator=forms.ModelChoiceField(label='Сметчик',queryset=User.objects.none())
     def __init__(self,*args,company,**kwargs):
         super().__init__(*args,**kwargs)
-        self.fields['estimator'].queryset=User.objects.filter(company=company,is_active=True,role__code='ESTIMATOR')
+        self.fields['estimator'].queryset=User.objects.filter(company=company,is_active=True).filter(Q(role__code__in=['ESTIMATOR','ADMIN'])|Q(is_superuser=True))
 
 
 class WorkChangeForm(forms.Form):
@@ -81,7 +82,7 @@ class ReviewDetail(View):
             for item in w.items.all():item.edit_form=ItemForm(instance=item,company=request.user.company)
             w.review_decision=task.decisions.get(str(w.pk),{})
             w.review_valid=w.review_decision.get('approved') and w.review_decision.get('signature')==service.decision_signature(w)
-        return render(request,'planning/estimate_review_detail.html',{'task':task,'works':works,'can_review':role_code(request.user)=='ESTIMATOR' and task.assigned_to_id==request.user.pk and task.status=='OPEN' and obj.status in {'DRAFT','REJECTED','SUBMITTED'},'change_form':change_form,'item_form':item_form,'editing_work_id':work_id,'events':task.events.select_related('actor').order_by('-pk'),'replacements':ProjectWork.objects.filter(company=request.user.company,section__construction_object_id=(obj.source.construction_object_id if isinstance(obj,DailySchedule) else obj.construction_object_id))})
+        return render(request,'planning/estimate_review_detail.html',{'task':task,'works':works,'can_review':(role_code(request.user)=='ADMIN' or role_code(request.user)=='ESTIMATOR' and task.assigned_to_id==request.user.pk) and task.status=='OPEN' and obj.status in {'DRAFT','REJECTED','SUBMITTED'},'change_form':change_form,'item_form':item_form,'editing_work_id':work_id,'events':task.events.select_related('actor').order_by('-pk'),'replacements':ProjectWork.objects.filter(company=request.user.company,section__construction_object_id=(obj.source.construction_object_id if isinstance(obj,DailySchedule) else obj.construction_object_id))})
     def post(self,request,pk):
         task=get_object_or_404(tasks(request.user),pk=pk);action=request.POST.get('action');work_id=request.POST.get('work_id')
         try:

@@ -64,8 +64,10 @@ class TaskCreate(View):
         require_roles(request.user,ROLES-{'OBSERVER'})
         estimate=None;work_id=None
         if request.GET.get('estimate'):
-            estimate=get_object_or_404(EstimateReviewTask.objects.select_related('version','schedule').defer('version__snapshot'),pk=request.GET['estimate'],company=request.user.company,assigned_to=request.user,status='OPEN')
-            if role_code(request.user)!='ESTIMATOR':raise PermissionDenied
+            require_roles(request.user,{'ESTIMATOR','ADMIN'})
+            query=EstimateReviewTask.objects.select_related('version','schedule').defer('version__snapshot').filter(company=request.user.company,status='OPEN')
+            if role_code(request.user)!='ADMIN':query=query.filter(assigned_to=request.user)
+            estimate=get_object_or_404(query,pk=request.GET['estimate'])
             from .estimate_review import work_ids,target
             if request.GET.get('work'):
                 try:work_id=int(request.GET['work'])

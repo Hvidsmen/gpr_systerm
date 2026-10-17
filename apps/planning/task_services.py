@@ -149,7 +149,7 @@ def create_remark(user,estimate,planner,title,text,*,work_id=None,due=None):
 
 @transaction.atomic
 def claim_estimate(user,task):
-    require_roles(user,{'ESTIMATOR'})
+    require_roles(user,{'ESTIMATOR','ADMIN'})
     task=WorkTask.objects.select_for_update().get(pk=task.pk,company=user.company)
     if task.kind!='ESTIMATE' or task.status!='OPEN' or task.estimate_id or not is_executor(user,task):raise PermissionDenied
     version=GlobalPlanVersion.objects.select_for_update().defer('snapshot').get(pk=task.version_id,company=user.company)
