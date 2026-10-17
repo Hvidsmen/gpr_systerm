@@ -2,6 +2,7 @@
 import hashlib
 import json
 from datetime import date
+from calendar import monthrange
 from decimal import Decimal
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
@@ -18,7 +19,22 @@ def target(task):
 def work_ids(obj):
     if isinstance(obj, DailySchedule):
         return {e.metadata['id'] for e in obj.entries.filter(kind='work')}
-    return set(obj.work_allocations.values_list('work_id',flat=True))
+    return set(review_allocations(obj).exclude(quantity=0,item_quantities={}).values_list('work_id',flat=True))
+
+
+def review_period(obj):
+    if isinstance(obj,DailySchedule):
+        start=obj.month
+        return start,start.replace(day=monthrange(start.year,start.month)[1])
+    if obj.planning_month:
+        start=obj.planning_month
+        return start,start.replace(day=monthrange(start.year,start.month)[1])
+    return (obj.workspace.continuation_start if obj.workspace_id and obj.workspace.continuation_start else obj.start_date),obj.end_date
+
+
+def review_allocations(obj):
+    start,end=review_period(obj)
+    return obj.work_allocations.filter(month__range=(start,end))
 
 
 def editable(obj):
@@ -34,7 +50,8 @@ def signature(obj):
     if isinstance(obj,DailySchedule):
         inputs=list(obj.entries.order_by('pk').values('key','kind','label','metadata','rows','revision'))
     else:
-        inputs={'works':list(obj.work_allocations.order_by('pk').values()),'resources':list(obj.resource_allocations.order_by('pk').values()),'month':obj.planning_month,'scenario':obj.scenario}
+        start,end=review_period(obj)
+        inputs={'works':list(review_allocations(obj).order_by('pk').values()),'resources':list(obj.resource_allocations.filter(month__range=(start,end)).order_by('pk').values()),'month':obj.planning_month,'scenario':obj.scenario,'period':[start,end]}
     # Catalog timestamps are audit data, not planning inputs.
     for rows in (works,items,prices):
         for row in rows:
@@ -108,9 +125,12 @@ def scoped_work(task,work_id):
     return ProjectWork.objects.select_for_update().get(pk=work_id,company_id=task.company_id)
 
 
-def decision_signature(work):
+def decision_signature(work,obj=None):
     from .workspace_services import specification
-    return hashlib.sha256(json.dumps(specification(work),sort_keys=True,default=str).encode()).hexdigest()
+    data=[specification(work)]
+    if obj is not None:
+        data.append(list(obj.entries.filter(kind='work',metadata__id=work.pk).values('rows','metadata','revision')) if isinstance(obj,DailySchedule) else list(review_allocations(obj).filter(work=work).order_by('month','pk').values()))
+    return hashlib.sha256(json.dumps(data,sort_keys=True,default=str).encode()).hexdigest()
 
 
 @transaction.atomic
@@ -142,9 +162,16 @@ def review_work(user,task,work_id,approved,comment=''):
     task=lock_task(user,task);work=scoped_work(task,work_id)
     if not approved and not comment.strip():raise ValidationError('Укажите причину отклонения и какую работу из справочника использовать.')
     if not approved:return_to_draft(task,user,comment.strip())
-    task.decisions[str(work.pk)]={'approved':approved,'comment':comment.strip(),'signature':decision_signature(work)}
+    task.decisions[str(work.pk)]={'approved':approved,'comment':comment.strip(),'signature':decision_signature(work,target(task))}
     task.save(update_fields=['decisions','updated_at']);event(task,user,'WORK_APPROVE' if approved else 'WORK_REJECT',{'work':work.pk,'comment':comment})
     return task
+
+
+def retire_allocation(row):
+    # Keep an explicit zero for forecast bases and transferred remainder receipts.
+    if row.version.version_kind=='FORECAST' or row.version.work_carryovers.filter(month=row.month,work_id=row.work_id).exists():
+        row.quantity=0;row.item_quantities={};row.daily_override=None;row.save()
+    else:row.delete()
 
 
 @transaction.atomic
@@ -165,7 +192,9 @@ def replace_work(user,task,work_id,replacement_id):
     if isinstance(obj,DailySchedule):
         raise ValidationError('Замену работы выполните в новой версии месячного ГПР, затем создайте СМГ из исправленного плана.')
     if obj.workspace_id and obj.workspace.parent_gpr_id:raise ValidationError('Для СМГ субобъекта сначала обновите связь с работой ГПР.')
-    for row in obj.work_allocations.select_for_update().filter(work=work):
+    moved=Decimal(0)
+    for row in review_allocations(obj).select_for_update().filter(work=work):
+        moved+=row.quantity
         if row.daily_override is not None:raise ValidationError('Перед заменой проверьте сохраненный дневной план работы.')
         dest=obj.work_allocations.filter(work=replacement,month=row.month).first()
         quantities={str(mapping[k]):v for k,v in row.item_quantities.items()}
@@ -174,14 +203,102 @@ def replace_work(user,task,work_id,replacement_id):
             if bool(dest.item_quantities)!=bool(quantities):raise ValidationError('У дублей разный способ задания объемов подработ.')
             dest.quantity+=row.quantity
             dest.item_quantities={k:str(Decimal(v)+Decimal(quantities.get(k,0))) for k,v in dest.item_quantities.items()} if dest.item_quantities else quantities
-            dest.full_clean();dest.save();row.delete()
+            dest.full_clean();dest.save()
+            retire_allocation(row)
         else:
-            row.work=replacement;row.item_quantities=quantities;row.full_clean();row.save()
+            if obj.version_kind=='FORECAST':
+                WorkMonthAllocation.objects.create(company=user.company,version=obj,work=replacement,month=row.month,quantity=row.quantity,item_quantities=quantities,load_profile=row.load_profile)
+                retire_allocation(row)
+            else:
+                destination=WorkMonthAllocation(company=user.company,version=obj,work=replacement,month=row.month,quantity=row.quantity,item_quantities=quantities,load_profile=row.load_profile)
+                destination.full_clean();destination.save()
+                retire_allocation(row)
     # Preserve provenance and expose source in the immutable audit log; receipts stay on original work.
     task.decisions.pop(str(work.pk),None);task.decisions.pop(str(replacement.pk),None);task.save(update_fields=['decisions','updated_at'])
     obj.snapshot={};obj.save(update_fields=['snapshot'])
-    event(task,user,'REPLACE',{'source':work.pk,'target':replacement.pk,'source_name':work.name,'target_name':replacement.name})
+    event(task,user,'REPLACE',{'source':work.pk,'target':replacement.pk,'source_name':work.name,'target_name':replacement.name,'volume_adjustments':{str(work.pk):str(-moved),str(replacement.pk):str(moved)}})
     return task
+
+
+@transaction.atomic
+def review_selected(user,task,selected):
+    task=lock_task(user,task)
+    try:ids={int(value) for value in selected}
+    except (ValueError,TypeError):raise ValidationError('Неверный выбор работ.')
+    if not ids:raise ValidationError('Выберите работы для проверки.')
+    if not ids<=work_ids(target(task)):raise PermissionDenied('Выбраны работы вне проверяемого периода.')
+    for work_id in sorted(ids):review_work(user,task,work_id,True)
+    return len(ids)
+
+
+@transaction.atomic
+def merge_duplicates(user,task,selected,replacement):
+    task=lock_task(user,task)
+    try:ids={int(value) for value in selected};destination=int(replacement)
+    except (ValueError,TypeError):raise ValidationError('Выберите работы и итоговую работу.')
+    if len(ids)<2 or destination not in ids:raise ValidationError('Выберите минимум две работы и итоговую работу из выбранных.')
+    if not ids<=work_ids(target(task)):raise PermissionDenied('Выбраны работы вне проверяемого периода.')
+    for source in sorted(ids-{destination}):replace_work(user,task,source,destination)
+    return len(ids)-1
+
+
+@transaction.atomic
+def merge_composite(user,task,selected,values):
+    from collections import defaultdict
+    from apps.works.merge_service import source_works
+    from apps.works.prices import history_prices,rate_on
+    from apps.works.progress import work_specification,quantity_from_totals
+    from .workspace_services import work_rows
+    task=lock_task(user,task,editing=True);obj=target(task)
+    if isinstance(obj,DailySchedule) or obj.workspace.parent_gpr_id:
+        raise ValidationError('Создайте составную работу в ГПР, затем обновите СМГ.')
+    works=source_works(user,selected,lock=True)
+    if not {w.pk for w in works}<=work_ids(obj):raise PermissionDenied('Работы вне проверяемого периода.')
+    if values['section'].construction_object_id!=obj.construction_object_id:raise ValidationError('Раздел другого объекта.')
+    start,_=review_period(obj)
+    price=sum((rate_on(history_prices(w),start,w.unit_price)*values[f'norm_{w.pk}'] for w in works),Decimal(0)).quantize(Decimal('.01'))
+    parent=ProjectWork(company=user.company,section=values['section'],name=values['name'],unit=values['unit'],kind='COMPOSITE',allow_fractional=values['allow_fractional'],work_group=values.get('work_group'),unit_price=price)
+    parent.full_clean();parent._price_actor=user;parent.save()
+    items={}
+    for index,work in enumerate(works):
+        item=ProjectWorkItem(company=user.company,project_work=parent,name=work.name,unit=work.unit,quantity_per_unit=values[f'norm_{work.pk}'],weight=Decimal(100//len(works) if index<len(works)-1 else 100-(100//len(works))*(len(works)-1)),load_profile=values[f'profile_{work.pk}'],sequence=index)
+        item.full_clean();item.save();items[work.pk]=item
+    spec=work_specification(parent);months=defaultdict(list)
+    for row in review_allocations(obj).select_for_update().filter(work_id__in=items):months[row.month].append(row)
+    adjustments={str(w.pk):Decimal(0) for w in works}
+    adjustments['target']=Decimal(0)
+    for month,allocations in months.items():
+        quantities={str(i.pk):'0' for i in items.values()};daily=[]
+        for row in allocations:
+            quantities[str(items[row.work_id].pk)]=str(row.quantity)
+            source=ProjectWork.objects.get(pk=row.work_id)
+            from .workspace_services import specification
+            rows=row.daily_override if row.daily_override is not None else work_rows(obj.workspace,specification(source),month,row.quantity,row.load_profile,{})
+            daily.extend({**r,'item_id':items[row.work_id].pk} for r in rows)
+        allocation=WorkMonthAllocation(company=user.company,version=obj,work=parent,month=month,quantity=quantity_from_totals(spec,{int(k):Decimal(v) for k,v in quantities.items()}),item_quantities=quantities,daily_override=daily)
+        allocation.full_clean();allocation.save()
+        adjustments['target']+=allocation.quantity
+        for row in allocations:adjustments[str(row.work_id)]-=row.quantity
+        for row in allocations:
+            retire_allocation(row)
+    for work in works:task.decisions.pop(str(work.pk),None)
+    task.save(update_fields=['decisions','updated_at']);obj.snapshot={};obj.save(update_fields=['snapshot'])
+    adjustments[str(parent.pk)]=adjustments.pop('target')
+    event(task,user,'MERGE_COMPOSITE',{'sources':[w.pk for w in works],'target':parent.pk,'norms':{str(w.pk):str(values[f'norm_{w.pk}']) for w in works},'start':start.isoformat(),'volume_adjustments':{k:str(v) for k,v in adjustments.items()}})
+    return parent
+
+
+def merge_volume_adjustments(version):
+    """Move monthly goals with local merges, preserving future remainder proportions."""
+    from collections import defaultdict
+    ids=[];current=version;seen=set()
+    while current and current.pk not in seen and current.workspace_id==version.workspace_id and current.version_kind=='FORECAST':
+        seen.add(current.pk);ids.append(current.pk)
+        current=GlobalPlanVersion.objects.only('pk','workspace_id','version_kind','previous_version_id').filter(pk=current.previous_version_id).first() if current.previous_version_id else None
+    result=defaultdict(Decimal)
+    for event in EstimateReviewEvent.objects.filter(company_id=version.company_id,task__version_id__in=ids,action__in=['REPLACE','MERGE_COMPOSITE']):
+        for key,value in event.details.get('volume_adjustments',{}).items():result[int(key)]+=Decimal(value)
+    return result
 
 
 def reprice_schedule(schedule):
@@ -212,7 +329,7 @@ def finish(user,task,approve,comment=''):
                 raise ValidationError('Справочник или план изменился после отправки. Верните план на доработку и отправьте обновленный расчет на повторное согласование.')
         for work in works:
             d=task.decisions.get(str(work.pk),{})
-            if not d.get('approved') or d.get('signature')!=decision_signature(work):raise ValidationError(f'Проверьте название, цену и подработы: {work.name}.')
+            if not d.get('approved') or d.get('signature')!=decision_signature(work,obj):raise ValidationError(f'Проверьте название, цену и подработы: {work.name}.')
         if isinstance(obj,DailySchedule):reprice_schedule(obj)
         task.status='APPROVED';task.fingerprint=signature(obj);task.approved_at=timezone.now()
         if not isinstance(obj,DailySchedule) and obj.status=='SUBMITTED':

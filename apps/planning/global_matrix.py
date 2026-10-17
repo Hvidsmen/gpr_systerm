@@ -49,8 +49,10 @@ class GlobalMatrixForm(MatrixReportForm):
 
 def detail_matrix(request, version):
     params = request.GET.copy()
-    params.setdefault("start", version.start_date.isoformat())
-    params.setdefault("end", version.end_date.isoformat())
+    from .estimate_review import review_period
+    review_start,review_end=review_period(version)
+    params.setdefault("start", review_start.isoformat())
+    params.setdefault("end", review_end.isoformat())
     if "sections_set" not in params:
         params.setlist("sections", [kind for kind, _ in SECTIONS])
     params["sections_set"] = "1"

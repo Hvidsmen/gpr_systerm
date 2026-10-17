@@ -525,6 +525,8 @@ def build_forecast(version, inputs, resources, base):
     warnings = []
     base_inputs = base.get("monthly_inputs", {}).get("works", [])
     base_specs = {spec["id"]: spec for spec in base["works"]}
+    from .estimate_review import merge_volume_adjustments
+    merge_adjustments=merge_volume_adjustments(version)
     if workspace.is_macro_consolidation:
         # Connected history is immutable and reattached by merge_macro_history;
         # it must not become a new remainder in the macro object's catalog.
@@ -588,7 +590,7 @@ def build_forecast(version, inputs, resources, base):
             past_total = sum(
                 v["daily"] for d, v in series.items() if d >= workspace.start_date
             )
-            goal = sum(Decimal(r["quantity"]) for r in spec["daily"])
+            goal = sum(Decimal(r["quantity"]) for r in spec["daily"]) + merge_adjustments.get(work_id,ZERO)
             current_series = cumulative_series(spec, [(date.fromisoformat(r["date"]), r["item_id"], Decimal(r["quantity"])) for r in facts + rows])
             current_total = sum(v["daily"] for day, v in current_series.items() if day >= target)
             rest = goal - past_total - current_total

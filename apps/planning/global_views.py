@@ -86,6 +86,8 @@ class GlobalDetail(CompanyScopedMixin, DetailView):
         ctx['assignment_version'] = self.object
         ctx['daily_schedules'] = self.object.daily_schedules.only('pk','month','revision','status').order_by('-month','-revision')
         ctx['project_memberships'] = self.object.project_plan_members.select_related('consolidated_version__project')
+        from .estimate_review import review_period
+        ctx['review_start'],ctx['review_end']=review_period(self.object)
         from .approval_workflow import panel
         ctx.update(panel(self.object, self.request.user))
         from .global_matrix import detail_matrix

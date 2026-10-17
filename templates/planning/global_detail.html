@@ -12,6 +12,7 @@
 {% if object.baseline_review_id %}<p class="text-muted">Зафиксированная база: раунд {{ object.baseline_review.number }} согласования базового плана.</p>{% endif %}
 {% if object.previous_version %}<p>Редакция {% if request.user|may:'planning:global_detail' %}<a href="{% url 'planning:global_detail' object.previous_version.pk %}">v{{ object.previous_version.version_number }}</a>{% endif %}</p>{% endif %}
 {% if object.status == 'DRAFT' or object.status == 'REJECTED' %}{% if request.user|may:'planning:version_submit' %}<form method="post" action="{% url 'planning:global_action' object.pk 'submit' %}">{% csrf_token %}<button>Отправить на согласование</button></form>{% endif %}{% endif %}
+<p class="alert alert-info">Период проверки и согласования: <strong>{{ review_start|date:'d.m.Y' }} — {{ review_end|date:'d.m.Y' }}</strong>. Ранее утвержденная история сохраняется.</p>
 {% include 'planning/approval_panel.html' %}
 {% include 'planning/project_assignment.html' %}
 {% if object.is_immutable and object.version_kind != 'BASELINE' %}{% if request.user|may:'planning:version_revision' %}<form method="post" action="{% url 'planning:global_action' object.pk 'revision' %}">{% csrf_token %}<button>Создать новую редакцию</button></form>{% endif %}{% endif %}

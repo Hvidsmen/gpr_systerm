@@ -81,12 +81,36 @@ class ReviewDetail(View):
             w.item_form=ItemForm(company=request.user.company)
             for item in w.items.all():item.edit_form=ItemForm(instance=item,company=request.user.company)
             w.review_decision=task.decisions.get(str(w.pk),{})
-            w.review_valid=w.review_decision.get('approved') and w.review_decision.get('signature')==service.decision_signature(w)
-        return render(request,'planning/estimate_review_detail.html',{'task':task,'works':works,'can_review':(role_code(request.user)=='ADMIN' or role_code(request.user)=='ESTIMATOR' and task.assigned_to_id==request.user.pk) and task.status=='OPEN' and obj.status in {'DRAFT','REJECTED','SUBMITTED'},'change_form':change_form,'item_form':item_form,'editing_work_id':work_id,'events':task.events.select_related('actor').order_by('-pk'),'replacements':ProjectWork.objects.filter(company=request.user.company,section__construction_object_id=(obj.source.construction_object_id if isinstance(obj,DailySchedule) else obj.construction_object_id))})
+            w.review_valid=w.review_decision.get('approved') and w.review_decision.get('signature')==service.decision_signature(w,obj)
+        works.sort(key=lambda w:(bool(w.review_valid),w.section.name.casefold(),w.name.casefold(),w.pk))
+        start,end=service.review_period(obj)
+        for w in works:
+            w.review_status='checked' if w.review_valid else 'rejected' if w.review_decision.get('approved') is False else 'pending'
+            w.review_quantity=sum((r.quantity for r in service.review_allocations(obj).filter(work=w)),Decimal(0)) if isinstance(obj,GlobalPlanVersion) else None
+        extra={'review_start':start,'review_end':end,'sections':sorted({w.section.name for w in works}),'checked_count':sum(bool(w.review_valid) for w in works),'total_count':len(works)}
+        from .estimate_similarity import suggestions
+        extra['similar_works']=suggestions(works)
+        return render(request,'planning/estimate_review_detail.html',{**extra,'task':task,'works':works,'can_review':(role_code(request.user)=='ADMIN' or role_code(request.user)=='ESTIMATOR' and task.assigned_to_id==request.user.pk) and task.status=='OPEN' and obj.status in {'DRAFT','REJECTED','SUBMITTED'},'change_form':change_form,'item_form':item_form,'editing_work_id':work_id,'events':task.events.select_related('actor').order_by('-pk'),'replacements':ProjectWork.objects.filter(company=request.user.company,section__construction_object_id=(obj.source.construction_object_id if isinstance(obj,DailySchedule) else obj.construction_object_id))})
     def post(self,request,pk):
         task=get_object_or_404(tasks(request.user),pk=pk);action=request.POST.get('action');work_id=request.POST.get('work_id')
         try:
-            if action in {'approve','reject'}:service.finish(request.user,task,action=='approve',request.POST.get('comment',''))
+            if action in {'composite_setup','composite_confirm'}:
+                from apps.works.merge_views import MergeForm
+                from apps.works.merge_service import source_works
+                service.lock_task(request.user,task)
+                works=source_works(request.user,request.POST.getlist('selected'))
+                if not {w.pk for w in works}<=service.work_ids(service.target(task)):
+                    from django.core.exceptions import PermissionDenied
+                    raise PermissionDenied
+                form=MergeForm(request.POST if action=='composite_confirm' else None,company=request.user.company,works=works,initial={'name':(works[0].name+' — составная')[:255],'section':works[0].section_id,'unit':'шт','allow_fractional':True})
+                if action=='composite_confirm' and form.is_valid():
+                    service.merge_composite(request.user,task,[w.pk for w in works],form.cleaned_data)
+                    messages.success(request,'Составная работа создана в проверяемом периоде. Проверьте ее название, цену и подработы.')
+                    return redirect('planning:estimate_review_detail',pk=task.pk)
+                return render(request,'planning/estimate_review_merge.html',{'task':task,'form':form,'sources':works,'norm_rows':form.norm_rows})
+            elif action=='bulk_merge':service.merge_duplicates(request.user,task,request.POST.getlist('selected'),request.POST.get('replacement'))
+            elif action=='bulk_approve':service.review_selected(request.user,task,request.POST.getlist('selected'))
+            elif action in {'approve','reject'}:service.finish(request.user,task,action=='approve',request.POST.get('comment',''))
             elif action=='work_approve':service.review_work(request.user,task,work_id,True,request.POST.get('comment',''))
             elif action=='work_reject':
                 from .task_services import create_remark
