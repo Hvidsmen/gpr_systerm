@@ -52,5 +52,19 @@
     counts();
     document.getElementById('review-bulk').scrollIntoView({behavior: 'smooth', block: 'center'});
   }));
+  document.querySelectorAll('.review-catalog').forEach(button => button.addEventListener('click', () => {
+    [search, status, section, kind].forEach(field => { field.value = ''; });
+    filter();
+    const box = boxes.find(box => box.value === button.dataset.source);
+    if (!box) return;
+    const card = box.closest('.review-work');
+    const select = card.querySelector('select[name="replacement"]');
+    if (!select) return;
+    select.value = button.dataset.target;
+    select.dispatchEvent(new Event('change', {bubbles: true}));
+    card.open = true;
+    select.closest('details').open = true;
+    card.scrollIntoView({behavior: 'smooth', block: 'center'});
+  }));
   filter();
 })();

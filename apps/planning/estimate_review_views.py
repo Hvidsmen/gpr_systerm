@@ -75,11 +75,15 @@ class ReviewDetail(View):
     def get(self,request,pk):return self.show(request,get_object_or_404(tasks(request.user),pk=pk))
     def show(self,request,task,change_form=None,item_form=None,work_id=None):
         obj=service.target(task)
-        works=list(ProjectWork.objects.filter(company=request.user.company,pk__in=service.work_ids(obj)).select_related('section').prefetch_related('items','price_history'))
-        replacements=list(ProjectWork.objects.filter(company=request.user.company,section__construction_object_id=(obj.source.construction_object_id if isinstance(obj,DailySchedule) else obj.construction_object_id),merged_source__isnull=True).select_related('section').order_by('section__name','name','pk'))
+        works=list(ProjectWork.objects.filter(company=request.user.company,pk__in=service.work_ids(obj)).select_related('section__construction_object').prefetch_related('items','price_history'))
+        from .estimate_catalog import alternatives
+        replacements=list(alternatives(obj))
+        from .models import MacroCarryoverWork
+        version=obj.source if isinstance(obj,DailySchedule) else obj
+        aliases=dict(MacroCarryoverWork.objects.filter(company=request.user.company,workspace_id=version.workspace_id).values_list('source_work_id','target_work_id'))
         for w in works:
             from .estimate_similarity import ranked_replacements
-            w.replacement_options=ranked_replacements(w,replacements)
+            w.replacement_options=ranked_replacements(w,[r for r in replacements if aliases.get(r.pk)!=w.pk])
             w.replacements=[row['work'] for row in w.replacement_options]
             w.change_form=WorkChangeForm(initial={'name':w.name})
             w.item_form=ItemForm(company=request.user.company)
@@ -92,8 +96,13 @@ class ReviewDetail(View):
             w.review_status='checked' if w.review_valid else 'rejected' if w.review_decision.get('approved') is False else 'pending'
             w.review_quantity=sum((r.quantity for r in service.review_allocations(obj).filter(work=w)),Decimal(0)) if isinstance(obj,GlobalPlanVersion) else None
         extra={'review_start':start,'review_end':end,'sections':sorted({w.section.name for w in works}),'checked_count':sum(bool(w.review_valid) for w in works),'total_count':len(works)}
-        from .estimate_similarity import suggestions
-        extra['similar_works']=suggestions(works)
+        active_ids={w.pk for w in works};pairs={}
+        for w in works:
+            for option in w.replacement_options:
+                if option['score']<64:continue
+                candidate=option['work'];key=tuple(sorted((w.pk,candidate.pk)))
+                if key not in pairs:pairs[key]={'first':w,'second':candidate,'score':option['score'],'catalog':candidate.pk not in active_ids}
+        extra['similar_works']=sorted(pairs.values(),key=lambda row:(-row['score'],row['first'].pk,row['second'].pk))[:20]
         return render(request,'planning/estimate_review_detail.html',{**extra,'task':task,'works':works,'can_review':(role_code(request.user)=='ADMIN' or role_code(request.user)=='ESTIMATOR' and task.assigned_to_id==request.user.pk) and task.status=='OPEN' and obj.status in {'DRAFT','REJECTED','SUBMITTED'},'change_form':change_form,'item_form':item_form,'editing_work_id':work_id,'events':task.events.select_related('actor').order_by('-pk'),'replacements':ProjectWork.objects.filter(company=request.user.company,section__construction_object_id=(obj.source.construction_object_id if isinstance(obj,DailySchedule) else obj.construction_object_id))})
     def post(self,request,pk):
         task=get_object_or_404(tasks(request.user),pk=pk);action=request.POST.get('action');work_id=request.POST.get('work_id')

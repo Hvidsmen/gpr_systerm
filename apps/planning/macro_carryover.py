@@ -27,17 +27,23 @@ def remap(data,mapping):
     return result
 
 
-def ensure_work(user,version,month,data):
+def ensure_work(user,version,month,data,*,catalog=False):
     source=ProjectWork.objects.select_related('section__construction_object').prefetch_related('items').get(pk=data['source_work_id'],company=user.company)
     if source.section.construction_object_id==version.construction_object_id:return data
-    allowed=history_links(version,month).filter(review__version_id=data['source_version_id'],construction_object_id=source.section.construction_object_id).exists()
+    if catalog:
+        from .estimate_catalog import alternatives
+        allowed=alternatives(version).filter(pk=source.pk).exists()
+    else:allowed=history_links(version,month).filter(review__version_id=data['source_version_id'],construction_object_id=source.section.construction_object_id).exists()
     if not allowed:raise ValidationError('Работа не входит в подключенную историю этого макрообъекта.')
+    from .models import PlanningWorkspace
+    PlanningWorkspace.objects.select_for_update().only('pk').get(pk=version.workspace_id,company=user.company)
     mapping=MacroCarryoverWork.objects.filter(company=user.company,workspace_id=version.workspace_id,source_work=source).first()
     # preview has already remapped an existing mapping.
     if mapping and data['work_id']==mapping.target_work_id:return data
     if mapping:return remap(data,mapping)
     spec=data['spec']
-    section_name=f'Остатки · {source.section.construction_object.name} · {source.section.name}'[:255]
+    prefix='Справочник' if catalog else 'Остатки'
+    section_name=f'{prefix} · {source.section.construction_object.name} · {source.section.name}'[:255]
     section=Section.objects.filter(company=user.company,construction_object_id=version.construction_object_id,name=section_name).first()
     if not section:section=Section.objects.create(company=user.company,construction_object_id=version.construction_object_id,name=section_name)
     work=deepcopy(source);work.pk=None;work.code='';work.section=section;work.template_id=None;work._state.adding=True

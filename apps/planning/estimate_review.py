@@ -180,9 +180,10 @@ def replacement_comment(user,task,work_id,replacement_id,comment):
     if not replacement_id:return comment
     try:replacement_id=int(replacement_id)
     except (TypeError,ValueError):raise ValidationError('Выберите работу из списка рекомендаций.')
-    replacement=ProjectWork.objects.filter(pk=replacement_id,company=user.company,section__construction_object_id=work.section.construction_object_id,unit=work.unit,kind=work.kind,merged_source__isnull=True).select_related('section').exclude(pk=work.pk).first()
+    from .estimate_catalog import alternatives
+    replacement=alternatives(target(task)).filter(pk=replacement_id,unit=work.unit,kind=work.kind).exclude(pk=work.pk).first()
     if replacement is None:raise ValidationError('Рекомендуемая работа недоступна или несовместима с исходной.')
-    recommendation=f'Рекомендуемая замена: {replacement.section.name} · {replacement.name} · {replacement.unit} · ID {replacement.pk}.'
+    recommendation=f'Рекомендуемая замена: {replacement.section.construction_object.name} · {replacement.section.name} · {replacement.name} · {replacement.unit} · ID {replacement.pk}.'
     return recommendation+('\n'+comment.strip() if comment.strip() else '')
 
 
@@ -190,7 +191,11 @@ def replacement_comment(user,task,work_id,replacement_id,comment):
 def replace_work(user,task,work_id,replacement_id):
     """Merge duplicates in this draft only; facts and approved versions stay intact."""
     task=lock_task(user,task,editing=True);work=scoped_work(task,work_id);obj=target(task)
-    replacement=ProjectWork.objects.select_for_update().get(pk=replacement_id,company=user.company)
+    from .estimate_catalog import alternatives,local_work
+    replacement=alternatives(obj).select_for_update().filter(pk=replacement_id).first()
+    if replacement is None:raise ValidationError('Работа не принадлежит объекту или подключенной истории.')
+    catalog_source=replacement.pk
+    if not isinstance(obj,DailySchedule):replacement=local_work(user,obj,replacement)
     if replacement.pk==work.pk:raise ValidationError('Выберите другую работу.')
     if replacement.section.construction_object_id!=work.section.construction_object_id or replacement.unit!=work.unit or replacement.kind!=work.kind:raise ValidationError('Для замены должны совпадать объект, единица и тип работы.')
     if hasattr(replacement,'merged_source'):raise ValidationError('Выбранная работа архивная.')
@@ -228,7 +233,7 @@ def replace_work(user,task,work_id,replacement_id):
     # Preserve provenance and expose source in the immutable audit log; receipts stay on original work.
     task.decisions.pop(str(work.pk),None);task.decisions.pop(str(replacement.pk),None);task.save(update_fields=['decisions','updated_at'])
     obj.snapshot={};obj.save(update_fields=['snapshot'])
-    event(task,user,'REPLACE',{'source':work.pk,'target':replacement.pk,'source_name':work.name,'target_name':replacement.name,'volume_adjustments':{str(work.pk):str(-moved),str(replacement.pk):str(moved)}})
+    event(task,user,'REPLACE',{'source':work.pk,'target':replacement.pk,'source_name':work.name,'target_name':replacement.name,'catalog_source':catalog_source,'volume_adjustments':{str(work.pk):str(-moved),str(replacement.pk):str(moved)}})
     return task
 
 
