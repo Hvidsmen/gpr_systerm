@@ -75,6 +75,8 @@ def transition(version, user, action, comment=''):
     elif action in {s[3] for s in SECTIONS}:
         if version.status != 'SUBMITTED':
             raise ValidationError('Согласовать раздел можно только у отправленного плана.')
+        if 'ESTIMATE' not in approved_sections(review):
+            raise ValidationError('Сначала требуется подтверждение проверки сметчика.')
         if section in approved_sections(review):
             raise ValidationError('Раздел уже согласован в этом раунде.')
     elif action == 'approve':
@@ -87,6 +89,7 @@ def transition(version, user, action, comment=''):
         version.approved_at = timezone.now()
     elif action == 'reject':
         permitted = version.status == 'SUBMITTED' and (role != 'CEO' or ready(review))
+        if role in {'PRODUCTION_HEAD','HR_HEAD','TECH_HEAD'} and 'ESTIMATE' not in approved_sections(review):permitted=False
         permitted |= version.status == 'APPROVED' and role in {'CEO', 'ADMIN'}
         if not permitted:
             raise ValidationError('На этом этапе возврат на доработку недоступен.')
@@ -129,9 +132,9 @@ def panel(version, user):
     for section, label, assigned, action in SECTIONS:
         decision = review.decisions.filter(section=section, action='APPROVE').first() if review else None
         sections.append({'label': label, 'decision': decision, 'approved': section in approved and version.status not in ['DRAFT', 'REJECTED'],
-                         'action': action, 'can_approve': submitted and role in {assigned, 'ADMIN'} and not decision})
-    return {'legacy_review': bool(review and review.legacy_approved and version.status not in ['DRAFT', 'REJECTED']), 'approval_sections': sections, 'approval_ready': ready(review),
+                         'action': action, 'can_approve': submitted and 'ESTIMATE' in approved_sections(review) and role in {assigned, 'ADMIN'} and not decision})
+    return {'legacy_review': bool(review and review.legacy_approved and version.status not in ['DRAFT', 'REJECTED']), 'approval_sections': sections, 'approval_ready': ready(review),'estimator_ready':bool(estimator_decision),
             'can_final_approve': submitted and role in {'CEO', 'ADMIN'} and ready(review),
-            'can_return': (submitted and (role in {'PRODUCTION_HEAD', 'HR_HEAD', 'TECH_HEAD', 'ADMIN'} or role == 'CEO' and ready(review))) or version.status == 'APPROVED' and role in {'CEO', 'ADMIN'},
+            'can_return': (submitted and (role=='ADMIN' or role in {'PRODUCTION_HEAD','HR_HEAD','TECH_HEAD'} and bool(estimator_decision) or role=='CEO' and ready(review))) or version.status=='APPROVED' and role in {'CEO','ADMIN'},
             'can_complete': version.status == 'APPROVED' and role in {'CEO', 'ADMIN'},
             'review_history': version.review_rounds.prefetch_related('decisions').order_by('-number')}

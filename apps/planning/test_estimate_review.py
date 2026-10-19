@@ -34,9 +34,10 @@ class EstimateReviewTests(TestCase):
     def test_parallel_approval_and_final_gate(self):
         self.prepare()
         self.version=GlobalPlanService.transition(self.version,self.planner,'submit')
-        self.version=departments(self.version,self.approvers)
+        with self.assertRaises(ValidationError):departments(self.version,self.approvers)
         with self.assertRaises(ValidationError):GlobalPlanService.transition(self.version,self.approvers['CEO'],'approve')
         self.checked()
+        self.version=departments(self.version,self.approvers)
         self.assertTrue(GlobalPlanDecision.objects.filter(review__version=self.version,section='ESTIMATE',action='APPROVE').exists())
         approved=GlobalPlanService.transition(self.version,self.approvers['CEO'],'approve')
         self.assertEqual(approved.status,'APPROVED')

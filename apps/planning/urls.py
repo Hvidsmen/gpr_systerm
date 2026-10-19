@@ -56,7 +56,6 @@ urlpatterns += [
     path('global/', GlobalList.as_view(), name='global_list'),
     path('global/create/', GlobalCreate.as_view(), name='global_create'),
     path('global/<int:pk>/', GlobalDetail.as_view(), name='global_detail'),
-    path('global/<int:pk>/<str:action>/', GlobalAction.as_view(), name='global_action'),
 ]
 
 from .workspace_views import WorkspaceList, WorkspaceCreate, WorkspaceDetail, ForecastCreate, WorkspaceEdit, AddWorkspaceWork, AddWorkspaceResource, WorkspaceWorkCreate
@@ -163,3 +162,6 @@ urlpatterns += [path('macro/create/',MacroCreate.as_view(),name='macro_history_c
 
 from .task_views import TaskList,TaskDetail,TaskCreate
 urlpatterns += [path('tasks/',TaskList.as_view(),name='task_list'),path('tasks/create/',TaskCreate.as_view(),name='task_create'),path('tasks/<int:pk>/',TaskDetail.as_view(),name='task_detail')]
+
+# Specific global routes must precede the generic POST action endpoint.
+urlpatterns += [path('global/<int:pk>/<str:action>/', GlobalAction.as_view(), name='global_action')]

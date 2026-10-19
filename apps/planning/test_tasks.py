@@ -88,12 +88,21 @@ class TaskTests(TestCase):
     def test_parallel_approval_tasks_ceo_only_after_four_and_stale_round(self):
         version=self.create().baseline_version
         version=GlobalPlanService.transition(version,self.planner,'submit')
-        self.assertEqual(WorkTask.objects.filter(kind='APPROVAL',status='OPEN').count(),3)
+        self.assertEqual(WorkTask.objects.filter(kind='APPROVAL',status='OPEN').count(),0)
+        with self.assertRaisesMessage(ValidationError,'Сначала требуется подтверждение проверки сметчика'):
+            GlobalPlanService.transition(version,self.approvers['PRODUCTION_HEAD'],'approve_production')
+        with self.assertRaises(ValidationError):
+            GlobalPlanService.transition(version,self.approvers['PRODUCTION_HEAD'],'reject','До проверки сметчика')
+        from .approval_workflow import panel
+        before=panel(version,self.approvers['PRODUCTION_HEAD'])
+        self.assertFalse(before['can_return'])
+        self.assertFalse(any(row['can_approve'] for row in before['approval_sections']))
         self.assertFalse(WorkTask.objects.filter(target_role='CEO').exists())
         queue=WorkTask.objects.get(kind='ESTIMATE',estimate__isnull=True)
         est=tasks.claim_estimate(self.estimator,queue)
         for wid in estimate_review.work_ids(version):estimate_review.review_work(self.estimator,est,wid,True)
         estimate_review.finish(self.estimator,est,True)
+        self.assertEqual(WorkTask.objects.filter(kind='APPROVAL',status='OPEN').count(),3)
         version=departments(version,self.approvers)
         self.assertEqual(WorkTask.objects.filter(target_role='CEO',status='OPEN').count(),1)
         version=GlobalPlanService.transition(version,self.approvers['CEO'],'reject','Исправить')

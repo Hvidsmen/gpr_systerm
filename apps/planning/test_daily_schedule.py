@@ -2,7 +2,7 @@ from datetime import date
 from decimal import Decimal
 from copy import deepcopy
 from django.test import TestCase
-from django.urls import reverse
+from django.urls import reverse,resolve
 from django.core.exceptions import ValidationError,PermissionDenied
 from apps.accounts.models import Company,Role,User
 from apps.works.progress import work_specification
@@ -21,6 +21,17 @@ from .report_services import select_sources
 class DailyScheduleTests(TestCase):
     @classmethod
     def setUpTestData(cls):fixtures.WorkspaceTests.setUpTestData.__func__(cls)
+
+    def test_creation_url_opens_form_instead_of_post_only_action(self):
+        self.prepare()
+        self.client.force_login(self.planner)
+        url=reverse('planning:daily_schedule_create',args=[self.source.pk])
+        self.assertEqual(resolve(url).url_name,'daily_schedule_create')
+        response=self.client.get(url)
+        self.assertEqual(response.status_code,200)
+        self.assertTemplateUsed(response,'planning/daily_schedule_create.html')
+        self.assertEqual(resolve(reverse('planning:global_delete',args=[self.source.pk])).url_name,'global_delete')
+        self.assertEqual(resolve(reverse('planning:global_action',args=[self.source.pk,'submit'])).url_name,'global_action')
 
     def prepare(self,composite=False):
         self.work=self.composite if composite else self.simple

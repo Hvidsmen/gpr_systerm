@@ -68,12 +68,17 @@ def sync_version(version):
             decision=decisions.get(mapping.get(task.target_role))
             state(task,'DONE' if decision else 'SUPERSEDED',decision.actor if decision else None,'План уже утвержден.')
         return
-    for section,label,role in [('PRODUCTION','Работы','PRODUCTION_HEAD'),('HR','Люди','HR_HEAD'),('TECH','Техника и ГСМ','TECH_HEAD')]:
-        people=list(User.objects.filter(company_id=version.company_id,role__code=role,is_active=True)[:2])
-        task=ensure(version.company,f'approval:{review.pk}:{section}',kind='APPROVAL',title=f'Согласовать план: {label}',target_role=role,assigned_to=people[0] if len(people)==1 else None,created_by=review.submitted_by,version=version,review=review,construction_object_id=version.construction_object_id,due_date=timezone.localdate()+timedelta(days=2),description=f'Раунд {review.number}. Раздел: {label}.')
-        if task.status=='OPEN' and task.assigned_to_id and (not task.assigned_to.is_active or role_code(task.assigned_to)!=role):
-            task.assigned_to=people[0] if len(people)==1 else None;task.save(update_fields=['assigned_to']);event(task,None,'Переназначено','Изменился ответственный по роли.')
-        if section in decisions:state(task,'DONE',decisions[section].actor,decisions[section].comment)
+    if 'ESTIMATE' not in decisions:
+        for task in WorkTask.objects.filter(review=review,kind='APPROVAL',status__in=ACTIVE):
+            state(task,'SUPERSEDED',text='Сначала требуется проверка сметчика.')
+    else:
+        for section,label,role in [('PRODUCTION','Работы','PRODUCTION_HEAD'),('HR','Люди','HR_HEAD'),('TECH','Техника и ГСМ','TECH_HEAD')]:
+            people=list(User.objects.filter(company_id=version.company_id,role__code=role,is_active=True)[:2])
+            task=ensure(version.company,f'approval:{review.pk}:{section}',kind='APPROVAL',title=f'Согласовать план: {label}',target_role=role,assigned_to=people[0] if len(people)==1 else None,created_by=review.submitted_by,version=version,review=review,construction_object_id=version.construction_object_id,due_date=timezone.localdate()+timedelta(days=2),description=f'Раунд {review.number}. Раздел: {label}.')
+            if task.status=='OPEN' and task.assigned_to_id and (not task.assigned_to.is_active or role_code(task.assigned_to)!=role):
+                task.assigned_to=people[0] if len(people)==1 else None;task.save(update_fields=['assigned_to']);event(task,None,'Переназначено','Изменился ответственный по роли.')
+            if task.status=='SUPERSEDED' and section not in decisions:state(task,'OPEN',text='Проверка сметчика завершена.')
+            if section in decisions:state(task,'DONE',decisions[section].actor,decisions[section].comment)
     latest=version.estimate_reviews.order_by('-pk').first()
     if latest:
         task=estimate_task(latest)
