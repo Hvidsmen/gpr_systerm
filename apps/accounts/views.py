@@ -1,5 +1,9 @@
 from django.shortcuts import render, redirect
-from django.contrib.auth import login, logout
+from django.contrib.auth import login, logout, update_session_auth_hash
+from django.contrib.auth.forms import PasswordChangeForm
+from django.views.decorators.debug import sensitive_post_parameters
+from django.views.decorators.cache import never_cache
+from django.views.decorators.http import require_http_methods
 from django.contrib import messages
 from django.views.generic import ListView, DetailView
 from django.utils.translation import gettext_lazy as _
@@ -113,3 +117,19 @@ class CompanyUserAccessView(CompanyScopedMixin, UpdateView):
             form.add_error(None, 'Нельзя снять собственные права администратора или отключить свою учётную запись.')
             return self.form_invalid(form)
         return super().form_valid(form)
+
+
+@login_required
+@sensitive_post_parameters('old_password', 'new_password1', 'new_password2')
+@never_cache
+@require_http_methods(['GET', 'POST'])
+def password_change_view(request):
+    form = PasswordChangeForm(request.user, request.POST if request.method == 'POST' else None)
+    for field in form.fields.values():
+        field.widget.attrs['class'] = 'form-control'
+    if request.method == 'POST' and form.is_valid():
+        user = form.save()
+        update_session_auth_hash(request, user)
+        messages.success(request, 'Пароль успешно изменен.')
+        return redirect('accounts:password_change')
+    return render(request, 'accounts/password_change.html', {'form': form})

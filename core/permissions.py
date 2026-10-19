@@ -68,6 +68,8 @@ def scope_queryset(queryset, user):
 def check_route(user, match, method):
     namespace, name = match.namespace, match.url_name
     role = role_code(user)
+    if namespace == 'accounts' and name == 'password_change':
+        return
     if role == 'OBSERVER':
         require_roles(user, READ_ROLES)
         if namespace == 'accounts' and name == 'logout':

@@ -370,6 +370,9 @@
                         <li><a class="dropdown-item" href="{% url 'accounts:settings' %}">
                             <i class="bi bi-person"></i> Профиль
                         </a></li>
+                        <li><a class="dropdown-item" href="{% url 'accounts:password_change' %}">
+                            <i class="bi bi-key"></i> Сменить пароль
+                        </a></li>
                         {% if user.is_superuser %}
                             <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="{% url 'admin:index' %}">
