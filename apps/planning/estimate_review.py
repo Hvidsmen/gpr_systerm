@@ -42,8 +42,10 @@ def editable(obj):
         raise ValidationError('Проверка доступна для черновика, плана на доработке или на согласовании.')
 
 
-def signature(obj):
-    ids=work_ids(obj)
+def signature(obj,*,legacy=False):
+    # Before monthly scoping, pending rounds used all allocation rows and no period key.
+    # Recompute that exact format only to verify unchanged pre-update submissions.
+    ids=set(obj.work_allocations.values_list('work_id',flat=True)) if legacy and not isinstance(obj,DailySchedule) else work_ids(obj)
     works=list(ProjectWork.objects.filter(company_id=obj.company_id,pk__in=ids).order_by('pk').values())
     items=list(ProjectWorkItem.objects.filter(company_id=obj.company_id,project_work_id__in=ids).order_by('pk').values())
     prices=list(WorkPrice.objects.filter(company_id=obj.company_id,work_id__in=ids).order_by('pk').values())
@@ -51,7 +53,8 @@ def signature(obj):
         inputs=list(obj.entries.order_by('pk').values('key','kind','label','metadata','rows','revision'))
     else:
         start,end=review_period(obj)
-        inputs={'works':list(review_allocations(obj).order_by('pk').values()),'resources':list(obj.resource_allocations.filter(month__range=(start,end)).order_by('pk').values()),'month':obj.planning_month,'scenario':obj.scenario,'period':[start,end]}
+        inputs={'works':list((obj.work_allocations if legacy else review_allocations(obj)).order_by('pk').values()),'resources':list((obj.resource_allocations if legacy else obj.resource_allocations.filter(month__range=(start,end))).order_by('pk').values()),'month':obj.planning_month,'scenario':obj.scenario}
+        if not legacy:inputs['period']=[start,end]
     # Catalog timestamps are audit data, not planning inputs.
     for rows in (works,items,prices):
         for row in rows:
@@ -342,7 +345,7 @@ def finish(user,task,approve,comment=''):
         if isinstance(obj,GlobalPlanVersion) and obj.status=='SUBMITTED':
             from .approval_workflow import current_review
             review=current_review(obj)
-            if review.input_fingerprint and review.input_fingerprint!=signature(obj):
+            if review.input_fingerprint and review.input_fingerprint!=signature(obj) and review.input_fingerprint!=signature(obj,legacy=True):
                 raise ValidationError('Справочник или план изменился после отправки. Верните план на доработку и отправьте обновленный расчет на повторное согласование.')
         for work in works:
             d=task.decisions.get(str(work.pk),{})
