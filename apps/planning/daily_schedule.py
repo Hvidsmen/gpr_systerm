@@ -71,7 +71,7 @@ def create(user,source,month):
     require_roles(user,PLAN_ROLES)
     source=GlobalPlanVersion.objects.select_for_update().defer('snapshot').get(pk=source.pk,company=user.company)
     validate_source(source,month)
-    draft=DailySchedule.objects.filter(source=source,month=month,status='DRAFT').first()
+    draft=DailySchedule.objects.filter(source=source,month=month,status__in=['DRAFT','SUBMITTED','APPROVED']).first()
     if draft:return draft
     snapshot=period_snapshot(source,*bounds(month));prior=history(source,month)
     active=DailySchedule.objects.filter(source=source,month=month,status='APPLIED').first()
@@ -153,13 +153,22 @@ def activate(user,schedule):
     require_roles(user,PLAN_ROLES)
     GlobalPlanVersion.objects.select_for_update().get(pk=schedule.source_id,company=user.company)
     schedule=DailySchedule.objects.select_for_update().select_related('source').defer('source__snapshot').get(pk=schedule.pk,company=user.company)
-    if schedule.status!='DRAFT':raise ValidationError('Создайте новую редакцию для изменения СМГ.')
+    from .daily_schedule_approval import current,requires_approval
+    if schedule.status not in {'DRAFT','APPROVED'}:raise ValidationError('СМГ зафиксирован или находится на согласовании.')
+    needs_approval=requires_approval(schedule)
+    if needs_approval and schedule.status!='APPROVED':raise ValidationError('СМГ отличается от ГПР. Сначала получите согласование служб и генерального директора.')
+    review=current(schedule)
+    from .estimate_review import signature
+    if needs_approval and (not review or not review.decisions.filter(section='CEO',action='APPROVE').exists() or review.fingerprint!=signature(schedule)):raise ValidationError('Нет действующего утверждения дневного СМГ.')
     validate_source(schedule.source,schedule.month)
     from .estimate_review import require_approved
     require_approved(schedule)
     if not ALLOW_MONTH_CHANGES and any(differences(e,e.rows) for e in schedule.entries.select_related('schedule')):raise ValidationError('Месячные итоги СМГ должны совпадать с ГПР.')
     DailySchedule.objects.filter(source=schedule.source,month=schedule.month,status='APPLIED').update(status='ARCHIVED')
-    schedule.status='APPLIED';schedule.save(update_fields=['status','updated_at']);return schedule
+    schedule.status='APPLIED';schedule.save(update_fields=['status','updated_at'])
+    from .daily_schedule_approval import sync
+    sync(schedule)
+    return schedule
 
 
 def overlay(source,snapshot,start,end):

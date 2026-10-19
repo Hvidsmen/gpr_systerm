@@ -31,6 +31,7 @@ class CreateForm(forms.Form):
 
 def link(task):
     if task.kind=='FACT':return reverse('production:fact_day_workspace')+'?'+urlencode({'construction_object':task.construction_object_id,'date':task.fact_date.isoformat()})
+    if task.kind=='SUBMISSION' and task.schedule_id:return reverse('planning:daily_schedule_detail',args=[task.schedule_id])
     if task.estimate_id:return reverse('planning:estimate_review_detail',args=[task.estimate_id])
     if task.carryover_id:return reverse('planning:carryover_task_detail',args=[task.carryover_id])
     if task.schedule_id:return reverse('planning:daily_schedule_detail',args=[task.schedule_id])
@@ -93,7 +94,9 @@ class TaskDetail(View):
         task=get_object_or_404(service.visible(request.user).select_related('assigned_to','created_by','construction_object','work'),pk=pk)
         return self.show(request,task)
     def show(self,request,task):
-        return render(request,'planning/task_detail.html',{'task':task,'target_url':link(task),'executor':role_code(request.user)!='OBSERVER' and service.is_executor(request.user,task),'author':role_code(request.user)!='OBSERVER' and task.created_by_id==request.user.pk,'events':task.events.select_related('actor'),'children':service.visible(request.user).filter(estimate_id=task.estimate_id,kind='REMARK') if task.kind=='ESTIMATE' and task.estimate_id else service.visible(request.user).filter(parent=task),'can_comment':role_code(request.user)!='OBSERVER','fact_sections':[('works','Работы'),('labor','Люди'),('equipment','Техника'),('fuel','ГСМ')]})
+        from .daily_schedule_approval import next_action
+        next_label=next_action(task.schedule) if task.kind=='SUBMISSION' and task.schedule_id else ''
+        return render(request,'planning/task_detail.html',{'submission_action_label':next_label,'task':task,'target_url':link(task),'executor':role_code(request.user)!='OBSERVER' and service.is_executor(request.user,task),'author':role_code(request.user)!='OBSERVER' and task.created_by_id==request.user.pk,'events':task.events.select_related('actor'),'children':service.visible(request.user).filter(estimate_id=task.estimate_id,kind='REMARK') if task.kind=='ESTIMATE' and task.estimate_id else service.visible(request.user).filter(parent=task),'can_comment':role_code(request.user)!='OBSERVER','fact_sections':[('works','Работы'),('labor','Люди'),('equipment','Техника'),('fuel','ГСМ')]})
     def post(self,request,pk):
         if role_code(request.user)=='OBSERVER':raise PermissionDenied
         task=get_object_or_404(service.visible(request.user),pk=pk)
@@ -104,15 +107,33 @@ class TaskDetail(View):
             elif action=='claim':
                 estimate=service.claim_estimate(request.user,task)
                 return redirect('planning:estimate_review_detail',pk=estimate.pk)
+            elif action=='launch':
+                if task.kind!='SUBMISSION' or task.status!='OPEN' or not service.is_executor(request.user,task):raise PermissionDenied
+                from .daily_schedule_approval import transition
+                if task.key.startswith('smg-apply:'):
+                    from .daily_schedule import activate
+                    activate(request.user,task.schedule)
+                else:
+                    from .daily_schedule_approval import requires_approval
+                    if requires_approval(task.schedule):transition(request.user,task.schedule,'submit')
+                    else:
+                        from .daily_schedule import activate
+                        activate(request.user,task.schedule)
             elif action in {'approve','reject'}:
                 with transaction.atomic():
-                    task=service.visible(request.user).select_for_update().select_related('version','review').defer('version__snapshot','review__snapshot').get(pk=pk)
+                    task=service.visible(request.user).select_for_update().select_related('version','review','schedule_review').defer('version__snapshot','review__snapshot','schedule_review__snapshot').get(pk=pk)
                     if task.kind!='APPROVAL' or task.status!='OPEN' or not service.is_executor(request.user,task):raise PermissionDenied
-                    version=task.version
-                    if version.status!='SUBMITTED' or version.approval_round!=task.review.number:raise ValidationError('Раунд согласования уже изменился.')
                     commands={'PRODUCTION_HEAD':'approve_production','HR_HEAD':'approve_hr','TECH_HEAD':'approve_tech','CEO':'approve'}
-                    from .global_services import GlobalPlanService
-                    GlobalPlanService.transition(version,request.user,commands[task.target_role] if action=='approve' else 'reject',text)
+                    if task.schedule_id:
+                        from .daily_schedule_approval import transition
+                        schedule=task.schedule
+                        if schedule.status!='SUBMITTED' or not task.schedule_review_id or schedule.approval_round!=task.schedule_review.number:raise ValidationError('Раунд согласования СМГ уже изменился.')
+                        transition(request.user,schedule,commands[task.target_role] if action=='approve' else 'reject',text)
+                    else:
+                        version=task.version
+                        if version.status!='SUBMITTED' or version.approval_round!=task.review.number:raise ValidationError('Раунд согласования уже изменился.')
+                        from .global_services import GlobalPlanService
+                        GlobalPlanService.transition(version,request.user,commands[task.target_role] if action=='approve' else 'reject',text)
             else:raise ValidationError('Неизвестное действие.')
             messages.success(request,'Задание обновлено.')
         except ValidationError as e:messages.error(request,'; '.join(e.messages))

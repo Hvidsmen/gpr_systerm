@@ -105,6 +105,9 @@ def create_repair(version,actor,comment):
 
 def sync_company(company):
     for estimate in EstimateReviewTask.objects.filter(company=company).select_related('version','schedule__source').defer('version__snapshot','schedule__source__snapshot').iterator():estimate_task(estimate)
+    from .daily_schedule_approval import sync as sync_daily
+    from .models import DailySchedule
+    for schedule in DailySchedule.objects.filter(company=company).filter(Q(status__in=['SUBMITTED','APPROVED'])|Q(status='DRAFT',estimate_reviews__status='APPROVED')).distinct().select_related('source').defer('source__snapshot').iterator():sync_daily(schedule)
     for version in GlobalPlanVersion.objects.filter(company=company,status__in=['SUBMITTED','APPROVED','COMPLETED']).defer('snapshot').iterator():sync_version(version)
     for record in CarryoverReviewTask.objects.filter(company=company,due_date__lte=timezone.localdate()).select_related('version','correction_version').defer('version__snapshot','correction_version__snapshot'):
         task=ensure(company,f'carryover:{record.pk}',kind='CARRYOVER',title='Уточнить прогнозные остатки по закрытому факту',assigned_to=record.assigned_to,version=record.version,carryover=record,construction_object_id=record.version.construction_object_id,due_date=record.due_date)

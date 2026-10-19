@@ -1218,10 +1218,11 @@ class WorkCarryover(BaseCompanyModel):
 
 
 class DailySchedule(BaseCompanyModel):
+    approval_round = models.PositiveIntegerField(default=0)
     source = models.ForeignKey(GlobalPlanVersion, on_delete=models.PROTECT, related_name='daily_schedules')
     month = models.DateField()
     revision = models.PositiveIntegerField()
-    status = models.CharField(max_length=12, default='DRAFT', choices=[('DRAFT','Черновик'),('APPLIED','Применен'),('ARCHIVED','Предыдущая редакция')])
+    status = models.CharField(max_length=12, default='DRAFT', choices=[('DRAFT','Черновик'),('SUBMITTED','На согласовании'),('APPROVED','Утвержден'),('APPLIED','Применен'),('ARCHIVED','Предыдущая редакция')])
     created_by = models.ForeignKey('accounts.User', on_delete=models.PROTECT)
 
     class Meta:
@@ -1291,8 +1292,9 @@ class MacroHistorySource(BaseCompanyModel):
 
 
 class WorkTask(BaseCompanyModel):
+    schedule_review = models.ForeignKey('DailyScheduleReview',null=True,blank=True,on_delete=models.CASCADE,related_name='work_tasks')
     key = models.CharField(max_length=180)
-    kind = models.CharField(max_length=20,choices=[('ESTIMATE','Проверка сметчика'),('REMARK','Замечание'),('APPROVAL','Согласование'),('FACT','Факт за день'),('CARRYOVER','Уточнение остатков'),('MANUAL','Задание')])
+    kind = models.CharField(max_length=20,choices=[('SUBMISSION','Следующий этап плана'),('ESTIMATE','Проверка сметчика'),('REMARK','Замечание'),('APPROVAL','Согласование'),('FACT','Факт за день'),('CARRYOVER','Уточнение остатков'),('MANUAL','Задание')])
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
     status = models.CharField(max_length=20,default='OPEN',choices=[('OPEN','Открыто'),('IN_REVIEW','На проверке автора'),('DONE','Выполнено'),('SUPERSEDED','Заменено / отменено')])
@@ -1353,3 +1355,35 @@ class MacroCarryoverWork(BaseCompanyModel):
 
     class Meta:
         constraints=[models.UniqueConstraint(fields=['workspace','source_work'],name='unique_macro_carryover_source'),models.UniqueConstraint(fields=['workspace','target_work'],name='unique_macro_carryover_target')]
+
+
+class DailyScheduleReview(BaseCompanyModel):
+    schedule = models.ForeignKey(DailySchedule,on_delete=models.CASCADE,related_name='approval_reviews')
+    number = models.PositiveIntegerField()
+    fingerprint = models.CharField(max_length=64)
+    snapshot = models.JSONField(default=list)
+    submitted_by = models.ForeignKey('accounts.User',on_delete=models.PROTECT)
+
+    class Meta:
+        constraints=[models.UniqueConstraint(fields=['schedule','number'],name='unique_daily_schedule_approval_round')]
+
+    def save(self,*args,**kwargs):
+        if self.pk:raise ValidationError('Раунд согласования СМГ изменять нельзя.')
+        return super().save(*args,**kwargs)
+
+
+class DailyScheduleDecision(BaseCompanyModel):
+    review = models.ForeignKey(DailyScheduleReview,on_delete=models.CASCADE,related_name='decisions')
+    section = models.CharField(max_length=20)
+    action = models.CharField(max_length=12)
+    actor = models.ForeignKey('accounts.User',on_delete=models.PROTECT)
+    actor_name = models.CharField(max_length=350)
+    actor_role = models.CharField(max_length=50)
+    comment = models.TextField(blank=True)
+
+    class Meta:
+        constraints=[models.UniqueConstraint(fields=['review','section','action'],name='unique_daily_schedule_decision')]
+
+    def save(self,*args,**kwargs):
+        if self.pk:raise ValidationError('Решение согласования СМГ изменять нельзя.')
+        return super().save(*args,**kwargs)

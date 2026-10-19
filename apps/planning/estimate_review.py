@@ -48,6 +48,7 @@ def signature(obj,*,legacy=False):
     # Before monthly scoping, pending rounds used all allocation rows and no period key.
     # Recompute that exact format only to verify unchanged pre-update submissions.
     ids=set(obj.work_allocations.values_list('work_id',flat=True)) if legacy and not isinstance(obj,DailySchedule) else work_ids(obj)
+    if legacy and isinstance(obj,DailySchedule):ids={e.metadata['id'] for e in obj.entries.filter(kind='work')}
     works=list(ProjectWork.objects.filter(company_id=obj.company_id,pk__in=ids).order_by('pk').values())
     items=list(ProjectWorkItem.objects.filter(company_id=obj.company_id,project_work_id__in=ids).order_by('pk').values())
     prices=list(WorkPrice.objects.filter(company_id=obj.company_id,work_id__in=ids).order_by('pk').values())
@@ -66,9 +67,14 @@ def signature(obj,*,legacy=False):
 
 def require_approved(obj):
     task=obj.estimate_reviews.order_by('-pk').first()
-    if not task or task.status!='APPROVED' or task.fingerprint!=signature(obj):
+    if not check_valid(obj,task):
         raise ValidationError('Сначала передайте план сметчику и получите подтверждение цен, названий и состава работ. После изменений нужна повторная проверка.')
     return task
+
+
+def check_valid(obj,task):
+    if not task or task.status!='APPROVED':return False
+    return task.fingerprint==signature(obj) or isinstance(obj,DailySchedule) and task.fingerprint==signature(obj,legacy=True)
 
 
 @transaction.atomic
@@ -97,7 +103,7 @@ def event(task,user,action,details):
 
 def lock_task(user,task,*,editing=False):
     require_roles(user,{'ESTIMATOR','ADMIN'})
-    task=EstimateReviewTask.objects.select_for_update().select_related('version','schedule').defer('version__snapshot').get(pk=task.pk,company=user.company)
+    task=EstimateReviewTask.objects.select_for_update().select_related('version','schedule__source').defer('version__snapshot','schedule__source__snapshot').get(pk=task.pk,company=user.company)
     if role_code(user)!='ADMIN' and task.assigned_to_id!=user.pk:raise PermissionDenied('Задание назначено другому сметчику.')
     editable(target(task))
     if task.status!='OPEN':raise ValidationError('Для дальнейших исправлений планировщик должен повторно назначить проверку.')
@@ -111,7 +117,13 @@ def lock_task(user,task,*,editing=False):
 
 def return_to_draft(task,user,comment):
     obj=target(task)
-    if isinstance(obj,DailySchedule) or obj.status!='SUBMITTED':return
+    if isinstance(obj,DailySchedule):
+        if obj.status=='SUBMITTED':
+            from .daily_schedule_approval import transition
+            updated=transition(user,obj,'reject',comment)
+            obj.status=updated.status
+        return
+    if obj.status!='SUBMITTED':return
     from .approval_workflow import current_review
     from .approval_context import authorized_transition
     from .models import GlobalPlanDecision
@@ -367,6 +379,9 @@ def finish(user,task,approve,comment=''):
     task.comment=comment.strip();task.save();event(task,user,task.status,{'comment':comment})
     from .task_services import estimate_task,sync_version,create_repair
     estimate_task(task)
+    if task.schedule_id:
+        from .daily_schedule_approval import sync
+        sync(obj)
     if task.version_id:
         sync_version(obj)
         if not approve:create_repair(obj,user,comment)

@@ -63,8 +63,19 @@ class DailyScheduleDetail(View):
             entry.comparison=summary(entry)
         from .daily_schedule_matrix import matrix
         editable=schedule.status=='DRAFT' and role_code(request.user) in PLAN_ROLES
+        from .daily_schedule_approval import current,SECTIONS,requires_approval
+        from .estimate_review import check_valid
+        review=current(schedule)
+        decisions=list(review.decisions.all()) if review else []
+        approved={d.section for d in decisions if d.action=='APPROVE'}
+        ready={'PRODUCTION','HR','TECH'}<=approved
+        latest=schedule.estimate_reviews.order_by('-pk').first()
+        checked=check_valid(schedule,latest)
+        role=role_code(request.user)
+        actions=[{'label':label,'action':{'PRODUCTION':'approve_production','HR':'approve_hr','TECH':'approve_tech'}[section],'done':section in approved,'allowed':schedule.status=='SUBMITTED' and role in {assigned,'ADMIN'} and section not in approved} for section,label,assigned in SECTIONS]
+        approval={'smg_requires_approval':requires_approval(schedule),'smg_review':review,'smg_decisions':decisions,'smg_actions':actions,'smg_checked':checked,'smg_final_allowed':schedule.status=='SUBMITTED' and ready and role in {'CEO','ADMIN'},'smg_return_allowed':schedule.status=='SUBMITTED' and (role in {'PRODUCTION_HEAD','HR_HEAD','TECH_HEAD','ADMIN'} or role=='CEO' and ready)}
         from .daily_schedule_table_forms import AddEntryForm
-        return render(request,'planning/daily_schedule_detail.html',dict(schedule=schedule,entries=entries,can_edit=role_code(request.user) in PLAN_ROLES,table_editable=editable,add_form=add_form or (AddEntryForm(schedule=schedule) if editable else None),has_deviations=any(service.differences(e,e.rows) for e in entries),**matrix(schedule,entries)))
+        return render(request,'planning/daily_schedule_detail.html',dict(schedule=schedule,entries=entries,can_edit=role_code(request.user) in PLAN_ROLES,table_editable=editable,add_form=add_form or (AddEntryForm(schedule=schedule) if editable else None),has_deviations=any(service.differences(e,e.rows) for e in entries),**approval,**matrix(schedule,entries)))
 
     def post(self,request,pk):
         require_roles(request.user,PLAN_ROLES)
@@ -133,10 +144,16 @@ class DailyScheduleEdit(View):
 
 class DailyScheduleApply(View):
     def post(self,request,pk):
-        require_roles(request.user,PLAN_ROLES)
+        require_roles(request.user,READ_ROLES)
         schedule=get_object_or_404(DailySchedule,pk=pk,company=request.user.company)
         try:
-            service.activate(request.user,schedule)
-            messages.success(request,'Дневной СМГ применен к оперативным отчетам. Утвержденный ГПР сохранен.')
+            action=request.POST.get('action','apply')
+            if action=='apply':
+                service.activate(request.user,schedule)
+                messages.success(request,'Дневной СМГ применен к оперативным отчетам. Утвержденный ГПР сохранен.')
+            else:
+                from .daily_schedule_approval import transition
+                transition(request.user,schedule,action,request.POST.get('comment',''))
+                messages.success(request,'Решение по согласованию СМГ сохранено.')
         except ValidationError as exc:messages.error(request,'; '.join(exc.messages))
         return redirect('planning:daily_schedule_detail',pk=schedule.pk)
