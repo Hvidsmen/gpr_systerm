@@ -90,6 +90,11 @@ def create(user,source,month):
         for identity,original in grouped.items():
             key=kind+':'+hashlib.sha256(json.dumps(identity).encode()).hexdigest()
             entries.append(DailyScheduleEntry(schedule=schedule,key=key,kind=kind,label=original[0].get('label',str(identity)),metadata={},original=deepcopy(original),rows=deepcopy(previous.get(key,original))))
+    if active:
+        included={e.key for e in entries}
+        for entry in active.entries.all():
+            if entry.key not in included:
+                entries.append(DailyScheduleEntry(schedule=schedule,key=entry.key,kind=entry.kind,label=entry.label,metadata=deepcopy(entry.metadata),original=deepcopy(entry.original),rows=deepcopy(entry.rows)))
     DailyScheduleEntry.objects.bulk_create(entries)
     return schedule
 
@@ -165,7 +170,9 @@ def overlay(source,snapshot,start,end):
         for entry in schedule.entries.all():
             if entry.kind=='work':
                 spec=specs.get(entry.metadata['id'])
-                if not spec:continue
+                if not spec:
+                    spec=deepcopy(entry.metadata);spec.update(plans=[],daily=[])
+                    specs[spec['id']]=spec;result.setdefault('works',[]).append(spec)
                 generated=finalize_work(entry.metadata,entry.rows,SimpleNamespace(start_date=schedule.month,end_date=bounds(schedule.month)[1]),entry.metadata.get('history',[]))
                 for field in ['name','unit_price','revenue_prices','items']:
                     if field in entry.metadata:spec[field]=deepcopy(entry.metadata[field])

@@ -1,9 +1,11 @@
 from decimal import Decimal
+import json
 from django import forms
 from django.forms import formset_factory
 from django.core.exceptions import ValidationError, PermissionDenied
 from django.contrib import messages
 from django.shortcuts import get_object_or_404, render, redirect
+from django.http import JsonResponse
 from django.views import View
 from core.permissions import require_roles, READ_ROLES, PLAN_ROLES, role_code
 from .models import GlobalPlanVersion, DailySchedule, DailyScheduleEntry
@@ -52,7 +54,7 @@ class DailyScheduleCreate(View):
 
 
 class DailyScheduleDetail(View):
-    def get(self,request,pk):
+    def get(self,request,pk,add_form=None):
         require_roles(request.user,READ_ROLES)
         schedule=get_object_or_404(DailySchedule.objects.select_related('source__construction_object').defer('source__snapshot'),pk=pk,company=request.user.company)
         entries=list(schedule.entries.all())
@@ -60,7 +62,32 @@ class DailyScheduleDetail(View):
             entry.schedule=schedule
             entry.comparison=summary(entry)
         from .daily_schedule_matrix import matrix
-        return render(request,'planning/daily_schedule_detail.html',dict(schedule=schedule,entries=entries,can_edit=role_code(request.user) in PLAN_ROLES,has_deviations=any(service.differences(e,e.rows) for e in entries),**matrix(schedule,entries)))
+        editable=schedule.status=='DRAFT' and role_code(request.user) in PLAN_ROLES
+        from .daily_schedule_table_forms import AddEntryForm
+        return render(request,'planning/daily_schedule_detail.html',dict(schedule=schedule,entries=entries,can_edit=role_code(request.user) in PLAN_ROLES,table_editable=editable,add_form=add_form or (AddEntryForm(schedule=schedule) if editable else None),has_deviations=any(service.differences(e,e.rows) for e in entries),**matrix(schedule,entries)))
+
+    def post(self,request,pk):
+        require_roles(request.user,PLAN_ROLES)
+        schedule=get_object_or_404(DailySchedule,pk=pk,company=request.user.company)
+        if schedule.status!='DRAFT':raise PermissionDenied('СМГ зафиксирован. Создайте новую редакцию.')
+        from .daily_schedule_table import save_table,add_entry
+        if request.content_type=='application/json':
+            try:
+                payload=json.loads(request.body)
+                if not isinstance(payload,dict):raise ValidationError('Неверный запрос.')
+                count=save_table(request.user,schedule,payload.get('entries'))
+                return JsonResponse({'saved':count})
+            except (ValidationError,ValueError) as exc:
+                return JsonResponse({'error':'; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Неверный формат запроса.'},status=400)
+        from .daily_schedule_table_forms import AddEntryForm
+        form=AddEntryForm(request.POST,schedule=schedule)
+        if form.is_valid():
+            try:
+                add_entry(request.user,schedule,form.cleaned_data)
+                messages.success(request,'Строка добавлена. Заполните дневные значения в таблице и сохраните изменения.')
+                return redirect('planning:daily_schedule_detail',pk=pk)
+            except ValidationError as exc:form.add_error(None,exc)
+        return self.get(request,pk,add_form=form)
 
 
 class DailyScheduleEdit(View):

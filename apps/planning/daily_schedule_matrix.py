@@ -16,6 +16,7 @@ def matrix(schedule,entries):
     equipment={e.pk:e for e in EquipmentType.objects.filter(company_id=schedule.company_id).select_related('category')}
     grouped={kind:defaultdict(list) for kind in service.FIELDS};totals={kind:{} for kind in service.FIELDS}
     for entry in entries:
+        if not entry.comparison:continue
         first=next(iter(entry.rows or entry.original),{})
         entry.reference=first.get('equipment_number','')
         group='Без группы'
@@ -36,6 +37,8 @@ def matrix(schedule,entries):
             composites['before']=entry.metadata.get('original_daily',[])
             composites['after']=service.finalize_work(entry.metadata,entry.rows,SimpleNamespace(start_date=start,end_date=end),entry.metadata.get('history',[]))['daily']
         for comparison in entry.comparison:
+            comparison['item_id_value']=int(comparison['item_id']) if comparison['item_id'] not in (None,'None') else ''
+            comparison['step']=str(Decimal(1).scaleb(-next((digits for name,_,digits in service.FIELDS[entry.kind] if name==comparison['field']),6)))
             values={side:defaultdict(Decimal) for side in ['before','after']}
             for side,rows in [('before',entry.original),('after',entry.rows)]:
                 field=comparison['field']
@@ -44,6 +47,7 @@ def matrix(schedule,entries):
                     if entry.kind=='work' and comparison['field']!='work_total' and str(row.get('item_id'))!=comparison['item_id']:continue
                     values[side][row['date']]+=Decimal(str(row.get(field) or 0))
             comparison['cells']=[{'before':values['before'][day.isoformat()],'after':values['after'][day.isoformat()],'delta':values['after'][day.isoformat()]-values['before'][day.isoformat()]} for day in days]
+            for cell,day in zip(comparison['cells'],days):cell['date']=day.isoformat()
             entry.has_deviation=entry.has_deviation or any(cell['delta'] for cell in comparison['cells'])
             if entry.kind!='work':
                 total=totals[entry.kind].setdefault(comparison['field'],{'label':comparison['label'],'before':Decimal(0),'after':Decimal(0),'delta':Decimal(0),'cells':[{'before':Decimal(0),'after':Decimal(0),'delta':Decimal(0)} for day in days]})
