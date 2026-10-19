@@ -33,6 +33,35 @@ class DailyScheduleTests(TestCase):
         self.assertEqual(resolve(reverse('planning:global_delete',args=[self.source.pk])).url_name,'global_delete')
         self.assertEqual(resolve(reverse('planning:global_action',args=[self.source.pk,'submit'])).url_name,'global_action')
 
+    def test_detail_matrix_groups_days_and_preserves_monthly_comparison(self):
+        self.prepare()
+        save_entry(self.planner,self.entry,self.values(self.entry,120),0)
+        response=self.client.get(reverse('planning:daily_schedule_detail',args=[self.schedule.pk]))
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(len(response.context['days']),28)
+        sections={section['kind']:section for section in response.context['sections']}
+        work=sections['work']['groups'][0]['entries'][0]
+        row=work.comparison[0]
+        self.assertEqual(row['before'],100);self.assertEqual(row['after'],120)
+        self.assertEqual(row['cells'][0]['before'],100);self.assertEqual(row['cells'][1]['after'],120)
+        self.assertEqual(sections['labor']['totals'][0]['before'],Decimal(2)/28)
+        self.assertContains(response,'Развернуть всё');self.assertContains(response,'СМГ за месяц')
+        self.source.refresh_from_db();self.assertEqual(self.source.snapshot,self.original)
+
+    def test_composite_daily_matrix_and_shift_only_deviation(self):
+        self.prepare(composite=True)
+        response=self.client.get(reverse('planning:daily_schedule_detail',args=[self.schedule.pk]))
+        entry=response.context['sections'][0]['groups'][0]['entries'][0]
+        self.assertEqual(len(entry.comparison),3)
+        self.assertEqual(entry.comparison[0]['cells'][0]['after'],10)
+        self.assertFalse(entry.has_deviation)
+        for row in self.entry.rows:row['date']='2026-02-02'
+        self.entry.save(update_fields=['rows'])
+        response=self.client.get(reverse('planning:daily_schedule_detail',args=[self.schedule.pk]))
+        entry=response.context['sections'][0]['groups'][0]['entries'][0]
+        self.assertTrue(entry.has_deviation)
+        self.assertEqual(entry.comparison[0]['delta'],0)
+
     def prepare(self,composite=False):
         self.work=self.composite if composite else self.simple
         workspace=WorkspaceService.create(self.planner,self.obj,'Daily',fixtures.JAN,date(2026,3,31))

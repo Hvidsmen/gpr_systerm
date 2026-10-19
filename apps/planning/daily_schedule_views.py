@@ -28,13 +28,13 @@ def summary(entry):
             count=Decimal(service.bounds(entry.schedule.month)[1].day)
             a,b=a/count,b/count
             label='Средняя численность, чел.' if entry.kind=='labor' else 'Среднее количество, ед.'
-        result.append(dict(label=label,before=a,after=b,delta=b-a))
+        result.append(dict(label=label,before=a,after=b,delta=b-a,field=field,item_id=key.split(':')[0] if entry.kind=='work' else None))
     if entry.kind=='work' and entry.metadata.get('kind')=='COMPOSITE':
         from types import SimpleNamespace
         generated=service.finalize_work(entry.metadata,entry.rows,SimpleNamespace(start_date=entry.schedule.month,end_date=service.bounds(entry.schedule.month)[1]),entry.metadata.get('history',[]))
         a=sum((Decimal(str(r['quantity'])) for r in entry.metadata.get('original_daily',[])),Decimal(0))
         b=sum((Decimal(str(r['quantity'])) for r in generated['daily']),Decimal(0))
-        result.insert(0,dict(label='Работа, '+entry.metadata.get('unit',''),before=a,after=b,delta=b-a))
+        result.insert(0,dict(label='Работа, '+entry.metadata.get('unit',''),before=a,after=b,delta=b-a,field='work_total',item_id=None))
     return result
 
 
@@ -59,7 +59,8 @@ class DailyScheduleDetail(View):
         for entry in entries:
             entry.schedule=schedule
             entry.comparison=summary(entry)
-        return render(request,'planning/daily_schedule_detail.html',dict(schedule=schedule,entries=entries,can_edit=role_code(request.user) in PLAN_ROLES,has_deviations=any(service.differences(e,e.rows) for e in entries)))
+        from .daily_schedule_matrix import matrix
+        return render(request,'planning/daily_schedule_detail.html',dict(schedule=schedule,entries=entries,can_edit=role_code(request.user) in PLAN_ROLES,has_deviations=any(service.differences(e,e.rows) for e in entries),**matrix(schedule,entries)))
 
 
 class DailyScheduleEdit(View):
