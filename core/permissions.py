@@ -70,6 +70,9 @@ def check_route(user, match, method):
     role = role_code(user)
     if namespace == 'accounts' and name == 'password_change':
         return
+    if namespace == 'personnel':
+        require_roles(user, {'ADMIN', 'HR_HEAD'})
+        return
     if role == 'OBSERVER':
         require_roles(user, READ_ROLES)
         if namespace == 'accounts' and name == 'logout':

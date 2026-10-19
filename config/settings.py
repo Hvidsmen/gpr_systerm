@@ -46,6 +46,7 @@ INSTALLED_APPS = [
     'apps.works',
     'apps.planning',
     'apps.rotation',
+    'apps.personnel',
     'apps.estimates',
     'apps.production',
     'apps.resources',

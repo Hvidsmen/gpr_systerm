@@ -12,6 +12,7 @@ urlpatterns = [
     path('works/', include('apps.works.urls')),
     path('planning/', include('apps.planning.urls')),
     path('estimates/', include('apps.estimates.urls')),
+    path('personnel/', include('apps.personnel.urls')),
     path('rotation/', include('apps.rotation.urls')),
     path('production/', include('apps.production.urls')),
     path('resources/', include('apps.resources.urls')),

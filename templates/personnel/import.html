@@ -1,0 +1,11 @@
+{% extends 'base.html' %}
+{% block title %}Загрузка кадрового учета{% endblock %}
+{% block content %}<a href="{% url 'personnel:board_list' %}">Кадровая служба</a><h1>Загрузка листа «Нефтепровод»</h1>
+<p>Будут загружены сотрудники, вакансии, планы численности и графики перевахты. Существующие карточки сотрудников не перезаписываются.</p>
+{% if preview %}
+<div class="alert alert-info">Сотрудников: {{ preview.employed }} · Вакансий: {{ preview.vacancies }} · Групп должностей: {{ preview.groups|length }} · Графиков: {{ preview.patterns|length }}</div>
+{% for warning in preview.warnings %}<div class="alert alert-warning">{{ warning }}</div>{% endfor %}
+<div class="card p-3"><table class="table"><thead><tr><th>Строка Excel</th><th>ФИО</th><th>Должность</th><th>ВЖГ</th><th>Статус</th><th>График</th></tr></thead><tbody>{% for r in preview.rows %}<tr><td>{{ r.row }}</td><td>{{ r.name|default:'Вакансия' }}</td><td>{{ r.position }}</td><td>{{ r.camp }}</td><td>{{ r.status }}</td><td>{{ r.kind }} {{ r.pattern }}</td></tr>{% endfor %}</tbody></table></div>
+<form method="post" class="mt-3">{% csrf_token %}<input type="hidden" name="action" value="confirm"><input type="hidden" name="token" value="{{ token }}"><label><input type="checkbox" name="confirm" required> Подтверждаю загрузку показанных данных</label><button class="btn btn-primary ms-2">Загрузить</button></form>
+{% else %}<div class="card p-3"><form method="post" enctype="multipart/form-data">{% csrf_token %}{{ form.non_field_errors }}{% for field in form %}{% if field.name != 'confirm' %}<div class="mb-3">{{ field.label_tag }}{{ field }}{{ field.errors }}</div>{% endif %}{% endfor %}<button class="btn btn-primary">Показать предпросмотр</button></form></div>{% endif %}
+{% endblock %}

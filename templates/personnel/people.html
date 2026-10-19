@@ -1,0 +1,6 @@
+{% extends 'base.html' %}
+{% block title %}Реестр сотрудников{% endblock %}
+{% block content %}<a href="{% url 'personnel:board_list' %}">Кадровая служба</a><h1>Реестр сотрудников</h1>
+<a class="btn btn-primary mb-3" href="{% url 'personnel:person_create' %}">Добавить сотрудника</a>
+<form class="d-flex gap-2 mb-3"><input class="form-control" name="q" value="{{ query }}" placeholder="ФИО, табельный номер, телефон"><button class="btn btn-outline-primary">Найти</button></form>
+<div class="card p-3"><table class="table"><thead><tr><th>ФИО</th><th>Табельный номер</th><th>Телефон</th><th>Должности и объекты</th></tr></thead><tbody>{% for p in people %}<tr><td><a href="{% url 'personnel:person_edit' p.pk %}">{{ p.full_name }}</a></td><td>{{ p.employee_number }}</td><td>{{ p.phone }}</td><td>{% for s in p.assignments.all %}<div><a href="{% url 'personnel:board_detail' s.group.board_id %}">{{ s.group.board.name }}</a> · {{ s.group.position }}</div>{% empty %}Не назначен{% endfor %}</td></tr>{% empty %}<tr><td colspan="4">Сотрудников нет.</td></tr>{% endfor %}</tbody></table></div>{% endblock %}
