@@ -18,7 +18,9 @@ def target(task):
 
 def work_ids(obj):
     if isinstance(obj, DailySchedule):
-        return {e.metadata['id'] for e in obj.entries.filter(kind='work')}
+        # Period projections retain historical specs with empty daily arrays.
+        # They are not rows of this month's SMG and must not require review.
+        return {e.metadata['id'] for e in obj.entries.filter(kind='work').exclude(original=[],rows=[])}
     return set(review_allocations(obj).exclude(quantity=0,item_quantities={}).values_list('work_id',flat=True))
 
 

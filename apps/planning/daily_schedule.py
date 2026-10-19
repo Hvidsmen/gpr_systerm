@@ -80,6 +80,7 @@ def create(user,source,month):
     entries=[]
     for spec in snapshot.get('works',[]):
         key='work:'+str(spec['id']);original=deepcopy(spec.get('plans',[]))
+        if not original and not previous.get(key):continue
         metadata={k:v for k,v in spec.items() if k not in {'plans','daily','context_plans'}}
         metadata['history']=[dict(date=(month-timedelta(days=1)).isoformat(),item_id=i,quantity=str(q)) for i,q in prior[spec['id']].items()]
         metadata['original_daily']=spec.get('daily',[])
@@ -93,7 +94,7 @@ def create(user,source,month):
     if active:
         included={e.key for e in entries}
         for entry in active.entries.all():
-            if entry.key not in included:
+            if entry.key not in included and (entry.original or entry.rows):
                 entries.append(DailyScheduleEntry(schedule=schedule,key=entry.key,kind=entry.kind,label=entry.label,metadata=deepcopy(entry.metadata),original=deepcopy(entry.original),rows=deepcopy(entry.rows)))
     DailyScheduleEntry.objects.bulk_create(entries)
     return schedule

@@ -82,6 +82,39 @@ class ScheduleTableTests(TestCase):
         self.assertEqual(self.client.post(url,json.dumps({'entries':[self.edits(self.entry)]}),content_type='application/json').status_code,403)
         self.assertEqual(self.client.post(url,{'kind':'fuel','fuel':'DIESEL'}).status_code,403)
 
+    def test_estimator_sees_only_visible_monthly_smg_works_including_added_zero_row(self):
+        from .models import DailyScheduleEntry
+        from . import estimate_review
+        from .approval_test_helpers import estimator_check
+        self.prepare()
+        historical=ProjectWork.objects.create(company=self.company,section=self.simple.section,name='Historical only',unit='m')
+        DailyScheduleEntry.objects.create(schedule=self.schedule,key=f'work:{historical.pk}',kind='work',label=historical.name,metadata={'id':historical.pk},original=[],rows=[])
+        added=ProjectWork.objects.create(company=self.company,section=self.simple.section,name='Added zero',unit='m')
+        add_entry(self.planner,self.schedule,{'kind':'work','work':added})
+        self.assertEqual(estimate_review.work_ids(self.schedule),{self.simple.pk,added.pk})
+        response=self.client.get(reverse('planning:daily_schedule_detail',args=[self.schedule.pk]))
+        visible={entry.metadata['id'] for section in response.context['sections'] if section['kind']=='work' for group in section['groups'] for entry in group['entries']}
+        self.assertEqual(visible,estimate_review.work_ids(self.schedule))
+        task=estimator_check(self.schedule,self.planner)
+        self.assertNotIn(str(historical.pk),task.decisions)
+        self.assertEqual(len(task.decisions),2)
+
+    def test_new_schedule_does_not_seed_empty_historical_specs(self):
+        from apps.works.progress import work_specification
+        from .models import GlobalPlanVersion,DailySchedule,DailyScheduleEntry,ReportSnapshotProjection
+        self.prepare()
+        historical=ProjectWork.objects.create(company=self.company,section=self.simple.section,name='Old history',unit='m')
+        spec=work_specification(historical);spec.update(plans=[],daily=[])
+        snapshot=self.original.copy();snapshot['works']=[*snapshot['works'],spec]
+        GlobalPlanVersion.objects.filter(pk=self.source.pk).update(snapshot=snapshot)
+        ReportSnapshotProjection.objects.filter(version=self.source).delete()
+        DailyScheduleEntry.objects.create(schedule=self.schedule,key=f'work:{historical.pk}',kind='work',label=historical.name,metadata={'id':historical.pk},original=[],rows=[])
+        DailySchedule.objects.filter(pk=self.schedule.pk).update(status='APPLIED')
+        self.source.refresh_from_db()
+        new=service.create(self.planner,self.source,date(2026,2,1))
+        self.assertFalse(new.entries.filter(key=f'work:{historical.pk}').exists())
+        self.assertTrue(new.entries.filter(key=f'work:{self.simple.pk}').exists())
+
     def test_composite_children_are_editable_but_derived_work_is_not(self):
         self.prepare(composite=True)
         save_table(self.planner,self.schedule,[self.edits(self.entry,'40',item=self.a.pk)])
