@@ -1,0 +1,14 @@
+{% extends 'base.html' %}{% block content %}
+<h1>Исправить структуру выбранных работ</h1>
+<p>Название работы станет названием комплекса, название исходного раздела — названием работы в его составе. Одинаковые названия комплексов группируются только в пределах одного объекта.</p>
+<p>Выберите итоговый раздел для каждого комплекса, единицу и нормативы. Объёмы исходных работ и записи факта сохраняются в составе комплекса. Итог комплекса рассчитывается по минимуму выполненных нормативов. Цены исходных работ сохраняются в истории; цена комплекса складывается с учётом нормативов.</p>
+<p>Утверждённые планы сохраняются в истории; для актуального плана создаётся черновик для проверки и согласования. Исходные разделы и невыбранные работы не переименовываются.</p>
+<form method="post">{% csrf_token %}<input type="hidden" name="stage" value="preview">{% for id in ids %}<input type="hidden" name="selected" value="{{ id }}">{% endfor %}
+{% for group in groups %}<section class="card card-body mb-3"><h2 class="h5">{{ group.works.0.name }} · {{ group.works.0.section.construction_object }}</h2>
+<table class="table"><thead><tr><th>Исходная запись</th><th>Комплекс</th><th>Работа в составе (из раздела)</th></tr></thead><tbody>{% for work in group.works %}<tr><td>№{{ work.pk }}</td><td>{{ work.name }}</td><td>{{ work.section.name }}</td></tr>{% endfor %}</tbody></table>
+{{ group.form.as_p }}
+{% if group.report %}<p>Записей факта: {{ group.report.fact_records }}. Накопленный объём комплекса: {{ group.report.fact_quantity }}.</p><table class="table"><tr><th>Версия</th><th>Месяц</th><th>Объём комплекса</th></tr>{% for plan in group.report.plans %}<tr><td>{{ plan.version }}</td><td>{{ plan.month|date:'m.Y' }}</td><td>{{ plan.quantity }}</td></tr>{% endfor %}</table>{% endif %}
+</section>{% endfor %}<button class="btn btn-primary">Предварительный просмотр</button></form>
+{% if preview %}<form method="post" class="mt-3">{% csrf_token %}<input type="hidden" name="stage" value="confirm"><input type="hidden" name="preview" value="{{ preview }}"><button class="btn btn-success">Подтвердить исправление структуры</button></form>{% endif %}
+<a href="{% url 'works:work_list' %}" class="btn btn-outline-secondary mt-3">К списку работ</a>
+{% endblock %}

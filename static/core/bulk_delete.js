@@ -6,6 +6,8 @@
     const count = rows.filter(row => row.checked).length;
     form.querySelector('[data-bulk-count]').textContent = `Выбрано: ${count}`;
     form.querySelector('[data-bulk-submit]').disabled = count === 0;
+    const repair = form.querySelector('[data-bulk-structure]');
+    if (repair) repair.disabled = count === 0 || rows.some(row => row.checked && row.dataset.workKind !== 'SIMPLE');
     const merge = form.querySelector('[data-bulk-merge]');
     if (merge) {
       const chosen = rows.filter(row => row.checked);

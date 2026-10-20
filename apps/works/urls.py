@@ -53,3 +53,6 @@ urlpatterns += [path("merge/", WorkMergeView.as_view(), name="work_merge")]
 
 from .batch_prepare import WorkBatchPrepareView
 urlpatterns += [path("batch-prepare/", WorkBatchPrepareView.as_view(), name="batch_prepare")]
+
+from .structure_repair import StructureRepairView
+urlpatterns += [path("repair-structure/", StructureRepairView.as_view(), name="structure_repair")]

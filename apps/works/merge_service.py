@@ -13,7 +13,7 @@ from .progress import work_specification, quantity_from_totals, cumulative_serie
 from .merge_planning import transform_snapshot, preserved_snapshot
 
 
-def source_works(user, ids, lock=False):
+def source_works(user, ids, lock=False, minimum=2):
     ids = set(int(value) for value in ids)
     query = ProjectWork.objects.filter(company=user.company, pk__in=ids).select_related(
         "section", "load_profile"
@@ -21,7 +21,7 @@ def source_works(user, ids, lock=False):
     if lock:
         query = query.select_for_update()
     works = list(query.order_by("pk"))
-    if len(works) != len(ids) or len(works) < 2:
+    if len(works) != len(ids) or len(works) < minimum:
         raise ValidationError("Выберите не менее двух доступных работ.")
     if len(works) > 100:
         raise ValidationError("За одну операцию можно объединить до 100 работ.")
@@ -227,7 +227,7 @@ def merge_lower_plans(user, parent, items):
 
 
 @transaction.atomic
-def apply_merge(user, ids, values, expected):
+def apply_merge(user, ids, values, expected, minimum=2):
     from apps.projects.models import ConstructionObject
     from apps.production.models import DailyFact
     from apps.planning.models import GlobalPlanVersion
@@ -236,7 +236,7 @@ def apply_merge(user, ids, values, expected):
 
     require_roles(user, PLAN_ROLES)
     ids = [int(value) for value in ids]
-    works = source_works(user, ids, lock=True)
+    works = source_works(user, ids, lock=True, minimum=minimum)
     if (
         values["section"].company_id != user.company_id
         or values["section"].construction_object_id
@@ -309,7 +309,7 @@ def apply_merge(user, ids, values, expected):
         item = ProjectWorkItem(
             company=user.company,
             project_work=parent,
-            name=work.name,
+            name=values.get(f"item_name_{work.pk}", work.name),
             unit=work.unit,
             quantity_per_unit=norm,
             load_profile=values[f"profile_{work.pk}"],
