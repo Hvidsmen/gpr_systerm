@@ -56,3 +56,6 @@ urlpatterns += [path("batch-prepare/", WorkBatchPrepareView.as_view(), name="bat
 
 from .structure_repair import StructureRepairView
 urlpatterns += [path("repair-structure/", StructureRepairView.as_view(), name="structure_repair")]
+
+from .append_views import WorkAppendView
+urlpatterns += [path("append-to-composite/", WorkAppendView.as_view(), name="work_append")]

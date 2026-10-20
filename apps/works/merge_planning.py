@@ -18,22 +18,27 @@ def transform_snapshot(snapshot, company):
         )
     )
     mapping = {link.source_work_id: link.item for link in links}
+    parent_ids = {item.project_work_id for item in mapping.values()}
+    originals = {spec["id"]: spec for spec in result.get("works", [])}
     grouped = defaultdict(list)
     retained = []
     for spec in result.get("works", []):
         item = mapping.get(spec["id"])
         if item:
             grouped[item.project_work_id].append((spec, item))
+        elif spec["id"] in parent_ids:
+            grouped[spec["id"]].append((spec, None))
         else:
             retained.append(spec)
     for parent_id, sources in grouped.items():
-        parent = sources[0][1].project_work
+        from .models import ProjectWork
+        parent = ProjectWork.objects.get(company=company,pk=parent_id)
         spec = specification(parent)
         rows, context = [], []
         for original, item in sources:
             for field, dest in [("plans", rows), ("context_plans", context)]:
                 dest.extend(
-                    {**row, "item_id": item.pk} for row in original.get(field, [])
+                    ({**row, "item_id": item.pk} if item else deepcopy(row)) for row in original.get(field, [])
                 )
         spec["plans"], spec["context_plans"] = rows, context
         spec["daily"] = [
@@ -65,6 +70,11 @@ def transform_snapshot(snapshot, company):
             monthly[(item.project_work_id, row["month"])][item.pk] = Decimal(
                 row["quantity"]
             )
+        elif row['work_id'] in parent_ids:
+            quantities = row.get('item_quantities')
+            if not quantities:
+                quantities = {str(item['id']):str(Decimal(item['norm'])*Decimal(row['quantity'])) for item in originals.get(row['work_id'],{}).get('items',[])}
+            monthly[(row['work_id'],row['month'])].update({int(key):Decimal(value) for key,value in quantities.items()})
         else:
             kept.append(row)
     specs = {spec["id"]: spec for spec in retained}

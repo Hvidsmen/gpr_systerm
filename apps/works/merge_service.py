@@ -99,6 +99,7 @@ def preview(user, works, values):
             "month": month,
             "quantity": quantity_from_totals(spec, totals),
             "incomplete": len(totals) != len(works),
+            "parts": [{"work":work, "label":values.get(f'item_name_{work.pk}',work.name), "quantity":totals.get(work.pk,Decimal(0))} for work in works],
         }
         for (version_id, month), totals in sorted(months.items())
     ]
@@ -109,6 +110,7 @@ def preview(user, works, values):
         "fact_days": [{"date": day, **result} for day, result in series.items()],
         "plans": plan_rows,
         "fact_records": len(rows),
+        "source_facts": [{"work":work,"label":values.get(f'item_name_{work.pk}',work.name),"quantity":sum((quantity for _,wid,quantity in rows if wid==work.pk),Decimal(0))} for work in works],
         "fingerprint": fingerprint(works),
     }
 
@@ -149,40 +151,52 @@ def copy_allocations(source, target):
                         <= r["date"]
                         <= target.end_date.isoformat()
                     ]
+            if model == WorkMonthAllocation and row.work.kind == 'COMPOSITE':
+                frozen = next((s for s in source.snapshot.get('works',[]) if s['id'] == row.work_id), None)
+                current_ids = {str(item.pk) for item in row.work.items.all()}
+                frozen_ids = {str(item['id']) for item in (frozen or {}).get('items',[])}
+                if frozen and current_ids != frozen_ids:
+                    quantities = fields.get('item_quantities')
+                    if not quantities:
+                        quantities = {str(item['id']):str(Decimal(item['norm'])*row.quantity) for item in frozen.get('items',[])}
+                    fields['item_quantities'] = {key:str(quantities.get(key,'0')) for key in current_ids}
             model.objects.create(company=source.company, version=target, **fields)
 
 
 def convert_allocations(version, parent, items, snapshot):
     from apps.planning.models import WorkMonthAllocation
 
-    rows = list(
-        version.work_allocations.filter(work_id__in=items).select_related("work")
-    )
+    source_rows = list(version.work_allocations.filter(work_id__in=items).select_related('work'))
+    existing = {r.month: r for r in version.work_allocations.filter(work=parent)}
     months = defaultdict(dict)
-    specs = {spec["id"]: spec for spec in snapshot.get("works", [])}
-    for row in rows:
+    specs = {spec['id']: spec for spec in snapshot.get('works', [])}
+    for row in source_rows:
         months[row.month][row.work_id] = row.quantity
+    for month in existing:
+        months.setdefault(month, {})
+    spec = work_specification(parent)
+    old_spec = specs.get(parent.pk, {})
     for month, totals in months.items():
-        values = {items[source].pk: totals.get(source, Decimal(0)) for source in items}
-        daily = []
+        values = {item['id']: Decimal(0) for item in spec['items']}
+        old = existing.get(month)
+        if old:
+            if old.item_quantities:
+                values.update({int(key): Decimal(value) for key, value in old.item_quantities.items()})
+            else:
+                values.update({item['id']: old.quantity * Decimal(item['norm']) for item in old_spec.get('items', [])})
+        daily = [deepcopy(row) for row in old_spec.get('plans', []) if row['date'][:7] == month.isoformat()[:7]]
         for source, item in items.items():
-            daily.extend(
-                {**row, "item_id": item.pk}
-                for row in specs.get(source, {}).get("plans", [])
-                if row["date"][:7] == month.isoformat()[:7]
-            )
-        WorkMonthAllocation.objects.create(
-            company=version.company,
-            version=version,
-            work=parent,
-            month=month,
-            quantity=quantity_from_totals(work_specification(parent), values),
-            item_quantities={str(k): str(v) for k, v in values.items()},
-            daily_override=daily,
+            values[item.pk] = totals.get(source, Decimal(0))
+            daily.extend({**row, 'item_id': item.pk} for row in specs.get(source, {}).get('plans', []) if row['date'][:7] == month.isoformat()[:7])
+        allocation, _ = WorkMonthAllocation.objects.update_or_create(
+            company=version.company, version=version, work=parent, month=month,
+            defaults={'quantity': quantity_from_totals(spec, values), 'item_quantities': {str(k):str(v) for k,v in values.items()}, 'daily_override':daily},
         )
-    version.work_allocations.filter(pk__in=[row.pk for row in rows]).delete()
+        # This explicit conversion supplies validated frozen days; ordinary edits clear overrides.
+        WorkMonthAllocation.objects.filter(pk=allocation.pk).update(daily_override=daily)
+    version.work_allocations.filter(pk__in=[row.pk for row in source_rows]).delete()
     version.snapshot = {}
-    version.save(update_fields=["snapshot"])
+    version.save(update_fields=['snapshot'])
 
 
 def merge_lower_plans(user, parent, items):
@@ -229,7 +243,7 @@ def merge_lower_plans(user, parent, items):
 
 
 @transaction.atomic
-def apply_merge(user, ids, values, expected, minimum=2):
+def apply_merge(user, ids, values, expected, minimum=2, target=None):
     from apps.projects.models import ConstructionObject
     from apps.production.models import DailyFact
     from apps.planning.models import GlobalPlanVersion
@@ -252,6 +266,10 @@ def apply_merge(user, ids, values, expected, minimum=2):
         raise ValidationError(
             "Планы или факты изменились после просмотра. Выполните предварительный расчёт заново."
         )
+    if target:
+        from .append_service import validate_target
+        target = validate_target(user, target.pk, works, lock=True)
+    affected_ids = ids + ([target.pk] if target else [])
     affected = []
     for version in (
         GlobalPlanVersion.objects.select_for_update()
@@ -262,14 +280,14 @@ def apply_merge(user, ids, values, expected, minimum=2):
         .order_by("version_number")
     ):
         if version.workspace_id:
-            contains = version.work_allocations.filter(work__in=works).exists() or any(
-                s["id"] in ids for s in version.snapshot.get("works", [])
+            contains = version.work_allocations.filter(work_id__in=affected_ids).exists() or any(
+                s["id"] in affected_ids for s in version.snapshot.get("works", [])
             )
         else:
             contains = (
-                any(s["id"] in ids for s in version.snapshot.get("works", []))
+                any(s["id"] in affected_ids for s in version.snapshot.get("works", []))
                 or version.source_versions.filter(
-                    monthly_plan__project_work__in=works
+                    monthly_plan__project_work_id__in=affected_ids
                 ).exists()
             )
         if contains:
@@ -279,24 +297,25 @@ def apply_merge(user, ids, values, expected, minimum=2):
                 else deepcopy(version.snapshot)
             )
             affected.append((version, snapshot))
-    parent = ProjectWork(
-        company=user.company,
-        section=values["section"],
-        name=values["name"],
-        unit=values["unit"],
-        kind="COMPOSITE",
-        allow_fractional=values["allow_fractional"],
-        work_group=values.get("work_group"),
-    )
-    total_price = sum(values[f"norm_{w.pk}"] * w.unit_price for w in works)
-    parent.unit_price = total_price.quantize(Decimal(".01"))
-    parent.full_clean()
-    parent.save()
+    total_price = sum(values[f'norm_{w.pk}'] * w.unit_price for w in works)
+    if target:
+        parent = target
+    else:
+        parent = ProjectWork(
+            company=user.company, section=values['section'], name=values['name'], unit=values['unit'],
+            kind='COMPOSITE', allow_fractional=values['allow_fractional'], work_group=values.get('work_group'),
+        )
+        total_price = sum(values[f'norm_{w.pk}'] * w.unit_price for w in works)
+        parent.unit_price = total_price.quantize(Decimal('.01'))
+        parent.full_clean()
+        parent.save()
+    keep_weights = bool(target and parent.items.exists())
+    existing_sequence = max(parent.items.values_list('sequence',flat=True), default=0) if target else 0
     items = {}
     assigned_weight = Decimal(0)
     for index, work in enumerate(works):
         norm = values[f"norm_{work.pk}"]
-        weight = (
+        weight = Decimal(0) if keep_weights else (
             (norm * work.unit_price / total_price * 100).quantize(
                 Decimal(".01"), rounding=ROUND_DOWN
             )
@@ -305,7 +324,7 @@ def apply_merge(user, ids, values, expected, minimum=2):
                 Decimal(".01"), rounding=ROUND_DOWN
             )
         )
-        if index == len(works) - 1:
+        if not keep_weights and index == len(works) - 1:
             weight = Decimal(100) - assigned_weight
         assigned_weight += weight
         item = ProjectWorkItem(
@@ -316,8 +335,9 @@ def apply_merge(user, ids, values, expected, minimum=2):
             quantity_per_unit=norm,
             load_profile=values[f"profile_{work.pk}"],
             weight=weight,
-            sequence=index + 1,
+            sequence=existing_sequence + index + 1,
         )
+        item._allow_structure_merge = bool(target)
         item.full_clean()
         item.save()
         items[work.pk] = item

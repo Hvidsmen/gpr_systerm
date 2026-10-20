@@ -352,6 +352,7 @@ class ProjectWorkItem(BaseCompanyModel):
         workspace_locked = workspace_locked or (self.project_work_id and WorkMergePlanRevision.objects.filter(parent_work_id=self.project_work_id,target_version__status__in=['SUBMITTED','APPROVED','COMPLETED']).exists())
         if (
             not self.pk
+            and not getattr(self, "_allow_structure_merge", False)
             and self.project_work_id
             and (
                 workspace_locked

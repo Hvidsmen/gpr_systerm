@@ -642,6 +642,9 @@ class WorkMonthAllocation(BaseCompanyModel):
             if self.version.version_kind == "FORECAST":
                 baseline = self.version.workspace.baseline_version
                 base_snapshot = self.version.baseline_review.snapshot if self.version.baseline_review_id else (baseline.snapshot if baseline else {})
+                if self.work.items.filter(merge_origin__isnull=False).exists():
+                    from apps.works.merge_planning import transform_snapshot
+                    base_snapshot = transform_snapshot(base_snapshot,self.company)
                 frozen = next((spec for spec in base_snapshot.get("works", []) if spec["id"] == self.work_id), None) if baseline else None
                 if frozen and {item.pk: item.quantity_per_unit for item in items} != {item["id"]: Decimal(item["norm"]) for item in frozen["items"]}:
                     raise ValidationError({"item_quantities": "Состав подработ или нормативы отличаются от утверждённой базы. Создайте новый базовый план."})
