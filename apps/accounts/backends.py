@@ -6,7 +6,7 @@ from django.contrib.auth.backends import ModelBackend
 from django.core.exceptions import PermissionDenied
 from django.db import transaction,IntegrityError
 from django.contrib.auth.hashers import make_password
-from .models import User
+from .models import User, AccessGroup
 
 logger=logging.getLogger(__name__)
 
@@ -50,8 +50,15 @@ def directory_identity(login,password):
                 user_connection=Connection(server,user=entry.entry_dn,password=password,authentication=SIMPLE,auto_bind=True,auto_referrals=False,raise_exceptions=True,receive_timeout=settings.LDAP_TIMEOUT)
             except LDAPInvalidCredentialsResult:return None
             guid=UUID(bytes_le=entry['objectGUID'].raw_values[0])
+            group_dns = []
+            # AD evaluates transitive membership, including nested security groups.
+            from ldap3 import BASE
+            for dn in AccessGroup.objects.exclude(ad_group_dn='').values_list('ad_group_dn', flat=True):
+                service.search(dn, '(&(objectClass=group)(member:1.2.840.113556.1.4.1941:=' + escape_filter_chars(entry.entry_dn) + '))', search_scope=BASE, attributes=['distinguishedName'])
+                if service.entries:
+                    group_dns.append(dn)
             def value(key):return str(entry[key].value or '')
-            return dict(guid=guid,first_name=value('givenName')[:150],last_name=value('sn')[:150],email=value('mail')[:254])
+            return dict(group_dns=group_dns,guid=guid,first_name=value('givenName')[:150],last_name=value('sn')[:150],email=value('mail')[:254])
         except (LDAPException,OSError,ValueError,KeyError,TypeError):
             # Do not log LDAP exception text: providers may include bind information.
             logger.warning('LDAP server unavailable or returned invalid directory data: %s',host)
@@ -84,4 +91,6 @@ class DirectoryBackend(ModelBackend):
             # Company, role, objects, staff and superuser rights are assigned only locally.
             for field in ['first_name','last_name','email']:setattr(user,field,identity[field])
             user.save(update_fields=['first_name','last_name','email'])
+            from .access_groups import map_directory_group
+            map_directory_group(user, identity)
             return user

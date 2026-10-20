@@ -8,6 +8,7 @@
     <h2><i class="bi bi-people"></i> Пользователи</h2><a class="btn btn-primary" href="{% url 'accounts:user_create' %}">Добавить пользователя</a><a class="btn btn-outline-primary ms-2" href="{% url 'accounts:add_from_ad' %}">Добавить из AD</a>
 </div>
 
+<p><a class="btn btn-outline-primary" href="{% url 'accounts:access_groups' %}">Группы доступа и соответствия AD</a></p>
 <p><a href="{% url 'accounts:impersonation_history' %}">История действий под пользователями</a></p>
 {% if users %}
     <div class="table-responsive">
@@ -31,7 +32,7 @@
                         <td>{{ user.company|default:"-" }}</td>
                         <td>
                             {% if user.role %}
-                                <span class="badge bg-info">{{ user.role.name }}</span>
+                                <span class="badge bg-info">{{ user.role.name }}{% if user.access_group_id %} · {{ user.access_group.name }}{% endif %}</span>
                             {% else %}
                                 <span class="badge bg-secondary">Не назначена</span>
                             {% endif %}

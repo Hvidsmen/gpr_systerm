@@ -8,3 +8,4 @@ class AccountsConfig(AppConfig):
 
     def ready(self):
         import core.impersonation  # register audit attribution signals
+        from . import access_groups  # register access profile synchronization

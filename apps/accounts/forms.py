@@ -73,20 +73,36 @@ class UserLoginForm(AuthenticationForm):
 class CompanyUserAccessForm(forms.ModelForm):
     class Meta:
         model = User
-        fields = ('first_name', 'last_name', 'email', 'phone', 'position', 'role', 'assigned_objects', 'is_active')
+        fields = ('first_name', 'last_name', 'email', 'phone', 'position', 'access_group', 'role', 'assigned_objects', 'is_active')
 
     def __init__(self, *args, company, **kwargs):
         super().__init__(*args, **kwargs)
         from core.permissions import ROLES
         from apps.projects.models import ConstructionObject
         self.instance.company = company
-        self.fields['role'].required = True
+        self.fields['access_group'].queryset = self.fields['access_group'].queryset.filter(company=company)
+        self.fields['access_group'].help_text = 'Роль и объекты наследуются от группы. Для индивидуальной настройки оставьте пустым.'
+        self.fields['role'].required = False
         self.fields['role'].queryset = self.fields['role'].queryset.filter(code__in=ROLES)
         self.fields['assigned_objects'].queryset = ConstructionObject.objects.filter(company=company)
         self.fields['assigned_objects'].help_text = 'Мастер и диспетчер видят и вводят факты только на этих объектах. Диспетчеру ежедневно создаются задания за вчера по каждому назначенному объекту.'
         for field in self.fields.values():
             if not isinstance(field.widget, forms.CheckboxInput):
                 field.widget.attrs['class'] = 'form-control'
+
+    def clean(self):
+        data = super().clean()
+        self.instance.access_group_from_ad = False
+        group = data.get('access_group')
+        if group:
+            if self.instance.is_superuser or self.instance.is_staff or (self.instance.role_id and self.instance.role.code == 'ADMIN'):
+                self.add_error('access_group', 'Администратор управляется индивидуально.')
+            data['role'] = group.role
+            data['assigned_objects'] = group.assigned_objects.all()
+            self.instance.access_group_from_ad = False
+        elif not data.get('role'):
+            self.add_error('role', 'Выберите роль или группу доступа.')
+        return data
 
 
 class CompanyUserCreateForm(CompanyUserAccessForm, UserCreationForm):

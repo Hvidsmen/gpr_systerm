@@ -33,7 +33,25 @@ class Role(BaseTimestampedModel):
         return self.name
 
 
+class AccessGroup(BaseTimestampedModel):
+    company = models.ForeignKey(Company, on_delete=models.CASCADE)
+    name = models.CharField('Название группы', max_length=150)
+    role = models.ForeignKey(Role, on_delete=models.PROTECT, verbose_name='Роль')
+    assigned_objects = models.ManyToManyField('projects.ConstructionObject', blank=True, verbose_name='Объекты')
+    ad_group_dn = models.CharField('DN группы AD', max_length=1024, blank=True, help_text='Полный distinguishedName группы AD. Пусто — только ручное назначение.')
+
+    class Meta:
+        ordering = ['name']
+        constraints = [models.UniqueConstraint(fields=['company', 'name'], name='unique_access_group_name')]
+
+    def __str__(self):
+        return self.name
+
+
 class User(AbstractUser):
+    access_group = models.ForeignKey(AccessGroup, null=True, blank=True, on_delete=models.PROTECT, related_name='members', verbose_name='Группа доступа')
+    access_group_from_ad = models.BooleanField(default=False, editable=False)
+
     auth_source = models.CharField('Источник входа', max_length=5, default='LOCAL', choices=[('LOCAL','Локальный'),('LDAP','Active Directory')], editable=False)
     ldap_guid = models.UUIDField('Идентификатор AD', unique=True, null=True, blank=True, editable=False)
     company = models.ForeignKey(

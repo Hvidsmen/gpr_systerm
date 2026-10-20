@@ -1,0 +1,11 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>Группы доступа и соответствия AD</h2>
+<p><a href="{% url 'accounts:user_list' %}">Пользователи</a></p>
+<p>Группа задаёт роль и объекты всем участникам. Соответствие AD применяется при следующем входе, включая вложенные группы. Права администратора через AD не назначаются. При нескольких соответствиях вход блокируется до исправления администратором.</p>
+<div class="table-responsive"><table class="table"><thead><tr><th>Группа приложения</th><th>Роль</th><th>Объекты</th><th>Группа AD (DN)</th><th>Участники</th><th></th></tr></thead><tbody>
+{% for group in groups %}<tr><td>{{ group.name }}</td><td>{{ group.role }}</td><td>{% for obj in group.assigned_objects.all %}{{ obj }}{% if not forloop.last %}, {% endif %}{% empty %}—{% endfor %}</td><td>{{ group.ad_group_dn|default:'Не связана' }}</td><td>{{ group.members.count }}</td><td><a href="{% url 'accounts:access_group_edit' group.pk %}">Изменить</a></td></tr>{% empty %}<tr><td colspan="6">Группы ещё не созданы.</td></tr>{% endfor %}
+</tbody></table></div>
+<h3>{% if editing %}Изменить группу{% else %}Создать группу{% endif %}</h3>
+<form method="post">{% csrf_token %}{{ form.as_p }}<button class="btn btn-primary">Сохранить группу и обновить права участников</button> <a href="{% url 'accounts:access_groups' %}">Новая группа</a></form>
+{% endblock %}
