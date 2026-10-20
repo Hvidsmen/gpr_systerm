@@ -448,6 +448,7 @@
     </div>
     {% endfor %}
     {% endif %}
+    {% if request.acting_admin %}<div class="alert alert-warning d-flex flex-wrap justify-content-between align-items-center" role="alert"><span>Вы работаете как <strong>{{ user.full_name }}</strong>. Администратор: {{ request.acting_admin.username }}. Действия записываются в историю.</span><form method="post" action="{% url 'accounts:impersonation_stop' %}">{% csrf_token %}<button class="btn btn-warning">Вернуться к администратору</button></form></div>{% endif %}
     {% block content %}{% endblock %}
 </main>
 

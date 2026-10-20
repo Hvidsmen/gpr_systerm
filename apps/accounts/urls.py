@@ -1,9 +1,15 @@
 from django.urls import path
 from . import views
+from .directory_admin import add_from_ad
+from . import impersonation_views
 
 app_name = 'accounts'
 
 urlpatterns = [
+    path("view-as/history/", impersonation_views.history, name="impersonation_history"),
+    path("view-as/<int:pk>/", impersonation_views.start, name="impersonation_start"),
+    path("view-as/stop/", impersonation_views.stop, name="impersonation_stop"),
+    path("users/add-from-ad/", add_from_ad, name="add_from_ad"),
     path("users/create/", views.CompanyUserCreateView.as_view(), name="user_create"),
     path("users/<int:pk>/access/", views.CompanyUserAccessView.as_view(), name="user_access"),
     path('register/', views.register_view, name='register'),

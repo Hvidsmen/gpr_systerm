@@ -5,9 +5,10 @@
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h2><i class="bi bi-people"></i> Пользователи</h2><a class="btn btn-primary" href="{% url 'accounts:user_create' %}">Добавить пользователя</a>
+    <h2><i class="bi bi-people"></i> Пользователи</h2><a class="btn btn-primary" href="{% url 'accounts:user_create' %}">Добавить пользователя</a><a class="btn btn-outline-primary ms-2" href="{% url 'accounts:add_from_ad' %}">Добавить из AD</a>
 </div>
 
+<p><a href="{% url 'accounts:impersonation_history' %}">История действий под пользователями</a></p>
 {% if users %}
     <div class="table-responsive">
         <table class="table table-hover">
@@ -24,7 +25,7 @@
             <tbody>
                 {% for user in users %}
                     <tr>
-                        <td>{{ user.username }}</td>
+                        <td>{{ user.username }}{% if user.auth_source == 'LDAP' %} <span class="badge bg-secondary">AD</span>{% endif %}</td>
                         <td>{{ user.full_name }}</td>
                         <td>{{ user.email }}</td>
                         <td>{{ user.company|default:"-" }}</td>
@@ -35,7 +36,7 @@
                                 <span class="badge bg-secondary">Не назначена</span>
                             {% endif %}
                         </td>
-                        <td>{% if not user.is_superuser %}<a class="btn btn-sm btn-outline-primary" href="{% url 'accounts:user_access' user.pk %}">Роль и объекты</a>{% endif %}
+                        <td>{% if user.is_active and not user.is_superuser and not user.is_staff and user.role.code != 'ADMIN' %}<form method="post" action="{% url 'accounts:impersonation_start' user.pk %}" class="d-inline">{% csrf_token %}<button class="btn btn-sm btn-outline-warning">Войти как пользователь</button></form>{% endif %}{% if not user.is_superuser %}<a class="btn btn-sm btn-outline-primary" href="{% url 'accounts:user_access' user.pk %}">Роль и объекты</a>{% endif %}
                             <a href="{% url 'accounts:user_detail' user.pk %}" class="btn btn-sm btn-outline-primary">
                                 <i class="bi bi-eye"></i>
                             </a>
