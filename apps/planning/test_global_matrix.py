@@ -224,3 +224,16 @@ class GlobalMatrixTests(TestCase):
         self.assertContains(reversed_view,'Работа → Раздел')
         for column in reversed_view.context['columns']:
             self.assertIn('work_order=work_section',column['url'])
+
+    def test_work_summary_visible_above_groups_in_both_orders(self):
+        for order in ['section_work','work_section']:
+            response=self.client.get(self.url,{'work_order':order})
+            rows=self.rows(response,'works')
+            summary=response.context['work_summary']
+            self.assertEqual(summary['count'],len(rows))
+            self.assertEqual(summary['amount'],sum((r['total'].get('amount') or Decimal(0) for r in rows),Decimal(0)))
+            self.assertEqual(sum(c['amount'] for c in summary['columns']),summary['amount'])
+            content=response.content.decode()
+            self.assertLess(content.index('data-work-summary'),content.index('id="plan-fact-matrix"'))
+        response=self.client.get(self.url,{'sections_set':'1','sections':['labor']})
+        self.assertNotContains(response,'data-work-summary')

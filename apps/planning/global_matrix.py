@@ -99,6 +99,22 @@ def detail_matrix(request, version):
             },
         )
     )
+    # Show work amounts before collapsible groups in both grouping orders.
+    work_rows = []
+    def collect(nodes):
+        for node in nodes:
+            work_rows.extend(node['rows'])
+            collect(node['children'])
+    for entry in context.get('objects', []):
+        for section in entry['sections']:
+            if section['kind'] == 'works': collect(section['groups'])
+    if 'works' in context['shown']:
+        from decimal import Decimal
+        context['work_summary'] = {
+            'count': len(work_rows),
+            'amount': sum((row['total'].get('amount') or Decimal(0) for row in work_rows), Decimal(0)),
+            'columns': [dict(label=column['label'], amount=sum((row['cells'][index].get('amount') or Decimal(0) for row in work_rows), Decimal(0))) for index,column in enumerate(context['columns'])],
+        }
     context["matrix_warnings"] = snapshot.get("warnings", [])
     url = reverse("planning:global_detail", args=[version.pk])
     back = params.copy()
