@@ -67,16 +67,25 @@ def history(source,month):
 
 
 @transaction.atomic
-def create(user,source,month):
+def create(user,source,month,*,_skip_rebase=False):
     require_roles(user,PLAN_ROLES)
     source=GlobalPlanVersion.objects.select_for_update().defer('snapshot').get(pk=source.pk,company=user.company)
     validate_source(source,month)
+    if not _skip_rebase:
+        from .models import CarryoverReviewTask
+        from .smg_rebase import sync as sync_rebase,start as start_rebase
+        record=CarryoverReviewTask.objects.filter(company=user.company,correction_version=source,month=month).select_related('correction_version','version','assigned_to').first()
+        if record:
+            task=sync_rebase(record)
+            if task and task.status=='OPEN':return start_rebase(user,task)
     draft=DailySchedule.objects.filter(source=source,month=month,status__in=['DRAFT','SUBMITTED','APPROVED']).first()
     if draft:return draft
     snapshot=period_snapshot(source,*bounds(month));prior=history(source,month)
     active=DailySchedule.objects.filter(source=source,month=month,status='APPLIED').first()
     previous={e.key:e.rows for e in active.entries.all()} if active else {}
     schedule=DailySchedule.objects.create(company=user.company,source=source,month=month,revision=(DailySchedule.objects.filter(source=source,month=month).aggregate(n=Max('revision'))['n'] or 0)+1,created_by=user)
+    if active and active.locked_before:
+        schedule.locked_before=active.locked_before;schedule.replaces=active.replaces;schedule.save(update_fields=['locked_before','replaces'])
     entries=[]
     for spec in snapshot.get('works',[]):
         key='work:'+str(spec['id']);original=deepcopy(spec.get('plans',[]))
@@ -143,6 +152,15 @@ def save_entry(user,entry,values,revision):
     if entry.revision!=revision:raise ValidationError('Строка изменена в другой вкладке. Обновите страницу.')
     if len(values)!=len(identities(entry)):raise ValidationError('Заполните все дни.')
     rows=value_rows(entry,values)
+    if schedule.locked_before:
+        cutoff=schedule.locked_before.isoformat()
+        old={(r['date'],r.get('item_id')):r for r in entry.rows if r['date']<cutoff}
+        for row in rows:
+            if row['date']>=cutoff:continue
+            previous=old.get((row['date'],row.get('item_id')), {})
+            if any(Decimal(str(row.get(field) or 0))!=Decimal(str(previous.get(field) or 0)) for field,_,_ in FIELDS[entry.kind]):
+                raise ValidationError('Прошедшие дни сохранены из действовавшего СМГ. Изменяйте только оставшиеся дни.')
+        rows=[deepcopy(r) for r in entry.rows if r['date']<cutoff]+[r for r in rows if r['date']>=cutoff]
     if differences(entry,rows) and not ALLOW_MONTH_CHANGES:raise ValidationError('Месячные итоги отличаются от ГПР. Перераспределите объемы между днями, сохранив итог месяца.')
     entry.rows=rows;entry.revision+=1;entry.save(update_fields=['rows','revision'])
     return entry
@@ -168,12 +186,16 @@ def activate(user,schedule):
     schedule.status='APPLIED';schedule.save(update_fields=['status','updated_at'])
     from .daily_schedule_approval import sync
     sync(schedule)
+    from .smg_rebase import sync as sync_rebase
+    from .models import CarryoverReviewTask
+    for record in CarryoverReviewTask.objects.filter(correction_version=schedule.source,month=schedule.month).select_related('version','correction_version','assigned_to'):sync_rebase(record)
     return schedule
 
 
 def overlay(source,snapshot,start,end):
-    schedules=DailySchedule.objects.filter(source=source,company_id=source.company_id,status='APPLIED',month__lte=end,month__gte=start.replace(day=1)).prefetch_related('entries')
-    if not schedules.exists():return snapshot
+    from .smg_rebase import effective_schedules
+    schedules=effective_schedules(source,start,end)
+    if not schedules:return snapshot
     result=deepcopy(snapshot);specs={s['id']:s for s in result.get('works',[])}
     for schedule in schedules:
         a,b=bounds(schedule.month);a,b=max(a,start),min(b,end)
@@ -189,8 +211,9 @@ def overlay(source,snapshot,start,end):
                 for field in ['plans','daily']:
                     spec[field]=[r for r in spec.get(field,[]) if not a.isoformat()<=r['date'][:10]<=b.isoformat()]+[r for r in generated[field] if a.isoformat()<=r['date'][:10]<=b.isoformat()]
             else:
+                if not entry.original and not entry.rows:continue
                 rows=result.setdefault('resources',{}).setdefault(entry.kind,[])
-                identity=resource_identity(entry.original[0],entry.kind)
+                identity=resource_identity((entry.original or entry.rows)[0],entry.kind)
                 rows[:]=[r for r in rows if not (a.isoformat()<=r['date'][:10]<=b.isoformat() and resource_identity(r,entry.kind)==identity)]+[r for r in entry.rows if a.isoformat()<=r['date'][:10]<=b.isoformat()]
     result['daily_schedule_applied']=True
     result['daily_schedule_ids']=[s.pk for s in schedules]

@@ -1218,6 +1218,8 @@ class WorkCarryover(BaseCompanyModel):
 
 
 class DailySchedule(BaseCompanyModel):
+    replaces = models.ForeignKey('self', on_delete=models.PROTECT, null=True, blank=True, related_name='rebased_schedules')
+    locked_before = models.DateField(null=True, blank=True)
     approval_round = models.PositiveIntegerField(default=0)
     source = models.ForeignKey(GlobalPlanVersion, on_delete=models.PROTECT, related_name='daily_schedules')
     month = models.DateField()

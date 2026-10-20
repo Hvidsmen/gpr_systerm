@@ -47,7 +47,8 @@ def matrix(schedule,entries):
                     if entry.kind=='work' and comparison['field']!='work_total' and str(row.get('item_id'))!=comparison['item_id']:continue
                     values[side][row['date']]+=Decimal(str(row.get(field) or 0))
             comparison['cells']=[{'before':values['before'][day.isoformat()],'after':values['after'][day.isoformat()],'delta':values['after'][day.isoformat()]-values['before'][day.isoformat()]} for day in days]
-            for cell,day in zip(comparison['cells'],days):cell['date']=day.isoformat()
+            for cell,day in zip(comparison['cells'],days):
+                cell['date']=day.isoformat();cell['locked']=bool(schedule.locked_before and day<schedule.locked_before)
             entry.has_deviation=entry.has_deviation or any(cell['delta'] for cell in comparison['cells'])
             if entry.kind!='work':
                 total=totals[entry.kind].setdefault(comparison['field'],{'label':comparison['label'],'before':Decimal(0),'after':Decimal(0),'delta':Decimal(0),'cells':[{'before':Decimal(0),'after':Decimal(0),'delta':Decimal(0)} for day in days]})

@@ -30,6 +30,8 @@ class CreateForm(forms.Form):
 
 
 def link(task):
+    if task.key.startswith('smg-update:'):
+        return reverse('planning:daily_schedule_detail',args=[task.schedule_id]) if task.schedule_id else reverse('planning:global_detail',args=[task.version_id])
     if task.kind=='FACT':return reverse('production:fact_day_workspace')+'?'+urlencode({'construction_object':task.construction_object_id,'date':task.fact_date.isoformat()})
     if task.kind=='SUBMISSION' and task.schedule_id:return reverse('planning:daily_schedule_detail',args=[task.schedule_id])
     if task.estimate_id:return reverse('planning:estimate_review_detail',args=[task.estimate_id])
@@ -95,7 +97,7 @@ class TaskDetail(View):
         return self.show(request,task)
     def show(self,request,task):
         from .daily_schedule_approval import next_action
-        next_label=next_action(task.schedule) if task.kind=='SUBMISSION' and task.schedule_id else ''
+        next_label=('Открыть актуализацию СМГ' if task.schedule_id else 'Создать актуализацию СМГ') if task.key.startswith('smg-update:') else next_action(task.schedule) if task.kind=='SUBMISSION' and task.schedule_id else ''
         return render(request,'planning/task_detail.html',{'submission_action_label':next_label,'task':task,'target_url':link(task),'executor':role_code(request.user)!='OBSERVER' and service.is_executor(request.user,task),'author':role_code(request.user)!='OBSERVER' and task.created_by_id==request.user.pk,'events':task.events.select_related('actor'),'children':service.visible(request.user).filter(estimate_id=task.estimate_id,kind='REMARK') if task.kind=='ESTIMATE' and task.estimate_id else service.visible(request.user).filter(parent=task),'can_comment':role_code(request.user)!='OBSERVER','fact_sections':[('works','Работы'),('labor','Люди'),('equipment','Техника'),('fuel','ГСМ')]})
     def post(self,request,pk):
         if role_code(request.user)=='OBSERVER':raise PermissionDenied
@@ -110,6 +112,10 @@ class TaskDetail(View):
             elif action=='launch':
                 if task.kind!='SUBMISSION' or task.status!='OPEN' or not service.is_executor(request.user,task):raise PermissionDenied
                 from .daily_schedule_approval import transition
+                if task.key.startswith('smg-update:'):
+                    from .smg_rebase import start
+                    schedule=start(request.user,task)
+                    return redirect('planning:daily_schedule_detail',pk=schedule.pk)
                 if task.key.startswith('smg-apply:'):
                     from .daily_schedule import activate
                     activate(request.user,task.schedule)

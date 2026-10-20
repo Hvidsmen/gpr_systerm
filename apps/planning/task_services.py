@@ -56,6 +56,8 @@ def estimate_task(estimate):
 
 
 def sync_version(version):
+    from .smg_rebase import sync as sync_rebase
+    for record in CarryoverReviewTask.objects.filter(company_id=version.company_id,correction_version=version).select_related('version','correction_version','assigned_to'):sync_rebase(record)
     from .approval_workflow import ready
     review=version.review_rounds.defer('snapshot').filter(number=version.approval_round).first()
     for task in WorkTask.objects.filter(version=version,review__isnull=False,status__in=ACTIVE).exclude(kind='REMARK'):
@@ -111,7 +113,10 @@ def sync_company(company):
     for version in GlobalPlanVersion.objects.filter(company=company,status__in=['SUBMITTED','APPROVED','COMPLETED']).defer('snapshot').iterator():sync_version(version)
     for record in CarryoverReviewTask.objects.filter(company=company,due_date__lte=timezone.localdate()).select_related('version','correction_version').defer('version__snapshot','correction_version__snapshot'):
         task=ensure(company,f'carryover:{record.pk}',kind='CARRYOVER',title='Уточнить прогнозные остатки по закрытому факту',assigned_to=record.assigned_to,version=record.version,carryover=record,construction_object_id=record.version.construction_object_id,due_date=record.due_date)
-        if record.correction_version_id and record.correction_version.status in {'APPROVED','COMPLETED'}:state(task,'DONE')
+        if record.correction_version_id and record.correction_version.status in {'APPROVED','COMPLETED'}:
+            state(task,'DONE')
+            from .smg_rebase import sync as sync_rebase
+            sync_rebase(record)
 
 
 @transaction.atomic

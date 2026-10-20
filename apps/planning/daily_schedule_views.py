@@ -120,6 +120,10 @@ class DailyScheduleEdit(View):
         if not editable:
             for form in formset:
                 for field in form.fields.values():field.disabled=True
+        if entry.schedule.locked_before:
+            for (day,item),form in zip(identities,formset):
+                if day<entry.schedule.locked_before:
+                    for field in form.fields.values():field.disabled=True
         error=None
         if bound and formset.is_valid():
             try:
