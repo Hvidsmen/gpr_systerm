@@ -118,3 +118,15 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 LOGIN_REDIRECT_URL = '/dashboard/'
 LOGOUT_REDIRECT_URL = '/accounts/login/'
 LOGIN_URL = '/accounts/login/'
+
+
+# Corporate LDAP: service credentials are provided only by the server environment.
+AUTHENTICATION_BACKENDS = ['apps.accounts.backends.DirectoryBackend', 'apps.accounts.backends.LocalBackend']
+LDAP_ENABLED = env_bool('LDAP_ENABLED', False)
+LDAP_SERVERS = [value.strip() for value in os.getenv('LDAP_SERVERS', '192.168.70.12,192.168.70.13').split(',') if value.strip()]
+LDAP_PORT = int(os.getenv('LDAP_PORT', '389'))
+LDAP_DOMAIN = os.getenv('LDAP_DOMAIN', 'yamalgazprom.local')
+LDAP_BIND_USER = os.getenv('LDAP_BIND_USER', 'portal-ldap@yamalgazprom.local')
+LDAP_BIND_PASSWORD = os.getenv('LDAP_BIND_PASSWORD', '')
+LDAP_BASE_DN = os.getenv('LDAP_BASE_DN', 'OU=Yamaldorstroy,DC=yamalgazprom,DC=local')
+LDAP_TIMEOUT = int(os.getenv('LDAP_TIMEOUT', '5'))

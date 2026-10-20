@@ -5,3 +5,5 @@ python-dotenv>=1.2,<2
 openpyxl>=3.1,<4
 
 xlrd>=2.0,<3
+
+ldap3>=2.9,<3

@@ -33,6 +33,8 @@ def login_view(request):
             user = form.get_user()
             login(request, user)
             messages.success(request, _('Вы успешно вошли в систему!'))
+            if user.auth_source=='LDAP' and (not user.company_id or not user.role_id):
+                return redirect('accounts:access_pending')
             next_url = request.GET.get('next', 'dashboard:index')
             if not url_has_allowed_host_and_scheme(
                 next_url, allowed_hosts={request.get_host()}, require_https=request.is_secure()
@@ -124,6 +126,9 @@ class CompanyUserAccessView(CompanyScopedMixin, UpdateView):
 @never_cache
 @require_http_methods(['GET', 'POST'])
 def password_change_view(request):
+    if request.user.auth_source=='LDAP':
+        messages.info(request, 'Пароль корпоративной учетной записи меняется в Windows или через администратора AD.')
+        return redirect('accounts:access_pending' if not request.user.company_id or not request.user.role_id else 'accounts:settings')
     form = PasswordChangeForm(request.user, request.POST if request.method == 'POST' else None)
     for field in form.fields.values():
         field.widget.attrs['class'] = 'form-control'
@@ -133,3 +138,8 @@ def password_change_view(request):
         messages.success(request, 'Пароль успешно изменен.')
         return redirect('accounts:password_change')
     return render(request, 'accounts/password_change.html', {'form': form})
+
+
+@login_required
+def access_pending_view(request):
+    return render(request,'accounts/access_pending.html')

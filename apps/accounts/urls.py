@@ -7,6 +7,7 @@ urlpatterns = [
     path("users/create/", views.CompanyUserCreateView.as_view(), name="user_create"),
     path("users/<int:pk>/access/", views.CompanyUserAccessView.as_view(), name="user_access"),
     path('register/', views.register_view, name='register'),
+    path('access-pending/', views.access_pending_view, name='access_pending'),
     path('login/', views.login_view, name='login'),
     path('password/change/', views.password_change_view, name='password_change'),
     path('logout/', views.logout_view, name='logout'),

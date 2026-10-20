@@ -34,6 +34,8 @@ class Role(BaseTimestampedModel):
 
 
 class User(AbstractUser):
+    auth_source = models.CharField('Источник входа', max_length=5, default='LOCAL', choices=[('LOCAL','Локальный'),('LDAP','Active Directory')], editable=False)
+    ldap_guid = models.UUIDField('Идентификатор AD', unique=True, null=True, blank=True, editable=False)
     company = models.ForeignKey(
         Company, on_delete=models.CASCADE,
         related_name='users', verbose_name=_('компания'),

@@ -1,0 +1,6 @@
+{% extends 'base.html' %}{% block title %}Корпоративная учетная запись{% endblock %}{% block content %}
+<h1>Корпоративная учетная запись</h1>
+<p>Вход через Active Directory выполнен. Для доступа к системе администратор должен назначить вам компанию, роль и объекты.</p>
+<p>Пароль корпоративной учетной записи меняется в Windows или через администратора AD.</p>
+<a href="{% url 'accounts:logout' %}" class="btn btn-outline-primary">Выйти</a>
+{% endblock %}

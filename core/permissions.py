@@ -69,7 +69,7 @@ def scope_queryset(queryset, user):
 def check_route(user, match, method):
     namespace, name = match.namespace, match.url_name
     role = role_code(user)
-    if namespace == 'accounts' and name == 'password_change':
+    if namespace == 'accounts' and name in {'password_change','access_pending'}:
         return
     if namespace == 'personnel':
         require_roles(user, {'ADMIN', 'HR_HEAD'})

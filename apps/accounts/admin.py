@@ -36,11 +36,12 @@ class GlobalUserForm(forms.ModelForm):
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
     form = GlobalUserForm
+    readonly_fields = ['auth_source','ldap_guid']
     list_display = ['username', 'email', 'full_name', 'company', 'role', 'is_active']
     list_filter = ['is_active', 'company', 'role']
     search_fields = ['username', 'email', 'first_name', 'last_name']
     fieldsets = BaseUserAdmin.fieldsets + (
         (_('Дополнительная информация'), {
-            'fields': ('company', 'role', 'position', 'phone', 'assigned_objects')
+            'fields': ('auth_source','ldap_guid','company', 'role', 'position', 'phone', 'assigned_objects')
         }),
     )

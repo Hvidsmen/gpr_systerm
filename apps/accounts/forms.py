@@ -48,12 +48,24 @@ class UserRegistrationForm(UserCreationForm):
 
 
 class UserLoginForm(AuthenticationForm):
+    auth_source = forms.ChoiceField(label='Способ входа', choices=[('local','Локальная учетная запись')], widget=forms.Select(attrs={'class':'form-select'}))
+
+    def __init__(self,*args,**kwargs):
+        super().__init__(*args,**kwargs)
+        from django.conf import settings
+        if settings.LDAP_ENABLED:
+            self.fields['auth_source'].choices.append(('ldap','Корпоративная учетная запись AD'))
+        else:
+            self.fields['auth_source'].widget=forms.HiddenInput()
+            self.fields['auth_source'].required=False
+
     username = forms.CharField(
         label=_('Имя пользователя'),
         widget=forms.TextInput(attrs={'class': 'form-control', 'autofocus': True})
     )
     password = forms.CharField(
         label=_('Пароль'),
+        strip=False,
         widget=forms.PasswordInput(attrs={'class': 'form-control'})
     )
 

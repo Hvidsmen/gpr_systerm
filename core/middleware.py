@@ -6,7 +6,7 @@ class CompanyAccessMiddleware:
     """Require authentication and company membership before application views run."""
 
     public_views = {'accounts:login', 'accounts:register'}
-    account_views = {'accounts:logout', 'accounts:settings', 'accounts:password_change'}
+    account_views = {'accounts:logout', 'accounts:settings', 'accounts:password_change', 'accounts:access_pending'}
 
     def __init__(self, get_response):
         self.get_response = get_response
@@ -25,6 +25,9 @@ class CompanyAccessMiddleware:
             return None
         if not request.user.is_authenticated:
             return redirect_to_login(request.get_full_path())
+        if request.user.auth_source=='LDAP' and (not request.user.company_id or not request.user.role_id) and match.view_name not in self.account_views:
+            from django.shortcuts import redirect
+            return redirect('accounts:access_pending')
         if match.view_name not in self.account_views and not request.user.company_id:
             raise PermissionDenied('Для доступа к данным администратор должен назначить вам компанию.')
         from core.permissions import check_route, role_code
