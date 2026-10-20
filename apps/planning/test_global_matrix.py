@@ -211,3 +211,16 @@ class GlobalMatrixTests(TestCase):
             from .global_services import build_snapshot
             build_snapshot(self.version)
             validate.assert_called_once_with(self.version)
+
+    def test_work_section_grouping_preserves_rows_and_totals(self):
+        normal=self.client.get(self.url)
+        reversed_view=self.client.get(self.url,{'work_order':'work_section'})
+        self.assertEqual(reversed_view.status_code,200)
+        self.assertEqual(sorted(r['key'] for r in self.rows(normal,'works')),sorted(r['key'] for r in self.rows(reversed_view,'works')))
+        a=next(s for s in normal.context['objects'][0]['sections'] if s['kind']=='works')
+        b=next(s for s in reversed_view.context['objects'][0]['sections'] if s['kind']=='works')
+        self.assertEqual(a['amount'],b['amount'])
+        self.assertTrue(all(n['children'] for n in b['groups']))
+        self.assertContains(reversed_view,'Работа → Раздел')
+        for column in reversed_view.context['columns']:
+            self.assertIn('work_order=work_section',column['url'])

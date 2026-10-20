@@ -129,7 +129,8 @@ function groupAllocationRows(panel) {
   rows.forEach(row=>{
     const input=row.querySelector('[name$="-'+rowIdentity[kind]+'"]');
     const meta=planningFilterData[kind][input.value] || {};
-    const path=input.value?fieldNames.map(name=>({key:name+':'+(meta[name] || ''),label:labels[name].get(meta[name]) || emptyLabels[kind][name]})):[{key:'new',label:'Новые строки'}];
+    let path=input.value?fieldNames.map(name=>({key:name+':'+(meta[name] || ''),label:labels[name].get(meta[name]) || emptyLabels[kind][name]})):[{key:'new',label:'Новые строки'}];
+    if(kind==='works' && input.value && panel.querySelector('[data-work-order]')?.value==='work_section')path=[{key:'work:'+input.options[input.selectedIndex].textContent,label:input.options[input.selectedIndex].textContent},...path];
     let parent=root,keys=[];
     path.forEach(part=>{
       keys.push(part.key);const key=JSON.stringify(keys);
@@ -205,8 +206,11 @@ function applyRowFilters(panel) {
 }
 function refreshRowFilters() {document.querySelectorAll('[data-row-filter]').forEach(panel=>{groupAllocationRows(panel);applyRowFilters(panel);});}
 document.querySelectorAll('[data-row-filter]').forEach(panel=>{
+  const order=panel.querySelector('[data-work-order]');
+  if(order){try{order.value=localStorage.getItem('gpr-work-order') || 'section_work';}catch(e){}
+    order.addEventListener('change',()=>{try{localStorage.setItem('gpr-work-order',order.value);}catch(e){}groupAllocationRows(panel);applyRowFilters(panel);});}
   panel.addEventListener('input',()=>applyRowFilters(panel));
-  panel.querySelector('[data-reset-filter]').addEventListener('click',()=>{panel.querySelectorAll('input,select').forEach(i=>i.value='');applyRowFilters(panel);});
+  panel.querySelector('[data-reset-filter]').addEventListener('click',()=>{panel.querySelectorAll('input,select:not([data-work-order])').forEach(i=>i.value='');applyRowFilters(panel);});
 });
 document.getElementById('allocation-editor').addEventListener('change',event=>{
   const row=event.target.closest('.allocation-row');

@@ -567,10 +567,16 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
                     spec.get("section_name") or (work.section.name if work else "Без раздела")
 
                 )
-                rows.append(([group_label], row))
+                path = [row["label"], group_label] if filters.get("work_order") == "work_section" else [group_label]
+                rows.append((path, row))
             work_groups = grouped(rows)
+            def work_totals(node):
+                all_rows = list(node['rows'])
+                for child in node['children']: all_rows.extend(work_totals(child))
+                attach_money_totals(node, all_rows)
+                return all_rows
             for node in work_groups:
-                attach_money_totals(node, node["rows"])
+                work_totals(node)
             work_section = {"kind": "works", "label": "Работы", "groups": work_groups}
             attach_money_totals(work_section, [row for _, row in rows])
             sections.append(work_section)

@@ -12,6 +12,7 @@ from .report_services import Source, build_matrix
 
 
 class GlobalMatrixForm(MatrixReportForm):
+    work_order = forms.ChoiceField(label="Группировка работ", choices=[("section_work", "Раздел → Работа"), ("work_section", "Работа → Раздел")], required=False)
     def __init__(self, *args, user, version, **kwargs):
         # Use the shared fields/validation without report-wide version selectors.
         forms.Form.__init__(self, *args, **kwargs)
