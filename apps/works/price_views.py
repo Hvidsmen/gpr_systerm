@@ -5,7 +5,7 @@ from django.core.exceptions import ValidationError
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views import View
-from core.permissions import PLAN_ROLES, require_roles
+from core.permissions import PLAN_ROLES, require_roles, scope_queryset
 from .models import ProjectWork, WorkPrice
 from .prices import change_price, price_on, can_backdate_price
 from .price_sources import source_field, source_note, identity
@@ -37,7 +37,7 @@ class PriceForm(forms.Form):
         self.user = user
         if can_backdate_price(user):
             self.fields["effective_from"].help_text = "Администратор может указать прошедшую дату. Запись сохранится в истории; цены зафиксированных планов сохранятся."
-        self.fields["price_source"] = source_field(work.company, work.pk)
+        self.fields["price_source"] = source_field(work.company, work.pk,user=user)
         if self.is_bound and self.data.get(self.add_prefix("price_source")):
             self.fields["price"].required = False
         self.fields["corrects"].queryset = work.price_history.all()
@@ -76,9 +76,8 @@ class WorkPriceChange(View):
     def dispatch(self, request, *args, **kwargs):
         require_roles(request.user, PLAN_ROLES)
         self.work = get_object_or_404(
-            ProjectWork,
+            scope_queryset(ProjectWork.objects.all(),request.user),
             pk=kwargs["pk"],
-            company=request.user.company,
             merged_source__isnull=True,
         )
         return super().dispatch(request, *args, **kwargs)

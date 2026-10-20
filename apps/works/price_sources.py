@@ -5,7 +5,7 @@ from django import forms
 from django.http import JsonResponse
 from django.utils import timezone
 from django.views import View
-from core.permissions import PLAN_ROLES, require_roles
+from core.permissions import PLAN_ROLES, require_roles, scope_queryset
 from .models import ProjectWork
 from .prices import price_on
 
@@ -23,10 +23,12 @@ def source_label(work):
     return f'{work.name} · {work.unit} · {obj.project.name} / {obj.name} / {work.section.name} · №{work.pk}'
 
 
-def source_field(company, exclude=None):
+def source_field(company, exclude=None, user=None):
     field = forms.ModelChoiceField(label='Взять цену из другой работы', required=False,
         queryset=source_works(company, exclude), empty_label='Ввести цену вручную',
         help_text='Выберите работу или найдите совпадения. Единицы измерения должны совпадать. Цена копируется при сохранении; последующие изменения источника не применяются автоматически.')
+    if user:
+        field.queryset=scope_queryset(field.queryset,user)
     field.label_from_instance = source_label
     return field
 
@@ -47,7 +49,7 @@ class WorkPriceSources(View):
         unit, name = identity(request.GET.get('unit', '')), identity(request.GET.get('name', ''))
         if not unit:
             return JsonResponse({'error': 'Сначала выберите единицу измерения.'}, status=400)
-        works = source_works(request.user.company, exclude)
+        works = scope_queryset(source_works(request.user.company, exclude),request.user)
         if source_id:
             works = works.filter(pk=source_id)
         elif not name:

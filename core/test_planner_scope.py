@@ -59,3 +59,14 @@ class PlannerScopeTests(TestCase):
         response=self.client.get(reverse('planning:report_matrix'),{'objects':self.denied.pk,'start':'2026-01-01','end':'2026-12-31'})
         self.assertTrue(response.context['form'].errors)
         self.assertNotContains(response,'Denied plan')
+
+
+    def test_planner_cannot_access_estimates_even_by_direct_link(self):
+        for name, args in [('estimate_list',[]),('estimate_report_list',[]),('estimate_import',[]),('catalog_list',[]),('estimate_export',[]),('estimate_detail',[1]),('estimate_delete',[1]),('estimate_bulk_delete',[])]:
+            url=reverse('estimates:'+name,args=args)
+            self.assertEqual(self.client.get(url).status_code,403,name)
+            self.assertEqual(self.client.post(url,{}).status_code,403,name)
+        response=self.client.get(reverse('dashboard:index'))
+        self.assertNotContains(response,'data-paths="/estimates/"')
+        self.client.force_login(self.admin)
+        self.assertEqual(self.client.get(reverse('estimates:estimate_list')).status_code,200)

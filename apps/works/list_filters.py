@@ -36,7 +36,7 @@ class WorkListFilterForm(forms.Form):
         widget=forms.TextInput(attrs={"placeholder": "Название работы в составе комплекса"}),
     )
 
-    def __init__(self, *args, company, **kwargs):
+    def __init__(self, *args, company, user=None, **kwargs):
         super().__init__(*args, **kwargs)
         projects = Project.objects.filter(company=company).order_by("name", "pk")
         objects = (
@@ -53,6 +53,9 @@ class WorkListFilterForm(forms.Form):
             .select_related("construction_object")
             .order_by("name", "pk")
         )
+        if user:
+            from core.permissions import scope_queryset
+            projects, objects, sections = (scope_queryset(queryset, user) for queryset in (projects, objects, sections))
         project_id = self.data.get("project", "")
         object_id = self.data.get("construction_object", "")
         if project_id:

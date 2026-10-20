@@ -10,6 +10,7 @@ from .forms import ProjectForm, ConstructionObjectForm, SectionForm
 
 
 from core.mixins import CompanyScopedMixin
+from core.permissions import scope_queryset, role_code
 
 class ProjectListView(CompanyScopedMixin, ListView):
     model = Project
@@ -25,7 +26,7 @@ class ProjectDetailView(CompanyScopedMixin, DetailView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context['construction_objects'] = self.object.construction_objects.all()
+        context['construction_objects'] = scope_queryset(self.object.construction_objects.all(), self.request.user)
         return context
 
 
@@ -55,6 +56,14 @@ class ProjectUpdateView(CompanyScopedMixin, UpdateView):
 class ProjectDeleteView(CompanyScopedMixin, DeleteView):
     model = Project
     template_name = 'projects/project_confirm_delete.html'
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        if role_code(self.request.user) == 'PLANNER':
+            # Deleting a project would cascade into every object, including hidden ones.
+            other_objects = ConstructionObject.objects.filter(company=self.request.user.company).exclude(pk__in=self.request.user.assigned_objects.values('pk'))
+            queryset = queryset.exclude(construction_objects__in=other_objects)
+        return queryset
     success_url = reverse_lazy('projects:project_list')
 
     def delete(self, request, *args, **kwargs):
@@ -68,8 +77,8 @@ class ConstructionObjectListView(CompanyScopedMixin, ListView):
     paginate_by = 20
 
     def get_queryset(self):
-        self.project = get_object_or_404(Project, company=self.request.user.company, pk=self.kwargs['project_pk'])
-        return ConstructionObject.objects.filter(company=self.request.user.company, project=self.project)
+        self.project = get_object_or_404(scope_queryset(Project.objects.all(), self.request.user), pk=self.kwargs['project_pk'])
+        return scope_queryset(ConstructionObject.objects.filter(project=self.project), self.request.user)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -84,17 +93,17 @@ class ConstructionObjectCreateView(CompanyScopedMixin, CreateView):
 
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
-        project = get_object_or_404(Project, company=self.get_company(), pk=self.kwargs['project_pk'])
+        project = get_object_or_404(scope_queryset(Project.objects.all(), self.request.user), pk=self.kwargs['project_pk'])
         kwargs['instance'] = ConstructionObject(company=project.company, project=project)
         return kwargs
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context['project'] = get_object_or_404(Project, company=self.request.user.company, pk=self.kwargs['project_pk'])
+        context['project'] = get_object_or_404(scope_queryset(Project.objects.all(), self.request.user), pk=self.kwargs['project_pk'])
         return context
 
     def form_valid(self, form):
-        project = get_object_or_404(Project, company=self.request.user.company, pk=self.kwargs['project_pk'])
+        project = get_object_or_404(scope_queryset(Project.objects.all(), self.request.user), pk=self.kwargs['project_pk'])
         form.instance.project = project
         form.instance.company = project.company
         messages.success(self.request, _('Объект успешно создан!'))
@@ -125,9 +134,8 @@ class SectionListView(CompanyScopedMixin, ListView):
             raise Http404("ID объекта не указан")
 
         self.construction_object = get_object_or_404(
-            ConstructionObject,
-            pk=object_id,
-            company=request.user.company
+            scope_queryset(ConstructionObject.objects.all(), request.user),
+            pk=object_id
         )
         return super().dispatch(request, *args, **kwargs)
 
@@ -151,7 +159,7 @@ class SectionCreateView(CompanyScopedMixin, CreateView):
     def dispatch(self, request, *args, **kwargs):
         object_id = kwargs.get('pk') or kwargs.get('object_id')
         self.construction_object = get_object_or_404(
-            ConstructionObject, pk=object_id, company=request.user.company
+            scope_queryset(ConstructionObject.objects.all(), request.user), pk=object_id
         )
         return super().dispatch(request, *args, **kwargs)
 

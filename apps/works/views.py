@@ -20,6 +20,7 @@ from .models import ProjectWork, ProjectWorkItem
 from ..projects.models import Section
 from .forms import ProjectWorkForm, ProjectWorkItemForm, WorkSectionForm
 from core.mixins import CompanyRequiredMixin, CompanyScopedMixin
+from core.permissions import scope_queryset
 
 
 class WorkListView(CompanyScopedMixin, ListView):
@@ -29,7 +30,7 @@ class WorkListView(CompanyScopedMixin, ListView):
     paginate_by = 20
 
     def get_queryset(self):
-        self.filter_form = WorkListFilterForm(self.request.GET, company=self.request.user.company)
+        self.filter_form = WorkListFilterForm(self.request.GET, company=self.request.user.company, user=self.request.user)
         from core.permissions import scope_queryset
         queryset = scope_queryset(ProjectWork.objects.filter(merged_source__isnull=True), self.request.user)
         if self.filter_form.is_valid():
@@ -267,7 +268,7 @@ class WorkItemCreateView(CompanyRequiredMixin, CreateView):
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
         work = get_object_or_404(
-            ProjectWork, pk=self.kwargs["work_pk"], company=self.request.user.company
+            scope_queryset(ProjectWork.objects.all(),self.request.user), pk=self.kwargs["work_pk"]
         )
         kwargs["instance"] = ProjectWorkItem(
             project_work=work, company=self.request.user.company
@@ -284,7 +285,7 @@ class WorkItemCreateView(CompanyRequiredMixin, CreateView):
         work_pk = self.kwargs.get("work_pk")
         if work_pk:
             context["work"] = get_object_or_404(
-                ProjectWork, pk=work_pk, company=self.request.user.company
+                scope_queryset(ProjectWork.objects.all(),self.request.user), pk=work_pk
             )
             # Передаём список существующих подработ для выбора родителя
             context["parent_choices"] = ProjectWorkItem.objects.filter(
@@ -300,7 +301,7 @@ class WorkItemCreateView(CompanyRequiredMixin, CreateView):
         if work_pk:
             # Заполняем обязательное поле project_work
             form.instance.project_work = get_object_or_404(
-                ProjectWork, pk=work_pk, company=self.request.user.company
+                scope_queryset(ProjectWork.objects.all(),self.request.user), pk=work_pk
             )
             form.instance.company = self.request.user.company
 

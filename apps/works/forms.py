@@ -77,7 +77,7 @@ class ProjectWorkForm(UnitChoiceMixin, forms.ModelForm):
             self.fields["unit_price"].disabled = True
             self.fields["unit_price"].help_text = "Цена меняется в карточке работы с сохранением истории."
         if not self.instance.pk:
-            self.fields['price_source'] = source_field(company)
+            self.fields['price_source'] = source_field(company,user=user)
             if self.is_bound and self.data.get(self.add_prefix('price_source')):
                 self.fields['unit_price'].required = False
         self.configure_catalog(company)

@@ -10,6 +10,7 @@ class ObjectActionsTests(TestCase):
         self.user = User.objects.create_user(username='object-editor', company=self.company, role=Role.objects.get(code='PLANNER'))
         self.project = Project.objects.create(company=self.company, code='p', name='Project')
         self.obj = ConstructionObject.objects.create(company=self.company, project=self.project, code='o', name='Object')
+        self.user.assigned_objects.add(self.obj)
         self.client.force_login(self.user)
 
     def test_edit_and_confirmed_delete(self):

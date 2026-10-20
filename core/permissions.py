@@ -134,6 +134,8 @@ def check_route(user, match, method):
         require_roles(user, roles)
         return
     if namespace == 'estimates':
+        if role == 'PLANNER':
+            raise PermissionDenied('Раздел смет недоступен планировщику.')
         require_roles(user, READ_ROLES if name in {'estimate_list', 'estimate_report_list', 'estimate_detail', 'catalog_list', 'estimate_export'} and method in {'GET', 'HEAD'} else PLAN_ROLES)
         return
     if namespace == 'rotation':

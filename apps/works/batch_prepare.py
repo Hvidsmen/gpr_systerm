@@ -24,7 +24,7 @@ from django.views import View
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill
 
-from core.permissions import PLAN_ROLES, require_roles
+from core.permissions import PLAN_ROLES, require_roles, scope_queryset
 from apps.projects.models import ConstructionObject
 from apps.planning.models import GlobalPlanVersion, WorkMonthAllocation, MonthlyPlan
 from .models import ProjectWork, ProjectWorkItem, WorkPrice
@@ -87,12 +87,14 @@ class SelectionForm(forms.Form):
         self.fields["construction_object"].queryset = ConstructionObject.objects.filter(
             company=user.company
         ).select_related("project")
+        self.fields["construction_object"].queryset=scope_queryset(self.fields["construction_object"].queryset,user)
         object_ids = (self.data.getlist("construction_object") if hasattr(self.data, "getlist") else self.data.get("construction_object", [])) if self.is_bound else []
         object_id = object_ids[0] if len(object_ids) == 1 else None
         if str(object_id or "").isdigit():
             self.fields["version"].queryset = GlobalPlanVersion.objects.filter(
                 company=user.company, construction_object_id=object_id
             ).order_by("-version_number")
+        self.fields["version"].queryset=scope_queryset(self.fields["version"].queryset,user)
         for field in self.fields.values():
             field.widget.attrs["class"] = (
                 "form-select form-select-sm"
@@ -223,7 +225,7 @@ def batch_objects(user, value, lock=False):
 
 
 def batch_object(user, object_id, *, lock=False):
-    queryset = ConstructionObject.objects.filter(company=user.company)
+    queryset = scope_queryset(ConstructionObject.objects.all(),user)
     if lock:
         queryset = queryset.select_for_update()
     try:
