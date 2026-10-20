@@ -1,12 +1,14 @@
 from django.urls import path
 from . import views
 from .access_groups import groups
+from .directory_groups import group_search
 from .directory_admin import add_from_ad
 from . import impersonation_views
 
 app_name = 'accounts'
 
 urlpatterns = [
+    path("ad/groups/", group_search, name="ad_group_search"),
     path("access-groups/", groups, name="access_groups"),
     path("access-groups/<int:pk>/", groups, name="access_group_edit"),
     path("view-as/history/", impersonation_views.history, name="impersonation_history"),

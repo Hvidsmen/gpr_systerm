@@ -131,3 +131,6 @@ LDAP_BIND_USER = os.getenv('LDAP_BIND_USER', 'portal-ldap@yamalgazprom.local')
 LDAP_BIND_PASSWORD = os.getenv('LDAP_BIND_PASSWORD', '')
 LDAP_BASE_DN = os.getenv('LDAP_BASE_DN', 'OU=Yamaldorstroy,DC=yamalgazprom,DC=local')
 LDAP_TIMEOUT = int(os.getenv('LDAP_TIMEOUT', '5'))
+
+# Groups may live outside the OU used for user lookup.
+LDAP_GROUP_BASE_DN = os.getenv("LDAP_GROUP_BASE_DN", "")
