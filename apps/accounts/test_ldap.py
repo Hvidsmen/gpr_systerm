@@ -90,3 +90,20 @@ class DirectoryTests(TestCase):
             self.assertIsNone(directory_identity('ivan','wrong-password'))
         self.assertEqual(server.call_count,1)
         service.unbind.assert_called_once()
+
+
+class LoginChoiceTests(TestCase):
+    @override_settings(LDAP_ENABLED=True)
+    def test_ad_option_is_rendered_and_valid_in_each_form(self):
+        from .forms import UserLoginForm
+        for _ in range(2):
+            form = UserLoginForm()
+            self.assertIn('value="ldap"', str(form['auth_source']))
+            self.assertEqual(list(form.fields['auth_source'].choices), list(form.fields['auth_source'].widget.choices))
+        self.assertContains(self.client.get(reverse('accounts:login')), 'value="ldap"')
+
+    @override_settings(LDAP_ENABLED=False)
+    def test_disabled_directory_remains_hidden(self):
+        from .forms import UserLoginForm
+        self.assertTrue(UserLoginForm().fields['auth_source'].widget.is_hidden)
+        self.assertNotContains(self.client.get(reverse('accounts:login')), 'value="ldap"')

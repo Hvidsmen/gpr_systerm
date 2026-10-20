@@ -54,7 +54,10 @@ class UserLoginForm(AuthenticationForm):
         super().__init__(*args,**kwargs)
         from django.conf import settings
         if settings.LDAP_ENABLED:
-            self.fields['auth_source'].choices.append(('ldap','Корпоративная учетная запись AD'))
+            self.fields['auth_source'].choices = [
+                ('local', 'Локальная учетная запись'),
+                ('ldap', 'Корпоративная учетная запись AD'),
+            ]
         else:
             self.fields['auth_source'].widget=forms.HiddenInput()
             self.fields['auth_source'].required=False
