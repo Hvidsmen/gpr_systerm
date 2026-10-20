@@ -226,3 +226,20 @@ class TaskTests(TestCase):
         self.assertEqual(response.status_code,302)
         security.refresh_from_db();self.assertEqual(security.status,'DONE')
         ceo.refresh_from_db();self.assertEqual(ceo.status,'OPEN')
+
+
+    def test_carryover_is_in_common_inbox_and_legacy_tab_redirects(self):
+        from .models import CarryoverReviewTask
+        from django.utils import timezone
+        version=self.create().baseline_version
+        record=CarryoverReviewTask.objects.create(company=self.company,version=version,source_version=version,month=TODAY.replace(day=1),due_date=timezone.localdate(),assigned_to=self.planner)
+        self.client.force_login(self.planner)
+        response=self.client.get(reverse('planning:task_list'),{'kind':'CARRYOVER'})
+        task=WorkTask.objects.get(carryover=record)
+        self.assertContains(response,reverse('planning:task_detail',args=[task.pk]))
+        self.assertEqual(list(response.context['page']),[task])
+        self.assertNotContains(response,'> Задания по остаткам ')
+        self.assertEqual(tasks.visible(self.planner).filter(carryover=record).count(),1)
+        self.assertRedirects(self.client.get(reverse('planning:carryover_task_list')),reverse('planning:task_list')+'?kind=CARRYOVER',fetch_redirect_response=False)
+        self.client.get(reverse('planning:task_list'))
+        self.assertEqual(WorkTask.objects.filter(carryover=record).count(),1)

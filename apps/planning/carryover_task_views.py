@@ -15,9 +15,8 @@ SALT='planning.closed-carryover.v1'
 
 class CarryoverTaskList(View):
     def get(self,request):
-        tasks=list(service.tasks_for(request.user,due=not request.GET.get('upcoming')))
-        for task in tasks:task.closed=service.is_closed(task)
-        return render(request,'planning/carryover_tasks.html',{'tasks':tasks,'today':timezone.localdate()})
+        require_roles(request.user,PLAN_ROLES)
+        return redirect(reverse('planning:task_list')+'?kind=CARRYOVER')
 
 
 class CarryoverTaskDetail(View):
