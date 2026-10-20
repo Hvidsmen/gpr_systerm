@@ -304,6 +304,7 @@ class WorkspaceEdit(View):
             "work_item_quantities": {form.prefix: form.instance.item_quantities for form in works if form.instance.item_quantities},
             "planning_filter_data": filter_data,
             "work_filters": filter_specs['works'],
+            "composite_fractional": dict(ProjectWork.objects.filter(company=version.company, section__construction_object=version.construction_object, kind="COMPOSITE").values_list("pk", "allow_fractional")),
             "composite_items": {
                 str(work.pk): [
                     {"id": item.pk, "name": item.name, "unit": item.unit, "norm": str(item.quantity_per_unit)}

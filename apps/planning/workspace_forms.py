@@ -68,6 +68,7 @@ class AllocationMixin(CompanyFormMixin):
 
 
 class WorkAllocationForm(AllocationMixin, forms.ModelForm):
+    edited_item_quantities = forms.JSONField(required=False, widget=forms.HiddenInput())
     reset_item_quantities = forms.BooleanField(required=False, widget=forms.HiddenInput())
     class Meta:
         model = WorkMonthAllocation
@@ -92,7 +93,15 @@ class WorkAllocationForm(AllocationMixin, forms.ModelForm):
         data = super().clean()
         if data.get('reset_item_quantities') or 'quantity' in self.changed_data or 'work' in self.changed_data:
             self.instance.item_quantities = {}
-        if data.get('reset_item_quantities') or any(name in self.changed_data for name in ['work','month','quantity','load_profile']):
+        edited = data.get('edited_item_quantities')
+        if edited is not None:
+            if not isinstance(edited, dict) or not edited:
+                self.add_error(None, 'Укажите объёмы всех работ в составе комплекса.')
+            else:
+                self.instance.item_quantities = edited
+        if 'edited_item_quantities' in self.errors:
+            self.add_error(None, 'Некорректные объёмы работ в составе комплекса.')
+        if edited is not None or data.get('reset_item_quantities') or any(name in self.changed_data for name in ['work','month','quantity','load_profile']):
             self.instance.daily_override = None
         return data
 

@@ -89,7 +89,7 @@
 {{ work_forms.non_form_errors }}{{ resource_forms.non_form_errors }}
 {% if resource_forms.total_error_count %}<div class="alert alert-danger" role="alert">Проверьте данные ресурсов.<ul>{% for form in resource_forms %}{% for field in form %}{% for error in field.errors %}<li>{{ field.label }}: {{ error }}</li>{% endfor %}{% endfor %}{% for error in form.non_field_errors %}<li>{{ error }}</li>{% endfor %}{% endfor %}</ul></div>{% endif %}
 <div class="d-flex gap-2 mb-3"><button type="button" class="btn btn-sm btn-outline-secondary" data-expand-allocations>Развернуть всё</button><button type="button" class="btn btn-sm btn-outline-secondary" data-collapse-allocations>Свернуть всё</button></div>
-<details class="allocation-section" data-allocation-section="works"><summary>Работы <span class="allocation-group-count" data-section-count></span></summary><div class="allocation-section-body"><p>Указывайте объём комплекса работ. Объёмы работ в составе комплекса рассчитываются по нормативам; при импорте Excel сохраняются отдельные объёмы работ в составе комплекса. Изменение объёма комплекса работ возвращает расчёт по нормативам.</p>
+<details class="allocation-section" data-allocation-section="works"><summary>Работы <span class="allocation-group-count" data-section-count></span></summary><div class="allocation-section-body"><p>Указывайте объём комплекса работ. Объёмы работ в составе комплекса можно менять прямо в таблице. Объём комплекса рассчитывается по минимальному выполнению нормативов. Изменение объёма комплекса работ возвращает расчёт по нормативам.</p>
 {% include 'planning/row_filters.html' with filter_kind='works' filters=work_filters %}
 <p><button type="submit" name="action" value="remove_zero_works" class="btn btn-outline-danger" onclick="return confirm('Сохранить изменения и удалить работы с нулевыми объемами только за выбранный месяц? Справочник и другие месяцы сохранятся.')">Сохранить и удалить нулевые работы за {{ selected_month|date:'m.Y' }}</button></p>
 <p><a class="btn btn-outline-primary" href="{% url 'planning:workspace_carryover' version.pk %}?month={{ selected_month|date:'Y-m-d' }}">Добавить остаток работ из прошлого месяца</a></p>
@@ -110,6 +110,7 @@
 <script src="{% static 'planning/work_amounts.js' %}"></script>
 {{ work_carryover_notes|json_script:'work-carryover-notes' }}
 {{ composite_items|json_script:'composite-items' }}
+{{ composite_fractional|json_script:'composite-fractional' }}
 {{ work_item_quantities|json_script:'work-item-quantities' }}
 {{ planning_filter_data|json_script:'planning-filter-data' }}
 <script>
@@ -225,6 +226,7 @@ document.getElementById('allocation-editor').addEventListener('change',event=>{
 const workCarryoverNotes=JSON.parse(document.getElementById('work-carryover-notes').textContent);
 const compositeItems=JSON.parse(document.getElementById('composite-items').textContent);
 const importedItemQuantities=JSON.parse(document.getElementById('work-item-quantities').textContent);
+const compositeFractional=JSON.parse(document.getElementById('composite-fractional').textContent);
 const subworkNumber=new Intl.NumberFormat('ru-RU',{maximumFractionDigits:6});
 function updateSubworks(row) {
   updateWorkAmount(row);
@@ -249,21 +251,49 @@ function updateSubworks(row) {
   if (!items.length) {panel.textContent='В комплексе работ пока нет работ в составе комплекса. Добавьте работы в составе комплекса и нормативы.';return;}
   const input=row.querySelector('[name$="-quantity"]');
   const prefix=input.name.slice(0,-'-quantity'.length);
-  const imported=importedItemQuantities[prefix];
+  const edited=row.querySelector('[name$="-edited_item_quantities"]');
+  let imported=importedItemQuantities[prefix];
+  if(edited.value){try{imported=JSON.parse(edited.value);}catch(e){}}
+
   const quantity=Number(input.value.replace(',','.'));
   const valid=input.value.trim()!=='' && Number.isFinite(quantity) && quantity>=0;
   const table=document.createElement('table');table.className='table table-sm mb-0';
   const head=table.createTHead().insertRow();
   ['Работа в составе комплекса','Норматив на единицу работы','План на месяц','Ед. изм.'].forEach(label=>{const th=document.createElement('th');th.textContent=label;head.append(th);});
   const body=table.createTBody();
-  items.forEach(item=>{const tr=body.insertRow();[item.name,subworkNumber.format(Number(item.norm)),imported?subworkNumber.format(Number(imported[String(item.id)] || 0)):(valid?subworkNumber.format(quantity*Number(item.norm)):'—'),item.unit].forEach(value=>tr.insertCell().textContent=value);});
+  items.forEach(item=>{
+    const tr=body.insertRow();
+    tr.insertCell().textContent=item.name;
+    tr.insertCell().textContent=subworkNumber.format(Number(item.norm));
+    const child=document.createElement('input');
+    child.type='number';child.min='0';child.step='0.000001';child.required=true;
+    child.className='form-control form-control-sm';child.style.minWidth='130px';
+    child.setAttribute('aria-label','План на месяц: '+item.name);child.dataset.itemId=String(item.id);
+    child.value=imported?(imported[String(item.id)] ?? ''):(valid?String(Number((quantity*Number(item.norm)).toFixed(6))):'');
+    child.addEventListener('input',()=>{
+      const values={};let ratios=[];
+      body.querySelectorAll('[data-item-id]').forEach(field=>{
+        values[field.dataset.itemId]=field.value;
+        const spec=items.find(i=>String(i.id)===field.dataset.itemId);
+        if(field.value!=='' && field.checkValidity())ratios.push(Number(field.value)/Number(spec.norm));
+      });
+      edited.value=JSON.stringify(values);
+      row.querySelector('[name$="-reset_item_quantities"]').value='';
+      if(ratios.length===items.length){
+        const scale=compositeFractional[work.value]?1000:1;
+        input.value=String(Math.floor((Math.min(...ratios)+Number.EPSILON)*scale)/scale);
+        updateWorkAmount(row);
+      }
+    });
+    tr.insertCell().append(child);tr.insertCell().textContent=item.unit;
+  });
   panel.append(table);
 }
 function wireSubworks() {
   document.querySelectorAll('#work-rows .allocation-row').forEach(row=>{
     updateSubworks(row);
-    row.querySelector('[name$="-work"]').onchange=()=>{delete importedItemQuantities[row.querySelector('[name$="-quantity"]').name.slice(0,-'-quantity'.length)];row.querySelector('[name$="-reset_item_quantities"]').value='on';updateSubworks(row);};
-    row.querySelector('[name$="-quantity"]').oninput=()=>{delete importedItemQuantities[row.querySelector('[name$="-quantity"]').name.slice(0,-'-quantity'.length)];row.querySelector('[name$="-reset_item_quantities"]').value='on';updateSubworks(row);};
+    row.querySelector('[name$="-work"]').onchange=()=>{delete importedItemQuantities[row.querySelector('[name$="-quantity"]').name.slice(0,-'-quantity'.length)];row.querySelector('[name$="-reset_item_quantities"]').value='on';row.querySelector('[name$="-edited_item_quantities"]').value='';updateSubworks(row);};
+    row.querySelector('[name$="-quantity"]').oninput=()=>{delete importedItemQuantities[row.querySelector('[name$="-quantity"]').name.slice(0,-'-quantity'.length)];row.querySelector('[name$="-reset_item_quantities"]').value='on';row.querySelector('[name$="-edited_item_quantities"]').value='';updateSubworks(row);};
   });
 }
 function removeAllocationRow(row) {
