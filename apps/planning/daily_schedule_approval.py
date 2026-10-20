@@ -8,7 +8,7 @@ from apps.accounts.models import User
 from .models import DailySchedule,DailyScheduleReview,DailyScheduleDecision,WorkTask
 from . import estimate_review
 
-SECTIONS=[('PRODUCTION','Работы','PRODUCTION_HEAD'),('HR','Люди','HR_HEAD'),('TECH','Техника и ГСМ','TECH_HEAD')]
+SECTIONS=[('PRODUCTION','Работы','PRODUCTION_HEAD'),('HR','Люди','HR_HEAD'),('TECH','Техника и ГСМ','TECH_HEAD'),('SECURITY','Служба безопасности','SECURITY_HEAD')]
 
 
 def requires_approval(schedule):
@@ -39,7 +39,7 @@ def handoff(estimate):
     if valid and schedule.status=='DRAFT':
         assigned=planner(schedule,estimate)
         actor_id=estimate.events.filter(action='APPROVED').order_by('-pk').values_list('actor_id',flat=True).first() or estimate.assigned_to_id
-        task=ensure(estimate.company,key,kind='SUBMISSION',title=next_action(schedule),description='Проверка сметчика завершена. Если месячные итоги совпадают с ГПР, сохраните СМГ как оперативный план. При отклонениях требуется согласование трех служб и генерального директора.',assigned_to=assigned,target_role='' if assigned else 'PLANNER',created_by_id=actor_id,schedule=schedule,estimate=estimate,construction_object_id=schedule.source.construction_object_id,due_date=timezone.localdate()+timedelta(days=1))
+        task=ensure(estimate.company,key,kind='SUBMISSION',title=next_action(schedule),description='Проверка сметчика завершена. Если месячные итоги совпадают с ГПР, сохраните СМГ как оперативный план. При отклонениях требуется согласование четырех служб и генерального директора.',assigned_to=assigned,target_role='' if assigned else 'PLANNER',created_by_id=actor_id,schedule=schedule,estimate=estimate,construction_object_id=schedule.source.construction_object_id,due_date=timezone.localdate()+timedelta(days=1))
         if task.title!=next_action(schedule):task.title=next_action(schedule);task.save(update_fields=['title'])
         if task.status=='SUPERSEDED':state(task,'OPEN')
     elif existing and existing.status in ACTIVE:
@@ -69,11 +69,14 @@ def sync(schedule):
             for task in WorkTask.objects.filter(company=schedule.company,key=key,status__in=ACTIVE):state(task,'DONE')
         return
     if schedule.status!='SUBMITTED':return
+    if not {'PRODUCTION','HR','TECH','SECURITY'}<=decisions.keys():
+        for old in WorkTask.objects.filter(schedule_review=review,target_role='CEO',kind='APPROVAL',status__in=ACTIVE):state(old,'SUPERSEDED',text='Требуется согласование СБ и остальных служб.')
     roles=list(SECTIONS)
-    if {'PRODUCTION','HR','TECH'}<=decisions.keys():roles.append(('CEO','Утверждение СМГ','CEO'))
+    if {'PRODUCTION','HR','TECH','SECURITY'}<=decisions.keys():roles.append(('CEO','Утверждение СМГ','CEO'))
     for section,label,role in roles:
         people=list(User.objects.filter(company=schedule.company,is_active=True,role__code=role)[:2])
         task=ensure(schedule.company,f'smg-approval:{review.pk}:{section}',kind='APPROVAL',title=f'Согласовать дневной СМГ: {label}',assigned_to=people[0] if len(people)==1 else None,target_role=role,created_by=review.submitted_by,schedule=schedule,schedule_review=review,construction_object_id=schedule.source.construction_object_id,due_date=timezone.localdate()+timedelta(days=2))
+        if task.status=='SUPERSEDED' and section not in decisions:state(task,'OPEN')
         if task.status=='OPEN' and task.assigned_to_id and (not task.assigned_to.is_active or role_code(task.assigned_to)!=role):
             task.assigned_to=people[0] if len(people)==1 else None;task.save(update_fields=['assigned_to'])
         if section in decisions:state(task,'DONE',decisions[section].actor)
@@ -94,13 +97,13 @@ def transition(user,schedule,action,comment=''):
         review=DailyScheduleReview.objects.create(company=user.company,schedule=schedule,number=schedule.approval_round,fingerprint=estimate_review.signature(schedule),snapshot=list(schedule.entries.values('id','key','kind','label','metadata','original','rows','revision')),submitted_by=user)
         schedule.status='SUBMITTED'
     else:
-        section={'PRODUCTION_HEAD':'PRODUCTION','HR_HEAD':'HR','TECH_HEAD':'TECH','CEO':'CEO','ESTIMATOR':'ESTIMATE'}.get(role)
-        if role=='ADMIN':section={'approve_production':'PRODUCTION','approve_hr':'HR','approve_tech':'TECH','approve':'CEO'}.get(action,'ADMIN')
-        allowed={'approve_production':{'PRODUCTION_HEAD','ADMIN'},'approve_hr':{'HR_HEAD','ADMIN'},'approve_tech':{'TECH_HEAD','ADMIN'},'approve':{'CEO','ADMIN'},'reject':{'PRODUCTION_HEAD','HR_HEAD','TECH_HEAD','CEO','ADMIN','ESTIMATOR'}}
+        section={'PRODUCTION_HEAD':'PRODUCTION','HR_HEAD':'HR','TECH_HEAD':'TECH','SECURITY_HEAD':'SECURITY','CEO':'CEO','ESTIMATOR':'ESTIMATE'}.get(role)
+        if role=='ADMIN':section={'approve_production':'PRODUCTION','approve_hr':'HR','approve_tech':'TECH','approve_security':'SECURITY','approve':'CEO'}.get(action,'ADMIN')
+        allowed={'approve_production':{'PRODUCTION_HEAD','ADMIN'},'approve_hr':{'HR_HEAD','ADMIN'},'approve_tech':{'TECH_HEAD','ADMIN'},'approve_security':{'SECURITY_HEAD','ADMIN'},'approve':{'CEO','ADMIN'},'reject':{'PRODUCTION_HEAD','HR_HEAD','TECH_HEAD','SECURITY_HEAD','CEO','ADMIN','ESTIMATOR'}}
         require_roles(user,allowed.get(action,set()))
         if schedule.status!='SUBMITTED' or not review:raise ValidationError('СМГ не находится на согласовании.')
         approved=set(review.decisions.filter(action='APPROVE').values_list('section',flat=True))
-        if role=='CEO' and not {'PRODUCTION','HR','TECH'}<=approved:raise ValidationError('Дождитесь согласования всех трех служб.')
+        if role=='CEO' and not {'PRODUCTION','HR','TECH','SECURITY'}<=approved:raise ValidationError('Дождитесь согласования всех четырех служб.')
         if action=='reject':
             if role=='ESTIMATOR' and not schedule.estimate_reviews.filter(assigned_to=user,status='OPEN').exists():raise PermissionDenied
             if not comment.strip():raise ValidationError('Укажите причину возврата.')
@@ -110,7 +113,7 @@ def transition(user,schedule,action,comment=''):
             if review.fingerprint!=estimate_review.signature(schedule):raise ValidationError('СМГ изменился после отправки. Верните его на доработку.')
             if section in approved:raise ValidationError('Раздел уже согласован.')
             if action=='approve':
-                if not {'PRODUCTION','HR','TECH'}<=approved:raise ValidationError('Дождитесь согласования всех трех служб.')
+                if not {'PRODUCTION','HR','TECH','SECURITY'}<=approved:raise ValidationError('Дождитесь согласования всех четырех служб.')
                 estimate_review.require_approved(schedule);schedule.status='APPROVED'
         DailyScheduleDecision.objects.create(company=user.company,review=review,section=section,action='REJECT' if action=='reject' else 'APPROVE',actor=user,actor_name=user.get_full_name() or user.username,actor_role=role,comment=comment)
     schedule.save(update_fields=['status','approval_round','updated_at'])

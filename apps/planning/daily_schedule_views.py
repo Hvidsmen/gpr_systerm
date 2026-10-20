@@ -68,12 +68,12 @@ class DailyScheduleDetail(View):
         review=current(schedule)
         decisions=list(review.decisions.all()) if review else []
         approved={d.section for d in decisions if d.action=='APPROVE'}
-        ready={'PRODUCTION','HR','TECH'}<=approved
+        ready={'PRODUCTION','HR','TECH','SECURITY'}<=approved
         latest=schedule.estimate_reviews.order_by('-pk').first()
         checked=check_valid(schedule,latest)
         role=role_code(request.user)
-        actions=[{'label':label,'action':{'PRODUCTION':'approve_production','HR':'approve_hr','TECH':'approve_tech'}[section],'done':section in approved,'allowed':schedule.status=='SUBMITTED' and role in {assigned,'ADMIN'} and section not in approved} for section,label,assigned in SECTIONS]
-        approval={'smg_requires_approval':requires_approval(schedule),'smg_review':review,'smg_decisions':decisions,'smg_actions':actions,'smg_checked':checked,'smg_final_allowed':schedule.status=='SUBMITTED' and ready and role in {'CEO','ADMIN'},'smg_return_allowed':schedule.status=='SUBMITTED' and (role in {'PRODUCTION_HEAD','HR_HEAD','TECH_HEAD','ADMIN'} or role=='CEO' and ready)}
+        actions=[{'label':label,'action':{'PRODUCTION':'approve_production','HR':'approve_hr','TECH':'approve_tech','SECURITY':'approve_security'}[section],'done':section in approved,'allowed':schedule.status=='SUBMITTED' and role in {assigned,'ADMIN'} and section not in approved} for section,label,assigned in SECTIONS if not (section=='SECURITY' and schedule.status in {'APPROVED','APPLIED','ARCHIVED'} and section not in approved)]
+        approval={'smg_requires_approval':requires_approval(schedule),'smg_review':review,'smg_decisions':decisions,'smg_actions':actions,'smg_checked':checked,'smg_final_allowed':schedule.status=='SUBMITTED' and ready and role in {'CEO','ADMIN'},'smg_return_allowed':schedule.status=='SUBMITTED' and (role in {'PRODUCTION_HEAD','HR_HEAD','TECH_HEAD','SECURITY_HEAD','ADMIN'} or role=='CEO' and ready)}
         from .daily_schedule_table_forms import AddEntryForm
         return render(request,'planning/daily_schedule_detail.html',dict(schedule=schedule,entries=entries,can_edit=role_code(request.user) in PLAN_ROLES,table_editable=editable,add_form=add_form or (AddEntryForm(schedule=schedule) if editable else None),has_deviations=any(service.differences(e,e.rows) for e in entries),**approval,**matrix(schedule,entries)))
 

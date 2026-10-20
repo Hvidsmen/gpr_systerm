@@ -1,7 +1,7 @@
 """Central role policy and construction-object scope for fact entry."""
 from django.core.exceptions import PermissionDenied
 
-DEPARTMENT_ROLES = {'PRODUCTION_HEAD', 'HR_HEAD', 'TECH_HEAD'}
+DEPARTMENT_ROLES = {'PRODUCTION_HEAD', 'HR_HEAD', 'TECH_HEAD', 'SECURITY_HEAD'}
 GLOBAL_APPROVAL_ROLES = DEPARTMENT_ROLES | {'CEO'}
 ROLES = {'ADMIN', 'PLANNER', 'MANAGER', 'FOREMAN', 'DISPATCHER', 'OBSERVER', 'ESTIMATOR'} | GLOBAL_APPROVAL_ROLES
 READ_ROLES = {'ADMIN', 'PLANNER', 'MANAGER', 'OBSERVER', 'ESTIMATOR'} | GLOBAL_APPROVAL_ROLES
@@ -33,6 +33,7 @@ def require_global_action(user, action):
         'approve_production': {'PRODUCTION_HEAD'},
         'approve_hr': {'HR_HEAD'},
         'approve_tech': {'TECH_HEAD'},
+        'approve_security': {'SECURITY_HEAD'},
         'approve': {'CEO'},
         'complete': {'CEO'},
         'reject': GLOBAL_APPROVAL_ROLES,

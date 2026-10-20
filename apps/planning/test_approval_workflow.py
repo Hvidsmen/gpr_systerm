@@ -42,7 +42,7 @@ class ApprovalWorkflowTests(TestCase):
 
     def test_three_parallel_sections_are_required_and_independent(self):
         version = self.submit()
-        for code, action in [('TECH_HEAD','approve_tech'), ('PRODUCTION_HEAD','approve_production'), ('HR_HEAD','approve_hr')]:
+        for code, action in [('TECH_HEAD','approve_tech'), ('SECURITY_HEAD','approve_security'), ('PRODUCTION_HEAD','approve_production'), ('HR_HEAD','approve_hr')]:
             with self.assertRaises(ValidationError):
                 GlobalPlanService.transition(version, self.approvers['CEO'], 'approve')
             version = GlobalPlanService.transition(version, self.approvers[code], action)
@@ -50,12 +50,12 @@ class ApprovalWorkflowTests(TestCase):
         version = GlobalPlanService.transition(version, self.approvers['CEO'], 'approve')
         self.assertEqual(version.status, 'APPROVED')
         self.assertEqual(version.approved_by, self.approvers['CEO'])
-        self.assertEqual(current_review(version).decisions.count(), 6)
+        self.assertEqual(current_review(version).decisions.count(), 7)
 
     def test_wrong_roles_cannot_approve_other_sections_or_final_plan(self):
         version = self.submit()
         for user in [self.planner, self.manager, *self.approvers.values()]:
-            for code, action in [('TECH_HEAD','approve_tech'), ('PRODUCTION_HEAD','approve_production'), ('HR_HEAD','approve_hr'), ('CEO','approve'), ('CEO','complete')]:
+            for code, action in [('TECH_HEAD','approve_tech'), ('SECURITY_HEAD','approve_security'), ('PRODUCTION_HEAD','approve_production'), ('HR_HEAD','approve_hr'), ('CEO','approve'), ('CEO','complete')]:
                 if user == self.approvers[code]:
                     continue
                 with self.subTest(user=user.username, action=action), self.assertRaises(PermissionDenied):
@@ -71,7 +71,7 @@ class ApprovalWorkflowTests(TestCase):
         self.assertEqual(current_review(version).decisions.count(), 3)
 
     def test_every_head_can_return_whole_plan_with_required_reason(self):
-        for code in ['PRODUCTION_HEAD', 'HR_HEAD', 'TECH_HEAD']:
+        for code in ['PRODUCTION_HEAD', 'HR_HEAD', 'TECH_HEAD', 'SECURITY_HEAD']:
             version = self.submit()
             with self.assertRaises(ValidationError):
                 GlobalPlanService.transition(version, self.approvers[code], 'reject', '  ')
@@ -101,7 +101,7 @@ class ApprovalWorkflowTests(TestCase):
 
     def test_ceo_may_return_approved_plan_and_completion_is_terminal(self):
         version = self.approve(self.create().baseline_version)
-        for code in ['PRODUCTION_HEAD', 'HR_HEAD', 'TECH_HEAD']:
+        for code in ['PRODUCTION_HEAD', 'HR_HEAD', 'TECH_HEAD', 'SECURITY_HEAD']:
             with self.assertRaises(ValidationError):
                 GlobalPlanService.transition(version, self.approvers[code], 'reject', 'Причина')
         version = GlobalPlanService.transition(version, self.approvers['CEO'], 'reject', 'Новый расчёт')
@@ -237,7 +237,7 @@ class ApprovalWorkflowTests(TestCase):
 
     def test_admin_can_approve_each_section_with_correct_audit_and_required_order(self):
         version = self.submit()
-        for section, action in [('PRODUCTION', 'approve_production'), ('HR', 'approve_hr'), ('TECH', 'approve_tech')]:
+        for section, action in [('PRODUCTION', 'approve_production'), ('HR', 'approve_hr'), ('TECH', 'approve_tech'), ('SECURITY', 'approve_security')]:
             with self.assertRaises(ValidationError):
                 GlobalPlanService.transition(version, self.admin, 'approve')
             version = GlobalPlanService.transition(version, self.admin, action)
@@ -248,7 +248,7 @@ class ApprovalWorkflowTests(TestCase):
                 GlobalPlanService.transition(version, self.admin, action)
         version = GlobalPlanService.transition(version, self.admin, 'approve')
         self.assertEqual(version.approved_by, self.admin)
-        self.assertEqual(current_review(version).decisions.count(), 6)
+        self.assertEqual(current_review(version).decisions.count(), 7)
 
     def test_admin_rework_and_completion_keep_history_and_terminal_status(self):
         version = self.submit()
@@ -270,10 +270,10 @@ class ApprovalWorkflowTests(TestCase):
         self.client.force_login(self.admin)
         url = reverse('planning:global_detail', args=[version.pk])
         response = self.client.get(url)
-        for action in ['approve_production', 'approve_hr', 'approve_tech', 'reject']:
+        for action in ['approve_production', 'approve_hr', 'approve_tech', 'approve_security', 'reject']:
             self.assertContains(response, reverse('planning:global_action', args=[version.pk, action]))
         self.assertNotContains(response, reverse('planning:global_action', args=[version.pk, 'approve'])+'"')
-        for action in ['approve_production', 'approve_hr', 'approve_tech']:
+        for action in ['approve_production', 'approve_hr', 'approve_tech', 'approve_security']:
             self.assertEqual(self.client.post(reverse('planning:global_action',args=[version.pk,action])).status_code,302)
         self.assertContains(self.client.get(url),reverse('planning:global_action',args=[version.pk,'approve']))
         foreign_admin = User.objects.create_user(username='other-admin',company=self.foreign_ceo.company,role=Role.objects.get(code='ADMIN'))

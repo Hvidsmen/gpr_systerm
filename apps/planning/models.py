@@ -907,7 +907,7 @@ class GlobalPlanReview(BaseCompanyModel):
 
 class GlobalPlanDecision(BaseCompanyModel):
     review = models.ForeignKey(GlobalPlanReview, on_delete=models.CASCADE, related_name="decisions")
-    section = models.CharField("Раздел", max_length=20, choices=[("ESTIMATE","Сметчик"),("PRODUCTION","Работы"),("HR","Люди"),("TECH","Техника и ГСМ"),("CEO","Генеральный директор"),("PLANNER","Подготовка")])
+    section = models.CharField("Раздел", max_length=20, choices=[("ESTIMATE","Сметчик"),("PRODUCTION","Работы"),("HR","Люди"),("TECH","Техника и ГСМ"),("SECURITY","Служба безопасности"),("CEO","Генеральный директор"),("PLANNER","Подготовка")])
     action = models.CharField("Решение", max_length=20, choices=[("SUBMIT","Отправлен"),("APPROVE","Согласовано"),("REJECT","Возвращён на доработку"),("COMPLETE","Завершён")])
     actor = models.ForeignKey("accounts.User", on_delete=models.SET_NULL, null=True, related_name="global_plan_decisions")
     actor_name = models.CharField("Пользователь", max_length=300)
@@ -1321,7 +1321,7 @@ class WorkTask(BaseCompanyModel):
 
     @property
     def role_label(self):
-        return {'ESTIMATOR':'Сметчик','PRODUCTION_HEAD':'Руководитель производства','HR_HEAD':'Руководитель кадровой службы','TECH_HEAD':'Руководитель технической службы','CEO':'Генеральный директор'}.get(self.target_role,'Не назначен')
+        return {'ESTIMATOR':'Сметчик','PRODUCTION_HEAD':'Руководитель производства','HR_HEAD':'Руководитель кадровой службы','TECH_HEAD':'Руководитель технической службы','SECURITY_HEAD':'Служба безопасности','CEO':'Генеральный директор'}.get(self.target_role,'Не назначен')
 
     @property
     def overdue(self):

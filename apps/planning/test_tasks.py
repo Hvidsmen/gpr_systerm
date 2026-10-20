@@ -102,7 +102,7 @@ class TaskTests(TestCase):
         est=tasks.claim_estimate(self.estimator,queue)
         for wid in estimate_review.work_ids(version):estimate_review.review_work(self.estimator,est,wid,True)
         estimate_review.finish(self.estimator,est,True)
-        self.assertEqual(WorkTask.objects.filter(kind='APPROVAL',status='OPEN').count(),3)
+        self.assertEqual(WorkTask.objects.filter(kind='APPROVAL',status='OPEN').count(),4)
         version=departments(version,self.approvers)
         self.assertEqual(WorkTask.objects.filter(target_role='CEO',status='OPEN').count(),1)
         version=GlobalPlanService.transition(version,self.approvers['CEO'],'reject','Исправить')
@@ -111,7 +111,7 @@ class TaskTests(TestCase):
         self.assertEqual(repair.assigned_to,self.planner)
         version=GlobalPlanService.transition(version,self.planner,'submit')
         repair.refresh_from_db();self.assertEqual(repair.status,'DONE')
-        self.assertEqual(WorkTask.objects.filter(kind='APPROVAL',status='OPEN').count(),3)
+        self.assertEqual(WorkTask.objects.filter(kind='APPROVAL',status='OPEN').count(),4)
 
     def test_remarks_need_author_acceptance_and_block_estimator(self):
         version=self.create().baseline_version
@@ -206,3 +206,23 @@ class TaskTests(TestCase):
         self.client.force_login(observer)
         self.assertContains(self.client.get(reverse('planning:task_detail',args=[task.pk])),'Переписка и история')
         self.assertEqual(self.client.post(reverse('planning:task_detail',args=[task.pk]),{'action':'comment','text':'No'}).status_code,403)
+
+    def test_security_task_blocks_and_reopens_existing_ceo_task(self):
+        from .approval_test_helpers import estimator_check
+        from .approval_workflow import current_review
+        version=self.create().baseline_version
+        estimator_check(version,self.planner)
+        version=GlobalPlanService.transition(version,self.planner,'submit')
+        for role,action in [('PRODUCTION_HEAD','approve_production'),('HR_HEAD','approve_hr'),('TECH_HEAD','approve_tech')]:
+            version=GlobalPlanService.transition(version,self.approvers[role],action)
+        review=current_review(version)
+        ceo=tasks.ensure(self.company,f'approval:{review.pk}:CEO',kind='APPROVAL',title='Old CEO task',version=version,review=review,target_role='CEO',assigned_to=self.approvers['CEO'])
+        tasks.sync_version(version)
+        ceo.refresh_from_db();self.assertEqual(ceo.status,'SUPERSEDED')
+        with self.assertRaises(ValidationError):GlobalPlanService.transition(version,self.approvers['CEO'],'approve')
+        security=WorkTask.objects.get(review=review,target_role='SECURITY_HEAD')
+        self.client.force_login(self.approvers['SECURITY_HEAD'])
+        response=self.client.post(reverse('planning:task_detail',args=[security.pk]),{'action':'approve'})
+        self.assertEqual(response.status_code,302)
+        security.refresh_from_db();self.assertEqual(security.status,'DONE')
+        ceo.refresh_from_db();self.assertEqual(ceo.status,'OPEN')

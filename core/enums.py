@@ -11,6 +11,7 @@ class UserRole(models.TextChoices):
     PRODUCTION_HEAD = 'PRODUCTION_HEAD', _('Руководитель производства')
     HR_HEAD = 'HR_HEAD', _('Руководитель кадровой службы')
     TECH_HEAD = 'TECH_HEAD', _('Руководитель технической службы')
+    SECURITY_HEAD = 'SECURITY_HEAD', _('Служба безопасности')
     CEO = 'CEO', _('Генеральный директор')
 
 

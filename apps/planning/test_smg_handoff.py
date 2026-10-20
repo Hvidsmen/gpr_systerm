@@ -38,12 +38,12 @@ class SmgHandoffTests(TestCase):
         self.client.post(reverse('planning:task_detail',args=[launch.pk]),{'action':'launch'})
         self.schedule.refresh_from_db();self.assertEqual(self.schedule.status,'SUBMITTED')
         launch.refresh_from_db();self.assertEqual(launch.status,'DONE')
-        self.assertEqual(WorkTask.objects.filter(schedule=self.schedule,kind='APPROVAL',status='OPEN').count(),3)
+        self.assertEqual(WorkTask.objects.filter(schedule=self.schedule,kind='APPROVAL',status='OPEN').count(),4)
         self.assertFalse(WorkTask.objects.filter(schedule=self.schedule,target_role='CEO').exists())
         with self.assertRaises(ValidationError):transition(self.approvers['CEO'],self.schedule,'approve')
         with self.assertRaises(PermissionDenied):daily.save_entry(self.planner,self.entry,self.values(self.entry),1)
         frozen=self.schedule.approval_reviews.get().snapshot
-        for role in ['PRODUCTION_HEAD','HR_HEAD','TECH_HEAD','CEO']:
+        for role in ['PRODUCTION_HEAD','HR_HEAD','TECH_HEAD','SECURITY_HEAD','CEO']:
             task=WorkTask.objects.get(schedule=self.schedule,kind='APPROVAL',target_role=role,status='OPEN')
             self.client.force_login(self.approvers[role])
             self.assertEqual(self.client.post(reverse('planning:task_detail',args=[task.pk]),{'action':'approve'}).status_code,302)
