@@ -44,10 +44,23 @@ def require_global_action(user, action):
         raise PermissionDenied('Действие доступно ответственному руководителю, генеральному директору или администратору.')
 
 
-def scope_queryset(queryset, user):
+def scope_queryset(queryset, user, include_archived=False):
     """Always company scope; planners, masters and dispatchers see only assigned objects."""
     name = queryset.model._meta.label
     queryset = queryset.filter(**{('schedule__company' if name == 'planning.DailyScheduleEntry' else 'company'): user.company})
+    if not include_archived:
+        archive_paths = {
+            'planning.PlanningWorkspace':'is_archived',
+            'planning.GlobalPlanVersion':'workspace__is_archived',
+            'planning.DailySchedule':'source__workspace__is_archived',
+            'planning.DailyScheduleEntry':'schedule__source__workspace__is_archived',
+            'planning.CarryoverReviewTask':'version__workspace__is_archived',
+        }
+        if name in archive_paths:
+            queryset = queryset.exclude(**{archive_paths[name]:True})
+        if name in {'planning.EstimateReviewTask','planning.WorkTask'}:
+            from django.db.models import Q
+            queryset = queryset.exclude(Q(version__workspace__is_archived=True)|Q(schedule__source__workspace__is_archived=True))
     if role_code(user) not in {'FOREMAN','DISPATCHER','PLANNER'}:
         return queryset
     paths = {

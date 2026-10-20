@@ -1,11 +1,10 @@
 """Object assignment checks for planning endpoints with custom view lookups."""
-from django.http import Http404
 from django.shortcuts import get_object_or_404
-from .permissions import role_code, scope_queryset
+from .permissions import scope_queryset
 
 
 def check_planning_scope(request, match):
-    if role_code(request.user) != 'PLANNER' or match.namespace != 'planning':
+    if match.namespace != 'planning':
         return
     from apps.planning import models
     pk = match.kwargs.get('pk') or match.kwargs.get('plan_pk')
@@ -39,4 +38,4 @@ def check_planning_scope(request, match):
     if model is None and (match.kwargs.get('plan_pk') or match.url_name in {'plan_detail','plan_update','plan_delete'}):
         model = models.MonthlyPlan
     if model is not None:
-        get_object_or_404(scope_queryset(model.objects.all(), request.user), pk=pk)
+        get_object_or_404(scope_queryset(model.objects.all(), request.user, include_archived=match.url_name == 'workspace_archive'), pk=pk)

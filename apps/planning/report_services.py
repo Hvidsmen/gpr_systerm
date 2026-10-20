@@ -75,7 +75,7 @@ def select_sources(user, filters, objects):
         status__in=["APPROVED", "COMPLETED"],
         start_date__lte=filters["end"],
         end_date__gte=filters["start"],
-    ).defer("snapshot").order_by("-approved_at", "-pk")
+    ).exclude(workspace__is_archived=True).defer("snapshot").order_by("-approved_at", "-pk")
     if filters["mode"] == "baseline":
         candidates = candidates.filter(version_kind="BASELINE")
     remaining = {obj.pk: set(days_between(filters["start"], filters["end"])) for obj in objects}

@@ -274,6 +274,9 @@ class GlobalPlanService:
     @staticmethod
     @transaction.atomic
     def transition(version, user, action, comment=""):
+        from .models import PlanningWorkspace
+        if version.workspace_id and PlanningWorkspace.objects.filter(pk=version.workspace_id,is_archived=True).exists():
+            raise PermissionDenied("План в архиве. Сначала восстановите его.")
         from core.permissions import require_planning_object
         require_planning_object(user, version.construction_object_id)
         from .approval_workflow import transition

@@ -5,5 +5,6 @@
 {% if workspace_mode %}<p>Будут удалены все версии этого плана и их плановые распределения.</p>{% else %}<p>Будет удалена выбранная версия и её плановые распределения.</p>{% endif %}
 <p>Работы, строительный объект, исходные месячные планы и фактические данные сохранятся.</p>
 {% if reason %}<div class="alert alert-warning">{{ reason }}</div>{% endif %}
+{% if workspace_mode %}<p><a class="btn btn-outline-warning" href="{% url 'planning:workspace_archive' record.pk %}">Вместо удаления поместить план в архив</a></p>{% endif %}
 <form method="post">{% csrf_token %}{% if can_delete %}{% if deleting_history %}<div class="alert alert-danger">План содержит версии на согласовании, утверждённые или завершённые версии. Их история будет удалена без возможности восстановления.</div><div class="form-check mb-3"><input class="form-check-input" type="checkbox" name="confirm_history" id="confirm-history" required><label class="form-check-label" for="confirm-history">Подтверждаю удаление всех версий и истории плана</label></div>{% endif %}<button class="btn btn-danger" type="submit">Подтвердить удаление</button>{% endif %} <a class="btn btn-outline-secondary" href="{% url back_route %}">Отмена</a></form>
 {% endblock %}

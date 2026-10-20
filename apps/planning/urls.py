@@ -165,3 +165,6 @@ urlpatterns += [path('tasks/',TaskList.as_view(),name='task_list'),path('tasks/c
 
 # Specific global routes must precede the generic POST action endpoint.
 urlpatterns += [path('global/<int:pk>/<str:action>/', GlobalAction.as_view(), name='global_action')]
+
+from .archive import ArchiveList, WorkspaceArchive
+urlpatterns += [path("workspace/archive/", ArchiveList.as_view(), name="workspace_archive_list"), path("workspace/<int:pk>/archive/", WorkspaceArchive.as_view(), name="workspace_archive")]

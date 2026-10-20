@@ -478,6 +478,9 @@ class GlobalPlanVersion(BaseCompanyModel):
 
 
 class PlanningWorkspace(BaseCompanyModel):
+    is_archived = models.BooleanField('В архиве', default=False, db_index=True)
+    archived_at = models.DateTimeField('Дата архивирования', null=True, blank=True)
+    archived_by = models.ForeignKey('accounts.User', on_delete=models.SET_NULL, null=True, blank=True, related_name='archived_plan_workspaces')
     is_macro_consolidation = models.BooleanField(default=False)
     continued_from_review = models.ForeignKey('GlobalPlanReview', on_delete=models.PROTECT, null=True, blank=True, related_name='continued_workspaces', verbose_name='Предыдущий утвержденный ГПР')
     continuation_start = models.DateField(null=True, blank=True, verbose_name='Начало нового периода')

@@ -57,7 +57,7 @@ def journal_matrix(user, filters, kind):
         return result
     objects = selected_objects(user, filters)
     selected = defaultdict(list)
-    candidates = GlobalPlanVersion.objects.filter(company=user.company, construction_object__in=objects,
+    candidates = GlobalPlanVersion.objects.exclude(workspace__is_archived=True).filter(company=user.company, construction_object__in=objects,
                   start_date__lte=filters['end'], end_date__gte=filters['start']).defer('snapshot').select_related(
                   'workspace__construction_object', 'company').order_by('-version_number', '-pk')
     if filters.get('plan_status'):

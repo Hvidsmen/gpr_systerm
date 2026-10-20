@@ -111,7 +111,7 @@ class WorkProgressService:
             construction_object=work.section.construction_object,
             workspace__isnull=False,
             status__in=["APPROVED", "COMPLETED"],
-        ).order_by("-approved_at", "-pk")
+        ).exclude(workspace__is_archived=True).order_by("-approved_at", "-pk")
         daily = {day: values["daily"] for day, values in result.items()}
         covered = []
         for version in versions:

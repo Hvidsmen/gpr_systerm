@@ -11,7 +11,7 @@ from django.core.exceptions import ValidationError, PermissionDenied
 from django.db import transaction, connection
 from django.db.models import Max
 from core.permissions import PLAN_ROLES, require_roles
-from .models import DailySchedule, DailyScheduleEntry, GlobalPlanVersion
+from .models import DailySchedule, DailyScheduleEntry, GlobalPlanVersion, PlanningWorkspace
 from .report_projection import period_snapshot
 from .workspace_services import finalize_work, allocate, RESOURCE_CONFIG, resource_identity
 
@@ -25,6 +25,8 @@ def bounds(month):return month,month.replace(day=monthrange(month.year,month.mon
 
 
 def validate_source(source,month):
+    if source.workspace_id and PlanningWorkspace.objects.filter(pk=source.workspace_id,is_archived=True).exists():
+        raise ValidationError("Исходный план в архиве. Сначала восстановите его.")
     if source.workspace_id and source.workspace.continuation_start and month < source.workspace.continuation_start:
         raise ValidationError('Прошлый период сохранен из предыдущего ГПР. Создайте СМГ для нового периода.')
     start,end=bounds(month)
@@ -173,6 +175,8 @@ def activate(user,schedule):
     require_roles(user,PLAN_ROLES)
     GlobalPlanVersion.objects.select_for_update().get(pk=schedule.source_id,company=user.company)
     schedule=DailySchedule.objects.select_for_update().select_related('source').defer('source__snapshot').get(pk=schedule.pk,company=user.company)
+    if schedule.source.workspace_id and PlanningWorkspace.objects.filter(pk=schedule.source.workspace_id,is_archived=True).exists():
+        raise ValidationError('Исходный план в архиве. Сначала восстановите его.')
     from .daily_schedule_approval import current,requires_approval
     if schedule.status not in {'DRAFT','APPROVED'}:raise ValidationError('СМГ зафиксирован или находится на согласовании.')
     needs_approval=requires_approval(schedule)

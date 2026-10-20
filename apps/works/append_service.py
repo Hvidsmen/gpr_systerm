@@ -20,7 +20,7 @@ def validate_target(user, pk, works, lock=False):
         raise ValidationError('У комплекса есть помесячные планы старого формата. Добавление в такой комплекс пока недоступно: требуется перенос его истории в ГПР.')
     from apps.planning.models import GlobalPlanVersion
     ids={target.pk,*[w.pk for w in works]}
-    for version in GlobalPlanVersion.objects.filter(company=user.company,construction_object_id=target.section.construction_object_id,status='SUBMITTED'):
+    for version in GlobalPlanVersion.objects.exclude(workspace__is_archived=True).filter(company=user.company,construction_object_id=target.section.construction_object_id,status='SUBMITTED'):
         if version.work_allocations.filter(work_id__in=ids).exists() or any(spec['id'] in ids for spec in version.snapshot.get('works',[])):
             raise ValidationError('Связанный ГПР находится на согласовании. Сначала верните его на доработку.')
     if target.daily_facts.filter(work_item__isnull=True).exists():
@@ -56,7 +56,7 @@ def append_preview(user,works,values):
     sources=[{'work':w,'actual':sum((r.actual_quantity for r in facts if r.project_work_id==w.pk),Decimal(0)), 'norm':values[f'norm_{w.pk}']} for w in works]
     plans=[]
     ids={target.pk,*[w.pk for w in works]}
-    for version in GlobalPlanVersion.objects.filter(company=user.company,construction_object_id=target.section.construction_object_id).order_by('pk'):
+    for version in GlobalPlanVersion.objects.exclude(workspace__is_archived=True).filter(company=user.company,construction_object_id=target.section.construction_object_id).order_by('pk'):
         if not (version.work_allocations.filter(work_id__in=ids).exists() or any(s['id'] in ids for s in version.snapshot.get('works',[]))):continue
         snapshot=build_snapshot(version) if version.status in {'DRAFT','REJECTED'} else version.snapshot
         specs={s['id']:s for s in snapshot.get('works',[])}

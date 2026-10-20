@@ -843,6 +843,8 @@ class WorkspaceService:
 
     @staticmethod
     def new_version(workspace, user, kind, month=None, scenario="", previous=None):
+        if PlanningWorkspace.objects.filter(pk=workspace.pk,is_archived=True).exists():
+            raise PermissionDenied("План в архиве. Сначала восстановите его.")
         from core.permissions import require_planning_object
         require_planning_object(user, workspace.construction_object_id)
         require_roles(user, PLAN_ROLES)
@@ -997,7 +999,7 @@ class WorkspaceService:
 def current_workspace_version(company, obj, day):
     """The latest approved period version covering a date is the current plan."""
     return (
-        GlobalPlanVersion.objects.filter(
+        GlobalPlanVersion.objects.exclude(workspace__is_archived=True).filter(
             company=company,
             construction_object=obj,
             workspace__isnull=False,

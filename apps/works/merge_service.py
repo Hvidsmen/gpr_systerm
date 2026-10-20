@@ -272,7 +272,7 @@ def apply_merge(user, ids, values, expected, minimum=2, target=None):
     affected_ids = ids + ([target.pk] if target else [])
     affected = []
     for version in (
-        GlobalPlanVersion.objects.select_for_update()
+        GlobalPlanVersion.objects.select_for_update().exclude(workspace__is_archived=True)
         .filter(
             company=user.company,
             construction_object_id=works[0].section.construction_object_id,

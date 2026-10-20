@@ -29,7 +29,8 @@ def ensure(company,key,**defaults):
 
 def visible(user):
     require_roles(user,ROLES)
-    q=WorkTask.objects.filter(company_id=user.company_id)
+    from core.permissions import scope_queryset
+    q=scope_queryset(WorkTask.objects.all(),user)
     if role_code(user)=='PLANNER':
         q=q.filter(Q(construction_object__in=user.assigned_objects.filter(company=user.company))|Q(construction_object__isnull=True))
     if role_code(user) not in {'ADMIN','OBSERVER'}:

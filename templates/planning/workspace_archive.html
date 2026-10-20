@@ -1,0 +1,10 @@
+{% extends 'base.html' %}{% block content %}
+<h1>{% if workspace.is_archived %}Восстановление плана из архива{% else %}Поместить план в архив{% endif %}</h1>
+<p>{{ workspace.name }} · {{ workspace.construction_object }} · {{ workspace.start_date }} — {{ workspace.end_date }}</p>
+<p>Версий этого плана: {{ version_count }}.</p>
+{% if workspace.is_archived %}<p>План и все его версии снова появятся в активных списках и выборе текущего плана.</p>{% else %}<p>План и все его версии исчезнут из активных списков, фильтров и автоматического выбора текущего плана. История, согласования, связи с другими планами и фактические данные сохранятся. План можно будет восстановить.</p>{% endif %}
+{% if reason %}<p class="alert alert-warning">{{ reason }}</p>{% else %}
+{% if error %}<p class="alert alert-warning">{{ error }}</p>{% endif %}
+<form method="post">{% csrf_token %}<input type="hidden" name="action" value="{% if workspace.is_archived %}restore{% else %}archive{% endif %}"><p><label><input type="checkbox" name="confirm" required> Подтверждаю {% if workspace.is_archived %}восстановление{% else %}архивирование{% endif %} плана со всеми его версиями</label></p><button class="btn btn-warning">{% if workspace.is_archived %}Восстановить план{% else %}Поместить в архив{% endif %}</button></form>{% endif %}
+<a class="btn btn-outline-secondary mt-3" href="{% url 'planning:workspace_list' %}">К активным планам</a> <a href="{% url 'planning:workspace_archive_list' %}">Архив планов</a>
+{% endblock %}
