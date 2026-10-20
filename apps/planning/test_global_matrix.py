@@ -237,3 +237,17 @@ class GlobalMatrixTests(TestCase):
             self.assertLess(content.index('data-work-summary'),content.index('id="plan-fact-matrix"'))
         response=self.client.get(self.url,{'sections_set':'1','sections':['labor']})
         self.assertNotContains(response,'data-work-summary')
+
+    def test_collapsed_work_headers_show_volume_even_without_prices(self):
+        response=self.client.get(self.url,{'work_order':'work_section'})
+        section=next(s for s in response.context['objects'][0]['sections'] if s['kind']=='works')
+        for node in section['groups']:
+            rows=rows_in([node])
+            expected={}
+            for row in rows:
+                if row['total']['plan'] is not None:
+                    unit=row['unit'] or 'ед.'
+                    expected[unit]=expected.get(unit,Decimal(0))+row['total']['plan']
+            self.assertEqual({v['unit']:v['quantity'] for v in node['work_volumes']},expected)
+            self.assertTrue(node['work_volumes'])
+        self.assertContains(response,'class="ms-3"')

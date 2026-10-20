@@ -574,6 +574,13 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
                 all_rows = list(node['rows'])
                 for child in node['children']: all_rows.extend(work_totals(child))
                 attach_money_totals(node, all_rows)
+                volumes = {}
+                for row in all_rows:
+                    value = row['total'].get('plan')
+                    if value is not None:
+                        unit = row.get('unit') or 'ед.'
+                        volumes[unit] = volumes.get(unit, ZERO) + value
+                node['work_volumes'] = [{'unit': unit, 'quantity': quantity} for unit, quantity in sorted(volumes.items())]
                 return all_rows
             for node in work_groups:
                 work_totals(node)
