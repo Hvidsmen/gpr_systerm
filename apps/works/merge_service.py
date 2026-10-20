@@ -18,6 +18,8 @@ def source_works(user, ids, lock=False, minimum=2):
     query = ProjectWork.objects.filter(company=user.company, pk__in=ids).select_related(
         "section", "load_profile"
     )
+    from core.permissions import scope_queryset
+    query = scope_queryset(query, user)
     if lock:
         query = query.select_for_update()
     works = list(query.order_by("pk"))

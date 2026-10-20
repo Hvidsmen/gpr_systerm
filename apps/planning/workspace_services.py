@@ -822,6 +822,8 @@ class WorkspaceService:
     @staticmethod
     @transaction.atomic
     def create(user, obj, name, start, end):
+        from core.permissions import require_planning_object
+        require_planning_object(user, obj.pk)
         require_roles(user, PLAN_ROLES)
         if user.company_id != obj.company_id:
             raise PermissionDenied("Объект другой компании.")
@@ -841,6 +843,8 @@ class WorkspaceService:
 
     @staticmethod
     def new_version(workspace, user, kind, month=None, scenario="", previous=None):
+        from core.permissions import require_planning_object
+        require_planning_object(user, workspace.construction_object_id)
         require_roles(user, PLAN_ROLES)
         if workspace.company_id != user.company_id:
             raise PermissionDenied("План другой компании.")

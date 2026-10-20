@@ -13,6 +13,9 @@ from .workspace_services import WorkspaceService,months_between
 @transaction.atomic
 def create_macro(user,macro,sources,name,start,new_start,end):
     require_roles(user,PLAN_ROLES)
+    from core.permissions import require_planning_object
+    require_planning_object(user,macro.pk)
+    for source in sources:require_planning_object(user,source.construction_object_id)
     macro=ConstructionObject.objects.select_for_update().get(pk=macro.pk,company=user.company)
     if not sources:raise ValidationError('Выберите хотя бы один утвержденный ГПР субобъекта.')
     if start.day!=1 or new_start.day!=1 or not start<new_start<=end or end.day!=monthrange(end.year,end.month)[1] or len(months_between(start,end))>120:raise ValidationError('Укажите начало истории, начало нового месяца и конец общего периода (до десяти лет).')

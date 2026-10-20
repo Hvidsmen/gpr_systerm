@@ -57,8 +57,9 @@ class SmgCreate(View):
                 specs = month_specs(version, month)
             except ValidationError as exc:
                 error = '; '.join(exc.messages)
+        from core.permissions import scope_queryset
         class ChildForm(forms.Form):
-            construction_object = forms.ModelChoiceField(queryset=version.construction_object.children.filter(company=request.user.company), label='Субобъект СМГ')
+            construction_object = forms.ModelChoiceField(queryset=scope_queryset(version.construction_object.children.all(),request.user), label='Субобъект СМГ')
         specs_by_id = {spec['id']: spec for spec in specs}
         class RowForm(forms.Form):
             work = forms.IntegerField(widget=forms.HiddenInput(), label='Работа ГПР')

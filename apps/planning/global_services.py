@@ -242,6 +242,8 @@ class GlobalPlanService:
     @staticmethod
     @transaction.atomic
     def create(user, obj, start, end, title="", versions=None, previous=None):
+        from core.permissions import require_planning_object
+        require_planning_object(user, obj.pk)
         require_roles(user, PLAN_ROLES)
         if obj.company_id != user.company_id:
             raise PermissionDenied("Объект другой компании.")
@@ -272,6 +274,8 @@ class GlobalPlanService:
     @staticmethod
     @transaction.atomic
     def transition(version, user, action, comment=""):
+        from core.permissions import require_planning_object
+        require_planning_object(user, version.construction_object_id)
         from .approval_workflow import transition
         return transition(version, user, action, comment)
 

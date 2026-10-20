@@ -88,6 +88,7 @@ class MatrixReportForm(forms.Form):
     def __init__(self, *args, user, version_statuses=("APPROVED", "COMPLETED"), **kwargs):
         super().__init__(*args, **kwargs)
         self.user = user
+        from core.permissions import scope_queryset
         for name, model in [
             ("project", Project),
             ("objects", ConstructionObject),
@@ -96,10 +97,11 @@ class MatrixReportForm(forms.Form):
             ("brigade_group", BrigadeGroup),
             ("equipment_category", EquipmentCategory),
         ]:
-            self.fields[name].queryset = model.objects.filter(company=user.company)
+            self.fields[name].queryset = scope_queryset(model.objects.all(), user)
         self.fields["consolidated"].queryset = ProjectPlanVersion.objects.filter(
             company=user.company, status="FIXED"
         ).select_related("project")
+        self.fields["consolidated"].queryset = scope_queryset(self.fields["consolidated"].queryset, user)
         project_id = self.data.get("project")
         if project_id and str(project_id).isdigit():
             self.fields["objects"].queryset = self.fields["objects"].queryset.filter(
@@ -124,6 +126,8 @@ class MatrixReportForm(forms.Form):
             self.fields["mode"].choices = [("latest", "Последний черновик"), ("baseline", "Черновик базового плана")]
         if version_statuses != ("APPROVED", "COMPLETED"):
             self.fields["consolidated"].queryset = ProjectPlanVersion.objects.none()
+        from core.permissions import scope_queryset
+        candidates = scope_queryset(candidates, user)
         by_object = {}
         for version in candidates:
             by_object.setdefault(version.construction_object_id, []).append(version)

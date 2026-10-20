@@ -43,6 +43,8 @@ class ItemForm(forms.ModelForm):
 def tasks(user):
     require_roles(user,{'ADMIN','PLANNER','ESTIMATOR'})
     q=EstimateReviewTask.objects.filter(company=user.company).select_related('assigned_to','version__construction_object','schedule__source__construction_object').defer('version__snapshot','schedule__source__snapshot')
+    from core.permissions import scope_queryset
+    q=scope_queryset(q,user)
     return q.filter(assigned_to=user) if role_code(user)=='ESTIMATOR' else q
 
 

@@ -13,6 +13,8 @@ from . import carryover
 def tasks_for(user, *, due=True):
     require_roles(user,PLAN_ROLES)
     query=CarryoverReviewTask.objects.filter(company=user.company).select_related('assigned_to','version__construction_object','correction_version','source_version').defer('version__snapshot','correction_version__snapshot','source_version__snapshot')
+    from core.permissions import scope_queryset
+    query=scope_queryset(query,user)
     if role_code(user)!='ADMIN':query=query.filter(assigned_to=user)
     if due:query=query.filter(due_date__lte=timezone.localdate())
     return query.order_by('due_date','pk')

@@ -31,7 +31,8 @@ class Source:
 
 
 def selected_objects(user, filters):
-    query = ConstructionObject.objects.filter(company=user.company).select_related(
+    from core.permissions import scope_queryset
+    query = scope_queryset(ConstructionObject.objects.all(), user).select_related(
         "project"
     )
     if filters.get("consolidated"):

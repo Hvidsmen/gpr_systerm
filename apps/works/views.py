@@ -30,7 +30,8 @@ class WorkListView(CompanyScopedMixin, ListView):
 
     def get_queryset(self):
         self.filter_form = WorkListFilterForm(self.request.GET, company=self.request.user.company)
-        queryset = ProjectWork.objects.filter(company=self.request.user.company, merged_source__isnull=True)
+        from core.permissions import scope_queryset
+        queryset = scope_queryset(ProjectWork.objects.filter(merged_source__isnull=True), self.request.user)
         if self.filter_form.is_valid():
             values = self.filter_form.cleaned_data
             for field, path in [('project', 'section__construction_object__project'), ('construction_object', 'section__construction_object'), ('section', 'section')]:

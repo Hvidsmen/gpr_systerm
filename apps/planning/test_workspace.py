@@ -56,6 +56,7 @@ class WorkspaceTests(TestCase):
         cls.obj = ConstructionObject.objects.create(
             company=cls.company, project=project, code="o", name="o"
         )
+        cls.planner.assigned_objects.add(cls.obj)
         section = Section.objects.create(
             company=cls.company, construction_object=cls.obj, code="s", name="s"
         )

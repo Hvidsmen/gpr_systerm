@@ -7,7 +7,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views import View
 from django.views.generic import ListView
 from core.mixins import CompanyScopedMixin
-from core.permissions import PLAN_ROLES, require_roles
+from core.permissions import PLAN_ROLES, require_roles, scope_queryset
 from apps.projects.models import Project
 from .models import ProjectPlanVersion, GlobalPlanVersion, PlanningWorkspace
 from .project_plan_services import ProjectPlanService
@@ -25,7 +25,7 @@ class ProjectPlanForm(forms.ModelForm):
     def __init__(self, *args, user, **kwargs):
         super().__init__(*args, **kwargs)
         self.instance.company = user.company
-        self.fields["project"].queryset = Project.objects.filter(company=user.company)
+        self.fields["project"].queryset = scope_queryset(Project.objects.all(),user)
         if self.instance.pk:
             self.fields["project"].disabled = True
         for field in self.fields.values():
@@ -45,7 +45,7 @@ class MemberForm(forms.Form):
         required=False, label="Заменить версию объекта, если он уже включён"
     )
 
-    def __init__(self, *args, parent, **kwargs):
+    def __init__(self, *args, parent, user, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["version"].queryset = GlobalPlanVersion.objects.filter(
             company=parent.company,
@@ -54,6 +54,7 @@ class MemberForm(forms.Form):
             start_date__lte=parent.start_date,
             end_date__gte=parent.end_date,
         ).select_related("construction_object")
+        self.fields["version"].queryset=scope_queryset(self.fields["version"].queryset,user)
         self.fields["version"].widget.attrs["class"] = "form-select"
 
 
@@ -96,6 +97,8 @@ class AssignmentForm(forms.Form):
                 end_date__lte=end,
             ).select_related("project")
         )
+        for field in ["version", "consolidated_version"]:
+            self.fields[field].queryset=scope_queryset(self.fields[field].queryset,user)
         for name in ["version", "consolidated_version"]:
             self.fields[name].widget.attrs["class"] = "form-select"
 
@@ -194,13 +197,13 @@ class ProjectPlanDetail(View):
         return render(
             request,
             "planning/project_plan_detail.html",
-            {"object": row, "members": members, "form": MemberForm(parent=row)},
+            {"object": row, "members": members, "form": MemberForm(parent=row,user=request.user)},
         )
 
     def post(self, request, pk):
         require_roles(request.user, PLAN_ROLES)
         row = parent_for(request, pk)
-        form = MemberForm(request.POST, parent=row)
+        form = MemberForm(request.POST, parent=row,user=request.user)
         try:
             action = request.POST.get("action", "add")
             if action == "fix":

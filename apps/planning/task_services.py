@@ -30,6 +30,8 @@ def ensure(company,key,**defaults):
 def visible(user):
     require_roles(user,ROLES)
     q=WorkTask.objects.filter(company_id=user.company_id)
+    if role_code(user)=='PLANNER':
+        q=q.filter(Q(construction_object__in=user.assigned_objects.filter(company=user.company))|Q(construction_object__isnull=True))
     if role_code(user) not in {'ADMIN','OBSERVER'}:
         q=q.filter(Q(assigned_to=user)|Q(created_by=user)|Q(assigned_to__isnull=True,target_role=role_code(user)))
     return q

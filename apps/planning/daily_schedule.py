@@ -68,6 +68,8 @@ def history(source,month):
 
 @transaction.atomic
 def create(user,source,month,*,_skip_rebase=False):
+    from core.permissions import require_planning_object
+    require_planning_object(user,source.construction_object_id)
     require_roles(user,PLAN_ROLES)
     source=GlobalPlanVersion.objects.select_for_update().defer('snapshot').get(pk=source.pk,company=user.company)
     validate_source(source,month)

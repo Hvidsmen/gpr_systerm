@@ -16,6 +16,8 @@ class ContinuationForm(forms.Form):
     def __init__(self,*args,user,**kwargs):
         super().__init__(*args,**kwargs)
         self.fields['source'].queryset=GlobalPlanVersion.objects.filter(company=user.company,status__in=['APPROVED','COMPLETED'],workspace__parent_gpr__isnull=True).select_related('construction_object').defer('snapshot').order_by('-end_date','-pk')
+        from core.permissions import scope_queryset
+        self.fields['source'].queryset=scope_queryset(self.fields['source'].queryset,user)
         self.fields['source'].label_from_instance=lambda v:f'{v.construction_object} · {v.start_date:%m.%Y}–{v.end_date:%m.%Y} · v{v.version_number}'
 
 

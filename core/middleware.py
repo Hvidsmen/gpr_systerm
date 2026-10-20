@@ -39,4 +39,6 @@ class CompanyAccessMiddleware:
             return redirect('production:fact_day_workspace')
         if request.path != "/":
             check_route(request.user, match, request.method)
+        from core.planning_scope import check_planning_scope
+        check_planning_scope(request, match)
         return None

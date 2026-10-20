@@ -78,7 +78,8 @@ class PlanListView(CompanyScopedMixin, ListView):
         if date_to:
             qs = qs.filter(start_date__lte=date_to)
 
-        return qs
+        from core.permissions import scope_queryset
+        return scope_queryset(qs, self.request.user)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -88,6 +89,7 @@ class PlanListView(CompanyScopedMixin, ListView):
         from apps.projects.models import Project, ConstructionObject, Section
         from apps.works.models import ProjectWork, ProjectWorkItem
 
+        from core.permissions import scope_queryset
         projects = Project.objects.filter(company=company).order_by("name")
         objects = ConstructionObject.objects.filter(company=company).order_by("name")
         sections = Section.objects.filter(company=company).order_by("name")
@@ -96,11 +98,11 @@ class PlanListView(CompanyScopedMixin, ListView):
 
         context.update(
             {
-                "projects": projects,
-                "objects": objects,
-                "sections": sections,
-                "works": works,
-                "items": items,
+                "projects": scope_queryset(projects, self.request.user),
+                "objects": scope_queryset(objects, self.request.user),
+                "sections": scope_queryset(sections, self.request.user),
+                "works": scope_queryset(works, self.request.user),
+                "items": scope_queryset(items, self.request.user),
                 # Сохраняем выбранные значения
                 "selected_project": self.request.GET.get("project", ""),
                 "selected_object": self.request.GET.get("object", ""),
@@ -324,7 +326,8 @@ def daily_plan_inline_update(request):
         field = data.get("field")
         value = data.get("value")
 
-        plan = DailyPlan.objects.get(company=request.user.company, pk=plan_id)
+        from core.permissions import scope_queryset
+        plan = scope_queryset(DailyPlan.objects.all(), request.user).get(pk=plan_id)
 
         # Проверяем, что версия не immutable
         if plan.plan_version.is_immutable or plan.plan_version.status == "SUBMITTED":
@@ -402,6 +405,8 @@ class PlanMatrixView(View):
         works = ProjectWork.objects.filter(company=request.user.company).select_related(
             "section__construction_object__project"
         )
+        from core.permissions import scope_queryset
+        works = scope_queryset(works, request.user)
         for key, lookup in [
             ("project", "section__construction_object__project_id"),
             ("object", "section__construction_object_id"),

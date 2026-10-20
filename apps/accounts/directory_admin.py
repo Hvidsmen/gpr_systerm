@@ -51,7 +51,7 @@ def search_directory(query='',guid=None):
 
 class AccessForm(forms.Form):
     role=forms.ModelChoiceField(label='Роль в ГПР',queryset=Role.objects.none(),widget=forms.Select(attrs={'class':'form-select'}))
-    objects=forms.ModelMultipleChoiceField(label='Объекты / субобъекты',queryset=ConstructionObject.objects.none(),required=False,widget=forms.SelectMultiple(attrs={'class':'form-select'}))
+    objects=forms.ModelMultipleChoiceField(label='Объекты / субобъекты',help_text='Планировщик: просмотр и ввод планов только по этим объектам. Мастер и диспетчер: ввод факта. Без назначений доступ к объектам отсутствует.',queryset=ConstructionObject.objects.none(),required=False,widget=forms.SelectMultiple(attrs={'class':'form-select'}))
     def __init__(self,*args,company,**kwargs):
         super().__init__(*args,**kwargs)
         self.fields['role'].queryset=Role.objects.filter(code__in=ROLES)

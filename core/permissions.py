@@ -1,4 +1,4 @@
-"""Central role policy and construction-object scope for fact entry."""
+"""Central role policy and construction-object scope for planning and fact entry."""
 from django.core.exceptions import PermissionDenied
 
 DEPARTMENT_ROLES = {'PRODUCTION_HEAD', 'HR_HEAD', 'TECH_HEAD', 'SECURITY_HEAD'}
@@ -45,11 +45,11 @@ def require_global_action(user, action):
 
 
 def scope_queryset(queryset, user):
-    """Always company scope; masters additionally see assigned construction objects."""
-    queryset = queryset.filter(company=user.company)
-    if role_code(user) not in {'FOREMAN','DISPATCHER'}:
-        return queryset
+    """Always company scope; planners, masters and dispatchers see only assigned objects."""
     name = queryset.model._meta.label
+    queryset = queryset.filter(**{('schedule__company' if name == 'planning.DailyScheduleEntry' else 'company'): user.company})
+    if role_code(user) not in {'FOREMAN','DISPATCHER','PLANNER'}:
+        return queryset
     paths = {
         'projects.ConstructionObject': 'pk',
         'projects.Section': 'construction_object_id',
@@ -57,7 +57,27 @@ def scope_queryset(queryset, user):
         'works.ProjectWork': 'section__construction_object_id',
         'works.ProjectWorkItem': 'project_work__section__construction_object_id',
         'production.DailyFact': 'project_work__section__construction_object_id',
+        'planning.MonthlyPlan': 'project_work__section__construction_object_id',
+        'planning.PlanVersion': 'monthly_plan__project_work__section__construction_object_id',
+        'planning.DailyPlan': 'plan_version__monthly_plan__project_work__section__construction_object_id',
+        'planning.DailySchedule': 'source__construction_object_id',
+        'planning.DailyScheduleEntry': 'schedule__source__construction_object_id',
+        'planning.CarryoverReviewTask': 'version__construction_object_id',
+        'planning.EstimateReviewTask': 'version__construction_object_id',
+        'planning.ProjectPlanVersion': 'members__construction_object_id',
     }
+    if name == 'planning.ProjectPlanVersion' and role_code(user) == 'PLANNER':
+        from apps.projects.models import ConstructionObject
+        permitted = user.assigned_objects.filter(company=user.company).values('pk')
+        other = ConstructionObject.objects.filter(company=user.company).exclude(pk__in=permitted)
+        return queryset.filter(project__construction_objects__pk__in=permitted).exclude(members__construction_object__in=other).distinct()
+    if name == 'planning.WorkTask' and role_code(user) == 'PLANNER':
+        from django.db.models import Q
+        return queryset.filter(Q(construction_object__in=user.assigned_objects.filter(company=user.company)) | Q(construction_object__isnull=True))
+    if name == 'planning.EstimateReviewTask':
+        from django.db.models import Q
+        ids = user.assigned_objects.filter(company=user.company).values('pk')
+        return queryset.filter(Q(version__construction_object_id__in=ids) | Q(schedule__source__construction_object_id__in=ids))
     path = paths.get(name)
     if path is None and any(field.name == 'construction_object' for field in queryset.model._meta.fields):
         path = 'construction_object_id'
@@ -145,3 +165,8 @@ def check_route(user, match, method):
         require_roles(user, READ_ROLES if name.endswith(('_list', '_detail')) or namespace == 'resources' and name.endswith('_export') else PLAN_ROLES)
         return
     raise PermissionDenied('Доступ к этому разделу не разрешён.')
+
+
+def require_planning_object(user, object_id):
+    if role_code(user) == 'PLANNER' and not user.assigned_objects.filter(company=user.company, pk=object_id).exists():
+        raise PermissionDenied('Объект не назначен планировщику. Обратитесь к администратору.')

@@ -22,6 +22,9 @@ class MacroForm(forms.Form):
         self.fields['macro'].queryset=ConstructionObject.objects.filter(company=user.company).select_related('project')
         self.fields['sources'].queryset=GlobalPlanVersion.objects.filter(company=user.company,status__in=['APPROVED','COMPLETED'],workspace__parent_gpr__isnull=True).select_related('construction_object').defer('snapshot').order_by('construction_object__name','-pk')
         self.fields['sources'].label_from_instance=lambda v:f'{v.construction_object} · v{v.version_number} · {v.start_date:%m.%Y}–{v.end_date:%m.%Y}'
+        from core.permissions import scope_queryset
+        self.fields['macro'].queryset=scope_queryset(self.fields['macro'].queryset,user)
+        self.fields['sources'].queryset=scope_queryset(self.fields['sources'].queryset,user)
         self.fields['sources'].help_text='Выберите одну версию на каждый субобъект (Ctrl для нескольких). Объекты без родителя будут привязаны к выбранному макрообъекту; объекты другого проекта или другого родителя не допускаются.'
 
 
