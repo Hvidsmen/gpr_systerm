@@ -41,7 +41,7 @@ class DailyFact(BaseCompanyModel):
         "works.ProjectWorkItem",
         on_delete=models.CASCADE,
         related_name="daily_facts",
-        verbose_name=_("подработа"),
+        verbose_name=_("работа в составе комплекса"),
         blank=True,
         null=True,
     )
@@ -92,23 +92,23 @@ class DailyFact(BaseCompanyModel):
         if self.project_work_id:
             work = self.project_work
             if hasattr(work,'merged_source'):
-                raise ValidationError({'project_work':'Исходная работа архивная. Вводите факт в подработу составной работы.'})
+                raise ValidationError({'project_work':'Исходная работа архивная. Вводите факт в работу в составе комплекса комплекса работ.'})
             if self.company_id != work.company_id:
                 raise ValidationError({"project_work": "Работа другой компании."})
             if work.kind == "SIMPLE" and self.work_item_id:
                 raise ValidationError(
-                    {"work_item": "Простая работа не имеет подработ."}
+                    {"work_item": "Самостоятельная работа не имеет работ в составе комплекса."}
                 )
             if work.kind == "COMPOSITE" and not self.work_item_id:
                 raise ValidationError(
-                    {"work_item": "Выберите подработу составной работы."}
+                    {"work_item": "Выберите работу в составе комплекса комплекса работ."}
                 )
             if self.work_item_id and (
                 self.work_item.project_work_id != work.pk
                 or self.work_item.company_id != self.company_id
             ):
                 raise ValidationError(
-                    {"work_item": "Подработа другой работы или компании."}
+                    {"work_item": "Работа в составе комплекса другой работы или компании."}
                 )
         if (
             self.deviation_reason_id

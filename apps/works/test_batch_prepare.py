@@ -329,7 +329,7 @@ class BatchPrepareTests(TestCase):
 
         response = self.client.get(self.url, {"construction_object": self.obj.pk})
         self.assertContains(response, "Выгрузить в Excel")
-        self.assertContains(response, "Сделать составной работой")
+        self.assertContains(response, "Сделать комплексом работ")
         edits = {
             f'cell_{r["id"]}_{j}': str(r["cells"][j])
             for r in response.context["rows"]
@@ -449,3 +449,16 @@ class BatchPrepareTests(TestCase):
         payload["object"] = stale["object"]
         with self.assertRaisesMessage(ValidationError, "больше недоступен"):
             apply_batch(self.planner, payload)
+
+    def test_legacy_headers_and_kind_labels_are_accepted(self):
+        book=load_workbook(BytesIO(export_book(self.meta).content))
+        aliases={'Работа в составе комплекса':'Подработа','Сделать комплексом работ':'Сделать составной работой','Цена комплекса работ':'Цена составной работы','Единица комплекса работ':'Единица составной работы'}
+        for sheet in book.worksheets:
+            if sheet.title.startswith('_'):continue
+            for cell in sheet[1]:cell.value=aliases.get(cell.value,cell.value)
+            for row in sheet.iter_rows(min_row=2):
+                row[5].value={'Самостоятельная работа':'Простая','Комплекс работ':'Составная'}.get(row[5].value,row[5].value)
+        book.worksheets[0].cell(2,8).value=45
+        stream=BytesIO();book.save(stream)
+        meta,entries=import_book(self.planner,SimpleUploadedFile('old.xlsx',stream.getvalue()),self.obj.pk)
+        build_preview(self.planner,meta,entries,self.today)

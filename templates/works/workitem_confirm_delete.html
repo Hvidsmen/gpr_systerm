@@ -2,7 +2,7 @@
 {% load access %}
 {% load i18n %}
 
-{% block title %}Удалить подработу — ГПР Система{% endblock %}
+{% block title %}Удалить работу в составе комплекса — ГПР Система{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center">
@@ -11,7 +11,7 @@
             <div class="card-header bg-danger text-white">
                 <h4 class="mb-0">
                     <i class="bi bi-exclamation-triangle-fill"></i>
-                    Подтверждение удаления подработы
+                    Подтверждение удаления работы в составе комплекса
                 </h4>
             </div>
             <div class="card-body">
@@ -19,7 +19,7 @@
                     <i class="bi bi-exclamation-triangle"></i>
                     <strong>Внимание!</strong> Это действие нельзя отменить.
                 </div>
-                <p>Вы действительно хотите удалить подработу:</p>
+                <p>Вы действительно хотите удалить работу в составе комплекса:</p>
                 <div class="card bg-light mb-3">
                     <div class="card-body">
                         <h5 class="card-title">{{ object.name }}</h5>
@@ -34,9 +34,9 @@
                 {% if object.children.exists %}
                 <div class="alert alert-danger">
                     <i class="bi bi-exclamation-circle"></i>
-                    <strong>У подработы есть {{ object.children.count }} дочерних подработ(ы)!</strong>
+                    <strong>У работы в составе комплекса есть {{ object.children.count }} дочерних работ в составе комплекса(ы)!</strong>
                     <br>
-                    Все дочерние подработы будут удалены вместе с этой.
+                    Все дочерние работы в составе комплекса будут удалены вместе с этой.
                 </div>
                 {% endif %}
                 <form method="post">

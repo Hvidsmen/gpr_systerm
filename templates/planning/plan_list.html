@@ -95,10 +95,10 @@
                 </div>
                 <div class="col-md-4">
                     <label for="item" class="form-label">
-                        <i class="bi bi-list-nested"></i> Подработа
+                        <i class="bi bi-list-nested"></i> Работа в составе комплекса
                     </label>
                     <select id="item" name="item" class="form-select">
-                        <option value="">— Все подработы —</option>
+                        <option value="">— Все работы в составе комплекса —</option>
                         {% for item in items %}
                         <option value="{{ item.pk }}" {% if selected_item == item.pk|stringformat:"d" %}selected{% endif %}>
                             {{ item.name }}

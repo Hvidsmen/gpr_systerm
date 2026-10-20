@@ -34,7 +34,7 @@ def quantity_from_totals(spec, totals):
     items = spec["items"]
     if not items or any(Decimal(item["norm"]) <= 0 for item in items):
         raise ValidationError(
-            "У составной работы должны быть подработы с положительными нормативами."
+            "У комплекса работ должны быть работы в составе комплекса с положительными нормативами."
         )
     value = min(totals.get(item["id"], ZERO) / Decimal(item["norm"]) for item in items)
     if not spec["allow_fractional"]:

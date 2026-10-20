@@ -53,7 +53,7 @@ class MatrixReportForm(forms.Form):
         widget=forms.CheckboxSelectMultiple(),
         label="Разделы",
     )
-    works_q = forms.CharField(required=False, label="Название работы / подработы")
+    works_q = forms.CharField(required=False, label="Название комплекса или работы")
     work_group = forms.ModelChoiceField(
         queryset=WorkGroup.objects.none(), required=False, label="Группа работ"
     )
@@ -61,8 +61,8 @@ class MatrixReportForm(forms.Form):
         required=False,
         choices=[
             ("", "Все виды работ"),
-            ("SIMPLE", "Простые"),
-            ("COMPOSITE", "Составные"),
+            ("SIMPLE", "Самостоятельные работы"),
+            ("COMPOSITE", "Комплексы работ"),
         ],
         label="Вид работы",
     )

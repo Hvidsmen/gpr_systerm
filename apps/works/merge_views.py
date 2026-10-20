@@ -17,9 +17,9 @@ SALT = "work-merge-preview-v1"
 
 
 class MergeForm(forms.Form):
-    name = forms.CharField(label="Название составной работы", max_length=255)
+    name = forms.CharField(label="Название комплекса работ", max_length=255)
     section = forms.ModelChoiceField(label="Раздел", queryset=Section.objects.none())
-    unit = forms.ChoiceField(label="Единица составной работы")
+    unit = forms.ChoiceField(label="Единица комплекса работ")
     work_group = forms.ModelChoiceField(
         label="Группа работ", queryset=WorkGroup.objects.none(), required=False
     )
@@ -47,7 +47,7 @@ class MergeForm(forms.Form):
                 initial=1,
             )
             self.fields[profile] = forms.ModelChoiceField(
-                label="Профиль подработы",
+                label="Профиль работы в составе комплекса",
                 queryset=LoadProfile.objects.filter(company=company),
                 initial=work.load_profile_id,
             )
@@ -83,7 +83,7 @@ class WorkMergeView(View):
         require_roles(request.user, PLAN_ROLES)
         messages.info(
             request,
-            "Выберите простые работы в списке и нажмите «Объединить в составную».",
+            "Выберите самостоятельные работы в списке и нажмите «Объединить в комплекс работ».",
         )
         return redirect("works:work_list")
 
@@ -143,7 +143,7 @@ class WorkMergeView(View):
             company=request.user.company,
             works=works,
             initial={
-                "name": (works[0].name + " — составная")[:255],
+                "name": (works[0].name + " — комплекс работ")[:255],
                 "section": works[0].section_id,
                 "unit": "шт",
                 "allow_fractional": True,

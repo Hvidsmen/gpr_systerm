@@ -478,7 +478,7 @@ class WorkspaceWorkCreate(View):
                 if work.kind == "COMPOSITE" and not work.items.exists():
                     messages.info(
                         request,
-                        "Добавьте подработы и нормативы, затем вернитесь в планирование.",
+                        "Добавьте работы в составе комплекса и нормативы, затем вернитесь в планирование.",
                     )
                     return redirect("works:work_detail", pk=work.pk)
                 return redirect(

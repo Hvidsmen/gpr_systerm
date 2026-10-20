@@ -118,7 +118,7 @@ class ReviewDetail(View):
                 form=MergeForm(request.POST if action=='composite_confirm' else None,company=request.user.company,works=works,initial={'name':(works[0].name+' — составная')[:255],'section':works[0].section_id,'unit':'шт','allow_fractional':True})
                 if action=='composite_confirm' and form.is_valid():
                     service.merge_composite(request.user,task,[w.pk for w in works],form.cleaned_data)
-                    messages.success(request,'Составная работа создана в проверяемом периоде. Проверьте ее название, цену и подработы.')
+                    messages.success(request,'Комплекс работ создана в проверяемом периоде. Проверьте ее название, цену и работы в составе комплекса.')
                     return redirect('planning:estimate_review_detail',pk=task.pk)
                 return render(request,'planning/estimate_review_merge.html',{'task':task,'form':form,'sources':works,'norm_rows':form.norm_rows})
             elif action=='bulk_merge':service.merge_duplicates(request.user,task,request.POST.getlist('selected'),request.POST.get('replacement'))

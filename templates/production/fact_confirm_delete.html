@@ -6,7 +6,7 @@
 <dl class="row">
 <dt class="col-sm-4">Объект</dt><dd class="col-sm-8">{{ object.project_work.section.construction_object }}</dd>
 <dt class="col-sm-4">Работа</dt><dd class="col-sm-8">{{ object.project_work.name }}</dd>
-{% if object.work_item %}<dt class="col-sm-4">Подработа</dt><dd class="col-sm-8">{{ object.work_item.name }}</dd>{% endif %}
+{% if object.work_item %}<dt class="col-sm-4">Работа в составе комплекса</dt><dd class="col-sm-8">{{ object.work_item.name }}</dd>{% endif %}
 <dt class="col-sm-4">Дата</dt><dd class="col-sm-8">{{ object.date|date:'d.m.Y' }}</dd>
 <dt class="col-sm-4">Объём</dt><dd class="col-sm-8">{{ object.actual_quantity }} {% if object.work_item %}{{ object.work_item.unit }}{% else %}{{ object.project_work.unit }}{% endif %}</dd>
 <dt class="col-sm-4">Ввёл</dt><dd class="col-sm-8">{{ object.reported_by|default:'—' }}</dd>

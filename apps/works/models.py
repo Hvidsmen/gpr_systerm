@@ -74,11 +74,11 @@ class WorkTemplateItem(BaseCompanyModel):
 
     # Норматив подработы на единицу работы
     quantity_per_unit = models.DecimalField(
-        _("норматив подработы"),
+        _("норматив работы в составе комплекса"),
         max_digits=10,
         decimal_places=3,
         default=1,
-        help_text=_("Сколько единиц подработы нужно на 1 единицу работы"),
+        help_text=_("Сколько единиц работы в составе комплекса нужно на 1 единицу комплекса"),
     )
 
     # Нормативы ресурсов (добавлено)
@@ -87,21 +87,21 @@ class WorkTemplateItem(BaseCompanyModel):
         max_digits=8,
         decimal_places=3,
         default=0,
-        help_text=_("Сколько чел-часов нужно на 1 единицу объёма подработы"),
+        help_text=_("Сколько чел-часов нужно на 1 единицу объёма работы в составе комплекса"),
     )
     equipment_norm_per_unit = models.DecimalField(
         _("норматив техники, маш-час/ед"),
         max_digits=8,
         decimal_places=3,
         default=0,
-        help_text=_("Сколько машино-часов нужно на 1 единицу объёма подработы"),
+        help_text=_("Сколько машино-часов нужно на 1 единицу объёма работы в составе комплекса"),
     )
     fuel_norm_per_unit = models.DecimalField(
         _("норматив ГСМ, л/ед"),
         max_digits=8,
         decimal_places=3,
         default=0,
-        help_text=_("Сколько литров топлива нужно на 1 единицу объёма подработы"),
+        help_text=_("Сколько литров топлива нужно на 1 единицу объёма работы в составе комплекса"),
     )
 
     # Ставки (добавлено)
@@ -136,8 +136,8 @@ class WorkTemplateItem(BaseCompanyModel):
 
 class ProjectWork(BaseCompanyModel):
     class Kind(models.TextChoices):
-        SIMPLE = "SIMPLE", "Простая"
-        COMPOSITE = "COMPOSITE", "Составная"
+        SIMPLE = "SIMPLE", "Самостоятельная работа"
+        COMPOSITE = "COMPOSITE", "Комплекс работ"
 
     work_group = models.ForeignKey(
         'WorkGroup', on_delete=models.SET_NULL, null=True, blank=True,
@@ -153,7 +153,7 @@ class ProjectWork(BaseCompanyModel):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        verbose_name="Профиль простой работы",
+        verbose_name="Профиль самостоятельной работы",
     )
 
     def clean(self):
@@ -161,7 +161,7 @@ class ProjectWork(BaseCompanyModel):
         if self.unit_price is not None and self.unit_price < 0:
             raise ValidationError({'unit_price': 'Цена не может быть отрицательной.'})
         if self.pk and hasattr(self,'merged_source'):
-            raise ValidationError('Исходная работа архивная после объединения. Редактируйте составную работу.')
+            raise ValidationError('Исходная работа архивная после объединения. Редактируйте комплекс работ.')
         for name in ("section", "template", "load_profile", "work_group"):
             if (
                 getattr(self, name + "_id", None)
@@ -171,14 +171,14 @@ class ProjectWork(BaseCompanyModel):
                 raise ValidationError({name: "Связь с другой компанией недопустима."})
 
         if self.kind == self.Kind.SIMPLE and not self.load_profile_id:
-            raise ValidationError({'load_profile': 'Для простой работы обязателен профиль нагрузки.'})
+            raise ValidationError({'load_profile': 'Для самостоятельной работы обязателен профиль нагрузки.'})
         if self.kind == self.Kind.SIMPLE and self.template_id:
             raise ValidationError(
-                {"template": "Шаблон подработ допустим только для составной работы."}
+                {"template": "Шаблон работ в составе комплекса допустим только для комплекса работ."}
             )
         if self.pk and self.kind == self.Kind.SIMPLE and self.items.exists():
             raise ValidationError(
-                {"kind": "Нельзя сделать работу простой, пока существуют подработы."}
+                {"kind": "Нельзя сделать работу самостоятельной, пока существуют работы в составе комплекса."}
             )
         if self.pk:
             from apps.planning.models import GlobalPlanVersion
@@ -310,17 +310,17 @@ class ProjectWorkItem(BaseCompanyModel):
 
     # НОВОЕ: норматив подработы на единицу работы (копируется из шаблона)
     quantity_per_unit = models.DecimalField(
-        _("норматив подработы"),
+        _("норматив работы в составе комплекса"),
         max_digits=10,
         decimal_places=3,
         default=1,
-        help_text=_("Сколько единиц подработы нужно на 1 единицу работы"),
+        help_text=_("Сколько единиц работы в составе комплекса нужно на 1 единицу комплекса"),
     )
 
     def clean(self):
         super().clean()
         if not self.load_profile_id:
-            raise ValidationError({'load_profile': 'Для подработы обязателен профиль нагрузки.'})
+            raise ValidationError({'load_profile': 'Для работы в составе комплекса обязателен профиль нагрузки.'})
         for name in ("project_work", "load_profile"):
             if (
                 getattr(self, name + "_id", None)
@@ -339,7 +339,7 @@ class ProjectWorkItem(BaseCompanyModel):
             self.project_work_id
             and self.project_work.kind != ProjectWork.Kind.COMPOSITE
         ):
-            raise ValidationError("Простая работа не может содержать подработы.")
+            raise ValidationError("Самостоятельная работа не может содержать работы в составе комплекса.")
         from apps.planning.models import GlobalPlanVersion
 
         workspace_locked = (
@@ -362,7 +362,7 @@ class ProjectWorkItem(BaseCompanyModel):
             )
         ):
             raise ValidationError(
-                "Нельзя добавлять подработы к работе с планом или фактом."
+                "Нельзя добавлять работы в составе комплекса к работе с планом или фактом."
             )
         if self.pk:
             old = type(self).objects.get(pk=self.pk)
@@ -452,7 +452,7 @@ class ProjectWorkItem(BaseCompanyModel):
 
     @property
     def planned_value(self):
-        """Рассчитать плановую стоимость подработы."""
+        """Рассчитать плановую стоимость работы в составе комплекса."""
         return (
             self.planned_quantity
             / self.quantity_per_unit
@@ -503,7 +503,7 @@ class WorkMergeSource(BaseCompanyModel):
         if self.source_work.company_id != self.company_id or self.item.company_id != self.company_id:
             raise ValidationError('Работы другой компании.')
         if self.source_work.kind != 'SIMPLE' or self.item.project_work.kind != 'COMPOSITE':
-            raise ValidationError('Объединяются только простые работы в составную.')
+            raise ValidationError('Объединяются только самостоятельные работы в комплекс работ.')
         if self.source_work.section.construction_object_id != self.item.project_work.section.construction_object_id:
             raise ValidationError('Работы разных объектов объединять нельзя.')
 

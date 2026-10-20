@@ -66,12 +66,12 @@
 </div>
 
 {% if works_data %}
-<!-- Результаты: работы с подработами -->
+<!-- Результаты: работы с работами в составе комплекса -->
 <div class="card">
     <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
         <h5 class="mb-0">
             <i class="bi bi-table"></i> Шаг 2: Введите факты на {{ selected_date|date:"d.m.Y" }}
-            <span class="badge bg-light text-dark ms-2">{{ plans_count }} подработ</span>
+            <span class="badge bg-light text-dark ms-2">{{ plans_count }} работ в составе комплекса</span>
         </h5>
         {% if selected_project %}
             <small class="text-white-50">Проект: {{ selected_project.name }}</small>
@@ -107,7 +107,7 @@
                         <table class="table table-sm mb-0">
                             <thead class="table-light">
                                 <tr>
-                                    <th style="min-width: 200px;">Подработа</th>
+                                    <th style="min-width: 200px;">Работа в составе комплекса</th>
                                     <th class="text-center" style="width: 100px;">План</th>
                                     <th class="text-center" style="width: 120px;">Факт <span class="text-danger">*</span></th>
                                     <th style="width: 180px;">Причина отклонения</th>

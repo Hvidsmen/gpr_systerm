@@ -33,7 +33,7 @@ def source_works(user, ids, lock=False):
         work.kind != "SIMPLE" or hasattr(work, "merged_source") or work.items.exists()
         for work in works
     ):
-        raise ValidationError("Выберите простые работы, которые ещё не объединены.")
+        raise ValidationError("Выберите самостоятельные работы, которые ещё не объединены.")
     return works
 
 
@@ -209,7 +209,7 @@ def merge_lower_plans(user, parent, items):
             monthly_plan=target,
             version_number=1,
             created_by=user,
-            comment="Объединение простых работ; требуется согласование.",
+            comment="Объединение самостоятельных работ; требуется согласование.",
         )
         for plan in plans:
             source = plan.versions.order_by("-version_number").first()

@@ -46,7 +46,7 @@ class WorkspaceExcelTests(TestCase):
         ws=workbook[sheet]
         col=column or month.strftime('%m.%Y')
         headers={cell.value:cell.column for cell in ws[1]}
-        name_col={'Работы':'Подработа' if name in ['A','B'] else 'Работа','Люди':'Бригада','Техника':'Вид техники','ГСМ':'Вид ГСМ'}[sheet]
+        name_col={'Работы':'Работа в составе комплекса' if name in ['A','B'] else 'Работа','Люди':'Бригада','Техника':'Вид техники','ГСМ':'Вид ГСМ'}[sheet]
         for row in ws.iter_rows(min_row=2):
             if row[headers[name_col]-1].value==name:
                 ws.cell(row[0].row,headers[col]).value=value;return
@@ -309,3 +309,10 @@ class WorkspaceExcelTests(TestCase):
         row[8].value=3
         with self.assertRaises(ValidationError):import_workbook(self.planner,forecast,self.upload(wb),[JAN])
         self.assertEqual(forecast.work_allocations.get(work=self.composite).item_quantities,self.row().item_quantities)
+
+    def test_legacy_subwork_headers_remain_accepted(self):
+        book=self.workbook()
+        self.fill_composite(book)
+        aliases={'ID работы в составе комплекса':'ID подработы','Работа в составе комплекса':'Подработа'}
+        for cell in book['Работы'][1]:cell.value=aliases.get(cell.value,cell.value)
+        self.assertEqual(import_workbook(self.planner,self.version,self.upload(book),[JAN,FEB,MAR]),(1,0))

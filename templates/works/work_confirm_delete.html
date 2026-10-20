@@ -32,7 +32,7 @@
                             <strong>Ед. измерения:</strong> {{ object.unit }}
                         </p>
                         <p class="card-text mb-0">
-                            <strong>Подработ:</strong> {{ object.items.count }}
+                            <strong>Работ в составе комплекса:</strong> {{ object.items.count }}
                         </p>
                     </div>
                 </div>
@@ -40,9 +40,9 @@
                 {% if object.items.count > 0 %}
                     <div class="alert alert-danger">
                         <i class="bi bi-exclamation-circle"></i>
-                        <strong>У работы есть {{ object.items.count }} подработ(ы)!</strong>
+                        <strong>У работы есть {{ object.items.count }} работ в составе комплекса(ы)!</strong>
                         <br>
-                        Все подработы, связанные планы и факты будут удалены вместе с работой.
+                        Все работы в составе комплекса, связанные планы и факты будут удалены вместе с работой.
                     </div>
                 {% endif %}
 

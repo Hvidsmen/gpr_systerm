@@ -1,12 +1,12 @@
 {% extends 'base.html' %}{% block content %}
-<h1>Составная работа из выбранных позиций</h1>
-<p>Объединение применяется только к проверяемому периоду этого ГПР. История, факт и остальные версии сохраняются. Объем каждой исходной работы станет объемом соответствующей подработы. Объем основной работы рассчитывается по минимуму выполнения нормативов.</p>
-<p>Начальная цена составной работы — сумма цен исходных работ на начало проверяемого периода, умноженных на нормативы. После объединения проверьте и при необходимости исправьте цену.</p>
+<h1>Комплекс работ из выбранных позиций</h1>
+<p>Объединение применяется только к проверяемому периоду этого ГПР. История, факт и остальные версии сохраняются. Объем каждой исходной работы станет объемом соответствующей работы в составе комплекса. Объем комплекса работ рассчитывается по минимуму выполнения нормативов.</p>
+<p>Начальная цена комплекса работ — сумма цен исходных работ на начало проверяемого периода, умноженных на нормативы. После объединения проверьте и при необходимости исправьте цену.</p>
 <form method="post" class="card p-3">{% csrf_token %}<input type="hidden" name="action" value="composite_confirm">
 {% for source in sources %}<input type="hidden" name="selected" value="{{ source.pk }}">{% endfor %}
 {{ form.non_field_errors }}
 {% for field in form %}{% if field.name == 'name' or field.name == 'section' or field.name == 'unit' or field.name == 'work_group' or field.name == 'allow_fractional' %}<p>{{ field.label_tag }} {{ field }} {{ field.errors }}</p>{% endif %}{% endfor %}
-<table class="table"><thead><tr><th>Подработа</th><th>Норматив на единицу основной работы</th><th>Профиль</th></tr></thead><tbody>{% for row in norm_rows %}<tr><td>{{ row.work.name }} · {{ row.work.unit }}</td><td>{{ row.norm }}{{ row.norm.errors }}</td><td>{{ row.profile }}{{ row.profile.errors }}</td></tr>{% endfor %}</tbody></table>
+<table class="table"><thead><tr><th>Работа в составе комплекса</th><th>Норматив на единицу комплекса работ</th><th>Профиль</th></tr></thead><tbody>{% for row in norm_rows %}<tr><td>{{ row.work.name }} · {{ row.work.unit }}</td><td>{{ row.norm }}{{ row.norm.errors }}</td><td>{{ row.profile }}{{ row.profile.errors }}</td></tr>{% endfor %}</tbody></table>
 <button class="btn btn-primary">Сохранить объединение</button></form>
 <a href="{% url 'planning:estimate_review_detail' task.pk %}">Вернуться к проверке</a>
 {% endblock %}

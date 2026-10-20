@@ -126,7 +126,7 @@ class EstimateWorkflowTests(TestCase):
         url=reverse('planning:estimate_review_detail',args=[self.task.pk])
         ids=[self.simple.pk,other.pk]
         response=self.client.post(url,{'action':'composite_setup','selected':ids})
-        self.assertContains(response,'Норматив на единицу основной работы')
+        self.assertContains(response,'Норматив на единицу комплекса работ')
         data={'action':'composite_confirm','selected':ids,'name':'Общая работа','section':self.simple.section_id,'unit':'шт','allow_fractional':'on'}
         for wid in ids:data[f'norm_{wid}']='1';data[f'profile_{wid}']=self.simple.load_profile_id
         response=self.client.post(url,data)

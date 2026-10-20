@@ -71,7 +71,7 @@ def change_price(user, work_id, price, effective_from, reason="", corrects=None,
     work = ProjectWork.objects.select_for_update().get(pk=work_id, company=user.company)
     if hasattr(work, "merged_source"):
         raise ValidationError(
-            "Исходная работа архивная. Измените цену составной работы."
+            "Исходная работа архивная. Измените цену комплекса работ."
         )
     if corrects:
         if corrects.work_id != work.pk or corrects.company_id != user.company_id:

@@ -25,7 +25,7 @@
     </div>
     <div>
         {% if work.kind == "COMPOSITE" %}{% if request.user|may:'works:work_item_create' %}<a href="{% url 'works:work_item_create' work.pk %}" class="btn btn-primary">
-    <i class="bi bi-plus-circle"></i> Добавить подработу
+    <i class="bi bi-plus-circle"></i> Добавить работу в составе комплекса
 </a>{% endif %}{% endif %}
         {% if request.user|may:'works:work_update' %}<a href="{% url 'works:work_update' work.pk %}" class="btn btn-secondary">
             <i class="bi bi-pencil"></i> Редактировать
@@ -83,7 +83,7 @@
 <!-- Структура работ -->
 <div class="card">
     <div class="card-header">
-        <h5 class="mb-0"><i class="bi bi-diagram-3"></i> Структура работ ({{ items|length }} подработ)</h5>
+        <h5 class="mb-0"><i class="bi bi-diagram-3"></i> Структура работ ({{ items|length }} работ в составе комплекса)</h5>
     </div>
     <div class="card-body p-0">
         {% if items %}
@@ -140,12 +140,12 @@
                 <i class="bi bi-pencil"></i>
             </a>{% endif %}
             <a href="{% url 'works:work_item_create' work.pk %}?parent={{ item.pk }}"
-               class="btn btn-outline-primary btn-sm" title="Добавить подподработу">
+               class="btn btn-outline-primary btn-sm" title="Добавить вложенную работу">
                 <i class="bi bi-plus"></i>
             </a>
             {% if request.user|may:'works:work_item_delete' %}<a href="{% url 'works:work_item_delete' item.pk %}"
                class="btn btn-outline-danger btn-sm" title="Удалить"
-               onclick="return confirm('Удалить подработу «{{ item.name }}»?');">
+               onclick="return confirm('Удалить работу в составе комплекса «{{ item.name }}»?');">
                 <i class="bi bi-trash"></i>
             </a>{% endif %}
         </div>
@@ -159,11 +159,11 @@
         {% else %}
             <div class="alert alert-warning m-3">
                 <i class="bi bi-exclamation-triangle"></i>
-                {% if work.kind == "COMPOSITE" %}У работы нет подработ. Добавьте хотя бы одну, чтобы можно было создать план.
+                {% if work.kind == "COMPOSITE" %}У работы нет работ в составе комплекса. Добавьте хотя бы одну, чтобы можно было создать план.
                 <br>
                 {% if request.user|may:'works:work_item_create' %}<a href="{% url 'works:work_item_create' work.pk %}" class="btn btn-sm btn-primary mt-2">
-                    <i class="bi bi-plus-circle"></i> Добавить подработу
-                </a>{% endif %}{% else %}Простая работа: план и факт вводятся непосредственно по работе.{% endif %}
+                    <i class="bi bi-plus-circle"></i> Добавить работу в составе комплекса
+                </a>{% endif %}{% else %}Самостоятельная работа: план и факт вводятся непосредственно по работе.{% endif %}
             </div>
         {% endif %}
     </div>
@@ -173,7 +173,7 @@
 <div class="alert alert-info mt-4">
     <h6><i class="bi bi-info-circle"></i> Как считается готовность</h6>
     <p class="mb-0">
-        Объём составной работы равен минимуму накопленных объёмов подработ, делённых на их нормативы. Выручка равна объёму основной работы × цене на дату выполнения.
+        Объём комплекса работ равен минимуму накопленных объёмов работ в составе комплекса, делённых на их нормативы. Выручка равна объёму комплекса работ × цене на дату выполнения.
     </p>
 </div>
 {% endblock %}

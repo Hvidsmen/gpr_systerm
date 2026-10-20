@@ -3,13 +3,13 @@ from django.db import transaction
 
 
 class WorkItemGeneratorService:
-    """Автоматическое создание подработ из шаблона."""
+    """Автоматическое создание работ в составе комплекса из шаблона."""
 
     @staticmethod
     @transaction.atomic
     def generate_from_template(project_work):
         """
-        Создать подработы (ProjectWorkItem) на основе шаблона работы.
+        Создать работы в составе комплекса (ProjectWorkItem) на основе шаблона работы.
 
         Формулы:
         - quantity_per_unit = template_item.quantity_per_unit (норматив)
@@ -21,9 +21,9 @@ class WorkItemGeneratorService:
 
         from django.core.exceptions import ValidationError
         if project_work.kind != 'COMPOSITE':
-            raise ValidationError('Подработы создаются только для составной работы.')
+            raise ValidationError('Работы в составе комплекса создаются только для комплекса работ.')
         if project_work.daily_facts.exists() or project_work.monthly_plans.filter(versions__daily_plans__isnull=False).exists():
-            raise ValidationError('Нельзя заменять подработы с существующим планом или фактом.')
+            raise ValidationError('Нельзя заменять работы в составе комплекса с существующим планом или фактом.')
         # Удаляем старые подработы
         project_work.items.all().delete()
 
@@ -53,7 +53,7 @@ class WorkItemGeneratorService:
                 raise ValidationError('Норматив шаблона должен быть больше нуля.')
 
             if not t_item.load_profile_id or t_item.load_profile.company_id != company.pk:
-                raise ValidationError('У каждой подработы шаблона должен быть профиль нагрузки своей компании.')
+                raise ValidationError('У каждой работы в составе комплекса шаблона должен быть профиль нагрузки своей компании.')
 
             # Создаём подработу с нормативом
             item = project_work.items.create(

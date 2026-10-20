@@ -124,7 +124,7 @@ class SmgDaysEdit(View):
         error = None
         if data is not None and formset.is_valid():
             if len(formset.forms) != len(identities):
-                error = 'Укажите объёмы всех дней и подработ.'
+                error = 'Укажите объёмы всех дней и работ в составе комплекса.'
             else:
                 try:
                     with transaction.atomic():

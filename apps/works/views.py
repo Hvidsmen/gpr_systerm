@@ -123,7 +123,7 @@ class WorkLocationMixin:
 
 
 class WorkCreateView(WorkLocationMixin, CompanyRequiredMixin, CreateView):
-    """Создание НОВОЙ РАБОТЫ с автоматической генерацией подработ из шаблона."""
+    """Создание НОВОЙ РАБОТЫ с автоматической генерацией работ в составе комплекса из шаблона."""
 
     model = ProjectWork
     form_class = ProjectWorkForm
@@ -147,21 +147,21 @@ class WorkCreateView(WorkLocationMixin, CompanyRequiredMixin, CreateView):
             if items:
                 messages.success(
                     self.request,
-                    f'Работа создана. Автоматически сформировано {len(items)} подработ из шаблона "{self.object.template.name}".',
+                    f'Работа создана. Автоматически сформировано {len(items)} работ в составе комплекса из шаблона "{self.object.template.name}".',
                 )
             else:
                 messages.warning(
                     self.request,
-                    "Работа создана, но шаблон не содержит элементов. Добавьте подработы вручную.",
+                    "Работа создана, но шаблон не содержит элементов. Добавьте работы в составе комплекса вручную.",
                 )
         elif self.object.kind == "COMPOSITE":
             messages.info(
                 self.request,
-                "Составная работа создана. Добавьте подработы и нормативы.",
+                "Комплекс работ создана. Добавьте работы в составе комплекса и нормативы.",
             )
         else:
             messages.success(
-                self.request, "Простая работа создана. Можно вводить план и факт."
+                self.request, "Самостоятельная работа создана. Можно вводить план и факт."
             )
 
         return response
@@ -190,7 +190,7 @@ class WorkUpdateView(WorkLocationMixin, CompanyScopedMixin, UpdateView):
             if items:
                 messages.success(
                     self.request,
-                    f"Шаблон изменён. Сформировано {len(items)} новых подработ.",
+                    f"Шаблон изменён. Сформировано {len(items)} новых работ в составе комплекса.",
                 )
 
         return response
@@ -232,7 +232,7 @@ class WorkItemDeleteView(CompanyScopedMixin, DeleteView):
         from django.core.exceptions import PermissionDenied
 
         if hasattr(self.object,'merge_origin'):
-            raise PermissionDenied('Подработа сохраняет историю объединения и не может быть удалена.')
+            raise PermissionDenied('Работа в составе комплекса сохраняет историю объединения и не может быть удалена.')
         work = self.object.project_work
         from apps.planning.models import GlobalPlanVersion
 
@@ -244,7 +244,7 @@ class WorkItemDeleteView(CompanyScopedMixin, DeleteView):
             or work.daily_facts.exists()
             or work.monthly_plans.filter(versions__daily_plans__isnull=False).exists()
         ):
-            raise PermissionDenied("Подработы с планом или фактом удалять нельзя.")
+            raise PermissionDenied("Работы в составе комплекса с планом или фактом удалять нельзя.")
         return super().form_valid(form)
 
     model = ProjectWorkItem
@@ -258,7 +258,7 @@ class WorkItemDeleteView(CompanyScopedMixin, DeleteView):
     def delete(self, request, *args, **kwargs):
         item = self.get_object()
         work_pk = item.project_work_id
-        messages.success(request, f'Подработа "{item.name}" удалена')
+        messages.success(request, f'Работа в составе комплекса "{item.name}" удалена')
         return super().delete(request, *args, **kwargs)
 
 
@@ -273,7 +273,7 @@ class WorkItemCreateView(CompanyRequiredMixin, CreateView):
         )
         return kwargs
 
-    """Создание подработы."""
+    """Создание работы в составе комплекса."""
     model = ProjectWorkItem
     form_class = ProjectWorkItemForm
     template_name = "works/work_item_form.html"
@@ -306,7 +306,7 @@ class WorkItemCreateView(CompanyRequiredMixin, CreateView):
             # parent НЕ заполняем автоматически — он берётся из формы
             # (если пользователь выбрал родительскую подработу)
 
-            messages.success(self.request, "Подработа успешно создана!")
+            messages.success(self.request, "Работа в составе комплекса успешно создана!")
             return super().form_valid(form)
         else:
             messages.error(self.request, "Не указана работа")
@@ -335,7 +335,7 @@ class WorkItemUpdateView(CompanyScopedMixin, UpdateView):
         return context
 
     def form_valid(self, form):
-        messages.success(self.request, f'Подработа "{self.object.name}" обновлена!')
+        messages.success(self.request, f'Работа в составе комплекса "{self.object.name}" обновлена!')
         return super().form_valid(form)
 
     def get_success_url(self):

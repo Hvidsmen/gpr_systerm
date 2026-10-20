@@ -84,7 +84,8 @@ def make_workbook(version, months, template=False):
     cell_notes = []
     for sheet in SHEETS:
         ws = workbook.create_sheet(sheet)
-        ws.append(headers(sheet, months) + (['План работы '+label(month) for month in months] if sheet=='Работы' else []))
+        display_headers = {'ID подработы':'ID работы в составе комплекса','Подработа':'Работа в составе комплекса'}
+        ws.append([display_headers.get(title,title) for title in headers(sheet, months)] + (['План работы '+label(month) for month in months] if sheet=='Работы' else []))
         ws.freeze_panes = 'I2' if sheet == 'Работы' else ('F2' if sheet in ['Люди', 'Техника'] else 'C2')
         for cell in ws[1]:
             cell.font = Font(color='FFFFFF', bold=True)
@@ -306,7 +307,8 @@ def parse_workbook(upload, version, months):
             if total_cells>500000:
                 raise ValidationError('В файле слишком много ячеек.')
             iterator=ws.iter_rows();first=next(iterator,())
-            titles=[text(cell.value) for cell in first]
+            legacy_names = {'ID работы в составе комплекса':'ID подработы','Работа в составе комплекса':'Подработа'}
+            titles=[legacy_names.get(text(cell.value),text(cell.value)) for cell in first]
             if len(set(titles))!=len(titles):
                 errors.append(f'{sheet}: повторяются заголовки столбцов.');continue
             columns={title:i for i,title in enumerate(titles)}

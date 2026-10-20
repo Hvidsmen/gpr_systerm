@@ -44,14 +44,14 @@ HEADERS = [
     "Объект",
     "Раздел",
     "Работа",
-    "Подработа",
+    "Работа в составе комплекса",
     "Тип работы",
     "Ед. изм.",
     "Цена",
-    "Сделать составной работой",
-    "Цена составной работы",
+    "Сделать комплексом работ",
+    "Цена комплекса работ",
     "Норматив",
-    "Единица составной работы",
+    "Единица комплекса работ",
     "ID строки",
 ]
 
@@ -332,7 +332,9 @@ def import_book(user, upload, object_id):
                 sheet = book[title]
                 if sheet.max_row > 5001 or sheet.max_column > 13:
                     raise ValidationError("Неверный размер таблицы.")
-                if list(next(sheet.iter_rows(max_row=1, max_col=13, values_only=True))) != HEADERS:
+                legacy_headers = {'Подработа':'Работа в составе комплекса','Сделать составной работой':'Сделать комплексом работ','Цена составной работы':'Цена комплекса работ','Единица составной работы':'Единица комплекса работ'}
+                uploaded_headers = [legacy_headers.get(value,value) for value in next(sheet.iter_rows(max_row=1, max_col=13, values_only=True))]
+                if uploaded_headers != HEADERS:
                     raise ValidationError(f"Лист «{title}»: не изменяйте заголовки столбцов шаблона.")
                 for num, row in enumerate(sheet.iter_rows(min_row=2, max_col=13), 2):
                     if any(cell.data_type == "f" for cell in row):
@@ -425,6 +427,8 @@ def build_preview(user, meta, entries, effective):
     }
     row_cache = {}
     for index, cells in enumerate(entries, 2):
+        cells=list(cells)
+        cells[5]={'Простая':'Самостоятельная работа','Составная':'Комплекс работ'}.get(cells[5],cells[5])
         rid = str(cells[12])
         original = originals.get(rid)
         if not original or rid in seen:
@@ -446,24 +450,24 @@ def build_preview(user, meta, entries, effective):
             or str(cells[10]) != str(current["cells"][10])
         ):
             raise ValidationError(
-                f"Строка {index}: у существующей составной работы изменяется только цена; настройки её подработ здесь не изменяются."
+                f"Строка {index}: у существующей комплекса работ изменяется только цена; настройки её работ в составе комплекса здесь не изменяются."
             )
         selected.add(work.pk)
         if cells[7] != "":
             price = number(cells[7], f"Строка {index}, цена", round_price=True)
             if work.pk in prices and prices[work.pk] != price:
                 raise ValidationError(
-                    f"«{work.name}»: укажите одну цену основной работы во всех её строках."
+                    f"«{work.name}»: укажите одну цену комплекса работ во всех её строках."
                 )
             prices[work.pk] = price
         name = str(cells[8]).strip()
         if name:
             if work.kind != "SIMPLE" or original["item"]:
                 raise ValidationError(
-                    "Объединять можно только простые работы, не подработы существующих составных."
+                    "Объединять можно только самостоятельные работы, не работы из уже существующих комплексов."
                 )
             if len(name) > 255:
-                raise ValidationError("Название составной работы — до 255 символов.")
+                raise ValidationError("Название комплекса работ — до 255 символов.")
             grouped[name.casefold()].append(
                 {
                     "id": work.pk,
@@ -480,7 +484,7 @@ def build_preview(user, meta, entries, effective):
                     "price": (
                         str(
                             number(
-                                cells[9], f"Строка {index}, цена составной работы", round_price=True
+                                cells[9], f"Строка {index}, цена комплекса работ", round_price=True
                             ).quantize(Decimal(".01"))
                         )
                         if cells[9] != ""
@@ -490,7 +494,7 @@ def build_preview(user, meta, entries, effective):
             )
         elif work.kind == "SIMPLE" and any(cells[j] != "" for j in [9, 10, 11]):
             raise ValidationError(
-                f"Строка {index}: заполните название составной работы или очистите её настройки."
+                f"Строка {index}: заполните название комплекса работ или очистите её настройки."
             )
     if not selected:
         raise ValidationError("Нет строк для обработки.")
@@ -504,11 +508,11 @@ def build_preview(user, meta, entries, effective):
         group_prices = {r["price"] for r in members if r["price"] is not None}
         if len(units) != 1 or len(group_prices) != 1:
             raise ValidationError(
-                f"«{name}»: укажите единую единицу и цену составной работы; заполненные значения должны совпадать."
+                f"«{name}»: укажите единую единицу и цену комплекса работ; заполненные значения должны совпадать."
             )
         if any(w.name.casefold() == name.casefold() for w in active.values()):
             raise ValidationError(
-                f"Работа «{name}» уже существует. Выберите новое название составной работы."
+                f"Работа «{name}» уже существует. Выберите новое название комплекса работ."
             )
         unit = next(iter(units))
         data = {

@@ -81,7 +81,7 @@ class FactDayWorkspaceView(CompanyRequiredMixin, View):
                 )
                 if key not in existing:
                     initial.append({'project_work': key[0], 'work_item': key[1], 'actual_quantity': None})
-        configs = [('works', 'Работы и подработы', DailyFact, production_forms.DailyFactForm, work_facts, initial)]
+        configs = [('works', 'Комплексы и работы', DailyFact, production_forms.DailyFactForm, work_facts, initial)]
         sources = select_sources(request.user, {"start": day, "end": day, "mode": "latest"}, [obj]).get(obj.pk, [])
         source = sources[0] if sources else None
         version = SimpleNamespace(pk=source.version.pk, company=company, construction_object=obj, snapshot=source.snapshot) if source else None

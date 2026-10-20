@@ -72,7 +72,7 @@ class ProjectWorkForm(UnitChoiceMixin, forms.ModelForm):
                 field.widget.attrs['class'] = 'form-select'
         kind = self.data.get(self.add_prefix('kind')) if self.is_bound else self.initial.get('kind', self.instance.kind)
         self.fields['load_profile'].required = kind == ProjectWork.Kind.SIMPLE
-        self.fields['load_profile'].help_text = 'Обязателен для простой работы. Для составной профили задаются в подработах.'
+        self.fields['load_profile'].help_text = 'Обязателен для самостоятельной работы. Для комплекса работ профиль задается отдельно для каждой работы в его составе.'
         if self.instance.pk and "unit_price" in self.fields:
             self.fields["unit_price"].disabled = True
             self.fields["unit_price"].help_text = "Цена меняется в карточке работы с сохранением истории."
@@ -100,7 +100,7 @@ class ProjectWorkForm(UnitChoiceMixin, forms.ModelForm):
                 or template.versions.order_by("-version_number").first()
             )
             if version and version.items.filter(load_profile__isnull=True).exists():
-                self.add_error('template', 'В шаблоне есть подработы без профиля нагрузки. Заполните их профили перед использованием.')
+                self.add_error('template', 'В шаблоне есть работы в составе комплекса без профиля нагрузки. Заполните их профили перед использованием.')
             if version and version.items.filter(quantity_per_unit__lte=0).exists():
                 self.add_error(
                     "template",
@@ -146,12 +146,12 @@ class ProjectWorkForm(UnitChoiceMixin, forms.ModelForm):
         }
         help_texts = {
             "code": "Уникальный код в рамках раздела",
-            "template": "Если выбран — подработы будут созданы автоматически из шаблона",
+            "template": "Если выбран — работы в составе комплекса будут созданы автоматически из шаблона",
         }
 
 
 class ProjectWorkItemForm(UnitChoiceMixin, forms.ModelForm):
-    """Форма для создания/редактирования ПОДРАБОТЫ."""
+    """Форма для создания/редактирования Работы в составе комплекса."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -170,13 +170,13 @@ class ProjectWorkItemForm(UnitChoiceMixin, forms.ModelForm):
             ),
         }
         labels = {
-            "name": "Название подработы",
+            "name": "Название работы в составе комплекса",
             "unit": "Единица измерения",
             "load_profile": "Профиль нагрузки",
-            "quantity_per_unit": "Норматив подработы (на ед. работы)",
+            "quantity_per_unit": "Норматив работы в составе комплекса (на ед. комплекса)",
         }
         help_texts = {
-            "quantity_per_unit": "Сколько единиц подработы нужно на 1 единицу работы",
+            "quantity_per_unit": "Сколько единиц работы в составе комплекса нужно на 1 единицу комплекса",
         }
 
 
@@ -218,12 +218,12 @@ class WorkTemplateItemForm(UnitChoiceMixin, forms.ModelForm):
             "load_profile": forms.Select(attrs={"class": "form-control"}),
         }
         labels = {
-            "name": "Название подработы",
+            "name": "Название работы в составе комплекса",
             "unit": "Единица измерения",
             "sequence": "Порядок",
-            "quantity_per_unit": "Норматив подработы (на ед. работы)",
+            "quantity_per_unit": "Норматив работы в составе комплекса (на ед. комплекса)",
             "load_profile": "Профиль нагрузки",
         }
         help_texts = {
-            "quantity_per_unit": "Сколько единиц подработы нужно на 1 единицу работы",
+            "quantity_per_unit": "Сколько единиц работы в составе комплекса нужно на 1 единицу комплекса",
         }

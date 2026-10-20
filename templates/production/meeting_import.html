@@ -8,7 +8,7 @@
 {% csrf_token %}{{ form.non_field_errors }}
 <div class="row g-3">{% for field in form %}<div class="{% if field.name == 'construction_object' or field.name == 'file' %}col-md-12{% else %}col-md-4{% endif %}">{{ field.label_tag }}{{ field }}{{ field.errors }}{% if field.help_text %}<small class="text-muted">{{ field.help_text }}</small>{% endif %}</div>{% endfor %}</div>
 <div id="fact-file-periods" class="mt-3"></div>
-<p class="small text-muted mt-3">Можно выбрать до 20 файлов сразу. Для каждого файла задайте отдельный период и лист. Недостающие работы, бригады и виды техники будут показаны в предварительном просмотре перед созданием. Составные работы загружаются по фактам подработ; выполнение рассчитывается накопительно по нормативам. Строки плана и общие итоги пропускаются.</p>
+<p class="small text-muted mt-3">Можно выбрать до 20 файлов сразу. Для каждого файла задайте отдельный период и лист. Недостающие работы, бригады и виды техники будут показаны в предварительном просмотре перед созданием. Комплексы работ загружаются по фактам работ в составе комплекса; выполнение рассчитывается накопительно по нормативам. Строки плана и общие итоги пропускаются.</p>
 <div><button class="btn btn-primary">Прочитать файл</button> <a class="btn btn-outline-secondary" href="{% url 'production:fact_day_workspace' %}">Отмена</a></div>
 </form>
 {% else %}

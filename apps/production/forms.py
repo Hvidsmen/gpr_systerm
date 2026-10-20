@@ -64,11 +64,11 @@ class DailyFactForm(CompanyFormMixin, forms.ModelForm):
         work, item = data.get("project_work"), data.get("work_item")
         if work:
             if work.kind == "SIMPLE" and item:
-                self.add_error("work_item", "Простая работа не имеет подработ.")
+                self.add_error("work_item", "Самостоятельная работа не имеет работ в составе комплекса.")
             if work.kind == "COMPOSITE" and not item:
-                self.add_error("work_item", "Для составной работы выберите подработу.")
+                self.add_error("work_item", "Для комплекса работ выберите работу в составе комплекса.")
             if item and item.project_work_id != work.pk:
-                self.add_error("work_item", "Подработа принадлежит другой работе.")
+                self.add_error("work_item", "Работа в составе комплекса принадлежит другой работе.")
         if data.get("actual_quantity") is not None and data["actual_quantity"] < 0:
             self.add_error("actual_quantity", "Факт не может быть отрицательным.")
         return data

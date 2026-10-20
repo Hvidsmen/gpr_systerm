@@ -32,8 +32,8 @@ class WorkListFilterForm(forms.Form):
     subwork = forms.CharField(
         required=False,
         max_length=255,
-        label="Подработа",
-        widget=forms.TextInput(attrs={"placeholder": "Название подработы"}),
+        label="Работа в составе комплекса",
+        widget=forms.TextInput(attrs={"placeholder": "Название работы в составе комплекса"}),
     )
 
     def __init__(self, *args, company, **kwargs):

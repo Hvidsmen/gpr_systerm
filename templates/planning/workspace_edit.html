@@ -64,7 +64,7 @@
 {% for section in resource_sections %}<div class="period-add-row"><h3>{{ section.title }}</h3>
 {% if request.user|may:'planning:workspace_add_resource' %}<form class="period-add-form" method="post" action="{% url 'planning:workspace_add_resource' version.pk section.kind %}">{% csrf_token %}{{ section.period_form.as_p }}<button class="btn btn-sm btn-outline-primary">Добавить во весь период</button></form>{% endif %}
 </div>{% endfor %}
-<p class="period-composition-links">{% if request.user|may:'planning:workspace_work_create' %}<a href="{% url 'planning:workspace_work_create' workspace.pk %}">Создать новую простую или составную работу</a>{% endif %} · {% if request.user|may:'works:work_list' %}<a href="{% url 'works:work_list' %}">Настроить подработы и нормативы</a>{% endif %}</p>
+<p class="period-composition-links">{% if request.user|may:'planning:workspace_work_create' %}<a href="{% url 'planning:workspace_work_create' workspace.pk %}">Создать новую простую или комплекс работ</a>{% endif %} · {% if request.user|may:'works:work_list' %}<a href="{% url 'works:work_list' %}">Настроить работы в составе комплекса и нормативы</a>{% endif %}</p>
 </div></div>{% endif %}
 <details class="card mb-3"><summary class="p-3 fw-semibold">Excel: импорт, экспорт и шаблон</summary><div class="card-body pt-0"><p>Сначала сохраните введённые данные. Файл содержит четыре листа: работы, люди, техника, ГСМ.</p><div class="d-flex flex-wrap gap-2">
 {% if request.user|may:'planning:workspace_excel_export' %}
@@ -89,7 +89,7 @@
 {{ work_forms.non_form_errors }}{{ resource_forms.non_form_errors }}
 {% if resource_forms.total_error_count %}<div class="alert alert-danger" role="alert">Проверьте данные ресурсов.<ul>{% for form in resource_forms %}{% for field in form %}{% for error in field.errors %}<li>{{ field.label }}: {{ error }}</li>{% endfor %}{% endfor %}{% for error in form.non_field_errors %}<li>{{ error }}</li>{% endfor %}{% endfor %}</ul></div>{% endif %}
 <div class="d-flex gap-2 mb-3"><button type="button" class="btn btn-sm btn-outline-secondary" data-expand-allocations>Развернуть всё</button><button type="button" class="btn btn-sm btn-outline-secondary" data-collapse-allocations>Свернуть всё</button></div>
-<details class="allocation-section" data-allocation-section="works"><summary>Работы <span class="allocation-group-count" data-section-count></span></summary><div class="allocation-section-body"><p>Указывайте объём основной работы. Объёмы подработ рассчитываются по нормативам; при импорте Excel сохраняются отдельные объёмы подработ. Изменение объёма основной работы возвращает расчёт по нормативам.</p>
+<details class="allocation-section" data-allocation-section="works"><summary>Работы <span class="allocation-group-count" data-section-count></span></summary><div class="allocation-section-body"><p>Указывайте объём комплекса работ. Объёмы работ в составе комплекса рассчитываются по нормативам; при импорте Excel сохраняются отдельные объёмы работ в составе комплекса. Изменение объёма комплекса работ возвращает расчёт по нормативам.</p>
 {% include 'planning/row_filters.html' with filter_kind='works' filters=work_filters %}
 <p><button type="submit" name="action" value="remove_zero_works" class="btn btn-outline-danger" onclick="return confirm('Сохранить изменения и удалить работы с нулевыми объемами только за выбранный месяц? Справочник и другие месяцы сохранятся.')">Сохранить и удалить нулевые работы за {{ selected_month|date:'m.Y' }}</button></p>
 <p><a class="btn btn-outline-primary" href="{% url 'planning:workspace_carryover' version.pk %}?month={{ selected_month|date:'Y-m-d' }}">Добавить остаток работ из прошлого месяца</a></p>
@@ -237,7 +237,7 @@ function updateSubworks(row) {
   if(!origin){origin=document.createElement('span');origin.dataset.workOrigin='';origin.style.gridColumn='1 / -1';row.querySelector('.allocation-grid').prepend(origin);}
   origin.hidden=!work.value;origin.replaceChildren();
   const badge=document.createElement('span');badge.className='badge '+(carry?.added?'bg-warning text-dark':'bg-primary');badge.textContent=carry?.added?'Из остатка':'План — ГПР / вручную';origin.append(badge);
-  if(carry){note.textContent=(carry.is_forecast?(carry.added?'Добавлено из прогнозного остатка за ':'Есть прогнозный остаток за '):(carry.added?'Добавлено из остатка за ':'Есть недовыполненный остаток за '))+carry.previous_month+': '+subworkNumber.format(Number(carry.quantity))+' '+carry.unit+(carry.added?'':' · текущий план не изменен');if(Object.keys(carry.items).length){const details=document.createElement('span');details.textContent=' · Подработы: '+Object.entries(carry.items).map(([id,q])=>(compositeItems[work.value]?.find(i=>String(i.id)===id)?.name||id)+' — '+subworkNumber.format(Number(q))).join('; ');note.append(details);}}
+  if(carry){note.textContent=(carry.is_forecast?(carry.added?'Добавлено из прогнозного остатка за ':'Есть прогнозный остаток за '):(carry.added?'Добавлено из остатка за ':'Есть недовыполненный остаток за '))+carry.previous_month+': '+subworkNumber.format(Number(carry.quantity))+' '+carry.unit+(carry.added?'':' · текущий план не изменен');if(Object.keys(carry.items).length){const details=document.createElement('span');details.textContent=' · Работы в составе комплекса: '+Object.entries(carry.items).map(([id,q])=>(compositeItems[work.value]?.find(i=>String(i.id)===id)?.name||id)+' — '+subworkNumber.format(Number(q))).join('; ');note.append(details);}}
   let panel=row.querySelector('[data-subworks]');
   if (!panel) {
     panel=document.createElement('div');panel.dataset.subworks='';panel.style.gridColumn='1 / -1';
@@ -246,7 +246,7 @@ function updateSubworks(row) {
   const items=compositeItems[work.value];
   panel.replaceChildren();panel.hidden=!items;
   if (!items) return;
-  if (!items.length) {panel.textContent='В составной работе пока нет подработ. Добавьте подработы и нормативы.';return;}
+  if (!items.length) {panel.textContent='В комплексе работ пока нет работ в составе комплекса. Добавьте работы в составе комплекса и нормативы.';return;}
   const input=row.querySelector('[name$="-quantity"]');
   const prefix=input.name.slice(0,-'-quantity'.length);
   const imported=importedItemQuantities[prefix];
@@ -254,7 +254,7 @@ function updateSubworks(row) {
   const valid=input.value.trim()!=='' && Number.isFinite(quantity) && quantity>=0;
   const table=document.createElement('table');table.className='table table-sm mb-0';
   const head=table.createTHead().insertRow();
-  ['Подработа','Норматив на единицу работы','План на месяц','Ед. изм.'].forEach(label=>{const th=document.createElement('th');th.textContent=label;head.append(th);});
+  ['Работа в составе комплекса','Норматив на единицу работы','План на месяц','Ед. изм.'].forEach(label=>{const th=document.createElement('th');th.textContent=label;head.append(th);});
   const body=table.createTBody();
   items.forEach(item=>{const tr=body.insertRow();[item.name,subworkNumber.format(Number(item.norm)),imported?subworkNumber.format(Number(imported[String(item.id)] || 0)):(valid?subworkNumber.format(quantity*Number(item.norm)):'—'),item.unit].forEach(value=>tr.insertCell().textContent=value);});
   panel.append(table);

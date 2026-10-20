@@ -26,6 +26,6 @@
 {% for section in entry.sections %}<details class="matrix-section mb-2" data-matrix-section="{{ section.kind }}" open><summary class="h6">{{ section.label }}{% include 'planning/resource_totals_summary.html' with totals=section.subtotals %}{% if section.has_amount %}<strong class="ms-3">Итого: {{ section.amount|floatformat:"0g" }} ₽</strong>{% endif %}</summary>{% for node in section.groups %}{% include 'planning/report_group.html' %}{% empty %}<p class="text-muted small ms-3">Нет строк по выбранным условиям.</p>{% endfor %}{% if section.total_node %}{% include 'planning/report_group.html' with node=section.total_node %}{% endif %}</details>{% endfor %}
 </details>{% empty %}<div class="alert alert-info">Нет доступных строительных объектов по выбранным условиям.</div>{% endfor %}
 </div>
-<p class="small text-muted">Под объёмом работы показана сумма в рублях по цене на дату планирования. Стоимость подработ отдельно не показывается.</p>
+<p class="small text-muted">Под объёмом работы показана сумма в рублях по цене на дату планирования. Стоимость работ в составе комплекса отдельно не показывается.</p>
 {% endif %}
 <script src="{% static 'planning/report_matrix.js' %}" defer></script>
