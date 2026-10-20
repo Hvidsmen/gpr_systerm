@@ -39,8 +39,29 @@ def repair_fingerprint(works):
 class RepairForm(MergeForm):
     def __init__(self, *args, works, **kwargs):
         super().__init__(*args, works=works, **kwargs)
+        self.object = works[0].section.construction_object
+        self.fields['section'].required = False
+        self.fields['section'].help_text = 'Выберите существующий раздел или укажите название нового ниже.'
+        self.fields['new_section_name'] = forms.CharField(label='Создать новый раздел', required=False, max_length=255, help_text='Новый раздел будет создан на этом же объекте при подтверждении. Поле «Раздел» оставьте пустым.', widget=forms.TextInput(attrs={'class':'form-control', 'placeholder':'Название нового раздела'}))
+        self.order_fields(['name', 'section', 'new_section_name', *self.fields.keys()])
         for work in works:
             self.fields[f'item_name_{work.pk}'] = forms.CharField(label=f'Работа в составе комплекса (запись №{work.pk})', max_length=255, initial=work.section.name, widget=forms.TextInput(attrs={'class':'form-control'}))
+
+    def clean(self):
+        data = super().clean()
+        name = data.get('new_section_name', '')
+        section = data.get('section')
+        if name and section:
+            self.add_error('new_section_name', 'Выберите существующий раздел или создайте новый — одно из двух.')
+        elif not name and not section:
+            self.add_error('section', 'Выберите раздел или введите название нового.')
+        elif name:
+            from apps.projects.models import Section
+            if Section.objects.filter(company=self.object.company, construction_object=self.object, name__iexact=name).exists():
+                self.add_error('new_section_name', 'Такой раздел уже существует на этом объекте. Выберите его из списка.')
+            else:
+                data['section'] = Section(company=self.object.company, construction_object=self.object, name=name)
+        return data
 
 
 def make_forms(user, groups, data=None):
@@ -71,7 +92,16 @@ class StructureRepairView(View):
                     if current != payload['fingerprints']:
                         raise ValidationError('Работы, планы или факт изменились. Выполните просмотр заново.')
                     revisions = 0
+                    new_sections = {}
                     for works, form in zip(groups, forms_list):
+                        section = form.cleaned_data['section']
+                        if section.pk is None:
+                            key = (section.construction_object_id, section.name.casefold())
+                            if key not in new_sections:
+                                section.full_clean()
+                                section.save()
+                                new_sections[key] = section
+                            form.cleaned_data['section'] = new_sections[key]
                         _, created = apply_merge(request.user, [w.pk for w in works], form.cleaned_data, fingerprint(works), minimum=1)
                         revisions += len(created)
                 messages.success(request, f'Структура исправлена. Создано комплексов: {len(groups)}. Новых черновиков планов: {revisions}; проверьте и согласуйте их.')
