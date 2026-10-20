@@ -60,6 +60,33 @@ class UserListView(CompanyScopedMixin, ListView):
     context_object_name = 'users'
     paginate_by = 20
 
+    def get_queryset(self):
+        from django.db.models import Q
+        from .forms import UserFilterForm
+        queryset = super().get_queryset().select_related('company', 'role', 'access_group')
+        self.filter_form = UserFilterForm(self.request.GET, company=self.request.user.company)
+        self.total_count = queryset.count()
+        if not self.filter_form.is_valid():
+            return queryset.none()
+        data = self.filter_form.cleaned_data
+        for token in data['q'].split():
+            queryset = queryset.filter(Q(username__icontains=token) | Q(first_name__icontains=token) | Q(last_name__icontains=token) | Q(email__icontains=token) | Q(position__icontains=token))
+        for field in ['role', 'access_group', 'auth_source']:
+            if data.get(field):
+                queryset = queryset.filter(**{field: data[field]})
+        if data['active']:
+            queryset = queryset.filter(is_active=data['active'] == 'yes')
+        if data['unassigned']:
+            queryset = queryset.filter(role__isnull=True, is_superuser=False)
+        return queryset.order_by('last_name', 'first_name', 'username', 'pk')
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        params = self.request.GET.copy()
+        params.pop('page', None)
+        context.update(filter_form=self.filter_form, total_count=self.total_count, filter_query=params.urlencode())
+        return context
+
 
 class UserDetailView(CompanyScopedMixin, DetailView):
     model = User

@@ -2,7 +2,7 @@ from django import forms
 from django.contrib.auth.forms import UserCreationForm, AuthenticationForm
 from django.utils.translation import gettext_lazy as _
 
-from .models import User
+from .models import User, Role, AccessGroup
 
 
 class UserSettingsForm(forms.ModelForm):
@@ -111,3 +111,19 @@ class CompanyUserAccessForm(forms.ModelForm):
 class CompanyUserCreateForm(CompanyUserAccessForm, UserCreationForm):
     class Meta(CompanyUserAccessForm.Meta):
         fields = ('username', *CompanyUserAccessForm.Meta.fields, 'password1', 'password2')
+
+
+class UserFilterForm(forms.Form):
+    q = forms.CharField(label='Поиск', required=False, max_length=200, widget=forms.TextInput(attrs={'placeholder': 'ФИО, логин, email или должность'}))
+    role = forms.ModelChoiceField(label='Роль', queryset=Role.objects.none(), required=False, empty_label='Все роли')
+    access_group = forms.ModelChoiceField(label='Группа доступа', queryset=AccessGroup.objects.none(), required=False, empty_label='Все группы')
+    auth_source = forms.ChoiceField(label='Источник входа', required=False, choices=[('', 'Все'), ('LOCAL', 'Локальный'), ('LDAP', 'Active Directory')])
+    active = forms.ChoiceField(label='Активность', required=False, choices=[('', 'Все'), ('yes', 'Активные'), ('no', 'Отключённые')])
+    unassigned = forms.BooleanField(label='Без назначенной роли', required=False)
+
+    def __init__(self, *args, company, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['role'].queryset = Role.objects.all()
+        self.fields['access_group'].queryset = AccessGroup.objects.filter(company=company)
+        for field in self.fields.values():
+            field.widget.attrs['class'] = 'form-check-input' if isinstance(field.widget, forms.CheckboxInput) else 'form-control'
