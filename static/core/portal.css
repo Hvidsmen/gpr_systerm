@@ -122,3 +122,24 @@ p { margin-bottom:10px; }
 .main-content .table-hover tbody tr:hover { --bs-table-accent-bg:#edf6fc; }
 .nav-tabs[aria-label="Планирование"] .nav-link:first-child.active { color:#245ba0; border-bottom-color:#245ba0; }
 .nav-tabs[aria-label="Планирование"] .nav-link:nth-child(2).active { color:var(--portal-accent); border-bottom-color:var(--portal-accent); }
+/* Report, GPR and SMG grids use the same quiet table treatment as the preview. */
+.main-content .matrix-scroll { border:1px solid var(--portal-line); border-radius:5px; background:#fff; }
+.main-content .matrix-table { --bs-table-bg:#fff; --bs-table-accent-bg:transparent; border:0; font-size:12px; }
+.main-content .matrix-table>:not(caption)>tr { border:0; }
+.main-content .matrix-table>:not(caption)>tr>* { border:0; border-bottom:1px solid #e9eef5; padding:6px 10px; background:#fff; box-shadow:none; font-weight:400; }
+.main-content .matrix-table thead th { height:34px; color:#647990; background:#f4f8fc; font-size:11px; font-weight:500; border-bottom:1px solid var(--portal-line); }
+.main-content .matrix-table thead tr:first-child th { background:#f4f8fc; }
+.main-content .matrix-table thead tr:nth-child(2) th { top:34px; background:#f8fafd; }
+.main-content .matrix-table .matrix-label { box-shadow:1px 0 0 #e9eef5; text-align:left; color:#3e5873; }
+.main-content .matrix-table tbody .matrix-label { background:#fff; }
+.main-content .matrix-table tbody tr:hover>* { background:#edf6fc; }
+.main-content .matrix-table .matrix-plan { background:#fff; }
+.main-content .matrix-table .matrix-delta { color:#687e94; }
+.main-content .matrix-table .matrix-child>* { color:#62758b; }
+.main-content .matrix-table tr.fw-bold>* { background:#eaf2fa; color:#355c7c; font-weight:600; }
+.main-content .matrix-table td small,.main-content .matrix-table th small { color:#7c8fa2; font-size:10px; font-weight:400; }
+.main-content .matrix-table a:not(.btn) { color:#355f89; font-weight:500; text-decoration:none; }
+.main-content .matrix-table a:not(.btn):hover { color:var(--portal-accent); text-decoration:underline; }
+.overview-table-section.card { padding:0!important; overflow:hidden; }
+.overview-table-section>h2 { font-size:15px; margin:0!important; padding:10px 12px; }
+.overview-table-section>.matrix-scroll { border:0; border-radius:0; border-top:1px solid var(--portal-line); }
