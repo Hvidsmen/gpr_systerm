@@ -332,7 +332,7 @@
 
     {% block extra_css %}{% endblock %}
 <link rel="stylesheet" href="{% static 'core/forms.css' %}">
-<link rel="stylesheet" href="{% static 'core/portal.css' %}?v=20261023-tables">
+<link rel="stylesheet" href="{% static 'core/portal.css' %}?v=20261023-date-lines">
 <script src="{% static 'core/forms.js' %}" defer></script>
 </head>
 <body{% if not user.is_authenticated %} class="without-sidebar"{% endif %}>
@@ -407,12 +407,11 @@
         {% if request.user|may:'dashboard:revenue' %}<a class="nav-link" href="{% url 'dashboard:revenue' %}" data-paths="/dashboard/revenue/"><i class="bi bi-bar-chart"></i> Дашборд</a>{% endif %}
         {% if request.user|may:'planning:decomposition_report' %}<a class="nav-link" href="{% url 'planning:decomposition_report' %}">Декомпозиция работ</a>{% endif %}{% if request.user|may:'planning:report_matrix' %}<a class="nav-link" href="{% url 'planning:report_matrix' %}" data-paths="/planning/reports/"><i class="bi bi-table"></i> Таблица</a>{% endif %}
         </details>{% endif %}
-        {% if request.user|may:'personnel:board_list' %}<a class="nav-link" href="{% url 'personnel:board_list' %}" data-paths="/personnel/"><i class="bi bi-person-vcard"></i> Кадровая служба</a>{% endif %}
+        {% if request.user|may:'personnel:board_list' %}<a class="nav-link" href="{% url 'personnel:board_list' %}" data-paths="/personnel/"><i class="bi bi-person-vcard"></i> Персонал</a>{% endif %}
         {% if request.user|may:'planning:workspace_list' or request.user|may:'planning:project_plan_list' or request.user|may:'planning:approval_list' or request.user|may:'planning:global_list' or request.user|may:'planning:journal_plan_list' or request.user|may:'rotation:plan_list' %}<details class="nav-group"><summary>Планирование</summary>
         {% if request.user|may:'planning:workspace_list' %}<a class="nav-link" href="{% url 'planning:workspace_list' %}" data-paths="/planning/workspace/ /planning/workspace-versions/"><i class="bi bi-calendar-range"></i> Планирование ГПР</a>{% endif %}
         {% if request.user|may:'planning:daily_schedule_list' %}<a class="nav-link" href="{% url 'planning:daily_schedule_list' %}" data-paths="/planning/daily-schedule/"><i class="bi bi-calendar-day"></i> Планирование СМГ</a>{% endif %}
         {% if estimate_review_access %}<a class="nav-link" href="{% url 'planning:estimate_review_list' %}">Проверка сметчиком {% if estimate_reviews_due %}<span class="badge bg-warning text-dark">{{ estimate_reviews_due }}</span>{% endif %}</a>{% endif %}
-        {% if request.user|may:'rotation:plan_list' %}<a class="nav-link" href="{% url 'rotation:plan_list' %}" data-paths="/rotation/"><i class="bi bi-arrow-repeat"></i> Перевахта</a>{% endif %}
         {% if request.user|may:'planning:project_plan_list' %}<a class="nav-link" href="{% url 'planning:project_plan_list' %}" data-paths="/planning/project-plans/"><i class="bi bi-layers"></i> Сводные версии проектов</a>{% endif %}
         {% if request.user|may:'planning:approval_list' %}<a class="nav-link" href="{% url 'planning:approval_list' %}" data-paths="/planning/approvals/"><i class="bi bi-clipboard-check"></i> Согласование планов</a>{% endif %}
         {% if request.user|may:'planning:global_list' %}<a class="nav-link" href="{% url 'planning:global_list' %}" data-paths="/planning/global/"><i class="bi bi-clipboard-check"></i> Все версии</a>{% endif %}

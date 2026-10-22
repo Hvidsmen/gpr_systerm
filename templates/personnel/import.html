@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 {% block title %}Загрузка кадрового учета{% endblock %}
-{% block content %}<a href="{% url 'personnel:board_list' %}">Кадровая служба</a><h1>Загрузка листа «Нефтепровод»</h1>
+{% block content %}<a href="{% url 'personnel:board_list' %}">Персонал</a><h1>Загрузка листа «Нефтепровод»</h1>
 <p>Будут загружены сотрудники, вакансии, планы численности и графики перевахты. Существующие карточки сотрудников не перезаписываются.</p>
 {% if preview %}
 <div class="alert alert-info">Сотрудников: {{ preview.employed }} · Вакансий: {{ preview.vacancies }} · Групп должностей: {{ preview.groups|length }} · Графиков: {{ preview.patterns|length }}</div>

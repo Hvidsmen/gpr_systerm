@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}{{ title }}{% endblock %}
 {% block content %}
-<a href="{% if board %}{% url 'personnel:board_detail' board.pk %}{% else %}{% url 'personnel:board_list' %}{% endif %}">Кадровая служба</a>
+<a href="{% if board %}{% url 'personnel:board_detail' board.pk %}{% else %}{% url 'personnel:board_list' %}{% endif %}">Персонал</a>
 <h1>{{ title }}</h1>
 {% if person_link %}<p>Выберите сотрудника из реестра или оставьте поле пустым для вакансии. <a href="{% url 'personnel:person_create' %}" target="_blank" rel="noopener">Создать карточку сотрудника</a> — затем обновите эту страницу.</p>{% endif %}
 <div class="card p-3" style="max-width:850px"><form method="post">{% csrf_token %}

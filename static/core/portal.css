@@ -143,3 +143,6 @@ p { margin-bottom:10px; }
 .overview-table-section.card { padding:0!important; overflow:hidden; }
 .overview-table-section>h2 { font-size:15px; margin:0!important; padding:10px 12px; }
 .overview-table-section>.matrix-scroll { border:0; border-radius:0; border-top:1px solid var(--portal-line); }
+
+/* Separate dates as groups; keep Plan / Fact / Delta visually together. */
+.main-content .matrix-table>:not(caption)>tr>.matrix-period-start { border-left:1px solid #cdddeb; }
