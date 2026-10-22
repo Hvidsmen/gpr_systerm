@@ -191,3 +191,6 @@ urlpatterns += [
     path('workspace-versions/<int:pk>/decomposition/',DecompositionReport.as_view(kind='gpr'),name='decomposition_gpr'),
     path('daily-schedule/<int:pk>/decomposition/',DecompositionReport.as_view(kind='smg'),name='decomposition_smg'),
 ]
+
+from .design_preview import DesignPreview
+urlpatterns += [path('design-preview/',DesignPreview.as_view(),name='design_preview')]
