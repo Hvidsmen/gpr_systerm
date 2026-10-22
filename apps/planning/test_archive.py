@@ -52,7 +52,7 @@ class ArchiveTests(TestCase):
         self.client.post(self.url,{'action':'restore','confirm':'on'})
         self.assertContains(self.client.get(reverse('planning:workspace_list')),'Archive this GPR')
 
-    def test_not_selected_as_current_not_in_filters_tasks_or_smg(self):
+    def test_archived_gpr_hidden_but_independent_smg_stays_available(self):
         from .report_forms import MatrixReportForm
         from .task_services import visible
         task=WorkTask.objects.create(company=self.company,key='archive-task',kind='MANUAL',title='Archive-related task',assigned_to=self.planner,construction_object=self.obj,version=self.version)
@@ -60,12 +60,12 @@ class ArchiveTests(TestCase):
         set_archived(self.admin,self.workspace.pk,True)
         self.assertIsNone(current_workspace_version(self.company,self.obj,JAN))
         sources=select_sources(self.admin,{'mode':'latest','start':JAN,'end':date(2026,1,31)},[self.obj])
-        self.assertFalse(sources.get(self.obj.pk))
+        self.assertEqual(sources[self.obj.pk][0].snapshot['daily_schedule_ids'],[self.schedule.pk])
         form=MatrixReportForm(user=self.admin)
         for name in form.version_fields:self.assertNotIn(self.version.pk,list(form.fields[name].queryset.values_list('pk',flat=True)))
         self.assertFalse(visible(self.planner).filter(pk=task.pk).exists())
-        self.assertEqual(self.client.get(reverse('planning:daily_schedule_detail',args=[self.schedule.pk])).status_code,404)
-        self.assertEqual(self.client.post(reverse('planning:daily_schedule_apply',args=[self.schedule.pk])).status_code,404)
+        self.assertEqual(self.client.get(reverse('planning:daily_schedule_detail',args=[self.schedule.pk])).status_code,200)
+        self.assertEqual(self.client.post(reverse('planning:daily_schedule_apply',args=[self.schedule.pk])).status_code,302)
 
     def test_same_company_assigned_objects_and_history_permissions(self):
         with self.assertRaises(PermissionDenied):set_archived(self.planner,self.workspace.pk,True)

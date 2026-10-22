@@ -18,6 +18,8 @@ def catalog_versions(obj):
 
 def alternatives(obj):
     version=obj.source if isinstance(obj,DailySchedule) else obj
+    if version is None:
+        return ProjectWork.objects.filter(company_id=obj.company_id,section__construction_object_id=obj.construction_object_id,merged_source__isnull=True).select_related("section__construction_object").order_by("section__name","name","pk")
     objects={version.construction_object_id}
     objects.update(MacroHistorySource.objects.filter(company_id=version.company_id,workspace_id__in=[v.workspace_id for v in catalog_versions(obj)]).values_list('construction_object_id',flat=True))
     return ProjectWork.objects.filter(company_id=version.company_id,section__construction_object_id__in=objects,merged_source__isnull=True).select_related('section__construction_object').order_by('section__construction_object__name','section__name','name','pk')

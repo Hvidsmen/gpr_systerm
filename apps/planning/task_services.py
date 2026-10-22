@@ -44,7 +44,7 @@ def is_executor(user,task):
 
 def estimate_task(estimate):
     obj=estimate.version if estimate.version_id else estimate.schedule
-    object_id=estimate.version.construction_object_id if estimate.version_id else estimate.schedule.source.construction_object_id
+    object_id=estimate.version.construction_object_id if estimate.version_id else estimate.schedule.construction_object_id
     active=estimate.work_tasks.filter(kind='ESTIMATE',status__in=ACTIVE).order_by('-pk').first()
     previous=estimate.work_tasks.filter(kind='ESTIMATE').order_by('-pk').first()
     key=active.key if active else previous.key if previous and estimate.status!='OPEN' else f'estimate:{estimate.pk}:phase:{obj.approval_round if estimate.version_id else obj.revision}:{obj.status}'

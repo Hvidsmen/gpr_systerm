@@ -73,6 +73,8 @@ def create(user,source,month,*,_skip_rebase=False):
     from core.permissions import require_planning_object
     require_planning_object(user,source.construction_object_id)
     require_roles(user,PLAN_ROLES)
+    from apps.projects.models import ConstructionObject
+    ConstructionObject.objects.select_for_update().get(pk=source.construction_object_id,company=user.company)
     source=GlobalPlanVersion.objects.select_for_update().defer('snapshot').get(pk=source.pk,company=user.company)
     validate_source(source,month)
     if not _skip_rebase:
@@ -82,12 +84,14 @@ def create(user,source,month,*,_skip_rebase=False):
         if record:
             task=sync_rebase(record)
             if task and task.status=='OPEN':return start_rebase(user,task)
-    draft=DailySchedule.objects.filter(source=source,month=month,status__in=['DRAFT','SUBMITTED','APPROVED']).first()
-    if draft:return draft
+    draft=DailySchedule.objects.filter(construction_object_id=source.construction_object_id,month=month,status__in=['DRAFT','SUBMITTED','APPROVED']).first()
+    if draft:
+        if draft.source_id!=source.pk:raise ValidationError('На этот месяц уже есть незавершенный СМГ. Откройте его в разделе «Планирование СМГ» и обновите ссылку на ГПР.')
+        return draft
     snapshot=period_snapshot(source,*bounds(month));prior=history(source,month)
     active=DailySchedule.objects.filter(source=source,month=month,status='APPLIED').first()
     previous={e.key:e.rows for e in active.entries.all()} if active else {}
-    schedule=DailySchedule.objects.create(company=user.company,source=source,month=month,revision=(DailySchedule.objects.filter(source=source,month=month).aggregate(n=Max('revision'))['n'] or 0)+1,created_by=user)
+    schedule=DailySchedule.objects.create(company=user.company,source=source,month=month,revision=(DailySchedule.objects.filter(construction_object=source.construction_object,month=month).aggregate(n=Max('revision'))['n'] or 0)+1,created_by=user)
     if active and active.locked_before:
         schedule.locked_before=active.locked_before;schedule.replaces=active.replaces;schedule.save(update_fields=['locked_before','replaces'])
     entries=[]
@@ -151,6 +155,8 @@ def value_rows(entry,values):
 def save_entry(user,entry,values,revision):
     require_roles(user,PLAN_ROLES)
     schedule=DailySchedule.objects.select_for_update().get(pk=entry.schedule_id,company=user.company)
+    from core.permissions import require_planning_object
+    require_planning_object(user,schedule.construction_object_id)
     if schedule.status!='DRAFT':raise PermissionDenied('Примененный СМГ зафиксирован. Создайте новую редакцию.')
     entry=DailyScheduleEntry.objects.select_for_update().select_related('schedule').get(pk=entry.pk,schedule=schedule)
     if entry.revision!=revision:raise ValidationError('Строка изменена в другой вкладке. Обновите страницу.')
@@ -173,38 +179,49 @@ def save_entry(user,entry,values,revision):
 @transaction.atomic
 def activate(user,schedule):
     require_roles(user,PLAN_ROLES)
-    GlobalPlanVersion.objects.select_for_update().get(pk=schedule.source_id,company=user.company)
+    from apps.projects.models import ConstructionObject
+    ConstructionObject.objects.select_for_update().get(pk=schedule.construction_object_id,company=user.company)
     schedule=DailySchedule.objects.select_for_update().select_related('source').defer('source__snapshot').get(pk=schedule.pk,company=user.company)
-    if schedule.source.workspace_id and PlanningWorkspace.objects.filter(pk=schedule.source.workspace_id,is_archived=True).exists():
-        raise ValidationError('Исходный план в архиве. Сначала восстановите его.')
+    from core.permissions import require_planning_object
+    require_planning_object(user,schedule.construction_object_id)
     from .daily_schedule_approval import current,requires_approval
     if schedule.status not in {'DRAFT','APPROVED'}:raise ValidationError('СМГ зафиксирован или находится на согласовании.')
     needs_approval=requires_approval(schedule)
-    if needs_approval and schedule.status!='APPROVED':raise ValidationError('СМГ отличается от ГПР. Сначала получите согласование служб и генерального директора.')
+    if needs_approval and schedule.status!='APPROVED':raise ValidationError('Для этого СМГ сначала получите согласование служб и генерального директора.')
     review=current(schedule)
     from .estimate_review import signature
     if needs_approval and (not review or not review.decisions.filter(section='CEO',action='APPROVE').exists() or review.fingerprint!=signature(schedule)):raise ValidationError('Нет действующего утверждения дневного СМГ.')
-    validate_source(schedule.source,schedule.month)
+    # The GPR reference is optional and never controls the SMG lifecycle.
     from .estimate_review import require_approved
     require_approved(schedule)
     if not ALLOW_MONTH_CHANGES and any(differences(e,e.rows) for e in schedule.entries.select_related('schedule')):raise ValidationError('Месячные итоги СМГ должны совпадать с ГПР.')
-    DailySchedule.objects.filter(source=schedule.source,month=schedule.month,status='APPLIED').update(status='ARCHIVED')
+    DailySchedule.objects.filter(construction_object_id=schedule.construction_object_id,month=schedule.month,status='APPLIED').update(status='ARCHIVED')
     schedule.status='APPLIED';schedule.save(update_fields=['status','updated_at'])
     from .daily_schedule_approval import sync
     sync(schedule)
     from .smg_rebase import sync as sync_rebase
     from .models import CarryoverReviewTask
-    for record in CarryoverReviewTask.objects.filter(correction_version=schedule.source,month=schedule.month).select_related('version','correction_version','assigned_to'):sync_rebase(record)
+    for record in CarryoverReviewTask.objects.filter(correction_version_id=schedule.source_id,month=schedule.month).exclude(correction_version__isnull=True).select_related('version','correction_version','assigned_to'):sync_rebase(record)
     return schedule
 
 
 def overlay(source,snapshot,start,end):
     from .smg_rebase import effective_schedules
     schedules=effective_schedules(source,start,end)
+    return overlay_schedules(snapshot,schedules,start,end)
+
+
+def overlay_schedules(snapshot,schedules,start,end):
     if not schedules:return snapshot
     result=deepcopy(snapshot);specs={s['id']:s for s in result.get('works',[])}
     for schedule in schedules:
         a,b=bounds(schedule.month);a,b=max(a,start),min(b,end)
+        # An operative SMG is a complete monthly plan, not a patch of its GPR.
+        for spec in specs.values():
+            for field in ['plans','daily']:
+                spec[field]=[r for r in spec.get(field,[]) if not a.isoformat()<=r['date'][:10]<=b.isoformat()]
+        for rows in result.get('resources',{}).values():
+            rows[:]=[r for r in rows if not a.isoformat()<=r['date'][:10]<=b.isoformat()]
         for entry in schedule.entries.all():
             if entry.kind=='work':
                 spec=specs.get(entry.metadata['id'])

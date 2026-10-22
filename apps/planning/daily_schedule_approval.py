@@ -13,6 +13,7 @@ SECTIONS=[('PRODUCTION','Работы','PRODUCTION_HEAD'),('HR','Люди','HR_H
 
 def requires_approval(schedule):
     from .daily_schedule import differences
+    if not schedule.source_id:return True
     return any(differences(entry,entry.rows) for entry in schedule.entries.select_related('schedule'))
 
 
@@ -39,7 +40,7 @@ def handoff(estimate):
     if valid and schedule.status=='DRAFT':
         assigned=planner(schedule,estimate)
         actor_id=estimate.events.filter(action='APPROVED').order_by('-pk').values_list('actor_id',flat=True).first() or estimate.assigned_to_id
-        task=ensure(estimate.company,key,kind='SUBMISSION',title=next_action(schedule),description='Проверка сметчика завершена. Если месячные итоги совпадают с ГПР, сохраните СМГ как оперативный план. При отклонениях требуется согласование четырех служб и генерального директора.',assigned_to=assigned,target_role='' if assigned else 'PLANNER',created_by_id=actor_id,schedule=schedule,estimate=estimate,construction_object_id=schedule.source.construction_object_id,due_date=timezone.localdate()+timedelta(days=1))
+        task=ensure(estimate.company,key,kind='SUBMISSION',title=next_action(schedule),description='Проверка сметчика завершена. Если месячные итоги совпадают с ГПР, сохраните СМГ как оперативный план. При отклонениях или отсутствии ГПР требуется согласование четырех служб и генерального директора.',assigned_to=assigned,target_role='' if assigned else 'PLANNER',created_by_id=actor_id,schedule=schedule,estimate=estimate,construction_object_id=schedule.construction_object_id,due_date=timezone.localdate()+timedelta(days=1))
         if task.title!=next_action(schedule):task.title=next_action(schedule);task.save(update_fields=['title'])
         if task.status=='SUPERSEDED':state(task,'OPEN')
     elif existing and existing.status in ACTIVE:
@@ -64,7 +65,7 @@ def sync(schedule):
         key=f'smg-apply:{schedule.pk}:{review.number}'
         if schedule.status=='APPROVED':
             assigned=planner(schedule,latest) if latest else schedule.created_by
-            ensure(schedule.company,key,kind='SUBMISSION',title='Применить согласованный дневной СМГ',assigned_to=assigned,created_by=review.submitted_by,schedule=schedule,schedule_review=review,construction_object_id=schedule.source.construction_object_id,due_date=timezone.localdate()+timedelta(days=1))
+            ensure(schedule.company,key,kind='SUBMISSION',title='Применить согласованный дневной СМГ',assigned_to=assigned,created_by=review.submitted_by,schedule=schedule,schedule_review=review,construction_object_id=schedule.construction_object_id,due_date=timezone.localdate()+timedelta(days=1))
         else:
             for task in WorkTask.objects.filter(company=schedule.company,key=key,status__in=ACTIVE):state(task,'DONE')
         return
@@ -75,7 +76,7 @@ def sync(schedule):
     if {'PRODUCTION','HR','TECH','SECURITY'}<=decisions.keys():roles.append(('CEO','Утверждение СМГ','CEO'))
     for section,label,role in roles:
         people=list(User.objects.filter(company=schedule.company,is_active=True,role__code=role)[:2])
-        task=ensure(schedule.company,f'smg-approval:{review.pk}:{section}',kind='APPROVAL',title=f'Согласовать дневной СМГ: {label}',assigned_to=people[0] if len(people)==1 else None,target_role=role,created_by=review.submitted_by,schedule=schedule,schedule_review=review,construction_object_id=schedule.source.construction_object_id,due_date=timezone.localdate()+timedelta(days=2))
+        task=ensure(schedule.company,f'smg-approval:{review.pk}:{section}',kind='APPROVAL',title=f'Согласовать дневной СМГ: {label}',assigned_to=people[0] if len(people)==1 else None,target_role=role,created_by=review.submitted_by,schedule=schedule,schedule_review=review,construction_object_id=schedule.construction_object_id,due_date=timezone.localdate()+timedelta(days=2))
         if task.status=='SUPERSEDED' and section not in decisions:state(task,'OPEN')
         if task.status=='OPEN' and task.assigned_to_id and (not task.assigned_to.is_active or role_code(task.assigned_to)!=role):
             task.assigned_to=people[0] if len(people)==1 else None;task.save(update_fields=['assigned_to'])
@@ -85,13 +86,13 @@ def sync(schedule):
 @transaction.atomic
 def transition(user,schedule,action,comment=''):
     schedule=DailySchedule.objects.select_for_update().select_related('source').defer('source__snapshot').get(pk=schedule.pk,company=user.company)
+    from core.permissions import require_planning_object
+    require_planning_object(user,schedule.construction_object_id)
     role=role_code(user);review=current(schedule)
     if action=='submit':
         require_roles(user,PLAN_ROLES)
         if schedule.status!='DRAFT':raise ValidationError('На согласование отправляется только черновик СМГ.')
         if not requires_approval(schedule):raise ValidationError('Месячные итоги совпадают с ГПР: сохраните СМГ как оперативный план без нового согласования.')
-        from .daily_schedule import validate_source
-        validate_source(schedule.source,schedule.month)
         estimate_review.require_approved(schedule)
         schedule.approval_round+=1
         review=DailyScheduleReview.objects.create(company=user.company,schedule=schedule,number=schedule.approval_round,fingerprint=estimate_review.signature(schedule),snapshot=list(schedule.entries.values('id','key','kind','label','metadata','original','rows','revision')),submitted_by=user)
@@ -124,5 +125,5 @@ def transition(user,schedule,action,comment=''):
     if action=='reject':
         from .task_services import ensure
         latest=schedule.estimate_reviews.order_by('-pk').first();assigned=planner(schedule,latest) if latest else schedule.created_by
-        ensure(schedule.company,f'smg-repair:{schedule.pk}:{schedule.approval_round}',kind='MANUAL',title='Доработать дневной СМГ и повторно проверить у сметчика',description=comment,assigned_to=assigned,created_by=user,schedule=schedule,construction_object_id=schedule.source.construction_object_id)
+        ensure(schedule.company,f'smg-repair:{schedule.pk}:{schedule.approval_round}',kind='MANUAL',title='Доработать дневной СМГ и повторно проверить у сметчика',description=comment,assigned_to=assigned,created_by=user,schedule=schedule,construction_object_id=schedule.construction_object_id)
     return schedule

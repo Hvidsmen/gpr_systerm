@@ -168,3 +168,11 @@ urlpatterns += [path('global/<int:pk>/<str:action>/', GlobalAction.as_view(), na
 
 from .archive import ArchiveList, WorkspaceArchive
 urlpatterns += [path("workspace/archive/", ArchiveList.as_view(), name="workspace_archive_list"), path("workspace/<int:pk>/archive/", WorkspaceArchive.as_view(), name="workspace_archive")]
+
+from .independent_smg_views import SMGList, SMGCreate, SMGReference, SMGRevise
+urlpatterns += [
+    path('daily-schedule/', SMGList.as_view(), name='daily_schedule_list'),
+    path('daily-schedule/create/', SMGCreate.as_view(), name='smg_create'),
+    path('daily-schedule/<int:pk>/reference/', SMGReference.as_view(), name='smg_reference'),
+    path('daily-schedule/<int:pk>/revision/', SMGRevise.as_view(), name='smg_revise'),
+]

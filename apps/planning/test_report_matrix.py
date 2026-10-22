@@ -539,6 +539,7 @@ class MatrixReportTests(TestCase):
         obj = ConstructionObject.objects.create(
             company=self.company, project=project, name="Second matrix object"
         )
+        self.planner.assigned_objects.add(obj)
         workspace = WorkspaceService.create(
             self.planner, obj, "Other object", JAN, date(2026, 1, 31)
         )

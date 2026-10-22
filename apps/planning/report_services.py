@@ -100,11 +100,17 @@ def select_sources(user, filters, objects):
                     explicit, period_snapshot(explicit, filters["start"], filters["end"]), explicit.start_date, explicit.end_date
                 )
             ]
-    from .daily_schedule import overlay
-    for object_id, entries in result.items():
-        if filters.get('mode') != 'baseline' and not filters.get(f'version_{object_id}'):
-            for source in entries:
-                source.snapshot = overlay(source.version,source.snapshot,filters['start'],filters['end'])
+    if filters.get('mode') != 'baseline':
+        from .models import DailySchedule
+        from .daily_schedule import overlay_schedules, bounds
+        schedules = DailySchedule.objects.filter(company=user.company,construction_object__in=objects,status='APPLIED',month__lte=filters['end'],month__gte=filters['start'].replace(day=1)).select_related('source').defer('source__snapshot').prefetch_related('entries')
+        for schedule in schedules:
+            object_id=schedule.construction_object_id
+            if filters.get(f'version_{object_id}'):continue
+            start,end=bounds(schedule.month)
+            base=period_snapshot(schedule.source,start,end) if schedule.source_id else {'works':[],'resources':{},'standalone_smg':True}
+            snapshot=overlay_schedules(base,[schedule],filters['start'],filters['end'])
+            result[object_id].insert(0,Source(schedule.source or schedule,snapshot,start,end))
     return result
 
 

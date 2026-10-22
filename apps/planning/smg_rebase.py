@@ -116,7 +116,7 @@ def start(user,task):
 
 def effective_schedules(source,start,end):
     """Use an old operative SMG until a replacement for corrected GPR is applied."""
-    schedules=list(DailySchedule.objects.filter(source=source,company_id=source.company_id,status='APPLIED',month__lte=end,month__gte=start.replace(day=1)).prefetch_related('entries'))
+    schedules=list(DailySchedule.objects.filter(construction_object_id=source.construction_object_id,company_id=source.company_id,status='APPLIED',month__lte=end,month__gte=start.replace(day=1)).prefetch_related('entries'))
     months={s.month for s in schedules}
     for record in CarryoverReviewTask.objects.filter(company_id=source.company_id,correction_version=source,month__gte=start.replace(day=1),month__lte=end).order_by('-pk'):
         if record.month not in months:

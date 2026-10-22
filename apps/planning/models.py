@@ -1227,14 +1227,26 @@ class DailySchedule(BaseCompanyModel):
     replaces = models.ForeignKey('self', on_delete=models.PROTECT, null=True, blank=True, related_name='rebased_schedules')
     locked_before = models.DateField(null=True, blank=True)
     approval_round = models.PositiveIntegerField(default=0)
-    source = models.ForeignKey(GlobalPlanVersion, on_delete=models.PROTECT, related_name='daily_schedules')
+    construction_object = models.ForeignKey('projects.ConstructionObject', on_delete=models.PROTECT, related_name='daily_schedules')
+    source = models.ForeignKey(GlobalPlanVersion, on_delete=models.PROTECT, related_name='daily_schedules', null=True, blank=True)
     month = models.DateField()
     revision = models.PositiveIntegerField()
     status = models.CharField(max_length=12, default='DRAFT', choices=[('DRAFT','Черновик'),('SUBMITTED','На согласовании'),('APPROVED','Утвержден'),('APPLIED','Применен'),('ARCHIVED','Предыдущая редакция')])
     created_by = models.ForeignKey('accounts.User', on_delete=models.PROTECT)
 
     class Meta:
-        constraints = [models.UniqueConstraint(fields=['source','month','revision'], name='unique_daily_schedule_revision'), models.UniqueConstraint(fields=['source','month'], condition=models.Q(status='APPLIED'), name='unique_applied_daily_schedule')]
+        constraints = [models.UniqueConstraint(fields=['construction_object','month','revision'], name='unique_object_daily_schedule_revision'), models.UniqueConstraint(fields=['construction_object','month'], condition=models.Q(status='APPLIED'), name='unique_object_applied_daily_schedule')]
+
+    def __str__(self):
+        return f'СМГ · {self.construction_object} · {self.month:%m.%Y} · редакция {self.revision}'
+
+    def save(self, *args, **kwargs):
+        if not self.construction_object_id and self.source_id:
+            self.construction_object_id = self.source.construction_object_id
+        if self.source_id and (self.source.company_id != self.company_id or self.source.construction_object_id != self.construction_object_id):
+            from django.core.exceptions import ValidationError
+            raise ValidationError('ГПР должен принадлежать тому же объекту и компании, что и СМГ.')
+        super().save(*args, **kwargs)
 
 
 class DailyScheduleEntry(models.Model):

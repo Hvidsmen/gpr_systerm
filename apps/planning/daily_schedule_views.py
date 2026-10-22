@@ -56,7 +56,7 @@ class DailyScheduleCreate(View):
 class DailyScheduleDetail(View):
     def get(self,request,pk,add_form=None):
         require_roles(request.user,READ_ROLES)
-        schedule=get_object_or_404(DailySchedule.objects.select_related('source__construction_object').defer('source__snapshot'),pk=pk,company=request.user.company)
+        schedule=get_object_or_404(DailySchedule.objects.select_related('construction_object','source').defer('source__snapshot'),pk=pk,company=request.user.company)
         entries=list(schedule.entries.all())
         for entry in entries:
             entry.schedule=schedule
@@ -75,7 +75,9 @@ class DailyScheduleDetail(View):
         actions=[{'label':label,'action':{'PRODUCTION':'approve_production','HR':'approve_hr','TECH':'approve_tech','SECURITY':'approve_security'}[section],'done':section in approved,'allowed':schedule.status=='SUBMITTED' and role in {assigned,'ADMIN'} and section not in approved} for section,label,assigned in SECTIONS if not (section=='SECURITY' and schedule.status in {'APPROVED','APPLIED','ARCHIVED'} and section not in approved)]
         approval={'smg_requires_approval':requires_approval(schedule),'smg_review':review,'smg_decisions':decisions,'smg_actions':actions,'smg_checked':checked,'smg_final_allowed':schedule.status=='SUBMITTED' and ready and role in {'CEO','ADMIN'},'smg_return_allowed':schedule.status=='SUBMITTED' and (role in {'PRODUCTION_HEAD','HR_HEAD','TECH_HEAD','SECURITY_HEAD','ADMIN'} or role=='CEO' and ready)}
         from .daily_schedule_table_forms import AddEntryForm
-        return render(request,'planning/daily_schedule_detail.html',dict(schedule=schedule,entries=entries,can_edit=role_code(request.user) in PLAN_ROLES,table_editable=editable,add_form=add_form or (AddEntryForm(schedule=schedule) if editable else None),has_deviations=any(service.differences(e,e.rows) for e in entries),**approval,**matrix(schedule,entries)))
+        from .independent_smg_views import ReferenceForm
+        reference_form=ReferenceForm(schedule=schedule,user=request.user) if editable else None
+        return render(request,'planning/daily_schedule_detail.html',dict(schedule=schedule,entries=entries,reference_form=reference_form,can_edit=role_code(request.user) in PLAN_ROLES,table_editable=editable,add_form=add_form or (AddEntryForm(schedule=schedule) if editable else None),has_deviations=any(service.differences(e,e.rows) for e in entries),**approval,**matrix(schedule,entries)))
 
     def post(self,request,pk):
         require_roles(request.user,PLAN_ROLES)
@@ -128,8 +130,8 @@ class DailyScheduleEdit(View):
         if bound and formset.is_valid():
             try:
                 entry=service.save_entry(request.user,entry,[f.cleaned_data for f in formset],int(request.POST.get('revision','-1')))
-                if service.differences(entry,entry.rows):messages.warning(request,'Месячный итог СМГ отличается от ГПР. Отклонение сохранено и показано в сравнении.')
-                else:messages.success(request,'Дневной СМГ сохранен. Месячные итоги совпадают с ГПР.')
+                if entry.schedule.source_id and service.differences(entry,entry.rows):messages.warning(request,'Месячный итог СМГ отличается от ГПР. Отклонение сохранено и показано в сравнении.')
+                else:messages.success(request,'Дневной СМГ сохранен.')
                 return redirect('planning:daily_schedule_edit',pk=entry.pk)
             except (ValidationError,ValueError) as exc:error='; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Обновите страницу.'
         display=[]

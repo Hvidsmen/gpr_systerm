@@ -30,6 +30,7 @@ class MacroHistoryTests(TestCase):
             child=ConstructionObject.objects.create(company=self.company,project=self.obj.project,name=f'КТП-{n}')
             section=Section.objects.create(company=self.company,construction_object=child,name='History')
             work=ProjectWork.objects.create(company=self.company,section=section,name=f'Work {n}',unit='m',unit_price=10)
+            self.planner.assigned_objects.add(child)
             w=WorkspaceService.create(self.planner,child,f'Old {n}',fixtures.JAN,date(2026,3,31))
             for month,quantity in [(fixtures.JAN,100*n),(fixtures.FEB,100*n),(MAR,0)]:WorkMonthAllocation.objects.create(company=self.company,version=w.baseline_version,work=work,month=month,quantity=quantity)
             ResourceMonthAllocation.objects.create(company=self.company,version=w.baseline_version,month=fixtures.JAN,kind='labor',brigade=self.brigade,count=n,hours=8,rate=10)

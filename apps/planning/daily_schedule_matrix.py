@@ -30,7 +30,7 @@ def matrix(schedule,entries):
             machine=equipment.get(first.get('equipment_type_id'))
             group=str(machine.category) if machine and machine.category_id else 'Техника'
         else:group='ГСМ'
-        entry.has_deviation=any(row['delta'] for row in entry.comparison)
+        entry.has_deviation=bool(schedule.source_id) and any(row['delta'] for row in entry.comparison)
         grouped[entry.kind][group].append(entry)
         composites={}
         if entry.kind=='work' and entry.metadata.get('kind')=='COMPOSITE':
@@ -49,7 +49,7 @@ def matrix(schedule,entries):
             comparison['cells']=[{'before':values['before'][day.isoformat()],'after':values['after'][day.isoformat()],'delta':values['after'][day.isoformat()]-values['before'][day.isoformat()]} for day in days]
             for cell,day in zip(comparison['cells'],days):
                 cell['date']=day.isoformat();cell['locked']=bool(schedule.locked_before and day<schedule.locked_before)
-            entry.has_deviation=entry.has_deviation or any(cell['delta'] for cell in comparison['cells'])
+            entry.has_deviation=entry.has_deviation or (bool(schedule.source_id) and any(cell['delta'] for cell in comparison['cells']))
             if entry.kind!='work':
                 total=totals[entry.kind].setdefault(comparison['field'],{'label':comparison['label'],'before':Decimal(0),'after':Decimal(0),'delta':Decimal(0),'cells':[{'before':Decimal(0),'after':Decimal(0),'delta':Decimal(0)} for day in days]})
                 for key in ['before','after','delta']:total[key]+=comparison[key]

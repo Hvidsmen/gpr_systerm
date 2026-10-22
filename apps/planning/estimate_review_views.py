@@ -82,7 +82,7 @@ class ReviewDetail(View):
         replacements=list(alternatives(obj))
         from .models import MacroCarryoverWork
         version=obj.source if isinstance(obj,DailySchedule) else obj
-        aliases=dict(MacroCarryoverWork.objects.filter(company=request.user.company,workspace_id=version.workspace_id).values_list('source_work_id','target_work_id'))
+        aliases=dict(MacroCarryoverWork.objects.filter(company=request.user.company,workspace_id=version.workspace_id if version else None).values_list('source_work_id','target_work_id'))
         for w in works:
             from .estimate_similarity import ranked_replacements
             w.replacement_options=ranked_replacements(w,[r for r in replacements if aliases.get(r.pk)!=w.pk])
@@ -105,7 +105,7 @@ class ReviewDetail(View):
                 candidate=option['work'];key=tuple(sorted((w.pk,candidate.pk)))
                 if key not in pairs:pairs[key]={'first':w,'second':candidate,'score':option['score'],'catalog':candidate.pk not in active_ids}
         extra['similar_works']=sorted(pairs.values(),key=lambda row:(-row['score'],row['first'].pk,row['second'].pk))[:20]
-        return render(request,'planning/estimate_review_detail.html',{**extra,'task':task,'works':works,'can_review':(role_code(request.user)=='ADMIN' or role_code(request.user)=='ESTIMATOR' and task.assigned_to_id==request.user.pk) and task.status=='OPEN' and obj.status in {'DRAFT','REJECTED','SUBMITTED'},'change_form':change_form,'item_form':item_form,'editing_work_id':work_id,'events':task.events.select_related('actor').order_by('-pk'),'replacements':ProjectWork.objects.filter(company=request.user.company,section__construction_object_id=(obj.source.construction_object_id if isinstance(obj,DailySchedule) else obj.construction_object_id))})
+        return render(request,'planning/estimate_review_detail.html',{**extra,'task':task,'works':works,'can_review':(role_code(request.user)=='ADMIN' or role_code(request.user)=='ESTIMATOR' and task.assigned_to_id==request.user.pk) and task.status=='OPEN' and obj.status in {'DRAFT','REJECTED','SUBMITTED'},'change_form':change_form,'item_form':item_form,'editing_work_id':work_id,'events':task.events.select_related('actor').order_by('-pk'),'replacements':ProjectWork.objects.filter(company=request.user.company,section__construction_object_id=(obj.construction_object_id))})
     def post(self,request,pk):
         task=get_object_or_404(tasks(request.user),pk=pk);action=request.POST.get('action');work_id=request.POST.get('work_id')
         try:

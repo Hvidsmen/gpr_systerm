@@ -52,15 +52,13 @@ def scope_queryset(queryset, user, include_archived=False):
         archive_paths = {
             'planning.PlanningWorkspace':'is_archived',
             'planning.GlobalPlanVersion':'workspace__is_archived',
-            'planning.DailySchedule':'source__workspace__is_archived',
-            'planning.DailyScheduleEntry':'schedule__source__workspace__is_archived',
             'planning.CarryoverReviewTask':'version__workspace__is_archived',
         }
         if name in archive_paths:
             queryset = queryset.exclude(**{archive_paths[name]:True})
         if name in {'planning.EstimateReviewTask','planning.WorkTask'}:
             from django.db.models import Q
-            queryset = queryset.exclude(Q(version__workspace__is_archived=True)|Q(schedule__source__workspace__is_archived=True))
+            queryset = queryset.exclude(Q(version__workspace__is_archived=True) & Q(schedule__isnull=True))
     if role_code(user) not in {'FOREMAN','DISPATCHER','PLANNER'}:
         return queryset
     paths = {
@@ -73,8 +71,8 @@ def scope_queryset(queryset, user, include_archived=False):
         'planning.MonthlyPlan': 'project_work__section__construction_object_id',
         'planning.PlanVersion': 'monthly_plan__project_work__section__construction_object_id',
         'planning.DailyPlan': 'plan_version__monthly_plan__project_work__section__construction_object_id',
-        'planning.DailySchedule': 'source__construction_object_id',
-        'planning.DailyScheduleEntry': 'schedule__source__construction_object_id',
+        'planning.DailySchedule': 'construction_object_id',
+        'planning.DailyScheduleEntry': 'schedule__construction_object_id',
         'planning.CarryoverReviewTask': 'version__construction_object_id',
         'planning.EstimateReviewTask': 'version__construction_object_id',
         'planning.ProjectPlanVersion': 'members__construction_object_id',
@@ -90,7 +88,7 @@ def scope_queryset(queryset, user, include_archived=False):
     if name == 'planning.EstimateReviewTask':
         from django.db.models import Q
         ids = user.assigned_objects.filter(company=user.company).values('pk')
-        return queryset.filter(Q(version__construction_object_id__in=ids) | Q(schedule__source__construction_object_id__in=ids))
+        return queryset.filter(Q(version__construction_object_id__in=ids) | Q(schedule__construction_object_id__in=ids))
     path = paths.get(name)
     if path is None and any(field.name == 'construction_object' for field in queryset.model._meta.fields):
         path = 'construction_object_id'

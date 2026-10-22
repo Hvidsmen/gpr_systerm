@@ -16,7 +16,7 @@ class AddEntryForm(forms.Form):
     def __init__(self,*args,schedule,**kwargs):
         super().__init__(*args,**kwargs)
         from .estimate_catalog import alternatives
-        self.fields['work'].queryset=alternatives(schedule.source)
+        self.fields['work'].queryset=alternatives(schedule)
         self.fields['work'].label_from_instance=lambda work:f'{work.section.construction_object} · {work.section.name} · {work.name} · {work.unit} · ID {work.pk}'
         self.fields['brigade'].queryset=Brigade.objects.filter(company_id=schedule.company_id)
         self.fields['equipment'].queryset=EquipmentType.objects.filter(company_id=schedule.company_id,merge_source__isnull=True)
