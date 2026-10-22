@@ -1,5 +1,9 @@
 {% extends 'base.html' %}
 {% load access %}
+{% block content %}
+{% include 'planning/planning_tabs.html' %}
+{% if request.user|may:'planning:macro_history_create' %}<p><a class="btn btn-outline-primary" href="{% url 'planning:macro_history_create' %}">Объединить ГПР субобъектов в макрообъект</a></p>{% endif %}
+{% if request.user|may:'planning:workspace_continue' %}<p><a class="btn btn-outline-primary" href="{% url 'planning:workspace_continue' %}">Продолжить предыдущий ГПР</a></p>{% endif %}
 <h1>{% if archive_mode %}Архив планов{% else %}Планирование ГПР{% endif %}</h1>
 {% if request.user|may:'planning:workspace_archive' %}<p><a href="{% url 'planning:workspace_list' %}">Активные планы</a> · <a href="{% url 'planning:workspace_archive_list' %}">Архив планов</a></p>{% endif %}
 {% if request.user|may:'planning:gpr_excel_import' %}<p><a class="btn btn-outline-primary" href="{% url 'planning:gpr_excel_import' %}">Импорт ГПР из Excel (XLS / XLSX)</a></p>{% endif %}

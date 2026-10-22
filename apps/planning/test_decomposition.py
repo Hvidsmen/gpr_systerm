@@ -80,3 +80,28 @@ class DecompositionTests(TestCase):
         self.assertEqual(sum(r['real_amount'] for r in rows),50)
         self.assertEqual(sum(r['estimated_amount'] for r in rows),450)
         self.assertEqual(sum(r['estimated_amount'] for r in estimated),450)
+
+    def test_existing_matrix_reorders_all_levels_without_changing_dated_totals(self):
+        def leaves(nodes):
+            return [row for node in nodes for row in node['rows']] + [row for node in nodes for row in leaves(node['children'])]
+        baseline=self.report()['objects'][0]['sections'][0]
+        expected=baseline['amount']
+        for basis in ['real','estimated']:
+            for order in permutations(['complex_object','package','work']):
+                report=build_matrix(self.planner,{**self.filters,'money_basis':basis,'work_levels':','.join(order)},source_overrides={self.obj.pk:[Source(self.version,self.snapshot,JAN,date(2026,1,31))]})
+                section=report['objects'][0]['sections'][0]
+                rows=leaves(section['groups'])
+                self.assertEqual(section['amount'],expected)
+                self.assertTrue(all(not row['children'] for row in rows))
+                self.assertEqual(sum((row['cells'][0].get('amount') or 0) for row in rows),expected)
+                self.assertEqual(len({row['key'] for row in rows}),len(rows))
+
+    def test_existing_report_exposes_grouping_and_workspace_has_no_preview_links(self):
+        response=self.client.get(reverse('planning:report_matrix'),{'start':'2026-01-01','end':'2026-01-31','work_levels':'work,package,complex_object'})
+        self.assertEqual(response.status_code,200)
+        self.assertContains(response,'name="work_levels"')
+        response=self.client.get(reverse('planning:workspace_list'))
+        self.assertEqual(response.status_code,200)
+        self.assertContains(response,'Планирование ГПР')
+        self.assertNotContains(response,'Декомпозиция')
+        self.assertNotContains(response,'посмотреть макет')

@@ -18,6 +18,7 @@ SECTIONS = [
 
 
 class MatrixReportForm(forms.Form):
+    work_levels = forms.ChoiceField(label="Порядок уровней работ", required=False, choices=[('', 'Раздел → Комплекс → Работа'), ('complex_object,package,work', 'Комплексный объект → Комплекс работ → Работа'), ('complex_object,work,package', 'Комплексный объект → Работа → Комплекс работ'), ('package,complex_object,work', 'Комплекс работ → Комплексный объект → Работа'), ('package,work,complex_object', 'Комплекс работ → Работа → Комплексный объект'), ('work,complex_object,package', 'Работа → Комплексный объект → Комплекс работ'), ('work,package,complex_object', 'Работа → Комплекс работ → Комплексный объект')])
     money_basis = forms.ChoiceField(label='Вид стоимости',choices=[('real','Реальная — по выполненному комплексу'),('estimated','Оценочная — по весам работ')],required=False,initial='real')
     project = forms.ModelChoiceField(
         queryset=Project.objects.none(), required=False, label="Проект"

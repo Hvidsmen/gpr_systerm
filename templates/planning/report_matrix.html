@@ -6,7 +6,7 @@
 <p class="text-muted">{% if overview %}Последние 7 дней, включая сегодня.{% else %}Месяцы → дни.{% endif %} Работы и расход — объём за период; люди и техника — среднее за заполненные дни; остаток ГСМ — последнее значение периода.</p>
 <form method="get" id="matrix-filters" class="card p-3 mb-3">
 {% if form.errors %}<div class="alert alert-danger">{{ form.non_field_errors }}{% for field in form %}{% for error in field.errors %}<div>{{ field.label }}: {{ error }}</div>{% endfor %}{% endfor %}</div>{% endif %}
-<p>{{ form.money_basis.label_tag }}{{ form.money_basis }}</p><input type="hidden" name="sections_set" value="1">{{ form.month }}
+<div class="row g-2 mb-2"><div class="col-md-6">{{ form.work_levels.label_tag }}{{ form.work_levels }}</div><div class="col-md-6">{{ form.money_basis.label_tag }}{{ form.money_basis }}</div></div><input type="hidden" name="sections_set" value="1">{{ form.month }}
 <div class="row g-2">
 <div class="col-md-3"><label for="{{ form.project.id_for_label }}">{{ form.project.label }}</label>{{ form.project }}</div>
 <div class="col-md-3"><label for="{{ form.start.id_for_label }}">{{ form.start.label }}</label>{{ form.start }}</div>
@@ -31,7 +31,7 @@
 <div class="d-flex gap-2 mb-3"><a class="btn btn-outline-primary btn-sm" href="{{ export_url }}">Экспорт Excel</a><button type="button" class="btn btn-outline-secondary btn-sm" data-expand-matrix="true">Развернуть группы</button><button type="button" class="btn btn-outline-secondary btn-sm" data-expand-matrix="false">Свернуть группы</button></div>
 {% if not shown %}<div class="alert alert-info">Все разделы скрыты. Включите нужный раздел кнопкой сверху.</div>{% endif %}
 <p class="small text-muted">{{ money_basis_label }}</p><div id="plan-fact-matrix">
-{% if overview %}{% include "planning/overview_tables.html" %}{% else %}
+{% if overview and not form.work_levels.value %}{% include "planning/overview_tables.html" %}{% else %}
 {% for entry in objects %}<details class="matrix-object card p-3 mb-3" open><summary class="h5 mb-2">{% if not entry.overview_total %}{{ entry.object.project }} · {% endif %}{{ entry.name }}</summary>
 {% for warning in entry.warnings %}<div class="alert alert-warning py-2">{{ warning }}</div>{% endfor %}
 {% if not fact_only and not overview %}<p class="small text-muted">План: {% for source in entry.sources %}{% if not source.snapshot.standalone_smg %}<a href="{% url 'planning:global_detail' source.version.pk %}">v{{ source.version.version_number }}</a>{% endif %}{% if source.snapshot.daily_schedule_applied %}{% for schedule_id in source.snapshot.daily_schedule_ids %} · <a href="{% url 'planning:daily_schedule_detail' schedule_id %}">дневной СМГ</a>{% endfor %}{% endif %}{% if source.member.review_id %} (сохранён раунд {{ source.member.review.number }}){% endif %}{% if not forloop.last %}, {% endif %}{% empty %}{% if journal_kind == "plans" %}нет версии с выбранным статусом{% else %}нет согласованной версии{% endif %}{% endfor %}</p>{% endif %}

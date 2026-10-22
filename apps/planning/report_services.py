@@ -177,6 +177,37 @@ def make_row(key, label, unit, plan, fact, buckets, operation="sum", children=No
     }
 
 
+def reorder_work_rows(rows, order, money_basis="real"):
+    """Rearrange leaf rows, retaining dated cells and counting each leaf once."""
+    from copy import deepcopy
+    levels = order.split(",") if order else []
+    if len(levels) != 3 or set(levels) != {"complex_object", "package", "work"}:
+        return rows
+    result = []
+    for _, package in rows:
+        dims = package.get("decomposition", {})
+        composite = dims.get("kind") == "COMPOSITE"
+        for leaf in package.get("children") or [package]:
+            row = deepcopy(leaf)
+            row["children"] = []
+            row["key"] = package["key"] + "-leaf-" + row["key"]
+            row["has_amount"] = package.get("has_amount", False)
+            row["decomposition"] = dims
+            dimensions = {
+                "complex_object": dims.get("complex_object_name") or ("Без комплексного объекта" if composite else "Самостоятельные работы"),
+                "package": dims.get("package_name", package["label"]) if composite else "Самостоятельные работы",
+                "work": row["label"] + " · " + row["unit"],
+            }
+            prefix = "estimated" if money_basis == "estimated" else "real"
+            for cell in [row["total"], *row["cells"]]:
+                if prefix + "_amount" in cell:
+                    cell["amount"] = cell[prefix + "_amount"]
+                    cell["fact_amount"] = cell.get(prefix + "_fact_amount")
+                    cell["delta_amount"] = cell["fact_amount"] - cell["amount"] if cell["fact_amount"] is not None and cell["amount"] is not None else None
+            result.append(([dimensions[level] for level in levels], row))
+    return result
+
+
 def grouped(rows):
     root = {}
     for path, row in rows:
@@ -588,6 +619,7 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
                 )
                 path = [row["label"], group_label] if filters.get("work_order") == "work_section" else [group_label]
                 rows.append((path, row))
+            rows = reorder_work_rows(rows, filters.get("work_levels"), filters.get("money_basis", "real"))
             work_groups = grouped(rows)
             def work_totals(node):
                 all_rows = list(node['rows'])
