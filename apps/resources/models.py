@@ -221,3 +221,28 @@ class BrigadeMerge(BaseCompanyModel):
 
     class Meta:
         ordering = ["pk"]
+
+
+class EquipmentCrewPosition(BaseCompanyModel):
+    equipment_type = models.ForeignKey(EquipmentType,on_delete=models.CASCADE,related_name='crew_positions',verbose_name='Вид техники')
+    position = models.ForeignKey(Position,on_delete=models.PROTECT,related_name='equipment_crews',verbose_name='Должность')
+    count = models.PositiveIntegerField('Человек на единицу техники за смену',default=1)
+    is_replacement = models.BooleanField('Со звёздочкой — замещение',default=False,help_text='Информационный маркер. Не влияет на численность и расчёты.')
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if self.count is not None and self.count<1:raise ValidationError({'count':'Укажите не менее одного человека.'})
+        if self.equipment_type_id and self.equipment_type.company_id!=self.company_id:raise ValidationError('Техника другой компании.')
+        if self.position_id and self.position.company_id!=self.company_id:raise ValidationError('Должность другой компании.')
+
+    def __str__(self):
+        return str(self.position)+(' *' if self.is_replacement else '')
+
+    class Meta:
+        ordering=['position__name','pk']
+        constraints=[models.UniqueConstraint(fields=['equipment_type','position'],name='unique_equipment_crew_position'),models.CheckConstraint(condition=models.Q(count__gte=1),name='positive_equipment_crew_count')]
+
+
+class PositionPlanningBrigade(BaseCompanyModel):
+    position = models.OneToOneField(Position,on_delete=models.PROTECT,related_name='planning_mapping')
+    brigade = models.OneToOneField(Brigade,on_delete=models.PROTECT,related_name='position_mapping')

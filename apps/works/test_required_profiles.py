@@ -16,6 +16,7 @@ class RequiredProfileTests(TestCase):
         cls.user=User.objects.create_user(username='profile-planner',company=cls.company,role=Role.objects.get(code='PLANNER'))
         project=Project.objects.create(company=cls.company,code='p',name='p')
         cls.obj=ConstructionObject.objects.create(company=cls.company,project=project,code='o',name='o')
+        cls.user.assigned_objects.add(cls.obj)
         cls.section=Section.objects.create(company=cls.company,construction_object=cls.obj,code='s',name='s')
         cls.profile=LoadProfile.objects.create(company=cls.company,code='p',name='Profile')
         cls.work=ProjectWork.objects.create(company=cls.company,section=cls.section,code='c',name='Composite',unit='м',kind='COMPOSITE')

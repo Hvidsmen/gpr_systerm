@@ -21,7 +21,7 @@ def matrix_workbook(report):
     sheet.freeze_panes = 'C5'
     sheet.append([sheet.title])
     sheet.merge_cells(start_row=1, start_column=1, end_row=1, end_column=width)
-    sheet.append(['Период: ' + str(report.get('start', '')) + ' — ' + str(report.get('end', ''))])
+    sheet.append(['Период: ' + str(report.get('start', '')) + ' — ' + str(report.get('end', '')) + (' · '+report['money_basis_label'] if report.get('money_basis_label') else '')])
     sheet.merge_cells(start_row=2, start_column=1, end_row=2, end_column=width)
     sheet.append(['Объект / раздел / показатель', 'Ед. изм.'])
     sheet.append(['', ''])

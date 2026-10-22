@@ -58,10 +58,13 @@ def signature(obj,*,legacy=False):
         start,end=review_period(obj)
         inputs={'works':list((obj.work_allocations if legacy else review_allocations(obj)).order_by('pk').values()),'resources':list((obj.resource_allocations if legacy else obj.resource_allocations.filter(month__range=(start,end))).order_by('pk').values()),'month':obj.planning_month,'scenario':obj.scenario}
         if not legacy:inputs['period']=[start,end]
+        assignments=list(obj.resource_assignments.order_by('pk').values())
+        if assignments:inputs['resource_assignments']=assignments
     # Catalog timestamps are audit data, not planning inputs.
     for rows in (works,items,prices):
         for row in rows:
             row.pop('updated_at',None);row.pop('created_at',None)
+            if 'complex_object_id' in row and row['complex_object_id'] is None:row.pop('complex_object_id')
     return hashlib.sha256(json.dumps([inputs,works,items,prices],sort_keys=True,default=str).encode()).hexdigest()
 
 
@@ -362,6 +365,8 @@ def finish(user,task,approve,comment=''):
             if review.input_fingerprint and review.input_fingerprint!=signature(obj) and review.input_fingerprint!=signature(obj,legacy=True):
                 raise ValidationError('Справочник или план изменился после отправки. Верните план на доработку и отправьте обновленный расчет на повторное согласование.')
         for work in works:
+            if work.kind=='COMPOSITE' and work.unit_price>0 and sum(work.items.values_list('weight',flat=True),Decimal(0))!=100:
+                raise ValidationError(f'Для расчёта оценочной стоимости сумма весов работ в составе «{work.name}» должна быть 100%.')
             d=task.decisions.get(str(work.pk),{})
             if not d.get('approved') or d.get('signature')!=decision_signature(work,obj):raise ValidationError(f'Проверьте название, цену и подработы: {work.name}.')
         if isinstance(obj,DailySchedule):reprice_schedule(obj)

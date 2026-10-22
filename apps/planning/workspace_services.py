@@ -406,6 +406,8 @@ def build_workspace_snapshot(version, *, validate_inputs=True):
     from apps.works.prices import freeze_prices
     from apps.resources.brigade_merge import normalize_resource_snapshot
     snapshot = _build_workspace_snapshot(version, validate_inputs=validate_inputs)
+    from .work_resources import apply_snapshot
+    snapshot = apply_snapshot(version,snapshot)
     snapshot = freeze_prices(normalize_resource_snapshot(snapshot, version.company, in_place=True), version.company, in_place=True)
     if version.workspace.continued_from_review_id:
         from .continuation import merge_history
@@ -413,7 +415,7 @@ def build_workspace_snapshot(version, *, validate_inputs=True):
     if version.workspace.is_macro_consolidation:
         from .macro_history import merge_macro_history
         snapshot = merge_macro_history(version,snapshot)
-    return snapshot
+    return json_ready_in_place(snapshot)
 
 
 def _build_workspace_snapshot(version, *, validate_inputs=True):
@@ -433,7 +435,7 @@ def _build_workspace_snapshot(version, *, validate_inputs=True):
         )
     ]
     if version.version_kind == "BASELINE":
-        if not inputs and not resources and not workspace.continued_from_review_id and not workspace.is_macro_consolidation:
+        if not inputs and not resources and not version.resource_assignments.exists() and not workspace.continued_from_review_id and not workspace.is_macro_consolidation:
             raise ValidationError("Добавьте месячные планы работ или ресурсов.")
         works = []
         day_cache = {}
@@ -467,9 +469,16 @@ def _build_workspace_snapshot(version, *, validate_inputs=True):
         if not baseline or (not version.baseline_review_id and not baseline.is_immutable):
             raise ValidationError("Сначала утвердите базовую версию периода.")
         from apps.works.merge_planning import transform_snapshot
-        works, resource_plans, warnings = build_forecast(
-            version, inputs, resources, transform_snapshot(baseline_snapshot(version), version.company)
-        )
+        base = transform_snapshot(baseline_snapshot(version), version.company)
+        # Captured, dated work-resource assignments are not monthly proportional inputs.
+        # Forecast ordinary resources, then restore untouched future assignments by date.
+        from .estimate_review import review_period
+        edit_start,edit_end=review_period(version)
+        future_assigned={kind:[r for r in base.get('resources',{}).get(kind,[]) if r.get('assignment_key') and r['date']>edit_end.isoformat()] for kind in ['labor','equipment']}
+        for kind in ['labor','equipment']:
+            base.get('resources',{}).setdefault(kind,[])[:]=[r for r in base.get('resources',{}).get(kind,[]) if not r.get('assignment_key')]
+        works, resource_plans, warnings = build_forecast(version, inputs, resources, base)
+        for kind,rows in future_assigned.items():resource_plans[kind].extend(rows)
     from .hierarchy_services import smg_warnings
     warnings.extend(smg_warnings(workspace))
     return json_ready_in_place(
@@ -877,6 +886,9 @@ class WorkspaceService:
         )
         version.full_clean(exclude=["snapshot"])
         version.save()
+        if previous and previous.resource_assignments.exists():
+            from .work_resources import copy_assignments
+            copy_assignments(previous,version)
         return version
 
     @staticmethod
@@ -913,6 +925,8 @@ class WorkspaceService:
             raise ValidationError("У утверждённой базы отсутствует раунд согласования. Выполните миграции базы.")
         version.save(update_fields=["baseline_review"])
         source = previous or workspace.baseline_version
+        from .work_resources import copy_assignments
+        copy_assignments(source,version)
         from apps.works.merge_planning import transform_snapshot
         base = transform_snapshot(baseline_snapshot(version),workspace.company)
         specs={s['id']:s for s in base['works']}

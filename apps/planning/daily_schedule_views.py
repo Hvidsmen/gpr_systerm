@@ -108,7 +108,7 @@ class DailyScheduleEdit(View):
         require_roles(request.user,READ_ROLES)
         if bound:require_roles(request.user,PLAN_ROLES)
         entry=get_object_or_404(DailyScheduleEntry.objects.select_related('schedule__source__construction_object').defer('schedule__source__snapshot'),pk=pk,schedule__company=request.user.company)
-        editable=entry.schedule.status=='DRAFT' and role_code(request.user) in PLAN_ROLES
+        editable=entry.schedule.status=='DRAFT' and role_code(request.user) in PLAN_ROLES and not entry.metadata.get('resource_assignment_id')
         if bound and not editable:raise PermissionDenied('Примененный СМГ зафиксирован. Создайте новую редакцию.')
         fields=service.FIELDS[entry.kind]
         class DayForm(forms.Form):
@@ -116,7 +116,7 @@ class DailyScheduleEdit(View):
         for key,label,digits in fields:DayForm.base_fields[key]=forms.DecimalField(label=label,min_value=0,max_digits=18,decimal_places=digits,widget=forms.NumberInput(attrs={'class':'form-control form-control-sm','step':str(Decimal(1).scaleb(-digits))}))
         identities=service.identities(entry)
         stored={(r['date'],r.get('item_id')):r for r in entry.rows};original={(r['date'],r.get('item_id')):r for r in entry.original}
-        initial=[{key:stored.get((day.isoformat(),item['id']),{}).get(key,0) for key,_,_ in fields} for day,item in identities]
+        initial=[{key:service.row_value(entry.kind,stored.get((day.isoformat(),item['id']),{}),key) for key,_,_ in fields} for day,item in identities]
         FormSet=formset_factory(DayForm,extra=0,max_num=len(identities),validate_max=True,absolute_max=max(len(identities),1))
         formset=FormSet(request.POST if bound else None,initial=initial)
         if not editable:
@@ -138,7 +138,7 @@ class DailyScheduleEdit(View):
         for (day,item),form in zip(identities,formset):
             cells=[]
             for key,label,_ in fields:
-                base=Decimal(str(original.get((day.isoformat(),item['id']),{}).get(key,0) or 0))
+                base=Decimal(str(service.row_value(entry.kind,original.get((day.isoformat(),item['id']),{}),key)))
                 try:value=Decimal(str(form[key].value() or 0).replace(',','.'));delta=value-base
                 except Exception:delta=None
                 cells.append(dict(field=form[key],base=base,delta=delta,key=key))

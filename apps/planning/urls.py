@@ -176,3 +176,18 @@ urlpatterns += [
     path('daily-schedule/<int:pk>/reference/', SMGReference.as_view(), name='smg_reference'),
     path('daily-schedule/<int:pk>/revision/', SMGRevise.as_view(), name='smg_revise'),
 ]
+
+from .work_resource_views import WorkResources
+urlpatterns += [
+    path('workspace-versions/<int:pk>/resources/',WorkResources.as_view(kind='gpr'),name='work_resources_gpr'),
+    path('workspace-versions/<int:pk>/resources/<int:assignment_pk>/',WorkResources.as_view(kind='gpr'),name='work_resource_edit_gpr'),
+    path('daily-schedule/<int:pk>/resources/',WorkResources.as_view(kind='smg'),name='work_resources_smg'),
+    path('daily-schedule/<int:pk>/resources/<int:assignment_pk>/',WorkResources.as_view(kind='smg'),name='work_resource_edit_smg'),
+]
+
+from .decomposition_report import DecompositionReport
+urlpatterns += [
+    path('decomposition/',DecompositionReport.as_view(),name='decomposition_report'),
+    path('workspace-versions/<int:pk>/decomposition/',DecompositionReport.as_view(kind='gpr'),name='decomposition_gpr'),
+    path('daily-schedule/<int:pk>/decomposition/',DecompositionReport.as_view(kind='smg'),name='decomposition_smg'),
+]

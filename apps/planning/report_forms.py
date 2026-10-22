@@ -18,6 +18,7 @@ SECTIONS = [
 
 
 class MatrixReportForm(forms.Form):
+    money_basis = forms.ChoiceField(label='Вид стоимости',choices=[('real','Реальная — по выполненному комплексу'),('estimated','Оценочная — по весам работ')],required=False,initial='real')
     project = forms.ModelChoiceField(
         queryset=Project.objects.none(), required=False, label="Проект"
     )

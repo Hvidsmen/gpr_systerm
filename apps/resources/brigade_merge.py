@@ -34,7 +34,7 @@ def normalize_brigade_snapshot(snapshot, aliases, *, in_place=False):
             if monthly and row.get('kind') != 'labor':
                 untouched.append(row)
                 continue
-            identity = (row.get('month' if monthly else 'date'), row.get('brigade_id'))
+            identity = (row.get('month' if monthly else 'date'), row.get('brigade_id'), row.get('assignment_key'), row.get('position_id'))
             if identity not in grouped:
                 grouped[identity] = row
                 continue

@@ -8,7 +8,7 @@ ZERO = Decimal("0")
 
 def work_specification(work):
     from .prices import price_on
-    return {
+    spec = {
         "id": work.pk,
         "name": work.name,
         "unit": work.unit,
@@ -26,6 +26,10 @@ def work_specification(work):
             for item in work.items.order_by("sequence", "pk")
         ],
     }
+
+    if work.complex_object_id:
+        spec.update(complex_object_id=work.complex_object_id,complex_object_name=work.complex_object.name)
+    return spec
 
 
 def quantity_from_totals(spec, totals):

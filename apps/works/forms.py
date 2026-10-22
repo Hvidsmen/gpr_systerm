@@ -1,7 +1,7 @@
 from django import forms
 from django.utils.translation import gettext_lazy as _
 
-from .models import ProjectWork, ProjectWorkItem, WorkTemplateItem, MeasurementUnit
+from .models import ProjectWork, ProjectWorkItem, WorkTemplateItem, MeasurementUnit, ComplexObject
 from ..projects.models import Section, Project, ConstructionObject
 from core.permissions import scope_queryset
 from .price_sources import source_field, identity
@@ -58,11 +58,14 @@ class ProjectWorkForm(UnitChoiceMixin, forms.ModelForm):
         self.fields['construction_object'].queryset = objects.filter(project_id=project_id) if project_id else objects.none()
         self.fields['section'].queryset = sections.filter(construction_object_id=object_id, construction_object__project_id=project_id) if object_id and project_id else sections.none()
         self.fields['construction_object'].empty_label = 'Выберите объект' if project_id else 'Сначала выберите проект'
+        self.fields['complex_object'].queryset = ComplexObject.objects.filter(company=company,construction_object_id=object_id) if object_id else ComplexObject.objects.none()
+        self.fields['complex_object'].empty_label = 'Самостоятельно / без комплексного объекта'
         self.fields['section'].empty_label = 'Выберите раздел' if object_id else 'Сначала выберите объект'
         for name in ('project', 'construction_object', 'section'):
             self.fields[name].label_from_instance = lambda row: f'{row.name}'
         self.hierarchy = {
             'objects': list(objects.values('id', 'project_id', 'code', 'name')),
+            'complex_objects': list(ComplexObject.objects.filter(company=company,construction_object__in=objects).values('id','construction_object_id','name')),
             'sections': list(sections.values('id', 'construction_object_id', 'code', 'name')),
         }
         for name in ('template', 'load_profile'):
@@ -113,6 +116,7 @@ class ProjectWorkForm(UnitChoiceMixin, forms.ModelForm):
         fields = [
             "name",
             "work_group",
+            "complex_object",
             "unit",
             "section",
             "unit_price",

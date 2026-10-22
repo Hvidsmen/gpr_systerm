@@ -187,6 +187,13 @@ class EquipmentTypeUpdateView(CompanyRequiredMixin, UpdateView):
 
 
 class EquipmentTypeDeleteView(CompanyRequiredMixin, DeleteView):
+    def form_valid(self,form):
+        from django.db.models.deletion import ProtectedError
+        try:return super().form_valid(form)
+        except ProtectedError:
+            messages.error(self.request,'Техника используется в планах или фактах. Сначала снимите связанные назначения.')
+            return redirect('resources:equipment_type_list')
+
     model = EquipmentType
     template_name = 'resources/equipment_type_confirm_delete.html'
     success_url = reverse_lazy('resources:equipment_type_list')

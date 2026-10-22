@@ -4,7 +4,7 @@
 
 {% block title %}Работы - ГПР Система{% endblock %}
 
-{% block content %}
+{% block content %}<p><a class="btn btn-outline-primary" href="{% url 'works:complex_object_list' %}">Комплексные объекты</a></p>
 <p class="text-muted">Объект → Комплекс работ → Работы в составе комплекса. На объект также можно добавить самостоятельную работу. Раздел группирует комплексы и самостоятельные работы.</p>
 {% with bulk_route='works:bulk_delete' bulk_kind='works' %}
 {% include 'bulk/toolbar.html' %}

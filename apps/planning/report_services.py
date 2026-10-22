@@ -395,6 +395,11 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
                 data = defaultdict(lambda: defaultdict(lambda: ZERO))
                 balances = defaultdict(lambda: defaultdict(lambda: ZERO))
                 for row in source.snapshot.get("resources", {}).get(kind, []):
+                    if kind=="labor" and row.get('position_id'):
+                        key=row['brigade_id'];meta=dict(resource_meta[kind].get(key,{}))
+                        starred=row.get('is_replacement') or meta.get('is_replacement')
+                        meta.update(name=row['label'].rstrip(' *')+(' *' if starred else ''),unit='чел.',is_replacement=starred)
+                        resource_meta[kind][key]=meta
                     day = date.fromisoformat(row["date"])
                     key = (
                         row["brigade_id"]
@@ -412,8 +417,9 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
                             "planned_count" if kind == "equipment" else "planned_liters"
                         )
                     )
-                    if row.get(field) is not None:
-                        data[key][day] += Decimal(str(row[field]))
+                    value=row.get(field,row.get('planned_count') if kind=='labor' else None)
+                    if value is not None:
+                        data[key][day] += Decimal(str(value))
                     if kind == "fuel":
                         balances[key][day] += Decimal(
                             str(row.get("planned_balance") or 0)
@@ -462,11 +468,14 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
                 start <= day <= end and actual_visible(work_id, day) for day, _, _ in work_facts[work_id]
             ):
                 work_specs.setdefault(work_id, work_specification(work))
+        valuation_warnings=[]
         sections = []
         if "works" in filters["sections"]:
             rows = []
             for work_id, stored in work_specs.items():
                 spec = dict(stored)
+                if spec['kind']=='COMPOSITE' and Decimal(str(spec.get('unit_price') or 0))>0 and sum((Decimal(str(item['weight'])) for item in spec.get('items',[])),ZERO)!=100:
+                    valuation_warnings.append(f"{spec['name']}: сумма весов работ должна быть 100%. Оценочная стоимость рассчитана по введённым весам; реальная стоимость по составляющим пока не распределена.")
                 work = work_catalog.get(work_id)
                 if "group_name" not in spec:
                     spec.update(
@@ -570,6 +579,9 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
                             fact_amount, _, _ = aggregate(actual_money, dates, "sum")
                             cell["fact_amount"] = fact_amount
                             cell["delta_amount"] = fact_amount - cell["amount"] if fact_amount is not None and cell["amount"] is not None else None
+                from .valuation import add_valuations
+                add_valuations(row,children,spec,chosen,plan_index,work_id,actual_by_item,actual_prices,work,all_days,buckets,money,actual_money,plan_only,filters.get('money_basis','real'))
+                row['decomposition']={'complex_object_id':spec.get('complex_object_id') or (work.complex_object_id if work else None),'complex_object_name':spec.get('complex_object_name') or (work.complex_object.name if work and work.complex_object_id else None),'package_id':work_id,'package_name':spec['name'],'kind':spec['kind']}
                 group_label = (
                     spec.get("section_name") or (work.section.name if work else "Без раздела")
 
@@ -733,7 +745,7 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
                     "rows": section["subtotals"],
                 } if section["subtotals"] else None
         used = [s for s in available if any(chosen[day] is s for day in all_days)]
-        warnings = []
+        warnings = list(valuation_warnings)
         for source in used:
             if source.member:
                 if source.version.status not in ["APPROVED", "COMPLETED"]:
@@ -776,6 +788,8 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
         "end": end,
         "column_count": 1 + (1 if plan_only else 3) * (len(buckets) + 1),
         "plan_only": plan_only,
+        "money_basis": filters.get("money_basis") or "real",
+        "money_basis_label": "Оценочная стоимость — по весам работ" if filters.get("money_basis")=="estimated" else "Реальная стоимость — по выполненному объёму комплекса",
     }
 
 

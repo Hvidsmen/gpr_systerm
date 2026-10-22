@@ -62,3 +62,10 @@ urlpatterns += [
     path('equipment-categories/merge/', EquipmentCategoryMerge.as_view(), name='equipment_category_merge'),
     path('equipment-categories/<int:pk>/update/', EquipmentCategoryUpdate.as_view(), name='equipment_category_update'),
 ]
+
+from .crew_views import EquipmentCrew, PositionCatalogue
+urlpatterns += [
+    path('positions/',PositionCatalogue.as_view(),name='position_list'),
+    path('positions/<int:pk>/update/',PositionCatalogue.as_view(),name='position_update'),
+    path('equipment-types/<int:pk>/crew/',EquipmentCrew.as_view(),name='equipment_crew'),
+]

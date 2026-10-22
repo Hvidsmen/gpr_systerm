@@ -155,6 +155,7 @@ def input_fingerprint(version):
             {
                 "works": works,
                 "resources": resources,
+                **({"resource_assignments":list(version.resource_assignments.order_by("pk").values())} if version.resource_assignments.exists() else {}),
                 "metadata": metadata,
                 "history": history,
             },

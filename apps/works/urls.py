@@ -59,3 +59,9 @@ urlpatterns += [path("repair-structure/", StructureRepairView.as_view(), name="s
 
 from .append_views import WorkAppendView
 urlpatterns += [path("append-to-composite/", WorkAppendView.as_view(), name="work_append")]
+
+from .complex_objects import ComplexObjectCatalogue
+urlpatterns += [
+    path('complex-objects/',ComplexObjectCatalogue.as_view(),name='complex_object_list'),
+    path('complex-objects/<int:pk>/update/',ComplexObjectCatalogue.as_view(),name='complex_object_update'),
+]

@@ -59,7 +59,7 @@
                                 </td>
                                 <td>
                                     <div class="btn-group btn-group-sm">
-                                        {% if request.user|may:'resources:equipment_type_update' %}<a href="{% url 'resources:equipment_type_update' et.pk %}" class="btn btn-outline-secondary">
+                                        <a class="btn btn-outline-primary" href="{% url 'resources:equipment_crew' et.pk %}">Экипаж</a>{% if request.user|may:'resources:equipment_type_update' %}<a href="{% url 'resources:equipment_type_update' et.pk %}" class="btn btn-outline-secondary">
                                             <i class="bi bi-pencil"></i>
                                         </a>{% endif %}
                                         {% if request.user|may:'resources:equipment_type_delete' %}<a href="{% url 'resources:equipment_type_delete' et.pk %}" class="btn btn-outline-danger"

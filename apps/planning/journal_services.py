@@ -42,8 +42,9 @@ def draft_snapshot(version, start, end):
         source = resource_input(allocation)
         monthly.append(source)
         resources[source['kind']].extend(row for row in resource_rows(workspace, source, allocation.month) if str(start)<=row['date']<=str(end))
-    return json_ready_in_place({'works': works, 'resources': resources, 'monthly_inputs': {'resources': monthly},
-                               'version_kind': version.version_kind, 'warnings': []})
+    from .work_resources import apply_snapshot
+    return json_ready_in_place(apply_snapshot(version,{'works': works, 'resources': resources, 'monthly_inputs': {'resources': monthly},
+                               'version_kind': version.version_kind, 'warnings': []}))
 
 
 def journal_matrix(user, filters, kind):

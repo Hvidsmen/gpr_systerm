@@ -67,7 +67,8 @@ def build_snapshot(version, *, validate_inputs=True):
         from .workspace_services import build_workspace_snapshot
         return build_workspace_snapshot(version, validate_inputs=validate_inputs)
     from apps.works.prices import freeze_prices
-    return freeze_prices(_build_snapshot(version), version.company)
+    from .work_resources import apply_snapshot
+    return json_ready_in_place(freeze_prices(apply_snapshot(version,_build_snapshot(version)), version.company))
 
 
 def _build_snapshot(version):

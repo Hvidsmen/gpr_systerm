@@ -59,7 +59,7 @@
             {% endif %}
 
             <div class="mb-3">
-                <label class="form-label" for="{{ form.work_group.id_for_label }}">Группа работ <span class="text-muted small">(необязательно)</span></label>
+                <p>{{ form.complex_object.label_tag }} {{ form.complex_object }}{{ form.complex_object.errors }} <a href="{% url 'works:complex_object_list' %}" target="_blank" rel="noopener">Комплексные объекты</a></p><label class="form-label" for="{{ form.work_group.id_for_label }}">Группа работ <span class="text-muted small">(необязательно)</span></label>
                 <div class="input-group">{{ form.work_group }}{% if request.user|may:'works:group_create' %}<button type="button" class="btn btn-outline-primary" data-catalog-open="group" aria-label="Создать группу работ">+</button>{% endif %}</div>
                 <div class="text-danger small">{{ form.work_group.errors }}</div>
             </div>
@@ -180,6 +180,8 @@
     const project = document.getElementById('id_project');
     const object = document.getElementById('id_construction_object');
     const section = document.getElementById('id_section');
+    const complex = document.getElementById('id_complex_object');
+    const initialComplex = complex.value;
     const status = document.getElementById('location-status');
     function options(select, rows, placeholder, enabled, selected = '') {
         select.replaceChildren(new Option(placeholder, ''));
@@ -190,6 +192,8 @@
     function updateSections(selected = '') {
         const rows = data.sections.filter(row => String(row.construction_object_id) === object.value);
         options(section, rows, object.value ? (rows.length ? 'Выберите раздел' : 'На объекте пока нет разделов') : 'Сначала выберите объект', Boolean(object.value), selected);
+        const previous=complex.value;
+        options(complex,(data.complex_objects||[]).filter(row=>String(row.construction_object_id)===object.value),'Без комплексного объекта',Boolean(object.value),previous);
         status.textContent = object.value && !rows.length ? 'Создайте раздел в карточке строительного объекта, затем вернитесь к созданию работы.' : '';
     }
     function updateObjects(selected = '', selectedSection = '') {
@@ -200,6 +204,7 @@
     }
     const initialObject = object.value, initialSection = section.value;
     updateObjects(initialObject, initialSection);
+    complex.value=initialComplex;
     project.addEventListener('change', () => updateObjects());
     object.addEventListener('change', () => updateSections());
 })();

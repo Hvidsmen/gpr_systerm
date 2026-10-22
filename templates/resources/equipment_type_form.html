@@ -29,7 +29,7 @@
     </div>
 </div>
 
-<div class="row justify-content-center">
+{% if object.pk %}<p><a class="btn btn-outline-primary" href="{% url 'resources:equipment_crew' object.pk %}">Экипаж и должности на смену</a></p>{% endif %}<div class="row justify-content-center">
     <div class="col-md-8">
         <div class="card shadow">
             <div class="card-header bg-primary text-white">

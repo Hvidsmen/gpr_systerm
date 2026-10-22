@@ -4,7 +4,7 @@
 <p class="small text-muted">Нажмите на месяц для просмотра по дням. Люди и техника — средняя численность за период; расход ГСМ — сумма, остаток — последнее значение.</p>
 <form method="get" id="matrix-filters" class="card p-3 mb-3">
 {% if form.errors %}<div class="alert alert-danger">{{ form.non_field_errors }}{% for field in form %}{% for error in field.errors %}<div>{{ field.label }}: {{ error }}</div>{% endfor %}{% endfor %}</div>{% endif %}
-<input type="hidden" name="sections_set" value="1">{{ form.month }}
+<p>{{ form.money_basis.label_tag }}{{ form.money_basis }}</p><input type="hidden" name="sections_set" value="1">{{ form.month }}
 <div class="row g-2"><div class="col-md-4">{{ form.work_order.label_tag }}{{ form.work_order }}</div><div class="col-md-4">{{ form.start.label_tag }}{{ form.start }}</div><div class="col-md-4">{{ form.end.label_tag }}{{ form.end }}</div></div>
 <div class="d-flex flex-wrap gap-2 my-3" role="group" aria-label="Показываемые разделы">{% for switch in section_switches %}<input class="btn-check" type="checkbox" name="sections" id="show-{{ switch.kind }}" value="{{ switch.kind }}" data-section-toggle {% if switch.checked %}checked{% endif %}><label class="btn btn-outline-primary btn-sm" for="show-{{ switch.kind }}">{{ switch.label }}</label>{% endfor %}</div>
 <div class="row g-2">
@@ -19,7 +19,7 @@
 {% if work_summary %}<div class="card p-3 mb-3" data-work-summary><h2 class="h5">Итоги работ</h2><p>Позиций: {{ work_summary.count }} · <strong>Сумма за выбранный период: {{ work_summary.amount|floatformat:"2g" }} ₽</strong></p><div class="table-responsive"><table class="table table-sm mb-0"><thead><tr>{% for column in work_summary.columns %}<th>{{ column.label }}</th>{% endfor %}</tr></thead><tbody><tr>{% for column in work_summary.columns %}<td>{{ column.amount|floatformat:"2g" }} ₽</td>{% endfor %}</tr></tbody></table></div></div>{% endif %}
 <div class="d-flex gap-2 mb-3"><button type="button" class="btn btn-outline-secondary btn-sm" data-expand-matrix="true">Развернуть группы</button><button type="button" class="btn btn-outline-secondary btn-sm" data-expand-matrix="false">Свернуть группы</button></div>
 {% if not shown %}<div class="alert alert-info">Все разделы скрыты. Включите нужный раздел кнопкой сверху.</div>{% endif %}
-<div id="plan-fact-matrix">
+<p class="small text-muted">{{ money_basis_label }}</p><div id="plan-fact-matrix">
 {% for entry in objects %}<details class="matrix-object card p-3 mb-3" open><summary class="h5 mb-2">{{ entry.object.project }} · {{ entry.name }}</summary>
 {% for warning in entry.warnings %}<div class="alert alert-warning py-2">{{ warning }}</div>{% endfor %}
 <p class="small text-muted">План: {% for source in entry.sources %}{% if not source.snapshot.standalone_smg %}<a href="{% url 'planning:global_detail' source.version.pk %}">v{{ source.version.version_number }}</a>{% endif %}{% if source.member.review_id %} (сохранён раунд {{ source.member.review.number }}){% endif %}{% if not forloop.last %}, {% endif %}{% empty %}нет согласованной версии{% endfor %}</p>

@@ -34,7 +34,7 @@ def save_table(user,schedule,changes):
             entry.schedule=schedule
             stored={(r['date'],r.get('item_id')):r for r in entry.rows}
             fields={name for name,_,_ in service.FIELDS[entry.kind]}
-            values=[{field:Decimal(str(stored.get((day.isoformat(),item['id']),{}).get(field) or 0)) for field in fields} for day,item in service.identities(entry)]
+            values=[{field:Decimal(str(service.row_value(entry.kind,stored.get((day.isoformat(),item['id']),{}),field))) for field in fields} for day,item in service.identities(entry)]
             index={(day.isoformat(),item['id']):i for i,(day,item) in enumerate(service.identities(entry))}
             edited=set()
             for cell in change['changes']:

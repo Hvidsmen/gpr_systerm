@@ -139,6 +139,8 @@ class ProjectWork(BaseCompanyModel):
         SIMPLE = "SIMPLE", "Самостоятельная работа"
         COMPOSITE = "COMPOSITE", "Комплекс работ"
 
+    complex_object = models.ForeignKey('ComplexObject', on_delete=models.PROTECT, null=True, blank=True, related_name='work_packages', verbose_name='Комплексный объект')
+
     work_group = models.ForeignKey(
         'WorkGroup', on_delete=models.SET_NULL, null=True, blank=True,
         related_name='works', verbose_name='Группа работ',
@@ -170,6 +172,11 @@ class ProjectWork(BaseCompanyModel):
             ):
                 raise ValidationError({name: "Связь с другой компанией недопустима."})
 
+        if self.complex_object_id:
+            if self.complex_object.company_id != self.company_id or self.section_id and self.complex_object.construction_object_id != self.section.construction_object_id:
+                raise ValidationError({'complex_object':'Комплексный объект должен принадлежать этому строительному объекту.'})
+            if self.kind != self.Kind.COMPOSITE:
+                raise ValidationError({'complex_object':'Самостоятельная работа остается на строительном объекте. Для комплексного объекта выберите комплекс работ.'})
         if self.kind == self.Kind.SIMPLE and not self.load_profile_id:
             raise ValidationError({'load_profile': 'Для самостоятельной работы обязателен профиль нагрузки.'})
         if self.kind == self.Kind.SIMPLE and self.template_id:
@@ -569,3 +576,37 @@ class WorkPrice(BaseCompanyModel):
 
     def delete(self, *args, **kwargs):
         raise ValidationError("Запись истории цены удалять нельзя.")
+
+
+class ComplexObject(BaseCompanyModel):
+    """A single physical facility, distinct from its priced work packages."""
+    construction_object = models.ForeignKey('projects.ConstructionObject', on_delete=models.PROTECT, related_name='complex_objects', verbose_name='Строительный объект')
+    name = models.CharField('Название комплексного объекта', max_length=255)
+    description = models.TextField('Описание', blank=True)
+
+    @property
+    def quantity(self):
+        return 1
+
+    @property
+    def unit(self):
+        return 'шт.'
+
+    def clean(self):
+        super().clean()
+        if self.construction_object_id and self.construction_object.company_id != self.company_id:
+            raise ValidationError({'construction_object':'Объект другой компании.'})
+        if type(self).objects.filter(company_id=self.company_id,construction_object_id=self.construction_object_id,name__iexact=self.name.strip()).exclude(pk=self.pk).exists():
+            raise ValidationError({'name':'Такой комплексный объект уже существует.'})
+        self.name=self.name.strip()
+        if self.pk:
+            previous=type(self).objects.get(pk=self.pk)
+            if previous.construction_object_id!=self.construction_object_id and self.work_packages.exists():
+                raise ValidationError({'construction_object':'Объект с привязанными комплексами работ переносить нельзя.'})
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        ordering=['construction_object__name','name','pk']
+        constraints=[models.UniqueConstraint(fields=['construction_object','name'],name='unique_complex_object_name')]

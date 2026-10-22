@@ -34,7 +34,7 @@ def normalize_equipment_snapshot(snapshot, aliases, *, in_place=False):
             if monthly and row.get('kind') != 'equipment':
                 untouched.append(row)
                 continue
-            identity = (row.get('month' if monthly else 'date'), row.get('equipment_type_id'), row.get('equipment_number', ''))
+            identity = (row.get('month' if monthly else 'date'), row.get('equipment_type_id'), row.get('equipment_number', ''), row.get('assignment_key'))
             if identity not in grouped:
                 grouped[identity] = row
                 continue

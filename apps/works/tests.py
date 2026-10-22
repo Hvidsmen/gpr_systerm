@@ -18,6 +18,7 @@ class WorkLocationTests(TestCase):
             obj = ConstructionObject.objects.create(company=cls.company, project=project, code='o', name='Object')
             section = Section.objects.create(company=cls.company, construction_object=obj, code='s', name='Repeated section name')
             cls.projects.append(project); cls.objects.append(obj); cls.sections.append(section)
+        cls.user.assigned_objects.add(*cls.objects)
         cls.profile = LoadProfile.objects.create(company=cls.company, code="required", name="Profile")
         cls.foreign = Company.objects.create(name='Foreign')
         cls.foreign_project = Project.objects.create(company=cls.foreign, code='p', name='Foreign project')

@@ -35,14 +35,19 @@ def validate_source(source,month):
     if source.planning_month and month!=source.planning_month:raise ValidationError('Для дневного СМГ выберите уточняемый месяц этой версии ГПР.')
 
 
+def row_value(kind,row,field):
+    if kind=='labor' and field=='planned_count':return row.get('planned_workers',row.get('planned_count')) or 0
+    return row.get(field) or 0
+
+
 def totals(entry,rows):
     result=defaultdict(lambda:ZERO)
     for row in rows:
         for field,_,digits in FIELDS[entry.kind]:
             key=f"{row.get('item_id')}:{field}" if entry.kind=='work' else field
             if field=='planned_balance':
-                if row['date']==bounds(entry.schedule.month)[1].isoformat():result[key]=Decimal(str(row.get(field) or 0))
-            else:result[key]+=Decimal(str(row.get(field) or 0))
+                if row['date']==bounds(entry.schedule.month)[1].isoformat():result[key]=Decimal(str(row_value(entry.kind,row,field)))
+            else:result[key]+=Decimal(str(row_value(entry.kind,row,field)))
     return {k:v.quantize(Decimal('.000001'),rounding=ROUND_HALF_UP) for k,v in result.items()}
 
 
@@ -114,6 +119,12 @@ def create(user,source,month,*,_skip_rebase=False):
             if entry.key not in included and (entry.original or entry.rows):
                 entries.append(DailyScheduleEntry(schedule=schedule,key=entry.key,kind=entry.kind,label=entry.label,metadata=deepcopy(entry.metadata),original=deepcopy(entry.original),rows=deepcopy(entry.rows)))
     DailyScheduleEntry.objects.bulk_create(entries)
+    if active and active.resource_assignments.exists():
+        from .work_resources import copy_assignments
+        copy_assignments(active,schedule)
+    elif source.resource_assignments.exists():
+        from .work_resources import copy_assignments
+        copy_assignments(source,schedule,copy_original=True)
     return schedule
 
 
@@ -137,6 +148,7 @@ def value_rows(entry,values):
             value=Decimal(str(value))
             if not value.is_finite() or value<0 or value>Decimal('999999999999') or value!=value.quantize(Decimal(1).scaleb(-allowed[key])):raise ValidationError('Недопустимый дневной объем.')
             row[key]=str(value)
+        if entry.kind=='labor':row['planned_workers']=row['planned_count']
         rows.append(row)
     if entry.kind=='work':
         for item in {r['item_id'] for r in rows}:
@@ -159,6 +171,7 @@ def save_entry(user,entry,values,revision):
     require_planning_object(user,schedule.construction_object_id)
     if schedule.status!='DRAFT':raise PermissionDenied('Примененный СМГ зафиксирован. Создайте новую редакцию.')
     entry=DailyScheduleEntry.objects.select_for_update().select_related('schedule').get(pk=entry.pk,schedule=schedule)
+    if entry.metadata.get('resource_assignment_id'):raise ValidationError('Измените количество техники, смены или экипаж в разделе «Ресурсы работ и объекта».')
     if entry.revision!=revision:raise ValidationError('Строка изменена в другой вкладке. Обновите страницу.')
     if len(values)!=len(identities(entry)):raise ValidationError('Заполните все дни.')
     rows=value_rows(entry,values)
@@ -168,7 +181,7 @@ def save_entry(user,entry,values,revision):
         for row in rows:
             if row['date']>=cutoff:continue
             previous=old.get((row['date'],row.get('item_id')), {})
-            if any(Decimal(str(row.get(field) or 0))!=Decimal(str(previous.get(field) or 0)) for field,_,_ in FIELDS[entry.kind]):
+            if any(Decimal(str(row_value(entry.kind,row,field)))!=Decimal(str(row_value(entry.kind,previous,field))) for field,_,_ in FIELDS[entry.kind]):
                 raise ValidationError('Прошедшие дни сохранены из действовавшего СМГ. Изменяйте только оставшиеся дни.')
         rows=[deepcopy(r) for r in entry.rows if r['date']<cutoff]+[r for r in rows if r['date']>=cutoff]
     if differences(entry,rows) and not ALLOW_MONTH_CHANGES:raise ValidationError('Месячные итоги отличаются от ГПР. Перераспределите объемы между днями, сохранив итог месяца.')
@@ -237,7 +250,21 @@ def overlay_schedules(snapshot,schedules,start,end):
                 if not entry.original and not entry.rows:continue
                 rows=result.setdefault('resources',{}).setdefault(entry.kind,[])
                 identity=resource_identity((entry.original or entry.rows)[0],entry.kind)
-                rows[:]=[r for r in rows if not (a.isoformat()<=r['date'][:10]<=b.isoformat() and resource_identity(r,entry.kind)==identity)]+[r for r in entry.rows if a.isoformat()<=r['date'][:10]<=b.isoformat()]
+                rows.extend(r for r in entry.rows if a.isoformat()<=r['date'][:10]<=b.isoformat())
     result['daily_schedule_applied']=True
     result['daily_schedule_ids']=[s.pk for s in schedules]
     return result
+
+
+def schedule_differences(schedule):
+    """Compare monthly resource totals, independent of assignment decomposition."""
+    before=defaultdict(Decimal);after=defaultdict(Decimal)
+    for entry in schedule.entries.select_related('schedule'):
+        for output,rows in [(before,entry.original),(after,entry.rows)]:
+            if entry.kind=='work':identity=('work',entry.metadata['id'])
+            else:
+                sample=(entry.original or entry.rows)
+                if not sample:continue
+                identity=(entry.kind,*resource_identity(sample[0],entry.kind))
+            for field,value in totals(entry,rows).items():output[(*identity,field)]+=value
+    return {key:after[key]-before[key] for key in before.keys()|after.keys() if after[key]!=before[key]}

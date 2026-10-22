@@ -12,9 +12,9 @@ SECTIONS=[('PRODUCTION','Работы','PRODUCTION_HEAD'),('HR','Люди','HR_H
 
 
 def requires_approval(schedule):
-    from .daily_schedule import differences
+    from .daily_schedule import schedule_differences
     if not schedule.source_id:return True
-    return any(differences(entry,entry.rows) for entry in schedule.entries.select_related('schedule'))
+    return bool(schedule_differences(schedule))
 
 
 def next_action(schedule):

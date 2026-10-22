@@ -30,6 +30,7 @@ def matrix(schedule,entries):
             machine=equipment.get(first.get('equipment_type_id'))
             group=str(machine.category) if machine and machine.category_id else 'Техника'
         else:group='ГСМ'
+        if entry.metadata.get('target_label'):group=entry.metadata['target_label']+' · '+group
         entry.has_deviation=bool(schedule.source_id) and any(row['delta'] for row in entry.comparison)
         grouped[entry.kind][group].append(entry)
         composites={}
@@ -45,7 +46,7 @@ def matrix(schedule,entries):
                 if field=='work_total':rows=composites[side];field='quantity'
                 for row in rows:
                     if entry.kind=='work' and comparison['field']!='work_total' and str(row.get('item_id'))!=comparison['item_id']:continue
-                    values[side][row['date']]+=Decimal(str(row.get(field) or 0))
+                    values[side][row['date']]+=Decimal(str(service.row_value(entry.kind,row,field)))
             comparison['cells']=[{'before':values['before'][day.isoformat()],'after':values['after'][day.isoformat()],'delta':values['after'][day.isoformat()]-values['before'][day.isoformat()]} for day in days]
             for cell,day in zip(comparison['cells'],days):
                 cell['date']=day.isoformat();cell['locked']=bool(schedule.locked_before and day<schedule.locked_before)

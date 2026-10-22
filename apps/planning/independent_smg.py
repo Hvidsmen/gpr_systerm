@@ -37,6 +37,8 @@ def create(user, obj, month, source=None, copy_from_gpr=False):
             for entry in schedule.entries.all():
                 entry.rows = deepcopy(entry.original)
                 entry.save(update_fields=['rows'])
+            from .work_resources import copy_assignments
+            copy_assignments(source,schedule,copy_original=True)
     audit(user,schedule,'CREATE',{'object_id':obj.pk,'month':str(month),'source_id':schedule.source_id,'copy_from_gpr':copy_from_gpr})
     return schedule
 
@@ -113,5 +115,7 @@ def revise(user, schedule):
     revision = DailySchedule.objects.filter(construction_object=obj,month=schedule.month).aggregate(n=Max('revision'))['n']+1
     new = DailySchedule.objects.create(company=user.company,construction_object=obj,source=schedule.source,month=schedule.month,revision=revision,created_by=user,replaces=schedule,locked_before=schedule.locked_before)
     DailyScheduleEntry.objects.bulk_create([DailyScheduleEntry(schedule=new,key=e.key,kind=e.kind,label=e.label,metadata=deepcopy(e.metadata),original=deepcopy(e.original),rows=deepcopy(e.rows)) for e in schedule.entries.all()])
+    from .work_resources import copy_assignments
+    copy_assignments(schedule,new)
     audit(user,new,'CREATE',{'replaces':schedule.pk,'revision':new.revision,'source_id':new.source_id})
     return new
