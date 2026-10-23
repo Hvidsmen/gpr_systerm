@@ -22,14 +22,8 @@ def editable(user, owner):
 
 
 def brigade_for(position):
-    mapping=PositionPlanningBrigade.objects.filter(position=position).first()
-    if mapping:return mapping.brigade_id
-    Position.objects.select_for_update().get(pk=position.pk)
-    mapping=PositionPlanningBrigade.objects.filter(position=position).first()
-    if mapping:return mapping.brigade_id
-    brigade=Brigade.objects.create(company=position.company,name=position.name,description='Должность: автоматическая связь для учета планов и фактов.')
-    PositionPlanningBrigade.objects.create(company=position.company,position=position,brigade=brigade)
-    return brigade.pk
+    from apps.resources.position_catalog import brigade_for as shared_brigade_for
+    return shared_brigade_for(position)
 
 
 def capture(assignment):

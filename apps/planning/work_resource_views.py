@@ -28,7 +28,9 @@ class AssignmentForm(forms.ModelForm):
         self.fields['work_item'].queryset=ProjectWorkItem.objects.filter(company=owner.company,project_work__in=self.fields['work'].queryset)
         self.fields['work_item'].label_from_instance=lambda i:f'{i.project_work.name} → {i.name}'
         self.fields['equipment_type'].queryset=EquipmentType.objects.filter(company=owner.company).filter(Q(merge_source__isnull=True,is_active=True)|Q(pk=self.instance.equipment_type_id))
-        self.fields['position'].queryset=Position.objects.filter(company=owner.company)
+        from apps.resources.position_catalog import available_positions, position_label
+        self.fields['position'].queryset=available_positions(owner.company)
+        self.fields['position'].label_from_instance=position_label
         self.fields['work_item'].help_text='Необязательно. Должна принадлежать выбранному комплексу работ.'
         self.fields['position'].help_text='Для людей без привязки к технике. При выборе техники должности берутся из её экипажа.'
         for name in ['count','shifts_per_day','hours_per_shift']:self.fields[name].widget.attrs['min']='1' if name!='hours_per_shift' else '0.01'

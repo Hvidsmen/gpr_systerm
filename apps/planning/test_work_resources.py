@@ -22,6 +22,8 @@ class WorkResourceTests(TestCase):
         self.client.force_login(self.planner)
         self.position=Position.objects.create(company=self.company,name='Машинист',default_hourly_rate=100)
         self.helper=Position.objects.create(company=self.company,name='Помощник',default_hourly_rate=50)
+        service.brigade_for(self.position)
+        service.brigade_for(self.helper)
         self.crew=EquipmentCrewPosition.objects.create(company=self.company,equipment_type=self.equipment,position=self.position,count=1,is_replacement=True)
         EquipmentCrewPosition.objects.create(company=self.company,equipment_type=self.equipment,position=self.helper,count=1)
         self.version=WorkspaceService.create(self.planner,self.obj,'Staff',JAN,date(2026,1,31)).baseline_version
@@ -82,7 +84,7 @@ class WorkResourceTests(TestCase):
     def test_catalogue_crew_and_position_pages(self):
         response=self.client.get(reverse('resources:equipment_crew',args=[self.equipment.pk]))
         self.assertContains(response,'замещение');self.assertContains(response,'Сохранить экипаж')
-        response=self.client.get(reverse('resources:position_list'));self.assertContains(response,'Машинист')
+        response=self.client.get(reverse('resources:position_list'),follow=True);self.assertContains(response,'Машинист')
 
     def test_forecast_keeps_assignment_dates_and_counts_once(self):
         self.assignment(self.version)

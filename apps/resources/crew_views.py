@@ -27,12 +27,11 @@ class PositionForm(forms.ModelForm):
 class PositionCatalogue(View):
     def display(self,request,pk=None,bound=False):
         require_roles(request.user,PLAN_ROLES if bound or pk else READ_ROLES)
-        instance=get_object_or_404(Position,company=request.user.company,pk=pk) if pk else Position(company=request.user.company)
-        form=PositionForm(request.POST if bound else None,instance=instance)
-        if bound and form.is_valid():
-            form.save();messages.success(request,'Должность сохранена.')
-            return redirect('resources:position_list')
-        return render(request,'resources/position_catalogue.html',{'form':form,'positions':Position.objects.filter(company=request.user.company),'editing':pk})
+        if pk:
+            position=get_object_or_404(Position,company=request.user.company,pk=pk)
+            from .position_catalog import brigade_for
+            return redirect('resources:brigade_update',pk=brigade_for(position))
+        return redirect('resources:brigade_list')
     def get(self,request,pk=None):return self.display(request,pk)
     def post(self,request,pk=None):return self.display(request,pk,True)
 
@@ -45,7 +44,9 @@ class CrewForm(forms.ModelForm):
     def __init__(self,*args,equipment,**kwargs):
         super().__init__(*args,**kwargs)
         self.instance.company=equipment.company;self.instance.equipment_type=equipment
-        self.fields['position'].queryset=Position.objects.filter(company=equipment.company)
+        from .position_catalog import available_positions, position_label
+        self.fields['position'].queryset=available_positions(equipment.company)
+        self.fields['position'].label_from_instance=position_label
         self.fields['count'].widget.attrs['min']=1
 
 
