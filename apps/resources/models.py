@@ -1,3 +1,4 @@
+from core.excel_mapping import validate_excel_aliases
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
@@ -67,6 +68,7 @@ class BrigadeMacroGroup(BaseCompanyModel):
 
 
 class Brigade(BaseCompanyModel):
+    excel_aliases = models.JSONField('Названия в Excel', default=list, blank=True, validators=[validate_excel_aliases])
     """Справочник бригад."""
     code = models.CharField(
         _('код бригады'),
@@ -129,6 +131,7 @@ from .driver_categories import validate_driver_categories, validate_driver_class
 
 
 class EquipmentType(BaseCompanyModel):
+    excel_aliases = models.JSONField('Названия в Excel', default=list, blank=True, validators=[validate_excel_aliases])
     """Справочник видов техники."""
     name = models.CharField(_('название'), max_length=150)
     unit = models.CharField(_('единица измерения'), max_length=50, default='ед.')

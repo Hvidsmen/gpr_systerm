@@ -1,3 +1,4 @@
+from core.excel_mapping import ExcelAliasesField
 from django import forms
 from django.utils.translation import gettext_lazy as _
 
@@ -17,6 +18,7 @@ class EmployeeForm(forms.ModelForm):
         }
 
 class BrigadeForm(forms.ModelForm):
+    excel_aliases = ExcelAliasesField()
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['unit'].required = False
@@ -30,7 +32,7 @@ class BrigadeForm(forms.ModelForm):
 
     class Meta:
         model = Brigade
-        fields = ['name', 'group', 'macro_group', 'unit', 'description', 'is_active']
+        fields = ['excel_aliases', 'name', 'group', 'macro_group', 'unit', 'description', 'is_active']
         widgets = {
             'code': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'БР-001'}),
             'unit': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'чел.'}),
@@ -51,6 +53,7 @@ from .driver_categories import DRIVER_CATEGORY_CHOICES, DRIVER_CLASS_CHOICES
 
 
 class EquipmentTypeForm(forms.ModelForm):
+    excel_aliases = ExcelAliasesField()
     driver_classes = forms.MultipleChoiceField(label="Допустимые классы водителя", choices=DRIVER_CLASS_CHOICES, required=False, widget=forms.SelectMultiple(attrs={"class":"form-select"}), help_text="Квалификационный класс: 1-й, 2-й или 3-й. Можно выбрать несколько допустимых вариантов.")
     driver_categories = forms.MultipleChoiceField(label="Допустимые категории водителя", choices=DRIVER_CATEGORY_CHOICES, required=False, widget=forms.SelectMultiple(attrs={"class":"form-select"}), help_text="Можно выбрать несколько вариантов. Категории ВУ и удостоверения тракториста-машиниста указаны отдельно.")
     def __init__(self, *args, **kwargs):
@@ -64,7 +67,7 @@ class EquipmentTypeForm(forms.ModelForm):
 
     class Meta:
         model = EquipmentType
-        fields = ['name', 'category', 'driver_categories', 'driver_classes', 'unit', 'is_active']
+        fields = ['excel_aliases', 'name', 'category', 'driver_categories', 'driver_classes', 'unit', 'is_active']
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control'}),
             'unit': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'ед.'}),

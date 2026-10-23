@@ -1,3 +1,4 @@
+from core.excel_mapping import validate_excel_aliases
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
@@ -135,6 +136,7 @@ class WorkTemplateItem(BaseCompanyModel):
 
 
 class ProjectWork(BaseCompanyModel):
+    excel_aliases = models.JSONField('Названия в Excel', default=list, blank=True, validators=[validate_excel_aliases])
     class Kind(models.TextChoices):
         SIMPLE = "SIMPLE", "Самостоятельная работа"
         COMPOSITE = "COMPOSITE", "Комплекс работ"
@@ -294,6 +296,7 @@ class ProjectWork(BaseCompanyModel):
 
 
 class ProjectWorkItem(BaseCompanyModel):
+    excel_aliases = models.JSONField('Названия в Excel', default=list, blank=True, validators=[validate_excel_aliases])
     project_work = models.ForeignKey(
         ProjectWork,
         on_delete=models.CASCADE,

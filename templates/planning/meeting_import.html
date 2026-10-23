@@ -11,7 +11,7 @@
 {% endif %}
 <p class="text-muted">При выборе файла дата в его названии автоматически задаёт начало и конец месяца. Например, 30.06.2026 → 01.06.2026 — 30.06.2026. Период можно изменить вручную.</p>
 <p>Читаются только дневные столбцы с датами внутри выбранного периода. Месячные итоги из шапки не используются.</p>
-<p>Загружаются только плановые работы, должности и техника. Факт, накопительное выполнение и сведения о наличии техники не загружаются. {% if not target_version %}Название листа должно совпадать с названием строительного объекта в базе.{% endif %} Недостающие разделы и справочные позиции создаются после подтверждения. Новые работы создаются простыми с равномерным профилем. Существующие работы в составе комплекса сопоставляются по названию, единице и разделу; основная комплекс работ рассчитывается по нормативам всех работ в составе комплекса.</p>
+<p>Загружаются только плановые работы, должности и техника. Факт, накопительное выполнение и сведения о наличии техники не загружаются. {% if not target_version %}Название листа должно совпадать с названием строительного объекта в базе.{% endif %} Новые должности, техника, работы и разделы не создаются. Соответствия задаются в поле «Названия в Excel» существующих записей справочников. Неизвестные или неоднозначные названия блокируют загрузку. Существующие работы в составе комплекса сопоставляются по названию, единице и разделу; основная комплекс работ рассчитывается по нормативам всех работ в составе комплекса.</p>
 {% if errors %}<div class="alert alert-danger">{% for error in errors %}<div>{{ error }}</div>{% endfor %}</div>{% endif %}
 {% if preview %}
 <h2>{{ project.name }} · {{ start|date:'d.m.Y' }} — {{ end|date:'d.m.Y' }}</h2>
@@ -23,7 +23,7 @@
 {% for error in sheet.errors %}<div class="text-danger mb-1">{{ error }}</div>{% endfor %}
 {% for warning in sheet.warnings %}<div class="text-muted small mb-1">{{ warning }}</div>{% endfor %}
 <div class="table-responsive" style="max-height:400px"><table class="table table-sm"><thead><tr><th>Строка</th><th>Месяц</th><th>Раздел</th><th>Вид</th><th>Название</th><th>Номер машины</th><th>Ед.</th><th>План</th><th>Действие</th><th>Источник</th></tr></thead><tbody>
-{% for row in sheet.entries %}<tr><td>{{ row.row }}</td><td>{{ row.month }}</td><td>{{ row.section }}</td><td>{% if row.kind == 'work' %}Работа{% elif row.kind == 'labor' %}Должность{% else %}Техника{% endif %}</td><td>{{ row.name }}</td><td>{{ row.equipment_number }}</td><td>{{ row.unit }}</td><td>{{ row.quantity }}</td><td>{{ row.action }}</td><td>{{ row.source }}</td></tr>{% endfor %}
+{% for row in sheet.entries %}<tr><td>{{ row.row }}</td><td>{{ row.month }}</td><td>{{ row.section }}</td><td>{% if row.kind == 'work' %}Работа{% elif row.kind == 'labor' %}Должность{% else %}Техника{% endif %}</td><td>{{ row.name }}{% if row.mapped_name and row.mapped_name != row.name %}<div class="small text-muted">→ {{ row.mapped_name }}</div>{% endif %}</td><td>{{ row.equipment_number }}</td><td>{{ row.unit }}</td><td>{{ row.quantity }}</td><td>{{ row.action }}</td><td>{{ row.source }}</td></tr>{% endfor %}
 </tbody></table></div>
 </div></details>{% endfor %}
 <button class="btn btn-primary" {% if target_version and blocked %}disabled{% endif %}>{% if target_version %}Записать в текущую версию{% else %}Загрузить выбранные листы{% endif %}</button><a class="btn btn-outline-secondary" href="{% if target_version %}{% url 'planning:workspace_meeting_import' target_version.pk %}{% else %}{% url 'planning:meeting_import' %}{% endif %}">Выбрать другой файл</a>

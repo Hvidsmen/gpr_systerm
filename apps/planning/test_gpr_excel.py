@@ -99,7 +99,16 @@ class SuzunHeaderTests(SimpleTestCase):
 class GprImportTests(TestCase):
     @classmethod
     def setUpTestData(cls):fixtures.WorkspaceTests.setUpTestData.__func__(cls)
-    def setUp(self):self.client.force_login(self.planner)
+    def setUp(self):
+        self.client.force_login(self.planner)
+        from apps.projects.models import Section
+        from apps.works.models import ProjectWork
+        from apps.resources.models import Brigade, BrigadeGroup, EquipmentType, EquipmentCategory
+        section=Section.objects.create(company=self.company,construction_object=self.obj,name='Секция')
+        ProjectWork.objects.create(company=self.company,section=section,name='Монтаж',unit='м3')
+        Brigade.objects.create(company=self.company,name='Мастер',group=BrigadeGroup.objects.create(company=self.company,name='ИТР'))
+        EquipmentType.objects.create(company=self.company,name='Экскаватор',category=EquipmentCategory.objects.create(company=self.company,name='Специализированная техника'))
+
 
     def preview(self):
         response=self.client.post(reverse('planning:gpr_excel_import'),{'construction_object':self.obj.pk,'year':2027,'file':SimpleUploadedFile('plan.xlsx',classic())})
@@ -156,6 +165,8 @@ class GprImportTests(TestCase):
     def test_same_position_in_different_groups_is_not_collapsed(self):
         from openpyxl import load_workbook
         book=load_workbook(BytesIO(classic()))
+        from apps.resources.models import Brigade, BrigadeGroup
+        Brigade.objects.create(company=self.company,name='Мастер',group=BrigadeGroup.objects.create(company=self.company,name='Основной рабочий состав'))
         book.active.append([None,None,None,None,'Основной рабочий состав:'])
         book.active.append([None,None,None,None,'Мастер',None,2,1])
         out=BytesIO();book.save(out)
@@ -226,6 +237,8 @@ class GprImportTests(TestCase):
         w=Workbook();s=w.active
         s.append(['№','Вид ресурса','Наименование','Ед. изм.']+[None]*9+[2026,None,2027])
         s.append([None]*13+['ноябрь','декабрь','январь'])
+        from apps.works.models import ProjectWork
+        ProjectWork.objects.filter(company=self.company,name='Монтаж').update(unit='шт',excel_aliases=['Монтаж'])
         s.append([1,None,'Монтаж','шт']+[None]*9+[26,50,10])
         out=BytesIO();w.save(out)
         preview=self.client.post(url,{'file':SimpleUploadedFile('gpr.xlsx',out.getvalue())})

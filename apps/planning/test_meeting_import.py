@@ -119,6 +119,15 @@ class MeetingImportTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         test_workspace.WorkspaceTests.setUpTestData.__func__(cls)
+        from .models import LoadProfile
+        from apps.resources.models import BrigadeGroup
+        profile=LoadProfile.objects.create(company=cls.company,name='Каталог: равномерный')
+        LoadProfileItem.objects.create(company=cls.company,profile=profile,workday_number=1,percentage=100)
+        section=Section.objects.create(company=cls.company,construction_object=cls.obj,name='Imported section')
+        ProjectWork.objects.create(company=cls.company,section=section,name='Imported work',unit='м',load_profile=profile,excel_aliases=['Imported work'])
+        Brigade.objects.create(company=cls.company,name='Imported brigade',group=BrigadeGroup.objects.create(company=cls.company,name='Группа 1'))
+        EquipmentType.objects.create(company=cls.company,name='Imported equipment')
+
 
     def parse(self, **kwargs):
         return parse_meeting_workbook(upload(**kwargs), JAN, date(2026, 2, 1))
@@ -235,7 +244,7 @@ class MeetingImportTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertFalse(PlanningWorkspace.objects.exists())
-        self.assertFalse(ProjectWork.objects.filter(name="Imported work").exists())
+        self.assertEqual(ProjectWork.objects.filter(name="Imported work").count(),1)
         token = response.context["preview"]
         self.assertContains(response, "Imported work")
         confirmed = self.client.post(
@@ -309,7 +318,7 @@ class MeetingImportTests(TestCase):
                 self.planner, self.obj.project_id, sheets, {"0", "1"}, JAN, FEB
             )
         self.assertFalse(PlanningWorkspace.objects.exists())
-        self.assertFalse(ProjectWork.objects.filter(name="Imported work").exists())
+        self.assertEqual(ProjectWork.objects.filter(name="Imported work").count(),1)
 
     def test_duplicate_dates_and_resource_subtotals(self):
         book = Workbook()
@@ -446,6 +455,9 @@ class MeetingImportTests(TestCase):
         self.assertEqual(works[0]['section'], 'Разработка грунта траншей переходов')
         self.assertEqual(works[2]['section'], 'Раскладка свайной трубы, в т.ч')
         self.assertEqual(works[3]['section'], 'Бурение скважин, в т.ч')
+        for entry in works:
+            section,_=Section.objects.get_or_create(company=self.company,construction_object=self.obj,name=entry['section'])
+            ProjectWork.objects.create(company=self.company,section=section,name=entry['name'],unit=entry['unit'])
         _, resolved = resolve_sheet(self.company, self.obj.project, result, self.obj)
         self.assertEqual(len(resolved), 4)
 

@@ -1,3 +1,4 @@
+from core.excel_mapping import matches_name
 """Four-sheet, month-based planning interchange. Validate everything before writing."""
 from collections import defaultdict
 from datetime import date, datetime
@@ -250,10 +251,10 @@ def resolve(rows, identifier, name, title):
         row=rows.get(pk)
         if row is None:
             raise ValidationError(f'{title}: позиция не принадлежит этому объекту или компании.')
-        if text(name).casefold()!=row.name.strip().casefold():
+        if not matches_name(row,name):
             raise ValidationError(f'{title}: название не совпадает с ID. Скачайте актуальный шаблон или очистите служебный ID.')
         return row
-    matches=[row for row in rows.values() if row.name.strip().casefold()==text(name).casefold()]
+    matches=[row for row in rows.values() if matches_name(row,name)]
     if len(matches)!=1:
         raise ValidationError(f'{title}: название не найдено или неоднозначно. Используйте строку из шаблона.')
     return matches[0]

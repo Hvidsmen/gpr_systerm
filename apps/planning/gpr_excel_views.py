@@ -1,3 +1,4 @@
+from core.excel_mapping import resource_match as mapped_resource_match
 from calendar import monthrange
 from datetime import date
 from uuid import uuid4
@@ -51,10 +52,7 @@ def resource_match(company, row, candidates=None):
     field = 'group' if row['kind']=='labor' else 'category'
     if candidates is None:
         candidates = list(model.objects.filter(company=company, merge_source__isnull=True).select_related(field).order_by('pk'))
-    matches = [item for item in candidates if norm(item.name)==norm(row['name'])]
-    scoped = [item for item in matches if getattr(item,field) and norm(getattr(item,field).name)==norm(row['section'])]
-    choices = scoped if row["section"] else matches
-    return choices[0] if choices else None
+    return mapped_resource_match(candidates,row['name'],row['section'],field)
 
 
 def resolved_preview(user, obj, payload):
@@ -66,7 +64,8 @@ def resolved_preview(user, obj, payload):
     works = [{**row, 'month': month_by_column[row['column']]} for row in works]
     resources = []
     catalogs = {'labor': list(Brigade.objects.filter(company=user.company, merge_source__isnull=True).select_related('group').order_by('pk')), 'equipment': list(EquipmentType.objects.filter(company=user.company, merge_source__isnull=True).select_related('category').order_by('pk'))}
-    warned = set()
+    seen_resources = set()
+    missing = []
     for row in payload['entries']:
         if row['kind']=='work': continue
         if row['kind']=='fuel':
@@ -77,11 +76,15 @@ def resolved_preview(user, obj, payload):
             resources.append({**row, 'action': 'Расход ГСМ', 'fuel_type': fuel_type})
         else:
             target = resource_match(user.company, row, catalogs[row['kind']])
-            matches = [item for item in catalogs[row['kind']] if norm(item.name)==norm(row['name'])]
-            if target is not None and len(matches)>1 and row['name'] not in warned:
-                warned.add(row['name'])
-                sheet['warnings'].append(f"«{row['name']}»: найдено несколько записей справочника; выбран ID {target.pk} с учётом группы. Проверьте позицию перед сохранением.")
-            resources.append({**row, 'target_id': target.pk if target else None, 'action': f'Существующая позиция · ID {target.pk}' if target else 'Создать'})
+            if target is None:
+                missing.append(f"Строка {row['row']}: «{row['name']}» — нет соответствия в справочнике. Заполните «Названия в Excel» существующей записи. Новые позиции при импорте не создаются.")
+                continue
+            identity=(row['kind'],target.pk,row['column'],row.get('equipment_number',''))
+            if identity in seen_resources:
+                raise ValidationError(f"Строка {row['row']}: несколько строк Excel сопоставлены одной позиции «{target.name}» в одном месяце. Объедините их объёмы в файле.")
+            seen_resources.add(identity)
+            resources.append({**row, 'target_id': target.pk, 'mapped_name': target.name, 'action': f'Существующая позиция · ID {target.pk}'})
+    if missing:raise ValidationError(missing)
     labels = {'work':'Работы','labor':'Должность','equipment':'Техника','fuel':'ГСМ'}
     return [{**row, 'kind_label': labels[row['kind']]} for row in works+resources], sheet['warnings']
 
@@ -126,12 +129,7 @@ def apply_gpr(user, obj, payload, dates, nonce, target_version=None):
         cache_key = row['kind'],norm(row['name']),norm(row['section'])
         target = cached.get(cache_key)
         if target is None:
-            target = model.objects.get(pk=row['target_id'],company=user.company) if row['target_id'] else resource_match(user.company,row)
-            if target is None:
-                group_model = BrigadeGroup if row['kind']=='labor' else EquipmentCategory
-                group = unique_match(group_model.objects.filter(company=user.company),row['section'],'Группа ресурсов')
-                if group is None: group = group_model.objects.create(company=user.company,name=row['section'])
-                target = model.objects.create(company=user.company,name=row['name'],**{'group' if row['kind']=='labor' else 'category':group})
+            target = model.objects.select_for_update().get(pk=row['target_id'],company=user.company,merge_source__isnull=True,is_active=True)
             cached[cache_key] = target
         identity = {'brigade':target} if row['kind']=='labor' else {'equipment_type':target,'equipment_number':row.get('equipment_number','')}
         allocation = ResourceMonthAllocation(company=user.company,version=version,month=month,kind=row['kind'],count=int(number(row['quantity'],count=True)),**identity)

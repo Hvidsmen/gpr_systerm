@@ -1,3 +1,4 @@
+from core.excel_mapping import matches_name, alias_matches, resource_match as mapped_resource_match
 """Import meeting schedules into a current version or new object period plans."""
 
 import re
@@ -612,6 +613,7 @@ def resolve_sheet(company, project, sheet, target_object=None, require_all=True,
     }
     resolved = []
     seen = {}
+    missing = []
     for entry in sheet["entries"]:
         row = dict(entry)
         kind = row["kind"]
@@ -620,21 +622,21 @@ def resolve_sheet(company, project, sheet, target_object=None, require_all=True,
             matches = [
                 w
                 for w in works
-                if key(w.name) == key(row["name"]) and key(w.unit) == key(row["unit"])
+                if matches_name(w, row["name"]) and key(w.unit) == key(row["unit"])
             ]
-            scoped = [w for w in matches if key(w.section.name) == key(row["section"])]
-            # An explicit section belongs to the identity; never fall back
-            # to a same-named work from another section.
+            scoped = [w for w in matches if alias_matches(w,row["name"]) or key(w.section.name) == key(row["section"])]
+            # Canonical names retain section identity. Explicit catalogue
+            # aliases may describe a differently named Excel section.
             matches = scoped if row["section"] else matches
             child_matches = [
                 c
                 for c in children
-                if key(c.name) == key(row["name"]) and key(c.unit) == key(row["unit"])
+                if matches_name(c, row["name"]) and key(c.unit) == key(row["unit"])
             ]
             scoped_children = [
                 c
                 for c in child_matches
-                if key(c.project_work.section.name) == key(row["section"])
+                if alias_matches(c,row["name"]) or key(c.project_work.section.name) == key(row["section"])
                 or key(c.project_work.name) == key(row["section"])
             ]
             child_matches = scoped_children if row["section"] else child_matches
@@ -666,41 +668,7 @@ def resolve_sheet(company, project, sheet, target_object=None, require_all=True,
                 else (kind, key(row["section"]), key(row["name"]), key(row["unit"]))
             )
         else:
-            matches = [
-                item for item in catalogs[kind] if key(item.name) == key(row["name"])
-            ]
-            group_field = "group" if kind == "labor" else "category"
-            scoped = [
-                item
-                for item in matches
-                if key(
-                    getattr(item, group_field).name
-                    if getattr(item, group_field)
-                    else ""
-                )
-                == key(row["section"])
-            ]
-            if kind == "equipment":
-                target = matches[0] if matches else None
-                if len(matches) > 1:
-                    warning = (
-                        f'Техника «{row["name"]}»: в справочнике {len(matches)} записей с одним названием. '
-                        f'Выбрана первая запись: ID {target.pk}, категория «{target.category or "Без категории"}». '
-                        'Дубли можно объединить в справочнике видов техники.'
-                    )
-                    if warning not in sheet["warnings"]:
-                        sheet["warnings"].append(warning)
-            else:
-                target = matches[0] if matches else None
-                if len(matches) > 1:
-                    warning = (f'Должность «{row["name"]}»: в справочнике {len(matches)} записей с одним названием. '
-                        f'Выбрана первая: ID {target.pk}, группа «{target.group or "Без группы"}». '
-                        'Дубли можно объединить в справочнике бригад (должностей).')
-                    if warning not in sheet["warnings"]: sheet["warnings"].append(warning)
-            if target and not target.is_active:
-                raise ValidationError(
-                    f"Ресурс «{target.name}» неактивен. Активируйте его в справочнике перед загрузкой."
-                )
+            target = mapped_resource_match(catalogs[kind],row['name'],row['section'],'group' if kind=='labor' else 'category')
             row["target_id"] = target.pk if target else None
             row["target_type"] = kind
             identity = (
@@ -708,9 +676,16 @@ def resolve_sheet(company, project, sheet, target_object=None, require_all=True,
                 target.pk if target else (key(row["name"]),),
                 row.get("equipment_number", ""),
             )
+        if target is None:
+            title = {'work':'Работа','labor':'Должность','equipment':'Техника'}[kind]
+            missing.append(f'Строка {row["row"]}: {title} «{row["name"]}» — нет соответствия в справочнике. Добавьте это название в поле «Названия в Excel» существующей записи.')
+            continue
         identity = (*identity, row["month"])
         if identity in seen:
             if kind in {"labor", "equipment"}:
+                prior = next(r for r in resolved if r['kind']==kind and r['target_id']==row['target_id'] and r['month']==row['month'] and r.get('equipment_number','')==row.get('equipment_number',''))
+                if key(prior['name']) != key(row['name']):
+                    raise ValidationError(f'Строка {row["row"]}: разные названия Excel сопоставлены одной позиции «{target.name}» в одном месяце. Объедините объёмы в файле.')
                 label = "Должность" if kind == "labor" else "Техника"
                 warning = (f'{label} «{row["name"]}»: повторная строка {row["row"]} пропущена. '
                     f'Для периода {row["month"]} используется первое вхождение, строка {seen[identity]}.')
@@ -722,12 +697,15 @@ def resolve_sheet(company, project, sheet, target_object=None, require_all=True,
                 f'Строка {row["row"]}: повторная позиция «{row["name"]}». Разделите или переименуйте строки.'
             )
         seen[identity] = row["row"]
+        row["mapped_name"] = target.name
         row["action"] = (
             "Существующая подработа"
             if row["target_type"] == "item"
-            else "Существующая позиция" if target else "Создать"
+            else "Существующая позиция"
         )
         resolved.append(row)
+    if missing:
+        raise ValidationError(missing)
     by_work = defaultdict(set)
     for row in resolved:
         if row["target_type"] == "item":
@@ -801,61 +779,7 @@ def apply_meeting_import(
                         row["quantity"]
                     )
                     continue
-                work = (
-                    ProjectWork.objects.get(pk=row["target_id"], company=user.company)
-                    if row["target_id"]
-                    else None
-                )
-                if not work:
-                    candidates = ProjectWork.objects.filter(
-                        company=user.company, section__construction_object=obj
-                    )
-                    matches = [
-                        v
-                        for v in candidates.select_related("section")
-                        if key(v.name) == key(row["name"])
-                        and key(v.unit) == key(row["unit"])
-                        and key(v.section.name) == key(row["section"])
-                    ]
-                    work = matches[0] if matches else None
-                if not work:
-                    section = unique_match(
-                        Section.objects.filter(
-                            company=user.company, construction_object=obj
-                        ),
-                        row["section"],
-                        "Раздел",
-                    )
-                    if not section:
-                        section = Section.objects.create(
-                            company=user.company,
-                            construction_object=obj,
-                            name=row["section"],
-                        )
-                    if not profile:
-                        profile = LoadProfile.objects.create(
-                            company=user.company, name="Равномерный — импорт совещания"
-                        )
-                        LoadProfileItem.objects.create(
-                            company=user.company,
-                            profile=profile,
-                            workday_number=1,
-                            percentage=100,
-                        )
-                    MeasurementUnit.objects.get_or_create(
-                        company=user.company,
-                        symbol=row["unit"],
-                        defaults={"name": row["unit"]},
-                    )
-                    work = ProjectWork(
-                        company=user.company,
-                        section=section,
-                        name=row["name"],
-                        unit=row["unit"],
-                        load_profile=profile,
-                    )
-                    work.full_clean()
-                    work.save()
+                work = ProjectWork.objects.select_for_update().get(pk=row['target_id'], company=user.company, section__construction_object=obj)
                 WorkMonthAllocation.objects.update_or_create(
                     company=user.company,
                     version=version,
@@ -868,36 +792,7 @@ def apply_meeting_import(
                 )
             else:
                 model = Brigade if row["kind"] == "labor" else EquipmentType
-                item = (
-                    model.objects.get(pk=row["target_id"], company=user.company)
-                    if row["target_id"]
-                    else None
-                )
-                if not item:
-                    field = "group" if row["kind"] == "labor" else "category"
-                    candidates = model.objects.filter(company=user.company, merge_source__isnull=True).order_by("pk")
-                    item = next((v for v in candidates if key(v.name) == key(row["name"])), None)
-                if not item:
-                    extra = {}
-                    if row["section"]:
-                        group_model = (
-                            BrigadeGroup
-                            if row["kind"] == "labor"
-                            else EquipmentCategory
-                        )
-                        group = unique_match(
-                            group_model.objects.filter(company=user.company),
-                            row["section"],
-                            "Группа ресурсов",
-                        )
-                        if not group:
-                            group = group_model.objects.create(
-                                company=user.company, name=row["section"]
-                            )
-                        extra["group" if row["kind"] == "labor" else "category"] = group
-                    item = model.objects.create(
-                        company=user.company, name=row["name"], **extra
-                    )
+                item = model.objects.select_for_update().get(pk=row['target_id'], company=user.company, merge_source__isnull=True, is_active=True)
                 identity = (
                     {"brigade": item}
                     if row["kind"] == "labor"

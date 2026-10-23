@@ -1,3 +1,4 @@
+from core.excel_mapping import ExcelAliasesField
 from django import forms
 from django.utils.translation import gettext_lazy as _
 
@@ -19,6 +20,7 @@ class UnitChoiceMixin:
 
 
 class ProjectWorkForm(UnitChoiceMixin, forms.ModelForm):
+    excel_aliases = ExcelAliasesField()
     """Форма для создания/редактирования РАБОТЫ."""
 
     project = forms.ModelChoiceField(queryset=Project.objects.none(), label='Проект', empty_label='Выберите проект')
@@ -113,7 +115,7 @@ class ProjectWorkForm(UnitChoiceMixin, forms.ModelForm):
 
     class Meta:
         model = ProjectWork
-        fields = [
+        fields = ['excel_aliases', 
             "name",
             "work_group",
             "complex_object",
@@ -155,6 +157,7 @@ class ProjectWorkForm(UnitChoiceMixin, forms.ModelForm):
 
 
 class ProjectWorkItemForm(UnitChoiceMixin, forms.ModelForm):
+    excel_aliases = ExcelAliasesField()
     """Форма для создания/редактирования Работы в составе комплекса."""
 
     def __init__(self, *args, **kwargs):
@@ -164,7 +167,7 @@ class ProjectWorkItemForm(UnitChoiceMixin, forms.ModelForm):
 
     class Meta:
         model = ProjectWorkItem
-        fields = ["name", "unit", "load_profile", "quantity_per_unit"]
+        fields = ['excel_aliases', "name", "unit", "load_profile", "quantity_per_unit"]
         widgets = {
             "name": forms.TextInput(attrs={"class": "form-control"}),
             "unit": forms.TextInput(attrs={"class": "form-control"}),
