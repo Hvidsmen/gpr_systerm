@@ -1449,3 +1449,16 @@ class WorkResourceAssignment(BaseCompanyModel):
     class Meta:
         ordering=['start_date','pk']
         constraints=[models.UniqueConstraint(fields=['version','key'],condition=models.Q(version__isnull=False),name='unique_gpr_assignment_key'),models.UniqueConstraint(fields=['schedule','key'],condition=models.Q(schedule__isnull=False),name='unique_smg_assignment_key'),models.CheckConstraint(condition=models.Q(hours_per_shift__gt=0,start_date__lte=models.F('end_date')),name='valid_assignment_hours_dates'),models.CheckConstraint(condition=(models.Q(version__isnull=False,schedule__isnull=True)|models.Q(version__isnull=True,schedule__isnull=False)),name='one_assignment_owner'),models.CheckConstraint(condition=(models.Q(equipment_type__isnull=False,position__isnull=True)|models.Q(equipment_type__isnull=True,position__isnull=False)),name='one_assignment_resource'),models.CheckConstraint(condition=models.Q(count__gte=1,shifts_per_day__gte=1,shifts_per_day__lte=24),name='positive_assignment_count_shifts')]
+
+
+class PivotReportPreset(BaseCompanyModel):
+    user = models.ForeignKey('accounts.User', on_delete=models.CASCADE, related_name='pivot_presets')
+    section = models.CharField(max_length=16, choices=[('plan_fact','План / факт'),('facts','Факт'),('gpr','ГПР'),('smg','СМГ')])
+    name = models.CharField(max_length=120)
+    config = models.JSONField(default=dict)
+    is_default = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['name', 'pk']
+        constraints = [models.UniqueConstraint(fields=['company','user','section','name'], name='pivot_preset_name_unique'),
+                       models.UniqueConstraint(fields=['company','user','section'], condition=models.Q(is_default=True), name='pivot_preset_one_default')]

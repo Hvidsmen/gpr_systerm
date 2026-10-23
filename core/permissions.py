@@ -102,6 +102,9 @@ def check_route(user, match, method):
     role = role_code(user)
     if namespace == 'accounts' and name in {'password_change','access_pending','impersonation_stop'}:
         return
+    if namespace == 'planning' and name in {'pivot_report_list','pivot_fact_list','pivot_gpr_detail','pivot_smg_detail'}:
+        require_roles(user, READ_ROLES)
+        return
     if namespace == 'personnel':
         require_roles(user, {'ADMIN', 'HR_HEAD'})
         return

@@ -4,6 +4,7 @@
 {% block content %}
 <h1>{{ title|default:"План / факт" }}{% if daily and not overview %} · {{ start|date:'m.Y' }} по дням{% endif %}</h1>
 <p class="text-muted">{% if overview %}Последние 7 дней, включая сегодня.{% else %}Месяцы → дни.{% endif %} Работы и расход — объём за период; люди и техника — среднее за заполненные дни; остаток ГСМ — последнее значение периода.</p>
+<p><a class="btn btn-outline-primary" href="{% if journal_kind == 'facts' %}{% url 'planning:pivot_fact_list' %}{% else %}{% url 'planning:pivot_report_list' %}{% endif %}?{{ request.GET.urlencode }}"><i class="bi bi-layout-three-columns"></i> Конструктор сводной таблицы</a></p>
 <form method="get" id="matrix-filters" class="card p-3 mb-3">
 {% if form.errors %}<div class="alert alert-danger">{{ form.non_field_errors }}{% for field in form %}{% for error in field.errors %}<div>{{ field.label }}: {{ error }}</div>{% endfor %}{% endfor %}</div>{% endif %}
 <div class="row g-2 mb-2"><div class="col-md-6">{{ form.work_levels.label_tag }}{{ form.work_levels }}</div><div class="col-md-6">{{ form.money_basis.label_tag }}{{ form.money_basis }}</div></div><input type="hidden" name="sections_set" value="1">{{ form.month }}

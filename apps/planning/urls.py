@@ -194,3 +194,11 @@ urlpatterns += [
 
 from .design_preview import DesignPreview
 urlpatterns += [path('design-preview/',DesignPreview.as_view(),name='design_preview')]
+
+from .pivot_report import PivotReport
+urlpatterns += [
+    path('reports/pivot/', PivotReport.as_view(), name='pivot_report_list'),
+    path('reports/pivot/facts/', PivotReport.as_view(source_kind='facts'), name='pivot_fact_list'),
+    path('reports/pivot/gpr/<int:pk>/', PivotReport.as_view(source_kind='gpr'), name='pivot_gpr_detail'),
+    path('reports/pivot/daily-schedule/<int:pk>/', PivotReport.as_view(source_kind='smg'), name='pivot_smg_detail'),
+]
