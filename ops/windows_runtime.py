@@ -182,6 +182,31 @@ def switch_database(root,target):
         finally:lock.__exit__(None,None,None)
 
 
+def create_clean_database(root,target,keep_objects):
+    runtime=root/'.runtime'
+    config=read_json(runtime/'installed.json')
+    target=(target if target.is_absolute() else root/target).resolve()
+    if not config or target.exists():raise RuntimeError('Choose a new database filename; existing databases are never replaced.')
+    if read_json(runtime/'status.json',{}).get('state')=='updating' or (runtime/'update.request').exists():raise RuntimeError('Wait for the current update to finish.')
+    with singleton(runtime/'update.lock'):
+        (runtime/'supervisor.stop').touch()
+        lock=None
+        for attempt in range(150):
+            try:
+                candidate=singleton(runtime/'supervisor.lock');candidate.__enter__();lock=candidate;break
+            except OSError:time.sleep(1)
+        if lock is None:raise RuntimeError('Server did not stop; no new database was created.')
+        try:
+            if read_json(runtime/'transaction.json') or read_json(runtime/'database-switch.json'):raise RuntimeError('Recover the interrupted operation before creating a new database.')
+            current=read_json(runtime/'current.json')
+            if not current:raise RuntimeError('Active application version not found.')
+            backup=backup_database(config,runtime)
+            print('Original database preserved. Backup: '+str(backup),flush=True)
+            run([current['python'],'manage.py','create_users_database','--source',str(backup),'--target',str(target),'--object-access','keep' if keep_objects else 'clear'],current['code'],environment(root,config))
+        finally:lock.__exit__(None,None,None)
+    switch_database(root,target)
+
+
 def recover_update(root):
     recover_database_switch(root)
     runtime=root/'.runtime';journal=read_json(runtime/'transaction.json')
@@ -462,8 +487,9 @@ def request_update(root):
 
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('command',choices=['init','supervise','serve','update','stop','status','switch-database'])
+    parser=argparse.ArgumentParser();parser.add_argument('command',choices=['init','supervise','serve','update','stop','status','switch-database','new-database'])
     parser.add_argument('--root',type=Path,required=True);parser.add_argument('--port',type=int,default=8001);parser.add_argument('--host',action='append',default=[]);parser.add_argument('--database',type=Path);parser.add_argument('--code',type=Path);parser.add_argument('--probe',action='store_true')
+    parser.add_argument('--object-access',choices=['keep','clear'])
     args=parser.parse_args();root=args.root.resolve();os.chdir(root);log_setup(root/'.runtime',{'supervise':'service.log','serve':'worker.log','init':'installer.log','update':'updater.log'}.get(args.command,'control.log'))
     if args.command=='init':initialize(root,args.port,args.host,args.database)
     elif args.command=='supervise':supervise(root)
@@ -472,6 +498,9 @@ def main():
     elif args.command=='switch-database':
         if args.database is None:raise RuntimeError('Pass --database with an existing portal database path.')
         switch_database(root,args.database)
+    elif args.command=='new-database':
+        if args.database is None or args.object_access is None:raise RuntimeError('Pass --database and --object-access keep or clear.')
+        create_clean_database(root,args.database,args.object_access=='keep')
     elif args.command=='stop':(root/'.runtime/supervisor.stop').touch()
     else:print(json.dumps(read_json(root/'.runtime/status.json',{}),ensure_ascii=False,indent=2))
 

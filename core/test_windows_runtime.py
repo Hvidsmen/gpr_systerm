@@ -143,3 +143,13 @@ class WindowsRuntimeTests(SimpleTestCase):
         self.assertEqual(runtime.read_json(self.state/'installed.json'),before)
         self.assertIn('LDAP_BIND_PASSWORD=unchanged',(self.root/'.env').read_text())
         with sqlite3.connect(target) as db:self.assertIsNone(db.execute("SELECT name FROM sqlite_master WHERE name='unwanted'").fetchone())
+
+    def test_clean_database_creation_failure_never_switches_existing_database(self):
+        current={'sha':'current','python':__import__('sys').executable,'code':str(self.root)}
+        runtime.atomic_json(self.state/'current.json',current)
+        with patch.object(runtime,'run',side_effect=RuntimeError('creation failed')),patch.object(runtime,'switch_database') as switch:
+            with self.assertRaises(RuntimeError):runtime.create_clean_database(self.root,self.root/'new.sqlite3',False)
+        switch.assert_not_called()
+        self.assertEqual(runtime.read_json(self.state/'installed.json'),self.config)
+        with sqlite3.connect(self.database) as db:self.assertEqual(db.execute('SELECT value FROM marker').fetchone()[0],'before')
+        self.assertEqual(len(list((self.state/'backups').glob('*/database.sqlite3'))),1)
