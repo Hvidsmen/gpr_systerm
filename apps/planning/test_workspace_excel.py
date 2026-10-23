@@ -46,7 +46,7 @@ class WorkspaceExcelTests(TestCase):
         ws=workbook[sheet]
         col=column or month.strftime('%m.%Y')
         headers={cell.value:cell.column for cell in ws[1]}
-        name_col={'Работы':'Работа в составе комплекса' if name in ['A','B'] else 'Работа','Люди':'Бригада','Техника':'Вид техники','ГСМ':'Вид ГСМ'}[sheet]
+        name_col={'Работы':'Работа в составе комплекса' if name in ['A','B'] else 'Работа','Должность':'Должность','Техника':'Вид техники','ГСМ':'Вид ГСМ'}[sheet]
         for row in ws.iter_rows(min_row=2):
             if row[headers[name_col]-1].value==name:
                 ws.cell(row[0].row,headers[col]).value=value;return
@@ -59,10 +59,18 @@ class WorkspaceExcelTests(TestCase):
     def row(self,work=None,month=JAN):
         return self.version.work_allocations.get(work=work or self.composite,month=month)
 
+    def test_legacy_labor_sheet_and_headers_are_still_accepted(self):
+        wb=self.workbook([JAN])
+        self.set_value(wb,'Должность','Brigade',5)
+        ws=wb['Должность'];ws.title='Люди'
+        for cell in ws[1]:
+            cell.value={'ID должности':'ID бригады','Должность':'Бригада'}.get(cell.value,cell.value)
+        import_workbook(self.planner,self.version,self.upload(wb),[JAN])
+
     def test_period_and_month_templates_have_four_sheets_and_no_codes(self):
         for months in [[JAN,FEB,MAR],[FEB]]:
             wb=self.workbook(months)
-            self.assertEqual(wb.sheetnames,['Работы','Люди','Техника','ГСМ'])
+            self.assertEqual(wb.sheetnames,['Работы','Должность','Техника','ГСМ'])
             self.assertEqual([cell.value for cell in wb['Работы'][1]][8:8+len(months)],[m.strftime('%m.%Y') for m in months])
             self.assertTrue(wb['Работы'].column_dimensions['A'].hidden)
             for ws in wb:
@@ -102,7 +110,7 @@ class WorkspaceExcelTests(TestCase):
     def test_month_import_all_resources_repeats_counts_and_balance_and_distributes_expense(self):
         wb=self.workbook([JAN])
         self.set_value(wb,'Работы','Simple',12)
-        self.set_value(wb,'Люди','Brigade',10)
+        self.set_value(wb,'Должность','Brigade',10)
         self.set_value(wb,'Техника','Excavator',3)
         self.set_value(wb,'ГСМ','Дизельное топливо',700,column='Остаток 01.2026')
         self.set_value(wb,'ГСМ','Дизельное топливо',3100,column='Расход 01.2026')
@@ -181,7 +189,7 @@ class WorkspaceExcelTests(TestCase):
         export=reverse('planning:workspace_excel_export',args=[self.version.pk]);imp=reverse('planning:workspace_excel_import',args=[self.version.pk])
         response=self.client.get(export,{'scope':'month','month':JAN,'template':1})
         self.assertEqual(response.status_code,200)
-        self.assertEqual(load_workbook(BytesIO(response.content)).sheetnames,['Работы','Люди','Техника','ГСМ'])
+        self.assertEqual(load_workbook(BytesIO(response.content)).sheetnames,['Работы','Должность','Техника','ГСМ'])
         wb=self.workbook([JAN]);self.fill_composite(wb)
         response=self.client.post(imp,{'scope':'month','month':JAN,'file':self.upload(wb)})
         self.assertEqual(response.status_code,302)
@@ -252,8 +260,8 @@ class WorkspaceExcelTests(TestCase):
             FuelFact.objects.create(company=self.company,construction_object=self.obj,date=JAN.replace(day=day),fuel_type='DIESEL',equipment_ref='A1',actual_balance=stock,actual_liters=10)
         forecast=WorkspaceService.forecast(self.workspace,self.planner,FEB,'REMAINING')
         wb=load_workbook(BytesIO(make_workbook(forecast,[JAN,FEB,MAR])))
-        self.assertEqual(wb['Люди'].cell(2,6).value,6)
-        self.assertIsNotNone(wb['Люди'].cell(2,6).comment)
+        self.assertEqual(wb['Должность'].cell(2,6).value,6)
+        self.assertIsNotNone(wb['Должность'].cell(2,6).comment)
         self.assertEqual(wb['ГСМ'].cell(2,3).value,90)
         self.assertIsNotNone(wb['ГСМ'].cell(2,3).comment)
         wb.close()
@@ -271,7 +279,7 @@ class WorkspaceExcelTests(TestCase):
                 if mode=='foreign_child':
                     row=next(row for row in wb['Работы'].iter_rows(min_row=2) if row[5].value=='A');row[4].value=99999
                 else:
-                    self.set_value(wb,'Люди','Brigade',1.5)
+                    self.set_value(wb,'Должность','Brigade',1.5)
                 with self.assertRaises(ValidationError):import_workbook(self.planner,self.version,self.upload(wb),[JAN])
                 self.assertFalse(self.row().item_quantities)
 

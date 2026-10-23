@@ -7,7 +7,7 @@ from .approval_context import authorized_transition
 from .models import GlobalPlanVersion, GlobalPlanReview, GlobalPlanDecision
 
 SECTIONS = [('PRODUCTION', 'Работы', 'PRODUCTION_HEAD', 'approve_production'),
-            ('HR', 'Люди', 'HR_HEAD', 'approve_hr'),
+            ('HR', 'Должность', 'HR_HEAD', 'approve_hr'),
             ('TECH', 'Техника и ГСМ', 'TECH_HEAD', 'approve_tech'),
             ('SECURITY', 'Служба безопасности', 'SECURITY_HEAD', 'approve_security')]
 

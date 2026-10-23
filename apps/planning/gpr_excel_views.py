@@ -82,7 +82,7 @@ def resolved_preview(user, obj, payload):
                 warned.add(row['name'])
                 sheet['warnings'].append(f"«{row['name']}»: найдено несколько записей справочника; выбран ID {target.pk} с учётом группы. Проверьте позицию перед сохранением.")
             resources.append({**row, 'target_id': target.pk if target else None, 'action': f'Существующая позиция · ID {target.pk}' if target else 'Создать'})
-    labels = {'work':'Работы','labor':'Люди','equipment':'Техника','fuel':'ГСМ'}
+    labels = {'work':'Работы','labor':'Должность','equipment':'Техника','fuel':'ГСМ'}
     return [{**row, 'kind_label': labels[row['kind']]} for row in works+resources], sheet['warnings']
 
 

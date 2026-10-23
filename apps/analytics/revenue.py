@@ -341,7 +341,7 @@ def resource_sections(objects, totals, days, cutoff):
         } for node in nodes]
 
     sections = []
-    for kind, label in [("labor", "Люди"), ("equipment", "Техника"), ("fuel", "ГСМ: остаток")]:
+    for kind, label in [("labor", "Должность"), ("equipment", "Техника"), ("fuel", "ГСМ: остаток")]:
         sites, all_rows = [], []
         for obj in objects:
             section = next((section for section in obj["groups"] if section["kind"] == kind), None)

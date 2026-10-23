@@ -160,13 +160,13 @@ def parse_gpr(content, filename, sheet_name='', year=None):
         if 'технические ресурсы' in line:
             resource_col = next(col for col,cell in enumerate(prefix) if 'технические ресурсы' in norm(cell))
             mode, resource_group = 'equipment', 'Техника'; continue
-        if 'людские ресурсы' in line or line.strip()=='люди':
-            resource_col = next(col for col,cell in enumerate(prefix) if 'людские ресурсы' in norm(cell) or norm(cell)=='люди')
-            mode, resource_group = 'labor', 'Люди'; continue
+        if 'людские ресурсы' in line or line.strip() in ('люди','должность','должности'):
+            resource_col = next(col for col,cell in enumerate(prefix) if 'людские ресурсы' in norm(cell) or norm(cell) in ('люди','должность','должности'))
+            mode, resource_group = 'labor', 'Должность'; continue
         if any(re.fullmatch(r'(?:\d+(?:\.\d+)*[ .]*)?(?:гсм|горюче-смазочные материалы):?', norm(cell)) for cell in prefix) and not unit:
             resource_col = next(col for col,cell in enumerate(prefix) if re.fullmatch(r'(?:\d+(?:\.\d+)*[ .]*)?(?:гсм|горюче-смазочные материалы):?', norm(cell)))
             mode, resource_group = 'fuel', 'ГСМ'; continue
-        is_work = label and isinstance(value(config['unit']),str) and unit and not re.fullmatch(r'[+-]?\d+(?:[.,]\d+)?', unit) and resource_type not in ('техника','персонал','люди') and mode is None
+        is_work = label and isinstance(value(config['unit']),str) and unit and not re.fullmatch(r'[+-]?\d+(?:[.,]\d+)?', unit) and resource_type not in ('техника','персонал','люди','должность','должности') and mode is None
         if is_work and aggregate_section and text(value(0)):
             section = 'Линейная часть'
             aggregate_section = False
@@ -174,7 +174,7 @@ def parse_gpr(content, filename, sheet_name='', year=None):
             following = rows[index]
             child_unit = text(following[config['unit']]) if config['unit'] < len(following) else ''
             child_type = norm(following[config['type']]) if config['type'] is not None and config['type'] < len(following) else ''
-            if not text(following[0]) and child_unit == unit and child_type not in ('техника','персонал','люди'):
+            if not text(following[0]) and child_unit == unit and child_type not in ('техника','персонал','люди','должность','должности'):
                 section = label
                 aggregate_section = True
                 warnings.append(f'Строка {index}: общая работа «{label}» используется как раздел; импортируются детальные строки ниже без повторного сложения.')
@@ -194,7 +194,7 @@ def parse_gpr(content, filename, sheet_name='', year=None):
             if mode is None and any('специализированная техника' in norm(cell) for cell in prefix):
                 mode = 'equipment'
                 resource_col = next(col for col,cell in enumerate(prefix) if 'специализированная техника' in norm(cell))
-            kind = 'equipment' if resource_type=='техника' else 'labor' if resource_type in ('персонал','люди') else mode
+            kind = 'equipment' if resource_type=='техника' else 'labor' if resource_type in ('персонал','люди','должность','должности') else mode
             row_name = text(value(resource_col)) or (label if label else max(strings, key=len, default=''))
             if not kind or not row_name:
                 continue
@@ -203,7 +203,7 @@ def parse_gpr(content, filename, sheet_name='', year=None):
             if row_name.endswith(':') or re.match(r'^\d+\.\d+\s', row_name) or any(marker in norm(row_name) for marker in ('специализированная техника','вспомогательная техника','итр. штаб','итр. производство','водители, машинисты','основной рабочий персонал','основной рабочий состав','обслуживание городка','персонал рмм','итр состав')):
                 resource_group = re.sub(r'^\d+(?:\.\d+)*\s*', '', row_name).rstrip(': ')
                 continue
-            group = resource_group or ('Люди' if kind=='labor' else 'Техника')
+            group = resource_group or ('Должность' if kind=='labor' else 'Техника')
             unit = 'чел.' if kind=='labor' else 'ед.' if kind=='equipment' else 'л'
         found = False
         for column_index, (col, month) in enumerate(dates):

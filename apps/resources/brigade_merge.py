@@ -170,7 +170,7 @@ class BrigadeMergeView(View):
         if form.is_valid():
             try:
                 count = merge_brigades(request.user,form.cleaned_data['target'].pk,[r.pk for r in form.cleaned_data['sources']])
-                messages.success(request,f'Объединено должностей: {count}. План, факт, люди и перевахта перенесены; история сохранена.')
+                messages.success(request,f'Объединено должностей: {count}. План, факт, должности и перевахта перенесены; история сохранена.')
                 return redirect('resources:brigade_list')
             except ValidationError as error: form.add_error(None,error)
         return render(request,'resources/brigade_merge.html',{'form':form})

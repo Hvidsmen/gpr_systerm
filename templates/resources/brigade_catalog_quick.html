@@ -4,14 +4,14 @@
 </style>
 <dialog id="catalog-brigade-group" class="catalog-dialog" aria-labelledby="catalog-brigade-group-title">
 <form method="post" action="{% url 'resources:brigade_group_create' %}" data-catalog="brigade-group">{% csrf_token %}
-<h2 id="catalog-brigade-group-title" class="h5">Новая группа бригад</h2>
+<h2 id="catalog-brigade-group-title" class="h5">Новая группа должностей</h2>
 <label class="form-label" for="new-brigade-group-name">Название</label><input class="form-control" id="new-brigade-group-name" name="name" maxlength="150" required>
 <div class="text-danger small my-2" data-errors role="alert"></div>
 <div class="d-flex justify-content-end gap-2 mt-3"><button type="button" class="btn btn-outline-secondary" data-close>Отмена</button><button class="btn btn-primary">Создать</button></div>
 </form></dialog>
 <dialog id="catalog-brigade-macro" class="catalog-dialog" aria-labelledby="catalog-brigade-macro-title">
 <form method="post" action="{% url 'resources:brigade_macro_group_create' %}" data-catalog="brigade-macro">{% csrf_token %}
-<h2 id="catalog-brigade-macro-title" class="h5">Новая макрогруппа бригад</h2>
+<h2 id="catalog-brigade-macro-title" class="h5">Новая макрогруппа должностей</h2>
 <label class="form-label" for="new-brigade-macro-name">Название</label><input class="form-control" id="new-brigade-macro-name" name="name" maxlength="150" required>
 <div class="text-danger small my-2" data-errors role="alert"></div>
 <div class="d-flex justify-content-end gap-2 mt-3"><button type="button" class="btn btn-outline-secondary" data-close>Отмена</button><button class="btn btn-primary">Создать</button></div>

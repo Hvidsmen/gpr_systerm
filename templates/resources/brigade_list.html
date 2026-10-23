@@ -2,7 +2,7 @@
 {% load access %}
 {% load i18n %}
 
-{% block title %}Бригады - ЯДС портал{% endblock %}
+{% block title %}Должность - ЯДС портал{% endblock %}
 
 {% block content %}
 {% with bulk_route='resources:bulk_delete' bulk_kind='brigades' %}
@@ -14,17 +14,17 @@
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
         <h2 class="mb-1">
-            <i class="bi bi-people-fill"></i> Бригады
+            <i class="bi bi-people-fill"></i> Должность
         </h2>
         <nav aria-label="breadcrumb">
             <ol class="breadcrumb mb-0">
                 <li class="breadcrumb-item">{% if request.user|may:'dashboard:index' %}<a href="{% url 'dashboard:index' %}">Главная</a>{% endif %}</li>
-                <li class="breadcrumb-item active">Бригады</li>
+                <li class="breadcrumb-item active">Должность</li>
             </ol>
         </nav>
     </div>
     {% if request.user|may:'resources:brigade_create' %}<a href="{% url 'resources:brigade_create' %}" class="btn btn-primary">
-        <i class="bi bi-plus-circle"></i> Создать бригаду
+        <i class="bi bi-plus-circle"></i> Создать должность
     </a>{% endif %}
 </div>
 
@@ -75,7 +75,7 @@
                                 {% if request.user|may:'resources:brigade_delete' %}<a href="{% url 'resources:brigade_delete' brigade.pk %}"
                                    class="btn btn-outline-danger"
                                    title="Удалить"
-                                   onclick="return confirm('Удалить бригаду «{{ brigade.name }}»? Это действие нельзя отменить.');">
+                                   onclick="return confirm('Удалить должность «{{ brigade.name }}»? Это действие нельзя отменить.');">
                                     <i class="bi bi-trash"></i>
                                 </a>{% endif %}
                             </div>
@@ -92,8 +92,8 @@
 
 {% else %}
 <div class="alert alert-info">
-    <i class="bi bi-info-circle"></i> {% if filters_active %}По выбранным фильтрам бригады не найдены.{% else %}Бригады не найдены.{% endif %}
-    {% if request.user|may:'resources:brigade_create' %}<a href="{% url 'resources:brigade_create' %}" class="alert-link">Создать первую бригаду</a>{% endif %}
+    <i class="bi bi-info-circle"></i> {% if filters_active %}По выбранным фильтрам должности не найдены.{% else %}Должности не найдены.{% endif %}
+    {% if request.user|may:'resources:brigade_create' %}<a href="{% url 'resources:brigade_create' %}" class="alert-link">Создать первую должность</a>{% endif %}
 </div>
 {% endif %}
 {% endwith %}

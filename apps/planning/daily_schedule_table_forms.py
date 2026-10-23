@@ -5,9 +5,9 @@ from .models import ResourceMonthAllocation
 
 
 class AddEntryForm(forms.Form):
-    kind=forms.ChoiceField(label='Раздел',choices=[('work','Работы'),('labor','Люди'),('equipment','Техника'),('fuel','ГСМ')])
+    kind=forms.ChoiceField(label='Раздел',choices=[('work','Работы'),('labor','Должность'),('equipment','Техника'),('fuel','ГСМ')])
     work=forms.ModelChoiceField(label='Работа',queryset=ProjectWork.objects.none(),required=False)
-    brigade=forms.ModelChoiceField(label='Люди / бригада',queryset=Brigade.objects.none(),required=False)
+    brigade=forms.ModelChoiceField(label='Должность',queryset=Brigade.objects.none(),required=False)
     equipment=forms.ModelChoiceField(label='Вид техники',queryset=EquipmentType.objects.none(),required=False)
     reference=forms.CharField(label='Номер техники / привязка ГСМ',max_length=50,required=False)
     fuel=forms.ChoiceField(label='Вид ГСМ',choices=[('','Выберите значение'),*ResourceMonthAllocation._meta.get_field('fuel_type').choices],required=False)

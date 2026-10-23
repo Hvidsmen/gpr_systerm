@@ -25,7 +25,7 @@ def matrix(schedule,entries):
             group=entry.metadata.get('section_name') or (work.section.name if work else 'Работы')
         elif entry.kind=='labor':
             brigade=brigades.get(first.get('brigade_id'))
-            if brigade:group=' · '.join(str(v) for v in [brigade.macro_group,brigade.group] if v) or 'Люди'
+            if brigade:group=' · '.join(str(v) for v in [brigade.macro_group,brigade.group] if v) or 'Должность'
         elif entry.kind=='equipment':
             machine=equipment.get(first.get('equipment_type_id'))
             group=str(machine.category) if machine and machine.category_id else 'Техника'
@@ -56,6 +56,6 @@ def matrix(schedule,entries):
                 for key in ['before','after','delta']:total[key]+=comparison[key]
                 for cell,source in zip(total['cells'],comparison['cells']):
                     for key in ['before','after','delta']:cell[key]+=source[key]
-    labels={'work':'Работы','labor':'Люди','equipment':'Техника','fuel':'ГСМ'}
+    labels={'work':'Работы','labor':'Должность','equipment':'Техника','fuel':'ГСМ'}
     sections=[{'kind':kind,'label':labels[kind],'groups':[{'label':name,'entries':sorted(rows,key=lambda e:(e.label.casefold(),e.pk))} for name,rows in sorted(groups.items())],'totals':list(totals[kind].values()),'count':sum(len(rows) for rows in groups.values())} for kind,groups in grouped.items()]
     return {'sections':sections,'days':days}

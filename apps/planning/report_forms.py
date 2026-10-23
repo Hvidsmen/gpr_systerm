@@ -11,7 +11,7 @@ from .workspace_services import months_between
 
 SECTIONS = [
     ("works", "Работы"),
-    ("labor", "Люди"),
+    ("labor", "Должность"),
     ("equipment", "Техника"),
     ("fuel", "ГСМ"),
 ]

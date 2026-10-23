@@ -8,7 +8,7 @@ from apps.accounts.models import User
 from .models import DailySchedule,DailyScheduleReview,DailyScheduleDecision,WorkTask
 from . import estimate_review
 
-SECTIONS=[('PRODUCTION','Работы','PRODUCTION_HEAD'),('HR','Люди','HR_HEAD'),('TECH','Техника и ГСМ','TECH_HEAD'),('SECURITY','Служба безопасности','SECURITY_HEAD')]
+SECTIONS=[('PRODUCTION','Работы','PRODUCTION_HEAD'),('HR','Должность','HR_HEAD'),('TECH','Техника и ГСМ','TECH_HEAD'),('SECURITY','Служба безопасности','SECURITY_HEAD')]
 
 
 def requires_approval(schedule):

@@ -30,10 +30,10 @@ from .workspace_views import version_for
 from .workspace_services import months_between, build_workspace_snapshot
 from .bulk_add import editable_months
 
-SHEETS = ['Работы', 'Люди', 'Техника', 'ГСМ']
+SHEETS = ['Работы', 'Должность', 'Техника', 'ГСМ']
 BASE_HEADERS = {
     'Работы': ['ID работы', 'Работа', 'Раздел', 'Группа работ', 'ID подработы', 'Подработа', 'Ед. изм.', 'Норматив'],
-    'Люди': ['ID бригады', 'Бригада', 'Макрогруппа', 'Группа', 'Ед. изм.'],
+    'Должность': ['ID должности', 'Должность', 'Макрогруппа', 'Группа', 'Ед. изм.'],
     'Техника': ['ID техники', 'Вид техники', 'Категория', 'Номер машины', 'Ед. изм.'],
     'ГСМ': ['Служебный ключ', 'Вид ГСМ'],
 }
@@ -86,7 +86,7 @@ def make_workbook(version, months, template=False):
         ws = workbook.create_sheet(sheet)
         display_headers = {'ID подработы':'ID работы в составе комплекса','Подработа':'Работа в составе комплекса'}
         ws.append([display_headers.get(title,title) for title in headers(sheet, months)] + (['План работы '+label(month) for month in months] if sheet=='Работы' else []))
-        ws.freeze_panes = 'I2' if sheet == 'Работы' else ('F2' if sheet in ['Люди', 'Техника'] else 'C2')
+        ws.freeze_panes = 'I2' if sheet == 'Работы' else ('F2' if sheet in ['Должность', 'Техника'] else 'C2')
         for cell in ws[1]:
             cell.font = Font(color='FFFFFF', bold=True)
             cell.fill = PatternFill('solid', fgColor='6C757D' if cell.column>len(headers(sheet,months)) else '1263D6')
@@ -139,7 +139,7 @@ def make_workbook(version, months, template=False):
             row.brigade_id = labor_aliases[row.brigade_id]
         if row.equipment_type_id in aliases:
             row.equipment_type_id = aliases[row.equipment_type_id]
-    for kind, sheet, catalog, fk in [('labor','Люди',Brigade,'brigade_id'),('equipment','Техника',EquipmentType,'equipment_type_id')]:
+    for kind, sheet, catalog, fk in [('labor','Должность',Brigade,'brigade_id'),('equipment','Техника',EquipmentType,'equipment_type_id')]:
         input_map = {(getattr(row,fk), row.equipment_number if kind=='equipment' else '',row.month):row for row in resource_inputs if row.kind==kind}
         snapshot_map = defaultdict(list)
         for row in snapshot.get('resources', {}).get(kind, []):
@@ -201,7 +201,7 @@ def make_workbook(version, months, template=False):
         for index in range(1,ws.max_column+1):
             letter=ws.cell(1,index).column_letter
             ws.column_dimensions[letter].width=18 if index>len(BASE_HEADERS[sheet]) else 26
-        hidden={'Работы':['A','E'],'Люди':['A'],'Техника':['A'],'ГСМ':['A']}[sheet]
+        hidden={'Работы':['A','E'],'Должность':['A'],'Техника':['A'],'ГСМ':['A']}[sheet]
         for letter in hidden:
             ws.column_dimensions[letter].hidden=True
         for row in ws.iter_rows(min_row=2):
@@ -295,8 +295,10 @@ def parse_workbook(upload, version, months):
     fuel_names=dict(ResourceMonthAllocation._meta.get_field('fuel_type').choices)
     permitted_refs={(r.fuel_type,r.equipment_ref) for r in version.resource_allocations.filter(kind='fuel')}
     try:
+        if 'Люди' in workbook.sheetnames and 'Должность' not in workbook.sheetnames:
+            workbook['Люди'].title = 'Должность'
         if set(workbook.sheetnames)!=set(SHEETS):
-            raise ValidationError('Файл должен содержать ровно четыре листа: Работы, Люди, Техника, ГСМ.')
+            raise ValidationError('Файл должен содержать ровно четыре листа: Работы, Должность, Техника, ГСМ.')
         for sheet in SHEETS:
             ws=workbook[sheet]
             if ws.max_row is None or ws.max_column is None:
@@ -307,14 +309,14 @@ def parse_workbook(upload, version, months):
             if total_cells>500000:
                 raise ValidationError('В файле слишком много ячеек.')
             iterator=ws.iter_rows();first=next(iterator,())
-            legacy_names = {'ID работы в составе комплекса':'ID подработы','Работа в составе комплекса':'Подработа'}
+            legacy_names = {'ID бригады':'ID должности','Бригада':'Должность', 'ID работы в составе комплекса':'ID подработы','Работа в составе комплекса':'Подработа'}
             titles=[legacy_names.get(text(cell.value),text(cell.value)) for cell in first]
             if len(set(titles))!=len(titles):
                 errors.append(f'{sheet}: повторяются заголовки столбцов.');continue
             columns={title:i for i,title in enumerate(titles)}
             required=headers(sheet,months)
             # IDs may be removed; visible names then resolve within the company/object.
-            missing=[name for name in required if name not in columns and name not in ['ID работы','ID подработы','ID бригады','ID техники','Служебный ключ']]
+            missing=[name for name in required if name not in columns and name not in ['ID работы','ID подработы','ID должности','ID техники','Служебный ключ']]
             if missing:
                 errors.append(f'{sheet}: нет столбцов {", ".join(missing)}.');continue
             for index,cells in enumerate(iterator,2):
@@ -350,9 +352,9 @@ def parse_workbook(upload, version, months):
                             seen.add(key)
                             work_values[(work.pk,month)][item_id]=number(raw,6 if item_id else 3,Decimal('999999999999.999999') if item_id else Decimal('999999999999.999'))
                     else:
-                        kind={'Люди':'labor','Техника':'equipment','ГСМ':'fuel'}[sheet]
+                        kind={'Должность':'labor','Техника':'equipment','ГСМ':'fuel'}[sheet]
                         if kind=='labor':
-                            item=resolve(brigades,value('ID бригады'),value('Бригада'),'Бригада');identity={'brigade':item};token=(item.pk,)
+                            item=resolve(brigades,value('ID должности'),value('Должность'),'Должность');identity={'brigade':item};token=(item.pk,)
                         elif kind=='equipment':
                             item=resolve(equipment,value('ID техники'),value('Вид техники'),'Техника');machine=text(value('Номер машины'))
                             if len(machine)>50:raise ValidationError('Номер машины: не более 50 символов.')

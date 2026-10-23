@@ -77,7 +77,7 @@ def sync_version(version):
         for task in WorkTask.objects.filter(review=review,kind='APPROVAL',status__in=ACTIVE):
             state(task,'SUPERSEDED',text='Сначала требуется проверка сметчика.')
     else:
-        for section,label,role in [('PRODUCTION','Работы','PRODUCTION_HEAD'),('HR','Люди','HR_HEAD'),('TECH','Техника и ГСМ','TECH_HEAD'),('SECURITY','Служба безопасности','SECURITY_HEAD')]:
+        for section,label,role in [('PRODUCTION','Работы','PRODUCTION_HEAD'),('HR','Должность','HR_HEAD'),('TECH','Техника и ГСМ','TECH_HEAD'),('SECURITY','Служба безопасности','SECURITY_HEAD')]:
             people=list(User.objects.filter(company_id=version.company_id,role__code=role,is_active=True)[:2])
             task=ensure(version.company,f'approval:{review.pk}:{section}',kind='APPROVAL',title=f'Согласовать план: {label}',target_role=role,assigned_to=people[0] if len(people)==1 else None,created_by=review.submitted_by,version=version,review=review,construction_object_id=version.construction_object_id,due_date=timezone.localdate()+timedelta(days=2),description=f'Раунд {review.number}. Раздел: {label}.')
             if task.status=='OPEN' and task.assigned_to_id and (not task.assigned_to.is_active or role_code(task.assigned_to)!=role):
@@ -241,4 +241,4 @@ def complete_fact(user,task,confirmed):
     task=visible(user).select_for_update().select_related('assigned_to','construction_object').get(pk=task.pk)
     if task.kind!='FACT' or task.status!='OPEN' or not is_executor(user,task):raise PermissionDenied
     if set(confirmed)!={'works','labor','equipment','fuel'}:raise ValidationError('Подтвердите проверку всех четырех разделов факта.')
-    validate_fact(task);state(task,'DONE',user,'Проверены работы, люди, техника и ГСМ.');return task
+    validate_fact(task);state(task,'DONE',user,'Проверены работы, должности, техника и ГСМ.');return task

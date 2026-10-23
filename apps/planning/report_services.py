@@ -639,7 +639,7 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
             attach_money_totals(work_section, [row for _, row in rows])
             sections.append(work_section)
         for kind, label in [
-            ("labor", "Люди"),
+            ("labor", "Должность"),
             ("equipment", "Техника"),
             ("fuel", "ГСМ"),
         ]:

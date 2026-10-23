@@ -18,7 +18,7 @@ from .workspace_services import finalize_work, allocate, RESOURCE_CONFIG, resour
 ZERO=Decimal('0')
 # Monthly deviations are allowed and compared to the immutable monthly GPR.
 ALLOW_MONTH_CHANGES=True
-FIELDS={'work':[('quantity','Объем',6)],'labor':[('planned_count','Люди, чел.',0),('planned_hours','Чел·ч',2)],'equipment':[('planned_count','Техника, ед.',0),('planned_machine_hours','Маш·ч',2)],'fuel':[('planned_liters','Расход, л',2),('planned_balance','Остаток, л',2)]}
+FIELDS={'work':[('quantity','Объем',6)],'labor':[('planned_count','Должность, чел.',0),('planned_hours','Чел·ч',2)],'equipment':[('planned_count','Техника, ед.',0),('planned_machine_hours','Маш·ч',2)],'fuel':[('planned_liters','Расход, л',2),('planned_balance','Остаток, л',2)]}
 
 
 def bounds(month):return month,month.replace(day=monthrange(month.year,month.month)[1])

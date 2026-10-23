@@ -116,7 +116,7 @@ class FactDayWorkspaceView(CompanyRequiredMixin, View):
                         values[rate] = getattr(plan, rate)
                 values[actual] = None
                 initial.append(values)
-            configs.append((kind, {'labor': 'Люди', 'equipment': 'Техника', 'fuel': 'ГСМ'}[kind], model,
+            configs.append((kind, {'labor': 'Должность', 'equipment': 'Техника', 'fuel': 'ГСМ'}[kind], model,
                             getattr(production_forms, model.__name__ + 'Form'), facts, initial))
         groups = []
         for prefix, title, model, base_form, qs, initial in configs:

@@ -14,7 +14,7 @@ from .models import GlobalPlanVersion, ResourceMonthAllocation, WorkMonthAllocat
 from .workspace_services import months_between
 from .workspace_views import version_for
 
-TITLES = {'works':'Работы', 'labor':'Люди — бригады', 'equipment':'Техника', 'fuel':'ГСМ'}
+TITLES = {'works':'Работы', 'labor':'Должность', 'equipment':'Техника', 'fuel':'ГСМ'}
 
 
 def editable_months(version):

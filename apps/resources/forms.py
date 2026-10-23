@@ -40,7 +40,7 @@ class BrigadeForm(forms.ModelForm):
             'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
         labels = {
-            'code': 'Код бригады',
+            'code': 'Код должности',
             'name': 'Название',
 
             'description': 'Описание',

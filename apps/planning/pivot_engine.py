@@ -104,7 +104,7 @@ def pivot_grid(records,report,config):
         row=record['row']
         cells=list(zip(report['columns'],row['cells'])) if temporal else [(None,row['total'])]
         for column,cell in cells:
-            dims={**record,'kind':{'works':'Работы','labor':'Люди','equipment':'Техника','fuel':'ГСМ'}.get(record['kind'],record['kind']),'month':column['date'].strftime('%Y-%m') if column else '', 'date':column['date'].isoformat() if column else ''}
+            dims={**record,'kind':{'works':'Работы','labor':'Должность','equipment':'Техника','fuel':'ГСМ'}.get(record['kind'],record['kind']),'month':column['date'].strftime('%Y-%m') if column else '', 'date':column['date'].isoformat() if column else ''}
             rk=tuple(dims[k] for k in config['rows']);ck=tuple(dims[k] for k in config['columns'])
             for metric in config['measures']:
                 custom=formulas.get(metric);tree=None
@@ -116,7 +116,7 @@ def pivot_grid(records,report,config):
                 if not quantity and record['kind']!='works':continue
                 signature=(row['unit'],record['kind'],row.get('operation','sum')) if quantity else ('₽','works','sum')
                 # Quantities with different units / averaging rules are always separate.
-                display_rk=rk+(label,unit,({'works':'Работы','labor':'Люди','equipment':'Техника','fuel':'ГСМ'}.get(signature[1],signature[1])+' · '+signature[0]+(' · среднее' if signature[2]=='average' else ' · остаток' if signature[2]=='last' else '') if quantity else ''),metric)
+                display_rk=rk+(label,unit,({'works':'Работы','labor':'Должность','equipment':'Техника','fuel':'ГСМ'}.get(signature[1],signature[1])+' · '+signature[0]+(' · среднее' if signature[2]=='average' else ' · остаток' if signature[2]=='last' else '') if quantity else ''),metric)
                 row_keys.add(display_rk);col_keys.add(ck)
                 key=(display_rk,ck)
                 if len(groups)>100000:raise ValidationError('Слишком большая таблица. Сократите период или число объектов.')

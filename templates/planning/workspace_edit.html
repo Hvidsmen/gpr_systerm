@@ -66,7 +66,7 @@
 </div>{% endfor %}
 <p class="period-composition-links">{% if request.user|may:'planning:workspace_work_create' %}<a href="{% url 'planning:workspace_work_create' workspace.pk %}">Создать новую простую или комплекс работ</a>{% endif %} · {% if request.user|may:'works:work_list' %}<a href="{% url 'works:work_list' %}">Настроить работы в составе комплекса и нормативы</a>{% endif %}</p>
 </div></div>{% endif %}
-<details class="card mb-3"><summary class="p-3 fw-semibold">Excel: импорт, экспорт и шаблон</summary><div class="card-body pt-0"><p>Сначала сохраните введённые данные. Файл содержит четыре листа: работы, люди, техника, ГСМ.</p><div class="d-flex flex-wrap gap-2">
+<details class="card mb-3"><summary class="p-3 fw-semibold">Excel: импорт, экспорт и шаблон</summary><div class="card-body pt-0"><p>Сначала сохраните введённые данные. Файл содержит четыре листа: работы, должности, техника, ГСМ.</p><div class="d-flex flex-wrap gap-2">
 {% if request.user|may:'planning:workspace_excel_export' %}
 <a class="btn btn-sm btn-outline-primary" href="{% url 'planning:workspace_excel_export' version.pk %}?scope=period">Экспорт всего периода</a>
 <a class="btn btn-sm btn-outline-primary" href="{% url 'planning:workspace_excel_export' version.pk %}?scope=year&year={{ selected_month.year }}">Экспорт {{ selected_month.year }} года</a>

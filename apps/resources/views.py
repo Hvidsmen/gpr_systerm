@@ -64,7 +64,7 @@ class BrigadeCreateView(CompanyRequiredMixin, CreateView):
 
     def form_valid(self, form):
         form.instance.company = self.request.user.company
-        messages.success(self.request, 'Бригада создана!')
+        messages.success(self.request, 'Должность создана!')
         return super().form_valid(form)
 
     def get_success_url(self):
@@ -90,7 +90,7 @@ class BrigadeUpdateView(CompanyRequiredMixin, UpdateView):
     template_name = 'resources/brigade_form.html'
 
     def form_valid(self, form):
-        messages.success(self.request, 'Бригада обновлена!')
+        messages.success(self.request, 'Должность обновлена!')
         return super().form_valid(form)
 
     def get_success_url(self):
@@ -98,7 +98,7 @@ class BrigadeUpdateView(CompanyRequiredMixin, UpdateView):
 
 
 class BrigadeDeleteView(CompanyRequiredMixin, DeleteView):
-    """Удаление бригады."""
+    """Удаление должности."""
     model = Brigade
     template_name = 'resources/brigade_confirm_delete.html'
     success_url = reverse_lazy('resources:brigade_list')
@@ -107,17 +107,17 @@ class BrigadeDeleteView(CompanyRequiredMixin, DeleteView):
         """Переопределяем post, чтобы обойти проблемный mixin."""
         self.object = self.get_object()
 
-        # Проверяем, есть ли члены бригады
+        # Проверяем, есть ли члены должности
         if self.object.members.exists():
             messages.error(
                 request,
-                f'Нельзя удалить бригаду "{self.object.name}": в ней {self.object.members.count()} человек. Сначала удалите членов бригады.'
+                f'Нельзя удалить должность "{self.object.name}": в ней {self.object.members.count()} человек. Сначала удалите назначенных сотрудников.'
             )
             return redirect('resources:brigade_list')
 
         name = self.object.name
         self.object.delete()
-        messages.success(request, f'Бригада "{name}" удалена.')
+        messages.success(request, f'Должность "{name}" удалена.')
         return redirect(self.get_success_url())
 
 from .models import EquipmentType

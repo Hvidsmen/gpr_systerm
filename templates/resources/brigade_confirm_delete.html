@@ -2,7 +2,7 @@
 {% load access %}
 {% load i18n %}
 
-{% block title %}Удалить бригаду — ЯДС портал{% endblock %}
+{% block title %}Удалить должность — ЯДС портал{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center">
@@ -18,7 +18,7 @@
                     <i class="bi bi-exclamation-triangle"></i>
                     <strong>Внимание!</strong> Это действие нельзя отменить.
                 </div>
-                <p>Вы действительно хотите удалить бригаду:</p>
+                <p>Вы действительно хотите удалить должность:</p>
                 <div class="card bg-light mb-3">
                     <div class="card-body">
                         <h5 class="card-title">{{ object.name }}</h5>
@@ -26,16 +26,16 @@
                         <p class="card-text mb-1"><strong>Описание:</strong> {{ object.description }}</p>
                         {% endif %}
                         <p class="card-text mb-0">
-                            <strong>Членов бригады:</strong> {{ object.members.count }}
+                            <strong>Назначенных сотрудников:</strong> {{ object.members.count }}
                         </p>
                     </div>
                 </div>
                 {% if object.members.exists %}
                 <div class="alert alert-danger">
                     <i class="bi bi-exclamation-circle"></i>
-                    <strong>В бригаде {{ object.members.count }} человек!</strong>
+                    <strong>На должность назначено {{ object.members.count }} сотрудников!</strong>
                     <br>
-                    Сначала удалите или переведите членов бригады.
+                    Сначала удалите или переведите назначенных сотрудников.
                 </div>
                 {% endif %}
                 <form method="post">

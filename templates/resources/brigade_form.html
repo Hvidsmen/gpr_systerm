@@ -3,7 +3,7 @@
 {% load i18n %}
 
 {% block title %}
-    {% if brigade %}Редактировать бригаду{% else %}Создать бригаду{% endif %}
+    {% if brigade %}Редактировать должность{% else %}Создать должность{% endif %}
 {% endblock %}
 
 {% block content %}
@@ -13,7 +13,7 @@
             <div class="card-header bg-primary text-white">
                 <h4 class="mb-0">
                     <i class="bi bi-people-fill"></i>
-                    {% if brigade %}Редактировать бригаду "{{ brigade.name }}"{% else %}Создать бригаду{% endif %}
+                    {% if brigade %}Редактировать должность "{{ brigade.name }}"{% else %}Создать должность{% endif %}
                 </h4>
             </div>
             <div class="card-body">
@@ -43,8 +43,8 @@
                     </div>
 
                     <div class="row g-3 mb-3">
-<div class="col-md-6"><label class="form-label" for="{{ form.group.id_for_label }}">Группа</label><div class="input-group">{{ form.group }}{% if request.user|may:'resources:brigade_group_create' %}<button class="btn btn-outline-primary" type="button" data-catalog-open="brigade-group" aria-label="Создать группу бригад">+</button>{% endif %}</div>{{ form.group.errors }}</div>
-<div class="col-md-6"><label class="form-label" for="{{ form.macro_group.id_for_label }}">Макрогруппа</label><div class="input-group">{{ form.macro_group }}{% if request.user|may:'resources:brigade_macro_group_create' %}<button class="btn btn-outline-primary" type="button" data-catalog-open="brigade-macro" aria-label="Создать макрогруппу бригад">+</button>{% endif %}</div>{{ form.macro_group.errors }}</div>
+<div class="col-md-6"><label class="form-label" for="{{ form.group.id_for_label }}">Группа</label><div class="input-group">{{ form.group }}{% if request.user|may:'resources:brigade_group_create' %}<button class="btn btn-outline-primary" type="button" data-catalog-open="brigade-group" aria-label="Создать группу должностей">+</button>{% endif %}</div>{{ form.group.errors }}</div>
+<div class="col-md-6"><label class="form-label" for="{{ form.macro_group.id_for_label }}">Макрогруппа</label><div class="input-group">{{ form.macro_group }}{% if request.user|may:'resources:brigade_macro_group_create' %}<button class="btn btn-outline-primary" type="button" data-catalog-open="brigade-macro" aria-label="Создать макрогруппу должностей">+</button>{% endif %}</div>{{ form.macro_group.errors }}</div>
 </div>
                     <div class="mb-3"><label class="form-label" for="{{ form.unit.id_for_label }}">Единица измерения</label>{{ form.unit }}<div class="form-text">По умолчанию: чел.</div>{{ form.unit.errors }}</div>
                     <div class="mb-3">

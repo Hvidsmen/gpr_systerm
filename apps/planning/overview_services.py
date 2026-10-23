@@ -37,7 +37,7 @@ def compact_overview(report):
         sections.append({'kind': 'money', 'label': 'Работы', 'groups': [{'label': 'Стоимость работ', 'children': [], 'rows': [money_row(all_money, 'Итого по всем объектам')]}]})
     for kind, rows in resource_totals.items():
         totals = resource_subtotal_rows(rows)
-        sections.append({'kind': kind, 'label': {'labor': 'Люди', 'equipment': 'Техника', 'fuel': 'ГСМ'}[kind], 'groups': [{'label': 'Все объекты', 'children': [], 'rows': totals}]})
+        sections.append({'kind': kind, 'label': {'labor': 'Должность', 'equipment': 'Техника', 'fuel': 'ГСМ'}[kind], 'groups': [{'label': 'Все объекты', 'children': [], 'rows': totals}]})
     if sections:
         report['objects'].insert(0, {'name': 'Все объекты · итоги', 'overview_total': True, 'object': report['objects'][0]['object'], 'sections': sections, 'warnings': [], 'sources': []})
     for entry in report['objects']:

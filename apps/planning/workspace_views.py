@@ -556,7 +556,7 @@ class WorkspaceExport(View):
             for month, cell in zip(months, row["cells"]):
                 writer.writerow(
                     [
-                        {"labor": "Люди", "equipment": "Техника", "fuel": "ГСМ"}[
+                        {"labor": "Должность", "equipment": "Техника", "fuel": "ГСМ"}[
                             row["kind"]
                         ],
                         label(row["label"]),
