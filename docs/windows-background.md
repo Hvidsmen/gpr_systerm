@@ -21,6 +21,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\ops\install-windows.ps1 -P
 
 Правило Windows Firewall открывает порт только в профилях Domain/Private. Задания не используют пароль входа администратора: они работают от SYSTEM. Доступ AD выполняется прежней сервисной учётной записью из `.env`.
 
+## Если окружение Python было перенесено с другого компьютера
+
+Установщик проверяет запуск `.venv\Scripts\python.exe`. Если он ссылается на отсутствующий Python другого пользователя, установщик ищет рабочий Python: в `venv313`/`venv`, через `py`, PATH и реестр Windows. Сломанное окружение сохраняется под именем `.venv.broken-<время>-<id>`, после чего создаётся новое. `.env`, база и `media` не перемещаются.
+
+Если автоматический поиск не сработал, установите Python 3.13 для всех пользователей или укажите существующий интерпретатор явно:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\ops\install-windows.ps1 -PythonExecutable "C:\Program Files\Python313\python.exe"
+```
+
 ## Обновления
 
 При каждом включении `YDS Portal Update` проверяет `main` репозитория `Hvidsmen/gpr_systerm`. Для закрытого репозитория администратор добавляет в постоянный `.env` переменную `GPR_UPDATE_TOKEN` — GitHub fine-grained token с **Contents: Read-only** только этого репозитория. Токен не хранится в задании, не передаётся в командной строке и не выводится в журнал.

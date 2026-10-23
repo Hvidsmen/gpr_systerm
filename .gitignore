@@ -16,3 +16,6 @@ gpr_export.txt
 
 # Managed Windows runtime: credentials, state, database backups and releases.
 .runtime/
+
+# Backups of copied or broken Windows virtual environments.
+.venv.broken-*/
