@@ -313,7 +313,14 @@ def extract_archive(archive,destination):
         if not (destination/required).is_file():raise RuntimeError('Incomplete application archive.')
 
 
+def update_stage(root,stage):
+    path=root/'.runtime/status.json';status=read_json(path,{})
+    if status.get('state')=='updating':
+        atomic_json(path,{**status,'stage':stage,'updated_at':datetime.now(timezone.utc).isoformat()})
+
+
 def stage_update(root,config,current):
+    update_stage(root,'checking')
     env=environment(root,config);headers={'Accept':'application/vnd.github+json','User-Agent':'YDS-Portal-Updater'}
     token=env.get('GPR_UPDATE_TOKEN','').strip()
     if token:headers['Authorization']='Bearer '+token
@@ -324,6 +331,7 @@ def stage_update(root,config,current):
     destination=root/'.runtime/releases'/sha
     if destination.exists():shutil.rmtree(destination)
     destination.mkdir(parents=True)
+    update_stage(root,'downloading')
     archive=root/'.runtime/update.zip'
     with urlopen(Request(endpoint+'/zipball/'+sha,headers=headers),timeout=120) as response,open(archive,'wb') as output:
         size=0
@@ -334,10 +342,12 @@ def stage_update(root,config,current):
             if size>100_000_000:raise RuntimeError('Update download exceeds the size limit.')
             output.write(chunk)
     extract_archive(archive,destination);archive.unlink(missing_ok=True)
+    update_stage(root,'dependencies')
     venv=root/'.runtime/venvs'/sha
     run([sys.executable,'-m','venv',str(venv)],root,env)
     interpreter=python_at(venv)
     run([interpreter,'-m','pip','install','-r',str(destination/'requirements.txt')],destination,env)
+    update_stage(root,'validation')
     run([interpreter,'manage.py','check'],destination,env)
     run([interpreter,'manage.py','collectstatic','--noinput'],destination,env)
     return {'sha':sha,'code':str(destination),'python':interpreter}
@@ -347,11 +357,16 @@ def update(root,process,current):
     runtime=root/'.runtime';config=read_json(runtime/'installed.json')
     candidate=stage_update(root,config,current)
     if not candidate:return process,current,'Already up to date.'
-    stop_process(root,process);backup=backup_database(config,runtime)
+    update_stage(root,'stopping')
+    stop_process(root,process)
+    update_stage(root,'backup')
+    backup=backup_database(config,runtime)
     atomic_json(runtime/'transaction.json',{'previous':current,'candidate':candidate,'backup':str(backup)})
     probe=None
     try:
+        update_stage(root,'migrating')
         run([candidate['python'],'manage.py','migrate','--noinput'],candidate['code'],environment(root,config))
+        update_stage(root,'candidate')
         probe,port=launch(root,candidate,probe=True);healthy(probe,port);stop_process(root,probe,probe=True);probe=None
         atomic_copy(Path(candidate['code'])/'ops/windows_runtime.py',runtime/'bootstrap.py')
         atomic_json(runtime/'current.json',candidate)
@@ -362,6 +377,7 @@ def update(root,process,current):
         old,_=launch(root,current)
         logging.exception('Update rejected; previous code and database restored.')
         return old,current,'Update failed. Previous version restored; see protected logs.'
+    update_stage(root,'starting')
     new,_=launch(root,candidate)
     (runtime/'transaction.json').unlink(missing_ok=True)
     # Once the public listener is started, do not restore its database: users may write facts.
@@ -409,6 +425,8 @@ def supervise(root):
                     atomic_json(runtime/'status.json',{'state':'updating','request_id':request['id'],'sha':current['sha']})
                     try:
                         process,current,message=update(root,process,current)
+                        update_stage(root,'verifying')
+                        healthy(process,read_json(runtime/'installed.json')['port'])
                         result={'ok':not message.startswith('Update failed'),'message':message}
                     except RecoveryRequired:
                         atomic_json(runtime/'status.json',{'state':'recovery_required'})

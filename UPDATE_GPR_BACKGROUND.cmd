@@ -1,4 +1,5 @@
 @echo off
-schtasks.exe /Run /TN "YDS Portal" >nul 2>&1
-schtasks.exe /Run /TN "YDS Portal Update"
-if errorlevel 1 pause
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0ops\update-windows.ps1" -Root "%~dp0."
+set "GPR_UPDATE_EXIT=%ERRORLEVEL%"
+pause
+exit /b %GPR_UPDATE_EXIT%
