@@ -47,7 +47,12 @@ class BrigadeForm(forms.ModelForm):
             'is_active': 'Активна',
         }
 
+from .driver_categories import DRIVER_CATEGORY_CHOICES, DRIVER_CLASS_CHOICES
+
+
 class EquipmentTypeForm(forms.ModelForm):
+    driver_classes = forms.MultipleChoiceField(label="Допустимые классы водителя", choices=DRIVER_CLASS_CHOICES, required=False, widget=forms.SelectMultiple(attrs={"class":"form-select"}), help_text="Квалификационный класс: 1-й, 2-й или 3-й. Можно выбрать несколько допустимых вариантов.")
+    driver_categories = forms.MultipleChoiceField(label="Допустимые категории водителя", choices=DRIVER_CATEGORY_CHOICES, required=False, widget=forms.SelectMultiple(attrs={"class":"form-select"}), help_text="Можно выбрать несколько вариантов. Категории ВУ и удостоверения тракториста-машиниста указаны отдельно.")
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['category'].queryset = EquipmentCategory.objects.filter(company_id=self.instance.company_id)
@@ -59,7 +64,7 @@ class EquipmentTypeForm(forms.ModelForm):
 
     class Meta:
         model = EquipmentType
-        fields = ['name', 'category', 'unit', 'is_active']
+        fields = ['name', 'category', 'driver_categories', 'driver_classes', 'unit', 'is_active']
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control'}),
             'unit': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'ед.'}),

@@ -125,6 +125,9 @@ class EquipmentCategory(BaseCompanyModel):
         return self.name
 
 
+from .driver_categories import validate_driver_categories, validate_driver_classes, DRIVER_CATEGORY_SHORT
+
+
 class EquipmentType(BaseCompanyModel):
     """Справочник видов техники."""
     name = models.CharField(_('название'), max_length=150)
@@ -133,6 +136,17 @@ class EquipmentType(BaseCompanyModel):
         EquipmentCategory, on_delete=models.PROTECT, null=True, blank=True,
         related_name='equipment_types', verbose_name=_('категория'),
     )
+    driver_categories = models.JSONField(_('допустимые категории водителя'), default=list, blank=True, validators=[validate_driver_categories])
+    driver_classes = models.JSONField(_('допустимые классы водителя'), default=list, blank=True, validators=[validate_driver_classes])
+
+    @property
+    def driver_class_labels(self):
+        return [code+'-й класс' for code in self.driver_classes]
+
+    @property
+    def driver_category_labels(self):
+        return [DRIVER_CATEGORY_SHORT[code] for code in self.driver_categories if code in DRIVER_CATEGORY_SHORT]
+
     is_active = models.BooleanField(_('активна'), default=True)
 
     class Meta:

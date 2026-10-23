@@ -82,6 +82,20 @@
                     </div>
 
                     <div class="mb-3">
+                        <label for="{{ form.driver_categories.id_for_label }}" class="form-label">{{ form.driver_categories.label }}</label>
+                        {{ form.driver_categories }}
+                        <div class="form-text">{{ form.driver_categories.help_text }}</div>
+                        {% if form.driver_categories.errors %}<div class="text-danger small">{{ form.driver_categories.errors }}</div>{% endif %}
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="{{ form.driver_classes.id_for_label }}" class="form-label">{{ form.driver_classes.label }}</label>
+                        {{ form.driver_classes }}
+                        <div class="form-text">{{ form.driver_classes.help_text }}</div>
+                        {% if form.driver_classes.errors %}<div class="text-danger small">{{ form.driver_classes.errors }}</div>{% endif %}
+                    </div>
+
+                    <div class="mb-3">
                         <label for="{{ form.unit.id_for_label }}" class="form-label">{{ form.unit.label }}</label>
                         {{ form.unit }}
                         <div class="form-text">По умолчанию: ед.</div>

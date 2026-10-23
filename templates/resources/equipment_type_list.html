@@ -38,7 +38,7 @@
                     <thead class="table-light">
                         <tr>{% if request.user|may:bulk_route %}<th style="width:36px" aria-label="Выбор строк"></th>{% endif %}
                             <th>Название</th>
-                            <th>Категория</th>
+                            <th>Категория</th><th>Категории водителя</th><th>Классы водителя</th>
                             <th>Ед. измерения</th>
                             <th>Статус</th>
                             <th>Действия</th>
@@ -48,7 +48,7 @@
                         {% for et in equipment_types %}
                             <tr>{% if request.user|may:bulk_route %}<td>{% include 'bulk/checkbox.html' with record=et %}</td>{% endif %}
                                 <td><strong>{{ et.name }}</strong></td>
-                                <td>{{ et.category|default:"—" }}</td>
+                                <td>{{ et.category|default:"—" }}</td><td>{{ et.driver_category_labels|join:", "|default:"—" }}</td><td>{{ et.driver_class_labels|join:", "|default:"—" }}</td>
                                 <td>{{ et.unit }}</td>
                                 <td>
                                     {% if et.is_active %}
