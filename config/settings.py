@@ -10,9 +10,10 @@ DATA_UPLOAD_MAX_NUMBER_FIELDS = 25000
 from dotenv import load_dotenv
 from config.runtime import env_bool, get_secret_key
 
-load_dotenv(BASE_DIR / '.env')
+CONFIG_DIR = Path(os.environ.get('GPR_CONFIG_DIR', BASE_DIR)).resolve()
+load_dotenv(CONFIG_DIR / '.env')
 DEBUG = env_bool('DJANGO_DEBUG', True)
-SECRET_KEY = get_secret_key(BASE_DIR, DEBUG)
+SECRET_KEY = get_secret_key(CONFIG_DIR, DEBUG)
 ALLOWED_HOSTS = [host.strip() for host in os.environ.get(
     'DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1' if DEBUG else ''
 ).split(',') if host.strip()]
@@ -24,8 +25,8 @@ CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in os.environ.get(
     'DJANGO_CSRF_TRUSTED_ORIGINS', ''
 ).split(',') if origin.strip()]
 SECURE_SSL_REDIRECT = env_bool('DJANGO_SECURE_SSL_REDIRECT', not DEBUG)
-SESSION_COOKIE_SECURE = not DEBUG
-CSRF_COOKIE_SECURE = not DEBUG
+SESSION_COOKIE_SECURE = env_bool('DJANGO_COOKIE_SECURE', not DEBUG)
+CSRF_COOKIE_SECURE = env_bool('DJANGO_COOKIE_SECURE', not DEBUG)
 SECURE_HSTS_SECONDS = 31536000 if not DEBUG else 0
 SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool('DJANGO_HSTS_INCLUDE_SUBDOMAINS')
 SECURE_HSTS_PRELOAD = env_bool('DJANGO_HSTS_PRELOAD')
@@ -112,7 +113,7 @@ STATICFILES_DIRS = [BASE_DIR / 'static'] if (BASE_DIR / 'static').is_dir() else 
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
+MEDIA_ROOT = Path(os.environ.get('DJANGO_MEDIA_ROOT', str(CONFIG_DIR / 'media')))
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 

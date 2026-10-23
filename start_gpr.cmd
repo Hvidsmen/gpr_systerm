@@ -1,6 +1,14 @@
 @echo off
 setlocal
 cd /d "%~dp0"
+if exist ".runtime\installed.json" (
+    schtasks.exe /Run /TN "YDS Portal"
+    if errorlevel 1 (
+        pause
+        exit /b 1
+    )
+    exit /b 0
+)
 title GPR System - port 8001
 
 if not exist "manage.py" (

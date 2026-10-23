@@ -13,3 +13,6 @@ media/
 gpr_export.txt
 *.sqlite3
 *.sqlite3-*
+
+# Managed Windows runtime: credentials, state, database backups and releases.
+.runtime/
