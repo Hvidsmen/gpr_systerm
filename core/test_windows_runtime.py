@@ -103,3 +103,43 @@ class WindowsRuntimeTests(SimpleTestCase):
         with sqlite3.connect(self.database) as db:db.execute("UPDATE marker SET value='new user fact'")
         runtime.recover_update(self.root)
         with sqlite3.connect(self.database) as db:self.assertEqual(db.execute('SELECT value FROM marker').fetchone()[0],'new user fact')
+
+    def test_initial_install_never_silently_prefers_fresh_over_working_database(self):
+        (self.root/'data').mkdir();working=self.root/'data/db.sqlite3';fresh=self.root/'data/fresh.sqlite3'
+        working.write_bytes(self.database.read_bytes());fresh.write_bytes(self.database.read_bytes())
+        with self.assertRaises(RuntimeError):runtime.select_database(self.root,{'DJANGO_DB_PATH':'data/fresh.sqlite3'})
+        self.assertEqual(runtime.select_database(self.root,{'DJANGO_DB_PATH':'data/fresh.sqlite3'},Path('data/db.sqlite3')),working.resolve())
+
+    def test_database_switch_backs_up_both_files_and_updates_both_settings(self):
+        target=self.root/'working.sqlite3'
+        with sqlite3.connect(target) as db:
+            for table in ['accounts_user','django_migrations']:db.execute('CREATE TABLE '+table+' (id integer)')
+            db.execute('CREATE TABLE projects_project (id integer, name text)');db.execute("INSERT INTO projects_project VALUES (1,'Yamal')")
+        (self.root/'.env').write_text('DJANGO_DB_PATH=existing.sqlite3\nLDAP_BIND_PASSWORD="keep-this-value"\n')
+        current={'sha':'current','python':__import__('sys').executable,'code':str(self.root)}
+        runtime.atomic_json(self.state/'current.json',current)
+        with patch.object(runtime,'run') as run:
+            runtime.switch_database(self.root,target)
+        self.assertEqual(run.call_count,2)
+        self.assertEqual(runtime.read_json(self.state/'installed.json')['database'],str(target))
+        from dotenv import dotenv_values
+        values=dotenv_values(self.root/'.env');self.assertEqual(values['DJANGO_DB_PATH'],target.as_posix());self.assertEqual(values['LDAP_BIND_PASSWORD'],'keep-this-value')
+        self.assertEqual(len(list((self.state/'backups').glob('*/database.sqlite3'))),2)
+        self.assertFalse((self.state/'database-switch.json').exists())
+        with sqlite3.connect(self.database) as db:self.assertEqual(db.execute('SELECT value FROM marker').fetchone()[0],'before')
+
+    def test_failed_switch_restores_target_schema_and_previous_configuration(self):
+        target=self.root/'working.sqlite3'
+        with sqlite3.connect(target) as db:
+            for table in ['accounts_user','django_migrations']:db.execute('CREATE TABLE '+table+' (id integer)')
+            db.execute('CREATE TABLE projects_project (id integer,name text)')
+        before=dict(self.config);(self.root/'.env').write_text('DJANGO_DB_PATH=existing.sqlite3\nLDAP_BIND_PASSWORD=unchanged\n')
+        runtime.atomic_json(self.state/'current.json',{'python':__import__('sys').executable,'code':str(self.root)})
+        def fail(*args):
+            with sqlite3.connect(target) as db:db.execute('CREATE TABLE unwanted (id integer)')
+            raise RuntimeError('migration failed')
+        with patch.object(runtime,'run',side_effect=fail):
+            with self.assertRaises(RuntimeError):runtime.switch_database(self.root,target)
+        self.assertEqual(runtime.read_json(self.state/'installed.json'),before)
+        self.assertIn('LDAP_BIND_PASSWORD=unchanged',(self.root/'.env').read_text())
+        with sqlite3.connect(target) as db:self.assertIsNone(db.execute("SELECT name FROM sqlite_master WHERE name='unwanted'").fetchone())

@@ -121,7 +121,69 @@ def atomic_copy(source,target):
     shutil.copy2(source,temp);os.replace(temp,target)
 
 
+def recover_database_switch(root):
+    runtime=root/'.runtime';journal=read_json(runtime/'database-switch.json')
+    if not journal:return
+    if not journal.get('committed'):
+        restore_database(journal['target_config'],Path(journal['target_backup']))
+        atomic_json(runtime/'installed.json',journal['previous_config'])
+        env_backup=Path(journal['target_backup']).parent/'.env'
+        if journal['environment_existed']:atomic_copy(env_backup,root/'.env')
+        else:(root/'.env').unlink(missing_ok=True)
+        logging.warning('Recovered interrupted database selection; previous configuration retained.')
+    (runtime/'database-switch.json').unlink(missing_ok=True)
+
+
+def switch_database(root,target):
+    from dotenv import set_key
+    runtime=root/'.runtime';config=read_json(runtime/'installed.json')
+    if not config:raise RuntimeError('Background installation was not found.')
+    target=target if target.is_absolute() else root/target
+    target=target.resolve()
+    if not target.is_file():raise RuntimeError('Selected database does not exist.')
+    with sqlite3.connect(target.as_uri()+'?mode=ro',uri=True) as db:
+        tables={row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        if not {'accounts_user','projects_project','django_migrations'}.issubset(tables):raise RuntimeError('Selected file is not a portal database.')
+        names=[row[0] for row in db.execute('SELECT name FROM projects_project ORDER BY id LIMIT 10')]
+    print('Selected database: '+str(target));print('Projects: '+', '.join(names))
+    if target==Path(config['database']).resolve() and not (runtime/'database-switch.json').exists():print('Already using this database.');return
+    # The PowerShell wrapper disables triggers first and ensures no updater is active.
+    if read_json(runtime/'status.json',{}).get('state')=='updating' or (runtime/'update.request').exists():raise RuntimeError('An update is active or queued; wait until it finishes.')
+    with singleton(runtime/'update.lock'):
+        (runtime/'supervisor.stop').touch()
+        # On Windows the supervisor holds a byte-range lock for its entire lifetime.
+        acquired=False
+        for attempt in range(150):
+            try:
+                lock=singleton(runtime/'supervisor.lock');lock.__enter__();acquired=True;break
+            except OSError:time.sleep(1)
+        if not acquired:raise RuntimeError('Server did not stop. Database selection was not changed.')
+        try:
+            if read_json(runtime/'transaction.json'):raise RuntimeError('An interrupted update must be recovered before switching databases.')
+            recover_database_switch(root)
+            config=read_json(runtime/'installed.json')
+            current=read_json(runtime/'current.json')
+            if not current or not Path(current['python']).is_file():raise RuntimeError('The active runtime interpreter is not available.')
+            target_config={**config,'database':str(target)}
+            old_backup=backup_database(config,runtime)
+            target_backup=backup_database(target_config,runtime)
+            journal={'previous_config':config,'target_config':target_config,'target_backup':str(target_backup),'previous_backup':str(old_backup),'environment_existed':(root/'.env').is_file(),'committed':False}
+            atomic_json(runtime/'database-switch.json',journal)
+            try:
+                run([current['python'],'manage.py','check'],current['code'],environment(root,target_config))
+                run([current['python'],'manage.py','migrate','--noinput'],current['code'],environment(root,target_config))
+                set_key(str(root/'.env'),'DJANGO_DB_PATH',target.as_posix(),quote_mode='always')
+                atomic_json(runtime/'installed.json',target_config)
+                atomic_json(runtime/'database-switch.json',{**journal,'committed':True})
+            except Exception:
+                recover_database_switch(root);raise
+            (runtime/'database-switch.json').unlink(missing_ok=True)
+            print('Database selected. Previous database and selected database backups: '+str(old_backup.parent)+' ; '+str(target_backup.parent))
+        finally:lock.__exit__(None,None,None)
+
+
 def recover_update(root):
+    recover_database_switch(root)
     runtime=root/'.runtime';journal=read_json(runtime/'transaction.json')
     if not journal:return
     current=read_json(runtime/'current.json',{})
@@ -135,18 +197,27 @@ def recover_update(root):
     (runtime/'transaction.json').unlink(missing_ok=True)
 
 
-def initialize(root,port,hosts):
+def select_database(root,values,override=None):
+    explicit=str(override) if override is not None else values.get('DJANGO_DB_PATH')
+    database=Path(explicit) if explicit else None
+    if database is not None and not database.is_absolute():database=root/database
+    candidates={p.resolve() for p in [root/'db.sqlite3',root/'data/db.sqlite3',root/'data/fresh.sqlite3'] if p.is_file()}
+    if database is not None and database.is_file():candidates.add(database.resolve())
+    if override is None and len(candidates)>1:
+        raise RuntimeError('Multiple existing databases found. Pass -DatabasePath to the Windows installer with the existing working database path. No database was changed.')
+    if database is None:
+        if len(candidates)!=1:raise RuntimeError('Specify the existing database with -DatabasePath.')
+        database=next(iter(candidates))
+    if not database.is_file():raise RuntimeError('Existing database was not found.')
+    return database.resolve()
+
+
+def initialize(root,port,hosts,database_override=None):
     from dotenv import dotenv_values
     runtime=root/'.runtime';runtime.mkdir(exist_ok=True)
     if (runtime/'installed.json').exists():raise RuntimeError('Already installed. Use the existing tasks instead of overwriting runtime configuration.')
     values={**os.environ,**{k:v for k,v in dotenv_values(root/'.env').items() if v is not None}}
-    explicit=values.get('DJANGO_DB_PATH')
-    if explicit:database=Path(explicit);database=database if database.is_absolute() else root/database
-    else:
-        candidates=[p for p in [root/'data/db.sqlite3',root/'db.sqlite3'] if p.is_file()]
-        if len(candidates)!=1:raise RuntimeError('Set DJANGO_DB_PATH in .env to the existing database before installing.')
-        database=candidates[0]
-    if not database.is_file():raise RuntimeError('Existing database was not found.')
+    database=select_database(root,values,database_override)
     with socket.socket() as check:check.bind(('0.0.0.0',port))
     media=Path(values.get('DJANGO_MEDIA_ROOT',root/'media'));media=media if media.is_absolute() else root/media
     config={'database':str(database.resolve()),'media':str(media.resolve()),'port':port,'hosts':hosts}
@@ -163,6 +234,8 @@ def initialize(root,port,hosts):
     except Exception:
         restore_database(config,backup);raise
     atomic_json(runtime/'current.json',code)
+    from dotenv import set_key
+    set_key(str(root/'.env'),'DJANGO_DB_PATH',database.as_posix(),quote_mode='always')
     atomic_json(runtime/'installed.json',config)
     logging.info('Initialized, database backup: %s',backup)
 
@@ -371,13 +444,16 @@ def request_update(root):
 
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('command',choices=['init','supervise','serve','update','stop','status'])
-    parser.add_argument('--root',type=Path,required=True);parser.add_argument('--port',type=int,default=8001);parser.add_argument('--host',action='append',default=[]);parser.add_argument('--code',type=Path);parser.add_argument('--probe',action='store_true')
+    parser=argparse.ArgumentParser();parser.add_argument('command',choices=['init','supervise','serve','update','stop','status','switch-database'])
+    parser.add_argument('--root',type=Path,required=True);parser.add_argument('--port',type=int,default=8001);parser.add_argument('--host',action='append',default=[]);parser.add_argument('--database',type=Path);parser.add_argument('--code',type=Path);parser.add_argument('--probe',action='store_true')
     args=parser.parse_args();root=args.root.resolve();os.chdir(root);log_setup(root/'.runtime',{'supervise':'service.log','serve':'worker.log','init':'installer.log','update':'updater.log'}.get(args.command,'control.log'))
-    if args.command=='init':initialize(root,args.port,args.host)
+    if args.command=='init':initialize(root,args.port,args.host,args.database)
     elif args.command=='supervise':supervise(root)
     elif args.command=='serve':serve(root,args.code.resolve(),args.port,args.probe)
     elif args.command=='update':request_update(root)
+    elif args.command=='switch-database':
+        if args.database is None:raise RuntimeError('Pass --database with an existing portal database path.')
+        switch_database(root,args.database)
     elif args.command=='stop':(root/'.runtime/supervisor.stop').touch()
     else:print(json.dumps(read_json(root/'.runtime/status.json',{}),ensure_ascii=False,indent=2))
 

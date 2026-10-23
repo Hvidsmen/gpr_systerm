@@ -1,6 +1,6 @@
 ﻿# Run from an elevated PowerShell. Both tasks run without an interactive logon.
 [CmdletBinding()]
-param([string]$Root='',[int]$Port=8001,[string[]]$Hosts=@('192.168.70.9'),[string]$PythonExecutable='')
+param([string]$Root='',[int]$Port=8001,[string[]]$Hosts=@('192.168.70.9'),[string]$PythonExecutable='',[string]$DatabasePath='')
 $ErrorActionPreference='Stop'
 # Automatic script-path variables are not reliable in parameter default expressions
 # in Windows PowerShell. Resolve them after parameter binding instead.
@@ -97,6 +97,7 @@ try {
     Copy-Item $source (Join-Path $runtime 'bootstrap.py') -Force
     $init=@((Join-Path $runtime 'bootstrap.py'),'init','--root',$Root,'--port',"$Port")
     foreach($hostName in $Hosts){$init+=@('--host',$hostName)}
+    if(-not [string]::IsNullOrWhiteSpace($DatabasePath)){$init+=@('--database',$DatabasePath)}
     if(-not (Test-Path (Join-Path $runtime 'installed.json'))){
     & $python @init
     if($LASTEXITCODE -ne 0){throw 'Initialization failed. Stop the old START_GPR console if its port is occupied; see .runtime\installer.log.'}
