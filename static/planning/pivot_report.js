@@ -4,10 +4,43 @@
  let config=read('pivot-initial'); const fields=read('pivot-fields'),base=read('pivot-base-measures');
  const defaults={rows:['building','complex_object','package','work'],columns:['month'],measures:['plan','fact','delta'],formulas:[]};
  const button=(text,fn,label)=>{const b=document.createElement('button');b.type='button';b.textContent=text;if(label)b.setAttribute('aria-label',label);b.addEventListener('click',fn);return b;};
+ let dragging=null;
+ function clearDropHints(){document.querySelectorAll('.pivot-drop-before,.pivot-drop-after,.pivot-drop-target,.pivot-dragging').forEach(el=>el.classList.remove('pivot-drop-before','pivot-drop-after','pivot-drop-target','pivot-dragging'));}
+ function endDrag(){dragging=null;clearDropHints();}
+ function insertionTarget(list,y){
+  return [...list.children].filter(el=>el.dataset.field!==dragging?.field).find(el=>y<el.getBoundingClientRect().top+el.getBoundingClientRect().height/2)||null;
+ }
+ function moveDragged(axis,before){
+  if(!dragging||!config[dragging.axis].includes(dragging.field))return;
+  const field=dragging.field;config[dragging.axis]=config[dragging.axis].filter(key=>key!==field);
+  const position=before?config[axis].indexOf(before):config[axis].length;
+  config[axis].splice(position<0?config[axis].length:position,0,field);
+  endDrag();render();
+  const row=[...$('pivot-'+axis).children].find(el=>el.dataset.field===field);row?.focus();
+  $('pivot-drag-status').textContent=fields[field]+': '+(axis==='rows'?'строки':'столбцы')+', позиция '+(config[axis].indexOf(field)+1);
+ }
+ for(const axis of ['rows','columns']){
+  const list=$('pivot-'+axis);
+  list.addEventListener('dragover',event=>{
+   if(!dragging)return;event.preventDefault();event.dataTransfer.dropEffect='move';
+   document.querySelectorAll('.pivot-drop-before,.pivot-drop-after,.pivot-drop-target').forEach(el=>el.classList.remove('pivot-drop-before','pivot-drop-after','pivot-drop-target'));
+   list.classList.add('pivot-drop-target');const before=insertionTarget(list,event.clientY);
+   if(before)before.classList.add('pivot-drop-before');
+   else [...list.children].filter(el=>el.dataset.field!==dragging.field).at(-1)?.classList.add('pivot-drop-after');
+  });
+  list.addEventListener('dragleave',event=>{if(!list.contains(event.relatedTarget)){list.classList.remove('pivot-drop-target');list.querySelectorAll('.pivot-drop-before,.pivot-drop-after').forEach(el=>el.classList.remove('pivot-drop-before','pivot-drop-after'));}});
+  list.addEventListener('drop',event=>{if(!dragging)return;event.preventDefault();const before=insertionTarget(list,event.clientY);moveDragged(axis,before?.dataset.field);});
+ }
  function render(){
   for(const axis of ['rows','columns']){
    const ol=$('pivot-'+axis);ol.replaceChildren();
-   config[axis].forEach((key,index)=>{const li=document.createElement('li'),span=document.createElement('span');span.textContent=fields[key];li.append(span);
+   config[axis].forEach((key,index)=>{const li=document.createElement('li'),span=document.createElement('span'),handle=document.createElement('span');
+    li.dataset.field=key;li.draggable=true;li.tabIndex=-1;li.setAttribute('aria-label',fields[key]);
+    handle.className='pivot-drag-handle';handle.textContent='⠿';handle.setAttribute('aria-hidden','true');handle.title='Перетащите для изменения порядка или переноса на другую ось';
+    span.textContent=fields[key];li.append(handle,span);
+    let fromButton=false;li.addEventListener('pointerdown',event=>{fromButton=!!event.target.closest('button');});
+    li.addEventListener('dragstart',event=>{if(fromButton){event.preventDefault();return;}dragging={axis,field:key};event.dataTransfer.effectAllowed='move';event.dataTransfer.setData('text/plain',key);li.classList.add('pivot-dragging');});
+    li.addEventListener('dragend',endDrag);
     li.append(button('↑',()=>{if(index){[config[axis][index-1],config[axis][index]]=[key,config[axis][index-1]];render();}},'Выше: '+fields[key]));
     li.append(button('↓',()=>{if(index<config[axis].length-1){[config[axis][index+1],config[axis][index]]=[key,config[axis][index+1]];render();}},'Ниже: '+fields[key]));
     li.append(button('⇄',()=>{config[axis].splice(index,1);config[axis==='rows'?'columns':'rows'].push(key);render();},'Перенести на другую ось: '+fields[key]));
