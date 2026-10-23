@@ -769,6 +769,8 @@ def apply_meeting_import(
         profile = None
         totals = defaultdict(dict)
         for row in rows:
+            from core.permissions import role_code
+            if role_code(user)=='PLANNER' and row['kind']!='work':continue
             month = date.fromisoformat(row["month"])
             if row["kind"] == "work":
                 if row["target_type"] == "item":

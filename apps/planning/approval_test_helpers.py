@@ -18,7 +18,12 @@ def estimator_check(obj, planner):
     from . import estimate_review
     from apps.works.models import ProjectWork
     estimator,_=User.objects.get_or_create(username=f'estimator-{planner.company_id}',defaults={'company':planner.company,'role':Role.objects.get(code='ESTIMATOR')})
-    task=estimate_review.assign(planner,obj,estimator)
+    from .preparation import handoff,ready
+    manager=User.objects.filter(company=planner.company,role__code='MANAGER',is_active=True).first()
+    if not manager:manager=User.objects.create_user(username=f'project-manager-{planner.company_id}',company=planner.company,role=Role.objects.get(code='MANAGER'))
+    handoff(planner,obj,manager,estimator)
+    ready(manager,obj)
+    task=obj.estimate_reviews.order_by('-pk').first()
     for work in ProjectWork.objects.filter(pk__in=estimate_review.work_ids(obj)):
         task=estimate_review.review_work(estimator,task,work.pk,True)
     return estimate_review.finish(estimator,task,True)

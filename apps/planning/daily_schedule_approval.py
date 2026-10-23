@@ -12,6 +12,8 @@ SECTIONS=[('PRODUCTION','Работы','PRODUCTION_HEAD'),('HR','Должнос�
 
 
 def requires_approval(schedule):
+    from .preparation import record
+    if record(schedule):return True
     from .daily_schedule import schedule_differences
     if not schedule.source_id:return True
     return bool(schedule_differences(schedule))
@@ -23,6 +25,9 @@ def next_action(schedule):
 
 
 def planner(schedule,estimate):
+    from .preparation import record
+    preparation=record(schedule)
+    if preparation:return preparation.manager
     candidates=[schedule.created_by,estimate.created_by]
     for role in ['PLANNER','ADMIN']:
         for candidate in candidates:
@@ -40,7 +45,7 @@ def handoff(estimate):
     if valid and schedule.status=='DRAFT':
         assigned=planner(schedule,estimate)
         actor_id=estimate.events.filter(action='APPROVED').order_by('-pk').values_list('actor_id',flat=True).first() or estimate.assigned_to_id
-        task=ensure(estimate.company,key,kind='SUBMISSION',title=next_action(schedule),description='Проверка сметчика завершена. Если месячные итоги совпадают с ГПР, сохраните СМГ как оперативный план. При отклонениях или отсутствии ГПР требуется согласование четырех служб и генерального директора.',assigned_to=assigned,target_role='' if assigned else 'PLANNER',created_by_id=actor_id,schedule=schedule,estimate=estimate,construction_object_id=schedule.construction_object_id,due_date=timezone.localdate()+timedelta(days=1))
+        task=ensure(estimate.company,key,kind='SUBMISSION',title=next_action(schedule),description='Проверка работ сметчика завершена. Руководитель определяет ресурсы и запускает согласование. Если месячные итоги совпадают с ГПР, сохраните СМГ как оперативный план. При отклонениях или отсутствии ГПР требуется согласование четырех служб и генерального директора.',assigned_to=assigned,target_role='' if assigned else 'MANAGER',created_by_id=actor_id,schedule=schedule,estimate=estimate,construction_object_id=schedule.construction_object_id,due_date=timezone.localdate()+timedelta(days=1))
         if task.title!=next_action(schedule):task.title=next_action(schedule);task.save(update_fields=['title'])
         if task.status=='SUPERSEDED':state(task,'OPEN')
     elif existing and existing.status in ACTIVE:
@@ -90,7 +95,8 @@ def transition(user,schedule,action,comment=''):
     require_planning_object(user,schedule.construction_object_id)
     role=role_code(user);review=current(schedule)
     if action=='submit':
-        require_roles(user,PLAN_ROLES)
+        from .preparation import require_submission
+        require_submission(user,schedule)
         if schedule.status!='DRAFT':raise ValidationError('На согласование отправляется только черновик СМГ.')
         if not requires_approval(schedule):raise ValidationError('Месячные итоги совпадают с ГПР: сохраните СМГ как оперативный план без нового согласования.')
         estimate_review.require_approved(schedule)
@@ -120,6 +126,8 @@ def transition(user,schedule,action,comment=''):
     schedule.save(update_fields=['status','approval_round','updated_at'])
     sync(schedule)
     if action=='submit':
+        from .preparation import submitted
+        submitted(schedule,user)
         from .task_services import state,ACTIVE
         for task in WorkTask.objects.filter(schedule=schedule,key__startswith='smg-repair:',status__in=ACTIVE):state(task,'DONE',user,'Исправленный СМГ отправлен на согласование.')
     if action=='reject':

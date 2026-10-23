@@ -121,6 +121,8 @@ def apply_gpr(user, obj, payload, dates, nonce, target_version=None):
     cached = {}
     for row in resolved:
         if row['kind']=='work': continue
+        from core.permissions import role_code
+        if role_code(user)=='PLANNER':continue
         month = date.fromisoformat(row['month'])
         if row['kind']=='fuel':
             ResourceMonthAllocation.objects.update_or_create(company=user.company,version=version,month=month,kind='fuel',fuel_type=row['fuel_type'],defaults={'liters':number(row['quantity'])})

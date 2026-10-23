@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 {% load static %}
-{% block content %}
+{% block content %}<p class="alert alert-info">По новому порядку планировщик загружает только работы и объёмы. Ресурсные строки файла проверяются по справочникам, но не записываются планировщиком. Ресурсы определяет руководитель проекта после передачи работ.</p>
 <h1>Импорт плана из файла совещания</h1>
 {% if target_version %}
 <p><strong>Объект:</strong> {{ target_version.construction_object.name }} · <strong>Версия:</strong> v{{ target_version.version_number }} · {{ target_version.title }}</p>

@@ -117,6 +117,7 @@ class WorkAllocationForm(AllocationMixin, forms.ModelForm):
 class ResourceAllocationForm(AllocationMixin, forms.ModelForm):
     class Meta:
         model = ResourceMonthAllocation
+        labels = {'brigade':'Должность'}
         fields = [
             "month",
             "kind",

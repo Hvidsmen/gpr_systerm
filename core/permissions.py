@@ -30,6 +30,7 @@ def approval_role(user):
 
 def require_global_action(user, action):
     roles = {
+        'submit': {'MANAGER'},
         'approve_production': {'PRODUCTION_HEAD'},
         'approve_hr': {'HR_HEAD'},
         'approve_tech': {'TECH_HEAD'},
@@ -162,12 +163,19 @@ def check_route(user, match, method):
         if name.startswith('task_'):
             require_roles(user,ROLES)
             return
+        if name=='workspace_add_resource' or name=='workspace_bulk_add' and match.kwargs.get('kind')!='works':
+            require_roles(user,{'ADMIN','MANAGER'});return
+        if name.startswith('preparation_') or name.startswith('work_resources_'):
+            require_roles(user,READ_ROLES if method in {'GET','HEAD'} else {'ADMIN','PLANNER','MANAGER'})
+            return
         if name.startswith('estimate_review_'):
             require_roles(user, {'ADMIN','PLANNER','ESTIMATOR'})
             return
         if name == 'daily_schedule_edit':
-            require_roles(user, READ_ROLES if method in {'GET','HEAD'} else PLAN_ROLES)
+            require_roles(user, READ_ROLES if method in {'GET','HEAD'} else PLAN_ROLES | {'MANAGER'})
             return
+        if name=='version_submit':
+            require_roles(user,{'ADMIN','MANAGER'});return
         action = match.kwargs.get('action') if name == 'global_action' else None
         if name == 'global_action':
             require_global_action(user, action)

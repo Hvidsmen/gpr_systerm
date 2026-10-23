@@ -100,7 +100,8 @@ class GprImportTests(TestCase):
     @classmethod
     def setUpTestData(cls):fixtures.WorkspaceTests.setUpTestData.__func__(cls)
     def setUp(self):
-        self.client.force_login(self.planner)
+        self.importer=User.objects.create_user(username='gpr-resource-import-admin',company=self.company,role=Role.objects.get(code='ADMIN'))
+        self.client.force_login(self.importer)
         from apps.projects.models import Section
         from apps.works.models import ProjectWork
         from apps.resources.models import Brigade, BrigadeGroup, EquipmentType, EquipmentCategory
@@ -172,7 +173,7 @@ class GprImportTests(TestCase):
         out=BytesIO();book.save(out)
         payload=parse_gpr(out.getvalue(),'groups.xlsx',year=2027)
         dates={f"month_{item['column']}":date.fromisoformat(item['month']) for item in payload['months']}
-        workspace=apply_gpr(self.planner,self.obj,payload,dates,str(uuid4()))
+        workspace=apply_gpr(self.importer,self.obj,payload,dates,str(uuid4()))
         people=workspace.baseline_version.resource_allocations.filter(kind='labor',month=date(2027,1,1))
         self.assertEqual(people.count(),2)
         self.assertEqual(sum(people.values_list('count',flat=True)),6)
@@ -186,7 +187,7 @@ class GprImportTests(TestCase):
         out=BytesIO();book.save(out)
         payload=parse_gpr(out.getvalue(),'fuel.xlsx',year=2027)
         dates={f"month_{item['column']}":date.fromisoformat(item['month']) for item in payload['months']}
-        workspace=apply_gpr(self.planner,self.obj,payload,dates,str(uuid4()))
+        workspace=apply_gpr(self.importer,self.obj,payload,dates,str(uuid4()))
         fuel=workspace.baseline_version.resource_allocations.get(kind='fuel',month=date(2027,1,1))
         self.assertEqual(fuel.fuel_type,'DIESEL')
         self.assertEqual(fuel.liters,Decimal(100))
@@ -194,7 +195,7 @@ class GprImportTests(TestCase):
     def test_existing_composite_accepts_parent_monthly_quantity(self):
         payload=parse_gpr(classic(name=self.composite.name,unit=self.composite.unit,section=self.composite.section.name),'plan.xlsx',year=2027)
         dates={f"month_{item['column']}":date.fromisoformat(item['month']) for item in payload['months']}
-        workspace=apply_gpr(self.planner,self.obj,payload,dates,str(uuid4()))
+        workspace=apply_gpr(self.importer,self.obj,payload,dates,str(uuid4()))
         self.assertEqual(workspace.baseline_version.work_allocations.filter(work=self.composite).count(),2)
         self.assertEqual(workspace.baseline_version.work_allocations.filter(work=self.composite,month=date(2027,1,1)).get().quantity,Decimal(10))
 

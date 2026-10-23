@@ -13,9 +13,11 @@ from . import estimate_review as service
 
 
 class AssignForm(forms.Form):
+    manager=forms.ModelChoiceField(label='Руководитель проекта',queryset=User.objects.none())
     estimator=forms.ModelChoiceField(label='Сметчик',queryset=User.objects.none())
     def __init__(self,*args,company,**kwargs):
         super().__init__(*args,**kwargs)
+        self.fields['manager'].queryset=User.objects.filter(company=company,is_active=True,role__code__in=['MANAGER','ADMIN'])
         self.fields['estimator'].queryset=User.objects.filter(company=company,is_active=True).filter(Q(role__code__in=['ESTIMATOR','ADMIN'])|Q(is_superuser=True))
 
 
@@ -67,7 +69,9 @@ class ReviewAssign(View):
         form=AssignForm(request.POST,company=request.user.company)
         if form.is_valid():
             try:
-                task=service.assign(request.user,self.obj,form.cleaned_data['estimator'])
+                from .preparation import handoff
+                handoff(request.user,self.obj,form.cleaned_data['manager'],form.cleaned_data['estimator'])
+                task=self.obj.estimate_reviews.order_by('-pk').first()
                 return redirect('planning:estimate_review_detail',pk=task.pk)
             except ValidationError as e:form.add_error(None,e)
         return self.show(request,form)

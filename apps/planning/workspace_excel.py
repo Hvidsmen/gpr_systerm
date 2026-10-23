@@ -411,6 +411,8 @@ def import_workbook(user, version, upload, months):
     allowed=set(editable_months(locked))
     if not set(months)<=allowed:raise ValidationError('Некоторые месяцы формируются автоматически и недоступны для импорта.')
     works,resources=parse_workbook(upload,locked,months)
+    from core.permissions import role_code
+    if role_code(user)=='PLANNER':resources=[]
     for work,month,quantity,items in works:
         row,_=WorkMonthAllocation.objects.get_or_create(company=user.company,version=locked,work=work,month=month)
         row.quantity=quantity;row.item_quantities=items;row.save()

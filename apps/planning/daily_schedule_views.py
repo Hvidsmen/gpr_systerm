@@ -57,12 +57,16 @@ class DailyScheduleDetail(View):
     def get(self,request,pk,add_form=None):
         require_roles(request.user,READ_ROLES)
         schedule=get_object_or_404(DailySchedule.objects.select_related('construction_object','source').defer('source__snapshot'),pk=pk,company=request.user.company)
+        from .preparation import record
+        preparation=record(schedule)
+        resource_editor=role_code(request.user)=='ADMIN' or role_code(request.user)=='MANAGER' and preparation and preparation.manager_id==request.user.pk
         entries=list(schedule.entries.all())
         for entry in entries:
             entry.schedule=schedule
+            entry.can_edit=(entry.kind=='work' and role_code(request.user) in PLAN_ROLES) or (entry.kind!='work' and resource_editor)
             entry.comparison=summary(entry)
         from .daily_schedule_matrix import matrix
-        editable=schedule.status=='DRAFT' and role_code(request.user) in PLAN_ROLES
+        editable=schedule.status=='DRAFT' and (role_code(request.user) in PLAN_ROLES or resource_editor)
         from .daily_schedule_approval import current,SECTIONS,requires_approval
         from .estimate_review import check_valid
         review=current(schedule)
@@ -76,11 +80,14 @@ class DailyScheduleDetail(View):
         approval={'smg_requires_approval':requires_approval(schedule),'smg_review':review,'smg_decisions':decisions,'smg_actions':actions,'smg_checked':checked,'smg_final_allowed':schedule.status=='SUBMITTED' and ready and role in {'CEO','ADMIN'},'smg_return_allowed':schedule.status=='SUBMITTED' and (role in {'PRODUCTION_HEAD','HR_HEAD','TECH_HEAD','SECURITY_HEAD','ADMIN'} or role=='CEO' and ready)}
         from .daily_schedule_table_forms import AddEntryForm
         from .independent_smg_views import ReferenceForm
-        reference_form=ReferenceForm(schedule=schedule,user=request.user) if editable else None
-        return render(request,'planning/daily_schedule_detail.html',dict(schedule=schedule,entries=entries,reference_form=reference_form,can_edit=role_code(request.user) in PLAN_ROLES,table_editable=editable,add_form=add_form or (AddEntryForm(schedule=schedule) if editable else None),has_deviations=any(service.differences(e,e.rows) for e in entries),**approval,**matrix(schedule,entries)))
+        reference_form=ReferenceForm(schedule=schedule,user=request.user) if editable and role_code(request.user) in PLAN_ROLES else None
+        add_form=add_form or (AddEntryForm(schedule=schedule) if editable else None)
+        if add_form and role_code(request.user)=='PLANNER':add_form.fields['kind'].choices=[('work','Работы')]
+        elif add_form and role_code(request.user)=='MANAGER':add_form.fields['kind'].choices=[v for v in add_form.fields['kind'].choices if v[0]!='work']
+        return render(request,'planning/daily_schedule_detail.html',dict(schedule=schedule,entries=entries,reference_form=reference_form,can_activate_smg=resource_editor and schedule.status=='APPROVED',can_edit=role_code(request.user) in PLAN_ROLES,table_editable=editable,add_form=add_form or (AddEntryForm(schedule=schedule) if editable else None),has_deviations=any(service.differences(e,e.rows) for e in entries),**approval,**matrix(schedule,entries)))
 
     def post(self,request,pk):
-        require_roles(request.user,PLAN_ROLES)
+        require_roles(request.user,PLAN_ROLES | {'MANAGER'})
         schedule=get_object_or_404(DailySchedule,pk=pk,company=request.user.company)
         if schedule.status!='DRAFT':raise PermissionDenied('СМГ зафиксирован. Создайте новую редакцию.')
         from .daily_schedule_table import save_table,add_entry
@@ -106,9 +113,9 @@ class DailyScheduleDetail(View):
 class DailyScheduleEdit(View):
     def display(self,request,pk,bound=False):
         require_roles(request.user,READ_ROLES)
-        if bound:require_roles(request.user,PLAN_ROLES)
+        if bound:require_roles(request.user,PLAN_ROLES | {'MANAGER'})
         entry=get_object_or_404(DailyScheduleEntry.objects.select_related('schedule__source__construction_object').defer('schedule__source__snapshot'),pk=pk,schedule__company=request.user.company)
-        editable=entry.schedule.status=='DRAFT' and role_code(request.user) in PLAN_ROLES and not entry.metadata.get('resource_assignment_id')
+        editable=entry.schedule.status=='DRAFT' and role_code(request.user) in (PLAN_ROLES if entry.kind=='work' else {'ADMIN','MANAGER'}) and not entry.metadata.get('resource_assignment_id')
         if bound and not editable:raise PermissionDenied('Примененный СМГ зафиксирован. Создайте новую редакцию.')
         fields=service.FIELDS[entry.kind]
         class DayForm(forms.Form):

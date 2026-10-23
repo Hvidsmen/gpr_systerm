@@ -50,12 +50,11 @@ def transition(version, user, action, comment=''):
     if action == 'submit':
         if version.status not in ['DRAFT', 'REJECTED']:
             raise ValidationError('На согласование отправляется только черновик или план на доработке.')
+        from .preparation import require_submission
+        require_submission(user,version)
         from .estimate_review import require_approved, signature
         submitted_fingerprint = signature(version)
-        try:
-            estimator_review = require_approved(version)
-        except ValidationError:
-            estimator_review = None
+        estimator_review = require_approved(version)
         from .global_services import build_snapshot
         version.snapshot = build_snapshot(version)
         version.approval_round += 1
@@ -117,6 +116,8 @@ def transition(version, user, action, comment=''):
     sync_version(version)
     if action=='reject':create_repair(version,user,comment)
     if action=='submit':
+        from .preparation import submitted
+        submitted(version,user)
         from .models import WorkTask
         for task in WorkTask.objects.filter(version=version,key__startswith='repair:',status__in=['OPEN','IN_REVIEW']):state(task,'DONE',user,'Исправленный план отправлен на новый раунд согласования.')
     return version

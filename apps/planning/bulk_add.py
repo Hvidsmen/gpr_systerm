@@ -58,6 +58,9 @@ class WorkspaceBulkAdd(View):
         if kind not in TITLES:
             raise Http404('Неизвестный вид ресурса')
         version = version_for(request, pk)
+        if kind!='works':
+            from .preparation import require_resource_editor
+            require_resource_editor(request.user,version)
         if version.status not in ['DRAFT','REJECTED']:
             raise PermissionDenied('Редактировать можно только черновик или отклонённый план.')
         available = [month.isoformat() for month in editable_months(version)]

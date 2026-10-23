@@ -39,7 +39,7 @@ class AssignmentForm(forms.ModelForm):
 class WorkResources(View):
     kind=None
     def display(self,request,pk,assignment_pk=None,bound=False):
-        require_roles(request.user,PLAN_ROLES if bound else READ_ROLES)
+        require_roles(request.user,{'ADMIN','MANAGER'} if bound else READ_ROLES)
         model=DailySchedule if self.kind=='smg' else GlobalPlanVersion
         owner=get_object_or_404(scope_queryset(model.objects.all(),request.user),pk=pk)
         instance=get_object_or_404(owner.resource_assignments,pk=assignment_pk) if assignment_pk else WorkResourceAssignment()
@@ -49,7 +49,9 @@ class WorkResources(View):
         form=AssignmentForm(request.POST if bound else None,owner=owner,instance=instance,initial={'start_date':start,'end_date':end} if not instance.pk else {})
         if instance.pk and isinstance(owner,DailySchedule) and owner.locked_before and instance.start_date<owner.locked_before:
             for name in ['start_date','work','work_item','equipment_type','position']:form.fields[name].disabled=True
-        can_edit=role_code(request.user) in PLAN_ROLES and owner.status in ['DRAFT','REJECTED']
+        from .preparation import record
+        preparation=record(owner)
+        can_edit=(role_code(request.user)=='ADMIN' or role_code(request.user)=='MANAGER' and preparation and preparation.manager_id==request.user.pk) and owner.status in ['DRAFT','REJECTED']
         if bound:
             try:
                 if request.POST.get('action')=='delete' and assignment_pk:

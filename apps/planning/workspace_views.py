@@ -9,6 +9,7 @@ from django.urls import reverse
 from django.views import View
 from django.views.generic import ListView
 from core.mixins import CompanyScopedMixin
+from core.permissions import role_code
 from apps.works.forms import ProjectWorkForm
 from apps.works.models import ProjectWork
 from apps.works.services import WorkItemGeneratorService
@@ -276,6 +277,10 @@ class WorkspaceEdit(View):
             queryset=version.resource_allocations.filter(month=selected),
             **kwargs,
         )
+        from core.permissions import role_code
+        if role_code(request.user)=='PLANNER':
+            for form in resources:
+                for field in form.fields.values():field.disabled=True
         return works, resources
 
     def context(self, request, version, selected, months, works, resources):
@@ -316,6 +321,7 @@ class WorkspaceEdit(View):
                 ).prefetch_related('items')
             },
             "resource_forms": resources,
+            "resources_read_only": role_code(request.user)=="PLANNER",
             "resource_sections": [
                 {
                     "kind": kind, "title": title, "filters": filter_specs[kind],
@@ -582,6 +588,8 @@ class WorkspaceExport(View):
 class AddWorkspaceResource(View):
     def post(self, request, pk, kind):
         version = version_for(request, pk)
+        from .preparation import require_resource_editor
+        require_resource_editor(request.user,version)
         if kind not in RESOURCE_IDENTITIES:
             raise Http404('Неизвестный вид ресурса')
         if version.version_kind != 'BASELINE' or version.status not in ['DRAFT', 'REJECTED']:

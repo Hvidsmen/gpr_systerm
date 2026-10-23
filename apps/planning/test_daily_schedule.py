@@ -14,13 +14,14 @@ from .approval_test_helpers import estimator_check
 
 def activate(user,schedule):
     estimator_check(schedule,user)
+    manager=schedule.preparation.manager
     from .daily_schedule_approval import requires_approval,transition
     if requires_approval(schedule):
-        schedule=transition(user,schedule,'submit')
+        schedule=transition(manager,schedule,'submit')
         for role,action in [('PRODUCTION_HEAD','approve_production'),('HR_HEAD','approve_hr'),('TECH_HEAD','approve_tech'), ('SECURITY_HEAD','approve_security'),('CEO','approve')]:
             actor=User.objects.filter(company=user.company,role__code=role,is_active=True).first()
             schedule=transition(actor,schedule,action)
-    return apply_schedule(user,schedule)
+    return apply_schedule(manager,schedule)
 from .report_services import select_sources
 
 

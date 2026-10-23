@@ -119,6 +119,8 @@ class MeetingImportTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         test_workspace.WorkspaceTests.setUpTestData.__func__(cls)
+        from apps.accounts.models import User,Role
+        cls.importer=User.objects.create_user(username='meeting-resource-import-admin',company=cls.company,role=Role.objects.get(code='ADMIN'))
         from .models import LoadProfile
         from apps.resources.models import BrigadeGroup
         profile=LoadProfile.objects.create(company=cls.company,name='Каталог: равномерный')
@@ -215,7 +217,7 @@ class MeetingImportTests(TestCase):
         count = ConstructionObject.objects.count()
         with self.assertRaises(ValidationError):
             apply_meeting_import(
-                self.planner, self.obj.project_id, [sheet], {"0"}, JAN, date(2026, 2, 1)
+                self.importer, self.obj.project_id, [sheet], {"0"}, JAN, date(2026, 2, 1)
             )
         self.assertEqual(ConstructionObject.objects.count(), count)
         wrong_project = Project.objects.create(
@@ -224,14 +226,14 @@ class MeetingImportTests(TestCase):
         with self.assertRaises(ValidationError):
             resolve_sheet(self.company, wrong_project, self.parse()[0])
         with self.assertRaises(Project.DoesNotExist):
-            apply_meeting_import(self.planner, 99999, self.parse(), {"0"}, JAN, FEB)
+            apply_meeting_import(self.importer, 99999, self.parse(), {"0"}, JAN, FEB)
         with self.assertRaises(PermissionDenied):
             apply_meeting_import(
                 self.manager, self.obj.project_id, self.parse(), {"0"}, JAN, FEB
             )
 
     def test_preview_no_writes_confirm_new_draft_no_duplicate_catalogs_by_month(self):
-        self.client.force_login(self.planner)
+        self.client.force_login(self.importer)
         response = self.client.post(
             reverse("planning:meeting_import"),
             {
@@ -273,7 +275,7 @@ class MeetingImportTests(TestCase):
         self.assertEqual(PlanningWorkspace.objects.count(), 1)
 
     def test_confirmation_tampering_and_permissions(self):
-        self.client.force_login(self.planner)
+        self.client.force_login(self.importer)
         self.client.post(
             reverse("planning:meeting_import"),
             {"action": "confirm", "preview": "tampered", "sheets": ["0"]},
@@ -290,7 +292,7 @@ class MeetingImportTests(TestCase):
     def test_composite_matches_items_and_calculates_minimum(self):
         sheets = self.parse(work_names=[("A", "m", 10), ("B", "m3", 12)])
         plans = apply_meeting_import(
-            self.planner, self.obj.project_id, sheets, {"0"}, JAN, FEB
+            self.importer, self.obj.project_id, sheets, {"0"}, JAN, FEB
         )
         row = WorkMonthAllocation.objects.get(
             version=plans[0].baseline_version, month=JAN
@@ -303,7 +305,7 @@ class MeetingImportTests(TestCase):
         self.assertEqual(row.quantity, Decimal(5))
         with self.assertRaises(ValidationError):
             apply_meeting_import(
-                self.planner,
+                self.importer,
                 self.obj.project_id,
                 self.parse(work_names=[("A", "m", 10)]),
                 {"0"},
@@ -315,7 +317,7 @@ class MeetingImportTests(TestCase):
         sheets = self.parse() + self.parse(name="not-in-database")
         with self.assertRaises(ValidationError):
             apply_meeting_import(
-                self.planner, self.obj.project_id, sheets, {"0", "1"}, JAN, FEB
+                self.importer, self.obj.project_id, sheets, {"0", "1"}, JAN, FEB
             )
         self.assertFalse(PlanningWorkspace.objects.exists())
         self.assertEqual(ProjectWork.objects.filter(name="Imported work").count(),1)
@@ -416,7 +418,7 @@ class MeetingImportTests(TestCase):
         other = dict(jan_labor, section="Группа 2", row=999)
         sheets[0]["entries"].append(other)
         plans = apply_meeting_import(
-            self.planner, self.obj.project_id, sheets, {"0"}, JAN, FEB
+            self.importer, self.obj.project_id, sheets, {"0"}, JAN, FEB
         )
         self.assertEqual(
             ResourceMonthAllocation.objects.filter(

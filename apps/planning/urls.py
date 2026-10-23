@@ -202,3 +202,6 @@ urlpatterns += [
     path('reports/pivot/gpr/<int:pk>/', PivotReport.as_view(source_kind='gpr'), name='pivot_gpr_detail'),
     path('reports/pivot/daily-schedule/<int:pk>/', PivotReport.as_view(source_kind='smg'), name='pivot_smg_detail'),
 ]
+
+from .preparation_views import PreparationView
+urlpatterns += [path('workspace-versions/<int:pk>/preparation/',PreparationView.as_view(kind='gpr'),name='preparation_gpr'),path('daily-schedule/<int:pk>/preparation/',PreparationView.as_view(kind='smg'),name='preparation_smg')]

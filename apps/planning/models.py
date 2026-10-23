@@ -1315,7 +1315,7 @@ class MacroHistorySource(BaseCompanyModel):
 class WorkTask(BaseCompanyModel):
     schedule_review = models.ForeignKey('DailyScheduleReview',null=True,blank=True,on_delete=models.CASCADE,related_name='work_tasks')
     key = models.CharField(max_length=180)
-    kind = models.CharField(max_length=20,choices=[('SUBMISSION','Следующий этап плана'),('ESTIMATE','Проверка сметчика'),('REMARK','Замечание'),('APPROVAL','Согласование'),('FACT','Факт за день'),('CARRYOVER','Уточнение остатков'),('MANUAL','Задание')])
+    kind = models.CharField(max_length=20,choices=[('RESOURCES','Подготовка ресурсов'),('SUBMISSION','Следующий этап плана'),('ESTIMATE','Проверка сметчика'),('REMARK','Замечание'),('APPROVAL','Согласование'),('FACT','Факт за день'),('CARRYOVER','Уточнение остатков'),('MANUAL','Задание')])
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
     status = models.CharField(max_length=20,default='OPEN',choices=[('OPEN','Открыто'),('IN_REVIEW','На проверке автора'),('DONE','Выполнено'),('SUPERSEDED','Заменено / отменено')])
@@ -1462,3 +1462,15 @@ class PivotReportPreset(BaseCompanyModel):
         ordering = ['name', 'pk']
         constraints = [models.UniqueConstraint(fields=['company','user','section','name'], name='pivot_preset_name_unique'),
                        models.UniqueConstraint(fields=['company','user','section'], condition=models.Q(is_default=True), name='pivot_preset_one_default')]
+
+
+class PlanPreparation(BaseCompanyModel):
+    version = models.OneToOneField(GlobalPlanVersion, null=True, blank=True, on_delete=models.CASCADE, related_name='preparation')
+    schedule = models.OneToOneField(DailySchedule, null=True, blank=True, on_delete=models.CASCADE, related_name='preparation')
+    manager = models.ForeignKey('accounts.User', on_delete=models.PROTECT, related_name='managed_plan_preparations')
+    handed_by = models.ForeignKey('accounts.User', on_delete=models.PROTECT, related_name='handed_plan_preparations')
+    resources_fingerprint = models.CharField(max_length=64, blank=True)
+    resources_ready_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [models.CheckConstraint(condition=(models.Q(version__isnull=False,schedule__isnull=True)|models.Q(version__isnull=True,schedule__isnull=False)),name='preparation_exactly_one_plan')]

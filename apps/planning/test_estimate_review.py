@@ -25,7 +25,10 @@ class EstimateReviewTests(TestCase):
         LoadProfileItem.objects.create(company=self.company,profile=profile,workday_number=1,percentage=100)
         self.simple.load_profile=profile;self.simple.save()
         self.version=self.create(works=[self.simple]).baseline_version
-        self.task=service.assign(self.planner,self.version,self.estimator)
+        from .preparation import handoff,ready
+        handoff(self.planner,self.version,self.manager,self.estimator)
+        ready(self.manager,self.version)
+        self.task=self.version.estimate_reviews.order_by('-pk').first()
 
     def checked(self):
         for wid in service.work_ids(self.version):service.review_work(self.estimator,self.task,wid,True)
@@ -33,17 +36,19 @@ class EstimateReviewTests(TestCase):
 
     def test_parallel_approval_and_final_gate(self):
         self.prepare()
-        self.version=GlobalPlanService.transition(self.version,self.planner,'submit')
+        with self.assertRaises(ValidationError):GlobalPlanService.transition(self.version,self.manager,'submit')
         with self.assertRaises(ValidationError):departments(self.version,self.approvers)
         with self.assertRaises(ValidationError):GlobalPlanService.transition(self.version,self.approvers['CEO'],'approve')
         self.checked()
+        self.version=GlobalPlanService.transition(self.version,self.manager,'submit')
         self.version=departments(self.version,self.approvers)
         self.assertTrue(GlobalPlanDecision.objects.filter(review__version=self.version,section='ESTIMATE',action='APPROVE').exists())
         approved=GlobalPlanService.transition(self.version,self.approvers['CEO'],'approve')
         self.assertEqual(approved.status,'APPROVED')
 
     def test_price_and_name_changes_return_submitted_plan_without_mutating_frozen_review(self):
-        self.prepare();self.version=GlobalPlanService.transition(self.version,self.planner,'submit')
+        self.prepare();self.checked();self.version=GlobalPlanService.transition(self.version,self.manager,'submit')
+        self.task=service.assign(self.planner,self.version,self.estimator)
         frozen=self.version.review_rounds.get().snapshot
         service.change(self.estimator,self.task,self.simple.pk,name='Проверенное название',price=Decimal('12.50'),effective_from=date(2027,1,1),reason='Проверка сметы')
         self.version.refresh_from_db();self.assertEqual(self.version.status,'REJECTED')

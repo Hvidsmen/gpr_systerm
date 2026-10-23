@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 {% load access %}
-{% block content %}
+{% block content %}<p class="alert alert-info">По новому порядку планировщик загружает только работы и объёмы. Ресурсные строки файла проверяются по справочникам, но не записываются планировщиком. Ресурсы определяет руководитель проекта после передачи работ.</p>
 <h1>Импорт плана из Excel</h1>
 <p>{{ version.workspace.name }} · v{{ version.version_number }} · {{ version.start_date }} — {{ version.end_date }}</p>
 <div class="card mb-3"><div class="card-body">

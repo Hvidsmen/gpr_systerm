@@ -179,7 +179,7 @@ class WorkspaceTests(TestCase):
     def approve(self, version):
         from .approval_test_helpers import estimator_check
         estimator_check(version,self.planner)
-        version = GlobalPlanService.transition(version, self.planner, "submit")
+        version = GlobalPlanService.transition(version, version.preparation.manager, "submit")
         return GlobalPlanService.transition(departments(version, self.approvers), self.approvers["CEO"], "approve")
 
     def fact(self, work, item, day, qty):

@@ -30,6 +30,7 @@ class CreateForm(forms.Form):
 
 
 def link(task):
+    if task.key.startswith('prepare-resources:'):return reverse('planning:preparation_smg' if task.schedule_id else 'planning:preparation_gpr',args=[task.schedule_id or task.version_id])
     if task.key.startswith('smg-update:'):
         return reverse('planning:daily_schedule_detail',args=[task.schedule_id]) if task.schedule_id else reverse('planning:global_detail',args=[task.version_id])
     if task.kind=='FACT':return reverse('production:fact_day_workspace')+'?'+urlencode({'construction_object':task.construction_object_id,'date':task.fact_date.isoformat()})

@@ -11,7 +11,7 @@ from . import daily_schedule as service
 
 
 def locked(user,schedule):
-    require_roles(user,PLAN_ROLES)
+    require_roles(user,PLAN_ROLES | {'MANAGER'})
     schedule=DailySchedule.objects.select_for_update().select_related('source').defer('source__snapshot').get(pk=schedule.pk,company=user.company)
     from core.permissions import require_planning_object
     require_planning_object(user,schedule.construction_object_id)
@@ -53,12 +53,15 @@ def add_entry(user,schedule,data):
     from .estimate_catalog import alternatives,local_work
     metadata={};original=[]
     if kind=='work':
+        require_roles(user,PLAN_ROLES)
         work=data['work']
         if not alternatives(schedule).filter(pk=work.pk).exists():raise ValidationError('Работа не принадлежит объекту или подключенной истории.')
         work=local_work(user,schedule.source,work) if schedule.source_id else work
         metadata=specification(work);metadata['history']=[];metadata['original_daily']=[]
         label=work.name;key='work:'+str(work.pk)
     else:
+        from .preparation import require_resource_editor
+        require_resource_editor(user,schedule)
         row={'origin':'PLAN','comment':''}
         if kind=='labor':
             brigade=data['brigade']

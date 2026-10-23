@@ -26,6 +26,8 @@ class ExcelMappingTests(TestCase):
     setUpTestData=classmethod(fixtures.WorkspaceTests.setUpTestData.__func__)
 
     def setUp(self):
+        from apps.accounts.models import User,Role
+        self.importer=User.objects.create_user(username='mapping-resource-admin',company=self.company,role=Role.objects.get(code='ADMIN'))
         self.simple.excel_aliases=['Монтаж','Второе название'];self.simple.unit='м3';self.simple.save()
         self.brigade.excel_aliases=['Мастер','Старший мастер'];self.brigade.save()
         self.equipment.excel_aliases=['Экскаватор','Гусеничный экскаватор'];self.equipment.save()
@@ -39,11 +41,11 @@ class ExcelMappingTests(TestCase):
 
     def test_two_excel_names_for_one_record_work_across_uploads_without_creation(self):
         first=self.payload();before=self.counts()[:4]
-        one=apply_gpr(self.planner,self.obj,first,self.dates(first),str(uuid4()))
+        one=apply_gpr(self.importer,self.obj,first,self.dates(first),str(uuid4()))
         second=deepcopy(first)
         names={'work':'Второе название','labor':'Старший мастер','equipment':'Гусеничный экскаватор'}
         for row in second['entries']:row['name']=names[row['kind']]
-        two=apply_gpr(self.planner,self.obj,second,self.dates(second),str(uuid4()))
+        two=apply_gpr(self.importer,self.obj,second,self.dates(second),str(uuid4()))
         self.assertEqual(before,self.counts()[:4])
         for workspace in [one,two]:
             self.assertEqual(set(workspace.baseline_version.work_allocations.values_list('work_id',flat=True)),{self.simple.pk})
@@ -57,14 +59,14 @@ class ExcelMappingTests(TestCase):
                 if row['kind']==kind:row['name']='Неизвестная запись Excel'
             before=self.counts()
             with self.subTest(kind=kind),self.assertRaisesMessage(ValidationError,'нет соответствия'):
-                apply_gpr(self.planner,self.obj,payload,self.dates(payload),str(uuid4()))
+                apply_gpr(self.importer,self.obj,payload,self.dates(payload),str(uuid4()))
             self.assertEqual(before,self.counts())
 
     def test_unknown_meeting_rows_are_reported_together_and_cannot_create_catalog(self):
         rows=[{'kind':kind,'name':f'Нет {kind}','unit':'м3','section':'s','month':'2026-01-01','quantity':'1','row':i} for i,kind in enumerate(['work','labor','equipment'],1)]
         before=self.counts()
         with self.assertRaises(ValidationError) as error:
-            apply_meeting_import(self.planner,self.obj.project_id,[self.sheet(rows)],{'0'},date(2026,1,1),date(2026,1,31))
+            apply_meeting_import(self.importer,self.obj.project_id,[self.sheet(rows)],{'0'},date(2026,1,1),date(2026,1,31))
         self.assertEqual(len(error.exception.messages),3)
         self.assertEqual(before,self.counts())
 
@@ -72,12 +74,12 @@ class ExcelMappingTests(TestCase):
         other=EquipmentType.objects.create(company=self.company,name='Другой вид',excel_aliases=['Экскаватор'])
         payload=self.payload()
         with self.assertRaisesMessage(ValidationError,'неоднозначное'):
-            apply_gpr(self.planner,self.obj,payload,self.dates(payload),str(uuid4()))
+            apply_gpr(self.importer,self.obj,payload,self.dates(payload),str(uuid4()))
         other.excel_aliases=[];other.save()
         row=next(r for r in payload['entries'] if r['kind']=='equipment')
         payload['entries'].append({**row,'name':'Гусеничный экскаватор','row':999})
         with self.assertRaisesMessage(ValidationError,'несколько строк'):
-            apply_gpr(self.planner,self.obj,payload,self.dates(payload),str(uuid4()))
+            apply_gpr(self.importer,self.obj,payload,self.dates(payload),str(uuid4()))
         self.assertFalse(PlanningWorkspace.objects.exists())
 
     def test_item_mapping_is_limited_to_object_and_preserves_unit_checks(self):
@@ -106,7 +108,7 @@ class ExcelMappingTests(TestCase):
         for row in payload['entries']:
             if row['kind']=='work':row['name']='Только другой объект'
         with self.assertRaisesMessage(ValidationError,'нет соответствия'):
-            apply_gpr(self.planner,self.obj,payload,self.dates(payload),str(uuid4()))
+            apply_gpr(self.importer,self.obj,payload,self.dates(payload),str(uuid4()))
         self.assertFalse(PlanningWorkspace.objects.exists())
 
     def test_catalog_form_saves_multiple_names_on_same_record(self):

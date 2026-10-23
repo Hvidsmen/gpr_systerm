@@ -165,12 +165,16 @@ def value_rows(entry,values):
 
 @transaction.atomic
 def save_entry(user,entry,values,revision):
-    require_roles(user,PLAN_ROLES)
+    require_roles(user,PLAN_ROLES | {'MANAGER'})
     schedule=DailySchedule.objects.select_for_update().get(pk=entry.schedule_id,company=user.company)
     from core.permissions import require_planning_object
     require_planning_object(user,schedule.construction_object_id)
     if schedule.status!='DRAFT':raise PermissionDenied('Примененный СМГ зафиксирован. Создайте новую редакцию.')
     entry=DailyScheduleEntry.objects.select_for_update().select_related('schedule').get(pk=entry.pk,schedule=schedule)
+    if entry.kind=='work':require_roles(user,PLAN_ROLES)
+    else:
+        from .preparation import require_resource_editor
+        require_resource_editor(user,schedule)
     if entry.metadata.get('resource_assignment_id'):raise ValidationError('Измените количество техники, смены или экипаж в разделе «Ресурсы работ и объекта».')
     if entry.revision!=revision:raise ValidationError('Строка изменена в другой вкладке. Обновите страницу.')
     if len(values)!=len(identities(entry)):raise ValidationError('Заполните все дни.')
@@ -191,10 +195,17 @@ def save_entry(user,entry,values,revision):
 
 @transaction.atomic
 def activate(user,schedule):
-    require_roles(user,PLAN_ROLES)
+    require_roles(user,{'ADMIN','MANAGER'})
+    if schedule.status=='DRAFT':
+        from .preparation import require_submission
+        require_submission(user,schedule)
     from apps.projects.models import ConstructionObject
     ConstructionObject.objects.select_for_update().get(pk=schedule.construction_object_id,company=user.company)
     schedule=DailySchedule.objects.select_for_update().select_related('source').defer('source__snapshot').get(pk=schedule.pk,company=user.company)
+    from .preparation import record
+    from core.permissions import role_code
+    preparation=record(schedule)
+    if preparation and role_code(user)!='ADMIN' and preparation.manager_id!=user.pk:raise PermissionDenied('Применить СМГ может назначенный руководитель проекта.')
     from core.permissions import require_planning_object
     require_planning_object(user,schedule.construction_object_id)
     from .daily_schedule_approval import current,requires_approval

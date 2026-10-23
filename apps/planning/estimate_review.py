@@ -44,7 +44,7 @@ def editable(obj):
         raise ValidationError('Проверка доступна для черновика, плана на доработке или на согласовании.')
 
 
-def signature(obj,*,legacy=False):
+def signature(obj,*,legacy=False,works_only=False):
     # Before monthly scoping, pending rounds used all allocation rows and no period key.
     # Recompute that exact format only to verify unchanged pre-update submissions.
     ids=set(obj.work_allocations.values_list('work_id',flat=True)) if legacy and not isinstance(obj,DailySchedule) else work_ids(obj)
@@ -53,13 +53,15 @@ def signature(obj,*,legacy=False):
     items=list(ProjectWorkItem.objects.filter(company_id=obj.company_id,project_work_id__in=ids).order_by('pk').values())
     prices=list(WorkPrice.objects.filter(company_id=obj.company_id,work_id__in=ids).order_by('pk').values())
     if isinstance(obj,DailySchedule):
-        inputs=list(obj.entries.order_by('pk').values('key','kind','label','metadata','rows','revision'))
+        entries=obj.entries.filter(kind='work') if works_only else obj.entries
+        inputs=list(entries.order_by('pk').values('key','kind','label','metadata','rows','revision'))
     else:
         start,end=review_period(obj)
         inputs={'works':list((obj.work_allocations if legacy else review_allocations(obj)).order_by('pk').values()),'resources':list((obj.resource_allocations if legacy else obj.resource_allocations.filter(month__range=(start,end))).order_by('pk').values()),'month':obj.planning_month,'scenario':obj.scenario}
+        if works_only:inputs.pop('resources',None)
         if not legacy:inputs['period']=[start,end]
         assignments=list(obj.resource_assignments.order_by('pk').values())
-        if assignments:inputs['resource_assignments']=assignments
+        if assignments and not works_only:inputs['resource_assignments']=assignments
     # Catalog timestamps are audit data, not planning inputs.
     for rows in (works,items,prices):
         for row in rows:
@@ -77,6 +79,7 @@ def require_approved(obj):
 
 def check_valid(obj,task):
     if not task or task.status!='APPROVED':return False
+    if task.fingerprint.startswith('works-v1:'):return task.fingerprint=='works-v1:'+signature(obj,works_only=True)
     return task.fingerprint==signature(obj) or isinstance(obj,DailySchedule) and task.fingerprint==signature(obj,legacy=True)
 
 
@@ -370,7 +373,7 @@ def finish(user,task,approve,comment=''):
             d=task.decisions.get(str(work.pk),{})
             if not d.get('approved') or d.get('signature')!=decision_signature(work,obj):raise ValidationError(f'Проверьте название, цену и подработы: {work.name}.')
         if isinstance(obj,DailySchedule):reprice_schedule(obj)
-        task.status='APPROVED';task.fingerprint=signature(obj);task.approved_at=timezone.now()
+        task.status='APPROVED';task.fingerprint='works-v1:'+signature(obj,works_only=True);task.approved_at=timezone.now()
         if not isinstance(obj,DailySchedule) and obj.status=='SUBMITTED':
             from .approval_workflow import current_review
             from .models import GlobalPlanDecision
