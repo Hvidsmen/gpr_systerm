@@ -130,3 +130,27 @@ def reset_daily_task_subscriptions(sender,instance,action,reverse,**kwargs):
     ids=instance.assigned_objects.values_list('pk',flat=True)
     DailyTaskCursor.objects.filter(user=instance).exclude(construction_object_id__in=ids).delete()
     for task in WorkTask.objects.filter(assigned_to=instance,kind='FACT',status='OPEN').exclude(construction_object_id__in=ids):state(task,'SUPERSEDED',text='Объект больше не закреплен за исполнителем.')
+
+
+class OneCConnection(models.Model):
+    company = models.OneToOneField(Company, on_delete=models.CASCADE)
+    server = models.CharField(max_length=255, default='msk-db')
+    database = models.CharField(max_length=128, default='zup')
+    trust_certificate = models.BooleanField(default=False)
+    diagnostic_interval_minutes = models.PositiveIntegerField(default=0)
+    active_until = models.DateTimeField(null=True, blank=True)
+
+
+class OneCDiagnosticRun(models.Model):
+    import uuid
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    connection = models.ForeignKey(OneCConnection, on_delete=models.CASCADE, related_name='runs')
+    created_by = models.ForeignKey('User', null=True, on_delete=models.SET_NULL)
+    created_at = models.DateTimeField(auto_now_add=True)
+    finished_at = models.DateTimeField(null=True)
+    status = models.CharField(max_length=12, default='QUEUED', choices=[('QUEUED','Ожидает'),('RUNNING','Выполняется'),('DONE','Завершено'),('ERROR','Ошибка')])
+    server = models.CharField(max_length=255)
+    database = models.CharField(max_length=128)
+    trust_certificate = models.BooleanField(default=False)
+    report = models.JSONField(default=dict)
+    error = models.TextField(blank=True)

@@ -4,10 +4,12 @@ from .access_groups import groups
 from .directory_groups import group_search
 from .directory_admin import add_from_ad
 from . import impersonation_views
+from .one_c import integration
 
 app_name = 'accounts'
 
 urlpatterns = [
+    path('integrations/1c/', integration, name='one_c'),
     path("ad/groups/", group_search, name="ad_group_search"),
     path("access-groups/", groups, name="access_groups"),
     path("access-groups/<int:pk>/", groups, name="access_group_edit"),

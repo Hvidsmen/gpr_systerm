@@ -440,6 +440,8 @@ def supervise(root):
         (runtime/'supervisor.stop').unlink(missing_ok=True)
         current=read_json(runtime/'current.json');process,port=launch(root,current)
         atomic_json(runtime/'status.json',{'state':'running','sha':current['sha'],'pid':process.pid})
+        integration_worker=None
+        integration_tick=0
         try:
             while not (runtime/'supervisor.stop').exists():
                 request=read_json(runtime/'update.request')
@@ -448,6 +450,8 @@ def supervise(root):
                     if not isinstance(request,dict) or not isinstance(request.get('id'),str) or len(request['id'])!=32 or any(c not in '0123456789abcdef' for c in request['id']):
                         logging.error('Invalid update request ignored.');continue
                     atomic_json(runtime/'status.json',{'state':'updating','request_id':request['id'],'sha':current['sha']})
+                    if integration_worker is not None and integration_worker.poll() is None:
+                        integration_worker.terminate();integration_worker.wait(timeout=15)
                     try:
                         process,current,message=update(root,process,current)
                         update_stage(root,'verifying')
@@ -465,8 +469,18 @@ def supervise(root):
                     atomic_json(runtime/'status.json',{'state':'running','sha':current['sha'],'pid':process.pid,**result})
                 if process.poll() is not None:
                     logging.error('HTTP worker exited; restarting in 5 seconds.');time.sleep(5);process,port=launch(root,current)
+                if time.monotonic()>=integration_tick and (integration_worker is None or integration_worker.poll() is not None):
+                    integration_tick=time.monotonic()+60
+                    try:
+                        rotate_output(runtime/'1c-worker.log')
+                        with open(runtime/'1c-worker.log','ab') as output:
+                            integration_worker=subprocess.Popen([current['python'],str(Path(current['code'])/'manage.py'),'process_1c'],cwd=current['code'],env=environment(root,read_json(runtime/'installed.json')),stdout=output,stderr=subprocess.STDOUT)
+                    except OSError:logging.exception('Could not start 1C worker.')
                 time.sleep(1)
-        finally:stop_process(root,process)
+        finally:
+            if integration_worker is not None and integration_worker.poll() is None:
+                integration_worker.terminate();integration_worker.wait(timeout=15)
+            stop_process(root,process)
     (runtime/'supervisor.stop').unlink(missing_ok=True)
 
 

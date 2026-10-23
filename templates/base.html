@@ -435,7 +435,7 @@
         {% if request.user|may:'planning:profile_list' %}<a class="nav-link" href="{% url 'planning:profile_list' %}" data-paths="/planning/profiles/ /planning/profile-items/"><i class="bi bi-graph-up"></i> Профили нагрузки</a>{% endif %}
         {% if request.user|may:'planning:calendar_list' %}<a class="nav-link" href="{% url 'planning:calendar_list' %}" data-paths="/planning/calendars/ /planning/calendar-days/"><i class="bi bi-calendar"></i> Календари</a>{% endif %}
         </details>{% endif %}
-        {% if request.user|may:'accounts:user_list' %}<div class="border-top my-2"></div>{% endif %}
+        {% if request.user|may:'accounts:user_list' %}<div class="border-top my-2"></div><a class="nav-link" href="{% url 'accounts:one_c' %}"><i class="bi bi-database-gear"></i> Интеграция с 1С</a>{% endif %}
         {% if request.user|may:'accounts:user_list' %}<a class="nav-link" href="{% url 'accounts:user_list' %}" ><i class="bi bi-person-gear"></i> Пользователи и доступ</a>{% endif %}
     </nav>
 </aside>
