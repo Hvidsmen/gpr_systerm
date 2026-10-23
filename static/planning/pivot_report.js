@@ -2,7 +2,7 @@
  'use strict';
  const $=id=>document.getElementById(id), read=id=>JSON.parse($(id).textContent);
  let config=read('pivot-initial'); const fields=read('pivot-fields'),base=read('pivot-base-measures');
- const defaults={rows:['building','complex_object','package','work'],columns:['month'],measures:['plan','fact','delta'],formulas:[]};
+ const defaults={rows:['building','complex_object','package','work'],columns:['month'],measures:['plan','fact','delta'],formulas:[],view:'hierarchy',totals:{row_levels:['building','complex_object','package'],column_levels:[],row_grand:true,column_grand:true,position:'after'}};
  const button=(text,fn,label)=>{const b=document.createElement('button');b.type='button';b.textContent=text;if(label)b.setAttribute('aria-label',label);b.addEventListener('click',fn);return b;};
  let dragging=null;
  function clearDropHints(){document.querySelectorAll('.pivot-drop-before,.pivot-drop-after,.pivot-drop-target,.pivot-dragging').forEach(el=>el.classList.remove('pivot-drop-before','pivot-drop-after','pivot-drop-target','pivot-dragging'));}
@@ -31,7 +31,22 @@
   list.addEventListener('dragleave',event=>{if(!list.contains(event.relatedTarget)){list.classList.remove('pivot-drop-target');list.querySelectorAll('.pivot-drop-before,.pivot-drop-after').forEach(el=>el.classList.remove('pivot-drop-before','pivot-drop-after'));}});
   list.addEventListener('drop',event=>{if(!dragging)return;event.preventDefault();const before=insertionTarget(list,event.clientY);moveDragged(axis,before?.dataset.field);});
  }
+ function renderTotals(){
+  config.view=config.view||'table';config.totals=config.totals||{row_levels:[],column_levels:[],row_grand:false,column_grand:false,position:'after'};
+  if($('pivot-view'))$('pivot-view').value=config.view;
+  if($('pivot-total-position'))$('pivot-total-position').value=config.totals.position;
+  for(const axis of ['rows','columns']){
+   const key=axis==='rows'?'row_levels':'column_levels',available=config[axis].slice(0,-1),box=$(axis==='rows'?'pivot-row-subtotals':'pivot-column-subtotals');
+   config.totals[key]=config.totals[key].filter(field=>available.includes(field));
+   if(!box)continue;box.replaceChildren();
+   for(const field of available){const label=document.createElement('label'),input=document.createElement('input');input.type='checkbox';input.checked=config.totals[key].includes(field);input.addEventListener('change',()=>{config.totals[key]=input.checked?[...config.totals[key],field]:config.totals[key].filter(k=>k!==field);});label.append(input,document.createTextNode(' '+fields[field]));box.append(label);}
+   if(!available.length){const note=document.createElement('small');note.textContent='Добавьте второй уровень на эту ось, чтобы включить подытоги.';box.append(note);}
+  }
+  if($('pivot-row-grand'))$('pivot-row-grand').checked=config.totals.row_grand;
+  if($('pivot-column-grand'))$('pivot-column-grand').checked=config.totals.column_grand;
+ }
  function render(){
+  renderTotals();
   for(const axis of ['rows','columns']){
    const ol=$('pivot-'+axis);ol.replaceChildren();
    config[axis].forEach((key,index)=>{const li=document.createElement('li'),span=document.createElement('span'),handle=document.createElement('span');
@@ -62,5 +77,16 @@
  $('pivot-update').addEventListener('click',()=>{if(!$('pivot-preset').value){alert('Выберите вариант для обновления.');return;}$('pivot-save-preset').value=$('pivot-preset').value;$('pivot-save').requestSubmit();});
  $('pivot-load').addEventListener('click',()=>{const u=new URL(location.href);u.searchParams.delete('config');u.searchParams.delete('export');if($('pivot-preset').value)u.searchParams.set('preset',$('pivot-preset').value);else u.searchParams.delete('preset');location.assign(u);});
  for(const action of ['default','delete'])$('pivot-'+action).addEventListener('click',()=>{const id=$('pivot-preset').value;if(!id){alert('Выберите сохранённый вариант.');return;}if(action==='delete'&&!confirm('Удалить этот личный вариант?'))return;const form=$('pivot-save');form.elements.namedItem('action').value=action;$('pivot-save-preset').value=id;form.requestSubmit();});
+ for(const [id,key] of [['pivot-row-grand','row_grand'],['pivot-column-grand','column_grand']])$(id)?.addEventListener('change',event=>{config.totals[key]=event.target.checked;});
+ $('pivot-view')?.addEventListener('change',event=>{config.view=event.target.value;});
+ $('pivot-total-position')?.addEventListener('change',event=>{config.totals.position=event.target.value;});
+ const collapsed=new Set(),treeButtons=[...document.querySelectorAll('[data-pivot-node]')];
+ function updateTree(){
+  document.querySelectorAll('#pivot-result tbody tr[data-pivot-ancestors]').forEach(row=>{row.hidden=row.dataset.pivotAncestors.split(' ').some(id=>collapsed.has(id));});
+  treeButtons.forEach(b=>{const expanded=!collapsed.has(b.dataset.pivotNode);b.setAttribute('aria-expanded',String(expanded));b.textContent=expanded?'▾':'▸';b.setAttribute('aria-label',(expanded?'Свернуть':'Развернуть')+' группу '+b.nextElementSibling.textContent);});
+ }
+ treeButtons.forEach(b=>b.addEventListener('click',()=>{const id=b.dataset.pivotNode;collapsed.has(id)?collapsed.delete(id):collapsed.add(id);updateTree();}));
+ $('pivot-expand-all')?.addEventListener('click',()=>{collapsed.clear();updateTree();});
+ $('pivot-collapse-all')?.addEventListener('click',()=>{treeButtons.forEach(b=>collapsed.add(b.dataset.pivotNode));updateTree();});
  $('pivot-reset').addEventListener('click',()=>{config=structuredClone(defaults);render();});render();
 })();

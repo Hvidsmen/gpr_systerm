@@ -5,7 +5,7 @@ from django.core.exceptions import ValidationError
 
 FIELDS={'building':'Объект','complex_object':'Комплексный объект','package':'Комплекс работ','work':'Работа / ресурс','kind':'Раздел','month':'Месяц','date':'День'}
 BASE={'plan':'План','fact':'Факт','delta':'Отклонение','completion':'Выполнение, %','real_plan':'Реальная · план, ₽','real_fact':'Реальная · факт, ₽','estimated_plan':'Оценочная · план, ₽','estimated_fact':'Оценочная · факт, ₽'}
-DEFAULT={'rows':['building','complex_object','package','work'],'columns':['month'],'measures':['plan','fact','delta'],'formulas':[]}
+DEFAULT={'rows':['building','complex_object','package','work'],'columns':['month'],'measures':['plan','fact','delta'],'formulas':[],'view':'hierarchy','totals':{'row_levels':['building','complex_object','package'],'column_levels':[],'row_grand':True,'column_grand':True,'position':'after'}}
 VARS={'plan':(1,0),'fact':(1,0),'real_plan':(0,1),'real_fact':(0,1),'estimated_plan':(0,1),'estimated_fact':(0,1)}
 
 
@@ -77,7 +77,21 @@ def validate_config(config):
     measures=config.get('measures',[])
     available=set(BASE)|{f['id'] for f in cleaned}
     if not isinstance(measures,list) or not measures or any(not isinstance(x,str) or x not in available for x in measures) or len(measures)!=len(set(measures)):raise ValidationError('Выберите показатели отчёта.')
-    return {'rows':config['rows'],'columns':config['columns'],'measures':measures,'formulas':cleaned}
+    view=config.get('view','table')
+    if view not in {'table','hierarchy'}:raise ValidationError('Выберите табличный или иерархический вид.')
+    options=config.get('totals',{})
+    if not isinstance(options,dict):raise ValidationError('Некорректные настройки итогов.')
+    totals={}
+    for axis,key in [('rows','row_levels'),('columns','column_levels')]:
+        levels=options.get(key,[])
+        if not isinstance(levels,list) or any(not isinstance(k,str) or k not in config[axis][:-1] for k in levels) or len(levels)!=len(set(levels)):raise ValidationError('Подытоги доступны для промежуточных уровней выбранной оси.')
+        totals[key]=levels
+    for key in ['row_grand','column_grand']:
+        totals[key]=options.get(key,False)
+        if not isinstance(totals[key],bool):raise ValidationError('Некорректный переключатель общих итогов.')
+    totals['position']=options.get('position','after')
+    if totals['position'] not in {'before','after'}:raise ValidationError('Выберите расположение подытогов.')
+    return {'rows':config['rows'],'columns':config['columns'],'measures':measures,'formulas':cleaned,'view':view,'totals':totals}
 
 
 def pivot_grid(records,report,config):
@@ -126,6 +140,6 @@ def pivot_grid(records,report,config):
             elif metric=='delta':result=totals['fact']-totals['plan']
             else:result=totals['fact']/totals['plan']*100 if totals['plan'] else None
             values.append(result)
-        output.append({'levels':rk[:-4],'label':rk[-4],'unit':rk[-3],'indicator':rk[-2], 'values':values})
+        output.append({'measure':rk[-1],'levels':rk[:-4],'label':rk[-4],'unit':rk[-3],'indicator':rk[-2], 'values':values})
     if len(output)*max(1,len(cols))>100000:raise ValidationError('Слишком большая сводная таблица. Сократите период или число объектов.')
     return {'rows':output,'columns':[{'key':c,'label':' / '.join(c) or 'За период'} for c in cols], 'row_labels':[FIELDS[k] for k in config['rows']]}

@@ -97,3 +97,19 @@ class PivotReportTests(TestCase):
         self.assertEqual(sum(v or 0 for row in response.context['grid']['rows'] for v in row['values']),D(7))
         self.assertIsNone(response.context['owner'].source_id)
         self.assertEqual(len(response.context['grid']['columns']),31)
+
+    def test_hierarchy_options_are_saved_and_excel_keeps_outline_and_totals(self):
+        config={'rows':['package','work'],'columns':['month'],'measures':['real_plan'],'formulas':[], 'view':'hierarchy',
+                'totals':{'row_levels':['package'],'column_levels':[],'row_grand':True,'column_grand':True,'position':'before'}}
+        self.client.post(self.url('gpr',self.version.pk),{'action':'save','name':'Иерархия','config':json.dumps(config),'make_default':'1'})
+        response=self.client.get(self.url('gpr',self.version.pk),{'start':'2026-01-01','end':'2026-01-31'})
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(response.context['grid']['view'],'hierarchy')
+        self.assertContains(response,'pivot-collapse-all')
+        self.assertEqual(next(row['values'][-1] for row in response.context['grid']['rows'] if row['kind']=='grand'),D('1050'))
+        preset=PivotReportPreset.objects.get(name='Иерархия')
+        self.assertEqual(preset.config['totals']['position'],'before')
+        exported=self.client.get(self.url('gpr',self.version.pk),{'export':'xlsx','start':'2026-01-01','end':'2026-01-31'})
+        sheet=load_workbook(BytesIO(exported.content)).active
+        self.assertTrue(any(dim.outlineLevel>0 for dim in sheet.row_dimensions.values()))
+        self.assertTrue(any(str(row[0].value).startswith('Общий итог') for row in sheet))

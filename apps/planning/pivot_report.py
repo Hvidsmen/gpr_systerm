@@ -15,7 +15,8 @@ from core.permissions import READ_ROLES, require_roles, scope_queryset
 from .models import GlobalPlanVersion, DailySchedule, PivotReportPreset
 from .report_forms import MatrixReportForm
 from .report_services import build_matrix, Source
-from .pivot_engine import FIELDS, BASE, DEFAULT, validate_config, pivot_grid
+from .pivot_engine import FIELDS, BASE, DEFAULT, validate_config
+from .pivot_layout import build_layout
 
 
 def read_config(raw):
@@ -105,7 +106,7 @@ class PivotReport(View):
                         from .journal_services import journal_matrix
                         report=journal_matrix(request.user,filters,'facts')
                     else:report=build_matrix(request.user,filters,source_overrides=overrides,plan_only=bool(owner))
-                    grid=pivot_grid(records(report),report,config)
+                    grid=build_layout(records(report),report,config)
                     context.update(grid=grid,warnings=[w for obj in report['objects'] for w in obj.get('warnings',[])])
                     if request.GET.get('export')=='xlsx':return pivot_workbook(grid,filters,owner)
                 except ValidationError as exc:form.add_error(None,exc)
@@ -133,20 +134,47 @@ def records(report):
 
 def pivot_workbook(grid,filters,owner=None):
     from openpyxl import Workbook
-    from openpyxl.styles import Font, PatternFill
+    from openpyxl.styles import Font, PatternFill, Alignment
     from openpyxl.utils import get_column_letter
     book=Workbook();sheet=book.active;sheet.title='Сводная таблица'
     sheet.append(['Сводная таблица',str(filters['start'])+' — '+str(filters['end'])])
     if owner:sheet.append(['Версия',str(owner)])
-    sheet.append(grid['row_labels']+['Показатель','Ед.','Тип объёма']+[c['label'] for c in grid['columns']]);header=sheet.max_row
-    for row in grid['rows']:sheet.append(list(row['levels'])+[row['label'],row['unit'],row['indicator']]+row['values'])
+    hierarchy=grid['view']=='hierarchy'
+    labels=['Строки / показатель','Ед.','Тип объёма'] if hierarchy else grid['row_labels']+['Показатель','Ед.','Тип объёма']
+    left=len(labels);header=sheet.max_row+1;depth=grid['header_depth']
+    for index,label in enumerate(labels,1):
+        sheet.cell(header,index,label)
+        if depth>1:sheet.merge_cells(start_row=header,end_row=header+depth-1,start_column=index,end_column=index)
+    occupied=set()
+    for level,cells in enumerate(grid['headers']):
+        column=left+1
+        for cell in cells:
+            while (level,column) in occupied:column+=1
+            sheet.cell(header+level,column,cell['label'])
+            if cell['colspan']>1 or cell['rowspan']>1:sheet.merge_cells(start_row=header+level,end_row=header+level+cell['rowspan']-1,start_column=column,end_column=column+cell['colspan']-1)
+            for r in range(level,level+cell['rowspan']):
+                for c in range(column,column+cell['colspan']):occupied.add((r,c))
+            column+=cell['colspan']
+    for row in grid['rows']:
+        kind=row['kind'];label=row['label']
+        if hierarchy:
+            if kind=='subtotal':label='Итого: '+row['levels'][-1]+' · '+label
+            elif kind=='grand':label='Общий итог · '+label
+            values=[label,row.get('unit',''),row.get('indicator','')]
+        else:values=list(row.get('levels',[]))+[label,row.get('unit',''),row.get('indicator','')]
+        sheet.append(values+row['values']);number=sheet.max_row
+        sheet.row_dimensions[number].outlineLevel=min(row['depth'] if kind in {'detail','group'} else max(0,row['depth']-1),7) if hierarchy else 0
+        for cell in sheet[number]:
+            cell.font=Font(name='Calibri',size=11,color='273B53',bold=kind!='detail')
+            if kind!='detail':cell.fill=PatternFill('solid',fgColor='E2EFF8' if kind=='grand' else 'EAF2FA')
+            if cell.column>left:cell.number_format='#,##0.00' if row.get('unit')=='₽' else '#,##0.###'
+        if hierarchy:sheet.cell(number,1).alignment=Alignment(indent=min(row['depth'],7),wrap_text=True)
     for row in sheet:
         for cell in row:
             if isinstance(cell.value,str):cell.data_type='s'
-            cell.font=Font(name='Calibri',size=11,color='273B53')
-            if cell.row==header:cell.fill=PatternFill('solid',fgColor='EDF5FC');cell.font=Font(name='Calibri',size=11,bold=True,color='355C7C')
-            if cell.row>header and cell.column>len(grid['row_labels'])+3:cell.number_format='#,##0.###'
-    for i in range(1,sheet.max_column+1):sheet.column_dimensions[get_column_letter(i)].width=32 if i<=len(grid['row_labels'])+1 else 18
-    sheet.freeze_panes=get_column_letter(len(grid['row_labels'])+4)+str(header+1);sheet.print_title_rows=f'1:{header}';sheet.sheet_view.showGridLines=False
+            if header<=cell.row<header+depth:cell.font=Font(name='Calibri',size=11,bold=True,color='355C7C');cell.fill=PatternFill('solid',fgColor='EDF5FC')
+    for i in range(1,sheet.max_column+1):sheet.column_dimensions[get_column_letter(i)].width=50 if i==1 and hierarchy else 32 if i<=left-2 else 18
+    sheet.freeze_panes=get_column_letter(left+1)+str(header+depth);sheet.print_title_rows=f'1:{header+depth-1}';sheet.sheet_view.showGridLines=False
+    sheet.sheet_properties.outlinePr.summaryBelow=False
     stream=BytesIO();book.save(stream)
     response=HttpResponse(stream.getvalue(),content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');response['Content-Disposition']='attachment; filename="pivot-report.xlsx"';return response
