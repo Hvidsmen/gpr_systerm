@@ -107,8 +107,7 @@ def copy_view(request,kind,pk):
         try:
             clone=copy_catalogue(request.user,kind,pk,form.cleaned_data['name'])
             messages.success(request,'Копия создана: '+clone.name)
-            if kind=='object':return redirect('works:complex_object_list')
-            return redirect('works:work_detail',pk=clone.project_work_id if kind=='item' else clone.pk)
+            return redirect('works:work_list')
         except ValidationError as exc:
             if hasattr(exc,'message_dict'):
                 for field,errors in exc.message_dict.items():
