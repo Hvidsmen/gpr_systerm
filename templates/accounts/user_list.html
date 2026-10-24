@@ -8,19 +8,25 @@
     <h2><i class="bi bi-people"></i> Пользователи</h2><a class="btn btn-primary" href="{% url 'accounts:user_create' %}">Добавить пользователя</a><a class="btn btn-outline-primary ms-2" href="{% url 'accounts:add_from_ad' %}">Добавить из AD</a>
 </div>
 
+<p><a class="btn btn-outline-primary" href="{% url 'accounts:user_list' %}">Пользователи</a> <a class="btn btn-outline-secondary" href="{% url 'accounts:user_list' %}?archive=yes">Архив пользователей</a></p>
 <p><a class="btn btn-outline-primary" href="{% url 'accounts:access_groups' %}">Группы доступа и соответствия AD</a></p>
 <p><a href="{% url 'accounts:impersonation_history' %}">История действий под пользователями</a></p>
-<form method="get" class="card card-body mb-3">
+<form method="get" class="card card-body mb-3">{% if archive_mode %}<input type="hidden" name="archive" value="yes">{% endif %}
 <div class="row g-3">{% for field in filter_form %}<div class="col-md-4">{{ field.label_tag }} {{ field }} {{ field.errors }}</div>{% endfor %}</div>
-<div class="mt-3"><button class="btn btn-primary" type="submit">Найти</button> <a class="btn btn-outline-secondary" href="{% url 'accounts:user_list' %}">Сбросить</a></div>
+<div class="mt-3"><button class="btn btn-primary" type="submit">Найти</button> <a class="btn btn-outline-secondary" href="{% url 'accounts:user_list' %}{% if archive_mode %}?archive=yes{% endif %}">Сбросить</a></div>
 </form>
 <p>Найдено: {{ paginator.count }} из {{ total_count }}.</p>
+{% if archive_mode %}<p>Архивные учётные записи отключены. Права, назначения и история сохраняются. При восстановлении возвращается прежнее состояние активности.</p>{% endif %}
 {% if users %}
+<form method="post" id="user-bulk" action="{% url 'accounts:user_bulk_archive' %}?{{ request.GET.urlencode }}" class="card card-body mb-3">{% csrf_token %}
+<input type="hidden" name="action" value="{% if archive_mode %}restore{% else %}archive{% endif %}">
+<div class="d-flex flex-wrap gap-3 align-items-center"><label><input type="checkbox" name="all_filtered" value="yes" id="all-filtered-users"> Все найденные по фильтру, на всех страницах (кроме администраторов)</label><span id="user-selected-count">Выбрано: 0</span><button type="button" class="btn btn-outline-secondary" id="clear-user-selection">Снять выбор</button><button class="btn btn-outline-primary" type="submit">{% if archive_mode %}Восстановить выбранных{% else %}В архив{% endif %}</button></div><small>Свою учётную запись, администраторов и служебные учётные записи выбрать нельзя.</small>
+</form>
     <div class="table-responsive">
         <table class="table table-hover">
             <thead class="table-light">
                 <tr>
-                    <th>Имя пользователя</th>
+                    <th><input type="checkbox" id="select-user-page" aria-label="Выбрать пользователей на этой странице"></th><th>Имя пользователя</th>
                     <th>ФИО</th>
                     <th>Email</th>
                     <th>Компания</th>
@@ -31,7 +37,7 @@
             <tbody>
                 {% for user in users %}
                     <tr>
-                        <td>{{ user.username }}{% if user.auth_source == 'LDAP' %} <span class="badge bg-secondary">AD</span>{% endif %}</td>
+                        <td>{% if user.pk != request.user.pk and not user.is_superuser and not user.is_staff and user.role.code != 'ADMIN' %}<input type="checkbox" name="selected" value="{{ user.pk }}" form="user-bulk" class="user-selection" aria-label="Выбрать {{ user.username }}">{% endif %}</td><td>{{ user.username }}{% if user.archived_at %} <span class="badge bg-secondary">В архиве</span>{% endif %}{% if user.auth_source == 'LDAP' %} <span class="badge bg-secondary">AD</span>{% endif %}</td>
                         <td>{{ user.full_name }}</td>
                         <td>{{ user.email }}</td>
                         <td>{{ user.company|default:"-" }}</td>
@@ -78,3 +84,8 @@
     <div class="alert alert-info">Пользователи не найдены.</div>
 {% endif %}
 {% endblock %}
+{% block extra_js %}<script>
+(()=>{const items=Array.from(document.querySelectorAll('.user-selection'));const page=document.getElementById('select-user-page');const all=document.getElementById('all-filtered-users');const count=document.getElementById('user-selected-count');if(!page)return;
+function update(){const n=items.filter(x=>x.checked).length;count.textContent=all.checked?'Выбраны все найденные по фильтру':'Выбрано: '+n;page.checked=items.length>0&&n===items.length;page.indeterminate=n>0&&n<items.length;}
+page.addEventListener('change',()=>{items.forEach(x=>x.checked=page.checked);all.checked=false;update()});items.forEach(x=>x.addEventListener('change',()=>{all.checked=false;update()}));all.addEventListener('change',update);document.getElementById('clear-user-selection').addEventListener('click',()=>{items.forEach(x=>x.checked=false);all.checked=false;update()});update();})();
+</script>{% endblock %}

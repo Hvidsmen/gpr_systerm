@@ -5,10 +5,12 @@ from .directory_groups import group_search
 from .directory_admin import add_from_ad
 from . import impersonation_views
 from .one_c import integration
+from .user_archive import bulk_archive
 
 app_name = 'accounts'
 
 urlpatterns = [
+    path('users/archive/', bulk_archive, name='user_bulk_archive'),
     path('integrations/1c/', integration, name='one_c'),
     path("ad/groups/", group_search, name="ad_group_search"),
     path("access-groups/", groups, name="access_groups"),

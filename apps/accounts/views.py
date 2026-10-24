@@ -65,6 +65,8 @@ class UserListView(CompanyScopedMixin, ListView):
         from .forms import UserFilterForm
         queryset = super().get_queryset().select_related('company', 'role', 'access_group')
         self.filter_form = UserFilterForm(self.request.GET, company=self.request.user.company)
+        self.archive_mode = self.request.GET.get('archive') == 'yes'
+        queryset = queryset.filter(archived_at__isnull=not self.archive_mode)
         self.total_count = queryset.count()
         if not self.filter_form.is_valid():
             return queryset.none()
@@ -84,7 +86,7 @@ class UserListView(CompanyScopedMixin, ListView):
         context = super().get_context_data(**kwargs)
         params = self.request.GET.copy()
         params.pop('page', None)
-        context.update(filter_form=self.filter_form, total_count=self.total_count, filter_query=params.urlencode())
+        context.update(filter_form=self.filter_form, total_count=self.total_count, filter_query=params.urlencode(), archive_mode=self.archive_mode)
         return context
 
 

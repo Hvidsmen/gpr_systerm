@@ -70,6 +70,21 @@ class User(AbstractUser):
     )
     position = models.CharField(_('должность'), max_length=100, blank=True)
     phone = models.CharField(_('телефон'), max_length=20, blank=True)
+    archived_at = models.DateTimeField('В архиве с', null=True, blank=True, editable=False)
+    archive_was_active = models.BooleanField(default=False, editable=False)
+
+    def save(self, *args, **kwargs):
+        # Only the archive service changes archive state; stale edit forms must not undo it.
+        if self.pk:
+            archive = type(self).objects.filter(pk=self.pk).values('archived_at', 'archive_was_active').first()
+            if archive:
+                self.archived_at = archive['archived_at']
+                self.archive_was_active = archive['archive_was_active']
+        if self.archived_at:
+            self.is_active = False
+            if kwargs.get('update_fields') is not None:
+                kwargs['update_fields'] = set(kwargs['update_fields']) | {'is_active'}
+        return super().save(*args, **kwargs)
 
     class Meta:
         verbose_name = _('пользователь')

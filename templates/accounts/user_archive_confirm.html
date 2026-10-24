@@ -1,0 +1,8 @@
+{% extends 'base.html' %}{% block content %}
+<h1>{% if action == 'archive' %}Поместить пользователей в архив{% else %}Восстановить пользователей{% endif %}</h1>
+<p>Выбрано пользователей: <strong>{{ count }}</strong>.</p>
+{% if action == 'archive' %}<p>Вход будет отключён, пользователи скроются из обычного списка. Права, назначения на объекты и история действий сохранятся.</p>{% else %}<p>Учётные записи вернутся в обычный список. Те, кто был отключён до архивирования, останутся отключёнными.</p>{% endif %}
+{% if count > 100 %}<p>Ниже первые 100 выбранных пользователей.</p>{% endif %}
+<ul>{% for user in selected_users %}<li>{{ user.username }} · {{ user.full_name }}</li>{% endfor %}</ul>
+<form method="post" action="{% url 'accounts:user_bulk_archive' %}">{% csrf_token %}<input type="hidden" name="stage" value="confirm"><input type="hidden" name="token" value="{{ token }}"><button class="btn btn-primary">{% if action == 'archive' %}Подтвердить архивирование{% else %}Подтвердить восстановление{% endif %}</button> <a class="btn btn-outline-secondary" href="{% url 'accounts:user_list' %}{% if action == 'restore' %}?archive=yes{% endif %}">Отмена</a></form>
+{% endblock %}

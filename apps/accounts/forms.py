@@ -83,6 +83,9 @@ class CompanyUserAccessForm(forms.ModelForm):
         from core.permissions import ROLES
         from apps.projects.models import ConstructionObject
         self.instance.company = company
+        if self.instance.archived_at:
+            self.fields['is_active'].disabled = True
+            self.fields['is_active'].help_text = 'Пользователь в архиве. Сначала восстановите его из архива.'
         self.fields['access_group'].queryset = self.fields['access_group'].queryset.filter(company=company)
         self.fields['access_group'].help_text = 'Роль и объекты наследуются от группы. Для индивидуальной настройки оставьте пустым.'
         self.fields['role'].required = False
@@ -105,6 +108,8 @@ class CompanyUserAccessForm(forms.ModelForm):
             self.instance.access_group_from_ad = False
         elif not data.get('role'):
             self.add_error('role', 'Выберите роль или группу доступа.')
+        if self.instance.archived_at and data.get('role') and data['role'].code == 'ADMIN':
+            self.add_error('role', 'Сначала восстановите пользователя из архива, затем назначайте права администратора.')
         return data
 
 
