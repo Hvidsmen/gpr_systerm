@@ -66,9 +66,12 @@ def complex_object_detail(request,pk):
             AuditLog.objects.create(user=request.user,action='UPDATE',entity_type='works.ComplexObject',entity_id=str(obj.pk),old_value={'name':previous.name,'description':previous.description},new_value={'name':obj.name,'description':obj.description},comment='Изменение карточки комплексного объекта')
         messages.success(request,'Комплексный объект сохранён.')
         return redirect('works:complex_object_detail',pk=obj.pk)
+    mode=request.GET.get('view',request.session.get('complex_object_view','tree'))
+    if mode not in {'table','tree'}:mode='tree'
+    request.session['complex_object_view']=mode
     works=list(obj.work_packages.filter(company=request.user.company,merged_source__isnull=True).select_related('section','complex_object','section__construction_object__project').prefetch_related('items').order_by('section__name','code','pk'))
     sections={}
     for work in works:
         work.items_count=len(work.items.all())
         sections.setdefault(work.section_id,{'section':work.section,'branches':[{'object':obj,'works':[]}]})['branches'][0]['works'].append(work)
-    return render(request,'works/complex_object_detail.html',{'object':obj,'form':form,'works':works,'tree_groups':[{'object':obj.construction_object,'sections':list(sections.values())}],'bulk_route':'works:bulk_delete','bulk_kind':'works'})
+    return render(request,'works/complex_object_detail.html',{'object':obj,'form':form,'works':works,'view_mode':mode,'tree_groups':[{'object':obj.construction_object,'sections':list(sections.values())}],'bulk_route':'works:bulk_delete','bulk_kind':'works'})

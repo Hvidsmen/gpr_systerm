@@ -40,3 +40,14 @@ class ComplexObjectDetailTests(TestCase):
         self.assertEqual(self.client.post(self.url,{'name':'Запрет'}).status_code,403)
         user.role=Role.objects.get(code='PLANNER');user.save()
         self.assertEqual(self.client.get(self.url).status_code,404)
+
+    def test_table_tree_switch_preserves_preference_and_composition(self):
+        response=self.client.get(self.url,{'view':'table'})
+        self.assertEqual(response.context['view_mode'],'table')
+        self.assertContains(response,'Вес, %')
+        self.assertNotContains(response,'data-tree-expand')
+        for item in self.work.items.all():self.assertContains(response,item.name)
+        self.assertEqual(self.client.get(self.url).context['view_mode'],'table')
+        response=self.client.get(self.url,{'view':'tree'})
+        self.assertContains(response,'data-tree-expand')
+        self.assertEqual(self.client.get(self.url).context['view_mode'],'tree')
