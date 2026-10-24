@@ -55,6 +55,8 @@ def process_queue():
     stale=OneCConnection.objects.filter(active_until__lt=now)
     OneCDiagnosticRun.objects.filter(connection__in=stale,status__in=['QUEUED','RUNNING']).update(status='ERROR',error='Запуск прерван или превышено время ожидания.',finished_at=now)
     stale.update(active_until=None)
+    from .one_c_positions import enqueue_due_positions
+    enqueue_due_positions(now)
     for connection in OneCConnection.objects.filter(diagnostic_interval_minutes__gt=0,active_until__isnull=True):
         last=connection.runs.exclude(report__has_key='positions_import').order_by('-created_at').first()
         if last is None or last.created_at+timedelta(minutes=connection.diagnostic_interval_minutes)<=now:enqueue(connection)

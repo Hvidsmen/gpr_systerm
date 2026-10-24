@@ -156,6 +156,7 @@ class OneCConnection(models.Model):
     database = models.CharField(max_length=128, default='zup')
     trust_certificate = models.BooleanField(default=False)
     diagnostic_interval_minutes = models.PositiveIntegerField(default=0)
+    positions_interval_minutes = models.PositiveIntegerField(default=0)
     active_until = models.DateTimeField(null=True, blank=True)
 
 

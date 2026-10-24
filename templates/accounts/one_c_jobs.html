@@ -3,6 +3,13 @@
 {% block content %}
 <nav><a href="{% url 'accounts:one_c' %}">Интеграция с 1С</a> / Задания</nav>
 <h1>Задания 1С</h1>
+<section class="card p-3 my-3"><div class="d-flex justify-content-between flex-wrap gap-3"><div><h2>Загрузка должностей</h2><p>Источник: {{ connection.server }} / {{ connection.database }} · Справочник.Должности.</p><p class="text-muted">Только актуальные наименования. Дубли пропускаются, существующие ставки и настройки сохраняются.</p></div><form method="post">{% csrf_token %}<button class="btn btn-primary" name="action" value="positions_run" {% if not positions_ready or busy %}disabled{% endif %}>Запустить сейчас</button></form></div>
+{% if not positions_ready %}<p class="alert alert-warning">Справочник должностей для текущего подключения пока не подтверждён. <a href="{% url 'accounts:one_c' %}">Выполните диагностику подключения</a>.</p>{% elif busy %}<p role="status">Уже выполняется или ожидает задание 1С. После его окончания ручной запуск станет доступен.</p>{% endif %}
+<form method="post" class="border-top pt-3">{% csrf_token %}<input type="hidden" name="action" value="positions_schedule">{{ schedule_form.as_p }}<button class="btn btn-outline-primary">Сохранить расписание</button></form>
+<p class="mt-3 mb-1">{% if connection.positions_interval_minutes %}Расписание включено: каждые {{ connection.positions_interval_minutes }} мин.{% if positions_ready %} {% if positions_due %}Ближайший запуск — при следующей проверке фонового обработчика.{% else %}Ближайший срок: {{ next_positions }}.{% endif %}{% else %} Запуски приостановлены до подтверждения источника.{% endif %}{% else %}Расписание отключено — только ручной запуск.{% endif %}</p>
+{% if last_positions %}<p class="mb-0">Последний запуск: {{ last_positions.created_at }} · {{ last_positions.get_status_display }}.</p>{% endif %}
+<p class="small text-muted mt-2 mb-0">Расписание работает через фоновый портал и проверяется примерно раз в минуту. Одновременно выполняется одно задание 1С. Результаты — в истории ниже.</p></section>
+<h2>История запусков</h2>
 <p>Все задания интеграции вашей компании: ожидающие, выполняющиеся и завершённые, включая задания прежних подключений.</p>
 <form method="get" class="d-flex flex-wrap gap-2 mb-3">
 <label>Тип задания<select class="form-select" name="kind"><option value="">Все типы</option>{% for value,label in kinds %}<option value="{{ value }}" {% if selected_kind == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
