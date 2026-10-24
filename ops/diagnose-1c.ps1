@@ -7,6 +7,7 @@ param(
     [switch]$TrustServerCertificate,
     [switch]$RunHere,
     [switch]$MetadataOnly,
+    [switch]$PositionsImport,
     [ValidatePattern('^[a-f0-9]{32}$')][string]$RunId=([guid]::NewGuid().ToString('N')),
     [ValidateRange(1,10000)][int]$SampleLimit=5000
 )
@@ -166,6 +167,12 @@ try {
     $connection=New-Object System.Data.SqlClient.SqlConnection($builder.ConnectionString)
     try {
         $connection.Open()
+        if($PositionsImport){
+            $names=@(Query $connection 'SELECT [_Description] AS name FROM [dbo].[_Reference92] WHERE [_Marked]=0x00 AND [_Fld25711]=0x00')
+            Write-Json $reportPath @{positions_import=$true;position_names=@($names)}
+            Write-Json $statusPath @{ok=$true;report=$reportPath}
+            return
+        }
         # All diagnostic statements are SELECTs. Account permissions must also be read-only.
         $who=@(Query $connection 'SELECT @@SERVERNAME AS server, DB_NAME() AS [database], SUSER_SNAME() AS login, ORIGINAL_LOGIN() AS original_login')[0]
         $columns=@(Query $connection @'

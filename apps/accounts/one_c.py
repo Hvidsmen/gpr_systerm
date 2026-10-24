@@ -40,14 +40,14 @@ class ConnectionForm(forms.ModelForm):
         return value
 
 
-def enqueue(connection, actor=None, metadata_only=False):
+def enqueue(connection, actor=None, metadata_only=False, positions=False):
     # Conditional update is the cross-process claim, including SQLite deployments.
     now=timezone.now()
     from django.db import transaction
     with transaction.atomic():
         claimed=OneCConnection.objects.filter(pk=connection.pk).filter(active_until__isnull=True).update(active_until=now+timedelta(minutes=20))
         if not claimed:return None
-        return OneCDiagnosticRun.objects.create(connection=connection,created_by=actor,server=connection.server,database=connection.database,trust_certificate=connection.trust_certificate,report={'metadata_only':True} if metadata_only else {})
+        return OneCDiagnosticRun.objects.create(connection=connection,created_by=actor,server=connection.server,database=connection.database,trust_certificate=connection.trust_certificate,report={'positions_import':True} if positions else {'metadata_only':True} if metadata_only else {})
 
 
 def process_queue():
@@ -56,7 +56,7 @@ def process_queue():
     OneCDiagnosticRun.objects.filter(connection__in=stale,status__in=['QUEUED','RUNNING']).update(status='ERROR',error='Запуск прерван или превышено время ожидания.',finished_at=now)
     stale.update(active_until=None)
     for connection in OneCConnection.objects.filter(diagnostic_interval_minutes__gt=0,active_until__isnull=True):
-        last=connection.runs.order_by('-created_at').first()
+        last=connection.runs.exclude(report__has_key='positions_import').order_by('-created_at').first()
         if last is None or last.created_at+timedelta(minutes=connection.diagnostic_interval_minutes)<=now:enqueue(connection)
     for run in OneCDiagnosticRun.objects.filter(status='QUEUED').order_by('created_at'):
         if not OneCDiagnosticRun.objects.filter(pk=run.pk,status='QUEUED').update(status='RUNNING'):continue
@@ -66,14 +66,20 @@ def process_queue():
             command=['powershell.exe','-NoProfile','-ExecutionPolicy','Bypass','-File',str(Path(settings.BASE_DIR)/'ops/diagnose-1c.ps1'),'-Root',str(root),'-RunHere','-PythonPath',__import__('sys').executable,'-Server',run.server,'-Database',run.database,'-RunId',run.pk.hex]
             metadata_only=bool(run.report.get('metadata_only'))
             if metadata_only:command.append('-MetadataOnly')
+            positions_import=bool(run.report.get('positions_import'))
+            if positions_import:command.append('-PositionsImport')
             if run.trust_certificate:command.append('-TrustServerCertificate')
             subprocess.run(command,timeout=900,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,check=False,creationflags=subprocess.CREATE_NO_WINDOW)
             directory=root/'.runtime/1c-diagnostics'/run.pk.hex
             status=json.loads((directory/'status.json').read_text(encoding='utf-8-sig'))
             if not status.get('ok'):raise RuntimeError(status.get('error','Ошибка диагностики.'))
             run.report=json.loads((directory/'report.json').read_text(encoding='utf-8-sig'))
+            if positions_import:
+                from .one_c_positions import apply_names
+                result=apply_names(run,run.report)
+                run.report={'positions_import':True,'positions_result':result}
             if metadata_only:
-                prior=run.connection.runs.filter(status='DONE',server=run.server,database=run.database).exclude(pk=run.pk).order_by('-created_at').first()
+                prior=run.connection.runs.filter(status='DONE',server=run.server,database=run.database).exclude(pk=run.pk).exclude(report__has_key='positions_import').order_by('-created_at').first()
                 if prior:
                     for key in ['candidates','reference_tables_checked','search_terms','sample_limit']:
                         if key in prior.report:run.report[key]=prior.report[key]
@@ -106,7 +112,7 @@ def integration(request):
             upload=request.FILES.get('mapping')
             try:
                 if not upload or upload.size>32*1024*1024:raise ValidationError('Выберите JSON-файл до 32 МБ.')
-                report_run=connection.runs.filter(status='DONE',server=connection.server,database=connection.database).order_by('-created_at').first()
+                report_run=connection.runs.filter(status='DONE',server=connection.server,database=connection.database).exclude(report__has_key='positions_import').order_by('-created_at').first()
                 if not report_run:raise ValidationError('Сначала выполните диагностику текущего подключения.')
                 labels=parse_mapping(json.loads(upload.read().decode('utf-8-sig')),report_run.report)
                 existing=connection.metadata_labels if (connection.metadata_server,connection.metadata_database)==(connection.server,connection.database) else {}
@@ -122,7 +128,7 @@ def integration(request):
             messages.success(request,'Диагностика поставлена в очередь. Фоновый обработчик начнёт её в течение минуты.' if run else 'Диагностика уже ожидает запуска или выполняется.')
             return redirect('accounts:one_c')
     runs=list(connection.runs.defer('report').order_by('-created_at')[:20])
-    latest=connection.runs.filter(status='DONE',server=connection.server,database=connection.database).order_by('-created_at').first()
+    latest=connection.runs.filter(status='DONE',server=connection.server,database=connection.database).exclude(report__has_key='positions_import').order_by('-created_at').first()
     manual_labels=connection.metadata_labels if (connection.metadata_server,connection.metadata_database)==(connection.server,connection.database) else {}
     from .one_c_catalog import catalogue,TYPES
     from django.core.paginator import Paginator
@@ -155,12 +161,12 @@ def table_structure(request, schema, table):
     require_roles(request.user,{'ADMIN'})
     from django.http import Http404
     from .one_c_catalog import catalogue
-    if request.method!='GET':
+    if request.method not in {'GET','POST'} or request.method=='POST' and request.POST.get('action')!='import_positions':
         from django.http import HttpResponseNotAllowed
-        return HttpResponseNotAllowed(['GET'])
+        return HttpResponseNotAllowed(['GET','POST'])
     connection=OneCConnection.objects.filter(company=request.user.company).first()
     if not connection:raise Http404('Подключение не настроено.')
-    latest=connection.runs.filter(status='DONE',server=connection.server,database=connection.database).order_by('-created_at').first()
+    latest=connection.runs.filter(status='DONE',server=connection.server,database=connection.database).exclude(report__has_key='positions_import').order_by('-created_at').first()
     if not latest:raise Http404('Нет результата диагностики для этого подключения.')
     labels=dict(latest.report.get('metadata_labels',{}))
     if (connection.metadata_server,connection.metadata_database)==(connection.server,connection.database):
@@ -170,4 +176,13 @@ def table_structure(request, schema, table):
     rows,_,_=catalogue(latest.report,labels)
     selected=next((row for row in rows if row['schema']==schema and row['table']==table),None)
     if selected is None:raise Http404('Таблица отсутствует в текущей диагностике.')
-    return render(request,'accounts/one_c_table.html',{'table':selected,'connection':connection,'latest':latest})
+    from .one_c_positions import supported
+    can_import_positions=supported(selected)
+    if request.method=='POST':
+        if not can_import_positions or request.POST.get('action')!='import_positions':
+            from django.core.exceptions import PermissionDenied
+            raise PermissionDenied('Загрузка доступна только для подтверждённого справочника должностей.')
+        run=enqueue(connection,request.user,positions=True)
+        messages.success(request,'Загрузка должностей поставлена в очередь.' if run else 'Уже выполняется задание 1С. Дождитесь окончания и повторите загрузку.')
+        return redirect('accounts:one_c')
+    return render(request,'accounts/one_c_table.html',{'table':selected,'connection':connection,'latest':latest,'can_import_positions':can_import_positions})
