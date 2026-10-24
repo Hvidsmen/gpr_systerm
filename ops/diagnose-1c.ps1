@@ -3,6 +3,7 @@ param(
     [ValidatePattern('^[a-zA-Z0-9_.\\,-]+$')][string]$Server='msk-db',
     [ValidatePattern('^[\p{L}\p{N}_-]+$')][string]$Database='zup',
     [string]$Root='',
+    [string]$PythonPath='',
     [switch]$TrustServerCertificate,
     [switch]$RunHere,
     [ValidatePattern('^[a-f0-9]{32}$')][string]$RunId=([guid]::NewGuid().ToString('N')),
@@ -36,6 +37,55 @@ function Query($connection,[string]$sql,$parameters=@{}){
         return $result.ToArray()
     } finally {if($reader){$reader.Dispose()};$command.Dispose()}
 }
+function Save-MetadataFile($connection,$table,[string]$file,[string]$destination,[bool]$parts){
+    $name=(Quote-Identifier $table.schema)+'.'+(Quote-Identifier $table.table)
+    $sql='SELECT TOP (128) [BinaryData] AS data FROM '+$name+' WHERE [FileName]=@file AND DATALENGTH([BinaryData])<=8388608'
+    if($parts){$sql+=' ORDER BY [PartNo]'}
+    $rows=@(Query $connection $sql @{'@file'=$file})
+    if($rows.Count -eq 0){return $false}
+    $memory=New-Object IO.MemoryStream
+    try {
+        foreach($row in $rows){
+            if($null -eq $row.data){continue}
+            if($memory.Length+$row.data.Length -gt 8388608){throw 'Metadata file exceeds 8 MB.'}
+            $memory.Write($row.data,0,$row.data.Length)
+        }
+        if($memory.Length -eq 0){return $false}
+        [IO.File]::WriteAllBytes($destination,$memory.ToArray());return $true
+    } finally {$memory.Dispose()}
+}
+function Read-MetadataNames($connection,$columns){
+    $metadataDirectory=Join-Path $script:directory 'metadata'
+    New-Item -ItemType Directory -Path $metadataDirectory -Force | Out-Null
+    $params=@($columns | Where-Object {$_.table -eq 'Params' -and $_.column -eq 'BinaryData'})
+    $configs=@($columns | Where-Object {$_.table -eq 'Config' -and $_.column -eq 'BinaryData'})
+    if($params.Count -ne 1 -or $configs.Count -ne 1){throw 'Params/Config metadata tables are unavailable or ambiguous.'}
+    foreach($table in @($params[0],$configs[0])){
+        if(-not @($columns | Where-Object {$_.schema -eq $table.schema -and $_.table -eq $table.table -and $_.column -eq 'FileName'}).Count){throw 'Metadata FileName column is unavailable.'}
+    }
+    $parts=@($columns | Where-Object {$_.schema -eq $configs[0].schema -and $_.table -eq 'Config' -and $_.column -eq 'PartNo'}).Count -gt 0
+    if(-not (Save-MetadataFile $connection $params[0] 'DBNames' (Join-Path $metadataDirectory 'dbnames.bin') $false)){throw 'Params.DBNames is not readable.'}
+    if(-not $PythonPath){$command=Get-Command python -ErrorAction SilentlyContinue;if($command){$PythonPath=$command.Source}}
+    if(-not $PythonPath){throw 'Python executable for the metadata reader is unavailable.'}
+    $parser=Join-Path $PSScriptRoot 'parse_1c_metadata.py'
+    & $PythonPath $parser 'index' $metadataDirectory 2> (Join-Path $metadataDirectory 'parser-errors.log')
+    if($LASTEXITCODE -ne 0){throw 'DBNames format is not supported by this metadata reader. See metadata/parser-errors.log.'}
+    $requests=@(Get-Content -LiteralPath (Join-Path $metadataDirectory 'requests.json') -Raw -Encoding UTF8 | ConvertFrom-Json)
+    $read=0;$totalBytes=0;$metadataWarnings=@();$timer=[Diagnostics.Stopwatch]::StartNew()
+    foreach($entry in $requests){
+        if($timer.Elapsed.TotalSeconds -gt 180){$metadataWarnings+=[pscustomobject]@{error='Metadata read time limit reached; names are partial.'};break}
+        if($entry.uuid -notmatch '^[a-f0-9-]{36}$'){throw 'Invalid metadata UUID.'}
+        if(Save-MetadataFile $connection $configs[0] $entry.uuid (Join-Path $metadataDirectory ($entry.uuid+'.bin')) $parts){$read++;$totalBytes+=(Get-Item -LiteralPath (Join-Path $metadataDirectory ($entry.uuid+'.bin'))).Length;if($totalBytes -gt 134217728){$metadataWarnings+=[pscustomobject]@{error='Metadata snapshot limit reached; names are partial.'};break}}
+    }
+    Write-Json (Join-Path $metadataDirectory 'schema.json') $columns
+    & $PythonPath $parser 'decode' $metadataDirectory 2> (Join-Path $metadataDirectory 'parser-errors.log')
+    if($LASTEXITCODE -ne 0){throw 'Metadata decoding did not finish. See metadata/parser-errors.log.'}
+    $result=Get-Content -LiteralPath (Join-Path $metadataDirectory 'names.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+    if($read -eq 0){$metadataWarnings+=[pscustomobject]@{error='No object files found in Config by DBNames UUID. This metadata layout needs an additional reader.'}}
+    $result.errors=@($result.errors)+$metadataWarnings
+    return $result
+}
+
 try {
     if(-not $RunHere){
         $portal=Get-ScheduledTask -TaskName 'YDS Portal'
@@ -49,6 +99,7 @@ try {
             if(-not $admin.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){throw 'Run PowerShell as Administrator to diagnose using the portal SYSTEM account.'}
             $taskName='YDS Portal 1C Diagnostics '+$RunId
             $arguments='-NoProfile -ExecutionPolicy Bypass -File "'+(Join-Path $Root 'ops\diagnose-1c.ps1')+'" -Root "'+$Root+'" -Server "'+$Server+'" -Database "'+$Database+'" -RunId '+$RunId+' -SampleLimit '+$SampleLimit+' -RunHere'
+            if($PythonPath){$arguments+=' -PythonPath "'+$PythonPath+'"'}
             if($TrustServerCertificate){$arguments+=' -TrustServerCertificate'}
             $action=New-ScheduledTaskAction -Execute (Join-Path $PSHOME 'powershell.exe') -Argument $arguments -WorkingDirectory $Root
             $system=New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
@@ -123,7 +174,13 @@ ORDER BY s.name,t.name,c.column_id
             } catch {$errors.Add([pscustomobject]@{schema=$table.schema;table=$table.table;error=$_.Exception.Message})}
         }
         $metadata=@($columns | Where-Object {$_.table -in @('Config','ConfigSave','Params','DBSchema','IBVersion','Files')} | Select-Object -Property @('schema','table') -Unique)
-        $report=[ordered]@{created_utc=[DateTime]::UtcNow.ToString('o');windows_identity=$identity.Name;connection=$who;reference_tables_checked=$descriptions.Count;sample_limit=$SampleLimit;search_terms=$terms;candidates=@($candidates | Sort-Object matched_rows -Descending);metadata_tables=$metadata;schema=$columns;scan_errors=$errors.ToArray();notice='Candidates are hints, not a confirmed 1C metadata mapping. No source descriptions, employee rows, binary metadata, or passwords are exported.'}
+        $metadataNames=@{};$metadataStatus='unavailable';$metadataErrors=@();$metadataRead=0
+        try {
+            $decoded=Read-MetadataNames $connection $columns
+            $metadataNames=$decoded.labels;$metadataRead=$decoded.objects_read;$metadataErrors=@($decoded.errors)
+            $metadataStatus=if(@($metadataNames.PSObject.Properties).Count -gt 0){'decoded'}else{'unrecognized'}
+        } catch {$metadataErrors=@([pscustomobject]@{error=$_.Exception.Message})}
+        $report=[ordered]@{metadata_labels=$metadataNames;metadata_status=$metadataStatus;metadata_objects_read=$metadataRead;metadata_errors=$metadataErrors;created_utc=[DateTime]::UtcNow.ToString('o');windows_identity=$identity.Name;connection=$who;reference_tables_checked=$descriptions.Count;sample_limit=$SampleLimit;search_terms=$terms;candidates=@($candidates | Sort-Object matched_rows -Descending);metadata_tables=$metadata;schema=$columns;scan_errors=$errors.ToArray();notice='Candidates are hints, not a confirmed 1C metadata mapping. No source descriptions, employee rows, binary metadata, or passwords are exported.'}
         Write-Json $reportPath $report
         Write-Json $statusPath @{ok=$true;report=$reportPath}
         Write-Host ('DONE. Report: '+$reportPath) -ForegroundColor Green

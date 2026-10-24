@@ -63,7 +63,7 @@ def process_queue():
         try:
             if os.name!='nt':raise RuntimeError('Диагностика MS SQL с Windows-аутентификацией доступна на Windows-сервере портала.')
             root=Path(settings.CONFIG_DIR)
-            command=['powershell.exe','-NoProfile','-ExecutionPolicy','Bypass','-File',str(Path(settings.BASE_DIR)/'ops/diagnose-1c.ps1'),'-Root',str(root),'-RunHere','-Server',run.server,'-Database',run.database,'-RunId',run.pk.hex]
+            command=['powershell.exe','-NoProfile','-ExecutionPolicy','Bypass','-File',str(Path(settings.BASE_DIR)/'ops/diagnose-1c.ps1'),'-Root',str(root),'-RunHere','-PythonPath',__import__('sys').executable,'-Server',run.server,'-Database',run.database,'-RunId',run.pk.hex]
             if run.trust_certificate:command.append('-TrustServerCertificate')
             subprocess.run(command,timeout=900,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,check=False,creationflags=subprocess.CREATE_NO_WINDOW)
             directory=root/'.runtime/1c-diagnostics'/run.pk.hex
@@ -83,6 +83,7 @@ def integration(request):
     require_roles(request.user,{'ADMIN'})
     connection,_=OneCConnection.objects.get_or_create(company_id=request.user.company_id)
     form=ConnectionForm(instance=connection)
+    mapping_error=None
     if request.method=='POST':
         if request.POST.get('action')=='save':
             form=ConnectionForm(request.POST,instance=connection)
@@ -91,9 +92,43 @@ def integration(request):
                 connection.save(update_fields=list(form.fields))
                 messages.success(request,'Настройки 1С сохранены.')
                 return redirect('accounts:one_c')
+        elif request.POST.get('action')=='mapping':
+            from .one_c_catalog import parse_mapping
+            upload=request.FILES.get('mapping')
+            try:
+                if not upload or upload.size>32*1024*1024:raise ValidationError('Выберите JSON-файл до 32 МБ.')
+                report_run=connection.runs.filter(status='DONE',server=connection.server,database=connection.database).order_by('-created_at').first()
+                if not report_run:raise ValidationError('Сначала выполните диагностику текущего подключения.')
+                labels=parse_mapping(json.loads(upload.read().decode('utf-8-sig')),report_run.report)
+                existing=connection.metadata_labels if (connection.metadata_server,connection.metadata_database)==(connection.server,connection.database) else {}
+                connection.metadata_labels={**existing,**labels};connection.metadata_server=connection.server;connection.metadata_database=connection.database
+                connection.save(update_fields=['metadata_labels','metadata_server','metadata_database'])
+                from apps.audit.models import AuditLog
+                AuditLog.objects.create(user=request.user,action='UPDATE',entity_type='accounts.onecconnection',entity_id=str(connection.pk),new_value={'mapped_tables':len(connection.metadata_labels),'company_id':request.user.company_id},comment='Импорт соответствий метаданных 1С')
+                messages.success(request,f'Загружено соответствий таблиц: {len(labels)}.')
+                return redirect('accounts:one_c')
+            except (ValueError,UnicodeError,ValidationError) as exc:mapping_error='; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Не удалось прочитать JSON-файл.'
         elif request.POST.get('action')=='diagnose':
             run=enqueue(connection,request.user)
             messages.success(request,'Диагностика поставлена в очередь. Фоновый обработчик начнёт её в течение минуты.' if run else 'Диагностика уже ожидает запуска или выполняется.')
             return redirect('accounts:one_c')
-    runs=list(connection.runs.order_by('-created_at')[:20])
-    return render(request,'accounts/one_c.html',{'form':form,'connection':connection,'runs':runs,'latest':runs[0] if runs else None,'pending':any(r.status in {'QUEUED','RUNNING'} for r in runs)})
+    runs=list(connection.runs.defer('report').order_by('-created_at')[:20])
+    latest=connection.runs.filter(status='DONE',server=connection.server,database=connection.database).order_by('-created_at').first()
+    manual_labels=connection.metadata_labels if (connection.metadata_server,connection.metadata_database)==(connection.server,connection.database) else {}
+    from .one_c_catalog import catalogue,TYPES
+    from django.core.paginator import Paginator
+    query=request.GET.get('q','').strip()[:200]
+    kind=request.GET.get('type','')
+    if kind not in dict(TYPES):kind=''
+    report=latest.report if latest else {}
+    labels={**report.get('metadata_labels',{}),**manual_labels}
+    rows,type_counts,total=catalogue(report,labels,query,kind)
+    page=Paginator(rows,75).get_page(request.GET.get('page'))
+    groups=[]
+    for row in page:
+        row['type_label']=dict(TYPES)[row['type']]
+        if not groups or groups[-1]['type']!=row['type']:groups.append({'type':row['type'],'label':row['type_label'],'rows':[]})
+        groups[-1]['rows'].append(row)
+    for candidate in report.get('candidates',[]):candidate['name']=labels.get(str(candidate.get('schema','dbo'))+'.'+str(candidate.get('table','')),{}).get('name','')
+    params=request.GET.copy();params.pop('page',None)
+    return render(request,'accounts/one_c.html',{'form':form,'connection':connection,'runs':runs,'latest':latest,'pending':any(r.status in {'QUEUED','RUNNING'} for r in runs),'catalogue_groups':groups,'catalogue_page':page,'catalogue_total':total,'catalogue_query':query,'catalogue_type':kind,'type_counts':type_counts,'catalogue_params':params.urlencode(),'mapping_error':mapping_error,'mapped_count':len(labels)})

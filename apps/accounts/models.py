@@ -148,6 +148,9 @@ def reset_daily_task_subscriptions(sender,instance,action,reverse,**kwargs):
 
 
 class OneCConnection(models.Model):
+    metadata_labels = models.JSONField(default=dict, blank=True)
+    metadata_server = models.CharField(max_length=255, blank=True)
+    metadata_database = models.CharField(max_length=128, blank=True)
     company = models.OneToOneField(Company, on_delete=models.CASCADE)
     server = models.CharField(max_length=255, default='msk-db')
     database = models.CharField(max_length=128, default='zup')
