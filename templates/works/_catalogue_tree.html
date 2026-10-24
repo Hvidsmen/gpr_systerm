@@ -1,0 +1,11 @@
+{% load access %}
+{% if is_paginated %}<p class="small text-muted">Дерево работ текущей страницы. Для остальных работ используйте страницы ниже или уточните фильтры.</p>{% endif %}
+<div class="card p-3">
+{% for group in tree_groups %}<details open class="mb-3"><summary><strong>{{ group.object.project }} / {{ group.object }}</strong></summary>
+{% for branch in group.branches %}<details open class="ms-3 mt-2"><summary>{% if branch.object %}Комплексный объект: {{ branch.object.name }} · 1 шт.{% else %}Комплексный объект не задан{% endif %}</summary>
+{% for work in branch.works %}<details open class="ms-3 my-2"><summary>{% if request.user|may:bulk_route %}{% include 'bulk/checkbox.html' with record=work %}{% endif %} <a href="{% url 'works:work_detail' work.pk %}">{{ work.name }}</a> · {% if work.kind == 'COMPOSITE' %}Комплексная работа{% else %}Самостоятельная работа{% endif %} · Раздел: {{ work.section.name }} · {{ work.unit_price }} ₽</summary>
+{% if work.kind == 'COMPOSITE' %}<ul class="ms-3">{% for item in work.items.all %}<li><a href="{% url 'works:work_detail' work.pk %}">{{ item.name }}</a> · Норматив: {{ item.quantity_per_unit }} {{ item.unit }}</li>{% empty %}<li class="text-muted">Работы в составе комплекса не заданы.</li>{% endfor %}</ul>{% endif %}
+</details>{% endfor %}
+</details>{% endfor %}
+</details>{% endfor %}
+</div>

@@ -2,6 +2,7 @@
 
 from django import forms
 from apps.projects.models import Project, ConstructionObject, Section
+from .models import ComplexObject, ProjectWork, ProjectWorkItem
 
 
 class WorkListFilterForm(forms.Form):
@@ -23,6 +24,9 @@ class WorkListFilterForm(forms.Form):
         label="Раздел",
         empty_label="Все разделы",
     )
+    complex_object = forms.ModelChoiceField(queryset=ComplexObject.objects.none(), required=False, label='Комплексный объект', empty_label='Все комплексные объекты')
+    package = forms.ModelChoiceField(queryset=ProjectWork.objects.none(), required=False, label='Комплексная работа', empty_label='Все комплексные работы')
+    selected_work = forms.ChoiceField(required=False, label='Работа')
     work = forms.CharField(
         required=False,
         max_length=255,
@@ -84,9 +88,30 @@ class WorkListFilterForm(forms.Form):
         self.fields["section"].label_from_instance = (
             lambda section: f"{section.construction_object.name} / {section.name}"
         )
+        works=ProjectWork.objects.filter(company=company,section__in=sections,merged_source__isnull=True)
+        complex_objects=ComplexObject.objects.filter(company=company,construction_object__in=objects)
+        section_id=self.data.get('section','')
+        if section_id:
+            works=works.filter(section_id=section_id) if str(section_id).isdigit() else works.none()
+            complex_objects=complex_objects.filter(work_packages__section_id=section_id).distinct() if str(section_id).isdigit() else complex_objects.none()
+        complex_id=self.data.get('complex_object','')
+        self.fields['complex_object'].queryset=complex_objects.order_by('name','pk')
+        if complex_id:
+            works=works.filter(complex_object_id=complex_id) if str(complex_id).isdigit() else works.none()
+        packages=works.filter(kind=ProjectWork.Kind.COMPOSITE)
+        self.fields['package'].queryset=packages.order_by('name','pk')
+        package_id=self.data.get('package','')
+        if package_id:
+            works=works.filter(pk=package_id,kind=ProjectWork.Kind.COMPOSITE) if str(package_id).isdigit() else works.none()
+        simple=works.filter(kind=ProjectWork.Kind.SIMPLE).order_by('name','pk')
+        items=ProjectWorkItem.objects.filter(company=company,project_work__in=works).select_related('project_work').order_by('name','pk')
+        self.fields['selected_work'].choices=[('', 'Все работы'), *[(f'w:{row.pk}', f'{row.name} · самостоятельная') for row in simple], *[(f'i:{row.pk}', f'{row.name} · {row.project_work.name}') for row in items]]
+        self.fields['work'].label='Поиск по названию комплекса / работы'
+        self.fields['subwork'].label='Поиск по работе в составе комплекса'
+        self.order_fields(['project','construction_object','section','complex_object','package','selected_work','work','subwork'])
         for field in self.fields.values():
             field.widget.attrs["class"] = (
                 "form-select form-select-sm"
-                if isinstance(field, forms.ModelChoiceField)
+                if isinstance(field, forms.ChoiceField)
                 else "form-control form-control-sm"
             )

@@ -38,6 +38,13 @@ class WorkListView(CompanyScopedMixin, ListView):
             for field, path in [('project', 'section__construction_object__project'), ('construction_object', 'section__construction_object'), ('section', 'section')]:
                 if values[field]:
                     queryset = queryset.filter(**{path: values[field]})
+            if values['complex_object']:
+                queryset=queryset.filter(complex_object=values['complex_object'])
+            if values['package']:
+                queryset=queryset.filter(pk=values['package'].pk)
+            if values['selected_work']:
+                kind, selected_id=values['selected_work'].split(':')
+                queryset=queryset.filter(pk=selected_id) if kind=='w' else queryset.filter(pk__in=ProjectWorkItem.objects.filter(company=self.request.user.company,pk=selected_id).values('project_work_id'))
             # SQLite LIKE does not fold Cyrillic case. Its regex implementation
             # does; escape the query so punctuation remains literal.
             lookup = 'iregex' if connection.vendor == 'sqlite' else 'icontains'
@@ -54,14 +61,29 @@ class WorkListView(CompanyScopedMixin, ListView):
         else:
             queryset = queryset.none()
         return queryset.annotate(items_count=Count('items')).select_related(
-            'section', 'section__construction_object', 'section__construction_object__project'
-        ).order_by('code', 'pk')
+            'section', 'complex_object', 'section__construction_object', 'section__construction_object__project'
+        ).prefetch_related('items').order_by('code', 'pk')
 
     def get_context_data(self, **kwargs):
         from apps.works.progress import WorkProgressService
 
         context = super().get_context_data(**kwargs)
         context['filter_form'] = self.filter_form
+        mode=self.request.GET.get('view',self.request.session.get('work_catalogue_view','table'))
+        if mode not in {'table','tree'}:mode='table'
+        self.request.session['work_catalogue_view']=mode
+        context['view_mode']=mode
+        groups={}
+        for work in context['works']:
+            obj=work.section.construction_object
+            group=groups.setdefault(obj.pk,{'object':obj,'branches':{}})
+            branch=group['branches'].setdefault(work.complex_object_id,{'object':work.complex_object,'works':[]})
+            branch['works'].append(work)
+        context['tree_groups']=[{'object':g['object'],'branches':list(g['branches'].values())} for g in groups.values()]
+        for key in ['table','tree']:
+            query=self.request.GET.copy();query['view']=key;query.pop('page',None)
+            context[key+'_view_query']=query.urlencode()
+
         params = self.request.GET.copy()
         params.pop('page', None)
         context['filter_query'] = params.urlencode()

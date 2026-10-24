@@ -36,6 +36,7 @@ class WorkListFilterTests(TestCase):
         )
 
     def setUp(self):
+        self.planner.assigned_objects.add(self.other_obj)
         self.client.force_login(self.planner)
 
     def get(self, **params):
@@ -137,3 +138,26 @@ class WorkListFilterTests(TestCase):
         self.assertEqual(self.ids(work="монтаж (акз)"), {self.simple.pk})
         self.assertEqual(self.ids(subwork="покраска [акз]"), {self.composite.pk})
         self.assertFalse(self.ids(work=".*"))
+
+    def test_hierarchy_selection_filters(self):
+        from .models import ComplexObject
+        obj=ComplexObject.objects.create(company=self.company,construction_object=self.obj,name='Комплексный объект')
+        self.composite.complex_object=obj
+        self.composite.save()
+        item=self.composite.items.first()
+        self.assertEqual(self.ids(complex_object=obj.pk),{self.composite.pk})
+        self.assertEqual(self.ids(package=self.composite.pk),{self.composite.pk})
+        self.assertEqual(self.ids(selected_work=f'i:{item.pk}'),{self.composite.pk})
+        self.assertEqual(self.ids(selected_work=f'w:{self.simple.pk}'),{self.simple.pk})
+        form=self.get(complex_object=obj.pk,package=self.composite.pk).context['filter_form']
+        self.assertEqual(set(form.fields['package'].queryset.values_list('pk',flat=True)),{self.composite.pk})
+        self.assertNotIn(f'w:{self.simple.pk}',dict(form.fields['selected_work'].choices))
+        self.assertFalse(self.ids(complex_object=obj.pk,selected_work=f'w:{self.simple.pk}'))
+
+    def test_tree_mode_and_preference_keep_filter(self):
+        response=self.get(view='tree',work='Composite')
+        self.assertContains(response,'Комплексный объект не задан')
+        self.assertContains(response,self.composite.name)
+        self.assertEqual(response.context['view_mode'],'tree')
+        self.assertEqual(self.get().context['view_mode'],'tree')
+        self.assertEqual(self.get(view='table').context['view_mode'],'table')
