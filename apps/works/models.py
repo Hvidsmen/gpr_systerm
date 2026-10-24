@@ -234,8 +234,14 @@ class ProjectWork(BaseCompanyModel):
         from django.utils import timezone
 
         with transaction.atomic():
-            if self.complex_object_id and (self.section_id!=self.complex_object.section_id or self.company_id!=self.complex_object.company_id):
-                raise ValidationError({'complex_object':'Комплекс работ должен находиться в разделе комплексного объекта.'})
+            if self.complex_object_id:
+                from apps.projects.models import ConstructionObject
+                parent=ComplexObject.objects.get(pk=self.complex_object_id)
+                ConstructionObject.objects.select_for_update().get(pk=parent.construction_object_id)
+                parent=ComplexObject.objects.select_for_update().get(pk=self.complex_object_id)
+                if self.section_id!=parent.section_id or self.company_id!=parent.company_id:
+                    raise ValidationError({'complex_object':'Комплекс работ должен находиться в разделе комплексного объекта.'})
+                self.complex_object=parent
             previous = (
                 type(self).objects.select_for_update().filter(pk=self.pk).first()
                 if self.pk
@@ -615,8 +621,28 @@ class ComplexObject(BaseCompanyModel):
         return super().full_clean(*args,**kwargs)
 
     def save(self,*args,**kwargs):
-        self.full_clean()
-        return super().save(*args,**kwargs)
+        from django.db import transaction
+        from apps.projects.models import ConstructionObject
+        with transaction.atomic():
+            owner=ConstructionObject.objects.select_for_update().filter(pk=self.construction_object_id,company_id=self.company_id).first()
+            if owner is None:raise ValidationError({'construction_object':'Строительный объект недоступен или принадлежит другой компании.'})
+            previous=type(self).objects.select_for_update().filter(pk=self.pk).first() if self.pk else None
+            self.full_clean()
+            fields=kwargs.get('update_fields')
+            moving=previous and previous.section_id!=self.section_id and (fields is None or 'section' in fields or 'section_id' in fields)
+            works=[]
+            if moving:
+                works=list(self.work_packages.select_for_update().order_by('pk'))
+                if any(work.company_id!=self.company_id or work.section_id!=previous.section_id for work in works):
+                    raise ValidationError({'section':'Связи работ не соответствуют прежнему разделу. Перенос отменён.'})
+                if ProjectWork.objects.filter(section_id=self.section_id,code__in=[work.code for work in works]).exclude(pk__in=[work.pk for work in works]).exists():
+                    raise ValidationError({'section':'В целевом разделе есть работы с совпадающими кодами. Выберите другой раздел.'})
+            result=super().save(*args,**kwargs)
+            if moving:
+                ProjectWork.objects.filter(pk__in=[work.pk for work in works],company_id=self.company_id).update(section_id=self.section_id)
+                from apps.audit.models import AuditLog
+                AuditLog.objects.create(user=getattr(self,'_section_actor',None),action='UPDATE',entity_type='works.ComplexObject',entity_id=str(self.pk),old_value={'section_id':previous.section_id},new_value={'section_id':self.section_id,'work_ids':[work.pk for work in works]},comment='Перенос комплексного объекта и всех его комплексов в другой раздел')
+            return result
 
     def clean(self):
         super().clean()
@@ -629,8 +655,6 @@ class ComplexObject(BaseCompanyModel):
         self.name=self.name.strip()
         if self.pk:
             previous=type(self).objects.get(pk=self.pk)
-            if previous.section_id!=self.section_id and self.work_packages.exists():
-                raise ValidationError({'section':'У комплексного объекта есть работы. Для смены уровня используйте преобразование раздела и комплексного объекта.'})
             if previous.construction_object_id!=self.construction_object_id and self.work_packages.exists():
                 raise ValidationError({'construction_object':'Объект с привязанными комплексами работ переносить нельзя.'})
 

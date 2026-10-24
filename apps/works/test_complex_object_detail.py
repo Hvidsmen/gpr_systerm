@@ -24,7 +24,7 @@ class ComplexObjectDetailTests(TestCase):
         self.assertContains(response,'До комплексных объектов')
 
     def test_edit_name_preserves_work_and_composition(self):
-        response=self.client.post(self.url,{'name':'Новое имя','description':'Описание'})
+        response=self.client.post(self.url,{'name':'Новое имя','description':'Описание','section':self.section.pk})
         self.assertRedirects(response,self.url)
         self.facility.refresh_from_db();self.work.refresh_from_db()
         self.assertEqual(self.facility.name,'Новое имя')
@@ -51,3 +51,25 @@ class ComplexObjectDetailTests(TestCase):
         response=self.client.get(self.url,{'view':'tree'})
         self.assertContains(response,'data-tree-expand')
         self.assertEqual(self.client.get(self.url).context['view_mode'],'tree')
+
+    def test_package_and_item_filters_are_scoped_and_preserved_between_views(self):
+        other=ProjectWork.objects.create(company=self.company,section=self.section,complex_object=self.facility,name='Другой комплекс',kind='COMPOSITE')
+        item=self.work.items.first()
+        response=self.client.get(self.url,{'package':self.work.pk,'item':item.pk,'view':'table'})
+        self.assertEqual([work.pk for work in response.context['works']],[self.work.pk])
+        self.assertEqual([row.pk for row in response.context['works'][0].catalogue_items],[item.pk])
+        self.assertContains(response,f'package={self.work.pk}&amp;item={item.pk}&amp;view=tree')
+        response=self.client.get(self.url,{'package':other.pk,'item':item.pk})
+        self.assertFalse(response.context['works'])
+        self.assertIn('item',response.context['filter_form'].errors)
+        response=self.client.get(self.url,{'package':'invalid'})
+        self.assertFalse(response.context['works'])
+
+    def test_change_section_in_card_moves_the_composition(self):
+        from apps.projects.models import Section
+        target=Section.objects.create(company=self.company,construction_object=self.obj,name='Новый раздел')
+        response=self.client.post(self.url,{'name':self.facility.name,'description':'','section':target.pk})
+        self.assertRedirects(response,self.url)
+        self.facility.refresh_from_db();self.work.refresh_from_db()
+        self.assertEqual(self.facility.section_id,target.pk)
+        self.assertEqual(self.work.section_id,target.pk)
