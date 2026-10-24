@@ -48,3 +48,13 @@ class PositionImportTests(TestCase):
         self.assertTrue(queued.report['positions_import'])
         queued.status='DONE';queued.save()
         self.assertContains(self.client.get(url), 'Загрузить актуальные должности')
+
+    def test_empty_source_is_an_explicit_error_with_filter_counts(self):
+        run=self.run_record()
+        with self.assertRaisesMessage(ValidationError,'Всего в dbo._Reference92: 100'):
+            apply_names(run,{'position_names':[],'position_source':{'total':100,'not_marked':90,'excluded':90,'eligible':0}})
+        self.assertFalse(Brigade.objects.filter(company=self.company).exists())
+
+    def test_only_blank_names_cannot_report_success(self):
+        with self.assertRaisesMessage(ValidationError,'все полученные наименования пустые'):
+            apply_names(self.run_record(),{'position_names':[{'name':'   '}]})

@@ -79,7 +79,7 @@ def process_queue():
             if positions_import:
                 from .one_c_positions import apply_names
                 result=apply_names(run,run.report)
-                run.report={'positions_import':True,'positions_result':result}
+                run.report={'positions_import':True,'positions_result':result,'position_source':run.report.get('position_source',{}),'position_flags':run.report.get('position_flags',[])}
             if metadata_only:
                 prior=run.connection.runs.filter(status='DONE',server=run.server,database=run.database).exclude(pk=run.pk).exclude(report__has_key='positions_import').order_by('-created_at').first()
                 if prior:

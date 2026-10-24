@@ -46,3 +46,9 @@ class OneCJobTests(TestCase):
         self.client.force_login(user)
         self.assertEqual(self.client.get(self.url).status_code,403)
         self.assertEqual(self.client.post(self.url).status_code,403)
+
+    def test_old_empty_import_is_not_displayed_as_successful_load(self):
+        self.run_record(report={'positions_import':True,'positions_result':{'created':0,'existing':0,'duplicates':0,'empty':0}},status='DONE')
+        response=self.client.get(self.url)
+        self.assertContains(response,'Данные не загружены')
+        self.assertContains(response,reverse('resources:brigade_list'))

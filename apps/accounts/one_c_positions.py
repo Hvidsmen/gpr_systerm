@@ -18,6 +18,14 @@ def apply_names(run, report):
     names = report.get('position_names')
     if not isinstance(names, list) or len(names) > 100000:
         raise ValidationError('Некорректный список должностей из 1С.')
+    if not names:
+        source=report.get('position_source',{})
+        raise ValidationError('Должности не загружены: источник вернул 0 записей после отбора. '
+                              f"Всего в dbo._Reference92: {source.get('total','неизвестно')}; "
+                              f"без пометки удаления: {source.get('not_marked','неизвестно')}; "
+                              f"исключены из штатного расписания среди них: {source.get('excluded','неизвестно')}; "
+                              f"подходят обоим условиям: {source.get('eligible','неизвестно')}. "
+                              'Проверьте показатели источника в результате задания.')
     normalized = {}
     empty = 0
     for row in names:
@@ -31,6 +39,7 @@ def apply_names(run, report):
         if len(name) > Brigade._meta.get_field('name').max_length:
             raise ValidationError(f'Название длиннее 150 символов: {name[:70]}. Загрузка отменена целиком.')
         normalized.setdefault(name.casefold(), name)
+    if not normalized:raise ValidationError('Должности не загружены: все полученные наименования пустые.')
     # Serialize imports for this company, including other worker processes.
     from .models import Company
     Company.objects.select_for_update().get(pk=run.connection.company_id)
