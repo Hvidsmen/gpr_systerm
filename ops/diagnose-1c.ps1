@@ -20,7 +20,7 @@ $reportPath=Join-Path $directory 'report.json'
 $identity=[Security.Principal.WindowsIdentity]::GetCurrent()
 function Write-Json($Path,$Value){
     $temporary=$Path+'.'+[guid]::NewGuid().ToString('N')+'.tmp'
-    $Value | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $temporary -Encoding UTF8
+    ConvertTo-Json -InputObject $Value -Depth 12 | Set-Content -LiteralPath $temporary -Encoding UTF8
     Move-Item -LiteralPath $temporary -Destination $Path -Force
 }
 function Quote-Identifier([string]$value){return '['+$value.Replace(']',']]')+']'}
@@ -86,12 +86,16 @@ function Read-MetadataNames($connection,$columns){
     if(-not $PythonPath){throw 'Python executable for the metadata reader is unavailable.'}
     $parser=Join-Path $PSScriptRoot 'parse_1c_metadata.py'
     Invoke-MetadataReader 'index' $metadataDirectory $PythonPath $parser
-    $requests=@(Get-Content -LiteralPath (Join-Path $metadataDirectory 'requests.json') -Raw -Encoding UTF8 | ConvertFrom-Json)
+    # A named root object avoids Windows PowerShell 5.1 wrapping a JSON array as one item.
+    $manifest=ConvertFrom-Json -InputObject (Get-Content -LiteralPath (Join-Path $metadataDirectory 'requests.json') -Raw -Encoding UTF8)
     $read=0;$totalBytes=0;$metadataWarnings=@();$timer=[Diagnostics.Stopwatch]::StartNew()
-    foreach($entry in $requests){
+    foreach($entry in $manifest.objects){
         if($timer.Elapsed.TotalSeconds -gt 180){$metadataWarnings+=[pscustomobject]@{error='Metadata read time limit reached; names are partial.'};break}
-        if($entry.uuid -notmatch '^[a-f0-9-]{36}$'){throw 'Invalid metadata UUID.'}
-        if(Save-MetadataFile $connection $configs[0] $entry.uuid (Join-Path $metadataDirectory ($entry.uuid+'.bin')) $parts){$read++;$totalBytes+=(Get-Item -LiteralPath (Join-Path $metadataDirectory ($entry.uuid+'.bin'))).Length;if($totalBytes -gt 134217728){$metadataWarnings+=[pscustomobject]@{error='Metadata snapshot limit reached; names are partial.'};break}}
+        if($entry -is [System.Array] -or $entry.uuid -isnot [string]){throw 'Metadata manifest entry must contain one UUID, not an array.'}
+        $uuid=$entry.uuid
+        if($uuid -notmatch '^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$'){throw 'Invalid metadata UUID.'}
+        $metadataPath=Join-Path -Path $metadataDirectory -ChildPath ($uuid+'.bin')
+        if(Save-MetadataFile $connection $configs[0] $uuid $metadataPath $parts){$read++;$totalBytes+=(Get-Item -LiteralPath $metadataPath).Length;if($totalBytes -gt 134217728){$metadataWarnings+=[pscustomobject]@{error='Metadata snapshot limit reached; names are partial.'};break}}
     }
     Write-Json (Join-Path $metadataDirectory 'schema.json') $columns
     Invoke-MetadataReader 'decode' $metadataDirectory $PythonPath $parser

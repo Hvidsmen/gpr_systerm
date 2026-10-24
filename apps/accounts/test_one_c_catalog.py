@@ -97,7 +97,7 @@ class MetadataCommandTests(SimpleTestCase):
             (root/'dbnames.bin').write_bytes(binary(['0',['2',[OWNER,'Reference','394'],[FIELD,'Fld','100']]]))
             result=subprocess.run([sys.executable,str(parser),'index',str(root)],capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stderr)
-            self.assertEqual(json.loads((root/'requests.json').read_text())[0]['uuid'],OWNER)
+            self.assertEqual(json.loads((root/'requests.json').read_text())['objects'][0]['uuid'],OWNER)
             (root/(OWNER+'.bin')).write_bytes(binary(['0',[header(OWNER,'Должности'),header(FIELD,'КлассВодителя')]]))
             (root/'schema.json').write_text(json.dumps([schema(),schema(column='_Fld100')]),encoding='utf-8-sig')
             result=subprocess.run([sys.executable,str(parser),'decode',str(root)],capture_output=True,text=True)
@@ -144,3 +144,19 @@ class MetadataMultipleBindingsTests(SimpleTestCase):
         result=resolve(index,{OWNER:{OWNER:'Должности'},other:{other:'ПриёмНаРаботу'}},[schema(),schema(table='_Reference12'),schema(table='_Document9')],warnings)
         self.assertEqual(set(result),{'dbo._Document9'})
         self.assertIn('Several main SQL tables',warnings[0]['error'])
+
+class MetadataManifestTests(SimpleTestCase):
+    def test_multiple_metadata_objects_have_named_array_for_powershell(self):
+        import subprocess,sys,tempfile
+        from pathlib import Path
+        second='44444444-4444-4444-4444-444444444444'
+        parser=Path(__file__).resolve().parents[2]/'ops/parse_1c_metadata.py'
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp)
+            (root/'dbnames.bin').write_bytes(binary(['0',['2',[OWNER,'Reference','394'],[second,'Document','5']]]))
+            result=subprocess.run([sys.executable,str(parser),'index',str(root)],capture_output=True,text=True)
+            self.assertEqual(result.returncode,0,result.stderr)
+            manifest=json.loads((root/'requests.json').read_text())
+            self.assertIsInstance(manifest,dict)
+            self.assertEqual({row['uuid'] for row in manifest['objects']},{OWNER,second})
+            self.assertTrue(all(isinstance(row['uuid'],str) for row in manifest['objects']))

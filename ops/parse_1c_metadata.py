@@ -11,7 +11,7 @@ def main():
     if mode=='index':
         requests=[entry for entry in index.values() if entry['prefix'] in ROOTS]
         if len(requests)>5000:raise ValueError('More than 5000 metadata objects; reader limit exceeded.')
-        (root/'requests.json').write_text(json.dumps(requests),encoding='utf-8')
+        (root/'requests.json').write_text(json.dumps({'objects':requests}),encoding='utf-8')
         return
     found={};errors=[]
     for identity,entry in index.items():
