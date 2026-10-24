@@ -49,6 +49,8 @@ def save_table(user,schedule,changes):
 @transaction.atomic
 def add_entry(user,schedule,data):
     schedule=locked(user,schedule);kind=data['kind']
+    if kind=='work' and data.get('selection'):
+        return add_work_branch(user,schedule,data['selection'])
     from .workspace_services import specification
     from .estimate_catalog import alternatives,local_work
     metadata={};original=[]
@@ -84,3 +86,44 @@ def add_entry(user,schedule,data):
     entry=DailyScheduleEntry.objects.create(schedule=schedule,key=key,kind=kind,label=label,metadata=metadata,original=original,rows=original)
     values=[{field:Decimal(0) for field,_,_ in service.FIELDS[kind]} for _ in service.identities(entry)]
     return service.save_entry(user,entry,values,0)
+
+
+@transaction.atomic
+def add_work_branch(user,schedule,selection):
+    from .estimate_catalog import alternatives,local_work
+    from .workspace_services import specification
+    from .work_selection import resolve
+    from .models import DailyScheduleEntry
+    from copy import deepcopy
+    require_roles(user,PLAN_ROLES)
+    schedule=locked(user,schedule)
+    result=[]
+    for work,selected in resolve(alternatives(schedule),selection):
+        original_work=work
+        work=local_work(user,schedule.source,work) if schedule.source_id else work
+        if selected and work.pk!=original_work.pk:
+            mapped=[]
+            for item in original_work.items.filter(pk__in=selected):
+                targets=list(work.items.filter(name=item.name,unit=item.unit,quantity_per_unit=item.quantity_per_unit))
+                if len(targets)!=1:raise ValidationError('Не удалось однозначно сопоставить выбранные работы истории.')
+                mapped.append(targets[0].pk)
+            selected=mapped
+        key='work:'+str(work.pk)
+        entry=schedule.entries.select_for_update().filter(key=key).first()
+        if entry:
+            old_ids={item['id'] for item in entry.metadata.get('items',[])}
+            wanted=set(selected) if selected else set(work.items.values_list('pk',flat=True))
+            if work.kind!='COMPOSITE' or wanted<=old_ids:result.append(entry);continue
+            selected=sorted(old_ids|wanted)
+        metadata=specification(work,selected)
+        if entry:
+            for field in ['history','original_daily','revenue_prices']:
+                if field in entry.metadata:metadata[field]=deepcopy(entry.metadata[field])
+            entry.metadata=metadata;entry.save(update_fields=['metadata'])
+        else:
+            metadata.update(history=[],original_daily=[])
+            entry=DailyScheduleEntry.objects.create(schedule=schedule,key=key,kind='work',label=work.name,metadata=metadata,original=[],rows=[])
+        stored={(row['date'],row.get('item_id')):row for row in entry.rows}
+        values=[{'quantity':Decimal(str(stored.get((day.isoformat(),item['id']),{}).get('quantity',0)))} for day,item in service.identities(entry)]
+        result.append(service.save_entry(user,entry,values,entry.revision))
+    return result

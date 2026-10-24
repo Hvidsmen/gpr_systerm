@@ -43,7 +43,7 @@
   });
   if (add) {
     const selector = add.querySelector('[name="kind"]');
-    const fields = {work:['work'],labor:['brigade','rate'],equipment:['equipment','reference','rate'],fuel:['fuel','reference','rate']};
+    const fields = {work:['selection'],labor:['brigade','rate'],equipment:['equipment','reference','rate'],fuel:['fuel','reference','rate']};
     const showFields = () => add.querySelectorAll('[data-add-field]').forEach(wrapper => {
       wrapper.hidden = wrapper.dataset.addField !== 'kind' && !fields[selector.value].includes(wrapper.dataset.addField);
     });

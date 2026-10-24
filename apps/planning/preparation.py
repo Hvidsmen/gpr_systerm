@@ -24,10 +24,11 @@ def resource_signature(owner):
     data['work_items']=list(ProjectWorkItem.objects.filter(company=owner.company,project_work_id__in=ids).order_by('pk').values('pk','project_work_id','quantity_per_unit','unit','parent_id'))
     if isinstance(owner,DailySchedule):
         data['work_inputs']=[{'work':e.metadata['id'],'rows':[{k:r.get(k) for k in ('date','item_id','quantity')} for r in e.rows]} for e in owner.entries.filter(kind='work').order_by('pk')]
-    else:data['work_inputs']=list(estimate_review.review_allocations(owner).order_by('pk').values('work_id','month','quantity','item_quantities'))
+    else:data['work_inputs']=list(estimate_review.review_allocations(owner).order_by('pk').values('work_id','month','quantity','item_quantities','selected_item_ids'))
     for rows in data.values():
         for row in rows:
             row.pop('updated_at',None);row.pop('created_at',None)
+            if not row.get('selected_item_ids'):row.pop('selected_item_ids',None)
     return hashlib.sha256(json.dumps(data,sort_keys=True,default=str).encode()).hexdigest()
 
 

@@ -595,6 +595,7 @@ class WorkMonthAllocation(BaseCompanyModel):
     quantity = models.DecimalField(
         "Объём основной работы", max_digits=15, decimal_places=3, default=0
     )
+    selected_item_ids = models.JSONField("Выбранные работы в составе комплекса", default=list, blank=True)
     item_quantities = models.JSONField("Месячные объёмы подработ", default=dict, blank=True)
     daily_override = models.JSONField("Сохранённый дневной план объединения", null=True, blank=True, default=None)
     load_profile = models.ForeignKey(
@@ -633,6 +634,12 @@ class WorkMonthAllocation(BaseCompanyModel):
         if self.load_profile_id and self.load_profile.company_id != self.company_id:
             raise ValidationError({"load_profile": "Профиль другой компании."})
 
+        selected=self.selected_item_ids
+        if not isinstance(selected,list) or any(type(pk) is not int or pk<=0 for pk in selected) or len(selected)!=len(set(selected)):
+            raise ValidationError({'selected_item_ids':'Некорректный список выбранных работ.'})
+        if selected and (self.work.kind!='COMPOSITE' or set(selected)-set(self.work.items.filter(company=self.company).values_list('pk',flat=True))):
+            raise ValidationError({'selected_item_ids':'Выбранные работы не принадлежат этому комплексу.'})
+
         if not isinstance(self.item_quantities, dict):
             raise ValidationError({"item_quantities": "Объёмы подработ должны быть словарём."})
         if self.item_quantities:
@@ -641,6 +648,7 @@ class WorkMonthAllocation(BaseCompanyModel):
             if self.work.kind != "COMPOSITE" or not isinstance(self.item_quantities, dict):
                 raise ValidationError({"item_quantities": "Отдельные объёмы допустимы только для составной работы."})
             items = list(self.work.items.filter(company=self.company))
+            if selected:items=[item for item in items if item.pk in selected]
             if set(self.item_quantities) != {str(item.pk) for item in items}:
                 raise ValidationError({"item_quantities": "Укажите объёмы всех подработ этой работы."})
             if self.version.version_kind == "FORECAST":
@@ -650,7 +658,7 @@ class WorkMonthAllocation(BaseCompanyModel):
                     from apps.works.merge_planning import transform_snapshot
                     base_snapshot = transform_snapshot(base_snapshot,self.company)
                 frozen = next((spec for spec in base_snapshot.get("works", []) if spec["id"] == self.work_id), None) if baseline else None
-                if frozen and {item.pk: item.quantity_per_unit for item in items} != {item["id"]: Decimal(item["norm"]) for item in frozen["items"]}:
+                if frozen and {item.pk: item.quantity_per_unit for item in items} != {item["id"]: Decimal(item["norm"]) for item in frozen.get("valuation_items",frozen["items"]) if not selected or item["id"] in selected}:
                     raise ValidationError({"item_quantities": "Состав подработ или нормативы отличаются от утверждённой базы. Создайте новый базовый план."})
             try:
                 values = {int(key): Decimal(str(value)) for key, value in self.item_quantities.items()}
@@ -665,7 +673,7 @@ class WorkMonthAllocation(BaseCompanyModel):
             from decimal import Decimal, InvalidOperation
             from datetime import date
             try:
-                allowed=set(self.work.items.values_list('pk',flat=True)) if self.work.kind == 'COMPOSITE' else {None}
+                allowed=(set(selected) if selected else set(self.work.items.values_list('pk',flat=True))) if self.work.kind == 'COMPOSITE' else {None}
                 if not isinstance(self.daily_override,list):
                     raise ValueError
                 for row in self.daily_override:
@@ -685,9 +693,9 @@ class WorkMonthAllocation(BaseCompanyModel):
                 raise ValidationError(
                     "Месячные данные отправленной или утверждённой версии менять нельзя."
                 )
-        if self.pk and self.daily_override is not None:
+        if self.pk and self.daily_override is not None and not getattr(self,"_preserve_selected_override",False):
             previous = type(self).objects.get(pk=self.pk)
-            if (previous.quantity, previous.load_profile_id, previous.item_quantities) != (self.quantity, self.load_profile_id, self.item_quantities):
+            if (previous.quantity, previous.load_profile_id, previous.item_quantities, previous.selected_item_ids) != (self.quantity, self.load_profile_id, self.item_quantities, self.selected_item_ids):
                 self.daily_override = None
                 if kwargs.get('update_fields') is not None:
                     kwargs['update_fields']=set(kwargs['update_fields']) | {'daily_override'}

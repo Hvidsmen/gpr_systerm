@@ -54,6 +54,7 @@
 <div class="card mb-3"><div class="card-body"><h2>Добавить списком</h2><p>Сначала сохраните введённые месячные данные. В списке отметьте несколько позиций и отметьте нужные месяцы или выберите все доступные.</p>
 <div class="d-flex flex-wrap gap-2"><a class="btn btn-outline-primary" href="{% url 'planning:workspace_bulk_add' version.pk 'works' %}?month={{ selected_month|date:'Y-m-d' }}">Работы</a>{% for section in resource_sections %}<a class="btn btn-outline-primary" href="{% url 'planning:workspace_bulk_add' version.pk section.kind %}?month={{ selected_month|date:'Y-m-d' }}">{{ section.title }}</a>{% endfor %}</div>
 </div></div>{% endif %}
+<details class="card p-3 mb-3"><summary>Добавить из справочника: объект → комплекс → работа</summary><p>Объект добавляется со всем составом. Комплекс — со своими работами. Работа — в своём комплексе и объекте, без соседних веток. Сначала сохраните изменения в таблице.</p><form method="post" action="{% url 'planning:workspace_add_branch' version.pk %}">{% csrf_token %}{{ branch_form.as_p }}<button class="btn btn-outline-primary">Добавить выбранную ветку</button></form></details>
 {% if version.version_kind == 'BASELINE' %}
 <div class="card mb-3 period-composition"><div class="card-body">
 <h2>Состав на весь период</h2>
@@ -131,6 +132,7 @@ function groupAllocationRows(panel) {
     const input=row.querySelector('[name$="-'+rowIdentity[kind]+'"]');
     const meta=planningFilterData[kind][input.value] || {};
     let path=input.value?fieldNames.map(name=>({key:name+':'+(meta[name] || ''),label:labels[name].get(meta[name]) || emptyLabels[kind][name]})):[{key:'new',label:'Новые строки'}];
+    if(kind==='works' && input.value && panel.querySelector('[data-work-order]')?.value==='object_work')path=[{key:'complex_object:'+(meta.complex_object||''),label:meta.complex_object_name||'Самостоятельные работы'}];
     if(kind==='works' && input.value && panel.querySelector('[data-work-order]')?.value==='work_section')path=[{key:'work:'+input.options[input.selectedIndex].textContent,label:input.options[input.selectedIndex].textContent},...path];
     let parent=root,keys=[];
     path.forEach(part=>{
@@ -208,7 +210,7 @@ function applyRowFilters(panel) {
 function refreshRowFilters() {document.querySelectorAll('[data-row-filter]').forEach(panel=>{groupAllocationRows(panel);applyRowFilters(panel);});}
 document.querySelectorAll('[data-row-filter]').forEach(panel=>{
   const order=panel.querySelector('[data-work-order]');
-  if(order){try{order.value=localStorage.getItem('gpr-work-order') || 'section_work';}catch(e){}
+  if(order){try{order.value=localStorage.getItem('gpr-work-order') || 'object_work';}catch(e){}
     order.addEventListener('change',()=>{try{localStorage.setItem('gpr-work-order',order.value);}catch(e){}groupAllocationRows(panel);applyRowFilters(panel);});}
   panel.addEventListener('input',()=>applyRowFilters(panel));
   panel.querySelector('[data-reset-filter]').addEventListener('click',()=>{panel.querySelectorAll('input,select:not([data-work-order])').forEach(i=>i.value='');applyRowFilters(panel);});
@@ -245,7 +247,10 @@ function updateSubworks(row) {
     panel=document.createElement('div');panel.dataset.subworks='';panel.style.gridColumn='1 / -1';
     panel.className='table-responsive mt-1';row.querySelector('.allocation-grid').append(panel);
   }
-  const items=compositeItems[work.value];
+  const selection=row.querySelector('[name$="-selected_item_ids"]');
+  let selected=[];try{selected=JSON.parse(selection?.value||'[]')||[];}catch(e){}
+  const allItems=compositeItems[work.value];
+  const items=selected.length && allItems?allItems.filter(item=>selected.includes(item.id)):allItems;
   panel.replaceChildren();panel.hidden=!items;
   if (!items) return;
   if (!items.length) {panel.textContent='В комплексе работ пока нет работ в составе комплекса. Добавьте работы в составе комплекса и нормативы.';return;}
@@ -292,7 +297,7 @@ function updateSubworks(row) {
 function wireSubworks() {
   document.querySelectorAll('#work-rows .allocation-row').forEach(row=>{
     updateSubworks(row);
-    row.querySelector('[name$="-work"]').onchange=()=>{delete importedItemQuantities[row.querySelector('[name$="-quantity"]').name.slice(0,-'-quantity'.length)];row.querySelector('[name$="-reset_item_quantities"]').value='on';row.querySelector('[name$="-edited_item_quantities"]').value='';updateSubworks(row);};
+    row.querySelector('[name$="-work"]').onchange=()=>{const selection=row.querySelector('[name$="-selected_item_ids"]');if(selection)selection.value='[]';delete importedItemQuantities[row.querySelector('[name$="-quantity"]').name.slice(0,-'-quantity'.length)];row.querySelector('[name$="-reset_item_quantities"]').value='on';row.querySelector('[name$="-edited_item_quantities"]').value='';updateSubworks(row);};
     row.querySelector('[name$="-quantity"]').oninput=()=>{delete importedItemQuantities[row.querySelector('[name$="-quantity"]').name.slice(0,-'-quantity'.length)];row.querySelector('[name$="-reset_item_quantities"]').value='on';row.querySelector('[name$="-edited_item_quantities"]').value='';updateSubworks(row);};
   });
 }

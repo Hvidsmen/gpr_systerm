@@ -106,6 +106,10 @@ def make_workbook(version, months, template=False):
         if not template and not relevant:
             continue
         spec = specs.get(work.pk) or work_specification(work)
+        if not template and work.pk not in specs:
+            from .work_selection import select_spec,union_selection
+            selected_rows=[row for (pk,m),row in allocations.items() if pk==work.pk and m in months]
+            if selected_rows:spec=select_spec(spec,union_selection(selected_rows))
         items = spec['items'] if spec['kind'] == 'COMPOSITE' else [{'id':None, 'name':'', 'unit':work.unit, 'norm':'1'}]
         first_row=worksheets['Работы'].max_row+1
         for item in items:
@@ -117,7 +121,10 @@ def make_workbook(version, months, template=False):
                 elif work.pk in specs:
                     quantities.append(numeric(sum((Decimal(plan['quantity']) for plan in spec.get('plans', []) if plan['date'][:7] == month.isoformat()[:7] and plan['item_id'] == item['id']), Decimal(0))))
                 elif row:
-                    if row.item_quantities and set(row.item_quantities)!={str(child['id']) for child in spec['items']}:
+                    expected=set(map(str,row.selected_item_ids)) if row.selected_item_ids else {str(child['id']) for child in spec['items']}
+                    if row.selected_item_ids and item['id'] not in row.selected_item_ids:
+                        quantities.append(None);continue
+                    if row.item_quantities and set(row.item_quantities)!=expected:
                         raise ValidationError(f'{work.name}: состав подработ изменён. Обновите импортированные объёмы или задайте объём основной работы.')
                     quantities.append(numeric(row.item_quantities[str(item['id'])] if row.item_quantities else row.quantity * Decimal(item['norm'])))
                 else:
@@ -391,7 +398,9 @@ def parse_workbook(upload, version, months):
         for (pk,month),totals in work_values.items():
             work=works[pk]
             spec=work_specification(work)
-            if work.kind=='COMPOSITE' and set(totals)!={item['id'] for item in spec['items']}:
+            existing=version.work_allocations.filter(work=work,month=month).first()
+            expected=set(existing.selected_item_ids) if existing and existing.selected_item_ids else {item['id'] for item in spec['items']}
+            if work.kind=='COMPOSITE' and set(totals)!=expected:
                 errors.append(f'Работы, «{work.name}», {label(month)}: заполните все подработы, включая нулевые объёмы.');continue
             quantity=quantity_from_totals(spec,totals)
             work_rows.append((work,month,quantity,{str(key):str(value) for key,value in totals.items()} if work.kind=='COMPOSITE' else {}))

@@ -95,7 +95,9 @@ def create(user,source,month,*,_skip_rebase=False):
         return draft
     snapshot=period_snapshot(source,*bounds(month));prior=history(source,month)
     active=DailySchedule.objects.filter(source=source,month=month,status='APPLIED').first()
-    previous={e.key:e.rows for e in active.entries.all()} if active else {}
+    active_entries={e.key:e for e in active.entries.all()} if active else {}
+    previous={key:entry.rows for key,entry in active_entries.items()}
+    selected_by_work={row.work_id:row.selected_item_ids for row in source.work_allocations.filter(month=month)}
     schedule=DailySchedule.objects.create(company=user.company,source=source,month=month,revision=(DailySchedule.objects.filter(construction_object=source.construction_object,month=month).aggregate(n=Max('revision'))['n'] or 0)+1,created_by=user)
     if active and active.locked_before:
         schedule.locked_before=active.locked_before;schedule.replaces=active.replaces;schedule.save(update_fields=['locked_before','replaces'])
@@ -103,7 +105,14 @@ def create(user,source,month,*,_skip_rebase=False):
     for spec in snapshot.get('works',[]):
         key='work:'+str(spec['id']);original=deepcopy(spec.get('plans',[]))
         if not original and not previous.get(key):continue
-        metadata={k:v for k,v in spec.items() if k not in {'plans','daily','context_plans'}}
+        selected=selected_by_work.get(spec['id']) or ([r['item_id'] for r in original] if spec.get('valuation_items') else [])
+        from .work_selection import select_spec
+        visible=select_spec(spec,selected)
+        metadata={k:v for k,v in visible.items() if k not in {'plans','daily','context_plans'}}
+        if key in active_entries:
+            old=active_entries[key].metadata
+            present={item['id'] for item in metadata.get('items',[])}
+            metadata.setdefault('items',[]).extend(deepcopy(item) for item in old.get('items',[]) if item['id'] not in present)
         metadata['history']=[dict(date=(month-timedelta(days=1)).isoformat(),item_id=i,quantity=str(q)) for i,q in prior[spec['id']].items()]
         metadata['original_daily']=spec.get('daily',[])
         entries.append(DailyScheduleEntry(schedule=schedule,key=key,kind='work',label=spec['name'],metadata=metadata,original=original,rows=deepcopy(previous.get(key,original))))
@@ -253,7 +262,7 @@ def overlay_schedules(snapshot,schedules,start,end):
                     spec=deepcopy(entry.metadata);spec.update(plans=[],daily=[])
                     specs[spec['id']]=spec;result.setdefault('works',[]).append(spec)
                 generated=finalize_work(entry.metadata,entry.rows,SimpleNamespace(start_date=schedule.month,end_date=bounds(schedule.month)[1]),entry.metadata.get('history',[]))
-                for field in ['name','unit_price','revenue_prices','items']:
+                for field in ['name','unit_price','revenue_prices','items','valuation_items','complex_object_id','complex_object_name']:
                     if field in entry.metadata:spec[field]=deepcopy(entry.metadata[field])
                 for field in ['plans','daily']:
                     spec[field]=[r for r in spec.get(field,[]) if not a.isoformat()<=r['date'][:10]<=b.isoformat()]+[r for r in generated[field] if a.isoformat()<=r['date'][:10]<=b.isoformat()]

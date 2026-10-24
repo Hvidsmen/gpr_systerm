@@ -22,7 +22,7 @@ def matrix(schedule,entries):
         group='Без группы'
         if entry.kind=='work':
             work=works.get(entry.metadata.get('id'))
-            group=entry.metadata.get('section_name') or (work.section.name if work else 'Работы')
+            group=entry.metadata.get('complex_object_name') or entry.metadata.get('section_name') or (work.section.name if work else 'Работы')
         elif entry.kind=='labor':
             brigade=brigades.get(first.get('brigade_id'))
             if brigade:group=' · '.join(str(v) for v in [brigade.macro_group,brigade.group] if v) or 'Должность'

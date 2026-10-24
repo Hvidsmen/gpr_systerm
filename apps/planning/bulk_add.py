@@ -92,7 +92,10 @@ class WorkspaceBulkAdd(View):
             for item in form.cleaned_data['items']:
                 for target in months:
                     if kind == 'works':
-                        _, created = WorkMonthAllocation.objects.get_or_create(company=locked.company, version=locked, month=target, work=item)
+                        allocation, created = WorkMonthAllocation.objects.get_or_create(company=locked.company, version=locked, month=target, work=item)
+                        if not created:
+                            from .work_selection import extend_allocation
+                            extend_allocation(allocation,[])
                     else:
                         identity = {'labor':lambda:{'brigade':item},
                             'equipment':lambda:{'equipment_type':item, 'equipment_number':form.cleaned_data['equipment_number']},

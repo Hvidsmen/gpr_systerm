@@ -107,10 +107,13 @@ def input_fingerprint(version):
             "month",
             "quantity",
             "item_quantities",
+            "selected_item_ids",
             "load_profile_id",
             "daily_override",
         )
     )
+    for row in works:
+        if not row.get('selected_item_ids'):row.pop('selected_item_ids',None)
     resources = list(
         version.resource_allocations.order_by("kind", "month", "pk").values()
     )

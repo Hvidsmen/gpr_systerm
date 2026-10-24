@@ -205,3 +205,6 @@ urlpatterns += [
 
 from .preparation_views import PreparationView
 urlpatterns += [path('workspace-versions/<int:pk>/preparation/',PreparationView.as_view(kind='gpr'),name='preparation_gpr'),path('daily-schedule/<int:pk>/preparation/',PreparationView.as_view(kind='smg'),name='preparation_smg')]
+
+from .work_selection_views import add_branch
+urlpatterns += [path('workspace-versions/<int:pk>/add-branch/',add_branch,name='workspace_add_branch')]

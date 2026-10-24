@@ -297,7 +297,9 @@ class WorkspaceEdit(View):
             for work in priced_works
         }
         filter_data, filter_specs = planning_filters(version)
+        from .work_selection_views import BranchForm
         return {
+            "branch_form": BranchForm(version=version,initial={"months":[selected.isoformat()]}),
             "version": version,
             "workspace": version.workspace,
             "selected_month": selected,
@@ -411,12 +413,15 @@ class AddWorkspaceWork(View):
                 if locked.status not in ["DRAFT", "REJECTED"]:
                     raise PermissionDenied("Версия уже отправлена.")
                 for month in months_between(version.workspace.continuation_start or version.start_date, version.end_date):
-                    WorkMonthAllocation.objects.get_or_create(
+                    row,created = WorkMonthAllocation.objects.get_or_create(
                         company=version.company,
                         version=version,
                         work=form.cleaned_data["work"],
                         month=month,
                     )
+                    if not created:
+                        from .work_selection import extend_allocation
+                        extend_allocation(row,[])
                 locked.snapshot = {}
                 locked.save(update_fields=["snapshot"])
             messages.success(

@@ -72,7 +72,8 @@ class WorkAllocationForm(AllocationMixin, forms.ModelForm):
     reset_item_quantities = forms.BooleanField(required=False, widget=forms.HiddenInput())
     class Meta:
         model = WorkMonthAllocation
-        fields = ["work", "month", "quantity", "load_profile"]
+        fields = ["work", "month", "quantity", "load_profile", "selected_item_ids"]
+        widgets = {"selected_item_ids": forms.HiddenInput()}
         labels = {"quantity": "Объём", "load_profile": "Профиль"}
 
     def __init__(self, *args, **kwargs):
@@ -82,9 +83,9 @@ class WorkAllocationForm(AllocationMixin, forms.ModelForm):
             section__construction_object=self.version.construction_object,
         )
 
-        self.fields["work"].queryset = works
+        self.fields["work"].queryset = works.select_related("complex_object")
         self.fields["work"].label_from_instance = (
-            lambda w: f"{w.name} ({w.unit}, {w.get_kind_display()})"
+            lambda w: f"{str(w.complex_object) + ' → ' if w.complex_object_id else ''}{w.name} ({w.unit}, {w.get_kind_display()})"
         )
         self.fields["quantity"].widget.attrs["min"] = "0"
         self.fields["quantity"].widget.attrs["step"] = "0.001"
@@ -93,6 +94,8 @@ class WorkAllocationForm(AllocationMixin, forms.ModelForm):
         data = super().clean()
         if data.get('reset_item_quantities') or 'quantity' in self.changed_data or 'work' in self.changed_data:
             self.instance.item_quantities = {}
+        data['selected_item_ids']=(data.get('selected_item_ids') or []) if self.add_prefix('selected_item_ids') in self.data else self.instance.selected_item_ids
+        if 'work' in self.changed_data and self.instance.pk:data['selected_item_ids']=[]
         edited = data.get('edited_item_quantities')
         if edited is not None:
             if not isinstance(edited, dict) or not edited:
@@ -106,10 +109,11 @@ class WorkAllocationForm(AllocationMixin, forms.ModelForm):
         return data
 
     def _update_errors(self, errors):
-        if hasattr(errors, 'error_dict') and 'item_quantities' in errors.error_dict:
+        if hasattr(errors, 'error_dict') and any(key in errors.error_dict for key in ['item_quantities','selected_item_ids']):
             from django.core.exceptions import ValidationError
             data = dict(errors.error_dict)
-            data.setdefault('__all__', []).extend(data.pop('item_quantities'))
+            for key in ['item_quantities','selected_item_ids']:
+                data.setdefault('__all__', []).extend(data.pop(key,[]))
             errors = ValidationError(data)
         super()._update_errors(errors)
 

@@ -15,7 +15,7 @@ def planning_filters(version):
     equipment = EquipmentType.objects.filter(company=company)
     fuel = ResourceMonthAllocation._meta.get_field('fuel_type').choices
     data = {
-        'works': {str(row.pk): {'section':str(row.section_id), 'kind':row.kind} for row in works},
+        'works': {str(row.pk): {'section':str(row.section_id), 'kind':row.kind, 'complex_object':str(row.complex_object_id or ''), 'complex_object_name':str(row.complex_object) if row.complex_object_id else 'Самостоятельные работы'} for row in works.select_related('complex_object')},
         'labor': {str(row.pk): {'group':str(row.group_id or '')} for row in brigades},
         'equipment': {str(row.pk): {'category':str(row.category_id or '')} for row in equipment},
         'fuel': {key:{'fuel_type':key} for key, label in fuel},

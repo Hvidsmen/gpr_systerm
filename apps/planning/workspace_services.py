@@ -132,7 +132,7 @@ def profile_weights(percentages, count):
     ]
 
 
-def work_rows(workspace, spec, month, quantity, override_profile=None, item_quantities=None, *, day_cache=None):
+def work_rows(workspace, spec, month, quantity, override_profile=None, item_quantities=None, *, day_cache=None, selected_item_ids=None):
     quantity = Decimal(str(quantity))
     if quantity == 0 and not any(Decimal(str(value)) for value in (item_quantities or {}).values()):
         return []
@@ -150,6 +150,7 @@ def work_rows(workspace, spec, month, quantity, override_profile=None, item_quan
     )
     rows = []
     for item in items:
+        if selected_item_ids and item["id"] not in selected_item_ids:continue
         percentages = (
             override
             if override is not None
@@ -180,11 +181,12 @@ def work_rows(workspace, spec, month, quantity, override_profile=None, item_quan
     return rows
 
 
-def specification(work):
-    spec = work_specification(work)
+def specification(work, selected_item_ids=None):
+    from .work_selection import select_spec
+    spec = select_spec(work_specification(work),selected_item_ids)
     quantity_from_totals(spec, {})
     spec["profiles"] = (
-        {str(item.pk): captured_profile(item.load_profile) for item in work.items.all()}
+        {str(item.pk): captured_profile(item.load_profile) for item in work.items.all() if not selected_item_ids or item.pk in selected_item_ids}
         if work.kind == "COMPOSITE"
         else {"None": captured_profile(work.load_profile)}
     )
@@ -444,7 +446,8 @@ def _build_workspace_snapshot(version, *, validate_inputs=True):
             allocations_by_work[allocation.work_id].append(allocation)
         for work_id, allocations in sorted(allocations_by_work.items()):
             work = allocations[0].work
-            spec = specification(work)
+            from .work_selection import union_selection
+            spec = specification(work,union_selection(allocations))
             rows = []
             for allocation in allocations:
                 if allocation.work_id == work_id:
@@ -455,7 +458,7 @@ def _build_workspace_snapshot(version, *, validate_inputs=True):
                         allocation.quantity,
                         allocation.load_profile,
                         allocation.item_quantities,
-                        day_cache=day_cache,
+                        day_cache=day_cache, selected_item_ids=allocation.selected_item_ids,
                     )
             works.append(finalize_work(spec, rows, workspace))
         resource_plans = {kind: [] for kind in RESOURCE_CONFIG}
@@ -506,6 +509,7 @@ def _build_workspace_snapshot(version, *, validate_inputs=True):
                         "month": r.month.isoformat(),
                         "quantity": str(r.quantity),
                         "item_quantities": r.item_quantities,
+                        "selected_item_ids": r.selected_item_ids,
                         "daily_override": r.daily_override,
                         "load_profile_id": r.load_profile_id,
                         "profile": (
@@ -542,9 +546,16 @@ def build_forecast(version, inputs, resources, base):
         base_specs = {key:spec for key,spec in base_specs.items() if not spec.get('history_source_object_id')}
     for row in inputs:
         if row.work_id not in base_specs:
-            new_spec = specification(row.work)
+            new_spec = specification(row.work,row.selected_item_ids)
             new_spec.update(plans=[], daily=[])
             base_specs[row.work_id] = new_spec
+        elif row.selected_item_ids or base_specs[row.work_id].get('valuation_items'):
+            previous_spec=base_specs[row.work_id]
+            additional=specification(row.work,row.selected_item_ids)
+            known={item['id'] for item in previous_spec['items']}
+            previous_spec['items'] += [item for item in additional['items'] if item['id'] not in known]
+            previous_spec.setdefault('valuation_items',additional.get('valuation_items',deepcopy(additional['items'])))
+            previous_spec.setdefault('profiles',{}).update(additional.get('profiles',{}))
     if any(r.month != target for r in inputs) and version.scenario not in {"REMAINING", "ENTERED"}:
         raise ValidationError(
             "В сценарии сохранения базы редактируется только выбранный месяц."
@@ -559,7 +570,7 @@ def build_forecast(version, inputs, resources, base):
             else:
                 raise ValidationError(f'Укажите план на выбранный месяц для работы «{spec["name"]}», включая нулевой объём.')
         rows = deepcopy(current.daily_override) if current.daily_override is not None else work_rows(
-            workspace, spec, target, current.quantity, current.load_profile, current.item_quantities
+            workspace, spec, target, current.quantity, current.load_profile, current.item_quantities, selected_item_ids=current.selected_item_ids
         )
         context = []
         if version.scenario == "BASELINE":
@@ -574,8 +585,13 @@ def build_forecast(version, inputs, resources, base):
             rows += [r for r in facts if date.fromisoformat(r['date']) >= workspace.start_date]
             for allocation in inputs:
                 if allocation.work_id == work_id and allocation.month > target:
-                    rows += deepcopy(allocation.daily_override) if allocation.daily_override is not None else work_rows(workspace,spec,allocation.month,allocation.quantity,allocation.load_profile,allocation.item_quantities)
+                    rows += deepcopy(allocation.daily_override) if allocation.daily_override is not None else work_rows(workspace,spec,allocation.month,allocation.quantity,allocation.load_profile,allocation.item_quantities,selected_item_ids=allocation.selected_item_ids)
         else:
+            if spec.get('valuation_items'):
+                from .work_selection import partial_remainder_rows
+                rows,context=partial_remainder_rows(version,spec,rows,inputs,future)
+                works.append(finalize_work(spec,rows,workspace,context))
+                continue
             facts = work_fact_rows(version, spec, target)
             past = [
                 r
@@ -672,6 +688,7 @@ def build_forecast(version, inputs, resources, base):
                     qty,
                     manual[month].load_profile if month in manual else None,
                     item_quantities,
+                    selected_item_ids=manual[month].selected_item_ids if month in manual else None,
                 )
             rows += past
         works.append(finalize_work(spec, rows, workspace, context))
@@ -948,7 +965,7 @@ class WorkspaceService:
                     quantity=quantity_from_totals(spec,values)
                     daily=[deepcopy(r) for r in spec['plans'] if r['date'][:7]==month.isoformat()[:7]]
             WorkMonthAllocation.objects.create(company=workspace.company,version=version,work_id=spec['id'],month=month,
-                quantity=quantity,item_quantities=quantities,daily_override=daily,load_profile=prior.load_profile if prior else None)
+                quantity=quantity,item_quantities=quantities,daily_override=daily,load_profile=prior.load_profile if prior else None,selected_item_ids=prior.selected_item_ids if prior else [i['id'] for i in spec['items']] if spec.get('valuation_items') else [])
         from apps.resources.equipment_merge import equipment_aliases
         aliases = equipment_aliases(workspace.company)
         from apps.resources.brigade_merge import brigade_aliases
@@ -1005,7 +1022,10 @@ class WorkspaceService:
                                 items[str(row['item_id'])] += Decimal(str(row['quantity']))
                         items = {str(item['id']):str(items[str(item['id'])].quantize(Decimal('.000001'),rounding=ROUND_HALF_UP)) for item in spec['items']}
                     if quantity or any(Decimal(v) for v in items.values()) or version.work_allocations.filter(work_id=spec['id'],month=month).exists():
-                        WorkMonthAllocation.objects.update_or_create(company=version.company,version=version,work_id=spec['id'],month=month,defaults={'quantity':quantity,'item_quantities':dict(items),'daily_override':None})
+                        existing=version.work_allocations.filter(work_id=spec['id'],month=month).first()
+                        selected=existing.selected_item_ids if existing else [i['id'] for i in spec['items']] if spec.get('valuation_items') else []
+                        if selected:items={key:value for key,value in items.items() if int(key) in selected}
+                        WorkMonthAllocation.objects.update_or_create(company=version.company,version=version,work_id=spec['id'],month=month,defaults={'quantity':quantity,'item_quantities':dict(items),'daily_override':None,'selected_item_ids':selected})
         version.save(update_fields=["snapshot"])
         return version
 

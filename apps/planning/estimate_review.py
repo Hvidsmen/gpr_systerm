@@ -58,6 +58,8 @@ def signature(obj,*,legacy=False,works_only=False):
     else:
         start,end=review_period(obj)
         inputs={'works':list((obj.work_allocations if legacy else review_allocations(obj)).order_by('pk').values()),'resources':list((obj.resource_allocations if legacy else obj.resource_allocations.filter(month__range=(start,end))).order_by('pk').values()),'month':obj.planning_month,'scenario':obj.scenario}
+        for row in inputs['works']:
+            if not row.get('selected_item_ids'):row.pop('selected_item_ids',None)
         if works_only:inputs.pop('resources',None)
         if not legacy:inputs['period']=[start,end]
         assignments=list(obj.resource_assignments.order_by('pk').values())

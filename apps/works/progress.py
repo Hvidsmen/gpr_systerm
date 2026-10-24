@@ -35,7 +35,7 @@ def work_specification(work):
 def quantity_from_totals(spec, totals):
     if spec["kind"] == "SIMPLE":
         return totals.get(None, ZERO)
-    items = spec["items"]
+    items = spec.get("valuation_items",spec["items"])
     if not items or any(Decimal(item["norm"]) <= 0 for item in items):
         raise ValidationError(
             "У комплекса работ должны быть работы в составе комплекса с положительными нормативами."
