@@ -24,6 +24,17 @@ def catalogue(report,labels=None,query='',kind=''):
         mapping=labels.get(key,{}).get('columns',{})
         name=column.get('column','')
         tables[key]['columns'].append({**column,'name':mapping.get(name,STANDARD.get(name,'Номер строки' if re.fullmatch(r'_LineNo\d+',name) else '')),'mapped':name in mapping})
+    for key,row in tables.items():
+        mapping=labels.get(key,{})
+        for column in row['columns']:
+            name=column['column']
+            destinations=mapping.get('references',{}).get(name,[])
+            if name=='_ParentIDRRef':destinations=mapping.get('self_targets',[])
+            elif name=='_OwnerIDRRef':destinations=mapping.get('owner_targets',[])
+            elif re.fullmatch(r'_[A-Za-z]+\d+_IDRRef',name) and row['table_part']:destinations=mapping.get('self_targets',[])
+            column['targets']=[{'schema':tables[target]['schema'],'table':tables[target]['table'],'name':tables[target]['name'] or target} for target in destinations if target in tables]
+            column['unresolved_references']=mapping.get('unresolved_references',{}).get(name,0)
+            column['is_reference']=bool(column['targets'] or column['unresolved_references'] or re.search(r'(?:RRef|RRRef|TRef)$',name))
     counts=Counter(row['type'] for row in tables.values())
     terms=query.casefold().split()
     rows=[row for row in tables.values() if (not kind or row['type']==kind) and all(term in (row['name']+' '+row['key']).casefold() for term in terms)]

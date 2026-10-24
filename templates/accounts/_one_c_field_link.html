@@ -1,0 +1,1 @@
+{% if field.targets|length == 1 %}{% with target=field.targets.0 %}<a href="{% url 'accounts:one_c_table' target.schema target.table %}">{{ field.name|default:field.column }}</a>{% endwith %}{% elif field.targets %}<a href="#reference-{{ forloop.counter }}">{{ field.name|default:field.column }}</a>{% else %}{{ field.name|default:"Не определено" }}{% endif %}

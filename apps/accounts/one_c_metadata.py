@@ -149,3 +149,66 @@ def resolve(index,object_headers,schema,warnings=None):
                 warnings.append({'error':'SQL table has conflicting metadata UUIDs: '+key});result.pop(key);conflicts.add(key);continue
             result[key]={'name':label,'columns':fields,'source':'Метаданные SQL: Params.DBNames + Config','uuid':owner_uuid}
     return result
+
+# Reference type UUIDs differ from object UUIDs. Read only documented slots;
+# arbitrary UUID occurrences in metadata do not establish a relationship.
+REFERENCE_SLOTS={'Reference':3,'Document':3,'Enum':1,'Chrc':3,'Acc':3,'Node':3,'BP':5,'BPr':5,'Task':5}
+
+def at(node,*path):
+    for offset in path:
+        if not isinstance(node,list) or len(node)<=offset:return None
+        node=node[offset]
+    return node
+
+def reference_info(data,index,owner):
+    tree=parse(unpack(data));properties={};type_ids=set();owners=set()
+    for binding in variants(index[owner]):
+        slot=REFERENCE_SLOTS.get(binding['prefix'])
+        if slot is not None:
+            identity=guid(at(tree,1,slot))
+            if identity:type_ids.add(identity)
+        if binding['prefix']=='Reference':
+            collection=at(tree,1,12)
+            if isinstance(collection,list):
+                for item in collection[2:]:
+                    identity=guid(at(item,2,1))
+                    if identity:owners.add(identity)
+    for node in walk(tree):
+        # A property type Pattern is a sibling of its common descriptor.
+        descriptor=at(node,1)
+        if not isinstance(descriptor,list) or at(node,2,0)!='Pattern':continue
+        identity=guid(at(descriptor,1,2))
+        if identity not in index or not any(v['prefix']=='Fld' for v in variants(index[identity])):continue
+        refs={guid(item[1]) for item in node[2][1:] if isinstance(item,list) and len(item)==2 and item[0]=='#' and guid(item[1])}
+        if refs:properties.setdefault(identity,set()).update(refs)
+    return {'types':type_ids,'properties':properties,'owners':owners}
+
+def attach_references(labels,index,infos):
+    # Only main tables are reference destinations, never auxiliary tables.
+    main={};types={}
+    for key,label in labels.items():
+        identity=label['uuid'];entry=index[identity]
+        if any(key.split('.',1)[1]=='_'+v['prefix']+str(v['code']) for v in variants(entry) if v['prefix'] in ROOTS):main.setdefault(identity,set()).add(key)
+    for owner,info in infos.items():
+        for identity in info['types']:types.setdefault(identity,set()).add(owner)
+    for key,label in labels.items():
+        owner=label['uuid'];info=infos.get(owner,{});links={};unresolved={}
+        for field,refs in info.get('properties',{}).items():
+            targets=set();unknown=set()
+            for ref in refs:
+                objects=types.get(ref,set())
+                if len(objects)!=1:unknown.add(ref);continue
+                choices=main.get(next(iter(objects)),set())
+                if len(choices)==1:targets.update(choices)
+                else:unknown.add(ref)
+            for binding in variants(index[field]):
+                if binding['prefix']!='Fld':continue
+                prefix='_Fld'+str(binding['code'])
+                for column in label['columns']:
+                    if column not in {prefix+'RRef',prefix+'RRRef',prefix+'_RRRef',prefix+'TRef',prefix+'_RTRef'}:continue
+                    links[column]=sorted(targets)
+                    if unknown:unresolved[column]=len(unknown)
+        # Parent and table-part owner reference their own main object.
+        label['references']=links;label['unresolved_references']=unresolved
+        label['self_targets']=sorted(main.get(owner,set()))
+        label['owner_targets']=sorted({target for obj in info.get('owners',set()) if len(main.get(obj,set()))==1 for target in main[obj]})

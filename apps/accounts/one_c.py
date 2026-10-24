@@ -130,7 +130,10 @@ def integration(request):
     kind=request.GET.get('type','')
     if kind not in dict(TYPES):kind=''
     report=latest.report if latest else {}
-    labels={**report.get('metadata_labels',{}),**manual_labels}
+    labels=dict(report.get('metadata_labels',{}))
+    for key,manual in manual_labels.items():
+        previous=labels.get(key,{})
+        labels[key]={**previous,**manual,'columns':{**previous.get('columns',{}),**manual.get('columns',{})}}
     all_rows,type_counts,total=catalogue(report,labels)
     structures={row['key']:row for row in all_rows}
     rows,_,_=catalogue(report,labels,query,kind)
@@ -146,3 +149,25 @@ def integration(request):
         candidate['columns']=structure.get('columns',[])
     params=request.GET.copy();params.pop('page',None)
     return render(request,'accounts/one_c.html',{'form':form,'connection':connection,'runs':runs,'latest':latest,'pending':any(r.status in {'QUEUED','RUNNING'} for r in runs),'catalogue_groups':groups,'catalogue_page':page,'catalogue_total':total,'catalogue_query':query,'catalogue_type':kind,'type_counts':type_counts,'catalogue_params':params.urlencode(),'mapping_error':mapping_error,'mapped_count':len(labels)})
+
+@login_required
+def table_structure(request, schema, table):
+    require_roles(request.user,{'ADMIN'})
+    from django.http import Http404
+    from .one_c_catalog import catalogue
+    if request.method!='GET':
+        from django.http import HttpResponseNotAllowed
+        return HttpResponseNotAllowed(['GET'])
+    connection=OneCConnection.objects.filter(company=request.user.company).first()
+    if not connection:raise Http404('Подключение не настроено.')
+    latest=connection.runs.filter(status='DONE',server=connection.server,database=connection.database).order_by('-created_at').first()
+    if not latest:raise Http404('Нет результата диагностики для этого подключения.')
+    labels=dict(latest.report.get('metadata_labels',{}))
+    if (connection.metadata_server,connection.metadata_database)==(connection.server,connection.database):
+        for key,manual in connection.metadata_labels.items():
+            previous=labels.get(key,{})
+            labels[key]={**previous,**manual,'columns':{**previous.get('columns',{}),**manual.get('columns',{})}}
+    rows,_,_=catalogue(latest.report,labels)
+    selected=next((row for row in rows if row['schema']==schema and row['table']==table),None)
+    if selected is None:raise Http404('Таблица отсутствует в текущей диагностике.')
+    return render(request,'accounts/one_c_table.html',{'table':selected,'connection':connection,'latest':latest})
