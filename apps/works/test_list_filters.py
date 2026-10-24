@@ -162,3 +162,18 @@ class WorkListFilterTests(TestCase):
         self.assertEqual(response.context['view_mode'],'tree')
         self.assertEqual(self.get().context['view_mode'],'tree')
         self.assertEqual(self.get(view='table').context['view_mode'],'table')
+
+    def test_tree_does_not_split_copied_complex_object_across_pages(self):
+        from .models import ComplexObject
+        source=ComplexObject.objects.create(company=self.company,construction_object=self.obj,name='УЗА 26')
+        copied=ComplexObject.objects.create(company=self.company,construction_object=self.obj,name='УЗА 33')
+        for obj in [source,copied]:
+            for index in range(10):
+                ProjectWork.objects.create(company=self.company,section=self.simple.section,complex_object=obj,kind='COMPOSITE',name=f'{obj.name} комплекс {index}')
+        response=self.get(view='tree',construction_object=self.obj.pk,page=2)
+        self.assertFalse(response.context['is_paginated'])
+        branches=[branch for group in response.context['tree_groups'] for section in group['sections'] for branch in section['branches'] if branch['object'] and branch['object'].pk==copied.pk]
+        self.assertEqual(len(branches),1)
+        self.assertEqual(len(branches[0]['works']),10)
+        self.assertFalse(self.get(construction_object=self.obj.pk).context['is_paginated'])
+        self.assertTrue(self.get(view='table',construction_object=self.obj.pk).context['is_paginated'])

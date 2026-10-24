@@ -29,6 +29,13 @@ class WorkListView(CompanyScopedMixin, ListView):
     context_object_name = "works"
     paginate_by = 20
 
+    def catalogue_view_mode(self):
+        mode=self.request.GET.get('view',self.request.session.get('work_catalogue_view','table'))
+        return mode if mode in {'table','tree'} else 'table'
+
+    def get_paginate_by(self, queryset):
+        return None if self.catalogue_view_mode()=='tree' else self.paginate_by
+
     def get_queryset(self):
         self.filter_form = WorkListFilterForm(self.request.GET, company=self.request.user.company, user=self.request.user)
         from core.permissions import scope_queryset
@@ -69,8 +76,7 @@ class WorkListView(CompanyScopedMixin, ListView):
 
         context = super().get_context_data(**kwargs)
         context['filter_form'] = self.filter_form
-        mode=self.request.GET.get('view',self.request.session.get('work_catalogue_view','table'))
-        if mode not in {'table','tree'}:mode='table'
+        mode=self.catalogue_view_mode()
         self.request.session['work_catalogue_view']=mode
         context['view_mode']=mode
         groups={}
@@ -88,7 +94,7 @@ class WorkListView(CompanyScopedMixin, ListView):
         params = self.request.GET.copy()
         params.pop('page', None)
         context['filter_query'] = params.urlencode()
-        for work in context["works"]:
+        for work in context["works"] if mode=='table' else []:
             planned = WorkProgressService.planned(work)
             work.total_quantity = (
                 next(reversed(planned.values()))["cumulative"] if planned else 0
