@@ -12,12 +12,6 @@ EDITABLE = ['DRAFT', 'REJECTED']
 
 
 def workspace_reason(workspace, user=None):
-    if workspace.versions.filter(review_rounds__macro_history_sources__isnull=False).exists():
-        return "История этого ГПР подключена к макрообъекту. Сначала удалите объединенный план."
-    if PlanningWorkspace.objects.filter(continued_from_review__version__workspace=workspace).exists():
-        return "Из этого ГПР создан объединенный план. Сначала удалите его продолжение."
-    if workspace.versions.filter(subobject_smg_workspaces__isnull=False).exists():
-        return 'С ГПР связаны СМГ субобъектов. Сначала удалите связанные СМГ.'
     if user is not None and role_code(user) == 'ADMIN':
         return ''
     if workspace.versions.exclude(status__in=EDITABLE).exists() or workspace.versions.filter(review_rounds__isnull=False).exists():
@@ -40,23 +34,22 @@ def version_reason(version):
 
 
 @transaction.atomic
-def delete_workspace(workspace, user, confirm_history=False):
+def delete_workspace(workspace, user, confirm_history=False, preview_token=None):
     require_roles(user, PLAN_ROLES)
     workspace = get_object_or_404(PlanningWorkspace.objects.select_for_update(), pk=workspace.pk, company=user.company)
-    versions = list(workspace.versions.select_for_update().order_by('-pk'))
-    reason = workspace_reason(workspace, user)
-    if reason:
-        raise ValidationError(reason)
-    if workspace_reason(workspace) and not confirm_history:
-        raise ValidationError('Подтвердите удаление согласованных версий и истории плана.')
-    # Break the baseline link before removing the versions' PROTECT relations.
-    PlanningWorkspace.objects.filter(pk=workspace.pk).update(baseline_version=None)
-    from .deletion_context import authorized_workspace_deletion
-    GlobalPlanVersion.objects.filter(pk__in=[v.pk for v in versions]).update(baseline_review=None)
-    with authorized_workspace_deletion(versions):
-        for version in versions:
-            version.delete()
-        workspace.delete()
+    from core.permissions import scope_queryset
+    if not scope_queryset(PlanningWorkspace.objects.filter(pk=workspace.pk),user).exists():
+        from django.core.exceptions import PermissionDenied
+        raise PermissionDenied('Объект не назначен пользователю.')
+    from .deletion_graph import DeletionGraph,ROOT_MODELS
+    graph=DeletionGraph(workspace,user)
+    for label,model in ROOT_MODELS.items():list(model.objects.select_for_update().filter(pk__in=graph.ids[label]).values_list('pk',flat=True))
+    graph=DeletionGraph(workspace,user)
+    graph.check_permission()
+    if (graph.history or graph.linked) and not confirm_history:
+        raise ValidationError('Подтвердите удаление всех перечисленных планов, их версий и истории.')
+    if graph.linked:graph.verify(preview_token)
+    graph.delete()
 
 
 @transaction.atomic
@@ -78,9 +71,17 @@ class PlanDelete(View):
 
     def display(self, request, record, error=None, status=200, allow_retry=False):
         reason = workspace_reason(record, request.user) if self.workspace_mode else version_reason(record)
+        graph=None
+        if self.workspace_mode:
+            from .deletion_graph import DeletionGraph
+            graph=DeletionGraph(record,request.user)
+            try:graph.check_permission()
+            except ValidationError as exc:reason='; '.join(exc.messages)
         return render(request, 'planning/plan_delete.html', {
             'record': record, 'workspace_mode': self.workspace_mode,
-            'deleting_history': self.workspace_mode and bool(workspace_reason(record)),
+            'deleting_history': bool(graph and (graph.history or graph.linked)),
+            'deletion_groups':graph.groups if graph else [],'preview_token':graph.token() if graph else '',
+            'has_linked_plans':bool(graph and graph.linked),
             'reason': error or reason, 'can_delete': not reason and (not error or allow_retry),
             'back_route': 'planning:workspace_list' if self.workspace_mode else 'planning:global_list',
         }, status=status)
@@ -91,16 +92,16 @@ class PlanDelete(View):
     def post(self, request, pk):
         record = self.record(request, pk)
         if self.workspace_mode and role_code(request.user) == 'ADMIN' and workspace_reason(record) and request.POST.get('confirm_history') != 'on':
-            return self.display(request, record, 'Подтвердите удаление согласованных версий и истории плана.', status=400, allow_retry=True)
+            return self.display(request, record, 'Подтвердите удаление всех перечисленных планов, их версий и истории.', status=400, allow_retry=True)
         try:
             if self.workspace_mode:
-                delete_workspace(record, request.user, confirm_history=request.POST.get('confirm_history') == 'on')
+                delete_workspace(record, request.user, confirm_history=request.POST.get('confirm_history') == 'on',preview_token=request.POST.get('preview_token'))
             else:
                 delete_version(record, request.user)
         except ValidationError as exc:
-            return self.display(request, record, '; '.join(exc.messages), status=400)
+            return self.display(request, record, '; '.join(exc.messages), status=400,allow_retry=True)
         except ProtectedError:
-            return self.display(request, record, 'План связан с другими версиями. Удаление отменено.', status=400)
+            return self.display(request, record, 'Связи плана изменились во время удаления. Проверьте обновлённый список и повторите удаление.', status=400,allow_retry=True)
         messages.success(request, 'План удалён.' if self.workspace_mode else 'Глобальная версия удалена.')
         return redirect('planning:workspace_list' if self.workspace_mode else 'planning:global_list')
 

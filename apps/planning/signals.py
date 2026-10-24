@@ -103,5 +103,7 @@ from .models import ProjectPlanVersion, ProjectPlanMember
 @receiver(pre_delete, sender=ProjectPlanMember)
 def preserve_project_composition(sender, instance, **kwargs):
     parent = instance if sender is ProjectPlanVersion else instance.consolidated_version
+    from .deletion_context import project_deletion_authorized
+    if project_deletion_authorized(parent.pk):return
     if ProjectPlanVersion.objects.filter(pk=parent.pk, status='FIXED').exists():
         raise ValidationError('Зафиксированную сводную версию и её состав удалять нельзя.')
