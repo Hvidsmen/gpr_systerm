@@ -156,7 +156,8 @@ class WorkListFilterTests(TestCase):
 
     def test_tree_mode_and_preference_keep_filter(self):
         response=self.get(view='tree',work='Composite')
-        self.assertContains(response,'Комплексный объект не задан')
+        self.assertNotContains(response,'Комплексный объект не задан')
+        self.assertContains(response,self.composite.section.name)
         self.assertContains(response,self.composite.name)
         self.assertEqual(response.context['view_mode'],'tree')
         self.assertEqual(self.get().context['view_mode'],'tree')

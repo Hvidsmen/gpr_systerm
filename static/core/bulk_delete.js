@@ -4,7 +4,7 @@
   const rows = Array.from(document.querySelectorAll('[data-bulk-row]'));
   const groups = Array.from(document.querySelectorAll('[data-bulk-complex]'));
   const sync = () => {
-    const groupCount = groups.filter(group => group.checked).length;
+    const groupCount = new Set(groups.filter(group => group.checked).map(group => group.value)).size;
     groups.forEach(group => {
       group.indeterminate = !group.checked && Array.from(group.closest('.ct-branch').querySelectorAll('[data-bulk-row]')).some(row => row.checked);
     });
@@ -34,13 +34,16 @@
     });
   };
   groups.forEach(group => group.addEventListener('change', () => {
-    group.closest('.ct-branch').querySelectorAll('[data-bulk-row]').forEach(row => {row.checked = group.checked;});
+    groups.filter(other => other.value === group.value).forEach(other => {
+      other.checked = group.checked;
+      other.closest('.ct-branch').querySelectorAll('[data-bulk-row]').forEach(row => {row.checked = group.checked;});
+    });
     sync();
   }));
   rows.forEach(row => row.addEventListener('change', () => {
     if (!row.checked) {
       const group = row.closest('.ct-branch')?.querySelector('[data-bulk-complex]');
-      if (group) group.checked = false;
+      if (group) groups.filter(other => other.value === group.value).forEach(other => {other.checked = false;});
     }
     sync();
   }));

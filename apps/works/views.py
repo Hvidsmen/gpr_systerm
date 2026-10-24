@@ -76,10 +76,11 @@ class WorkListView(CompanyScopedMixin, ListView):
         groups={}
         for work in context['works']:
             obj=work.section.construction_object
-            group=groups.setdefault(obj.pk,{'object':obj,'branches':{}})
-            branch=group['branches'].setdefault(work.complex_object_id,{'object':work.complex_object,'works':[]})
+            group=groups.setdefault(obj.pk,{'object':obj,'sections':{}})
+            section=group['sections'].setdefault(work.section_id,{'section':work.section,'branches':{}})
+            branch=section['branches'].setdefault(work.complex_object_id,{'object':work.complex_object,'works':[]})
             branch['works'].append(work)
-        context['tree_groups']=[{'object':g['object'],'branches':list(g['branches'].values())} for g in groups.values()]
+        context['tree_groups']=[{'object':g['object'],'sections':[{'section':s['section'],'branches':list(s['branches'].values())} for s in g['sections'].values()]} for g in groups.values()]
         for key in ['table','tree']:
             query=self.request.GET.copy();query['view']=key;query.pop('page',None)
             context[key+'_view_query']=query.urlencode()
