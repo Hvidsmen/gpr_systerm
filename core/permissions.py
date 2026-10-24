@@ -3,10 +3,11 @@ from django.core.exceptions import PermissionDenied
 
 DEPARTMENT_ROLES = {'PRODUCTION_HEAD', 'HR_HEAD', 'TECH_HEAD', 'SECURITY_HEAD'}
 GLOBAL_APPROVAL_ROLES = DEPARTMENT_ROLES | {'CEO'}
-ROLES = {'ADMIN', 'PLANNER', 'MANAGER', 'FOREMAN', 'DISPATCHER', 'OBSERVER', 'ESTIMATOR'} | GLOBAL_APPROVAL_ROLES
+DISPATCHER_ROLES = {'DISPATCHER','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER'}
+ROLES = DISPATCHER_ROLES | {'ADMIN', 'PLANNER', 'MANAGER', 'FOREMAN', 'DISPATCHER', 'OBSERVER', 'ESTIMATOR'} | GLOBAL_APPROVAL_ROLES
 READ_ROLES = {'ADMIN', 'PLANNER', 'MANAGER', 'OBSERVER', 'ESTIMATOR'} | GLOBAL_APPROVAL_ROLES
 PLAN_ROLES = {'ADMIN', 'PLANNER'}
-FACT_ROLES = {'ADMIN', 'FOREMAN', 'DISPATCHER'}
+FACT_ROLES = {'ADMIN', 'FOREMAN'} | DISPATCHER_ROLES
 APPROVAL_ROLES = {'ADMIN', 'MANAGER'}
 
 
@@ -60,7 +61,7 @@ def scope_queryset(queryset, user, include_archived=False):
         if name in {'planning.EstimateReviewTask','planning.WorkTask'}:
             from django.db.models import Q
             queryset = queryset.exclude(Q(version__workspace__is_archived=True) & Q(schedule__isnull=True))
-    if role_code(user) not in {'FOREMAN','DISPATCHER','PLANNER'}:
+    if role_code(user) not in ({'FOREMAN','PLANNER'} | DISPATCHER_ROLES):
         return queryset
     paths = {
         'projects.ConstructionObject': 'pk',
@@ -137,6 +138,12 @@ def check_route(user, match, method):
         require_roles(user, READ_ROLES)
         return
     if namespace == 'production':
+        if name == 'fact_day_workspace':
+            require_roles(user, ROLES if method in {'GET','HEAD'} else FACT_ROLES)
+            return
+        if role in DISPATCHER_ROLES and method not in {'GET','HEAD'}:
+            # Dispatchers enter their own direction through the validated daily workspace.
+            raise PermissionDenied('Вносите факт своего направления через «Факт за день».')
         if name in {'legacy_resources', 'legacy_resolve'}:
             require_roles(user, {'ADMIN'})
             return

@@ -1,14 +1,14 @@
 from django.urls import path
 from . import views
 from .meeting_import import FactMeetingImportView
-from .views.day_workspace import FactDayWorkspaceView
+from .dispatch import DispatcherDayView
 
 app_name = "production"
 urlpatterns = [
     path(
         "meeting-import/", FactMeetingImportView.as_view(), name="fact_meeting_import"
     ),
-    path("day-workspace/", FactDayWorkspaceView.as_view(), name="fact_day_workspace"),
+    path("day-workspace/", DispatcherDayView.as_view(), name="fact_day_workspace"),
     path("", views.FactListView.as_view(), name="fact_list"),
     path("create/", views.FactCreateView.as_view(), name="fact_create"),
     path("facts/<int:pk>/update/", views.FactUpdateView.as_view(), name="fact_update"),

@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+{% block title %}Факт за день{% endblock %}
+{% block content %}
+<h1>Факт за день</h1>
+<form method="get" class="card card-body mb-3">{% include 'forms/fields.html' with form=selector %}<input type="hidden" name="section" value="{{ section }}"><button class="btn btn-primary">Открыть день</button></form>
+{% if object %}
+<nav class="nav nav-tabs mb-3">{% for value,label in tabs %}<a class="nav-link {% if value == section %}active{% endif %}" href="?construction_object={{ object.pk }}&amp;date={{ day|date:'Y-m-d' }}&amp;section={{ value }}">{{ label }}</a>{% endfor %}</nav>
+<div class="d-flex gap-3 mb-3">{% for record in summary %}<span>{{ record.label }}: {% if record.confirmed %}<strong>Подтверждено</strong>{% elif record.started %}Черновик{% else %}Не заполнено{% endif %}</span>{% endfor %}</div>
+{% if comparison %}<table class="table"><thead><tr><th>Ресурс</th><th>План СМГ</th><th>Сохранённый факт</th></tr></thead><tbody>{% for row in comparison %}<tr><td>{{ row.name }}</td><td>{{ row.plan }}</td><td>{{ row.actual }}</td></tr>{% endfor %}</tbody></table>{% endif %}
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+{% if section == 'works' %}<p>Факт работ СМГ и дополнительные работы объекта. При отклонении и для работ вне СМГ обязательна причина. Ноль вносится явно.</p>{% elif section == 'labor' %}<p>Конкретные сотрудники и что делали за смену, без часов. Для назначения на работы укажите работу либо причину её отсутствия. Для персонала объекта в целом работа не требуется. Должность сохраняется на дату ввода.</p>{% else %}<p>Конкретная техника, состояние и что делала за смену, без часов и моточасов. ГСМ — на весь объект за день, без привязки к технике.</p><div class="d-flex gap-3 mb-3">{% for label,count in machine_states %}<span>{{ label }}: {{ count }}</span>{% endfor %}</div>{% endif %}
+<form method="post">{% csrf_token %}<input type="hidden" name="construction_object" value="{{ object.pk }}"><input type="hidden" name="date" value="{{ day|date:'Y-m-d' }}"><input type="hidden" name="section" value="{{ section }}"><input type="hidden" name="revision" value="{{ revision }}">
+<fieldset {% if not editable %}disabled{% endif %}>
+{% if legacy_exists %}<div class="alert alert-warning">За этот день уже есть сводный факт. При сохранении он будет заменён детализацией этого направления. <label><input type="checkbox" name="replace_legacy" required> Подтверждаю замену прежних количеств записями по сотрудникам или машинам</label></div>{% endif %}
+{% if actuation %}<details class="card card-body mb-3"><summary>Актировка объекта за день</summary>{% include 'forms/fields.html' with form=actuation %}<p>При актировке все работы объекта за день сохраняются с нулевым фактом. Причина актировки объясняет отклонение. Снятие актировки не восстанавливает прежние объёмы.</p></details>{% endif %}
+{% for group in groups %}<section class="card card-body mb-3"><h2>{% if group.prefix == 'works' %}Работы{% elif group.prefix == 'labor' %}Персонал{% elif group.prefix == 'equipment' %}Техника{% else %}ГСМ объекта{% endif %}</h2>
+{{ group.formset.management_form }}{{ group.formset.non_form_errors }}
+<div data-rows="{{ group.prefix }}">{% for row in group.formset %}<div class="border-bottom py-2"><p class="small text-muted">{{ row.hint }}</p><div class="row g-2">{% for hidden in row.hidden_fields %}{{ hidden }}{{ hidden.errors }}{% endfor %}<div class="text-danger">{{ row.non_field_errors }}</div>{% for field in row.visible_fields %}<div class="col-md-3">{{ field.label_tag }} {{ field }}<div class="text-danger">{{ field.errors }}</div></div>{% endfor %}</div></div>{% endfor %}</div>
+<button type="button" class="btn btn-outline-primary mt-2" data-add="{{ group.prefix }}">{% if group.prefix == 'works' %}Добавить работу вне СМГ{% elif group.prefix == 'labor' %}Добавить сотрудника{% elif group.prefix == 'equipment' %}Добавить технику{% else %}Добавить вид ГСМ{% endif %}</button>
+<template id="empty-{{ group.prefix }}"><div class="border-bottom py-2"><div class="row g-2">{% for hidden in group.formset.empty_form.hidden_fields %}{{ hidden }}{% endfor %}{% for field in group.formset.empty_form.visible_fields %}<div class="col-md-3">{{ field.label_tag }} {{ field }}</div>{% endfor %}</div></div></template>
+</section>{% endfor %}
+{% if section != 'works' %}<label for="deviation-comment">Причина отклонения от потребности СМГ</label><textarea class="form-control mb-3" id="deviation-comment" name="deviation_comment" maxlength="4000" rows="2">{{ deviation_comment }}</textarea>{% endif %}
+{% if editable %}<div class="d-flex gap-2"><button class="btn btn-outline-primary" name="action" value="save">Сохранить черновик</button><button class="btn btn-primary" name="action" value="confirm">Сохранить и подтвердить направление</button></div>{% endif %}</fieldset></form>
+{% if crew %}<h2>Экипажи из факта персонала</h2><table class="table"><thead><tr><th>Техника</th><th>Смена</th><th>Сотрудник</th><th>Должность</th></tr></thead><tbody>{% for row in crew %}<tr><td>{{ row.equipment }}</td><td>{{ row.shift }}</td><td>{{ row.employee }}</td><td>{{ row.position }}</td></tr>{% endfor %}</tbody></table>{% endif %}
+{% endif %}
+{% endblock %}
+{% block extra_js %}<script>
+document.querySelectorAll('[data-add]').forEach(button=>button.addEventListener('click',()=>{const prefix=button.dataset.add;const total=document.getElementById('id_'+prefix+'-TOTAL_FORMS');const n=Number(total.value);if(n>=2000)return;const html=document.getElementById('empty-'+prefix).innerHTML.replaceAll('__prefix__',n);const target=document.querySelector('[data-rows="'+prefix+'"]');target.insertAdjacentHTML('beforeend',html);total.value=n+1;target.dispatchEvent(new Event('change',{bubbles:true}));}));
+</script>{% endblock %}

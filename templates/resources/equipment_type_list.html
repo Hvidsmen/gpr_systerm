@@ -5,6 +5,7 @@
 {% block title %}Виды техники{% endblock %}
 
 {% block content %}
+<a class="btn btn-outline-primary mb-3" href="{% url 'resources:equipment_unit_list' %}">Конкретная техника · госномера и инвентарные номера</a>
 {% with bulk_route='resources:bulk_delete' bulk_kind='equipment' %}
 {% include 'bulk/toolbar.html' %}
 {% if request.user|may:'resources:equipment_type_import' %}<a class="btn btn-outline-primary mb-3" href="{% url 'resources:equipment_type_import' %}">Загрузить из Excel</a>{% endif %}

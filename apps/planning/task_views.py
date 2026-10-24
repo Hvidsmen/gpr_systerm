@@ -47,7 +47,7 @@ class TaskList(View):
         require_roles(request.user,ROLES)
         service.generate_daily(request.user)
         if role_code(request.user)=='ADMIN':
-            for dispatcher in User.objects.filter(company=request.user.company,is_active=True,role__code='DISPATCHER').select_related('role','company'):service.generate_daily(dispatcher)
+            for dispatcher in User.objects.filter(company=request.user.company,is_active=True,role__code__in=['DISPATCHER','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER']).select_related('role','company'):service.generate_daily(dispatcher)
         service.sync_company(request.user.company)
         tasks=service.visible(request.user)
         mode=request.GET.get('status','active')
@@ -60,7 +60,7 @@ class TaskList(View):
         if request.GET.get('kind') in dict(WorkTask._meta.get_field('kind').choices):tasks=tasks.filter(kind=request.GET['kind'])
         from django.core.paginator import Paginator
         page=Paginator(tasks.select_related('assigned_to','created_by','construction_object').order_by('due_date','-created_at','-pk'),50).get_page(request.GET.get('page'))
-        return render(request,'planning/task_list.html',{'page':page,'status':mode,'scope':scope,'kinds':WorkTask._meta.get_field('kind').choices,'can_create':role_code(request.user)!='OBSERVER','needs_objects':role_code(request.user)=='DISPATCHER' and not request.user.assigned_objects.exists()})
+        return render(request,'planning/task_list.html',{'page':page,'status':mode,'scope':scope,'kinds':WorkTask._meta.get_field('kind').choices,'can_create':role_code(request.user)!='OBSERVER','needs_objects':role_code(request.user) in {'DISPATCHER','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER'} and not request.user.assigned_objects.exists()})
 
 
 class TaskCreate(View):
@@ -98,8 +98,10 @@ class TaskDetail(View):
         return self.show(request,task)
     def show(self,request,task):
         from .daily_schedule_approval import next_action
+        from apps.production.dispatch import DIRECTIONS,LABELS
+        section=DIRECTIONS.get(role_code(task.assigned_to)) if task.assigned_to else None
         next_label=('Открыть актуализацию СМГ' if task.schedule_id else 'Создать актуализацию СМГ') if task.key.startswith('smg-update:') else next_action(task.schedule) if task.kind=='SUBMISSION' and task.schedule_id else ''
-        return render(request,'planning/task_detail.html',{'submission_action_label':next_label,'task':task,'target_url':link(task),'executor':role_code(request.user)!='OBSERVER' and service.is_executor(request.user,task),'author':role_code(request.user)!='OBSERVER' and task.created_by_id==request.user.pk,'events':task.events.select_related('actor'),'children':service.visible(request.user).filter(estimate_id=task.estimate_id,kind='REMARK') if task.kind=='ESTIMATE' and task.estimate_id else service.visible(request.user).filter(parent=task),'can_comment':role_code(request.user)!='OBSERVER','fact_sections':[('works','Работы'),('labor','Должность'),('equipment','Техника'),('fuel','ГСМ')]})
+        return render(request,'planning/task_detail.html',{'submission_action_label':next_label,'task':task,'target_url':link(task),'executor':role_code(request.user)!='OBSERVER' and service.is_executor(request.user,task),'author':role_code(request.user)!='OBSERVER' and task.created_by_id==request.user.pk,'events':task.events.select_related('actor'),'children':service.visible(request.user).filter(estimate_id=task.estimate_id,kind='REMARK') if task.kind=='ESTIMATE' and task.estimate_id else service.visible(request.user).filter(parent=task),'can_comment':role_code(request.user)!='OBSERVER','fact_sections':[(section,LABELS[section])] if section else [('works','Работы'),('labor','Персонал'),('equipment','Техника'),('fuel','ГСМ')]})
     def post(self,request,pk):
         if role_code(request.user)=='OBSERVER':raise PermissionDenied
         task=get_object_or_404(service.visible(request.user),pk=pk)

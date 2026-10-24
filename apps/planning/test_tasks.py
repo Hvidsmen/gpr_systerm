@@ -27,9 +27,25 @@ class TaskTests(TestCase):
     create=fixtures.WorkspaceTests.create
     approve=fixtures.WorkspaceTests.approve
 
+    def legacy_submission(self,version):
+        # Historical submitted rounds still have an unclaimed estimator queue.
+        from .global_services import build_snapshot
+        from .models import GlobalPlanReview
+        version.snapshot=build_snapshot(version);version.status='SUBMITTED';version.approval_round=1
+        from .approval_context import authorized_transition
+        with authorized_transition(version.pk):version.save()
+        GlobalPlanReview.objects.create(company=self.company,version=version,number=1,snapshot=version.snapshot,submitted_by=self.planner,input_fingerprint=estimate_review.signature(version))
+        tasks.sync_version(version)
+        return version
+
+    def confirm_section(self,task,section='works'):
+        from apps.production.models import FactSectionDay
+        from django.utils import timezone
+        FactSectionDay.objects.update_or_create(company=self.company,construction_object=task.construction_object,date=task.fact_date,section=section,defaults={'confirmed_at':timezone.now(),'confirmed_by':task.assigned_to})
+
     def test_admin_can_claim_and_complete_estimator_review(self):
         admin=User.objects.create_user(username='estimate-admin',company=self.company,role=Role.objects.get(code='ADMIN'))
-        version=GlobalPlanService.transition(self.create().baseline_version,self.planner,'submit')
+        version=self.legacy_submission(self.create().baseline_version)
         queue=WorkTask.objects.get(kind='ESTIMATE',estimate__isnull=True)
         estimate=tasks.claim_estimate(admin,queue)
         self.client.force_login(admin)
@@ -76,10 +92,11 @@ class TaskTests(TestCase):
         version=self.approve(self.create().baseline_version)
         tasks.generate_daily(self.dispatcher,today=TODAY)
         task=WorkTask.objects.get(kind='FACT')
-        with self.assertRaises(ValidationError):tasks.complete_fact(self.dispatcher,task,['works','labor','equipment','fuel'])
+        with self.assertRaises(ValidationError):tasks.complete_fact(self.dispatcher,task,['works'])
         fact=DailyFact.objects.create(company=self.company,project_work=self.simple,date=task.fact_date,actual_quantity=0)
         with self.assertRaises(ValidationError):tasks.complete_fact(self.dispatcher,task,['works'])
-        tasks.complete_fact(self.dispatcher,task,['works','labor','equipment','fuel'])
+        self.confirm_section(task)
+        tasks.complete_fact(self.dispatcher,task,['works'])
         task.refresh_from_db();self.assertEqual(task.status,'DONE')
         fact.actual_quantity=1;fact.save()
         task.refresh_from_db();self.assertEqual(task.status,'OPEN')
@@ -87,7 +104,7 @@ class TaskTests(TestCase):
 
     def test_parallel_approval_tasks_ceo_only_after_four_and_stale_round(self):
         version=self.create().baseline_version
-        version=GlobalPlanService.transition(version,self.planner,'submit')
+        version=self.legacy_submission(version)
         self.assertEqual(WorkTask.objects.filter(kind='APPROVAL',status='OPEN').count(),0)
         with self.assertRaisesMessage(ValidationError,'Сначала требуется подтверждение проверки сметчика'):
             GlobalPlanService.transition(version,self.approvers['PRODUCTION_HEAD'],'approve_production')
@@ -109,7 +126,9 @@ class TaskTests(TestCase):
         self.assertFalse(WorkTask.objects.filter(kind='APPROVAL',status='OPEN').exists())
         repair=WorkTask.objects.get(key=f'repair:{version.pk}:{version.approval_round}')
         self.assertEqual(repair.assigned_to,self.planner)
-        version=GlobalPlanService.transition(version,self.planner,'submit')
+        from .approval_test_helpers import estimator_check
+        estimator_check(version,self.planner)
+        version=GlobalPlanService.transition(version,version.preparation.manager,'submit')
         repair.refresh_from_db();self.assertEqual(repair.status,'DONE')
         self.assertEqual(WorkTask.objects.filter(kind='APPROVAL',status='OPEN').count(),4)
 
@@ -167,32 +186,29 @@ class TaskTests(TestCase):
         tasks.generate_daily(self.dispatcher,today=TODAY)
         task=WorkTask.objects.get(kind='FACT')
         fact=DailyFact.objects.create(company=self.company,project_work=self.simple,date=task.fact_date,actual_quantity=0)
-        tasks.complete_fact(self.dispatcher,task,['works','labor','equipment','fuel'])
+        self.confirm_section(task)
+        tasks.complete_fact(self.dispatcher,task,['works'])
         fact.date=task.fact_date+timedelta(days=1);fact.save()
         task.refresh_from_db();self.assertEqual(task.status,'OPEN')
         # Missing planned work may be confirmed only with a valid actuation record.
-        with self.assertRaises(ValidationError):tasks.complete_fact(self.dispatcher,task,['works','labor','equipment','fuel'])
+        with self.assertRaises(ValidationError):tasks.complete_fact(self.dispatcher,task,['works'])
         DayActuation.objects.create(company=self.company,construction_object=self.obj,date=task.fact_date,actuation_type='FULL_DAY',reason='Погодные условия',reported_by=self.dispatcher)
-        tasks.complete_fact(self.dispatcher,task,['works','labor','equipment','fuel'])
+        self.confirm_section(task)
+        tasks.complete_fact(self.dispatcher,task,['works'])
         task.refresh_from_db();self.assertEqual(task.status,'DONE')
 
-    def test_missing_planned_people_are_not_implicitly_zero(self):
-        from .models import ResourceMonthAllocation
-        from apps.production.models import LaborFact
-        w=self.create()
-        ResourceMonthAllocation.objects.create(company=self.company,version=w.baseline_version,month=fixtures.JAN,kind='labor',brigade=self.brigade,count=2,hours=8,rate=100)
-        self.approve(w.baseline_version)
+    def test_personnel_confirmation_is_independent_of_legacy_counts(self):
+        self.dispatcher.role=Role.objects.get(code='PERSONNEL_DISPATCHER');self.dispatcher.save()
         tasks.generate_daily(self.dispatcher,today=TODAY)
         task=WorkTask.objects.get(kind='FACT')
-        DailyFact.objects.create(company=self.company,project_work=self.simple,date=task.fact_date,actual_quantity=0)
-        with self.assertRaises(ValidationError):tasks.complete_fact(self.dispatcher,task,['works','labor','equipment','fuel'])
-        LaborFact.objects.create(company=self.company,construction_object=self.obj,brigade=self.brigade,date=task.fact_date,actual_workers=0)
-        tasks.complete_fact(self.dispatcher,task,['works','labor','equipment','fuel'])
+        with self.assertRaises(ValidationError):tasks.complete_fact(self.dispatcher,task,['labor'])
+        self.confirm_section(task,'labor')
+        tasks.complete_fact(self.dispatcher,task,['labor'])
         task.refresh_from_db();self.assertEqual(task.status,'DONE')
 
     def test_explicit_estimator_assignment_cancels_unclaimed_role_queue(self):
         version=self.create().baseline_version
-        version=GlobalPlanService.transition(version,self.planner,'submit')
+        version=self.legacy_submission(version)
         queue=WorkTask.objects.get(kind='ESTIMATE',estimate__isnull=True)
         estimate=estimate_review.assign(self.planner,version,self.estimator)
         queue.refresh_from_db();self.assertEqual(queue.status,'SUPERSEDED')
@@ -212,7 +228,7 @@ class TaskTests(TestCase):
         from .approval_workflow import current_review
         version=self.create().baseline_version
         estimator_check(version,self.planner)
-        version=GlobalPlanService.transition(version,self.planner,'submit')
+        version=GlobalPlanService.transition(version,version.preparation.manager,'submit')
         for role,action in [('PRODUCTION_HEAD','approve_production'),('HR_HEAD','approve_hr'),('TECH_HEAD','approve_tech')]:
             version=GlobalPlanService.transition(version,self.approvers[role],action)
         review=current_review(version)

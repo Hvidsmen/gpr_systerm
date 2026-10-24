@@ -1,0 +1,36 @@
+from django import forms
+from django.contrib import messages
+from django.shortcuts import render,redirect,get_object_or_404
+from core.permissions import READ_ROLES,PLAN_ROLES,require_roles,role_code
+from .models import Equipment,EquipmentType
+
+class UnitForm(forms.ModelForm):
+    class Meta:
+        model=Equipment
+        fields=['type','plate_number','name','is_active']
+        labels={'type':'Вид техники','plate_number':'Госномер / инвентарный номер','name':'Название','is_active':'Активна'}
+    def __init__(self,*args,company,**kwargs):
+        super().__init__(*args,**kwargs)
+        self.instance.company=company
+        self.fields['type'].queryset=EquipmentType.objects.filter(company=company,merge_source__isnull=True)
+        for field in self.fields.values():field.widget.attrs.setdefault('class','form-control')
+    def clean(self):
+        data=super().clean()
+        if self.instance.pk:
+            from apps.production.models import EquipmentActivity,EmployeeActivity
+            used=EquipmentActivity.objects.filter(equipment=self.instance).exists() or EmployeeActivity.objects.filter(equipment=self.instance).exists()
+            if used and any(name in self.changed_data for name in ['type','plate_number']):raise forms.ValidationError('Для машины с фактом вид техники и номер сохраняются в истории. Создайте отдельную единицу для другой идентичности.')
+        return data
+    def validate_unique(self):
+        exclude=self._get_validation_exclusions();exclude.discard('company')
+        try:self.instance.validate_unique(exclude=exclude)
+        except forms.ValidationError as exc:self._update_errors(exc)
+
+def units(request,pk=None):
+    require_roles(request.user,READ_ROLES if request.method=='GET' else PLAN_ROLES)
+    instance=get_object_or_404(Equipment,pk=pk,company=request.user.company) if pk else None
+    form=UnitForm(request.POST if request.method=='POST' else None,instance=instance,company=request.user.company)
+    if request.method=='POST' and form.is_valid():
+        form.save();messages.success(request,'Единица техники сохранена.')
+        return redirect('resources:equipment_unit_list')
+    return render(request,'resources/equipment_units.html',{'form':form,'units':Equipment.objects.filter(company=request.user.company).select_related('type'),'editable':role_code(request.user) in PLAN_ROLES,'editing':instance},status=400 if request.method=='POST' else 200)

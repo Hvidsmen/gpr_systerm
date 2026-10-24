@@ -29,6 +29,9 @@ class DeviationReason(BaseCompanyModel):
 
 
 class DailyFact(BaseCompanyModel):
+    outside_smg = models.BooleanField("Вне СМГ", default=False)
+    smg_plan_quantity = models.DecimalField("План СМГ на дату ввода", max_digits=15, decimal_places=3, null=True, blank=True)
+
     """Дневной факт выполнения работы (объём)."""
 
     project_work = models.ForeignKey(
@@ -329,6 +332,9 @@ class EquipmentFact(ObjectResourceRecord):
 
 
 class FuelFact(ObjectResourceRecord):
+    opening_balance = models.DecimalField("Остаток на начало, л", max_digits=15, decimal_places=2, default=0)
+    received_liters = models.DecimalField("Поступление, л", max_digits=15, decimal_places=2, default=0)
+
     """Факт по ГСМ."""
 
     FUEL_TYPE_CHOICES = [
@@ -447,3 +453,5 @@ class DayActuation(BaseCompanyModel):
             raise ValidationError({'construction_object': 'Объект другой компании.'})
         if not self.reason.strip():
             raise ValidationError({'reason': 'Укажите причину актировки.'})
+
+from .dispatch_models import EmployeeActivity, EquipmentActivity, FactSectionDay

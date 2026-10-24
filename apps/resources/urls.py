@@ -69,3 +69,9 @@ urlpatterns += [
     path('positions/<int:pk>/update/',PositionCatalogue.as_view(),name='position_update'),
     path('equipment-types/<int:pk>/crew/',EquipmentCrew.as_view(),name='equipment_crew'),
 ]
+
+from .equipment_units import units
+urlpatterns += [
+    path('equipment-units/',units,name='equipment_unit_list'),
+    path('equipment-units/<int:pk>/',units,name='equipment_unit_update'),
+]
