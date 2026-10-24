@@ -4,7 +4,7 @@
 
 {% block title %}Должность - ЯДС ОС{% endblock %}
 
-{% block content %}
+{% block content %}<p><a class="btn btn-outline-primary" href="{% url 'resources:fleet_import' %}">Загрузить технику и должности · лист «Сводка»</a></p>
 {% if request.user|may:'resources:catalogue_purge' %}<p><a class="btn btn-outline-danger" href="{% url 'resources:catalogue_purge' 'brigades' %}">Удалить все должности компании</a></p>{% endif %}
 {% with bulk_route='resources:bulk_delete' bulk_kind='brigades' %}
 {% include 'bulk/toolbar.html' %}

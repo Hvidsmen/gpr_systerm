@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% block content %}
+<p><a href="{% url 'resources:equipment_type_list' %}">← Справочник техники</a></p>
+<h1>Техника и должности — импорт листа «Сводка»</h1>
+<p>Для ГПР создаются категории техники. Для СМГ — варианты «категория / марка и модель». Конкретные машины сохраняются с номерами, годом, участком и должностью водителя/машиниста. Участок хранится как название; доступ и назначения на строительные объекты не изменяются.</p>
+<p>Должности берутся из общего справочника или создаются при отсутствии. Удаляются лишние пробелы и точка в конце наименования. Похожие по смыслу названия автоматически не объединяются. Для модели с единственной должностью создаётся экипаж: один человек на смену. Если должностей несколько, проверьте экипаж вручную — они не складываются в один состав.</p>
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+{% if report %}
+<h2>Предпросмотр</h2><p>Строк: {{ report.rows|length }}. Новых машин: {{ report.new_units }}. Новых должностей: {{ report.new_roles }}. Новых категорий: {{ report.new_categories }}. Новых позиций справочника техники: {{ report.new_types }}.</p>
+{% if report.warnings %}<div class="alert alert-warning"><ul>{% for warning in report.warnings %}<li>{{ warning }}</li>{% endfor %}</ul></div>{% endif %}
+<p>Совпавшие машины пропускаются. Отличающиеся существующие реквизиты блокируют загрузку без перезаписи данных. Повторный запуск с тем же файлом не создаёт новые машины. Повторный VIN не является основанием объединять разные машины.</p>
+<div class="table-responsive"><table class="table"><thead><tr><th>Строка</th><th>Категория</th><th>Марка / модель</th><th>Год</th><th>Инв. номер</th><th>Госномер</th><th>VIN / заводской номер</th><th>Участок</th><th>Должность</th><th>Действие</th></tr></thead><tbody>{% for row in report.rows %}<tr><td>{{ row.row }}</td><td>{{ row.category }}</td><td>{{ row.model }}</td><td>{{ row.year|default_if_none:'—' }}</td><td>{{ row.inventory }}</td><td>{{ row.plate }}</td><td>{{ row.vin }}</td><td>{{ row.site }}</td><td>{{ row.position }}</td><td>{% if row.existing %}Пропустить{% else %}Добавить{% endif %}</td></tr>{% endfor %}</tbody></table></div>
+<form method="post">{% csrf_token %}<input type="hidden" name="action" value="confirm"><input type="hidden" name="token" value="{{ token }}"><button class="btn btn-primary">Загрузить технику и должности</button> <a href="{% url 'resources:fleet_import' %}" class="btn btn-outline-secondary">Другой файл</a></form>
+{% else %}<form method="post" enctype="multipart/form-data" class="card p-3">{% csrf_token %}{{ form.as_p }}<button class="btn btn-primary">Предпросмотр</button></form>{% endif %}
+{% endblock %}

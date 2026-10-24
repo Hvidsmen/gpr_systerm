@@ -32,6 +32,7 @@ class ResourcePurge:
         merge=BrigadeMerge if kind=='brigades' else EquipmentTypeMerge
         while True:
             sources=set(merge.objects.filter(target_id__in=self.ids).values_list('source_id',flat=True))
+            if kind=='equipment':sources.update(EquipmentType.objects.filter(parent_id__in=self.ids).values_list('pk',flat=True))
             if sources<=self.ids:break
             self.ids|=sources
         self.records=list(self.model.objects.filter(pk__in=self.ids).order_by('name','pk'))

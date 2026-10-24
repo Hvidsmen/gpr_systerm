@@ -119,6 +119,13 @@ class WorkAllocationForm(AllocationMixin, forms.ModelForm):
 
 
 class ResourceAllocationForm(AllocationMixin, forms.ModelForm):
+    def __init__(self,*args,**kwargs):
+        super().__init__(*args,**kwargs)
+        from apps.resources.equipment_levels import gpr_types
+        from django.db.models import Q
+        field=self.fields['equipment_type']
+        field.queryset=field.queryset.filter(Q(pk__in=gpr_types(field.queryset).values('pk'))|Q(pk=self.instance.equipment_type_id))
+
     class Meta:
         model = ResourceMonthAllocation
         labels = {'brigade':'Должность'}

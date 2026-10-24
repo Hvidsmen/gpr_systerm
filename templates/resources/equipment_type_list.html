@@ -4,7 +4,7 @@
 
 {% block title %}Виды техники{% endblock %}
 
-{% block content %}
+{% block content %}<p><a class="btn btn-outline-primary" href="{% url 'resources:fleet_import' %}">Загрузить технику и должности · лист «Сводка»</a></p>
 {% if request.user|may:'resources:catalogue_purge' %}<p><a class="btn btn-outline-danger" href="{% url 'resources:catalogue_purge' 'equipment' %}">Удалить всю технику компании</a></p>{% endif %}
 <a class="btn btn-outline-primary mb-3" href="{% url 'resources:equipment_unit_list' %}">Конкретная техника · госномера и инвентарные номера</a>
 {% with bulk_route='resources:bulk_delete' bulk_kind='equipment' %}
@@ -49,7 +49,7 @@
                     <tbody>
                         {% for et in equipment_types %}
                             <tr>{% if request.user|may:bulk_route %}<td>{% include 'bulk/checkbox.html' with record=et %}</td>{% endif %}
-                                <td><strong>{{ et.name }}</strong></td>
+                                <td><strong>{{ et.name }}</strong><div class="small text-muted">{% if et.parent_id %}Модель для СМГ{% elif et.model_variants.exists %}Категория для ГПР{% endif %}</div></td>
                                 <td>{{ et.category|default:"—" }}</td><td>{{ et.driver_category_labels|join:", "|default:"—" }}</td><td>{{ et.driver_class_labels|join:", "|default:"—" }}</td>
                                 <td>{{ et.unit }}</td>
                                 <td>

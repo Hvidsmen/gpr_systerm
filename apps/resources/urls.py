@@ -79,3 +79,6 @@ urlpatterns += [
 
 from .purge import purge
 urlpatterns += [path('purge/<str:kind>/',purge,name='catalogue_purge')]
+
+from .fleet_import import fleet_import
+urlpatterns += [path('equipment/fleet-import/',fleet_import,name='fleet_import')]

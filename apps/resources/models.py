@@ -131,6 +131,8 @@ from .driver_categories import validate_driver_categories, validate_driver_class
 
 
 class EquipmentType(BaseCompanyModel):
+    parent = models.ForeignKey('self',null=True,blank=True,on_delete=models.SET_NULL,related_name='model_variants',verbose_name='Категория для ГПР')
+    brand_model = models.CharField('Марка / модель',max_length=150,blank=True)
     excel_aliases = models.JSONField('Названия в Excel', default=list, blank=True, validators=[validate_excel_aliases])
     """Справочник видов техники."""
     name = models.CharField(_('название'), max_length=150)
@@ -161,22 +163,29 @@ class EquipmentType(BaseCompanyModel):
         return self.name
 
 class Equipment(BaseCompanyModel):
+    manufacture_year = models.PositiveSmallIntegerField('Год выпуска',null=True,blank=True)
+    brand_model = models.CharField('Марка / модель',max_length=150,blank=True)
+    inventory_number = models.CharField('Инвентарный номер',max_length=50,blank=True)
+    vin = models.CharField('VIN / заводской номер',max_length=100,blank=True)
+    site_name = models.CharField('Участок',max_length=150,blank=True)
+    operator_position = models.ForeignKey('Position',null=True,blank=True,on_delete=models.SET_NULL,related_name='equipment_units',verbose_name='Должность водителя / машиниста')
+    import_key = models.CharField(max_length=80,blank=True,editable=False)
     type = models.ForeignKey(
         EquipmentType, on_delete=models.CASCADE,
         related_name='equipment', verbose_name=_('тип')
     )
-    plate_number = models.CharField(_('гос. номер'), max_length=50)
-    name = models.CharField(_('название'), max_length=100)
+    plate_number = models.CharField(_('гос. номер'), max_length=50,blank=True)
+    name = models.CharField(_('название'), max_length=150)
     is_active = models.BooleanField(_('активна'), default=True)
 
     class Meta:
         verbose_name = _('техника')
         verbose_name_plural = _('техника')
         ordering = ['plate_number']
-        unique_together = [['company', 'plate_number']]
+        constraints = [models.UniqueConstraint(fields=['company','plate_number'],condition=~models.Q(plate_number=''),name='unique_nonempty_equipment_plate'),models.UniqueConstraint(fields=['company','import_key'],condition=~models.Q(import_key=''),name='unique_equipment_import_key')]
 
     def __str__(self):
-        return f"{self.plate_number} - {self.name}"
+        return f"{self.plate_number or self.inventory_number or self.vin or 'Без номера'} - {self.name}"
 
 
 class FuelType(BaseCompanyModel):

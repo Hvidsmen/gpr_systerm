@@ -23,7 +23,8 @@ class AddEntryForm(forms.Form):
         self.fields['work'].widget=forms.HiddenInput()
         self.fields['work'].label_from_instance=lambda work:f'{work.section.construction_object} · {work.section.name} · {work.name} · {work.unit} · ID {work.pk}'
         self.fields['brigade'].queryset=Brigade.objects.filter(company_id=schedule.company_id)
-        self.fields['equipment'].queryset=EquipmentType.objects.filter(company_id=schedule.company_id,merge_source__isnull=True)
+        from apps.resources.equipment_levels import smg_types
+        self.fields['equipment'].queryset=smg_types(EquipmentType.objects.filter(company_id=schedule.company_id,merge_source__isnull=True))
 
     def clean(self):
         data=super().clean();field={'work':'work','labor':'brigade','equipment':'equipment','fuel':'fuel'}.get(data.get('kind'))

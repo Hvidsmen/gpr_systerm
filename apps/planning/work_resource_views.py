@@ -28,6 +28,9 @@ class AssignmentForm(forms.ModelForm):
         self.fields['work_item'].queryset=ProjectWorkItem.objects.filter(company=owner.company,project_work__in=self.fields['work'].queryset)
         self.fields['work_item'].label_from_instance=lambda i:f'{i.project_work.name} → {i.name}'
         self.fields['equipment_type'].queryset=EquipmentType.objects.filter(company=owner.company).filter(Q(merge_source__isnull=True,is_active=True)|Q(pk=self.instance.equipment_type_id))
+        from apps.resources.equipment_levels import gpr_types,smg_types
+        field=self.fields['equipment_type'];allowed=smg_types(field.queryset) if isinstance(owner,DailySchedule) else gpr_types(field.queryset)
+        field.queryset=field.queryset.filter(Q(pk__in=allowed.values('pk'))|Q(pk=self.instance.equipment_type_id))
         from apps.resources.position_catalog import available_positions, position_label
         self.fields['position'].queryset=available_positions(owner.company)
         self.fields['position'].label_from_instance=position_label
