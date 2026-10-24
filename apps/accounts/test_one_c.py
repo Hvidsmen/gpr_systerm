@@ -86,3 +86,9 @@ class OneCTests(TestCase):
             args=execute.call_args.args[0]
             self.assertIn('-RunHere',args);self.assertNotIn('shell',execute.call_args.kwargs)
             self.assertContains(self.client.get(self.url),'_Reference123')
+
+    def test_metadata_only_action_enqueues_without_full_scan(self):
+        self.client.post(self.url,{'action':'metadata_retry'})
+        run=OneCDiagnosticRun.objects.get()
+        self.assertTrue(run.report['metadata_only'])
+        self.assertContains(self.client.get(self.url),'Прочитать названия (быстро)')

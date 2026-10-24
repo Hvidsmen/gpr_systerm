@@ -6,6 +6,7 @@ param(
     [string]$PythonPath='',
     [switch]$TrustServerCertificate,
     [switch]$RunHere,
+    [switch]$MetadataOnly,
     [ValidatePattern('^[a-f0-9]{32}$')][string]$RunId=([guid]::NewGuid().ToString('N')),
     [ValidateRange(1,10000)][int]$SampleLimit=5000
 )
@@ -54,6 +55,22 @@ function Save-MetadataFile($connection,$table,[string]$file,[string]$destination
         [IO.File]::WriteAllBytes($destination,$memory.ToArray());return $true
     } finally {$memory.Dispose()}
 }
+function Invoke-MetadataReader([string]$mode,[string]$metadataDirectory,[string]$python,[string]$parser){
+    $errorFile=Join-Path $metadataDirectory 'reader-error.json'
+    if(Test-Path -LiteralPath $errorFile){Remove-Item -LiteralPath $errorFile -Force}
+    # Redirect at process level: Windows PowerShell otherwise stops at the first stderr line.
+    $arguments='-X utf8 "'+$parser+'" '+$mode+' "'+$metadataDirectory+'"'
+    $process=Start-Process -FilePath $python -ArgumentList $arguments -Wait -PassThru -NoNewWindow -RedirectStandardError (Join-Path $metadataDirectory 'parser-errors.log') -RedirectStandardOutput (Join-Path $metadataDirectory 'parser-output.log')
+    if($process.ExitCode -ne 0){
+        if(Test-Path -LiteralPath $errorFile){
+            $detail=Get-Content -LiteralPath $errorFile -Raw -Encoding UTF8 | ConvertFrom-Json
+            throw ('Metadata '+$detail.stage+': '+$detail.error_type+': '+$detail.error+'; DBNames bytes: '+$detail.dbnames_bytes)
+        }
+        $log=Get-Content -LiteralPath (Join-Path $metadataDirectory 'parser-errors.log') -Raw -Encoding UTF8
+        if($log.Length -gt 8000){$log=$log.Substring($log.Length-8000)}
+        throw ('Metadata reader exit '+$process.ExitCode+': '+$log)
+    }
+}
 function Read-MetadataNames($connection,$columns){
     $metadataDirectory=Join-Path $script:directory 'metadata'
     New-Item -ItemType Directory -Path $metadataDirectory -Force | Out-Null
@@ -68,8 +85,7 @@ function Read-MetadataNames($connection,$columns){
     if(-not $PythonPath){$command=Get-Command python -ErrorAction SilentlyContinue;if($command){$PythonPath=$command.Source}}
     if(-not $PythonPath){throw 'Python executable for the metadata reader is unavailable.'}
     $parser=Join-Path $PSScriptRoot 'parse_1c_metadata.py'
-    & $PythonPath $parser 'index' $metadataDirectory 2> (Join-Path $metadataDirectory 'parser-errors.log')
-    if($LASTEXITCODE -ne 0){throw 'DBNames format is not supported by this metadata reader. See metadata/parser-errors.log.'}
+    Invoke-MetadataReader 'index' $metadataDirectory $PythonPath $parser
     $requests=@(Get-Content -LiteralPath (Join-Path $metadataDirectory 'requests.json') -Raw -Encoding UTF8 | ConvertFrom-Json)
     $read=0;$totalBytes=0;$metadataWarnings=@();$timer=[Diagnostics.Stopwatch]::StartNew()
     foreach($entry in $requests){
@@ -78,8 +94,7 @@ function Read-MetadataNames($connection,$columns){
         if(Save-MetadataFile $connection $configs[0] $entry.uuid (Join-Path $metadataDirectory ($entry.uuid+'.bin')) $parts){$read++;$totalBytes+=(Get-Item -LiteralPath (Join-Path $metadataDirectory ($entry.uuid+'.bin'))).Length;if($totalBytes -gt 134217728){$metadataWarnings+=[pscustomobject]@{error='Metadata snapshot limit reached; names are partial.'};break}}
     }
     Write-Json (Join-Path $metadataDirectory 'schema.json') $columns
-    & $PythonPath $parser 'decode' $metadataDirectory 2> (Join-Path $metadataDirectory 'parser-errors.log')
-    if($LASTEXITCODE -ne 0){throw 'Metadata decoding did not finish. See metadata/parser-errors.log.'}
+    Invoke-MetadataReader 'decode' $metadataDirectory $PythonPath $parser
     $result=Get-Content -LiteralPath (Join-Path $metadataDirectory 'names.json') -Raw -Encoding UTF8 | ConvertFrom-Json
     if($read -eq 0){$metadataWarnings+=[pscustomobject]@{error='No object files found in Config by DBNames UUID. This metadata layout needs an additional reader.'}}
     $result.errors=@($result.errors)+$metadataWarnings
@@ -99,6 +114,7 @@ try {
             if(-not $admin.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){throw 'Run PowerShell as Administrator to diagnose using the portal SYSTEM account.'}
             $taskName='YDS Portal 1C Diagnostics '+$RunId
             $arguments='-NoProfile -ExecutionPolicy Bypass -File "'+(Join-Path $Root 'ops\diagnose-1c.ps1')+'" -Root "'+$Root+'" -Server "'+$Server+'" -Database "'+$Database+'" -RunId '+$RunId+' -SampleLimit '+$SampleLimit+' -RunHere'
+            if($MetadataOnly){$arguments+=' -MetadataOnly'}
             if($PythonPath){$arguments+=' -PythonPath "'+$PythonPath+'"'}
             if($TrustServerCertificate){$arguments+=' -TrustServerCertificate'}
             $action=New-ScheduledTaskAction -Execute (Join-Path $PSHOME 'powershell.exe') -Argument $arguments -WorkingDirectory $Root
@@ -160,7 +176,8 @@ ORDER BY s.name,t.name,c.column_id
         $terms=@('должност','машинист','водител','инженер','монтажник','электромонтер','электромонтёр','сварщик','директор','начальник','бухгалтер','мастер','руководител','слесар')
         $candidates=New-Object 'System.Collections.Generic.List[object]'
         $errors=New-Object 'System.Collections.Generic.List[object]'
-        foreach($table in $descriptions){
+        $scanTables=if($MetadataOnly){@()}else{$descriptions}
+        foreach($table in $scanTables){
             $name=(Quote-Identifier $table.schema)+'.'+(Quote-Identifier $table.table)
             $parameters=@{'@limit'=$SampleLimit};$clauses=@()
             for($i=0;$i -lt $terms.Count;$i++){$parameter='@term'+$i;$parameters[$parameter]='%'+$terms[$i]+'%';$clauses+='LOWER([_Description]) LIKE '+$parameter}
@@ -180,7 +197,7 @@ ORDER BY s.name,t.name,c.column_id
             $metadataNames=$decoded.labels;$metadataRead=$decoded.objects_read;$metadataErrors=@($decoded.errors)
             $metadataStatus=if(@($metadataNames.PSObject.Properties).Count -gt 0){'decoded'}else{'unrecognized'}
         } catch {$metadataErrors=@([pscustomobject]@{error=$_.Exception.Message})}
-        $report=[ordered]@{metadata_labels=$metadataNames;metadata_status=$metadataStatus;metadata_objects_read=$metadataRead;metadata_errors=$metadataErrors;created_utc=[DateTime]::UtcNow.ToString('o');windows_identity=$identity.Name;connection=$who;reference_tables_checked=$descriptions.Count;sample_limit=$SampleLimit;search_terms=$terms;candidates=@($candidates | Sort-Object matched_rows -Descending);metadata_tables=$metadata;schema=$columns;scan_errors=$errors.ToArray();notice='Candidates are hints, not a confirmed 1C metadata mapping. No source descriptions, employee rows, binary metadata, or passwords are exported.'}
+        $report=[ordered]@{metadata_labels=$metadataNames;metadata_status=$metadataStatus;metadata_objects_read=$metadataRead;metadata_errors=$metadataErrors;created_utc=[DateTime]::UtcNow.ToString('o');windows_identity=$identity.Name;connection=$who;reference_tables_checked=@($scanTables).Count;sample_limit=$SampleLimit;search_terms=$terms;candidates=@($candidates | Sort-Object matched_rows -Descending);metadata_tables=$metadata;schema=$columns;scan_errors=$errors.ToArray();notice='Candidates are hints, not a confirmed 1C metadata mapping. No source descriptions, employee rows, binary metadata, or passwords are exported.'}
         Write-Json $reportPath $report
         Write-Json $statusPath @{ok=$true;report=$reportPath}
         Write-Host ('DONE. Report: '+$reportPath) -ForegroundColor Green

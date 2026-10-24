@@ -104,3 +104,18 @@ class MetadataCommandTests(SimpleTestCase):
             self.assertEqual(result.returncode,0,result.stderr)
             data=json.loads((root/'names.json').read_text())
             self.assertEqual(data['labels']['dbo._Reference394']['name'],'Справочник.Должности')
+
+    def test_command_failure_is_structured_without_stderr_traceback(self):
+        import subprocess,sys,tempfile
+        from pathlib import Path
+        parser=Path(__file__).resolve().parents[2]/'ops/parse_1c_metadata.py'
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);(root/'dbnames.bin').write_bytes(b'not-deflate')
+            result=subprocess.run([sys.executable,str(parser),'index',str(root)],capture_output=True,text=True)
+            self.assertEqual(result.returncode,1)
+            self.assertNotIn('Traceback',result.stderr)
+            error=json.loads((root/'reader-error.json').read_text())
+            self.assertEqual(error['stage'],'index')
+            self.assertEqual(error['error_type'],'ValueError')
+            self.assertIn('Unsupported compressed',error['error'])
+            self.assertEqual(error['dbnames_bytes'],11)

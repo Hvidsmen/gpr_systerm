@@ -40,14 +40,14 @@ class ConnectionForm(forms.ModelForm):
         return value
 
 
-def enqueue(connection, actor=None):
+def enqueue(connection, actor=None, metadata_only=False):
     # Conditional update is the cross-process claim, including SQLite deployments.
     now=timezone.now()
     from django.db import transaction
     with transaction.atomic():
         claimed=OneCConnection.objects.filter(pk=connection.pk).filter(active_until__isnull=True).update(active_until=now+timedelta(minutes=20))
         if not claimed:return None
-        return OneCDiagnosticRun.objects.create(connection=connection,created_by=actor,server=connection.server,database=connection.database,trust_certificate=connection.trust_certificate)
+        return OneCDiagnosticRun.objects.create(connection=connection,created_by=actor,server=connection.server,database=connection.database,trust_certificate=connection.trust_certificate,report={'metadata_only':True} if metadata_only else {})
 
 
 def process_queue():
@@ -64,12 +64,21 @@ def process_queue():
             if os.name!='nt':raise RuntimeError('Диагностика MS SQL с Windows-аутентификацией доступна на Windows-сервере портала.')
             root=Path(settings.CONFIG_DIR)
             command=['powershell.exe','-NoProfile','-ExecutionPolicy','Bypass','-File',str(Path(settings.BASE_DIR)/'ops/diagnose-1c.ps1'),'-Root',str(root),'-RunHere','-PythonPath',__import__('sys').executable,'-Server',run.server,'-Database',run.database,'-RunId',run.pk.hex]
+            metadata_only=bool(run.report.get('metadata_only'))
+            if metadata_only:command.append('-MetadataOnly')
             if run.trust_certificate:command.append('-TrustServerCertificate')
             subprocess.run(command,timeout=900,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,check=False,creationflags=subprocess.CREATE_NO_WINDOW)
             directory=root/'.runtime/1c-diagnostics'/run.pk.hex
             status=json.loads((directory/'status.json').read_text(encoding='utf-8-sig'))
             if not status.get('ok'):raise RuntimeError(status.get('error','Ошибка диагностики.'))
             run.report=json.loads((directory/'report.json').read_text(encoding='utf-8-sig'))
+            if metadata_only:
+                prior=run.connection.runs.filter(status='DONE',server=run.server,database=run.database).exclude(pk=run.pk).order_by('-created_at').first()
+                if prior:
+                    for key in ['candidates','reference_tables_checked','search_terms','sample_limit']:
+                        if key in prior.report:run.report[key]=prior.report[key]
+                    run.report['source_diagnostic_id']=str(prior.pk)
+                run.report['metadata_only']=True
             run.status='DONE'
         except Exception as exc:
             run.status='ERROR';run.error=str(exc)[:4000]
@@ -108,8 +117,8 @@ def integration(request):
                 messages.success(request,f'Загружено соответствий таблиц: {len(labels)}.')
                 return redirect('accounts:one_c')
             except (ValueError,UnicodeError,ValidationError) as exc:mapping_error='; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Не удалось прочитать JSON-файл.'
-        elif request.POST.get('action')=='diagnose':
-            run=enqueue(connection,request.user)
+        elif request.POST.get('action') in {'diagnose','metadata_retry'}:
+            run=enqueue(connection,request.user,metadata_only=request.POST.get('action')=='metadata_retry')
             messages.success(request,'Диагностика поставлена в очередь. Фоновый обработчик начнёт её в течение минуты.' if run else 'Диагностика уже ожидает запуска или выполняется.')
             return redirect('accounts:one_c')
     runs=list(connection.runs.defer('report').order_by('-created_at')[:20])

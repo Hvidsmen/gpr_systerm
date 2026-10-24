@@ -24,4 +24,16 @@ def main():
     labels=resolve(index,found,schema)
     (root/'names.json').write_text(json.dumps({'labels':labels,'objects_read':len(found),'errors':errors},ensure_ascii=False),encoding='utf-8')
 
-if __name__=='__main__':main()
+if __name__=='__main__':
+    root=Path(sys.argv[2]) if len(sys.argv)>2 else None
+    error_path=root/'reader-error.json' if root else None
+    if error_path and error_path.exists():error_path.unlink()
+    try:main()
+    except Exception as exc:
+        data={'stage':sys.argv[1] if len(sys.argv)>1 else 'startup','error_type':type(exc).__name__,'error':str(exc)[:6000]}
+        if root:
+            blob=root/'dbnames.bin'
+            data['dbnames_bytes']=blob.stat().st_size if blob.exists() else 0
+            error_path.write_text(json.dumps(data,ensure_ascii=False),encoding='utf-8')
+        sys.exit(1)
+
