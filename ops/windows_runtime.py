@@ -59,8 +59,10 @@ def log_setup(runtime, filename="service.log"):
 
 @contextlib.contextmanager
 def singleton(path):
-    file=open(path,'a+b');file.seek(0);file.write(b'0');file.flush();file.seek(0)
+    file=open(path,'a+b')
     try:
+        if file.seek(0,os.SEEK_END)==0:file.write(b'0');file.flush()
+        file.seek(0)
         if os.name=='nt':
             import msvcrt
             msvcrt.locking(file.fileno(),msvcrt.LK_NBLCK,1)
@@ -487,7 +489,7 @@ def supervise(root):
 def request_update(root):
     runtime=root/'.runtime'
     with singleton(runtime/'update.lock'):
-        if (runtime/'update.request').exists():raise RuntimeError('An update is already queued.')
+        if (runtime/'update.request').exists() or read_json(runtime/'status.json',{}).get('state')=='updating':raise RuntimeError('An update is already queued or running.')
         identifier=uuid.uuid4().hex
         atomic_json(runtime/'update.request',{'id':identifier})
         for _ in range(1800):

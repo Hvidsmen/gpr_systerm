@@ -6,11 +6,14 @@ from .directory_admin import add_from_ad
 from . import impersonation_views
 from .one_c import integration, table_structure
 from .one_c_jobs import jobs
+from .portal_updates import updates, update_status
 from .user_archive import bulk_archive
 
 app_name = 'accounts'
 
 urlpatterns = [
+    path('admin/update/',updates,name='portal_updates'),
+    path('admin/update/status/',update_status,name='portal_update_status'),
     path('users/archive/', bulk_archive, name='user_bulk_archive'),
     path('integrations/1c/jobs/', jobs, name='one_c_jobs'),
     path('integrations/1c/', integration, name='one_c'),

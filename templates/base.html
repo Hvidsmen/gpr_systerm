@@ -439,6 +439,7 @@
         {% if request.user|may:'planning:calendar_list' %}<a class="nav-link" href="{% url 'planning:calendar_list' %}" data-paths="/planning/calendars/ /planning/calendar-days/"><i class="bi bi-calendar"></i> Календари</a>{% endif %}
         </details>{% endif %}
         {% if request.user|may:'accounts:user_list' %}<div class="border-top my-2"></div><a class="nav-link" href="{% url 'accounts:one_c' %}"><i class="bi bi-database-gear"></i> Интеграция с 1С</a><a class="nav-link ps-4" href="{% url 'accounts:one_c_jobs' %}"><i class="bi bi-list-task"></i> Задания</a>{% endif %}
+        {% if request.user|may:'accounts:portal_updates' %}<a class="nav-link" href="{% url 'accounts:portal_updates' %}"><i class="bi bi-arrow-repeat"></i> Обновление приложения</a>{% endif %}
         {% if request.user|may:'accounts:user_list' %}<a class="nav-link" href="{% url 'accounts:user_list' %}" ><i class="bi bi-person-gear"></i> Пользователи и доступ</a>{% endif %}
     </nav>
 </aside>
