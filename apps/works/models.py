@@ -136,6 +136,8 @@ class WorkTemplateItem(BaseCompanyModel):
 
 
 class ProjectWork(BaseCompanyModel):
+    rd_section = models.CharField("Раздел РД", max_length=255, blank=True)
+    rdc_point = models.CharField("Пункт в РДЦ", max_length=255, blank=True)
     excel_aliases = models.JSONField('Названия в Excel', default=list, blank=True, validators=[validate_excel_aliases])
     class Kind(models.TextChoices):
         SIMPLE = "SIMPLE", "Самостоятельная работа"
@@ -162,6 +164,8 @@ class ProjectWork(BaseCompanyModel):
 
     def clean(self):
         super().clean()
+        if self.kind == self.Kind.SIMPLE and not self.unit:
+            raise ValidationError({"unit": "Для самостоятельной работы укажите единицу измерения."})
         if self.unit_price is not None and self.unit_price < 0:
             raise ValidationError({'unit_price': 'Цена не может быть отрицательной.'})
         if self.pk and hasattr(self,'merged_source'):
@@ -269,7 +273,7 @@ class ProjectWork(BaseCompanyModel):
     )
     code = models.CharField(_("код"), max_length=50, blank=True, editable=False)
     name = models.CharField(_("название"), max_length=255)
-    unit = models.CharField(_("единица измерения"), max_length=50)
+    unit = models.CharField(_("единица измерения"), max_length=50, blank=True)
     unit_price = models.DecimalField(
         _("цена за единицу"), max_digits=12, decimal_places=2, default=0
     )

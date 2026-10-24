@@ -65,3 +65,6 @@ urlpatterns += [
     path('complex-objects/',ComplexObjectCatalogue.as_view(),name='complex_object_list'),
     path('complex-objects/<int:pk>/update/',ComplexObjectCatalogue.as_view(),name='complex_object_update'),
 ]
+
+from .schedule_import import schedule_import
+urlpatterns += [path('import-schedule/', schedule_import, name='schedule_import')]

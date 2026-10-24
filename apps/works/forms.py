@@ -86,6 +86,7 @@ class ProjectWorkForm(UnitChoiceMixin, forms.ModelForm):
             if self.is_bound and self.data.get(self.add_prefix('price_source')):
                 self.fields['unit_price'].required = False
         self.configure_catalog(company)
+        self.fields['unit'].required = kind == ProjectWork.Kind.SIMPLE
         self.fields["work_group"].queryset = self.fields["work_group"].queryset.filter(company=company)
         self.fields["work_group"].empty_label = "Без группы"
         self.order_fields(['project', 'construction_object', 'section', *self._meta.fields])
@@ -119,6 +120,8 @@ class ProjectWorkForm(UnitChoiceMixin, forms.ModelForm):
             "name",
             "work_group",
             "complex_object",
+            "rd_section",
+            "rdc_point",
             "unit",
             "section",
             "unit_price",

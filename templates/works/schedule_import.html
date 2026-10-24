@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% block content %}
+<p><a href="{% url 'works:work_list' %}">← Справочник работ</a></p>
+<h1>Импорт состава работ из графика</h1>
+<p>Участок → комплексный объект; группа работ → комплексная работа; вид работ → вложенная работа. Раздел РД и пункт РДЦ сохраняются у комплекса. Единица и проектное количество становятся единицей и нормативом вложенной работы.</p>
+<p class="text-muted">Единицу самого комплекса зададите позже. Факт, остатки, дневной график, цены и цветовые отметки не импортируются. Совпадающие работы пропускаются; отличающиеся нормативы и реквизиты показываются как ошибки без перезаписи справочника.</p>
+{% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+{% if rows %}
+<h2>Предпросмотр: {{ section.construction_object }} / {{ section.name }}</h2>
+<p>Работ: {{ rows|length }}. Новых: {{ new_count }}. Пропущено строк «Факт»: {{ ignored }}.</p>
+<div class="table-responsive"><table class="table"><thead><tr><th>Строка</th><th>Комплексный объект</th><th>Комплексная работа</th><th>Раздел РД</th><th>Пункт в РДЦ</th><th>Работа</th><th>Ед. изм.</th><th>Норматив</th><th>Действие</th></tr></thead><tbody>
+{% for row in rows %}<tr><td>{{ row.source }}</td><td>{{ row.object }}</td><td>{{ row.package }}</td><td>{{ row.rd_section }}</td><td>{{ row.rdc_point }}</td><td>{{ row.work }}</td><td>{{ row.unit }}</td><td>{{ row.quantity }}</td><td>{% if row.existing %}Уже существует{% else %}Добавить{% endif %}</td></tr>{% endfor %}
+</tbody></table></div>
+<form method="post">{% csrf_token %}<input type="hidden" name="action" value="confirm"><input type="hidden" name="token" value="{{ token }}"><button class="btn btn-primary">Загрузить в справочник</button> <a class="btn btn-outline-secondary" href="{% url 'works:schedule_import' %}">Выбрать другой файл</a></form>
+{% else %}
+<form method="post" enctype="multipart/form-data" class="card p-3">{% csrf_token %}{{ form.as_p }}<button class="btn btn-primary">Проверить файл</button></form>
+{% endif %}
+{% endblock %}

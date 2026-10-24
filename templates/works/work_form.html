@@ -63,6 +63,7 @@
                 <div class="input-group">{{ form.work_group }}{% if request.user|may:'works:group_create' %}<button type="button" class="btn btn-outline-primary" data-catalog-open="group" aria-label="Создать группу работ">+</button>{% endif %}</div>
                 <div class="text-danger small">{{ form.work_group.errors }}</div>
             </div>
+            <div class="row g-3 mb-3"><div class="col-md-6">{{ form.rd_section.label_tag }}{{ form.rd_section }}{{ form.rd_section.errors }}</div><div class="col-md-6">{{ form.rdc_point.label_tag }}{{ form.rdc_point }}{{ form.rdc_point.errors }}</div></div>
             <!-- Название -->
             <div class="row">
                 <div class="col-md-9 mb-3">
@@ -92,7 +93,7 @@
                 </div>
                 <div class="col-md-2 mb-3">
                     <label for="{{ form.unit.id_for_label }}" class="form-label">
-                        {{ form.unit.label }} <span class="text-danger">*</span>
+                        {{ form.unit.label }} <span class="text-danger" id="unit-required">*</span><span class="text-muted small"> Для комплекса можно задать позже.</span>
                     </label>
                     <div class="input-group">{{ form.unit }}{% if request.user|may:'works:unit_create' %}<button type="button" class="btn btn-outline-primary" data-catalog-open="unit" aria-label="Создать единицу измерения">+</button>{% endif %}</div>
                     {% if form.unit.errors %}
@@ -207,6 +208,14 @@
     complex.value=initialComplex;
     project.addEventListener('change', () => updateObjects());
     object.addEventListener('change', () => updateSections());
+})();
+</script>
+<script>
+(() => {
+ const kind=document.getElementById('id_kind'), unit=document.getElementById('id_unit'), marker=document.getElementById('unit-required');
+ if(!kind||!unit)return;
+ const update=()=>{unit.required=kind.value==='SIMPLE';if(marker)marker.hidden=!unit.required;};
+ kind.addEventListener('change',update);update();
 })();
 </script>
 {% endblock %}
