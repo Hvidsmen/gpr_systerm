@@ -40,7 +40,7 @@
                             <tr>
                                 <td>{{ section.name }}</td>
                                 <td>
-                                    <div class="btn-group btn-group-sm">
+                                    <div class="btn-group btn-group-sm">{% if request.user|may:'works:group_conversion' %}<a class="btn btn-outline-primary" href="{% url 'works:group_conversion' 'section' section.pk %}">В комплексный объект</a>{% endif %}
                                         {% if request.user|may:'projects:section_edit' %}<a href="{% url 'projects:section_edit' construction_object.pk section.pk %}"
                                            class="btn btn-outline-primary"
                                            title="Редактировать">

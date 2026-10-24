@@ -74,3 +74,6 @@ urlpatterns += [path('copy/<str:kind>/<int:pk>/', copy_view, name='catalogue_cop
 
 from .purge import purge
 urlpatterns += [path('purge/',purge,name='work_purge')]
+
+from .conversion import conversion
+urlpatterns += [path('convert/<str:kind>/<int:pk>/',conversion,name='group_conversion')]

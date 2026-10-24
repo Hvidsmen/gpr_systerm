@@ -73,6 +73,7 @@ class Section(BaseCompanyModel):
         ConstructionObject, on_delete=models.CASCADE,
         related_name='sections', verbose_name=_('строительный объект')
     )
+    description = models.TextField(_('описание'), blank=True)
     code = models.CharField(_('код'), max_length=50, blank=True, editable=False)
     name = models.CharField(_('название'), max_length=255)
 
