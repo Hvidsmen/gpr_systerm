@@ -11,10 +11,14 @@ SALT='planning.delete-dependency-preview.v1'
 ROOT_MODELS={model._meta.label:model for model in [PlanningWorkspace,GlobalPlanVersion,DailySchedule,ProjectPlanVersion,apps.get_model('rotation','RotationPlan')]}
 
 class DeletionGraph:
-    def __init__(self,workspace,user):
+    def __init__(self,workspace,user,*,version_ids=(),workspace_ids=(),schedule_ids=(),project_ids=()):
         self.workspace=workspace;self.user=user
         self.ids={label:set() for label in ROOT_MODELS}
-        self.add(PlanningWorkspace,workspace.pk)
+        if workspace:self.add(PlanningWorkspace,workspace.pk)
+        for pk in workspace_ids:self.add(PlanningWorkspace,pk)
+        for version in GlobalPlanVersion.objects.filter(pk__in=version_ids):self.add_version(version)
+        for pk in schedule_ids:self.add(DailySchedule,pk)
+        for pk in project_ids:self.add(ProjectPlanVersion,pk)
         targets=set(ROOT_MODELS)|{'planning.GlobalPlanReview'}
         relations=[(model,field) for model in apps.get_models() for field in model._meta.fields if field.is_relation and field.related_model and field.related_model._meta.label in targets and field.remote_field.on_delete is PROTECT]
         while True:
@@ -43,7 +47,7 @@ class DeletionGraph:
             if role_code(user)!='ADMIN' and set(scope_queryset(ROOT_MODELS[label].objects.filter(pk__in=self.ids[label]),user).values_list('pk',flat=True))!=self.ids[label]:
                 raise PermissionDenied('В цепочке есть планы объектов, которые вам не назначены. Удаление доступно администратору.')
         self.history=bool(reviews) or any(v.status not in {'DRAFT','REJECTED'} for v in self.records['planning.GlobalPlanVersion']) or any(s.status!='DRAFT' for s in self.records['planning.DailySchedule']) or any(p.status=='FIXED' for p in self.records['planning.ProjectPlanVersion'])
-        self.linked=bool(self.ids['planning.DailySchedule'] or self.ids['planning.ProjectPlanVersion'] or self.ids['rotation.RotationPlan'] or len(self.ids['planning.PlanningWorkspace'])>1 or any(v.workspace_id!=workspace.pk for v in self.records['planning.GlobalPlanVersion']))
+        self.linked=bool(self.ids['planning.DailySchedule'] or self.ids['planning.ProjectPlanVersion'] or self.ids['rotation.RotationPlan'] or len(self.ids['planning.PlanningWorkspace'])>1 or workspace and any(v.workspace_id!=workspace.pk for v in self.records['planning.GlobalPlanVersion']))
         self.groups=[{'label':label,'records':self.records[model]} for model,label in [('planning.PlanningWorkspace','Планы на период'),('planning.GlobalPlanVersion','Версии ГПР и месячные уточнения'),('planning.DailySchedule','Дневные СМГ и их редакции'),('planning.ProjectPlanVersion','Сводные планы проекта'),('rotation.RotationPlan','Планы персонала')] if self.records[model]]
 
     def check_company(self,record):
@@ -94,4 +98,4 @@ class DeletionGraph:
             MacroHistorySource.objects.filter(review__version_id__in=version_ids).delete()
             GlobalPlanVersion.objects.filter(pk__in=version_ids).defer('snapshot').delete()
             PlanningWorkspace.objects.filter(pk__in=workspace_ids).delete()
-        AuditLog.objects.create(user=self.user,action='DELETE',entity_type='planning.PlanningWorkspace',entity_id=str(self.workspace.pk),old_value={key:sorted(ids) for key,ids in self.ids.items()},comment='Удаление плана и всей зависимой цепочки планирования')
+        AuditLog.objects.create(user=self.user,action='DELETE',entity_type='planning.PlanningWorkspace' if self.workspace else 'works.WorkPurge',entity_id=str(self.workspace.pk) if self.workspace else 'dependencies',old_value={key:sorted(ids) for key,ids in self.ids.items()},comment='Удаление плана и всей зависимой цепочки планирования')

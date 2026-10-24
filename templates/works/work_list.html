@@ -26,6 +26,7 @@
 .work-list-table .badge { white-space:normal; line-height:1.25; }
 </style>
 <!-- Page header -->
+{% if request.user|may:'works:work_purge' %}<p><a class="btn btn-outline-danger" href="{% url 'works:work_purge' %}">Удалить все работы компании</a></p>{% endif %}
 <div class="page-header d-flex justify-content-between align-items-center">
     <div>
         <h1><i class="bi bi-list-task"></i> Работы</h1>

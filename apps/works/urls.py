@@ -71,3 +71,6 @@ urlpatterns += [path('import-schedule/', schedule_import, name='schedule_import'
 
 from .copying import copy_view
 urlpatterns += [path('copy/<str:kind>/<int:pk>/', copy_view, name='catalogue_copy')]
+
+from .purge import purge
+urlpatterns += [path('purge/',purge,name='work_purge')]

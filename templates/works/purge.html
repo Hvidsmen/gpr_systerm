@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% block content %}
+<p><a href="{% url 'works:work_list' %}">← Справочник работ</a></p>
+<h1>Удаление {% if preview.requested == None %}всех работ компании{% else %}выбранных работ{% endif %}</h1>
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+{% if preview.works %}
+<div class="alert alert-danger"><strong>Будут удалены работы вместе со связанными планами и фактом.</strong> История согласований и месячные планы этих работ также удаляются. Операция необратима.</div>
+<p>Работ: {{ preview.works|length }}. Вложенных работ: {{ preview.item_ids|length }}. Месячных версий: {{ preview.monthly_ids|length }}.</p>
+{% for group in preview.graph.groups %}<h2>{{ group.label }} ({{ group.records|length }})</h2><ul>{% for record in group.records %}<li>{{ record }} · ID {{ record.pk }}</li>{% endfor %}</ul>{% endfor %}
+{% if preview.counts %}<h2>Связанный факт</h2><ul>{% for row in preview.counts %}<li>{{ row.label }}: {{ row.count }}</li>{% endfor %}</ul>{% endif %}
+<details open><summary>Работы к удалению ({{ preview.works|length }})</summary><ul>{% for work in preview.works %}<li>{{ work.section.construction_object }} → {{ work.name }} · ID {{ work.pk }}</li>{% endfor %}</ul></details>
+<p>Занятость сотрудников и техники, связанная с этими работами, удаляется. Сводный факт за затронутые дни пересчитывается по оставшимся именным записям. Сотрудники, техника как справочник, строительные и комплексные объекты сохраняются. ГСМ на объект не удаляется.</p>
+<form method="post" action="{% url 'works:work_purge' %}" class="card p-3">{% csrf_token %}<input type="hidden" name="selection" value="{{ selection }}"><input type="hidden" name="confirm" value="1"><label class="mb-3"><input type="checkbox" name="confirm_related" required> Подтверждаю удаление перечисленных работ, связанных планов и факта</label><button class="btn btn-danger">Удалить работы и связанные данные</button></form>
+{% else %}<p>В справочнике нет работ для удаления.</p>{% endif %}
+{% endblock %}

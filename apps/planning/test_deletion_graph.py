@@ -85,11 +85,13 @@ class CascadingPlanDeletionTests(TestCase):
         self.assertFalse(GlobalPlanVersion.objects.exists());self.assertFalse(PlanningWorkspace.objects.exists())
         self.assertTrue(DailyFact.objects.exists())
 
-    def test_planner_can_confirm_deletion_of_assigned_draft_chain(self):
-        self.revision();self.client.force_login(self.user)
-        self.assertEqual(self.confirm().status_code,302)
-        self.assertFalse(GlobalPlanVersion.objects.exists())
-        self.assertTrue(DailyFact.objects.exists())
+    def test_planner_cannot_delete_even_an_assigned_draft_chain(self):
+        self.revision()
+        planner=User.objects.create_user(username='no-cascade-planner',company=self.company,role=Role.objects.get(code='PLANNER'))
+        planner.assigned_objects.add(self.obj);self.client.force_login(planner)
+        self.assertEqual(self.client.get(self.url).status_code,403)
+        self.assertEqual(self.client.post(self.url,{'confirm_history':'on'}).status_code,403)
+        self.assertTrue(GlobalPlanVersion.objects.exists())
 
     def test_changed_dependency_graph_requires_new_preview(self):
         self.revision();token=self.client.get(self.url).context['preview_token']

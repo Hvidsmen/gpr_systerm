@@ -12,8 +12,8 @@ EDITABLE = ['DRAFT', 'REJECTED']
 
 
 def workspace_reason(workspace, user=None):
-    if user is not None and role_code(user) == 'ADMIN':
-        return ''
+    if user is not None:
+        return '' if role_code(user)=='ADMIN' else 'Удаление доступно только администратору.'
     if workspace.versions.exclude(status__in=EDITABLE).exists() or workspace.versions.filter(review_rounds__isnull=False).exists():
         return 'План содержит версии на согласовании, утверждённые или завершённые версии. Удаление недоступно.'
     return ''
@@ -35,7 +35,7 @@ def version_reason(version):
 
 @transaction.atomic
 def delete_workspace(workspace, user, confirm_history=False, preview_token=None):
-    require_roles(user, PLAN_ROLES)
+    require_roles(user, {'ADMIN'})
     workspace = get_object_or_404(PlanningWorkspace.objects.select_for_update(), pk=workspace.pk, company=user.company)
     from core.permissions import scope_queryset
     if not scope_queryset(PlanningWorkspace.objects.filter(pk=workspace.pk),user).exists():
@@ -54,7 +54,7 @@ def delete_workspace(workspace, user, confirm_history=False, preview_token=None)
 
 @transaction.atomic
 def delete_version(version, user):
-    require_roles(user, PLAN_ROLES)
+    require_roles(user, {'ADMIN'})
     version = get_object_or_404(GlobalPlanVersion.objects.select_for_update(), pk=version.pk, company=user.company)
     reason = version_reason(version)
     if reason:

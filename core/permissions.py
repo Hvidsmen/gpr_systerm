@@ -168,6 +168,8 @@ def check_route(user, match, method):
         require_roles(user, READ_ROLES if name in {'plan_list', 'plan_detail', 'plan_export'} and method in {'GET', 'HEAD'} else PLAN_ROLES)
         return
     if namespace == 'planning':
+        if name in {'workspace_delete','global_delete'}:
+            require_roles(user,{'ADMIN'});return
         if name.startswith('task_'):
             require_roles(user,ROLES)
             return
@@ -197,6 +199,8 @@ def check_route(user, match, method):
             require_roles(user, PLAN_ROLES)
         return
     if namespace in {'projects', 'works', 'resources'}:
+        if namespace=='works' and (name in {'work_delete','work_item_delete','work_purge'} or name=='bulk_delete' and match.kwargs.get('kind')=='works'):
+            require_roles(user,{'ADMIN'});return
         require_roles(user, READ_ROLES if name.endswith(('_list', '_detail')) or namespace == 'resources' and name.endswith('_export') else PLAN_ROLES)
         return
     raise PermissionDenied('Доступ к этому разделу не разрешён.')

@@ -217,9 +217,9 @@ class ApprovalWorkflowTests(TestCase):
         self.assertEqual(decision.actor_name, name)
         self.assertIsNone(decision.actor_id)
         version = GlobalPlanService.transition(version, self.approvers['CEO'], 'reject', 'Доработка')
-        with self.assertRaises(ValidationError):
+        with self.assertRaises(PermissionDenied):
             delete_version(version, self.planner)
-        with self.assertRaises(ValidationError):
+        with self.assertRaises(PermissionDenied):
             delete_workspace(version.workspace, self.planner)
         with self.assertRaises(ValidationError):
             delete_workspace(version.workspace, self.admin)

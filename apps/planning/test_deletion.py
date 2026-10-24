@@ -12,7 +12,7 @@ class PlanningDeletionTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.company=Company.objects.create(name='Plan deletion')
-        cls.user=User.objects.create_user(username='delete-planner',company=cls.company,role=Role.objects.get(code='PLANNER'))
+        cls.user=User.objects.create_user(username='delete-admin',company=cls.company,role=Role.objects.get(code='ADMIN'))
         project=Project.objects.create(company=cls.company,code='p',name='p')
         cls.obj=ConstructionObject.objects.create(company=cls.company,project=project,code='o',name='o')
         cls.user.assigned_objects.add(cls.obj)
@@ -41,11 +41,13 @@ class PlanningDeletionTests(TestCase):
         self.assertTrue(ConstructionObject.objects.filter(pk=self.obj.pk).exists())
 
     def test_locked_statuses_block_deletion_and_hide_button(self):
+        planner=User.objects.create_user(username='locked-delete-planner',company=self.company,role=Role.objects.get(code='PLANNER'))
+        planner.assigned_objects.add(self.obj);self.client.force_login(planner)
         for status in ('SUBMITTED','APPROVED','COMPLETED'):
             GlobalPlanVersion.objects.filter(pk=self.base.pk).update(status=status)
             url=reverse('planning:workspace_delete',args=[self.workspace.pk])
             self.assertNotContains(self.client.get(reverse('planning:workspace_list')), 'href="'+url+'"')
-            self.assertEqual(self.client.post(url).status_code,400)
+            self.assertEqual(self.client.post(url).status_code,403)
             self.assertTrue(PlanningWorkspace.objects.filter(pk=self.workspace.pk).exists())
             self.assertTrue(GlobalPlanVersion.objects.filter(pk=self.base.pk).exists())
 
@@ -111,7 +113,7 @@ class PlanningDeletionTests(TestCase):
         response = self.client.get(reverse('planning:workspace_detail', args=[self.workspace.pk]))
         self.assertContains(response, reverse('planning:global_delete', args=[version.pk]))
         self.assertNotContains(response, 'href="' + reverse('planning:global_delete', args=[self.base.pk]) + '"')
-        self.assertContains(response, 'Удаление недоступно')
+        self.assertContains(response, reverse('planning:workspace_delete',args=[self.workspace.pk]))
         self.assertEqual(self.client.post(reverse('planning:global_delete', args=[version.pk])).status_code, 302)
         self.assertTrue(GlobalPlanVersion.objects.filter(pk=self.base.pk).exists())
 
@@ -125,12 +127,12 @@ class PlanningDeletionTests(TestCase):
 
     def test_foreign_company_and_non_editing_roles_cannot_delete(self):
         other=Company.objects.create(name='Foreign deletion')
-        user=User.objects.create_user(username='foreign-delete',company=other,role=Role.objects.get(code='PLANNER'))
+        user=User.objects.create_user(username='foreign-delete',company=other,role=Role.objects.get(code='ADMIN'))
         self.client.force_login(user)
         for name,pk in [('planning:workspace_delete',self.workspace.pk),('planning:global_delete',self.base.pk)]:
             self.assertEqual(self.client.get(reverse(name,args=[pk])).status_code,404)
             self.assertEqual(self.client.post(reverse(name,args=[pk])).status_code,404)
-        for code in ('MANAGER','FOREMAN'):
+        for code in ('MANAGER','FOREMAN','PLANNER'):
             user=User.objects.create_user(username='no-delete-'+code,company=self.company,role=Role.objects.get(code=code))
             self.client.force_login(user)
             self.assertEqual(self.client.post(reverse('planning:workspace_delete',args=[self.workspace.pk])).status_code,403)

@@ -12,6 +12,7 @@ class BulkDeleteTests(TestCase):
     setUpTestData = classmethod(fixtures.WorkspaceTests.setUpTestData.__func__)
 
     def setUp(self):
+        self.admin=User.objects.create_user(username="bulk-admin",company=self.company,role=Role.objects.get(code="ADMIN"))
         self.client.force_login(self.planner)
 
     def endpoint(self, kind, app="works"):
@@ -24,42 +25,28 @@ class BulkDeleteTests(TestCase):
 
     def confirm(self, response, kind, app="works", **extra):
         return self.client.post(
-            self.endpoint(kind, app),
-            {"confirm": "1", "selection": response.context["selection"], **extra},
+            reverse("works:work_purge") if kind=="works" else self.endpoint(kind, app),
+            {"confirm": "1", "confirm_related":"on", "selection": response.context["selection"], **extra},
         )
 
     def test_work_selection_preview_then_delete_with_children(self):
-        response = self.choose(
-            "works", [self.simple, self.composite], return_query="work=Simple&page=2"
-        )
-        self.assertEqual(response.status_code, 200)
-        self.assertFalse(response.context["blocked"])
-        self.assertContains(response, "подработ")
-        self.assertEqual(
-            response.context["back"], reverse("works:work_list") + "?work=Simple&page=2"
-        )
+        self.client.force_login(self.admin)
+        response=self.choose('works',[self.simple,self.composite])
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(len(response.context['preview'].works),2)
+        self.assertContains(response,'Вложенных работ')
         self.assertTrue(ProjectWork.objects.filter(pk=self.simple.pk).exists())
-        result = self.confirm(response, "works", return_query="work=Simple&page=2")
-        self.assertEqual(result.status_code, 302)
-        self.assertFalse(
-            ProjectWork.objects.filter(
-                pk__in=[self.simple.pk, self.composite.pk]
-            ).exists()
-        )
+        self.assertEqual(self.confirm(response,'works').status_code,302)
+        self.assertFalse(ProjectWork.objects.filter(pk__in=[self.simple.pk,self.composite.pk]).exists())
         self.assertFalse(self.composite.items.exists())
 
-    def test_allocated_work_blocks_whole_group(self):
+    def test_allocated_work_is_deleted_with_reviewed_dependencies(self):
+        self.client.force_login(self.admin)
         fixtures.WorkspaceTests.create(self)
-        response = self.choose("works", [self.simple, self.composite])
-        self.assertTrue(response.context["blocked"])
-        result = self.confirm(response, "works")
-        self.assertEqual(result.status_code, 400)
-        self.assertEqual(
-            ProjectWork.objects.filter(
-                pk__in=[self.simple.pk, self.composite.pk]
-            ).count(),
-            2,
-        )
+        response=self.choose('works',[self.simple,self.composite])
+        self.assertTrue(response.context['preview'].graph.groups)
+        self.assertEqual(self.confirm(response,'works').status_code,302)
+        self.assertFalse(ProjectWork.objects.filter(pk__in=[self.simple.pk,self.composite.pk]).exists())
 
     def test_used_units_and_protected_equipment_category_block(self):
         used = MeasurementUnit.objects.get(company=self.company, symbol="m")
@@ -141,8 +128,9 @@ class BulkDeleteTests(TestCase):
         self.assertEqual(response.status_code, 403)
 
     def test_dependency_added_after_preview_blocks_confirmation(self):
+        self.client.force_login(self.admin)
         response = self.choose("works", [self.simple])
-        self.assertFalse(response.context["blocked"])
+        self.assertFalse(response.context["preview"].graph.groups)
         fixtures.WorkspaceTests.create(self)
         self.assertEqual(self.confirm(response, "works").status_code, 400)
         self.assertTrue(ProjectWork.objects.filter(pk=self.simple.pk).exists())
