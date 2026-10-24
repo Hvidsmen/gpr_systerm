@@ -1,0 +1,4 @@
+{% if columns %}<details><summary>Структура · {{ columns|length }} полей</summary>
+<div class="table-responsive"><table class="table"><thead><tr><th>Название 1С / назначение</th><th>SQL-поле</th><th>Тип SQL</th><th>Макс. длина, байт</th><th>NULL</th></tr></thead><tbody>
+{% for field in columns %}<tr><td>{{ field.name|default:"Не определено" }}</td><td><code>{{ field.column }}</code></td><td>{{ field.type }}</td><td>{% if field.max_length == -1 %}MAX{% else %}{{ field.max_length|default_if_none:"—" }}{% endif %}</td><td>{% if field.is_nullable == True %}Да{% elif field.is_nullable == False %}Нет{% else %}—{% endif %}</td></tr>{% endfor %}
+</tbody></table></div></details>{% else %}<span class="text-muted">Структура отсутствует в результате. Запустите диагностику.</span>{% endif %}

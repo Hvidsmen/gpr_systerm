@@ -77,6 +77,19 @@ class MetadataCatalogueViews(TestCase):
         self.assertEqual(response.context['catalogue_groups'][0]['label'],'Справочники')
         self.assertFalse(self.client.get(self.url,{'q':'Должности','type':'document'}).context['catalogue_page'].object_list)
 
+    def test_candidate_structure_remains_available_when_catalogue_is_filtered(self):
+        run=self.connection.runs.get()
+        run.report['candidates']=[{'schema':'dbo','table':'_Reference394','matched_rows':1,'sampled_rows':2}]
+        run.report['schema'][0].update(max_length=200,is_nullable=False)
+        run.save(update_fields=['report'])
+        response=self.client.get(self.url,{'type':'document'})
+        candidate=response.context['latest'].report['candidates'][0]
+        self.assertEqual(candidate['columns'][0]['column'],'_Description')
+        self.assertEqual(candidate['columns'][0]['name'],'Наименование')
+        self.assertContains(response,'Структура · 1 полей')
+        self.assertContains(response,'Макс. длина, байт')
+        self.assertContains(response,'nvarchar')
+
     def test_mapping_persists_and_is_not_used_for_different_connection(self):
         upload=SimpleUploadedFile('mapping.json',json.dumps({'tables':[{'schema':'dbo','table':'_Reference394','name':'Справочник.Должности','columns':{}}]}).encode())
         self.assertEqual(self.client.post(self.url,{'action':'mapping','mapping':upload}).status_code,302)

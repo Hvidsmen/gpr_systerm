@@ -131,13 +131,18 @@ def integration(request):
     if kind not in dict(TYPES):kind=''
     report=latest.report if latest else {}
     labels={**report.get('metadata_labels',{}),**manual_labels}
-    rows,type_counts,total=catalogue(report,labels,query,kind)
+    all_rows,type_counts,total=catalogue(report,labels)
+    structures={row['key']:row for row in all_rows}
+    rows,_,_=catalogue(report,labels,query,kind)
     page=Paginator(rows,75).get_page(request.GET.get('page'))
     groups=[]
     for row in page:
         row['type_label']=dict(TYPES)[row['type']]
         if not groups or groups[-1]['type']!=row['type']:groups.append({'type':row['type'],'label':row['type_label'],'rows':[]})
         groups[-1]['rows'].append(row)
-    for candidate in report.get('candidates',[]):candidate['name']=labels.get(str(candidate.get('schema','dbo'))+'.'+str(candidate.get('table','')),{}).get('name','')
+    for candidate in report.get('candidates',[]):
+        structure=structures.get(str(candidate.get('schema','dbo'))+'.'+str(candidate.get('table','')),{})
+        candidate['name']=structure.get('name','')
+        candidate['columns']=structure.get('columns',[])
     params=request.GET.copy();params.pop('page',None)
     return render(request,'accounts/one_c.html',{'form':form,'connection':connection,'runs':runs,'latest':latest,'pending':any(r.status in {'QUEUED','RUNNING'} for r in runs),'catalogue_groups':groups,'catalogue_page':page,'catalogue_total':total,'catalogue_query':query,'catalogue_type':kind,'type_counts':type_counts,'catalogue_params':params.urlencode(),'mapping_error':mapping_error,'mapped_count':len(labels)})
