@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from .purge import single_purge
 
 from .equipment_import import EquipmentTypeImport, equipment_import_template
 
@@ -15,12 +16,12 @@ urlpatterns = [
     path('brigades/', views.BrigadeListView.as_view(), name='brigade_list'),
     path('brigades/create/', views.BrigadeCreateView.as_view(), name='brigade_create'),
     path('brigades/<int:pk>/update/', views.BrigadeUpdateView.as_view(), name='brigade_update'),
-    path('brigades/<int:pk>/delete/', views.BrigadeDeleteView.as_view(), name='brigade_delete'),
+    path('brigades/<int:pk>/delete/', single_purge, {'kind':'brigades'}, name='brigade_delete'),
 # Справочник видов техники
 path('equipment-types/', views.EquipmentTypeListView.as_view(), name='equipment_type_list'),
 path('equipment-types/create/', views.EquipmentTypeCreateView.as_view(), name='equipment_type_create'),
 path('equipment-types/<int:pk>/update/', views.EquipmentTypeUpdateView.as_view(), name='equipment_type_update'),
-path('equipment-types/<int:pk>/delete/', views.EquipmentTypeDeleteView.as_view(), name='equipment_type_delete'),
+path('equipment-types/<int:pk>/delete/', single_purge, {'kind':'equipment'}, name='equipment_type_delete'),
 ]
 from .brigade_catalogs import BrigadeCatalogList, quick_create
 urlpatterns += [
@@ -75,3 +76,6 @@ urlpatterns += [
     path('equipment-units/',units,name='equipment_unit_list'),
     path('equipment-units/<int:pk>/',units,name='equipment_unit_update'),
 ]
+
+from .purge import purge
+urlpatterns += [path('purge/<str:kind>/',purge,name='catalogue_purge')]

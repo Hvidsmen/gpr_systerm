@@ -142,12 +142,15 @@ class BulkDelete(View):
     allowed_kinds = ()
 
     def post(self, request, kind):
-        require_roles(request.user, {'ADMIN'} if kind=='works' else PLAN_ROLES)
+        require_roles(request.user, {'ADMIN'} if kind in {'works','brigades','equipment'} else PLAN_ROLES)
         if kind not in self.allowed_kinds:
             raise PermissionDenied
         if kind=='works':
             from apps.works.purge import selected_preview
             return selected_preview(request)
+        if kind in {'brigades','equipment'}:
+            from apps.resources.purge import selected_preview
+            return selected_preview(request,kind)
         model, list_route, title = config(kind)
         back = reverse(list_route)
         return_query = request.POST.get("return_query", "")

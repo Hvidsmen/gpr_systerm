@@ -5,6 +5,7 @@
 {% block title %}Должность - ЯДС ОС{% endblock %}
 
 {% block content %}
+{% if request.user|may:'resources:catalogue_purge' %}<p><a class="btn btn-outline-danger" href="{% url 'resources:catalogue_purge' 'brigades' %}">Удалить все должности компании</a></p>{% endif %}
 {% with bulk_route='resources:bulk_delete' bulk_kind='brigades' %}
 {% include 'bulk/toolbar.html' %}
 {% if request.user|may:'resources:brigade_merge' %}<a class="btn btn-outline-primary mb-3" href="{% url 'resources:brigade_merge' %}">Объединить должности</a>{% endif %}

@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% block content %}
+<p><a href="{% url preview.back %}">← Справочник</a></p>
+<h1>Очистка справочника: {{ preview.title }}</h1>
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+{% if preview.records or preview.positions %}
+<div class="alert alert-danger">Будут удалены перечисленные записи, связанные планы, согласования и фактические записи. Операция необратима.</div>
+<p>Записей справочника: {{ preview.records|length }}. {% if kind == 'brigades' %}Связанных должностей: {{ preview.positions|length }}. Сотрудники сохраняются, их удаляемая должность очищается.{% else %}Конкретной техники: {{ preview.units|length }}. Виды техники и их экземпляры будут удалены.{% endif %}</p>
+{% for group in preview.graph.groups %}<h2>{{ group.label }} ({{ group.records|length }})</h2><ul>{% for record in group.records %}<li>{{ record }} · ID {{ record.pk }}</li>{% endfor %}</ul>{% endfor %}
+{% if preview.counts %}<h2>Связанные данные</h2><ul>{% for row in preview.counts %}<li>{{ row.label }}: {{ row.count }}</li>{% endfor %}</ul>{% endif %}
+<h2>Справочник к удалению</h2><ul>{% for record in preview.records %}<li>{{ record }} · ID {{ record.pk }}</li>{% endfor %}</ul>
+<p>Сводный факт очищается или пересчитывается только по затронутым должностям и видам техники. Работы, строительные объекты и факт ГСМ на объект сохраняются.</p>
+<form method="post" action="{% url 'resources:catalogue_purge' kind %}" class="card p-3">{% csrf_token %}<input type="hidden" name="confirm" value="1"><input type="hidden" name="selection" value="{{ selection }}"><label class="mb-3"><input type="checkbox" name="confirm_related" required> Подтверждаю удаление перечисленных записей, связанных планов и факта</label><button class="btn btn-danger">Удалить справочник и связанные данные</button></form>
+{% else %}<p>Записей для удаления нет.</p>{% endif %}
+{% endblock %}

@@ -11,7 +11,7 @@ SALT='planning.delete-dependency-preview.v1'
 ROOT_MODELS={model._meta.label:model for model in [PlanningWorkspace,GlobalPlanVersion,DailySchedule,ProjectPlanVersion,apps.get_model('rotation','RotationPlan')]}
 
 class DeletionGraph:
-    def __init__(self,workspace,user,*,version_ids=(),workspace_ids=(),schedule_ids=(),project_ids=()):
+    def __init__(self,workspace,user,*,version_ids=(),workspace_ids=(),schedule_ids=(),project_ids=(),rotation_ids=()):
         self.workspace=workspace;self.user=user
         self.ids={label:set() for label in ROOT_MODELS}
         if workspace:self.add(PlanningWorkspace,workspace.pk)
@@ -19,6 +19,7 @@ class DeletionGraph:
         for version in GlobalPlanVersion.objects.filter(pk__in=version_ids):self.add_version(version)
         for pk in schedule_ids:self.add(DailySchedule,pk)
         for pk in project_ids:self.add(ProjectPlanVersion,pk)
+        for pk in rotation_ids:self.add(ROOT_MODELS['rotation.RotationPlan'],pk)
         targets=set(ROOT_MODELS)|{'planning.GlobalPlanReview'}
         relations=[(model,field) for model in apps.get_models() for field in model._meta.fields if field.is_relation and field.related_model and field.related_model._meta.label in targets and field.remote_field.on_delete is PROTECT]
         while True:
