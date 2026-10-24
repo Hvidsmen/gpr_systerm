@@ -24,6 +24,7 @@
 </div>
 
 {% if sections %}
+    {% if request.user|may:'projects:section_purge' %}<p><a class="btn btn-outline-danger" href="{% url 'projects:section_purge' construction_object.pk %}">Удалить все разделы объекта</a></p>{% endif %}
     <div class="card">
         <div class="card-body p-0">
             <div class="table-responsive">

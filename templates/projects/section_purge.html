@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block title %}Удаление разделов{% endblock %}
+{% block content %}
+<p><a href="{% url 'projects:section_list' construction_object.pk %}">← Разделы объекта</a></p>
+<h1>Удаление разделов объекта {{ construction_object }}</h1>
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+{% if sections %}
+<div class="alert alert-danger">Будут удалены перечисленные разделы, их работы, связанные планы, история согласований и факт. Операция необратима. Строительный объект сохраняется.</div>
+<h2>Разделы ({{ sections|length }})</h2><ul>{% for section in sections %}<li>{{ section.name }} · ID {{ section.pk }}</li>{% endfor %}</ul>
+<details><summary>Работы ({{ preview.works|length }}), вложенные работы ({{ preview.item_ids|length }})</summary><ul>{% for work in preview.works %}<li>{{ work.section.construction_object }} → {{ work.name }} · ID {{ work.pk }}</li>{% endfor %}</ul></details>
+<p>Месячных версий: {{ preview.monthly_ids|length }}.</p>
+{% for group in preview.graph.groups %}<h2>{{ group.label }} ({{ group.records|length }})</h2><ul>{% for record in group.records %}<li>{{ record }} · ID {{ record.pk }}</li>{% endfor %}</ul>{% endfor %}
+{% if preview.counts %}<h2>Связанный факт</h2><ul>{% for row in preview.counts %}<li>{{ row.label }}: {{ row.count }}</li>{% endfor %}</ul>{% endif %}
+<form method="post" class="card p-3">{% csrf_token %}<input type="hidden" name="selection" value="{{ selection }}"><label><input type="checkbox" name="confirm_related" required> Подтверждаю удаление перечисленных разделов, работ, связанных планов и факта</label><button class="btn btn-danger mt-3">Удалить разделы и связанные данные</button></form>
+{% else %}<p>Нет разделов для удаления.</p>{% endif %}
+{% endblock %}

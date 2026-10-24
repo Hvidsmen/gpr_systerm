@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from .purge import purge_sections
 
 app_name = 'projects'
 
@@ -18,6 +19,7 @@ urlpatterns = [
         views.SectionListView.as_view(),
         name='section_list'
     ),
+    path('objects/<int:pk>/sections/purge/', purge_sections, name='section_purge'),
     path(
         'objects/<int:pk>/sections/create/',
         views.SectionCreateView.as_view(),
@@ -30,7 +32,7 @@ urlpatterns = [
     ),
     path(
         'objects/<int:pk>/sections/<int:section_pk>/delete/',
-        views.SectionDeleteView.as_view(),
+        purge_sections,
         name='section_delete'
     ),
 ]
