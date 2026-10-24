@@ -148,6 +148,9 @@ def purge(request,selected_ids=None):
 
 
 def selected_preview(request):
+    if request.POST.getlist('selected_complex'):
+        from .complex_purge import purge_complex
+        return purge_complex(request)
     ids=request.POST.getlist('selected')
     if not ids or len(ids)>1000:raise PermissionDenied('Выберите от 1 до 1000 работ или воспользуйтесь очисткой всего справочника.')
     try:ids=[int(pk) for pk in ids]

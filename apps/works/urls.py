@@ -77,3 +77,6 @@ urlpatterns += [path('purge/',purge,name='work_purge')]
 
 from .conversion import conversion
 urlpatterns += [path('convert/<str:kind>/<int:pk>/',conversion,name='group_conversion')]
+
+from .complex_purge import purge_complex
+urlpatterns += [path('complex-objects/purge/',purge_complex,name='complex_purge')]

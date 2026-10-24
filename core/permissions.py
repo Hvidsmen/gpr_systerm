@@ -203,7 +203,7 @@ def check_route(user, match, method):
             require_roles(user, {'ADMIN'}); return
         if namespace=='resources' and (name in {'catalogue_purge','brigade_delete','equipment_type_delete'} or name=='bulk_delete' and match.kwargs.get('kind') in {'brigades','equipment'}):
             require_roles(user,{'ADMIN'});return
-        if namespace=='works' and (name in {'work_delete','work_item_delete','work_purge'} or name=='bulk_delete' and match.kwargs.get('kind')=='works'):
+        if namespace=='works' and (name in {'work_delete','work_item_delete','work_purge','complex_purge'} or name=='bulk_delete' and match.kwargs.get('kind')=='works'):
             require_roles(user,{'ADMIN'});return
         require_roles(user, READ_ROLES if name.endswith(('_list', '_detail')) or namespace == 'resources' and name.endswith('_export') else PLAN_ROLES)
         return
