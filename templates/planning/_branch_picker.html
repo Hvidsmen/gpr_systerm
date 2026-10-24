@@ -15,4 +15,4 @@
 .branch-picker{width:min(720px,calc(100vw - 32px));max-height:85vh;overflow:auto;border:1px solid #d8e6ee;border-radius:12px;padding:24px;color:#183b56;box-shadow:0 16px 64px #173a5630}.branch-picker::backdrop{background:#173a5670}.branch-picker select{width:100%}.branch-picker-months>div{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-top:10px}.branch-picker-months label{display:flex;gap:6px;align-items:center;margin:0}
 </style>
 {{ branch_form.catalogue_options|json_script:'planning-branch-options' }}
-<script src="{% static 'planning/branch_picker.js' %}?v=20261025" defer></script>
+<script src="{% static 'planning/branch_picker.js' %}?v=20261025-full-labels" defer></script>

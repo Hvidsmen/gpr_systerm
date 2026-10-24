@@ -96,9 +96,9 @@
 <p><a class="btn btn-outline-primary" href="{% url 'planning:workspace_carryover' version.pk %}?month={{ selected_month|date:'Y-m-d' }}">Добавить остаток работ из прошлого месяца</a></p>
 <div id="work-rows">{% for form in work_forms %}<div class="card mb-3 allocation-row"><div class="card-body allocation-grid">{{ form.non_field_errors }}{% for field in form %}<p data-field="{{ field.name }}" {% if field.is_hidden %}hidden{% endif %}>{% if field.name == 'DELETE' %}<span hidden>{{ field }}</span><button type="button" class="btn btn-sm btn-outline-danger" data-remove-row aria-label="Удалить строку">Удалить</button>{% else %}{{ field.label_tag }} {{ field }} {{ field.errors }}{% endif %}</p>{% endfor %}</div></div>{% endfor %}</div>
 <div class="d-flex flex-wrap gap-2 mb-4" aria-label="Добавление работ из справочника">
-<button type="button" class="btn btn-outline-primary" data-open-branch="object">Добавить КО</button>
-<button type="button" class="btn btn-outline-primary" data-open-branch="package">Добавить КР</button>
-<button type="button" class="btn btn-outline-primary" data-open-branch="work">Добавить работу</button>
+<button type="button" class="btn btn-outline-primary" data-open-branch="object">Комплексный объект</button>
+<button type="button" class="btn btn-outline-primary" data-open-branch="package">Комплексная работа</button>
+<button type="button" class="btn btn-outline-primary" data-open-branch="work">Работа</button>
 </div>
 </div></details>
 <h3>Ресурсы на {{ selected_month|date:'m.Y' }}</h3><p>Численность людей и количество техники повторяются каждый календарный день, включая выходные. Остаток ГСМ повторяется каждый день. Расход ГСМ за месяц распределяется равномерно по всем календарным дням в пределах периода.</p>

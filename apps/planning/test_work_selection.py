@@ -114,7 +114,7 @@ class BranchSelectionTests(TestCase):
 
     def test_selection_visible_on_editor_and_scope_and_status_enforced(self):
         response=self.client.get(reverse('planning:workspace_edit',args=[self.version.pk]))
-        for label in ['Добавить КО','Добавить КР','Добавить работу']:
+        for label in ['Комплексный объект','Комплексная работа','Работа']:
             self.assertContains(response,label)
         self.assertNotContains(response,'Добавить из справочника: объект → комплекс → работа')
         from .work_selection_views import BranchForm
