@@ -31,7 +31,7 @@ class OneCTests(TestCase):
         run=OneCDiagnosticRun.objects.get()
         self.assertEqual(run.created_by,self.admin)
         self.assertEqual(run.server,'msk-db')
-        self.assertContains(self.client.get(self.url),'Ожидает')
+        self.assertContains(self.client.get(reverse('accounts:one_c_jobs')),'Ожидает')
 
     def test_validation_and_settings_do_not_release_claim(self):
         enqueue(self.connection)

@@ -1,0 +1,19 @@
+{% extends 'base.html' %}
+{% block title %}Задания 1С — ЯДС ОС{% endblock %}
+{% block content %}
+<nav><a href="{% url 'accounts:one_c' %}">Интеграция с 1С</a> / Задания</nav>
+<h1>Задания 1С</h1>
+<p>Все задания интеграции вашей компании: ожидающие, выполняющиеся и завершённые, включая задания прежних подключений.</p>
+<form method="get" class="d-flex flex-wrap gap-2 mb-3">
+<label>Тип задания<select class="form-select" name="kind"><option value="">Все типы</option>{% for value,label in kinds %}<option value="{{ value }}" {% if selected_kind == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+<label>Статус<select class="form-select" name="status"><option value="">Все статусы</option>{% for value,label in statuses %}<option value="{{ value }}" {% if selected_status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+<button class="btn btn-primary align-self-end">Применить</button><a class="btn btn-outline-secondary align-self-end" href="{% url 'accounts:one_c_jobs' %}">Сбросить</a>
+</form>
+<p>Найдено заданий: {{ page.paginator.count }}.</p>
+{% if pending %}<p role="status">Есть задания в очереди или в работе. Страница обновляется каждые 10 секунд.</p><script>setTimeout(function(){window.location.reload()},10000)</script>{% endif %}
+<div class="table-responsive"><table class="table"><thead><tr><th>Создано</th><th>Задание</th><th>Подключение</th><th>Кто запустил</th><th>Статус</th><th>Окончание</th><th>Результат / ошибка</th></tr></thead><tbody>
+{% for run in page %}<tr><td>{{ run.created_at }}<div class="small text-muted">{{ run.pk }}</div></td><td>{{ run.kind_label }}</td><td>{{ run.server }} / {{ run.database }}</td><td>{{ run.created_by|default:'По расписанию / пользователь удалён' }}</td><td>{{ run.get_status_display }}</td><td>{{ run.finished_at|default:'—' }}</td><td style="white-space:pre-wrap;overflow-wrap:anywhere">{% if run.error %}{{ run.error }}{% elif run.status == 'DONE' %}{% if run.report.positions_result %}Добавлено: {{ run.report.positions_result.created }}; уже существуют: {{ run.report.positions_result.existing }}; повторов: {{ run.report.positions_result.duplicates }}; пустых: {{ run.report.positions_result.empty }}.{% else %}Прочитано объектов метаданных: {{ run.report.metadata_objects_read|default:0 }}.{% for error in run.report.metadata_errors %}<div>{{ error.error }}</div>{% endfor %}{% endif %}{% endif %}</td></tr>
+{% empty %}<tr><td colspan="7">Заданий не найдено.</td></tr>{% endfor %}
+</tbody></table></div>
+{% if page.has_other_pages %}<nav class="d-flex gap-3">{% if page.has_previous %}<a href="?{{ params }}&amp;page={{ page.previous_page_number }}">Назад</a>{% endif %}<span>{{ page.number }} / {{ page.paginator.num_pages }}</span>{% if page.has_next %}<a href="?{{ params }}&amp;page={{ page.next_page_number }}">Далее</a>{% endif %}</nav>{% endif %}
+{% endblock %}

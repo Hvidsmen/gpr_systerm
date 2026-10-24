@@ -126,7 +126,7 @@ def integration(request):
         elif request.POST.get('action') in {'diagnose','metadata_retry'}:
             run=enqueue(connection,request.user,metadata_only=request.POST.get('action')=='metadata_retry')
             messages.success(request,'Диагностика поставлена в очередь. Фоновый обработчик начнёт её в течение минуты.' if run else 'Диагностика уже ожидает запуска или выполняется.')
-            return redirect('accounts:one_c')
+            return redirect('accounts:one_c_jobs')
     runs=list(connection.runs.defer('report').order_by('-created_at')[:20])
     latest=connection.runs.filter(status='DONE',server=connection.server,database=connection.database).exclude(report__has_key='positions_import').order_by('-created_at').first()
     manual_labels=connection.metadata_labels if (connection.metadata_server,connection.metadata_database)==(connection.server,connection.database) else {}
@@ -184,5 +184,5 @@ def table_structure(request, schema, table):
             raise PermissionDenied('Загрузка доступна только для подтверждённого справочника должностей.')
         run=enqueue(connection,request.user,positions=True)
         messages.success(request,'Загрузка должностей поставлена в очередь.' if run else 'Уже выполняется задание 1С. Дождитесь окончания и повторите загрузку.')
-        return redirect('accounts:one_c')
+        return redirect('accounts:one_c_jobs')
     return render(request,'accounts/one_c_table.html',{'table':selected,'connection':connection,'latest':latest,'can_import_positions':can_import_positions})

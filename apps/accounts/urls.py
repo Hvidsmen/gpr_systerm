@@ -5,12 +5,14 @@ from .directory_groups import group_search
 from .directory_admin import add_from_ad
 from . import impersonation_views
 from .one_c import integration, table_structure
+from .one_c_jobs import jobs
 from .user_archive import bulk_archive
 
 app_name = 'accounts'
 
 urlpatterns = [
     path('users/archive/', bulk_archive, name='user_bulk_archive'),
+    path('integrations/1c/jobs/', jobs, name='one_c_jobs'),
     path('integrations/1c/', integration, name='one_c'),
     path('integrations/1c/tables/<str:schema>/<str:table>/', table_structure, name='one_c_table'),
     path("ad/groups/", group_search, name="ad_group_search"),
