@@ -3,7 +3,7 @@
 {% load i18n %}
 
 {% block title %}
-{% if work %}Редактировать работу{% else %}Создать работу{% endif %}
+{% if work %}Редактировать работу{% else %}{{ creation_title|default:'Создать работу' }}{% endif %}
 {% endblock %}
 
 {% block content %}
@@ -14,7 +14,7 @@
             {% if work %}
             Редактировать работу "{{ work.name }}"
             {% else %}
-            Создать новую работу
+            {{ creation_title|default:'Создать новую работу' }}
             {% endif %}
         </h4>
     </div>

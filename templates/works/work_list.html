@@ -4,7 +4,7 @@
 
 {% block title %}Работы - ЯДС ОС{% endblock %}
 
-{% block content %}<p><a class="btn btn-outline-primary" href="{% url 'works:complex_object_list' %}">Комплексные объекты</a></p>
+{% block content %}
 <p class="text-muted">Объект → Комплекс работ → Работы в составе комплекса. На объект также можно добавить самостоятельную работу. Раздел группирует комплексы и самостоятельные работы.</p>
 {% with bulk_route='works:bulk_delete' bulk_kind='works' %}
 {% include 'bulk/toolbar.html' %}
@@ -40,9 +40,9 @@
     <div>
         {% if request.user|may:'works:work_create' %}<a class="btn btn-outline-primary" href="{% url 'works:schedule_import' %}">Импорт состава работ из Excel</a>{% endif %}
         {% if request.user|may:'works:work_create' %}<a href="{% url 'works:batch_prepare' %}" class="btn btn-outline-primary">Подготовка работ и цен</a>{% endif %}
-        {% if request.user|may:'works:work_create' %}<a href="{% url 'works:work_create' %}" class="btn btn-primary">
-            <i class="bi bi-plus-circle"></i> Новая работа
-        </a>{% endif %}
+        {% if request.user|may:'works:complex_object_update' %}<a href="{% url 'works:complex_object_list' %}#create-complex-object" class="btn btn-primary"><i class="bi bi-plus-circle"></i> Комплексный объект</a>{% endif %}
+        {% if request.user|may:'works:work_create' %}<a href="{% url 'works:work_create' %}?kind=COMPOSITE" class="btn btn-primary"><i class="bi bi-plus-circle"></i> Комплексная работа</a>
+        <a href="{% url 'works:work_create' %}?kind=SIMPLE" class="btn btn-primary"><i class="bi bi-plus-circle"></i> Простая работа</a>{% endif %}
     </div>
 </div>
 

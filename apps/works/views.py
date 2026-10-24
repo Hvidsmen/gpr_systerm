@@ -131,6 +131,19 @@ class WorkCreateView(WorkLocationMixin, CompanyRequiredMixin, CreateView):
     form_class = ProjectWorkForm
     template_name = "works/work_form.html"
 
+    def get_initial(self):
+        initial = super().get_initial()
+        kind = self.request.GET.get('kind')
+        if kind in ProjectWork.Kind.values:
+            initial['kind'] = kind
+        return initial
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        kind = context['form']['kind'].value()
+        context['creation_title'] = 'Новая комплексная работа' if kind == ProjectWork.Kind.COMPOSITE else 'Новая простая работа'
+        return context
+
     def form_valid(self, form):
         form.instance.company = self.request.user.company
         form.instance._price_actor = self.request.user
