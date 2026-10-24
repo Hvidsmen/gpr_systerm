@@ -86,11 +86,12 @@ try {
     }
     Add-Type -AssemblyName System.Data
     $builder=New-Object System.Data.SqlClient.SqlConnectionStringBuilder
-    $builder.DataSource=$Server;$builder.InitialCatalog=$Database
-    $builder.IntegratedSecurity=$true;$builder.Encrypt=$true
-    $builder.TrustServerCertificate=[bool]$TrustServerCertificate
-    $builder.ConnectTimeout=15;$builder.ApplicationName='YDS Portal 1C read-only diagnostics'
-    $builder.ApplicationIntent=[System.Data.SqlClient.ApplicationIntent]::ReadOnly
+    # PowerShell adapts dictionary members as keys; use SqlClient keyword names.
+    $builder['Data Source']=$Server;$builder['Initial Catalog']=$Database
+    $builder['Integrated Security']=$true;$builder['Encrypt']=$true
+    $builder['TrustServerCertificate']=[bool]$TrustServerCertificate
+    $builder['Connect Timeout']=15;$builder['Application Name']='YDS Portal 1C read-only diagnostics'
+    $builder['ApplicationIntent']='ReadOnly'
     $connection=New-Object System.Data.SqlClient.SqlConnection($builder.ConnectionString)
     try {
         $connection.Open()
