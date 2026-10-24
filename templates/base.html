@@ -5,7 +5,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}ЯДС портал{% endblock %}</title>
+    <title>{% block title %}ЯДС ОС{% endblock %}</title>
+
+    <link rel="icon" type="image/svg+xml" href="{% static 'branding/favicon.svg' %}?v=yds-os-1">
+    <meta name="application-name" content="ЯДС ОС">
 
     <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -347,7 +350,7 @@
 
         <!-- Brand -->
         <a class="navbar-brand" href="{% if request.user|may:'dashboard:index' %}{% url 'dashboard:index' %}{% elif request.user|may:'production:fact_day_workspace' %}{% url 'production:fact_day_workspace' %}{% elif user.is_authenticated %}{% url 'accounts:settings' %}{% else %}{% url 'accounts:login' %}{% endif %}">
-            <span class="portal-brand-mark" aria-hidden="true">Я</span><span class="portal-brand-copy">ЯДС портал<small>Рабочее планирование</small></span>
+            <span class="portal-brand-mark" aria-hidden="true">Я</span><span class="portal-brand-copy">ЯДС ОС<small>Рабочее планирование</small></span>
         </a>
 
         <!-- Right side -->
