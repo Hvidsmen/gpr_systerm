@@ -80,6 +80,12 @@ def state(company_id):
             output.update(state='error',message=message)
     elif own and metadata:
         output.update(state='error',message='Не удалось подтвердить завершение последнего обновления. Проверьте состояние фонового портала.')
+    stages=list(STAGES)
+    number=stages.index(status['stage'])+1 if active and status.get('stage') in stages else 0
+    output.update(stage_number=number,stage_total=len(stages),progress=100 if output['state']=='done' else ((number-1)*100//len(stages) if number else 0),finished_at=None)
+    if own and result is not None:
+        try:output['finished_at']=datetime.fromtimestamp((runtime/'results'/metadata['id']).stat().st_mtime,dt_timezone.utc).isoformat()
+        except OSError:pass
     if not ready and not busy and output['state']=='idle':output['message']='Обновление из браузера доступно при установленном и запущенном фоновом портале Windows.'
     return output
 

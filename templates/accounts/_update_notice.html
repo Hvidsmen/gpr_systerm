@@ -1,0 +1,8 @@
+{% load static %}
+<aside id="portal-update-notice" data-status-url="{% url 'accounts:portal_update_status' %}" hidden aria-label="Статус обновления проекта" style="position:fixed;bottom:18px;right:18px;width:min(500px,calc(100vw - 36px));z-index:1080;background:white;border:1px solid #bcd7e7;border-radius:10px;padding:16px;box-shadow:0 6px 28px #173a5633">
+<div class="d-flex justify-content-between gap-3"><strong>Обновление проекта</strong><button type="button" class="btn-close" aria-label="Скрыть завершённое обновление" data-update-dismiss hidden></button></div>
+<p class="small mt-2 mb-1" data-update-notice-message role="status" aria-live="polite"></p>
+<div class="progress my-2" style="height:8px" role="progressbar" aria-label="Завершённые этапы обновления" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" data-update-progress><div class="progress-bar" data-update-fill></div></div>
+<div class="d-flex justify-content-between gap-3 small"><span data-update-step></span><a href="{% url 'accounts:portal_updates' %}">Подробнее</a></div>
+</aside>
+<script src="{% static 'accounts/portal_updates.js' %}?v=20261025-progress" defer></script>

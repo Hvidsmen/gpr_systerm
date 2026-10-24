@@ -6,10 +6,11 @@
 <section class="card p-4 mb-3" id="portal-update" data-status-url="{% url 'accounts:portal_update_status' %}">
 <p>Текущая версия: <code data-update-version>{{ update.version|default:'Не определена' }}</code></p>
 <div class="alert {% if update.state == 'done' %}alert-success{% elif update.state == 'error' %}alert-danger{% else %}alert-info{% endif %}" data-update-box role="status" aria-live="polite"><strong data-update-message>{{ update.message }}</strong><div data-update-stage>{{ update.stage }}</div></div>
+<div class="progress mb-2" style="height:14px" role="progressbar" aria-label="Обновление проекта: завершённые этапы" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ update.progress }}" data-update-progress><div class="progress-bar" style="width:{{ update.progress }}%" data-update-fill></div></div><p class="small text-muted" data-update-step>{% if update.stage_number %}Этап {{ update.stage_number }} из {{ update.stage_total }}{% endif %}</p>
 <form method="post">{% csrf_token %}<button class="btn btn-primary" data-update-submit {% if not update.ready or update.busy %}disabled{% endif %}>Обновить приложение</button></form>
 <p class="small text-muted mt-3 mb-0">Обновление выполняется на сервере. Можно закрыть браузер: процесс продолжится. Повторный запуск во время обновления заблокирован.</p>
 </section>
 <p>Перед применением создаётся резервная копия базы. При запуске новой версии портал ненадолго перезапустится. Эта страница дождётся восстановления связи и покажет итог.</p>
 <a class="btn btn-outline-primary" href="{% url 'dashboard:index' %}">Вернуться в портал</a>
-<script src="{% static 'accounts/portal_updates.js' %}?v=20261025" defer></script>
+
 {% endblock %}

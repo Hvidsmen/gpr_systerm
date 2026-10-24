@@ -29,7 +29,10 @@ class PortalUpdateTests(TestCase):
         self.status_url=reverse('accounts:portal_update_status')
 
     def test_browser_enqueues_without_waiting_and_records_actor(self):
-        self.assertContains(self.client.get(self.url),'Обновить приложение')
+        response=self.client.get(self.url)
+        self.assertContains(response,'Обновить приложение')
+        self.assertContains(response,'data-update-progress')
+        self.assertContains(response,'portal-update-notice')
         response=self.client.post(self.url)
         self.assertRedirects(response,self.url)
         import json
@@ -47,11 +50,16 @@ class PortalUpdateTests(TestCase):
         atomic_json(self.runtime/'status.json',{'state':'updating','stage':'migrating'})
         response=self.client.get(self.status_url)
         self.assertEqual(response.json()['stage'],'Обновление структуры базы')
+        self.assertEqual(response.json()['stage_number'],7)
+        self.assertEqual(response.json()['stage_total'],10)
+        self.assertEqual(response.json()['progress'],60)
         atomic_json(self.runtime/'results'/identifier,{'ok':True,'message':'Updated to bbbb. Database backup: C:/private/secret/path'})
         atomic_json(self.runtime/'current.json',{'sha':'b'*40})
         atomic_json(self.runtime/'status.json',{'state':'running'})
         response=self.client.get(self.status_url)
         self.assertEqual(response.json()['state'],'done')
+        self.assertEqual(response.json()['progress'],100)
+        self.assertIsNotNone(response.json()['finished_at'])
         self.assertEqual(response.json()['version'],'b'*40)
         self.assertNotContains(response,'private')
         self.assertEqual(response['Cache-Control'],'no-store')

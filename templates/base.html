@@ -528,5 +528,6 @@
     });
 </script>
 
+{% if request.user|may:'accounts:portal_updates' %}{% include 'accounts/_update_notice.html' %}{% endif %}
 </body>
 </html>
