@@ -114,7 +114,15 @@ class BranchSelectionTests(TestCase):
 
     def test_selection_visible_on_editor_and_scope_and_status_enforced(self):
         response=self.client.get(reverse('planning:workspace_edit',args=[self.version.pk]))
-        self.assertContains(response,'Добавить выбранную ветку')
+        for label in ['Добавить КО','Добавить КР','Добавить работу']:
+            self.assertContains(response,label)
+        self.assertNotContains(response,'Добавить из справочника: объект → комплекс → работа')
+        from .work_selection_views import BranchForm
+        options={row['value']:row['level'] for row in BranchForm(version=self.version).catalogue_options}
+        self.assertEqual(options[f'object:{self.facility.pk}'],'object')
+        self.assertEqual(options[f'package:{self.composite.pk}'],'package')
+        self.assertEqual(options[f'item:{self.a.pk}'],'work')
+        self.assertEqual(options[f'package:{self.sibling.pk}'],'work')
         self.planner.assigned_objects.clear()
         self.assertEqual(self.add(f'item:{self.a.pk}').status_code,404)
 

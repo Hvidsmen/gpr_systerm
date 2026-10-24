@@ -54,7 +54,7 @@
 <div class="card mb-3"><div class="card-body"><h2>Добавить списком</h2><p>Сначала сохраните введённые месячные данные. В списке отметьте несколько позиций и отметьте нужные месяцы или выберите все доступные.</p>
 <div class="d-flex flex-wrap gap-2"><a class="btn btn-outline-primary" href="{% url 'planning:workspace_bulk_add' version.pk 'works' %}?month={{ selected_month|date:'Y-m-d' }}">Работы</a>{% for section in resource_sections %}<a class="btn btn-outline-primary" href="{% url 'planning:workspace_bulk_add' version.pk section.kind %}?month={{ selected_month|date:'Y-m-d' }}">{{ section.title }}</a>{% endfor %}</div>
 </div></div>{% endif %}
-<details class="card p-3 mb-3"><summary>Добавить из справочника: объект → комплекс → работа</summary><p>Объект добавляется со всем составом. Комплекс — со своими работами. Работа — в своём комплексе и объекте, без соседних веток. Сначала сохраните изменения в таблице.</p><form method="post" action="{% url 'planning:workspace_add_branch' version.pk %}">{% csrf_token %}{{ branch_form.as_p }}<button class="btn btn-outline-primary">Добавить выбранную ветку</button></form></details>
+
 {% if version.version_kind == 'BASELINE' %}
 <div class="card mb-3 period-composition"><div class="card-body">
 <h2>Состав на весь период</h2>
@@ -95,7 +95,11 @@
 <p><button type="submit" name="action" value="remove_zero_works" class="btn btn-outline-danger" onclick="return confirm('Сохранить изменения и удалить работы с нулевыми объемами только за выбранный месяц? Справочник и другие месяцы сохранятся.')">Сохранить и удалить нулевые работы за {{ selected_month|date:'m.Y' }}</button></p>
 <p><a class="btn btn-outline-primary" href="{% url 'planning:workspace_carryover' version.pk %}?month={{ selected_month|date:'Y-m-d' }}">Добавить остаток работ из прошлого месяца</a></p>
 <div id="work-rows">{% for form in work_forms %}<div class="card mb-3 allocation-row"><div class="card-body allocation-grid">{{ form.non_field_errors }}{% for field in form %}<p data-field="{{ field.name }}" {% if field.is_hidden %}hidden{% endif %}>{% if field.name == 'DELETE' %}<span hidden>{{ field }}</span><button type="button" class="btn btn-sm btn-outline-danger" data-remove-row aria-label="Удалить строку">Удалить</button>{% else %}{{ field.label_tag }} {{ field }} {{ field.errors }}{% endif %}</p>{% endfor %}</div></div>{% endfor %}</div>
-<button type="button" class="btn btn-outline-primary mb-4" data-add="works">Добавить строку работы</button>
+<div class="d-flex flex-wrap gap-2 mb-4" aria-label="Добавление работ из справочника">
+<button type="button" class="btn btn-outline-primary" data-open-branch="object">Добавить КО</button>
+<button type="button" class="btn btn-outline-primary" data-open-branch="package">Добавить КР</button>
+<button type="button" class="btn btn-outline-primary" data-open-branch="work">Добавить работу</button>
+</div>
 </div></details>
 <h3>Ресурсы на {{ selected_month|date:'m.Y' }}</h3><p>Численность людей и количество техники повторяются каждый календарный день, включая выходные. Остаток ГСМ повторяется каждый день. Расход ГСМ за месяц распределяется равномерно по всем календарным дням в пределах периода.</p>
 {% for section in resource_sections %}<details class="allocation-section" data-allocation-section="{{ section.kind }}"><summary>{{ section.title }} <span class="allocation-group-count" data-section-count></span></summary><div class="allocation-section-body">
@@ -105,6 +109,7 @@
 </div></details>{% endfor %}
 <div class="d-flex gap-2"><button class="btn btn-primary" name="action" value="save">Сохранить этот месяц</button><button class="btn btn-success" name="action" value="preview">Сохранить месяц и сформировать план на весь период</button></div>
 </form>
+{% include 'planning/_branch_picker.html' %}
 <template id="empty-works"><div class="card mb-3 allocation-row"><div class="card-body allocation-grid">{% for field in work_forms.empty_form %}<p data-field="{{ field.name }}" {% if field.is_hidden %}hidden{% endif %}>{% if field.name == 'DELETE' %}<span hidden>{{ field }}</span><button type="button" class="btn btn-sm btn-outline-danger" data-remove-row aria-label="Удалить строку">Удалить</button>{% else %}{{ field.label_tag }} {{ field }}{% endif %}</p>{% endfor %}</div></div></template>
 <template id="empty-resources"><div class="card mb-3 resource-row allocation-row"><div class="card-body allocation-grid">{% for field in resource_forms.empty_form %}<p data-field="{{ field.name }}" {% if field.is_hidden or field.name == 'kind' %}hidden{% endif %}>{% if field.name == 'DELETE' %}<span hidden>{{ field }}</span><button type="button" class="btn btn-sm btn-outline-danger" data-remove-row aria-label="Удалить строку">Удалить</button>{% else %}{{ field.label_tag }} {{ field }}{% endif %}</p>{% endfor %}</div></div></template>
 {{ work_prices|json_script:'work-prices' }}

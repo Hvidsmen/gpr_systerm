@@ -17,6 +17,16 @@ class BranchForm(forms.Form):
         from .bulk_add import editable_months
         self.works=ProjectWork.objects.filter(company=version.company,section__construction_object=version.construction_object,merged_source__isnull=True)
         self.fields['selection'].choices=choices(self.works)
+        self.fields['selection'].widget.attrs.update({'data-native-select':'1','class':'form-select'})
+        kinds=dict(self.works.values_list('pk','kind'))
+        self.catalogue_options=[]
+        for group in self.fields['selection'].choices:
+            if not isinstance(group[1],(list,tuple)):continue
+            for value,label in group[1]:
+                prefix,pk=value.split(':')
+                level='object' if prefix=='object' else 'package' if prefix=='package' and kinds[int(pk)]=='COMPOSITE' else 'work'
+                self.catalogue_options.append({'value':value,'label':label,'level':level})
+
         self.fields['months'].choices=[(month.isoformat(),month.strftime('%m.%Y')) for month in editable_months(version)]
 
 @login_required
