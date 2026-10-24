@@ -139,10 +139,10 @@ def generate_daily(user,*,today=None):
         day=cursor.last_date+timedelta(days=1)
         while day<=yesterday:
             key=f'fact:{user.pk}:{obj.pk}:{day.isoformat()}'
-            task=ensure(user.company,key,kind='FACT',title=f'Внести факт · {user.role.name} за {day:%d.%m.%Y} · {obj.name}'[:255],assigned_to=user,construction_object=obj,fact_date=day,due_date=day+timedelta(days=1),description='Внесите факт своего направления и подтвердите его полноту на странице «Факт за день». Другие направления заполняют соответствующие диспетчеры.')
-            from apps.production.dispatch import DIRECTIONS
-            from apps.production.models import FactSectionDay
-            if FactSectionDay.objects.filter(company=user.company,construction_object=obj,date=day,section=DIRECTIONS[role_code(user)],confirmed_at__isnull=False).exists():state(task,'DONE',text='Направление факта уже подтверждено.')
+            from apps.production.dispatch import required_fact_sections,fact_sections_confirmed
+            description='Внесите работы, персонал, технику и ГСМ и подтвердите все три раздела на странице «Факт за день».' if len(required_fact_sections(user))>1 else 'Внесите факт своего направления и подтвердите его полноту на странице «Факт за день». Другие направления заполняют соответствующие диспетчеры.'
+            task=ensure(user.company,key,kind='FACT',title=f'Внести факт · {user.role.name} за {day:%d.%m.%Y} · {obj.name}'[:255],assigned_to=user,construction_object=obj,fact_date=day,due_date=day+timedelta(days=1),description=description)
+            if fact_sections_confirmed(user,user.company_id,obj.pk,day):state(task,'DONE',text='Направление факта уже подтверждено.')
             count+=1;day+=timedelta(days=1)
         if cursor.last_date<yesterday:cursor.last_date=yesterday;cursor.save(update_fields=['last_date'])
     return count
@@ -212,25 +212,23 @@ def discussion_action(user,task,action,text=''):
 
 def invalidate_fact(company_id,object_id,day,section=None):
     from apps.production.models import FactSectionDay
-    from apps.production.dispatch import DIRECTIONS
+    from apps.production.dispatch import required_fact_sections
     from django.db.models import F
     records=FactSectionDay.objects.filter(company_id=company_id,construction_object_id=object_id,date=day)
     if section:records=records.filter(section=section)
     records.update(confirmed_at=None,confirmed_by=None,revision=F('revision')+1)
     for task in WorkTask.objects.filter(company_id=company_id,kind='FACT',construction_object_id=object_id,fact_date=day,status='DONE').select_related('assigned_to__role'):
-        if not section or task.assigned_to and DIRECTIONS.get(role_code(task.assigned_to))==section:state(task,'OPEN',text='Факт направления изменен после подтверждения. Повторно проверьте полноту данных.')
+        if not section or task.assigned_to and section in (required_fact_sections(task.assigned_to) or set()):state(task,'OPEN',text='Факт направления изменен после подтверждения. Повторно проверьте полноту данных.')
 
 
 def validate_fact(task):
     from .report_services import select_sources
     from apps.production.models import DailyFact,LaborFact,EquipmentFact,FuelFact,DayActuation
     user=task.assigned_to;obj=task.construction_object;day=task.fact_date
-    from apps.production.dispatch import DIRECTIONS
-    from apps.production.models import FactSectionDay
-    section=DIRECTIONS.get(role_code(user)) if user else None
-    if section:
+    from apps.production.dispatch import required_fact_sections,fact_sections_confirmed
+    if required_fact_sections(user):
         if not user.assigned_objects.filter(pk=obj.pk,company_id=task.company_id).exists():raise PermissionDenied('Объект не закреплен за исполнителем.')
-        if not FactSectionDay.objects.filter(company_id=task.company_id,construction_object=obj,date=day,section=section,confirmed_at__isnull=False).exists():raise ValidationError('Подтвердите своё направление на странице «Факт за день».')
+        if not fact_sections_confirmed(user,task.company_id,obj.pk,day):raise ValidationError('Подтвердите все свои направления на странице «Факт за день».')
         return
     if not user or not obj or obj.company_id!=task.company_id or not user.assigned_objects.filter(pk=obj.pk,company_id=task.company_id).exists():raise PermissionDenied('Объект не закреплен за исполнителем.')
     sources=select_sources(user,{'start':day,'end':day,'mode':'latest'},[obj]).get(obj.pk,[])
@@ -257,8 +255,7 @@ def complete_fact(user,task,confirmed):
     require_roles(user,FACT_ROLES)
     task=visible(user).select_for_update().select_related('assigned_to','construction_object').get(pk=task.pk)
     if task.kind!='FACT' or task.status!='OPEN' or not is_executor(user,task):raise PermissionDenied
-    from apps.production.dispatch import DIRECTIONS
-    section=DIRECTIONS.get(role_code(task.assigned_to)) if task.assigned_to else None
-    expected={section} if section else {'works','labor','equipment','fuel'}
+    from apps.production.dispatch import required_fact_sections
+    expected=required_fact_sections(task.assigned_to) or {'works','labor','equipment','fuel'}
     if set(confirmed)!=expected:raise ValidationError('Подтвердите проверку своего направления факта.')
     validate_fact(task);state(task,'DONE',user,'Проверены работы, должности, техника и ГСМ.');return task

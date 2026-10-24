@@ -13,7 +13,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views import View
 from core.mixins import CompanyRequiredMixin
-from core.permissions import role_code, FACT_ROLES, require_roles, scope_queryset
+from core.permissions import role_code, FACT_ROLES, require_roles, scope_queryset, DISPATCHER_ROLES
 from apps.resources.models import Employee, Equipment,Brigade,EquipmentType
 from apps.works.models import ProjectWork,ProjectWorkItem
 from apps.planning.models import DailySchedule
@@ -26,6 +26,14 @@ LABELS=dict(FactSectionDay.SECTIONS)
 def sections_for(user):
     code=role_code(user)
     return [DIRECTIONS[code]] if code in DIRECTIONS else list(LABELS)
+
+def required_fact_sections(user):
+    return set(sections_for(user)) if user and role_code(user) in DISPATCHER_ROLES else None
+
+def fact_sections_confirmed(user,company_id,object_id,day):
+    required=required_fact_sections(user)
+    confirmed=set(FactSectionDay.objects.filter(company_id=company_id,construction_object_id=object_id,date=day,section__in=required or [],confirmed_at__isnull=False).values_list('section',flat=True))
+    return bool(required) and required<=confirmed
 
 def smg(obj,day):
     return DailySchedule.objects.filter(company=obj.company,construction_object=obj,month=day.replace(day=1),status='APPLIED').order_by('-revision').first()
@@ -324,7 +332,9 @@ class DispatcherDayView(CompanyRequiredMixin,View):
                         from apps.planning.models import WorkTask
                         from apps.planning.task_services import state
                         for task in WorkTask.objects.filter(company=obj.company,construction_object=obj,fact_date=day,kind='FACT',status__in=['OPEN','DONE']).select_related('assigned_to__role'):
-                            if task.assigned_to and DIRECTIONS.get(role_code(task.assigned_to))==section:state(task,'DONE' if current.confirmed_at else 'OPEN',request.user,'Факт направления подтверждён.' if current.confirmed_at else 'Факт изменён, требуется подтверждение.')
+                            if task.assigned_to and section in (required_fact_sections(task.assigned_to) or set()):
+                                complete=fact_sections_confirmed(task.assigned_to,obj.company_id,obj.pk,day)
+                                state(task,'DONE' if complete else 'OPEN',request.user,'Все необходимые направления подтверждены.' if complete else 'Требуется подтверждение направлений факта.')
                     messages.success(request,'Факт подтверждён.' if request.POST.get('action')=='confirm' else 'Черновик факта сохранён.')
                     return redirect(reverse('production:fact_day_workspace')+'?'+urlencode({'construction_object':obj.pk,'date':day.isoformat(),'section':section}))
                 except (ValidationError,IntegrityError) as exc:context['error']='; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Повтор записи: сотрудник или техника уже учтены в этой смене. Обновите страницу и проверьте объект.'

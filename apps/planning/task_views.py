@@ -9,7 +9,7 @@ from django.urls import reverse
 from django.views import View
 from django.db import transaction
 from django.utils import timezone
-from core.permissions import role_code,ROLES,require_roles,scope_queryset
+from core.permissions import role_code,ROLES,require_roles,scope_queryset,DISPATCHER_ROLES
 from apps.accounts.models import User
 from apps.projects.models import ConstructionObject
 from .models import WorkTask,EstimateReviewTask
@@ -47,7 +47,7 @@ class TaskList(View):
         require_roles(request.user,ROLES)
         service.generate_daily(request.user)
         if role_code(request.user)=='ADMIN':
-            for dispatcher in User.objects.filter(company=request.user.company,is_active=True,role__code__in=['DISPATCHER','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER']).select_related('role','company'):service.generate_daily(dispatcher)
+            for dispatcher in User.objects.filter(company=request.user.company,is_active=True,role__code__in=DISPATCHER_ROLES).select_related('role','company'):service.generate_daily(dispatcher)
         service.sync_company(request.user.company)
         tasks=service.visible(request.user)
         mode=request.GET.get('status','active')
@@ -98,10 +98,10 @@ class TaskDetail(View):
         return self.show(request,task)
     def show(self,request,task):
         from .daily_schedule_approval import next_action
-        from apps.production.dispatch import DIRECTIONS,LABELS
-        section=DIRECTIONS.get(role_code(task.assigned_to)) if task.assigned_to else None
+        from apps.production.dispatch import LABELS,required_fact_sections
+        required=required_fact_sections(task.assigned_to)
         next_label=('Открыть актуализацию СМГ' if task.schedule_id else 'Создать актуализацию СМГ') if task.key.startswith('smg-update:') else next_action(task.schedule) if task.kind=='SUBMISSION' and task.schedule_id else ''
-        return render(request,'planning/task_detail.html',{'submission_action_label':next_label,'task':task,'target_url':link(task),'executor':role_code(request.user)!='OBSERVER' and service.is_executor(request.user,task),'author':role_code(request.user)!='OBSERVER' and task.created_by_id==request.user.pk,'events':task.events.select_related('actor'),'children':service.visible(request.user).filter(estimate_id=task.estimate_id,kind='REMARK') if task.kind=='ESTIMATE' and task.estimate_id else service.visible(request.user).filter(parent=task),'can_comment':role_code(request.user)!='OBSERVER','fact_sections':[(section,LABELS[section])] if section else [('works','Работы'),('labor','Персонал'),('equipment','Техника'),('fuel','ГСМ')]})
+        return render(request,'planning/task_detail.html',{'submission_action_label':next_label,'task':task,'target_url':link(task),'executor':role_code(request.user)!='OBSERVER' and service.is_executor(request.user,task),'author':role_code(request.user)!='OBSERVER' and task.created_by_id==request.user.pk,'events':task.events.select_related('actor'),'children':service.visible(request.user).filter(estimate_id=task.estimate_id,kind='REMARK') if task.kind=='ESTIMATE' and task.estimate_id else service.visible(request.user).filter(parent=task),'can_comment':role_code(request.user)!='OBSERVER','fact_sections':[(key,LABELS[key]) for key in LABELS if key in required] if required else [('works','Работы'),('labor','Персонал'),('equipment','Техника'),('fuel','ГСМ')]})
     def post(self,request,pk):
         if role_code(request.user)=='OBSERVER':raise PermissionDenied
         task=get_object_or_404(service.visible(request.user),pk=pk)
