@@ -14,5 +14,24 @@
 <form method="post">{% csrf_token %}<input type="hidden" name="action" value="confirm"><input type="hidden" name="token" value="{{ token }}"><button class="btn btn-primary">Загрузить в справочник</button> <a class="btn btn-outline-secondary" href="{% url 'works:schedule_import' %}">Выбрать другой файл</a></form>
 {% else %}
 <form method="post" enctype="multipart/form-data" class="card p-3">{% csrf_token %}{{ form.as_p }}<button class="btn btn-primary">Проверить файл</button></form>
+{{ form.section_options|json_script:'import-section-options' }}
+<script>
+(function () {
+    const object = document.getElementById('id_construction_object');
+    const section = document.getElementById('id_section');
+    const rows = JSON.parse(document.getElementById('import-section-options').textContent);
+    function filterSections() {
+        const previous = section.value;
+        section.replaceChildren(new Option(object.value ? 'Выберите раздел' : 'Сначала выберите объект', ''));
+        rows.filter(row => String(row.construction_object_id) === object.value).forEach(row => {
+            section.add(new Option(row.name, String(row.id)));
+        });
+        if (Array.from(section.options).some(option => option.value === previous)) section.value = previous;
+        section.dispatchEvent(new Event('change', {bubbles: true}));
+    }
+    object.addEventListener('change', filterSections);
+    filterSections();
+})();
+</script>
 {% endif %}
 {% endblock %}

@@ -72,7 +72,7 @@ class ScheduleImportTests(TestCase):
         self.assertFalse(ComplexObject.objects.exists());self.assertFalse(ProjectWork.objects.exists())
 
     def preview(self):
-        return self.client.post(self.url,{'section':self.section.pk,'load_profile':self.profile.pk,'file':SimpleUploadedFile('График.xlsx',workbook().read())})
+        return self.client.post(self.url,{'construction_object':self.obj.pk,'section':self.section.pk,'load_profile':self.profile.pk,'file':SimpleUploadedFile('График.xlsx',workbook().read())})
 
     def test_preview_then_confirmation_and_replay(self):
         response=self.preview()
@@ -109,3 +109,12 @@ class ScheduleImportTests(TestCase):
     def test_observer_cannot_import(self):
         self.user.role=Role.objects.get(code='OBSERVER');self.user.save()
         self.assertEqual(self.client.get(self.url).status_code,403)
+
+    def test_import_sections_filtered_by_selected_object(self):
+        other=ConstructionObject.objects.create(company=self.company,project=self.obj.project,name='Другой объект')
+        section=Section.objects.create(company=self.company,construction_object=other,name='Чужой раздел')
+        form=ImportForm({'construction_object':self.obj.pk,'section':section.pk},user=self.user)
+        self.assertEqual(list(form.fields['section'].queryset),[self.section])
+        self.assertFalse(form.is_valid())
+        self.assertIn('section',form.errors)
+        self.assertEqual(ImportForm(user=self.user).fields['section'].queryset.count(),0)

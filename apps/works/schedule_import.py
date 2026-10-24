@@ -14,7 +14,7 @@ from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect
 from openpyxl import load_workbook
 from core.permissions import PLAN_ROLES, require_roles, scope_queryset
-from apps.projects.models import Section
+from apps.projects.models import Section, ConstructionObject
 from apps.planning.models import LoadProfile
 from apps.audit.models import AuditLog
 from .models import ComplexObject, ProjectWork, ProjectWorkItem, MeasurementUnit
@@ -77,13 +77,23 @@ def parse_schedule(upload):
     finally:book.close()
 
 class ImportForm(forms.Form):
+    construction_object=forms.ModelChoiceField(queryset=ConstructionObject.objects.none(),label='Строительный объект',empty_label='Выберите объект')
     section=forms.ModelChoiceField(queryset=Section.objects.none(),label='Раздел строительного объекта')
     load_profile=forms.ModelChoiceField(queryset=LoadProfile.objects.none(),label='Профиль нагрузки вложенных работ',help_text='В файле профилей нет. Этот профиль будет назначен только новым работам.')
     file=forms.FileField(label='График XLSX')
     def __init__(self,*args,user,**kwargs):
         super().__init__(*args,**kwargs)
-        self.fields['section'].queryset=scope_queryset(Section.objects.select_related('construction_object'),user)
-        self.fields['section'].label_from_instance=lambda row:f'{row.construction_object} / {row.name}'
+        objects=scope_queryset(ConstructionObject.objects.select_related('project'),user)
+        sections=scope_queryset(Section.objects.select_related('construction_object'),user)
+        self.fields['construction_object'].queryset=objects
+        self.fields['construction_object'].label_from_instance=lambda row:f'{row.project.name} / {row.name}'
+        object_id=self.data.get(self.add_prefix('construction_object')) if self.is_bound else self.initial.get('construction_object')
+        try:object_id=int(object_id)
+        except (TypeError,ValueError):object_id=None
+        self.fields['section'].queryset=sections.filter(construction_object_id=object_id,construction_object__in=objects) if object_id else sections.none()
+        self.fields['section'].empty_label='Выберите раздел' if object_id else 'Сначала выберите объект'
+        self.fields['section'].label_from_instance=lambda row:row.name
+        self.section_options=list(sections.filter(construction_object__in=objects).order_by('name','pk').values('id','construction_object_id','name'))
         self.fields['load_profile'].queryset=LoadProfile.objects.filter(company=user.company)
 
 
