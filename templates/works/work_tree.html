@@ -27,12 +27,13 @@
         {% if work.kind == "COMPOSITE" %}{% if request.user|may:'works:work_item_create' %}<a href="{% url 'works:work_item_create' work.pk %}" class="btn btn-primary">
     <i class="bi bi-plus-circle"></i> Добавить работу в составе комплекса
 </a>{% endif %}{% endif %}
-        {% if request.user|may:'works:work_update' %}<a href="{% url 'works:work_update' work.pk %}" class="btn btn-secondary">
+        {% if request.user|may:'works:work_update' %}<a class="btn btn-outline-primary" href="{% url 'works:catalogue_copy' 'package' work.pk %}">Копировать</a><a href="{% url 'works:work_update' work.pk %}" class="btn btn-secondary">
             <i class="bi bi-pencil"></i> Редактировать
         </a>{% endif %}
     </div>
 </div>
 
+<p class="text-muted">Раздел РД: {{ work.rd_section|default:"—" }} · Пункт в РДЦ: {{ work.rdc_point|default:"—" }}</p>
 <!-- KPI карточки -->
 <div class="row mb-4">
     <div class="col-md-3">
@@ -135,7 +136,7 @@
     </td>
     <td>
         <div class="btn-group btn-group-sm">
-            {% if request.user|may:'works:work_item_update' %}<a href="{% url 'works:work_item_update' item.pk %}"
+            {% if request.user|may:'works:work_item_update' %}<a href="{% url 'works:catalogue_copy' 'item' item.pk %}" class="btn btn-outline-primary btn-sm" title="Копировать работу"><i class="bi bi-files"></i></a><a href="{% url 'works:work_item_update' item.pk %}"
                class="btn btn-outline-secondary btn-sm" title="Редактировать">
                 <i class="bi bi-pencil"></i>
             </a>{% endif %}

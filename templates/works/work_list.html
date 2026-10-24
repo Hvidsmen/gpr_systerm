@@ -114,7 +114,7 @@
         {% if request.user|may:'works:work_detail' %}<a href="{% url 'works:work_detail' work.pk %}" class="btn btn-outline-primary" title="Дерево работ">
             <i class="bi bi-diagram-3"></i>
         </a>{% endif %}
-        {% if request.user|may:'works:work_update' %}<a href="{% url 'works:work_update' work.pk %}" class="btn btn-outline-secondary" title="Редактировать">
+        {% if request.user|may:'works:work_update' %}<a href="{% url 'works:catalogue_copy' 'package' work.pk %}" class="btn btn-outline-primary" title="Копировать"><i class="bi bi-files"></i></a><a href="{% url 'works:work_update' work.pk %}" class="btn btn-outline-secondary" title="Редактировать">
             <i class="bi bi-pencil"></i>
         </a>{% endif %}
         {% if request.user|may:'works:work_delete' %}<a href="{% url 'works:work_delete' work.pk %}" class="btn btn-outline-danger" title="Удалить"
