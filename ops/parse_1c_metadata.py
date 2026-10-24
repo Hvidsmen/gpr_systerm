@@ -21,7 +21,7 @@ def main():
         try:found[identity]=headers(path.read_bytes(),index)
         except (ValueError,UnicodeError) as exc:errors.append({'uuid':identity,'error':str(exc)})
     schema=json.loads((root/'schema.json').read_text(encoding='utf-8-sig'))
-    labels=resolve(index,found,schema)
+    labels=resolve(index,found,schema,warnings=errors)
     (root/'names.json').write_text(json.dumps({'labels':labels,'objects_read':len(found),'errors':errors},ensure_ascii=False),encoding='utf-8')
 
 if __name__=='__main__':

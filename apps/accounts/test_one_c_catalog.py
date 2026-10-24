@@ -119,3 +119,28 @@ class MetadataCommandTests(SimpleTestCase):
             self.assertEqual(error['error_type'],'ValueError')
             self.assertIn('Unsupported compressed',error['error'])
             self.assertEqual(error['dbnames_bytes'],11)
+
+class MetadataMultipleBindingsTests(SimpleTestCase):
+    def test_empty_service_uuid_does_not_abort_index(self):
+        empty='00000000-0000-0000-0000-000000000000'
+        index=dbnames(binary(['0',['3',[empty,'Reference','1'],[empty,'Document','2'],[OWNER,'Reference','394']]]))
+        self.assertNotIn(empty,index)
+        self.assertEqual(list(index),[OWNER])
+
+    def test_only_existing_main_binding_is_chosen_regardless_of_input_order(self):
+        entries=[[OWNER,'Reference','12'],[OWNER,'Reference','394'],[FIELD,'Fld','99'],[FIELD,'Fld','100']]
+        for values in [entries,list(reversed(entries))]:
+            index=dbnames(binary(['0',['4',*values]]))
+            self.assertEqual(len(index[OWNER]['variants']),2)
+            names={OWNER:'Должности',FIELD:'Класс'}
+            result=resolve(index,{OWNER:names},[schema(),schema(column='_Fld100')])
+            self.assertEqual(result['dbo._Reference394']['name'],'Справочник.Должности')
+            self.assertEqual(result['dbo._Reference394']['columns']['_Fld100'],'Класс')
+
+    def test_ambiguous_object_does_not_prevent_other_objects_from_loading(self):
+        other='44444444-4444-4444-4444-444444444444'
+        index=dbnames(binary(['0',['3',[OWNER,'Reference','12'],[OWNER,'Reference','394'],[other,'Document','9']]]))
+        warnings=[]
+        result=resolve(index,{OWNER:{OWNER:'Должности'},other:{other:'ПриёмНаРаботу'}},[schema(),schema(table='_Reference12'),schema(table='_Document9')],warnings)
+        self.assertEqual(set(result),{'dbo._Document9'})
+        self.assertIn('Several main SQL tables',warnings[0]['error'])
