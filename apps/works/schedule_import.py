@@ -106,7 +106,9 @@ def inspect_rows(company,section,rows):
             found=list(ComplexObject.objects.filter(company=company,construction_object=section.construction_object,name__iexact=row['object']))
             if len(found)>1:raise ValidationError('Неоднозначный комплексный объект: '+row['object'])
             objects[obj_key]=found[0] if found else None
-        obj=objects[obj_key];key=(obj_key,row['package'].casefold())
+        obj=objects[obj_key]
+        if obj and obj.section_id!=section.pk:raise ValidationError('Комплексный объект уже закреплён за другим разделом: '+obj.name)
+        key=(obj_key,row['package'].casefold())
         if key not in packages:
             found=list(ProjectWork.objects.filter(company=company,section=section,complex_object=obj,name__iexact=row['package'])) if obj else []
             if len(found)>1:raise ValidationError('Неоднозначная комплексная работа: '+row['package'])
@@ -133,7 +135,7 @@ def apply_rows(user,section,profile,rows):
         if row['existing']:continue
         obj=ComplexObject.objects.filter(company=user.company,construction_object=section.construction_object,name__iexact=row['object']).first()
         if not obj:
-            obj=ComplexObject(company=user.company,construction_object=section.construction_object,name=row['object']);obj.full_clean();obj.save()
+            obj=ComplexObject(company=user.company,construction_object=section.construction_object,section=section,name=row['object']);obj.full_clean();obj.save()
         package=ProjectWork.objects.filter(company=user.company,section=section,complex_object=obj,name__iexact=row['package']).first()
         if not package:
             package=ProjectWork(company=user.company,section=section,complex_object=obj,name=row['package'],kind='COMPOSITE',unit='',rd_section=row['rd_section'],rdc_point=row['rdc_point'])

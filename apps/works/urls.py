@@ -80,3 +80,6 @@ urlpatterns += [path('convert/<str:kind>/<int:pk>/',conversion,name='group_conve
 
 from .complex_purge import purge_complex
 urlpatterns += [path('complex-objects/purge/',purge_complex,name='complex_purge')]
+
+from .complex_objects import complex_object_detail
+urlpatterns += [path('complex-objects/<int:pk>/',complex_object_detail,name='complex_object_detail')]

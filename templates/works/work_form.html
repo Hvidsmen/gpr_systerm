@@ -193,10 +193,14 @@
     function updateSections(selected = '') {
         const rows = data.sections.filter(row => String(row.construction_object_id) === object.value);
         options(section, rows, object.value ? (rows.length ? 'Выберите раздел' : 'На объекте пока нет разделов') : 'Сначала выберите объект', Boolean(object.value), selected);
-        const previous=complex.value;
-        options(complex,(data.complex_objects||[]).filter(row=>String(row.construction_object_id)===object.value),'Без комплексного объекта',Boolean(object.value),previous);
+        updateComplexObjects();
         status.textContent = object.value && !rows.length ? 'Создайте раздел в карточке строительного объекта, затем вернитесь к созданию работы.' : '';
     }
+    function updateComplexObjects() {
+        const previous=complex.value;
+        options(complex,(data.complex_objects||[]).filter(row=>String(row.section_id)===section.value),'Без комплексного объекта',Boolean(section.value),previous);
+    }
+    section.addEventListener('change', updateComplexObjects);
     function updateObjects(selected = '', selectedSection = '') {
         const rows = data.objects.filter(row => String(row.project_id) === project.value);
         options(object, rows, project.value ? (rows.length ? 'Выберите объект' : 'В проекте пока нет объектов') : 'Сначала выберите проект', Boolean(project.value), selected);

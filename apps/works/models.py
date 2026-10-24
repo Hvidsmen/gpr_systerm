@@ -181,6 +181,8 @@ class ProjectWork(BaseCompanyModel):
         if self.complex_object_id:
             if self.complex_object.company_id != self.company_id or self.section_id and self.complex_object.construction_object_id != self.section.construction_object_id:
                 raise ValidationError({'complex_object':'Комплексный объект должен принадлежать этому строительному объекту.'})
+            if self.section_id != self.complex_object.section_id:
+                raise ValidationError({'complex_object':'Комплекс работ должен находиться в том же разделе, что и комплексный объект.'})
             if self.kind != self.Kind.COMPOSITE:
                 raise ValidationError({'complex_object':'Самостоятельная работа остается на строительном объекте. Для комплексного объекта выберите комплекс работ.'})
         if self.kind == self.Kind.SIMPLE and not self.load_profile_id:
@@ -232,6 +234,8 @@ class ProjectWork(BaseCompanyModel):
         from django.utils import timezone
 
         with transaction.atomic():
+            if self.complex_object_id and (self.section_id!=self.complex_object.section_id or self.company_id!=self.complex_object.company_id):
+                raise ValidationError({'complex_object':'Комплекс работ должен находиться в разделе комплексного объекта.'})
             previous = (
                 type(self).objects.select_for_update().filter(pk=self.pk).first()
                 if self.pk
@@ -586,6 +590,7 @@ class WorkPrice(BaseCompanyModel):
 
 
 class ComplexObject(BaseCompanyModel):
+    section = models.ForeignKey('projects.Section', on_delete=models.PROTECT, related_name='complex_objects', verbose_name='Раздел')
     """A single physical facility, distinct from its priced work packages."""
     construction_object = models.ForeignKey('projects.ConstructionObject', on_delete=models.PROTECT, related_name='complex_objects', verbose_name='Строительный объект')
     name = models.CharField('Название комплексного объекта', max_length=255)
@@ -599,8 +604,24 @@ class ComplexObject(BaseCompanyModel):
     def unit(self):
         return 'шт.'
 
+    def _infer_section(self):
+        if not self.section_id and self.construction_object_id:
+            from apps.projects.models import Section
+            candidates=list(Section.objects.filter(company_id=self.company_id,construction_object_id=self.construction_object_id).order_by('pk')[:2])
+            if len(candidates)==1:self.section=candidates[0]
+
+    def full_clean(self,*args,**kwargs):
+        self._infer_section()
+        return super().full_clean(*args,**kwargs)
+
+    def save(self,*args,**kwargs):
+        self.full_clean()
+        return super().save(*args,**kwargs)
+
     def clean(self):
         super().clean()
+        if self.section_id and (self.section.company_id!=self.company_id or self.section.construction_object_id!=self.construction_object_id):
+            raise ValidationError({'section':'Раздел должен принадлежать тому же строительному объекту и компании.'})
         if self.construction_object_id and self.construction_object.company_id != self.company_id:
             raise ValidationError({'construction_object':'Объект другой компании.'})
         if type(self).objects.filter(company_id=self.company_id,construction_object_id=self.construction_object_id,name__iexact=self.name.strip()).exclude(pk=self.pk).exists():
@@ -608,6 +629,8 @@ class ComplexObject(BaseCompanyModel):
         self.name=self.name.strip()
         if self.pk:
             previous=type(self).objects.get(pk=self.pk)
+            if previous.section_id!=self.section_id and self.work_packages.exists():
+                raise ValidationError({'section':'У комплексного объекта есть работы. Для смены уровня используйте преобразование раздела и комплексного объекта.'})
             if previous.construction_object_id!=self.construction_object_id and self.work_packages.exists():
                 raise ValidationError({'construction_object':'Объект с привязанными комплексами работ переносить нельзя.'})
 

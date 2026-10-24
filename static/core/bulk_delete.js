@@ -9,7 +9,7 @@
       group.indeterminate = !group.checked && Array.from(group.closest('.ct-branch').querySelectorAll('[data-bulk-row]')).some(row => row.checked);
     });
     const count = rows.filter(row => row.checked).length;
-    form.querySelector('[data-bulk-count]').textContent = groupCount ? `Выбрано: ${groupCount} комплексных объектов, ${count} работ на странице` : `Выбрано: ${count}`;
+    form.querySelector('[data-bulk-count]').textContent = groupCount ? `Выбрано: ${groupCount} комплексных объектов, ${count} работ` : `Выбрано: ${count}`;
     const submit=form.querySelector('[data-bulk-submit]');
     if(submit)submit.disabled = count === 0 && groupCount === 0;
     const repair = form.querySelector('[data-bulk-structure]');
@@ -47,7 +47,7 @@
     }
     sync();
   }));
-  form.querySelector('[data-bulk-select]').addEventListener('click', () => { rows.forEach(row => { row.checked = true; }); sync(); });
+  form.querySelector('[data-bulk-select]').addEventListener('click', () => { rows.filter(row => !row.closest('[hidden]')).forEach(row => { row.checked = true; }); sync(); });
   form.querySelector('[data-bulk-clear]').addEventListener('click', () => { rows.forEach(row => { row.checked = false; }); groups.forEach(group => {group.checked = false;}); sync(); });
   sync();
 })();

@@ -1,0 +1,11 @@
+{% extends 'base.html' %}
+{% load access %}
+{% block title %}{{ object.name }} — Комплексный объект{% endblock %}
+{% block content %}
+<p><a href="{% url 'works:work_list' %}">← Справочник работ</a></p>
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3"><div><span class="text-muted">Комплексный объект · {{ object.construction_object.project }} / {{ object.construction_object }}</span><h1>{{ object.name }}</h1><p>Раздел: {{ object.section.name }}. Количество: 1 шт. · Комплексных работ: {{ works|length }}</p></div>
+{% if request.user|may:'works:complex_purge' %}<form method="post" action="{% url 'works:complex_purge' %}">{% csrf_token %}<input type="hidden" name="selected_complex" value="{{ object.pk }}"><button class="btn btn-outline-danger">Удалить комплексный объект целиком</button></form>{% endif %}</div>
+{% if request.user|may:'works:complex_object_update' %}<details class="card p-3 mb-3" {% if form.errors %}open{% endif %}><summary>Изменить название и описание</summary><form method="post" class="mt-3">{% csrf_token %}{{ form.as_p }}<button class="btn btn-primary">Сохранить изменения</button></form></details>{% elif object.description %}<p>{{ object.description|linebreaksbr }}</p>{% endif %}
+{% if request.user|may:'works:catalogue_copy' %}<p><a class="btn btn-outline-primary" href="{% url 'works:catalogue_copy' 'object' object.pk %}">Копировать комплексный объект</a></p>{% endif %}
+{% if works %}{% include 'bulk/toolbar.html' %}{% include 'works/_catalogue_tree.html' %}{% else %}<p class="alert alert-info">У комплексного объекта пока нет комплексов работ.</p>{% endif %}
+{% endblock %}

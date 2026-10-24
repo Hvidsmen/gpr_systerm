@@ -13,7 +13,7 @@ from django.views.decorators.http import require_http_methods
 
 from core.permissions import require_roles, scope_queryset
 from apps.audit.models import AuditLog
-from apps.works.models import ProjectWork
+from apps.works.models import ProjectWork, ComplexObject
 from apps.works.purge import WorkPurge
 from apps.planning.deletion_graph import ROOT_MODELS
 from .models import ConstructionObject, Section
@@ -41,6 +41,7 @@ def purge_sections(request, pk, section_pk=None):
             signature = hashlib.sha256(json.dumps({
                 'sections': [(row.pk, row.name, row.code) for row in rows],
                 'works': preview.signature(),
+                'complex_objects':list(ComplexObject.objects.filter(section__in=rows).order_by('pk').values_list('pk','name')),
             }, sort_keys=True).encode()).hexdigest()
             payload = {'user': request.user.pk, 'company': request.user.company_id,
                        'object': obj.pk, 'section': section_pk, 'signature': signature}
@@ -57,6 +58,7 @@ def purge_sections(request, pk, section_pk=None):
                     list(model.objects.select_for_update().filter(pk__in=preview.graph.ids[label]))
                 preview.perform()
                 section_ids = [row.pk for row in rows]
+                ComplexObject.objects.filter(company=request.user.company,section__in=rows).delete()
                 sections.delete()
                 AuditLog.objects.create(user=request.user, action='DELETE', entity_type='projects.Section',
                                         entity_id=str(obj.pk), old_value={'section_ids': section_ids},
@@ -67,5 +69,6 @@ def purge_sections(request, pk, section_pk=None):
         error = '; '.join(exc.messages) if isinstance(exc, ValidationError) else 'Обнаружены дополнительные связи. Удаление отменено целиком.'
     return render(request, 'projects/section_purge.html', {
         'construction_object': obj, 'sections': rows, 'preview': preview,
+        'complex_objects':ComplexObject.objects.filter(company=request.user.company,section__in=rows).order_by('name'),
         'selection': signing.dumps(payload, salt=SALT, compress=True), 'error': error,
     }, status=400 if error else 200)

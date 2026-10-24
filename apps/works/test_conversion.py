@@ -61,8 +61,9 @@ class GroupConversionTests(TestCase):
 
     def test_section_with_simple_or_existing_facility_rejected(self):
         target=Section.objects.create(company=self.company,construction_object=self.obj,name='Целевой')
-        self.assertContains(self.submit('section',self.section.pk,target_section=target.pk),'уже есть работы других комплексных объектов')
+        self.assertContains(self.submit('section',self.section.pk,target_section=target.pk),'В разделе есть комплексные объекты')
         ProjectWork.objects.filter(pk=self.work.pk).update(complex_object=None,kind='SIMPLE')
+        self.facility.delete()
         self.assertContains(self.submit('section',self.section.pk,target_section=target.pk),'есть самостоятельные работы')
 
     def test_role_and_assignment_scope(self):

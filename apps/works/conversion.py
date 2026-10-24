@@ -66,6 +66,7 @@ def convert(user,kind,pk,name,target_section,token):
         destination.save()
         ProjectWork.objects.filter(pk__in=[w.pk for w in works]).update(section=destination,complex_object=None)
     else:
+        if source.complex_objects.exists():raise ValidationError('В разделе есть комплексные объекты. Сначала преобразуйте или перенесите их.')
         if any(w.kind!='COMPOSITE' for w in works):raise ValidationError('В разделе есть самостоятельные работы. Перенесите их в другой раздел: комплексный объект может содержать только комплексные работы.')
         if any(w.complex_object_id for w in works):raise ValidationError('В разделе уже есть работы других комплексных объектов. Сначала перенесите их в другой раздел.')
         target=get_object_or_404(scope_queryset(Section.objects.select_for_update(),user),pk=getattr(target_section,'pk',None),construction_object_id=source.construction_object_id)
@@ -73,7 +74,7 @@ def convert(user,kind,pk,name,target_section,token):
         if any(existing.strip().casefold()==name.casefold() for existing in ComplexObject.objects.filter(construction_object_id=source.construction_object_id).values_list('name',flat=True)):raise ValidationError('Такой комплексный объект уже существует. Укажите другое название.')
         codes=[w.code for w in works]
         if ProjectWork.objects.filter(section=target,code__in=codes).exists():raise ValidationError('В целевом разделе есть работы с совпадающими кодами. Выберите другой раздел.')
-        destination=ComplexObject(company=user.company,construction_object_id=source.construction_object_id,name=name,description=source.description)
+        destination=ComplexObject(company=user.company,construction_object_id=source.construction_object_id,section=target,name=name,description=source.description)
         destination.full_clean();destination.save()
         ProjectWork.objects.filter(pk__in=[w.pk for w in works]).update(section=target,complex_object=destination)
     old=fingerprint(source,works)

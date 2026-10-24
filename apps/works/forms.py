@@ -60,14 +60,17 @@ class ProjectWorkForm(UnitChoiceMixin, forms.ModelForm):
         self.fields['construction_object'].queryset = objects.filter(project_id=project_id) if project_id else objects.none()
         self.fields['section'].queryset = sections.filter(construction_object_id=object_id, construction_object__project_id=project_id) if object_id and project_id else sections.none()
         self.fields['construction_object'].empty_label = 'Выберите объект' if project_id else 'Сначала выберите проект'
-        self.fields['complex_object'].queryset = ComplexObject.objects.filter(company=company,construction_object_id=object_id) if object_id else ComplexObject.objects.none()
+        section_id=self.data.get(self.add_prefix('section')) if self.is_bound else self.initial.get('section',self.instance.section_id)
+        try:section_id=int(section_id)
+        except (TypeError,ValueError):section_id=None
+        self.fields['complex_object'].queryset = ComplexObject.objects.filter(company=company,construction_object_id=object_id,section_id=section_id) if object_id else ComplexObject.objects.none()
         self.fields['complex_object'].empty_label = 'Самостоятельно / без комплексного объекта'
         self.fields['section'].empty_label = 'Выберите раздел' if object_id else 'Сначала выберите объект'
         for name in ('project', 'construction_object', 'section'):
             self.fields[name].label_from_instance = lambda row: f'{row.name}'
         self.hierarchy = {
             'objects': list(objects.values('id', 'project_id', 'code', 'name')),
-            'complex_objects': list(ComplexObject.objects.filter(company=company,construction_object__in=objects).values('id','construction_object_id','name')),
+            'complex_objects': list(ComplexObject.objects.filter(company=company,construction_object__in=objects).values('id','construction_object_id','name','section_id')),
             'sections': list(sections.values('id', 'construction_object_id', 'code', 'name')),
         }
         for name in ('template', 'load_profile'):

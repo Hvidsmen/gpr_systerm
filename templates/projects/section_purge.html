@@ -5,8 +5,9 @@
 <h1>Удаление разделов объекта {{ construction_object }}</h1>
 {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
 {% if sections %}
-<div class="alert alert-danger">Будут удалены перечисленные разделы, их работы, связанные планы, история согласований и факт. Операция необратима. Строительный объект сохраняется.</div>
+<div class="alert alert-danger">Будут удалены перечисленные разделы, их комплексные объекты и работы, связанные планы, история согласований и факт. Операция необратима. Строительный объект сохраняется.</div>
 <h2>Разделы ({{ sections|length }})</h2><ul>{% for section in sections %}<li>{{ section.name }} · ID {{ section.pk }}</li>{% endfor %}</ul>
+<h2>Комплексные объекты ({{ complex_objects|length }})</h2><ul>{% for obj in complex_objects %}<li>{{ obj.name }} · ID {{ obj.pk }}</li>{% empty %}<li>Нет комплексных объектов.</li>{% endfor %}</ul>
 <details><summary>Работы ({{ preview.works|length }}), вложенные работы ({{ preview.item_ids|length }})</summary><ul>{% for work in preview.works %}<li>{{ work.section.construction_object }} → {{ work.name }} · ID {{ work.pk }}</li>{% endfor %}</ul></details>
 <p>Месячных версий: {{ preview.monthly_ids|length }}.</p>
 {% for group in preview.graph.groups %}<h2>{{ group.label }} ({{ group.records|length }})</h2><ul>{% for record in group.records %}<li>{{ record }} · ID {{ record.pk }}</li>{% endfor %}</ul>{% endfor %}
