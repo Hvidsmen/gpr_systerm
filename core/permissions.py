@@ -105,6 +105,9 @@ def check_route(user, match, method):
     role = role_code(user)
     if namespace == 'accounts' and name in {'password_change','access_pending','impersonation_stop'}:
         return
+    if namespace == 'planning' and name.startswith('object_plan_'):
+        require_roles(user, READ_ROLES if name in {'object_plan_list','object_plan_detail'} and method in {'GET','HEAD'} else PLAN_ROLES)
+        return
     if namespace == 'planning' and name in {'pivot_report_list','pivot_fact_list','pivot_gpr_detail','pivot_smg_detail'}:
         require_roles(user, READ_ROLES)
         return

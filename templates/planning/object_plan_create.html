@@ -1,0 +1,5 @@
+{% extends 'base.html' %}{% block content %}
+{% include 'planning/planning_tabs.html' %}<h1>Новый план на весь объект</h1>
+<p>Сначала выберите объект и создайте план. Затем добавьте работы и при необходимости свяжите план с ГПР и СМГ этого объекта.</p>
+<form method="post" class="card card-body">{% csrf_token %}{% include 'forms/fields.html' %}<div class="mt-3"><button class="btn btn-primary">Создать план</button> <a class="btn btn-outline-secondary" href="{% url 'planning:object_plan_list' %}">Отмена</a></div></form>
+{% endblock %}

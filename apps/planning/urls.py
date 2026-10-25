@@ -214,3 +214,10 @@ urlpatterns += [path('tasks/force-close/',force_close,name='task_force_close')]
 
 from .resource_editor import add_assignment
 urlpatterns += [path('workspace-versions/<int:pk>/resource-assignment/',add_assignment,name='preparation_add_assignment')]
+
+from .object_plans import ObjectPlanList,ObjectPlanCreate,ObjectPlanDetail
+urlpatterns += [
+    path('object-plans/',ObjectPlanList.as_view(),name='object_plan_list'),
+    path('object-plans/create/',ObjectPlanCreate.as_view(),name='object_plan_create'),
+    path('object-plans/<int:pk>/',ObjectPlanDetail.as_view(),name='object_plan_detail'),
+]

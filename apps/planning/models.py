@@ -1488,3 +1488,5 @@ class PlanPreparation(BaseCompanyModel):
 
     class Meta:
         constraints = [models.CheckConstraint(condition=(models.Q(version__isnull=False,schedule__isnull=True)|models.Q(version__isnull=True,schedule__isnull=False)),name='preparation_exactly_one_plan')]
+
+from .object_plan_models import ObjectWorkPlan, ObjectWorkPlanRow

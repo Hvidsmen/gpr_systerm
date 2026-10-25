@@ -42,7 +42,7 @@
     const badge=document.createElement('span');badge.className='badge bg-primary ms-2';badge.textContent=assignment.work?'Из работы: '+assignment.target:'Вне работ';
     const detail=document.createElement('p');detail.className='small mb-2 mt-2';
     const resourceKind=projection?.kind||assignment.resource_kind;
-    detail.textContent=resourceKind==='fuel' ? format.format(Number(projection?.liters||assignment.daily_liters))+' л/день' : format.format(projection?.count??assignment.count)+(resourceKind==='equipment'?' ед.':' чел. на смену')+' · '+assignment.shifts_per_day+' смен/день · '+assignment.hours_per_shift+' ч/смену';
+    detail.textContent=resourceKind==='fuel' ? format.format(Number(projection?.liters||assignment.daily_liters))+' л/день' : format.format(projection?.count??assignment.count)+(resourceKind==='equipment'?' ед.':projection?' чел. за день':' чел. на смену')+' · '+assignment.shifts_per_day+' смен/день · '+assignment.hours_per_shift+' ч/смену';
     detail.append(document.createTextNode(' · '+assignment.start_date+' — '+assignment.end_date));
     box.append(title,badge,detail);
     if(assignment.crew && !projection){const crew=document.createElement('p');crew.className='small';crew.textContent='Экипаж на единицу: '+assignment.crew;box.append(crew);}

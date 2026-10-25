@@ -1,0 +1,1 @@
+{% if linked_object_plans %}<div class="card card-body mb-3"><strong>План на весь объект</strong><div class="d-flex flex-wrap gap-2 mt-2">{% for plan in linked_object_plans %}<a class="btn btn-sm btn-outline-primary" href="{% url 'planning:object_plan_detail' plan.pk %}">{{ plan.name }}</a>{% endfor %}</div></div>{% endif %}

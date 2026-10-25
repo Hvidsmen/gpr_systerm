@@ -1,0 +1,18 @@
+{% extends 'base.html' %}{% block content %}
+{% include 'planning/planning_tabs.html' %}<p><a href="{% url 'planning:object_plan_list' %}">← Планы на весь объект</a></p>
+<h1>{{ plan.name }}</h1><p>{{ plan.construction_object }}</p>{% if plan.description %}<p>{{ plan.description|linebreaksbr }}</p>{% endif %}
+<details class="card card-body mb-3" {% if form.errors %}open{% endif %}><summary>Настройки и связи с ГПР / СМГ</summary>
+{% if editable %}<form method="post" class="mt-3">{% csrf_token %}<input type="hidden" name="action" value="settings">{% include 'forms/fields.html' %}<button class="btn btn-primary">Сохранить настройки и связи</button></form>{% endif %}
+<p class="small text-muted mt-3">Связанные планы остаются самостоятельными. Изменение объёмов здесь не перезаписывает ГПР или СМГ.</p>
+</details>
+<div class="card card-body mb-3"><h5>Связанные планы</h5><div class="d-flex flex-wrap gap-2">{% for version in plan.gpr_versions.all %}<a class="btn btn-sm btn-outline-primary" href="{% url 'planning:global_detail' version.pk %}">ГПР · {{ version.title }} · v{{ version.version_number }}</a>{% endfor %}{% for schedule in plan.smg_schedules.all %}<a class="btn btn-sm btn-outline-primary" href="{% url 'planning:daily_schedule_detail' schedule.pk %}">СМГ · {{ schedule.month|date:'m.Y' }} · ред. {{ schedule.revision }}</a>{% endfor %}{% if not plan.gpr_versions.exists and not plan.smg_schedules.exists %}<span class="text-muted">Связи не заданы.</span>{% endif %}</div></div>
+{% if editable %}<details class="card card-body mb-3" open><summary>Добавить работы</summary><form method="post" class="mt-3">{% csrf_token %}<input type="hidden" name="action" value="add">{% include 'forms/fields.html' with form=branch_form %}<button class="btn btn-primary">Добавить выбранную ветку</button></form></details>{% endif %}
+<h2>Работы и объёмы на весь объект</h2>
+<form method="post">{% csrf_token %}<input type="hidden" name="action" value="rows">{{ rows.management_form }}{{ rows.non_form_errors }}
+<div class="table-responsive"><table class="table table-bordered"><thead><tr><th>Работа</th><th>Плановый объём</th><th>Ед. изм.</th>{% if editable %}<th>Удалить строку</th>{% endif %}</tr></thead><tbody>
+{% for row in rows %}{% ifchanged row.instance.work.section_id row.instance.work.complex_object_id %}<tr class="table-light"><th colspan="4">{{ row.instance.work.section.name }}{% if row.instance.work.complex_object_id %} → {{ row.instance.work.complex_object.name }}{% endif %}</th></tr>{% endifchanged %}
+<tr><td>{% for hidden in row.hidden_fields %}{{ hidden }}{{ hidden.errors }}{% endfor %}{{ row.non_field_errors }}{% if row.instance.work_item_id %}<span class="ms-3">↳ {{ row.instance.label }}</span><small class="d-block text-muted ms-3">{{ row.instance.work.name }}</small>{% else %}<strong>{{ row.instance.label }}</strong>{% endif %}</td><td>{% if editable %}{{ row.quantity }}{{ row.quantity.errors }}{% else %}{{ row.instance.quantity|floatformat:'-6g' }}{% endif %}</td><td>{{ row.instance.unit }}</td>{% if editable %}<td>{{ row.DELETE }}</td>{% endif %}</tr>
+{% empty %}<tr><td colspan="4">Добавьте комплексный объект, комплексную или простую работу из справочника.</td></tr>{% endfor %}</tbody></table></div>
+{% if editable %}<button class="btn btn-primary">Сохранить объёмы работ</button>{% endif %}
+</form>
+{% endblock %}
