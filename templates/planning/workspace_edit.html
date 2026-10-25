@@ -124,7 +124,7 @@ function groupAllocationRows(panel) {
     path.forEach(part=>{
       keys.push(part.key);const key=JSON.stringify(keys);
       if (!groups.has(key)) {
-        const details=document.createElement('details');details.className='allocation-group';details.dataset.groupKey=key;details.open=previous.get(key) || false;
+        const details=document.createElement('details');details.className='allocation-group';details.dataset.groupKey=key;details.dataset.allocationLevel=part.key.split(':')[0];details.open=previous.get(key) || false;
         const summary=document.createElement('summary');summary.append(document.createTextNode(part.label));
         const count=document.createElement('span');count.className='allocation-group-count';count.dataset.groupCount='';summary.append(count);
         const body=document.createElement('div');body.className='allocation-group-body';details.append(summary,body);parent.append(details);groups.set(key,body);
@@ -170,6 +170,19 @@ function revealAllocationRow(row) {
 }
 document.querySelector('[data-expand-allocations]').addEventListener('click',()=>document.querySelectorAll('#allocation-editor details').forEach(node=>node.open=true));
 document.querySelector('[data-collapse-allocations]').addEventListener('click',()=>document.querySelectorAll('#allocation-editor details').forEach(node=>node.open=false));
+document.querySelectorAll('[data-fold-level-action]').forEach(button=>button.addEventListener('click',()=>{
+  const level=document.querySelector('[data-fold-level]').value;
+  if(level==='objects'){
+    const order=document.querySelector('[data-work-order]');
+    if(order&&order.value!=='object_work'){order.value='object_work';order.dispatchEvent(new Event('change',{bubbles:true}));}
+  }
+  const selectors={objects:'#work-rows [data-allocation-level="complex_object"]',packages:'#work-rows details[data-subworks]',resources:'#allocation-editor [data-resource-fold]',sections:'#allocation-editor .allocation-section'};
+  const open=button.dataset.foldLevelAction==='expand';
+  document.querySelectorAll(selectors[level]).forEach(node=>{
+    node.open=open;
+    if(open){for(let parent=node.parentElement;parent&&parent.id!=='allocation-editor';parent=parent.parentElement){if(parent.tagName==='DETAILS')parent.open=true;}}
+  });
+}));
 document.getElementById('allocation-editor').addEventListener('invalid',event=>{
   const row=event.target.closest('.allocation-row');if (row) {row.hidden=false;revealAllocationRow(row);}
 },true);
@@ -231,7 +244,7 @@ function updateSubworks(row) {
   if(carry){note.textContent=(carry.is_forecast?(carry.added?'Добавлено из прогнозного остатка за ':'Есть прогнозный остаток за '):(carry.added?'Добавлено из остатка за ':'Есть недовыполненный остаток за '))+carry.previous_month+': '+subworkNumber.format(Number(carry.quantity))+' '+carry.unit+(carry.added?'':' · текущий план не изменен');if(Object.keys(carry.items).length){const details=document.createElement('span');details.textContent=' · Работы в составе комплекса: '+Object.entries(carry.items).map(([id,q])=>(compositeItems[work.value]?.find(i=>String(i.id)===id)?.name||id)+' — '+subworkNumber.format(Number(q))).join('; ');note.append(details);}}
   let panel=row.querySelector('[data-subworks]');
   if (!panel) {
-    panel=document.createElement('div');panel.dataset.subworks='';panel.style.gridColumn='1 / -1';
+    panel=document.createElement('details');panel.open=true;panel.dataset.subworks='';panel.style.gridColumn='1 / -1';
     panel.className='table-responsive mt-1';row.querySelector('.allocation-grid').append(panel);
   }
   const selection=row.querySelector('[name$="-selected_item_ids"]');
@@ -239,6 +252,7 @@ function updateSubworks(row) {
   const allItems=compositeItems[work.value];
   const items=selected.length && allItems?allItems.filter(item=>selected.includes(item.id)):allItems;
   panel.replaceChildren();panel.hidden=!items;
+  if(items){const summary=document.createElement('summary');summary.textContent='Работы в составе комплекса · '+items.length;summary.className='fw-bold py-2';panel.append(summary);}
   if (!items) return;
   if (!items.length) {panel.textContent='В комплексе работ пока нет работ в составе комплекса. Добавьте работы в составе комплекса и нормативы.';return;}
   const input=row.querySelector('[name$="-quantity"]');
