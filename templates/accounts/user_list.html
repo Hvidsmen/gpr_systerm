@@ -11,22 +11,24 @@
 <p><a class="btn btn-outline-primary" href="{% url 'accounts:user_list' %}">Пользователи</a> <a class="btn btn-outline-secondary" href="{% url 'accounts:user_list' %}?archive=yes">Архив пользователей</a></p>
 <p><a class="btn btn-outline-primary" href="{% url 'accounts:access_groups' %}">Группы доступа и соответствия AD</a></p>
 <p><a href="{% url 'accounts:impersonation_history' %}">История действий под пользователями</a></p>
-<form method="get" class="card card-body mb-3">{% if archive_mode %}<input type="hidden" name="archive" value="yes">{% endif %}
+<nav class="d-flex gap-2 mb-3"><a class="btn btn-outline-primary {% if view_mode == 'table' %}active{% endif %}" href="?{{ table_view_query }}">Таблица</a><a class="btn btn-outline-primary {% if view_mode == 'tree' %}active{% endif %}" href="?{{ tree_view_query }}">По группам</a></nav>
+<form method="get" class="card card-body mb-3"><input type="hidden" name="view" value="{{ view_mode }}">{% if archive_mode %}<input type="hidden" name="archive" value="yes">{% endif %}
 <div class="row g-3">{% for field in filter_form %}<div class="col-md-4">{{ field.label_tag }} {{ field }} {{ field.errors }}</div>{% endfor %}</div>
 <div class="mt-3"><button class="btn btn-primary" type="submit">Найти</button> <a class="btn btn-outline-secondary" href="{% url 'accounts:user_list' %}{% if archive_mode %}?archive=yes{% endif %}">Сбросить</a></div>
 </form>
-<p>Найдено: {{ paginator.count }} из {{ total_count }}.</p>
+<p>Найдено: {{ matched_count }} из {{ total_count }}.</p>
 {% if archive_mode %}<p>Архивные учётные записи отключены. Права, назначения и история сохраняются. При восстановлении возвращается прежнее состояние активности.</p>{% endif %}
 {% if users %}
 <form method="post" id="user-bulk" action="{% url 'accounts:user_bulk_archive' %}?{{ request.GET.urlencode }}" class="card card-body mb-3">{% csrf_token %}
 <input type="hidden" name="action" value="{% if archive_mode %}restore{% else %}archive{% endif %}">
-<div class="d-flex flex-wrap gap-3 align-items-center"><label><input type="checkbox" name="all_filtered" value="yes" id="all-filtered-users"> Все найденные по фильтру, на всех страницах (кроме администраторов)</label><span id="user-selected-count">Выбрано: 0</span><button type="button" class="btn btn-outline-secondary" id="clear-user-selection">Снять выбор</button><button class="btn btn-outline-primary" type="submit">{% if archive_mode %}Восстановить выбранных{% else %}В архив{% endif %}</button></div><small>Свою учётную запись, администраторов и служебные учётные записи выбрать нельзя.</small>
+<div class="d-flex flex-wrap gap-3 align-items-center"><label><input type="checkbox" id="select-user-page"> Выбрать всех на странице</label><label><input type="checkbox" name="all_filtered" value="yes" id="all-filtered-users"> Все найденные по фильтру, на всех страницах (кроме администраторов)</label><span id="user-selected-count">Выбрано: 0</span><button type="button" class="btn btn-outline-secondary" id="clear-user-selection">Снять выбор</button><button class="btn btn-outline-primary" type="submit">{% if archive_mode %}Восстановить выбранных{% else %}В архив{% endif %}</button></div><small>Свою учётную запись, администраторов и служебные учётные записи выбрать нельзя.</small>
 </form>
+    {% if view_mode == 'tree' %}{% include 'accounts/_user_groups.html' %}{% else %}
     <div class="table-responsive">
         <table class="table table-hover">
             <thead class="table-light">
                 <tr>
-                    <th><input type="checkbox" id="select-user-page" aria-label="Выбрать пользователей на этой странице"></th><th>Имя пользователя</th>
+                    <th></th><th>Имя пользователя</th>
                     <th>ФИО</th>
                     <th>Email</th>
                     <th>Компания</th>
@@ -35,30 +37,12 @@
                 </tr>
             </thead>
             <tbody>
-                {% for user in users %}
-                    <tr>
-                        <td>{% if user.pk != request.user.pk and not user.is_superuser and not user.is_staff and user.role.code != 'ADMIN' %}<input type="checkbox" name="selected" value="{{ user.pk }}" form="user-bulk" class="user-selection" aria-label="Выбрать {{ user.username }}">{% endif %}</td><td>{{ user.username }}{% if user.archived_at %} <span class="badge bg-secondary">В архиве</span>{% endif %}{% if user.auth_source == 'LDAP' %} <span class="badge bg-secondary">AD</span>{% endif %}</td>
-                        <td>{{ user.full_name }}</td>
-                        <td>{{ user.email }}</td>
-                        <td>{{ user.company|default:"-" }}</td>
-                        <td>
-                            {% if user.role %}
-                                <span class="badge bg-info">{{ user.role.name }}{% if user.access_group_id %} · {{ user.access_group.name }}{% endif %}</span>
-                            {% else %}
-                                <span class="badge bg-secondary">Не назначена</span>
-                            {% endif %}
-                        </td>
-                        <td>{% if user.is_active and not user.is_superuser and not user.is_staff and user.role.code != 'ADMIN' %}<form method="post" action="{% url 'accounts:impersonation_start' user.pk %}" class="d-inline">{% csrf_token %}<button class="btn btn-sm btn-outline-warning">Войти как пользователь</button></form>{% endif %}{% if not user.is_superuser %}<a class="btn btn-sm btn-outline-primary" href="{% url 'accounts:user_access' user.pk %}">Роль и объекты</a>{% endif %}
-                            <a href="{% url 'accounts:user_detail' user.pk %}" class="btn btn-sm btn-outline-primary">
-                                <i class="bi bi-eye"></i>
-                            </a>
-                        </td>
-                    </tr>
-                {% endfor %}
+                {% for user in users %}{% include 'accounts/_user_row.html' %}{% endfor %}
             </tbody>
         </table>
     </div>
 
+    {% endif %}
     {% if is_paginated %}
         <nav aria-label="Page navigation">
             <ul class="pagination justify-content-center">

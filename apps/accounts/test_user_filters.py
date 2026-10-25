@@ -37,3 +37,17 @@ class UserFilterTests(TestCase):
         self.assertContains(response,'q=page-filter&amp;active=yes&amp;page=2')
         second=self.client.get(self.url,{'q':'page-filter','active':'yes','page':2})
         self.assertEqual(len(second.context['users']),3)
+
+    def test_group_tree_keeps_members_together_and_retains_archive_controls(self):
+        User.objects.bulk_create([User(username=f'group-member-{i}',company=self.company,role=self.role,access_group=self.group) for i in range(23)])
+        response=self.client.get(self.url,{'view':'tree'})
+        self.assertFalse(response.context['is_paginated'])
+        groups=response.context['user_groups']
+        branch=next(row for row in groups if row['group'] and row['group'].pk==self.group.pk)
+        self.assertEqual(len(branch['users']),24)
+        self.assertContains(response,'Без группы доступа')
+        self.assertContains(response,'user-selection')
+        self.assertContains(response,'user-bulk')
+        self.assertEqual(self.client.get(self.url).context['view_mode'],'tree')
+        response=self.client.get(self.url,{'view':'tree','access_group':self.group.pk})
+        self.assertEqual(len(response.context['user_groups']),1)

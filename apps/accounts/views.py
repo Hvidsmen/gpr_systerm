@@ -60,10 +60,17 @@ class UserListView(CompanyScopedMixin, ListView):
     context_object_name = 'users'
     paginate_by = 20
 
+    def list_mode(self):
+        mode=self.request.GET.get('view',self.request.session.get('user_list_view','table'))
+        return mode if mode in {'table','tree'} else 'table'
+
+    def get_paginate_by(self,queryset):
+        return None if self.list_mode()=='tree' else self.paginate_by
+
     def get_queryset(self):
         from django.db.models import Q
         from .forms import UserFilterForm
-        queryset = super().get_queryset().select_related('company', 'role', 'access_group')
+        queryset = super().get_queryset().select_related('company', 'role', 'access_group__role')
         self.filter_form = UserFilterForm(self.request.GET, company=self.request.user.company)
         self.archive_mode = self.request.GET.get('archive') == 'yes'
         queryset = queryset.filter(archived_at__isnull=not self.archive_mode)
@@ -87,6 +94,19 @@ class UserListView(CompanyScopedMixin, ListView):
         params = self.request.GET.copy()
         params.pop('page', None)
         context.update(filter_form=self.filter_form, total_count=self.total_count, filter_query=params.urlencode(), archive_mode=self.archive_mode)
+        mode=self.list_mode();self.request.session['user_list_view']=mode
+        groups={}
+        if mode=='tree':
+            for user in context['users']:
+                group=groups.setdefault(user.access_group_id,{'group':user.access_group,'users':[]})
+                group['users'].append(user)
+        context['user_groups']=sorted(groups.values(),key=lambda row:(row['group'] is None,row['group'].name.casefold() if row['group'] else ''))
+        context['view_mode']=mode
+        context['matched_count']=context['paginator'].count if context.get('paginator') else len(context['users'])
+        for view in ['table','tree']:
+            query=params.copy();query['view']=view
+            context[view+'_view_query']=query.urlencode()
+
         return context
 
 
