@@ -25,6 +25,29 @@ class InlineResourceTests(TestCase):
         data.update({'equipment_type':self.equipment.pk} if kind=='equipment' else {'position':self.position.pk} if kind=='labor' else {'fuel_type':'DIESEL','daily_liters':'12.5','fuel_price':'60'})
         data.update(changes);return data
 
+    def test_only_child_simple_work_or_object_accept_new_resources(self):
+        response=self.client.post(self.url,self.data(work_item=''))
+        self.assertEqual(response.status_code,400)
+        self.assertFalse(self.version.resource_assignments.exists())
+        self.assertEqual(self.client.post(self.url,self.data()).status_code,200)
+        self.assertEqual(self.client.post(self.url,self.data(work='',work_item='')).status_code,200)
+        WorkMonthAllocation.objects.create(version=self.version,company=self.company,month=fixtures.JAN,work=self.simple,quantity=1)
+        self.assertEqual(self.client.post(self.url,self.data(work=self.simple.pk,work_item='')).status_code,200)
+
+    def test_legacy_package_resource_keeps_totals_until_explicit_reassignment(self):
+        response=self.client.post(self.url,self.data())
+        row=self.version.resource_assignments.get(pk=response.json()['assignment']['id'])
+        WorkResourceAssignment.objects.filter(pk=row.pk).update(work_item=None)
+        row.refresh_from_db()
+        self.assertTrue(resource_editor.serialize(row)['legacy_package'])
+        before=resource_editor.serialize(row)['projected']
+        response=self.client.post(self.url,self.data(assignment_id=row.pk,work='',work_item=''))
+        self.assertEqual(response.status_code,200,response.content)
+        result=response.json()['assignment']
+        self.assertFalse(result['legacy_package']);self.assertFalse(result['work'])
+        self.assertEqual(result['projected'],before)
+        self.assertEqual(self.version.resource_assignments.count(),1)
+
     def test_crew_position_can_be_added_alone_without_machine(self):
         response=self.client.post(self.url,self.data('labor'))
         self.assertEqual(response.status_code,200,response.content)
@@ -149,7 +172,7 @@ class InlineResourceTests(TestCase):
         response=self.client.get(reverse('planning:global_detail',args=[self.version.pk]))
         self.assertEqual(response.status_code,200)
         self.assertContains(response,'data-plan-action-header',count=1)
-        self.assertContains(response,'data-matrix-resource-row',count=3)
+        self.assertContains(response,'data-matrix-resource-row',count=2)
         self.assertNotContains(response,'<div class="table-responsive mt-2 mb-2" data-resource-work-plan>')
         self.assertContains(response,'Отправить на согласование',count=1)
         self.client.force_login(self.planner)

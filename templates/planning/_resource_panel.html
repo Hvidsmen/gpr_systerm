@@ -3,6 +3,6 @@
 {% if resource_preparation %}<p>Руководитель: <strong>{{ resource_preparation.manager }}</strong>. Ресурсы: {% if resources_ready %}подтверждены{% else %}требуют подготовки{% endif %}. Проверка сметчиком: {% if estimator_approved %}пройдена{% else %}ожидается{% endif %}.</p>{% endif %}
 {% if not can_prepare_resources %}<p class="text-muted">Ресурсы редактирует назначенный руководитель проекта или администратор в черновике плана.</p>{% endif %}
 {% include 'planning/_preparation_tasks.html' %}
-<details><summary>Общие ресурсы вне работ</summary>{% include 'planning/_resource_buttons.html' %}<p class="small"><a href="{% url 'planning:preparation_gpr' resource_owner.pk %}?legacy=1">Ранее введённые месячные ресурсы</a></p></details>
+<details><summary>Общие ресурсы объекта</summary>{% include 'planning/_resource_buttons.html' %}<p class="small"><a href="{% url 'planning:preparation_gpr' resource_owner.pk %}?legacy=1">Ранее введённые месячные ресурсы</a></p></details>
 <p class="small text-muted">Назначения включены в общие итоги ГПР. Обновите расчёт страницы после изменений, чтобы увидеть новые значения в матрице.</p>
 </section>

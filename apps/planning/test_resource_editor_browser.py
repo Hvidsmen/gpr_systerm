@@ -31,6 +31,7 @@ class InlineResourceBrowserTests(StaticLiveServerTestCase):
         work_resources.brigade_for(position)
         EquipmentCrewPosition.objects.create(company=self.company,equipment_type=self.equipment,position=position,count=1)
         work_resources.save(self.manager,version,WorkResourceAssignment(work=self.composite,work_item=self.a,equipment_type=self.equipment,start_date=date(2026,1,1),end_date=date(2026,1,31),count=2,shifts_per_day=1,hours_per_shift=8))
+        legacy=WorkResourceAssignment.objects.create(company=self.company,version=version,work=self.composite,fuel_type='DIESEL',daily_liters=1,include_crew=False,start_date=date(2026,1,1),end_date=date(2026,1,31))
         from apps.planning.models import ObjectWorkPlan,ResourceMonthAllocation,GlobalPlanVersion
         from apps.planning.object_plans import add_branch
         from apps.planning.workspace_services import build_workspace_snapshot
@@ -47,6 +48,7 @@ class InlineResourceBrowserTests(StaticLiveServerTestCase):
             client=Client();client.force_login(user);return client.cookies['sessionid'].value
         config=dict(base=self.live_server_url,monthly=reverse('planning:workspace_edit',args=[version.pk]),detail=reverse('planning:global_detail',args=[version.pk]),item=self.a.pk,item_unit=self.a.unit,equipment=self.equipment.name,position=position.name,position_id=position.pk,admin_cookie=cookie(admin),manager_cookie=cookie(self.manager),planner_cookie=cookie(self.planner))
         config.update(filter_object=str(facility.pk),filter_other_object=str(second.pk),filter_package=str(self.composite.pk),filter_other_package=str(other.pk),filter_other_item=str(other_item.pk),filter_item_name=self.a.name)
+        config.update(work=str(self.composite.pk),legacy=str(legacy.pk),legacy_destination=str(self.b.pk))
         config['object_plan']=reverse('planning:object_plan_detail',args=[objplan.pk])
         config['smg']=reverse('planning:daily_schedule_detail',args=[smg.pk])
         config['chromium']=os.environ.get('GPR_CHROMIUM_EXECUTABLE') or shutil.which('chromium') or shutil.which('chromium-browser')

@@ -6,6 +6,9 @@
   const format=new Intl.NumberFormat('ru-RU',{maximumFractionDigits:3});
   const field=name=>form?.elements.namedItem(name);
   const targetById=id=>data.targets.find(t=>String(t.id)===String(id));
+  const composites=JSON.parse(document.getElementById('composite-items')?.textContent||'{}');
+  const isComposite=id=>targetById(id)?.kind==='COMPOSITE'||Object.prototype.hasOwnProperty.call(composites,id);
+  const legacyFor=work=>data.assignments.some(a=>a.legacy_package&&String(a.work)===String(work));
   let editor=null,editorTarget=null,dirty=false,busy=false;
   const foldStates=new Map(),observedScrolls=new WeakSet();
   const foldKey=host=>String(host.dataset.resourceWork||'')+'/'+String(host.dataset.resourceItem||'');
@@ -26,7 +29,7 @@
   function wireWork(row) {
     const work=row.querySelector('[name$="-work"]');
     let host=row.querySelector('[data-parent-resource-actions]');
-    if(!work?.value){host?.remove();return;}
+    if(!work?.value||isComposite(work.value)&&!legacyFor(work.value)){host?.remove();return;}
     if(host && host.dataset.resourceWork===work.value)return;
     host?.remove();host=addButtons(row.querySelector('.allocation-grid'),work.value);
     host.dataset.parentResourceActions='';host.style.gridColumn='1 / -1';
@@ -57,6 +60,18 @@
     editor.querySelector('#work-resource-target').textContent=work?'К работе: '+(child?target.name+' → '+child.name:(target?.name||assignment?.target||'Работа удалена из плана')):'Вне работ · общие ресурсы объекта';
     editor.querySelectorAll('[data-resource-field]').forEach(box=>{const visible=box.dataset.resourceField===kind||box.dataset.resourceField==='quantity'&&kind!=='fuel';box.hidden=!visible;box.querySelectorAll('input,select').forEach(input=>input.disabled=!visible);});
     ['equipment_type','position','fuel_type'].forEach(name=>{field(name).required=name===({equipment:'equipment_type',labor:'position',fuel:'fuel_type'}[kind]);});
+    const reassign=editor.querySelector('[data-resource-target-choice]');
+    reassign.closest('[data-resource-reassign]').hidden=!assignment?.legacy_package;
+    reassign.disabled=!assignment?.legacy_package;reassign.required=Boolean(assignment?.legacy_package);
+    reassign.replaceChildren(new Option('Выберите работу или общие ресурсы объекта',''));
+    if(assignment?.legacy_package){
+      reassign.add(new Option('Общие ресурсы объекта','object'));
+      data.targets.forEach(t=>{
+        if(t.kind!=='COMPOSITE')reassign.add(new Option(t.name,'work:'+t.id));
+        t.items.forEach(i=>reassign.add(new Option(t.name+' → '+i.name,'item:'+t.id+':'+i.id)));
+      });
+      reassign.addEventListener('change',()=>{const parts=reassign.value.split(':');field('work').value=parts[0]==='object'?'':parts[1]||'';field('work_item').value=parts[0]==='item'?parts[2]:'';});
+    }
     field('refresh_crew').closest('p').hidden=!assignment||kind!=='equipment';
     editor.querySelector('[data-delete-resource]').hidden=!assignment;
     if(!assignment&&work&&(!target||item&&!child))error('Сначала сохраните эту работу в месячном плане. Затем добавьте ресурсы.');
@@ -103,14 +118,17 @@
       const summary=document.createElement('summary');summary.className='work-resource-summary';fold.append(summary);host.insertBefore(fold,list);fold.append(list);
     }
     const assignments=activeAssignments().filter(a=>sameTarget(a,host.dataset.resourceWork,host.dataset.resourceItem));
-    host.querySelector('.work-resource-summary').textContent='Ресурсы · '+Object.entries(kinds).map(([kind,label])=>label+': '+assignments.filter(a=>a.resource_kind===kind).length).join(' · ');
+    const legacyParent=Boolean(host.dataset.resourceWork&&!host.dataset.resourceItem&&isComposite(host.dataset.resourceWork));
+    host.hidden=legacyParent&&!assignments.length;
+    if(host.hidden)return;
+    host.querySelector('.work-resource-summary').textContent=(legacyParent?'Ранее назначено на комплекс — перенесите на работу или объект · ':'Ресурсы · ')+Object.entries(kinds).map(([kind,label])=>label+': '+assignments.filter(a=>a.resource_kind===kind).length).join(' · ');
     const scroll=document.createElement('div');scroll.className='work-resource-columns';
     const table=document.createElement('table');table.className='work-resource-table';table.dataset.resourceColumns='';
     const headings=table.createTHead().insertRow(),row=assignments.length?table.createTBody().insertRow():null;
     Object.entries(kinds).forEach(([kind,label])=>{
       const heading=document.createElement('th');heading.scope='col';heading.textContent=kind==='equipment'?'Техника и экипаж':kind==='labor'?'Должности':label;headings.append(heading);
       const cell=row?.insertCell();if(cell)cell.dataset.resourceColumn=kind;
-      if(data.can_edit){const add=document.createElement('button');add.type='button';add.className='btn btn-sm btn-outline-primary work-resource-add';add.textContent='Добавить '+(kind==='equipment'?'технику':kind==='labor'?'должность':'ГСМ');add.dataset.addResource=kind;add.dataset.work=host.dataset.resourceWork;add.dataset.item=host.dataset.resourceItem;heading.append(add);}
+      if(data.can_edit&&!legacyParent){const add=document.createElement('button');add.type='button';add.className='btn btn-sm btn-outline-primary work-resource-add';add.textContent='Добавить '+(kind==='equipment'?'технику':kind==='labor'?'должность':'ГСМ');add.dataset.addResource=kind;add.dataset.work=host.dataset.resourceWork;add.dataset.item=host.dataset.resourceItem;heading.append(add);}
       const selected=assignments.filter(a=>a.resource_kind===kind);
       selected.forEach(a=>cell.append(card(a,null,true)));
       if(cell&&!selected.length){const empty=document.createElement('div');empty.className='work-resource-empty';empty.textContent='—';cell.append(empty);}

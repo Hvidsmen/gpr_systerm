@@ -27,7 +27,7 @@ def planned_targets(owner):
     targets=[]
     for work in works:
         items=[item for item in work.items.all() if item.company_id==owner.company_id and (work.pk in full or item.pk in selected[work.pk])]
-        targets.append({'id':work.pk,'name':work.name,'items':[{'id':item.pk,'name':item.name} for item in items]})
+        targets.append({'id':work.pk,'name':work.name,'kind':work.kind,'items':[{'id':item.pk,'name':item.name} for item in items]})
     return targets
 
 
@@ -69,6 +69,7 @@ def serialize(assignment):
     for member in assignment.crew_snapshot:
         projected.append({'kind':'labor','identity':member['brigade_id'],'label':member['name']+(' *' if member['is_replacement'] else ''),'count':assignment.count*assignment.shifts_per_day*member['count']})
     return {'id':assignment.pk,'work':assignment.work_id or '', 'work_item':assignment.work_item_id or '',
+        'legacy_package':bool(assignment.work_id and assignment.work.kind=='COMPOSITE' and not assignment.work_item_id),
         'resource_kind':'fuel' if assignment.fuel_type else 'equipment' if assignment.equipment_type_id else 'labor',
         'equipment_type':assignment.equipment_type_id or '', 'position':assignment.position_id or '',
         'fuel_type':assignment.fuel_type,'daily_liters':str(assignment.daily_liters),'fuel_price':str(assignment.fuel_price),
@@ -163,6 +164,9 @@ def add_assignment(request,pk):
 def attach_matrix_resources(context):
     """Annotate the existing plan rows instead of rendering another work tree."""
     import re
+    parent_ids={t['id'] for t in context.get('resource_targets',[]) if t['kind']!='COMPOSITE'}
+    owner=context.get('resource_owner')
+    if owner:parent_ids.update(owner.resource_assignments.filter(work__kind='COMPOSITE',work_item__isnull=True).values_list('work_id',flat=True))
     targets={target['id']:{item['id'] for item in target['items']} for target in context.get('resource_targets',[])}
     def visit(nodes):
         for node in nodes:
@@ -173,6 +177,7 @@ def attach_matrix_resources(context):
                 work_id=int(match.group(1))
                 if work_id not in targets:continue
                 row['resource_work_id']=work_id
+                row['resource_show_parent']=work_id in parent_ids
                 for child in row.get('children',[]):
                     item=re.search(r'-i(\d+)',child.get('key',''))
                     if item and int(item.group(1)) in targets[work_id]:

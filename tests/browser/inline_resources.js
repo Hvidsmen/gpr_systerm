@@ -39,6 +39,18 @@ const {chromium}=require('playwright');
  assert(await page.locator('[data-plan-action-header]').evaluate(e=>getComputedStyle(e).position)==='sticky','Plan actions are not sticky');
  await page.locator('[data-expand-allocations]').click();
  const item=()=>page.locator('[data-work-resource-target][data-resource-item="'+cfg.item+'"]');
+ const legacyHost=page.locator('[data-parent-resource-actions]');
+ await legacyHost.locator('[data-resource-card]').first().waitFor();
+ assert(await legacyHost.locator('[data-add-resource]').count()===0,'Package still accepts new resource assignments');
+ await legacyHost.getByRole('button',{name:'Изменить',exact:true}).click();
+ let legacyEditor=page.locator('[data-inline-resource-editor]');
+ await legacyEditor.locator('[data-resource-target-choice]').selectOption('item:'+cfg.work+':'+cfg.legacy_destination);
+ const legacySaved=page.waitForResponse(r=>r.url().includes('/resource-assignment/')&&r.request().method()==='POST');
+ await legacyEditor.getByRole('button',{name:'Сохранить ресурс',exact:true}).click();
+ assert((await legacySaved).ok(),'Legacy package resource did not move to child');
+ await page.locator('[data-resource-item="'+cfg.legacy_destination+'"] [data-resource-card="'+cfg.legacy+'"]').waitFor();
+ assert(!await legacyHost.isVisible(),'Empty package resources remain visible');
+
  await item().locator('[data-resource-card]').first().waitFor();
  await page.locator('[data-work-order]').selectOption('section_work');
  await page.locator('[data-fold-level]').selectOption('objects');
