@@ -11,7 +11,7 @@ from datetime import timedelta
 from core.permissions import require_roles
 from .models import OneCDiagnosticRun, OneCConnection
 
-KINDS = [('diagnostic', 'Диагностика структуры'), ('metadata', 'Чтение названий'), ('positions', 'Загрузка должностей')]
+KINDS = [('diagnostic', 'Диагностика структуры'), ('metadata', 'Чтение названий'), ('positions', 'Загрузка должностей'), ('employees', 'Загрузка сотрудников')]
 
 
 class PositionScheduleForm(forms.Form):
@@ -71,17 +71,19 @@ def jobs(request):
     else:
         status = ''
     kind = request.GET.get('kind', '')
-    if kind == 'positions':
+    if kind == 'employees':
+        query = query.filter(report__employees_import=True)
+    elif kind == 'positions':
         query = query.filter(report__positions_import=True)
     elif kind == 'metadata':
-        query = query.filter(report__metadata_only=True).exclude(report__has_key='positions_import')
+        query = query.filter(report__metadata_only=True).exclude(report__has_key='positions_import').exclude(report__has_key='employees_import')
     elif kind == 'diagnostic':
-        query = query.exclude(report__has_key='positions_import').exclude(report__has_key='metadata_only')
+        query = query.exclude(report__has_key='positions_import').exclude(report__has_key='employees_import').exclude(report__has_key='metadata_only')
     else:
         kind = ''
     page = Paginator(query, 50).get_page(request.GET.get('page'))
     for run in page:
-        run.kind_label = 'Загрузка должностей' if run.report.get('positions_import') else 'Чтение названий' if run.report.get('metadata_only') else 'Диагностика структуры'
+        run.kind_label = 'Загрузка сотрудников' if run.report.get('employees_import') else 'Загрузка должностей' if run.report.get('positions_import') else 'Чтение названий' if run.report.get('metadata_only') else 'Диагностика структуры'
     params = request.GET.copy()
     params.pop('page', None)
     return render(request, 'accounts/one_c_jobs.html', {'page': page, 'pending': pending, 'statuses': statuses,

@@ -60,7 +60,7 @@ def apply_names(run, report):
 
 def source_confirmed(connection):
     """Only enable imports for the confirmed table in the current connection."""
-    latest=connection.runs.filter(status='DONE',server=connection.server,database=connection.database).exclude(report__has_key='positions_import').order_by('-created_at').first()
+    latest=connection.runs.filter(status='DONE',server=connection.server,database=connection.database).exclude(report__has_key='positions_import').exclude(report__has_key='employees_import').order_by('-created_at').first()
     if latest is None:return False
     key='dbo._Reference92'
     label=latest.report.get('metadata_labels',{}).get(key,{})

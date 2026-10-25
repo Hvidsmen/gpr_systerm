@@ -17,6 +17,9 @@ class EmployeeListView(CompanyScopedMixin, ListView):
     context_object_name = 'employees'
     paginate_by = 20
 
+    def get_queryset(self):
+        return super().get_queryset().select_related('position')
+
 
 class EmployeeCreateView(CompanyRequiredMixin, CreateView):
     model = Employee

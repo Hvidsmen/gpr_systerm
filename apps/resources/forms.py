@@ -8,7 +8,7 @@ from .models import Employee, Brigade, EquipmentType, BrigadeGroup, BrigadeMacro
 class EmployeeForm(forms.ModelForm):
     class Meta:
         model = Employee
-        fields = ['first_name', 'last_name', 'middle_name', 'position', 'is_active']
+        fields = ['first_name', 'last_name', 'middle_name', 'employee_number', 'position', 'is_active']
         widgets = {
             'first_name': forms.TextInput(attrs={'class': 'form-control'}),
             'last_name': forms.TextInput(attrs={'class': 'form-control'}),

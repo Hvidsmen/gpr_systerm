@@ -31,10 +31,24 @@ class Employee(BaseCompanyModel):
     )
     is_active = models.BooleanField(_('активен'), default=True)
 
+    employee_number = models.CharField('Табельный номер ЗУП', max_length=60, blank=True)
+    zup_ref = models.CharField(max_length=32, blank=True, editable=False)
+    zup_server = models.CharField(max_length=255, blank=True, editable=False)
+    zup_database = models.CharField(max_length=128, blank=True, editable=False)
+    zup_organisation = models.CharField('Организация ЗУП', max_length=250, blank=True, editable=False)
+    zup_department = models.CharField('Подразделение ЗУП', max_length=250, blank=True, editable=False)
+    zup_position_name = models.CharField('Должность ЗУП', max_length=250, blank=True, editable=False)
+    zup_synced_at = models.DateTimeField('Обновлено из ЗУП', null=True, blank=True, editable=False)
+
+    @property
+    def display_position(self):
+        return self.zup_position_name or str(self.position or '')
+
     class Meta:
         verbose_name = _('сотрудник')
         verbose_name_plural = _('сотрудники')
         ordering = ['last_name', 'first_name']
+        constraints = [models.UniqueConstraint(fields=['company', 'zup_server', 'zup_database', 'zup_ref'], condition=~models.Q(zup_ref=''), name='unique_employee_zup_source')]
 
     def __str__(self):
         return f"{self.last_name} {self.first_name}"

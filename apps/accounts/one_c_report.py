@@ -63,7 +63,7 @@ def download_report(request):
     if connection is None:
         raise Http404('Сначала настройте подключение и выполните диагностику 1С.')
     run = connection.runs.filter(status='DONE', server=connection.server, database=connection.database).exclude(
-        report__has_key='positions_import').order_by('-created_at', '-pk').first()
+        report__has_key='positions_import').exclude(report__has_key='employees_import').order_by('-created_at', '-pk').first()
     if run is None or not run.report.get('schema'):
         raise Http404('Нет структуры для текущего подключения. Выполните диагностику 1С и повторите скачивание.')
     data = structure_report(connection, run)

@@ -8,6 +8,7 @@ param(
     [switch]$RunHere,
     [switch]$MetadataOnly,
     [switch]$PositionsImport,
+    [switch]$EmployeesImport,
     [ValidatePattern('^[a-f0-9]{32}$')][string]$RunId=([guid]::NewGuid().ToString('N')),
     [ValidateRange(1,10000)][int]$SampleLimit=5000
 )
@@ -120,6 +121,30 @@ try {
             $taskName='YDS Portal 1C Diagnostics '+$RunId
             $arguments='-NoProfile -ExecutionPolicy Bypass -File "'+(Join-Path $Root 'ops\diagnose-1c.ps1')+'" -Root "'+$Root+'" -Server "'+$Server+'" -Database "'+$Database+'" -RunId '+$RunId+' -SampleLimit '+$SampleLimit+' -RunHere'
             if($MetadataOnly){$arguments+=' -MetadataOnly'}
+            if($EmployeesImport){
+            $employees=@(Query $connection @'
+SELECT TOP (200001) CONVERT(varchar(32), e.[_IDRRef], 2) AS source_id,
+ e.[_Code] AS employee_number,
+ p.[_Fld31276] AS last_name, p.[_Fld31277] AS first_name, p.[_Fld31278] AS middle_name,
+ CASE WHEN e.[_Fld30280]=0x01 THEN 1 ELSE 0 END AS archived,
+ COALESCE(o.[_Description],h.[_Description],N'') AS organisation,
+ COALESCE(d.[_Description],N'') AS department,
+ COALESCE(j.[_Description],N'') AS position
+FROM [dbo].[_Reference297] e
+LEFT JOIN [dbo].[_Reference383] p ON p.[_IDRRef]=e.[_Fld30276RRef]
+LEFT JOIN [dbo].[_InfoRg21744] k ON k.[_Fld21746RRef]=e.[_IDRRef]
+LEFT JOIN [dbo].[_Reference166] o ON o.[_IDRRef]=k.[_Fld21748RRef]
+LEFT JOIN [dbo].[_Reference166] h ON h.[_IDRRef]=e.[_Fld30277RRef]
+LEFT JOIN [dbo].[_Reference216] d ON d.[_IDRRef]=k.[_Fld21749RRef]
+LEFT JOIN [dbo].[_Reference92] j ON j.[_IDRRef]=k.[_Fld21750RRef]
+WHERE e.[_Marked]=0x00
+'@)
+            Write-Json $reportPath @{employees_import=$true;employees=@($employees)}
+            Write-Json $statusPath @{ok=$true;report=$reportPath}
+            return
+        }
+        if($PositionsImport){$arguments+=' -PositionsImport'}
+            if($EmployeesImport){$arguments+=' -EmployeesImport'}
             if($PythonPath){$arguments+=' -PythonPath "'+$PythonPath+'"'}
             if($TrustServerCertificate){$arguments+=' -TrustServerCertificate'}
             $action=New-ScheduledTaskAction -Execute (Join-Path $PSHOME 'powershell.exe') -Argument $arguments -WorkingDirectory $Root

@@ -1,6 +1,7 @@
 from django.urls import path
 from . import views
 from .purge import single_purge
+from .employee_import import employee_zup_import
 
 from .equipment_import import EquipmentTypeImport, equipment_import_template
 
@@ -12,6 +13,7 @@ urlpatterns = [
     path('equipment-categories/', views.EquipmentCategoryListView.as_view(), name='equipment_category_list'),
     path('equipment-categories/create/', views.equipment_category_create, name='equipment_category_create'),
     path('employees/', views.EmployeeListView.as_view(), name='employee_list'),
+    path('employees/import-zup/', employee_zup_import, name='employee_zup_import'),
     path('employees/create/', views.EmployeeCreateView.as_view(), name='employee_create'),
     path('brigades/', views.BrigadeListView.as_view(), name='brigade_list'),
     path('brigades/create/', views.BrigadeCreateView.as_view(), name='brigade_create'),

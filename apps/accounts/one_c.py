@@ -40,14 +40,14 @@ class ConnectionForm(forms.ModelForm):
         return value
 
 
-def enqueue(connection, actor=None, metadata_only=False, positions=False):
+def enqueue(connection, actor=None, metadata_only=False, positions=False, employees=False):
     # Conditional update is the cross-process claim, including SQLite deployments.
     now=timezone.now()
     from django.db import transaction
     with transaction.atomic():
         claimed=OneCConnection.objects.filter(pk=connection.pk).filter(active_until__isnull=True).update(active_until=now+timedelta(minutes=20))
         if not claimed:return None
-        return OneCDiagnosticRun.objects.create(connection=connection,created_by=actor,server=connection.server,database=connection.database,trust_certificate=connection.trust_certificate,report={'positions_import':True} if positions else {'metadata_only':True} if metadata_only else {})
+        return OneCDiagnosticRun.objects.create(connection=connection,created_by=actor,server=connection.server,database=connection.database,trust_certificate=connection.trust_certificate,report={'employees_import':True} if employees else {'positions_import':True} if positions else {'metadata_only':True} if metadata_only else {})
 
 
 def process_queue():
@@ -58,10 +58,11 @@ def process_queue():
     from .one_c_positions import enqueue_due_positions
     enqueue_due_positions(now)
     for connection in OneCConnection.objects.filter(diagnostic_interval_minutes__gt=0,active_until__isnull=True):
-        last=connection.runs.exclude(report__has_key='positions_import').order_by('-created_at').first()
+        last=connection.runs.exclude(report__has_key='positions_import').exclude(report__has_key='employees_import').order_by('-created_at').first()
         if last is None or last.created_at+timedelta(minutes=connection.diagnostic_interval_minutes)<=now:enqueue(connection)
     for run in OneCDiagnosticRun.objects.filter(status='QUEUED').order_by('created_at'):
         if not OneCDiagnosticRun.objects.filter(pk=run.pk,status='QUEUED').update(status='RUNNING'):continue
+        employees_import=bool(run.report.get('employees_import'))
         try:
             if os.name!='nt':raise RuntimeError('Диагностика MS SQL с Windows-аутентификацией доступна на Windows-сервере портала.')
             root=Path(settings.CONFIG_DIR)
@@ -70,6 +71,11 @@ def process_queue():
             if metadata_only:command.append('-MetadataOnly')
             positions_import=bool(run.report.get('positions_import'))
             if positions_import:command.append('-PositionsImport')
+            employees_import=bool(run.report.get('employees_import'))
+            if employees_import:
+                from .one_c_employees import source_confirmed
+                if not source_confirmed(run.connection):raise ValidationError('Сначала подтвердите структуру сотрудников диагностикой ЗУП.')
+                command.append('-EmployeesImport')
             if run.trust_certificate:command.append('-TrustServerCertificate')
             subprocess.run(command,timeout=900,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,check=False,creationflags=subprocess.CREATE_NO_WINDOW)
             directory=root/'.runtime/1c-diagnostics'/run.pk.hex
@@ -80,8 +86,12 @@ def process_queue():
                 from .one_c_positions import apply_names
                 result=apply_names(run,run.report)
                 run.report={'positions_import':True,'positions_result':result,'position_source':run.report.get('position_source',{}),'position_flags':run.report.get('position_flags',[])}
+            if employees_import:
+                from .one_c_employees import apply_employees
+                result=apply_employees(run,run.report)
+                run.report={'employees_import':True,'employees_result':result}
             if metadata_only:
-                prior=run.connection.runs.filter(status='DONE',server=run.server,database=run.database).exclude(pk=run.pk).exclude(report__has_key='positions_import').order_by('-created_at').first()
+                prior=run.connection.runs.filter(status='DONE',server=run.server,database=run.database).exclude(pk=run.pk).exclude(report__has_key='positions_import').exclude(report__has_key='employees_import').order_by('-created_at').first()
                 if prior:
                     for key in ['candidates','reference_tables_checked','search_terms','sample_limit']:
                         if key in prior.report:run.report[key]=prior.report[key]
@@ -89,6 +99,7 @@ def process_queue():
                 run.report['metadata_only']=True
             run.status='DONE'
         except Exception as exc:
+            if employees_import:run.report={'employees_import':True}
             run.status='ERROR';run.error=str(exc)[:4000]
         finally:
             run.finished_at=timezone.now();run.save(update_fields=['status','error','report','finished_at'])
@@ -114,7 +125,7 @@ def integration(request):
             upload=request.FILES.get('mapping')
             try:
                 if not upload or upload.size>32*1024*1024:raise ValidationError('Выберите JSON-файл до 32 МБ.')
-                report_run=connection.runs.filter(status='DONE',server=connection.server,database=connection.database).exclude(report__has_key='positions_import').order_by('-created_at').first()
+                report_run=connection.runs.filter(status='DONE',server=connection.server,database=connection.database).exclude(report__has_key='positions_import').exclude(report__has_key='employees_import').order_by('-created_at').first()
                 if not report_run:raise ValidationError('Сначала выполните диагностику текущего подключения.')
                 labels=parse_mapping(json.loads(upload.read().decode('utf-8-sig')),report_run.report)
                 existing=connection.metadata_labels if (connection.metadata_server,connection.metadata_database)==(connection.server,connection.database) else {}
@@ -130,7 +141,7 @@ def integration(request):
             messages.success(request,'Диагностика поставлена в очередь. Фоновый обработчик начнёт её в течение минуты.' if run else 'Диагностика уже ожидает запуска или выполняется.')
             return redirect('accounts:one_c_jobs')
     runs=list(connection.runs.defer('report').order_by('-created_at')[:20])
-    latest=connection.runs.filter(status='DONE',server=connection.server,database=connection.database).exclude(report__has_key='positions_import').order_by('-created_at').first()
+    latest=connection.runs.filter(status='DONE',server=connection.server,database=connection.database).exclude(report__has_key='positions_import').exclude(report__has_key='employees_import').order_by('-created_at').first()
     manual_labels=connection.metadata_labels if (connection.metadata_server,connection.metadata_database)==(connection.server,connection.database) else {}
     from .one_c_catalog import catalogue,TYPES
     from django.core.paginator import Paginator
@@ -168,7 +179,7 @@ def table_structure(request, schema, table):
         return HttpResponseNotAllowed(['GET','POST'])
     connection=OneCConnection.objects.filter(company=request.user.company).first()
     if not connection:raise Http404('Подключение не настроено.')
-    latest=connection.runs.filter(status='DONE',server=connection.server,database=connection.database).exclude(report__has_key='positions_import').order_by('-created_at').first()
+    latest=connection.runs.filter(status='DONE',server=connection.server,database=connection.database).exclude(report__has_key='positions_import').exclude(report__has_key='employees_import').order_by('-created_at').first()
     if not latest:raise Http404('Нет результата диагностики для этого подключения.')
     labels=dict(latest.report.get('metadata_labels',{}))
     if (connection.metadata_server,connection.metadata_database)==(connection.server,connection.database):

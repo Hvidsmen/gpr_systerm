@@ -9,30 +9,34 @@
 {% include 'bulk/toolbar.html' %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h2><i class="bi bi-people"></i> Сотрудники</h2>
+    {% if request.user|may:'resources:employee_zup_import' %}<form method="post" action="{% url 'resources:employee_zup_import' %}">{% csrf_token %}<button class="btn btn-outline-primary">Загрузить из ЗУП</button></form>{% endif %}
     {% if request.user|may:'resources:employee_create' %}<a href="{% url 'resources:employee_create' %}" class="btn btn-primary">
         <i class="bi bi-plus-circle"></i> Добавить сотрудника
     </a>{% endif %}
 </div>
 
+<p class="text-muted small">Загрузка из ЗУП создаёт неархивных сотрудников и обновляет ранее связанные записи. Новые архивные сотрудники пропускаются. Ручные карточки автоматически не объединяются. Зарплата и личные документы этим действием не загружаются.</p>
 {% if employees %}
     <div class="table-responsive">
         <table class="table table-hover">
             <thead class="table-light">
                 <tr>{% if request.user|may:bulk_route %}<th style="width:36px" aria-label="Выбор строк"></th>{% endif %}
-                    <th>Фамилия</th>
+                    <th>Табельный номер</th><th>Фамилия</th>
                     <th>Имя</th>
                     <th>Отчество</th>
                     <th>Должность</th>
-                    <th>Статус</th>
+                    <th>Организация / подразделение</th><th>Источник</th><th>Статус</th>
                 </tr>
             </thead>
             <tbody>
                 {% for emp in employees %}
                     <tr>{% if request.user|may:bulk_route %}<td>{% include 'bulk/checkbox.html' with record=emp %}</td>{% endif %}
-                        <td>{{ emp.last_name }}</td>
+                        <td>{{ emp.employee_number|default:"—" }}</td><td>{{ emp.last_name }}</td>
                         <td>{{ emp.first_name }}</td>
                         <td>{{ emp.middle_name|default:"-" }}</td>
-                        <td>{{ emp.position|default:"-" }}</td>
+                        <td>{{ emp.display_position|default:"—" }}</td>
+                        <td>{{ emp.zup_organisation|default:"—" }}{% if emp.zup_department %}<small class="d-block text-muted">{{ emp.zup_department }}</small>{% endif %}</td>
+                        <td>{% if emp.zup_ref %}<span class="badge bg-info text-dark">ЗУП</span><small class="d-block">{{ emp.zup_synced_at|date:'d.m.Y H:i' }}</small>{% else %}Вручную{% endif %}</td>
                         <td>
                             {% if emp.is_active %}
                                 <span class="badge bg-success">Активен</span>
