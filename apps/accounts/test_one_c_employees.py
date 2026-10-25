@@ -56,10 +56,12 @@ class EmployeesImportTests(TestCase):
         position = Position.objects.create(company=self.company, code='position', name='Инженер')
         run = self.run_record()
         result = apply_employees(run, {'employees': [self.row(), self.row('2'*32, archived=1)]})
-        self.assertEqual((result['created'], result['archived_skipped']), (1, 1))
+        self.assertEqual((result['created'], result['archived']), (2, 1))
+        self.assertFalse(Employee.objects.get(company=self.company,zup_ref='2'*32).is_active)
         employee = Employee.objects.get(company=self.company, zup_ref='1'*32)
         self.assertEqual(employee.position, position)
         self.assertEqual(employee.zup_department, 'Отдел')
+        self.assertContains(self.client.get(reverse('resources:employee_list')), 'Уволен / в архиве ЗУП')
         result = apply_employees(run, {'employees': [self.row()]})
         self.assertEqual((result['created'], result['unchanged']), (0, 1))
         result = apply_employees(run, {'employees': [self.row(last_name='Петров', employee_number='002', archived=1)]})
@@ -69,7 +71,7 @@ class EmployeesImportTests(TestCase):
         self.assertEqual(employee.employee_number, '002'); self.assertIsNotNone(employee.zup_synced_at)
         self.assertEqual(manual.last_name, 'Иванов'); self.assertFalse(manual.zup_ref)
         self.assertEqual(other.last_name, 'Иванов')
-        self.assertEqual(Employee.objects.filter(company=self.company).count(), 2)
+        self.assertEqual(Employee.objects.filter(company=self.company).count(), 3)
 
     def test_validation_and_audit_failure_roll_back_entire_batch(self):
         run = self.run_record()
@@ -81,6 +83,21 @@ class EmployeesImportTests(TestCase):
             with self.assertRaises(RuntimeError):apply_employees(run, {'employees': [self.row()]})
         self.assertFalse(Employee.objects.filter(company=self.company).exists())
 
+    def test_employee_sql_runs_after_connection_open_not_in_launcher(self):
+        script=(Path(__file__).resolve().parents[2]/'ops'/'diagnose-1c.ps1').read_text(encoding='utf-8-sig')
+        open_at=script.index('$connection.Open()')
+        query_at=script.index('$employees=@(Query $connection')
+        self.assertGreater(query_at,open_at)
+        self.assertIn("if($EmployeesImport){$arguments+=' -EmployeesImport'}",script[:open_at])
+        self.assertNotIn('SELECT TOP (200001)',script[:open_at])
+        self.assertIn('Write-Json $reportPath @{employees_import=$true;employees=@($employees)}',script[query_at:])
+
+    def test_missing_empty_and_oversized_reports_explain_distinct_causes(self):
+        run=self.run_record()
+        for report,message in [({},'без списка'),({'employees':{}},'формат'),({'employees':[]},'0 сотрудников'),({'employees':[{}]*200001},'200001 строк')]:
+            with self.assertRaisesMessage(ValidationError,message):apply_employees(run,report)
+        self.assertFalse(Employee.objects.filter(company=self.company).exists())
+
     def test_admin_button_queue_results_and_schema_report_after_import(self):
         self.assertContains(self.client.get(reverse('resources:employee_list')), 'Загрузить из ЗУП')
         self.assertEqual(self.client.get(self.url).status_code, 405)
@@ -88,7 +105,7 @@ class EmployeesImportTests(TestCase):
         self.assertEqual(self.client.post(self.url).status_code, 302)
         self.assertEqual(self.connection.runs.filter(report__employees_import=True).count(), 1)
         run = self.connection.runs.filter(report__employees_import=True).get()
-        run.report = {'employees_import': True, 'employees_result': {'created': 1, 'updated': 0, 'unchanged': 0, 'archived_skipped': 0}}
+        run.report = {'employees_import': True, 'employees_result': {'created': 1, 'updated': 0, 'unchanged': 0, 'archived': 0}}
         run.status = 'DONE'; run.save()
         self.assertContains(self.client.get(reverse('accounts:one_c_jobs')), 'Загрузка сотрудников')
         response = self.client.get(reverse('accounts:one_c_report'))
@@ -98,6 +115,23 @@ class EmployeesImportTests(TestCase):
         self.admin.role = role; self.admin.save()
         self.assertEqual(self.client.post(self.url).status_code, 403)
         self.assertNotContains(self.client.get(reverse('resources:employee_list')), 'Загрузить из ЗУП')
+
+    def test_worker_rejects_diagnostic_instead_of_employee_result(self):
+        with TemporaryDirectory() as directory:
+            run=enqueue(self.connection,self.admin,employees=True)
+            path=Path(directory)/'.runtime/1c-diagnostics'/run.pk.hex
+            path.mkdir(parents=True)
+            (path/'status.json').write_text(json.dumps({'ok':True}))
+            (path/'report.json').write_text(json.dumps({'schema':[]}))
+            from pathlib import PosixPath
+            with override_settings(CONFIG_DIR=directory),patch('apps.accounts.one_c.os.name','nt'),patch('apps.accounts.one_c.Path',PosixPath),patch('apps.accounts.one_c.subprocess.CREATE_NO_WINDOW',0,create=True),patch('apps.accounts.one_c.subprocess.run'):
+                process_queue()
+            run.refresh_from_db();self.connection.refresh_from_db()
+            self.assertEqual(run.status,'ERROR')
+            self.assertIn('другое задание',run.error)
+            self.assertEqual(run.report,{'employees_import':True})
+            self.assertIsNone(self.connection.active_until)
+            self.assertFalse(Employee.objects.filter(company=self.company).exists())
 
     def test_worker_reads_employee_result_and_applies_it_without_retaining_raw_rows(self):
         with TemporaryDirectory() as directory:

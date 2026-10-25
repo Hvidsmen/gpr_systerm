@@ -87,6 +87,7 @@ def process_queue():
                 result=apply_names(run,run.report)
                 run.report={'positions_import':True,'positions_result':result,'position_source':run.report.get('position_source',{}),'position_flags':run.report.get('position_flags',[])}
             if employees_import:
+                if run.report.get('employees_import') is not True:raise ValidationError('Обработчик 1С выполнил другое задание вместо загрузки сотрудников. Обновите проект и фоновый портал, затем повторите запуск. Изменения не внесены.')
                 from .one_c_employees import apply_employees
                 result=apply_employees(run,run.report)
                 run.report={'employees_import':True,'employees_result':result}

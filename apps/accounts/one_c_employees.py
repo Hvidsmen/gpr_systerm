@@ -47,8 +47,14 @@ def apply_employees(run, report):
     if (connection.server, connection.database) != (run.server, run.database) or not source_confirmed(connection):
         raise ValidationError('Подключение или подтверждённая структура ЗУП изменились. Выполните диагностику и повторите загрузку.')
     rows = report.get('employees')
-    if not isinstance(rows, list) or not rows or len(rows) > 200000:
-        raise ValidationError('ЗУП не вернула список сотрудников или превышен лимит 200 000 записей. Изменения не внесены.')
+    if 'employees' not in report:
+        raise ValidationError('Обработчик 1С вернул отчёт без списка сотрудников. Обновите проект и фоновый портал, затем повторите загрузку. Изменения не внесены.')
+    if not isinstance(rows, list):
+        raise ValidationError('Неверный формат списка сотрудников из ЗУП: ожидался массив записей. Изменения не внесены.')
+    if not rows:
+        raise ValidationError('ЗУП вернула 0 сотрудников без пометки удаления. Проверьте источник и подключение. Изменения не внесены.')
+    if len(rows) > 200000:
+        raise ValidationError(f'Источник вернул {len(rows)} строк; лимит загрузки — 200 000. Изменения не внесены.')
     normalized, seen = [], set()
     for item in rows:
         if not isinstance(item, dict):
@@ -79,15 +85,12 @@ def apply_employees(run, report):
     positions = {}
     for position in Position.objects.filter(company_id=connection.company_id):
         positions.setdefault(position.name.strip().casefold(), []).append(position)
-    counts = {'created': 0, 'updated': 0, 'unchanged': 0, 'archived_skipped': 0}
+    counts = {'created': 0, 'updated': 0, 'unchanged': 0, 'archived': sum(not values['is_active'] for _, values in normalized)}
     now = timezone.now()
     for ref, values in normalized:
         matches = positions.get(values['zup_position_name'].casefold(), [])
         values['position'] = matches[0] if len(matches) == 1 else None
         employee = existing.get(ref)
-        if employee is None and not values['is_active']:
-            counts['archived_skipped'] += 1
-            continue
         if employee is None:
             employee = Employee(**source, zup_ref=ref, **values)
             counts['created'] += 1
