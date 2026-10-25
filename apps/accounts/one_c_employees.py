@@ -36,6 +36,15 @@ EXPECTED = {
 EXPECTED['_Reference383'][1].update({'_Fld31257': 'ДатаРождения', '_Fld31259': 'ИНН', '_Fld31260': 'СтраховойНомерПФР', '_Fld31261': 'МестоРождения'})
 EXPECTED['_InfoRg21744'][1].update({'_Fld21751': 'ДатаУвольнения', '_Fld21754': 'ДатаПриема', '_Fld45771': 'КоличествоСтавок'})
 EXPECTED['_InfoRg18183'][1]['_Fld18203_RRRef'] = 'РегистраторЗаписи'
+EXPECTED['_Reference297'][1]['_Fld30282RRef'] = 'ГоловнойСотрудник'
+EXPECTED['_InfoRg18211'] = ('РегистрСведений.КадроваяИсторияСотрудниковИспр', {
+    '_Fld18213': 'ПериодИзмерение', '_Fld18214RRef': 'Сотрудник', '_Fld18222RRef': 'Должность'})
+EXPECTED['_InfoRg20861'] = ('РегистрСведений.РеестрКадровыхПриказов', {
+    '_Active': 'Активность записи', '_Fld20862RRef': 'Сотрудник', '_Fld20867': 'Дата',
+    '_Fld20869_RRRef': 'Должность', '_Fld20869_S': 'Должность'})
+PROBES = ('current_row', 'current_position_ref', 'current_position_join', 'interval_position_join',
+          'history_position_join', 'staffing_position_join', 'corrected_history_position_ref',
+          'order_position', 'head_employee_position_ref')
 
 # Only these extra, validated fields can enter the card. Personal/pay data is
 # rendered solely for ADMIN/HR_HEAD; it is never added to list/job/audit output.
@@ -130,6 +139,7 @@ def apply_employees(run, report):
     if len(rows) > 200000:
         raise ValidationError(f'Источник вернул {len(rows)} строк; лимит загрузки — 200 000. Изменения не внесены.')
     normalized, seen = [], set()
+    coverage = {'all': {key: 0 for key in PROBES}, 'active': {key: 0 for key in PROBES}}
     for item in rows:
         if not isinstance(item, dict):
             raise ValidationError('Некорректная запись сотрудника.')
@@ -153,6 +163,13 @@ def apply_employees(run, report):
             raise ValidationError('Некорректный признак архива сотрудника.')
         values['is_active'] = not bool(item['archived'])
         values['zup_card'] = card_values(item)
+        for probe in PROBES:
+            value = item.get('probe_'+probe, 0)
+            if value not in (0, 1, False, True):
+                raise ValidationError('Некорректная сводка кадровых источников ЗУП.')
+            coverage['all'][probe] += int(value)
+            if values['is_active']:
+                coverage['active'][probe] += int(value)
         normalized.append((ref, values))
     source = {'company_id': connection.company_id, 'zup_server': run.server.casefold(), 'zup_database': run.database.casefold()}
     existing = {e.zup_ref: e for e in Employee.objects.select_for_update().filter(**source).exclude(zup_ref='')}
@@ -163,6 +180,8 @@ def apply_employees(run, report):
               'without_position':sum(not values['zup_position_name'] for _,values in normalized),
               'incomplete_names':sum(not values['first_name'] or not values['last_name'] for _,values in normalized),
               'unnamed':sum(not any(values[name] for name in ['zup_full_name','first_name','last_name','middle_name']) for _,values in normalized)}
+    counts['position_diagnostics'] = {'version': 1, 'employees': len(normalized),
+        'active_employees': sum(values['is_active'] for _, values in normalized), 'coverage': coverage}
     now = timezone.now()
     for ref, values in normalized:
         matches = positions.get(values['zup_position_name'].casefold(), [])

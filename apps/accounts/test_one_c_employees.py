@@ -62,7 +62,7 @@ class EmployeesImportTests(TestCase):
         employee = Employee.objects.get(company=self.company, zup_ref='1'*32)
         self.assertEqual(employee.position, position)
         self.assertEqual(employee.zup_department, 'Отдел')
-        self.assertContains(self.client.get(reverse('resources:employee_list')), 'Уволен / в архиве ЗУП')
+        self.assertContains(self.client.get(reverse('resources:employee_list'), {'include_archived': '1'}), 'Уволен / в архиве ЗУП')
         result = apply_employees(run, {'employees': [self.row()]})
         self.assertEqual((result['created'], result['unchanged']), (0, 1))
         result = apply_employees(run, {'employees': [self.row(last_name='Петров', employee_number='002', archived=1)]})
@@ -94,7 +94,7 @@ class EmployeesImportTests(TestCase):
         self.assertEqual(missing.name_note,'ФИО не заполнено в ЗУП')
         again=apply_employees(run,{'employees':rows})
         self.assertEqual((again['created'],again['unchanged']),(0,3))
-        response=self.client.get(reverse('resources:employee_list'))
+        response=self.client.get(reverse('resources:employee_list'), {'include_archived': '1'})
         self.assertContains(response,'Полное ФИО из ЗУП')
         self.assertContains(response,'Уволен / в архиве ЗУП')
         self.assertContains(response,'ФИО не заполнено в ЗУП')
@@ -106,6 +106,23 @@ class EmployeesImportTests(TestCase):
         self.assertFalse(form.is_valid())
         self.assertIn('first_name',form.errors);self.assertIn('last_name',form.errors)
         with self.assertRaises(ValidationError):Employee(company=self.company).full_clean()
+
+    def test_position_diagnostics_download_has_only_coverage_and_is_company_scoped(self):
+        run = self.run_record()
+        result = apply_employees(run, {'employees': [self.row(probe_current_row=1,
+            probe_current_position_ref=0, probe_order_position=1, probe_corrected_history_position_ref=1)]})
+        run.report = {'employees_import': True, 'employees_result': result}
+        run.status = 'DONE'; run.save()
+        response = self.client.get(reverse('accounts:one_c_report'), {'employee_run': str(run.pk)})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['summary']['coverage']['active']['order_position'], 1)
+        for secret in ['Иванов', 'Иванович', 'Организация', 'Инженер', 'source_id', 'first_name']:
+            self.assertNotContains(response, secret)
+        with self.assertRaises(ValidationError):
+            apply_employees(run, {'employees': [self.row(probe_current_row='bad')]})
+        other = Company.objects.create(name='Diagnostic other')
+        self.admin.company = other; self.admin.save()
+        self.assertEqual(self.client.get(reverse('accounts:one_c_report'), {'employee_run': str(run.pk)}).status_code, 404)
 
     def test_validation_and_audit_failure_roll_back_entire_batch(self):
         run = self.run_record()
@@ -124,7 +141,7 @@ class EmployeesImportTests(TestCase):
         self.assertGreater(query_at,open_at)
         self.assertIn("if($EmployeesImport){$arguments+=' -EmployeesImport'}",script[:open_at])
         self.assertNotIn('SELECT TOP (200001)',script[:open_at])
-        self.assertIn('Write-Json $reportPath @{employees_import=$true;employees_card_version=1;employees=@($employees)}',script[query_at:])
+        self.assertIn('Write-Json $reportPath @{employees_import=$true;employees_card_version=2;employees=@($employees)}',script[query_at:])
         self.assertIn("NULLIF(LTRIM(RTRIM(p.[_Fld31265])),N'')",script[query_at:])
         self.assertIn("NULLIF(LTRIM(RTRIM(p.[_Description])),N'')",script[query_at:])
         self.assertIn("NULLIF(LTRIM(RTRIM(e.[_Description])),N'')",script[query_at:])
@@ -136,7 +153,7 @@ class EmployeesImportTests(TestCase):
         self.assertFalse(Employee.objects.filter(company=self.company).exists())
 
     def test_admin_button_queue_results_and_schema_report_after_import(self):
-        self.assertContains(self.client.get(reverse('resources:employee_list')), 'Загрузить из ЗУП')
+        self.assertContains(self.client.get(reverse('resources:employee_list'), {'include_archived': '1'}), 'Загрузить из ЗУП')
         self.assertEqual(self.client.get(self.url).status_code, 405)
         self.assertEqual(self.client.post(self.url).status_code, 302)
         self.assertEqual(self.client.post(self.url).status_code, 302)
@@ -151,7 +168,7 @@ class EmployeesImportTests(TestCase):
         role, _ = Role.objects.get_or_create(code='PLANNER', defaults={'name': 'Planner'})
         self.admin.role = role; self.admin.save()
         self.assertEqual(self.client.post(self.url).status_code, 403)
-        self.assertNotContains(self.client.get(reverse('resources:employee_list')), 'Загрузить из ЗУП')
+        self.assertNotContains(self.client.get(reverse('resources:employee_list'), {'include_archived': '1'}), 'Загрузить из ЗУП')
 
     def test_worker_rejects_diagnostic_instead_of_employee_result(self):
         with TemporaryDirectory() as directory:
@@ -195,7 +212,7 @@ class EmployeesImportTests(TestCase):
             path = Path(directory)/'.runtime/1c-diagnostics'/run.pk.hex
             path.mkdir(parents=True)
             (path/'status.json').write_text(json.dumps({'ok': True}))
-            (path/'report.json').write_text(json.dumps({'employees_import': True, 'employees_card_version': 1, 'employees': [self.row()]}))
+            (path/'report.json').write_text(json.dumps({'employees_import': True, 'employees_card_version': 2, 'employees': [self.row()]}))
             from pathlib import PosixPath
             with override_settings(CONFIG_DIR=directory), patch('apps.accounts.one_c.os.name', 'nt'), patch('apps.accounts.one_c.Path', PosixPath), patch('apps.accounts.one_c.subprocess.CREATE_NO_WINDOW', 0, create=True), patch('apps.accounts.one_c.subprocess.run') as execute:
                 process_queue()

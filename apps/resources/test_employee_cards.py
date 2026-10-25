@@ -36,7 +36,7 @@ class EmployeeCardTests(TestCase):
     def test_list_links_to_real_card_with_source_position_and_archive(self):
         employee = self.import_card()
         url = reverse('resources:employee_detail', args=[employee.pk])
-        self.assertContains(self.client.get(reverse('resources:employee_list')), 'href="'+url+'"')
+        self.assertContains(self.client.get(reverse('resources:employee_list'), {'include_archived': '1'}), 'href="'+url+'"')
         response = self.client.get(url)
         for text in ['Последнее место работы', 'Уволен / в архиве ЗУП', 'Должность из кадровой истории',
                      'Кадровая история', '03.02.1990', '15.01.2020', '30.04.2025',
@@ -55,7 +55,7 @@ class EmployeeCardTests(TestCase):
                 self.assertNotContains(response, secret)
         self.role('HR_HEAD')
         self.assertContains(self.client.get(reverse('resources:employee_detail', args=[employee.pk])), '123456789012')
-        self.assertNotContains(self.client.get(reverse('resources:employee_list')), '123456789012')
+        self.assertNotContains(self.client.get(reverse('resources:employee_list'), {'include_archived': '1'}), '123456789012')
 
     def test_company_scope_get_and_post_and_source_card_cannot_be_overwritten(self):
         employee = self.import_card()

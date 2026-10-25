@@ -30,7 +30,7 @@ class EmployeeCardBrowserTests(StaticLiveServerTestCase):
             zup_card={'birth_date': '1990-02-03', 'inn': '123456789012', 'snils': '111-222-333 44', 'tariff_rate': '123456.78',
                       'position_source': 'Кадровая история', 'hire_date': '2020-01-15', 'dismissal_date': '2025-04-30',
                       'schedule': 'Пятидневная рабочая неделя', 'fte': '1'})
-        config = dict(base=self.live_server_url, listing=reverse('resources:employee_list'),
+        config = dict(base=self.live_server_url, listing=reverse('resources:employee_list')+'?include_archived=1',
                       detail=reverse('resources:employee_detail', args=[employee.pk]),
                       admin_cookie=cookie(user('ADMIN')), planner_cookie=cookie(user('PLANNER')),
                       chromium=shutil.which('chromium'))

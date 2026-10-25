@@ -16,6 +16,15 @@
 </div>
 
 <p class="text-muted small">Нажмите ФИО, чтобы открыть карточку сотрудника. Загрузка из ЗУП обновляет кадровые данные и включает уволенных с пометкой об архиве. Личные данные и оплата труда в карточке доступны кадровой службе и администратору.</p>
+<form method="get" class="card card-body mb-3">
+  <div class="row g-3 align-items-end">
+    <div class="col-md-4">{{ filter_form.q.label_tag }}{{ filter_form.q }}{{ filter_form.q.errors }}</div>
+    <div class="col-md-4">{{ filter_form.position.label_tag }}{{ filter_form.position }}{{ filter_form.position.errors }}</div>
+    <div class="col-md-4 d-flex gap-2 align-items-center"><button class="btn btn-primary">Найти</button><a class="btn btn-outline-secondary" href="{% url 'resources:employee_list' %}">Сбросить</a></div>
+    <div class="col-12"><label class="form-check">{{ filter_form.include_archived }} <span class="form-check-label">{{ filter_form.include_archived.label }}</span></label></div>
+  </div>
+</form>
+<p class="text-muted small">Найдено: {{ paginator.count }}{% if not filter_form.include_archived.value %} · Только активные сотрудники{% endif %}</p>
 {% if employees %}
     <div class="table-responsive">
         <table class="table table-hover">
@@ -45,6 +54,7 @@
             </tbody>
         </table>
     </div>
+    {% include 'resources/catalog_pagination.html' %}
 {% else %}
     <div class="alert alert-info">Сотрудники не найдены.</div>
 {% endif %}

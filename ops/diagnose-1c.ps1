@@ -197,12 +197,21 @@ SELECT TOP (200001) CONVERT(varchar(32), e.[_IDRRef], 2) AS source_id,
  p.[_Fld31259] AS inn, p.[_Fld31260] AS snils, p.[_Fld31261] AS birth_place,
  CASE WHEN YEAR(k.[_Fld21754])>@dateOffset+1 THEN CONVERT(char(10),DATEADD(year,-@dateOffset,k.[_Fld21754]),23) END AS hire_date,
  CASE WHEN YEAR(k.[_Fld21751])>@dateOffset+1 THEN CONVERT(char(10),DATEADD(year,-@dateOffset,k.[_Fld21751]),23) END AS dismissal_date,
- COALESCE(k.[_Fld45771],i.[_Fld18200],h.[_Fld18164]) AS fte,
+ CASE WHEN NULLIF(j.[_Description],N'') IS NOT NULL THEN k.[_Fld45771] ELSE COALESCE(i.[_Fld18200],h.[_Fld18164],NULLIF(k.[_Fld45771],0)) END AS fte,
  g.[_Description] AS schedule,
  CASE WHEN pay.candidates=1 THEN pay.tariff_rate END AS tariff_rate,
  CASE WHEN pay.candidates=1 THEN pay.combined_tariff_rate END AS combined_tariff_rate,
  CASE WHEN pay.candidates=1 THEN pay.payroll_fund END AS payroll_fund,
- CASE WHEN pay.candidates=1 THEN CONVERT(char(10),DATEADD(year,-@dateOffset,pay.since),23) END AS pay_since
+ CASE WHEN pay.candidates=1 THEN CONVERT(char(10),DATEADD(year,-@dateOffset,pay.since),23) END AS pay_since,
+ CASE WHEN k.[_Fld21746RRef] IS NOT NULL THEN 1 ELSE 0 END AS probe_current_row,
+ CASE WHEN k.[_Fld21750RRef]<>0x00000000000000000000000000000000 THEN 1 ELSE 0 END AS probe_current_position_ref,
+ CASE WHEN NULLIF(j.[_Description],N'') IS NOT NULL THEN 1 ELSE 0 END AS probe_current_position_join,
+ CASE WHEN NULLIF(ji.[_Description],N'') IS NOT NULL THEN 1 ELSE 0 END AS probe_interval_position_join,
+ CASE WHEN NULLIF(jh.[_Description],N'') IS NOT NULL THEN 1 ELSE 0 END AS probe_history_position_join,
+ CASE WHEN NULLIF(js.[_Description],N'') IS NOT NULL THEN 1 ELSE 0 END AS probe_staffing_position_join,
+ CASE WHEN EXISTS(SELECT 1 FROM [dbo].[_InfoRg18211] cx WHERE cx.[_Fld18214RRef]=e.[_IDRRef] AND cx.[_Fld18213]<=@storedNow AND cx.[_Fld18222RRef]<>0x00000000000000000000000000000000) THEN 1 ELSE 0 END AS probe_corrected_history_position_ref,
+ CASE WHEN EXISTS(SELECT 1 FROM [dbo].[_InfoRg20861] ox WHERE ox.[_Fld20862RRef]=e.[_IDRRef] AND ox.[_Active]=0x01 AND ox.[_Fld20867]<=@storedNow AND (ox.[_Fld20869_RRRef]<>0x00000000000000000000000000000000 OR NULLIF(LTRIM(RTRIM(ox.[_Fld20869_S])),N'') IS NOT NULL)) THEN 1 ELSE 0 END AS probe_order_position,
+ CASE WHEN e.[_Fld30282RRef]<>e.[_IDRRef] AND EXISTS(SELECT 1 FROM [dbo].[_InfoRg21744] hx WHERE hx.[_Fld21746RRef]=e.[_Fld30282RRef] AND hx.[_Fld21750RRef]<>0x00000000000000000000000000000000) THEN 1 ELSE 0 END AS probe_head_employee_position_ref
 FROM [dbo].[_Reference297] e
 LEFT JOIN [dbo].[_Reference383] p ON p.[_IDRRef]=e.[_Fld30276RRef]
 LEFT JOIN [dbo].[_InfoRg21744] k ON k.[_Fld21746RRef]=e.[_IDRRef]
@@ -251,7 +260,7 @@ OUTER APPLY (
 ) pay
 WHERE e.[_Marked]=0x00
 '@ @{'@dateOffset'=$dateOffset;'@storedNow'=$storedNow} 180)
-            Write-Json $reportPath @{employees_import=$true;employees_card_version=1;employees=@($employees)}
+            Write-Json $reportPath @{employees_import=$true;employees_card_version=2;employees=@($employees)}
             Write-Json $statusPath @{ok=$true;report=$reportPath}
             return
         }

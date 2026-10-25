@@ -59,6 +59,23 @@ def structure_report(connection, run):
 @require_GET
 def download_report(request):
     require_roles(request.user, {'ADMIN'})
+    if request.GET.get('employee_run'):
+        from .models import OneCDiagnosticRun
+        from django.shortcuts import get_object_or_404
+        from django.core.exceptions import ValidationError
+        try:
+            run = get_object_or_404(OneCDiagnosticRun, pk=request.GET['employee_run'],
+                connection__company_id=request.user.company_id, status='DONE', report__employees_import=True)
+        except (ValidationError, ValueError):
+            raise Http404('Задание не найдено.')
+        stats = run.report.get('employees_result', {}).get('position_diagnostics')
+        if not stats:
+            raise Http404('У этого запуска ещё нет проверки кадровых источников.')
+        response = JsonResponse({'format': 'gpr-zup-position-diagnostics', 'version': 1,
+            'run_id': str(run.pk), 'generated_at': run.finished_at.isoformat() if run.finished_at else None,
+            'summary': stats}, json_dumps_params={'ensure_ascii': False, 'indent': 2})
+        response['Content-Disposition'] = f'attachment; filename="zup-positions-{run.pk.hex}.json"'
+        return response
     connection = OneCConnection.objects.filter(company_id=request.user.company_id).first()
     if connection is None:
         raise Http404('Сначала настройте подключение и выполните диагностику 1С.')

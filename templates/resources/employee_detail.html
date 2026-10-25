@@ -25,7 +25,7 @@
 <section class="employee-card-section" id="employment">
   <h2>{% if employee.is_active %}Место работы{% else %}Последнее место работы{% endif %}</h2>
   <dl>{% for label,value in employment_rows %}<dt>{{ label }}</dt><dd>{{ value }}</dd>{% endfor %}</dl>
-  {% if position_source %}<p class="text-muted small mb-0">Источник должности: {{ position_source }}{% if position_since != '—' %} · запись от {{ position_since }}{% endif %}.</p>{% elif employee.zup_ref and not employee.display_position %}<p class="text-muted small mb-0">Должность не получена. Повторная загрузка проверит текущие данные, кадровую историю и штатное расписание ЗУП.</p>{% endif %}
+  {% if position_source %}<p class="text-muted small mb-0">Источник должности: {{ position_source }}{% if position_since != '—' %} · запись от {{ position_since }}{% endif %}.</p>{% elif employee.zup_ref and not employee.display_position %}<p class="text-muted small mb-0">Последняя загрузка не вернула должность. Администратор может скачать проверку кадровых источников в результате задания загрузки ЗУП.</p>{% endif %}
 </section>
 {% if can_view_private %}
 <section class="employee-card-section" id="personal">

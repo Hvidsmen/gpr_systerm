@@ -18,7 +18,16 @@ class EmployeeListView(CompanyScopedMixin, ListView):
     paginate_by = 20
 
     def get_queryset(self):
-        return super().get_queryset().select_related('position')
+        from .employee_filters import EmployeeFilterForm, filtered_employees
+        self.filter_form = EmployeeFilterForm(self.request.GET)
+        return filtered_employees(super().get_queryset(), self.filter_form).select_related('position').order_by('last_name', 'first_name', 'zup_full_name', 'pk')
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        params = self.request.GET.copy()
+        params.pop('page', None)
+        context.update(filter_form=self.filter_form, filter_query=params.urlencode())
+        return context
 
 
 class EmployeeCreateView(CompanyRequiredMixin, CreateView):
