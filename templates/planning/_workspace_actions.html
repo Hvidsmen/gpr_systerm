@@ -9,9 +9,6 @@
 {% if can_prepare_resources and resource_preparation %}<form method="post" action="{% url 'planning:preparation_gpr' version.pk %}">{% csrf_token %}<button class="btn btn-outline-primary btn-sm" name="action" value="ready">Ресурсы определены</button></form>{% endif %}
 {% if can_prepare_resources %}<form method="post" action="{% url 'planning:global_action' version.pk 'submit' %}">{% csrf_token %}<button class="btn btn-outline-primary btn-sm" {% if not resources_ready or not estimator_approved %}disabled title="Сначала подтвердите ресурсы и завершите проверку сметчиком"{% endif %}>Отправить на согласование</button></form>{% endif %}
 {% if request.user|may:'planning:estimate_review_list' %}<a class="btn btn-outline-secondary btn-sm" href="{% url 'planning:estimate_review_list' %}">Задания сметчика</a>{% endif %}
-<select class="form-select form-select-sm w-auto" data-fold-level data-native-select="true" aria-label="Уровень сворачивания">
-<option value="objects">Комплексные объекты</option><option value="packages">Комплексные работы</option><option value="resources">Ресурсы работ</option><option value="sections">Разделы плана</option>
-</select><button type="button" class="btn btn-outline-secondary btn-sm" data-fold-level-action="collapse">Свернуть уровень</button><button type="button" class="btn btn-outline-secondary btn-sm" data-fold-level-action="expand">Развернуть уровень</button>
 <button type="button" class="btn btn-outline-secondary btn-sm" data-expand-allocations>Развернуть всё</button><button type="button" class="btn btn-outline-secondary btn-sm" data-collapse-allocations>Свернуть всё</button>
 {% if request.user|may:'planning:workspace_detail' %}<a class="btn btn-outline-secondary btn-sm" href="{% url 'planning:workspace_detail' workspace.pk %}">История ГПР</a>{% endif %}
 {% if request.user|may:'planning:calendar_list' %}<a class="btn btn-outline-secondary btn-sm" href="{% url 'planning:calendar_list' %}">Календари</a>{% endif %}
