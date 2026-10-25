@@ -1,5 +1,7 @@
-"""Import employee catalogue identities from the verified ZUP schema (no payroll)."""
+"""Import employee cards from the verified ZUP schema; never infer enum labels."""
 import re
+from datetime import date
+from decimal import Decimal, InvalidOperation
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
@@ -13,7 +15,73 @@ EXPECTED = {
     '_Reference216': ('Справочник.ПодразделенияОрганизаций', {}),
     '_Reference92': ('Справочник.Должности', {}),
     '_InfoRg21744': ('РегистрСведений.ТекущиеКадровыеДанныеСотрудников', {'_Fld21746RRef': 'Сотрудник', '_Fld21748RRef': 'ТекущаяОрганизация', '_Fld21749RRef': 'ТекущееПодразделение', '_Fld21750RRef': 'ТекущаяДолжность'}),
+    '_Reference394': ('Справочник.ШтатноеРасписание', {'_Fld31539RRef': 'Подразделение', '_Fld31540RRef': 'Должность'}),
+    '_Reference75': ('Справочник.ГрафикиРаботыСотрудников', {}),
+    '_InfoRg18183': ('РегистрСведений.КадроваяИсторияСотрудниковИнтервальный', {
+        '_Fld18184RRef': 'Сотрудник', '_Fld18186': 'ДатаНачала', '_Fld18189': 'ПериодЗаписи',
+        '_Fld18193RRef': 'Организация', '_Fld18194RRef': 'Должность', '_Fld18198RRef': 'Подразделение',
+        '_Fld18199RRef': 'ДолжностьПоШтатномуРасписанию', '_Fld18200': 'КоличествоСтавок', '_Fld18205': 'ПустойИнтервал'}),
+    '_InfoRg18156': ('РегистрСведений.КадроваяИсторияСотрудников', {
+        '_Period': 'Период', '_Active': 'Активность записи', '_Fld18157RRef': 'Сотрудник',
+        '_Fld18160RRef': 'Организация', '_Fld18161RRef': 'Подразделение', '_Fld18162RRef': 'Должность',
+        '_Fld18163RRef': 'ДолжностьПоШтатномуРасписанию', '_Fld18164': 'КоличествоСтавок'}),
+    '_InfoRg16734': ('РегистрСведений.ГрафикРаботыСотрудников', {
+        '_Period': 'Период', '_Active': 'Активность записи', '_Fld16735RRef': 'Сотрудник',
+        '_Fld16737RRef': 'ГрафикРаботы', '_Fld16738': 'ДействуетДо'}),
+    '_InfoRg20185': ('РегистрСведений.ПлановыйФОТИтоги', {
+        '_Period': 'Период', '_Fld20186RRef': 'Сотрудник', '_Fld20187': 'ДатаОкончания',
+        '_Fld20193': 'ТарифнаяСтавка', '_Fld20194': 'СовокупнаяТарифнаяСтавка',
+        '_Fld20195': 'ФОТ', '_Fld20197': 'Используется'}),
 }
+EXPECTED['_Reference383'][1].update({'_Fld31257': 'ДатаРождения', '_Fld31259': 'ИНН', '_Fld31260': 'СтраховойНомерПФР', '_Fld31261': 'МестоРождения'})
+EXPECTED['_InfoRg21744'][1].update({'_Fld21751': 'ДатаУвольнения', '_Fld21754': 'ДатаПриема', '_Fld45771': 'КоличествоСтавок'})
+EXPECTED['_InfoRg18183'][1]['_Fld18203_RRRef'] = 'РегистраторЗаписи'
+
+# Only these extra, validated fields can enter the card. Personal/pay data is
+# rendered solely for ADMIN/HR_HEAD; it is never added to list/job/audit output.
+CARD_TEXT = {'inn': 12, 'snils': 30, 'birth_place': 500, 'schedule': 250,
+             'position_source': 100}
+CARD_DATES = {'birth_date', 'hire_date', 'dismissal_date', 'position_since', 'pay_since'}
+CARD_NUMBERS = {'fte', 'tariff_rate', 'combined_tariff_rate', 'payroll_fund'}
+
+
+def card_values(item):
+    result = {}
+    for key, limit in CARD_TEXT.items():
+        value = item.get(key)
+        if value is None:
+            continue
+        if not isinstance(value, str) or len(value.strip()) > limit:
+            raise ValidationError('Некорректное текстовое поле карточки ЗУП. Изменения не внесены.')
+        if value.strip():
+            result[key] = value.strip()
+    for key in CARD_DATES:
+        value = item.get(key)
+        if value in (None, ''):
+            continue
+        try:
+            if not isinstance(value, str) or len(value) != 10:
+                raise ValueError
+            parsed = date.fromisoformat(value)
+            if not 1900 <= parsed.year <= 2199:
+                raise ValueError
+        except (ValueError, TypeError):
+            raise ValidationError('Некорректная дата карточки ЗУП. Проверьте смещение дат источника. Изменения не внесены.')
+        result[key] = parsed.isoformat()
+    for key in CARD_NUMBERS:
+        value = item.get(key)
+        if value is None or value == '':
+            continue
+        try:
+            if isinstance(value, bool) or len(str(value)) > 40:
+                raise ValueError
+            number = Decimal(str(value))
+            if not number.is_finite() or not 0 <= number <= Decimal('999999999999.99') or number.as_tuple().exponent < -6:
+                raise ValueError
+            result[key] = format(number.normalize(), 'f')
+        except (InvalidOperation, ValueError):
+            raise ValidationError('Некорректное числовое поле карточки ЗУП. Изменения не внесены.')
+    return result
 
 
 def source_confirmed(connection):
@@ -32,10 +100,16 @@ def source_confirmed(connection):
         standard = {'_IDRRef', '_Description'} if table.startswith('_Reference') else set()
         if table == '_Reference297':
             standard |= {'_Marked', '_Code'}
+        if table in {'_InfoRg18156', '_InfoRg16734'}:
+            standard |= {'_RecorderRRef', '_LineNo'}
         if label.get('name') != name or not standard.union(fields).issubset(columns):
             return False
-        if any(label.get('columns', {}).get(key) != value for key, value in fields.items()):
+        # Standard register columns have system names in SQL, not custom
+        # metadata labels. Their presence is checked above.
+        if any(label.get('columns', {}).get(key) != value for key, value in fields.items() if key not in {'_Period', '_Active'}):
             return False
+    if not any(c.get('schema') == 'dbo' and c.get('table') == '_YearOffset' and c.get('column') == 'Offset' for c in run.report.get('schema', [])):
+        return False
     return True
 
 
@@ -78,6 +152,7 @@ def apply_employees(run, report):
         if item.get('archived') not in (0, 1, False, True):
             raise ValidationError('Некорректный признак архива сотрудника.')
         values['is_active'] = not bool(item['archived'])
+        values['zup_card'] = card_values(item)
         normalized.append((ref, values))
     source = {'company_id': connection.company_id, 'zup_server': run.server.casefold(), 'zup_database': run.database.casefold()}
     existing = {e.zup_ref: e for e in Employee.objects.select_for_update().filter(**source).exclude(zup_ref='')}
@@ -85,6 +160,7 @@ def apply_employees(run, report):
     for position in Position.objects.filter(company_id=connection.company_id):
         positions.setdefault(position.name.strip().casefold(), []).append(position)
     counts = {'created': 0, 'updated': 0, 'unchanged': 0, 'archived': sum(not values['is_active'] for _, values in normalized),
+              'without_position':sum(not values['zup_position_name'] for _,values in normalized),
               'incomplete_names':sum(not values['first_name'] or not values['last_name'] for _,values in normalized),
               'unnamed':sum(not any(values[name] for name in ['zup_full_name','first_name','last_name','middle_name']) for _,values in normalized)}
     now = timezone.now()

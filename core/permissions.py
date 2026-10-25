@@ -105,6 +105,8 @@ def check_route(user, match, method):
     role = role_code(user)
     if namespace == 'resources' and name == 'employee_zup_import':
         require_roles(user, {'ADMIN'});return
+    if namespace == 'resources' and name in {'employee_create', 'employee_update'}:
+        require_roles(user, {'ADMIN', 'HR_HEAD', 'PLANNER'});return
     if namespace == 'accounts' and name in {'password_change','access_pending','impersonation_stop'}:
         return
     if namespace == 'planning' and name=='workspace_edit':

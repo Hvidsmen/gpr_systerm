@@ -1,0 +1,49 @@
+{% extends 'base.html' %}
+{% load access static %}
+{% block title %}{{ employee.display_name }} · Карточка сотрудника{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'resources/employee_card.css' %}">{% endblock %}
+{% block content %}
+<a href="{% url 'resources:employee_list' %}" class="small">← Сотрудники</a>
+<header class="employee-card-heading mt-3 mb-3">
+  <div><h1>{{ employee.display_name }}</h1><div class="d-flex flex-wrap gap-2 align-items-center">
+    <span class="badge {% if employee.is_active %}bg-success{% else %}bg-secondary{% endif %}">{% if employee.is_active %}Активен{% elif employee.zup_ref %}Уволен / в архиве ЗУП{% else %}Неактивен{% endif %}</span>
+    <span class="text-muted small">{% if employee.zup_ref %}Данные из 1С ЗУП · {{ employee.zup_synced_at|date:'d.m.Y H:i' }}{% else %}Карточка создана вручную{% endif %}</span>
+  </div></div>
+  <div class="d-flex flex-wrap gap-2">
+    {% if can_edit %}<a class="btn btn-primary" href="{% url 'resources:employee_update' employee.pk %}">Редактировать</a>{% endif %}
+    {% if request.user|may:'resources:employee_zup_import' %}<form method="post" action="{% url 'resources:employee_zup_import' %}">{% csrf_token %}<button class="btn btn-outline-primary">Обновить сотрудников из ЗУП</button></form>{% endif %}
+  </div>
+</header>
+{% if employee.name_note %}<p class="text-muted small">{{ employee.name_note }}</p>{% endif %}
+{% if employee.zup_ref and not employee.zup_card %}<div class="alert alert-info">Карточка содержит данные прежней загрузки списка. Обновите сотрудников из ЗУП, чтобы получить кадровые и личные данные.</div>{% endif %}
+<nav class="employee-card-nav mb-3" aria-label="Разделы карточки">
+  <a href="#employment">{% if employee.is_active %}Место работы{% else %}Последнее место работы{% endif %}</a>
+  {% if can_view_private %}<a href="#personal">Личные данные</a><a href="#pay">Оплата труда</a>{% endif %}
+  <a href="#source">Синхронизация</a>
+</nav>
+<div class="employee-card-grid">
+<section class="employee-card-section" id="employment">
+  <h2>{% if employee.is_active %}Место работы{% else %}Последнее место работы{% endif %}</h2>
+  <dl>{% for label,value in employment_rows %}<dt>{{ label }}</dt><dd>{{ value }}</dd>{% endfor %}</dl>
+  {% if position_source %}<p class="text-muted small mb-0">Источник должности: {{ position_source }}{% if position_since != '—' %} · запись от {{ position_since }}{% endif %}.</p>{% elif employee.zup_ref and not employee.display_position %}<p class="text-muted small mb-0">Должность не получена. Повторная загрузка проверит текущие данные, кадровую историю и штатное расписание ЗУП.</p>{% endif %}
+</section>
+{% if can_view_private %}
+<section class="employee-card-section" id="personal">
+  <h2>Личные данные</h2>
+  <dl>{% for label,value in personal_rows %}<dt>{{ label }}</dt><dd>{{ value }}</dd>{% endfor %}</dl>
+</section>
+<section class="employee-card-section" id="pay">
+  <h2>Оплата труда</h2>
+  <dl>{% for label,value in pay_rows %}<dt>{{ label }}</dt><dd>{{ value }}</dd>{% endfor %}</dl>
+  <p class="text-muted small mb-0">Плановые показатели из ЗУП{% if pay_since != '—' %}, запись от {{ pay_since }}{% endif %}. Выплаченная зарплата здесь не отражается.</p>
+</section>
+{% endif %}
+<section class="employee-card-section" id="source">
+  <h2>Синхронизация</h2>
+  {% if employee.zup_ref %}
+  <dl><dt>Источник</dt><dd>1С ЗУП</dd><dt>Табельный номер</dt><dd>{{ employee.employee_number|default:'—' }}</dd><dt>Последнее обновление</dt><dd>{{ employee.zup_synced_at|date:'d.m.Y H:i'|default:'—' }}</dd></dl>
+  <p class="text-muted small mb-0">Данные связаны с записью сотрудника в ЗУП и обновляются при загрузке. Изменяйте их в ЗУП.</p>
+  {% else %}<p class="text-muted mb-0">Данные введены на портале. Связь с ЗУП ещё не установлена.</p>{% endif %}
+</section>
+</div>
+{% endblock %}

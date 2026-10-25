@@ -15,8 +15,9 @@ def diagnostic():
     labels, schema = {}, []
     for table, (name, fields) in EXPECTED.items():
         labels['dbo.' + table] = {'name': name, 'columns': dict(fields)}
-        for col in set(fields) | {'_IDRRef', '_Description', '_Marked', '_Code'}:
+        for col in set(fields) | {'_IDRRef', '_Description', '_Marked', '_Code', '_RecorderRRef', '_LineNo'}:
             schema.append({'schema': 'dbo', 'table': table, 'column': col, 'type': 'binary'})
+    schema.append({'schema': 'dbo', 'table': '_YearOffset', 'column': 'Offset', 'type': 'int'})
     return {'metadata_labels': labels, 'schema': schema}
 
 
@@ -123,7 +124,7 @@ class EmployeesImportTests(TestCase):
         self.assertGreater(query_at,open_at)
         self.assertIn("if($EmployeesImport){$arguments+=' -EmployeesImport'}",script[:open_at])
         self.assertNotIn('SELECT TOP (200001)',script[:open_at])
-        self.assertIn('Write-Json $reportPath @{employees_import=$true;employees=@($employees)}',script[query_at:])
+        self.assertIn('Write-Json $reportPath @{employees_import=$true;employees_card_version=1;employees=@($employees)}',script[query_at:])
         self.assertIn("NULLIF(LTRIM(RTRIM(p.[_Fld31265])),N'')",script[query_at:])
         self.assertIn("NULLIF(LTRIM(RTRIM(p.[_Description])),N'')",script[query_at:])
         self.assertIn("NULLIF(LTRIM(RTRIM(e.[_Description])),N'')",script[query_at:])
@@ -169,13 +170,32 @@ class EmployeesImportTests(TestCase):
             self.assertIsNone(self.connection.active_until)
             self.assertFalse(Employee.objects.filter(company=self.company).exists())
 
-    def test_worker_reads_employee_result_and_applies_it_without_retaining_raw_rows(self):
+    def test_worker_rejects_legacy_report_without_erasing_existing_card(self):
+        employee = Employee.objects.create(company=self.company, zup_server='sql', zup_database='zup',
+            zup_ref='1'*32, first_name='Иван', last_name='Иванов', zup_card={'inn': '123456789012'})
         with TemporaryDirectory() as directory:
             run = enqueue(self.connection, self.admin, employees=True)
             path = Path(directory)/'.runtime/1c-diagnostics'/run.pk.hex
             path.mkdir(parents=True)
             (path/'status.json').write_text(json.dumps({'ok': True}))
             (path/'report.json').write_text(json.dumps({'employees_import': True, 'employees': [self.row()]}))
+            from pathlib import PosixPath
+            with override_settings(CONFIG_DIR=directory), patch('apps.accounts.one_c.os.name', 'nt'), patch('apps.accounts.one_c.Path', PosixPath), patch('apps.accounts.one_c.subprocess.CREATE_NO_WINDOW', 0, create=True), patch('apps.accounts.one_c.subprocess.run'):
+                process_queue()
+            run.refresh_from_db(); employee.refresh_from_db(); self.connection.refresh_from_db()
+            self.assertEqual(run.status, 'ERROR')
+            self.assertIn('прежний формат', run.error)
+            self.assertEqual(employee.zup_card, {'inn': '123456789012'})
+            self.assertEqual(run.report, {'employees_import': True})
+            self.assertIsNone(self.connection.active_until)
+
+    def test_worker_reads_employee_result_and_applies_it_without_retaining_raw_rows(self):
+        with TemporaryDirectory() as directory:
+            run = enqueue(self.connection, self.admin, employees=True)
+            path = Path(directory)/'.runtime/1c-diagnostics'/run.pk.hex
+            path.mkdir(parents=True)
+            (path/'status.json').write_text(json.dumps({'ok': True}))
+            (path/'report.json').write_text(json.dumps({'employees_import': True, 'employees_card_version': 1, 'employees': [self.row()]}))
             from pathlib import PosixPath
             with override_settings(CONFIG_DIR=directory), patch('apps.accounts.one_c.os.name', 'nt'), patch('apps.accounts.one_c.Path', PosixPath), patch('apps.accounts.one_c.subprocess.CREATE_NO_WINDOW', 0, create=True), patch('apps.accounts.one_c.subprocess.run') as execute:
                 process_queue()

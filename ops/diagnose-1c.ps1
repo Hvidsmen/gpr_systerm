@@ -26,8 +26,8 @@ function Write-Json($Path,$Value){
     Move-Item -LiteralPath $temporary -Destination $Path -Force
 }
 function Quote-Identifier([string]$value){return '['+$value.Replace(']',']]')+']'}
-function Query($connection,[string]$sql,$parameters=@{}){
-    $command=$connection.CreateCommand();$command.CommandText=$sql;$command.CommandTimeout=15
+function Query($connection,[string]$sql,$parameters=@{},[int]$timeout=15){
+    $command=$connection.CreateCommand();$command.CommandText=$sql;$command.CommandTimeout=$timeout
     foreach($name in $parameters.Keys){[void]$command.Parameters.AddWithValue($name,$parameters[$name])}
     $reader=$null
     try {
@@ -171,25 +171,87 @@ try {
     try {
         $connection.Open()
         if($EmployeesImport){
+            $offsetRows=@(Query $connection 'SELECT DISTINCT [Offset] AS date_offset FROM [dbo].[_YearOffset]')
+            if($offsetRows.Count -ne 1 -or [int]$offsetRows[0].date_offset -notin @(0,2000)){throw 'Unsupported or ambiguous 1C date offset.'}
+            $dateOffset=[int]$offsetRows[0].date_offset
+            $storedNow=[TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::UtcNow,'Russian Standard Time').AddYears($dateOffset)
             $employees=@(Query $connection @'
 SELECT TOP (200001) CONVERT(varchar(32), e.[_IDRRef], 2) AS source_id,
  e.[_Code] AS employee_number,
  COALESCE(NULLIF(LTRIM(RTRIM(p.[_Fld31265])),N''),NULLIF(LTRIM(RTRIM(p.[_Description])),N''),NULLIF(LTRIM(RTRIM(e.[_Description])),N''),N'') AS full_name,
  p.[_Fld31276] AS last_name, p.[_Fld31277] AS first_name, p.[_Fld31278] AS middle_name,
  CASE WHEN e.[_Fld30280]=0x01 THEN 1 ELSE 0 END AS archived,
- COALESCE(o.[_Description],h.[_Description],N'') AS organisation,
- COALESCE(d.[_Description],N'') AS department,
- COALESCE(j.[_Description],N'') AS position
+ COALESCE(NULLIF(o.[_Description],N''),NULLIF(oi.[_Description],N''),NULLIF(oh.[_Description],N''),ho.[_Description],N'') AS organisation,
+ COALESCE(NULLIF(d.[_Description],N''),NULLIF(di.[_Description],N''),NULLIF(dh.[_Description],N''),ds.[_Description],N'') AS department,
+ COALESCE(NULLIF(j.[_Description],N''),NULLIF(ji.[_Description],N''),NULLIF(jh.[_Description],N''),js.[_Description],N'') AS position,
+ CASE WHEN NULLIF(j.[_Description],N'') IS NOT NULL THEN N'Текущие кадровые данные'
+      WHEN NULLIF(ji.[_Description],N'') IS NOT NULL THEN N'Кадровая история (интервалы)'
+      WHEN NULLIF(jh.[_Description],N'') IS NOT NULL THEN N'Кадровая история'
+      WHEN NULLIF(js.[_Description],N'') IS NOT NULL THEN N'Штатное расписание' ELSE N'' END AS position_source,
+ CASE WHEN NULLIF(j.[_Description],N'') IS NULL THEN
+   CONVERT(char(10),DATEADD(year,-@dateOffset,CASE
+     WHEN NULLIF(ji.[_Description],N'') IS NOT NULL THEN i.[_Fld18186]
+     WHEN NULLIF(jh.[_Description],N'') IS NOT NULL THEN h.[_Period]
+     WHEN NULLIF(js.[_Description],N'') IS NOT NULL THEN CASE WHEN NULLIF(i.[_Fld18199RRef],0x00000000000000000000000000000000) IS NOT NULL THEN i.[_Fld18186] ELSE h.[_Period] END END),23) END AS position_since,
+ CASE WHEN YEAR(p.[_Fld31257])>@dateOffset+1 THEN CONVERT(char(10),DATEADD(year,-@dateOffset,p.[_Fld31257]),23) END AS birth_date,
+ p.[_Fld31259] AS inn, p.[_Fld31260] AS snils, p.[_Fld31261] AS birth_place,
+ CASE WHEN YEAR(k.[_Fld21754])>@dateOffset+1 THEN CONVERT(char(10),DATEADD(year,-@dateOffset,k.[_Fld21754]),23) END AS hire_date,
+ CASE WHEN YEAR(k.[_Fld21751])>@dateOffset+1 THEN CONVERT(char(10),DATEADD(year,-@dateOffset,k.[_Fld21751]),23) END AS dismissal_date,
+ COALESCE(k.[_Fld45771],i.[_Fld18200],h.[_Fld18164]) AS fte,
+ g.[_Description] AS schedule,
+ CASE WHEN pay.candidates=1 THEN pay.tariff_rate END AS tariff_rate,
+ CASE WHEN pay.candidates=1 THEN pay.combined_tariff_rate END AS combined_tariff_rate,
+ CASE WHEN pay.candidates=1 THEN pay.payroll_fund END AS payroll_fund,
+ CASE WHEN pay.candidates=1 THEN CONVERT(char(10),DATEADD(year,-@dateOffset,pay.since),23) END AS pay_since
 FROM [dbo].[_Reference297] e
 LEFT JOIN [dbo].[_Reference383] p ON p.[_IDRRef]=e.[_Fld30276RRef]
 LEFT JOIN [dbo].[_InfoRg21744] k ON k.[_Fld21746RRef]=e.[_IDRRef]
+-- Resolve by the exact employment ID, never by physical person/head employee.
+-- Empty dismissal intervals must not erase the last known job of an archived employee.
+OUTER APPLY (
+ SELECT TOP (1) x.* FROM [dbo].[_InfoRg18183] x
+ WHERE x.[_Fld18184RRef]=e.[_IDRRef] AND x.[_Fld18186]<=@storedNow AND x.[_Fld18205]=0x00
+   AND (x.[_Fld18194RRef]<>0x00000000000000000000000000000000 OR x.[_Fld18199RRef]<>0x00000000000000000000000000000000)
+ ORDER BY x.[_Fld18186] DESC,x.[_Fld18189] DESC,x.[_Fld18203_RRRef] DESC
+) i
+OUTER APPLY (
+ SELECT TOP (1) x.* FROM [dbo].[_InfoRg18156] x
+ WHERE x.[_Fld18157RRef]=e.[_IDRRef] AND x.[_Active]=0x01 AND x.[_Period]<=@storedNow
+   AND (x.[_Fld18162RRef]<>0x00000000000000000000000000000000 OR x.[_Fld18163RRef]<>0x00000000000000000000000000000000)
+ ORDER BY x.[_Period] DESC,x.[_RecorderRRef] DESC,x.[_LineNo] DESC
+) h
+LEFT JOIN [dbo].[_Reference394] s ON s.[_IDRRef]=COALESCE(NULLIF(i.[_Fld18199RRef],0x00000000000000000000000000000000),NULLIF(h.[_Fld18163RRef],0x00000000000000000000000000000000))
 LEFT JOIN [dbo].[_Reference166] o ON o.[_IDRRef]=k.[_Fld21748RRef]
-LEFT JOIN [dbo].[_Reference166] h ON h.[_IDRRef]=e.[_Fld30277RRef]
+LEFT JOIN [dbo].[_Reference166] oi ON oi.[_IDRRef]=i.[_Fld18193RRef]
+LEFT JOIN [dbo].[_Reference166] oh ON oh.[_IDRRef]=h.[_Fld18160RRef]
+LEFT JOIN [dbo].[_Reference166] ho ON ho.[_IDRRef]=e.[_Fld30277RRef]
 LEFT JOIN [dbo].[_Reference216] d ON d.[_IDRRef]=k.[_Fld21749RRef]
+LEFT JOIN [dbo].[_Reference216] di ON di.[_IDRRef]=i.[_Fld18198RRef]
+LEFT JOIN [dbo].[_Reference216] dh ON dh.[_IDRRef]=h.[_Fld18161RRef]
+LEFT JOIN [dbo].[_Reference216] ds ON ds.[_IDRRef]=s.[_Fld31539RRef]
 LEFT JOIN [dbo].[_Reference92] j ON j.[_IDRRef]=k.[_Fld21750RRef]
+LEFT JOIN [dbo].[_Reference92] ji ON ji.[_IDRRef]=i.[_Fld18194RRef]
+LEFT JOIN [dbo].[_Reference92] jh ON jh.[_IDRRef]=h.[_Fld18162RRef]
+LEFT JOIN [dbo].[_Reference92] js ON js.[_IDRRef]=s.[_Fld31540RRef]
+OUTER APPLY (
+ SELECT TOP (1) x.[_Fld16737RRef] FROM [dbo].[_InfoRg16734] x
+ WHERE x.[_Fld16735RRef]=e.[_IDRRef] AND x.[_Active]=0x01 AND x.[_Period]<=@storedNow
+   AND (YEAR(x.[_Fld16738])<=@dateOffset+1 OR x.[_Fld16738]>=@storedNow)
+ ORDER BY x.[_Period] DESC,x.[_RecorderRRef] DESC,x.[_LineNo] DESC
+) gr
+LEFT JOIN [dbo].[_Reference75] g ON g.[_IDRRef]=gr.[_Fld16737RRef]
+OUTER APPLY (
+ SELECT COUNT_BIG(*) AS candidates, MAX(x.[_Fld20193]) AS tariff_rate,
+   MAX(x.[_Fld20194]) AS combined_tariff_rate, MAX(x.[_Fld20195]) AS payroll_fund,MAX(x.[_Period]) AS since
+ FROM [dbo].[_InfoRg20185] x
+ WHERE x.[_Fld20186RRef]=e.[_IDRRef] AND x.[_Fld20197]=0x01
+   AND (YEAR(x.[_Fld20187])<=@dateOffset+1 OR x.[_Fld20187]>=@storedNow)
+   AND x.[_Period]=(SELECT MAX(y.[_Period]) FROM [dbo].[_InfoRg20185] y
+       WHERE y.[_Fld20186RRef]=e.[_IDRRef] AND y.[_Period]<=@storedNow AND y.[_Fld20197]=0x01)
+) pay
 WHERE e.[_Marked]=0x00
-'@)
-            Write-Json $reportPath @{employees_import=$true;employees=@($employees)}
+'@ @{'@dateOffset'=$dateOffset;'@storedNow'=$storedNow} 180)
+            Write-Json $reportPath @{employees_import=$true;employees_card_version=1;employees=@($employees)}
             Write-Json $statusPath @{ok=$true;report=$reportPath}
             return
         }

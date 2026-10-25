@@ -31,6 +31,10 @@ class EmployeeCreateView(CompanyRequiredMixin, CreateView):
         messages.success(self.request, 'Сотрудник успешно добавлен!')
         return super().form_valid(form)
 
+    def get_success_url(self):
+        from django.urls import reverse
+        return reverse('resources:employee_detail', args=[self.object.pk])
+
 
 class BrigadeListView(CatalogFilterMixin, CompanyRequiredMixin, ListView):
     filter_form_class = BrigadeFilterForm

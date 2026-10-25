@@ -15,7 +15,7 @@
     </a>{% endif %}
 </div>
 
-<p class="text-muted small">Загрузка из ЗУП создаёт сотрудников, включая уволенных в архиве, и обновляет ранее связанные записи. Архивные сотрудники отмечаются «Уволен / в архиве ЗУП». Ручные карточки автоматически не объединяются. Зарплата и личные документы этим действием не загружаются.</p>
+<p class="text-muted small">Нажмите ФИО, чтобы открыть карточку сотрудника. Загрузка из ЗУП обновляет кадровые данные и включает уволенных с пометкой об архиве. Личные данные и оплата труда в карточке доступны кадровой службе и администратору.</p>
 {% if employees %}
     <div class="table-responsive">
         <table class="table table-hover">
@@ -29,8 +29,8 @@
             <tbody>
                 {% for emp in employees %}
                     <tr>{% if request.user|may:bulk_route %}<td>{% include 'bulk/checkbox.html' with record=emp %}</td>{% endif %}
-                        <td>{{ emp.employee_number|default:"—" }}</td><td>{{ emp.display_name }}{% if emp.name_note %}<small class="d-block text-muted">{{ emp.name_note }}</small>{% endif %}</td>
-                        <td>{{ emp.display_position|default:"—" }}</td>
+                        <td>{{ emp.employee_number|default:"—" }}</td><td><a href="{% url 'resources:employee_detail' emp.pk %}">{{ emp.display_name }}</a>{% if emp.name_note %}<small class="d-block text-muted">{{ emp.name_note }}</small>{% endif %}</td>
+                        <td>{{ emp.display_position|default:"Не получена" }}{% if not emp.is_active and emp.zup_ref %}<small class="d-block text-muted">Последнее место работы</small>{% endif %}</td>
                         <td>{{ emp.zup_organisation|default:"—" }}{% if emp.zup_department %}<small class="d-block text-muted">{{ emp.zup_department }}</small>{% endif %}</td>
                         <td>{% if emp.zup_ref %}<span class="badge bg-info text-dark">ЗУП</span><small class="d-block">{{ emp.zup_synced_at|date:'d.m.Y H:i' }}</small>{% else %}Вручную{% endif %}</td>
                         <td>

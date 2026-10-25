@@ -40,6 +40,7 @@ class Employee(BaseCompanyModel):
     zup_department = models.CharField('Подразделение ЗУП', max_length=250, blank=True, editable=False)
     zup_position_name = models.CharField('Должность ЗУП', max_length=250, blank=True, editable=False)
     zup_synced_at = models.DateTimeField('Обновлено из ЗУП', null=True, blank=True, editable=False)
+    zup_card = models.JSONField('Данные карточки ЗУП', default=dict, blank=True, editable=False)
 
     @property
     def display_name(self):
