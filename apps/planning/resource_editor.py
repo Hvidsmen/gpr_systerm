@@ -1,6 +1,7 @@
 """Inline resource assignments in the GPR, scoped to saved planned works."""
 from calendar import monthrange
 from datetime import date
+from decimal import Decimal
 from django import forms
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.contrib.auth.decorators import login_required
@@ -77,14 +78,52 @@ def serialize(assignment):
         'projected':projected,'crew':', '.join(f"{m['name']} — {m['count']} чел." for m in assignment.crew_snapshot)}
 
 
-def context(user,owner,month=None):
+def work_plan_volumes(owner,targets,snapshot=None):
+    """Show the manager the same planned volumes used by the GPR calculation."""
+    from .workspace_services import months_between
+    start,end=estimate_review.review_period(owner)
+    months=months_between(start,end)
+    allocations=list(estimate_review.review_allocations(owner))
+    specs={str(spec['id']):spec for spec in (snapshot or {}).get('works',[])}
+    from apps.works.models import ProjectWork
+    works={work.pk:work for work in ProjectWork.objects.filter(company=owner.company,pk__in=[t['id'] for t in targets]).prefetch_related('items')}
+    for target in targets:
+        work=works[target['id']]
+        spec=specs.get(str(work.pk))
+        def volumes(item=None):
+            result=[]
+            for month in months:
+                prefix=month.strftime('%Y-%m')
+                if spec is not None:
+                    rows=spec.get('plans',[]) if item else spec.get('daily',[])
+                    quantity=sum((Decimal(str(row['quantity'])) for row in rows if str(row['date']).startswith(prefix) and start.isoformat()<=str(row['date'])<=end.isoformat() and (not item or str(row.get('item_id'))==str(item.pk))),Decimal(0))
+                else:
+                    quantity=Decimal(0)
+                    for allocation in allocations:
+                        if allocation.work_id!=work.pk or allocation.month!=month:continue
+                        if item:
+                            if allocation.selected_item_ids and item.pk not in allocation.selected_item_ids:continue
+                            quantity+=Decimal(str(allocation.item_quantities.get(str(item.pk),0))) if allocation.item_quantities else allocation.quantity*item.quantity_per_unit
+                        else:quantity+=allocation.quantity
+                result.append({'month':month,'label':month.strftime('%m.%Y'),'quantity':str(quantity)})
+            return result
+        target.update(unit=work.unit,plan=volumes())
+        target['plan_total']=str(sum((Decimal(row['quantity']) for row in target['plan']),Decimal(0)))
+        items={item.pk:item for item in work.items.all()}
+        for item in target['items']:
+            item.update(unit=items[item['id']].unit,plan=volumes(items[item['id']]))
+            item['plan_total']=str(sum((Decimal(row['quantity']) for row in item['plan']),Decimal(0)))
+    return targets
+
+
+def context(user,owner,month=None,snapshot=None):
     allowed=True
     try:work_resources.editable(user,owner)
     except (PermissionDenied,ValidationError):allowed=False
     start,end=estimate_review.review_period(owner)
     if month:
         start=max(start,month);end=min(end,month.replace(day=monthrange(month.year,month.month)[1]))
-    targets=planned_targets(owner)
+    targets=work_plan_volumes(owner,planned_targets(owner),snapshot)
     record=preparation.record(owner)
     latest=owner.estimate_reviews.order_by('-pk').first()
     return {'resources_ready':bool(record and record.resources_ready_at and record.resources_fingerprint==preparation.resource_signature(owner)),
@@ -92,7 +131,7 @@ def context(user,owner,month=None):
         'inline_resource_form':InlineAssignmentForm(owner=owner,initial={'start_date':start,'end_date':end,'count':1,'shifts_per_day':1,'hours_per_shift':8,'include_crew':True}),
         'resource_editor_data':{'targets':targets,'assignments':[serialize(a) for a in work_resources.owner_rows(owner)],
             'start_date':start.isoformat(),'end_date':end.isoformat(),'can_edit':allowed},
-        'resource_targets':targets,'resource_preparation':preparation.record(owner)}
+        'resource_targets':targets,'resource_preparation':record,**preparation.task_context(user,owner)}
 
 
 @login_required

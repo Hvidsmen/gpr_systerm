@@ -100,7 +100,8 @@ def assign(user,obj,estimator):
         task=EstimateReviewTask.objects.create(company=user.company,created_by=user,assigned_to=estimator,**({'schedule':obj} if isinstance(obj,DailySchedule) else {'version':obj}))
     event(task,user,'ASSIGN',{'estimator':estimator.pk})
     from .task_services import estimate_task,sync_version
-    estimate_task(task)
+    list(task.work_tasks.filter(kind='ESTIMATE').select_for_update().order_by('pk'))
+    estimate_task(task,restart_closed=True)
     if task.version_id:sync_version(obj)
     return task
 

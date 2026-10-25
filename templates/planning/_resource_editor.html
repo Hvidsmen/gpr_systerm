@@ -1,11 +1,10 @@
 {% load static %}
 {{ resource_editor_data|json_script:'resource-editor-data' }}
 {% if can_prepare_resources %}
-<dialog id="work-resource-dialog" style="width:min(760px,95vw);max-height:90vh;overflow:auto;border:1px solid #d7e4ef;border-radius:12px;padding:24px">
-<form id="work-resource-form" method="post" action="{% url 'planning:preparation_add_assignment' resource_owner.pk %}">
-{% csrf_token %}<input type="hidden" name="assignment_id"><input type="hidden" name="resource_kind">
+<form id="work-resource-form" method="post" action="{% url 'planning:preparation_add_assignment' resource_owner.pk %}" hidden>{% csrf_token %}</form>
+<template id="work-resource-editor-template"><section class="border border-primary rounded p-3 my-2 bg-light" data-inline-resource-editor aria-label="Редактирование ресурса"><input type="hidden" name="assignment_id"><input type="hidden" name="resource_kind">
 {{ inline_resource_form.work }}{{ inline_resource_form.work_item }}
-<h3 id="work-resource-title">Добавить ресурс</h3><p id="work-resource-target"></p>
+<h3 class="h6" id="work-resource-title">Добавить ресурс</h3><p id="work-resource-target"></p>
 <div class="alert alert-danger" id="work-resource-errors" role="alert" hidden></div>
 <div data-resource-field="equipment"><label class="form-label">Вид техники</label>{{ inline_resource_form.equipment_type }}<p class="mt-2">{{ inline_resource_form.include_crew }} {{ inline_resource_form.include_crew.label }}</p></div>
 <div data-resource-field="labor"><label class="form-label">Должность</label>{{ inline_resource_form.position }}</div>
@@ -13,8 +12,9 @@
 <div class="row mt-3"><div class="col-sm-6"><label class="form-label">Начало</label>{{ inline_resource_form.start_date }}</div><div class="col-sm-6"><label class="form-label">Окончание</label>{{ inline_resource_form.end_date }}</div></div>
 <div class="row mt-3" data-resource-field="quantity"><div class="col-sm-4"><label class="form-label">Количество на смену</label>{{ inline_resource_form.count }}</div><div class="col-sm-4"><label class="form-label">Смен в день</label>{{ inline_resource_form.shifts_per_day }}</div><div class="col-sm-4"><label class="form-label">Часов в смене</label>{{ inline_resource_form.hours_per_shift }}</div></div>
 <p class="mt-3">{{ inline_resource_form.refresh_crew }} {{ inline_resource_form.refresh_crew.label }}</p>
-<p class="small text-muted">Ресурс появится в общих ресурсах с указанием работы и будет учтён один раз. Изменения месячных объёмов сохраняются отдельно кнопкой «Сохранить этот месяц».</p>
-<div class="d-flex flex-wrap gap-2 mt-3"><button class="btn btn-primary" type="submit">Сохранить ресурс</button><button class="btn btn-outline-secondary" type="button" data-close-resource>Отмена</button><button class="btn btn-outline-danger" type="button" data-delete-resource hidden>Удалить назначение</button></div>
-</form></dialog>
+<p class="small text-muted">Ресурс появится в общих ресурсах с указанием работы и будет учтён один раз. Редактирование выполняется на месте. Изменения месячных объёмов сохраняются отдельно кнопкой «Сохранить этот месяц».</p>
+<div class="d-flex flex-wrap gap-2 mt-3"><button class="btn btn-primary" type="submit">Сохранить ресурс</button><button class="btn btn-outline-secondary" type="button" data-close-resource>Отмена</button><button class="btn btn-outline-danger" type="button" data-delete-resource hidden>Удалить назначение</button><button class="btn btn-danger" type="button" data-confirm-delete-resource hidden>Подтвердить удаление</button></div>
+</section></template>
+<div id="work-resource-editor-fallback"></div>
 {% endif %}
 <script src="{% static 'planning/resource_editor.js' %}" defer></script>

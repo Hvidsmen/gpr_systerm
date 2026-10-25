@@ -37,9 +37,10 @@ class PreparationView(View):
         record=preparation.record(owner);action=request.POST.get('action') if bound else None
         can_handoff=role_code(request.user) in {'ADMIN','PLANNER'} and owner.status in {'DRAFT','REJECTED'}
         can_resources=owner.status in {'DRAFT','REJECTED'} and (role_code(request.user)=='ADMIN' or role_code(request.user)=='MANAGER' and record and record.manager_id==request.user.pk)
-        if not bound and self.kind=='gpr' and can_resources and record and request.GET.get('legacy')!='1':
+        if not bound and self.kind=='gpr' and can_resources and record and request.GET.get('legacy')!='1' and not (can_handoff and request.GET.get('handoff')=='1'):
             return redirect(reverse('planning:global_detail',args=[owner.pk])+'#work-resources')
-        form=HandoffForm(request.POST if action=='handoff' else None,company=request.user.company)
+        latest_review=owner.estimate_reviews.order_by('-pk').first()
+        form=HandoffForm(request.POST if action=='handoff' else None,company=request.user.company,initial={'manager':record.manager_id if record else None,'estimator':latest_review.assigned_to_id if latest_review else None})
         resource_forms=None;months=[];month=None
         if self.kind=='gpr':
             start,end=estimate_review.review_period(owner);months=months_between(start,end)
@@ -57,7 +58,10 @@ class PreparationView(View):
             try:
                 if action=='handoff':
                     if not can_handoff:raise PermissionDenied
-                    if form.is_valid():preparation.handoff(request.user,owner,form.cleaned_data['manager'],form.cleaned_data['estimator']);return redirect(request.path)
+                    if form.is_valid():
+                        preparation.handoff(request.user,owner,form.cleaned_data['manager'],form.cleaned_data['estimator'])
+                        messages.success(request,"Передача сохранена. Ниже показаны задания руководителя и сметчика с текущими статусами.")
+                        return redirect(request.path+'?handoff=1')
                 elif action=='save_resources':
                     with transaction.atomic():
                         locked=model.objects.select_for_update().get(pk=owner.pk,company=request.user.company)
@@ -86,6 +90,6 @@ class PreparationView(View):
             except ValidationError as error:
                 for message in error.messages:messages.error(request,message)
         latest=owner.estimate_reviews.order_by('-pk').first()
-        return render(request,'planning/preparation.html',{'owner':owner,'kind':self.kind,'preparation':record,'handoff_form':form,'resource_forms':resource_forms,'resource_add_form':resource_add_form,'resource_entries':owner.entries.exclude(kind='work') if self.kind=='smg' else [],'months':months,'month':month,'can_handoff':can_handoff,'can_resources':can_resources,'estimator_approved':estimate_review.check_valid(owner,latest),'resources_ready':bool(record and record.resources_ready_at and record.resources_fingerprint==preparation.resource_signature(owner))})
+        return render(request,'planning/preparation.html',{**preparation.task_context(request.user,owner),'owner':owner,'kind':self.kind,'preparation':record,'handoff_form':form,'resource_forms':resource_forms,'resource_add_form':resource_add_form,'resource_entries':owner.entries.exclude(kind='work') if self.kind=='smg' else [],'months':months,'month':month,'can_handoff':can_handoff,'show_handoff':can_handoff and (request.GET.get('handoff')=='1' or action=='handoff'),'can_resources':can_resources,'estimator_approved':estimate_review.check_valid(owner,latest),'resources_ready':bool(record and record.resources_ready_at and record.resources_fingerprint==preparation.resource_signature(owner))})
     def get(self,request,pk):return self.display(request,pk)
     def post(self,request,pk):return self.display(request,pk,True)

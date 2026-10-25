@@ -89,7 +89,9 @@ class InlineResourceTests(TestCase):
         response=self.client.get(reverse('planning:global_detail',args=[self.version.pk]))
         self.assertEqual(response.status_code,200)
         self.assertContains(response,'data-add-resource="fuel"')
-        self.assertContains(response,'work-resource-dialog')
+        self.assertContains(response,'work-resource-editor-template')
+        self.assertNotContains(response,'<dialog id="work-resource-dialog"')
+        self.assertContains(response,'data-work-resource-list')
         self.client.force_login(self.planner)
         response=self.client.get(reverse('planning:workspace_edit',args=[self.version.pk]))
         self.assertEqual(response.status_code,200)
@@ -103,3 +105,30 @@ class InlineResourceTests(TestCase):
         self.assertEqual(len(response.json()['assignment']['projected']),1)
         response=self.client.post(self.url,self.data())
         self.assertEqual(response.status_code,400)
+
+    def test_manager_sees_calculated_work_plan_and_units_beside_resources(self):
+        allocation=self.version.work_allocations.get()
+        allocation.item_quantities={str(self.a.pk):'17',str(self.b.pk):'5'}
+        allocation.save()
+        response=self.client.get(reverse('planning:global_detail',args=[self.version.pk]))
+        self.assertEqual(response.status_code,200)
+        self.assertContains(response,'data-resource-work-plan')
+        target=response.context['resource_targets'][0]
+        item=next(item for item in target['items'] if item['id']==self.a.pk)
+        self.assertEqual(item['unit'],self.a.unit)
+        self.assertEqual(Decimal(item['plan'][0]['quantity']),17)
+        self.assertEqual(item['plan'][0]['label'],'01.2026')
+        self.assertEqual(self.client.post(reverse('planning:workspace_edit',args=[self.version.pk]),{}).status_code,403)
+
+    def test_handoff_link_opens_form_for_admin_without_creating_tasks(self):
+        from apps.accounts.models import User,Role
+        from .models import WorkTask
+        admin=User.objects.create_user(username='resource-handoff-admin',company=self.company,role=Role.objects.get(code='ADMIN'))
+        self.client.force_login(admin)
+        count=WorkTask.objects.count()
+        response=self.client.get(reverse('planning:preparation_gpr',args=[self.version.pk]),{'handoff':'1'})
+        self.assertEqual(response.status_code,200)
+        self.assertContains(response,'name="action" value="handoff"')
+        self.assertContains(response,'data-preparation-tasks')
+        self.assertEqual(WorkTask.objects.count(),count)
+        self.assertEqual(self.client.get(reverse('planning:preparation_gpr',args=[self.version.pk])).status_code,302)

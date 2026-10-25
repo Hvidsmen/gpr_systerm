@@ -81,6 +81,7 @@ def detail_matrix(request, version):
     except ValidationError as exc:
         context["matrix_error"] = "; ".join(exc.messages)
         return context
+    context["resource_plan_snapshot"] = snapshot
     filters = {
         **form.cleaned_data,
         "objects": ConstructionObject.objects.filter(

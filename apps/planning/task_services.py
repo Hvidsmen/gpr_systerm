@@ -47,13 +47,17 @@ def is_executor(user,task):
     return task.assigned_to_id==user.pk or (not task.assigned_to_id and task.target_role==role_code(user)) or role_code(user)=='ADMIN'
 
 
-def estimate_task(estimate):
+def estimate_task(estimate,*,restart_closed=False):
     obj=estimate.version if estimate.version_id else estimate.schedule
     object_id=estimate.version.construction_object_id if estimate.version_id else estimate.schedule.construction_object_id
     active=estimate.work_tasks.filter(kind='ESTIMATE',status__in=ACTIVE).order_by('-pk').first()
     previous=estimate.work_tasks.filter(kind='ESTIMATE').order_by('-pk').first()
     key=active.key if active else previous.key if previous and estimate.status!='OPEN' else f'estimate:{estimate.pk}:phase:{obj.approval_round if estimate.version_id else obj.revision}:{obj.status}'
-    task=ensure(estimate.company,key,kind='ESTIMATE',title='Проверить цены, названия и состав работ',assigned_to=estimate.assigned_to,created_by=estimate.created_by,version_id=estimate.version_id,schedule_id=estimate.schedule_id,estimate=estimate,construction_object_id=object_id,due_date=timezone.localdate()+timedelta(days=1))
+    defaults=dict(kind='ESTIMATE',title='Проверить цены, названия и состав работ',assigned_to=estimate.assigned_to,created_by=estimate.created_by,version_id=estimate.version_id,schedule_id=estimate.schedule_id,estimate=estimate,construction_object_id=object_id,due_date=timezone.localdate()+timedelta(days=1))
+    task=ensure(estimate.company,key,**defaults)
+    if task.status=='CLOSED_ADMIN':
+        if not restart_closed:return task
+        task=ensure(estimate.company,f'{key}:retry:{uuid4()}',**defaults)
     if task.assigned_to_id!=estimate.assigned_to_id:
         task.assigned_to_id=estimate.assigned_to_id;task.save(update_fields=['assigned_to']);event(task,None,'Переназначено')
     desired='OPEN' if estimate.status=='OPEN' else 'DONE'

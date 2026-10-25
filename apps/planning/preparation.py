@@ -2,6 +2,8 @@
 import hashlib,json
 from django.core.exceptions import PermissionDenied,ValidationError
 from django.db import transaction
+from django.db.models import Q
+from uuid import uuid4
 from django.utils import timezone
 from core.permissions import require_roles,role_code,require_planning_object
 from .models import PlanPreparation,DailySchedule,WorkTask
@@ -53,7 +55,12 @@ def handoff(user,owner,manager,estimator):
     preparation,_=PlanPreparation.objects.update_or_create(**key,defaults={'company':owner.company,'manager':manager,'handed_by':user,'resources_fingerprint':'','resources_ready_at':None})
     task=estimate_review.assign(user,owner,estimator)
     from .task_services import ensure,state
-    worktask=ensure(owner.company,f'prepare-resources:{preparation.pk}',kind='RESOURCES',title='Определить ресурсы для выполнения работ',description='Работы параллельно проверяет сметчик. Подготовьте ресурсы и запустите согласование после успешной проверки работ.',assigned_to=manager,created_by=user,construction_object_id=owner.construction_object_id,**key)
+    candidates=resource_tasks(owner,preparation).select_for_update()
+    worktask=candidates.filter(status__in=['OPEN','IN_REVIEW']).order_by('-pk').first()
+    if worktask is None:
+        previous=candidates.order_by('-pk').first()
+        task_key=(f'prepare-resources:{preparation.pk}:retry:{uuid4()}' if previous and previous.status=='CLOSED_ADMIN' else previous.key if previous else f'prepare-resources:{preparation.pk}')
+        worktask=ensure(owner.company,task_key,kind='RESOURCES',title='Определить ресурсы для выполнения работ',description='Работы параллельно проверяет сметчик. Подготовьте ресурсы и запустите согласование после успешной проверки работ.',assigned_to=manager,created_by=user,construction_object_id=owner.construction_object_id,**key)
     worktask.assigned_to=manager;worktask.save(update_fields=['assigned_to'])
     from .task_services import event
     event(worktask,user,'Передано руководителю',f'Руководитель: {manager.full_name}. Работы параллельно переданы сметчику.')
@@ -70,7 +77,7 @@ def ready(user,owner):
     preparation.resources_fingerprint=resource_signature(owner);preparation.resources_ready_at=timezone.now()
     preparation.save(update_fields=['resources_fingerprint','resources_ready_at','updated_at'])
     from .task_services import event
-    task=WorkTask.objects.filter(company=owner.company,key=f'prepare-resources:{preparation.pk}').first()
+    task=resource_tasks(owner,preparation).order_by('-pk').first()
     if task:event(task,user,'Ресурсы определены','Ресурсы подтверждены руководителем проекта.')
     return preparation
 
@@ -89,4 +96,26 @@ def submitted(owner,user):
     preparation=record(owner)
     if preparation:
         from .task_services import state
-        for task in WorkTask.objects.filter(company=owner.company,key=f'prepare-resources:{preparation.pk}',status__in=['OPEN','IN_REVIEW']):state(task,'DONE',user,'Ресурсы определены, план отправлен на согласование.')
+        for task in resource_tasks(owner,preparation).filter(status__in=['OPEN','IN_REVIEW']):state(task,'DONE',user,'Ресурсы определены, план отправлен на согласование.')
+
+
+def task_context(user,owner):
+    """Show actual task state after handing a plan over, without recreating tasks."""
+    preparation=record(owner)
+    manager_task=resource_tasks(owner,preparation).order_by('-pk').first() if preparation else None
+    latest=owner.estimate_reviews.order_by('-pk').first()
+    estimator_task=latest.work_tasks.filter(kind='ESTIMATE').order_by('-pk').first() if latest else None
+    from .task_services import visible
+    from django.urls import reverse
+    allowed=set(visible(user).filter(pk__in=[t.pk for t in [manager_task,estimator_task] if t]).values_list('pk',flat=True))
+    return {'preparation_manager_task':manager_task,'preparation_estimator_task':estimator_task,
+            'preparation_manager_task_url':reverse('planning:task_detail',args=[manager_task.pk]) if manager_task and manager_task.pk in allowed else '',
+            'preparation_estimator_task_url':reverse('planning:task_detail',args=[estimator_task.pk]) if estimator_task and estimator_task.pk in allowed else ''}
+
+
+def resource_tasks(owner,preparation=None):
+    preparation=preparation or record(owner)
+    if not preparation:return WorkTask.objects.none()
+    base=f'prepare-resources:{preparation.pk}'
+    key={'schedule':owner} if isinstance(owner,DailySchedule) else {'version':owner}
+    return WorkTask.objects.filter(Q(key=base)|Q(key__startswith=base+':retry:'),company=owner.company,**key)

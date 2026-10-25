@@ -1,6 +1,9 @@
+<div data-work-resource-target data-resource-work="{{ resource_work|default:'' }}" data-resource-item="{{ resource_item|default:'' }}">
 <div class="d-flex flex-wrap gap-1 mt-2" data-resource-actions>
 {% if can_prepare_resources %}
 <button type="button" class="btn btn-sm btn-outline-primary" data-add-resource="equipment" data-work="{{ resource_work|default:'' }}" data-item="{{ resource_item|default:'' }}">Техника</button>
 <button type="button" class="btn btn-sm btn-outline-primary" data-add-resource="labor" data-work="{{ resource_work|default:'' }}" data-item="{{ resource_item|default:'' }}">Должность</button>
 <button type="button" class="btn btn-sm btn-outline-primary" data-add-resource="fuel" data-work="{{ resource_work|default:'' }}" data-item="{{ resource_item|default:'' }}">ГСМ</button>
 {% endif %}</div>
+
+<div data-work-resource-list class="mt-2"></div></div>

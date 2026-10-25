@@ -93,7 +93,7 @@ class GlobalDetail(CompanyScopedMixin, DetailView):
         from .global_matrix import detail_matrix
         ctx.update(detail_matrix(self.request, self.object))
         from .resource_editor import context as resource_context
-        ctx.update(resource_context(self.request.user,self.object))
+        ctx.update(resource_context(self.request.user,self.object,snapshot=ctx.pop('resource_plan_snapshot',None)))
         from .object_plans import linked_plans
         ctx['linked_object_plans'] = linked_plans(self.object,self.request.user)
         return ctx
