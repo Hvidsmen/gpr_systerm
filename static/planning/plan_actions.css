@@ -30,3 +30,16 @@
 [data-inline-resource-editor],#work-resources,#gpr-excel-tools {scroll-margin-top:calc(var(--navbar-height,54px) + var(--plan-action-height,180px) + 20px);}
 .plan-action-row form[hidden] {display:none!important;}
 .gpr-handoff-dialog {width:min(650px,calc(100vw - 32px));max-height:85vh;overflow:auto;padding:24px;border:1px solid #d8e5ef;border-radius:10px;color:#193c55;}.gpr-handoff-dialog::backdrop {background:#173a5670;}
+#plan-fact-matrix .gpr-report-works {border-left:4px solid #087fa0;padding:0 0 12px 14px;margin-top:12px;}
+#plan-fact-matrix .gpr-report-works > summary {background:transparent;color:#173f5d;font-size:16px;font-weight:600;padding:8px 0;}
+.gpr-report-description {font-size:12px;color:#63788b;margin:4px 0 12px;}
+#plan-fact-matrix .gpr-report-resources {margin-top:24px;padding-top:18px;border-top:1px solid #dce5ed;}
+.gpr-report-resources > h3 {font-size:16px;font-weight:600;margin:0 0 6px;}
+.gpr-report-resources > .matrix-section {margin-top:10px;}
+.gpr-report-works [data-resource-work-plan] > .matrix-label {font-size:14px;font-weight:600;border-left:4px solid #087fa0;background:#fff;}
+.gpr-report-works [data-matrix-resource-row] > td {padding:8px 12px 16px 24px!important;border-left:4px solid #087fa0;border-bottom:12px solid #fff;}
+#plan-fact-matrix .gpr-report-resource-section {margin:18px 0;padding:4px 0 12px 14px;border-left:4px solid #9aabb9;border-bottom:1px solid #e3eaf0;}
+#plan-fact-matrix .gpr-report-resource-section > summary {background:transparent;padding:8px 0;font-size:16px;font-weight:600;color:#173f5d;}
+#plan-fact-matrix .gpr-report-kind-labor {border-left-color:#7968a6;}
+#plan-fact-matrix .gpr-report-kind-equipment {border-left-color:#3b826d;}
+#plan-fact-matrix .gpr-report-kind-fuel {border-left-color:#b37a26;}
