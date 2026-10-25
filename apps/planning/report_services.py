@@ -506,7 +506,7 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
             for work_id, stored in work_specs.items():
                 spec = dict(stored)
                 if spec['kind']=='COMPOSITE' and Decimal(str(spec.get('unit_price') or 0))>0 and sum((Decimal(str(item['weight'])) for item in spec.get('items',[])),ZERO)!=100:
-                    valuation_warnings.append(f"{spec['name']}: сумма весов работ должна быть 100%. Оценочная стоимость рассчитана по введённым весам; реальная стоимость по составляющим пока не распределена.")
+                    valuation_warnings.append(f"{spec['name']}: сумма долей стоимости работ должна быть 100%. Оценочная стоимость рассчитана по введённым долям; реальная стоимость по составляющим пока не распределена.")
                 work = work_catalog.get(work_id)
                 if "group_name" not in spec:
                     spec.update(
@@ -821,7 +821,7 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
         "column_count": 1 + (1 if plan_only else 3) * (len(buckets) + 1),
         "plan_only": plan_only,
         "money_basis": filters.get("money_basis") or "real",
-        "money_basis_label": "Оценочная стоимость — по весам работ" if filters.get("money_basis")=="estimated" else "Реальная стоимость — по выполненному объёму комплекса",
+        "money_basis_label": "Оценочная стоимость — по долям стоимости работ" if filters.get("money_basis")=="estimated" else "Реальная стоимость — по выполненному объёму комплекса",
     }
 
 
@@ -859,6 +859,7 @@ def resource_subtotal_rows(rows):
 
 def attach_money_totals(target, rows):
     priced_rows = [row for row in rows if row.get("has_amount")]
+    target['money_precision']='2g' if any(row.get('money_precision')=='2g' for row in priced_rows) else '0g'
     target["has_amount"] = any(cell.get("amount") or cell.get("fact_amount") for row in priced_rows for cell in row["cells"])
     for key in ("amount", "fact_amount"):
         values = [row["total"].get(key) for row in priced_rows if row["total"].get(key) is not None]

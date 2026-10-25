@@ -107,6 +107,22 @@ class EmployeesImportTests(TestCase):
         self.assertIn('first_name',form.errors);self.assertIn('last_name',form.errors)
         with self.assertRaises(ValidationError):Employee(company=self.company).full_clean()
 
+    def test_picker_position_links_full_canonical_job_name_and_preserves_source(self):
+        from apps.resources.models import Brigade
+        from apps.resources.position_catalog import position_for
+        name='Инженер '+('А'*100)
+        brigade=Brigade.objects.create(company=self.company,name=name)
+        position=position_for(brigade)
+        self.assertNotEqual(position.name,name)
+        result=apply_employees(self.run_record(),{'employees':[self.row(position=name,department='Отдел подбора',
+            position_source='Данные для подбора сотрудников',fte='0.5',probe_picker_candidate=1,probe_picker_position_join=1)]})
+        employee=Employee.objects.get(company=self.company,zup_ref='1'*32)
+        self.assertEqual(employee.position_id,position.pk)
+        self.assertEqual(employee.display_position,name)
+        self.assertEqual(employee.zup_department,'Отдел подбора')
+        self.assertEqual(employee.zup_card['fte'],'0.5')
+        self.assertEqual(result['position_diagnostics']['coverage']['active']['picker_position_join'],1)
+
     def test_position_diagnostics_download_has_only_coverage_and_is_company_scoped(self):
         run = self.run_record()
         result = apply_employees(run, {'employees': [self.row(probe_current_row=1,
@@ -155,7 +171,7 @@ class EmployeesImportTests(TestCase):
         self.assertGreater(query_at,open_at)
         self.assertIn("if($EmployeesImport){$arguments+=' -EmployeesImport'}",script[:open_at])
         self.assertNotIn('SELECT TOP (200001)',script[:open_at])
-        self.assertIn('Write-Json $reportPath @{employees_import=$true;employees_card_version=2;employees=@($employees)}',script[query_at:])
+        self.assertIn('Write-Json $reportPath @{employees_import=$true;employees_card_version=3;employees=@($employees)}',script[query_at:])
         self.assertIn("NULLIF(LTRIM(RTRIM(p.[_Fld31265])),N'')",script[query_at:])
         self.assertIn("NULLIF(LTRIM(RTRIM(p.[_Description])),N'')",script[query_at:])
         self.assertIn("NULLIF(LTRIM(RTRIM(e.[_Description])),N'')",script[query_at:])
@@ -226,7 +242,7 @@ class EmployeesImportTests(TestCase):
             path = Path(directory)/'.runtime/1c-diagnostics'/run.pk.hex
             path.mkdir(parents=True)
             (path/'status.json').write_text(json.dumps({'ok': True}))
-            (path/'report.json').write_text(json.dumps({'employees_import': True, 'employees_card_version': 2, 'employees': [self.row()]}))
+            (path/'report.json').write_text(json.dumps({'employees_import': True, 'employees_card_version': 3, 'employees': [self.row()]}))
             from pathlib import PosixPath
             with override_settings(CONFIG_DIR=directory), patch('apps.accounts.one_c.os.name', 'nt'), patch('apps.accounts.one_c.Path', PosixPath), patch('apps.accounts.one_c.subprocess.CREATE_NO_WINDOW', 0, create=True), patch('apps.accounts.one_c.subprocess.run') as execute:
                 process_queue()

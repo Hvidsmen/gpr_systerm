@@ -164,6 +164,10 @@ class ProjectWorkForm(UnitChoiceMixin, forms.ModelForm):
 
 class ProjectWorkItemForm(UnitChoiceMixin, forms.ModelForm):
     excel_aliases = ExcelAliasesField()
+    weight = forms.DecimalField(label='Доля от суммы, %', min_value=0, max_value=100,
+        max_digits=5, decimal_places=2, localize=True, required=False,
+        widget=forms.TextInput(attrs={'class':'form-control','inputmode':'decimal'}),
+        help_text='Расчётная сумма = объём / норматив × цена комплекса × доля / 100. Для всего комплекса сумма долей — 100%.')
     """Форма для создания/редактирования Работы в составе комплекса."""
 
     def __init__(self, *args, **kwargs):
@@ -171,9 +175,13 @@ class ProjectWorkItemForm(UnitChoiceMixin, forms.ModelForm):
         self.fields['load_profile'].required = True
         self.fields['load_profile'].help_text = 'Выберите профиль распределения объёма по рабочим дням.'
 
+    def clean_weight(self):
+        value = self.cleaned_data['weight']
+        return self.instance.weight if value is None else value
+
     class Meta:
         model = ProjectWorkItem
-        fields = ['excel_aliases', "name", "unit", "load_profile", "quantity_per_unit"]
+        fields = ['excel_aliases', "name", "unit", "load_profile", "quantity_per_unit", 'weight']
         widgets = {
             "name": forms.TextInput(attrs={"class": "form-control"}),
             "unit": forms.TextInput(attrs={"class": "form-control"}),

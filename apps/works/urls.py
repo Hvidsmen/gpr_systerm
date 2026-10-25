@@ -83,3 +83,6 @@ urlpatterns += [path('complex-objects/purge/',purge_complex,name='complex_purge'
 
 from .complex_objects import complex_object_detail
 urlpatterns += [path('complex-objects/<int:pk>/',complex_object_detail,name='complex_object_detail')]
+
+from .cost_shares import CostSharesUpdate
+urlpatterns += [path('<int:pk>/cost-shares/', CostSharesUpdate.as_view(), name='work_cost_shares')]

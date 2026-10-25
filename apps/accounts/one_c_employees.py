@@ -42,9 +42,19 @@ EXPECTED['_InfoRg18211'] = ('РегистрСведений.КадроваяИс
 EXPECTED['_InfoRg20861'] = ('РегистрСведений.РеестрКадровыхПриказов', {
     '_Active': 'Активность записи', '_Fld20862RRef': 'Сотрудник', '_Fld20867': 'Дата',
     '_Fld20869_RRRef': 'Должность', '_Fld20869_S': 'Должность'})
+EXPECTED['_InfoRg16829'] = ('РегистрСведений.ДанныеДляПодбораСотрудников', {
+    '_Fld16831RRef': 'Сотрудник', '_Fld16837RRef': 'Подразделение', '_Fld39554RRef': 'Организация',
+    '_Fld16838RRef': 'Должность', '_Fld16839RRef': 'ДолжностьПоШтатномуРасписанию',
+    '_Fld16842': 'КоличествоСтавок', '_Fld16846': 'Начало', '_Fld16847': 'Окончание',
+    '_Fld39556': 'ПометкаУдаления', '_Fld39557': 'ВАрхиве'})
+EXPECTED['_InfoRg40095'] = ('РегистрСведений.ЗанятостьПозицийШтатногоРасписанияИнтервальный', {
+    '_Fld40096RRef':'Сотрудник', '_Fld40098':'ДатаНачала', '_Fld40105RRef':'ПозицияШтатногоРасписания', '_Fld40113':'ПустойИнтервал'})
+EXPECTED['_InfoRg59135'] = ('РегистрСведений.ядс_ЗначенияПоказателейВРазрезеСистемОплатыТруда', {
+    '_Period':'Период', '_Fld59138RRef':'Сотрудник', '_Fld59139RRef':'Должность'})
 PROBES = ('current_row', 'current_position_ref', 'current_position_join', 'interval_position_join',
           'history_position_join', 'staffing_position_join', 'corrected_history_position_ref',
-          'order_position', 'head_employee_position_ref')
+          'order_position', 'head_employee_position_ref', 'picker_candidate', 'picker_position_join', 'picker_ambiguous',
+          'staffing_occupancy_position_ref', 'custom_position_ref')
 
 # Only these extra, validated fields can enter the card. Personal/pay data is
 # rendered solely for ADMIN/HR_HEAD; it is never added to list/job/audit output.
@@ -174,8 +184,10 @@ def apply_employees(run, report):
     source = {'company_id': connection.company_id, 'zup_server': run.server.casefold(), 'zup_database': run.database.casefold()}
     existing = {e.zup_ref: e for e in Employee.objects.select_for_update().filter(**source).exclude(zup_ref='')}
     positions = {}
-    for position in Position.objects.filter(company_id=connection.company_id):
-        positions.setdefault(position.name.strip().casefold(), []).append(position)
+    for position in Position.objects.filter(company_id=connection.company_id).select_related('planning_mapping__brigade'):
+        mapping = getattr(position, 'planning_mapping', None)
+        name = mapping.brigade.name if mapping and mapping.company_id == connection.company_id and mapping.brigade.company_id == connection.company_id else position.name
+        positions.setdefault(name.strip().casefold(), []).append(position)
     counts = {'created': 0, 'updated': 0, 'unchanged': 0, 'archived': sum(not values['is_active'] for _, values in normalized),
               'without_position':sum(not values['zup_position_name'] for _,values in normalized),
               'incomplete_names':sum(not values['first_name'] or not values['last_name'] for _,values in normalized),

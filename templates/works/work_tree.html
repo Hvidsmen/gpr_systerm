@@ -88,6 +88,7 @@
     </div>
     <div class="card-body p-0">
         {% if items %}
+            {% if request.user|may:'works:work_cost_shares' %}<form method="post" action="{% url 'works:work_cost_shares' work.pk %}" data-cost-shares>{% csrf_token %}{{ cost_shares_form.revision }}{{ cost_shares_form.non_field_errors }}{% endif %}
             <div class="table-responsive">
                 <table class="table table-hover mb-0">
 <thead class="table-light">
@@ -96,6 +97,7 @@
         <th>Название</th>
         <th style="width: 80px;">Ед.</th>
         <th style="width: 90px;" class="text-end">Норматив</th>
+        <th style="width: 145px;" class="text-end">Доля от суммы, %</th>
         <th style="width: 110px;" class="text-end">Готовность</th>
         <th style="width: 140px;">Профиль</th>
         <th style="width: 100px;">Действия</th>
@@ -119,6 +121,7 @@
             <span class="text-muted">—</span>
         {% endif %}
     </td>
+    <td class="text-end">{% if request.user|may:'works:work_cost_shares' %}{{ item.cost_share_input }}{{ item.cost_share_input.errors }}{% else %}{{ item.weight|floatformat:2 }}{% endif %}</td>
     <td class="text-end">
         <div class="progress" style="min-width: 70px; height: 18px;">
             <div class="progress-bar bg-{% if item.completion >= 100 %}success{% elif item.completion >= 50 %}warning{% else %}danger{% endif %}"
@@ -157,6 +160,11 @@
 
                 </table>
             </div>
+            <div class="p-3"><p>Сумма долей: <strong data-cost-share-total>{{ total_weight|floatformat:2 }}</strong>%. Для распределения всей стоимости комплекса нужно 100%.</p>
+            {% if total_weight != 100 %}<p class="text-warning">Доли стоимости ещё не распределены на 100%. Расчётные суммы зависят от введённых долей.</p>{% endif %}
+            <p class="small text-muted">Расчётная сумма плана / факта = объём работы / норматив × цена комплекса × доля / 100. Доли сохраняются в версии плана; утверждённые версии сохраняют свои значения.</p>
+            {% if request.user|may:'works:work_cost_shares' %}<button class="btn btn-primary">Сохранить доли стоимости</button>{% endif %}</div>
+            {% if request.user|may:'works:work_cost_shares' %}</form>{% endif %}
         {% else %}
             <div class="alert alert-warning m-3">
                 <i class="bi bi-exclamation-triangle"></i>
@@ -178,3 +186,6 @@
     </p>
 </div>
 {% endblock %}
+{% block extra_js %}<script>
+document.querySelectorAll('[data-cost-shares]').forEach(form=>{const update=()=>{let total=0,valid=true;form.querySelectorAll('[data-cost-share]').forEach(input=>{const raw=input.value.trim().replace(/\s/g,'').replace(',','.');const n=Number(raw);if(!raw||!Number.isFinite(n))valid=false;else total+=n;});form.querySelector('[data-cost-share-total]').textContent=valid?total.toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2}):'—';};form.addEventListener('input',update);update();});
+</script>{% endblock %}

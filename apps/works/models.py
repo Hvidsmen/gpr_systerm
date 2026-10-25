@@ -4,6 +4,7 @@ from django.utils.translation import gettext_lazy as _
 
 from core.models import BaseCompanyModel
 from django.core.exceptions import ValidationError
+from django.core.validators import MinValueValidator, MaxValueValidator
 from decimal import Decimal
 
 
@@ -329,7 +330,9 @@ class ProjectWorkItem(BaseCompanyModel):
     name = models.CharField(_("название"), max_length=255)
     unit = models.CharField(_("единица измерения"), max_length=50)
     weight = models.DecimalField(
-        _("вес (%)"), max_digits=5, decimal_places=2, default=0
+        _("доля от суммы (%)"), max_digits=5, decimal_places=2, default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text='Доля стоимости одной единицы комплекса. Сумма долей всех работ комплекса — 100%.',
     )
 
     # НОВОЕ: норматив подработы на единицу работы (копируется из шаблона)

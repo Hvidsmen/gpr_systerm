@@ -31,7 +31,7 @@ class ProjectWorkAdmin(admin.ModelAdmin):
 
 @admin.register(ProjectWorkItem)
 class ProjectWorkItemAdmin(admin.ModelAdmin):
-    exclude = ["planned_quantity", "weight"]
+    exclude = ["planned_quantity"]
     list_display = ['name', 'project_work', 'sequence']
     list_filter = ['project_work']
 

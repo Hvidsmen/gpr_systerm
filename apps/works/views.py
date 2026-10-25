@@ -123,8 +123,12 @@ class WorkDetailView(CompanyScopedMixin, DetailView):
         total = (
             next(reversed(planned.values()))["cumulative"] if planned else Decimal("0")
         )
-        items = list(work.items.select_related("load_profile", "parent"))
+        items = list(work.items.select_related("load_profile", "parent").order_by('sequence', 'pk'))
+        from .cost_shares import CostSharesForm
+        shares_form = getattr(self, 'cost_shares_form', None)
+        if shares_form is None:shares_form = CostSharesForm(items=items)
         for item in items:
+            item.cost_share_input = shares_form[f'share_{item.pk}']
             item.children_count = item.children.count()
             qty = item.daily_facts.aggregate(total=Sum("actual_quantity"))["total"] or 0
             item.planned_quantity = total * item.quantity_per_unit
@@ -138,6 +142,7 @@ class WorkDetailView(CompanyScopedMixin, DetailView):
             total_value=total * work.unit_price,
             total_weight=sum(i.weight for i in items),
             completed_quantity=fact,
+            cost_shares_form=shares_form,
         )
         return context
 

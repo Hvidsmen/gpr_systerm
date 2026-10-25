@@ -11,6 +11,7 @@ def weighted_value(spec, quantities, price):
 def add_valuations(row,children,spec,chosen,plan_index,work_id,actual_by_item,actual_prices,work,all_days,buckets,real_plan,real_fact,plan_only,basis):
     from apps.works.prices import rate_on
     from .report_services import aggregate
+    row['money_precision']='2g' if basis=='estimated' else '0g'
     estimated_plan={};estimated_fact={};item_money={i['id']:({}, {}, {}, {}) for i in spec.get('items',[])}
     for day in all_days:
         source=chosen[day];entry=plan_index[id(source)].get(work_id) if source else None
@@ -47,6 +48,9 @@ def add_valuations(row,children,spec,chosen,plan_index,work_id,actual_by_item,ac
     for child in children:
         item_id=int(child['key'].rsplit('-i',1)[-1]);item=by_id.get(item_id)
         if item:child['valuation_weight']=Decimal(str(item['weight']))/100
+        child['has_amount']=bool(row.get('has_amount') and basis=='estimated')
+        child['money_precision']=row['money_precision']
+        child['show_estimated_amount']=bool(row.get('has_amount') and basis!='estimated')
         for child_cell,parent_cell,dates in [(c,p,b['dates']) for c,p,b in zip(child['cells'],row['cells'],buckets)]+[(child['total'],row['total'],all_days)]:
             a,b,c,d=item_money.get(item_id,({},{},{},{}))
             real_a=total(c,dates) if not any(real_plan.get(day) is not None and day in c and c[day] is None for day in dates) else None
@@ -61,4 +65,16 @@ def add_valuations(row,children,spec,chosen,plan_index,work_id,actual_by_item,ac
                 known=[cell for cell in cells if cell.get(key) is not None]
                 if known and parent.get(key) is not None:
                     difference=parent[key]-sum((cell[key] for cell in known),ZERO)
-                    if abs(difference)<=Decimal('.01')*len(known):known[-1][key]+=difference
+                    dates=buckets[index]['dates'] if index<len(row['cells']) else all_days
+                    component={'estimated_amount':0,'estimated_fact_amount':1,'real_amount':2,'real_fact_amount':3}[key]
+                    eligible=[]
+                    for child,cell in zip(children,cells):
+                        item_id=int(child['key'].rsplit('-i',1)[-1])
+                        series=item_money.get(item_id,({},{},{},{}))[component]
+                        if cell.get(key) is not None and sum((series.get(day) or ZERO for day in dates),ZERO)!=0:eligible.append(cell)
+                    if eligible and abs(difference)<=Decimal('.01')*len(known):eligible[-1][key]+=difference
+        if basis=='estimated':
+            for child in children:
+                for cell in [*child['cells'],child['total']]:
+                    cell['amount']=cell['estimated_amount'];cell['fact_amount']=cell['estimated_fact_amount']
+                    cell['delta_amount']=cell['fact_amount']-cell['amount'] if cell['fact_amount'] is not None and cell['amount'] is not None else None
