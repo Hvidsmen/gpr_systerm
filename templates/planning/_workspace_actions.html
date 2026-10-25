@@ -1,0 +1,17 @@
+{% load access static %}
+<header class="plan-action-header" data-plan-action-header>
+<div class="plan-action-title"><h1>{{ workspace.name }} · v{{ version.version_number }}</h1><span class="badge bg-primary">{{ version.get_status_display }}</span></div>
+<p class="plan-action-meta">{{ workspace.construction_object }} · {{ workspace.start_date|date:'d.m.Y' }} — {{ workspace.end_date|date:'d.m.Y' }} · {{ version.get_version_kind_display }} · месяц {{ selected_month|date:'m.Y' }}{% if version.planning_month %} · {{ version.get_scenario_display }}{% endif %}</p>
+<nav class="plan-action-row" aria-label="Действия редактирования ГПР">
+<button class="btn btn-primary btn-sm" type="submit" form="allocation-editor" name="action" value="save">Сохранить</button>
+<a class="btn btn-outline-primary btn-sm" href="{% url 'planning:global_detail' version.pk %}">План и согласование</a>
+<a class="btn btn-outline-primary btn-sm" href="{% url 'planning:preparation_gpr' version.pk %}?handoff=1">Передать руководителю и сметчику</a>
+{% if can_prepare_resources and resource_preparation %}<form method="post" action="{% url 'planning:preparation_gpr' version.pk %}">{% csrf_token %}<button class="btn btn-outline-primary btn-sm" name="action" value="ready">Ресурсы определены</button></form>{% endif %}
+{% if can_prepare_resources %}<form method="post" action="{% url 'planning:global_action' version.pk 'submit' %}">{% csrf_token %}<button class="btn btn-outline-primary btn-sm" {% if not resources_ready or not estimator_approved %}disabled title="Сначала подтвердите ресурсы и завершите проверку сметчиком"{% endif %}>Отправить на согласование</button></form>{% endif %}
+{% if request.user|may:'planning:estimate_review_list' %}<a class="btn btn-outline-secondary btn-sm" href="{% url 'planning:estimate_review_list' %}">Задания сметчика</a>{% endif %}
+<button type="button" class="btn btn-outline-secondary btn-sm" data-expand-allocations>Развернуть всё</button><button type="button" class="btn btn-outline-secondary btn-sm" data-collapse-allocations>Свернуть всё</button>
+{% if request.user|may:'planning:workspace_detail' %}<a class="btn btn-outline-secondary btn-sm" href="{% url 'planning:workspace_detail' workspace.pk %}">История ГПР</a>{% endif %}
+{% if request.user|may:'planning:calendar_list' %}<a class="btn btn-outline-secondary btn-sm" href="{% url 'planning:calendar_list' %}">Календари</a>{% endif %}
+</nav></header>
+
+<script src="{% static 'planning/plan_actions.js' %}" defer></script>

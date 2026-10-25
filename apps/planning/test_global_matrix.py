@@ -147,7 +147,7 @@ class GlobalMatrixTests(TestCase):
         ):
             response = self.client.get(self.url)
         self.assertContains(response, "Настройте календарь")
-        self.assertContains(response, "Запустить согласование")
+        self.assertContains(response, "Отправить на согласование")
         self.assertNotContains(response, 'id="plan-fact-matrix"')
 
     def test_internal_source_override_cannot_cross_objects(self):

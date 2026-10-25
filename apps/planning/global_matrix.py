@@ -79,6 +79,7 @@ def detail_matrix(request, version):
             else version.snapshot
         )
     except ValidationError as exc:
+        if getattr(exc,'code',None)=='manual_work_remainder':request.session[f'workspace_remainder_issue_{version.pk}']=exc.params
         context["matrix_error"] = "; ".join(exc.messages)
         return context
     context["resource_plan_snapshot"] = snapshot

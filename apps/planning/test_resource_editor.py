@@ -134,3 +134,16 @@ class InlineResourceTests(TestCase):
         self.assertContains(response,'data-preparation-tasks')
         self.assertEqual(WorkTask.objects.count(),count)
         self.assertEqual(self.client.get(reverse('planning:preparation_gpr',args=[self.version.pk])).status_code,302)
+
+    def test_single_save_and_submit_actions_and_unified_matrix(self):
+        response=self.client.get(reverse('planning:global_detail',args=[self.version.pk]))
+        self.assertEqual(response.status_code,200)
+        self.assertContains(response,'data-plan-action-header',count=1)
+        self.assertContains(response,'data-matrix-resource-row',count=3)
+        self.assertNotContains(response,'<div class="table-responsive mt-2 mb-2" data-resource-work-plan>')
+        self.assertContains(response,'Отправить на согласование',count=1)
+        self.client.force_login(self.planner)
+        response=self.client.get(reverse('planning:workspace_edit',args=[self.version.pk]))
+        self.assertContains(response,'form="allocation-editor" name="action" value="save"',count=1)
+        self.assertNotContains(response,'Сохранить этот месяц')
+        self.assertNotContains(response,'Сохранить месяц и сформировать план')

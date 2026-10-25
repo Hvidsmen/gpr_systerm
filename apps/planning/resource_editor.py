@@ -157,3 +157,26 @@ def add_assignment(request,pk):
             return JsonResponse({'assignment':serialize(saved)})
     except ValidationError as error:
         return JsonResponse({'errors':{'__all__':[{'message':message} for message in error.messages]}},status=400)
+
+
+def attach_matrix_resources(context):
+    """Annotate the existing plan rows instead of rendering another work tree."""
+    import re
+    targets={target['id']:{item['id'] for item in target['items']} for target in context.get('resource_targets',[])}
+    def visit(nodes):
+        for node in nodes:
+            visit(node.get('children',[]))
+            for row in node.get('rows',[]):
+                match=re.search(r'(?:^|-)w(\d+)',row.get('key',''))
+                if not match:continue
+                work_id=int(match.group(1))
+                if work_id not in targets:continue
+                row['resource_work_id']=work_id
+                for child in row.get('children',[]):
+                    item=re.search(r'-i(\d+)',child.get('key',''))
+                    if item and int(item.group(1)) in targets[work_id]:
+                        child.update(resource_work_id=work_id,resource_item_id=int(item.group(1)))
+    for obj in context.get('objects',[]):
+        for section in obj.get('sections',[]):
+            if section['kind']=='works':visit(section.get('groups',[]))
+    context.update(show_matrix_resources=True,inline_approval_actions=True,resource_matrix_colspan=len(context.get('columns',[]))+2)

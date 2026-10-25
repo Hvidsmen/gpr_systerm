@@ -7,7 +7,7 @@
   const field=name=>form?.elements.namedItem(name);
   const targetById=id=>data.targets.find(t=>String(t.id)===String(id));
   let editor=null,editorTarget=null,dirty=false,busy=false;
-  const foldStates=new Map();
+  const foldStates=new Map(),observedScrolls=new WeakSet();
   const foldKey=host=>String(host.dataset.resourceWork||'')+'/'+String(host.dataset.resourceItem||'');
   document.addEventListener('toggle',event=>{const fold=event.target;if(fold.matches?.('[data-resource-fold]')&&fold.isConnected){const host=fold.closest('[data-work-resource-target]');if(host)foldStates.set(foldKey(host),fold.open);}},true);
   const activeAssignments=()=>data.assignments.filter(a=>a.end_date>=data.start_date&&a.start_date<=data.end_date);
@@ -87,6 +87,11 @@
   }
   function renderHost(host) {
     let list=host.querySelector('[data-work-resource-list]');if(!list)return;
+    const scrollArea=host.closest('.matrix-scroll');
+    if(scrollArea&&!observedScrolls.has(scrollArea)){
+      const resize=()=>{if(scrollArea.clientWidth)scrollArea.style.setProperty('--resource-panel-width',Math.max(160,scrollArea.clientWidth-20)+'px');};
+      resize();if(window.ResizeObserver)new ResizeObserver(resize).observe(scrollArea);observedScrolls.add(scrollArea);
+    }
     host.querySelector('[data-resource-actions]')?.remove();
     if(!host.querySelector('[data-resource-fold]')){
       const fold=document.createElement('details');fold.dataset.resourceFold='';fold.open=foldStates.get(foldKey(host))??true;
@@ -142,8 +147,7 @@
       error('Подтвердите удаление назначения. Оно исчезнет из работы и общих ресурсов.');
     }
     if(event.target.closest('[data-confirm-delete-resource]'))submit(true);
-    const toggle=event.target.closest('[data-resource-expand]');
-    if(toggle)document.querySelectorAll('#work-resources [data-resource-work-group],#work-resources [data-resource-fold]').forEach(block=>block.open=toggle.dataset.resourceExpand==='true');
+
   });
   async function submit(remove=false) {
     if(busy||!editor)return;
@@ -164,7 +168,7 @@
   document.getElementById('allocation-editor')?.addEventListener('submit',event=>{
     if(editor&&(dirty||busy)){event.preventDefault();error('Сначала сохраните или отмените изменения ресурса. Затем сохраните месячные объёмы.');editor.scrollIntoView({block:'nearest'});}
   });
-  window.gprResourceEditor={wireWork,addButtons,renderWorkLists};
+  window.gprResourceEditor={wireWork,addButtons,renderWorkLists,hasPendingChanges:()=>Boolean(editor&&(dirty||busy)),revealPending:()=>{if(editor){for(let parent=editor.parentElement;parent;parent=parent.parentElement){if(parent.tagName==='DETAILS')parent.open=true;if(parent.hasAttribute('data-work-parent')){const key=parent.dataset.workParent;document.querySelectorAll('[data-work-parent]').forEach(row=>{if(row.dataset.workParent===key)row.hidden=false;});document.querySelectorAll('[data-work-toggle]').forEach(toggle=>{if(toggle.dataset.workToggle===key){toggle.setAttribute('aria-expanded','true');toggle.textContent='▾';}});}}error('Сначала сохраните или отмените изменения этого ресурса.');editor.scrollIntoView({block:'center'});}}};
   if(window.wireSubworks)window.wireSubworks();
   const heading=document.querySelector('#allocation-editor h3');
   if(heading){const common=document.createElement('div');common.className='mb-3';const label=document.createElement('strong');label.textContent='Добавить ресурс вне работ';common.append(label);addButtons(common);heading.after(common);}

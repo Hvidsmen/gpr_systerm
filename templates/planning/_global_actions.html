@@ -1,0 +1,31 @@
+{% load access static %}
+<header class="plan-action-header" data-plan-action-header>
+<div class="plan-action-title"><h1>{{ object.construction_object }} · ГПР v{{ object.version_number }}</h1><span class="badge bg-primary">{{ object.get_status_display }}</span></div>
+<p class="plan-action-meta">{{ object.title }} · {{ object.start_date|date:'d.m.Y' }} — {{ object.end_date|date:'d.m.Y' }} · {{ object.get_version_kind_display }}{% if object.planning_month %} · {{ object.planning_month|date:'m.Y' }} · {{ object.get_scenario_display }}{% endif %}</p>
+<nav class="plan-action-row" aria-label="Действия ГПР">
+{% if object.workspace_id and object.status == 'DRAFT' or object.workspace_id and object.status == 'REJECTED' %}{% if request.user|may:'planning:workspace_edit' %}<a class="btn btn-primary btn-sm" href="{% url 'planning:workspace_edit' object.pk %}">Редактировать</a>{% endif %}{% endif %}
+{% if can_prepare_resources and resource_preparation %}<form method="post" action="{% url 'planning:preparation_gpr' object.pk %}">{% csrf_token %}<button class="btn btn-outline-primary btn-sm" name="action" value="ready">Ресурсы определены</button></form>{% endif %}
+{% if can_prepare_resources %}<form method="post" action="{% url 'planning:global_action' object.pk 'submit' %}">{% csrf_token %}<button class="btn btn-primary btn-sm" {% if not resources_ready or not estimator_approved %}disabled title="Сначала подтвердите ресурсы и завершите проверку сметчиком"{% endif %}>Отправить на согласование</button></form>{% endif %}
+{% if request.user|may:'planning:workspace_edit' %}{% if object.status == 'DRAFT' or object.status == 'REJECTED' %}<a class="btn btn-outline-primary btn-sm" href="{% url 'planning:preparation_gpr' object.pk %}?handoff=1">Передать руководителю и сметчику</a>{% endif %}{% endif %}
+{% if object.status == 'DRAFT' or object.status == 'REJECTED' or object.status == 'SUBMITTED' %}{% if request.user|may:'planning:estimate_review_assign' %}<a class="btn btn-outline-primary btn-sm" href="{% url 'planning:estimate_review_assign' 'gpr' object.pk %}">Проверка сметчиком</a>{% endif %}{% endif %}
+{% for section in approval_sections %}{% if section.can_approve %}<form method="post" action="{% url 'planning:global_action' object.pk section.action %}">{% csrf_token %}<button class="btn btn-success btn-sm">Согласовать: {{ section.label }}</button></form>{% endif %}{% endfor %}
+{% if can_final_approve %}<form method="post" action="{% url 'planning:global_action' object.pk 'approve' %}">{% csrf_token %}<button class="btn btn-success btn-sm">Утвердить весь план</button></form>{% endif %}
+{% if can_return %}<form method="post" action="{% url 'planning:global_action' object.pk 'reject' %}">{% csrf_token %}<input class="form-control form-control-sm" name="comment" maxlength="4000" required placeholder="Причина возврата" aria-label="Причина возврата"><button class="btn btn-outline-danger btn-sm">На доработку</button></form>{% endif %}
+{% if can_complete %}<form method="post" action="{% url 'planning:global_action' object.pk 'complete' %}" onsubmit="return confirm('Завершить план? Изменение станет недоступно.');">{% csrf_token %}<button class="btn btn-primary btn-sm">Завершить план</button></form>{% endif %}
+{% if object.workspace_id and request.user|may:'planning:workspace_excel_export' %}<a class="btn btn-outline-secondary btn-sm" href="{% url 'planning:workspace_excel_export' object.pk %}?scope=period">Excel</a>{% endif %}
+<a class="btn btn-outline-secondary btn-sm" href="{{ request.get_full_path }}">Обновить расчёт</a>
+<a class="btn btn-outline-secondary btn-sm" href="{% url 'planning:pivot_gpr_detail' object.pk %}">Сводная таблица</a>
+{% if daily_schedules %}<a class="btn btn-outline-secondary btn-sm" href="#gpr-related-smg" data-plan-open="gpr-related-smg">Связанные СМГ · {{ daily_schedules|length }}</a>{% endif %}
+{% for linked in linked_object_plans %}<a class="btn btn-outline-secondary btn-sm" href="{% url 'planning:object_plan_detail' linked.pk %}">{{ linked.name }}</a>{% endfor %}
+<button type="button" class="btn btn-outline-secondary btn-sm" data-expand-matrix="true">Развернуть всё</button><button type="button" class="btn btn-outline-secondary btn-sm" data-expand-matrix="false">Свернуть всё</button>
+{% if object.is_immutable and request.user|may:'planning:daily_schedule_create' %}<a class="btn btn-outline-primary btn-sm" href="{% url 'planning:daily_schedule_create' object.pk %}">СМГ из ГПР</a>{% endif %}
+{% if object.workspace_id and request.user|may:'planning:workspace_detail' %}<a class="btn btn-outline-secondary btn-sm" href="{% url 'planning:workspace_detail' object.workspace_id %}">История ГПР</a>{% endif %}
+{% if object.is_immutable and request.user|may:'planning:workspace_continue' %}<a class="btn btn-outline-secondary btn-sm" href="{% url 'planning:workspace_continue' %}?source={{ object.pk }}">Продолжить ГПР</a>{% endif %}
+{% if object.is_immutable and not object.workspace.parent_gpr_id %}<a class="btn btn-outline-secondary btn-sm" href="{% url 'planning:gpr_distribution_detail' object.pk %}">СМГ субобъектов</a>{% endif %}
+{% if object.is_immutable and request.user|may:'planning:report_matrix' %}<a class="btn btn-outline-secondary btn-sm" href="{% url 'planning:report_matrix' %}?objects={{ object.construction_object_id }}&amp;version_{{ object.construction_object_id }}={{ object.pk }}&amp;start={{ object.start_date|date:'Y-m-d' }}&amp;end={{ object.end_date|date:'Y-m-d' }}">План / факт</a>{% endif %}
+{% if object.workspace.is_macro_consolidation %}<a class="btn btn-outline-secondary btn-sm" href="{% url 'planning:macro_history_detail' object.workspace_id %}">История макрообъекта</a>{% endif %}
+{% if object.is_immutable and object.version_kind != 'BASELINE' and request.user|may:'planning:version_revision' %}<form method="post" action="{% url 'planning:global_action' object.pk 'revision' %}">{% csrf_token %}<button class="btn btn-outline-primary btn-sm">Создать редакцию</button></form>{% endif %}
+{% if request.user|may:'planning:global_delete' and object.can_delete %}<a class="btn btn-outline-danger btn-sm" href="{% url 'planning:global_delete' object.pk %}">Удалить версию</a>{% endif %}
+</nav></header>
+
+<script src="{% static 'planning/plan_actions.js' %}" defer></script>

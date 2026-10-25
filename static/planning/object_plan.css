@@ -1,0 +1,21 @@
+.object-plan-section {border:1px solid #dce7ef; border-radius:8px; margin-bottom:12px; background:#fff;}
+.object-plan-section > summary {padding:10px 14px; background:#edf5fb; font-weight:600; cursor:pointer;}
+.object-plan-section-body {padding:10px;}
+.object-plan-group {margin:0 0 10px; border-left:2px solid #dce9f3; padding-left:10px;}
+.object-plan-group > summary {font-weight:600; padding:8px; background:#f5f8fc; cursor:pointer;}
+.object-plan-package {border:1px solid #dce7ef; border-radius:7px; margin:9px 0; background:white;}
+.object-plan-package > summary {display:list-item; padding:10px 12px; cursor:pointer;}
+.object-plan-package-head {display:inline-grid; grid-template-columns:minmax(180px,1fr) 180px 70px 110px; gap:12px; align-items:center; width:calc(100% - 18px); vertical-align:middle;}
+.object-plan-package-head strong {font-size:13px;}
+.object-plan-package-head small {display:block; color:#7890a4; font-size:11px; margin-top:3px;}
+.object-plan-tree input[type=number] {width:100%; max-width:220px; min-height:30px; padding:4px 7px; border:1px solid #d5e3ee; border-radius:5px; font-size:12px;}
+.object-plan-package-body {padding:0 12px 10px 26px;}
+.object-plan-items {width:100%; font-size:12px; border-collapse:collapse;}
+.object-plan-items th {background:#edf5fb; font-weight:500; color:#617b92; text-align:left; padding:7px 9px;}
+.object-plan-items td {padding:7px 9px; border-bottom:1px solid #e4edf4;}
+.object-plan-items tr:last-child td {border-bottom:0;}
+.object-plan-delete {font-size:11px; color:#a75555; font-weight:normal; white-space:nowrap;}
+.object-plan-section[hidden],.object-plan-group[hidden],.object-plan-package[hidden] {display:none!important;}
+.object-plan-filter {display:flex; gap:10px; align-items:center; margin-bottom:12px;}
+.object-plan-filter input {max-width:500px;}
+@media(max-width:850px){.object-plan-package-head {grid-template-columns:minmax(120px,1fr) 100px 40px; gap:6px;} .object-plan-package-head > .object-plan-delete {grid-column:1/-1;} .object-plan-package-body {padding-left:10px;} }

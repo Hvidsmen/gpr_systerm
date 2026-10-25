@@ -1,0 +1,7 @@
+{% load static %}<header class="plan-action-header" data-plan-action-header><div class="plan-action-title"><h1>{{ plan.name }}</h1></div><p class="plan-action-meta">{{ plan.construction_object }} · План работ и объёмов</p>
+<nav class="plan-action-row" aria-label="Действия плана">
+{% if editable %}<button type="submit" class="btn btn-primary btn-sm" form="object-work-editor">Сохранить</button><a class="btn btn-outline-primary btn-sm" href="#object-plan-add" data-object-plan-open="object-plan-add">Добавить работы</a><a class="btn btn-outline-secondary btn-sm" href="#object-plan-settings" data-object-plan-open="object-plan-settings">Настройки и связи</a>{% endif %}
+<button type="button" class="btn btn-outline-secondary btn-sm" data-object-plan-expand="true">Развернуть всё</button><button type="button" class="btn btn-outline-secondary btn-sm" data-object-plan-expand="false">Свернуть всё</button>
+<a class="btn btn-outline-secondary btn-sm" href="{% url 'planning:object_plan_list' %}">К списку планов</a>
+{% for version in plan.gpr_versions.all %}<a class="btn btn-outline-primary btn-sm" href="{% url 'planning:global_detail' version.pk %}">ГПР v{{ version.version_number }}</a>{% endfor %}{% for schedule in plan.smg_schedules.all %}<a class="btn btn-outline-primary btn-sm" href="{% url 'planning:daily_schedule_detail' schedule.pk %}">СМГ {{ schedule.month|date:'m.Y' }} · ред. {{ schedule.revision }}</a>{% endfor %}
+</nav></header><script src="{% static 'planning/plan_actions.js' %}" defer></script>

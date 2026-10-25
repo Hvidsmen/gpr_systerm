@@ -92,6 +92,23 @@ def add_branch(user,plan,selection,quantity):
     return count
 
 
+def work_groups(rows):
+    sections={};invalid=[]
+    for form in rows:
+        if not form.instance.work_id:invalid.append(form);continue
+        work=form.instance.work
+        form.fields['quantity'].widget.attrs['aria-label']='Плановый объём: '+form.instance.label
+        section=sections.setdefault(work.section_id,{'name':work.section.name,'groups':{}})
+        group=section['groups'].setdefault(work.complex_object_id,{'object':work.complex_object,'packages':{}})
+        package=group['packages'].setdefault(work.pk,{'work':work,'parent':None,'items':[]})
+        if form.instance.work_item_id:package['items'].append(form)
+        else:package['parent']=form
+    for section in sections.values():
+        for group in section['groups'].values():group['packages']=list(group['packages'].values())
+        section['groups']=list(section['groups'].values())
+    return list(sections.values()),invalid
+
+
 class ObjectPlanList(View):
     def get(self,request):
         require_roles(request.user,READ_ROLES)
@@ -142,7 +159,8 @@ class ObjectPlanDetail(View):
                     return redirect('planning:object_plan_detail',pk=plan.pk)
             except ValidationError as error:
                 for message in error.messages:messages.error(request,message)
-        return render(request,'planning/object_plan_detail.html',{'object_plan_tab':True,'plan':plan,'form':form,'rows':rows,'branch_form':branch,'editable':role_code(request.user) in PLAN_ROLES},status=400 if bound else 200)
+        sections,invalid=work_groups(rows)
+        return render(request,'planning/object_plan_detail.html',{'object_plan_tab':True,'plan':plan,'form':form,'rows':rows,'work_sections':sections,'invalid_work_rows':invalid,'branch_form':branch,'editable':role_code(request.user) in PLAN_ROLES},status=400 if bound else 200)
     def get(self,request,pk):return self.display(request,pk)
     def post(self,request,pk):return self.display(request,pk,True)
 

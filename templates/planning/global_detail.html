@@ -1,22 +1,19 @@
-{% extends 'base.html' %}
-{% load access static %}{% block extra_css %}<link rel="stylesheet" href="{% static 'planning/report_matrix.css' %}">{% endblock %}{% block content %}<p><a class="btn btn-primary" href="{% url 'planning:preparation_gpr' object.pk %}">Подготовка плана · работы, ресурсы и запуск согласования</a></p><p><a class="btn btn-outline-primary" href="{% url 'planning:pivot_gpr_detail' object.pk %}"><i class="bi bi-layout-three-columns"></i> Сводная таблица этой версии</a></p>
-{% if request.user|may:'planning:global_delete' %}{% if object.can_delete %}<a class="btn btn-outline-danger mb-3" href="{% url 'planning:global_delete' object.pk %}">Удалить версию</a>{% endif %}{% endif %}
-{% include 'planning/_linked_object_plans.html' %}<h1>{{ object }}</h1>{% if object.workspace.is_macro_consolidation %}<p><a class="btn btn-outline-primary" href="{% url 'planning:macro_history_detail' object.workspace_id %}">Все шаги общего ГПР макрообъекта</a></p>{% endif %}{% if object.is_immutable %}{% if request.user|may:'planning:workspace_continue' %}<p><a class="btn btn-outline-primary" href="{% url 'planning:workspace_continue' %}?source={{ object.pk }}">Продолжить предыдущий ГПР</a></p>{% endif %}{% endif %}{% if object.status == "DRAFT" or object.status == "REJECTED" or object.status == "SUBMITTED" %}{% if request.user|may:"planning:estimate_review_assign" %}<p><a class="btn btn-outline-primary" href="{% url 'planning:estimate_review_assign' 'gpr' object.pk %}">Проверка сметчиком</a></p>{% endif %}{% endif %}{% if object.is_immutable and not object.workspace.parent_gpr_id %}<p><a class="btn btn-outline-primary" href="{% url 'planning:gpr_distribution_detail' object.pk %}">ГПР → СМГ субобъектов</a></p>{% endif %}{% if object.is_immutable %}{% if request.user|may:'planning:report_matrix' %}<p><a class="btn btn-outline-primary btn-sm" href="{% url 'planning:report_matrix' %}?objects={{ object.construction_object_id }}&amp;version_{{ object.construction_object_id }}={{ object.pk }}&amp;start={{ object.start_date|date:'Y-m-d' }}&amp;end={{ object.end_date|date:'Y-m-d' }}">Матрица план / факт этой версии</a></p>{% endif %}{% endif %}<p>{{ object.title }} · {{ object.start_date }} — {{ object.end_date }}</p>{% if object.workspace_id %}
-<p>{% if request.user|may:'planning:workspace_detail' %}<a href="{% url 'planning:workspace_detail' object.workspace_id %}">Рабочее пространство: {{ object.workspace.name }}</a>{% endif %} · {% if request.user|may:'planning:workspace_excel_export' %}<a href="{% url 'planning:workspace_excel_export' object.pk %}?scope=period">Скачать план на период (Excel)</a>{% endif %} · {{ object.get_version_kind_display }}{% if object.planning_month %} · {{ object.planning_month|date:'m.Y' }} · {{ object.get_scenario_display }}{% endif %}</p>
-{% if object.status == 'DRAFT' or object.status == 'REJECTED' %}<p>{% if request.user|may:'planning:workspace_edit' %}<a class="btn btn-primary" href="{% url 'planning:workspace_edit' object.pk %}">Редактировать месячные планы</a>{% endif %}</p>{% endif %}
-{% endif %}
-{% if object.is_immutable %}{% if request.user|may:'planning:daily_schedule_create' %}<p><a class="btn btn-primary" href="{% url 'planning:daily_schedule_create' object.pk %}">Дневной СМГ из этого ГПР</a></p>{% endif %}{% endif %}
-<p>{% for s in daily_schedules %}<a class="btn btn-sm btn-outline-primary mb-1" href="{% url 'planning:daily_schedule_detail' s.pk %}">СМГ {{ s.month|date:'m.Y' }} · ред. {{ s.revision }} · {{ s.get_status_display }}</a> {% endfor %}</p>
-<h2>{% if daily %}План по дням · {{ start|date:"m.Y" }}{% else %}План на весь период по месяцам{% endif %}</h2>
+{% extends 'base.html' %}{% load static %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'planning/report_matrix.css' %}"><link rel="stylesheet" href="{% static 'planning/plan_actions.css' %}">{% endblock %}
+{% block content %}
+{% include 'planning/_global_actions.html' %}
+{% if daily_schedules %}<details class="mb-3" id="gpr-related-smg"><summary>Связанные СМГ · {{ daily_schedules|length }}</summary><div class="d-flex flex-wrap gap-2 mt-2">{% for s in daily_schedules %}<a class="btn btn-sm btn-outline-primary" href="{% url 'planning:daily_schedule_detail' s.pk %}">СМГ {{ s.month|date:'m.Y' }} · ред. {{ s.revision }} · {{ s.get_status_display }}</a>{% endfor %}</div></details>{% endif %}
+<div id="work-resources">
 {% include 'planning/_resource_panel.html' %}
+<h2 class="h5">{% if daily %}План по дням · {{ start|date:'m.Y' }}{% else %}План работ и ресурсов по месяцам{% endif %}</h2>
 {% include 'planning/global_matrix.html' %}
+</div>
 {% include 'planning/_resource_editor.html' %}
-{% if object.baseline_review_id %}<p class="text-muted">Зафиксированная база: раунд {{ object.baseline_review.number }} согласования базового плана.</p>{% endif %}
-{% if object.previous_version %}<p>Редакция {% if request.user|may:'planning:global_detail' %}<a href="{% url 'planning:global_detail' object.previous_version.pk %}">v{{ object.previous_version.version_number }}</a>{% endif %}</p>{% endif %}
-{% if object.status == 'DRAFT' or object.status == 'REJECTED' %}{% if request.user|may:'planning:version_submit' %}<form method="post" action="{% url 'planning:global_action' object.pk 'submit' %}">{% csrf_token %}<button>Отправить на согласование</button></form>{% endif %}{% endif %}
-<p class="alert alert-info">Период проверки и согласования: <strong>{{ review_start|date:'d.m.Y' }} — {{ review_end|date:'d.m.Y' }}</strong>. Ранее утвержденная история сохраняется.</p>
+<details class="my-3"><summary>Согласование и история решений</summary>
+<p class="small text-muted">Период проверки и согласования: <strong>{{ review_start|date:'d.m.Y' }} — {{ review_end|date:'d.m.Y' }}</strong>. Ранее утверждённая история сохраняется.</p>
 {% include 'planning/approval_panel.html' %}
+{% if object.baseline_review_id %}<p class="small">Зафиксированная база: раунд {{ object.baseline_review.number }}.</p>{% endif %}
+{% if object.previous_version %}<p class="small">Предыдущая редакция: <a href="{% url 'planning:global_detail' object.previous_version.pk %}">v{{ object.previous_version.version_number }}</a></p>{% endif %}
+</details>
 {% include 'planning/project_assignment.html' %}
-{% if object.is_immutable and object.version_kind != 'BASELINE' %}{% if request.user|may:'planning:version_revision' %}<form method="post" action="{% url 'planning:global_action' object.pk 'revision' %}">{% csrf_token %}<button>Создать новую редакцию</button></form>{% endif %}{% endif %}
-<p>{% if object.status == 'DRAFT' or object.status == 'REJECTED' %}Показан предварительный расчёт. При отправке на согласование он пересчитывается и фиксируется.{% else %}План зафиксирован в версии.{% endif %}</p>
 {% endblock %}

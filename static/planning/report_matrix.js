@@ -42,7 +42,10 @@
   });
   syncVersions();
   document.querySelectorAll('[data-expand-matrix]').forEach(button => button.addEventListener('click', () => {
-    matrix?.querySelectorAll('details').forEach(details => { details.open = button.dataset.expandMatrix === 'true'; });
+    const expanded=button.dataset.expandMatrix==='true';
+    matrix?.querySelectorAll('details').forEach(details=>{details.open=expanded;});
+    matrix?.querySelectorAll('[data-work-toggle]').forEach(toggle=>{toggle.setAttribute('aria-expanded',String(expanded));toggle.textContent=expanded?'▾':'▸';});
+    matrix?.querySelectorAll('[data-work-parent]').forEach(row=>{row.hidden=!expanded;});
   }));
   matrix?.querySelectorAll('[data-work-toggle]').forEach(button => button.addEventListener('click', () => {
     const expanded = button.getAttribute('aria-expanded') !== 'true';
