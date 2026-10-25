@@ -26,6 +26,16 @@ class BranchSelectionTests(TestCase):
     def add(self,selection,month='2026-01-01'):
         return self.client.post(self.url,{'selection':selection,'months':[month]})
 
+    def test_picker_options_include_structured_parent_ids(self):
+        from .work_selection_views import BranchForm
+        options={row['value']:row for row in BranchForm(version=self.version).catalogue_options}
+        self.assertEqual(options[f'object:{self.facility.pk}']['object_id'],str(self.facility.pk))
+        self.assertEqual(options[f'package:{self.composite.pk}']['object_id'],str(self.facility.pk))
+        item=options[f'item:{self.a.pk}']
+        self.assertEqual((item['object_id'],item['package_id']),(str(self.facility.pk),str(self.composite.pk)))
+        self.assertEqual(options[f'package:{self.sibling.pk}']['object_id'],'')
+        self.assertEqual(options[f'package:{self.sibling.pk}']['package_id'],'')
+
     def test_single_item_adds_only_its_parents_and_survives_snapshot(self):
         self.assertEqual(self.add(f'item:{self.a.pk}').status_code,302)
         row=self.version.work_allocations.get()

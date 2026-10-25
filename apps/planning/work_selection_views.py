@@ -18,14 +18,20 @@ class BranchForm(forms.Form):
         self.works=ProjectWork.objects.filter(company=version.company,section__construction_object=version.construction_object,merged_source__isnull=True)
         self.fields['selection'].choices=choices(self.works)
         self.fields['selection'].widget.attrs.update({'data-native-select':'1','class':'form-select'})
-        kinds=dict(self.works.values_list('pk','kind'))
+        parents={row.pk:row for row in self.works.select_related('complex_object')}
+        kinds={pk:row.kind for pk,row in parents.items()}
+        from apps.works.models import ProjectWorkItem
+        item_parents=dict(ProjectWorkItem.objects.filter(project_work__in=self.works,company=version.company).values_list('pk','project_work_id'))
         self.catalogue_options=[]
         for group in self.fields['selection'].choices:
             if not isinstance(group[1],(list,tuple)):continue
             for value,label in group[1]:
                 prefix,pk=value.split(':')
                 level='object' if prefix=='object' else 'package' if prefix=='package' and kinds[int(pk)]=='COMPOSITE' else 'work'
-                self.catalogue_options.append({'value':value,'label':label,'level':level})
+                work=parents.get(int(pk)) if prefix=='package' else parents.get(item_parents.get(int(pk))) if prefix=='item' else None
+                self.catalogue_options.append({'value':value,'label':label,'level':level,
+                    'object_id':str(pk) if prefix=='object' else str(work.complex_object_id or '') if work else '',
+                    'package_id':str(work.pk) if work and work.kind=='COMPOSITE' else ''})
 
         self.fields['months'].choices=[(month.isoformat(),month.strftime('%m.%Y')) for month in editable_months(version)]
 

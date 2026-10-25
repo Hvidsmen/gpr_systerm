@@ -16,6 +16,12 @@ from apps.planning import preparation,work_resources
 class InlineResourceBrowserTests(StaticLiveServerTestCase):
     def test_inline_resources(self):
         fixtures.WorkspaceTests.setUpTestData.__func__(type(self))
+        from apps.works.models import ComplexObject,ProjectWork,ProjectWorkItem
+        facility=ComplexObject.objects.create(company=self.company,construction_object=self.obj,name='Filter object one')
+        self.composite.complex_object=facility;self.composite.save()
+        second=ComplexObject.objects.create(company=self.company,construction_object=self.obj,name='Filter object two')
+        other=ProjectWork.objects.create(company=self.company,section=self.composite.section,complex_object=second,name='Composite',kind='COMPOSITE',unit='шт')
+        other_item=ProjectWorkItem.objects.create(company=self.company,project_work=other,name=self.a.name,unit=self.a.unit,quantity_per_unit=1,weight=100)
         admin=User.objects.create_user(username='browser-admin',company=self.company,role=Role.objects.get(code='ADMIN'))
         estimator=User.objects.create_user(username='browser-estimator',company=self.company,role=Role.objects.get(code='ESTIMATOR'))
         version=WorkspaceService.create(self.planner,self.obj,'Browser resource work',date(2026,1,1),date(2027,2,28)).baseline_version
@@ -40,6 +46,7 @@ class InlineResourceBrowserTests(StaticLiveServerTestCase):
         def cookie(user):
             client=Client();client.force_login(user);return client.cookies['sessionid'].value
         config=dict(base=self.live_server_url,monthly=reverse('planning:workspace_edit',args=[version.pk]),detail=reverse('planning:global_detail',args=[version.pk]),item=self.a.pk,item_unit=self.a.unit,equipment=self.equipment.name,position=position.name,position_id=position.pk,admin_cookie=cookie(admin),manager_cookie=cookie(self.manager),planner_cookie=cookie(self.planner))
+        config.update(filter_object=str(facility.pk),filter_other_object=str(second.pk),filter_package=str(self.composite.pk),filter_other_package=str(other.pk),filter_other_item=str(other_item.pk),filter_item_name=self.a.name)
         config['object_plan']=reverse('planning:object_plan_detail',args=[objplan.pk])
         config['smg']=reverse('planning:daily_schedule_detail',args=[smg.pk])
         config['chromium']=os.environ.get('GPR_CHROMIUM_EXECUTABLE') or shutil.which('chromium') or shutil.which('chromium-browser')
