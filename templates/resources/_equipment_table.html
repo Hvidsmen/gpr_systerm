@@ -1,0 +1,45 @@
+{% load access %}
+    <div class="card">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>{% if request.user|may:bulk_route %}<th style="width:36px" aria-label="Выбор строк"></th>{% endif %}
+                            <th>Название</th>
+                            <th>Категория</th><th>Категории водителя</th><th>Классы водителя</th>
+                            <th>Ед. измерения</th>
+                            <th>Статус</th>
+                            <th>Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for et in group_items %}
+                            <tr>{% if request.user|may:bulk_route %}<td>{% include 'bulk/checkbox.html' with record=et %}</td>{% endif %}
+                                <td>{% include 'resources/_equipment_preview.html' %}<div class="small text-muted">{% if et.parent_id %}Модель для СМГ{% elif et.model_variants.exists %}Категория для ГПР{% endif %}</div></td>
+                                <td>{{ et.category|default:"—" }}</td><td>{{ et.driver_category_labels|join:", "|default:"—" }}</td><td>{{ et.driver_class_labels|join:", "|default:"—" }}</td>
+                                <td>{{ et.unit }}</td>
+                                <td>
+                                    {% if et.is_active %}
+                                        <span class="badge bg-success">Активна</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">Неактивна</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="btn-group btn-group-sm">
+                                        <a class="btn btn-outline-primary" href="{% url 'resources:equipment_crew' et.pk %}">Экипаж</a>{% if request.user|may:'resources:equipment_type_update' %}<a href="{% url 'resources:equipment_type_update' et.pk %}" class="btn btn-outline-secondary">
+                                            <i class="bi bi-pencil"></i>
+                                        </a>{% endif %}
+                                        {% if request.user|may:'resources:equipment_type_delete' %}<a href="{% url 'resources:equipment_type_delete' et.pk %}" class="btn btn-outline-danger"
+                                           onclick="return confirm('Удалить вид техники?');">
+                                            <i class="bi bi-trash"></i>
+                                        </a>{% endif %}
+                                    </div>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>

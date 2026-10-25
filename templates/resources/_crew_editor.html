@@ -1,0 +1,10 @@
+<section class="mt-4 border-top pt-3" aria-labelledby="crew-heading">
+<h5 id="crew-heading">Экипаж</h5>
+<p class="text-muted small">На одну единицу техники и одну смену. Изменения применяются к новым назначениям; существующие планы сохраняют свой состав.</p>
+{{ crew_formset.management_form }}{{ crew_formset.non_form_errors }}
+<div class="table-responsive"><table class="table"><thead><tr><th>Должность</th><th>Человек на смену</th><th>Замещение *</th><th>Удалить</th></tr></thead>
+<tbody id="inline-crew-rows">{% for f in crew_formset %}<tr><td>{% for hidden in f.hidden_fields %}{{ hidden }}{{ hidden.errors }}{% endfor %}{{ f.non_field_errors }}{{ f.position }}{{ f.position.errors }}</td><td>{{ f.count }}{{ f.count.errors }}</td><td>{{ f.is_replacement }}</td><td>{{ f.DELETE }}</td></tr>{% endfor %}</tbody></table></div>
+<button type="button" class="btn btn-outline-primary" id="inline-crew-add">Добавить должность в экипаж</button>
+<template id="inline-crew-empty"><tr>{% with f=crew_formset.empty_form %}<td>{% for hidden in f.hidden_fields %}{{ hidden }}{% endfor %}{{ f.position }}</td><td>{{ f.count }}</td><td>{{ f.is_replacement }}</td><td>{{ f.DELETE }}</td>{% endwith %}</tr></template>
+<script>document.getElementById('inline-crew-add').addEventListener('click',()=>{const total=document.getElementById('id_crew-TOTAL_FORMS');if(Number(total.value)>=100)return;document.getElementById('inline-crew-rows').insertAdjacentHTML('beforeend',document.getElementById('inline-crew-empty').innerHTML.replaceAll('__prefix__',total.value));total.value=Number(total.value)+1;});</script>
+</section>

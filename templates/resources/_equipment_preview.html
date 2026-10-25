@@ -1,0 +1,9 @@
+{% load access %}<details><summary class="text-primary fw-semibold">{{ et.name }}</summary><div class="border rounded p-3 mt-2 bg-light">
+<div><strong>Категория:</strong> {{ et.category|default:'—' }}</div>
+{% if et.brand_model %}<div><strong>Марка / модель:</strong> {{ et.brand_model }}</div>{% endif %}
+<div><strong>Единица измерения:</strong> {{ et.unit }}</div>
+<div><strong>Категории водителя:</strong> {{ et.driver_category_labels|join:', '|default:'—' }}</div>
+<div><strong>Классы водителя:</strong> {{ et.driver_class_labels|join:', '|default:'—' }}</div>
+<div class="mt-2"><strong>Экипаж на смену:</strong><ul class="mb-2">{% for member in et.crew_positions.all %}<li>{{ member.position }} — {{ member.count }} чел.{% if member.is_replacement %} *{% endif %}</li>{% empty %}<li>Не задан</li>{% endfor %}</ul></div>
+{% if request.user|may:'resources:equipment_type_update' %}<a class="btn btn-sm btn-outline-primary" href="{% url 'resources:equipment_type_update' et.pk %}">Изменить технику и экипаж</a>{% endif %}
+</div></details>

@@ -1,3 +1,4 @@
+from .crew_views import EquipmentCrewEditorMixin
 from .filters import CatalogFilterMixin, BrigadeFilterForm, EquipmentFilterForm
 from django.views.generic import ListView, CreateView
 from django.urls import reverse_lazy
@@ -135,10 +136,19 @@ class EquipmentTypeListView(CatalogFilterMixin, CompanyRequiredMixin, ListView):
     def get_queryset(self):
         return self.filter_queryset(EquipmentType.objects.filter(
             company=self.get_company(), merge_source__isnull=True
-        ).select_related('category').order_by('name', 'pk'))
+        ).select_related('category','parent').prefetch_related('crew_positions__position','model_variants').order_by(*(['category__name','category_id','name','pk'] if self.request.GET.get('view','groups') == 'groups' else ['name','pk'])))
+
+    def get_paginate_by(self, queryset):
+        return None if self.request.GET.get('view','groups') == 'groups' else 20
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        context['equipment_grouped'] = self.request.GET.get('view','groups') == 'groups'
+        for mode in ['groups','table']:
+            params = self.request.GET.copy()
+            params.pop('page',None)
+            params['view'] = mode
+            context['equipment_'+mode+'_url'] = '?' + params.urlencode()
         from apps.planning.meeting_import import key
         groups = {}
         for item in EquipmentType.objects.filter(company=self.get_company(), merge_source__isnull=True).order_by('pk'):
@@ -147,7 +157,7 @@ class EquipmentTypeListView(CatalogFilterMixin, CompanyRequiredMixin, ListView):
         return context
 
 
-class EquipmentTypeCreateView(CompanyRequiredMixin, CreateView):
+class EquipmentTypeCreateView(EquipmentCrewEditorMixin, CompanyRequiredMixin, CreateView):
     model = EquipmentType
     form_class = EquipmentTypeForm
     template_name = 'resources/equipment_type_form.html'
@@ -158,16 +168,12 @@ class EquipmentTypeCreateView(CompanyRequiredMixin, CreateView):
             kwargs['instance'] = EquipmentType(company=self.get_company())
         return kwargs
 
-    def form_valid(self, form):
-        form.instance.company = self.request.user.company
-        messages.success(self.request, 'Вид техники создан!')
-        return super().form_valid(form)
 
     def get_success_url(self):
         return reverse_lazy('resources:equipment_type_list')
 
 
-class EquipmentTypeUpdateView(CompanyRequiredMixin, UpdateView):
+class EquipmentTypeUpdateView(EquipmentCrewEditorMixin, CompanyRequiredMixin, UpdateView):
     model = EquipmentType
     form_class = EquipmentTypeForm
     template_name = 'resources/equipment_type_form.html'
@@ -178,9 +184,6 @@ class EquipmentTypeUpdateView(CompanyRequiredMixin, UpdateView):
             kwargs['instance'] = EquipmentType(company=self.get_company())
         return kwargs
 
-    def form_valid(self, form):
-        messages.success(self.request, 'Вид техники обновлён!')
-        return super().form_valid(form)
 
     def get_success_url(self):
         return reverse_lazy('resources:equipment_type_list')

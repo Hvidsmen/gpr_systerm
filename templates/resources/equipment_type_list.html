@@ -32,51 +32,13 @@
 {% if request.user|may:'resources:equipment_type_merge' %}<a class="btn btn-outline-primary mb-3" href="{% url 'resources:equipment_type_merge' %}">Объединить виды техники</a>{% endif %}
 {% for duplicates in equipment_duplicates %}<div class="alert alert-warning">В справочнике несколько видов техники «{{ duplicates.0.name }}»: {{ duplicates|length }}. При импорте совещания выбирается первая запись (ID {{ duplicates.0.pk }}). Используйте «Объединить виды техники» для устранения дублей.</div>{% endfor %}
 {% include 'resources/catalog_filters.html' %}
+<div class="d-flex gap-2 mb-3"><a class="btn btn-sm {% if equipment_grouped %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{{ equipment_groups_url }}">По категориям</a><a class="btn btn-sm {% if not equipment_grouped %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{{ equipment_table_url }}">Таблица</a></div>
 {% if equipment_types %}
-    <div class="card">
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover mb-0">
-                    <thead class="table-light">
-                        <tr>{% if request.user|may:bulk_route %}<th style="width:36px" aria-label="Выбор строк"></th>{% endif %}
-                            <th>Название</th>
-                            <th>Категория</th><th>Категории водителя</th><th>Классы водителя</th>
-                            <th>Ед. измерения</th>
-                            <th>Статус</th>
-                            <th>Действия</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for et in equipment_types %}
-                            <tr>{% if request.user|may:bulk_route %}<td>{% include 'bulk/checkbox.html' with record=et %}</td>{% endif %}
-                                <td><strong>{{ et.name }}</strong><div class="small text-muted">{% if et.parent_id %}Модель для СМГ{% elif et.model_variants.exists %}Категория для ГПР{% endif %}</div></td>
-                                <td>{{ et.category|default:"—" }}</td><td>{{ et.driver_category_labels|join:", "|default:"—" }}</td><td>{{ et.driver_class_labels|join:", "|default:"—" }}</td>
-                                <td>{{ et.unit }}</td>
-                                <td>
-                                    {% if et.is_active %}
-                                        <span class="badge bg-success">Активна</span>
-                                    {% else %}
-                                        <span class="badge bg-secondary">Неактивна</span>
-                                    {% endif %}
-                                </td>
-                                <td>
-                                    <div class="btn-group btn-group-sm">
-                                        <a class="btn btn-outline-primary" href="{% url 'resources:equipment_crew' et.pk %}">Экипаж</a>{% if request.user|may:'resources:equipment_type_update' %}<a href="{% url 'resources:equipment_type_update' et.pk %}" class="btn btn-outline-secondary">
-                                            <i class="bi bi-pencil"></i>
-                                        </a>{% endif %}
-                                        {% if request.user|may:'resources:equipment_type_delete' %}<a href="{% url 'resources:equipment_type_delete' et.pk %}" class="btn btn-outline-danger"
-                                           onclick="return confirm('Удалить вид техники?');">
-                                            <i class="bi bi-trash"></i>
-                                        </a>{% endif %}
-                                    </div>
-                                </td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
+{% if equipment_grouped %}
+{% regroup equipment_types by category as category_groups %}
+<div class="d-flex gap-2 mb-3"><button type="button" class="btn btn-sm btn-outline-secondary" onclick="document.querySelectorAll('[data-equipment-category]').forEach(e=>e.open=true)">Развернуть все</button><button type="button" class="btn btn-sm btn-outline-secondary" onclick="document.querySelectorAll('[data-equipment-category]').forEach(e=>e.open=false)">Свернуть все</button></div>
+{% for group in category_groups %}<details data-equipment-category open class="card mb-3"><summary class="card-header fw-bold">{{ group.grouper|default:'Без категории' }} <span class="badge bg-secondary">{{ group.list|length }}</span></summary>{% include 'resources/_equipment_table.html' with group_items=group.list %}</details>{% endfor %}
+{% else %}{% include 'resources/_equipment_table.html' with group_items=equipment_types %}{% endif %}
 {% include 'resources/catalog_pagination.html' %}
 {% else %}
     <div class="alert alert-info">

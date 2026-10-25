@@ -84,3 +84,43 @@ class EquipmentCrew(View):
         return render(request,'resources/equipment_crew.html',{'equipment':equipment,'formset':formset})
     def get(self,request,pk):return self.display(request,pk)
     def post(self,request,pk):return self.display(request,pk,True)
+
+
+class EquipmentCrewEditorMixin:
+    """Save the equipment card and its crew as a single transaction."""
+    def get_crew_formset(self):
+        if not hasattr(self, '_crew_formset'):
+            equipment = self.object or EquipmentType(company=self.get_company())
+            factory = modelformset_factory(EquipmentCrewPosition, form=CrewForm,
+                formset=CrewSet, extra=1, can_delete=True, max_num=100, validate_max=True)
+            rows = EquipmentCrewPosition.objects.filter(company=self.get_company(), equipment_type=equipment) if equipment.pk else EquipmentCrewPosition.objects.none()
+            self._crew_formset = factory(self.request.POST if self.request.method == 'POST' else None,
+                queryset=rows, prefix='crew', form_kwargs={'equipment':equipment})
+        return self._crew_formset
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['crew_formset'] = self.get_crew_formset()
+        return context
+
+    def form_invalid(self, form):
+        self.get_crew_formset().is_valid()
+        return super().form_invalid(form)
+
+    def form_valid(self, form):
+        crew = self.get_crew_formset()
+        if not crew.is_valid():
+            return self.form_invalid(form)
+        try:
+            with transaction.atomic():
+                if self.object:
+                    EquipmentType.objects.select_for_update().get(pk=self.object.pk, company=self.get_company())
+                self.object = form.save()
+                for row in crew.forms:
+                    row.instance.equipment_type = self.object
+                crew.save()
+        except IntegrityError:
+            form.add_error(None, 'Экипаж изменён в другой вкладке. Обновите страницу.')
+            return self.form_invalid(form)
+        messages.success(self.request, 'Техника и экипаж сохранены. Существующие назначения в планах не изменены.')
+        return redirect(self.get_success_url())
