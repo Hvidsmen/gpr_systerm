@@ -85,6 +85,23 @@ class FleetImportTests(TestCase):
         self.user.role=role;self.user.save()
         self.assertEqual(self.client.get(self.url).status_code,403)
 
+    def test_unit_category_selector_omits_model_and_preserves_existing_link(self):
+        from .equipment_units import UnitForm
+        apply(self.user,self.rows,fingerprint(self.company))
+        unit=Equipment.objects.get(company=self.company)
+        variant_id=unit.type_id
+        form=UnitForm(instance=unit,company=self.company)
+        self.assertEqual(form.initial['type'],unit.type.parent_id)
+        self.assertEqual(list(form.fields['type'].queryset.values_list('name',flat=True)),['Самосвалы'])
+        data={'type':unit.type.parent_id,'name':unit.name,'brand_model':unit.brand_model,
+              'inventory_number':unit.inventory_number,'plate_number':unit.plate_number,
+              'vin':unit.vin,'is_active':'on'}
+        form=UnitForm(data,instance=unit,company=self.company)
+        self.assertTrue(form.is_valid(),form.errors)
+        saved=form.save()
+        self.assertEqual(saved.type_id,variant_id)
+        self.assertEqual(saved.brand_model,'КамАЗ 6520')
+
 
 class EquipmentPlanningLevelsTests(TestCase):
     @classmethod
@@ -107,3 +124,4 @@ class EquipmentPlanningLevelsTests(TestCase):
         field=AddEntryForm(schedule=schedule).fields['equipment']
         self.assertIn(variant,field.queryset)
         self.assertNotIn(self.equipment,field.queryset)
+
