@@ -85,7 +85,9 @@ class DailyScheduleDetail(View):
         if add_form and role_code(request.user)=='PLANNER':add_form.fields['kind'].choices=[('work','Работы')]
         elif add_form and role_code(request.user)=='MANAGER':add_form.fields['kind'].choices=[v for v in add_form.fields['kind'].choices if v[0]!='work']
         from .object_plans import linked_plans
-        return render(request,'planning/daily_schedule_detail.html',dict(linked_object_plans=linked_plans(schedule,request.user),schedule=schedule,entries=entries,reference_form=reference_form,can_activate_smg=resource_editor and schedule.status=='APPROVED',can_edit=role_code(request.user) in PLAN_ROLES,table_editable=editable,add_form=add_form or (AddEntryForm(schedule=schedule) if editable else None),has_deviations=any(service.differences(e,e.rows) for e in entries),**approval,**matrix(schedule,entries)))
+        from .smg_copy import CopyForm
+        copy_form=CopyForm(user=request.user,schedule=schedule) if editable and (role_code(request.user) in PLAN_ROLES or schedule.source_id) else None
+        return render(request,'planning/daily_schedule_detail.html',dict(gpr_copy_form=copy_form,linked_object_plans=linked_plans(schedule,request.user),schedule=schedule,entries=entries,reference_form=reference_form,can_activate_smg=resource_editor and schedule.status=='APPROVED',can_edit=role_code(request.user) in PLAN_ROLES,table_editable=editable,add_form=add_form or (AddEntryForm(schedule=schedule) if editable else None),has_deviations=any(service.differences(e,e.rows) for e in entries),**approval,**matrix(schedule,entries)))
 
     def post(self,request,pk):
         require_roles(request.user,PLAN_ROLES | {'MANAGER'})

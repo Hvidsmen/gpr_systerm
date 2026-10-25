@@ -97,6 +97,8 @@ class InlineResourceTests(TestCase):
         self.assertEqual(response.status_code,200)
         self.assertContains(response,'Добавить списком')
         self.assertNotContains(response,'Состав на весь период')
+        self.assertNotContains(response,'Назначения ресурсов на работы')
+        self.assertNotContains(response,'data-resource-assignment-list')
 
     def test_equipment_without_crew_is_explicit_choice(self):
         self.equipment.crew_positions.all().delete()

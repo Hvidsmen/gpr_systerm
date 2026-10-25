@@ -43,6 +43,30 @@ def create(user, obj, month, source=None, copy_from_gpr=False):
     return schedule
 
 
+
+def source_specs(source,month):
+    specs={}
+    from .report_projection import period_snapshot
+    import hashlib, json
+    snapshot = period_snapshot(source, *service.bounds(month))
+    prior = service.history(source, month)
+    from datetime import timedelta
+    for spec in snapshot.get('works', []):
+        original = deepcopy(spec.get('plans', []))
+        if not original: continue
+        metadata = {k:deepcopy(v) for k,v in spec.items() if k not in {'plans','daily','context_plans'}}
+        metadata['history'] = [dict(date=(month-timedelta(days=1)).isoformat(),item_id=i,quantity=str(q)) for i,q in prior[spec['id']].items()]
+        metadata['original_daily'] = deepcopy(spec.get('daily', []))
+        specs['work:'+str(spec['id'])] = ('work',spec['name'],metadata,original)
+    from collections import defaultdict
+    for kind in ['labor','equipment','fuel']:
+        groups = defaultdict(list)
+        for row in snapshot.get('resources',{}).get(kind,[]):groups[service.resource_identity(row,kind)].append(row)
+        for identity, original in groups.items():
+            key = kind+':'+hashlib.sha256(json.dumps(identity).encode()).hexdigest()
+            specs[key] = (kind,original[0].get('label',str(identity)),{},deepcopy(original))
+    return specs
+
 @transaction.atomic
 def reference(user, schedule, source):
     schedule = DailySchedule.objects.select_for_update().get(pk=schedule.pk, company=user.company)
@@ -55,25 +79,7 @@ def reference(user, schedule, source):
         source = GlobalPlanVersion.objects.get(pk=source.pk, company=user.company)
         if source.construction_object_id != schedule.construction_object_id: raise ValidationError('Выберите ГПР того же объекта.')
         service.validate_source(source, schedule.month)
-        from .report_projection import period_snapshot
-        import hashlib, json
-        snapshot = period_snapshot(source, *service.bounds(schedule.month))
-        prior = service.history(source, schedule.month)
-        from datetime import timedelta
-        for spec in snapshot.get('works', []):
-            original = deepcopy(spec.get('plans', []))
-            if not original: continue
-            metadata = {k:deepcopy(v) for k,v in spec.items() if k not in {'plans','daily','context_plans'}}
-            metadata['history'] = [dict(date=(schedule.month-timedelta(days=1)).isoformat(),item_id=i,quantity=str(q)) for i,q in prior[spec['id']].items()]
-            metadata['original_daily'] = deepcopy(spec.get('daily', []))
-            specs['work:'+str(spec['id'])] = ('work',spec['name'],metadata,original)
-        from collections import defaultdict
-        for kind in ['labor','equipment','fuel']:
-            groups = defaultdict(list)
-            for row in snapshot.get('resources',{}).get(kind,[]):groups[service.resource_identity(row,kind)].append(row)
-            for identity, original in groups.items():
-                key = kind+':'+hashlib.sha256(json.dumps(identity).encode()).hexdigest()
-                specs[key] = (kind,original[0].get('label',str(identity)),{},deepcopy(original))
+        specs=source_specs(source,schedule.month)
     present = set()
     for entry in schedule.entries.all():
         present.add(entry.key)

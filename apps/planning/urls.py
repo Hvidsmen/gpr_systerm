@@ -221,3 +221,6 @@ urlpatterns += [
     path('object-plans/create/',ObjectPlanCreate.as_view(),name='object_plan_create'),
     path('object-plans/<int:pk>/',ObjectPlanDetail.as_view(),name='object_plan_detail'),
 ]
+
+from .smg_copy import copy_view
+urlpatterns += [path('daily-schedule/<int:pk>/copy-from-gpr/',copy_view,name='smg_copy_gpr')]

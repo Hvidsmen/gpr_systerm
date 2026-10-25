@@ -78,7 +78,7 @@ class IndependentSMGTests(TestCase):
 
     def test_full_approval_tasks_application_and_operative_report_without_gpr(self):
         schedule=self.schedule();entry=self.add(schedule)
-        with self.assertRaises(ValidationError):activate(self.planner,schedule)
+        with self.assertRaises(PermissionDenied):activate(self.planner,schedule)
         schedule=approve_and_activate(self.planner,schedule)
         filters={'start':JAN,'end':date(2026,1,31),'mode':'current'}
         sources=select_sources(self.planner,filters,[self.obj])

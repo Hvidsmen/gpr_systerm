@@ -139,10 +139,11 @@ def apply_snapshot(version,snapshot):
     return snapshot
 
 
-def copy_assignments(source,target,*,copy_original=False):
+def copy_assignments(source,target,*,copy_original=False,start_on=None):
     if source.company_id!=target.company_id or source.construction_object_id!=target.construction_object_id:raise PermissionDenied('Назначения ресурсов копируются только внутри одного объекта и компании.')
     from .estimate_review import review_period
     start,end=review_period(target)
+    if start_on is not None:start=max(start,start_on)
     for old in owner_rows(source):
         if old.end_date<start or old.start_date>end:continue
         if target.resource_assignments.filter(key=old.key).exists():continue
@@ -153,8 +154,8 @@ def copy_assignments(source,target,*,copy_original=False):
     if isinstance(target,DailySchedule):
         if copy_original and isinstance(source,GlobalPlanVersion):
             for entry in target.entries.exclude(kind='work').exclude(key__startswith='assignment:'):
-                entry.rows=[r for r in entry.rows if not r.get('assignment_key')]
-                entry.original=[r for r in entry.original if not r.get('assignment_key')]
+                entry.rows=[r for r in entry.rows if not r.get('assignment_key') or start_on and r['date']<start_on.isoformat()]
+                entry.original=[r for r in entry.original if not r.get('assignment_key') or start_on and r['date']<start_on.isoformat()]
                 if not entry.rows and not entry.original:entry.delete()
                 else:entry.save(update_fields=['rows','original'])
         sync_schedule(target)

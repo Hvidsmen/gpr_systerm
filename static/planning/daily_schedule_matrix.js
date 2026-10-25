@@ -41,6 +41,9 @@
   window.addEventListener('beforeunload',event => {
     if (changed().length) { event.preventDefault(); event.returnValue = ''; }
   });
+  document.getElementById('smg-copy-gpr')?.addEventListener('submit',event=>{
+    if(changed().length){event.preventDefault();status.textContent='Сначала сохраните дневные изменения, затем копируйте из ГПР.';save.scrollIntoView({block:'center'});}
+  });
   if (add) {
     const selector = add.querySelector('[name="kind"]');
     const fields = {work:['selection'],labor:['brigade','rate'],equipment:['equipment','reference','rate'],fuel:['fuel','reference','rate']};

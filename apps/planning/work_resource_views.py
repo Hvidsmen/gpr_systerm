@@ -47,6 +47,15 @@ class WorkResources(View):
         owner=get_object_or_404(scope_queryset(model.objects.all(),request.user),pk=pk)
         instance=get_object_or_404(owner.resource_assignments,pk=assignment_pk) if assignment_pk else WorkResourceAssignment()
         from .estimate_review import review_period
+        if self.kind=='gpr' and not bound:
+            from django.urls import reverse
+            from urllib.parse import urlencode
+            if owner.workspace_id and owner.status in ['DRAFT','REJECTED'] and role_code(request.user) in PLAN_ROLES:
+                month=owner.planning_month or (instance.start_date.replace(day=1) if instance.pk else owner.workspace.continuation_start or owner.start_date)
+                params={'month':month.isoformat()}
+                if instance.work_id:params['focus_work']=instance.work_id
+                return redirect(reverse('planning:workspace_edit',args=[owner.pk])+'?'+urlencode(params))
+            return redirect(reverse('planning:global_detail',args=[owner.pk])+'#work-resources')
         start,end=review_period(owner)
         if isinstance(owner,DailySchedule) and owner.locked_before:start=max(start,owner.locked_before)
         form=AssignmentForm(request.POST if bound else None,owner=owner,instance=instance,initial={'start_date':start,'end_date':end} if not instance.pk else {})

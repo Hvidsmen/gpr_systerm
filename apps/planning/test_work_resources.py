@@ -53,7 +53,7 @@ class WorkResourceTests(TestCase):
         before=signature(self.version)
         assignment.count=3;service.save(self.manager,self.version,assignment)
         self.assertNotEqual(signature(self.version),before)
-        response=self.client.get(reverse('planning:work_resources_gpr',args=[self.version.pk]))
+        response=self.client.get(reverse('planning:work_resources_gpr',args=[self.version.pk]),follow=True)
         self.assertEqual(response.status_code,200);self.assertContains(response,'Машинист');self.assertContains(response,'*')
 
     def test_capture_and_explicit_refresh_preserve_old_crews(self):
