@@ -248,7 +248,7 @@ function updateSubworks(row) {
   const valid=input.value.trim()!=='' && Number.isFinite(quantity) && quantity>=0;
   const table=document.createElement('table');table.className='table table-sm mb-0';
   const head=table.createTHead().insertRow();
-  ['Работа в составе комплекса','Норматив на единицу работы','План на месяц','Ед. изм.','Ресурсы'].forEach(label=>{const th=document.createElement('th');th.textContent=label;head.append(th);});
+  ['Работа в составе комплекса','Норматив на единицу работы','План на месяц','Ед. изм.'].forEach(label=>{const th=document.createElement('th');th.textContent=label;head.append(th);});
   const body=table.createTBody();
   items.forEach(item=>{
     const tr=body.insertRow();
@@ -275,7 +275,9 @@ function updateSubworks(row) {
       }
     });
     tr.insertCell().append(child);tr.insertCell().textContent=item.unit;
-    window.gprResourceEditor?.addButtons(tr.insertCell(),work.value,item.id);
+    const resourceRow=body.insertRow();resourceRow.dataset.workResourcesRow=String(item.id);
+    const resourceCell=resourceRow.insertCell();resourceCell.colSpan=4;
+    window.gprResourceEditor?.addButtons(resourceCell,work.value,item.id);
   });
   panel.append(table);
   window.gprResourceEditor?.renderWorkLists();
