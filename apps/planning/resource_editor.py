@@ -55,6 +55,7 @@ class InlineAssignmentForm(AssignmentForm):
             resource='equipment_type' if kind=='equipment' else 'position'
             data['position' if kind=='equipment' else 'equipment_type']=None
             data.update(fuel_type='',daily_liters=0,fuel_price=0)
+            if kind=='labor':data.update(include_crew=False,refresh_crew=False)
             if not data.get(resource):self.add_error(resource,'Выберите ресурс.')
             for name in ['count','shifts_per_day','hours_per_shift']:
                 if data.get(name) is None:self.add_error(name,'Обязательное поле.')

@@ -50,12 +50,13 @@
     editor.querySelectorAll('input,select,textarea,button').forEach(input=>input.setAttribute('form',form.id));
     mountEditor(anchor);
     const target=targetById(work),child=target?.items.find(i=>String(i.id)===String(item));
-    const initial={assignment_id:'',resource_kind:kind,work,work_item:item,start_date:data.start_date,end_date:data.end_date,count:1,shifts_per_day:1,hours_per_shift:8,daily_liters:0,fuel_price:0,include_crew:true,refresh_crew:false};
+    const initial={assignment_id:'',resource_kind:kind,work,work_item:item,start_date:data.start_date,end_date:data.end_date,count:1,shifts_per_day:1,hours_per_shift:8,daily_liters:0,fuel_price:0,equipment_type:'',position:'',fuel_type:'',include_crew:kind==='equipment',refresh_crew:false};
     if(assignment)Object.assign(initial,assignment,{assignment_id:assignment.id});
     Object.entries(initial).forEach(([name,value])=>{const input=field(name);if(!input)return;if(input.type==='checkbox')input.checked=Boolean(value);else input.value=value;});
     editor.querySelector('#work-resource-title').textContent=(assignment?'Изменить ресурс: ':'Добавить ресурс: ')+kinds[kind];
     editor.querySelector('#work-resource-target').textContent=work?'К работе: '+(child?target.name+' → '+child.name:(target?.name||assignment?.target||'Работа удалена из плана')):'Вне работ · общие ресурсы объекта';
     editor.querySelectorAll('[data-resource-field]').forEach(box=>{const visible=box.dataset.resourceField===kind||box.dataset.resourceField==='quantity'&&kind!=='fuel';box.hidden=!visible;box.querySelectorAll('input,select').forEach(input=>input.disabled=!visible);});
+    ['equipment_type','position','fuel_type'].forEach(name=>{field(name).required=name===({equipment:'equipment_type',labor:'position',fuel:'fuel_type'}[kind]);});
     field('refresh_crew').closest('p').hidden=!assignment||kind!=='equipment';
     editor.querySelector('[data-delete-resource]').hidden=!assignment;
     if(!assignment&&work&&(!target||item&&!child))error('Сначала сохраните эту работу в месячном плане. Затем добавьте ресурсы.');
@@ -73,6 +74,10 @@
     detail.textContent=kind==='fuel'?format.format(Number(projection?.liters||assignment.daily_liters))+' л/день':format.format(projection?.count??assignment.count)+(kind==='equipment'?' ед.':projection?' чел. за день':' чел. на смену')+' · '+assignment.shifts_per_day+' смен/день · '+assignment.hours_per_shift+' ч/смену';
     const shortDate=value=>value.split('-').reverse().join('.');
     detail.append(document.createTextNode(' · '+shortDate(assignment.start_date)+' — '+shortDate(assignment.end_date)));box.append(title);if(!compact)box.append(badge);box.append(detail);
+    if(kind==='labor'){
+      const origin=document.createElement('span');origin.className='badge bg-light text-dark d-block my-1';origin.dataset.laborOrigin='';
+      origin.textContent=assignment.resource_kind==='equipment'?'Экипаж техники: '+assignment.label:'Добавлено отдельно · без техники';box.append(origin);
+    }
     if(assignment.resource_kind==='equipment'&&assignment.crew&&!projection){
       const crew=document.createElement('div');crew.className='small mb-2 work-resource-crew';crew.dataset.resourceCrew='';
       const label=document.createElement('strong');label.textContent='Экипаж техники';crew.append(label);
@@ -170,7 +175,5 @@
   });
   window.gprResourceEditor={wireWork,addButtons,renderWorkLists,hasPendingChanges:()=>Boolean(editor&&(dirty||busy)),revealPending:()=>{if(editor){for(let parent=editor.parentElement;parent;parent=parent.parentElement){if(parent.tagName==='DETAILS')parent.open=true;if(parent.hasAttribute('data-work-parent')){const key=parent.dataset.workParent;document.querySelectorAll('[data-work-parent]').forEach(row=>{if(row.dataset.workParent===key)row.hidden=false;});document.querySelectorAll('[data-work-toggle]').forEach(toggle=>{if(toggle.dataset.workToggle===key){toggle.setAttribute('aria-expanded','true');toggle.textContent='▾';}});}}error('Сначала сохраните или отмените изменения этого ресурса.');editor.scrollIntoView({block:'center'});}}};
   if(window.wireSubworks)window.wireSubworks();
-  const heading=document.querySelector('#allocation-editor h3');
-  if(heading){const common=document.createElement('div');common.className='mb-3';const label=document.createElement('strong');label.textContent='Добавить ресурс вне работ';common.append(label);addButtons(common);heading.after(common);}
   render();
 })();

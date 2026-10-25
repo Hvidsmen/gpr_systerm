@@ -77,6 +77,26 @@ class BranchSelectionTests(TestCase):
         row.refresh_from_db();self.assertEqual(row.selected_item_ids,[self.a.pk])
         self.assertEqual(Decimal(row.item_quantities[str(self.a.pk)]),20)
 
+    def test_editor_changes_package_composition_and_keeps_child_volumes(self):
+        from .workspace_forms import WorkAllocationForm
+        self.add(f'package:{self.composite.pk}')
+        row=self.version.work_allocations.get()
+        WorkMonthAllocation.objects.filter(pk=row.pk).update(daily_override=[{'date':'2026-01-05','quantity':'1'}])
+        row.refresh_from_db()
+        payload={'work':self.composite.pk,'month':'2026-01-01','quantity':'10','load_profile':'',
+                 'selected_item_ids':f'[{self.a.pk}]','edited_item_quantities':f'{{"{self.a.pk}":"20"}}'}
+        form=WorkAllocationForm(payload,instance=row,user=self.planner,version=self.version,month=fixtures.JAN)
+        self.assertTrue(form.is_valid(),form.errors);form.save()
+        row.refresh_from_db()
+        self.assertEqual(row.selected_item_ids,[self.a.pk])
+        self.assertEqual(row.item_quantities,{str(self.a.pk):'20'})
+        self.assertIsNone(row.daily_override)
+        payload.update(selected_item_ids='[]',edited_item_quantities=f'{{"{self.a.pk}":"20","{self.b.pk}":"30"}}')
+        form=WorkAllocationForm(payload,instance=row,user=self.planner,version=self.version,month=fixtures.JAN)
+        self.assertTrue(form.is_valid(),form.errors);form.save()
+        row.refresh_from_db();self.assertEqual(row.selected_item_ids,[])
+        self.assertEqual(row.item_quantities[str(self.a.pk)],'20')
+
     def test_branch_expansion_retains_daily_override(self):
         self.add(f'item:{self.a.pk}')
         row=self.version.work_allocations.get()

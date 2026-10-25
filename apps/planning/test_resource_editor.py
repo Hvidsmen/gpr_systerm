@@ -25,6 +25,16 @@ class InlineResourceTests(TestCase):
         data.update({'equipment_type':self.equipment.pk} if kind=='equipment' else {'position':self.position.pk} if kind=='labor' else {'fuel_type':'DIESEL','daily_liters':'12.5','fuel_price':'60'})
         data.update(changes);return data
 
+    def test_crew_position_can_be_added_alone_without_machine(self):
+        response=self.client.post(self.url,self.data('labor'))
+        self.assertEqual(response.status_code,200,response.content)
+        saved=response.json()['assignment']
+        self.assertEqual(saved['resource_kind'],'labor')
+        self.assertFalse(saved['equipment_type'])
+        self.assertFalse(saved['include_crew'])
+        self.assertEqual([p['kind'] for p in saved['projected']],['labor'])
+        self.assertEqual(saved['projected'][0]['count'],2)
+
     def test_resource_for_work_in_common_snapshot_once_and_tagged(self):
         response=self.client.post(self.url,self.data())
         self.assertEqual(response.status_code,200,response.content)

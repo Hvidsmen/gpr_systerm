@@ -104,7 +104,7 @@ class WorkAllocationForm(AllocationMixin, forms.ModelForm):
                 self.instance.item_quantities = edited
         if 'edited_item_quantities' in self.errors:
             self.add_error(None, 'Некорректные объёмы работ в составе комплекса.')
-        if edited is not None or data.get('reset_item_quantities') or any(name in self.changed_data for name in ['work','month','quantity','load_profile']):
+        if edited is not None or data.get('reset_item_quantities') or any(name in self.changed_data for name in ['work','month','quantity','load_profile','selected_item_ids']):
             self.instance.daily_override = None
         return data
 
