@@ -6,6 +6,10 @@ from .models import Employee, Brigade, EquipmentType, BrigadeGroup, BrigadeMacro
 
 
 class EmployeeForm(forms.ModelForm):
+    def __init__(self,*args,**kwargs):
+        super().__init__(*args,**kwargs)
+        for name in ['first_name','last_name']:self.fields[name].required=True
+
     class Meta:
         model = Employee
         fields = ['first_name', 'last_name', 'middle_name', 'employee_number', 'position', 'is_active']

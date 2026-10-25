@@ -21,8 +21,8 @@ class Position(BaseCompanyModel):
 
 
 class Employee(BaseCompanyModel):
-    first_name = models.CharField(_('имя'), max_length=100)
-    last_name = models.CharField(_('фамилия'), max_length=100)
+    first_name = models.CharField(_('имя'), max_length=100, blank=True)
+    last_name = models.CharField(_('фамилия'), max_length=100, blank=True)
     middle_name = models.CharField(_('отчество'), max_length=100, blank=True)
     position = models.ForeignKey(
         Position, on_delete=models.SET_NULL,
@@ -32,6 +32,7 @@ class Employee(BaseCompanyModel):
     is_active = models.BooleanField(_('активен'), default=True)
 
     employee_number = models.CharField('Табельный номер ЗУП', max_length=60, blank=True)
+    zup_full_name = models.CharField('Полное ФИО ЗУП', max_length=250, blank=True, editable=False)
     zup_ref = models.CharField(max_length=32, blank=True, editable=False)
     zup_server = models.CharField(max_length=255, blank=True, editable=False)
     zup_database = models.CharField(max_length=128, blank=True, editable=False)
@@ -39,6 +40,24 @@ class Employee(BaseCompanyModel):
     zup_department = models.CharField('Подразделение ЗУП', max_length=250, blank=True, editable=False)
     zup_position_name = models.CharField('Должность ЗУП', max_length=250, blank=True, editable=False)
     zup_synced_at = models.DateTimeField('Обновлено из ЗУП', null=True, blank=True, editable=False)
+
+    @property
+    def display_name(self):
+        return self.zup_full_name or ' '.join(part for part in [self.last_name,self.first_name,self.middle_name] if part) or ('Сотрудник ЗУП · '+(self.employee_number or self.zup_ref[:8]) if self.zup_ref else 'ФИО не заполнено')
+
+    @property
+    def name_note(self):
+        if not self.zup_ref:return ''
+        if not any([self.zup_full_name,self.last_name,self.first_name,self.middle_name]):return 'ФИО не заполнено в ЗУП'
+        if not self.last_name or not self.first_name:return 'ФИО без разбивки' if self.zup_full_name else 'Неполные данные ФИО'
+        return ''
+
+    def clean(self):
+        super().clean()
+        if not self.zup_ref:
+            from django.core.exceptions import ValidationError
+            errors={field:'Обязательное поле.' for field in ['first_name','last_name'] if not getattr(self,field)}
+            if errors:raise ValidationError(errors)
 
     @property
     def display_position(self):
@@ -51,7 +70,7 @@ class Employee(BaseCompanyModel):
         constraints = [models.UniqueConstraint(fields=['company', 'zup_server', 'zup_database', 'zup_ref'], condition=~models.Q(zup_ref=''), name='unique_employee_zup_source')]
 
     def __str__(self):
-        return f"{self.last_name} {self.first_name}"
+        return self.display_name
 
 
 

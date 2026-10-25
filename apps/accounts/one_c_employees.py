@@ -8,7 +8,7 @@ from .models import Company
 
 EXPECTED = {
     '_Reference297': ('Справочник.Сотрудники', {'_Fld30276RRef': 'ФизическоеЛицо', '_Fld30277RRef': 'ГоловнаяОрганизация', '_Fld30280': 'ВАрхиве'}),
-    '_Reference383': ('Справочник.ФизическиеЛица', {'_Fld31276': 'Фамилия', '_Fld31277': 'Имя', '_Fld31278': 'Отчество'}),
+    '_Reference383': ('Справочник.ФизическиеЛица', {'_Fld31276': 'Фамилия', '_Fld31277': 'Имя', '_Fld31278': 'Отчество', '_Fld31265': 'ФИО'}),
     '_Reference166': ('Справочник.Организации', {}),
     '_Reference216': ('Справочник.ПодразделенияОрганизаций', {}),
     '_Reference92': ('Справочник.Должности', {}),
@@ -67,15 +67,14 @@ def apply_employees(run, report):
             raise ValidationError('Источник вернул несколько кадровых записей для одного сотрудника. Загрузка отменена: требуется проверить структуру текущих данных.')
         seen.add(ref)
         values = {}
-        for source, target in [('first_name', 'first_name'), ('last_name', 'last_name'), ('middle_name', 'middle_name'),
+        for source, target in [('full_name','zup_full_name'),('first_name', 'first_name'), ('last_name', 'last_name'), ('middle_name', 'middle_name'),
                                ('employee_number', 'employee_number'), ('organisation', 'zup_organisation'),
                                ('department', 'zup_department'), ('position', 'zup_position_name')]:
-            value = item.get(source) or ''
+            value = item.get(source)
+            if value is None:value = ''
             if not isinstance(value, str) or len(value.strip()) > Employee._meta.get_field(target).max_length:
                 raise ValidationError('Некорректные или слишком длинные данные сотрудника. Изменения не внесены.')
             values[target] = value.strip()
-        if not values['last_name'] or not values['first_name']:
-            raise ValidationError('В ЗУП есть сотрудник без заполненных имени или фамилии. Изменения не внесены; проверьте ФИО в источнике.')
         if item.get('archived') not in (0, 1, False, True):
             raise ValidationError('Некорректный признак архива сотрудника.')
         values['is_active'] = not bool(item['archived'])
@@ -85,7 +84,9 @@ def apply_employees(run, report):
     positions = {}
     for position in Position.objects.filter(company_id=connection.company_id):
         positions.setdefault(position.name.strip().casefold(), []).append(position)
-    counts = {'created': 0, 'updated': 0, 'unchanged': 0, 'archived': sum(not values['is_active'] for _, values in normalized)}
+    counts = {'created': 0, 'updated': 0, 'unchanged': 0, 'archived': sum(not values['is_active'] for _, values in normalized),
+              'incomplete_names':sum(not values['first_name'] or not values['last_name'] for _,values in normalized),
+              'unnamed':sum(not any(values[name] for name in ['zup_full_name','first_name','last_name','middle_name']) for _,values in normalized)}
     now = timezone.now()
     for ref, values in normalized:
         matches = positions.get(values['zup_position_name'].casefold(), [])

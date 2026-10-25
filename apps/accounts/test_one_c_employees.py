@@ -73,9 +73,42 @@ class EmployeesImportTests(TestCase):
         self.assertEqual(other.last_name, 'Иванов')
         self.assertEqual(Employee.objects.filter(company=self.company).count(), 3)
 
+    def test_full_name_only_and_archived_records_do_not_abort_import(self):
+        run=self.run_record()
+        rows=[self.row(),self.row('2'*32,first_name='',last_name='',middle_name='',full_name='Полное ФИО из ЗУП',archived=1),
+              self.row('3'*32,first_name='',last_name='',middle_name='',full_name='')]
+        result=apply_employees(run,{'employees':rows})
+        self.assertEqual(result['created'],3)
+        self.assertEqual(result['archived'],1)
+        self.assertEqual(result['incomplete_names'],2)
+        self.assertEqual(result['unnamed'],1)
+        employee=Employee.objects.get(company=self.company,zup_ref='2'*32)
+        self.assertEqual(employee.zup_full_name,'Полное ФИО из ЗУП')
+        self.assertEqual(str(employee),'Полное ФИО из ЗУП')
+        self.assertEqual(employee.name_note,'ФИО без разбивки')
+        self.assertFalse(employee.is_active)
+        employee.full_clean()
+        missing=Employee.objects.get(company=self.company,zup_ref='3'*32)
+        self.assertIn('Сотрудник ЗУП',str(missing));self.assertEqual(missing.zup_full_name,'')
+        self.assertEqual(missing.name_note,'ФИО не заполнено в ЗУП')
+        again=apply_employees(run,{'employees':rows})
+        self.assertEqual((again['created'],again['unchanged']),(0,3))
+        response=self.client.get(reverse('resources:employee_list'))
+        self.assertContains(response,'Полное ФИО из ЗУП')
+        self.assertContains(response,'Уволен / в архиве ЗУП')
+        self.assertContains(response,'ФИО не заполнено в ЗУП')
+
+    def test_manual_employee_still_requires_name_parts(self):
+        from apps.resources.forms import EmployeeForm
+        form=EmployeeForm({'first_name':'','last_name':'','middle_name':'','is_active':'on'})
+        form.instance.company=self.company
+        self.assertFalse(form.is_valid())
+        self.assertIn('first_name',form.errors);self.assertIn('last_name',form.errors)
+        with self.assertRaises(ValidationError):Employee(company=self.company).full_clean()
+
     def test_validation_and_audit_failure_roll_back_entire_batch(self):
         run = self.run_record()
-        for rows in [[], [self.row(), self.row()], [self.row(), self.row('2'*32, first_name='')], [self.row(archived=None)]]:
+        for rows in [[], [self.row(), self.row()], [self.row(), self.row('2'*32, first_name={'bad':'type'})], [self.row(archived=None)]]:
             with self.assertRaises(ValidationError):
                 apply_employees(run, {'employees': rows})
             self.assertFalse(Employee.objects.filter(company=self.company).exists())
@@ -91,6 +124,9 @@ class EmployeesImportTests(TestCase):
         self.assertIn("if($EmployeesImport){$arguments+=' -EmployeesImport'}",script[:open_at])
         self.assertNotIn('SELECT TOP (200001)',script[:open_at])
         self.assertIn('Write-Json $reportPath @{employees_import=$true;employees=@($employees)}',script[query_at:])
+        self.assertIn("NULLIF(LTRIM(RTRIM(p.[_Fld31265])),N'')",script[query_at:])
+        self.assertIn("NULLIF(LTRIM(RTRIM(p.[_Description])),N'')",script[query_at:])
+        self.assertIn("NULLIF(LTRIM(RTRIM(e.[_Description])),N'')",script[query_at:])
 
     def test_missing_empty_and_oversized_reports_explain_distinct_causes(self):
         run=self.run_record()

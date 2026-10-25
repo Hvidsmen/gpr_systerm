@@ -174,6 +174,7 @@ try {
             $employees=@(Query $connection @'
 SELECT TOP (200001) CONVERT(varchar(32), e.[_IDRRef], 2) AS source_id,
  e.[_Code] AS employee_number,
+ COALESCE(NULLIF(LTRIM(RTRIM(p.[_Fld31265])),N''),NULLIF(LTRIM(RTRIM(p.[_Description])),N''),NULLIF(LTRIM(RTRIM(e.[_Description])),N''),N'') AS full_name,
  p.[_Fld31276] AS last_name, p.[_Fld31277] AS first_name, p.[_Fld31278] AS middle_name,
  CASE WHEN e.[_Fld30280]=0x01 THEN 1 ELSE 0 END AS archived,
  COALESCE(o.[_Description],h.[_Description],N'') AS organisation,
