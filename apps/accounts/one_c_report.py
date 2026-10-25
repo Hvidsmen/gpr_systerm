@@ -1,6 +1,6 @@
 """Portable structure-only report for analysing a company's 1C database."""
 from django.contrib.auth.decorators import login_required
-from django.http import Http404, JsonResponse
+from django.http import Http404, JsonResponse, HttpResponse
 from django.utils import timezone
 from django.views.decorators.http import require_GET
 from core.permissions import require_roles
@@ -66,8 +66,21 @@ def download_report(request):
         report__has_key='positions_import').order_by('-created_at', '-pk').first()
     if run is None or not run.report.get('schema'):
         raise Http404('Нет структуры для текущего подключения. Выполните диагностику 1С и повторите скачивание.')
-    response = JsonResponse(structure_report(connection, run), json_dumps_params={'ensure_ascii': False, 'indent': 2})
-    response['Content-Disposition'] = f'attachment; filename="1c-structure-{run.pk.hex}.json"'
+    data = structure_report(connection, run)
+    filename = f'1c-structure-{run.pk.hex}'
+    if request.GET.get('format') == 'zip':
+        import json
+        from io import BytesIO
+        from zipfile import ZipFile, ZIP_DEFLATED
+        archive = BytesIO()
+        with ZipFile(archive, 'w', compression=ZIP_DEFLATED, compresslevel=6) as zipped:
+            zipped.writestr(filename + '.json', json.dumps(data, ensure_ascii=False, separators=(',', ':')))
+        response = HttpResponse(archive.getvalue(), content_type='application/zip')
+        extension = 'zip'
+    else:
+        response = JsonResponse(data, json_dumps_params={'ensure_ascii': False, 'indent': 2})
+        extension = 'json'
+    response['Content-Disposition'] = f'attachment; filename="{filename}.{extension}"'
     response['Cache-Control'] = 'private, no-store'
     response['X-Content-Type-Options'] = 'nosniff'
     return response

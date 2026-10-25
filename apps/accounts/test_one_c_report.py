@@ -44,6 +44,23 @@ class StructureReportTests(TestCase):
         self.assertIn('no-store', response['Cache-Control'])
         self.assertContains(self.client.get(reverse('accounts:one_c')), 'Скачать отчёт структуры (JSON)')
 
+    def test_zip_contains_complete_utf8_report(self):
+        from io import BytesIO
+        from zipfile import ZipFile
+        run = self.run_report(report=self.report())
+        response = self.client.get(self.url, {'format': 'zip'})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'application/zip')
+        self.assertIn('no-store', response['Cache-Control'])
+        with ZipFile(BytesIO(response.content)) as archive:
+            self.assertEqual(archive.namelist(), [f'1c-structure-{run.pk.hex}.json'])
+            data = json.loads(archive.read(archive.namelist()[0]))
+        plain = self.client.get(self.url).json()
+        self.assertEqual(data['tables'], plain['tables'])
+        self.assertEqual(data['summary'], plain['summary'])
+        self.assertEqual(data['diagnostic'], plain['diagnostic'])
+        self.assertNotIn('PRIVATE_', json.dumps(data))
+
     def test_manual_names_only_for_same_database(self):
         self.run_report(report=self.report())
         self.connection.metadata_server = 'host'; self.connection.metadata_database = 'zup'
