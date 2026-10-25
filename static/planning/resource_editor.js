@@ -3,6 +3,7 @@
   if(!source)return;
   const data=JSON.parse(source.textContent),form=document.getElementById('work-resource-form');
   const kinds={equipment:'Техника',labor:'Должность',fuel:'ГСМ'};
+  const announce=state=>document.dispatchEvent(new CustomEvent('gpr-save-state',{detail:{scope:'resource',state}}));
   const format=new Intl.NumberFormat('ru-RU',{maximumFractionDigits:3});
   const field=name=>form?.elements.namedItem(name);
   const targetById=id=>data.targets.find(t=>String(t.id)===String(id));
@@ -12,12 +13,14 @@
   let editor=null,editorTarget=null,dirty=false,busy=false;
   const foldStates=new Map(),observedScrolls=new WeakSet();
   const foldKey=host=>String(host.dataset.resourceWork||'')+'/'+String(host.dataset.resourceItem||'');
+  // Record the user's choice before the deferred toggle event and any row rebuild.
+  document.addEventListener('click',event=>{const summary=event.target.closest('[data-resource-fold] > summary');if(summary){const fold=summary.parentElement,host=fold.closest('[data-work-resource-target]');if(host)foldStates.set(foldKey(host),!fold.open);}},true);
   document.addEventListener('toggle',event=>{const fold=event.target;if(fold.matches?.('[data-resource-fold]')&&fold.isConnected){const host=fold.closest('[data-work-resource-target]');if(host)foldStates.set(foldKey(host),fold.open);}},true);
   const activeAssignments=()=>data.assignments.filter(a=>a.end_date>=data.start_date&&a.start_date<=data.end_date);
   const sameTarget=(assignment,work,item)=>String(assignment.work||'')===String(work||'')&&String(assignment.work_item||'')===String(item||'');
   function error(message) {
     const box=editor?.querySelector('[role="alert"]');
-    if(box){box.textContent=message;box.hidden=!message;}
+    if(box){box.textContent=message;box.hidden=!message;}if(message)announce('error');
   }
   function addButtons(container,work='',item='') {
     const host=document.createElement('div');host.dataset.workResourceTarget='';host.dataset.resourceWork=work;host.dataset.resourceItem=item;
@@ -34,7 +37,7 @@
     host?.remove();host=addButtons(row.querySelector('.allocation-grid'),work.value);
     host.dataset.parentResourceActions='';host.style.gridColumn='1 / -1';
   }
-  function closeEditor() {if(busy)return;editor?.remove();editor=null;editorTarget=null;dirty=false;}
+  function closeEditor() {if(busy)return;editor?.remove();editor=null;editorTarget=null;dirty=false;announce('clean');}
   function mountEditor(anchor) {
     if(anchor?.isConnected){anchor.closest('[data-resource-fold]')?.setAttribute('open','');anchor.append(editor);return;}
     const target=Array.from(document.querySelectorAll('[data-work-resource-target]')).find(h=>sameTarget({work:h.dataset.resourceWork,work_item:h.dataset.resourceItem},editorTarget?.work,editorTarget?.item));
@@ -75,8 +78,9 @@
     field('refresh_crew').closest('p').hidden=!assignment||kind!=='equipment';
     editor.querySelector('[data-delete-resource]').hidden=!assignment;
     if(!assignment&&work&&(!target||item&&!child))error('Сначала сохраните эту работу в месячном плане. Затем добавьте ресурсы.');
-    editor.addEventListener('input',()=>{dirty=true;});
-    editor.addEventListener('change',()=>{dirty=true;});
+    editor.addEventListener('input',()=>{dirty=true;announce('dirty');});
+    editor.addEventListener('change',()=>{dirty=true;announce('dirty');});
+    if(!assignment){dirty=true;announce('dirty');}
     editor.scrollIntoView({block:'nearest'});
   }
   function button(label,callback){const b=document.createElement('button');b.type='button';b.textContent=label;b.className='btn btn-sm btn-outline-primary';b.addEventListener('click',callback);return b;}
@@ -175,7 +179,7 @@
   async function submit(remove=false) {
     if(busy||!editor)return;
     if(!remove&&!form.reportValidity())return;
-    busy=true;error('');const currentEditor=editor;currentEditor.querySelectorAll('button').forEach(b=>b.disabled=true);
+    busy=true;error('');announce('saving');const currentEditor=editor;currentEditor.querySelectorAll('button').forEach(b=>b.disabled=true);
     try {
       const payload=new FormData(form);if(remove)payload.set('action','delete');
       const response=await fetch(form.action,{method:'POST',body:payload,headers:{Accept:'application/json'},credentials:'same-origin'});
@@ -184,7 +188,7 @@
       if(!response.ok)throw new Error(Object.values(result.errors||{}).flat().map(e=>e.message).join(' ')||'Не удалось сохранить ресурс.');
       if(result.deleted)data.assignments=data.assignments.filter(a=>a.id!==result.deleted);
       else {const index=data.assignments.findIndex(a=>a.id===result.assignment.id);if(index<0)data.assignments.push(result.assignment);else data.assignments[index]=result.assignment;}
-      busy=false;closeEditor();render();
+      busy=false;closeEditor();render();window.gprSaveUI?.updateWorkflow(result.workflow);announce('saved');
     }catch(e){error(e.message);}finally{busy=false;currentEditor.querySelectorAll('button').forEach(b=>b.disabled=false);}
   }
   form?.addEventListener('submit',event=>{event.preventDefault();submit();});

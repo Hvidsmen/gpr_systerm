@@ -118,18 +118,32 @@ def work_plan_volumes(owner,targets,snapshot=None):
     return targets
 
 
+def workflow_state(owner):
+    record=preparation.record(owner)
+    latest=owner.estimate_reviews.order_by('-pk').first()
+    return {'handed':bool(record),
+        'resources_ready':bool(record and record.resources_ready_at and record.resources_fingerprint==preparation.resource_signature(owner)),
+        'estimator_approved':estimate_review.check_valid(owner,latest)}
+
+
 def context(user,owner,month=None,snapshot=None):
     allowed=True
     try:work_resources.editable(user,owner)
     except (PermissionDenied,ValidationError):allowed=False
+    confirm_allowed=True
+    try:preparation.require_resource_editor(user,owner)
+    except (PermissionDenied,ValidationError):confirm_allowed=False
     start,end=estimate_review.review_period(owner)
     if month:
         start=max(start,month);end=min(end,month.replace(day=monthrange(month.year,month.month)[1]))
     targets=work_plan_volumes(owner,planned_targets(owner),snapshot)
     record=preparation.record(owner)
     latest=owner.estimate_reviews.order_by('-pk').first()
-    return {'resources_ready':bool(record and record.resources_ready_at and record.resources_fingerprint==preparation.resource_signature(owner)),
-        'estimator_approved':estimate_review.check_valid(owner,latest),'can_prepare_resources':allowed,'resource_owner':owner,
+    from core.permissions import role_code
+    from .preparation_views import HandoffForm
+    handoff_form=HandoffForm(company=owner.company,initial={'manager':record.manager_id if record else None,'estimator':latest.assigned_to_id if latest else None}) if isinstance(owner,GlobalPlanVersion) and owner.workspace_id and owner.status in {'DRAFT','REJECTED'} and role_code(user) in {'ADMIN','PLANNER'} else None
+    return {'gpr_handoff_form':handoff_form,'resources_ready':bool(record and record.resources_ready_at and record.resources_fingerprint==preparation.resource_signature(owner)),
+        'estimator_approved':estimate_review.check_valid(owner,latest),'can_prepare_resources':allowed,'can_confirm_resources':confirm_allowed,'resource_owner':owner,
         'inline_resource_form':InlineAssignmentForm(owner=owner,initial={'start_date':start,'end_date':end,'count':1,'shifts_per_day':1,'hours_per_shift':8,'include_crew':True}),
         'resource_editor_data':{'targets':targets,'assignments':[serialize(a) for a in work_resources.owner_rows(owner)],
             'start_date':start.isoformat(),'end_date':end.isoformat(),'can_edit':allowed},
@@ -152,11 +166,11 @@ def add_assignment(request,pk):
             if request.POST.get('action')=='delete':
                 if not instance.pk:raise ValidationError('Выберите назначение.')
                 assignment_id=instance.pk;work_resources.remove(request.user,owner,instance)
-                return JsonResponse({'deleted':assignment_id})
+                return JsonResponse({'deleted':assignment_id,'workflow':workflow_state(owner)})
             form=InlineAssignmentForm(request.POST,owner=owner,instance=instance)
             if not form.is_valid():return JsonResponse({'errors':form.errors.get_json_data()},status=400)
             saved=work_resources.save(request.user,owner,form.instance,form.cleaned_data['refresh_crew'])
-            return JsonResponse({'assignment':serialize(saved)})
+            return JsonResponse({'assignment':serialize(saved),'workflow':workflow_state(owner)})
     except ValidationError as error:
         return JsonResponse({'errors':{'__all__':[{'message':message} for message in error.messages]}},status=400)
 

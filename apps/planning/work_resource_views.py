@@ -42,7 +42,7 @@ class AssignmentForm(forms.ModelForm):
 class WorkResources(View):
     kind=None
     def display(self,request,pk,assignment_pk=None,bound=False):
-        require_roles(request.user,{'ADMIN','MANAGER'} if bound else READ_ROLES)
+        require_roles(request.user,{'ADMIN','PLANNER','MANAGER'} if bound else READ_ROLES)
         model=DailySchedule if self.kind=='smg' else GlobalPlanVersion
         owner=get_object_or_404(scope_queryset(model.objects.all(),request.user),pk=pk)
         instance=get_object_or_404(owner.resource_assignments,pk=assignment_pk) if assignment_pk else WorkResourceAssignment()

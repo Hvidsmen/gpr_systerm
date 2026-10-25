@@ -16,3 +16,17 @@
 
 [data-matrix-resource-row] > td {text-align:left!important;white-space:normal;}
 [data-matrix-resource-row] .work-resource-table td,[data-matrix-resource-row] .work-resource-table th {text-align:left!important;white-space:normal;vertical-align:top;}
+.gpr-path {display:flex;gap:8px;align-items:stretch;overflow-x:auto;margin-top:8px;}
+.gpr-path-step {flex:1;min-width:140px;padding:6px 9px;border-left:3px solid #dbe4ed;background:#f7f9fc;font-size:12px;}
+.gpr-path-step strong,.gpr-path-step>span {display:block;}
+.gpr-path-step>span,.gpr-path-branches {font-size:11px;color:#62788d;}
+.gpr-path-step[data-state=done] {border-color:#25836b;}.gpr-path-step[data-state=current] {border-color:#087fa0;background:#eef8fb;}.gpr-path-step[data-state=returned] {border-color:#d48b18;}
+.gpr-path-branches {display:flex;flex-wrap:wrap;gap:3px 10px;}.gpr-path-branches [data-state=done] {color:#26775e;}
+.plan-save-status {font-size:12px;margin-left:auto;white-space:nowrap;padding:3px 0;}.plan-save-status[data-state=dirty],.plan-save-status[data-state=error] {color:#a84c1b;}.plan-save-status[data-state=saved] {color:#23735d;}
+.plan-more-menu {margin:0;padding:12px;border:1px solid #d6e3ed;border-radius:8px;box-shadow:0 8px 30px #163c5326;max-width:min(420px,calc(100vw - 24px));max-height:65vh;overflow:auto;}
+.plan-more-menu:popover-open {display:flex;flex-direction:column;gap:8px;}.plan-more-menu form {display:flex;gap:6px;margin:0;}
+.plan-month-picker {display:flex;align-items:end;gap:8px;flex-wrap:wrap;margin-bottom:16px;}.plan-month-picker label {font-size:12px;}.plan-month-picker select {min-width:110px;}
+.gpr-instruction {font-size:12px;line-height:1.4;color:#35566f;}
+[data-inline-resource-editor],#work-resources,#gpr-excel-tools {scroll-margin-top:calc(var(--navbar-height,54px) + var(--plan-action-height,180px) + 20px);}
+.plan-action-row form[hidden] {display:none!important;}
+.gpr-handoff-dialog {width:min(650px,calc(100vw - 32px));max-height:85vh;overflow:auto;padding:24px;border:1px solid #d8e5ef;border-radius:10px;color:#193c55;}.gpr-handoff-dialog::backdrop {background:#173a5670;}

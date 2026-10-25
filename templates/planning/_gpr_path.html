@@ -1,0 +1,6 @@
+<nav class="gpr-path" aria-label="Путь плана" data-gpr-path>
+{% for step in gpr_path %}<div class="gpr-path-step" data-stage="{{ step.key }}" data-state="{{ step.state }}" {% if step.state == 'current' %}aria-current="step"{% endif %}><strong>{{ step.label }}</strong>{% if step.branches %}<div class="gpr-path-branches">{% for branch in step.branches %}<span data-branch="{{ branch.key }}" data-state="{{ branch.state }}">{{ branch.label }}: {{ branch.state_label }}</span>{% endfor %}</div>{% else %}<span>{{ step.state_label }}</span>{% endif %}{% if step.branches %}<small data-stage-note {% if not step.note %}hidden{% endif %}>Ожидает отправки на согласование</small>{% endif %}</div>{% endfor %}
+</nav>
+{% if gpr_returned %}<p class="small text-danger mb-0 mt-1">Возвращён на доработку{% if object.comment %}: {{ object.comment|truncatechars:180 }}{% endif %}. История предыдущего согласования сохранена.</p>{% endif %}
+
+{% if gpr_instruction %}<p class="gpr-instruction mb-0 mt-2"><strong>Что нужно сделать:</strong> {{ gpr_instruction }}</p>{% endif %}

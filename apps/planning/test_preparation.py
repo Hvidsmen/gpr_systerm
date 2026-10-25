@@ -66,7 +66,7 @@ class PreparationTests(TestCase):
         self.assertFalse(estimate_review.check_valid(self.version,task))
         with self.assertRaises(ValidationError):preparation.require_submission(self.manager,self.version)
 
-    def test_planner_and_other_manager_cannot_change_resource_assignments(self):
+    def test_planner_drafts_resources_but_manager_confirms_them(self):
         self.handoff()
         for actor in [self.planner,self.other_manager]:
             with self.assertRaises(PermissionDenied):preparation.require_resource_editor(actor,self.version)
@@ -74,7 +74,8 @@ class PreparationTests(TestCase):
         from .work_resources import save
         position=Position.objects.create(company=self.company,name='Ресурс этапа')
         assignment=WorkResourceAssignment(position=position,count=2,start_date=JAN,end_date=JAN,shifts_per_day=1,hours_per_shift=8)
-        with self.assertRaises(PermissionDenied):save(self.planner,self.version,assignment)
+        save(self.planner,self.version,assignment)
+        with self.assertRaises(PermissionDenied):preparation.ready(self.planner,self.version)
         save(self.manager,self.version,assignment)
         self.assertEqual(self.version.resource_assignments.count(),1)
 
@@ -90,7 +91,11 @@ class PreparationTests(TestCase):
         self.assertEqual(response.status_code,302, getattr(response,'context',None) and response.context['resource_forms'].errors)
         self.assertEqual(self.version.resource_allocations.get(kind='labor').count,3)
         self.client.force_login(self.planner)
-        self.assertEqual(self.client.post(url,data).status_code,403)
+        resource=self.version.resource_allocations.get(kind='labor')
+        data.update({'resources-INITIAL_FORMS':'1','resources-0-id':resource.pk,'resources-0-count':'4'})
+        self.assertEqual(self.client.post(url,data).status_code,302)
+        resource.refresh_from_db();self.assertEqual(resource.count,4)
+        self.assertEqual(self.client.post(url,{'action':'ready'}).status_code,403)
 
     def test_smg_has_same_parallel_flow_and_manager_only_resource_edits(self):
         schedule=create_smg(self.planner,self.obj,JAN)

@@ -14,8 +14,8 @@ def owner_rows(owner):
 
 
 def editable(user, owner):
-    from .preparation import require_resource_editor
-    require_resource_editor(user,owner)
+    from .preparation import require_resource_input
+    require_resource_input(user,owner)
     if owner.company_id!=user.company_id:raise PermissionDenied
     require_planning_object(user,owner.construction_object_id)
     if owner.status not in ['DRAFT','REJECTED']:raise ValidationError('Ресурсы меняются только в черновике.')

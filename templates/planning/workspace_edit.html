@@ -3,6 +3,7 @@
 {% block extra_css %}<link rel="stylesheet" href="{% static 'planning/plan_actions.css' %}">{% endblock %}
 {% block content %}
 {% include 'planning/_workspace_actions.html' %}
+{% if version.approval_round %}{% include 'planning/approval_panel.html' %}{% endif %}
 {% if workspace.is_macro_consolidation %}<div class="alert alert-info"><a href="{% url 'planning:macro_history_detail' workspace.pk %}">Общий ГПР макрообъекта: история → загрузка → согласование → СМГ → отчет</a>. История сохранена; новые месяцы — с {{ workspace.continuation_start|date:'m.Y' }}.</div>{% endif %}{% if workspace.continued_from_review_id %}<div class="alert alert-info">Прошлый период сохранен из <a href="{% url 'planning:global_detail' workspace.continued_from_review.version_id %}">предыдущего ГПР</a>. Новый период для планирования — с {{ workspace.continuation_start|date:'m.Y' }}. Прошлые месяцы доступны в сводном плане.</div>{% endif %}
 {% if remaining_work_issue %}<div class="alert alert-warning"><strong>Нужно распределить остаток</strong><p>{{ remaining_work_issue.name }} — {{ remaining_work_issue.remaining }} {{ remaining_work_issue.unit }}.</p><p>Работа есть в базовом плане, но в будущем месяце строка может отсутствовать. Добавьте ее и укажите объем. Сумма объемов будущих месяцев должна совпасть с остатком.</p><form method="post" action="{% url 'planning:workspace_remaining_work' version.pk %}">{% csrf_token %}<label>Месяц <select name="month">{% for month in remaining_work_issue.months %}<option value="{{ month }}">{{ month|slice:'5:7' }}.{{ month|slice:':4' }}</option>{% endfor %}</select></label> <button class="btn btn-outline-primary">Добавить работу для распределения остатка</button></form></div>{% endif %}
 <style>
@@ -54,7 +55,7 @@
 <div class="d-flex flex-wrap gap-2"><a class="btn btn-outline-primary" href="{% url 'planning:workspace_bulk_add' version.pk 'works' %}?month={{ selected_month|date:'Y-m-d' }}">Работы</a>{% if can_prepare_resources %}{% for section in resource_sections %}<a class="btn btn-outline-primary" href="{% url 'planning:workspace_bulk_add' version.pk section.kind %}?month={{ selected_month|date:'Y-m-d' }}">{{ section.title }}</a>{% endfor %}{% endif %}</div>
 </div></div>{% endif %}
 
-<details class="card mb-3"><summary class="p-3 fw-semibold">Excel: импорт, экспорт и шаблон</summary><div class="card-body pt-0"><p>Сначала сохраните введённые данные. Файл содержит четыре листа: Работы, Должность, Техника, ГСМ.</p><div class="d-flex flex-wrap gap-2">
+<details class="card mb-3" id="gpr-excel-tools"><summary class="p-3 fw-semibold">Excel: импорт, экспорт и шаблон</summary><div class="card-body pt-0"><p>Сначала сохраните введённые данные. Файл содержит четыре листа: Работы, Должность, Техника, ГСМ.</p><div class="d-flex flex-wrap gap-2">
 {% if request.user|may:'planning:workspace_excel_export' %}
 <a class="btn btn-sm btn-outline-primary" href="{% url 'planning:workspace_excel_export' version.pk %}?scope=period">Экспорт всего периода</a>
 <a class="btn btn-sm btn-outline-primary" href="{% url 'planning:workspace_excel_export' version.pk %}?scope=year&year={{ selected_month.year }}">Экспорт {{ selected_month.year }} года</a>
@@ -66,10 +67,10 @@
 {% if request.user|may:'planning:workspace_excel_import' %}<a class="btn btn-sm btn-primary" href="{% url 'planning:workspace_excel_import' version.pk %}?scope=period">Импорт всего периода</a><a class="btn btn-sm btn-primary" href="{% url 'planning:workspace_excel_import' version.pk %}?scope=year&year={{ selected_month.year }}">Импорт {{ selected_month.year }} года</a><a class="btn btn-sm btn-primary" href="{% url 'planning:workspace_excel_import' version.pk %}?scope=month&month={{ selected_month|date:'Y-m-d' }}">Импорт {{ selected_month|date:'m.Y' }}</a>{% endif %}
 {% if request.user|may:'planning:meeting_import' %}<a class="btn btn-sm btn-outline-primary" href="{% url 'planning:workspace_meeting_import' version.pk %}">Импорт файла совещания в эту версию</a> <a class="btn btn-sm btn-outline-primary" href="{% url 'planning:workspace_gpr_import' version.pk %}">Импорт ГПР за весь период</a> <a class="btn btn-sm btn-outline-primary" href="{% url 'planning:workspace_gpr_import' version.pk %}?scope=month&amp;month={{ selected_month|date:'Y-m-d' }}">Импорт ГПР за {{ selected_month|date:'m.Y' }}</a>{% endif %}
 </div></div></details>
-<nav class="d-flex flex-wrap gap-2 mb-3" aria-label="Месяцы плана">
-{% for month in months %}{% if not version.planning_month or month >= version.planning_month %}{% if not version.planning_month or version.scenario == 'REMAINING' or version.scenario == 'ENTERED' or month == version.planning_month %}
-<a class="btn {% if month == selected_month %}btn-primary{% else %}btn-outline-primary{% endif %}" href="?month={{ month|date:'Y-m-d' }}">{{ month|date:'m.Y' }}{% if version.planning_month and month > version.planning_month %} · остаток{% endif %}</a>
-{% endif %}{% endif %}{% endfor %}</nav>
+<nav class="plan-month-picker" aria-label="Месяцы плана" data-plan-month-picker data-current-month="{{ selected_month|date:'Y-m-d' }}">
+<label>Год<select class="form-select form-select-sm" data-plan-year data-native-select="true">{% for year in editor_years %}<option value="{{ year|stringformat:'d' }}" {% if year == selected_month.year %}selected{% endif %}>{{ year|stringformat:'d' }}</option>{% endfor %}</select></label>
+<label>Месяц<select class="form-select form-select-sm" data-plan-month data-native-select="true">{% for month in editor_months %}<option value="{{ month|date:'Y-m-d' }}" {% if month == selected_month %}selected{% endif %}>{{ month|date:'m.Y' }}{% if version.planning_month and month > version.planning_month %} · остаток{% endif %}</option>{% endfor %}</select></label>
+</nav>
 <h2>{{ selected_month|date:'m.Y' }}</h2>
 {% if future_manual %}<div class="alert alert-info">{% if version.scenario == 'ENTERED' %}Будущее содержит только явно введенные объемы. Невведенные остатки не переносятся автоматически.{% else %}Будущее рассчитывается автоматически по пропорциям базового плана. Если остался один будущий месяц, весь остаток работ автоматически попадает в него. Для нескольких будущих месяцев с нулевыми пропорциями заполните распределение вручную. Сумма ручных объемов должна совпадать с остатком.{% endif %}</div>{% endif %}
 <form method="post" id="allocation-editor" action="{% url 'planning:workspace_edit' version.pk %}?month={{ selected_month|date:'Y-m-d' }}">
@@ -91,19 +92,20 @@
 <button type="button" class="btn btn-outline-primary" data-open-branch="work">Работа</button>
 </div>
 </div></details>
-<h3>Ресурсы на {{ selected_month|date:'m.Y' }}</h3><p>Численность людей и количество техники повторяются каждый календарный день, включая выходные. Остаток ГСМ повторяется каждый день. Расход ГСМ за месяц распределяется равномерно по всем календарным дням в пределах периода.</p>
-<p class="small text-muted">Строки «Из работы» рассчитываются по назначениям и учитываются один раз. Остальные строки — ресурсы вне работ.</p>
+<h3>Сводка ресурсов объекта на {{ selected_month|date:'m.Y' }}</h3><p>Численность людей и количество техники повторяются каждый календарный день, включая выходные. Остаток ГСМ повторяется каждый день. Расход ГСМ за месяц распределяется равномерно по всем календарным дням в пределах периода.</p>
+<p class="small text-muted">«Из работы» — итог назначений под работами, без повторного ввода. «Вне работ» — общие ресурсы объекта, их можно добавлять и менять здесь.</p>
 {% for section in resource_sections %}<details class="allocation-section" data-allocation-section="{{ section.kind }}"><summary>{{ section.title }} <span class="allocation-group-count" data-section-count></span></summary><div class="allocation-section-body">
 {% include 'planning/row_filters.html' with filter_kind=section.kind filters=section.filters %}
-<div id="resource-rows-{{ section.kind }}">{% for form in section.forms %}<div class="card mb-3 resource-row allocation-row"><div class="card-body allocation-grid">{{ form.non_field_errors }}{% for field in form %}<p data-field="{{ field.name }}" {% if field.is_hidden or field.name == 'kind' %}hidden{% endif %}>{% if field.name == 'DELETE' %}<span hidden>{{ field }}</span><button type="button" class="btn btn-sm btn-outline-danger" data-remove-row aria-label="Удалить строку">Удалить</button>{% else %}{{ field.label_tag }} {{ field }} {{ field.errors }}{% endif %}</p>{% endfor %}</div></div>{% endfor %}</div>
+<div id="resource-rows-{{ section.kind }}">{% for form in section.forms %}<div class="card mb-3 resource-row allocation-row"><div class="card-body allocation-grid"><span class="badge bg-light text-dark" style="grid-column:1 / -1;justify-self:start">Вне работ · Общие ресурсы объекта</span>{{ form.non_field_errors }}{% for field in form %}<p data-field="{{ field.name }}" {% if field.is_hidden or field.name == 'kind' %}hidden{% endif %}>{% if field.name == 'DELETE' %}<span hidden>{{ field }}</span><button type="button" class="btn btn-sm btn-outline-danger" data-remove-row aria-label="Удалить строку">Удалить</button>{% else %}{{ field.label_tag }} {{ field }} {{ field.errors }}{% endif %}</p>{% endfor %}</div></div>{% endfor %}</div>
 {% if not resources_read_only %}<button type="button" class="btn btn-outline-primary" data-add="resources" data-kind="{{ section.kind }}">Добавить {% if section.kind == 'labor' %}людей{% elif section.kind == 'equipment' %}технику{% else %}ГСМ{% endif %} в этот месяц</button>{% endif %}
 </div></details>{% endfor %}
 
 </form>
 {% include 'planning/_resource_editor.html' %}
+{% include 'planning/_gpr_handoff.html' %}
 {% include 'planning/_branch_picker.html' %}
 <template id="empty-works"><div class="card mb-3 allocation-row"><div class="card-body allocation-grid">{% for field in work_forms.empty_form %}<p data-field="{{ field.name }}" {% if field.is_hidden %}hidden{% endif %}>{% if field.name == 'DELETE' %}<span hidden>{{ field }}</span><button type="button" class="btn btn-sm btn-outline-danger" data-remove-row aria-label="Удалить строку">Удалить</button>{% else %}{{ field.label_tag }} {{ field }}{% endif %}</p>{% endfor %}</div></div></template>
-<template id="empty-resources"><div class="card mb-3 resource-row allocation-row"><div class="card-body allocation-grid">{% for field in resource_forms.empty_form %}<p data-field="{{ field.name }}" {% if field.is_hidden or field.name == 'kind' %}hidden{% endif %}>{% if field.name == 'DELETE' %}<span hidden>{{ field }}</span><button type="button" class="btn btn-sm btn-outline-danger" data-remove-row aria-label="Удалить строку">Удалить</button>{% else %}{{ field.label_tag }} {{ field }}{% endif %}</p>{% endfor %}</div></div></template>
+<template id="empty-resources"><div class="card mb-3 resource-row allocation-row"><div class="card-body allocation-grid"><span class="badge bg-light text-dark" style="grid-column:1 / -1;justify-self:start">Вне работ · Общие ресурсы объекта</span>{% for field in resource_forms.empty_form %}<p data-field="{{ field.name }}" {% if field.is_hidden or field.name == 'kind' %}hidden{% endif %}>{% if field.name == 'DELETE' %}<span hidden>{{ field }}</span><button type="button" class="btn btn-sm btn-outline-danger" data-remove-row aria-label="Удалить строку">Удалить</button>{% else %}{{ field.label_tag }} {{ field }}{% endif %}</p>{% endfor %}</div></div></template>
 {{ work_prices|json_script:'work-prices' }}
 <script src="{% static 'planning/work_amounts.js' %}"></script>
 {{ work_carryover_notes|json_script:'work-carryover-notes' }}
@@ -344,6 +346,7 @@ function wireSubworks() {
   });
 }
 function removeAllocationRow(row) {
+  window.gprSaveUI?.markPlanDirty();
   const deletion=row.querySelector('[name$="-DELETE"]');
   deletion.checked=true;
   row.hidden=true;

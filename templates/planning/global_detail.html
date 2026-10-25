@@ -2,6 +2,12 @@
 {% block extra_css %}<link rel="stylesheet" href="{% static 'planning/report_matrix.css' %}"><link rel="stylesheet" href="{% static 'planning/plan_actions.css' %}">{% endblock %}
 {% block content %}
 {% include 'planning/_global_actions.html' %}
+{% if object.approval_round %}<div data-plan-approval-stages>
+<p class="small text-muted">Период проверки и согласования: <strong>{{ review_start|date:'d.m.Y' }} — {{ review_end|date:'d.m.Y' }}</strong>. Ранее утверждённая история сохраняется.</p>
+{% include 'planning/approval_panel.html' %}
+{% if object.baseline_review_id %}<p class="small">Зафиксированная база: раунд {{ object.baseline_review.number }}.</p>{% endif %}
+{% if object.previous_version %}<p class="small">Предыдущая редакция: <a href="{% url 'planning:global_detail' object.previous_version.pk %}">v{{ object.previous_version.version_number }}</a></p>{% endif %}
+</div>{% endif %}
 {% if daily_schedules %}<details class="mb-3" id="gpr-related-smg"><summary>Связанные СМГ · {{ daily_schedules|length }}</summary><div class="d-flex flex-wrap gap-2 mt-2">{% for s in daily_schedules %}<a class="btn btn-sm btn-outline-primary" href="{% url 'planning:daily_schedule_detail' s.pk %}">СМГ {{ s.month|date:'m.Y' }} · ред. {{ s.revision }} · {{ s.get_status_display }}</a>{% endfor %}</div></details>{% endif %}
 <div id="work-resources">
 {% include 'planning/_resource_panel.html' %}
@@ -9,11 +15,7 @@
 {% include 'planning/global_matrix.html' %}
 </div>
 {% include 'planning/_resource_editor.html' %}
-<details class="my-3"><summary>Согласование и история решений</summary>
-<p class="small text-muted">Период проверки и согласования: <strong>{{ review_start|date:'d.m.Y' }} — {{ review_end|date:'d.m.Y' }}</strong>. Ранее утверждённая история сохраняется.</p>
-{% include 'planning/approval_panel.html' %}
-{% if object.baseline_review_id %}<p class="small">Зафиксированная база: раунд {{ object.baseline_review.number }}.</p>{% endif %}
-{% if object.previous_version %}<p class="small">Предыдущая редакция: <a href="{% url 'planning:global_detail' object.previous_version.pk %}">v{{ object.previous_version.version_number }}</a></p>{% endif %}
-</details>
+{% include 'planning/_gpr_handoff.html' %}
+
 {% include 'planning/project_assignment.html' %}
 {% endblock %}

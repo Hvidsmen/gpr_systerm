@@ -22,6 +22,7 @@ class HandoffForm(forms.Form):
         super().__init__(*args,**kwargs)
         self.fields['manager'].queryset=User.objects.filter(company=company,is_active=True,role__code__in=['MANAGER','ADMIN'])
         self.fields['estimator'].queryset=User.objects.filter(company=company,is_active=True,role__code__in=['ESTIMATOR','ADMIN'])
+        for field in self.fields.values():field.widget.attrs['data-native-select']='true'
 
 
 class ManagerResourceSet(ResourceAllocationSet):
@@ -38,7 +39,7 @@ class PreparationView(View):
         can_handoff=role_code(request.user) in {'ADMIN','PLANNER'} and owner.status in {'DRAFT','REJECTED'}
         can_resources=owner.status in {'DRAFT','REJECTED'} and (role_code(request.user)=='ADMIN' or role_code(request.user)=='MANAGER' and record and record.manager_id==request.user.pk)
         if not bound and self.kind=='gpr' and can_resources and record and request.GET.get('legacy')!='1' and not (can_handoff and request.GET.get('handoff')=='1'):
-            return redirect(reverse('planning:global_detail',args=[owner.pk])+'#work-resources')
+            return redirect(reverse('planning:workspace_edit' if owner.workspace_id else 'planning:global_detail',args=[owner.pk])+'#work-resources')
         latest_review=owner.estimate_reviews.order_by('-pk').first()
         form=HandoffForm(request.POST if action=='handoff' else None,company=request.user.company,initial={'manager':record.manager_id if record else None,'estimator':latest_review.assigned_to_id if latest_review else None})
         resource_forms=None;months=[];month=None
@@ -60,12 +61,14 @@ class PreparationView(View):
                     if not can_handoff:raise PermissionDenied
                     if form.is_valid():
                         preparation.handoff(request.user,owner,form.cleaned_data['manager'],form.cleaned_data['estimator'])
-                        messages.success(request,"Передача сохранена. Ниже показаны задания руководителя и сметчика с текущими статусами.")
+                        messages.success(request,"План передан руководителю и сметчику. Задания созданы или обновлены.")
+                        if self.kind=='gpr' and owner.workspace_id and request.POST.get('return_to_gpr')=='1':
+                            return redirect(reverse('planning:workspace_edit',args=[owner.pk])+'?month='+month.isoformat())
                         return redirect(request.path+'?handoff=1')
                 elif action=='save_resources':
                     with transaction.atomic():
                         locked=model.objects.select_for_update().get(pk=owner.pk,company=request.user.company)
-                        preparation.require_resource_editor(request.user,locked)
+                        preparation.require_resource_input(request.user,locked)
                         if resource_forms is None:raise ValidationError('Используйте дневной ввод ресурсов СМГ.')
                         if resource_forms.is_valid():
                             resource_forms.save();locked.snapshot={};locked.save(update_fields=['snapshot'])
@@ -77,7 +80,7 @@ class PreparationView(View):
                         add_entry(request.user,owner,resource_add_form.cleaned_data);return redirect(request.path)
                 elif action=='ready':
                     preparation.ready(request.user,owner)
-                    return redirect(reverse('planning:global_detail',args=[owner.pk])+'#work-resources' if self.kind=='gpr' else request.path)
+                    return redirect(reverse('planning:workspace_edit' if owner.workspace_id else 'planning:global_detail',args=[owner.pk])+'#work-resources' if self.kind=='gpr' else request.path)
                 elif action=='submit':
                     if self.kind=='gpr':
                         from .approval_workflow import transition

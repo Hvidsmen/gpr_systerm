@@ -98,6 +98,11 @@ class GlobalDetail(CompanyScopedMixin, DetailView):
         ctx['linked_object_plans'] = linked_plans(self.object,self.request.user)
         from .resource_editor import attach_matrix_resources
         attach_matrix_resources(ctx)
+        from .gpr_ui import path_context
+        ctx.update(path_context(self.object,ctx,self.request.user))
+        ctx['gpr_single_page']=getattr(self.request,'gpr_single_page',False)
+        from core.permissions import role_code
+        ctx['can_edit_work_plan']=role_code(self.request.user) in {'ADMIN','PLANNER'} and self.object.status in {'DRAFT','REJECTED'}
         return ctx
 
 
@@ -121,7 +126,7 @@ class GlobalAction(View):
             and version.status in ["DRAFT", "REJECTED"]
         ):
             return redirect("planning:workspace_edit", pk=version.pk)
-        return redirect("planning:global_detail", pk=version.pk)
+        return redirect("planning:workspace_edit" if version.workspace_id else "planning:global_detail", pk=version.pk)
 
 
 class ApprovalList(View):

@@ -529,7 +529,7 @@ class WorkspaceTests(TestCase):
         from .approval_test_helpers import estimator_check
         estimator_check(workspace.baseline_version,self.planner)
         version = GlobalPlanService.transition(
-            workspace.baseline_version, self.planner, "submit"
+            workspace.baseline_version, self.manager, "submit"
         )
         with self.assertRaises(PermissionDenied):
             GlobalPlanService.transition(version, self.planner, "approve")
@@ -611,7 +611,7 @@ class WorkspaceTests(TestCase):
         self.assertEqual(row.quantity, 240)
         self.assertEqual(self.amounts(version, self.simple), [D(300), D(240), D(500)])
         response = self.client.get(reverse("planning:global_detail", args=[version.pk]))
-        self.assertContains(response, "План на весь период по месяцам")
+        self.assertContains(response, "План работ и ресурсов по месяцам")
 
     def test_ui_creation_and_forecast_start_with_editable_month(self):
         self.client.force_login(self.planner)

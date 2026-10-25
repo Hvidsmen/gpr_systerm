@@ -156,6 +156,24 @@ class WorkspaceList(CompanyScopedMixin, ListView):
     template_name = "planning/workspace_list.html"
     paginate_by = 50
 
+    def get_queryset(self):
+        query=super().get_queryset().select_related('construction_object','baseline_version','baseline_version__preparation').defer('baseline_version__snapshot')
+        term=self.request.GET.get('q','').strip()[:200]
+        if term:
+            from django.db.models import Q
+            query=query.filter(Q(name__icontains=term)|Q(construction_object__name__icontains=term))
+        from django.db.models import Prefetch
+        return query.prefetch_related(Prefetch('versions',queryset=GlobalPlanVersion.objects.defer('snapshot').select_related('preparation').order_by('-version_number'),to_attr='ui_versions')).order_by('-updated_at','-pk')
+
+    def get_context_data(self,**kwargs):
+        ctx=super().get_context_data(**kwargs)
+        from .gpr_ui import list_stage
+        for workspace in ctx['object_list']:
+            workspace.ui_version=workspace.ui_versions[0] if workspace.ui_versions else workspace.baseline_version
+            workspace.ui_stage=list_stage(workspace.ui_version)
+        ctx['search_query']=self.request.GET.get('q','').strip()[:200]
+        return ctx
+
 
 class WorkspaceCreate(View):
     def get(self, request):
@@ -233,6 +251,7 @@ class ForecastCreate(View):
 class WorkspaceEdit(View):
     def setup_version(self, request, pk):
         version = version_for(request, pk)
+        if version.workspace.is_archived:raise PermissionDenied("ГПР находится в архиве.")
         if version.status not in ["DRAFT", "REJECTED"]:
             raise PermissionDenied(
                 "Отправленную или утверждённую версию редактировать нельзя."
@@ -278,7 +297,7 @@ class WorkspaceEdit(View):
             **kwargs,
         )
         from core.permissions import role_code
-        if role_code(request.user)=='PLANNER':
+        if role_code(request.user)=='PLANNER' and version.workspace.parent_gpr_id:
             for form in resources:
                 for field in form.fields.values():field.disabled=True
         return works, resources
@@ -299,8 +318,15 @@ class WorkspaceEdit(View):
         filter_data, filter_specs = planning_filters(version)
         from .work_selection_views import BranchForm
         from .resource_editor import context as resource_context
+        resource_data=resource_context(request.user,version,selected)
+        from .approval_workflow import panel
+        from .gpr_ui import path_context
+        approval=panel(version,request.user)
+        allowed_months=[m for m in months if not version.planning_month or m>=version.planning_month and (version.scenario in {'REMAINING','ENTERED'} or m==version.planning_month)]
         return {
-            **resource_context(request.user,version,selected),
+            **resource_data, **approval, **path_context(version,{**resource_data,**approval},request.user),
+            'object':version,'gpr_single_page':True,'editor_has_errors':request.method=='POST',
+            'editor_months':allowed_months,'editor_years':sorted({m.year for m in allowed_months}),
             "branch_form": BranchForm(version=version,initial={"months":[selected.isoformat()]}),
             "version": version,
             "workspace": version.workspace,
@@ -325,7 +351,7 @@ class WorkspaceEdit(View):
                 ).prefetch_related('items')
             },
             "resource_forms": resources,
-            "resources_read_only": role_code(request.user)=="PLANNER",
+            "resources_read_only": role_code(request.user)=="PLANNER" and bool(version.workspace.parent_gpr_id),
             "resource_sections": [
                 {
                     "kind": kind, "title": title, "filters": filter_specs[kind],
@@ -346,6 +372,12 @@ class WorkspaceEdit(View):
         }
 
     def get(self, request, pk):
+        from core.permissions import scope_queryset
+        version=get_object_or_404(scope_queryset(GlobalPlanVersion.objects.filter(workspace__isnull=False),request.user),pk=pk)
+        if version.status not in {'DRAFT','REJECTED'} or role_code(request.user) not in {'ADMIN','PLANNER'}:
+            from .global_views import GlobalDetail
+            request.gpr_single_page=True
+            return GlobalDetail.as_view()(request,pk=pk)
         version, selected, months = self.setup_version(request, pk)
         works, resources = self.forms(request, version, selected)
         return render(
@@ -595,8 +627,8 @@ class WorkspaceExport(View):
 class AddWorkspaceResource(View):
     def post(self, request, pk, kind):
         version = version_for(request, pk)
-        from .preparation import require_resource_editor
-        require_resource_editor(request.user,version)
+        from .preparation import require_resource_input
+        require_resource_input(request.user,version)
         if kind not in RESOURCE_IDENTITIES:
             raise Http404('Неизвестный вид ресурса')
         if version.version_kind != 'BASELINE' or version.status not in ['DRAFT', 'REJECTED']:

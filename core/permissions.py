@@ -107,6 +107,8 @@ def check_route(user, match, method):
         require_roles(user, {'ADMIN'});return
     if namespace == 'accounts' and name in {'password_change','access_pending','impersonation_stop'}:
         return
+    if namespace == 'planning' and name=='workspace_edit':
+        require_roles(user, READ_ROLES if method in {'GET','HEAD'} else PLAN_ROLES);return
     if namespace == 'planning' and name=='smg_copy_gpr':
         require_roles(user,PLAN_ROLES|{'MANAGER'});return
     if namespace == 'planning' and name.startswith('object_plan_'):
@@ -181,7 +183,7 @@ def check_route(user, match, method):
             require_roles(user,ROLES)
             return
         if name=='workspace_add_resource' or name=='workspace_bulk_add' and match.kwargs.get('kind')!='works':
-            require_roles(user,{'ADMIN','MANAGER'});return
+            require_roles(user,{'ADMIN','PLANNER','MANAGER'});return
         if name.startswith('preparation_') or name.startswith('work_resources_'):
             require_roles(user,READ_ROLES if method in {'GET','HEAD'} else {'ADMIN','PLANNER','MANAGER'})
             return

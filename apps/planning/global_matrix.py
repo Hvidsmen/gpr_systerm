@@ -118,7 +118,7 @@ def detail_matrix(request, version):
             'columns': [dict(label=column['label'], amount=sum((row['cells'][index].get('amount') or Decimal(0) for row in work_rows), Decimal(0))) for index,column in enumerate(context['columns'])],
         }
     context["matrix_warnings"] = snapshot.get("warnings", [])
-    url = reverse("planning:global_detail", args=[version.pk])
+    url = reverse("planning:workspace_edit" if getattr(request,"gpr_single_page",False) else "planning:global_detail", args=[version.pk])
     back = params.copy()
     back.pop("month", None)
     context["monthly_url"] = url + "?" + back.urlencode()

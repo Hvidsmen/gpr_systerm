@@ -113,6 +113,16 @@ def task_context(user,owner):
             'preparation_estimator_task_url':reverse('planning:task_detail',args=[estimator_task.pk]) if estimator_task and estimator_task.pk in allowed else ''}
 
 
+def require_resource_input(user,owner):
+    """Planner may draft GPR resources; manager confirmation stays separate."""
+    if role_code(user)=='PLANNER' and not isinstance(owner,DailySchedule) and owner.workspace_id and not owner.workspace.parent_gpr_id:
+        if user.company_id!=owner.company_id or owner.workspace.is_archived:raise PermissionDenied
+        require_planning_object(user,owner.construction_object_id)
+        if owner.status not in {'DRAFT','REJECTED'}:raise ValidationError('Ресурсы меняются только в черновике.')
+        return record(owner)
+    return require_resource_editor(user,owner)
+
+
 def resource_tasks(owner,preparation=None):
     preparation=preparation or record(owner)
     if not preparation:return WorkTask.objects.none()

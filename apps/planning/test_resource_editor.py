@@ -107,9 +107,12 @@ class InlineResourceTests(TestCase):
         self.assertEqual(self.client.post(self.url,self.data()).status_code,400)
         self.assertFalse(self.version.resource_assignments.exists())
 
-    def test_only_assigned_manager_or_admin_can_change(self):
+    def test_planner_can_draft_resources_but_other_manager_cannot(self):
         self.client.force_login(self.planner)
-        self.assertEqual(self.client.post(self.url,self.data()).status_code,403)
+        self.assertEqual(self.client.post(self.url,self.data()).status_code,200)
+        from .preparation import ready
+        from django.core.exceptions import PermissionDenied
+        with self.assertRaises(PermissionDenied):ready(self.planner,self.version)
         from apps.accounts.models import User
         other=User.objects.create_user(username='other-resource-manager',company=self.company,role=self.manager.role)
         self.client.force_login(other)
