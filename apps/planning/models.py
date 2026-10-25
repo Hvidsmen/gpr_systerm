@@ -1420,6 +1420,10 @@ class DailyScheduleDecision(BaseCompanyModel):
 
 class WorkResourceAssignment(BaseCompanyModel):
     """One independent allocation, counted once at its lowest target level."""
+    fuel_type = models.CharField('Вид ГСМ',max_length=20,blank=True,choices=ResourceMonthAllocation._meta.get_field('fuel_type').choices)
+    daily_liters = models.DecimalField('Расход ГСМ в день, л',max_digits=12,decimal_places=3,default=0)
+    fuel_price = models.DecimalField('Цена литра, ₽',max_digits=12,decimal_places=2,default=0)
+    include_crew = models.BooleanField('Добавлять экипаж техники автоматически',default=True)
     key = models.UUIDField(default=uuid.uuid4,editable=False)
     version = models.ForeignKey(GlobalPlanVersion,on_delete=models.CASCADE,null=True,blank=True,related_name='resource_assignments')
     schedule = models.ForeignKey(DailySchedule,on_delete=models.CASCADE,null=True,blank=True,related_name='resource_assignments')
@@ -1445,7 +1449,9 @@ class WorkResourceAssignment(BaseCompanyModel):
             if getattr(self,name+'_id') and getattr(self,name).company_id!=self.company_id:raise ValidationError({name:'Запись другой компании.'})
         if self.work_item_id and (not self.work_id or self.work_item.project_work_id!=self.work_id):raise ValidationError({'work_item':'Выберите работу из указанного комплекса.'})
         if self.work_id and self.work.section.construction_object_id!=owner.construction_object_id:raise ValidationError({'work':'Работа другого объекта.'})
-        if bool(self.equipment_type_id)==bool(self.position_id):raise ValidationError('Выберите технику либо должность без техники.')
+        if sum([bool(self.equipment_type_id),bool(self.position_id),bool(self.fuel_type)])!=1:raise ValidationError('Выберите только один ресурс: технику, должность или ГСМ.')
+        if self.fuel_type and (self.daily_liters is None or self.daily_liters<=0):raise ValidationError({'daily_liters':'Укажите положительный расход ГСМ в день.'})
+        if self.fuel_price is not None and self.fuel_price<0:raise ValidationError({'fuel_price':'Цена не может быть отрицательной.'})
         if self.start_date and self.end_date:
             from .estimate_review import review_period
             start,end=review_period(owner)
@@ -1456,7 +1462,7 @@ class WorkResourceAssignment(BaseCompanyModel):
 
     class Meta:
         ordering=['start_date','pk']
-        constraints=[models.UniqueConstraint(fields=['version','key'],condition=models.Q(version__isnull=False),name='unique_gpr_assignment_key'),models.UniqueConstraint(fields=['schedule','key'],condition=models.Q(schedule__isnull=False),name='unique_smg_assignment_key'),models.CheckConstraint(condition=models.Q(hours_per_shift__gt=0,start_date__lte=models.F('end_date')),name='valid_assignment_hours_dates'),models.CheckConstraint(condition=(models.Q(version__isnull=False,schedule__isnull=True)|models.Q(version__isnull=True,schedule__isnull=False)),name='one_assignment_owner'),models.CheckConstraint(condition=(models.Q(equipment_type__isnull=False,position__isnull=True)|models.Q(equipment_type__isnull=True,position__isnull=False)),name='one_assignment_resource'),models.CheckConstraint(condition=models.Q(count__gte=1,shifts_per_day__gte=1,shifts_per_day__lte=24),name='positive_assignment_count_shifts')]
+        constraints=[models.UniqueConstraint(fields=['version','key'],condition=models.Q(version__isnull=False),name='unique_gpr_assignment_key'),models.UniqueConstraint(fields=['schedule','key'],condition=models.Q(schedule__isnull=False),name='unique_smg_assignment_key'),models.CheckConstraint(condition=models.Q(hours_per_shift__gt=0,start_date__lte=models.F('end_date')),name='valid_assignment_hours_dates'),models.CheckConstraint(condition=(models.Q(version__isnull=False,schedule__isnull=True)|models.Q(version__isnull=True,schedule__isnull=False)),name='one_assignment_owner'),models.CheckConstraint(condition=(models.Q(equipment_type__isnull=False,position__isnull=True,fuel_type='')|models.Q(equipment_type__isnull=True,position__isnull=False,fuel_type='')|(models.Q(equipment_type__isnull=True,position__isnull=True)&~models.Q(fuel_type=''))),name='one_assignment_resource'),models.CheckConstraint(condition=models.Q(count__gte=1,shifts_per_day__gte=1,shifts_per_day__lte=24),name='positive_assignment_count_shifts')]
 
 
 class PivotReportPreset(BaseCompanyModel):

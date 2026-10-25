@@ -1,0 +1,120 @@
+"""Inline resource assignments in the GPR, scoped to saved planned works."""
+from calendar import monthrange
+from datetime import date
+from django import forms
+from django.core.exceptions import PermissionDenied, ValidationError
+from django.contrib.auth.decorators import login_required
+from django.db import transaction
+from django.http import JsonResponse
+from django.shortcuts import get_object_or_404
+from django.views.decorators.http import require_POST
+from core.permissions import scope_queryset
+from .models import GlobalPlanVersion, WorkResourceAssignment
+from .work_resource_views import AssignmentForm
+from . import work_resources, estimate_review, preparation
+
+
+def planned_targets(owner):
+    allocations=list(estimate_review.review_allocations(owner).exclude(quantity=0,item_quantities={}))
+    ids={a.work_id for a in allocations}
+    selected={work_id:set() for work_id in ids}; full=set()
+    for allocation in allocations:
+        if allocation.selected_item_ids:selected[allocation.work_id].update(allocation.selected_item_ids)
+        else:full.add(allocation.work_id)
+    from apps.works.models import ProjectWork
+    works=list(ProjectWork.objects.filter(company=owner.company,pk__in=ids).prefetch_related('items').order_by('name','pk'))
+    targets=[]
+    for work in works:
+        items=[item for item in work.items.all() if item.company_id==owner.company_id and (work.pk in full or item.pk in selected[work.pk])]
+        targets.append({'id':work.pk,'name':work.name,'items':[{'id':item.pk,'name':item.name} for item in items]})
+    return targets
+
+
+class InlineAssignmentForm(AssignmentForm):
+    resource_kind=forms.ChoiceField(choices=[('equipment','Техника'),('labor','Должность'),('fuel','ГСМ')])
+
+    def __init__(self,*args,owner,**kwargs):
+        super().__init__(*args,owner=owner,**kwargs)
+        targets=planned_targets(owner)
+        self.fields['work'].queryset=self.fields['work'].queryset.filter(pk__in=[r['id'] for r in targets])
+        self.fields['work_item'].queryset=self.fields['work_item'].queryset.filter(pk__in=[i['id'] for r in targets for i in r['items']])
+        for name in ['work','work_item']:self.fields[name].widget=forms.HiddenInput()
+        for name in ['count','shifts_per_day','hours_per_shift','daily_liters','fuel_price']:self.fields[name].required=False
+        for field in self.fields.values():
+            if isinstance(field.widget,forms.Select):field.widget.attrs['data-native-select']='true'
+            if not isinstance(field.widget,(forms.HiddenInput,forms.CheckboxInput)):field.widget.attrs['class']='form-control'
+
+    def clean(self):
+        data=super().clean();kind=data.get('resource_kind')
+        if kind=='fuel':
+            data.update(equipment_type=None,position=None,count=1,shifts_per_day=1,hours_per_shift=8,include_crew=False)
+            data['fuel_price']=data.get('fuel_price') or 0
+            if not data.get('fuel_type'):self.add_error('fuel_type','Выберите вид ГСМ.')
+        elif kind in ['equipment','labor']:
+            resource='equipment_type' if kind=='equipment' else 'position'
+            data['position' if kind=='equipment' else 'equipment_type']=None
+            data.update(fuel_type='',daily_liters=0,fuel_price=0)
+            if not data.get(resource):self.add_error(resource,'Выберите ресурс.')
+            for name in ['count','shifts_per_day','hours_per_shift']:
+                if data.get(name) is None:self.add_error(name,'Обязательное поле.')
+        return data
+
+
+def serialize(assignment):
+    projected=[]
+    if assignment.fuel_type:projected.append({'kind':'fuel','identity':assignment.fuel_type,'label':assignment.get_fuel_type_display(),'count':0,'liters':str(assignment.daily_liters)})
+    if assignment.equipment_type_id:projected.append({'kind':'equipment','identity':assignment.equipment_type_id,'label':str(assignment.equipment_type),'count':assignment.count})
+    for member in assignment.crew_snapshot:
+        projected.append({'kind':'labor','identity':member['brigade_id'],'label':member['name']+(' *' if member['is_replacement'] else ''),'count':assignment.count*assignment.shifts_per_day*member['count']})
+    return {'id':assignment.pk,'work':assignment.work_id or '', 'work_item':assignment.work_item_id or '',
+        'resource_kind':'fuel' if assignment.fuel_type else 'equipment' if assignment.equipment_type_id else 'labor',
+        'equipment_type':assignment.equipment_type_id or '', 'position':assignment.position_id or '',
+        'fuel_type':assignment.fuel_type,'daily_liters':str(assignment.daily_liters),'fuel_price':str(assignment.fuel_price),
+        'count':assignment.count,'shifts_per_day':assignment.shifts_per_day,'hours_per_shift':str(assignment.hours_per_shift),
+        'include_crew':assignment.include_crew,'start_date':assignment.start_date.isoformat(),'end_date':assignment.end_date.isoformat(),
+        'label':str(assignment.equipment_type or assignment.position or assignment.get_fuel_type_display()),
+        'target':assignment.work_item.name if assignment.work_item_id else assignment.work.name if assignment.work_id else 'Вне работ',
+        'projected':projected,'crew':', '.join(f"{m['name']} — {m['count']} чел." for m in assignment.crew_snapshot)}
+
+
+def context(user,owner,month=None):
+    allowed=True
+    try:work_resources.editable(user,owner)
+    except (PermissionDenied,ValidationError):allowed=False
+    start,end=estimate_review.review_period(owner)
+    if month:
+        start=max(start,month);end=min(end,month.replace(day=monthrange(month.year,month.month)[1]))
+    targets=planned_targets(owner)
+    record=preparation.record(owner)
+    latest=owner.estimate_reviews.order_by('-pk').first()
+    return {'resources_ready':bool(record and record.resources_ready_at and record.resources_fingerprint==preparation.resource_signature(owner)),
+        'estimator_approved':estimate_review.check_valid(owner,latest),'can_prepare_resources':allowed,'resource_owner':owner,
+        'inline_resource_form':InlineAssignmentForm(owner=owner,initial={'start_date':start,'end_date':end,'count':1,'shifts_per_day':1,'hours_per_shift':8,'include_crew':True}),
+        'resource_editor_data':{'targets':targets,'assignments':[serialize(a) for a in work_resources.owner_rows(owner)],
+            'start_date':start.isoformat(),'end_date':end.isoformat(),'can_edit':allowed},
+        'resource_targets':targets,'resource_preparation':preparation.record(owner)}
+
+
+@login_required
+@require_POST
+def add_assignment(request,pk):
+    owner=get_object_or_404(scope_queryset(GlobalPlanVersion.objects.all(),request.user),pk=pk)
+    try:
+        with transaction.atomic():
+            owner=GlobalPlanVersion.objects.select_for_update().get(pk=owner.pk,company=request.user.company)
+            work_resources.editable(request.user,owner)
+            assignment_id=request.POST.get('assignment_id')
+            if assignment_id:
+                try:assignment_id=int(assignment_id)
+                except (TypeError,ValueError):raise ValidationError('Неверное назначение ресурса.')
+            instance=get_object_or_404(owner.resource_assignments,pk=assignment_id) if assignment_id else WorkResourceAssignment()
+            if request.POST.get('action')=='delete':
+                if not instance.pk:raise ValidationError('Выберите назначение.')
+                assignment_id=instance.pk;work_resources.remove(request.user,owner,instance)
+                return JsonResponse({'deleted':assignment_id})
+            form=InlineAssignmentForm(request.POST,owner=owner,instance=instance)
+            if not form.is_valid():return JsonResponse({'errors':form.errors.get_json_data()},status=400)
+            saved=work_resources.save(request.user,owner,form.instance,form.cleaned_data['refresh_crew'])
+            return JsonResponse({'assignment':serialize(saved)})
+    except ValidationError as error:
+        return JsonResponse({'errors':{'__all__':[{'message':message} for message in error.messages]}},status=400)

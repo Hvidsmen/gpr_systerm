@@ -28,6 +28,7 @@ def brigade_for(position):
 
 
 def capture(assignment):
+    if assignment.fuel_type or assignment.equipment_type_id and not assignment.include_crew:return []
     positions=list(assignment.equipment_type.crew_positions.filter(company=assignment.company).select_related('position')) if assignment.equipment_type_id else []
     if assignment.equipment_type_id and not positions:raise ValidationError('У техники не настроен экипаж. Добавьте должности в справочнике техники.')
     if not assignment.equipment_type_id:
@@ -43,6 +44,9 @@ def expand(assignment):
     day=a.start_date
     while day<=a.end_date:
         base={**common,'date':day.isoformat()}
+        if a.fuel_type:
+            key='assignment:'+str(a.key)+':fuel'
+            result.setdefault(key,('fuel',a.get_fuel_type_display(),[]))[2].append({**base,'fuel_type':a.fuel_type,'equipment_ref':'','label':a.get_fuel_type_display(),'planned_liters':str(a.daily_liters),'planned_balance':'0','price_per_liter':str(a.fuel_price)})
         if a.equipment_type_id:
             key='assignment:'+str(a.key)+':equipment'
             result.setdefault(key,('equipment',str(a.equipment_type),[]))[2].append({**base,'equipment_type_id':a.equipment_type_id,'equipment_number':'','label':str(a.equipment_type),'planned_count':str(a.count),'planned_machine_hours':str(a.count*a.shifts_per_day*a.hours_per_shift),'hourly_rate':'0'})
@@ -93,9 +97,9 @@ def save(user, owner, assignment, refresh_crew=False):
         cutoff=owner.locked_before
         if original and original.start_date<cutoff:
             if assignment.start_date!=original.start_date or assignment.end_date<cutoff or original.end_date<cutoff:raise ValidationError('Прошедшие дни закрыты. Изменяйте только действующее назначение на оставшиеся дни.')
-            if any(getattr(original,field)!=getattr(assignment,field) for field in ['work_id','work_item_id','equipment_type_id','position_id']):raise ValidationError('Для другой техники или работы сначала снимите старое назначение с оставшихся дней и добавьте новое.')
+            if any(getattr(original,field)!=getattr(assignment,field) for field in ['work_id','work_item_id','equipment_type_id','position_id','fuel_type']):raise ValidationError('Для другой техники или работы сначала снимите старое назначение с оставшихся дней и добавьте новое.')
         elif assignment.start_date<cutoff:raise ValidationError('Новое назначение должно начинаться не раньше открытого дня.')
-    if not original or refresh_crew or (original.equipment_type_id,original.position_id)!=(assignment.equipment_type_id,assignment.position_id):assignment.crew_snapshot=capture(assignment)
+    if not original or refresh_crew or (original.equipment_type_id,original.position_id,original.fuel_type,original.include_crew)!=(assignment.equipment_type_id,assignment.position_id,assignment.fuel_type,assignment.include_crew):assignment.crew_snapshot=capture(assignment)
     else:assignment.crew_snapshot=original.crew_snapshot
     assignment.save()
     if isinstance(owner,DailySchedule):sync_schedule(owner)
@@ -125,13 +129,13 @@ def remove(user,owner,assignment):
 def apply_snapshot(version,snapshot):
     from .estimate_review import review_period
     start,end=review_period(version)
-    for kind in ['labor','equipment']:
+    for kind in ['labor','equipment','fuel']:
         rows=snapshot.setdefault('resources',{}).setdefault(kind,[])
         rows[:]=[r for r in rows if not r.get('assignment_key') or not start.isoformat()<=r['date']<=end.isoformat()]
     for assignment in owner_rows(version):
         for key,(kind,label,rows) in expand(assignment).items():
             snapshot['resources'][kind].extend(rows)
-    snapshot['resource_assignments']=list(owner_rows(version).values('key','work_id','work_item_id','equipment_type_id','position_id','start_date','end_date','count','shifts_per_day','hours_per_shift','crew_snapshot'))
+    snapshot['resource_assignments']=list(owner_rows(version).values('key','work_id','work_item_id','equipment_type_id','position_id','start_date','end_date','count','shifts_per_day','hours_per_shift','fuel_type','daily_liters','fuel_price','include_crew','crew_snapshot'))
     return snapshot
 
 
@@ -142,7 +146,7 @@ def copy_assignments(source,target,*,copy_original=False):
     for old in owner_rows(source):
         if old.end_date<start or old.start_date>end:continue
         if target.resource_assignments.filter(key=old.key).exists():continue
-        data={field:getattr(old,field) for field in ['key','work_id','work_item_id','equipment_type_id','position_id','count','shifts_per_day','hours_per_shift','crew_snapshot']}
+        data={field:getattr(old,field) for field in ['key','work_id','work_item_id','equipment_type_id','position_id','count','shifts_per_day','hours_per_shift','fuel_type','daily_liters','fuel_price','include_crew','crew_snapshot']}
         data.update(start_date=max(start,old.start_date),end_date=min(end,old.end_date),company=target.company)
         data['schedule' if isinstance(target,DailySchedule) else 'version']=target
         WorkResourceAssignment.objects.create(**data)

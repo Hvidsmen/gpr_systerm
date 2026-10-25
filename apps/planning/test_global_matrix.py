@@ -118,8 +118,10 @@ class GlobalMatrixTests(TestCase):
     def test_submitted_snapshot_stays_frozen(self):
         from .global_services import GlobalPlanService
 
+        from .approval_test_helpers import estimator_check
+        estimator_check(self.version,self.planner)
         self.version = GlobalPlanService.transition(
-            self.version, self.planner, "submit"
+            self.version, self.manager, "submit"
         )
         original = deepcopy(self.version.snapshot)
         with patch(
@@ -136,13 +138,16 @@ class GlobalMatrixTests(TestCase):
         self.assertContains(response, "Согласование")
 
     def test_unavailable_preview_keeps_approval_controls(self):
+        from .approval_test_helpers import estimator_check
+        estimator_check(self.version,self.planner)
+        self.client.force_login(self.manager)
         with patch(
             "apps.planning.global_matrix.build_snapshot",
             side_effect=ValidationError("Настройте календарь"),
         ):
             response = self.client.get(self.url)
         self.assertContains(response, "Настройте календарь")
-        self.assertContains(response, "Отправить на согласование")
+        self.assertContains(response, "Запустить согласование")
         self.assertNotContains(response, 'id="plan-fact-matrix"')
 
     def test_internal_source_override_cannot_cross_objects(self):
@@ -180,7 +185,7 @@ class GlobalMatrixTests(TestCase):
                                  date=date(2026, 1, 1), actual_quantity=999, reported_by=self.planner)
         from apps.planning.approval_test_helpers import estimator_check
         estimator_check(self.version,self.planner)
-        self.version = GlobalPlanService.transition(self.version, self.planner, "submit")
+        self.version = GlobalPlanService.transition(self.version, self.manager, "submit")
         spec = next(s for s in self.version.snapshot["works"] if s["id"] == self.simple.pk)
         expected = sum(
             Decimal(day["quantity"]) * rate_on(spec["revenue_prices"], date.fromisoformat(day["date"]), Decimal(spec["unit_price"]))

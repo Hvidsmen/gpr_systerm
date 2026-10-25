@@ -5,6 +5,7 @@ from django.core.exceptions import ValidationError,PermissionDenied
 from django.db import transaction
 from django.shortcuts import get_object_or_404,render,redirect
 from django.http import Http404
+from django.urls import reverse
 from django.views import View
 from core.permissions import READ_ROLES,require_roles,scope_queryset,role_code
 from apps.accounts.models import User
@@ -36,6 +37,8 @@ class PreparationView(View):
         record=preparation.record(owner);action=request.POST.get('action') if bound else None
         can_handoff=role_code(request.user) in {'ADMIN','PLANNER'} and owner.status in {'DRAFT','REJECTED'}
         can_resources=owner.status in {'DRAFT','REJECTED'} and (role_code(request.user)=='ADMIN' or role_code(request.user)=='MANAGER' and record and record.manager_id==request.user.pk)
+        if not bound and self.kind=='gpr' and can_resources and record and request.GET.get('legacy')!='1':
+            return redirect(reverse('planning:global_detail',args=[owner.pk])+'#work-resources')
         form=HandoffForm(request.POST if action=='handoff' else None,company=request.user.company)
         resource_forms=None;months=[];month=None
         if self.kind=='gpr':
@@ -68,7 +71,9 @@ class PreparationView(View):
                     if resource_add_form and resource_add_form.is_valid():
                         from .daily_schedule_table import add_entry
                         add_entry(request.user,owner,resource_add_form.cleaned_data);return redirect(request.path)
-                elif action=='ready':preparation.ready(request.user,owner);return redirect(request.path)
+                elif action=='ready':
+                    preparation.ready(request.user,owner)
+                    return redirect(reverse('planning:global_detail',args=[owner.pk])+'#work-resources' if self.kind=='gpr' else request.path)
                 elif action=='submit':
                     if self.kind=='gpr':
                         from .approval_workflow import transition

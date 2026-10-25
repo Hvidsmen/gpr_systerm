@@ -15,7 +15,7 @@ class AssignmentForm(forms.ModelForm):
     refresh_crew=forms.BooleanField(label='Обновить экипаж из справочника техники',required=False)
     class Meta:
         model=WorkResourceAssignment
-        fields=['work','work_item','equipment_type','position','start_date','end_date','count','shifts_per_day','hours_per_shift']
+        fields=['work','work_item','equipment_type','position','start_date','end_date','count','shifts_per_day','hours_per_shift','fuel_type','daily_liters','fuel_price','include_crew']
         widgets={name:forms.DateInput(attrs={'type':'date'},format='%Y-%m-%d') for name in ['start_date','end_date']}
 
     def __init__(self,*args,owner,**kwargs):

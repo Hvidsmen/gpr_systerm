@@ -92,6 +92,8 @@ class GlobalDetail(CompanyScopedMixin, DetailView):
         ctx.update(panel(self.object, self.request.user))
         from .global_matrix import detail_matrix
         ctx.update(detail_matrix(self.request, self.object))
+        from .resource_editor import context as resource_context
+        ctx.update(resource_context(self.request.user,self.object))
         return ctx
 
 

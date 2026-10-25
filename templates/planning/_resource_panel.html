@@ -1,0 +1,11 @@
+<section class="card card-body my-3" id="work-resources">
+<h2>Ресурсы работ и объекта</h2>
+{% if resource_preparation %}<p>Руководитель: <strong>{{ resource_preparation.manager }}</strong>. Ресурсы: {% if resources_ready %}подтверждены{% else %}требуют подготовки{% endif %}. Проверка сметчиком: {% if estimator_approved %}пройдена{% else %}ожидается{% endif %}.</p>{% endif %}
+{% if not can_prepare_resources %}<p class="text-muted">Ресурсы редактирует назначенный руководитель проекта или администратор в черновике плана.</p>{% endif %}
+{% for target in resource_targets %}<details class="border rounded p-3 mb-2" open><summary class="fw-semibold">{{ target.name }}</summary>{% include 'planning/_resource_buttons.html' with resource_work=target.id %}
+{% for item in target.items %}<div class="ms-3 border-start ps-3 mt-3"><strong>{{ item.name }}</strong>{% include 'planning/_resource_buttons.html' with resource_work=target.id resource_item=item.id %}</div>{% endfor %}</details>{% empty %}<p>Сначала сохраните работы в месячном плане.</p>{% endfor %}
+<h5 class="mt-3">Ресурсы вне работ</h5>{% include 'planning/_resource_buttons.html' %}
+<h5 class="mt-3">Назначенные ресурсы</h5><div data-resource-assignment-list></div>
+<p class="small text-muted">Назначения включены в общие итоги ГПР. Обновите расчёт страницы после изменений, чтобы увидеть новые значения в матрице.</p><p><a class="btn btn-sm btn-outline-secondary" href="{% url 'planning:global_detail' resource_owner.pk %}#work-resources">Обновить расчёт</a> <a href="{% url 'planning:preparation_gpr' resource_owner.pk %}?legacy=1">Ранее введённые общие ресурсы и передача на подготовку</a></p>
+{% if can_prepare_resources and resource_preparation %}<form method="post" action="{% url 'planning:preparation_gpr' resource_owner.pk %}">{% csrf_token %}<button name="action" value="ready" class="btn btn-outline-primary">Ресурсы определены</button> <button name="action" value="submit" class="btn btn-primary" {% if not resources_ready or not estimator_approved %}disabled{% endif %}>Запустить согласование</button></form>{% endif %}
+</section>

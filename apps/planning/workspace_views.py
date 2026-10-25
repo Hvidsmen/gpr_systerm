@@ -298,7 +298,9 @@ class WorkspaceEdit(View):
         }
         filter_data, filter_specs = planning_filters(version)
         from .work_selection_views import BranchForm
+        from .resource_editor import context as resource_context
         return {
+            **resource_context(request.user,version,selected),
             "branch_form": BranchForm(version=version,initial={"months":[selected.isoformat()]}),
             "version": version,
             "workspace": version.workspace,

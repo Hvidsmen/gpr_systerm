@@ -211,3 +211,6 @@ urlpatterns += [path('workspace-versions/<int:pk>/add-branch/',add_branch,name='
 
 from .task_admin import force_close
 urlpatterns += [path('tasks/force-close/',force_close,name='task_force_close')]
+
+from .resource_editor import add_assignment
+urlpatterns += [path('workspace-versions/<int:pk>/resource-assignment/',add_assignment,name='preparation_add_assignment')]

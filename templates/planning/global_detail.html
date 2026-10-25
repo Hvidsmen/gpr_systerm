@@ -8,7 +8,9 @@
 {% if object.is_immutable %}{% if request.user|may:'planning:daily_schedule_create' %}<p><a class="btn btn-primary" href="{% url 'planning:daily_schedule_create' object.pk %}">Дневной СМГ из этого ГПР</a></p>{% endif %}{% endif %}
 <p>{% for s in daily_schedules %}<a class="btn btn-sm btn-outline-primary mb-1" href="{% url 'planning:daily_schedule_detail' s.pk %}">СМГ {{ s.month|date:'m.Y' }} · ред. {{ s.revision }} · {{ s.get_status_display }}</a> {% endfor %}</p>
 <h2>{% if daily %}План по дням · {{ start|date:"m.Y" }}{% else %}План на весь период по месяцам{% endif %}</h2>
+{% include 'planning/_resource_panel.html' %}
 {% include 'planning/global_matrix.html' %}
+{% include 'planning/_resource_editor.html' %}
 {% if object.baseline_review_id %}<p class="text-muted">Зафиксированная база: раунд {{ object.baseline_review.number }} согласования базового плана.</p>{% endif %}
 {% if object.previous_version %}<p>Редакция {% if request.user|may:'planning:global_detail' %}<a href="{% url 'planning:global_detail' object.previous_version.pk %}">v{{ object.previous_version.version_number }}</a>{% endif %}</p>{% endif %}
 {% if object.status == 'DRAFT' or object.status == 'REJECTED' %}{% if request.user|may:'planning:version_submit' %}<form method="post" action="{% url 'planning:global_action' object.pk 'submit' %}">{% csrf_token %}<button>Отправить на согласование</button></form>{% endif %}{% endif %}

@@ -172,5 +172,5 @@ class WorkResourceTests(TestCase):
         response=self.client.post(reverse('works:work_item_delete',args=[self.a.pk]))
         self.assertEqual(response.status_code,403)
         response=self.client.post(reverse('resources:equipment_type_delete',args=[self.equipment.pk]))
-        self.assertEqual(response.status_code,302)
+        self.assertEqual(response.status_code,403)
         self.assertTrue(type(self.equipment).objects.filter(pk=self.equipment.pk).exists())

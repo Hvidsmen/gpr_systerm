@@ -84,7 +84,7 @@ class PreparationTests(TestCase):
         response=self.client.post(url,{'action':'handoff','manager':self.manager.pk,'estimator':self.estimator.pk})
         self.assertEqual(response.status_code,302)
         self.client.force_login(self.manager)
-        self.assertContains(self.client.get(url),'Ресурсы определены')
+        self.assertContains(self.client.get(url,follow=True),'Ресурсы определены')
         data={'action':'save_resources','month':str(JAN),'resources-TOTAL_FORMS':'1','resources-INITIAL_FORMS':'0','resources-0-month':str(JAN),'resources-0-kind':'labor','resources-0-brigade':self.brigade.pk,'resources-0-count':'3','resources-0-hours':'8','resources-0-rate':'0','resources-0-liters':'0','resources-0-balance':'0'}
         response=self.client.post(url,data)
         self.assertEqual(response.status_code,302, getattr(response,'context',None) and response.context['resource_forms'].errors)
