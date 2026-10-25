@@ -36,11 +36,22 @@ class EquipmentActivity(ShiftActivity):
     STATES=[('WORKING','Работала'),('IDLE','Исправна, не задействована'),('REPAIR','В ремонте')]
     equipment=models.ForeignKey('resources.Equipment',on_delete=models.PROTECT,verbose_name='Конкретная техника')
     state=models.CharField('Состояние',max_length=12,choices=STATES,default='WORKING')
+    standing_assignment=models.ForeignKey('production.EquipmentAssignment',on_delete=models.PROTECT,null=True,blank=True,editable=False,related_name='daily_facts')
+    source_state=models.ForeignKey('production.EquipmentStateChange',on_delete=models.PROTECT,null=True,blank=True,editable=False,related_name='daily_facts')
     class Meta:
         constraints=[models.UniqueConstraint(fields=['equipment','date','shift'],name='one_equipment_shift_location')]
     def clean(self):
         super().clean()
         if self.state=='WORKING' and not self.work_id and not self.activity.strip():raise ValidationError({'activity':'Опишите, что делала техника общего назначения, или выберите работу.'})
+        from .equipment_operations_models import EquipmentAssignment
+        if self.equipment_id and self.date and EquipmentAssignment.objects.filter(equipment_id=self.equipment_id,shift=self.shift,start_date__lte=self.date,cancelled_at__isnull=True).filter(models.Q(end_date__isnull=True)|models.Q(end_date__gte=self.date)).exclude(construction_object_id=self.construction_object_id).exists():
+            raise ValidationError({'equipment':'На эту дату и смену техника назначена другому объекту. Сначала завершите прежнее назначение.'})
+        if self.standing_assignment_id:
+            assignment=self.standing_assignment
+            if (assignment.company_id,assignment.equipment_id,assignment.construction_object_id,assignment.shift)!=(self.company_id,self.equipment_id,self.construction_object_id,self.shift):
+                raise ValidationError('Источник назначения не соответствует факту техники.')
+        if self.source_state_id and (self.source_state.company_id,self.source_state.equipment_id)!=(self.company_id,self.equipment_id):
+            raise ValidationError('Источник состояния другой техники.')
         if EmployeeActivity.objects.filter(equipment_id=self.equipment_id,date=self.date,shift=self.shift).exclude(construction_object_id=self.construction_object_id).exists():raise ValidationError({'equipment':'Экипаж этой техники уже учтён на другом объекте в этой смене.'})
         if self.state!='WORKING' and self.work_id:raise ValidationError({'work':'При ремонте или простое опишите состояние без выполненной работы.'})
     def __str__(self):return f'{self.equipment} · {self.date} · смена {self.shift}'
@@ -54,6 +65,10 @@ class EmployeeActivity(ShiftActivity):
         constraints=[models.UniqueConstraint(fields=['employee','date','shift'],name='one_employee_shift_location')]
     def clean(self):
         super().clean()
+        if self.equipment_id and self.date:
+            from .equipment_operations_models import EquipmentAssignment
+            if EquipmentAssignment.objects.filter(equipment_id=self.equipment_id,shift=self.shift,start_date__lte=self.date,cancelled_at__isnull=True).filter(models.Q(end_date__isnull=True)|models.Q(end_date__gte=self.date)).exclude(construction_object_id=self.construction_object_id).exists():
+                raise ValidationError({'equipment':'На эту дату и смену техника назначена другому объекту. Проверьте назначение экипажа.'})
         if self.equipment_id and EquipmentActivity.objects.filter(equipment_id=self.equipment_id,date=self.date,shift=self.shift).exclude(construction_object_id=self.construction_object_id).exists():raise ValidationError({'equipment':'Техника в этой смене находится на другом объекте.'})
         if self.position_id and self.position.company_id!=self.company_id:raise ValidationError({'employee':'Должность другой компании.'})
     def __str__(self):return f'{self.employee} · {self.date} · смена {self.shift}'

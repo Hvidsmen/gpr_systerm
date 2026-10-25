@@ -30,8 +30,8 @@ class UnitForm(forms.ModelForm):
         data=super().clean()
         if self.instance.pk:
             from apps.production.models import EquipmentActivity,EmployeeActivity
-            used=EquipmentActivity.objects.filter(equipment=self.instance).exists() or EmployeeActivity.objects.filter(equipment=self.instance).exists()
-            if used and (data.get('type') != self._original_type or 'plate_number' in self.changed_data):raise forms.ValidationError('Для машины с фактом вид техники и номер сохраняются в истории. Создайте отдельную единицу для другой идентичности.')
+            used=EquipmentActivity.objects.filter(equipment=self.instance).exists() or EmployeeActivity.objects.filter(equipment=self.instance).exists() or self.instance.standing_assignments.exists()
+            if used and (data.get('type') != self._original_type or 'plate_number' in self.changed_data):raise forms.ValidationError('Для машины с историей назначений или фактом вид техники и номер сохраняются в истории. Создайте отдельную единицу для другой идентичности.')
         if not any(data.get(key) for key in ['plate_number','inventory_number','vin']):raise forms.ValidationError('Укажите госномер, инвентарный или заводской номер.')
         return data
     def validate_unique(self):

@@ -1,0 +1,14 @@
+{% for row in group.formset %}
+<details class="border rounded mb-2 p-3" data-machine-fact {% if row.baseline %}data-assigned-work="{{ row.baseline.assignment.work_id|default:'' }}" data-assigned-item="{{ row.baseline.assignment.work_item_id|default:'' }}" data-assigned-general="{{ row.baseline.assignment.general|yesno:'1,0' }}" data-assigned-activity="{{ row.baseline.assignment.activity }}"{% endif %} {% if row.errors or not row.baseline and not row.instance.pk %}open{% endif %}>
+  <summary class="d-flex flex-wrap align-items-center gap-2">
+    <strong>{{ row.machine_label }}</strong><span>Смена {{ row.shift_label }} · {{ row.state_label }}</span>
+    {% if row.baseline and not row.baseline.assignment.equipment.is_active %}<span class="badge bg-secondary">Неактивна в справочнике</span>{% endif %}
+    {% if row.prepared_from_assignment %}<span class="badge bg-info text-dark">Подготовлено из назначения</span>{% elif row.daily_deviation %}<span class="badge bg-warning text-dark">Отклонение на день</span>{% elif row.instance.standing_assignment_id %}<span class="badge bg-light text-dark">Из назначения · сохранено</span>{% else %}<span class="badge bg-light text-dark">Разовая запись</span>{% endif %}
+    <span class="small text-primary ms-auto">Изменить факт за день</span>
+  </summary>
+  {% if row.baseline %}<p class="small text-muted mt-2 mb-2">Назначение: {% if row.baseline.assignment.general %}объект в целом{% elif row.baseline.assignment.work_item %}{{ row.baseline.assignment.work }} → {{ row.baseline.assignment.work_item }}{% elif row.baseline.assignment.work %}{{ row.baseline.assignment.work }}{% endif %} · {{ row.baseline.assignment.activity }}</p>{% endif %}
+  <p class="small text-muted mt-2">Изменения здесь относятся к выбранному дню. Для состояния на несколько дней откройте <a href="{{ equipment_assignments_url }}{% if row.baseline %}#assignment-{{ row.baseline.assignment.pk }}{% endif %}">назначения и состояния техники</a>.</p>
+  {% for hidden in row.hidden_fields %}{{ hidden }}{{ hidden.errors }}{% endfor %}<div class="text-danger">{{ row.non_field_errors }}</div>
+  <div class="row g-2">{% for field in row.visible_fields %}{% if field.name != 'DELETE' or not row.baseline %}<div class="col-md-3">{{ field.label_tag }} {{ field }}<div class="text-danger">{{ field.errors }}</div></div>{% endif %}{% endfor %}</div>
+</details>
+{% endfor %}

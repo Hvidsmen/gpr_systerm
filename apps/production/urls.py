@@ -2,6 +2,7 @@ from django.urls import path
 from . import views
 from .meeting_import import FactMeetingImportView
 from .dispatch import DispatcherDayView
+from .equipment_operations_views import assignments as equipment_assignments, history as equipment_history
 
 app_name = "production"
 urlpatterns = [
@@ -9,6 +10,8 @@ urlpatterns = [
         "meeting-import/", FactMeetingImportView.as_view(), name="fact_meeting_import"
     ),
     path("day-workspace/", DispatcherDayView.as_view(), name="fact_day_workspace"),
+    path('equipment-assignments/', equipment_assignments, name='equipment_assignment_list'),
+    path('equipment-assignments/<int:pk>/history/', equipment_history, name='equipment_history_detail'),
     path("", views.FactListView.as_view(), name="fact_list"),
     path("create/", views.FactCreateView.as_view(), name="fact_create"),
     path("facts/<int:pk>/update/", views.FactUpdateView.as_view(), name="fact_update"),

@@ -103,6 +103,8 @@ def scope_queryset(queryset, user, include_archived=False):
 def check_route(user, match, method):
     namespace, name = match.namespace, match.url_name
     role = role_code(user)
+    if namespace == 'production' and name in {'equipment_assignment_list', 'equipment_history_detail'}:
+        require_roles(user, READ_ROLES | {'MECHANIZATION_DISPATCHER', 'ALL_FACT_DISPATCHER'} if method in {'GET', 'HEAD'} else {'ADMIN', 'MECHANIZATION_DISPATCHER', 'ALL_FACT_DISPATCHER'});return
     if namespace == 'resources' and name == 'employee_zup_import':
         require_roles(user, {'ADMIN'});return
     if namespace == 'resources' and name in {'employee_create', 'employee_update'}:

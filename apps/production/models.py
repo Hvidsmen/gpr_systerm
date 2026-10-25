@@ -455,3 +455,4 @@ class DayActuation(BaseCompanyModel):
             raise ValidationError({'reason': 'Укажите причину актировки.'})
 
 from .dispatch_models import EmployeeActivity, EquipmentActivity, FactSectionDay
+from .equipment_operations_models import EquipmentAssignment, EquipmentStateChange

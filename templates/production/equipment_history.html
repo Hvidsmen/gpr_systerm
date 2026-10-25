@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% block title %}История техники · {{ machine }}{% endblock %}
+{% block content %}
+<h1>{{ machine }}</h1>
+<h2>История состояний</h2>
+<div class="table-responsive"><table class="table"><thead><tr><th>Действует с</th><th>Смена</th><th>Состояние</th><th>Причина</th><th>Кто записал</th><th>Записано</th></tr></thead><tbody>
+{% for record in changes %}<tr><td>{{ record.effective_date|date:'d.m.Y' }}</td><td>{{ record.shift }}</td><td>{{ record.get_state_display }}{% if record.is_cancelled %} · запись отменена{% endif %}</td><td>{{ record.reason|default:'—' }}</td><td>{{ record.recorded_by|default:'—' }}</td><td>{{ record.updated_at|date:'d.m.Y H:i' }}</td></tr>{% empty %}<tr><td colspan="6">Изменений состояния пока нет.</td></tr>{% endfor %}
+</tbody></table></div>
+<h2>История назначений</h2>
+<div class="table-responsive"><table class="table"><thead><tr><th>Период</th><th>Смена</th><th>Объект</th><th>Работа</th><th>Пояснение</th></tr></thead><tbody>
+{% for record in assignments %}<tr><td>{% if record.cancelled_at %}<strong>Отменено</strong> · {{ record.cancel_reason }}<br>{% endif %}{{ record.start_date|date:'d.m.Y' }} — {{ record.end_date|date:'d.m.Y'|default:'до завершения' }}</td><td>{{ record.shift }}</td><td><a href="{% url 'production:equipment_assignment_list' %}?construction_object={{ record.construction_object_id }}&amp;date={{ record.start_date|date:'Y-m-d' }}">{{ record.construction_object }}</a></td><td>{% if record.general %}Объект в целом{% else %}{{ record.work|default:'—' }}{% if record.work_item %} → {{ record.work_item }}{% endif %}{% endif %}</td><td>{{ record.activity }}</td></tr>{% endfor %}
+</tbody></table></div>
+<p class="text-muted">История показывает назначение и состояние с указанных дат. Сохранённый дневной факт содержит подтверждённые данные за конкретный день.</p>
+{% endblock %}

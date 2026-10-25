@@ -60,9 +60,11 @@ def plans(obj,day):
     return works,resources
 
 class ScopeFormMixin:
-    def __init__(self,*args,user,obj,day,work_plan=None,actuated=False,**kwargs):
+    def __init__(self,*args,user,obj,day,work_plan=None,actuated=False,equipment_baselines=None,day_resource_plan=None,**kwargs):
         super().__init__(*args,**({'user':user,**kwargs} if isinstance(self,DailyFactForm) else kwargs))
         self.obj=obj;self.day=day;self.work_plan=work_plan or {};self.actuated=actuated
+        self.equipment_baselines=equipment_baselines or {}
+        self.day_resource_plan=day_resource_plan
         self.instance.company=user.company;self.instance.date=day
         if hasattr(self.instance,'construction_object_id'):self.instance.construction_object=obj
         for name in ['date','construction_object']:self.fields.pop(name,None)
@@ -74,7 +76,8 @@ class ScopeFormMixin:
             self.fields['work_item'].queryset=ProjectWorkItem.objects.filter(company=user.company,project_work__section__construction_object=obj)
         for name in ['employee','equipment']:
             if name in self.fields:
-                self.fields[name].queryset=self.fields[name].queryset.filter(Q(is_active=True)|Q(pk=getattr(self.instance,name+'_id',None)))
+                retained=[key[0] for key in self.equipment_baselines] if name=='equipment' else []
+                self.fields[name].queryset=self.fields[name].queryset.filter(Q(is_active=True)|Q(pk=getattr(self.instance,name+'_id',None))|Q(pk__in=retained))
         for field in self.fields.values():field.widget.attrs.setdefault('class','form-control')
 
 class WorkForm(ScopeFormMixin,DailyFactForm):
@@ -100,6 +103,11 @@ class ActivityForm(ScopeFormMixin,forms.ModelForm):
         actual=DailyFact.objects.filter(company=self.obj.company,date=self.day,project_work__section__construction_object=self.obj)
         work_ids={key[0] for key in self.work_plan}|set(actual.values_list('project_work_id',flat=True))
         item_ids={key[1] for key in self.work_plan if key[1]}|set(actual.exclude(work_item=None).values_list('work_item_id',flat=True))
+        if isinstance(self.instance,EquipmentActivity):
+            work_ids |= {row['assignment'].work_id for row in self.equipment_baselines.values() if row['assignment'].work_id}
+            item_ids |= {row['assignment'].work_item_id for row in self.equipment_baselines.values() if row['assignment'].work_item_id}
+            if self.instance.work_id:work_ids.add(self.instance.work_id)
+            if self.instance.work_item_id:item_ids.add(self.instance.work_item_id)
         self.fields['work'].queryset=self.fields['work'].queryset.filter(pk__in=work_ids)
         self.fields['work_item'].queryset=self.fields['work_item'].queryset.filter(pk__in=item_ids)
     def clean(self):
@@ -133,10 +141,20 @@ class PersonForm(ActivityForm):
         fields=['employee','shift','general','work','work_item','equipment','activity']
 
 class MachineForm(ActivityForm):
+    prepared_from_assignment=False
+    def has_changed(self):
+        # Extra forms prefilled from an assignment must be saved even when
+        # the user confirms the baseline without changing a single field.
+        return self.prepared_from_assignment or super().has_changed()
     def clean(self):
+        if self.cleaned_data.get('state')!='WORKING':
+            self.cleaned_data.update(work=None,work_item=None,general=False)
         data=super().clean();equipment=data.get('equipment')
+        baseline=self.equipment_baselines.get((equipment.pk,data.get('shift'))) if equipment else None
+        if baseline and data.get('state')!=baseline['values']['state'] and data.get('state')!='WORKING' and data.get('activity','').strip()==baseline['values']['activity'].strip():
+            self.add_error('activity','Укажите причину нового состояния за выбранный день.')
         if equipment and data.get('state')=='WORKING':
-            _,resources=plans(self.obj,self.day)
+            resources=self.day_resource_plan if self.day_resource_plan is not None else plans(self.obj,self.day)[1]
             if equipment.type_id not in resources['equipment'] and not data.get('activity','').strip():self.add_error('activity','Для техники вне СМГ укажите причину привлечения.')
         return data
     class Meta:
@@ -179,14 +197,15 @@ def project_resources(obj,day,section):
         rows=EquipmentActivity.objects.filter(company=company,construction_object=obj,date=day).select_related('equipment')
         counts={}
         for row in rows:
-            key=(row.equipment.type_id,row.equipment.plate_number)
-            counts[key]=max(counts.get(key,0),int(row.state=='WORKING'))
+            key=(row.equipment.type_id,(row.equipment.plate_number or row.equipment.inventory_number or row.equipment.vin)[:50])
+            working=counts.setdefault(key,set())
+            if row.state=='WORKING':working.add(row.equipment_id)
         required=plans(obj,day)[1]['equipment']
         present_types={key[0] for key in counts}
         for type_id in EquipmentType.objects.filter(company=company,pk__in=required).values_list('pk',flat=True):
-            if type_id not in present_types:counts[(type_id,'')]=0
+            if type_id not in present_types:counts[(type_id,'')]=set()
         EquipmentFact.objects.filter(company=company,construction_object=obj,date=day).delete()
-        for (equipment_type_id,number),count in counts.items():EquipmentFact.objects.create(company=company,construction_object=obj,date=day,equipment_type_id=equipment_type_id,equipment_number=number,actual_count=count)
+        for (equipment_type_id,number),machines in counts.items():EquipmentFact.objects.create(company=company,construction_object=obj,date=day,equipment_type_id=equipment_type_id,equipment_number=number,actual_count=len(machines))
 
 
 class DispatcherDayView(CompanyRequiredMixin,View):
@@ -209,6 +228,12 @@ class DispatcherDayView(CompanyRequiredMixin,View):
         context={'selector':selector,'section':section,'tabs':[(s,LABELS[s]) for s in allowed],'editable':role_code(request.user) in FACT_ROLES}
         if not selector.is_bound or not selector.is_valid():return render(request,'production/dispatcher_day.html',context,status=400 if bound else 200)
         obj=selector.cleaned_data['construction_object'];day=selector.cleaned_data['date']
+        from . import equipment_operations
+        equipment_baselines,equipment_version=equipment_operations.prepare(obj,day) if section=='mechanization' else ({},'')
+        if section=='mechanization':
+            context['equipment_assignment_version']=request.POST.get('equipment_assignment_version','') if bound else equipment_version
+            context['prepared_equipment_count']=len(equipment_baselines)
+            context['equipment_assignments_url']=reverse('production:equipment_assignment_list')+'?'+urlencode({'construction_object':obj.pk,'date':day.isoformat()})
         status,_=FactSectionDay.objects.get_or_create(company=obj.company,construction_object=obj,date=day,section=section)
         work_plan,resource_plan=plans(obj,day)
         existing_actuation=DayActuation.objects.filter(company=obj.company,construction_object=obj,date=day).first()
@@ -236,8 +261,28 @@ class DispatcherDayView(CompanyRequiredMixin,View):
             if prefix=='fuel':
                 existing_types=set(qs.values_list('fuel_type',flat=True))
                 initial=[{'fuel_type':kind,'opening_balance':None,'received_liters':None,'actual_liters':None,'actual_balance':None} for kind in resource_plan['fuel'] if kind not in existing_types]
-            factory=modelformset_factory(model,form=form,formset=ScopedSet,extra=len(initial)+1,can_delete=True,max_num=2000,absolute_max=2000)
-            formset=factory(data,prefix=prefix,queryset=qs.order_by('pk'),initial=initial,form_kwargs={'user':request.user,'obj':obj,'day':day,'work_plan':work_plan,'actuated':bool(actuated)})
+            if prefix=='equipment':
+                existing=set(qs.values_list('equipment_id','shift'))
+                initial=[row['values'] for key,row in equipment_baselines.items() if key not in existing]
+            extra=len(initial)+1
+            if prefix=='equipment' and (equipment_baselines or existing):extra=len(initial)
+            factory=modelformset_factory(model,form=form,formset=ScopedSet,extra=extra,can_delete=True,max_num=2000,absolute_max=2000)
+            formset=factory(data,prefix=prefix,queryset=qs.order_by('pk'),initial=initial,form_kwargs={'user':request.user,'obj':obj,'day':day,'work_plan':work_plan,'actuated':bool(actuated),'equipment_baselines':equipment_baselines,'day_resource_plan':resource_plan})
+            if prefix=='equipment':
+                for row in formset:
+                    try:key=(int(row.initial.get('equipment') or row['equipment'].value()),int(row.initial.get('shift') or row['shift'].value() or 1))
+                    except (TypeError,ValueError):key=None
+                    baseline=equipment_baselines.get(key)
+                    if baseline:
+                        row.fields['equipment'].queryset=row.fields['equipment'].queryset.filter(pk=key[0])
+                        row.fields['equipment'].disabled=True
+                        row.fields['shift'].disabled=True
+                    row.prepared_from_assignment=bool(baseline and not row.instance.pk)
+                    row.machine_label=baseline['assignment'].equipment if baseline else row.instance.equipment if row.instance.equipment_id else 'Разовая запись техники'
+                    row.state_label=dict(EquipmentActivity.STATES).get(row['state'].value(),'Состояние не выбрано')
+                    row.shift_label=row['shift'].value() or 1
+                    row.baseline=baseline
+                    row.daily_deviation=bool(baseline and row.instance.pk and any(getattr(row.instance,k+'_id' if k in {'equipment','work','work_item'} else k)!=v for k,v in baseline['values'].items()))
             if prefix=='works':
                 from django.db.models import Sum
                 cumulative={}
@@ -280,12 +325,24 @@ class DispatcherDayView(CompanyRequiredMixin,View):
             if all(valid) and (section!='works' or actuation.is_valid()):
                 try:
                     with transaction.atomic():
-                        # Claim with the first write: works on SQLite as well as row-locking databases.
+                        # Every operational write locks object before its day
+                        # revision and machines; also serialize SQLite writers.
                         from django.db.models import F
+                        type(obj).objects.filter(pk=obj.pk,company=obj.company).update(name=F('name'))
                         try:revision=int(request.POST.get('revision',''))
                         except (ValueError,TypeError):raise ValidationError('Неверная версия формы. Обновите страницу.')
                         if not FactSectionDay.objects.filter(pk=status.pk,revision=revision).update(revision=F('revision')+1):raise ValidationError('Факт изменён в другой вкладке. Обновите страницу.')
                         type(obj).objects.select_for_update().get(pk=obj.pk)
+                        machine_ids={key[0] for key in equipment_baselines}
+                        for group in groups:
+                            if group['prefix'] in {'labor','equipment'}:
+                                machine_ids.update(form.cleaned_data['equipment'].pk for form in group['formset'] if form.cleaned_data.get('equipment'))
+                        list(Equipment.objects.select_for_update().filter(company=obj.company,pk__in=machine_ids).order_by('pk'))
+                        if section=='mechanization':
+                            _,latest_equipment_version=equipment_operations.prepare(obj,day)
+                            submitted=request.POST.get('equipment_assignment_version','')
+                            if (equipment_baselines or submitted) and submitted!=latest_equipment_version:
+                                raise ValidationError('Назначения или состояния техники изменились. Обновите день перед подтверждением.')
                         current=FactSectionDay.objects.select_for_update().get(pk=status.pk)
                         latest_works,latest_resources=plans(obj,day)
                         if latest_works!=work_plan or latest_resources!=resource_plan:raise ValidationError('План СМГ изменился. Обновите страницу перед сохранением факта.')
@@ -301,7 +358,15 @@ class DispatcherDayView(CompanyRequiredMixin,View):
                             for row in fs.deleted_objects:row.delete()
                             for row in rows:
                                 if isinstance(row,DailyFact):row.reported_by=request.user
+                                if isinstance(row,EquipmentActivity) and not row.pk:
+                                    baseline=equipment_baselines.get((row.equipment_id,row.shift))
+                                    if baseline:
+                                        row.standing_assignment=baseline['assignment'];row.source_state=baseline['state_record']
                                 row.full_clean();row.save()
+                        if section=='mechanization':
+                            present=set(EquipmentActivity.objects.filter(company=obj.company,construction_object=obj,date=day).values_list('equipment_id','shift'))
+                            if set(equipment_baselines)-present:
+                                raise ValidationError('Не заполнена техника из действующих назначений. Укажите состояние за день или завершите назначение; удаление строки не заменяет отклонение.')
                         previous_totals=[]
                         if section in {'labor','mechanization'}:
                             previous_totals=[{k:str(v) if isinstance(v,Decimal) or hasattr(v,'isoformat') else v for k,v in row.items()} for row in legacy_model.objects.filter(company=obj.company,construction_object=obj,date=day).values()]
