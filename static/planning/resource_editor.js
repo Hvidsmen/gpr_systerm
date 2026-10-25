@@ -106,14 +106,14 @@
     host.querySelector('.work-resource-summary').textContent='Ресурсы · '+Object.entries(kinds).map(([kind,label])=>label+': '+assignments.filter(a=>a.resource_kind===kind).length).join(' · ');
     const scroll=document.createElement('div');scroll.className='work-resource-columns';
     const table=document.createElement('table');table.className='work-resource-table';table.dataset.resourceColumns='';
-    const headings=table.createTHead().insertRow(),row=table.createTBody().insertRow();
+    const headings=table.createTHead().insertRow(),row=assignments.length?table.createTBody().insertRow():null;
     Object.entries(kinds).forEach(([kind,label])=>{
       const heading=document.createElement('th');heading.scope='col';heading.textContent=kind==='equipment'?'Техника и экипаж':kind==='labor'?'Должности':label;headings.append(heading);
-      const cell=row.insertCell();cell.dataset.resourceColumn=kind;
+      const cell=row?.insertCell();if(cell)cell.dataset.resourceColumn=kind;
       if(data.can_edit){const add=document.createElement('button');add.type='button';add.className='btn btn-sm btn-outline-primary work-resource-add';add.textContent='Добавить '+(kind==='equipment'?'технику':kind==='labor'?'должность':'ГСМ');add.dataset.addResource=kind;add.dataset.work=host.dataset.resourceWork;add.dataset.item=host.dataset.resourceItem;heading.append(add);}
       const selected=assignments.filter(a=>a.resource_kind===kind);
       selected.forEach(a=>cell.append(card(a,null,true)));
-      if(!selected.length){const empty=document.createElement('div');empty.className='work-resource-empty';empty.textContent='—';cell.append(empty);}
+      if(cell&&!selected.length){const empty=document.createElement('div');empty.className='work-resource-empty';empty.textContent='—';cell.append(empty);}
     });
     scroll.append(table);
     const slot=document.createElement('div');slot.dataset.resourceInlineSlot='';
