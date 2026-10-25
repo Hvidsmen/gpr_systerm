@@ -115,9 +115,23 @@ class EmployeesImportTests(TestCase):
         run.status = 'DONE'; run.save()
         response = self.client.get(reverse('accounts:one_c_report'), {'employee_run': str(run.pk)})
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()['summary']['coverage']['active']['order_position'], 1)
+        self.assertEqual(response['Content-Type'], 'application/zip')
+        self.assertIn(f'zup-positions-{run.pk.hex}.zip', response['Content-Disposition'])
+        self.assertIn('no-store', response['Cache-Control'])
+        from io import BytesIO
+        from zipfile import ZipFile, ZIP_DEFLATED
+        with ZipFile(BytesIO(response.content)) as archive:
+            self.assertIsNone(archive.testzip())
+            self.assertEqual(archive.namelist(), [f'zup-positions-{run.pk.hex}.json'])
+            self.assertEqual(archive.infolist()[0].compress_type, ZIP_DEFLATED)
+            payload = archive.read(archive.namelist()[0]).decode('utf-8')
+        data = json.loads(payload)
+        self.assertEqual(data['summary']['coverage']['active']['order_position'], 1)
+        plain = self.client.get(reverse('accounts:one_c_report'), {'employee_run': str(run.pk), 'format': 'json'})
+        self.assertEqual(plain.json(), data)
+        self.assertContains(self.client.get(reverse('accounts:one_c_jobs')), 'Скачать проверку кадровых источников (ZIP)')
         for secret in ['Иванов', 'Иванович', 'Организация', 'Инженер', 'source_id', 'first_name']:
-            self.assertNotContains(response, secret)
+            self.assertNotIn(secret, payload)
         with self.assertRaises(ValidationError):
             apply_employees(run, {'employees': [self.row(probe_current_row='bad')]})
         other = Company.objects.create(name='Diagnostic other')

@@ -8,6 +8,25 @@ from .models import OneCConnection
 from .one_c_catalog import catalogue, TYPES
 
 
+def _download_response(data, filename, *, zipped=False):
+    if zipped:
+        import json
+        from io import BytesIO
+        from zipfile import ZipFile, ZIP_DEFLATED
+        archive = BytesIO()
+        with ZipFile(archive, 'w', compression=ZIP_DEFLATED, compresslevel=6) as package:
+            package.writestr(filename + '.json', json.dumps(data, ensure_ascii=False, separators=(',', ':')))
+        response = HttpResponse(archive.getvalue(), content_type='application/zip')
+        extension = 'zip'
+    else:
+        response = JsonResponse(data, json_dumps_params={'ensure_ascii': False, 'indent': 2})
+        extension = 'json'
+    response['Content-Disposition'] = f'attachment; filename="{filename}.{extension}"'
+    response['Cache-Control'] = 'private, no-store'
+    response['X-Content-Type-Options'] = 'nosniff'
+    return response
+
+
 def structure_report(connection, run):
     labels = dict(run.report.get('metadata_labels', {}))
     if (connection.metadata_server, connection.metadata_database) == (run.server, run.database):
@@ -71,11 +90,10 @@ def download_report(request):
         stats = run.report.get('employees_result', {}).get('position_diagnostics')
         if not stats:
             raise Http404('У этого запуска ещё нет проверки кадровых источников.')
-        response = JsonResponse({'format': 'gpr-zup-position-diagnostics', 'version': 1,
+        data = {'format': 'gpr-zup-position-diagnostics', 'version': 1,
             'run_id': str(run.pk), 'generated_at': run.finished_at.isoformat() if run.finished_at else None,
-            'summary': stats}, json_dumps_params={'ensure_ascii': False, 'indent': 2})
-        response['Content-Disposition'] = f'attachment; filename="zup-positions-{run.pk.hex}.json"'
-        return response
+            'summary': stats}
+        return _download_response(data, f'zup-positions-{run.pk.hex}', zipped=request.GET.get('format') != 'json')
     connection = OneCConnection.objects.filter(company_id=request.user.company_id).first()
     if connection is None:
         raise Http404('Сначала настройте подключение и выполните диагностику 1С.')
@@ -85,19 +103,4 @@ def download_report(request):
         raise Http404('Нет структуры для текущего подключения. Выполните диагностику 1С и повторите скачивание.')
     data = structure_report(connection, run)
     filename = f'1c-structure-{run.pk.hex}'
-    if request.GET.get('format') == 'zip':
-        import json
-        from io import BytesIO
-        from zipfile import ZipFile, ZIP_DEFLATED
-        archive = BytesIO()
-        with ZipFile(archive, 'w', compression=ZIP_DEFLATED, compresslevel=6) as zipped:
-            zipped.writestr(filename + '.json', json.dumps(data, ensure_ascii=False, separators=(',', ':')))
-        response = HttpResponse(archive.getvalue(), content_type='application/zip')
-        extension = 'zip'
-    else:
-        response = JsonResponse(data, json_dumps_params={'ensure_ascii': False, 'indent': 2})
-        extension = 'json'
-    response['Content-Disposition'] = f'attachment; filename="{filename}.{extension}"'
-    response['Cache-Control'] = 'private, no-store'
-    response['X-Content-Type-Options'] = 'nosniff'
-    return response
+    return _download_response(data, filename, zipped=request.GET.get('format') == 'zip')
