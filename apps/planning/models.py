@@ -1326,7 +1326,7 @@ class WorkTask(BaseCompanyModel):
     kind = models.CharField(max_length=20,choices=[('RESOURCES','Подготовка ресурсов'),('SUBMISSION','Следующий этап плана'),('ESTIMATE','Проверка сметчика'),('REMARK','Замечание'),('APPROVAL','Согласование'),('FACT','Факт за день'),('CARRYOVER','Уточнение остатков'),('MANUAL','Задание')])
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
-    status = models.CharField(max_length=20,default='OPEN',choices=[('OPEN','Открыто'),('IN_REVIEW','На проверке автора'),('DONE','Выполнено'),('SUPERSEDED','Заменено / отменено')])
+    status = models.CharField(max_length=20,default='OPEN',choices=[('OPEN','Открыто'),('IN_REVIEW','На проверке автора'),('DONE','Выполнено'),('SUPERSEDED','Заменено / отменено'),('CLOSED_ADMIN','Принудительно закрыто')])
     assigned_to = models.ForeignKey('accounts.User',null=True,blank=True,on_delete=models.SET_NULL,related_name='work_tasks')
     target_role = models.CharField(max_length=50,blank=True)
     created_by = models.ForeignKey('accounts.User',null=True,blank=True,on_delete=models.SET_NULL,related_name='authored_work_tasks')

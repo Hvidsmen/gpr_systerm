@@ -208,3 +208,6 @@ urlpatterns += [path('workspace-versions/<int:pk>/preparation/',PreparationView.
 
 from .work_selection_views import add_branch
 urlpatterns += [path('workspace-versions/<int:pk>/add-branch/',add_branch,name='workspace_add_branch')]
+
+from .task_admin import force_close
+urlpatterns += [path('tasks/force-close/',force_close,name='task_force_close')]

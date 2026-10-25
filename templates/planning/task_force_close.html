@@ -1,0 +1,10 @@
+{% extends 'base.html' %}
+{% block content %}
+<p><a href="{% url 'planning:task_list' %}">← Задания</a></p>
+<h1>Принудительно закрыть задания</h1>
+<p>Закрывается только задание в очереди. Планы, согласования, проверка сметчика и внесённый факт не изменяются. История и причина закрытия сохраняются. Эти задания не откроются повторно при синхронизации; новые этапы и новые даты могут создавать новые задания.</p>
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+<p>Активных заданий к закрытию: <strong>{{ active_count }}</strong>.</p>
+<ul>{% for task in tasks %}<li>№{{ task.pk }} · {{ task.title }} · {{ task.get_status_display }} · {{ task.assigned_to|default:task.role_label }}</li>{% empty %}<li>Подходящих заданий нет.</li>{% endfor %}</ul>
+{% if active_count %}<form method="post" class="card p-3">{% csrf_token %}<input type="hidden" name="confirm" value="1"><input type="hidden" name="token" value="{{ token }}">{{ form.as_p }}<button class="btn btn-danger">Принудительно закрыть {{ active_count }} заданий</button></form>{% endif %}
+{% endblock %}

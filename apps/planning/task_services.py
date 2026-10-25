@@ -17,7 +17,12 @@ def event(task,actor,action,text=''):
 
 
 def state(task,status,actor=None,text=''):
-    if task.status!=status:
+    if task.status=='CLOSED_ADMIN' or task.status==status:return
+    with transaction.atomic():
+        current=WorkTask.objects.select_for_update().filter(pk=task.pk,company_id=task.company_id).only('status').first()
+        if current is None:return
+        task.status=current.status
+        if task.status=='CLOSED_ADMIN' or task.status==status:return
         task.status=status;task.save(update_fields=['status','updated_at']);event(task,actor,task.get_status_display(),text)
 
 

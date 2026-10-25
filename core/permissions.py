@@ -168,7 +168,7 @@ def check_route(user, match, method):
         require_roles(user, READ_ROLES if name in {'plan_list', 'plan_detail', 'plan_export'} and method in {'GET', 'HEAD'} else PLAN_ROLES)
         return
     if namespace == 'planning':
-        if name in {'workspace_delete','global_delete'}:
+        if name in {'workspace_delete','global_delete','task_force_close'}:
             require_roles(user,{'ADMIN'});return
         if name.startswith('task_'):
             require_roles(user,ROLES)
