@@ -55,6 +55,9 @@ class ConstructionObject(BaseCompanyModel):
                 from apps.planning.models import PlanningWorkspace
                 if PlanningWorkspace.objects.filter(construction_object=self, parent_gpr__isnull=False).exists():
                     raise ValidationError({'parent': 'Объект связан с СМГ: менять родительский объект нельзя.'})
+                from apps.planning.models import DailySchedule
+                if DailySchedule.objects.filter(construction_object=self,source__isnull=False).exclude(source__construction_object=self).exists():
+                    raise ValidationError({'parent':'Объект связан с общим ГПР через дневной СМГ: менять родителя нельзя.'})
         ancestor, seen = self.parent, set()
         while ancestor:
             if ancestor.company_id != self.company_id or ancestor.project_id != self.project_id:

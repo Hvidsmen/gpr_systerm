@@ -17,6 +17,10 @@ def catalog_versions(obj):
 
 
 def alternatives(obj):
+    if isinstance(obj,DailySchedule):
+        from .subobject_smg import parent_reference
+        if parent_reference(obj):
+            return ProjectWork.objects.filter(company_id=obj.company_id,section__construction_object_id__in=[obj.construction_object_id,obj.source.construction_object_id],merged_source__isnull=True).select_related('section__construction_object').order_by('section__construction_object__name','section__name','name','pk')
     version=obj.source if isinstance(obj,DailySchedule) else obj
     if version is None:
         return ProjectWork.objects.filter(company_id=obj.company_id,section__construction_object_id=obj.construction_object_id,merged_source__isnull=True).select_related("section__construction_object").order_by("section__name","name","pk")
@@ -26,6 +30,12 @@ def alternatives(obj):
 
 
 def local_work(user,version,source):
+    if isinstance(version,DailySchedule):
+        from .subobject_smg import local_work as local_smg_work
+        if source.section.construction_object_id==version.construction_object_id:return source
+        from .subobject_smg import parent_reference
+        if parent_reference(version):return local_smg_work(user,version,source)
+        version=version.source
     if source.section.construction_object_id==version.construction_object_id:return source
     from .macro_carryover import ensure_work
     from .estimate_review import review_period

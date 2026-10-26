@@ -34,6 +34,9 @@ def resource_signature(owner):
     for rows in data.values():
         for row in rows:
             row.pop('updated_at',None);row.pop('created_at',None)
+            # New parent-work provenance belongs to work entries. Keep existing
+            # resource confirmations valid when this nullable field is added.
+            if row.get('kind')!='work':row.pop('gpr_work_id',None)
             if not row.get('selected_item_ids'):row.pop('selected_item_ids',None)
     return hashlib.sha256(json.dumps(data,sort_keys=True,default=str).encode()).hexdigest()
 
@@ -118,9 +121,9 @@ def task_context(user,owner):
 
 
 def require_resource_input(user,owner):
-    """Planner may draft GPR resources; manager confirmation stays separate."""
-    if role_code(user)=='PLANNER' and not isinstance(owner,DailySchedule) and owner.workspace_id and not owner.workspace.parent_gpr_id:
-        if user.company_id!=owner.company_id or owner.workspace.is_archived:raise PermissionDenied
+    """Planner may draft resources; manager confirmation stays separate."""
+    if role_code(user)=='PLANNER' and (isinstance(owner,DailySchedule) or owner.workspace_id and not owner.workspace.parent_gpr_id):
+        if user.company_id!=owner.company_id or not isinstance(owner,DailySchedule) and owner.workspace.is_archived:raise PermissionDenied
         require_planning_object(user,owner.construction_object_id)
         if owner.status not in {'DRAFT','REJECTED'}:raise ValidationError('Ресурсы меняются только в черновике.')
         return record(owner)

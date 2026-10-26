@@ -97,7 +97,7 @@ class PreparationTests(TestCase):
         resource.refresh_from_db();self.assertEqual(resource.count,4)
         self.assertEqual(self.client.post(url,{'action':'ready'}).status_code,403)
 
-    def test_smg_has_same_parallel_flow_and_manager_only_resource_edits(self):
+    def test_smg_allows_planner_resources_but_manager_must_confirm(self):
         schedule=create_smg(self.planner,self.obj,JAN)
         entry=add_entry(self.planner,schedule,{'kind':'work','work':self.simple})
         values=[{'quantity':Decimal(1)} for _ in identities(entry)]
@@ -108,7 +108,9 @@ class PreparationTests(TestCase):
         save_entry(self.manager,resource,[{'planned_count':Decimal(2),'planned_hours':Decimal(16)} for _ in identities(resource)],resource.revision)
         self.assertTrue(estimate_review.check_valid(schedule,task))
         resource.refresh_from_db()
-        with self.assertRaises(PermissionDenied):save_entry(self.planner,resource,[{} for _ in identities(resource)],resource.revision)
+        save_entry(self.planner,resource,[{'planned_count':Decimal(3),'planned_hours':Decimal(24)} for _ in identities(resource)],resource.revision)
+        self.assertTrue(estimate_review.check_valid(schedule,task))
+        with self.assertRaises(PermissionDenied):preparation.ready(self.planner,schedule)
         preparation.ready(self.manager,schedule)
         with self.assertRaises(PermissionDenied):smg_transition(self.planner,schedule,'submit')
         result=smg_transition(self.manager,schedule,'submit')
@@ -154,8 +156,8 @@ class PreparationTests(TestCase):
         self.client.force_login(self.planner)
         html=self.client.get(url).content.decode()
         self.assertIn('data-field="quantity"',html)
-        self.assertNotIn('data-field="planned_count"',html)
-        self.assertEqual(self.client.post(reverse('planning:daily_schedule_edit',args=[resource.pk]),{}).status_code,403)
+        self.assertIn('data-field="planned_count"',html)
+        self.assertEqual(self.client.post(reverse('planning:daily_schedule_edit',args=[resource.pk]),{}).status_code,200)
         self.client.force_login(self.manager)
         self.assertEqual(self.client.post(reverse('planning:daily_schedule_edit',args=[work.pk]),{}).status_code,403)
 

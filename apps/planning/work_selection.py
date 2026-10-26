@@ -5,11 +5,12 @@ from django.core.exceptions import ValidationError
 from apps.works.models import ProjectWorkItem
 
 
-def choices(works):
-    works=list(works.select_related('complex_object','section').prefetch_related('items'))
+def choices(works,include_construction_object=False):
+    works=list(works.select_related('complex_object','section__construction_object').prefetch_related('items'))
     objects={};packages=[];items=[]
     for work in works:
         parent=str(work.complex_object) if work.complex_object_id else 'Без комплексного объекта'
+        if include_construction_object:parent=str(work.section.construction_object)+' · '+parent
         if work.complex_object_id:objects[work.complex_object_id]=parent
         label=f'{parent} → {work.name}'
         packages.append((f'package:{work.pk}',label))

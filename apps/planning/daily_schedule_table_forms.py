@@ -10,7 +10,7 @@ class AddEntryForm(forms.Form):
     work=forms.ModelChoiceField(label='Работа',queryset=ProjectWork.objects.none(),required=False)
     brigade=forms.ModelChoiceField(label='Должность',queryset=Brigade.objects.none(),required=False)
     equipment=forms.ModelChoiceField(label='Вид техники',queryset=EquipmentType.objects.none(),required=False)
-    reference=forms.CharField(label='Номер техники / привязка ГСМ',max_length=50,required=False)
+    reference=forms.CharField(max_length=50,required=False,widget=forms.HiddenInput())
     fuel=forms.ChoiceField(label='Вид ГСМ',choices=[('','Выберите значение'),*ResourceMonthAllocation._meta.get_field('fuel_type').choices],required=False)
     rate=forms.DecimalField(label='Ставка за час / цена за литр',max_digits=12,decimal_places=2,min_value=0,initial=0,required=False)
 
@@ -19,15 +19,18 @@ class AddEntryForm(forms.Form):
         from .estimate_catalog import alternatives
         self.fields['work'].queryset=alternatives(schedule)
         from .work_selection import choices
-        self.fields['selection'].choices=choices(alternatives(schedule))
+        self.fields['selection'].choices=choices(alternatives(schedule),include_construction_object=True)
+        from .subobject_smg import parent_reference
+        if parent_reference(schedule):self.fields['selection'].label='Работа · каталог субобъекта и общего ГПР'
         self.fields['work'].widget=forms.HiddenInput()
         self.fields['work'].label_from_instance=lambda work:f'{work.section.construction_object} · {work.section.name} · {work.name} · {work.unit} · ID {work.pk}'
         self.fields['brigade'].queryset=Brigade.objects.filter(company_id=schedule.company_id)
-        from apps.resources.equipment_levels import smg_types
-        self.fields['equipment'].queryset=smg_types(EquipmentType.objects.filter(company_id=schedule.company_id,merge_source__isnull=True))
+        from apps.resources.equipment_levels import gpr_types
+        self.fields['equipment'].queryset=gpr_types(EquipmentType.objects.filter(company_id=schedule.company_id,merge_source__isnull=True,is_active=True))
 
     def clean(self):
         data=super().clean();field={'work':'work','labor':'brigade','equipment':'equipment','fuel':'fuel'}.get(data.get('kind'))
         if field and not data.get(field) and not (field=='work' and data.get('selection')):self.add_error(field,'Выберите позицию для добавления.')
         if data.get('rate') is None:data['rate']=0
+        data['reference']=''
         return data

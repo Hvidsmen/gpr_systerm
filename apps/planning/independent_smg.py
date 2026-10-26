@@ -34,6 +34,12 @@ def create(user, obj, month, source=None, copy_from_gpr=False):
     if source:
         schedule = reference(user, schedule, source)
         if copy_from_gpr:
+            from .subobject_smg import parent_reference
+            if parent_reference(schedule):
+                from .subobject_smg import add_parent_structure
+                add_parent_structure(user,schedule)
+                audit(user,schedule,'CREATE',{'object_id':obj.pk,'month':str(month),'source_id':schedule.source_id,'copied_structure_only':True})
+                return schedule
             for entry in schedule.entries.all():
                 entry.rows = deepcopy(entry.original)
                 entry.save(update_fields=['rows'])
@@ -79,11 +85,14 @@ def reference(user, schedule, source):
     specs = {}
     if source:
         source = GlobalPlanVersion.objects.get(pk=source.pk, company=user.company)
-        if source.construction_object_id != schedule.construction_object_id: raise ValidationError('Выберите ГПР того же объекта.')
+        from .subobject_smg import valid_reference
+        if not valid_reference(schedule.construction_object,source):raise ValidationError('Выберите ГПР этого объекта или его родительского объекта.')
         service.validate_source(source, schedule.month)
-        specs=source_specs(source,schedule.month)
+        specs=source_specs(source,schedule.month) if source.construction_object_id==schedule.construction_object_id else {}
+    schedule.source=source
     present = set()
     for entry in schedule.entries.all():
+        entry.schedule=schedule
         present.add(entry.key)
         spec = specs.get(entry.key)
         entry.original = deepcopy(spec[3]) if spec else []
@@ -93,8 +102,13 @@ def reference(user, schedule, source):
             if spec:
                 ids = {i['id'] for i in entry.metadata.get('items',[])}
                 entry.metadata.setdefault('items',[]).extend(deepcopy(i) for i in spec[2].get('items',[]) if i['id'] not in ids)
+            from .subobject_smg import parent_reference,annotate_entry
+            if parent_reference(schedule):
+                from apps.works.models import ProjectWork
+                work=ProjectWork.objects.filter(company=user.company,pk=entry.metadata.get('id'),section__construction_object_id=schedule.construction_object_id).first()
+                if work:annotate_entry(entry,work)
         entry.revision += 1
-        entry.save(update_fields=['original','metadata','revision'])
+        entry.save(update_fields=['original','metadata','revision','gpr_work'])
     for key, (kind,label,metadata,original) in specs.items():
         if key not in present:
             entry = DailyScheduleEntry(schedule=schedule,key=key,kind=kind,label=label,metadata=metadata,original=original)
@@ -122,7 +136,7 @@ def revise(user, schedule):
     if DailySchedule.objects.filter(construction_object=obj,month=schedule.month,status__in=['DRAFT','SUBMITTED','APPROVED']).exists():raise ValidationError('Незавершенная редакция уже существует.')
     revision = DailySchedule.objects.filter(construction_object=obj,month=schedule.month).aggregate(n=Max('revision'))['n']+1
     new = DailySchedule.objects.create(company=user.company,construction_object=obj,source=schedule.source,month=schedule.month,revision=revision,created_by=user,replaces=schedule,locked_before=schedule.locked_before)
-    DailyScheduleEntry.objects.bulk_create([DailyScheduleEntry(schedule=new,key=e.key,kind=e.kind,label=e.label,metadata=deepcopy(e.metadata),original=deepcopy(e.original),rows=deepcopy(e.rows)) for e in schedule.entries.all()])
+    DailyScheduleEntry.objects.bulk_create([DailyScheduleEntry(schedule=new,gpr_work_id=e.gpr_work_id,key=e.key,kind=e.kind,label=e.label,metadata=deepcopy(e.metadata),original=deepcopy(e.original),rows=deepcopy(e.rows)) for e in schedule.entries.all()])
     from .work_resources import copy_assignments
     copy_assignments(schedule,new)
     from .resource_links import restore_schedule

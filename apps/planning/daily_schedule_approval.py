@@ -16,6 +16,8 @@ def requires_approval(schedule):
     if record(schedule):return True
     from .daily_schedule import schedule_differences
     if not schedule.source_id:return True
+    from .subobject_smg import parent_reference
+    if parent_reference(schedule):return True
     return bool(schedule_differences(schedule))
 
 

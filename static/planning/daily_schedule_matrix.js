@@ -34,45 +34,60 @@
   const add = document.getElementById('smg-add-entry');
   const inputs = [...root.querySelectorAll('.smg-day-input')];
   const changed = () => inputs.filter(input => input.value !== input.dataset.original);
-  inputs.forEach(input => input.addEventListener('input',() => {
-    input.classList.toggle('border-primary',input.value !== input.dataset.original);
-    status.textContent = `Изменено ячеек: ${changed().length}. Сохраните изменения.`;
-  }));
+  let saving = false;
+  function message(text,state) { status.textContent = text; status.dataset.state = state; }
+  function refresh() {
+    const edits = changed();
+    inputs.forEach(input => input.classList.toggle('border-primary',input.value !== input.dataset.original));
+    message(edits.length ? `Есть изменения · ${edits.length} ячеек` : 'Сохранено',edits.length ? 'dirty' : 'saved');
+  }
+  inputs.forEach(input => input.addEventListener('input',refresh));
   window.addEventListener('beforeunload',event => {
-    if (changed().length) { event.preventDefault(); event.returnValue = ''; }
+    if (changed().length || saving) { event.preventDefault(); event.returnValue = ''; }
   });
-  document.getElementById('smg-copy-gpr')?.addEventListener('submit',event=>{
-    if(changed().length){event.preventDefault();status.textContent='Сначала сохраните дневные изменения, затем копируйте из ГПР.';save.scrollIntoView({block:'center'});}
-  });
+  function requireSaved() {
+    if (!changed().length && !saving) return true;
+    message(saving ? 'Сохранение…' : 'Есть изменения. Сначала сохраните СМГ.',saving ? 'saving' : 'dirty');
+    save?.focus({preventScroll:true});return false;
+  }
+  document.querySelector('.smg-editor').addEventListener('submit',event => { if (!requireSaved()) event.preventDefault(); });
+  document.querySelectorAll('[data-smg-action-header] a,#smg-more-actions a').forEach(link => link.addEventListener('click',event => {
+    if (!link.getAttribute('href').startsWith('#') && !requireSaved()) event.preventDefault();
+  }));
+  const switcher=document.querySelector('[data-smg-month-switch]');
+  switcher?.addEventListener('change',()=>{if(requireSaved())window.location.assign(switcher.value);else switcher.value=window.location.pathname;});
+  const handoff=document.querySelector('[data-smg-handoff]');
+  document.querySelector('[data-smg-open-handoff]')?.addEventListener('click',()=>{if(requireSaved())handoff.showModal();});
+  document.querySelector('[data-smg-close-handoff]')?.addEventListener('click',()=>handoff.close());
+  const more=document.getElementById('smg-more-actions'),moreButton=document.querySelector('[popovertarget="smg-more-actions"]');
+  function positionMore(){if(!more?.matches(':popover-open'))return;const rect=moreButton.getBoundingClientRect();more.style.margin='0';more.style.inset='auto';more.style.top=Math.min(rect.bottom+5,window.innerHeight-more.offsetHeight-8)+'px';more.style.left=Math.max(8,Math.min(rect.left,window.innerWidth-more.offsetWidth-8))+'px';}
+  more?.addEventListener('toggle',positionMore);window.addEventListener('resize',positionMore);window.addEventListener('scroll',positionMore,{passive:true});
   if (add) {
     const selector = add.querySelector('[name="kind"]');
-    const fields = {work:['selection'],labor:['brigade','rate'],equipment:['equipment','reference','rate'],fuel:['fuel','reference','rate']};
+    const fields = {work:['selection'],labor:['brigade','rate'],equipment:['equipment','rate'],fuel:['fuel','rate']};
     const showFields = () => add.querySelectorAll('[data-add-field]').forEach(wrapper => {
-      wrapper.hidden = wrapper.dataset.addField !== 'kind' && !fields[selector.value].includes(wrapper.dataset.addField);
+      wrapper.hidden = wrapper.dataset.addField !== 'kind' && !(fields[selector.value] || []).includes(wrapper.dataset.addField);
     });
     selector.addEventListener('change',showFields); showFields();
-    add.addEventListener('submit',event => {
-      if (changed().length) { event.preventDefault(); status.textContent = 'Сначала сохраните дневные изменения, затем добавьте строку.'; save.scrollIntoView({block:'center'}); }
-    });
   }
   if (save) save.addEventListener('click',async () => {
     const edits = changed();
-    if (!edits.length) { status.textContent = 'Нет изменений для сохранения.'; return; }
-    if (edits.some(input => !input.value || !input.checkValidity())) { status.textContent = 'Проверьте числа: значения должны быть неотрицательными и соответствовать шагу поля.'; return; }
+    if (!edits.length) { message('Сохранено','saved'); return; }
+    if (edits.some(input => !input.value || !input.checkValidity())) { message('Проверьте числа: значения должны быть неотрицательными и соответствовать шагу поля.','error'); return; }
     const entries = new Map();
     edits.forEach(input => {
       const body = input.closest('[data-smg-entry]');
       if (!entries.has(body.dataset.entryId)) entries.set(body.dataset.entryId,{id:body.dataset.entryId,revision:body.dataset.revision,changes:[]});
       entries.get(body.dataset.entryId).changes.push({date:input.dataset.date,item_id:input.dataset.item ? Number(input.dataset.item) : null,field:input.dataset.field,value:input.value});
     });
-    save.disabled = true; status.textContent = 'Сохранение…';
+    save.disabled = true; saving=true;inputs.forEach(input=>input.disabled=true);message('Сохранение…','saving');
     try {
-      const response = await fetch(window.location.pathname,{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':add.querySelector('[name="csrfmiddlewaretoken"]').value},body:JSON.stringify({entries:[...entries.values()]})});
-      const result = await response.json();
+      const response = await fetch(window.location.pathname,{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':document.querySelector('.smg-editor [name="csrfmiddlewaretoken"]').value},body:JSON.stringify({entries:[...entries.values()]})});
+      const result = await response.json().catch(()=>{throw new Error('Сервер не подтвердил сохранение СМГ. Повторите попытку.');});
       if (!response.ok) throw new Error(result.error || 'Не удалось сохранить СМГ.');
-      inputs.forEach(input => { input.dataset.original = input.value; });
-      window.location.reload();
-    } catch (error) { status.textContent = error.message || 'Ошибка сохранения. Изменения остаются в таблице.'; save.disabled = false; }
+      edits.forEach(input => { input.dataset.original = input.value; });
+      saving=false;message('Сохранено','saved');window.location.reload();
+    } catch (error) { saving=false;message((error.message || 'Ошибка сохранения.')+' Изменения остаются в таблице.','error');save.disabled=false;inputs.forEach(input=>input.disabled=false); }
   });
   filter();
 })();

@@ -1,0 +1,67 @@
+const {chromium}=require('playwright');
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const c=JSON.parse(process.env.SMG_BROWSER_CONFIG);
+(async()=>{
+ const browser=await chromium.launch({executablePath:c.chromium,headless:true,args:['--no-sandbox']});
+ try{
+  const context=await browser.newContext({viewport:{width:1720,height:1050}});
+  await context.route('**/*',route=>{
+   const url=route.request().url();if(url.startsWith(c.base))return route.continue();
+   if(url.endsWith('/bootstrap.min.css'))return route.fulfill({contentType:'text/css',body:fs.readFileSync('/tmp/catalogue-bootstrap.css')});
+   if(url.endsWith('/bootstrap-icons.css'))return route.fulfill({contentType:'text/css',body:fs.readFileSync('/tmp/catalogue-bootstrap-icons.css')});
+   return route.abort();
+  });
+  await context.addCookies([{name:'sessionid',value:c.cookie,url:c.base}]);
+  const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.goto(c.base+c.list,{waitUntil:'networkidle'});
+  assert(await page.locator('a[href="'+c.delete+'"]').count());
+  await page.goto(c.base+c.detail,{waitUntil:'networkidle'});
+  assert(await page.locator('.gpr-path').isVisible());
+  assert.equal(await page.locator('#smg-add-entry input[name=reference]').getAttribute('type'),'hidden');
+  const options=await page.locator('#smg-add-entry select[name=equipment] option').evaluateAll(options=>options.map(option=>option.value));
+  assert(options.includes(String(c.equipment)));assert(!options.includes(String(c.variant)));
+  const row=()=>page.locator('[data-entry-id="'+c.work+'"]');
+  const cells=()=>row().locator('.smg-day-input');
+  async function paste(target,text){await target.focus();await target.evaluate((input,text)=>{const data=new DataTransfer();data.setData('text/plain',text);input.dispatchEvent(new ClipboardEvent('paste',{bubbles:true,cancelable:true,clipboardData:data}));},text);}
+  await paste(cells().first(),'1,25\t2,5\t3\r\n');
+  assert.equal(await cells().nth(0).inputValue(),'1.25');assert.equal(await cells().nth(1).inputValue(),'2.5');
+  assert((await page.locator('#smg-save-status').innerText()).includes('Есть изменения'));
+  await page.locator('[data-smg-open-handoff]').click();assert(!(await page.locator('[data-smg-handoff]').isVisible()),'Unsaved days must block workflow handoff');
+  await cells().first().focus();await page.keyboard.press('Control+z');assert.equal(Number(await cells().first().inputValue()),0);
+  await paste(cells().first(),'Работа\tм\t999\t'+'1\t'.repeat(30)+'1\t31\r\n');
+  const dialog=page.locator('[data-smg-paste-dialog]');await dialog.waitFor({state:'visible'});
+  assert.equal(Number(await cells().first().inputValue()),0,'Preview must not mutate rows');
+  await dialog.locator('[data-paste-first]').selectOption('3');
+  assert.equal(await dialog.locator('[data-paste-last]').inputValue(),'33');
+  assert.equal(await dialog.locator('[data-paste-preview] tr').count(),31);
+  await dialog.locator('[data-paste-apply]').click();assert.equal(await cells().nth(30).inputValue(),'1');
+  await paste(cells().first(),'1\t2\n3\t4');assert.equal(await cells().first().inputValue(),'1','Multirow paste must leave all values unchanged');
+  await paste(cells().first(),'-1\t2');await dialog.waitFor({state:'visible'});assert(await dialog.locator('[data-paste-apply]').isDisabled());await dialog.locator('[data-paste-cancel]').first().click();
+  const resource=()=>page.locator('[data-entry-id="'+c.gear+'"]');
+  await paste(resource().locator('.smg-day-input[data-field=planned_count]').first(),'1\t2');
+  const saved=page.waitForResponse(r=>r.url()===c.base+c.detail&&r.request().method()==='POST');
+  await page.locator('#smg-save-table').click();assert((await saved).ok());
+  await page.waitForLoadState('networkidle');await page.waitForFunction(()=>document.getElementById('smg-save-status').dataset.state==='saved');
+  assert.equal(Number(await cells().nth(30).inputValue()),1);
+  await page.locator('#smg-parent-comparison > summary').click();
+  assert((await page.locator('#smg-parent-comparison').innerText()).includes('31'));
+  await page.screenshot({path:'/tmp/smg-editor-wide.png',fullPage:false});
+  await page.goto(c.base+c.graph,{waitUntil:'networkidle'});
+  const card=page.locator('[data-graph-node=resource][data-key="entry:'+c.gear+'"]');
+  await card.locator('[data-graph-menu]').click();
+  const links=page.locator('[data-graph-dialog]');
+  await links.locator('[data-graph-object]').uncheck();
+  await links.locator('[data-token="work:'+c.local_work+'"] input[type=checkbox]').check();
+  const linked=page.waitForResponse(r=>r.url().includes('/resource-links/')&&r.request().method()==='POST');await links.locator('[data-graph-save]').click();assert((await linked).ok());
+  await page.goto(c.base+c.detail,{waitUntil:'networkidle'});await page.setViewportSize({width:390,height:844});
+  await page.waitForFunction(()=>document.getElementById('sidebar').getBoundingClientRect().right<=1);
+  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+2),'Mobile viewport must not overflow');
+  await page.screenshot({path:'/tmp/smg-editor-mobile.png',fullPage:false});
+  await context.addCookies([{name:'sessionid',value:c.observer_cookie,url:c.base}]);
+  await page.goto(c.base+c.detail,{waitUntil:'networkidle'});
+  assert.equal(await page.locator('.smg-day-input').count(),0);assert.equal(await page.locator('#smg-save-table').count(),0);
+  assert.deepEqual(errors,[]);
+  console.log('SMG browser: Excel row preview, numeric paste, undo, save, links, type-only equipment, read-only role and mobile passed.');
+ }finally{await browser.close();}
+})().catch(error=>{console.error(error);process.exit(1);});

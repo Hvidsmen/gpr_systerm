@@ -108,9 +108,11 @@ def select_sources(user, filters, objects):
             object_id=schedule.construction_object_id
             if filters.get(f'version_{object_id}'):continue
             start,end=bounds(schedule.month)
-            base=period_snapshot(schedule.source,start,end) if schedule.source_id else {'works':[],'resources':{},'standalone_smg':True}
+            from .subobject_smg import parent_reference
+            own_reference=bool(schedule.source_id) and not parent_reference(schedule)
+            base=period_snapshot(schedule.source,start,end) if own_reference else {'works':[],'resources':{},'standalone_smg':True}
             snapshot=overlay_schedules(base,[schedule],filters['start'],filters['end'])
-            result[object_id].insert(0,Source(schedule.source or schedule,snapshot,start,end))
+            result[object_id].insert(0,Source(schedule.source if own_reference else schedule,snapshot,start,end))
     return result
 
 

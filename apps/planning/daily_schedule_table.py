@@ -12,7 +12,9 @@ from . import daily_schedule as service
 
 def locked(user,schedule):
     require_roles(user,PLAN_ROLES | {'MANAGER'})
+    frozen=getattr(schedule,'_smg_frozen_specs',None)
     schedule=DailySchedule.objects.select_for_update().select_related('source').defer('source__snapshot').get(pk=schedule.pk,company=user.company)
+    if frozen and frozen[0]==(schedule.source_id,schedule.month):schedule._smg_frozen_specs=frozen
     from core.permissions import require_planning_object
     require_planning_object(user,schedule.construction_object_id)
     if schedule.status!='DRAFT':raise PermissionDenied('СМГ зафиксирован. Создайте новую редакцию.')
@@ -58,12 +60,12 @@ def add_entry(user,schedule,data):
         require_roles(user,PLAN_ROLES)
         work=data['work']
         if not alternatives(schedule).filter(pk=work.pk).exists():raise ValidationError('Работа не принадлежит объекту или подключенной истории.')
-        work=local_work(user,schedule.source,work) if schedule.source_id else work
+        work=local_work(user,schedule,work) if schedule.source_id else work
         metadata=specification(work);metadata['history']=[];metadata['original_daily']=[]
         label=work.name;key='work:'+str(work.pk)
     else:
-        from .preparation import require_resource_editor
-        require_resource_editor(user,schedule)
+        from .preparation import require_resource_input
+        require_resource_input(user,schedule)
         row={'origin':'PLAN','comment':''}
         if kind=='labor':
             brigade=data['brigade']
@@ -72,11 +74,12 @@ def add_entry(user,schedule,data):
         elif kind=='equipment':
             equipment=data['equipment']
             if equipment.company_id!=user.company_id:raise PermissionDenied
-            label=str(equipment);row.update(equipment_type_id=equipment.pk,equipment_number=data['reference'],planned_count='0',planned_machine_hours='0',hourly_rate=str(data['rate']))
+            if equipment.parent_id:raise ValidationError('В СМГ выберите вид техники, как в ГПР, без модели и номера машины.')
+            label=str(equipment);row.update(equipment_type_id=equipment.pk,equipment_number='',planned_count='0',planned_machine_hours='0',hourly_rate=str(data['rate']))
         elif kind=='fuel':
             choices=dict(ResourceMonthAllocation._meta.get_field('fuel_type').choices)
             if data['fuel'] not in choices:raise ValidationError('Выберите вид ГСМ.')
-            label=choices[data['fuel']];row.update(fuel_type=data['fuel'],equipment_ref=data['reference'],planned_liters='0',planned_balance='0',price_per_liter=str(data['rate']))
+            label=choices[data['fuel']];row.update(fuel_type=data['fuel'],equipment_ref='',planned_liters='0',planned_balance='0',price_per_liter=str(data['rate']))
         else:raise ValidationError('Неизвестный вид строки.')
         row['label']=label
         identity=service.resource_identity(row,kind)
@@ -84,12 +87,15 @@ def add_entry(user,schedule,data):
         original=[dict(row,date=day.isoformat()) for day,_ in service.identities(SimpleNamespace(schedule=schedule,kind=kind,label=label,metadata={}))]
     if schedule.entries.filter(key=key).exists():raise ValidationError('Эта позиция уже есть в СМГ. Измените ее дневные значения.')
     entry=DailyScheduleEntry.objects.create(schedule=schedule,key=key,kind=kind,label=label,metadata=metadata,original=original,rows=original)
+    if kind=='work':
+        from .subobject_smg import annotate_entry
+        annotate_entry(entry,work);entry.save(update_fields=['metadata','gpr_work'])
     values=[{field:Decimal(0) for field,_,_ in service.FIELDS[kind]} for _ in service.identities(entry)]
     return service.save_entry(user,entry,values,0)
 
 
 @transaction.atomic
-def add_work_branch(user,schedule,selection):
+def add_work_branch(user,schedule,selection,*,selected_items=None):
     from .estimate_catalog import alternatives,local_work
     from .workspace_services import specification
     from .work_selection import resolve
@@ -99,11 +105,17 @@ def add_work_branch(user,schedule,selection):
     schedule=locked(user,schedule)
     result=[]
     for work,selected in resolve(alternatives(schedule),selection):
+        if selected_items is not None:
+            if not set(selected_items)<=set(work.items.values_list('pk',flat=True)):raise ValidationError('Состав работы общего ГПР изменён. Проверьте справочник.')
+            selected=list(selected_items)
         original_work=work
-        work=local_work(user,schedule.source,work) if schedule.source_id else work
+        work=local_work(user,schedule,work) if schedule.source_id else work
         if selected and work.pk!=original_work.pk:
+            explicit=getattr(work,'_smg_gpr_origin',None)
             mapped=[]
             for item in original_work.items.filter(pk__in=selected):
+                if explicit and str(item.pk) in explicit['items']:
+                    mapped.append(explicit['items'][str(item.pk)]);continue
                 targets=list(work.items.filter(name=item.name,unit=item.unit,quantity_per_unit=item.quantity_per_unit))
                 if len(targets)!=1:raise ValidationError('Не удалось однозначно сопоставить выбранные работы истории.')
                 mapped.append(targets[0].pk)
@@ -117,12 +129,14 @@ def add_work_branch(user,schedule,selection):
             selected=sorted(old_ids|wanted)
         metadata=specification(work,selected)
         if entry:
-            for field in ['history','original_daily','revenue_prices']:
+            for field in ['history','original_daily','revenue_prices','gpr_item_mapping']:
                 if field in entry.metadata:metadata[field]=deepcopy(entry.metadata[field])
             entry.metadata=metadata;entry.save(update_fields=['metadata'])
         else:
             metadata.update(history=[],original_daily=[])
             entry=DailyScheduleEntry.objects.create(schedule=schedule,key=key,kind='work',label=work.name,metadata=metadata,original=[],rows=[])
+        from .subobject_smg import annotate_entry
+        annotate_entry(entry,work);entry.save(update_fields=['metadata','gpr_work'])
         stored={(row['date'],row.get('item_id')):row for row in entry.rows}
         values=[{'quantity':Decimal(str(stored.get((day.isoformat(),item['id']),{}).get('quantity',0)))} for day,item in service.identities(entry)]
         result.append(service.save_entry(user,entry,values,entry.revision))

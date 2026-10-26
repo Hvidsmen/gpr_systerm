@@ -1,0 +1,23 @@
+.smg-editor{--smg-works:#087fa0;--smg-labor:#7863b3;--smg-equipment:#258579;--smg-fuel:#c08c2a}
+.smg-editor .plan-action-title h1{font-size:20px}
+.smg-paste-help{border-left:3px solid var(--smg-works);padding:10px 14px;background:#f4f9fc;font-size:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.smg-paste-help>span{flex:1;min-width:220px;color:#617789}
+.smg-section[data-smg-section=work]{border-left:4px solid var(--smg-works)}
+.smg-section[data-smg-section=labor]{border-left:4px solid var(--smg-labor)}
+.smg-section[data-smg-section=equipment]{border-left:4px solid var(--smg-equipment)}
+.smg-section[data-smg-section=fuel]{border-left:4px solid var(--smg-fuel)}
+.smg-section>summary{font-size:18px;font-weight:600}
+.smg-editor .matrix-label{min-width:250px;max-width:340px;white-space:normal;font-size:14px;vertical-align:top;text-align:left}
+.smg-editor .matrix-label>a{font-weight:600;text-decoration:none}
+.smg-editor .matrix-table th:not(.matrix-label){font-size:12px;min-width:76px}
+.smg-editor .smg-day-input{min-width:76px;width:84px;font-size:12px;padding:5px 6px}
+.smg-editor .smg-day-input:focus{border-color:#087fa0;box-shadow:0 0 0 2px #087fa025}
+.smg-editor tr:focus-within>.matrix-label{background:#f0f7fb}
+.smg-work-map{font-size:12px;margin-top:8px}.smg-work-map form{min-width:220px;margin:8px 0}
+.smg-paste-dialog{width:min(760px,calc(100vw - 32px));max-height:90vh;overflow:auto;border:1px solid #cbdce8;border-radius:10px;padding:22px;color:#153e60}
+.smg-paste-dialog::backdrop{background:#17395166}
+.smg-paste-range{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.smg-paste-range label{font-size:12px;min-width:0}.smg-paste-range select{display:block;width:100%;min-width:0;border:1px solid #cbdce8;border-radius:6px;padding:7px}
+.smg-paste-preview{max-height:42vh;overflow:auto;margin-top:14px}
+.smg-approval-history{margin:20px 0}
+@media(max-width:700px){.smg-editor .matrix-label{min-width:190px;max-width:240px}.smg-paste-range{grid-template-columns:1fr}.smg-paste-dialog{padding:16px}}

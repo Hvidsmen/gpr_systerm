@@ -1,0 +1,25 @@
+{% load access %}
+<header class="plan-action-header" data-smg-action-header>
+<div class="plan-action-title"><h1>СМГ {{ schedule.construction_object }} · {{ schedule.month|date:'m.Y' }} · ред. {{ schedule.revision }}</h1><span class="badge bg-primary">{{ schedule.get_status_display }}</span></div>
+<p class="plan-action-meta">{% if schedule.construction_object.parent_id %}{{ schedule.construction_object.parent }} → {% endif %}{{ schedule.construction_object }} · дневной план · техника по видам{% if schedule.source_id %} · {% if is_subobject_smg %}общий {% endif %}ГПР {{ schedule.source.construction_object }} v{{ schedule.source.version_number }}{% endif %}</p>
+<nav class="plan-action-row" aria-label="Действия СМГ">
+{% if table_editable %}<button id="smg-save-table" class="btn btn-primary btn-sm" type="button" aria-label="Сохранить изменения СМГ">Сохранить</button>{% endif %}
+{% if smg_can_confirm %}{% if not smg_resource_ready %}<form method="post" action="{% url 'planning:preparation_smg' schedule.pk %}">{% csrf_token %}<input type="hidden" name="return_to_smg" value="1"><button class="btn btn-outline-primary btn-sm" name="action" value="ready">Ресурсы определены</button></form>{% elif smg_checked %}<form method="post" action="{% url 'planning:preparation_smg' schedule.pk %}">{% csrf_token %}<input type="hidden" name="return_to_smg" value="1"><button class="btn btn-outline-primary btn-sm" name="action" value="submit">Отправить на согласование</button></form>{% else %}<span class="small text-muted">Ожидается проверка сметчика</span>{% endif %}{% elif smg_can_handoff %}<button type="button" class="btn btn-outline-primary btn-sm" data-smg-open-handoff>Передать руководителю и сметчику</button>{% endif %}
+{% if can_activate_smg %}<form method="post" action="{% url 'planning:daily_schedule_apply' schedule.pk %}">{% csrf_token %}<button class="btn btn-success btn-sm">Применить СМГ</button></form>{% endif %}
+{% if can_edit and schedule.status == 'APPLIED' or can_edit and schedule.status == 'ARCHIVED' %}<form method="post" action="{% url 'planning:smg_revise' schedule.pk %}">{% csrf_token %}<button class="btn btn-primary btn-sm">Новая редакция</button></form>{% endif %}
+<a class="btn btn-outline-primary btn-sm" href="{% url 'planning:work_resources_graph_smg' schedule.pk %}">Связи работ и ресурсов</a>
+<button class="btn btn-outline-secondary btn-sm" type="button" popovertarget="smg-more-actions">Ещё</button>
+<span class="plan-save-status" id="smg-save-status" data-state="saved" role="status" aria-live="polite">{% if table_editable %}Сохранено{% else %}Режим просмотра{% endif %}</span>
+</nav>
+{% include 'planning/_gpr_path.html' %}
+</header>
+<div id="smg-more-actions" class="plan-more-menu" popover>
+<a href="{% url 'planning:daily_schedule_list' %}">Все СМГ</a>
+<a href="{% url 'planning:work_resources_smg' schedule.pk %}">Ресурсы и экипажи</a>
+<a href="{% url 'planning:pivot_smg_detail' schedule.pk %}">Сводная таблица</a>
+<a href="{% url 'planning:preparation_smg' schedule.pk %}">Подготовка и задания</a>
+{% if smg_latest_review %}<a href="{% url 'planning:estimate_review_detail' smg_latest_review.pk %}">Проверка сметчика</a>{% endif %}
+{% if is_subobject_smg %}<a href="#smg-parent-comparison">Общий ГПР и сумма СМГ субобъектов</a>{% elif schedule.source_id %}<a href="{% url 'planning:global_detail' schedule.source_id %}">Открыть ГПР для сравнения</a>{% endif %}
+{% if schedule.status == 'DRAFT' %}{% if request.user|may:'planning:smg_delete' %}<a class="text-danger" href="{% url 'planning:smg_delete' schedule.pk %}">Удалить черновик СМГ</a>{% endif %}{% endif %}
+</div>
+{% if smg_handoff_form %}<dialog class="gpr-handoff-dialog" data-smg-handoff aria-labelledby="smg-handoff-title"><h2 class="h5" id="smg-handoff-title">Передать СМГ руководителю и сметчику</h2><p>Руководитель проверит и подтвердит ресурсы. Сметчик параллельно проверит работы и цены.</p><form method="post" action="{% url 'planning:preparation_smg' schedule.pk %}">{% csrf_token %}<input type="hidden" name="action" value="handoff"><input type="hidden" name="return_to_smg" value="1">{% include 'forms/fields.html' with form=smg_handoff_form %}<div class="d-flex gap-2"><button class="btn btn-primary">Передать СМГ</button><button class="btn btn-outline-secondary" type="button" data-smg-close-handoff>Отмена</button></div></form></dialog>{% endif %}

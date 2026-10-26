@@ -184,8 +184,8 @@ def save_entry(user,entry,values,revision):
     entry=DailyScheduleEntry.objects.select_for_update().select_related('schedule').get(pk=entry.pk,schedule=schedule)
     if entry.kind=='work':require_roles(user,PLAN_ROLES)
     else:
-        from .preparation import require_resource_editor
-        require_resource_editor(user,schedule)
+        from .preparation import require_resource_input
+        require_resource_input(user,schedule)
     if entry.metadata.get('resource_assignment_id'):raise ValidationError('Измените количество техники, смены или экипаж в разделе «Ресурсы работ и объекта».')
     if entry.revision!=revision:raise ValidationError('Строка изменена в другой вкладке. Обновите страницу.')
     if len(values)!=len(identities(entry)):raise ValidationError('Заполните все дни.')

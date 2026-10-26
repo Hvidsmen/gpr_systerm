@@ -1252,14 +1252,30 @@ class DailySchedule(BaseCompanyModel):
     def save(self, *args, **kwargs):
         if not self.construction_object_id and self.source_id:
             self.construction_object_id = self.source.construction_object_id
-        if self.source_id and (self.source.company_id != self.company_id or self.source.construction_object_id != self.construction_object_id):
+        from .subobject_smg import valid_reference
+        if self.source_id and (self.source.company_id != self.company_id or not valid_reference(self.construction_object,self.source)):
             from django.core.exceptions import ValidationError
-            raise ValidationError('ГПР должен принадлежать тому же объекту и компании, что и СМГ.')
+            raise ValidationError('Выберите ГПР этого объекта или его родительского объекта в той же компании и проекте.')
         super().save(*args, **kwargs)
+
+
+class SubobjectWorkOrigin(BaseCompanyModel):
+    source_work=models.ForeignKey('works.ProjectWork',on_delete=models.PROTECT,related_name='subobject_origins')
+    local_work=models.OneToOneField('works.ProjectWork',on_delete=models.CASCADE,related_name='gpr_origin')
+    item_mapping=models.JSONField(default=dict,blank=True)
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        from .subobject_smg import ancestors
+        if self.source_work.company_id!=self.company_id or self.local_work.company_id!=self.company_id or self.source_work.section.construction_object_id==self.local_work.section.construction_object_id:
+            raise ValidationError('Связь работ должна относиться к одной компании и разным объектам.')
+        if self.source_work.section.construction_object_id not in ancestors(self.local_work.section.construction_object):raise ValidationError('Исходная работа должна относиться к родительскому объекту.')
+        if not isinstance(self.item_mapping,dict):raise ValidationError('Проверьте сопоставление состава работ.')
 
 
 class DailyScheduleEntry(models.Model):
     schedule = models.ForeignKey(DailySchedule,on_delete=models.CASCADE,related_name='entries')
+    gpr_work = models.ForeignKey('works.ProjectWork',on_delete=models.PROTECT,null=True,blank=True,related_name='subobject_smg_entries',verbose_name='Работа общего ГПР')
     key = models.CharField(max_length=80)
     kind = models.CharField(max_length=12)
     label = models.TextField()

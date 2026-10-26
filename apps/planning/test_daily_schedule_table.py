@@ -57,7 +57,7 @@ class ScheduleTableTests(TestCase):
         entry=add_entry(self.planner,self.schedule,{'kind':'equipment','equipment':self.equipment,'reference':'TEST-1','rate':Decimal(25)})
         save_table(self.planner,self.schedule,[self.edits(entry,'3','planned_count')])
         entry.refresh_from_db()
-        self.assertEqual(entry.rows[0]['equipment_number'],'TEST-1')
+        self.assertEqual(entry.rows[0]['equipment_number'],'')
         self.assertEqual(Decimal(entry.rows[0]['hourly_rate']),25)
         with self.assertRaises(ValidationError):add_entry(self.planner,self.schedule,{'kind':'equipment','equipment':self.equipment,'reference':'TEST-1','rate':Decimal(25)})
 

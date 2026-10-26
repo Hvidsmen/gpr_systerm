@@ -1,0 +1,5 @@
+{% extends 'base.html' %}{% block content %}<div class="card p-3"><h1 class="h4">Удалить черновик СМГ?</h1>
+<p><strong>{{ schedule.construction_object }}</strong> · {{ schedule.month|date:'m.Y' }} · редакция {{ schedule.revision }} · {{ schedule.get_status_display }}</p>
+{% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+{% if reason %}<div class="alert alert-warning">{{ reason }}</div>{% else %}<p>Будут удалены строки дневного плана ({{ entries_count }}) и назначения ресурсов ({{ resources_count }}), а также задания подготовки этого черновика. Исходный ГПР и записи факта сохранятся.</p><form method="post">{% csrf_token %}<input type="hidden" name="preview_token" value="{{ preview_token }}"><button class="btn btn-danger" name="confirm" value="1">Удалить черновик СМГ</button><a class="btn btn-outline-secondary" href="{% url 'planning:daily_schedule_list' %}">Отмена</a></form>{% endif %}
+{% if reason %}<a href="{% url 'planning:daily_schedule_list' %}">Вернуться к списку СМГ</a>{% endif %}</div>{% endblock %}

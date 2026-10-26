@@ -14,20 +14,29 @@ class SMGForm(forms.Form):
     construction_object = forms.ModelChoiceField(label='Объект',queryset=ConstructionObject.objects.none())
     month = forms.DateField(label='Месяц',widget=forms.DateInput(attrs={'type':'month'},format='%Y-%m'),input_formats=['%Y-%m','%Y-%m-%d'])
     source = forms.ModelChoiceField(label='ГПР для сравнения (необязательно)',queryset=GlobalPlanVersion.objects.none(),required=False)
-    copy_from_gpr = forms.BooleanField(label='Скопировать план из выбранного ГПР',required=False)
+    copy_from_gpr = forms.BooleanField(label='Добавить данные из ГПР (для субобъекта — только состав работ)',required=False)
 
     def __init__(self,*args,user,**kwargs):
         super().__init__(*args,**kwargs)
         self.fields['construction_object'].queryset = scope_queryset(ConstructionObject.objects.all(),user)
-        self.fields['source'].queryset = scope_queryset(GlobalPlanVersion.objects.filter(status__in=['APPROVED','COMPLETED']),user).defer('snapshot').select_related('construction_object')
+        from .subobject_smg import reference_choices
+        self.fields['source'].queryset = reference_choices(user)
         self.fields['source'].label_from_instance = lambda v:f'{v.construction_object} · ГПР v{v.version_number} · {v.start_date:%m.%Y} — {v.end_date:%m.%Y}'
+
+    def clean(self):
+        data=super().clean()
+        if data.get('construction_object') and data.get('source'):
+            from .subobject_smg import valid_reference
+            if not valid_reference(data['construction_object'],data['source']):self.add_error('source','Выберите ГПР этого объекта или его родительского объекта.')
+        return data
 
 
 class ReferenceForm(SMGForm):
     def __init__(self,*args,schedule,user,**kwargs):
         super().__init__(*args,user=user,**kwargs)
         self.fields.pop('construction_object');self.fields.pop('month');self.fields.pop('copy_from_gpr')
-        self.fields['source'].queryset = self.fields['source'].queryset.filter(construction_object_id=schedule.construction_object_id,start_date__lte=schedule.month,end_date__gte=schedule.month)
+        from .subobject_smg import reference_choices
+        self.fields['source'].queryset = reference_choices(user,schedule.construction_object).filter(start_date__lte=schedule.month,end_date__gte=schedule.month)
         self.fields['source'].initial = schedule.source_id
 
 
@@ -35,7 +44,7 @@ class SMGList(View):
     def get(self,request):
         require_roles(request.user,READ_ROLES)
         objects = scope_queryset(ConstructionObject.objects.all(),request.user)
-        schedules = scope_queryset(DailySchedule.objects.all(),request.user).select_related('construction_object','source').defer('source__snapshot').order_by('-month','construction_object__name','-revision')
+        schedules = scope_queryset(DailySchedule.objects.all(),request.user).select_related('construction_object__parent','source__construction_object').defer('source__snapshot').order_by('-month','construction_object__name','-revision')
         obj=request.GET.get('object','');month=request.GET.get('month','');status=request.GET.get('status','')
         if obj.isdigit():schedules=schedules.filter(construction_object_id=obj)
         if month:
@@ -70,7 +79,7 @@ class SMGReference(View):
                 service.reference(request.user,schedule,form.cleaned_data['source'])
                 messages.success(request,'Ссылка на ГПР обновлена. Значения СМГ сохранены. Сравнение пересчитано.')
             except ValidationError as exc:messages.error(request,'; '.join(exc.messages))
-        else:messages.error(request,'Выберите доступный утвержденный ГПР того же объекта.')
+        else:messages.error(request,'Выберите доступный утвержденный ГПР этого объекта или его родителя.')
         return redirect('planning:daily_schedule_detail',pk=pk)
 
 

@@ -64,6 +64,7 @@ class PreparationView(View):
                         messages.success(request,"План передан руководителю и сметчику. Задания созданы или обновлены.")
                         if self.kind=='gpr' and owner.workspace_id and request.POST.get('return_to_gpr')=='1':
                             return redirect(reverse('planning:workspace_edit',args=[owner.pk])+'?month='+month.isoformat())
+                        if self.kind=='smg' and request.POST.get('return_to_smg')=='1':return redirect('planning:daily_schedule_detail',pk=owner.pk)
                         return redirect(request.path+'?handoff=1')
                 elif action=='save_resources':
                     with transaction.atomic():
@@ -80,6 +81,7 @@ class PreparationView(View):
                         add_entry(request.user,owner,resource_add_form.cleaned_data);return redirect(request.path)
                 elif action=='ready':
                     preparation.ready(request.user,owner)
+                    if self.kind=='smg' and request.POST.get('return_to_smg')=='1':return redirect('planning:daily_schedule_detail',pk=owner.pk)
                     return redirect(reverse('planning:workspace_edit' if owner.workspace_id else 'planning:global_detail',args=[owner.pk])+'#work-resources' if self.kind=='gpr' else request.path)
                 elif action=='submit':
                     if self.kind=='gpr':
@@ -88,6 +90,7 @@ class PreparationView(View):
                     else:
                         from .daily_schedule_approval import transition
                         transition(request.user,owner,'submit')
+                        if request.POST.get('return_to_smg')=='1':return redirect('planning:daily_schedule_detail',pk=owner.pk)
                     messages.success(request,'Руководитель запустил согласование плана.');return redirect(request.path)
                 else:raise ValidationError('Неизвестное действие.')
             except ValidationError as error:

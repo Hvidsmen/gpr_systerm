@@ -98,6 +98,8 @@ def save(user, owner, assignment, refresh_crew=False, *, targets=None, preserve_
         original=WorkResourceAssignment.objects.select_for_update().get(pk=assignment.pk,company=user.company)
         if (original.version_id,original.schedule_id)!=(getattr(owner,'pk') if isinstance(owner,GlobalPlanVersion) else None,getattr(owner,'pk') if isinstance(owner,DailySchedule) else None):raise PermissionDenied
     else:original=None
+    if isinstance(owner,DailySchedule) and assignment.equipment_type_id and assignment.equipment_type.parent_id and (not original or original.equipment_type_id!=assignment.equipment_type_id):
+        raise ValidationError('В СМГ выберите вид техники, как в ГПР, без модели и номера машины.')
     assignment.company=owner.company
     assignment.version=owner if isinstance(owner,GlobalPlanVersion) else None
     assignment.schedule=owner if isinstance(owner,DailySchedule) else None

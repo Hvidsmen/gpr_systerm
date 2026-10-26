@@ -20,13 +20,14 @@ class CopyForm(forms.Form):
     replace_work=forms.BooleanField(label='Заменить открытые дни заполненных работ',required=False)
     def __init__(self,*args,user,schedule,**kwargs):
         super().__init__(*args,**kwargs)
-        self.fields['source'].queryset=scope_queryset(GlobalPlanVersion.objects.filter(construction_object=schedule.construction_object,status__in=['APPROVED','COMPLETED'],start_date__lte=schedule.month,end_date__gte=daily.bounds(schedule.month)[1]).filter(Q(planning_month__isnull=True)|Q(planning_month=schedule.month)),user).defer('snapshot').select_related('construction_object')
+        from .subobject_smg import reference_choices,parent_reference
+        self.fields['source'].queryset=reference_choices(user,schedule.construction_object).filter(start_date__lte=schedule.month,end_date__gte=daily.bounds(schedule.month)[1]).filter(Q(planning_month__isnull=True)|Q(planning_month=schedule.month))
         self.fields['source'].label_from_instance=lambda v:f'{v.title or "ГПР"} · v{v.version_number} · {v.start_date:%m.%Y} — {v.end_date:%m.%Y}'
         choices=[]
         if role_code(user) in PLAN_ROLES:choices.extend([('all','Работы и все ресурсы'),('work','Работы')])
         try:preparation.require_resource_editor(user,schedule);resources=True
         except (PermissionDenied,ValidationError):resources=False
-        if resources:choices.append(('resources','Техника, должности и ГСМ'))
+        if resources and not parent_reference(schedule):choices.append(('resources','Техника, должности и ГСМ'))
         if role_code(user) not in PLAN_ROLES:self.fields['replace_work'].widget=forms.HiddenInput()
         self.fields['scope'].choices=choices
         if role_code(user) not in PLAN_ROLES:self.fields['source'].disabled=True
@@ -49,8 +50,9 @@ def copy_from_gpr(user,schedule,source,scope='work',replace_work=False):
     if scope not in ['work','resources','all']:raise ValidationError('Выберите состав копирования.')
     if scope in ['work','all']:require_roles(user,PLAN_ROLES)
     if scope=='resources' or scope=='all' and role_code(user) not in PLAN_ROLES:preparation.require_resource_editor(user,schedule)
-    source=get_object_or_404(scope_queryset(GlobalPlanVersion.objects.all(),user),pk=source.pk)
-    if source.company_id!=schedule.company_id or source.construction_object_id!=schedule.construction_object_id:raise PermissionDenied('ГПР другого объекта.')
+    from .subobject_smg import valid_reference
+    source=get_object_or_404(GlobalPlanVersion.objects.filter(company=user.company),pk=source.pk)
+    if not valid_reference(schedule.construction_object,source):raise PermissionDenied('ГПР другого объекта.')
     daily.validate_source(source,schedule.month)
     entries_before=list(schedule.entries.all())
     untouched_before={entry.key for entry in entries_before if blank(entry)}
@@ -59,6 +61,12 @@ def copy_from_gpr(user,schedule,source,scope='work',replace_work=False):
     if schedule.source_id!=source.pk:
         if role_code(user) not in PLAN_ROLES:raise ValidationError('Планировщик должен сначала связать СМГ с выбранным ГПР.')
         schedule=independent.reference(user,schedule,source)
+    if source.construction_object_id!=schedule.construction_object_id:
+        if scope=='resources':raise ValidationError('Ресурсы общего ГПР не распределены между субобъектами. Добавьте ресурсы этого СМГ отдельно.')
+        from .subobject_smg import add_parent_structure
+        count=add_parent_structure(user,schedule)
+        independent.audit(user,schedule,'UPDATE',{'copy_structure_from_parent':source.pk,'works':count})
+        return {'works':count,'resources':0,'kept_works':schedule.entries.filter(kind='work').count()-count,'kept_resources':schedule.entries.exclude(kind='work').count(),'structure_only':True}
     specs=independent.source_specs(source,schedule.month)
     result={'works':0,'resources':0,'kept_works':0,'kept_resources':0}
     cutoff=schedule.locked_before.isoformat() if schedule.locked_before else schedule.month.isoformat()
@@ -113,7 +121,8 @@ def copy_view(request,pk):
     if form.is_valid():
         try:
             result=copy_from_gpr(request.user,schedule,form.cleaned_data['source'],form.cleaned_data['scope'],form.cleaned_data['replace_work'])
-            messages.success(request,f"Скопировано из ГПР: работ — {result['works']}, строк ресурсов — {result['resources']}. Сохранено ранее заполненных: работ — {result['kept_works']}, строк ресурсов — {result['kept_resources']}.")
+            if result.get('structure_only'):messages.success(request,f"Из общего ГПР добавлен состав работ: {result['works']}. Новые строки имеют нулевые объёмы. Введённые значения и ресурсы этого СМГ сохранены.")
+            else:messages.success(request,f"Скопировано из ГПР: работ — {result['works']}, строк ресурсов — {result['resources']}. Сохранено ранее заполненных: работ — {result['kept_works']}, строк ресурсов — {result['kept_resources']}.")
         except ValidationError as error:messages.error(request,'; '.join(error.messages))
     else:
         for errors in form.errors.values():
