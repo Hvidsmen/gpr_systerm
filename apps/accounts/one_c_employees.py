@@ -33,6 +33,7 @@ EXPECTED = {
         '_Fld20193': 'ТарифнаяСтавка', '_Fld20194': 'СовокупнаяТарифнаяСтавка',
         '_Fld20195': 'ФОТ', '_Fld20197': 'Используется'}),
 }
+EXPECTED['_Reference394'][1]['_OwnerIDRRef'] = 'Владелец'
 EXPECTED['_Reference383'][1].update({'_Fld31257': 'ДатаРождения', '_Fld31259': 'ИНН', '_Fld31260': 'СтраховойНомерПФР', '_Fld31261': 'МестоРождения'})
 EXPECTED['_InfoRg21744'][1].update({'_Fld21751': 'ДатаУвольнения', '_Fld21754': 'ДатаПриема', '_Fld45771': 'КоличествоСтавок'})
 EXPECTED['_InfoRg18183'][1]['_Fld18203_RRRef'] = 'РегистраторЗаписи'
@@ -48,13 +49,16 @@ EXPECTED['_InfoRg16829'] = ('РегистрСведений.ДанныеДляП
     '_Fld16842': 'КоличествоСтавок', '_Fld16846': 'Начало', '_Fld16847': 'Окончание',
     '_Fld39556': 'ПометкаУдаления', '_Fld39557': 'ВАрхиве'})
 EXPECTED['_InfoRg40095'] = ('РегистрСведений.ЗанятостьПозицийШтатногоРасписанияИнтервальный', {
-    '_Fld40096RRef':'Сотрудник', '_Fld40098':'ДатаНачала', '_Fld40105RRef':'ПозицияШтатногоРасписания', '_Fld40113':'ПустойИнтервал'})
+    '_Fld40096RRef': 'Сотрудник', '_Fld40097': 'ДатаОкончания', '_Fld40098': 'ДатаНачала',
+    '_Fld40101_RRRef': 'ДокументОснование', '_Fld40105RRef': 'ПозицияШтатногоРасписания',
+    '_Fld40107': 'КоличествоСтавок', '_Fld40108': 'ДействуетДо', '_Fld40113': 'ПустойИнтервал'})
 EXPECTED['_InfoRg59135'] = ('РегистрСведений.ядс_ЗначенияПоказателейВРазрезеСистемОплатыТруда', {
     '_Period':'Период', '_Fld59138RRef':'Сотрудник', '_Fld59139RRef':'Должность'})
 PROBES = ('current_row', 'current_position_ref', 'current_position_join', 'interval_position_join',
           'history_position_join', 'staffing_position_join', 'corrected_history_position_ref',
           'order_position', 'head_employee_position_ref', 'picker_candidate', 'picker_position_join', 'picker_ambiguous',
-          'staffing_occupancy_position_ref', 'custom_position_ref')
+          'staffing_occupancy_position_ref', 'custom_position_ref', 'occupancy_candidate', 'occupancy_ambiguous',
+          'occupancy_staffing_join', 'occupancy_position_ref', 'occupancy_position_join', 'occupancy_staffing_named')
 
 # Only these extra, validated fields can enter the card. Personal/pay data is
 # rendered solely for ADMIN/HR_HEAD; it is never added to list/job/audit output.
@@ -123,9 +127,9 @@ def source_confirmed(connection):
             standard |= {'_RecorderRRef', '_LineNo'}
         if label.get('name') != name or not standard.union(fields).issubset(columns):
             return False
-        # Standard register columns have system names in SQL, not custom
-        # metadata labels. Their presence is checked above.
-        if any(label.get('columns', {}).get(key) != value for key, value in fields.items() if key not in {'_Period', '_Active'}):
+        # Standard register/owner columns have system names in SQL, not
+        # custom metadata labels. Their physical presence is checked above.
+        if any(label.get('columns', {}).get(key) != value for key, value in fields.items() if key not in {'_Period', '_Active', '_OwnerIDRRef'}):
             return False
     if not any(c.get('schema') == 'dbo' and c.get('table') == '_YearOffset' and c.get('column') == 'Offset' for c in run.report.get('schema', [])):
         return False

@@ -123,6 +123,51 @@ class EmployeesImportTests(TestCase):
         self.assertEqual(employee.zup_card['fte'],'0.5')
         self.assertEqual(result['position_diagnostics']['coverage']['active']['picker_position_join'],1)
 
+    def test_occupancy_import_fills_existing_card_list_and_position_filter(self):
+        run = self.run_record()
+        apply_employees(run, {'employees': [self.row(position='', department='', fte=0)]})
+        employee = Employee.objects.get(company=self.company, zup_ref='1'*32)
+        pk = employee.pk
+        source = 'Занятость позиций штатного расписания'
+        result = apply_employees(run, {'employees': [self.row(position='Механик', department='Автоколонна',
+            fte='0.5', position_source=source, position_since='2026-01-01',
+            probe_occupancy_candidate=1, probe_occupancy_staffing_join=1,
+            probe_occupancy_position_ref=1, probe_occupancy_position_join=1),
+            self.row('2'*32, position='Слесарь', archived=1, position_source=source,
+                     probe_occupancy_candidate=1, probe_occupancy_position_join=1)]})
+        employee.refresh_from_db()
+        self.assertEqual(employee.pk, pk)
+        self.assertEqual(employee.display_position, 'Механик')
+        self.assertEqual(employee.zup_card['fte'], '0.5')
+        response = self.client.get(reverse('resources:employee_detail', args=[pk]))
+        for text in ['Механик', 'Автоколонна', source, '01.01.2026']:
+            self.assertContains(response, text)
+        response = self.client.get(reverse('resources:employee_list'), {'position': 'механик'})
+        self.assertContains(response, 'Механик')
+        self.assertNotContains(response, 'Слесарь')
+        coverage = result['position_diagnostics']['coverage']
+        self.assertEqual(coverage['all']['occupancy_position_join'], 2)
+        self.assertEqual(coverage['active']['occupancy_position_join'], 1)
+        run.report = {'employees_import': True, 'employees_result': result}
+        run.status = 'DONE'; run.save()
+        from io import BytesIO
+        from zipfile import ZipFile
+        response = self.client.get(reverse('accounts:one_c_report'), {'employee_run': str(run.pk)})
+        with ZipFile(BytesIO(response.content)) as package:
+            report = json.loads(package.read(package.namelist()[0]))
+        self.assertEqual(report['summary']['coverage'], coverage)
+        self.assertNotIn('Механик', json.dumps(report, ensure_ascii=False))
+
+    def test_occupancy_schema_requires_custom_fields_but_owner_is_a_system_column(self):
+        labels = self.diagnostic.report['metadata_labels']['dbo._Reference394']['columns']
+        del labels['_OwnerIDRRef']
+        self.diagnostic.save()
+        self.assertTrue(source_confirmed(self.connection))
+        labels = self.diagnostic.report['metadata_labels']['dbo._InfoRg40095']['columns']
+        del labels['_Fld40108']
+        self.diagnostic.save()
+        self.assertFalse(source_confirmed(self.connection))
+
     def test_position_diagnostics_download_has_only_coverage_and_is_company_scoped(self):
         run = self.run_record()
         result = apply_employees(run, {'employees': [self.row(probe_current_row=1,
@@ -171,7 +216,7 @@ class EmployeesImportTests(TestCase):
         self.assertGreater(query_at,open_at)
         self.assertIn("if($EmployeesImport){$arguments+=' -EmployeesImport'}",script[:open_at])
         self.assertNotIn('SELECT TOP (200001)',script[:open_at])
-        self.assertIn('Write-Json $reportPath @{employees_import=$true;employees_card_version=3;employees=@($employees)}',script[query_at:])
+        self.assertIn('Write-Json $reportPath @{employees_import=$true;employees_card_version=4;employees=@($employees)}',script[query_at:])
         self.assertIn("NULLIF(LTRIM(RTRIM(p.[_Fld31265])),N'')",script[query_at:])
         self.assertIn("NULLIF(LTRIM(RTRIM(p.[_Description])),N'')",script[query_at:])
         self.assertIn("NULLIF(LTRIM(RTRIM(e.[_Description])),N'')",script[query_at:])
@@ -225,7 +270,7 @@ class EmployeesImportTests(TestCase):
             path = Path(directory)/'.runtime/1c-diagnostics'/run.pk.hex
             path.mkdir(parents=True)
             (path/'status.json').write_text(json.dumps({'ok': True}))
-            (path/'report.json').write_text(json.dumps({'employees_import': True, 'employees': [self.row()]}))
+            (path/'report.json').write_text(json.dumps({'employees_import': True, 'employees_card_version': 3, 'employees': [self.row()]}))
             from pathlib import PosixPath
             with override_settings(CONFIG_DIR=directory), patch('apps.accounts.one_c.os.name', 'nt'), patch('apps.accounts.one_c.Path', PosixPath), patch('apps.accounts.one_c.subprocess.CREATE_NO_WINDOW', 0, create=True), patch('apps.accounts.one_c.subprocess.run'):
                 process_queue()
@@ -242,7 +287,7 @@ class EmployeesImportTests(TestCase):
             path = Path(directory)/'.runtime/1c-diagnostics'/run.pk.hex
             path.mkdir(parents=True)
             (path/'status.json').write_text(json.dumps({'ok': True}))
-            (path/'report.json').write_text(json.dumps({'employees_import': True, 'employees_card_version': 3, 'employees': [self.row()]}))
+            (path/'report.json').write_text(json.dumps({'employees_import': True, 'employees_card_version': 4, 'employees': [self.row()]}))
             from pathlib import PosixPath
             with override_settings(CONFIG_DIR=directory), patch('apps.accounts.one_c.os.name', 'nt'), patch('apps.accounts.one_c.Path', PosixPath), patch('apps.accounts.one_c.subprocess.CREATE_NO_WINDOW', 0, create=True), patch('apps.accounts.one_c.subprocess.run') as execute:
                 process_queue()
