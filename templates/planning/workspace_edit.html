@@ -97,7 +97,7 @@
 {% for section in resource_sections %}<details class="allocation-section" data-allocation-section="{{ section.kind }}"><summary>{{ section.title }} <span class="allocation-group-count" data-section-count></span></summary><div class="allocation-section-body">
 {% include 'planning/row_filters.html' with filter_kind=section.kind filters=section.filters %}
 <div id="resource-rows-{{ section.kind }}">{% for form in section.forms %}<div class="card mb-3 resource-row allocation-row"><div class="card-body allocation-grid"><span class="badge bg-light text-dark" style="grid-column:1 / -1;justify-self:start">Вне работ · Общие ресурсы объекта</span>{{ form.non_field_errors }}{% for field in form %}<p data-field="{{ field.name }}" {% if field.is_hidden or field.name == 'kind' %}hidden{% endif %}>{% if field.name == 'DELETE' %}<span hidden>{{ field }}</span><button type="button" class="btn btn-sm btn-outline-danger" data-remove-row aria-label="Удалить строку">Удалить</button>{% else %}{{ field.label_tag }} {{ field }} {{ field.errors }}{% endif %}</p>{% endfor %}</div></div>{% endfor %}</div>
-{% if not resources_read_only %}<button type="button" class="btn btn-outline-primary" data-add="resources" data-kind="{{ section.kind }}">Добавить {% if section.kind == 'labor' %}людей{% elif section.kind == 'equipment' %}технику{% else %}ГСМ{% endif %} в этот месяц</button>{% endif %}
+{% if not resources_read_only %}<button type="button" class="btn btn-outline-primary" data-add-resource="{{ section.kind }}" data-work="" data-item="">Добавить {% if section.kind == 'labor' %}людей{% elif section.kind == 'equipment' %}технику{% else %}ГСМ{% endif %} в этот месяц</button>{% endif %}
 </div></details>{% endfor %}
 
 </form>
@@ -322,9 +322,6 @@ function updateSubworks(row) {
     const remove=document.createElement('button');remove.type='button';remove.className='btn btn-sm btn-outline-danger';remove.textContent='Удалить из плана';
     remove.addEventListener('click',()=>changeComposition(items.filter(other=>other.id!==item.id)));
     tr.insertCell().append(remove);
-    const resourceRow=body.insertRow();resourceRow.dataset.workResourcesRow=String(item.id);
-    const resourceCell=resourceRow.insertCell();resourceCell.colSpan=5;
-    window.gprResourceEditor?.addButtons(resourceCell,work.value,item.id);
   });
   panel.append(table);
   const missing=allItems.filter(item=>!items.some(included=>included.id===item.id));

@@ -30,6 +30,7 @@
     host.append(fold);container.append(host);renderHost(host);return host;
   }
   function wireWork(row) {
+    if(data.table_mode){row.querySelector('[data-parent-resource-actions]')?.remove();return;}
     const work=row.querySelector('[name$="-work"]');
     let host=row.querySelector('[data-parent-resource-actions]');
     if(!work?.value||isComposite(work.value)&&!legacyFor(work.value)){host?.remove();return;}
@@ -67,7 +68,8 @@
     const tokens=links.filter(t=>t.work_item_id||!isComposite(t.work_id)).map(t=>t.work_item_id?'item:'+t.work_id+':'+t.work_item_id:'work:'+t.work_id);
     const picker=editor.querySelector('[data-resource-target-picker]');
     window.workResourceTargets.set(picker,kind==='fuel'?'object':work?'works':'object',kind==='fuel'?[]:tokens);
-    picker.hidden=kind==='fuel';
+    if(data.table_mode&&!assignment){window.workResourceTargets.set(picker,'object',[]);}
+    picker.hidden=kind==='fuel'||data.table_mode;
     if(kind==='fuel')editor.querySelector('#work-resource-target').textContent='ГСМ · только общие ресурсы объекта';
     if(assignment?.legacy_package)editor.querySelector('#work-resource-target').textContent='Ранее ресурс был назначен на комплекс. Выберите работы внутри комплекса или общие ресурсы объекта.';
     field('refresh_crew').closest('p').hidden=!assignment||kind!=='equipment';
@@ -86,9 +88,10 @@
     const detail=document.createElement('p');detail.className='small mb-2 mt-2';
     const kind=projection?.kind||assignment.resource_kind;
     detail.textContent=kind==='fuel'?format.format(Number(projection?.liters||assignment.daily_liters))+' л/день':format.format(projection?.count??assignment.count)+(kind==='equipment'?' ед.':projection?' чел. за день':' чел. на смену')+' · '+assignment.shifts_per_day+' смен/день · '+assignment.hours_per_shift+' ч/смену';
+    if(data.table_mode)detail.textContent=kind==='fuel'?format.format(Number(projection?.liters||assignment.daily_liters))+' л/день':format.format(projection?.count??assignment.count)+(kind==='equipment'?' ед.':' чел.');
     const shortDate=value=>value.split('-').reverse().join('.');
-    detail.append(document.createTextNode(' · '+shortDate(assignment.start_date)+' — '+shortDate(assignment.end_date)));box.append(title);if(!compact)box.append(badge);box.append(detail);
-    if(assignment.shared){
+    if(!data.table_mode)detail.append(document.createTextNode(' · '+shortDate(assignment.start_date)+' — '+shortDate(assignment.end_date)));box.append(title);if(!compact&&!data.table_mode)box.append(badge);box.append(detail);
+    if(assignment.shared&&!data.table_mode){
       const shared=document.createElement('details');shared.className='work-resource-shared';shared.dataset.sharedResource='';
       const summary=document.createElement('summary');summary.textContent='Общий ресурс · работ: '+assignment.targets.length+' · учтён один раз';shared.append(summary);
       const links=document.createElement('ul');assignment.targets.forEach(t=>{const item=document.createElement('li');item.textContent=t.label;links.append(item);});shared.append(links);box.append(shared);
@@ -143,6 +146,7 @@
   }
 
   function renderWorkLists() {
+    if(data.table_mode){document.querySelectorAll('[data-work-resource-target][data-resource-work]:not([data-resource-work=""])').forEach(h=>h.remove());return;}
     document.querySelectorAll('[data-work-resource-target]').forEach(renderHost);
     if(editor&&!editor.isConnected)mountEditor();
   }

@@ -110,6 +110,9 @@ def transfer_rows(model, company, source, target, identity, fields, rate, audit,
                 existing.comment = '\n'.join(filter(None, [existing.comment, row.comment]))
             existing.full_clean()
             existing.save()
+            if model._meta.label_lower=='planning.resourcemonthallocation':
+                from apps.planning.resource_links import copy_links
+                copy_links(row,existing,existing.version)
             row.delete()
         else:
             setattr(row, relation, target)

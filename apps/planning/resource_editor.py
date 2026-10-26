@@ -26,11 +26,11 @@ def planned_targets(owner):
         if allocation.selected_item_ids:selected[allocation.work_id].update(allocation.selected_item_ids)
         else:full.add(allocation.work_id)
     from apps.works.models import ProjectWork
-    works=list(ProjectWork.objects.filter(company=owner.company,pk__in=ids).prefetch_related('items').order_by('name','pk'))
+    works=list(ProjectWork.objects.filter(company=owner.company,pk__in=ids).select_related('complex_object').prefetch_related('items').order_by('name','pk'))
     targets=[]
     for work in works:
         items=[item for item in work.items.all() if item.company_id==owner.company_id and (work.pk in full or item.pk in selected[work.pk])]
-        targets.append({'id':work.pk,'name':work.name,'kind':work.kind,'items':[{'id':item.pk,'name':item.name} for item in items]})
+        targets.append({'id':work.pk,'name':work.name,'kind':work.kind,'object_id':work.complex_object_id or '', 'object_name':work.complex_object.name if work.complex_object_id else 'Без комплексного объекта','items':[{'id':item.pk,'name':item.name} for item in items]})
     return targets
 
 
@@ -76,6 +76,7 @@ def serialize(assignment):
         projected.append({'kind':'labor','identity':member['brigade_id'],'label':member['name']+(' *' if member['is_replacement'] else ''),'count':assignment.count*assignment.shifts_per_day*member['count']})
     return {'id':assignment.pk,'work':assignment.work_id or '', 'work_item':assignment.work_item_id or '',
         'targets':targets, 'shared':len(targets)>1,
+        'crew_people':[{'id':m['position_id'],'name':m['name'],'count':m['count']} for m in assignment.crew_snapshot],
         'legacy_package':bool(assignment.work_id and assignment.work.kind=='COMPOSITE' and not assignment.work_item_id),
         'resource_kind':'fuel' if assignment.fuel_type else 'equipment' if assignment.equipment_type_id else 'labor',
         'equipment_type':assignment.equipment_type_id or '', 'position':assignment.position_id or '',
@@ -158,7 +159,7 @@ def context(user,owner,month=None,snapshot=None):
     return {'resource_assignment_url':reverse('planning:work_resources_save_smg' if isinstance(owner,DailySchedule) else 'planning:preparation_add_assignment',args=[owner.pk]),'gpr_handoff_form':handoff_form,'resources_ready':bool(record and record.resources_ready_at and record.resources_fingerprint==preparation.resource_signature(owner)),
         'estimator_approved':estimate_review.check_valid(owner,latest),'can_prepare_resources':allowed,'can_confirm_resources':confirm_allowed,'resource_owner':owner,
         'inline_resource_form':InlineAssignmentForm(owner=owner,initial={'start_date':start,'end_date':end,'count':1,'shifts_per_day':1,'hours_per_shift':8,'include_crew':True}),
-        'resource_editor_data':{'targets':targets,'assignments':[serialize(a) for a in work_resources.owner_rows(owner)],
+        'resource_editor_data':{'table_mode':True,'targets':targets,'assignments':[serialize(a) for a in work_resources.owner_rows(owner)],
             'start_date':start.isoformat(),'end_date':end.isoformat(),'can_edit':allowed},
         'resource_targets':targets,'resource_preparation':record,**preparation.task_context(user,owner)}
 
@@ -215,4 +216,4 @@ def attach_matrix_resources(context):
     for obj in context.get('objects',[]):
         for section in obj.get('sections',[]):
             if section['kind']=='works':visit(section.get('groups',[]))
-    context.update(show_matrix_resources=True,inline_approval_actions=True,resource_matrix_colspan=len(context.get('columns',[]))+2)
+    context.update(show_matrix_resources=False,inline_approval_actions=True,resource_matrix_colspan=len(context.get('columns',[]))+2)

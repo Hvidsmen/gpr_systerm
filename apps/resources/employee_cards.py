@@ -24,7 +24,7 @@ class EmployeeDetail(CompanyScopedMixin, DetailView):
     template_name = 'resources/employee_detail.html'
 
     def get_queryset(self):
-        return super().get_queryset().select_related('position')
+        return super().get_queryset().select_related('position__planning_mapping__brigade')
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -40,6 +40,13 @@ class EmployeeDetail(CompanyScopedMixin, DetailView):
             ('Количество ставок', data.get('fte', '—')),
             ('График работы', data.get('schedule') or '—'),
         ]
+        mapping=getattr(employee.position,'planning_mapping',None) if employee.position_id else None
+        if mapping and mapping.company_id==employee.company_id and mapping.brigade.company_id==employee.company_id:
+            from urllib.parse import urlencode
+            from .models import BrigadeMerge
+            merged=BrigadeMerge.objects.filter(company_id=employee.company_id,source_id=mapping.brigade_id).select_related('target').first()
+            context['catalogue_job']=merged.target if merged else mapping.brigade
+            context['catalogue_job_url']=reverse('resources:brigade_list')+'?'+urlencode({'q':context['catalogue_job'].name})
         context['position_since'] = date_text(data.get('staffing_since' if employee.position_from_staffing else 'position_since'))
         context['position_source'] = data.get('staffing_source' if employee.position_from_staffing else 'position_source', '')
         context['position_reason'] = {

@@ -93,3 +93,8 @@ urlpatterns += [path('employees/<int:pk>/position-check/',employee_position_repo
 
 from .zup_positions import from_employees
 urlpatterns += [path('brigades/from-zup-employees/',from_employees,name='brigade_zup_employees')]
+
+from .brigade_batch_merge import batch_merge
+from .zup_positions import link_employees
+urlpatterns += [path('brigades/merge-first/',batch_merge,name='brigade_batch_merge'),
+                path('brigades/link-employees/',link_employees,name='brigade_link_employees')]

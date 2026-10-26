@@ -26,6 +26,7 @@
 <section class="employee-card-section" id="employment">
   <h2>{% if employee.is_active %}Место работы{% else %}Последнее место работы{% endif %}</h2>
   <dl>{% for label,value in employment_rows %}<dt>{{ label }}</dt><dd>{{ value }}</dd>{% endfor %}</dl>
+  <p class="small">Должность в справочнике: {% if catalogue_job %}<a href="{{ catalogue_job_url }}">{{ catalogue_job.name }} · {{ catalogue_job.code }}</a> <span class="text-success">Связана</span>{% else %}<span class="text-muted">Не связана. Выполните связывание должностей сотрудников в справочнике; при нескольких совпадениях сначала объедините дубли.</span>{% endif %}</p>
   {% if employee.position_from_staffing %}<p class="text-muted small">Показано наименование штатной позиции ЗУП. Связь с отдельным справочником должностей не расшифрована.</p>{% endif %}
   {% if position_source %}<p class="text-muted small mb-0">Источник должности: {{ position_source }}{% if position_since != '—' %} · запись от {{ position_since }}{% endif %}.</p>{% elif employee.zup_ref and not employee.display_position %}<p class="text-muted small mb-0">{% if position_reason %}{{ position_reason }}{% else %}Последняя загрузка не вернула должность или наименование штатной позиции.{% endif %} Администратор может скачать проверку должности (ZIP).</p>{% endif %}
 </section>

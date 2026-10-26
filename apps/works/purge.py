@@ -65,6 +65,10 @@ class WorkPurge:
             if self.references(version.snapshot):version_ids.add(version.pk)
         for review in GlobalPlanReview.objects.filter(company=user.company).only('version_id','snapshot').iterator(chunk_size=10):
             if self.references(review.snapshot):version_ids.add(review.version_id)
+        from apps.planning.models import ResourceWorkLink
+        table_links=ResourceWorkLink.objects.filter(company=user.company).filter(Q(work_id__in=self.ids)|Q(work_item_id__in=self.item_ids))
+        version_ids.update(table_links.exclude(allocation=None).values_list('allocation__version_id',flat=True))
+        schedule_ids.update(table_links.exclude(entry=None).values_list('entry__schedule_id',flat=True))
         project_ids=set()
         for member in ProjectPlanMember.objects.filter(company=user.company).only('consolidated_version_id','snapshot').iterator(chunk_size=10):
             if self.references(member.snapshot):project_ids.add(member.consolidated_version_id)

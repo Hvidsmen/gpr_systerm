@@ -169,6 +169,10 @@ def copy_assignments(source,target,*,copy_original=False,start_on=None):
         if target.resource_assignments.filter(key=old.key).exists():continue
         data={field:getattr(old,field) for field in ['key','work_id','work_item_id','equipment_type_id','position_id','count','shifts_per_day','hours_per_shift','fuel_type','daily_liters','fuel_price','include_crew','crew_snapshot']}
         if old.fuel_type:data.update(work_id=None,work_item_id=None)
+        from apps.resources.brigade_merge_refs import position_aliases,remap_crew
+        aliases=position_aliases(target.company)
+        if data['position_id'] in aliases:data['position_id']=aliases[data['position_id']]['position_id']
+        if any(m.get('position_id') in aliases for m in data['crew_snapshot']):data['crew_snapshot']=remap_crew(data['crew_snapshot'],aliases)
         data.update(start_date=max(start,old.start_date),end_date=min(end,old.end_date),company=target.company)
         data['schedule' if isinstance(target,DailySchedule) else 'version']=target
         copied = WorkResourceAssignment.objects.create(**data)

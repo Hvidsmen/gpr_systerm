@@ -1,5 +1,6 @@
 """Work/resource connections, with shared counts and optimistic concurrency."""
 import json
+from copy import deepcopy
 from calendar import monthrange
 from datetime import date
 from django.contrib.auth.decorators import login_required
@@ -10,7 +11,7 @@ from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST
 from core.permissions import scope_queryset
-from .models import GlobalPlanVersion, DailySchedule
+from .models import GlobalPlanVersion, DailySchedule, ResourceMonthAllocation, DailyScheduleEntry
 from . import resource_editor, resource_targets, work_resources, estimate_review
 
 
@@ -34,6 +35,9 @@ def graph(request, pk, kind='gpr'):
         if month>end or month.replace(day=monthrange(month.year,month.month)[1])<start:raise ValueError
     except (ValueError,TypeError):raise Http404('Месяц вне периода плана.')
     context=resource_editor.context(request.user,owner,month)
+    from . import resource_links
+    context['resource_editor_data']['assignments'].extend(resource_links.resources(owner,month,request.user))
+    context['resource_editor_data']['table_mode']=False
     form=context['inline_resource_form']
     choices=dict(form.fields['targets'].choices)
     work_ids=set()
@@ -52,7 +56,7 @@ def graph(request, pk, kind='gpr'):
     for token,label in choices.items():
         parts=token.split(':'); work=next(t for t in context['resource_targets'] if t['id']==int(parts[1]))
         node={'token':token,'label':label,'name':next((i['name'] for i in work['items'] if len(parts)==3 and i['id']==int(parts[2])),work['name']),
-            'group':label.rsplit(' → ',1)[0] if len(parts)==3 else 'Самостоятельные работы','planned':token in visible}
+            'object_id':str(work.get('object_id','')),'object_name':work.get('object_name','Без комплексного объекта'),'package_id':str(work['id']) if work['kind']=='COMPOSITE' else '', 'package_name':work['name'] if work['kind']=='COMPOSITE' else '', 'group':label.rsplit(' → ',1)[0] if len(parts)==3 else 'Самостоятельные работы','planned':token in visible}
         if token in visible|linked:nodes.append(node)
     known={n['token'] for n in nodes}
     for a in active:
@@ -78,12 +82,40 @@ def links(request,pk,kind='gpr'):
         payload=json.loads(request.body)
         if not isinstance(payload,dict) or set(payload)-{'assignment_id','revision','targets'}:raise ValueError
         assignment_id=payload.get('assignment_id')
-        if type(assignment_id) is not int:raise ValueError
+        table_key=isinstance(assignment_id,str) and assignment_id.startswith(('allocation:','entry:'))
+        if type(assignment_id) is not int and not table_key:raise ValueError
         tokens=payload.get('targets')
         if not isinstance(tokens,list) or len(tokens)>500 or any(not isinstance(t,str) for t in tokens) or len(tokens)!=len(set(tokens)):raise ValueError
         with transaction.atomic():
             owner=type(owner).objects.select_for_update().get(pk=owner.pk,company=request.user.company)
             work_resources.editable(request.user,owner)
+            if table_key:
+                from . import resource_links
+                kind_key,raw_id=assignment_id.split(':')
+                query=owner.resource_allocations if kind_key=='allocation' and not isinstance(owner,DailySchedule) else owner.entries if kind_key=='entry' and isinstance(owner,DailySchedule) else None
+                if query is None:raise ValueError
+                source=get_object_or_404(query.select_for_update(),pk=int(raw_id))
+                if kind_key=='entry' and (source.kind=='work' or source.key.startswith('assignment:')):raise ValueError
+                if payload.get('revision')!=resource_links.revision(source):return JsonResponse({'error':'Ресурс уже изменён. Обновите страницу.'},status=409)
+                if isinstance(owner,DailySchedule) and owner.locked_before and any(r['date']<owner.locked_before.isoformat() for r in source.rows):raise ValidationError('Связи этого ресурса зафиксированы в закрытых днях СМГ.')
+                form=resource_editor.InlineAssignmentForm(owner=owner)
+                allowed=dict(form.fields['targets'].choices)
+                previous={target_token(w,i) for w,i in resource_links.pairs(source)}
+                if any(t not in allowed and t not in previous for t in tokens):raise ValidationError('Выберите сохранённые работы этого плана.')
+                pairs=[]
+                for t in tokens:
+                    bits=t.split(':')
+                    if bits[0] not in ['work','item'] or len(bits)!=(3 if bits[0]=='item' else 2):raise ValueError
+                    pairs.append((int(bits[1]),int(bits[2]) if len(bits)==3 else None))
+                resource_links.replace(source,owner,pairs)
+                if kind_key=='entry':
+                    source.rows=resource_links.annotate_rows(deepcopy(source.rows),pairs)
+                    source.metadata={**source.metadata,'work_targets':[{'work_id':w,'work_item_id':i} for w,i in pairs]};source.revision+=1
+                    source.save(update_fields=['rows','metadata','revision'])
+                else:source.save(update_fields=['updated_at'])
+                from apps.audit.models import AuditLog
+                AuditLog.objects.create(user=request.user,action='UPDATE',entity_type='planning.ResourceWorkLink',entity_id=assignment_id,new_value={'targets':pairs},comment='Изменены только связи табличного ресурса с работами')
+                return JsonResponse({'assignment':resource_links.serialize(source,owner,request.user),'workflow':resource_editor.workflow_state(owner)})
             assignment=get_object_or_404(owner.resource_assignments.select_for_update(),pk=assignment_id)
             if payload.get('revision')!=assignment.updated_at.isoformat():return JsonResponse({'error':'Назначение уже изменено. Обновите страницу, чтобы получить актуальные связи.'},status=409)
             form=resource_editor.InlineAssignmentForm(owner=owner,instance=assignment)

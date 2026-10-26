@@ -15,9 +15,40 @@
  // The menu also offers saved works in the other months of this plan.
  const choices=new Map(nodes);
  for(const work of data.targets){
-  if(work.kind!=='COMPOSITE')choices.set('work:'+work.id,choices.get('work:'+work.id)||{token:'work:'+work.id,label:work.name,name:work.name,group:'Самостоятельные работы'});
-  for(const item of work.items)choices.set('item:'+work.id+':'+item.id,choices.get('item:'+work.id+':'+item.id)||{token:'item:'+work.id+':'+item.id,label:work.name+' → '+item.name,name:item.name,group:work.name});
+  if(work.kind!=='COMPOSITE')choices.set('work:'+work.id,choices.get('work:'+work.id)||{...hierarchy,token:'work:'+work.id,label:work.name,name:work.name,group:'Самостоятельные работы'});
+  for(const item of work.items)choices.set('item:'+work.id+':'+item.id,choices.get('item:'+work.id+':'+item.id)||{...hierarchy,token:'item:'+work.id+':'+item.id,label:work.name+' → '+item.name,name:item.name,group:work.name});
  }
+
+ const unique=items=>[...new Map(items.map(i=>[String(i.value),{value:String(i.value),label:i.label}])).values()].sort((a,b)=>a.label.localeCompare(b.label,'ru'));
+ function hierarchyFilters(container,onchange){
+  let filters;
+  const change=()=>{refresh();onchange();};
+  filters={object:window.graphMultiselect.create(container,'Комплексные объекты',[],change),package:window.graphMultiselect.create(container,'Комплексные работы',[],change),work:window.graphMultiselect.create(container,'Работы',[],change)};
+  function refresh(){
+   const values=[...choices.values()];filters.object.setOptions(unique(values.map(n=>({value:n.object_id||'',label:n.object_name||'Без комплексного объекта'}))));
+   const objects=filters.object.values();const inObjects=values.filter(n=>!objects.length||objects.includes(n.object_id||''));
+   filters.package.setOptions(unique(inObjects.filter(n=>n.package_id).map(n=>({value:n.package_id,label:(n.object_name?n.object_name+' → ':'')+n.package_name}))));
+   const packages=filters.package.values();filters.work.setOptions(unique(inObjects.filter(n=>!packages.length||packages.includes(n.package_id)).map(n=>({value:n.token,label:n.label}))));
+  }
+  function matches(n){const objects=filters.object.values(),packages=filters.package.values(),works=filters.work.values();return (!objects.length||objects.includes(n.object_id||''))&&(!packages.length||packages.includes(n.package_id||''))&&(!works.length||works.includes(n.token));}
+  refresh();return {filters,matches,clear:()=>{Object.values(filters).forEach(f=>f.set([]));refresh();}};
+ }
+ const graphFilters=hierarchyFilters(q('[data-graph-selectors]'),()=>render());
+ const gearFilter=window.graphMultiselect.create(q('[data-graph-selectors]'),'Техника',[],()=>render());
+ const roleFilter=window.graphMultiselect.create(q('[data-graph-selectors]'),'Должности',[],()=>render());
+ function refreshResourceFilters(){
+  gearFilter.setOptions(unique(data.assignments.filter(a=>a.resource_kind==='equipment').map(a=>({value:a.equipment_type,label:a.label}))));
+  roleFilter.setOptions(unique(data.assignments.flatMap(a=>a.resource_kind==='labor'?[{value:a.position,label:a.label}]:(a.crew_people||[]).map(p=>({value:p.id,label:p.name})))));
+ }
+ function matchResource(a){
+  const gear=gearFilter.values(),roles=roleFilter.values();
+  const roleMatch=roles.includes(String(a.position))||(a.crew_people||[]).some(p=>roles.includes(String(p.id)));
+  if(gear.length&&roles.length)return a.resource_kind==='equipment'&&gear.includes(String(a.equipment_type))||a.resource_kind==='labor'&&roleMatch;
+  if(gear.length)return a.resource_kind==='equipment'&&gear.includes(String(a.equipment_type));
+  return !roles.length||roleMatch;
+ }
+ const dialogFilters=hierarchyFilters(dq('[data-graph-dialog-selectors]'),()=>filterDialogRows());
+ function filterDialogRows(){const words=norm(dq('[data-graph-dialog-search]').value).split(/\s+/).filter(Boolean);for(const row of dq('[data-graph-link-rows]').children)row.hidden=!dialogFilters.matches(choices.get(row.dataset.token))||!words.every(w=>row.dataset.search.includes(w));}
  let selected=null,pendingSource=null,drag=null,dragPath=null,editing=null,saving=false,dialogDirty=false,frame=null;
  const setStatus=(state,text)=>{status.dataset.state=state;status.textContent=text;};
  function el(tag,cls,text){const node=document.createElement(tag);if(cls)node.className=cls;if(text!==undefined)node.textContent=text;return node;}
@@ -39,27 +70,27 @@
  function resourceCard(a,fuel=false){
   const card=el('article','rg-node rg-resource-node');card.dataset.graphNode='resource';card.dataset.key=String(a.id);card.dataset.kind=a.resource_kind;
   const title=button(a.label,()=>select('resource',String(a.id)),'rg-node-title');card.append(title);
-  card.append(el('p','rg-node-meta',fuel?moneyless.format(Number(a.daily_liters))+' л/день':a.count+(a.resource_kind==='equipment'?' ед. на смену':' чел. на смену')+' · '+a.shifts_per_day+' смен/день · '+a.hours_per_shift+' ч/смену'));
-  card.append(el('p','rg-node-meta',range(a)));
-  if(a.resource_kind==='equipment'){
-   const crew=el('div','rg-crew');crew.append(el('strong','',a.include_crew?'Экипаж на единицу и смену: ':'Без экипажа'));if(a.include_crew)crew.append(document.createTextNode(a.crew||'не указан'));card.append(crew);
+  card.append(el('p','rg-node-meta',a.quantity_label||(fuel?moneyless.format(Number(a.daily_liters))+' л/день':a.count+(a.resource_kind==='equipment'?' ед.':' чел.'))));
+  if(a.resource_kind==='equipment'&&a.include_crew){
+   const crew=el('details','rg-crew');crew.append(el('summary','',a.include_crew?'Экипаж':'Без экипажа'));if(a.include_crew)crew.append(el('div','',a.crew||'не указан'));card.append(crew);
   }
   if(!fuel)card.append(port('resource',String(a.id)));
   const foot=el('div','rg-node-foot');foot.append(el('span','',fuel?'Только объект':a.targets.length?'Связей с работами: '+a.targets.length:'Общие ресурсы объекта'));
   if(!fuel){const menu=button(cfg.can_edit?'Настроить связи':'Посмотреть связи',()=>openDialog(a));menu.dataset.graphMenu=String(a.id);foot.append(menu);}
-  if(cfg.can_edit){const edit=button('Изменить ресурс',()=>{if(!canChange())return;api.open(a.resource_kind,a.work,a.work_item,a,q('[data-graph-editor]'));});edit.dataset.graphEdit=String(a.id);foot.append(edit);}
+  if(cfg.can_edit){const edit=button('Изменить ресурс',()=>{if(!canChange())return;if(a.open_table_url){window.location.assign(a.open_table_url);return;}api.open(a.resource_kind,a.work,a.work_item,a,q('[data-graph-editor]'));});edit.dataset.graphEdit=String(a.id);foot.append(edit);}
   card.append(foot);
   if(!fuel&&a.targets.length){const listing=el('details','rg-connection-list');listing.append(el('summary','', 'Связанные работы'));for(const t of a.targets){listing.append(button(choices.get(token(t))?.name||t.item_name||t.work_name,()=>openDialog(a,token(t))));}card.append(listing);}
   return card;
  }
  function render(){
+  refreshResourceFilters();
   root.querySelectorAll('.rg-group').forEach(g=>groups.set(g.dataset.group,g.open));
   const search=norm(q('[data-graph-search]').value).split(/\s+/).filter(Boolean),filter=q('[data-graph-filter]').value;
   const matches=text=>search.every(w=>norm(text).includes(w));
   const assignments=data.assignments.filter(active),regular=assignments.filter(a=>a.resource_kind!=='fuel');
-  let visibleResources=regular.filter(a=>(filter==='all'||filter==='unlinked'&&!links(a).length||filter===a.resource_kind)&&(!search.length||matches(a.label+' '+a.crew)||links(a).some(t=>matches(choices.get(token(t))?.label||t.label))));
+  let visibleResources=regular.filter(a=>matchResource(a)&&(filter==='all'||filter==='unlinked'&&!links(a).length||filter===a.resource_kind)&&(!search.length||matches(a.label+' '+a.crew)||links(a).some(t=>matches(choices.get(token(t))?.label||t.label))));
   const connected=new Set(visibleResources.flatMap(a=>links(a).map(token)));
-  const visibleNodes=cfg.nodes.filter(n=>!search.length||matches(n.label)||connected.has(n.token));
+  const visibleNodes=cfg.nodes.filter(n=>graphFilters.matches(choices.get(n.token)||n)&&(!search.length||matches(n.label)||connected.has(n.token)));
   const workHost=q('[data-graph-works]'),resourceHost=q('[data-graph-resources]');workHost.replaceChildren();resourceHost.replaceChildren();
   const sections=new Map();
   for(const n of visibleNodes){
@@ -120,14 +151,15 @@
    const label=el('label'),check=el('input');check.type='checkbox';check.value=key;check.checked=selected.has(key);label.append(check,document.createTextNode(n.label));row.append(label);
    host.append(row);
   }
-  dq('[data-graph-dialog-search]').value='';dq('[data-graph-save]').hidden=!cfg.can_edit;updateSelection();dialog.showModal();
+  dialogFilters.clear();dq('[data-graph-dialog-search]').value='';dq('[data-graph-save]').hidden=!cfg.can_edit;updateSelection();dialog.showModal();
   if(focusToken){const row=host.querySelector('[data-token="'+CSS.escape(focusToken)+'"]');row?.scrollIntoView({block:'center'});row?.querySelector('[type=checkbox]')?.focus();}
   if(add)setStatus('dirty','Есть изменения связей');
  }
  function closeDialog(){if(saving)return;if(dialogDirty&&!window.confirm('Отменить несохранённые изменения связей?'))return;dialogDirty=false;dialog.close();setStatus('saved','Сохранено');}
- dq('[data-graph-links-form]').addEventListener('change',()=>{dialogDirty=true;updateSelection();setStatus('dirty','Есть изменения связей');});
- dq('[data-graph-links-form]').addEventListener('input',event=>{if(event.target.matches('[data-graph-dialog-search]'))return;dialogDirty=true;setStatus('dirty','Есть изменения связей');});
- dq('[data-graph-dialog-search]').addEventListener('input',event=>{const words=norm(event.target.value).split(/\s+/).filter(Boolean);for(const row of dq('[data-graph-link-rows]').children)row.hidden=!words.every(w=>row.dataset.search.includes(w));});
+ dq('[data-graph-links-form]').addEventListener('change',event=>{if(event.target.closest('.rg-multi'))return;dialogDirty=true;updateSelection();setStatus('dirty','Есть изменения связей');});
+ dq('[data-graph-links-form]').addEventListener('input',event=>{if(event.target.matches('[data-graph-dialog-search]')||event.target.closest('.rg-multi'))return;dialogDirty=true;setStatus('dirty','Есть изменения связей');});
+ dq('[data-graph-dialog-search]').addEventListener('input',filterDialogRows);
+ dialog.addEventListener('keydown',event=>{if(event.key==='Enter'&&event.target.type==='search')event.preventDefault();});
  dialog.addEventListener('cancel',event=>{event.preventDefault();closeDialog();});dialog.querySelectorAll('[data-graph-cancel]').forEach(b=>b.addEventListener('click',closeDialog));
  dq('[data-graph-links-form]').addEventListener('submit',async event=>{
   event.preventDefault();if(saving||!cfg.can_edit||!editing)return;
@@ -144,7 +176,7 @@
   finally{saving=false;dq('[data-graph-save]').disabled=false;}
  });
  root.querySelectorAll('[data-graph-add]').forEach(b=>b.addEventListener('click',()=>{if(canChange())api.open(b.dataset.graphAdd,'','',null,q('[data-graph-editor]'));}));
- q('[data-graph-search]').addEventListener('input',render);q('[data-graph-filter]').addEventListener('change',render);q('[data-graph-reset]').addEventListener('click',()=>{selected=null;pendingSource=null;highlight();announce('Нажмите работу или ресурс, чтобы выделить связи.');});
+ q('[data-graph-search]').addEventListener('input',render);q('[data-graph-filter]').addEventListener('change',render);q('[data-graph-reset]').addEventListener('click',()=>{graphFilters.clear();gearFilter.set([]);roleFilter.set([]);q('[data-graph-search]').value='';q('[data-graph-filter]').value='all';selected=null;pendingSource=null;render();announce('Нажмите работу или ресурс, чтобы выделить связи.');});
  board.addEventListener('toggle',scheduleDraw,true);
  board.addEventListener('pointerdown',event=>{
   const p=event.target.closest('[data-graph-port="work"]');if(!p||!canChange()||event.button!==0)return;

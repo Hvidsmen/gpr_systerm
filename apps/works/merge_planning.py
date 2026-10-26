@@ -100,6 +100,7 @@ def transform_snapshot(snapshot, company):
 
 def input_fingerprint(version):
     from apps.planning.resource_targets import assignment_values
+    from apps.planning.resource_links import binding_values
     import hashlib, json
 
     works = list(
@@ -160,6 +161,7 @@ def input_fingerprint(version):
                 "works": works,
                 "resources": resources,
                 **({"resource_assignments":assignment_values(version)} if version.resource_assignments.exists() else {}),
+                **({"resource_work_links":binding_values(version)} if binding_values(version) else {}),
                 "metadata": metadata,
                 "history": history,
             },

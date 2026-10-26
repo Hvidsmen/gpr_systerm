@@ -128,6 +128,8 @@ def create(user,source,month,*,_skip_rebase=False):
             if entry.key not in included and (entry.original or entry.rows):
                 entries.append(DailyScheduleEntry(schedule=schedule,key=entry.key,kind=entry.kind,label=entry.label,metadata=deepcopy(entry.metadata),original=deepcopy(entry.original),rows=deepcopy(entry.rows)))
     DailyScheduleEntry.objects.bulk_create(entries)
+    from .resource_links import restore_schedule
+    restore_schedule(schedule)
     if active and active.resource_assignments.exists():
         from .work_resources import copy_assignments
         copy_assignments(active,schedule)

@@ -5,6 +5,7 @@ from .employee_staffing import staffing_parts
 
 
 class EmployeeFilterForm(forms.Form):
+    catalogue_position = forms.IntegerField(required=False,min_value=1,widget=forms.HiddenInput)
     q = forms.CharField(label='ФИО или табельный номер', required=False, max_length=250,
         widget=forms.TextInput(attrs={'type': 'search', 'class': 'form-control', 'placeholder': 'Введите имя, фамилию или номер'}))
     position = forms.CharField(label='Должность', required=False, max_length=250,
@@ -16,6 +17,7 @@ class EmployeeFilterForm(forms.Form):
 def filtered_employees(queryset, form):
     if not form.is_valid():
         return queryset.none()
+    if form.cleaned_data.get('catalogue_position'):queryset=queryset.filter(position_id=form.cleaned_data['catalogue_position'])
     if not form.cleaned_data['include_archived']:
         queryset = queryset.filter(is_active=True)
     terms = form.cleaned_data['q'].casefold().split()

@@ -17,6 +17,9 @@ def record(owner):
 def resource_signature(owner):
     from .resource_targets import assignment_values
     data={'assignments':assignment_values(owner)}
+    from .resource_links import binding_values
+    links=binding_values(owner)
+    if links:data['resource_work_links']=links
     if isinstance(owner,DailySchedule):data['resources']=list(owner.entries.exclude(kind='work').order_by('pk').values())
     else:
         start,end=estimate_review.review_period(owner)

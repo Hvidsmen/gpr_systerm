@@ -9,7 +9,8 @@
 {% with bulk_route='resources:bulk_delete' bulk_kind='brigades' %}
 {% include 'bulk/toolbar.html' %}
 {% if request.user|may:'resources:brigade_merge' %}<a class="btn btn-outline-primary mb-3" href="{% url 'resources:brigade_merge' %}">Объединить должности</a>{% endif %}
-{% for duplicates in brigade_duplicates %}<div class="alert alert-warning">Должность «{{ duplicates.0.name }}» имеет {{ duplicates|length }} записей в справочнике. При импорте выбирается первая (ID {{ duplicates.0.pk }}). Дубли можно объединить.</div>{% endfor %}
+{% if brigade_duplicates %}<section class="alert alert-warning"><div class="d-flex flex-wrap gap-2 align-items-center"><strong>Групп одинаковых должностей: {{ brigade_duplicates|length }}</strong>{% if request.user|may:'resources:brigade_batch_merge' %}<a class="btn btn-primary btn-sm" href="{% url 'resources:brigade_batch_merge' %}">Объединить все дубли по первой записи</a>{% endif %}</div><details class="mt-2"><summary>Показать дубли</summary>{% for duplicates in brigade_duplicates %}<div class="small mt-1">Должность «{{ duplicates.0.name }}» имеет {{ duplicates|length }} записей. Остаётся первая: ID {{ duplicates.0.pk }}.</div>{% endfor %}</details></section>{% endif %}
+{% if request.user|may:'resources:brigade_link_employees' %}<form method="post" action="{% url 'resources:brigade_link_employees' %}" class="mb-3">{% csrf_token %}<button class="btn btn-outline-primary">Связать должности сотрудников</button><span class="small text-muted ms-2">По данным ЗУП, только при единственном совпадении в справочнике.</span></form>{% endif %}
 {% if request.user|may:'resources:brigade_import' %}<a class="btn btn-outline-primary mb-3" href="{% url 'resources:brigade_import' %}">Загрузить из Excel</a>{% endif %}
 {% if request.user|may:'resources:brigade_group_list' %}<a class="btn btn-outline-secondary mb-3" href="{% url 'resources:brigade_group_list' %}">Группы</a><a class="btn btn-outline-secondary mb-3" href="{% url 'resources:brigade_macro_group_list' %}">Макрогруппы</a>{% endif %}
 <div class="d-flex justify-content-between align-items-center mb-4">
@@ -38,7 +39,7 @@
             <table class="table table-hover mb-0">
                 <thead class="table-light">
                     <tr>{% if request.user|may:bulk_route %}<th style="width:36px" aria-label="Выбор строк"></th>{% endif %}
-                        <th>Название</th><th>Группа</th><th>Макрогруппа</th>
+                        <th>Название</th><th>Сотрудники</th><th>Группа</th><th>Макрогруппа</th>
                         <th>Ед. изм.</th><th>Описание</th>
                         <th style="width: 100px;">Статус</th>
                         <th style="width: 150px;">Действия</th>
@@ -55,6 +56,7 @@
                             </small>
                             {% endif %}
                         </td>
+                        <td>{% if brigade.employee_count %}<a href="{% url 'resources:employee_list' %}?catalogue_position={{ brigade.position_mapping.position_id }}&amp;include_archived=1">{{ brigade.employee_count }}</a>{% else %}0{% endif %}</td>
                         <td>{{ brigade.group|default:"—" }}</td><td>{{ brigade.macro_group|default:"—" }}</td>
                         <td>{{ brigade.unit }}</td>
                         <td>

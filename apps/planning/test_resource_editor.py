@@ -151,7 +151,8 @@ class InlineResourceTests(TestCase):
         allocation.save()
         response=self.client.get(reverse('planning:global_detail',args=[self.version.pk]))
         self.assertEqual(response.status_code,200)
-        self.assertContains(response,'data-resource-work-plan')
+        self.assertNotContains(response,'data-matrix-resource-row')
+        self.assertContains(response,'Связи работ и ресурсов')
         target=response.context['resource_targets'][0]
         item=next(item for item in target['items'] if item['id']==self.a.pk)
         self.assertEqual(item['unit'],self.a.unit)
@@ -176,7 +177,7 @@ class InlineResourceTests(TestCase):
         response=self.client.get(reverse('planning:global_detail',args=[self.version.pk]))
         self.assertEqual(response.status_code,200)
         self.assertContains(response,'data-plan-action-header',count=1)
-        self.assertContains(response,'data-matrix-resource-row',count=2)
+        self.assertNotContains(response,'data-matrix-resource-row')
         self.assertNotContains(response,'<div class="table-responsive mt-2 mb-2" data-resource-work-plan>')
         self.assertContains(response,'Отправить на согласование',count=1)
         self.client.force_login(self.planner)

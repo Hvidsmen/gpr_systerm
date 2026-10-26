@@ -1521,3 +1521,19 @@ class PlanPreparation(BaseCompanyModel):
         constraints = [models.CheckConstraint(condition=(models.Q(version__isnull=False,schedule__isnull=True)|models.Q(version__isnull=True,schedule__isnull=False)),name='preparation_exactly_one_plan')]
 
 from .object_plan_models import ObjectWorkPlan, ObjectWorkPlanRow
+
+
+class ResourceWorkLink(BaseCompanyModel):
+    """Work links of monthly/day-table resources, without changing their numbers."""
+    allocation = models.ForeignKey(ResourceMonthAllocation,on_delete=models.CASCADE,null=True,blank=True,related_name='graph_links')
+    entry = models.ForeignKey(DailyScheduleEntry,on_delete=models.CASCADE,null=True,blank=True,related_name='graph_links')
+    work = models.ForeignKey('works.ProjectWork',on_delete=models.PROTECT,related_name='table_resource_links')
+    work_item = models.ForeignKey('works.ProjectWorkItem',on_delete=models.PROTECT,null=True,blank=True,related_name='table_resource_links')
+
+    class Meta:
+        ordering=['work_id','work_item_id','pk']
+        constraints=[models.CheckConstraint(condition=(models.Q(allocation__isnull=False,entry__isnull=True)|models.Q(allocation__isnull=True,entry__isnull=False)),name='one_table_resource_link_owner'),
+            models.UniqueConstraint(fields=['allocation','work','work_item'],condition=models.Q(work_item__isnull=False),name='unique_month_resource_item'),
+            models.UniqueConstraint(fields=['allocation','work'],condition=models.Q(work_item__isnull=True),name='unique_month_resource_work'),
+            models.UniqueConstraint(fields=['entry','work','work_item'],condition=models.Q(work_item__isnull=False),name='unique_day_resource_item'),
+            models.UniqueConstraint(fields=['entry','work'],condition=models.Q(work_item__isnull=True),name='unique_day_resource_work')]

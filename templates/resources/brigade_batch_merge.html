@@ -1,0 +1,12 @@
+{% extends 'base.html' %}{% block content %}
+<a href="{% url 'resources:brigade_list' %}">← Должности</a>
+<h1 class="h3 mt-3">Объединить дубли по первой записи</h1>
+<p>Для каждого одинакового названия остаётся запись с наименьшим ID. Её название, группа, макрогруппа и настройки сохраняются. Действие охватывает весь справочник вашей компании.</p>
+<div class="alert alert-info">Связи сотрудников, экипажей, текущего плана, факта и перевахты переносятся. Исходные записи архивируются, история утверждённых планов сохраняется. Группы с конфликтами не изменяются.</div>
+{% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+<p><strong>Групп к объединению: {{ preview.eligible|length }} · Дублей: {{ preview.sources }}</strong>{% if preview.blocked %} · С конфликтами: {{ preview.blocked }}{% endif %}</p>
+<div class="table-responsive"><table class="table align-middle"><thead><tr><th>Оставить первую</th><th>Объединить с ней</th><th>Связи группы</th><th>Результат</th></tr></thead><tbody>
+{% for group in preview.groups %}<tr><td><strong>{{ group.target.name }}</strong><div class="small text-muted">ID {{ group.target.pk }} · {{ group.target.group|default:'Без группы' }} · {{ group.target.macro_group|default:'Без макрогруппы' }} · {{ group.target.unit }}</div></td><td>{% for source in group.sources %}<div>{{ source.name }} <span class="text-muted">· ID {{ source.pk }} · {{ source.group|default:'Без группы' }}</span></div>{% endfor %}</td><td>Сотрудники: {{ group.employees }}<br>Экипажи: {{ group.crews }}<br>Назначения: {{ group.assignments }}</td><td>{% if group.errors %}{% for error in group.errors %}<div class="text-danger">{{ error }}</div>{% endfor %}{% else %}<span class="text-success">Можно объединить</span>{% endif %}</td></tr>{% empty %}<tr><td colspan="4">Дублей не найдено.</td></tr>{% endfor %}
+</tbody></table></div>
+{% if preview.eligible %}<form method="post" class="card card-body">{% csrf_token %}<input type="hidden" name="selection" value="{{ selection }}"><label class="form-check"><input type="checkbox" name="confirm" required class="form-check-input"> <span class="form-check-label">Подтверждаю объединение совместимых групп с сохранением первой записи.</span></label><div class="mt-3"><button class="btn btn-primary">Объединить {{ preview.sources }} дублей</button> <a href="{% url 'resources:brigade_list' %}" class="btn btn-outline-secondary">Отмена</a></div></form>{% endif %}
+{% endblock %}

@@ -214,11 +214,8 @@ def apply_employees(run, report):
     position_result,_ = sync_names(connection.company_id,[employee_job(values) for _,values in normalized])
     source = {'company_id': connection.company_id, 'zup_server': run.server.casefold(), 'zup_database': run.database.casefold()}
     existing = {e.zup_ref: e for e in Employee.objects.select_for_update().filter(**source).exclude(zup_ref='')}
-    positions = {}
-    for position in Position.objects.filter(company_id=connection.company_id).select_related('planning_mapping__brigade'):
-        mapping = getattr(position, 'planning_mapping', None)
-        name = mapping.brigade.name if mapping and mapping.company_id == connection.company_id and mapping.brigade.company_id == connection.company_id else position.name
-        positions.setdefault(name.strip().casefold(), []).append(position)
+    from apps.resources.position_catalog import position_index,position_key
+    positions=position_index(connection.company_id)
     counts = {'created': 0, 'updated': 0, 'unchanged': 0, 'archived': sum(not values['is_active'] for _, values in normalized),
               'without_position':sum(not (values['zup_position_name'] or values['zup_card'].get('staffing_position')) for _,values in normalized),
               'positions_result':position_result,
@@ -230,7 +227,7 @@ def apply_employees(run, report):
     if catalogue is not None:counts['position_diagnostics']['catalogue'] = catalogue
     now = timezone.now()
     for ref, values in normalized:
-        matches = positions.get(employee_job(values).casefold(), [])
+        matches = positions.get(position_key(employee_job(values)), [])
         values['position'] = matches[0] if len(matches) == 1 else None
         employee = existing.get(ref)
         if employee is None:

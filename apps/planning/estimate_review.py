@@ -65,6 +65,9 @@ def signature(obj,*,legacy=False,works_only=False):
         from .resource_targets import assignment_values
         assignments=assignment_values(obj)
         if assignments and not works_only:inputs['resource_assignments']=assignments
+        from .resource_links import binding_values
+        links=binding_values(obj)
+        if links and not works_only:inputs['resource_work_links']=links
     # Catalog timestamps are audit data, not planning inputs.
     for rows in (works,items,prices):
         for row in rows:

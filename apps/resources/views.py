@@ -2,6 +2,7 @@ from .crew_views import EquipmentCrewEditorMixin
 from .filters import CatalogFilterMixin, BrigadeFilterForm, EquipmentFilterForm
 from django.views.generic import ListView, CreateView
 from django.urls import reverse_lazy
+from django.db.models import Count,Q
 from django.contrib import messages
 from django.utils.translation import gettext_lazy as _
 
@@ -56,7 +57,7 @@ class BrigadeListView(CatalogFilterMixin, CompanyRequiredMixin, ListView):
     def get_queryset(self):
         return self.filter_queryset(Brigade.objects.filter(
             company=self.get_company(), merge_source__isnull=True
-        ).select_related('group', 'macro_group').order_by('code'))
+        ).select_related('group', 'macro_group','position_mapping__position').annotate(employee_count=Count('position_mapping__position__employees',filter=Q(position_mapping__position__employees__company=self.get_company()),distinct=True)).order_by('code'))
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -90,6 +91,7 @@ class BrigadeCreateView(CompanyRequiredMixin, CreateView):
 
 from django.views.generic import ListView, CreateView, UpdateView, DeleteView
 from django.urls import reverse_lazy
+from django.db.models import Count,Q
 from django.contrib import messages
 from core.mixins import CompanyRequiredMixin
 from .models import Brigade

@@ -269,7 +269,7 @@ def resource_identity(row, kind):
 
 
 def resource_input(row):
-    return {
+    result = {
         "profile": [],
         "month": row.month.isoformat(),
         "kind": row.kind,
@@ -293,6 +293,11 @@ def resource_input(row):
             )
         ),
     }
+
+    if row.kind!='fuel':
+        selected=[{'work_id':link.work_id,'work_item_id':link.work_item_id} for link in row.graph_links.all()]
+        if selected:result['work_targets']=selected
+    return result
 
 
 def resource_rows(workspace, source, month, total=None, days=None, rate=None):
@@ -323,6 +328,9 @@ def resource_rows(workspace, source, month, total=None, days=None, rate=None):
         )
         if kind != "fuel":
             row[RESOURCE_CONFIG[kind][4]] = count
+        if source.get('work_targets'):
+            row['work_targets']=deepcopy(source['work_targets'])
+            row['work_id']=source['work_targets'][0]['work_id'];row['work_item_id']=source['work_targets'][0].get('work_item_id')
         result.append(row)
     return result
 
@@ -434,7 +442,7 @@ def _build_workspace_snapshot(version, *, validate_inputs=True):
         resource_input(r)
         for r in version.resource_allocations.select_related(
             "brigade", "equipment_type"
-        )
+        ).prefetch_related("graph_links")
     ]
     if version.version_kind == "BASELINE":
         if not inputs and not resources and not version.resource_assignments.exists() and not workspace.continued_from_review_id and not workspace.is_macro_consolidation:
@@ -993,10 +1001,14 @@ class WorkspaceService:
                     existing.count += row.count
                     existing.hours = total_hours
                     existing.save()
+                    from .resource_links import copy_links
+                    copy_links(row,existing,version)
                     continue
-            ResourceMonthAllocation.objects.create(
+            copied=ResourceMonthAllocation.objects.create(
                 company=workspace.company, version=version, **fields
             )
+            from .resource_links import copy_links
+            copy_links(row,copied,version)
         return version
 
     @staticmethod

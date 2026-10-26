@@ -91,6 +91,8 @@ class BrigadeMergeForm(forms.Form):
 @transaction.atomic
 def merge_brigades(user, target_id, source_ids):
     require_roles(user, PLAN_ROLES)
+    from apps.accounts.models import Company
+    Company.objects.select_for_update().get(pk=user.company_id)
     ids = sorted(set(source_ids) | {target_id})
     records = {item.pk: item for item in Brigade.objects.select_for_update().filter(company=user.company,
         pk__in=ids, merge_source__isnull=True).order_by('pk')}
@@ -109,6 +111,8 @@ def merge_brigades(user, target_id, source_ids):
         if source.unit.strip().casefold() != target.unit.strip().casefold():
             raise ValidationError('Объединять можно только должности с одинаковыми единицами измерения.')
         audit = []
+        from .brigade_merge_refs import merge_position_references
+        merge_position_references(user.company,source,target,audit)
         transfer_rows(LaborPlan, user.company, source, target, ['construction_object_id', 'date'],
             ['planned_workers', 'planned_hours'], 'hourly_rate', audit, relation='brigade')
         transfer_rows(LaborFact, user.company, source, target, ['construction_object_id', 'date'],
