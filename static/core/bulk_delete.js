@@ -9,6 +9,7 @@
       group.indeterminate = !group.checked && Array.from(group.closest('.ct-branch').querySelectorAll('[data-bulk-row]')).some(row => row.checked);
     });
     const count = rows.filter(row => row.checked).length;
+    if (form.hasAttribute('data-bulk-contextual')) form.hidden = count === 0 && groupCount === 0;
     form.querySelector('[data-bulk-count]').textContent = groupCount ? `Выбрано: ${groupCount} комплексных объектов, ${count} работ` : `Выбрано: ${count}`;
     const submit=form.querySelector('[data-bulk-submit]');
     if(submit)submit.disabled = count === 0 && groupCount === 0;
@@ -28,7 +29,7 @@
       button.disabled = count < 2;
     });
     rows.forEach(row => {
-      const record = row.closest('tr,li');
+      const record = row.closest('tr,li,.ct-row');
       record?.classList.toggle('table-active', row.checked);
       record?.classList.toggle('bg-primary-subtle', row.checked);
     });

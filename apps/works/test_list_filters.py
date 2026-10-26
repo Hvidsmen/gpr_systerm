@@ -117,14 +117,14 @@ class WorkListFilterTests(TestCase):
                 name=f"Page work {i}",
                 unit="м",
             )
-        response = self.get(project=self.obj.project_id, work="Page work")
+        response = self.get(view="table", project=self.obj.project_id, work="Page work")
         self.assertTrue(response.context["is_paginated"])
         self.assertContains(
-            response, f"project={self.obj.project_id}&amp;work=Page+work&amp;page=2"
+            response, f"view=table&amp;project={self.obj.project_id}&amp;work=Page+work&amp;page=2"
         )
         self.assertEqual(
             len(
-                self.get(project=self.obj.project_id, work="Page work", page=2).context[
+                self.get(view="table", project=self.obj.project_id, work="Page work", page=2).context[
                     "works"
                 ]
             ),

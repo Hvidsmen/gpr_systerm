@@ -44,7 +44,7 @@ class ComplexObjectDetailTests(TestCase):
     def test_table_tree_switch_preserves_preference_and_composition(self):
         response=self.client.get(self.url,{'view':'table'})
         self.assertEqual(response.context['view_mode'],'table')
-        self.assertContains(response,'Вес, %')
+        self.assertContains(response,'Доля от суммы, %')
         self.assertNotContains(response,'data-tree-expand')
         for item in self.work.items.all():self.assertContains(response,item.name)
         self.assertEqual(self.client.get(self.url).context['view_mode'],'table')

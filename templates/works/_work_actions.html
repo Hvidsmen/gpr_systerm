@@ -1,0 +1,8 @@
+{% load access %}
+{% if request.user|may:'works:work_update' %}<span class="catalogue-row-menu">
+<button type="button" class="btn btn-sm btn-outline-secondary" data-row-menu aria-expanded="false" aria-controls="work-menu-{{ work.pk }}" aria-label="Действия с {{ work.name }}">⋯</button>
+<span class="catalogue-menu-panel" id="work-menu-{{ work.pk }}" hidden>
+<a href="{% url 'works:work_detail' work.pk %}?return_to={{ request.get_full_path|urlencode }}">Открыть карточку</a>
+<a href="{% url 'works:work_update' work.pk %}?return_to={{ request.get_full_path|urlencode }}">Редактировать</a>
+<a href="{% url 'works:catalogue_copy' 'package' work.pk %}">Копировать</a>{% if request.user|may:'works:work_delete' %}<a class="text-danger catalogue-menu-danger" href="{% url 'works:work_delete' work.pk %}">Удалить</a>{% endif %}</span>
+</span>{% endif %}

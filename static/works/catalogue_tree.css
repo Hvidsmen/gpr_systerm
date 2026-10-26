@@ -19,3 +19,8 @@
 .ct-section{margin:8px 0 14px}.ct-section>summary{border-radius:8px;background:#f5f8fa}.ct-icon-section{background:#fff1d8;color:#a97927}.ct-section-content{margin:8px 0 0 16px}.ct-packages-direct{margin-top:10px}@media(max-width:767px){.ct-section-content{margin-left:4px}}
 
 .ct-display-controls{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding:12px 20px;border-bottom:1px solid var(--ct-line);font-size:12px;color:#617c90}.ct-display-controls label{display:flex;align-items:center;gap:10px;margin:0}.ct-display-controls select{width:85px}.ct-display-controls [data-tree-page]{align-self:center}.catalogue-tree [hidden]{display:none!important}
+/* Catalogue levels share one title size; white work rows are connected by a line. */
+.catalogue-tree{overflow:visible}.ct-object{overflow:visible}.ct-heading strong,.ct-heading>a,.ct-item,.ct-item a{font-size:14px;font-weight:600;line-height:1.5}.ct-caption{font-size:12px}.ct-item-head{font-size:12px}.ct-items{border-top:0;margin-top:0}.ct-item{background:#fff;border:0;border-left:4px solid #087f9d;margin:8px 0;padding:12px}.ct-item:hover{background:#fff}.ct-packages{border-left:1px solid #d3e1eb}.ct-icon-work{background:transparent}.ct-status{font-size:12px}.ct-row .catalogue-row-menu{margin-left:auto}.ct-tag{white-space:normal}.ct-object>summary{border-radius:9px}.ct-package>summary{background:#fff}.ct-item-name{flex:1}.ct-item a.btn{font-weight:400;font-size:12px}.catalogue-tree button:focus-visible{outline:2px solid #087f9d;outline-offset:2px}
+
+.ct-leaf .ct-chevron{visibility:hidden}
+.ct-item .catalogue-menu-panel a{font-size:13px;font-weight:400}

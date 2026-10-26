@@ -1,180 +1,108 @@
 {% extends 'base.html' %}
-{% load access %}
-{% load i18n %}
-
-{% block title %}Работы - ЯДС ОС{% endblock %}
-
+{% load access static work_catalogue %}
+{% block title %}Справочник работ — ЯДС ОС{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'works/catalogue.css' %}?v=20261026-ux">{% endblock %}
 {% block content %}
-<p class="text-muted">Объект → Комплекс работ → Работы в составе комплекса. На объект также можно добавить самостоятельную работу. Раздел группирует комплексы и самостоятельные работы.</p>
-{% with bulk_route='works:bulk_delete' bulk_kind='works' %}
-{% include 'bulk/toolbar.html' %}
-<style>
-.work-list-filters { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; align-items:end; }
-.work-list-filters label { font-size:12px; margin-bottom:4px; }
-.work-list-filters .errorlist { color:#b02a37; font-size:12px; padding-left:16px; margin:4px 0 0; }
-@media(max-width:1199px) { .work-list-filters { grid-template-columns:repeat(3,minmax(0,1fr)); } }
-@media(max-width:575px) { .work-list-filters { grid-template-columns:1fr; } }
-.work-list-table { table-layout:fixed; width:100%; min-width:1150px; }
-.work-list-table th, .work-list-table td { padding:10px 12px; vertical-align:top; }
-.work-list-table .work-name { display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; overflow-wrap:anywhere; font-weight:600; line-height:1.45; }
-.work-list-table .work-meta { display:block; margin-top:4px; font-size:12px; }
-.work-list-table .work-location { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; line-height:1.5; }
-.work-list-table .work-section { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; overflow-wrap:anywhere; margin-top:3px; color:#6c757d; line-height:1.35; }
-.work-list-table .work-number { white-space:nowrap; font-size:13px; }
-.work-list-table .work-actions { display:inline-flex; white-space:nowrap; }
-.work-list-table .work-actions .btn { padding:4px 7px; }
-.work-list-table .badge { white-space:normal; line-height:1.25; }
-</style>
-<!-- Page header -->
-{% if request.user|may:'works:work_purge' %}<p><a class="btn btn-outline-danger" href="{% url 'works:work_purge' %}">Удалить все работы компании</a></p>{% endif %}
-<div class="page-header d-flex justify-content-between align-items-center">
-    <div>
-        <h1><i class="bi bi-list-task"></i> Работы</h1>
-        <nav aria-label="breadcrumb">
-            <ol class="breadcrumb">
-                <li class="breadcrumb-item">{% if request.user|may:'dashboard:index' %}<a href="{% url 'dashboard:index' %}">Главная</a>{% endif %}</li>
-                <li class="breadcrumb-item active">Работы</li>
-            </ol>
-        </nav>
-    </div>
-    <div>
-        {% if request.user|may:'works:work_create' %}<a class="btn btn-outline-primary" href="{% url 'works:schedule_import' %}">Импорт состава работ из Excel</a>{% endif %}
-        {% if request.user|may:'works:work_create' %}<a href="{% url 'works:batch_prepare' %}" class="btn btn-outline-primary">Подготовка работ и цен</a>{% endif %}
-        {% if request.user|may:'works:complex_object_update' %}<a href="{% url 'works:complex_object_list' %}#create-complex-object" class="btn btn-primary"><i class="bi bi-plus-circle"></i> Комплексный объект</a>{% endif %}
-        {% if request.user|may:'works:work_create' %}<a href="{% url 'works:work_create' %}?kind=COMPOSITE" class="btn btn-primary"><i class="bi bi-plus-circle"></i> Комплексная работа</a>
-        <a href="{% url 'works:work_create' %}?kind=SIMPLE" class="btn btn-primary"><i class="bi bi-plus-circle"></i> Простая работа</a>{% endif %}
-    </div>
+<section class="work-catalogue" data-catalogue-page>
+<header class="catalogue-header">
+  <div>
+<h1>Справочник работ</h1>
+<p>Состав комплексов, нормативы и доли стоимости</p>
 </div>
-
-<div class="d-flex gap-2 mb-3" aria-label="Представление справочника"><a class="btn btn-outline-primary {% if view_mode == 'table' %}active{% endif %}" href="?{{ table_view_query }}">Таблица</a><a class="btn btn-outline-primary {% if view_mode == 'tree' %}active{% endif %}" href="?{{ tree_view_query }}">Дерево</a></div>
-<form method="get" id="work-list-filters" class="card mb-3"><div class="card-body p-3 work-list-filters">
-    <input type="hidden" name="view" value="{{ view_mode }}">
-    {% for field in filter_form %}<div>{{ field.label_tag }}{{ field }}{{ field.errors }}</div>{% endfor %}
-    <div class="d-flex gap-2"><button class="btn btn-sm btn-primary">Применить</button><a class="btn btn-sm btn-outline-secondary" href="{% url 'works:work_list' %}">Сбросить</a></div>
-</div></form>
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-    const form=document.getElementById('work-list-filters');
-    const hierarchy=['project','construction_object','section','complex_object','package','selected_work'];
-    hierarchy.forEach((name,index) => {
-        form.elements[name].addEventListener('change', function () {
-            hierarchy.slice(index+1).forEach(child => {form.elements[child].value='';});
-            form.requestSubmit();
-        });
-    });
-});
-</script>
-
-<script>
-(() => {
-    const form = document.getElementById('work-list-filters');
-    const project = form.elements.project, object = form.elements.construction_object, section = form.elements.section;
-    project.addEventListener('change', () => { object.value = ''; section.value = ''; form.requestSubmit(); });
-    object.addEventListener('change', () => { section.value = ''; form.requestSubmit(); });
-    section.addEventListener('change', () => form.requestSubmit());
-})();
-</script>
+  <div class="catalogue-header-actions">
+  {% if request.user|may:'works:work_create' %}<details class="catalogue-menu">
+<summary class="btn btn-primary">Добавить <span aria-hidden="true">⌄</span>
+</summary>
+<div class="catalogue-menu-panel">
+    {% if request.user|may:'works:complex_object_update' %}<a href="{% url 'works:complex_object_list' %}#create-complex-object">Комплексный объект</a>{% endif %}
+    <a href="{% url 'works:work_create' %}?kind=COMPOSITE&amp;return_to={{ request.get_full_path|urlencode }}">Комплекс работ</a>
+    <a href="{% url 'works:work_create' %}?kind=SIMPLE&amp;return_to={{ request.get_full_path|urlencode }}">Самостоятельную работу</a>
+  </div>
+</details>{% endif %}
+  {% if request.user|may:'works:work_create' %}<details class="catalogue-menu">
+<summary class="btn btn-outline-secondary">Ещё</summary>
+<div class="catalogue-menu-panel">
+    <a href="{% url 'works:schedule_import' %}">Импорт состава работ из Excel</a>
+<a href="{% url 'works:batch_prepare' %}">Подготовка работ и цен</a>
+    <a href="{% url 'works:group_list' %}">Группы работ</a>
+<a href="{% url 'works:unit_list' %}">Единицы измерения</a>
+    {% if request.user|may:'works:work_purge' %}<a class="text-danger catalogue-menu-danger" href="{% url 'works:work_purge' %}">Удалить все работы компании</a>{% endif %}
+  </div>
+</details>{% endif %}
+  </div>
+</header>
+<form method="get" id="work-list-filters" class="catalogue-filters">
+  <input type="hidden" name="view" value="{{ view_mode }}">
+  <div class="catalogue-main-filters">
+<div class="catalogue-search">{{ filter_form.q.label_tag }}{{ filter_form.q }}{{ filter_form.q.errors }}</div>
+<div>{{ filter_form.construction_object.label_tag }}{{ filter_form.construction_object }}{{ filter_form.construction_object.errors }}</div>
+<div>{{ filter_form.complex_object.label_tag }}{{ filter_form.complex_object }}{{ filter_form.complex_object.errors }}</div>
+<button class="btn btn-primary">Найти</button>
+</div>
+  <div class="catalogue-filter-footer">
+<details class="catalogue-advanced" {% if advanced_filters_open %}open{% endif %}>
+<summary>Дополнительные фильтры{% if advanced_filter_count %} · {{ advanced_filter_count }}{% endif %}</summary>
+<div class="catalogue-extra-filters">
+    <div>{{ filter_form.project.label_tag }}{{ filter_form.project }}{{ filter_form.project.errors }}</div>
+<div>{{ filter_form.section.label_tag }}{{ filter_form.section }}{{ filter_form.section.errors }}</div>
+<div>{{ filter_form.package.label_tag }}{{ filter_form.package }}{{ filter_form.package.errors }}</div>
+<div>{{ filter_form.selected_work.label_tag }}{{ filter_form.selected_work }}{{ filter_form.selected_work.errors }}</div>
+<div>{{ filter_form.work.label_tag }}{{ filter_form.work }}{{ filter_form.work.errors }}</div>
+<div>{{ filter_form.subwork.label_tag }}{{ filter_form.subwork }}{{ filter_form.subwork.errors }}</div>
+  </div>
+</details>
+<a href="{% url 'works:work_list' %}?view={{ view_mode }}">Сбросить</a>
+</div>
+</form>
+<div class="catalogue-results-toolbar">
+<div class="catalogue-view-switch" aria-label="Представление справочника">
+<a class="btn btn-sm {% if view_mode == 'tree' %}btn-primary{% else %}btn-outline-secondary{% endif %}" {% if view_mode == 'tree' %}aria-current="true"{% endif %} href="?{{ tree_view_query }}">Дерево</a>
+<a class="btn btn-sm {% if view_mode == 'table' %}btn-primary{% else %}btn-outline-secondary{% endif %}" {% if view_mode == 'table' %}aria-current="true"{% endif %} href="?{{ table_view_query }}">Таблица</a>
+</div>
+<span>Комплексов и самостоятельных работ: <strong>{{ result_count }}</strong>
+</span>{% if request.user|may:'works:bulk_delete' %}<button type="button" class="btn btn-sm btn-outline-secondary" data-catalogue-select>Выбрать на странице</button>{% endif %}</div>
+{% with bulk_route='works:bulk_delete' bulk_kind='works' %}{% include 'bulk/toolbar.html' %}
 {% if works %}
-    {% if view_mode == 'tree' %}{% include 'works/_catalogue_tree.html' %}{% else %}
-    <div class="card">
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover mb-0 work-list-table">
-                    <colgroup>{% if request.user|may:bulk_route %}<col style="width:36px">{% endif %}<col style="width:35%"><col><col style="width:60px"><col style="width:95px"><col style="width:75px"><col style="width:110px"><col style="width:130px"><col style="width:110px"></colgroup>
-                    <thead class="table-light">
-                        <tr>{% if request.user|may:bulk_route %}<th style="width:36px" aria-label="Выбор строк"></th>{% endif %}
-                            <th>Название</th>
-                            <th>Проект / Объект / Раздел / Комплексный объект</th>
-                            <th>Ед. изм.</th>
-                            <th class="text-end">Цена</th>
-                            <th class="text-end">Работ в составе комплекса</th>
-                            <th class="text-end">Общий объём</th>
-                            <th>Статус</th>
-                            <th>Действия</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for work in works %}
-                            <tr>{% if request.user|may:bulk_route %}<td>{% include 'bulk/checkbox.html' with record=work %}</td>{% endif %}
-                                <td>
-                                    {% if request.user|may:'works:work_detail' %}<a href="{% url 'works:work_detail' work.pk %}" class="work-name text-decoration-none" title="{{ work.name }}">{{ work.name }}</a>{% else %}<span class="work-name" title="{{ work.name }}">{{ work.name }}</span>{% endif %}
-                                    <small class="work-meta {% if work.kind == 'COMPOSITE' and not work.items_count %}text-warning{% else %}text-muted{% endif %}">
-                                        {% if work.kind == 'COMPOSITE' %}<i class="bi bi-diagram-3"></i> Комплекс работ · {% if work.items_count %}{{ work.items_count }} работ в составе комплекса{% else %}работы в составе комплекса не заданы{% endif %}{% else %}Самостоятельная работа{% endif %}
-                                    </small>
-                                </td>
-                                <td>
-                                    <small>
-                                        <strong class="work-location" title="{{ work.section.construction_object.project.name }}">{{ work.section.construction_object.project.name }}</strong>
-                                        <span class="work-location text-muted" title="{{ work.section.construction_object.name }}">{{ work.section.construction_object.name }}</span>
-                                        <span class="work-section" title="{{ work.section.name }}">{{ work.section.name }}</span><span class="d-block mt-1"><strong>Комплексный объект:</strong> {{ work.complex_object.name|default:"Без комплексного объекта" }}</span>
-                                    </small>
-                                </td>
-                                <td>{{ work.unit }}</td>
-                                <td class="text-end work-number">{{ work.unit_price }} ₽</td>
-                                <td class="text-end">
-                                    {% if work.kind == 'COMPOSITE' %}<span class="badge bg-{% if work.items_count > 0 %}success{% else %}warning{% endif %}">{{ work.items_count }}</span>{% else %}<span class="text-muted">—</span>{% endif %}
-                                </td>
-                                <td class="text-end">
-                                    {% if work.total_quantity %}
-                                        <strong>{{ work.total_quantity }}</strong>
-                                    {% else %}
-                                        <span class="text-muted">—</span>
-                                    {% endif %}
-                                </td>
-                                <td>
-                                    <span class="badge bg-{% if work.status == 'PLANNED' %}primary{% elif work.status == 'IN_PROGRESS' %}warning{% elif work.status == 'DONE' %}success{% else %}secondary{% endif %}">
-                                        {{ work.get_status_display }}
-                                    </span>
-                                </td>
-                               <td>
-    <div class="btn-group btn-group-sm work-actions">
-        {% if request.user|may:'works:work_detail' %}<a href="{% url 'works:work_detail' work.pk %}" class="btn btn-outline-primary" title="Дерево работ">
-            <i class="bi bi-diagram-3"></i>
-        </a>{% endif %}
-        {% if request.user|may:'works:work_update' %}<a href="{% url 'works:catalogue_copy' 'package' work.pk %}" class="btn btn-outline-primary" title="Копировать"><i class="bi bi-files"></i></a><a href="{% url 'works:work_update' work.pk %}" class="btn btn-outline-secondary" title="Редактировать">
-            <i class="bi bi-pencil"></i>
-        </a>{% endif %}
-        {% if request.user|may:'works:work_delete' %}<a href="{% url 'works:work_delete' work.pk %}" class="btn btn-outline-danger" title="Удалить"
->
-            <i class="bi bi-trash"></i>
-        </a>{% endif %}
-    </div>
+{% if view_mode == 'tree' %}{% include 'works/_catalogue_tree.html' %}{% else %}
+<div class="catalogue-table-wrap table-responsive">
+<table class="table table-hover catalogue-list-table">
+<thead>
+<tr>{% if request.user|may:bulk_route %}<th aria-label="Выбор">
+</th>{% endif %}<th>Работа / комплекс</th>
+<th>Расположение</th>
+<th>Ед. изм.</th>
+<th class="text-end">Цена за единицу, ₽</th>
+<th class="text-end">Объём по ГПР</th>
+<th>Статус</th>
+<th>Действия</th>
+</tr>
+</thead>
+<tbody>{% for work in works %}<tr>{% if request.user|may:bulk_route %}<td>{% include 'bulk/checkbox.html' with record=work %}</td>{% endif %}
+<td>
+<a class="catalogue-name" href="{% url 'works:work_detail' work.pk %}?return_to={{ request.get_full_path|urlencode }}">{{ work.name|highlight:search_query }}</a>
+<span class="catalogue-meta">{% if work.kind == 'COMPOSITE' %}Комплекс работ · {{ work.items_count }} работ{% else %}Самостоятельная работа{% endif %}</span>{% if work.catalogue_matching_items %}<div class="catalogue-found-items">{% for item in work.catalogue_matching_items %}<a href="{% url 'works:work_detail' work.pk %}?return_to={{ request.get_full_path|urlencode }}#work-item-{{ item.pk }}">↳ {{ item.name|highlight:search_query }}</a>{% endfor %}</div>{% endif %}</td>
+<td class="catalogue-location">
+<span>{{ work.section.construction_object.project.name }}</span>
+<span>{{ work.section.construction_object.name }} → {{ work.section.name }}</span>{% if work.complex_object_id %}<a href="{% url 'works:complex_object_detail' work.complex_object_id %}?return_to={{ request.get_full_path|urlencode }}">{{ work.complex_object.name }}</a>{% endif %}</td>
+<td>{{ work.unit|default:'—' }}</td>
+<td class="text-end text-nowrap">{{ work.unit_price|floatformat:'2g' }}</td>
+<td class="text-end text-nowrap">{{ work.total_quantity|default:'—' }}</td>
+<td>
+<span class="catalogue-status">{{ work.get_status_display }}</span>
 </td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-
-    {% endif %}
-    {% if is_paginated %}
-        <nav aria-label="Page navigation" class="mt-3">
-            <ul class="pagination justify-content-center">
-                {% if page_obj.has_previous %}
-                    <li class="page-item"><a class="page-link" href="?{% if filter_query %}{{ filter_query }}&amp;{% endif %}page=1">Первая</a></li>
-                    <li class="page-item"><a class="page-link" href="?{% if filter_query %}{{ filter_query }}&amp;{% endif %}page={{ page_obj.previous_page_number }}">Пред.</a></li>
-                {% endif %}
-                {% for num in page_obj.paginator.page_range %}
-                    {% if page_obj.number == num %}
-                        <li class="page-item active"><span class="page-link">{{ num }}</span></li>
-                    {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
-                        <li class="page-item"><a class="page-link" href="?{% if filter_query %}{{ filter_query }}&amp;{% endif %}page={{ num }}">{{ num }}</a></li>
-                    {% endif %}
-                {% endfor %}
-                {% if page_obj.has_next %}
-                    <li class="page-item"><a class="page-link" href="?{% if filter_query %}{{ filter_query }}&amp;{% endif %}page={{ page_obj.next_page_number }}">След.</a></li>
-                    <li class="page-item"><a class="page-link" href="?{% if filter_query %}{{ filter_query }}&amp;{% endif %}page={{ page_obj.paginator.num_pages }}">Последняя</a></li>
-                {% endif %}
-            </ul>
-        </nav>
-    {% endif %}
-{% else %}
-    <div class="alert alert-info">
-        <i class="bi bi-info-circle"></i> По выбранным фильтрам работы не найдены.
-        {% if request.user|may:'works:work_create' %}<a href="{% url 'works:work_create' %}" class="alert-link">Создать первую работу</a>{% endif %}
-    </div>
+<td>{% include 'works/_work_actions.html' %}</td>
+</tr>{% endfor %}</tbody>
+</table>
+</div>
 {% endif %}
+{% include 'works/_catalogue_pagination.html' %}
+{% else %}<div class="catalogue-empty">
+<strong>По выбранным условиям работы не найдены.</strong>
+<p>Измените запрос или сбросьте фильтры.</p>
+<a class="btn btn-outline-primary" href="{% url 'works:work_list' %}?view={{ view_mode }}">Сбросить фильтры</a>
+</div>{% endif %}
 {% endwith %}
+</section>
 {% endblock %}
+{% block extra_js %}<script src="{% static 'works/catalogue.js' %}?v=20261026-ux" defer>
+</script>{% endblock %}

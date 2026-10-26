@@ -1,191 +1,126 @@
 {% extends 'base.html' %}
-{% load access %}
-{% load i18n %}
-
-{% block title %}{{ work.name }} — структура{% endblock %}
-
-{% block content %}{% if work.complex_object_id %}<p>Комплексный объект: <a href="{% url 'works:complex_object_list' %}">{{ work.complex_object }} · 1 шт.</a></p>{% endif %}
+{% load access static %}
+{% block title %}{{ work.name }} — справочник работ{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'works/catalogue.css' %}?v=20261026-ux">{% endblock %}
+{% block content %}
+<section class="work-catalogue" data-catalogue-page>
+<header class="catalogue-header catalogue-detail-header">
+<div class="catalogue-detail-heading">
+<a class="catalogue-back" href="{{ catalogue_return }}">← Вернуться к списку</a>
+<nav class="catalogue-breadcrumb" aria-label="Расположение работы">
+<span>{{ work.section.construction_object.project }}</span>
+<span>{{ work.section.construction_object }}</span>
+<span>{{ work.section.name }}</span>{% if work.complex_object_id %}<a href="{% url 'works:complex_object_detail' work.complex_object_id %}?return_to={{ catalogue_return|urlencode }}">{{ work.complex_object }}</a>{% endif %}</nav>
+<h1>{{ work.name }}</h1>
+<p>{{ work.get_kind_display }} · {{ work.get_status_display }}{% if work.rd_section %} · РД {{ work.rd_section }}{% endif %}
+{% if work.rdc_point %} · РДЦ {{ work.rdc_point }}{% endif %}</p>
+</div>
+<div class="catalogue-header-actions">
+{% if work.kind == 'COMPOSITE' and items %}{% if request.user|may:'works:work_structure_update' %}<span class="catalogue-save-state" data-save-state role="status">{% if structure_form.errors %}Есть ошибки{% else %}Сохранено{% endif %}</span>
+<button class="btn btn-primary" type="submit" form="work-structure-form">Сохранить состав</button>{% endif %}
+{% endif %}
+{% if work.kind == 'COMPOSITE' %}{% if request.user|may:'works:work_item_create' %}<a class="btn btn-outline-primary" href="{% url 'works:work_item_create' work.pk %}?return_to={{ request.get_full_path|urlencode }}">Добавить работу</a>{% endif %}
+{% endif %}
+{% if request.user|may:'works:work_update' %}<details class="catalogue-menu">
+<summary class="btn btn-outline-secondary">Ещё</summary>
+<div class="catalogue-menu-panel">
+<a href="{% url 'works:work_update' work.pk %}?return_to={{ request.get_full_path|urlencode }}">{% if work.kind == 'COMPOSITE' %}Изменить свойства комплекса{% else %}Изменить работу{% endif %}</a>
+<a href="{% url 'works:catalogue_copy' 'package' work.pk %}">Копировать</a>{% if not work.merged_source %}{% if request.user|may:'works:price_change' %}<a href="{% url 'works:price_change' work.pk %}">Изменить цену с сохранением истории</a>{% endif %}
+{% endif %}{% if request.user|may:'works:work_delete' %}<a class="text-danger catalogue-menu-danger" href="{% url 'works:work_delete' work.pk %}">Удалить</a>{% endif %}</div>
+</details>{% endif %}
+</div>
+</header>
 {% if work.merged_source %}<div class="alert alert-info">Исходная работа объединена в <a href="{% url 'works:work_detail' work.merged_source.item.project_work_id %}">{{ work.merged_source.item.project_work }}</a>. Запись сохранена для истории.</div>{% endif %}
-{% if merge_sources %}<details class="card p-3 mb-3"><summary>История объединения и новые планы</summary><ul>{% for item in merge_sources %}{% if item.merge_origin %}<li>{{ item.merge_origin.source_work.name }} → {{ item.name }} · норматив {{ item.quantity_per_unit }} {{ item.unit }}</li>{% endif %}{% endfor %}</ul>{% for revision in merge_plans %}<p>{% if revision.target_version_id %}<a href="{% url 'planning:global_detail' revision.target_version_id %}">{{ revision.target_version }}</a> · {{ revision.target_version.get_status_display }}{% else %}Черновик объединённого плана удалён.{% endif %}</p>{% endfor %}</details>{% endif %}
-<p>{{ work.get_kind_display }} · Выполнено {{ completed_quantity }} {{ work.unit }} накопительно{% if work.kind == 'COMPOSITE' %} · Дробные единицы: {{ work.allow_fractional|yesno:'да,нет' }}{% endif %}</p>
-<!-- Page header -->
-<div class="page-header d-flex justify-content-between align-items-center">
-    <div>
-        <h1>
-            <i class="bi bi-diagram-3"></i>
-            {{ work.name }}
-        </h1>
-        <nav aria-label="breadcrumb">
-            <ol class="breadcrumb">
-                <li class="breadcrumb-item">{% if request.user|may:'dashboard:index' %}<a href="{% url 'dashboard:index' %}">Главная</a>{% endif %}</li>
-                <li class="breadcrumb-item">{% if request.user|may:'works:work_list' %}<a href="{% url 'works:work_list' %}">Работы</a>{% endif %}</li>
-                <li class="breadcrumb-item active">{{ work.name }}</li>
-            </ol>
-        </nav>
-    </div>
-    <div>
-        {% if work.kind == "COMPOSITE" %}{% if request.user|may:'works:work_item_create' %}<a href="{% url 'works:work_item_create' work.pk %}" class="btn btn-primary">
-    <i class="bi bi-plus-circle"></i> Добавить работу в составе комплекса
-</a>{% endif %}{% endif %}
-        {% if request.user|may:'works:work_update' %}<a class="btn btn-outline-primary" href="{% url 'works:catalogue_copy' 'package' work.pk %}">Копировать</a><a href="{% url 'works:work_update' work.pk %}" class="btn btn-secondary">
-            <i class="bi bi-pencil"></i> Редактировать
-        </a>{% endif %}
-    </div>
+<div class="catalogue-work-meta">
+<span>{% if work.kind == 'COMPOSITE' %}Единица комплекса:{% else %}Единица работы:{% endif %} <strong>{{ work.unit|default:'не задана' }}</strong>
+</span>
+<span>Цена за единицу: <strong>{{ current_price|floatformat:'2g' }} ₽</strong>
+</span>{% if work.kind == 'COMPOSITE' %}<span>Работ в составе: <strong>{{ items|length }}</strong>
+</span>
+<span class="catalogue-share-status" data-share-status>Распределено <strong data-cost-share-total>{{ total_weight|floatformat:2 }}</strong>%</span>{% endif %}</div>
+{% if work.kind == 'COMPOSITE' %}
+<section class="catalogue-structure" id="work-structure">
+<div class="catalogue-section-heading">
+<h2>Состав комплекса</h2>
+<p>Норматив — на одну единицу комплекса.{% if request.user|may:'works:work_structure_update' %} Все изменения таблицы сохраняются вместе.{% endif %}</p>
 </div>
-
-<p class="text-muted">Раздел РД: {{ work.rd_section|default:"—" }} · Пункт в РДЦ: {{ work.rdc_point|default:"—" }}</p>
-<!-- KPI карточки -->
-<div class="row mb-4">
-    <div class="col-md-3">
-        <div class="card">
-            <div class="card-body">
-                <h6 class="text-muted mb-2">Ед. измерения</h6>
-                <p class="fs-4 mb-0">{{ work.unit }}</p>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card">
-            <div class="card-body">
-                <h6 class="text-muted mb-2">Цена за единицу</h6>
-                <p class="fs-4 mb-0">{{ current_price }} ₽</p>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card">
-            <div class="card-body">
-                <h6 class="text-muted mb-2">Статус</h6>
-                <p class="fs-4 mb-0">
-                    <span class="badge bg-{% if work.status == 'PLANNED' %}primary{% elif work.status == 'IN_PROGRESS' %}warning{% elif work.status == 'DONE' %}success{% else %}secondary{% endif %} fs-6">
-                        {{ work.get_status_display }}
-                    </span>
-                </p>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card">
-            <div class="card-body">
-                <h6 class="text-muted mb-2">Готовность</h6>
-                <p class="fs-4 mb-0">{{ work.completion_percentage|default:"0" }}%</p>
-                <div class="progress mt-2" style="height: 8px;">
-                    <div class="progress-bar bg-success" style="width: {{ work.completion_percentage|default:0 }}%"></div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<details class="card p-3 mb-3" id="price-history"><summary class="fw-semibold">История цен</summary>
-{% if not work.merged_source %}{% if request.user|may:'works:price_change' %}<a class="btn btn-sm btn-outline-primary my-3" href="{% url 'works:price_change' work.pk %}">Изменить цену</a>{% endif %}{% endif %}
-<div class="table-responsive"><table class="table table-sm"><thead><tr><th>Действует с</th><th>Цена, ₽</th><th>Кто изменил</th><th>Когда</th><th>Основание</th></tr></thead><tbody>{% for entry in price_history %}<tr><td>{% if entry.effective_from.year == 1 %}Первоначальная{% else %}{{ entry.effective_from|date:'d.m.Y' }}{% endif %}</td><td>{{ entry.price }}</td><td>{{ entry.created_by|default:'Система' }}</td><td>{{ entry.created_at|date:'d.m.Y H:i' }}</td><td>{{ entry.reason }}{% if entry.corrects_id %} · Исправление записи {{ entry.corrects_id }}{% endif %}{% if entry.corrections.exists %} · Есть исправление{% endif %}</td></tr>{% empty %}<tr><td colspan="5">История ещё не заведена.</td></tr>{% endfor %}</tbody></table></div></details>
-
-<!-- Структура работ -->
-<div class="card">
-    <div class="card-header">
-        <h5 class="mb-0"><i class="bi bi-diagram-3"></i> Структура работ ({{ items|length }} работ в составе комплекса)</h5>
-    </div>
-    <div class="card-body p-0">
-        {% if items %}
-            {% if request.user|may:'works:work_cost_shares' %}<form method="post" action="{% url 'works:work_cost_shares' work.pk %}" data-cost-shares>{% csrf_token %}{{ cost_shares_form.revision }}{{ cost_shares_form.non_field_errors }}{% endif %}
-            <div class="table-responsive">
-                <table class="table table-hover mb-0">
-<thead class="table-light">
-    <tr>
-        <th style="width: 50px;">№</th>
-        <th>Название</th>
-        <th style="width: 80px;">Ед.</th>
-        <th style="width: 90px;" class="text-end">Норматив</th>
-        <th style="width: 145px;" class="text-end">Доля от суммы, %</th>
-        <th style="width: 110px;" class="text-end">Готовность</th>
-        <th style="width: 140px;">Профиль</th>
-        <th style="width: 100px;">Действия</th>
-    </tr>
+{% if items %}
+{% if request.user|may:'works:work_structure_update' %}<form method="post" id="work-structure-form" action="{% url 'works:work_structure_update' work.pk %}" data-cost-shares data-catalogue-edit>{% csrf_token %}{{ structure_form.revision }}{{ structure_form.revision.errors }}<input type="hidden" name="return_to" value="{{ catalogue_return }}">{{ structure_form.non_field_errors }}{{ cost_shares_form.non_field_errors }}{% endif %}
+<div class="table-responsive">
+<table class="table catalogue-structure-table">
+<thead>
+<tr>
+<th>Работа в составе комплекса</th>
+<th>Ед. изм.</th>
+<th>Норматив на единицу комплекса</th>
+<th>Профиль нагрузки</th>
+<th>Доля от суммы, %</th>
+<th aria-label="Действия">
+</th>
+</tr>
 </thead>
 <tbody>
-  {% for item in items %}
-<tr>
-    <td>{{ item.sequence }}</td>
-    <td>
-        {% if item.parent %}
-        <span class="text-muted ms-3">↳ </span>
-        {% endif %}
-        <strong>{{ item.name }}</strong>
-    </td>
-    <td>{{ item.unit }}</td>
-    <td class="text-end">
-        {% if item.quantity_per_unit %}
-            <strong>{{ item.quantity_per_unit|floatformat:3 }}</strong>
-        {% else %}
-            <span class="text-muted">—</span>
-        {% endif %}
-    </td>
-    <td class="text-end">{% if request.user|may:'works:work_cost_shares' %}{{ item.cost_share_input }}{{ item.cost_share_input.errors }}{% else %}{{ item.weight|floatformat:2 }}{% endif %}</td>
-    <td class="text-end">
-        <div class="progress" style="min-width: 70px; height: 18px;">
-            <div class="progress-bar bg-{% if item.completion >= 100 %}success{% elif item.completion >= 50 %}warning{% else %}danger{% endif %}"
-                 style="width: {{ item.completion|default:0 }}%">
-                {{ item.completion|default:0 }}%
-            </div>
-        </div>
-    </td>
-    <td>
-        {% if item.load_profile %}
-        <span class="badge bg-info">{{ item.load_profile.name }}</span>
-        {% else %}
-        <span class="badge bg-warning text-dark">Не задан</span>
-        {% endif %}
-    </td>
-    <td>
-        <div class="btn-group btn-group-sm">
-            {% if request.user|may:'works:work_item_update' %}<a href="{% url 'works:catalogue_copy' 'item' item.pk %}" class="btn btn-outline-primary btn-sm" title="Копировать работу"><i class="bi bi-files"></i></a><a href="{% url 'works:work_item_update' item.pk %}"
-               class="btn btn-outline-secondary btn-sm" title="Редактировать">
-                <i class="bi bi-pencil"></i>
-            </a>{% endif %}
-            <a href="{% url 'works:work_item_create' work.pk %}?parent={{ item.pk }}"
-               class="btn btn-outline-primary btn-sm" title="Добавить вложенную работу">
-                <i class="bi bi-plus"></i>
-            </a>
-            {% if request.user|may:'works:work_item_delete' %}<a href="{% url 'works:work_item_delete' item.pk %}"
-               class="btn btn-outline-danger btn-sm" title="Удалить"
-               onclick="return confirm('Удалить работу в составе комплекса «{{ item.name }}»?');">
-                <i class="bi bi-trash"></i>
-            </a>{% endif %}
-        </div>
-    </td>
-</tr>
-{% endfor %}
+{% for item in items %}<tr id="work-item-{{ item.pk }}">
+<td class="catalogue-item-title">{% if item.parent_id %}<span class="catalogue-meta">В составе: {{ item.parent.name }}</span>{% endif %}<strong>{{ item.name }}</strong>
+</td>
+<td>{% if request.user|may:'works:work_structure_update' %}{{ item.structure_unit }}{{ item.structure_unit.errors }}{% else %}{{ item.unit }}{% endif %}</td>
+<td>{% if request.user|may:'works:work_structure_update' %}{{ item.structure_norm }}{{ item.structure_norm.errors }}{% else %}{{ item.quantity_per_unit }}{% endif %}</td>
+<td>{% if request.user|may:'works:work_structure_update' %}{{ item.structure_profile }}{{ item.structure_profile.errors }}{% else %}{{ item.load_profile.name|default:'Не задан' }}{% endif %}</td>
+<td>{% if request.user|may:'works:work_structure_update' %}{{ item.structure_share }}{{ item.structure_share.errors }}{% else %}{{ item.weight|floatformat:2 }}{% endif %}</td>
+<td>{% include 'works/_item_actions.html' %}</td>
+</tr>{% endfor %}
 </tbody>
-
-                </table>
-            </div>
-            <div class="p-3"><p>Сумма долей: <strong data-cost-share-total>{{ total_weight|floatformat:2 }}</strong>%. Для распределения всей стоимости комплекса нужно 100%.</p>
-            {% if total_weight != 100 %}<p class="text-warning">Доли стоимости ещё не распределены на 100%. Расчётные суммы зависят от введённых долей.</p>{% endif %}
-            <p class="small text-muted">Расчётная сумма плана / факта = объём работы / норматив × цена комплекса × доля / 100. Доли сохраняются в версии плана; утверждённые версии сохраняют свои значения.</p>
-            {% if request.user|may:'works:work_cost_shares' %}<button class="btn btn-primary">Сохранить доли стоимости</button>{% endif %}</div>
-            {% if request.user|may:'works:work_cost_shares' %}</form>{% endif %}
-        {% else %}
-            <div class="alert alert-warning m-3">
-                <i class="bi bi-exclamation-triangle"></i>
-                {% if work.kind == "COMPOSITE" %}У работы нет работ в составе комплекса. Добавьте хотя бы одну, чтобы можно было создать план.
-                <br>
-                {% if request.user|may:'works:work_item_create' %}<a href="{% url 'works:work_item_create' work.pk %}" class="btn btn-sm btn-primary mt-2">
-                    <i class="bi bi-plus-circle"></i> Добавить работу в составе комплекса
-                </a>{% endif %}{% else %}Самостоятельная работа: план и факт вводятся непосредственно по работе.{% endif %}
-            </div>
-        {% endif %}
-    </div>
+</table>
 </div>
-
-<!-- Справка -->
-<div class="alert alert-info mt-4">
-    <h6><i class="bi bi-info-circle"></i> Как считается готовность</h6>
-    <p class="mb-0">
-        Объём комплекса работ равен минимуму накопленных объёмов работ в составе комплекса, делённых на их нормативы. Выручка равна объёму комплекса работ × цене на дату выполнения.
-    </p>
+<div class="catalogue-structure-footer">
+<p data-share-hint {% if total_weight == 100 %}hidden{% endif %}>Распределите 100% стоимости между работами. Сейчас сумма долей: <strong data-cost-share-total>{{ total_weight|floatformat:2 }}</strong>%.</p>
+<p class="catalogue-meta">Расчётная сумма плана / факта = объём работы / норматив × цена комплекса × доля / 100. Утверждённые версии плана сохраняют свои значения.</p>
 </div>
+{% if request.user|may:'works:work_structure_update' %}</form>{% endif %}
+{% else %}<div class="catalogue-empty">
+<strong>В комплексе пока нет работ.</strong>{% if request.user|may:'works:work_item_create' %}<p>Добавьте работу, задайте норматив, профиль нагрузки и долю стоимости.</p>{% endif %}
+{% if request.user|may:'works:work_item_create' %}<a class="btn btn-primary" href="{% url 'works:work_item_create' work.pk %}?return_to={{ request.get_full_path|urlencode }}">Добавить первую работу</a>{% endif %}</div>{% endif %}
+</section>
+{% endif %}
+<details class="catalogue-secondary" id="price-history">
+<summary>История цен</summary>
+<div class="table-responsive">
+<table class="table table-sm">
+<thead>
+<tr>
+<th>Действует с</th>
+<th>Цена, ₽</th>
+<th>Кто изменил</th>
+<th>Когда</th>
+<th>Основание</th>
+</tr>
+</thead>
+<tbody>{% for entry in price_history %}<tr>
+<td>{% if entry.effective_from.year == 1 %}Первоначальная{% else %}{{ entry.effective_from|date:'d.m.Y' }}{% endif %}</td>
+<td>{{ entry.price }}</td>
+<td>{{ entry.created_by|default:'Система' }}</td>
+<td>{{ entry.created_at|date:'d.m.Y H:i' }}</td>
+<td>{{ entry.reason }}{% if entry.corrects_id %} · Исправление записи {{ entry.corrects_id }}{% endif %}
+{% if entry.corrections.exists %} · Есть исправление{% endif %}</td>
+</tr>{% empty %}<tr>
+<td colspan="5">История ещё не заведена.</td>
+</tr>{% endfor %}</tbody>
+</table>
+</div>
+</details>
+<details class="catalogue-secondary">
+<summary>Использование и выполнение · {{ work.completion_percentage|default:0 }}%</summary>
+<div class="catalogue-secondary-body">
+<p>План: {{ total_quantity }} {{ work.unit }}. Выполнено накопительно: {{ completed_quantity }} {{ work.unit }}.</p>{% if work.kind == 'COMPOSITE' %}<p>Дробные единицы: {{ work.allow_fractional|yesno:'да,нет' }}.</p>
+<p>Готовность комплекса определяется минимальным выполнением нормативов его работ. Выручка равна объёму выполненного комплекса × цене на дату выполнения.</p>{% else %}<p>План и факт вводятся непосредственно по самостоятельной работе.</p>{% endif %}</div>
+</details>
+{% if merge_sources %}<details class="catalogue-secondary">
+<summary>История объединения и новые планы</summary>
+<div class="catalogue-secondary-body">
+<ul>{% for item in merge_sources %}{% if item.merge_origin %}<li>{{ item.merge_origin.source_work.name }} → {{ item.name }} · норматив {{ item.quantity_per_unit }} {{ item.unit }}</li>{% endif %}
+{% endfor %}</ul>{% for revision in merge_plans %}<p>{% if revision.target_version_id %}<a href="{% url 'planning:global_detail' revision.target_version_id %}">{{ revision.target_version }}</a> · {{ revision.target_version.get_status_display }}{% else %}Черновик объединённого плана удалён.{% endif %}</p>{% endfor %}</div>
+</details>{% endif %}
+</section>
 {% endblock %}
-{% block extra_js %}<script>
-document.querySelectorAll('[data-cost-shares]').forEach(form=>{const update=()=>{let total=0,valid=true;form.querySelectorAll('[data-cost-share]').forEach(input=>{const raw=input.value.trim().replace(/\s/g,'').replace(',','.');const n=Number(raw);if(!raw||!Number.isFinite(n))valid=false;else total+=n;});form.querySelector('[data-cost-share-total]').textContent=valid?total.toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2}):'—';};form.addEventListener('input',update);update();});
+{% block extra_js %}<script src="{% static 'works/catalogue.js' %}?v=20261026-ux" defer>
 </script>{% endblock %}

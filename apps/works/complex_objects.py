@@ -53,7 +53,7 @@ class ComplexObjectDetailForm(forms.ModelForm):
 
 
 class ComplexObjectFilterForm(forms.Form):
-    package=forms.ModelChoiceField(queryset=ProjectWork.objects.none(),required=False,label='Комплексная работа',empty_label='Все комплексные работы')
+    package=forms.ModelChoiceField(queryset=ProjectWork.objects.none(),required=False,label='Комплекс работ',empty_label='Все комплексные работы')
     item=forms.ModelChoiceField(queryset=ProjectWorkItem.objects.none(),required=False,label='Работа',empty_label='Все работы')
 
     def __init__(self,*args,object,**kwargs):
@@ -69,6 +69,7 @@ class ComplexObjectFilterForm(forms.Form):
 
 
 from django.contrib.auth.decorators import login_required
+from .navigation import return_path
 
 
 @login_required
@@ -115,4 +116,6 @@ def complex_object_detail(request,pk):
     for work in works:
         work.items_count=len(work.items.all())
         sections.setdefault(work.section_id,{'section':work.section,'branches':[{'object':obj,'works':[]}]})['branches'][0]['works'].append(work)
-    return render(request,'works/complex_object_detail.html',{**view_links,'object':obj,'form':form,'filter_form':filter_form,'work_total':work_total,'works':works,'view_mode':mode,'tree_groups':[{'object':obj.construction_object,'sections':list(sections.values())}],'bulk_route':'works:bulk_delete','bulk_kind':'works'})
+    return render(request,'works/complex_object_detail.html',{**view_links,'object':obj,'form':form,'filter_form':filter_form,'work_total':work_total,'works':works,'view_mode':mode,'tree_groups':[{'object':obj.construction_object,'sections':list(sections.values())}],'bulk_route':'works:bulk_delete','bulk_kind':'works','bulk_contextual':True,
+        'catalogue_return':return_path(request),
+        'catalogue_reveal':bool(request.GET.get('package') or request.GET.get('item')),'search_query':''})

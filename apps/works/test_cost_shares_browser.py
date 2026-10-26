@@ -12,8 +12,13 @@ from apps.planning import test_workspace as fixtures
 
 @skipUnless(os.environ.get('SHARES_BROWSER_TESTS')=='1','Optional Playwright/Chromium check')
 class CostSharesBrowserTests(StaticLiveServerTestCase):
+    serialized_rollback = True
     def test_inline_distribution_and_validation(self):
         fixtures.WorkspaceTests.setUpTestData.__func__(type(self))
+        from apps.planning.models import LoadProfile, LoadProfileItem
+        profile=LoadProfile.objects.create(company=self.company,name='Browser profile')
+        LoadProfileItem.objects.create(company=self.company,profile=profile,workday_number=1,percentage=100)
+        self.composite.items.update(load_profile=profile)
         client=Client();client.force_login(self.planner)
         config=dict(base=self.live_server_url,url=reverse('works:work_detail',args=[self.composite.pk]),
             cookie=client.cookies['sessionid'].value,a=self.a.pk,b=self.b.pk,chromium=shutil.which('chromium'))

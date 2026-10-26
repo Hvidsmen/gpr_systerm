@@ -86,3 +86,6 @@ urlpatterns += [path('complex-objects/<int:pk>/',complex_object_detail,name='com
 
 from .cost_shares import CostSharesUpdate
 urlpatterns += [path('<int:pk>/cost-shares/', CostSharesUpdate.as_view(), name='work_cost_shares')]
+
+from .structure import WorkStructureUpdate
+urlpatterns += [path('<int:pk>/structure/', WorkStructureUpdate.as_view(), name='work_structure_update')]

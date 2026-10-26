@@ -12,7 +12,7 @@ from django.views.generic import (
 )
 from django.urls import reverse_lazy
 from django.utils.translation import gettext_lazy as _
-from django.db.models import Count, Sum, DecimalField, Exists, OuterRef
+from django.db.models import Count, Sum, DecimalField, Exists, OuterRef, Q
 from .list_filters import WorkListFilterForm
 from .services import WorkItemGeneratorService
 from apps.accounts.models import Company
@@ -30,8 +30,8 @@ class WorkListView(CompanyScopedMixin, ListView):
     paginate_by = 20
 
     def catalogue_view_mode(self):
-        mode=self.request.GET.get('view',self.request.session.get('work_catalogue_view','table'))
-        return mode if mode in {'table','tree'} else 'table'
+        mode=self.request.GET.get('view',self.request.session.get('work_catalogue_view','tree'))
+        return mode if mode in {'table','tree'} else 'tree'
 
     def get_paginate_by(self, queryset):
         return None if self.catalogue_view_mode()=='tree' else self.paginate_by
@@ -55,6 +55,12 @@ class WorkListView(CompanyScopedMixin, ListView):
             # SQLite LIKE does not fold Cyrillic case. Its regex implementation
             # does; escape the query so punctuation remains literal.
             lookup = 'iregex' if connection.vendor == 'sqlite' else 'icontains'
+            if values['q']:
+                value = re.escape(values['q']) if lookup == 'iregex' else values['q']
+                matching = ProjectWorkItem.objects.filter(company=self.request.user.company,
+                    project_work_id=OuterRef('pk'), **{'name__' + lookup: value})
+                queryset = queryset.annotate(catalogue_child_match=Exists(matching)).filter(
+                    Q(**{'name__' + lookup: value}) | Q(catalogue_child_match=True))
             if values['work']:
                 value = re.escape(values['work']) if lookup == 'iregex' else values['work']
                 queryset = queryset.filter(**{'name__' + lookup: value})
@@ -79,6 +85,21 @@ class WorkListView(CompanyScopedMixin, ListView):
         mode=self.catalogue_view_mode()
         self.request.session['work_catalogue_view']=mode
         context['view_mode']=mode
+        values = self.filter_form.cleaned_data if self.filter_form.is_valid() else {}
+        query = values.get('q', '')
+        context['search_query'] = query or values.get('subwork', '') or values.get('work', '')
+        context['catalogue_reveal'] = bool(query or values.get('work') or values.get('subwork') or values.get('selected_work') or values.get('package'))
+        extra = ['project', 'section', 'package', 'selected_work', 'work', 'subwork']
+        context['advanced_filter_count'] = sum(bool(values.get(name)) for name in extra)
+        context['advanced_filters_open'] = bool(context['advanced_filter_count'] or self.filter_form.errors)
+        context['result_count'] = context['paginator'].count if context.get('paginator') else len(context['works'])
+        context['bulk_contextual'] = True
+        for work in context['works']:
+            work.catalogue_match = bool(context['search_query'] and context['search_query'].casefold() in work.name.casefold())
+            work.catalogue_items = list(work.items.all())
+            for item in work.catalogue_items:
+                item.catalogue_match = bool(context['search_query'] and context['search_query'].casefold() in item.name.casefold())
+            work.catalogue_matching_items = [i for i in work.catalogue_items if i.catalogue_match]
         groups={}
         for work in context['works']:
             obj=work.section.construction_object
@@ -125,15 +146,23 @@ class WorkDetailView(CompanyScopedMixin, DetailView):
         )
         items = list(work.items.select_related("load_profile", "parent").order_by('sequence', 'pk'))
         from .cost_shares import CostSharesForm
+        from .structure import WorkStructureForm
+        from .navigation import return_path
         shares_form = getattr(self, 'cost_shares_form', None)
         if shares_form is None:shares_form = CostSharesForm(items=items)
+        structure_form = getattr(self, 'structure_form', None)
+        if structure_form is None:structure_form = WorkStructureForm(items=items, company=self.request.user.company)
         for item in items:
+            item.structure_unit = structure_form[f'unit_{item.pk}']
+            item.structure_norm = structure_form[f'norm_{item.pk}']
+            item.structure_profile = structure_form[f'profile_{item.pk}']
+            item.structure_share = shares_form[f'share_{item.pk}'] if getattr(self, 'cost_shares_form', None) is not None else structure_form[f'share_{item.pk}']
             item.cost_share_input = shares_form[f'share_{item.pk}']
             item.children_count = item.children.count()
             qty = item.daily_facts.aggregate(total=Sum("actual_quantity"))["total"] or 0
             item.planned_quantity = total * item.quantity_per_unit
             item.completion = (
-                int(qty / (total * item.quantity_per_unit) * 100) if total else 0
+                int(qty / (total * item.quantity_per_unit) * 100) if total and item.quantity_per_unit else 0
             )
         work.completion_percentage = int(fact / total * 100) if total else 0
         context.update(
@@ -143,6 +172,8 @@ class WorkDetailView(CompanyScopedMixin, DetailView):
             total_weight=sum(i.weight for i in items),
             completed_quantity=fact,
             cost_shares_form=shares_form,
+            structure_form=structure_form,
+            catalogue_return=return_path(self.request),
         )
         return context
 
@@ -155,6 +186,8 @@ class WorkLocationMixin:
         context = super().get_context_data(**kwargs)
         context['work_hierarchy'] = context['form'].hierarchy
         context['work'] = getattr(self, 'object', None)
+        from .navigation import return_path
+        context['catalogue_return'] = return_path(self.request)
         return context
 
 
@@ -167,6 +200,9 @@ class WorkCreateView(WorkLocationMixin, CompanyRequiredMixin, CreateView):
 
     def get_initial(self):
         initial = super().get_initial()
+        for field in ['project', 'construction_object', 'section', 'complex_object']:
+            value = self.request.GET.get(field)
+            if value and value.isdigit():initial[field] = value
         kind = self.request.GET.get('kind')
         if kind in ProjectWork.Kind.values:
             initial['kind'] = kind
@@ -216,7 +252,12 @@ class WorkCreateView(WorkLocationMixin, CompanyRequiredMixin, CreateView):
         return response
 
     def get_success_url(self):
-        return reverse_lazy("works:work_detail", kwargs={"pk": self.object.pk})
+        url = str(reverse_lazy('works:work_detail', kwargs={'pk': self.object.pk}))
+        if self.request.POST.get('return_to') or self.request.GET.get('return_to'):
+            from .navigation import return_path
+            from urllib.parse import urlencode
+            url += '?' + urlencode({'return_to': return_path(self.request)})
+        return url
 
 
 class WorkUpdateView(WorkLocationMixin, CompanyScopedMixin, UpdateView):
@@ -224,6 +265,10 @@ class WorkUpdateView(WorkLocationMixin, CompanyScopedMixin, UpdateView):
     form_class = ProjectWorkForm
     template_name = "works/work_form.html"
     success_url = reverse_lazy("works:work_list")
+
+    def get_success_url(self):
+        from .navigation import return_path
+        return return_path(self.request)
 
     def form_valid(self, form):
         old_template = ProjectWork.objects.get(pk=self.object.pk).template
@@ -304,9 +349,9 @@ class WorkItemDeleteView(CompanyScopedMixin, DeleteView):
     template_name = "works/workitem_confirm_delete.html"
 
     def get_success_url(self):
-        return reverse_lazy(
-            "works:work_detail", kwargs={"pk": self.object.project_work_id}
-        )
+        from .navigation import return_path
+        return return_path(self.request, str(reverse_lazy(
+            "works:work_detail", kwargs={"pk": self.object.project_work_id})))
 
     def delete(self, request, *args, **kwargs):
         item = self.get_object()
@@ -345,6 +390,9 @@ class WorkItemCreateView(CompanyRequiredMixin, CreateView):
         else:
             context["work"] = None
             context["parent_choices"] = []
+        from .navigation import return_path
+        context['catalogue_return'] = return_path(self.request,
+            str(reverse_lazy('works:work_detail', kwargs={'pk': work_pk})))
         return context
 
     def form_valid(self, form):
@@ -368,7 +416,8 @@ class WorkItemCreateView(CompanyRequiredMixin, CreateView):
     def get_success_url(self):
         work_pk = self.kwargs.get("work_pk")
         if work_pk:
-            return reverse_lazy("works:work_detail", kwargs={"pk": work_pk})
+            from .navigation import return_path
+            return return_path(self.request, str(reverse_lazy("works:work_detail", kwargs={"pk": work_pk})))
         return reverse_lazy("works:work_list")
 
 
@@ -385,6 +434,9 @@ class WorkItemUpdateView(CompanyScopedMixin, UpdateView):
         context = super().get_context_data(**kwargs)
         context["work"] = self.object.project_work
         context["is_edit"] = True  # Флаг для шаблона
+        from .navigation import return_path
+        context['catalogue_return'] = return_path(self.request,
+            str(reverse_lazy('works:work_detail', kwargs={'pk': self.object.project_work_id})))
         return context
 
     def form_valid(self, form):
@@ -392,9 +444,9 @@ class WorkItemUpdateView(CompanyScopedMixin, UpdateView):
         return super().form_valid(form)
 
     def get_success_url(self):
-        return reverse_lazy(
-            "works:work_detail", kwargs={"pk": self.object.project_work_id}
-        )
+        from .navigation import return_path
+        return return_path(self.request, str(reverse_lazy(
+            "works:work_detail", kwargs={"pk": self.object.project_work_id})))
 
 
 # apps/works/views.py

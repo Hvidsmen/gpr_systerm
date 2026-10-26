@@ -6,6 +6,9 @@ from .models import ComplexObject, ProjectWork, ProjectWorkItem
 
 
 class WorkListFilterForm(forms.Form):
+    q = forms.CharField(required=False, max_length=255, label='Поиск',
+        widget=forms.TextInput(attrs={'type': 'search', 'placeholder': 'Найти комплекс или работу в его составе'}))
+
     project = forms.ModelChoiceField(
         queryset=Project.objects.none(),
         required=False,
@@ -25,7 +28,7 @@ class WorkListFilterForm(forms.Form):
         empty_label="Все разделы",
     )
     complex_object = forms.ModelChoiceField(queryset=ComplexObject.objects.none(), required=False, label='Комплексный объект', empty_label='Все комплексные объекты')
-    package = forms.ModelChoiceField(queryset=ProjectWork.objects.none(), required=False, label='Комплексная работа', empty_label='Все комплексные работы')
+    package = forms.ModelChoiceField(queryset=ProjectWork.objects.none(), required=False, label='Комплекс работ', empty_label='Все комплексные работы')
     selected_work = forms.ChoiceField(required=False, label='Работа')
     work = forms.CharField(
         required=False,
@@ -108,7 +111,7 @@ class WorkListFilterForm(forms.Form):
         self.fields['selected_work'].choices=[('', 'Все работы'), *[(f'w:{row.pk}', f'{row.name} · самостоятельная') for row in simple], *[(f'i:{row.pk}', f'{row.name} · {row.project_work.name}') for row in items]]
         self.fields['work'].label='Поиск по названию комплекса / работы'
         self.fields['subwork'].label='Поиск по работе в составе комплекса'
-        self.order_fields(['project','construction_object','section','complex_object','package','selected_work','work','subwork'])
+        self.order_fields(['q', 'project','construction_object','section','complex_object','package','selected_work','work','subwork'])
         for field in self.fields.values():
             field.widget.attrs["class"] = (
                 "form-select form-select-sm"

@@ -1,7 +1,41 @@
 {% load access %}
-<div class="card"><div class="table-responsive"><table class="table table-hover align-middle mb-0"><thead class="table-light"><tr><th aria-label="Выбор комплексов"></th><th>Комплексная работа</th><th>Работа в составе комплекса</th><th>Ед. изм.</th><th class="text-end">Норматив</th><th class="text-end">Доля от суммы, %</th><th>Действия</th></tr></thead><tbody>
-{% for work in works %}
-<tr class="table-light"><td>{% if request.user|may:bulk_route %}{% include 'bulk/checkbox.html' with record=work %}{% endif %}</td><th colspan="5"><a href="{% url 'works:work_detail' work.pk %}">{{ work.name }}</a><div class="small text-muted fw-normal">{{ work.items_count }} работ · {{ work.unit_price }} ₽{% if work.unit %} / {{ work.unit }}{% endif %} · {{ work.get_status_display }}</div></th><td>{% if request.user|may:'works:catalogue_copy' %}<a class="btn btn-sm btn-outline-primary" href="{% url 'works:catalogue_copy' 'package' work.pk %}">Копировать комплекс</a>{% endif %}</td></tr>
-{% for item in work.catalogue_items|default:work.items.all %}<tr><td></td><td>{{ work.name }}</td><td><a href="{% url 'works:work_detail' work.pk %}">{{ item.name }}</a></td><td>{{ item.unit }}</td><td class="text-end text-nowrap">{{ item.quantity_per_unit }}</td><td class="text-end text-nowrap">{{ item.weight }}</td><td>{% if request.user|may:'works:catalogue_copy' %}<a class="btn btn-sm btn-outline-primary" href="{% url 'works:catalogue_copy' 'item' item.pk %}">Копировать работу</a>{% endif %}</td></tr>{% empty %}<tr><td></td><td colspan="6" class="text-muted">Работы в составе комплекса не заданы.</td></tr>{% endfor %}
-{% endfor %}
-</tbody></table></div></div>
+<div class="catalogue-table-wrap table-responsive">
+<table class="table catalogue-list-table">
+<thead>
+<tr>
+<th aria-label="Выбор комплексов">
+</th>
+<th>Комплекс / работа в составе</th>
+<th>Ед. изм.</th>
+<th class="text-end">Норматив на единицу комплекса</th>
+<th class="text-end">Доля от суммы, %</th>
+<th>Действия</th>
+</tr>
+</thead>
+<tbody>
+{% for work in works %}<tr>
+<td>{% if request.user|may:bulk_route %}{% include 'bulk/checkbox.html' with record=work %}{% endif %}</td>
+<th colspan="4">
+<a class="catalogue-name" href="{% url 'works:work_detail' work.pk %}?return_to={{ request.get_full_path|urlencode }}">{{ work.name }}</a>
+<span class="catalogue-meta">{{ work.items_count }} работ · {{ work.unit_price|floatformat:'2g' }} ₽{% if work.unit %} / {{ work.unit }}{% endif %} · {{ work.get_status_display }}</span>
+</th>
+<td>{% include 'works/_work_actions.html' %}</td>
+</tr>
+{% for item in work.catalogue_items|default:work.items.all %}<tr>
+<td>
+</td>
+<td class="catalogue-complex-item">
+<a class="catalogue-name" href="{% url 'works:work_detail' work.pk %}?return_to={{ request.get_full_path|urlencode }}#work-item-{{ item.pk }}">{{ item.name }}</a>
+</td>
+<td>{{ item.unit }}</td>
+<td class="text-end text-nowrap">{{ item.quantity_per_unit }}</td>
+<td class="text-end text-nowrap">{{ item.weight }}</td>
+<td>{% include 'works/_item_actions.html' %}</td>
+</tr>{% empty %}<tr>
+<td>
+</td>
+<td colspan="5" class="text-muted">Работы в составе комплекса не заданы.</td>
+</tr>{% endfor %}
+{% endfor %}</tbody>
+</table>
+</div>

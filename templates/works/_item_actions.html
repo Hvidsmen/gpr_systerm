@@ -1,0 +1,7 @@
+{% load access %}
+{% if request.user|may:'works:work_item_update' %}<span class="catalogue-row-menu">
+<button type="button" class="btn btn-sm btn-outline-secondary" data-row-menu aria-expanded="false" aria-controls="item-menu-{{ item.pk }}" aria-label="Действия с {{ item.name }}">⋯</button>
+<span class="catalogue-menu-panel" id="item-menu-{{ item.pk }}" hidden>
+<a href="{% url 'works:work_item_update' item.pk %}?return_to={{ request.get_full_path|urlencode }}">Название и дополнительные данные</a>
+<a href="{% url 'works:catalogue_copy' 'item' item.pk %}">Копировать работу</a>{% if request.user|may:'works:work_item_delete' %}<a class="text-danger catalogue-menu-danger" href="{% url 'works:work_item_delete' item.pk %}">Удалить работу</a>{% endif %}</span>
+</span>{% endif %}
