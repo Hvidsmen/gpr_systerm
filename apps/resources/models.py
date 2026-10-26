@@ -3,6 +3,7 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 
 from core.models import BaseCompanyModel
+from .employee_staffing import staffing_parts
 
 
 class Position(BaseCompanyModel):
@@ -62,7 +63,11 @@ class Employee(BaseCompanyModel):
 
     @property
     def display_position(self):
-        return self.zup_position_name or self.zup_card.get('staffing_position', '') or str(self.position or '')
+        return self.zup_position_name or staffing_parts(self.zup_card.get('staffing_position', ''))[0] or str(self.position or '')
+
+    @property
+    def display_department(self):
+        return self.zup_department or (staffing_parts(self.zup_card.get('staffing_position', ''))[1] if self.position_from_staffing else '')
 
     @property
     def position_from_staffing(self):

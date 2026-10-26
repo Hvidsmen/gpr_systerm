@@ -40,8 +40,11 @@ class EmployeeCardTests(TestCase):
         response = self.client.get(url)
         for text in ['Последнее место работы', 'Уволен / в архиве ЗУП', 'Должность из кадровой истории',
                      'Кадровая история', '03.02.1990', '15.01.2020', '30.04.2025',
-                     '123456789012', '111-222-333 44', '123 456,78', '0,00 ₽', 'График 0,5 ставки']:
+                     '123456789012', '111-222-333 44', 'График 0,5 ставки']:
             self.assertContains(response, text)
+        for text in ['Оплата труда', 'Тарифная ставка', 'Плановый ФОТ', '123 456,78', '0,00 ₽', 'href="#pay"', 'id="pay"']:
+            self.assertNotContains(response, text)
+        self.assertNotIn('pay_rows', response.context)
         self.assertEqual(employee.zup_card['fte'], '0.5')
         self.assertEqual(apply_employees(self.run, {'employees': [self.row]})['unchanged'], 1)
 
@@ -54,7 +57,10 @@ class EmployeeCardTests(TestCase):
             for secret in ['123456789012', '111-222-333 44', '123 456,78', '03.02.1990']:
                 self.assertNotContains(response, secret)
         self.role('HR_HEAD')
-        self.assertContains(self.client.get(reverse('resources:employee_detail', args=[employee.pk])), '123456789012')
+        response = self.client.get(reverse('resources:employee_detail', args=[employee.pk]))
+        self.assertContains(response, '123456789012')
+        self.assertNotContains(response, 'Оплата труда')
+        self.assertNotContains(response, '123 456,78')
         self.assertNotContains(self.client.get(reverse('resources:employee_list'), {'include_archived': '1'}), '123456789012')
 
     def test_company_scope_get_and_post_and_source_card_cannot_be_overwritten(self):

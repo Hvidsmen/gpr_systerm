@@ -1,6 +1,5 @@
-"""Employee card: common employment fields and restricted HR/payroll data."""
+"""Employee card: common employment fields and restricted personal data."""
 from datetime import date
-from decimal import Decimal
 
 from django.core.exceptions import PermissionDenied
 from django.contrib import messages
@@ -34,7 +33,7 @@ class EmployeeDetail(CompanyScopedMixin, DetailView):
         context['employment_rows'] = [
             ('Табельный номер', employee.employee_number or '—'),
             ('Организация', employee.zup_organisation or '—'),
-            ('Подразделение', employee.zup_department or '—'),
+            ('Подразделение', employee.display_department or '—'),
             ('Должность (штатная позиция)' if employee.position_from_staffing else 'Должность', employee.display_position or ('Не получена из ЗУП' if employee.zup_ref else '—')),
             ('Дата приёма', date_text(data.get('hire_date'))),
             ('Дата увольнения', date_text(data.get('dismissal_date'))),
@@ -61,13 +60,6 @@ class EmployeeDetail(CompanyScopedMixin, DetailView):
                 ('Место рождения', data.get('birth_place') or '—'),
                 ('ИНН', data.get('inn') or '—'), ('СНИЛС', data.get('snils') or '—'),
             ]
-            context['pay_rows'] = [
-                (label, format(Decimal(data[key]), ',.2f').replace(',', ' ').replace('.', ',')+' ₽' if key in data else '—')
-                for key, label in [('tariff_rate', 'Тарифная ставка'),
-                                   ('combined_tariff_rate', 'Совокупная тарифная ставка'),
-                                   ('payroll_fund', 'Плановый ФОТ')]
-            ]
-            context['pay_since'] = date_text(data.get('pay_since'))
         return context
 
 

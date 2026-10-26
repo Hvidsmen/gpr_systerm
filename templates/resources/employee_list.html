@@ -15,7 +15,7 @@
     </a>{% endif %}
 </div>
 
-<p class="text-muted small">Нажмите ФИО, чтобы открыть карточку сотрудника. Загрузка из ЗУП обновляет кадровые данные и включает уволенных с пометкой об архиве. Личные данные и оплата труда в карточке доступны кадровой службе и администратору.</p>
+<p class="text-muted small">Нажмите ФИО, чтобы открыть карточку сотрудника. Загрузка из ЗУП обновляет кадровые данные и включает уволенных с пометкой об архиве. Личные данные в карточке доступны кадровой службе и администратору.</p>
 <form method="get" class="card card-body mb-3">
   <div class="row g-3 align-items-end">
     <div class="col-md-4">{{ filter_form.q.label_tag }}{{ filter_form.q }}{{ filter_form.q.errors }}</div>
@@ -40,7 +40,7 @@
                     <tr>{% if request.user|may:bulk_route %}<td>{% include 'bulk/checkbox.html' with record=emp %}</td>{% endif %}
                         <td>{{ emp.employee_number|default:"—" }}</td><td><a href="{% url 'resources:employee_detail' emp.pk %}">{{ emp.display_name }}</a>{% if emp.name_note %}<small class="d-block text-muted">{{ emp.name_note }}</small>{% endif %}</td>
                         <td>{{ emp.display_position|default:"Не получена" }}{% if emp.position_from_staffing %}<small class="d-block text-muted">По штатной позиции ЗУП</small>{% endif %}{% if not emp.is_active and emp.zup_ref %}<small class="d-block text-muted">Последнее место работы</small>{% endif %}</td>
-                        <td>{{ emp.zup_organisation|default:"—" }}{% if emp.zup_department %}<small class="d-block text-muted">{{ emp.zup_department }}</small>{% endif %}</td>
+                        <td>{{ emp.zup_organisation|default:"—" }}{% if emp.display_department %}<small class="d-block text-muted">{{ emp.display_department }}</small>{% endif %}</td>
                         <td>{% if emp.zup_ref %}<span class="badge bg-info text-dark">ЗУП</span><small class="d-block">{{ emp.zup_synced_at|date:'d.m.Y H:i' }}</small>{% else %}Вручную{% endif %}</td>
                         <td>
                             {% if emp.is_active %}

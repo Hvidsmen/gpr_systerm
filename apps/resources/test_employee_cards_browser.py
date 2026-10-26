@@ -39,7 +39,8 @@ class EmployeeCardBrowserTests(StaticLiveServerTestCase):
                     'probes': {'occupancy_position_row': 0}, 'references': {'position': 'b'*32}}})
         config = dict(base=self.live_server_url, listing=reverse('resources:employee_list')+'?include_archived=1',
                       detail=reverse('resources:employee_detail', args=[employee.pk]),
-                      staffing_detail=reverse('resources:employee_detail', args=[staffing_employee.pk]), staffing_name=staffing_name,
+                      staffing_detail=reverse('resources:employee_detail', args=[staffing_employee.pk]),
+                      staffing_name='Аналитик', staffing_department='Управление цифровизации',
                       admin_cookie=cookie(user('ADMIN')), planner_cookie=cookie(user('PLANNER')),
                       chromium=shutil.which('chromium'))
         script = Path(__file__).resolve().parents[2]/'tests/browser/employee_cards.js'

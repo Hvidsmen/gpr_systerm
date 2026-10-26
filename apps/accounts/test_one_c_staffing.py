@@ -104,7 +104,7 @@ class StaffingCardTests(TestCase):
     run_record = employee_tests.EmployeesImportTests.run_record
 
     def staffing_row(self, **changes):
-        return self.row(position='',staffing_position='Аналитик /Управление цифровизации/',
+        return self.row(position='',department='',staffing_position='Аналитик /Управление цифровизации/',
             staffing_source='Занятость штатных позиций (наименование)',staffing_since='2025-02-12',
             position_state='staffing',trace_staffing_ref='a'*32,trace_position_ref='b'*32,
             trace_department_ref='c'*32,probe_occupancy_position_ref=1,
@@ -119,17 +119,33 @@ class StaffingCardTests(TestCase):
         self.assertEqual(employee.zup_position_name,'')
         self.assertIsNone(employee.position_id)
         self.assertTrue(employee.position_from_staffing)
-        self.assertEqual(employee.display_position,'Аналитик /Управление цифровизации/')
+        self.assertEqual(employee.display_position,'Аналитик')
+        self.assertEqual(employee.display_department,'Управление цифровизации')
+        self.assertEqual(employee.zup_card['staffing_position'],'Аналитик /Управление цифровизации/')
         self.assertEqual((result['without_position'],result['staffing_fallback']),(0,1))
         self.assertEqual(result['position_diagnostics']['catalogue'],{'position_rows':200,'position_named':195})
         listing = self.client.get(reverse('resources:employee_list'),{'position':'АНАЛИТИК'})
         self.assertContains(listing,employee.display_position)
         self.assertContains(listing,'По штатной позиции ЗУП')
+        self.assertContains(listing,employee.display_department)
+        self.assertNotContains(listing,employee.zup_card['staffing_position'])
+        self.assertNotContains(self.client.get(reverse('resources:employee_list'),{'position':'цифровизации'}),employee.display_name)
         card = self.client.get(reverse('resources:employee_detail',args=[employee.pk]))
         for text in ['Должность (штатная позиция)',employee.display_position,'12.02.2025','Проверка должности (ZIP)']:
             self.assertContains(card,text)
         self.assertNotContains(card,'Последняя загрузка не вернула')
+        self.assertContains(card,employee.display_department)
+        self.assertNotContains(card,employee.zup_card['staffing_position'])
         self.assertEqual(apply_employees(self.run_record(),{'employees':[self.staffing_row()]})['unchanged'],1)
+
+    def test_staffing_format_is_explicit_and_structured_department_has_priority(self):
+        from apps.resources.employee_staffing import staffing_parts
+        for label in ['Слесарь / сварщик','Инженер','Начальник /Участок/Отдел/', '/Отдел/']:
+            self.assertEqual(staffing_parts(label),(label,''))
+        self.assertEqual(staffing_parts('  Аналитик / Управление цифровизации /  '),('Аналитик','Управление цифровизации'))
+        employee = Employee(zup_department='Подразделение из регистра',
+            zup_card={'staffing_position':'Аналитик /Управление цифровизации/'})
+        self.assertEqual(employee.display_department,'Подразделение из регистра')
 
     def test_real_job_has_priority_in_display_mapping_and_filter(self):
         position = Position.objects.create(company=self.company,code='real',name='Подтверждённая должность')
