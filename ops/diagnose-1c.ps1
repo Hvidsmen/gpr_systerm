@@ -175,14 +175,15 @@ try {
             if($offsetRows.Count -ne 1 -or [int]$offsetRows[0].date_offset -notin @(0,2000)){throw 'Unsupported or ambiguous 1C date offset.'}
             $dateOffset=[int]$offsetRows[0].date_offset
             $storedNow=[TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::UtcNow,'Russian Standard Time').AddYears($dateOffset)
+            $positionCatalogue=@(Query $connection "SELECT COUNT_BIG(*) AS position_rows,COALESCE(SUM(CASE WHEN NULLIF(LTRIM(RTRIM([_Description])),N'') IS NOT NULL THEN 1 ELSE 0 END),0) AS position_named FROM [dbo].[_Reference92]")
             $employees=@(Query $connection @'
 SELECT TOP (200001) CONVERT(varchar(32), e.[_IDRRef], 2) AS source_id,
  e.[_Code] AS employee_number,
  COALESCE(NULLIF(LTRIM(RTRIM(p.[_Fld31265])),N''),NULLIF(LTRIM(RTRIM(p.[_Description])),N''),NULLIF(LTRIM(RTRIM(e.[_Description])),N''),N'') AS full_name,
  p.[_Fld31276] AS last_name, p.[_Fld31277] AS first_name, p.[_Fld31278] AS middle_name,
  CASE WHEN e.[_Fld30280]=0x01 THEN 1 ELSE 0 END AS archived,
- CASE WHEN COALESCE(NULLIF(j.[_Description],N''),NULLIF(jp.[_Description],N''),NULLIF(jps.[_Description],N''),NULLIF(ji.[_Description],N''),NULLIF(jh.[_Description],N''),NULLIF(js.[_Description],N'')) IS NULL AND NULLIF(jo.[_Description],N'') IS NOT NULL THEN COALESCE(NULLIF(oo.[_Description],N''),ho.[_Description],N'') WHEN NULLIF(j.[_Description],N'') IS NULL AND COALESCE(NULLIF(jp.[_Description],N''),NULLIF(jps.[_Description],N'')) IS NOT NULL THEN COALESCE(NULLIF(op.[_Description],N''),NULLIF(o.[_Description],N''),ho.[_Description],N'') ELSE COALESCE(NULLIF(o.[_Description],N''),NULLIF(oi.[_Description],N''),NULLIF(oh.[_Description],N''),ho.[_Description],N'') END AS organisation,
- CASE WHEN COALESCE(NULLIF(j.[_Description],N''),NULLIF(jp.[_Description],N''),NULLIF(jps.[_Description],N''),NULLIF(ji.[_Description],N''),NULLIF(jh.[_Description],N''),NULLIF(js.[_Description],N'')) IS NULL AND NULLIF(jo.[_Description],N'') IS NOT NULL THEN COALESCE(doo.[_Description],N'') WHEN NULLIF(j.[_Description],N'') IS NULL AND COALESCE(NULLIF(jp.[_Description],N''),NULLIF(jps.[_Description],N'')) IS NOT NULL THEN COALESCE(NULLIF(dp.[_Description],N''),dps.[_Description],N'') ELSE COALESCE(NULLIF(d.[_Description],N''),NULLIF(di.[_Description],N''),NULLIF(dh.[_Description],N''),ds.[_Description],N'') END AS department,
+ CASE WHEN COALESCE(NULLIF(j.[_Description],N''),NULLIF(jp.[_Description],N''),NULLIF(jps.[_Description],N''),NULLIF(ji.[_Description],N''),NULLIF(jh.[_Description],N''),NULLIF(js.[_Description],N''),NULLIF(jo.[_Description],N'')) IS NULL AND sf.staffing_position IS NOT NULL THEN COALESCE(NULLIF(sf.organisation,N''),ho.[_Description],N'') WHEN COALESCE(NULLIF(j.[_Description],N''),NULLIF(jp.[_Description],N''),NULLIF(jps.[_Description],N''),NULLIF(ji.[_Description],N''),NULLIF(jh.[_Description],N''),NULLIF(js.[_Description],N'')) IS NULL AND NULLIF(jo.[_Description],N'') IS NOT NULL THEN COALESCE(NULLIF(oo.[_Description],N''),ho.[_Description],N'') WHEN NULLIF(j.[_Description],N'') IS NULL AND COALESCE(NULLIF(jp.[_Description],N''),NULLIF(jps.[_Description],N'')) IS NOT NULL THEN COALESCE(NULLIF(op.[_Description],N''),NULLIF(o.[_Description],N''),ho.[_Description],N'') ELSE COALESCE(NULLIF(o.[_Description],N''),NULLIF(oi.[_Description],N''),NULLIF(oh.[_Description],N''),ho.[_Description],N'') END AS organisation,
+ CASE WHEN COALESCE(NULLIF(j.[_Description],N''),NULLIF(jp.[_Description],N''),NULLIF(jps.[_Description],N''),NULLIF(ji.[_Description],N''),NULLIF(jh.[_Description],N''),NULLIF(js.[_Description],N''),NULLIF(jo.[_Description],N'')) IS NULL AND sf.staffing_position IS NOT NULL THEN COALESCE(sf.department,N'') WHEN COALESCE(NULLIF(j.[_Description],N''),NULLIF(jp.[_Description],N''),NULLIF(jps.[_Description],N''),NULLIF(ji.[_Description],N''),NULLIF(jh.[_Description],N''),NULLIF(js.[_Description],N'')) IS NULL AND NULLIF(jo.[_Description],N'') IS NOT NULL THEN COALESCE(doo.[_Description],N'') WHEN NULLIF(j.[_Description],N'') IS NULL AND COALESCE(NULLIF(jp.[_Description],N''),NULLIF(jps.[_Description],N'')) IS NOT NULL THEN COALESCE(NULLIF(dp.[_Description],N''),dps.[_Description],N'') ELSE COALESCE(NULLIF(d.[_Description],N''),NULLIF(di.[_Description],N''),NULLIF(dh.[_Description],N''),ds.[_Description],N'') END AS department,
  COALESCE(NULLIF(j.[_Description],N''),NULLIF(jp.[_Description],N''),NULLIF(jps.[_Description],N''),NULLIF(ji.[_Description],N''),NULLIF(jh.[_Description],N''),NULLIF(js.[_Description],N''),jo.[_Description],N'') AS position,
  CASE WHEN NULLIF(j.[_Description],N'') IS NOT NULL THEN N'Текущие кадровые данные'
       WHEN COALESCE(NULLIF(jp.[_Description],N''),NULLIF(jps.[_Description],N'')) IS NOT NULL THEN N'Данные для подбора сотрудников'
@@ -197,11 +198,23 @@ SELECT TOP (200001) CONVERT(varchar(32), e.[_IDRRef], 2) AS source_id,
      WHEN NULLIF(jh.[_Description],N'') IS NOT NULL THEN h.[_Period]
      WHEN NULLIF(js.[_Description],N'') IS NOT NULL THEN CASE WHEN NULLIF(i.[_Fld18199RRef],0x00000000000000000000000000000000) IS NOT NULL THEN i.[_Fld18186] ELSE h.[_Period] END
      WHEN NULLIF(jo.[_Description],N'') IS NOT NULL AND YEAR(occ.since)>@dateOffset+1 THEN occ.since END),23) END AS position_since,
+ sf.staffing_position,sf.staffing_source,
+ CASE WHEN YEAR(sf.since)-@dateOffset BETWEEN 1900 AND 2199 THEN CONVERT(char(10),DATEADD(year,-@dateOffset,sf.since),23) END AS staffing_since,
+ CONVERT(varchar(32),COALESCE(sf.staffing_ref,so.[_IDRRef]),2) AS trace_staffing_ref,
+ CONVERT(varchar(32),COALESCE(sf.position_ref,so.[_Fld31540RRef]),2) AS trace_position_ref,
+ CONVERT(varchar(32),COALESCE(sf.department_ref,so.[_Fld31539RRef]),2) AS trace_department_ref,
+ CASE WHEN COALESCE(NULLIF(j.[_Description],N''),NULLIF(jp.[_Description],N''),NULLIF(jps.[_Description],N''),NULLIF(ji.[_Description],N''),NULLIF(jh.[_Description],N''),NULLIF(js.[_Description],N''),NULLIF(jo.[_Description],N'')) IS NOT NULL THEN 'job'
+      WHEN sf.staffing_position IS NOT NULL THEN 'staffing'
+      WHEN occ.candidates>1 OR pc.candidates>1 THEN 'ambiguous'
+      WHEN so.[_IDRRef] IS NULL THEN 'no_staffing_assignment'
+      WHEN so.[_Fld31540RRef]=0x00000000000000000000000000000000 THEN 'no_position_link'
+      WHEN jo.[_IDRRef] IS NULL THEN 'missing_job_record'
+      ELSE 'empty_job_name' END AS position_state,
  CASE WHEN YEAR(p.[_Fld31257])>@dateOffset+1 THEN CONVERT(char(10),DATEADD(year,-@dateOffset,p.[_Fld31257]),23) END AS birth_date,
  p.[_Fld31259] AS inn, p.[_Fld31260] AS snils, p.[_Fld31261] AS birth_place,
  CASE WHEN YEAR(k.[_Fld21754])>@dateOffset+1 THEN CONVERT(char(10),DATEADD(year,-@dateOffset,k.[_Fld21754]),23) END AS hire_date,
  CASE WHEN YEAR(k.[_Fld21751])>@dateOffset+1 THEN CONVERT(char(10),DATEADD(year,-@dateOffset,k.[_Fld21751]),23) END AS dismissal_date,
- CASE WHEN COALESCE(NULLIF(j.[_Description],N''),NULLIF(jp.[_Description],N''),NULLIF(jps.[_Description],N''),NULLIF(ji.[_Description],N''),NULLIF(jh.[_Description],N''),NULLIF(js.[_Description],N'')) IS NULL AND NULLIF(jo.[_Description],N'') IS NOT NULL THEN occ.fte WHEN NULLIF(j.[_Description],N'') IS NOT NULL THEN k.[_Fld45771] WHEN COALESCE(NULLIF(jp.[_Description],N''),NULLIF(jps.[_Description],N'')) IS NOT NULL THEN pc.[_Fld16842] ELSE COALESCE(i.[_Fld18200],h.[_Fld18164],NULLIF(k.[_Fld45771],0)) END AS fte,
+ CASE WHEN COALESCE(NULLIF(j.[_Description],N''),NULLIF(jp.[_Description],N''),NULLIF(jps.[_Description],N''),NULLIF(ji.[_Description],N''),NULLIF(jh.[_Description],N''),NULLIF(js.[_Description],N''),NULLIF(jo.[_Description],N'')) IS NULL AND sf.staffing_position IS NOT NULL AND sf.fte>0 THEN sf.fte WHEN COALESCE(NULLIF(j.[_Description],N''),NULLIF(jp.[_Description],N''),NULLIF(jps.[_Description],N''),NULLIF(ji.[_Description],N''),NULLIF(jh.[_Description],N''),NULLIF(js.[_Description],N'')) IS NULL AND NULLIF(jo.[_Description],N'') IS NOT NULL THEN occ.fte WHEN NULLIF(j.[_Description],N'') IS NOT NULL THEN k.[_Fld45771] WHEN COALESCE(NULLIF(jp.[_Description],N''),NULLIF(jps.[_Description],N'')) IS NOT NULL THEN pc.[_Fld16842] ELSE COALESCE(i.[_Fld18200],h.[_Fld18164],NULLIF(k.[_Fld45771],0)) END AS fte,
  g.[_Description] AS schedule,
  CASE WHEN pay.candidates=1 THEN pay.tariff_rate END AS tariff_rate,
  CASE WHEN pay.candidates=1 THEN pay.combined_tariff_rate END AS combined_tariff_rate,
@@ -224,7 +237,11 @@ SELECT TOP (200001) CONVERT(varchar(32), e.[_IDRRef], 2) AS source_id,
  CASE WHEN occ.candidates>1 THEN 1 ELSE 0 END AS probe_occupancy_ambiguous,
  CASE WHEN so.[_IDRRef] IS NOT NULL THEN 1 ELSE 0 END AS probe_occupancy_staffing_join,
  CASE WHEN so.[_Fld31540RRef]<>0x00000000000000000000000000000000 THEN 1 ELSE 0 END AS probe_occupancy_position_ref,
+ CASE WHEN jo.[_IDRRef] IS NOT NULL THEN 1 ELSE 0 END AS probe_occupancy_position_row,
  CASE WHEN NULLIF(jo.[_Description],N'') IS NOT NULL THEN 1 ELSE 0 END AS probe_occupancy_position_join,
+ CASE WHEN doo.[_IDRRef] IS NOT NULL THEN 1 ELSE 0 END AS probe_occupancy_department_row,
+ CASE WHEN NULLIF(doo.[_Description],N'') IS NOT NULL THEN 1 ELSE 0 END AS probe_occupancy_department_named,
+ CASE WHEN COALESCE(NULLIF(j.[_Description],N''),NULLIF(jp.[_Description],N''),NULLIF(jps.[_Description],N''),NULLIF(ji.[_Description],N''),NULLIF(jh.[_Description],N''),NULLIF(js.[_Description],N''),NULLIF(jo.[_Description],N'')) IS NULL AND sf.staffing_position IS NOT NULL THEN 1 ELSE 0 END AS probe_staffing_display_fallback,
  CASE WHEN NULLIF(so.[_Description],N'') IS NOT NULL THEN 1 ELSE 0 END AS probe_occupancy_staffing_named,
  CASE WHEN EXISTS(SELECT 1 FROM [dbo].[_InfoRg59135] ux WHERE ux.[_Fld59138RRef]=e.[_IDRRef] AND ux.[_Period]<=@storedNow AND ux.[_Fld59139RRef]<>0x00000000000000000000000000000000) THEN 1 ELSE 0 END AS probe_custom_position_ref
 FROM [dbo].[_Reference297] e
@@ -246,6 +263,7 @@ LEFT JOIN [dbo].[_Reference92] jps ON jps.[_IDRRef]=ps.[_Fld31540RRef]
 LEFT JOIN [dbo].[_Reference216] dp ON dp.[_IDRRef]=pc.[_Fld16837RRef] AND pc.candidates=1
 LEFT JOIN [dbo].[_Reference216] dps ON dps.[_IDRRef]=ps.[_Fld31539RRef]
 LEFT JOIN [dbo].[_Reference166] op ON op.[_IDRRef]=pc.[_Fld39554RRef] AND pc.candidates=1
+LEFT JOIN [dbo].[_Reference166] opp ON opp.[_IDRRef]=ps.[_OwnerIDRRef]
 
 -- Resolve by the exact employment ID, never by physical person/head employee.
 -- Empty dismissal intervals must not erase the last known job of an archived employee.
@@ -302,6 +320,29 @@ LEFT JOIN [dbo].[_Reference394] so ON so.[_IDRRef]=occ.staffing_ref AND occ.cand
 LEFT JOIN [dbo].[_Reference92] jo ON jo.[_IDRRef]=so.[_Fld31540RRef]
 LEFT JOIN [dbo].[_Reference216] doo ON doo.[_IDRRef]=so.[_Fld31539RRef]
 LEFT JOIN [dbo].[_Reference166] oo ON oo.[_IDRRef]=so.[_OwnerIDRRef]
+-- Staffing name selection begin: only unique, already selected employment records.
+OUTER APPLY (
+ SELECT TOP (1) c.*
+ FROM (
+   SELECT 1 AS priority,NULLIF(LTRIM(RTRIM(so.[_Description])),N'') AS staffing_position,
+     oo.[_Description] AS organisation,doo.[_Description] AS department,occ.fte AS fte,occ.since AS since,
+     N'Занятость штатных позиций (наименование)' AS staffing_source,
+     so.[_IDRRef] AS staffing_ref,so.[_Fld31540RRef] AS position_ref,so.[_Fld31539RRef] AS department_ref
+   UNION ALL
+   SELECT 2,NULLIF(LTRIM(RTRIM(ps.[_Description])),N''),
+     COALESCE(NULLIF(op.[_Description],N''),opp.[_Description]),COALESCE(NULLIF(dp.[_Description],N''),dps.[_Description]),pc.[_Fld16842],pc.[_Fld16846],
+     N'Подбор сотрудников (штатная позиция)',ps.[_IDRRef],ps.[_Fld31540RRef],ps.[_Fld31539RRef]
+   UNION ALL
+   SELECT 3,NULLIF(LTRIM(RTRIM(s.[_Description])),N''),
+     CASE WHEN i.[_Fld18199RRef]=s.[_IDRRef] THEN oi.[_Description] ELSE oh.[_Description] END,ds.[_Description],
+     CASE WHEN i.[_Fld18199RRef]=s.[_IDRRef] THEN i.[_Fld18200] ELSE h.[_Fld18164] END,
+     CASE WHEN i.[_Fld18199RRef]=s.[_IDRRef] THEN i.[_Fld18186] ELSE h.[_Period] END,
+     N'Кадровая история (штатная позиция)',s.[_IDRRef],s.[_Fld31540RRef],s.[_Fld31539RRef]
+ ) c
+ WHERE c.staffing_position IS NOT NULL
+ ORDER BY c.priority
+) sf
+-- Staffing name selection end
 OUTER APPLY (
  SELECT TOP (1) x.[_Fld16737RRef] FROM [dbo].[_InfoRg16734] x
  WHERE x.[_Fld16735RRef]=e.[_IDRRef] AND x.[_Active]=0x01 AND x.[_Period]<=@storedNow
@@ -320,7 +361,7 @@ OUTER APPLY (
 ) pay
 WHERE e.[_Marked]=0x00
 '@ @{'@dateOffset'=$dateOffset;'@storedNow'=$storedNow} 180)
-            Write-Json $reportPath @{employees_import=$true;employees_card_version=4;employees=@($employees)}
+            Write-Json $reportPath @{employees_import=$true;employees_card_version=5;position_catalog=$positionCatalogue[0];employees=@($employees)}
             Write-Json $statusPath @{ok=$true;report=$reportPath}
             return
         }

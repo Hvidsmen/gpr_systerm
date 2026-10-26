@@ -105,7 +105,7 @@ def check_route(user, match, method):
     role = role_code(user)
     if namespace == 'production' and name in {'equipment_assignment_list', 'equipment_history_detail'}:
         require_roles(user, READ_ROLES | {'MECHANIZATION_DISPATCHER', 'ALL_FACT_DISPATCHER'} if method in {'GET', 'HEAD'} else {'ADMIN', 'MECHANIZATION_DISPATCHER', 'ALL_FACT_DISPATCHER'});return
-    if namespace == 'resources' and name == 'employee_zup_import':
+    if namespace == 'resources' and name in {'employee_zup_import','employee_position_report'}:
         require_roles(user, {'ADMIN'});return
     if namespace == 'resources' and name in {'employee_create', 'employee_update'}:
         require_roles(user, {'ADMIN', 'HR_HEAD', 'PLANNER'});return

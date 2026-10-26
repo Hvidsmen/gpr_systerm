@@ -62,7 +62,11 @@ class Employee(BaseCompanyModel):
 
     @property
     def display_position(self):
-        return self.zup_position_name or str(self.position or '')
+        return self.zup_position_name or self.zup_card.get('staffing_position', '') or str(self.position or '')
+
+    @property
+    def position_from_staffing(self):
+        return not self.zup_position_name and bool(self.zup_card.get('staffing_position'))
 
     class Meta:
         verbose_name = _('сотрудник')

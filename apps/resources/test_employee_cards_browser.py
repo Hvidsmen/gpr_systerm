@@ -30,8 +30,16 @@ class EmployeeCardBrowserTests(StaticLiveServerTestCase):
             zup_card={'birth_date': '1990-02-03', 'inn': '123456789012', 'snils': '111-222-333 44', 'tariff_rate': '123456.78',
                       'position_source': 'Кадровая история', 'hire_date': '2020-01-15', 'dismissal_date': '2025-04-30',
                       'schedule': 'Пятидневная рабочая неделя', 'fte': '1'})
+        staffing_name = 'Аналитик /Управление цифровизации/'
+        staffing_employee = Employee.objects.create(company=company, zup_ref='2'*32,
+            zup_full_name='Сотрудник со штатной позицией', employee_number='ТЕСТ-003',
+            zup_card={'staffing_position': staffing_name, 'staffing_since': '2025-02-12',
+                'staffing_source': 'Занятость штатных позиций (наименование)',
+                'position_state': 'staffing', 'position_diagnostics': {
+                    'probes': {'occupancy_position_row': 0}, 'references': {'position': 'b'*32}}})
         config = dict(base=self.live_server_url, listing=reverse('resources:employee_list')+'?include_archived=1',
                       detail=reverse('resources:employee_detail', args=[employee.pk]),
+                      staffing_detail=reverse('resources:employee_detail', args=[staffing_employee.pk]), staffing_name=staffing_name,
                       admin_cookie=cookie(user('ADMIN')), planner_cookie=cookie(user('PLANNER')),
                       chromium=shutil.which('chromium'))
         script = Path(__file__).resolve().parents[2]/'tests/browser/employee_cards.js'

@@ -10,6 +10,7 @@
     <span class="text-muted small">{% if employee.zup_ref %}Данные из 1С ЗУП · {{ employee.zup_synced_at|date:'d.m.Y H:i' }}{% else %}Карточка создана вручную{% endif %}</span>
   </div></div>
   <div class="d-flex flex-wrap gap-2">
+    {% if employee.zup_card.position_diagnostics %}{% if request.user|may:'resources:employee_position_report' %}<a class="btn btn-outline-secondary" href="{% url 'resources:employee_position_report' employee.pk %}">Проверка должности (ZIP)</a>{% endif %}{% endif %}
     {% if can_edit %}<a class="btn btn-primary" href="{% url 'resources:employee_update' employee.pk %}">Редактировать</a>{% endif %}
     {% if request.user|may:'resources:employee_zup_import' %}<form method="post" action="{% url 'resources:employee_zup_import' %}">{% csrf_token %}<button class="btn btn-outline-primary">Обновить сотрудников из ЗУП</button></form>{% endif %}
   </div>
@@ -25,7 +26,8 @@
 <section class="employee-card-section" id="employment">
   <h2>{% if employee.is_active %}Место работы{% else %}Последнее место работы{% endif %}</h2>
   <dl>{% for label,value in employment_rows %}<dt>{{ label }}</dt><dd>{{ value }}</dd>{% endfor %}</dl>
-  {% if position_source %}<p class="text-muted small mb-0">Источник должности: {{ position_source }}{% if position_since != '—' %} · запись от {{ position_since }}{% endif %}.</p>{% elif employee.zup_ref and not employee.display_position %}<p class="text-muted small mb-0">Последняя загрузка не вернула должность. Администратор может скачать проверку кадровых источников в результате задания загрузки ЗУП.</p>{% endif %}
+  {% if employee.position_from_staffing %}<p class="text-muted small">Показано наименование штатной позиции ЗУП. Связь с отдельным справочником должностей не расшифрована.</p>{% endif %}
+  {% if position_source %}<p class="text-muted small mb-0">Источник должности: {{ position_source }}{% if position_since != '—' %} · запись от {{ position_since }}{% endif %}.</p>{% elif employee.zup_ref and not employee.display_position %}<p class="text-muted small mb-0">{% if position_reason %}{{ position_reason }}{% else %}Последняя загрузка не вернула должность или наименование штатной позиции.{% endif %} Администратор может скачать проверку должности (ZIP).</p>{% endif %}
 </section>
 {% if can_view_private %}
 <section class="employee-card-section" id="personal">

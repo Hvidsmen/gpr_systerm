@@ -23,11 +23,11 @@ def filtered_employees(queryset, form):
         # SQLite LIKE handles Latin case only. Match Cyrillic consistently with
         # other portal catalogues, while still returning a paginated queryset.
         ids = []
-        for pk, full, last, first, middle, number, source_position, local_position in queryset.values_list(
+        for pk, full, last, first, middle, number, source_position, staffing_position, local_position in queryset.values_list(
                 'pk', 'zup_full_name', 'last_name', 'first_name', 'middle_name', 'employee_number',
-                'zup_position_name', 'position__name').iterator(chunk_size=2000):
+                'zup_position_name', 'zup_card__staffing_position', 'position__name').iterator(chunk_size=2000):
             name = ' '.join([full, last, first, middle, number]).casefold()
-            job = (source_position or local_position or '').casefold()
+            job = (source_position or staffing_position or local_position or '').casefold()
             if all(term in name for term in terms) and position in job:
                 ids.append(pk)
         return queryset.filter(pk__in=ids)
@@ -35,6 +35,8 @@ def filtered_employees(queryset, form):
         queryset = queryset.filter(Q(zup_full_name__icontains=term) | Q(last_name__icontains=term) |
             Q(first_name__icontains=term) | Q(middle_name__icontains=term) | Q(employee_number__icontains=term))
     if position:
+        missing_staffing = Q(zup_card__staffing_position__isnull=True) | Q(zup_card__staffing_position='') | Q(zup_card__staffing_position=None)
         queryset = queryset.filter(Q(zup_position_name__icontains=position) |
-            Q(zup_position_name='', position__name__icontains=position))
+            Q(zup_position_name='', zup_card__staffing_position__icontains=position) |
+            (Q(zup_position_name='', position__name__icontains=position) & missing_staffing))
     return queryset

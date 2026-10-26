@@ -4,7 +4,9 @@ from decimal import Decimal
 
 from django.core.exceptions import PermissionDenied
 from django.contrib import messages
+from django.contrib.auth.decorators import login_required
 from django.urls import reverse
+from django.views.decorators.http import require_GET
 from django.views.generic import DetailView, UpdateView
 
 from core.mixins import CompanyScopedMixin, CompanyRequiredMixin
@@ -33,14 +35,21 @@ class EmployeeDetail(CompanyScopedMixin, DetailView):
             ('Табельный номер', employee.employee_number or '—'),
             ('Организация', employee.zup_organisation or '—'),
             ('Подразделение', employee.zup_department or '—'),
-            ('Должность', employee.display_position or ('Не получена из ЗУП' if employee.zup_ref else '—')),
+            ('Должность (штатная позиция)' if employee.position_from_staffing else 'Должность', employee.display_position or ('Не получена из ЗУП' if employee.zup_ref else '—')),
             ('Дата приёма', date_text(data.get('hire_date'))),
             ('Дата увольнения', date_text(data.get('dismissal_date'))),
             ('Количество ставок', data.get('fte', '—')),
             ('График работы', data.get('schedule') or '—'),
         ]
-        context['position_since'] = date_text(data.get('position_since'))
-        context['position_source'] = data.get('position_source', '')
+        context['position_since'] = date_text(data.get('staffing_since' if employee.position_from_staffing else 'position_since'))
+        context['position_source'] = data.get('staffing_source' if employee.position_from_staffing else 'position_source', '')
+        context['position_reason'] = {
+            'ambiguous': 'В источнике найдено несколько вариантов назначения. Автоматический выбор должности не выполнен.',
+            'no_staffing_assignment': 'Не найдена однозначная штатная позиция с наименованием для этого сотрудника.',
+            'no_position_link': 'В штатной позиции не заполнена ссылка на отдельную должность.',
+            'missing_job_record': 'Ссылка на должность есть, но соответствующая запись справочника не найдена.',
+            'empty_job_name': 'Запись должности найдена, но её наименование пустое.',
+        }.get(data.get('position_state'), '')
         context['can_view_private'] = role_code(self.request.user) in {'ADMIN', 'HR_HEAD'}
         context['can_edit'] = not employee.zup_ref and role_code(self.request.user) in {'ADMIN', 'HR_HEAD', 'PLANNER'}
         if context['can_view_private']:
@@ -79,3 +88,28 @@ class EmployeeUpdate(CompanyRequiredMixin, UpdateView):
 
     def get_success_url(self):
         return reverse('resources:employee_detail', args=[self.object.pk])
+
+
+@login_required
+@require_GET
+def employee_position_report(request, pk):
+    from core.permissions import require_roles
+    from django.shortcuts import get_object_or_404
+    from django.http import Http404
+    from apps.accounts.one_c_report import _download_response
+    require_roles(request.user, {'ADMIN'})
+    employee = get_object_or_404(Employee, pk=pk, company=request.user.company)
+    trace = employee.zup_card.get('position_diagnostics')
+    if not employee.zup_ref or not trace:
+        raise Http404('Обновите сотрудников из ЗУП для получения проверки должности.')
+    payload = {
+        'format': 'gpr-zup-employee-position-diagnostics', 'version': 1,
+        'employee_id': employee.pk, 'employee_number': employee.employee_number,
+        'employee_ref': employee.zup_ref,
+        'synced_at': employee.zup_synced_at.isoformat() if employee.zup_synced_at else None,
+        'state': employee.zup_card.get('position_state'),
+        'has_job_name': bool(employee.zup_position_name),
+        'has_staffing_name': bool(employee.zup_card.get('staffing_position')),
+        'probes': trace.get('probes', {}), 'references': trace.get('references', {}),
+    }
+    return _download_response(payload, f'zup-employee-position-{employee.pk}', zipped=True)

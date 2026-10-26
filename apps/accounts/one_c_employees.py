@@ -58,15 +58,18 @@ PROBES = ('current_row', 'current_position_ref', 'current_position_join', 'inter
           'history_position_join', 'staffing_position_join', 'corrected_history_position_ref',
           'order_position', 'head_employee_position_ref', 'picker_candidate', 'picker_position_join', 'picker_ambiguous',
           'staffing_occupancy_position_ref', 'custom_position_ref', 'occupancy_candidate', 'occupancy_ambiguous',
-          'occupancy_staffing_join', 'occupancy_position_ref', 'occupancy_position_join', 'occupancy_staffing_named')
+          'occupancy_staffing_join', 'occupancy_position_ref', 'occupancy_position_join', 'occupancy_staffing_named',
+          'occupancy_position_row', 'occupancy_department_row', 'occupancy_department_named', 'staffing_display_fallback')
 
 # Only these extra, validated fields can enter the card. Personal/pay data is
 # rendered solely for ADMIN/HR_HEAD; it is never added to list/job/audit output.
 CARD_TEXT = {'inn': 12, 'snils': 30, 'birth_place': 500, 'schedule': 250,
-             'position_source': 100}
-CARD_DATES = {'birth_date', 'hire_date', 'dismissal_date', 'position_since', 'pay_since'}
+             'position_source': 100, 'staffing_position': 250, 'staffing_source': 100}
+CARD_DATES = {'birth_date', 'hire_date', 'dismissal_date', 'position_since', 'pay_since', 'staffing_since'}
 CARD_NUMBERS = {'fte', 'tariff_rate', 'combined_tariff_rate', 'payroll_fund'}
 
+
+POSITION_STATES = {'job', 'staffing', 'ambiguous', 'no_staffing_assignment', 'no_position_link', 'missing_job_record', 'empty_job_name'}
 
 def card_values(item):
     result = {}
@@ -104,6 +107,11 @@ def card_values(item):
             result[key] = format(number.normalize(), 'f')
         except (InvalidOperation, ValueError):
             raise ValidationError('Некорректное числовое поле карточки ЗУП. Изменения не внесены.')
+    state = item.get('position_state')
+    if state not in (None, ''):
+        if not isinstance(state, str) or state not in POSITION_STATES:
+            raise ValidationError('Некорректное состояние проверки должности ЗУП.')
+        result['position_state'] = state
     return result
 
 
@@ -152,6 +160,12 @@ def apply_employees(run, report):
         raise ValidationError('ЗУП вернула 0 сотрудников без пометки удаления. Проверьте источник и подключение. Изменения не внесены.')
     if len(rows) > 200000:
         raise ValidationError(f'Источник вернул {len(rows)} строк; лимит загрузки — 200 000. Изменения не внесены.')
+    catalogue = report.get('position_catalog')
+    if catalogue is not None:
+        if (not isinstance(catalogue, dict) or set(catalogue) != {'position_rows', 'position_named'} or
+                any(type(value) is not int or not 0 <= value <= 1000000000 for value in catalogue.values()) or
+                catalogue['position_named'] > catalogue['position_rows']):
+            raise ValidationError('Некорректная сводка справочника должностей ЗУП. Изменения не внесены.')
     normalized, seen = [], set()
     coverage = {'all': {key: 0 for key in PROBES}, 'active': {key: 0 for key in PROBES}}
     for item in rows:
@@ -177,13 +191,24 @@ def apply_employees(run, report):
             raise ValidationError('Некорректный признак архива сотрудника.')
         values['is_active'] = not bool(item['archived'])
         values['zup_card'] = card_values(item)
+        row_probes = {}
         for probe in PROBES:
             value = item.get('probe_'+probe, 0)
             if value not in (0, 1, False, True):
                 raise ValidationError('Некорректная сводка кадровых источников ЗУП.')
+            row_probes[probe] = int(value)
             coverage['all'][probe] += int(value)
             if values['is_active']:
                 coverage['active'][probe] += int(value)
+        references = {}
+        for name in ['staffing', 'position', 'department']:
+            value = item.get(f'trace_{name}_ref')
+            if value in (None, ''):continue
+            if not isinstance(value, str) or not re.fullmatch('[0-9a-fA-F]{32}', value):
+                raise ValidationError('Некорректная техническая ссылка должности ЗУП. Изменения не внесены.')
+            if int(value, 16):references[name] = value.lower()
+        if references or any('probe_' + probe in item for probe in PROBES) or 'position_state' in item:
+            values['zup_card']['position_diagnostics'] = {'probes': row_probes, 'references': references}
         normalized.append((ref, values))
     source = {'company_id': connection.company_id, 'zup_server': run.server.casefold(), 'zup_database': run.database.casefold()}
     existing = {e.zup_ref: e for e in Employee.objects.select_for_update().filter(**source).exclude(zup_ref='')}
@@ -193,11 +218,13 @@ def apply_employees(run, report):
         name = mapping.brigade.name if mapping and mapping.company_id == connection.company_id and mapping.brigade.company_id == connection.company_id else position.name
         positions.setdefault(name.strip().casefold(), []).append(position)
     counts = {'created': 0, 'updated': 0, 'unchanged': 0, 'archived': sum(not values['is_active'] for _, values in normalized),
-              'without_position':sum(not values['zup_position_name'] for _,values in normalized),
+              'without_position':sum(not (values['zup_position_name'] or values['zup_card'].get('staffing_position')) for _,values in normalized),
+              'staffing_fallback':sum(not values['zup_position_name'] and bool(values['zup_card'].get('staffing_position')) for _,values in normalized),
               'incomplete_names':sum(not values['first_name'] or not values['last_name'] for _,values in normalized),
               'unnamed':sum(not any(values[name] for name in ['zup_full_name','first_name','last_name','middle_name']) for _,values in normalized)}
     counts['position_diagnostics'] = {'version': 1, 'employees': len(normalized),
         'active_employees': sum(values['is_active'] for _, values in normalized), 'coverage': coverage}
+    if catalogue is not None:counts['position_diagnostics']['catalogue'] = catalogue
     now = timezone.now()
     for ref, values in normalized:
         matches = positions.get(values['zup_position_name'].casefold(), [])
