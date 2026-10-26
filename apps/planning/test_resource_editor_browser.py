@@ -32,7 +32,8 @@ class InlineResourceBrowserTests(StaticLiveServerTestCase):
         work_resources.brigade_for(position)
         EquipmentCrewPosition.objects.create(company=self.company,equipment_type=self.equipment,position=position,count=1)
         work_resources.save(self.manager,version,WorkResourceAssignment(work=self.composite,work_item=self.a,equipment_type=self.equipment,start_date=date(2026,1,1),end_date=date(2026,1,31),count=2,shifts_per_day=1,hours_per_shift=8))
-        legacy=WorkResourceAssignment.objects.create(company=self.company,version=version,work=self.composite,fuel_type='DIESEL',daily_liters=1,include_crew=False,start_date=date(2026,1,1),end_date=date(2026,1,31))
+        legacy=work_resources.save(self.manager,version,WorkResourceAssignment(position=position,work=self.composite,work_item=self.a,start_date=date(2026,1,1),end_date=date(2026,1,31)))
+        WorkResourceAssignment.objects.filter(pk=legacy.pk).update(work_item=None)
         preparation.ready(self.manager,version)
         from apps.planning.models import ObjectWorkPlan,ResourceMonthAllocation,GlobalPlanVersion
         from apps.planning.object_plans import add_branch
@@ -53,6 +54,7 @@ class InlineResourceBrowserTests(StaticLiveServerTestCase):
         config.update(work=str(self.composite.pk),legacy=str(legacy.pk),legacy_destination=str(self.b.pk))
         config['object_plan']=reverse('planning:object_plan_detail',args=[objplan.pk])
         config['gpr_list']=reverse('planning:workspace_list')
+        config['graph']=reverse('planning:work_resources_graph_gpr',args=[version.pk])
         config['smg']=reverse('planning:daily_schedule_detail',args=[smg.pk])
         config['chromium']=os.environ.get('GPR_CHROMIUM_EXECUTABLE') or shutil.which('chromium') or shutil.which('chromium-browser')
         script=Path(__file__).resolve().parents[2]/'tests'/'browser'/'inline_resources.js'

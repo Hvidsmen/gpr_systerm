@@ -1,5 +1,5 @@
 {% load static %}
-<link rel="stylesheet" href="{% static 'planning/resource_targets.css' %}?v=20261026-multi">
+<link rel="stylesheet" href="{% static 'planning/resource_targets.css' %}?v=20261026-graph">
 <style>
 .work-resource-entry-heading {display:flex; justify-content:space-between; align-items:start; gap:8px;}
 .work-resource-entry-heading > strong {flex:1;}
@@ -21,8 +21,8 @@
 </style>
 {{ resource_editor_data|json_script:'resource-editor-data' }}
 {% if can_prepare_resources %}
-<form id="work-resource-form" method="post" action="{% url 'planning:preparation_add_assignment' resource_owner.pk %}" hidden>{% csrf_token %}</form>
-<template id="work-resource-editor-template"><section class="border border-primary rounded p-3 my-2 bg-light" data-inline-resource-editor aria-label="Редактирование ресурса"><input type="hidden" name="assignment_id"><input type="hidden" name="resource_kind">
+<form id="work-resource-form" method="post" action="{{ resource_assignment_url }}" hidden>{% csrf_token %}</form>
+<template id="work-resource-editor-template"><section class="border border-primary rounded p-3 my-2 bg-light" data-inline-resource-editor aria-label="Редактирование ресурса"><input type="hidden" name="assignment_id"><input type="hidden" name="resource_revision"><input type="hidden" name="resource_kind">
 {{ inline_resource_form.work }}{{ inline_resource_form.work_item }}
 
 <h3 class="h6" id="work-resource-title">Добавить ресурс</h3><p id="work-resource-target"></p>
@@ -39,5 +39,5 @@
 </section></template>
 <div id="work-resource-editor-fallback"></div>
 {% endif %}
-<script src="{% static 'planning/resource_targets.js' %}?v=20261026-multi" defer></script>
-<script src="{% static 'planning/resource_editor.js' %}?v=20261026-multi" defer></script>
+<script src="{% static 'planning/resource_targets.js' %}?v=20261026-graph" defer></script>
+<script src="{% static 'planning/resource_editor.js' %}?v=20261026-graph" defer></script>

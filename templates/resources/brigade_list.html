@@ -29,6 +29,7 @@
     </a>{% endif %}
 </div>
 
+{% if request.user|may:'resources:brigade_zup_employees' %}<form method="post" action="{% url 'resources:brigade_zup_employees' %}" class="mb-3">{% csrf_token %}<button class="btn btn-outline-primary">Заполнить из сотрудников ЗУП</button><span class="small text-muted ms-2">Из уже загруженных карточек, включая архивные. Только названия должностей, без подразделений и ставок.</span></form>{% endif %}
 {% include 'resources/catalog_filters.html' %}
 {% if brigades %}
 <div class="card">

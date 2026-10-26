@@ -210,6 +210,8 @@ def apply_employees(run, report):
         if references or any('probe_' + probe in item for probe in PROBES) or 'position_state' in item:
             values['zup_card']['position_diagnostics'] = {'probes': row_probes, 'references': references}
         normalized.append((ref, values))
+    from apps.resources.zup_positions import sync_names,employee_job
+    position_result,_ = sync_names(connection.company_id,[employee_job(values) for _,values in normalized])
     source = {'company_id': connection.company_id, 'zup_server': run.server.casefold(), 'zup_database': run.database.casefold()}
     existing = {e.zup_ref: e for e in Employee.objects.select_for_update().filter(**source).exclude(zup_ref='')}
     positions = {}
@@ -219,6 +221,7 @@ def apply_employees(run, report):
         positions.setdefault(name.strip().casefold(), []).append(position)
     counts = {'created': 0, 'updated': 0, 'unchanged': 0, 'archived': sum(not values['is_active'] for _, values in normalized),
               'without_position':sum(not (values['zup_position_name'] or values['zup_card'].get('staffing_position')) for _,values in normalized),
+              'positions_result':position_result,
               'staffing_fallback':sum(not values['zup_position_name'] and bool(values['zup_card'].get('staffing_position')) for _,values in normalized),
               'incomplete_names':sum(not values['first_name'] or not values['last_name'] for _,values in normalized),
               'unnamed':sum(not any(values[name] for name in ['zup_full_name','first_name','last_name','middle_name']) for _,values in normalized)}
@@ -227,7 +230,7 @@ def apply_employees(run, report):
     if catalogue is not None:counts['position_diagnostics']['catalogue'] = catalogue
     now = timezone.now()
     for ref, values in normalized:
-        matches = positions.get(values['zup_position_name'].casefold(), [])
+        matches = positions.get(employee_job(values).casefold(), [])
         values['position'] = matches[0] if len(matches) == 1 else None
         employee = existing.get(ref)
         if employee is None:

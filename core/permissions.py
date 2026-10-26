@@ -105,7 +105,7 @@ def check_route(user, match, method):
     role = role_code(user)
     if namespace == 'production' and name in {'equipment_assignment_list', 'equipment_history_detail'}:
         require_roles(user, READ_ROLES | {'MECHANIZATION_DISPATCHER', 'ALL_FACT_DISPATCHER'} if method in {'GET', 'HEAD'} else {'ADMIN', 'MECHANIZATION_DISPATCHER', 'ALL_FACT_DISPATCHER'});return
-    if namespace == 'resources' and name in {'employee_zup_import','employee_position_report'}:
+    if namespace == 'resources' and name in {'employee_zup_import','employee_position_report','brigade_zup_employees'}:
         require_roles(user, {'ADMIN'});return
     if namespace == 'resources' and name in {'employee_create', 'employee_update'}:
         require_roles(user, {'ADMIN', 'HR_HEAD', 'PLANNER'});return
@@ -124,7 +124,7 @@ def check_route(user, match, method):
     if namespace == 'personnel':
         require_roles(user, {'ADMIN', 'HR_HEAD'})
         return
-    if namespace == 'planning' and name in {'work_resources_gpr','work_resources_smg','work_resource_edit_gpr','work_resource_edit_smg'}:
+    if namespace == 'planning' and name in {'work_resources_gpr','work_resources_smg','work_resource_edit_gpr','work_resource_edit_smg','work_resources_graph_gpr','work_resources_graph_smg','work_resources_links_gpr','work_resources_links_smg','work_resources_save_smg'}:
         require_roles(user, READ_ROLES if method in {'GET','HEAD'} else {'ADMIN','PLANNER','MANAGER'})
         return
     if (namespace=='planning' and name in {'design_preview','decomposition_report','decomposition_gpr','decomposition_smg'}) or (namespace=='resources' and name=='equipment_crew'):

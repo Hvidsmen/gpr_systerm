@@ -67,6 +67,8 @@ class AssignmentForm(forms.ModelForm):
         # Older callers still post the original pair of work fields.
         if not self.is_bound or 'target_scope' not in self.data or self.fields['targets'].disabled:return data
         scope = data.get('target_scope')
+        if (data.get('fuel_type') or data.get('resource_kind')=='fuel') and scope!='object':
+            self.add_error('target_scope','ГСМ назначается только на объект.')
         if scope == 'object':
             if data.get('targets'):self.add_error('targets','Общие ресурсы объекта не совмещаются с выбором работ.')
             self.resolved_targets = []

@@ -8,6 +8,10 @@
     const search = root.querySelector('[data-target-search]');
     const normalized = value => value.toLocaleLowerCase('ru').replace(/ё/g,'е').trim();
     const update = () => {
+      const fuel = scope.form?.elements.namedItem('fuel_type');
+      const objectOnly = Boolean(fuel && !fuel.disabled && fuel.value);
+      if(objectOnly && !locked){scope.value='object';boxes.forEach(box=>{box.checked=false;});}
+      const workOption=scope.querySelector('option[value=works]');if(workOption)workOption.disabled=objectOnly;
       const works = scope.value === 'works';
       root.querySelector('[data-target-work-options]').hidden = !works;
       boxes.forEach(box => {box.disabled = locked || !works;});
@@ -23,6 +27,7 @@
       }
     };
     root.addEventListener('change', update);
+    scope.form?.addEventListener('change', update);
     search.addEventListener('input', () => {
       const words = normalized(search.value).split(/\s+/).filter(Boolean);
       boxes.forEach(box => {const label=box.closest('label');label.parentElement.hidden = !words.every(word => normalized(label.textContent).includes(word));});

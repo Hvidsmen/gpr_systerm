@@ -90,3 +90,6 @@ urlpatterns += [path('equipment/fleet-import/',fleet_import,name='fleet_import')
 
 from .employee_cards import employee_position_report
 urlpatterns += [path('employees/<int:pk>/position-check/',employee_position_report,name='employee_position_report')]
+
+from .zup_positions import from_employees
+urlpatterns += [path('brigades/from-zup-employees/',from_employees,name='brigade_zup_employees')]

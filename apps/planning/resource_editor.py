@@ -10,13 +10,16 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.http import require_POST
 from core.permissions import scope_queryset
-from .models import GlobalPlanVersion, WorkResourceAssignment
+from .models import GlobalPlanVersion, WorkResourceAssignment, DailySchedule
 from .work_resource_views import AssignmentForm
 from . import work_resources, estimate_review, preparation
 
 
 def planned_targets(owner):
-    allocations=list(estimate_review.review_allocations(owner).exclude(quantity=0,item_quantities={}))
+    if isinstance(owner,DailySchedule):
+        from types import SimpleNamespace
+        allocations=[SimpleNamespace(work_id=e.metadata['id'],selected_item_ids=[i['id'] for i in e.metadata.get('items',[])]) for e in owner.entries.filter(kind='work') if e.metadata.get('id') and (e.rows or e.original)]
+    else:allocations=list(estimate_review.review_allocations(owner).exclude(quantity=0,item_quantities={}))
     ids={a.work_id for a in allocations}
     selected={work_id:set() for work_id in ids}; full=set()
     for allocation in allocations:
@@ -78,6 +81,7 @@ def serialize(assignment):
         'equipment_type':assignment.equipment_type_id or '', 'position':assignment.position_id or '',
         'fuel_type':assignment.fuel_type,'daily_liters':str(assignment.daily_liters),'fuel_price':str(assignment.fuel_price),
         'count':assignment.count,'shifts_per_day':assignment.shifts_per_day,'hours_per_shift':str(assignment.hours_per_shift),
+        'revision':assignment.updated_at.isoformat(),
         'include_crew':assignment.include_crew,'start_date':assignment.start_date.isoformat(),'end_date':assignment.end_date.isoformat(),
         'label':str(assignment.equipment_type or assignment.position or assignment.get_fuel_type_display()),
         'target':'; '.join(t['label'] for t in targets) if len(targets)>1 else assignment.work_item.name if assignment.work_item_id else assignment.work.name if assignment.work_id else 'Вне работ',
@@ -89,7 +93,8 @@ def work_plan_volumes(owner,targets,snapshot=None):
     from .workspace_services import months_between
     start,end=estimate_review.review_period(owner)
     months=months_between(start,end)
-    allocations=list(estimate_review.review_allocations(owner))
+    allocations=[] if isinstance(owner,DailySchedule) else list(estimate_review.review_allocations(owner))
+    schedule_entries={e.metadata.get('id'):e for e in owner.entries.filter(kind='work')} if isinstance(owner,DailySchedule) else {}
     specs={str(spec['id']):spec for spec in (snapshot or {}).get('works',[])}
     from apps.works.models import ProjectWork
     works={work.pk:work for work in ProjectWork.objects.filter(company=owner.company,pk__in=[t['id'] for t in targets]).prefetch_related('items')}
@@ -100,7 +105,10 @@ def work_plan_volumes(owner,targets,snapshot=None):
             result=[]
             for month in months:
                 prefix=month.strftime('%Y-%m')
-                if spec is not None:
+                if isinstance(owner,DailySchedule):
+                    entry=schedule_entries.get(work.pk)
+                    quantity=sum((Decimal(str(row.get('quantity',0))) for row in (entry.rows if entry else []) if str(row['date']).startswith(prefix) and (not item or str(row.get('item_id'))==str(item.pk))),Decimal(0))
+                elif spec is not None:
                     rows=spec.get('plans',[]) if item else spec.get('daily',[])
                     quantity=sum((Decimal(str(row['quantity'])) for row in rows if str(row['date']).startswith(prefix) and start.isoformat()<=str(row['date'])<=end.isoformat() and (not item or str(row.get('item_id'))==str(item.pk))),Decimal(0))
                 else:
@@ -146,7 +154,8 @@ def context(user,owner,month=None,snapshot=None):
     from core.permissions import role_code
     from .preparation_views import HandoffForm
     handoff_form=HandoffForm(company=owner.company,initial={'manager':record.manager_id if record else None,'estimator':latest.assigned_to_id if latest else None}) if isinstance(owner,GlobalPlanVersion) and owner.workspace_id and owner.status in {'DRAFT','REJECTED'} and role_code(user) in {'ADMIN','PLANNER'} else None
-    return {'gpr_handoff_form':handoff_form,'resources_ready':bool(record and record.resources_ready_at and record.resources_fingerprint==preparation.resource_signature(owner)),
+    from django.urls import reverse
+    return {'resource_assignment_url':reverse('planning:work_resources_save_smg' if isinstance(owner,DailySchedule) else 'planning:preparation_add_assignment',args=[owner.pk]),'gpr_handoff_form':handoff_form,'resources_ready':bool(record and record.resources_ready_at and record.resources_fingerprint==preparation.resource_signature(owner)),
         'estimator_approved':estimate_review.check_valid(owner,latest),'can_prepare_resources':allowed,'can_confirm_resources':confirm_allowed,'resource_owner':owner,
         'inline_resource_form':InlineAssignmentForm(owner=owner,initial={'start_date':start,'end_date':end,'count':1,'shifts_per_day':1,'hours_per_shift':8,'include_crew':True}),
         'resource_editor_data':{'targets':targets,'assignments':[serialize(a) for a in work_resources.owner_rows(owner)],
@@ -156,17 +165,20 @@ def context(user,owner,month=None,snapshot=None):
 
 @login_required
 @require_POST
-def add_assignment(request,pk):
-    owner=get_object_or_404(scope_queryset(GlobalPlanVersion.objects.all(),request.user),pk=pk)
+def add_assignment(request,pk,kind='gpr'):
+    model=DailySchedule if kind=='smg' else GlobalPlanVersion
+    owner=get_object_or_404(scope_queryset(model.objects.all(),request.user),pk=pk)
     try:
         with transaction.atomic():
-            owner=GlobalPlanVersion.objects.select_for_update().get(pk=owner.pk,company=request.user.company)
+            owner=model.objects.select_for_update().get(pk=owner.pk,company=request.user.company)
             work_resources.editable(request.user,owner)
             assignment_id=request.POST.get('assignment_id')
             if assignment_id:
                 try:assignment_id=int(assignment_id)
                 except (TypeError,ValueError):raise ValidationError('Неверное назначение ресурса.')
             instance=get_object_or_404(owner.resource_assignments,pk=assignment_id) if assignment_id else WorkResourceAssignment()
+            revision=request.POST.get('resource_revision')
+            if instance.pk and revision and revision!=instance.updated_at.isoformat():return JsonResponse({'errors':{'__all__':[{'message':'Назначение уже изменено. Обновите страницу перед сохранением.'}]}},status=409)
             if request.POST.get('action')=='delete':
                 if not instance.pk:raise ValidationError('Выберите назначение.')
                 assignment_id=instance.pk;work_resources.remove(request.user,owner,instance)

@@ -38,7 +38,7 @@ class SharedWorkResourceTests(TestCase):
             'start_date':'2026-01-01','end_date':'2026-01-02','count':2,'shifts_per_day':2,'hours_per_shift':8,
             'equipment_type':self.equipment.pk,'include_crew':'on','daily_liters':0,'fuel_price':0}
         if kind=='labor':values.update(equipment_type='',position=self.position.pk,include_crew='')
-        if kind=='fuel':values.update(equipment_type='',fuel_type='DIESEL',daily_liters='12.5',fuel_price=60)
+        if kind=='fuel':values.update(equipment_type='',fuel_type='DIESEL',daily_liters='12.5',fuel_price=60,target_scope='object',targets=[])
         return {**values, **changes}
 
     def make(self, **changes):

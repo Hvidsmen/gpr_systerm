@@ -23,6 +23,7 @@ class InlineResourceTests(TestCase):
               'start_date':'2026-01-01','end_date':'2026-01-02',
               'count':2,'shifts_per_day':1,'hours_per_shift':8,'include_crew':'on'}
         data.update({'equipment_type':self.equipment.pk} if kind=='equipment' else {'position':self.position.pk} if kind=='labor' else {'fuel_type':'DIESEL','daily_liters':'12.5','fuel_price':'60'})
+        if kind=='fuel':data.update(work='',work_item='')
         data.update(changes);return data
 
     def test_only_child_simple_work_or_object_accept_new_resources(self):
@@ -82,7 +83,7 @@ class InlineResourceTests(TestCase):
         self.assertEqual(common.json()['assignment']['target'],'Вне работ')
         snapshot=build_workspace_snapshot(self.version)
         self.assertEqual(sum(Decimal(r['planned_liters']) for r in snapshot['resources']['fuel']),25)
-        self.assertEqual(snapshot['resources']['fuel'][0]['work_item_id'],self.a.pk)
+        self.assertIsNone(snapshot['resources']['fuel'][0]['work_item_id'])
         from .independent_smg import create
         schedule=create(self.planner,self.obj,fixtures.JAN)
         work_resources.copy_assignments(self.version,schedule)

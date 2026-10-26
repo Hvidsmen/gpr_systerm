@@ -27,6 +27,7 @@ class SharedWorkResourceBrowserTests(StaticLiveServerTestCase):
         client = Client();client.force_login(self.manager)
         planner = Client();planner.force_login(self.planner)
         config = dict(base=self.live_server_url,gpr=reverse('planning:workspace_edit',args=[self.version.pk]),
+            graph=reverse('planning:work_resources_graph_gpr',args=[self.version.pk]),
             smg=reverse('planning:work_resources_smg',args=[schedule.pk]),cookie=client.cookies['sessionid'].value,
             gpr_cookie=planner.cookies['sessionid'].value,
             work=self.composite.pk,a=self.a.pk,b=self.b.pk,equipment=self.equipment.pk,
@@ -39,6 +40,6 @@ class SharedWorkResourceBrowserTests(StaticLiveServerTestCase):
         self.assertEqual(identities(machine),[(self.composite.pk,self.a.pk)])
         self.assertEqual(machine.count,3)
         fuel = self.version.resource_assignments.get(fuel_type='DIESEL')
-        self.assertEqual(len(identities(fuel)),2)
+        self.assertEqual(len(identities(fuel)),0)
         self.assertEqual(len(identities(schedule.resource_assignments.get())),2)
         print(result.stdout.strip())

@@ -1,5 +1,5 @@
 <section class="card card-body my-3" id="gpr-preparation-status">
-<h2 class="h6">Подготовка плана</h2>
+<h2 class="h6">Подготовка плана</h2><p><a href="{% url 'planning:work_resources_graph_gpr' resource_owner.pk %}" class="btn btn-outline-primary">Связи работ и ресурсов</a></p>
 {% if resource_preparation %}<p>Руководитель: <strong>{{ resource_preparation.manager }}</strong>. Ресурсы: {% if resources_ready %}подтверждены{% else %}требуют подготовки{% endif %}. Проверка сметчиком: {% if estimator_approved %}пройдена{% else %}ожидается{% endif %}.</p>{% endif %}
 {% if not can_prepare_resources %}<p class="text-muted">Ресурсы редактируют планировщик, назначенный руководитель проекта или администратор в черновике плана.</p>{% endif %}
 {% include 'planning/_preparation_tasks.html' %}

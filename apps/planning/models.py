@@ -1453,6 +1453,7 @@ class WorkResourceAssignment(BaseCompanyModel):
             legacy=type(self).objects.filter(pk=self.pk,work_id=self.work_id,work_item__isnull=True).exists() if self.pk else False
             if not legacy:raise ValidationError({'work_item':'Ресурс назначается на работу в составе комплекса, самостоятельную работу или объект. Выберите работу внутри комплекса.'})
         if sum([bool(self.equipment_type_id),bool(self.position_id),bool(self.fuel_type)])!=1:raise ValidationError('Выберите только один ресурс: технику, должность или ГСМ.')
+        if self.fuel_type and self.work_id:raise ValidationError({'work':'ГСМ назначается только на объект.'})
         if self.fuel_type and (self.daily_liters is None or self.daily_liters<=0):raise ValidationError({'daily_liters':'Укажите положительный расход ГСМ в день.'})
         if self.fuel_price is not None and self.fuel_price<0:raise ValidationError({'fuel_price':'Цена не может быть отрицательной.'})
         if self.start_date and self.end_date:

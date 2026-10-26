@@ -56,8 +56,8 @@
     editor.querySelectorAll('input,select,textarea,button').forEach(input=>input.setAttribute('form',form.id));
     mountEditor(anchor);
     const target=targetById(work),child=target?.items.find(i=>String(i.id)===String(item));
-    const initial={assignment_id:'',resource_kind:kind,work,work_item:item,start_date:data.start_date,end_date:data.end_date,count:1,shifts_per_day:1,hours_per_shift:8,daily_liters:0,fuel_price:0,equipment_type:'',position:'',fuel_type:'',include_crew:kind==='equipment',refresh_crew:false};
-    if(assignment)Object.assign(initial,assignment,{assignment_id:assignment.id});
+    const initial={assignment_id:'',resource_revision:'',resource_kind:kind,work,work_item:item,start_date:data.start_date,end_date:data.end_date,count:1,shifts_per_day:1,hours_per_shift:8,daily_liters:0,fuel_price:0,equipment_type:'',position:'',fuel_type:'',include_crew:kind==='equipment',refresh_crew:false};
+    if(assignment)Object.assign(initial,assignment,{assignment_id:assignment.id,resource_revision:assignment.revision});
     Object.entries(initial).forEach(([name,value])=>{if(name==='targets')return;const input=field(name);if(!input)return;if(input.type==='checkbox')input.checked=Boolean(value);else input.value=value;});
     editor.querySelector('#work-resource-title').textContent=(assignment?'Изменить ресурс: ':'Добавить ресурс: ')+kinds[kind];
     editor.querySelector('#work-resource-target').textContent=work?'К работе: '+(child?target.name+' → '+child.name:(target?.name||assignment?.target||'Работа удалена из плана')):'Вне работ · общие ресурсы объекта';
@@ -65,7 +65,10 @@
     ['equipment_type','position','fuel_type'].forEach(name=>{field(name).required=name===({equipment:'equipment_type',labor:'position',fuel:'fuel_type'}[kind]);});
     const links=assignment?.targets||((work&&!assignment?.legacy_package)?[{work_id:work,work_item_id:item||null}]:[]);
     const tokens=links.filter(t=>t.work_item_id||!isComposite(t.work_id)).map(t=>t.work_item_id?'item:'+t.work_id+':'+t.work_item_id:'work:'+t.work_id);
-    window.workResourceTargets.set(editor.querySelector('[data-resource-target-picker]'),work?'works':'object',tokens);
+    const picker=editor.querySelector('[data-resource-target-picker]');
+    window.workResourceTargets.set(picker,kind==='fuel'?'object':work?'works':'object',kind==='fuel'?[]:tokens);
+    picker.hidden=kind==='fuel';
+    if(kind==='fuel')editor.querySelector('#work-resource-target').textContent='ГСМ · только общие ресурсы объекта';
     if(assignment?.legacy_package)editor.querySelector('#work-resource-target').textContent='Ранее ресурс был назначен на комплекс. Выберите работы внутри комплекса или общие ресурсы объекта.';
     field('refresh_crew').closest('p').hidden=!assignment||kind!=='equipment';
     editor.querySelector('[data-delete-resource]').hidden=!assignment;
@@ -126,10 +129,10 @@
     const scroll=document.createElement('div');scroll.className='work-resource-columns';
     const table=document.createElement('table');table.className='work-resource-table';table.dataset.resourceColumns='';
     const headings=table.createTHead().insertRow(),row=assignments.length?table.createTBody().insertRow():null;
-    Object.entries(kinds).forEach(([kind,label])=>{
+    Object.entries(kinds).filter(([kind])=>kind!=='fuel'||!host.dataset.resourceWork||assignments.some(a=>a.resource_kind==='fuel')).forEach(([kind,label])=>{
       const heading=document.createElement('th');heading.scope='col';heading.textContent=kind==='equipment'?'Техника и экипаж':kind==='labor'?'Должности':label;headings.append(heading);
       const cell=row?.insertCell();if(cell)cell.dataset.resourceColumn=kind;
-      if(data.can_edit&&!legacyParent){const add=document.createElement('button');add.type='button';add.className='btn btn-sm btn-outline-primary work-resource-add';add.textContent='Добавить '+(kind==='equipment'?'технику':kind==='labor'?'должность':'ГСМ');add.dataset.addResource=kind;add.dataset.work=host.dataset.resourceWork;add.dataset.item=host.dataset.resourceItem;heading.append(add);}
+      if(data.can_edit&&!legacyParent&&!(kind==='fuel'&&host.dataset.resourceWork)){const add=document.createElement('button');add.type='button';add.className='btn btn-sm btn-outline-primary work-resource-add';add.textContent='Добавить '+(kind==='equipment'?'технику':kind==='labor'?'должность':'ГСМ');add.dataset.addResource=kind;add.dataset.work=host.dataset.resourceWork;add.dataset.item=host.dataset.resourceItem;heading.append(add);}
       const selected=assignments.filter(a=>a.resource_kind===kind);
       selected.forEach(a=>cell.append(card(a,null,true)));
       if(cell&&!selected.length){const empty=document.createElement('div');empty.className='work-resource-empty';empty.textContent='—';cell.append(empty);}
@@ -192,7 +195,7 @@
   document.getElementById('allocation-editor')?.addEventListener('submit',event=>{
     if(editor&&(dirty||busy)){event.preventDefault();error('Сначала сохраните или отмените изменения ресурса. Затем сохраните месячные объёмы.');editor.scrollIntoView({block:'nearest'});}
   });
-  window.gprResourceEditor={wireWork,addButtons,renderWorkLists,hasPendingChanges:()=>Boolean(editor&&(dirty||busy)),revealPending:()=>{if(editor){for(let parent=editor.parentElement;parent;parent=parent.parentElement){if(parent.tagName==='DETAILS')parent.open=true;if(parent.hasAttribute('data-work-parent')){const key=parent.dataset.workParent;document.querySelectorAll('[data-work-parent]').forEach(row=>{if(row.dataset.workParent===key)row.hidden=false;});document.querySelectorAll('[data-work-toggle]').forEach(toggle=>{if(toggle.dataset.workToggle===key){toggle.setAttribute('aria-expanded','true');toggle.textContent='▾';}});}}error('Сначала сохраните или отмените изменения этого ресурса.');editor.scrollIntoView({block:'center'});}}};
+  window.gprResourceEditor={data,open,upsert:assignment=>{const index=data.assignments.findIndex(a=>a.id===assignment.id);if(index<0)data.assignments.push(assignment);else data.assignments[index]=assignment;render();},wireWork,addButtons,renderWorkLists,hasPendingChanges:()=>Boolean(editor&&(dirty||busy)),revealPending:()=>{if(editor){for(let parent=editor.parentElement;parent;parent=parent.parentElement){if(parent.tagName==='DETAILS')parent.open=true;if(parent.hasAttribute('data-work-parent')){const key=parent.dataset.workParent;document.querySelectorAll('[data-work-parent]').forEach(row=>{if(row.dataset.workParent===key)row.hidden=false;});document.querySelectorAll('[data-work-toggle]').forEach(toggle=>{if(toggle.dataset.workToggle===key){toggle.setAttribute('aria-expanded','true');toggle.textContent='▾';}});}}error('Сначала сохраните или отмените изменения этого ресурса.');editor.scrollIntoView({block:'center'});}}};
   if(window.wireSubworks)window.wireSubworks();
   render();
 })();

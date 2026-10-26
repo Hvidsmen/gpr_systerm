@@ -111,13 +111,13 @@ class StaffingCardTests(TestCase):
             probe_occupancy_position_row=0,probe_occupancy_position_join=0,
             probe_occupancy_staffing_named=1,probe_staffing_display_fallback=1,**changes)
 
-    def test_staffing_display_filter_and_card_with_no_invented_job_relation(self):
+    def test_staffing_display_filter_and_shared_job_catalogue(self):
         Position.objects.create(company=self.company,code='analyst',name='Аналитик /Управление цифровизации/')
         result = apply_employees(self.run_record(),{'employees':[self.staffing_row()],
             'position_catalog':{'position_rows':200,'position_named':195}})
         employee = Employee.objects.get(company=self.company,zup_ref='1'*32)
         self.assertEqual(employee.zup_position_name,'')
-        self.assertIsNone(employee.position_id)
+        self.assertEqual(str(employee.position),'Аналитик')
         self.assertTrue(employee.position_from_staffing)
         self.assertEqual(employee.display_position,'Аналитик')
         self.assertEqual(employee.display_department,'Управление цифровизации')

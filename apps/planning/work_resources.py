@@ -110,6 +110,7 @@ def save(user, owner, assignment, refresh_crew=False, *, targets=None):
         targets = previous_targets
     else:
         targets = [(assignment.work_id, assignment.work_item_id)] if assignment.work_id else []
+    if assignment.fuel_type and targets:raise ValidationError('ГСМ назначается только на объект.')
     assignment.full_clean()
     if isinstance(owner,DailySchedule) and owner.locked_before:
         cutoff=owner.locked_before
@@ -167,10 +168,11 @@ def copy_assignments(source,target,*,copy_original=False,start_on=None):
         if old.end_date<start or old.start_date>end:continue
         if target.resource_assignments.filter(key=old.key).exists():continue
         data={field:getattr(old,field) for field in ['key','work_id','work_item_id','equipment_type_id','position_id','count','shifts_per_day','hours_per_shift','fuel_type','daily_liters','fuel_price','include_crew','crew_snapshot']}
+        if old.fuel_type:data.update(work_id=None,work_item_id=None)
         data.update(start_date=max(start,old.start_date),end_date=min(end,old.end_date),company=target.company)
         data['schedule' if isinstance(target,DailySchedule) else 'version']=target
         copied = WorkResourceAssignment.objects.create(**data)
-        resource_targets.replace(copied, resource_targets.identities(old))
+        resource_targets.replace(copied, [] if old.fuel_type else resource_targets.identities(old))
     if isinstance(target,DailySchedule):
         if copy_original and isinstance(source,GlobalPlanVersion):
             for entry in target.entries.exclude(kind='work').exclude(key__startswith='assignment:'):
