@@ -55,7 +55,7 @@ class WorkPurge:
         version_ids.update(WorkCarryover.objects.filter(work_id__in=self.ids).values_list('version_id',flat=True))
         workspace_ids=set(SmgWorkMapping.objects.filter(Q(gpr_work_id__in=self.ids)|Q(smg_work_id__in=self.ids)).values_list('workspace_id',flat=True))
         workspace_ids.update(MacroCarryoverWork.objects.filter(Q(source_work_id__in=self.ids)|Q(target_work_id__in=self.ids)).values_list('workspace_id',flat=True))
-        assignments=WorkResourceAssignment.objects.filter(Q(work_id__in=self.ids)|Q(work_item_id__in=self.item_ids))
+        assignments=WorkResourceAssignment.objects.filter(Q(work_id__in=self.ids)|Q(work_item_id__in=self.item_ids)|Q(extra_targets__work_id__in=self.ids)|Q(extra_targets__work_item_id__in=self.item_ids)).distinct()
         version_ids.update(assignments.exclude(version=None).values_list('version_id',flat=True))
         schedule_ids=set(assignments.exclude(schedule=None).values_list('schedule_id',flat=True))
         keys={f'work:{pk}' for pk in self.ids}

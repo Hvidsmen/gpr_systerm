@@ -4,13 +4,17 @@ from datetime import timedelta
 from decimal import Decimal
 from django.core.exceptions import ValidationError, PermissionDenied
 from django.db import transaction
+from django.db.models import Prefetch
+from . import resource_targets
 from core.permissions import PLAN_ROLES, require_roles, require_planning_object
 from apps.resources.models import Position, PositionPlanningBrigade, Brigade
 from .models import WorkResourceAssignment, DailySchedule, GlobalPlanVersion, DailyScheduleEntry
 
 
 def owner_rows(owner):
-    return owner.resource_assignments.select_related('work','work_item','equipment_type','position').order_by('pk')
+    from .models import WorkResourceTarget
+    links = WorkResourceTarget.objects.select_related('work__complex_object', 'work_item')
+    return owner.resource_assignments.select_related('work__complex_object','work_item','equipment_type','position').prefetch_related(Prefetch('extra_targets', queryset=links)).order_by('pk')
 
 
 def editable(user, owner):
@@ -41,6 +45,10 @@ def expand(assignment):
     result={};a=assignment
     target=(a.work_item.name if a.work_item_id else a.work.name if a.work_id else 'Общие ресурсы объекта')
     common={'assignment_key':str(a.key),'resource_assignment_id':a.pk,'work_id':a.work_id,'work_item_id':a.work_item_id,'target_label':target,'shifts_per_day':a.shifts_per_day,'hours_per_shift':str(a.hours_per_shift),'origin':'PLAN','comment':''}
+    targets = resource_targets.describe(a)
+    if len(targets) > 1:
+        common['work_targets'] = [{'work_id':t['work_id'], 'work_item_id':t['work_item_id']} for t in targets]
+        common['target_label'] = 'Общий ресурс: ' + '; '.join(t['label'] for t in targets)
     day=a.start_date
     while day<=a.end_date:
         base={**common,'date':day.isoformat()}
@@ -75,6 +83,7 @@ def sync_schedule(schedule):
             cutoff=schedule.locked_before.isoformat()
             rows=([deepcopy(r) for r in old.rows if r['date']<cutoff] if old else [])+[r for r in rows if r['date']>=cutoff]
         metadata={'resource_assignment_id':assignment.pk,'target_label':rows[0]['target_label'] if rows else '', 'crew_snapshot':deepcopy(assignment.crew_snapshot)}
+        if rows and rows[0].get('work_targets'):metadata['work_targets'] = deepcopy(rows[0]['work_targets'])
         if old:
             old.kind=kind;old.label=label;old.metadata=metadata;old.rows=rows;old.revision+=1
             old.save(update_fields=['kind','label','metadata','rows','revision'])
@@ -82,7 +91,7 @@ def sync_schedule(schedule):
 
 
 @transaction.atomic
-def save(user, owner, assignment, refresh_crew=False):
+def save(user, owner, assignment, refresh_crew=False, *, targets=None):
     owner=type(owner).objects.select_for_update().get(pk=owner.pk,company=user.company)
     editable(user,owner)
     if assignment.pk:
@@ -92,19 +101,29 @@ def save(user, owner, assignment, refresh_crew=False):
     assignment.company=owner.company
     assignment.version=owner if isinstance(owner,GlobalPlanVersion) else None
     assignment.schedule=owner if isinstance(owner,DailySchedule) else None
+    previous_targets = resource_targets.identities(original) if original else []
+    if targets is not None:
+        targets = resource_targets.normalize(owner, targets)
+        first = targets[0] if targets else (None, None)
+        assignment.work_id, assignment.work_item_id = first
+    elif original and (original.work_id, original.work_item_id) == (assignment.work_id, assignment.work_item_id):
+        targets = previous_targets
+    else:
+        targets = [(assignment.work_id, assignment.work_item_id)] if assignment.work_id else []
     assignment.full_clean()
     if isinstance(owner,DailySchedule) and owner.locked_before:
         cutoff=owner.locked_before
         if original and original.start_date<cutoff:
             if assignment.start_date!=original.start_date or assignment.end_date<cutoff or original.end_date<cutoff:raise ValidationError('Прошедшие дни закрыты. Изменяйте только действующее назначение на оставшиеся дни.')
-            if any(getattr(original,field)!=getattr(assignment,field) for field in ['work_id','work_item_id','equipment_type_id','position_id','fuel_type']):raise ValidationError('Для другой техники или работы сначала снимите старое назначение с оставшихся дней и добавьте новое.')
+            if set(previous_targets) != set(targets) or any(getattr(original,field)!=getattr(assignment,field) for field in ['work_id','work_item_id','equipment_type_id','position_id','fuel_type']):raise ValidationError('Для другой техники или работы сначала снимите старое назначение с оставшихся дней и добавьте новое.')
         elif assignment.start_date<cutoff:raise ValidationError('Новое назначение должно начинаться не раньше открытого дня.')
     if not original or refresh_crew or (original.equipment_type_id,original.position_id,original.fuel_type,original.include_crew)!=(assignment.equipment_type_id,assignment.position_id,assignment.fuel_type,assignment.include_crew):assignment.crew_snapshot=capture(assignment)
     else:assignment.crew_snapshot=original.crew_snapshot
     assignment.save()
+    resource_targets.replace(assignment, targets)
     if isinstance(owner,DailySchedule):sync_schedule(owner)
     from apps.audit.models import AuditLog
-    AuditLog.objects.create(user=user,action='UPDATE' if original else 'CREATE',entity_type='planning.workresourceassignment',entity_id=str(assignment.pk),new_value={'count':assignment.count,'shifts_per_day':assignment.shifts_per_day,'crew_snapshot':assignment.crew_snapshot},comment='Назначение ресурсов на работу / объект')
+    AuditLog.objects.create(user=user,action='UPDATE' if original else 'CREATE',entity_type='planning.workresourceassignment',entity_id=str(assignment.pk),new_value={'count':assignment.count,'shifts_per_day':assignment.shifts_per_day,'crew_snapshot':assignment.crew_snapshot,'work_targets':[{'work_id':w,'work_item_id':i} for w,i in targets]},comment='Назначение ресурсов на работу / объект')
     return assignment
 
 
@@ -135,7 +154,7 @@ def apply_snapshot(version,snapshot):
     for assignment in owner_rows(version):
         for key,(kind,label,rows) in expand(assignment).items():
             snapshot['resources'][kind].extend(rows)
-    snapshot['resource_assignments']=list(owner_rows(version).values('key','work_id','work_item_id','equipment_type_id','position_id','start_date','end_date','count','shifts_per_day','hours_per_shift','fuel_type','daily_liters','fuel_price','include_crew','crew_snapshot'))
+    snapshot['resource_assignments']=resource_targets.assignment_values(version, ['key','work_id','work_item_id','equipment_type_id','position_id','start_date','end_date','count','shifts_per_day','hours_per_shift','fuel_type','daily_liters','fuel_price','include_crew','crew_snapshot'])
     return snapshot
 
 
@@ -150,7 +169,8 @@ def copy_assignments(source,target,*,copy_original=False,start_on=None):
         data={field:getattr(old,field) for field in ['key','work_id','work_item_id','equipment_type_id','position_id','count','shifts_per_day','hours_per_shift','fuel_type','daily_liters','fuel_price','include_crew','crew_snapshot']}
         data.update(start_date=max(start,old.start_date),end_date=min(end,old.end_date),company=target.company)
         data['schedule' if isinstance(target,DailySchedule) else 'version']=target
-        WorkResourceAssignment.objects.create(**data)
+        copied = WorkResourceAssignment.objects.create(**data)
+        resource_targets.replace(copied, resource_targets.identities(old))
     if isinstance(target,DailySchedule):
         if copy_original and isinstance(source,GlobalPlanVersion):
             for entry in target.entries.exclude(kind='work').exclude(key__startswith='assignment:'):

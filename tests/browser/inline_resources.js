@@ -59,7 +59,7 @@ const {chromium}=require('playwright');
  assert(await legacyHost.locator('[data-add-resource]').count()===0,'Package still accepts new resource assignments');
  await legacyHost.getByRole('button',{name:'Изменить',exact:true}).click();
  let legacyEditor=page.locator('[data-inline-resource-editor]');
- await legacyEditor.locator('[data-resource-target-choice]').selectOption('item:'+cfg.work+':'+cfg.legacy_destination);
+ await legacyEditor.locator('input[name=targets][value="item:'+cfg.work+':'+cfg.legacy_destination+'"]').check();
  const legacySaved=page.waitForResponse(r=>r.url().includes('/resource-assignment/')&&r.request().method()==='POST');
  await legacyEditor.getByRole('button',{name:'Сохранить ресурс',exact:true}).click();
  assert((await legacySaved).ok(),'Legacy package resource did not move to child');

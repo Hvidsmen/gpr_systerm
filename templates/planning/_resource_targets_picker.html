@@ -1,0 +1,11 @@
+<div class="resource-target-picker" data-resource-target-picker {% if target_form.targets.field.disabled %}data-targets-locked{% endif %}>
+  <label class="form-label" for="{{ target_form.target_scope.id_for_label }}">{{ target_form.target_scope.label }}</label>
+  {{ target_form.target_scope }}{{ target_form.target_scope.errors }}
+  <div data-target-work-options>
+    <label class="form-label mt-2" for="{{ target_form.targets.auto_id }}-search">Найти работу</label>
+    <input type="search" class="form-control mb-2" id="{{ target_form.targets.auto_id }}-search" data-target-search placeholder="Название работы, комплекса или комплексного объекта" autocomplete="off">
+    <div class="d-flex flex-wrap gap-2 align-items-center mb-2"><button type="button" class="btn btn-sm btn-outline-secondary" data-target-select-visible>Выбрать найденные</button><button type="button" class="btn btn-sm btn-outline-secondary" data-target-clear>Снять выбор</button><span class="small" data-target-count aria-live="polite"></span></div>
+    <div class="resource-target-options">{{ target_form.targets }}</div>{{ target_form.targets.errors }}
+    <p class="small mt-2 mb-0">Количество общее для всех выбранных работ. В итогах объекта ресурс, часы и ГСМ учитываются один раз.</p>
+  </div>
+</div>

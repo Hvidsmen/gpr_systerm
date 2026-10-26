@@ -1419,7 +1419,7 @@ class DailyScheduleDecision(BaseCompanyModel):
 
 
 class WorkResourceAssignment(BaseCompanyModel):
-    """One independent allocation, counted once at its lowest target level."""
+    """One allocation counted once across its shared leaf-work targets."""
     fuel_type = models.CharField('Вид ГСМ',max_length=20,blank=True,choices=ResourceMonthAllocation._meta.get_field('fuel_type').choices)
     daily_liters = models.DecimalField('Расход ГСМ в день, л',max_digits=12,decimal_places=3,default=0)
     fuel_price = models.DecimalField('Цена литра, ₽',max_digits=12,decimal_places=2,default=0)
@@ -1466,6 +1466,33 @@ class WorkResourceAssignment(BaseCompanyModel):
     class Meta:
         ordering=['start_date','pk']
         constraints=[models.UniqueConstraint(fields=['version','key'],condition=models.Q(version__isnull=False),name='unique_gpr_assignment_key'),models.UniqueConstraint(fields=['schedule','key'],condition=models.Q(schedule__isnull=False),name='unique_smg_assignment_key'),models.CheckConstraint(condition=models.Q(hours_per_shift__gt=0,start_date__lte=models.F('end_date')),name='valid_assignment_hours_dates'),models.CheckConstraint(condition=(models.Q(version__isnull=False,schedule__isnull=True)|models.Q(version__isnull=True,schedule__isnull=False)),name='one_assignment_owner'),models.CheckConstraint(condition=(models.Q(equipment_type__isnull=False,position__isnull=True,fuel_type='')|models.Q(equipment_type__isnull=True,position__isnull=False,fuel_type='')|(models.Q(equipment_type__isnull=True,position__isnull=True)&~models.Q(fuel_type=''))),name='one_assignment_resource'),models.CheckConstraint(condition=models.Q(count__gte=1,shifts_per_day__gte=1,shifts_per_day__lte=24),name='positive_assignment_count_shifts')]
+
+
+class WorkResourceTarget(models.Model):
+    """Additional work links of one allocation; the primary legacy FK is retained."""
+    assignment = models.ForeignKey(WorkResourceAssignment, on_delete=models.CASCADE, related_name='extra_targets')
+    work = models.ForeignKey('works.ProjectWork', on_delete=models.PROTECT, related_name='shared_resource_links')
+    work_item = models.ForeignKey('works.ProjectWorkItem', on_delete=models.PROTECT, null=True, blank=True, related_name='shared_resource_links')
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        super().clean()
+        from .resource_targets import normalize
+        if self.assignment_id and self.work_id:
+            if not self.assignment.work_id:raise ValidationError('Общие ресурсы объекта не совмещаются с привязкой к работам.')
+            owner = self.assignment.version if self.assignment.version_id else self.assignment.schedule
+            normalize(owner, [(self.work_id, self.work_item_id)])
+            if (self.work_id, self.work_item_id) == (self.assignment.work_id, self.assignment.work_item_id):
+                raise ValidationError('Работа уже указана в основном назначении.')
+
+    class Meta:
+        verbose_name = 'дополнительная привязка ресурса к работе'
+        verbose_name_plural = 'дополнительные привязки ресурсов к работам'
+        ordering = ['work_id', 'work_item_id', 'pk']
+        constraints = [
+            models.UniqueConstraint(fields=['assignment','work','work_item'], condition=models.Q(work_item__isnull=False), name='unique_shared_resource_item'),
+            models.UniqueConstraint(fields=['assignment','work'], condition=models.Q(work_item__isnull=True), name='unique_shared_resource_work'),
+        ]
 
 
 class PivotReportPreset(BaseCompanyModel):

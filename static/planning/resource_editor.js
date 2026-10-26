@@ -17,7 +17,7 @@
   document.addEventListener('click',event=>{const summary=event.target.closest('[data-resource-fold] > summary');if(summary){const fold=summary.parentElement,host=fold.closest('[data-work-resource-target]');if(host)foldStates.set(foldKey(host),!fold.open);}},true);
   document.addEventListener('toggle',event=>{const fold=event.target;if(fold.matches?.('[data-resource-fold]')&&fold.isConnected){const host=fold.closest('[data-work-resource-target]');if(host)foldStates.set(foldKey(host),fold.open);}},true);
   const activeAssignments=()=>data.assignments.filter(a=>a.end_date>=data.start_date&&a.start_date<=data.end_date);
-  const sameTarget=(assignment,work,item)=>String(assignment.work||'')===String(work||'')&&String(assignment.work_item||'')===String(item||'');
+  const sameTarget=(assignment,work,item)=>(assignment.targets?.length ? assignment.targets.map(t=>({work:t.work_id,work_item:t.work_item_id})) : [assignment]).some(target=>String(target.work||'')===String(work||'')&&String(target.work_item||'')===String(item||''));
   function error(message) {
     const box=editor?.querySelector('[role="alert"]');
     if(box){box.textContent=message;box.hidden=!message;}if(message)announce('error');
@@ -58,23 +58,15 @@
     const target=targetById(work),child=target?.items.find(i=>String(i.id)===String(item));
     const initial={assignment_id:'',resource_kind:kind,work,work_item:item,start_date:data.start_date,end_date:data.end_date,count:1,shifts_per_day:1,hours_per_shift:8,daily_liters:0,fuel_price:0,equipment_type:'',position:'',fuel_type:'',include_crew:kind==='equipment',refresh_crew:false};
     if(assignment)Object.assign(initial,assignment,{assignment_id:assignment.id});
-    Object.entries(initial).forEach(([name,value])=>{const input=field(name);if(!input)return;if(input.type==='checkbox')input.checked=Boolean(value);else input.value=value;});
+    Object.entries(initial).forEach(([name,value])=>{if(name==='targets')return;const input=field(name);if(!input)return;if(input.type==='checkbox')input.checked=Boolean(value);else input.value=value;});
     editor.querySelector('#work-resource-title').textContent=(assignment?'Изменить ресурс: ':'Добавить ресурс: ')+kinds[kind];
     editor.querySelector('#work-resource-target').textContent=work?'К работе: '+(child?target.name+' → '+child.name:(target?.name||assignment?.target||'Работа удалена из плана')):'Вне работ · общие ресурсы объекта';
     editor.querySelectorAll('[data-resource-field]').forEach(box=>{const visible=box.dataset.resourceField===kind||box.dataset.resourceField==='quantity'&&kind!=='fuel';box.hidden=!visible;box.querySelectorAll('input,select').forEach(input=>input.disabled=!visible);});
     ['equipment_type','position','fuel_type'].forEach(name=>{field(name).required=name===({equipment:'equipment_type',labor:'position',fuel:'fuel_type'}[kind]);});
-    const reassign=editor.querySelector('[data-resource-target-choice]');
-    reassign.closest('[data-resource-reassign]').hidden=!assignment?.legacy_package;
-    reassign.disabled=!assignment?.legacy_package;reassign.required=Boolean(assignment?.legacy_package);
-    reassign.replaceChildren(new Option('Выберите работу или общие ресурсы объекта',''));
-    if(assignment?.legacy_package){
-      reassign.add(new Option('Общие ресурсы объекта','object'));
-      data.targets.forEach(t=>{
-        if(t.kind!=='COMPOSITE')reassign.add(new Option(t.name,'work:'+t.id));
-        t.items.forEach(i=>reassign.add(new Option(t.name+' → '+i.name,'item:'+t.id+':'+i.id)));
-      });
-      reassign.addEventListener('change',()=>{const parts=reassign.value.split(':');field('work').value=parts[0]==='object'?'':parts[1]||'';field('work_item').value=parts[0]==='item'?parts[2]:'';});
-    }
+    const links=assignment?.targets||((work&&!assignment?.legacy_package)?[{work_id:work,work_item_id:item||null}]:[]);
+    const tokens=links.filter(t=>t.work_item_id||!isComposite(t.work_id)).map(t=>t.work_item_id?'item:'+t.work_id+':'+t.work_item_id:'work:'+t.work_id);
+    window.workResourceTargets.set(editor.querySelector('[data-resource-target-picker]'),work?'works':'object',tokens);
+    if(assignment?.legacy_package)editor.querySelector('#work-resource-target').textContent='Ранее ресурс был назначен на комплекс. Выберите работы внутри комплекса или общие ресурсы объекта.';
     field('refresh_crew').closest('p').hidden=!assignment||kind!=='equipment';
     editor.querySelector('[data-delete-resource]').hidden=!assignment;
     if(!assignment&&work&&(!target||item&&!child))error('Сначала сохраните эту работу в месячном плане. Затем добавьте ресурсы.');
@@ -87,12 +79,17 @@
   function card(assignment,projection=null,compact=false) {
     const box=document.createElement('div');box.className=compact?'work-resource-entry':'border rounded p-3 mb-2 bg-white';box.dataset.resourceCard=String(assignment.id);box.dataset.resourceKind=assignment.resource_kind;
     const title=document.createElement('strong');title.textContent=projection?.label||assignment.label;
-    const badge=document.createElement('span');badge.className='badge bg-primary ms-2';badge.textContent=assignment.work?'Из работы: '+assignment.target:'Вне работ';
+    const badge=document.createElement('span');badge.className='badge bg-primary ms-2';badge.textContent=assignment.shared?'Общий ресурс · работ: '+assignment.targets.length:assignment.work?'Из работы: '+assignment.target:'Вне работ';
     const detail=document.createElement('p');detail.className='small mb-2 mt-2';
     const kind=projection?.kind||assignment.resource_kind;
     detail.textContent=kind==='fuel'?format.format(Number(projection?.liters||assignment.daily_liters))+' л/день':format.format(projection?.count??assignment.count)+(kind==='equipment'?' ед.':projection?' чел. за день':' чел. на смену')+' · '+assignment.shifts_per_day+' смен/день · '+assignment.hours_per_shift+' ч/смену';
     const shortDate=value=>value.split('-').reverse().join('.');
     detail.append(document.createTextNode(' · '+shortDate(assignment.start_date)+' — '+shortDate(assignment.end_date)));box.append(title);if(!compact)box.append(badge);box.append(detail);
+    if(assignment.shared){
+      const shared=document.createElement('details');shared.className='work-resource-shared';shared.dataset.sharedResource='';
+      const summary=document.createElement('summary');summary.textContent='Общий ресурс · работ: '+assignment.targets.length+' · учтён один раз';shared.append(summary);
+      const links=document.createElement('ul');assignment.targets.forEach(t=>{const item=document.createElement('li');item.textContent=t.label;links.append(item);});shared.append(links);box.append(shared);
+    }
     if(kind==='labor'){
       const origin=document.createElement('span');origin.className='badge bg-light text-dark d-block my-1';origin.dataset.laborOrigin='';
       origin.textContent=assignment.resource_kind==='equipment'?'Экипаж техники: '+assignment.label:'Добавлено отдельно · без техники';box.append(origin);
@@ -104,7 +101,7 @@
       box.append(crew);
     }
     if(data.can_edit){
-      const edit=button('Изменить',()=>open(assignment.resource_kind,assignment.work,assignment.work_item,assignment,compact?box.closest('[data-work-resource-target]')?.querySelector('[data-resource-inline-slot]'):box));
+      const edit=button('Изменить',()=>{const host=box.closest('[data-work-resource-target]');open(assignment.resource_kind,host?.dataset.resourceWork||assignment.work,host?.dataset.resourceItem||assignment.work_item,assignment,compact?host?.querySelector('[data-resource-inline-slot]'):box);});
       if(compact){const heading=document.createElement('div');heading.className='work-resource-entry-heading';box.insertBefore(heading,title);heading.append(title,edit);}else box.append(edit);
     }
     return box;

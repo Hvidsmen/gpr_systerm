@@ -62,7 +62,8 @@ def signature(obj,*,legacy=False,works_only=False):
             if not row.get('selected_item_ids'):row.pop('selected_item_ids',None)
         if works_only:inputs.pop('resources',None)
         if not legacy:inputs['period']=[start,end]
-        assignments=list(obj.resource_assignments.order_by('pk').values())
+        from .resource_targets import assignment_values
+        assignments=assignment_values(obj)
         if assignments and not works_only:inputs['resource_assignments']=assignments
     # Catalog timestamps are audit data, not planning inputs.
     for rows in (works,items,prices):

@@ -1,4 +1,5 @@
 {% load static %}
+<link rel="stylesheet" href="{% static 'planning/resource_targets.css' %}?v=20261026-multi">
 <style>
 .work-resource-entry-heading {display:flex; justify-content:space-between; align-items:start; gap:8px;}
 .work-resource-entry-heading > strong {flex:1;}
@@ -23,12 +24,13 @@
 <form id="work-resource-form" method="post" action="{% url 'planning:preparation_add_assignment' resource_owner.pk %}" hidden>{% csrf_token %}</form>
 <template id="work-resource-editor-template"><section class="border border-primary rounded p-3 my-2 bg-light" data-inline-resource-editor aria-label="Редактирование ресурса"><input type="hidden" name="assignment_id"><input type="hidden" name="resource_kind">
 {{ inline_resource_form.work }}{{ inline_resource_form.work_item }}
-<p data-resource-reassign hidden><label class="form-label">Перенести ранее назначенный ресурс</label><select class="form-select" name="target_choice" data-resource-target-choice data-native-select="true"></select></p>
+
 <h3 class="h6" id="work-resource-title">Добавить ресурс</h3><p id="work-resource-target"></p>
 <div class="alert alert-danger" id="work-resource-errors" role="alert" hidden></div>
 <div data-resource-field="equipment"><label class="form-label">Вид техники</label>{{ inline_resource_form.equipment_type }}<p class="mt-2">{{ inline_resource_form.include_crew }} {{ inline_resource_form.include_crew.label }}</p></div>
 <div data-resource-field="labor"><label class="form-label">Должность</label>{{ inline_resource_form.position }}</div>
 <div data-resource-field="fuel"><label class="form-label">Вид ГСМ</label>{{ inline_resource_form.fuel_type }}<label class="form-label mt-2">Расход в день, л</label>{{ inline_resource_form.daily_liters }}<label class="form-label mt-2">Цена литра, ₽</label>{{ inline_resource_form.fuel_price }}</div>
+{% include 'planning/_resource_targets_picker.html' with target_form=inline_resource_form %}
 <div class="row mt-3"><div class="col-sm-6"><label class="form-label">Начало</label>{{ inline_resource_form.start_date }}</div><div class="col-sm-6"><label class="form-label">Окончание</label>{{ inline_resource_form.end_date }}</div></div>
 <div class="row mt-3" data-resource-field="quantity"><div class="col-sm-4"><label class="form-label">Количество на смену</label>{{ inline_resource_form.count }}</div><div class="col-sm-4"><label class="form-label">Смен в день</label>{{ inline_resource_form.shifts_per_day }}</div><div class="col-sm-4"><label class="form-label">Часов в смене</label>{{ inline_resource_form.hours_per_shift }}</div></div>
 <p class="mt-3">{{ inline_resource_form.refresh_crew }} {{ inline_resource_form.refresh_crew.label }}</p>
@@ -37,4 +39,5 @@
 </section></template>
 <div id="work-resource-editor-fallback"></div>
 {% endif %}
-<script src="{% static 'planning/resource_editor.js' %}" defer></script>
+<script src="{% static 'planning/resource_targets.js' %}?v=20261026-multi" defer></script>
+<script src="{% static 'planning/resource_editor.js' %}?v=20261026-multi" defer></script>

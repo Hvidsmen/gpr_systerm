@@ -1,0 +1,6 @@
+.resource-target-picker{border:1px solid #d7e5ee;border-radius:8px;padding:12px;margin:12px 0;background:#fff}
+.resource-target-options{max-height:260px;overflow:auto;border:1px solid #dce7ef;border-radius:6px;padding:6px 10px}
+.resource-target-options label{display:flex;gap:8px;align-items:flex-start;padding:6px 2px;font-size:13px;line-height:1.45;font-weight:400}
+.resource-target-options input[type=checkbox]{flex-shrink:0;width:15px;height:15px;margin-top:2px}
+.resource-target-options [hidden],.resource-target-picker [hidden]{display:none!important}
+.work-resource-shared{font-size:11px;color:#286c80;margin:5px 0;border-left:2px solid #60a4bb;padding-left:7px}

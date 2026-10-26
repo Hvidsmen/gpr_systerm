@@ -14,6 +14,7 @@ from apps.planning import preparation,work_resources
 
 @skipUnless(os.environ.get('GPR_BROWSER_TESTS')=='1','Optional browser test: requires Node Playwright and Chromium')
 class InlineResourceBrowserTests(StaticLiveServerTestCase):
+    serialized_rollback = True
     def test_inline_resources(self):
         fixtures.WorkspaceTests.setUpTestData.__func__(type(self))
         from apps.works.models import ComplexObject,ProjectWork,ProjectWorkItem

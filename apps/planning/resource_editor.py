@@ -39,11 +39,12 @@ class InlineAssignmentForm(AssignmentForm):
         targets=planned_targets(owner)
         self.fields['work'].queryset=self.fields['work'].queryset.filter(pk__in=[r['id'] for r in targets])
         self.fields['work_item'].queryset=self.fields['work_item'].queryset.filter(pk__in=[i['id'] for r in targets for i in r['items']])
+        self.configure_targets()
         for name in ['work','work_item']:self.fields[name].widget=forms.HiddenInput()
         for name in ['count','shifts_per_day','hours_per_shift','daily_liters','fuel_price']:self.fields[name].required=False
         for field in self.fields.values():
             if isinstance(field.widget,forms.Select):field.widget.attrs['data-native-select']='true'
-            if not isinstance(field.widget,(forms.HiddenInput,forms.CheckboxInput)):field.widget.attrs['class']='form-control'
+            if not isinstance(field.widget,(forms.HiddenInput,forms.CheckboxInput,forms.CheckboxSelectMultiple)):field.widget.attrs['class']='form-control'
 
     def clean(self):
         data=super().clean();kind=data.get('resource_kind')
@@ -63,12 +64,15 @@ class InlineAssignmentForm(AssignmentForm):
 
 
 def serialize(assignment):
+    from .resource_targets import describe
+    targets = describe(assignment)
     projected=[]
     if assignment.fuel_type:projected.append({'kind':'fuel','identity':assignment.fuel_type,'label':assignment.get_fuel_type_display(),'count':0,'liters':str(assignment.daily_liters)})
     if assignment.equipment_type_id:projected.append({'kind':'equipment','identity':assignment.equipment_type_id,'label':str(assignment.equipment_type),'count':assignment.count})
     for member in assignment.crew_snapshot:
         projected.append({'kind':'labor','identity':member['brigade_id'],'label':member['name']+(' *' if member['is_replacement'] else ''),'count':assignment.count*assignment.shifts_per_day*member['count']})
     return {'id':assignment.pk,'work':assignment.work_id or '', 'work_item':assignment.work_item_id or '',
+        'targets':targets, 'shared':len(targets)>1,
         'legacy_package':bool(assignment.work_id and assignment.work.kind=='COMPOSITE' and not assignment.work_item_id),
         'resource_kind':'fuel' if assignment.fuel_type else 'equipment' if assignment.equipment_type_id else 'labor',
         'equipment_type':assignment.equipment_type_id or '', 'position':assignment.position_id or '',
@@ -76,7 +80,7 @@ def serialize(assignment):
         'count':assignment.count,'shifts_per_day':assignment.shifts_per_day,'hours_per_shift':str(assignment.hours_per_shift),
         'include_crew':assignment.include_crew,'start_date':assignment.start_date.isoformat(),'end_date':assignment.end_date.isoformat(),
         'label':str(assignment.equipment_type or assignment.position or assignment.get_fuel_type_display()),
-        'target':assignment.work_item.name if assignment.work_item_id else assignment.work.name if assignment.work_id else 'Вне работ',
+        'target':'; '.join(t['label'] for t in targets) if len(targets)>1 else assignment.work_item.name if assignment.work_item_id else assignment.work.name if assignment.work_id else 'Вне работ',
         'projected':projected,'crew':', '.join(f"{m['name']} — {m['count']} чел." for m in assignment.crew_snapshot)}
 
 
@@ -169,7 +173,7 @@ def add_assignment(request,pk):
                 return JsonResponse({'deleted':assignment_id,'workflow':workflow_state(owner)})
             form=InlineAssignmentForm(request.POST,owner=owner,instance=instance)
             if not form.is_valid():return JsonResponse({'errors':form.errors.get_json_data()},status=400)
-            saved=work_resources.save(request.user,owner,form.instance,form.cleaned_data['refresh_crew'])
+            saved=work_resources.save(request.user,owner,form.instance,form.cleaned_data['refresh_crew'],targets=form.resolved_targets)
             return JsonResponse({'assignment':serialize(saved),'workflow':workflow_state(owner)})
     except ValidationError as error:
         return JsonResponse({'errors':{'__all__':[{'message':message} for message in error.messages]}},status=400)

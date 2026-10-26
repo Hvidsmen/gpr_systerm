@@ -295,7 +295,7 @@ class WorkDeleteView(CompanyScopedMixin, DeleteView):
     def form_valid(self, form):
         from django.core.exceptions import PermissionDenied
 
-        if self.object.resource_assignments.exists() or self.object.items.filter(resource_assignments__isnull=False).exists():
+        if self.object.resource_assignments.exists() or self.object.shared_resource_links.exists() or self.object.items.filter(resource_assignments__isnull=False).exists():
             raise PermissionDenied('Сначала снимите назначения ресурсов с этой работы в планах.')
         if hasattr(self.object,'merged_source') or self.object.items.filter(merge_origin__isnull=False).exists():
             raise PermissionDenied('Работа участвует в объединении и сохраняется для истории.')
@@ -327,7 +327,7 @@ class WorkItemDeleteView(CompanyScopedMixin, DeleteView):
     def form_valid(self, form):
         from django.core.exceptions import PermissionDenied
 
-        if self.object.resource_assignments.exists():
+        if self.object.resource_assignments.exists() or self.object.shared_resource_links.exists():
             raise PermissionDenied('Сначала снимите назначения ресурсов с этой работы в планах.')
         if hasattr(self.object,'merge_origin'):
             raise PermissionDenied('Работа в составе комплекса сохраняет историю объединения и не может быть удалена.')

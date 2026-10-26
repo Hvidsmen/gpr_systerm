@@ -12,6 +12,12 @@ from . import work_resources as service
 
 
 class AssignmentForm(forms.ModelForm):
+    target_scope = forms.ChoiceField(label='Привязка ресурса', required=False,
+        choices=[('works','К выбранным работам'),('object','Общие ресурсы объекта')],
+        widget=forms.Select(attrs={'class':'form-select','data-native-select':'true'}))
+    targets = forms.MultipleChoiceField(label='Работы', required=False,
+        widget=forms.CheckboxSelectMultiple)
+
     refresh_crew=forms.BooleanField(label='Обновить экипаж из справочника техники',required=False)
     class Meta:
         model=WorkResourceAssignment
@@ -20,10 +26,11 @@ class AssignmentForm(forms.ModelForm):
 
     def __init__(self,*args,owner,**kwargs):
         super().__init__(*args,**kwargs)
+        self.owner = owner
         self.instance.company=owner.company
         self.instance.version=owner if isinstance(owner,GlobalPlanVersion) else None
         self.instance.schedule=owner if isinstance(owner,DailySchedule) else None
-        self.fields['work'].queryset=ProjectWork.objects.filter(company=owner.company,section__construction_object_id=owner.construction_object_id).filter(Q(merged_source__isnull=True)|Q(pk=self.instance.work_id))
+        self.fields['work'].queryset=ProjectWork.objects.filter(company=owner.company,section__construction_object_id=owner.construction_object_id).filter(Q(merged_source__isnull=True)|Q(pk__in=[self.instance.work_id, *self.instance.extra_targets.values_list('work_id',flat=True)] if self.instance.pk else []))
         self.fields['work'].empty_label='Общие ресурсы строительного объекта'
         self.fields['work_item'].queryset=ProjectWorkItem.objects.filter(company=owner.company,project_work__in=self.fields['work'].queryset)
         self.fields['work_item'].label_from_instance=lambda i:f'{i.project_work.name} → {i.name}'
@@ -37,6 +44,50 @@ class AssignmentForm(forms.ModelForm):
         self.fields['work_item'].help_text='Необязательно. Должна принадлежать выбранному комплексу работ.'
         self.fields['position'].help_text='Для людей без привязки к технике. При выборе техники должности берутся из её экипажа.'
         for name in ['count','shifts_per_day','hours_per_shift']:self.fields[name].widget.attrs['min']='1' if name!='hours_per_shift' else '0.01'
+        for name in ['work','work_item']:self.fields[name].widget = forms.HiddenInput()
+        from .resource_targets import identities
+        self.initial.setdefault('target_scope','works' if self.instance.work_id else 'object')
+        self.initial.setdefault('targets',[f'item:{w}:{i}' if i else f'work:{w}' for w,i in identities(self.instance) if i or not (self.instance.work_id==w and self.instance.work.kind=='COMPOSITE')])
+        self.configure_targets()
+
+    def configure_targets(self):
+        works = list(self.fields['work'].queryset.select_related('complex_object').order_by('name','pk'))
+        by_id = {w.pk:w for w in works}
+        choices = []
+        def label(work):return f'{work.complex_object.name} → {work.name}' if work.complex_object_id else work.name
+        for work in works:
+            if work.kind != 'COMPOSITE':choices.append((f'work:{work.pk}',label(work)))
+        for item in self.fields['work_item'].queryset.filter(project_work_id__in=by_id).order_by('project_work_id','sequence','pk'):
+            choices.append((f'item:{item.project_work_id}:{item.pk}',f'{label(by_id[item.project_work_id])} → {item.name}'))
+        self.fields['targets'].choices = choices
+
+    def clean(self):
+        data = super().clean()
+        self.resolved_targets = None
+        # Older callers still post the original pair of work fields.
+        if not self.is_bound or 'target_scope' not in self.data or self.fields['targets'].disabled:return data
+        scope = data.get('target_scope')
+        if scope == 'object':
+            if data.get('targets'):self.add_error('targets','Общие ресурсы объекта не совмещаются с выбором работ.')
+            self.resolved_targets = []
+        elif scope == 'works':
+            selected = data.get('targets',[])
+            if not selected:self.add_error('targets','Выберите хотя бы одну работу.')
+            else:
+                pairs = []
+                for token in selected:
+                    parts = token.split(':')
+                    pairs.append((parts[1], parts[2] if parts[0]=='item' else None))
+                try:
+                    from .resource_targets import normalize
+                    self.resolved_targets = normalize(self.owner,pairs)
+                except ValidationError as exc:self.add_error('targets',exc)
+        else:self.add_error('target_scope','Выберите привязку ресурса.')
+        if self.resolved_targets is not None:
+            work_id,item_id = self.resolved_targets[0] if self.resolved_targets else (None,None)
+            data['work'] = self.fields['work'].queryset.filter(pk=work_id).first() if work_id else None
+            data['work_item'] = self.fields['work_item'].queryset.filter(pk=item_id).first() if item_id else None
+        return data
 
 
 class WorkResources(View):
@@ -60,7 +111,7 @@ class WorkResources(View):
         if isinstance(owner,DailySchedule) and owner.locked_before:start=max(start,owner.locked_before)
         form=AssignmentForm(request.POST if bound else None,owner=owner,instance=instance,initial={'start_date':start,'end_date':end} if not instance.pk else {})
         if instance.pk and isinstance(owner,DailySchedule) and owner.locked_before and instance.start_date<owner.locked_before:
-            for name in ['start_date','work','work_item','equipment_type','position']:form.fields[name].disabled=True
+            for name in ['start_date','work','work_item','equipment_type','position','target_scope','targets']:form.fields[name].disabled=True
         from .preparation import record
         preparation=record(owner)
         can_edit=(role_code(request.user)=='ADMIN' or role_code(request.user)=='MANAGER' and preparation and preparation.manager_id==request.user.pk) and owner.status in ['DRAFT','REJECTED']
@@ -71,13 +122,16 @@ class WorkResources(View):
                     messages.success(request,'Назначение снято. Закрытые дни, если они были, сохранены.')
                     return redirect('planning:work_resources_'+self.kind,pk=pk)
                 if form.is_valid():
-                    service.save(request.user,owner,form.instance,form.cleaned_data['refresh_crew'])
+                    service.save(request.user,owner,form.instance,form.cleaned_data['refresh_crew'],targets=form.resolved_targets)
                     messages.success(request,'Назначение сохранено. Потребность в экипаже рассчитана на каждую смену.')
                     return redirect('planning:work_resources_'+self.kind,pk=pk)
             except ValidationError as exc:form.add_error(None,exc)
         rows=list(service.owner_rows(owner));totals={}
         generated=[]
+        from .resource_targets import describe
         for row in rows:
+            row.target_labels = describe(row)
+            row.shared = len(row.target_labels)>1
             row.members=[dict(member,per_shift=row.count*member['count'],per_day=row.count*row.shifts_per_day*member['count']) for member in row.crew_snapshot]
             if not isinstance(owner,DailySchedule):generated.extend(service.expand(row).values())
         if isinstance(owner,DailySchedule):generated=[(entry.kind,entry.label,entry.rows) for entry in owner.entries.filter(key__startswith='assignment:')]
