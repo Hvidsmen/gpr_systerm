@@ -99,8 +99,11 @@ class ImportForm(forms.Form):
 
 def inspect_rows(company,section,rows):
     """Check all conflicts before any write. Existing quantities are never overwritten."""
+    from .unit_aliases import aliases
+    unit_aliases=aliases(company)
     result=[];packages={};objects={}
     for row in rows:
+        row={**row,'unit':unit_aliases.get(row['unit'],row['unit'])}
         obj_key=row['object'].casefold()
         if obj_key not in objects:
             found=list(ComplexObject.objects.filter(company=company,construction_object=section.construction_object,name__iexact=row['object']))

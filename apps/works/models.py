@@ -503,7 +503,17 @@ class WorkGroup(BaseCompanyModel):
         return self.name
 
 
+class MeasurementUnitManager(models.Manager):
+    def get_or_create(self,defaults=None,**kwargs):
+        company=kwargs.get('company_id') or getattr(kwargs.get('company'),'pk',None)
+        if company and kwargs.get('symbol'):
+            alias=MeasurementUnitAlias.objects.using(self.db).filter(company_id=company,symbol=kwargs['symbol']).select_related('target').first()
+            if alias:return alias.target,False
+        return super().get_or_create(defaults=defaults,**kwargs)
+
+
 class MeasurementUnit(BaseCompanyModel):
+    objects=MeasurementUnitManager()
     symbol = models.CharField('Обозначение', max_length=50)
     name = models.CharField('Название', max_length=150)
 
@@ -515,6 +525,14 @@ class MeasurementUnit(BaseCompanyModel):
 
     def __str__(self):
         return f'{self.symbol} — {self.name}'
+
+
+class MeasurementUnitAlias(BaseCompanyModel):
+    symbol=models.CharField('Прежнее обозначение',max_length=50)
+    target=models.ForeignKey(MeasurementUnit,on_delete=models.CASCADE,related_name='aliases')
+
+    class Meta:
+        constraints=[models.UniqueConstraint(fields=['company','symbol'],name='unique_company_unit_alias')]
 
 
 class WorkMergeSource(BaseCompanyModel):

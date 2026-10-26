@@ -571,6 +571,8 @@ def unique_match(candidates, name, description):
 
 
 def resolve_sheet(company, project, sheet, target_object=None, require_all=True, allow_parent_quantity=False):
+    from apps.works.unit_aliases import aliases
+    unit_aliases=aliases(company)
     """No writes: resolve identities and surface ambiguity before confirmation."""
     obj = target_object or unique_match(
         ConstructionObject.objects.filter(company=company, project=project),
@@ -619,6 +621,7 @@ def resolve_sheet(company, project, sheet, target_object=None, require_all=True,
         kind = row["kind"]
         if kind == "work":
             row["unit"] = clean_unit(row["unit"])
+            row['unit']=unit_aliases.get(row['unit'],row['unit'])
             matches = [
                 w
                 for w in works

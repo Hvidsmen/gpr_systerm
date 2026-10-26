@@ -36,6 +36,13 @@ class UnitForm(CatalogForm):
         model = MeasurementUnit
         fields = ['symbol', 'name']
 
+    def clean_symbol(self):
+        symbol=self.cleaned_data['symbol']
+        from .models import MeasurementUnitAlias
+        alias=MeasurementUnitAlias.objects.filter(company=self.instance.company,symbol=symbol).select_related('target').first()
+        if alias:raise forms.ValidationError(f'Это обозначение объединено с «{alias.target.symbol}». Используйте основную единицу.')
+        return symbol
+
 
 CONFIG = {'group': (WorkGroup, GroupForm, 'Группы работ'), 'unit': (MeasurementUnit, UnitForm, 'Единицы измерения')}
 

@@ -10,5 +10,6 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 </script>
 {% endif %}
+{% if bulk_kind == 'units' %}{% if request.user|may:'works:unit_merge' %}<button type="submit" form="bulk-delete-form" formaction="{% url 'works:unit_merge' %}" class="btn btn-sm btn-outline-primary mb-3" name="stage" value="select">Объединить выбранные единицы</button>{% endif %}{% endif %}
 <script src="{% static 'core/bulk_delete.js' %}?v=20261025-tree-pages" defer></script>
 {% endif %}

@@ -1,0 +1,11 @@
+{% extends 'base.html' %}{% block content %}
+<h1>Объединить единицы измерения</h1>
+<p>Выберите равнозначные обозначения, например «м.п» и «м.п.», и основную единицу. Количества, нормативы и цены сохранятся. Это объединение обозначений без пересчёта объёмов.</p>
+{% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+{% if selection %}
+<div class="card p-3 mb-3"><h2 class="h5">Останется: {{ target }}</h2><p>Будут объединены: {% for source in sources %}{{ source }}{% if not forloop.last %}; {% endif %}{% endfor %}.</p>
+<table class="table table-sm"><thead><tr><th>Связанные записи</th><th>Будет обновлено</th></tr></thead><tbody>{% for row in summary %}<tr><td>{{ row.label|capfirst }}</td><td>{{ row.count }}</td></tr>{% endfor %}</tbody></table>
+<p>Прежние обозначения будут распознаваться при повторной загрузке. Утверждённые снимки планов и история остаются в исходном виде.</p>
+<form method="post">{% csrf_token %}<input type="hidden" name="selection" value="{{ selection }}"><button class="btn btn-primary" name="confirm" value="1">Объединить</button><a class="btn btn-outline-secondary" href="{% url 'works:unit_merge' %}">Изменить выбор</a></form></div>
+{% else %}<form method="post" class="card p-3">{% csrf_token %}{% include 'forms/fields.html' with form=form %}<div class="d-flex gap-2"><button class="btn btn-primary" name="stage" value="preview">Проверить объединение</button><a class="btn btn-outline-secondary" href="{% url 'works:unit_list' %}">Отмена</a></div></form>{% endif %}
+{% endblock %}
