@@ -35,7 +35,7 @@ class ResourceGraphBrowserTests(StaticLiveServerTestCase):
         other_item=ProjectWorkItem.objects.create(company=self.company,project_work=other,name='Пусконаладочные работы',unit='шт',quantity_per_unit=1)
         WorkMonthAllocation.objects.create(company=self.company,version=self.version,month=fixtures.JAN,work=other,quantity=1)
         legacy=ResourceMonthAllocation.objects.create(company=self.company,version=self.version,month=fixtures.JAN,kind='equipment',equipment_type=self.equipment,count=4,hours=124)
-        row=fixtures.WorkResourceTests.assignment(self,self.version,work=None,work_item=None,end_date=date(2026,1,31),shifts_per_day=1)
+        row=fixtures.WorkResourceTests.assignment(self,self.version,work=None,work_item=None,end_date=date(2026,1,31),shifts_per_day=1,include_crew=False)
         fixtures.WorkResourceTests.assignment(self,self.version,equipment_type=None,position=self.helper,work=None,work_item=None,count=2,end_date=date(2026,1,31))
         def cookie(user):
             client=Client();client.force_login(user);return client.cookies['sessionid'].value
@@ -50,6 +50,8 @@ class ResourceGraphBrowserTests(StaticLiveServerTestCase):
         self.assertEqual(result.returncode,0,result.stdout+'\n'+result.stderr)
         self.assertEqual(self.version.resource_assignments.filter(equipment_type=self.equipment).count(),1)
         row.refresh_from_db();self.assertEqual(row.count,3)
+        self.assertTrue(row.include_crew)
+        self.assertEqual(list(self.equipment.crew_positions.values_list('position_id','count')),[(self.position.pk,1)])
         self.assertEqual(row.extra_targets.count(),1)
         legacy.refresh_from_db();self.assertEqual(legacy.count,4);self.assertEqual(legacy.hours,124);self.assertEqual(legacy.graph_links.count(),2)
         fuel=self.version.resource_assignments.get(fuel_type='DIESEL');self.assertIsNone(fuel.work_id)

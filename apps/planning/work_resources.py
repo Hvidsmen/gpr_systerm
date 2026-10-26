@@ -91,7 +91,7 @@ def sync_schedule(schedule):
 
 
 @transaction.atomic
-def save(user, owner, assignment, refresh_crew=False, *, targets=None):
+def save(user, owner, assignment, refresh_crew=False, *, targets=None, preserve_crew_rates=False, crew_rate_overrides=None):
     owner=type(owner).objects.select_for_update().get(pk=owner.pk,company=user.company)
     editable(user,owner)
     if assignment.pk:
@@ -120,6 +120,12 @@ def save(user, owner, assignment, refresh_crew=False, *, targets=None):
         elif assignment.start_date<cutoff:raise ValidationError('Новое назначение должно начинаться не раньше открытого дня.')
     if not original or refresh_crew or (original.equipment_type_id,original.position_id,original.fuel_type,original.include_crew)!=(assignment.equipment_type_id,assignment.position_id,assignment.fuel_type,assignment.include_crew):assignment.crew_snapshot=capture(assignment)
     else:assignment.crew_snapshot=original.crew_snapshot
+    if preserve_crew_rates and original:
+        previous={member['position_id']:member for member in original.crew_snapshot}
+        for member in assignment.crew_snapshot:
+            if member['position_id'] in previous:member['hourly_rate']=previous[member['position_id']]['hourly_rate']
+    for member in assignment.crew_snapshot:
+        if member['position_id'] in (crew_rate_overrides or {}):member['hourly_rate']=crew_rate_overrides[member['position_id']]
     assignment.save()
     resource_targets.replace(assignment, targets)
     if isinstance(owner,DailySchedule):sync_schedule(owner)

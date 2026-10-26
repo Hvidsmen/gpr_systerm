@@ -225,11 +225,13 @@ urlpatterns += [
 from .smg_copy import copy_view
 urlpatterns += [path('daily-schedule/<int:pk>/copy-from-gpr/',copy_view,name='smg_copy_gpr')]
 
-from . import resource_graph
+from . import resource_graph, graph_crew
 urlpatterns += [
     path('workspace-versions/<int:pk>/resource-graph/',resource_graph.graph,name='work_resources_graph_gpr'),
     path('workspace-versions/<int:pk>/resource-links/',resource_graph.links,name='work_resources_links_gpr'),
+    path('workspace-versions/<int:pk>/resource-crew/',graph_crew.crew,name='work_resources_crew_gpr'),
     path('daily-schedule/<int:pk>/resource-graph/',resource_graph.graph,{'kind':'smg'},name='work_resources_graph_smg'),
     path('daily-schedule/<int:pk>/resource-links/',resource_graph.links,{'kind':'smg'},name='work_resources_links_smg'),
+    path('daily-schedule/<int:pk>/resource-crew/',graph_crew.crew,{'kind':'smg'},name='work_resources_crew_smg'),
     path('daily-schedule/<int:pk>/resource-assignment/',add_assignment,{'kind':'smg'},name='work_resources_save_smg'),
 ]

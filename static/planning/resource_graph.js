@@ -15,6 +15,7 @@
  // The menu also offers saved works in the other months of this plan.
  const choices=new Map(nodes);
  for(const work of data.targets){
+  const hierarchy={object_id:String(work.object_id||''),object_name:work.object_name,package_id:work.kind==='COMPOSITE'?String(work.id):'',package_name:work.kind==='COMPOSITE'?work.name:''};
   if(work.kind!=='COMPOSITE')choices.set('work:'+work.id,choices.get('work:'+work.id)||{...hierarchy,token:'work:'+work.id,label:work.name,name:work.name,group:'Самостоятельные работы'});
   for(const item of work.items)choices.set('item:'+work.id+':'+item.id,choices.get('item:'+work.id+':'+item.id)||{...hierarchy,token:'item:'+work.id+':'+item.id,label:work.name+' → '+item.name,name:item.name,group:work.name});
  }
@@ -49,7 +50,7 @@
  }
  const dialogFilters=hierarchyFilters(dq('[data-graph-dialog-selectors]'),()=>filterDialogRows());
  function filterDialogRows(){const words=norm(dq('[data-graph-dialog-search]').value).split(/\s+/).filter(Boolean);for(const row of dq('[data-graph-link-rows]').children)row.hidden=!dialogFilters.matches(choices.get(row.dataset.token))||!words.every(w=>row.dataset.search.includes(w));}
- let selected=null,pendingSource=null,drag=null,dragPath=null,editing=null,saving=false,dialogDirty=false,frame=null;
+ let selected=null,pendingSource=null,drag=null,dragPath=null,editing=null,saving=false,dialogDirty=false,frame=null,layoutAnchor=null,requestedAnchor=null;
  const setStatus=(state,text)=>{status.dataset.state=state;status.textContent=text;};
  function el(tag,cls,text){const node=document.createElement(tag);if(cls)node.className=cls;if(text!==undefined)node.textContent=text;return node;}
  function button(text,callback,cls=''){const b=el('button',cls,text);b.type='button';b.addEventListener('click',callback);return b;}
@@ -70,19 +71,56 @@
  function resourceCard(a,fuel=false){
   const card=el('article','rg-node rg-resource-node');card.dataset.graphNode='resource';card.dataset.key=String(a.id);card.dataset.kind=a.resource_kind;
   const title=button(a.label,()=>select('resource',String(a.id)),'rg-node-title');card.append(title);
-  card.append(el('p','rg-node-meta',a.quantity_label||(fuel?moneyless.format(Number(a.daily_liters))+' л/день':a.count+(a.resource_kind==='equipment'?' ед.':' чел.'))));
+  card.append(el('p','rg-node-meta',(fuel?'':a.resource_kind==='equipment'?'Техника · ':'Должность · ')+(a.quantity_label||(fuel?moneyless.format(Number(a.daily_liters))+' л/день':a.count+(a.resource_kind==='equipment'?' ед.':' чел.')))));
   if(a.resource_kind==='equipment'&&a.include_crew){
    const crew=el('details','rg-crew');crew.append(el('summary','',a.include_crew?'Экипаж':'Без экипажа'));if(a.include_crew)crew.append(el('div','',a.crew||'не указан'));card.append(crew);
   }
   if(!fuel)card.append(port('resource',String(a.id)));
   const foot=el('div','rg-node-foot');foot.append(el('span','',fuel?'Только объект':a.targets.length?'Связей с работами: '+a.targets.length:'Общие ресурсы объекта'));
   if(!fuel){const menu=button(cfg.can_edit?'Настроить связи':'Посмотреть связи',()=>openDialog(a));menu.dataset.graphMenu=String(a.id);foot.append(menu);}
+  if(cfg.can_edit&&a.resource_kind==='equipment'&&!a.table_resource){const crew=button('Настроить экипаж',()=>{if(canChange())document.dispatchEvent(new CustomEvent('gpr-open-crew',{detail:{assignment:a}}));});crew.dataset.graphCrew=String(a.id);foot.append(crew);}
   if(cfg.can_edit){const edit=button('Изменить ресурс',()=>{if(!canChange())return;if(a.open_table_url){window.location.assign(a.open_table_url);return;}api.open(a.resource_kind,a.work,a.work_item,a,q('[data-graph-editor]'));});edit.dataset.graphEdit=String(a.id);foot.append(edit);}
   card.append(foot);
   if(!fuel&&a.targets.length){const listing=el('details','rg-connection-list');listing.append(el('summary','', 'Связанные работы'));for(const t of a.targets){listing.append(button(choices.get(token(t))?.name||t.item_name||t.work_name,()=>openDialog(a,token(t))));}card.append(listing);}
   return card;
  }
+ function captureAnchor(resourceId=null){
+  const visible=node=>{const r=node.getBoundingClientRect();return r.bottom>100&&r.top<innerHeight-40;};
+  const focused=document.activeElement?.closest('[data-graph-node]');
+  const preferred=editing&&resourceNode(String(editing.id));
+  const card=[resourceId&&resourceNode(String(resourceId)),focused,preferred,...root.querySelectorAll('[data-graph-node]')].find(node=>node&&visible(node));
+  return card?{kind:card.dataset.graphNode,key:card.dataset.key,top:card.getBoundingClientRect().top}:null;
+ }
+ function restoreAnchor(){
+  if(!layoutAnchor)return;
+  const anchor=layoutAnchor;layoutAnchor=null;
+  const card=root.querySelector('[data-graph-node="'+anchor.kind+'"][data-key="'+CSS.escape(anchor.key)+'"]');
+  if(card){const offset=card.getBoundingClientRect().top-anchor.top;if(Math.abs(offset)>1)window.scrollBy({top:offset,behavior:'instant'});}
+ }
+ function workCard(n,regular,grouped=false){
+  const card=el('article','rg-node rg-work-node');card.dataset.graphNode='work';card.dataset.key=n.token;
+  if(!grouped)card.append(el('p','rg-node-path',n.package_name?[n.object_name,n.package_name].filter(Boolean).join(' → '):n.group==='Самостоятельные работы'?(n.object_name||n.group):n.group));
+  card.append(button(n.name,()=>select('work',n.token),'rg-node-title'));
+  const count=regular.filter(a=>links(a).some(t=>token(t)===n.token)).length;
+  card.append(el('p','rg-node-meta',count?'Связанных ресурсов: '+count:'Ресурсы ещё не назначены'));
+  if(!n.planned)card.append(el('p','rg-node-meta','Нет объёма в выбранном месяце'));
+  card.append(port('work',n.token));return card;
+ }
+ function layoutBlock(host,key){
+  const block=el('div','rg-layout-block'),content=el('div','rg-block-content');block.dataset.graphCluster=key;block.append(content);host.append(block);return content;
+ }
+ function alignBlocks(){
+  const narrow=window.innerWidth<=850;
+  for(const block of q('[data-graph-works]').children){
+   const peer=q('[data-graph-resources]').querySelector('[data-graph-cluster="'+CSS.escape(block.dataset.graphCluster)+'"]');if(!peer)continue;
+   const naturalHeight=node=>{const style=getComputedStyle(node);return node.firstElementChild.getBoundingClientRect().height+parseFloat(style.paddingTop)+parseFloat(style.paddingBottom)+parseFloat(style.borderTopWidth)+parseFloat(style.borderBottomWidth);};
+   const height=narrow?'':Math.ceil(Math.max(naturalHeight(block),naturalHeight(peer)))+'px';
+   if(block.style.minHeight!==height)block.style.minHeight=peer.style.minHeight=height;
+  }
+ }
  function render(){
+  layoutAnchor=requestedAnchor||captureAnchor();requestedAnchor=null;
+  if(selected?.type==='resource'&&!data.assignments.some(a=>String(a.id)===selected.id))selected=null;
   refreshResourceFilters();
   root.querySelectorAll('.rg-group').forEach(g=>groups.set(g.dataset.group,g.open));
   const search=norm(q('[data-graph-search]').value).split(/\s+/).filter(Boolean),filter=q('[data-graph-filter]').value;
@@ -92,38 +130,48 @@
   const connected=new Set(visibleResources.flatMap(a=>links(a).map(token)));
   const visibleNodes=cfg.nodes.filter(n=>graphFilters.matches(choices.get(n.token)||n)&&(!search.length||matches(n.label)||connected.has(n.token)));
   const workHost=q('[data-graph-works]'),resourceHost=q('[data-graph-resources]');workHost.replaceChildren();resourceHost.replaceChildren();
-  const sections=new Map();
-  for(const n of visibleNodes){
-   let group=sections.get(n.group);if(!group){group=el('details','rg-group');group.dataset.group=n.group;group.open=groups.get(n.group)??true;group.append(el('summary','',n.group));sections.set(n.group,group);workHost.append(group);}
-   const card=el('article','rg-node rg-work-node');card.dataset.graphNode='work';card.dataset.key=n.token;
-   card.append(button(n.name,()=>select('work',n.token),'rg-node-title'));
-   const count=regular.filter(a=>links(a).some(t=>token(t)===n.token)).length;
-   card.append(el('p','rg-node-meta',count?'Связанных ресурсов: '+count:'Ресурсы ещё не назначены'));
-   if(!n.planned)card.append(el('p','rg-node-meta','Нет объёма в выбранном месяце'));
-   card.append(port('work',n.token));group.append(card);
+  const layout=window.resourceGraphLayout.arrange(visibleNodes,visibleResources.map(a=>({...a,workTokens:links(a).map(token)})));
+  for(const component of layout.components){
+   const left=layoutBlock(workHost,component.key),right=layoutBlock(resourceHost,component.key),cards=el('div','rg-resource-cards');
+   component.works.forEach(n=>left.append(workCard(n,regular)));
+   component.resources.forEach(a=>cards.append(resourceCard(a)));right.append(cards);
   }
-  if(!visibleNodes.length)workHost.append(el('p','rg-empty',search.length?'Работы не найдены':'В этом месяце нет сохранённых работ. Добавьте их в плане.'));
-  for(const kind of ['equipment','labor']){
-   const items=visibleResources.filter(a=>a.resource_kind===kind);if(!items.length)continue;
-   const section=el('div','rg-resource-group');section.append(el('div','rg-eyebrow',kind==='equipment'?'Техника и экипаж':'Дополнительные люди'));
-   items.forEach(a=>section.append(resourceCard(a)));resourceHost.append(section);
+  if(layout.unlinkedWorks.length||layout.unlinkedResources.length||layout.hiddenResources.length||!visibleNodes.length||!visibleResources.length){
+   const left=layoutBlock(workHost,'unlinked'),right=layoutBlock(resourceHost,'unlinked'),sections=new Map();
+   if(layout.unlinkedWorks.length)left.append(el('div','rg-eyebrow','Работы без видимых связей'));
+   for(const n of layout.unlinkedWorks){
+    let group=sections.get(n.group);if(!group){group=el('details','rg-group');group.dataset.group=n.group;group.open=groups.get(n.group)??true;group.append(el('summary','',n.group));sections.set(n.group,group);left.append(group);}
+    group.append(workCard(n,regular,true));
+   }
+   if(!visibleNodes.length)left.append(el('p','rg-empty',search.length?'Работы не найдены':'Нет работ по выбранным условиям. Проверьте фильтры и месячный план.'));
+   for(const [items,title] of [[layout.hiddenResources,'Связанные работы скрыты фильтрами'],[layout.unlinkedResources,'Общие ресурсы объекта']]){
+    if(!items.length)continue;right.append(el('div','rg-eyebrow',title));const cards=el('div','rg-resource-cards');items.forEach(a=>cards.append(resourceCard(a)));right.append(cards);
+   }
+   if(!visibleResources.length)right.append(el('p','rg-empty',regular.length?'Нет ресурсов по выбранным условиям':'Добавьте технику или людей. Затем соедините их с работами.'));
   }
-  if(!visibleResources.length)resourceHost.append(el('p','rg-empty',regular.length?'Нет ресурсов по выбранным условиям':'Добавьте технику или людей. Затем соедините их с работами.'));
   const fuel=q('[data-graph-fuel]');fuel.replaceChildren();assignments.filter(a=>a.resource_kind==='fuel').forEach(a=>fuel.append(resourceCard(a,true)));if(!fuel.children.length)fuel.append(el('p','rg-empty','ГСМ на этот месяц пока не добавлены.'));
   q('[data-graph-work-count]').textContent=String(visibleNodes.length);q('[data-graph-resource-count]').textContent=String(visibleResources.length);
   scheduleDraw();highlight();
  }
  function point(card,side){const r=card.getBoundingClientRect(),b=board.getBoundingClientRect();return {x:(side==='work'?r.right:r.left)-b.left,y:r.top-b.top+33};}
  function curve(a,b){const reach=Math.max(45,Math.abs(b.x-a.x)*.45);return `M ${a.x},${a.y} C ${a.x+reach},${a.y} ${b.x-reach},${b.y} ${b.x},${b.y}`;}
+ function connectionCurve(work,resource){
+  const from=point(work,'work'),to=point(resource,'resource'),lane=q('.rg-resources').getBoundingClientRect(),bounds=board.getBoundingClientRect();
+  if(resource.getBoundingClientRect().left-lane.left<40)return curve(from,to);
+  // Reach the second card through the space above its row, then the column gap.
+  const approach={x:lane.left-bounds.left-12,y:resource.getBoundingClientRect().top-bounds.top-10};
+  return curve(from,approach)+` L ${to.x-10},${approach.y} L ${to.x-10},${to.y} L ${to.x},${to.y}`;
+ }
  function path(d,cls){const p=document.createElementNS('http://www.w3.org/2000/svg','path');p.setAttribute('d',d);p.setAttribute('class',cls);return p;}
  function draw(){
+  alignBlocks();restoreAnchor();
   svg.replaceChildren();svg.setAttribute('viewBox',`0 0 ${board.clientWidth} ${board.scrollHeight}`);
   if(window.innerWidth<=850)return;
   for(const a of data.assignments.filter(a=>active(a)&&a.resource_kind!=='fuel')){
    const end=resourceNode(String(a.id));if(!end||!end.getClientRects().length)continue;
    for(const t of links(a)){
     const work=root.querySelector('[data-graph-node="work"][data-key="'+CSS.escape(token(t))+'"]');if(!work||!work.getClientRects().length)continue;
-    const d=curve(point(work,'work'),point(end,'resource')),wire=path(d,'rg-wire'),hit=path(d,'rg-wire-hit');
+    const d=connectionCurve(work,end),wire=path(d,'rg-wire'),hit=path(d,'rg-wire-hit');
     wire.dataset.edge='';wire.dataset.work=token(t);wire.dataset.resource=String(a.id);wire.dataset.kind=a.resource_kind;
     hit.setAttribute('role','button');hit.setAttribute('tabindex','0');hit.setAttribute('aria-label','Связь: '+(choices.get(token(t))?.name||t.label)+' — '+a.label);
     hit.addEventListener('click',()=>openDialog(a,token(t)));hit.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();openDialog(a,token(t));}});
@@ -171,7 +219,7 @@
    const response=await fetch(cfg.save_url,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json',Accept:'application/json','X-CSRFToken':document.querySelector('#work-resource-form [name=csrfmiddlewaretoken]').value},body:JSON.stringify({assignment_id:editing.id,revision:editing.revision,targets:chosen.map(row=>row.dataset.token)})});
    if(!(response.headers.get('content-type')||'').includes('application/json'))throw new Error('Не удалось сохранить связи. Проверьте доступ к плану.');
    const result=await response.json();if(!response.ok)throw new Error(result.error||'Не удалось сохранить связи.');
-   dialogDirty=false;dialog.close();api.upsert(result.assignment);setStatus('saved','Связи сохранены');announce('Связи сохранены. Количество ресурса и экипаж не изменены.');resourceNode(String(result.assignment.id))?.querySelector('[data-graph-menu]')?.focus();
+   requestedAnchor=captureAnchor(result.assignment.id);dialogDirty=false;dialog.close();api.upsert(result.assignment);setStatus('saved','Связи сохранены');announce('Связи сохранены. Схема упорядочена автоматически. Количество ресурса и экипаж не изменены.');resourceNode(String(result.assignment.id))?.querySelector('[data-graph-menu]')?.focus({preventScroll:true});
   }catch(e){error.hidden=false;error.textContent=e.message;setStatus('error','Связи не сохранены');}
   finally{saving=false;dq('[data-graph-save]').disabled=false;}
  });
@@ -198,6 +246,7 @@
  document.addEventListener('keydown',event=>{if(event.key==='Escape'){pendingSource=null;selected=null;highlight();}});
  window.addEventListener('beforeunload',event=>{if(dialogDirty||saving||api.hasPendingChanges()){event.preventDefault();event.returnValue='';}});
  document.addEventListener('gpr-resource-rendered',render);
+ document.addEventListener('gpr-graph-anchor',event=>{requestedAnchor=captureAnchor(event.detail?.id);});
  document.addEventListener('gpr-save-state',event=>{const state=event.detail.state;setStatus(state,({dirty:'Есть изменения ресурса',saving:'Сохранение ресурса…',saved:'Сохранено',clean:'Сохранено',error:'Есть несохранённые изменения'})[state]||'Сохранено');});
  new ResizeObserver(scheduleDraw).observe(board);window.addEventListener('resize',scheduleDraw);
  render();

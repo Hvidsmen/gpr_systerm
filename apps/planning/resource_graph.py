@@ -65,6 +65,7 @@ def graph(request, pk, kind='gpr'):
             if token not in known and a['resource_kind']!='fuel':
                 nodes.append({'token':token,'label':t['label'],'name':t['item_name'] or t['work_name'],'group':'Ранее назначенные работы','planned':False});known.add(token)
     context['resource_graph_data']={'nodes':nodes,'can_edit':context['can_prepare_resources'],
+        'crew_url':reverse('planning:work_resources_crew_'+kind,args=[owner.pk]),
         'save_url':reverse('planning:work_resources_links_'+kind,args=[owner.pk]),'month':month.strftime('%Y-%m'),
         'locked_before':owner.locked_before.isoformat() if isinstance(owner,DailySchedule) and owner.locked_before else None}
     context['legacy_resource_count']=(owner.resource_allocations.filter(month=month).exclude(count=0,hours=0,liters=0,balance=0).count() if kind=='gpr' else owner.entries.exclude(kind='work').exclude(key__startswith='assignment:').exclude(rows=[],original=[]).count())

@@ -1,10 +1,10 @@
 {% extends 'base.html' %}{% load static %}
 {% block title %}Связи работ и ресурсов{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'planning/resource_graph.css' %}?v=20261026-2">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'planning/resource_graph.css' %}?v=20261027-auto1">{% endblock %}
 {% block content %}
 <div class="rg-page" data-resource-graph>
 <header class="rg-header"><div><a href="{{ graph_back }}" class="rg-back">← Вернуться к плану</a><h1>Связи работ и ресурсов</h1><p>{{ graph_owner.construction_object }} <span>· {{ graph_title }} · {{ graph_owner.get_status_display }}</span></p></div><div class="rg-header-tools"><form method="get"><label for="rg-month">Месяц</label><input id="rg-month" name="month" type="month" value="{{ graph_month|date:'Y-m' }}" required><button class="btn btn-outline-primary btn-sm">Показать</button></form><span class="rg-status" role="status" aria-live="polite" data-graph-status>Сохранено</span></div></header>
-<section class="rg-intro"><div><strong>Один ресурс — несколько работ</strong><p>Соедините работу с ресурсом или выберите работы в меню карточки. Количество общее; экипаж следует за техникой.</p></div><div class="rg-legend"><span><i class="rg-dot rg-equipment"></i>Техника и экипаж</span><span><i class="rg-dot rg-labor"></i>Люди</span></div></section>
+<section class="rg-intro"><div><strong>Один ресурс — несколько работ</strong><p>Соедините работу с ресурсом или выберите работы в меню карточки. После сохранения схема упорядочится автоматически. Количество общее; экипаж следует за техникой.</p></div><div class="rg-legend"><span><i class="rg-dot rg-equipment"></i>Техника и экипаж</span><span><i class="rg-dot rg-labor"></i>Люди</span></div></section>
 {% if not can_prepare_resources %}<p class="rg-notice">Режим просмотра. Связи изменяются в черновике планировщиком, назначенным руководителем или администратором. Для утверждённого плана создайте новую редакцию.</p>{% endif %}
 <div class="rg-filter-grid" data-graph-selectors></div>
 <div class="rg-toolbar"><label class="rg-search">Поиск работ и ресурсов<input type="search" data-graph-search placeholder="Название работы, техники или должности" autocomplete="off"></label><label>Показать<select data-graph-filter data-native-select="true"><option value="all">Все ресурсы</option><option value="equipment">Только технику</option><option value="labor">Только людей</option><option value="unlinked">Без связей с работами</option></select></label><button class="btn btn-outline-secondary btn-sm" data-graph-reset type="button">Сбросить фильтры</button>{% if can_prepare_resources %}<div class="rg-add"><button type="button" class="btn btn-primary btn-sm" data-graph-add="equipment">+ Техника</button><button type="button" class="btn btn-outline-primary btn-sm" data-graph-add="labor">+ Люди</button></div>{% endif %}</div>
@@ -16,7 +16,17 @@
 </div>
 <dialog class="rg-dialog" data-graph-dialog aria-labelledby="rg-dialog-title"><form data-graph-links-form><header><div><span class="rg-eyebrow">Назначение ресурса</span><h2 id="rg-dialog-title"></h2><p data-graph-dialog-meta></p></div><button type="button" class="rg-close" data-graph-cancel aria-label="Закрыть">×</button></header><p>Отметьте работы, которые используют этот ресурс. Количество остаётся общим для выбранных работ.</p><label class="rg-object-choice"><input type="checkbox" data-graph-object> Общие ресурсы объекта — без связей с работами</label><div class="rg-filter-grid" data-graph-dialog-selectors></div><label class="rg-search">Найти работу<input type="search" data-graph-dialog-search placeholder="Работа или комплекс" autocomplete="off"></label><div class="rg-link-rows" data-graph-link-rows></div><p class="rg-dialog-error" role="alert" data-graph-error hidden></p><footer><span data-graph-selection-count></span><button type="button" class="btn btn-outline-secondary" data-graph-cancel>Отмена</button><button class="btn btn-primary" data-graph-save>Сохранить связи</button></footer></form></dialog>
 {{ resource_graph_data|json_script:'resource-graph-data' }}
+{% if can_prepare_resources %}<dialog class="rg-dialog rg-crew-dialog" data-graph-crew-dialog aria-labelledby="rg-crew-title"><form data-graph-crew-form>
+<header><div><span class="rg-eyebrow">Техника и экипаж</span><h2 id="rg-crew-title">Настроить экипаж</h2><p data-crew-meta></p></div><button type="button" class="rg-close" data-crew-cancel aria-label="Закрыть">×</button></header>
+<p>Укажите должности на одну машину за смену. Экипаж применится к этой карточке и сохранится в справочнике техники для будущих добавлений.</p>
+<p class="rg-notice">Отдельно запланированных людей можно перенести в экипаж. При переносе их отдельное количество уменьшится, а связь с работами будет следовать за техникой.</p>
+<label class="rg-search">Найти должность<input type="search" data-crew-search placeholder="Название должности" autocomplete="off"></label>
+<div data-crew-rows></div><p class="rg-dialog-error" role="alert" data-crew-error hidden></p>
+<footer><span data-crew-total></span><button type="button" class="btn btn-outline-secondary" data-crew-cancel>Отмена</button><button class="btn btn-primary" data-crew-save>Сохранить экипаж</button></footer>
+</form></dialog>{% endif %}
 {% include 'planning/_resource_editor.html' %}
 <script src="{% static 'planning/graph_multiselect.js' %}?v=20261026-2" defer></script>
-<script src="{% static 'planning/resource_graph.js' %}?v=20261026-2" defer></script>
+<script src="{% static 'planning/resource_graph_layout.js' %}?v=20261027-auto1" defer></script>
+<script src="{% static 'planning/resource_graph.js' %}?v=20261027-auto1" defer></script>
+<script src="{% static 'planning/graph_crew.js' %}?v=20261027-auto1" defer></script>
 {% endblock %}
