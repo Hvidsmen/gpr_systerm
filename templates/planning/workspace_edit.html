@@ -81,7 +81,7 @@
 <details class="allocation-section" data-allocation-section="works"><summary>Работы <span class="allocation-group-count" data-section-count></span><span class="work-fold-controls" data-work-fold-controls><select class="form-select form-select-sm w-auto" data-fold-level data-native-select="true" aria-label="Уровень сворачивания">
 <option value="objects">Комплексные объекты</option><option value="packages">Комплексные работы</option><option value="resources">Ресурсы работ</option><option value="sections">Разделы плана</option>
 </select><button type="button" class="btn btn-outline-secondary btn-sm" data-fold-level-action="collapse">Свернуть уровень</button><button type="button" class="btn btn-outline-secondary btn-sm" data-fold-level-action="expand">Развернуть уровень</button>
-</span></summary><div class="allocation-section-body"><p>Указывайте объём комплекса работ. Объёмы работ в составе комплекса можно менять прямо в таблице. Объём комплекса рассчитывается по минимальному выполнению нормативов. Изменение объёма комплекса работ возвращает расчёт по нормативам.</p>
+</span></summary><div class="allocation-section-body"><p>Объём комплекса рассчитывается по минимальному выполнению нормативов всех работ его состава. Отсутствующие в плане работы считаются нулевыми. Объёмы отдельных работ можно менять в таблице; изменение объёма полного комплекса возвращает расчёт по нормативам.</p>
 {% include 'planning/row_filters.html' with filter_kind='works' filters=work_filters %}
 <p><button type="submit" name="action" value="remove_zero_works" class="btn btn-outline-danger" onclick="return confirm('Сохранить изменения и удалить работы с нулевыми объемами только за выбранный месяц? Справочник и другие месяцы сохранятся.')">Сохранить и удалить нулевые работы за {{ selected_month|date:'m.Y' }}</button></p>
 <p><a class="btn btn-outline-primary" href="{% url 'planning:workspace_carryover' version.pk %}?month={{ selected_month|date:'Y-m-d' }}">Добавить остаток работ из прошлого месяца</a></p>
@@ -246,6 +246,10 @@ function updateSubworks(row) {
   updateWorkAmount(row);
   const work=row.querySelector('[name$="-work"]');
   if (!work) return;
+  const input=row.querySelector('[name$="-quantity"]');
+  input.readOnly=false;
+  input.removeAttribute('title');
+  row.querySelector('[data-incomplete-complex-note]')?.remove();
   window.gprResourceEditor?.wireWork(row);
   let note=row.querySelector('[data-carryover-note]');
   if (!note) {note=document.createElement('div');note.dataset.carryoverNote='';note.className='alert alert-warning py-2';note.style.gridColumn='1 / -1';row.querySelector('.allocation-grid').append(note);}
@@ -268,11 +272,13 @@ function updateSubworks(row) {
   if(items){const summary=document.createElement('summary');summary.textContent='Работы в составе комплекса · '+items.length;summary.className='fw-bold py-2';panel.append(summary);}
   if (!items) return;
   if (!items.length) {panel.textContent='В комплексе работ пока нет работ в составе комплекса. Добавьте работы в составе комплекса и нормативы.';return;}
-  const input=row.querySelector('[name$="-quantity"]');
   const prefix=input.name.slice(0,-'-quantity'.length);
   const edited=row.querySelector('[name$="-edited_item_quantities"]');
   let imported=importedItemQuantities[prefix];
-  if(edited.value){try{imported=JSON.parse(edited.value);}catch(e){}}
+  if(edited.value){try{
+    const entered=JSON.parse(edited.value);
+    if(entered && typeof entered==='object' && !Array.isArray(entered))imported=entered;
+  }catch(e){}}
 
   const quantity=Number(input.value.replace(',','.'));
   const valid=input.value.trim()!=='' && Number.isFinite(quantity) && quantity>=0;
@@ -280,12 +286,38 @@ function updateSubworks(row) {
   const head=table.createTHead().insertRow();
   ['Работа в составе комплекса','Норматив на единицу работы','План на месяц','Ед. изм.','Действия'].forEach(label=>{const th=document.createElement('th');th.textContent=label;head.append(th);});
   const body=table.createTBody();
+  const incomplete=items.length<allItems.length;
+  if(incomplete){
+    input.readOnly=true;
+    const note=document.createElement('small');note.dataset.incompleteComplexNote='';note.className='d-block text-muted';
+    note.textContent='Неполный состав: объём комплекса — 0. Укажите объёмы отдельных работ ниже.';
+    input.title=note.textContent;input.parentElement.append(note);
+  }
+  function recalculateComplexQuantity(persist=true){
+    const values={},ratios=[];
+    body.querySelectorAll('[data-item-id]').forEach(field=>{
+      values[field.dataset.itemId]=field.value;
+      const spec=items.find(item=>String(item.id)===field.dataset.itemId);
+      if(field.value!=='' && field.checkValidity())ratios.push(Number(field.value)/Number(spec.norm));
+    });
+    if(persist){
+      edited.value=JSON.stringify(values);
+      row.querySelector('[name$="-reset_item_quantities"]').value='';
+    }
+    if(incomplete || ratios.length===items.length){
+      // Every catalogue item contributes to completion, including absent works.
+      if(incomplete)ratios.push(0);
+      const scale=compositeFractional[work.value]?1000:1;
+      input.value=String(Math.floor((Math.min(...ratios)+Number.EPSILON)*scale)/scale);
+      updateWorkAmount(row);
+    }
+  }
   function changeComposition(nextItems) {
     if(window.gprResourceEditor?.hasPendingChanges()){window.gprResourceEditor.revealPending();return;}
     if(!nextItems.length){row.querySelector('[data-remove-row]').click();return;}
     const values={};
     body.querySelectorAll('[data-item-id]').forEach(field=>{values[field.dataset.itemId]=field.value;});
-    nextItems.forEach(item=>{if(!(String(item.id) in values))values[String(item.id)]=valid?String(Number((quantity*Number(item.norm)).toFixed(6))):'0';});
+    nextItems.forEach(item=>{if(!(String(item.id) in values))values[String(item.id)]='0';});
     const nextIds=new Set(nextItems.map(item=>String(item.id)));
     Object.keys(values).forEach(id=>{if(!nextIds.has(id))delete values[id];});
     selection.value=JSON.stringify(nextItems.length===allItems.length?[]:nextItems.map(item=>item.id));
@@ -303,26 +335,15 @@ function updateSubworks(row) {
     child.className='form-control form-control-sm';child.style.minWidth='130px';
     child.setAttribute('aria-label','План на месяц: '+item.name);child.dataset.itemId=String(item.id);
     child.value=imported?(imported[String(item.id)] ?? ''):(valid?String(Number((quantity*Number(item.norm)).toFixed(6))):'');
-    child.addEventListener('input',()=>{
-      const values={};let ratios=[];
-      body.querySelectorAll('[data-item-id]').forEach(field=>{
-        values[field.dataset.itemId]=field.value;
-        const spec=items.find(i=>String(i.id)===field.dataset.itemId);
-        if(field.value!=='' && field.checkValidity())ratios.push(Number(field.value)/Number(spec.norm));
-      });
-      edited.value=JSON.stringify(values);
-      row.querySelector('[name$="-reset_item_quantities"]').value='';
-      if(ratios.length===items.length){
-        const scale=compositeFractional[work.value]?1000:1;
-        input.value=String(Math.floor((Math.min(...ratios)+Number.EPSILON)*scale)/scale);
-        updateWorkAmount(row);
-      }
-    });
+    child.addEventListener('input',recalculateComplexQuantity);
     tr.insertCell().append(child);tr.insertCell().textContent=item.unit;
     const remove=document.createElement('button');remove.type='button';remove.className='btn btn-sm btn-outline-danger';remove.textContent='Удалить из плана';
     remove.addEventListener('click',()=>changeComposition(items.filter(other=>other.id!==item.id)));
     tr.insertCell().append(remove);
   });
+  // Reconcile saved child volumes and composition changes before showing totals.
+  // Keep derived child volumes in the payload when a legacy partial row had only quantity.
+  if(imported || incomplete)recalculateComplexQuantity(!imported);
   panel.append(table);
   const missing=allItems.filter(item=>!items.some(included=>included.id===item.id));
   if(missing.length){

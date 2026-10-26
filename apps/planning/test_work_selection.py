@@ -117,6 +117,36 @@ class BranchSelectionTests(TestCase):
         self.assertEqual(row.daily_override,daily)
         self.assertEqual(Decimal(row.item_quantities[str(self.a.pk)]),17)
 
+    def test_partial_child_volume_does_not_complete_package_until_all_norms_are_met(self):
+        from .workspace_forms import WorkAllocationForm
+        self.a.quantity_per_unit=12
+        self.a.save()
+        self.add(f'item:{self.a.pk}')
+        row=self.version.work_allocations.get()
+        payload={'work':self.composite.pk,'month':'2026-01-01','quantity':'17.916','load_profile':'',
+                 'selected_item_ids':f'[{self.a.pk}]','edited_item_quantities':f'{{"{self.a.pk}":"215"}}'}
+        form=WorkAllocationForm(payload,instance=row,user=self.planner,version=self.version,month=fixtures.JAN)
+        self.assertTrue(form.is_valid(),form.errors)
+        form.save()
+        row.refresh_from_db()
+        self.assertEqual(row.quantity,0)
+        self.assertEqual(Decimal(row.item_quantities[str(self.a.pk)]),215)
+        spec=build_workspace_snapshot(self.version)['works'][0]
+        self.assertEqual(sum(Decimal(r['quantity']) for r in spec['daily']),0)
+        self.assertEqual(sum(Decimal(r['quantity']) for r in spec['plans']),215)
+
+        # Merely adding the missing work does not complete any packages.
+        extend_allocation(row,[self.b.pk])
+        row.refresh_from_db()
+        self.assertEqual(row.quantity,0)
+        self.assertEqual(Decimal(row.item_quantities[str(self.a.pk)]),215)
+        self.assertEqual(Decimal(row.item_quantities[str(self.b.pk)]),0)
+        row.item_quantities[str(self.b.pk)]='60'
+        row.save()
+        row.refresh_from_db()
+        self.assertEqual(row.quantity,Decimal('17.916'))
+        self.assertEqual(sum(Decimal(r['quantity']) for r in build_workspace_snapshot(self.version)['works'][0]['daily']),Decimal('17.916'))
+
     def test_partial_remainder_is_distributed_by_child_volume(self):
         from .work_selection import partial_remainder_rows
         from .workspace_services import specification

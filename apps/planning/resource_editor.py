@@ -45,8 +45,12 @@ class InlineAssignmentForm(AssignmentForm):
         self.configure_targets()
         for name in ['work','work_item']:self.fields[name].widget=forms.HiddenInput()
         for name in ['count','shifts_per_day','hours_per_shift','daily_liters','fuel_price']:self.fields[name].required=False
-        for field in self.fields.values():
-            if isinstance(field.widget,forms.Select):field.widget.attrs['data-native-select']='true'
+        for name,field in self.fields.items():
+            if isinstance(field.widget,forms.Select):
+                if name in {'equipment_type','position'}:
+                    field.widget.attrs.pop('data-native-select',None)
+                    field.widget.attrs['aria-label']=field.label
+                else:field.widget.attrs['data-native-select']='true'
             if not isinstance(field.widget,(forms.HiddenInput,forms.CheckboxInput,forms.CheckboxSelectMultiple)):field.widget.attrs['class']='form-control'
 
     def clean(self):
