@@ -98,7 +98,8 @@ class LoginChoiceTests(TestCase):
         from .forms import UserLoginForm
         for _ in range(2):
             form = UserLoginForm()
-            self.assertIn('value="ldap"', str(form['auth_source']))
+            self.assertIn('value="ldap" selected', str(form['auth_source']))
+            self.assertEqual(form['auth_source'].value(), 'ldap')
             self.assertEqual(list(form.fields['auth_source'].choices), list(form.fields['auth_source'].widget.choices))
         self.assertContains(self.client.get(reverse('accounts:login')), 'value="ldap"')
 
@@ -106,4 +107,13 @@ class LoginChoiceTests(TestCase):
     def test_disabled_directory_remains_hidden(self):
         from .forms import UserLoginForm
         self.assertTrue(UserLoginForm().fields['auth_source'].widget.is_hidden)
+        self.assertEqual(UserLoginForm()['auth_source'].value(), 'local')
         self.assertNotContains(self.client.get(reverse('accounts:login')), 'value="ldap"')
+
+    @override_settings(LDAP_ENABLED=True)
+    def test_explicit_local_choice_is_preserved_when_login_fails(self):
+        response = self.client.post(reverse('accounts:login'), {
+            'username':'missing-local-user', 'password':'not-a-real-password', 'auth_source':'local'})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['form']['auth_source'].value(), 'local')
+        self.assertNotContains(response, 'not-a-real-password')

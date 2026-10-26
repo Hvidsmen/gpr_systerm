@@ -55,21 +55,23 @@ class UserLoginForm(AuthenticationForm):
         from django.conf import settings
         if settings.LDAP_ENABLED:
             self.fields['auth_source'].choices = [
-                ('local', 'Локальная учетная запись'),
                 ('ldap', 'Корпоративная учетная запись AD'),
+                ('local', 'Локальная учетная запись'),
             ]
+            self.fields['auth_source'].initial = 'ldap'
         else:
+            self.fields['auth_source'].initial = 'local'
             self.fields['auth_source'].widget=forms.HiddenInput()
             self.fields['auth_source'].required=False
 
     username = forms.CharField(
         label=_('Имя пользователя'),
-        widget=forms.TextInput(attrs={'class': 'form-control', 'autofocus': True})
+        widget=forms.TextInput(attrs={'class': 'form-control', 'autofocus': True, 'autocomplete': 'username'})
     )
     password = forms.CharField(
         label=_('Пароль'),
         strip=False,
-        widget=forms.PasswordInput(attrs={'class': 'form-control'})
+        widget=forms.PasswordInput(attrs={'class': 'form-control', 'autocomplete': 'current-password'})
     )
 
 
