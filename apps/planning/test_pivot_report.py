@@ -106,6 +106,9 @@ class PivotReportTests(TestCase):
         self.assertEqual(response.status_code,200)
         self.assertEqual(response.context['grid']['view'],'hierarchy')
         self.assertContains(response,'pivot-collapse-all')
+        inline=next(row for row in response.context['grid']['rows'] if row.get('inline_total'))
+        self.assertEqual(inline['values'][-1],D('1000'))
+        self.assertNotContains(response,'<tr class="pivot-result-subtotal"')
         self.assertEqual(next(row['values'][-1] for row in response.context['grid']['rows'] if row['kind']=='grand'),D('1050'))
         preset=PivotReportPreset.objects.get(name='Иерархия')
         self.assertEqual(preset.config['totals']['position'],'before')
@@ -113,3 +116,5 @@ class PivotReportTests(TestCase):
         sheet=load_workbook(BytesIO(exported.content)).active
         self.assertTrue(any(dim.outlineLevel>0 for dim in sheet.row_dimensions.values()))
         self.assertTrue(any(str(row[0].value).startswith('Общий итог') for row in sheet))
+        self.assertFalse(any(str(row[0].value).startswith('Итого:') for row in sheet))
+        self.assertTrue(any(row[0].value==inline['label']+' · '+inline['measure_label'] and row[-1].value==1000 for row in sheet))

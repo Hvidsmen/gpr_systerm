@@ -53,13 +53,27 @@ def build_layout(records, report, config):
         for row in rows:groups.setdefault(row['levels'][depth],[]).append(row)
         for name,members in sorted(groups.items()):
             path=prefix+(name,);sequence+=1;identifier='pivot-node-'+str(sequence)
-            if config['view']=='hierarchy':
-                output.append({'kind':'group','label':name,'node_id':identifier,'depth':depth,'ancestors':' '.join(ancestors),'field':FIELDS[axes[depth]],'values':[None]*len(display_columns)})
             subtotal=axes[depth] in totals['row_levels'] and depth+1<len(axes)
-            subtotal_ancestors=ancestors if config['view']=='hierarchy' else ()
-            if subtotal and position=='before':output.extend(summary(path,'subtotal',depth+1,subtotal_ancestors))
-            walk(members,path,depth+1,ancestors+(identifier,) if config['view']=='hierarchy' else ())
-            if subtotal and position=='after':output.extend(summary(path,'subtotal',depth+1,subtotal_ancestors))
+            if config['view']=='hierarchy':
+                leaf=depth+1==len(axes)
+                if subtotal or leaf:
+                    # Each measure/unit keeps its own numbers. Only the first
+                    # measure row carries the group's disclosure control.
+                    summaries=summary(path,'group',depth,ancestors) if subtotal else [
+                        {**row,'values':values(row,len(path))} for row in members]
+                    for index,row in enumerate(summaries):
+                        output.append({**row,'kind':'group','label':name,'measure_label':row['label'],
+                            'node_id':identifier if index==0 and not leaf else '',
+                            'depth':depth,'ancestors':' '.join(ancestors),'field':FIELDS[axes[depth]],
+                            'continuation':index>0,'inline_total':subtotal})
+                    if leaf:continue
+                else:
+                    output.append({'kind':'group','label':name,'node_id':identifier,'depth':depth,'ancestors':' '.join(ancestors),'field':FIELDS[axes[depth]],'values':[None]*len(display_columns)})
+                walk(members,path,depth+1,ancestors+(identifier,))
+            else:
+                if subtotal and position=='before':output.extend(summary(path,'subtotal',depth+1,()))
+                walk(members,path,depth+1,())
+                if subtotal and position=='after':output.extend(summary(path,'subtotal',depth+1,()))
     walk(full['rows'])
     if axes and full['rows'] and totals['row_grand']:output.extend(summary((),'grand',0,()))
     if len(output)*max(1,len(display_columns))>150000:raise ValidationError('Слишком большая таблица с подытогами. Сократите период или число уровней итогов.')

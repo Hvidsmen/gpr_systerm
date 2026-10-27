@@ -158,7 +158,8 @@ def pivot_workbook(grid,filters,owner=None):
     for row in grid['rows']:
         kind=row['kind'];label=row['label']
         if hierarchy:
-            if kind=='subtotal':label='Итого: '+row['levels'][-1]+' · '+label
+            if kind=='group' and row.get('measure_label'):label+=' · '+row['measure_label']
+            elif kind=='subtotal':label='Итого: '+row['levels'][-1]+' · '+label
             elif kind=='grand':label='Общий итог · '+label
             values=[label,row.get('unit',''),row.get('indicator','')]
         else:values=list(row.get('levels',[]))+[label,row.get('unit',''),row.get('indicator','')]
