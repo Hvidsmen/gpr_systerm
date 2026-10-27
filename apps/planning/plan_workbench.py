@@ -76,6 +76,12 @@ def attach_work_hierarchy(sections):
 
 def month_matrix(version,month,work_forms,resource_forms):
     grouped={kind:defaultdict(list) for kind in LABELS}
+    from apps.resources.models import Brigade
+    from .table_resource_crew import display_recipe
+    brigades={b.pk:b for b in Brigade.objects.filter(company=version.company).select_related('group')}
+    def labor_group(brigade_id):
+        b=brigades.get(brigade_id)
+        return str(b.group) if b and b.group_id else 'Без группы'
     def measure(label,value,field='',item=None,digits=6,norm=''):
         return {'label':label,'after':value,'before':ZERO,'delta':ZERO,'field':field,'item_id_value':item or '',
             'step':str(Decimal(1).scaleb(-digits)),'cells':[],'month_input':bool(field),'norm':norm}
@@ -116,7 +122,11 @@ def month_matrix(version,month,work_forms,resource_forms):
             comparison=[],errors=[str(error) for errors in form.errors.values() for error in errors])
         fields=[('Средняя численность, чел.' if kind=='labor' else 'Среднее количество, ед.','count',0)] if kind!='fuel' else [('Расход, л','liters',2),('Остаток, л','balance',2)]
         for label,field,digits in fields:entry.comparison.append(measure(label,form[field].value(),field,digits=digits))
-        grouped[kind]['Общие ресурсы объекта'].append(entry)
+        entry.brigade_id=row.brigade_id or ''
+        entry.crew_recipe_json=json.dumps(display_recipe(version.company,row.equipment_type,row.crew_data)) if kind=='equipment' else '[]'
+        entry.crew_counts_json=json.dumps({'month':row.crew_data.get('count',0)}) if kind=='labor' else '{}'
+        entry.crew_note='Численность включает экипаж техники. Можно добавить людей сверх экипажа.' if kind=='labor' and row.crew_data.get('count') else ''
+        grouped[kind][labor_group(row.brigade_id) if kind=='labor' else 'Общие ресурсы объекта'].append(entry)
     # Captured assignments are shown once in the same summary as manual inputs.
     # Their dates, crew and quantities keep being edited by the existing service.
     from .work_resources import owner_rows,expand
@@ -133,7 +143,7 @@ def month_matrix(version,month,work_forms,resource_forms):
                 value=sum((decimal(r.get(field)) for r in rows),ZERO)
                 if field=='planned_count':value/=days
                 comparisons.append(measure(title,value))
-            grouped[kind]['Назначения ресурсов'].append(SimpleNamespace(pk='assignment:'+key,label=label,kind=kind,path=label,native_prefix='',can_edit=False,
+            grouped[kind][labor_group(rows[0].get('brigade_id')) if kind=='labor' else 'Назначения ресурсов'].append(SimpleNamespace(pk='assignment:'+key,label=label,kind=kind,path=label,native_prefix='',can_edit=False,
                 metadata={'resource_assignment_id':assignment.pk,'target_label':rows[0].get('target_label','')},reference='',comparison=comparisons,errors=[],assignment_id=assignment.pk))
     sections=[{'kind':kind,'label':LABELS[kind],'groups':[{'label':name,'entries':entries} for name,entries in sorted(groups.items())],
         'totals':[],'count':sum(len(entries) for entries in groups.values())} for kind,groups in grouped.items()]
@@ -184,4 +194,10 @@ def remove_smg_entry(user,schedule,entry_id,revision):
             raise ValidationError('Сначала снимите связи этой работы с ресурсами в интерфейсе связей.')
     from apps.audit.models import AuditLog
     AuditLog.objects.create(user=user,action='DELETE',entity_type='planning.dailyscheduleentry',entity_id=str(entry.pk),old_value={'label':entry.label,'kind':entry.kind},comment='Удалена строка черновика СМГ')
+    if entry.kind=='labor' and any(int(v) for v in entry.metadata.get('table_crew_counts',{}).values()):
+        raise ValidationError('Должность входит в экипаж техники. Сначала удалите технику или измените её экипаж.')
+    equipment=entry.kind=='equipment'
     entry.delete()
+    if equipment:
+        from .table_resource_crew import sync_daily
+        sync_daily(user,schedule)

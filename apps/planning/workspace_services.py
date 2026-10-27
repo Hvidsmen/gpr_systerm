@@ -271,6 +271,7 @@ def resource_identity(row, kind):
 def resource_input(row):
     result = {
         "profile": [],
+        "crew_data": deepcopy(row.crew_data),
         "month": row.month.isoformat(),
         "kind": row.kind,
         "brigade_id": row.brigade_id,
@@ -331,6 +332,8 @@ def resource_rows(workspace, source, month, total=None, days=None, rate=None):
         if source.get('work_targets'):
             row['work_targets']=deepcopy(source['work_targets'])
             row['work_id']=source['work_targets'][0]['work_id'];row['work_item_id']=source['work_targets'][0].get('work_item_id')
+        if kind=='equipment' and 'members' in source.get('crew_data',{}):row['table_crew']=deepcopy(source['crew_data']['members'])
+        if kind=='labor' and 'count' in source.get('crew_data',{}):row['table_crew_count']=source['crew_data']['count']
         result.append(row)
     return result
 
@@ -999,6 +1002,7 @@ class WorkspaceService:
                     if total_hours:
                         existing.rate = ((existing.rate * existing.hours + row.rate * row.hours) / total_hours).quantize(Decimal("0.01"))
                     existing.count += row.count
+                    if row.kind=='labor':existing.crew_data={'count':existing.crew_data.get('count',0)+row.crew_data.get('count',0)}
                     existing.hours = total_hours
                     existing.save()
                     from .resource_links import copy_links

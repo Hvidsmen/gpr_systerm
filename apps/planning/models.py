@@ -765,6 +765,8 @@ class ResourceMonthAllocation(BaseCompanyModel):
         "Ставка за час / цена литра", max_digits=12, decimal_places=2, default=0
     )
 
+    crew_data = models.JSONField('Состав и расчёт экипажа', default=dict, blank=True)
+
     class Meta:
         ordering = ["month", "kind", "pk"]
         constraints = [

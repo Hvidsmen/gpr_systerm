@@ -164,6 +164,15 @@ class EquipmentTypeListView(CatalogFilterMixin, CompanyRequiredMixin, ListView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context['equipment_grouped'] = self.request.GET.get('view','groups') == 'groups'
+        if context['equipment_grouped']:
+            rows=list(context['equipment_types'])
+            root_ids={row.parent_id or row.pk for row in rows}
+            roots={row.pk:row for row in EquipmentType.objects.filter(company=self.get_company(),pk__in=root_ids,merge_source__isnull=True).select_related('category').prefetch_related('crew_positions__position').order_by('name','pk')}
+            matched={row.pk for row in rows}
+            nodes={pk:{'root':root,'children':[],'root_matches':pk in matched} for pk,root in roots.items()}
+            for row in rows:
+                if row.parent_id in nodes:nodes[row.parent_id]['children'].append(row)
+            context['equipment_hierarchy']=list(nodes.values())
         for mode in ['groups','table']:
             params = self.request.GET.copy()
             params.pop('page',None)
@@ -181,6 +190,12 @@ class EquipmentTypeCreateView(EquipmentCrewEditorMixin, CompanyRequiredMixin, Cr
     model = EquipmentType
     form_class = EquipmentTypeForm
     template_name = 'resources/equipment_type_form.html'
+
+    def get_initial(self):
+        initial=super().get_initial()
+        parent=EquipmentType.objects.filter(company=self.get_company(),parent__isnull=True,merge_source__isnull=True,pk=self.request.GET.get('parent')).first() if self.request.GET.get('parent','').isdigit() else None
+        if parent:initial['parent']=parent.pk
+        return initial
 
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()

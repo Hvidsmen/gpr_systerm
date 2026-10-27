@@ -19,6 +19,18 @@ const c=JSON.parse(process.env.PLAN_WORKBENCH_CONFIG);
    await popup.getByRole('option',{name:'Экскаватор с машинистом',exact:true}).click();
    await Promise.all([page.waitForNavigation({waitUntil:'networkidle'}),dialog.getByRole('button',{name:'Добавить в план',exact:true}).click()]);
    const labor=await page.locator('[data-smg-section=labor]').innerText();assert(labor.includes('Машинист')&&labor.includes('Помощник'),'Adding equipment includes catalogue crew positions');
+   const daily=await page.locator('[data-plan-workbench]').getAttribute('data-plan-workbench')==='smg';
+   const selector=daily?'.smg-day-input':'[data-plan-month-input]';
+   const machine=()=>page.locator('[data-plan-entry][data-label="Экскаватор с машинистом"] '+selector).first();
+   const people=()=>page.locator('[data-plan-entry][data-label="Машинист"] '+selector).first();
+   const initial=Number(await people().inputValue());await machine().fill('1');
+   assert.equal(Number(await people().inputValue()),initial+1,'Crew follows machine immediately');
+   async function persistCrew(){await Promise.all([page.waitForNavigation({waitUntil:'networkidle'}),daily?page.locator('#smg-save-table').click():page.locator('[data-plan-action-header] button[form=allocation-editor][value=save]').click()]);}
+   await persistCrew();assert.equal(Number(await people().inputValue()),initial+1,'Crew count persists after save');
+   await people().fill(String(initial+3));await persistCrew();
+   await machine().fill('2');assert.equal(Number(await people().inputValue()),initial+4,'Additional people survive a machine-count change');
+   await persistCrew();assert.equal(Number(await people().inputValue()),initial+4);
+
   }
   await page.goto(c.base+c.gpr,{waitUntil:'networkidle'});
   const gprAdd=await page.locator('.plan-workbench-add').innerText();
@@ -93,6 +105,15 @@ const c=JSON.parse(process.env.PLAN_WORKBENCH_CONFIG);
   await context.addCookies([{name:'sessionid',value:c.manager_cookie,url:c.base}]);await page.goto(c.base+c.gpr,{waitUntil:'networkidle'});
   assert.equal(await page.locator('[data-smg-section=work] [data-plan-month-input]').count(),0);
   assert(await page.locator('[data-smg-section=equipment] [data-plan-month-input]').count());
+  await context.addCookies([{name:'sessionid',value:c.cookie,url:c.base}]);
+  await page.goto(c.base+c.catalogue+'?name=JCB',{waitUntil:'networkidle'});
+  assert.equal(await page.locator('[data-equipment-type]').count(),1);
+  assert((await page.locator('[data-equipment-type]>summary').innerText()).includes('Экскаватор с машинистом'));
+  assert((await page.locator('[data-equipment-type] tbody').innerText()).includes('JCB 3CX'));
+  await page.screenshot({path:'/tmp/equipment-type-tree-mobile.png'});
+  await page.goto(c.base+c.type_edit,{waitUntil:'networkidle'});
+  assert.equal(await page.locator('select[name=parent]').inputValue(),String(c.crew_type));
+  assert(await page.locator('label[for=id_parent]').isVisible());
   assert.deepEqual(errors,[]);console.log('Unified workbench browser: shared controls, partial complex edits, save/reload, scoped work addition, resource edits, row/table TSV copying, manager rights and mobile passed.');
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exit(1);});

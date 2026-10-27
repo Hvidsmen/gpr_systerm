@@ -27,7 +27,7 @@ class CatalogExcelExport:
             cell.font = Font(bold=True, color='FFFFFF')
             cell.fill = PatternFill('solid', fgColor='0D6EFD')
             sheet.column_dimensions[cell.column_letter].width = 28 if cell.value != 'Описание' else 60
-        for index, row in enumerate(queryset.iterator(), 2):
+        for index, row in enumerate(queryset.iterator(chunk_size=1000), 2):
             # Treat every catalog value as text, including names starting '='.
             for column, value in enumerate(self.values(row), 1):
                 cell = sheet.cell(index, column, ILLEGAL_CHARACTERS_RE.sub('', str(value)))
@@ -51,9 +51,9 @@ class BrigadeExport(CatalogExcelExport, BrigadeListView):
 
 
 class EquipmentTypeExport(CatalogExcelExport, EquipmentTypeListView):
-    headers = ['Название', 'Категория', 'Единица измерения', 'Активна', 'Категории водителя', 'Классы водителя']
+    headers = ['Название', 'Вид техники', 'Категория', 'Единица измерения', 'Активна', 'Категории водителя', 'Классы водителя']
     filename = 'equipment_types.xlsx'
     sheet_title = 'Виды техники'
 
     def values(self, row):
-        return [row.name, row.category.name if row.category_id else '', row.unit, 'Да' if row.is_active else 'Нет', ', '.join(row.driver_category_labels), ', '.join(row.driver_class_labels)]
+        return [row.name, row.parent.name if row.parent_id else '', row.category.name if row.category_id else '', row.unit, 'Да' if row.is_active else 'Нет', ', '.join(row.driver_category_labels), ', '.join(row.driver_class_labels)]

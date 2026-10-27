@@ -1,6 +1,6 @@
 from django import forms
 from django.db import connections
-from .models import BrigadeGroup, BrigadeMacroGroup, EquipmentCategory
+from .models import BrigadeGroup, BrigadeMacroGroup, EquipmentCategory, EquipmentType
 
 
 class CatalogFilterForm(forms.Form):
@@ -23,6 +23,7 @@ class BrigadeFilterForm(CatalogFilterForm):
 
 
 class EquipmentFilterForm(CatalogFilterForm):
+    parent = forms.ModelChoiceField(label='Вид техники', queryset=EquipmentType.objects.filter(parent__isnull=True,merge_source__isnull=True), required=False, empty_label='Все виды техники')
     category = forms.ModelChoiceField(label='Категория', queryset=EquipmentCategory.objects.all(), required=False, empty_label='Все категории')
 
 
@@ -43,12 +44,16 @@ class CatalogFilterMixin:
                     queryset = queryset.filter(pk__in=ids)
                 else:
                     queryset = queryset.filter(name__icontains=value)
+            elif key == 'parent':
+                from django.db.models import Q
+                queryset = queryset.filter(Q(pk=value.pk)|Q(parent=value))
             else:
                 queryset = queryset.filter(**{key:value})
         return queryset
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        context['catalogue_count']=context['paginator'].count if context['paginator'] else self.object_list.count()
         params = self.request.GET.copy()
         params.pop('page', None)
         context.update(filter_form=self.filter_form, filter_query=params.urlencode(), export_route=self.export_route,

@@ -175,7 +175,7 @@ def value_rows(entry,values):
 
 
 @transaction.atomic
-def save_entry(user,entry,values,revision):
+def save_entry(user,entry,values,revision,*,sync_crew=True):
     require_roles(user,PLAN_ROLES | {'MANAGER'})
     schedule=DailySchedule.objects.select_for_update().get(pk=entry.schedule_id,company=user.company)
     from core.permissions import require_planning_object
@@ -200,7 +200,13 @@ def save_entry(user,entry,values,revision):
                 raise ValidationError('Прошедшие дни сохранены из действовавшего СМГ. Изменяйте только оставшиеся дни.')
         rows=[deepcopy(r) for r in entry.rows if r['date']<cutoff]+[r for r in rows if r['date']>=cutoff]
     if differences(entry,rows) and not ALLOW_MONTH_CHANGES:raise ValidationError('Месячные итоги отличаются от ГПР. Перераспределите объемы между днями, сохранив итог месяца.')
+    old_counts={r['date']:str(row_value(entry.kind,r,'planned_count')) for r in entry.rows} if entry.kind=='labor' else {}
     entry.rows=rows;entry.revision+=1;entry.save(update_fields=['rows','revision'])
+    if sync_crew and entry.kind in {'labor','equipment'}:
+        from .table_resource_crew import sync_daily
+        explicit={r['date']:r['planned_count'] for r in rows if entry.kind=='labor' and str(r.get('planned_count'))!=old_counts.get(r['date'])}
+        sync_daily(user,schedule,edited_counts={entry.pk:explicit} if explicit else {})
+        entry.refresh_from_db()
     return entry
 
 

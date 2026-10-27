@@ -25,7 +25,7 @@ def locked(user,schedule):
 def save_table(user,schedule,changes):
     schedule=locked(user,schedule)
     if not isinstance(changes,list) or not changes:raise ValidationError('Нет изменений для сохранения.')
-    seen=set()
+    seen=set();crew_edits={}
     try:
         for change in changes:
             pk=int(change['id'])
@@ -43,8 +43,12 @@ def save_table(user,schedule,changes):
                 key=(cell['date'],cell.get('item_id'));field=cell['field']
                 if key not in index or field not in fields or (key,field) in edited:raise ValidationError('Недопустимая ячейка СМГ.')
                 edited.add((key,field));values[index[key]][field]=Decimal(str(cell['value']).replace(',','.'))
-            service.save_entry(user,entry,values,int(change['revision']))
+            if entry.kind=='labor':
+                crew_edits[entry.pk]={c['date']:c['value'] for c in change['changes'] if c['field']=='planned_count'}
+            service.save_entry(user,entry,values,int(change['revision']),sync_crew=False)
     except (KeyError,TypeError,ValueError,InvalidOperation):raise ValidationError('Проверьте введенные числа и обновите страницу.')
+    from .table_resource_crew import sync_daily
+    sync_daily(user,schedule,edited_counts=crew_edits)
     return len(seen)
 
 
@@ -96,7 +100,7 @@ def add_entry(user,schedule,data):
         from .subobject_smg import annotate_entry
         annotate_entry(entry,work);entry.save(update_fields=['metadata','gpr_work'])
     values=[{field:Decimal(0) for field,_,_ in service.FIELDS[kind]} for _ in service.identities(entry)]
-    entry=service.save_entry(user,entry,values,0)
+    entry=service.save_entry(user,entry,values,0,sync_crew=False)
     if kind=='equipment':
         from .table_resource_crew import add_daily_crew
         add_daily_crew(user,schedule,data['equipment'])

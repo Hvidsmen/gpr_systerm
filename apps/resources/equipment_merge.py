@@ -102,6 +102,14 @@ def transfer_rows(model, company, source, target, identity, fields, rate, audit,
             if hasattr(row, 'load_profile_id') and existing.load_profile_id != row.load_profile_id:
                 raise ValidationError(f'Разные профили распределения: записи ID {existing.pk} и {row.pk}. Сначала выберите одинаковый профиль.')
             audit[-1]['target_before'] = model_to_dict(existing)
+            if model._meta.label_lower=='planning.resourcemonthallocation':
+                if row.kind=='labor':existing.crew_data={'count':existing.crew_data.get('count',0)+row.crew_data.get('count',0)}
+                elif row.kind=='equipment':
+                    from apps.planning.table_resource_crew import recipe
+                    left=recipe(company,existing.equipment_type,existing.crew_data)
+                    right=recipe(company,row.equipment_type,row.crew_data)
+                    if left!=right:raise ValidationError('В планах сохранены разные экипажи техники. Сначала согласуйте их состав.')
+                    existing.crew_data={'members':left}
             for field in fields:
                 a, b = getattr(existing, field), getattr(row, field)
                 setattr(existing, field, None if a is None and b is None else (a or 0) + (b or 0))

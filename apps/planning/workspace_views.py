@@ -439,7 +439,11 @@ class WorkspaceEdit(View):
                     if locked.status not in ["DRAFT", "REJECTED"]:
                         raise ValidationError("Версия уже отправлена на согласование.")
                     works.save()
+                    crew_edits={f.instance.pk:f.cleaned_data['count'] for f in resources if f.instance.pk and not f.cleaned_data.get('DELETE') and f.cleaned_data.get('kind')=='labor' and 'count' in f.changed_data}
+                    crew_removed={f.instance.brigade_id for f in resources if f.cleaned_data.get('DELETE') and f.instance.kind=='labor'}
                     resources.save()
+                    from .table_resource_crew import sync_monthly
+                    sync_monthly(request.user,locked,selected,edited_counts=crew_edits,removed_brigades=crew_removed)
                     removed = None
                     if request.POST.get('action') == 'remove_zero_works':
                         from .zero_works import remove_zero_works

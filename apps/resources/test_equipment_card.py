@@ -27,7 +27,7 @@ class EquipmentCardTests(TestCase):
         self.assertEqual((row.position_id,row.count),(self.position.pk,2))
         response=self.client.get(reverse('resources:equipment_type_list'))
         self.assertContains(response,'Экипаж карточки')
-        self.assertContains(response,'data-equipment-category')
+        self.assertContains(response,'data-equipment-type')
         self.assertContains(self.client.get(self.url),'id_crew-TOTAL_FORMS')
 
     def test_invalid_crew_does_not_save_card(self):

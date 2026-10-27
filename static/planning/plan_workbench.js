@@ -169,5 +169,42 @@
   native.addEventListener('submit',event=>{if(!event.defaultPrevented)native.dataset.workbenchSubmitting='true';});
   syncComputed();
  }
+ // A position shows its total: captured machine crews plus separately planned people.
+ let crewUpdating=false;
+ const readJSON=(entry,name,fallback)=>{try{return JSON.parse(entry.dataset[name]||JSON.stringify(fallback));}catch{return fallback;}};
+ function syncTableCrew(){
+  if(crewUpdating)return;crewUpdating=true;
+  try{
+   const totals=new Map();
+   for(const gear of matrix.querySelectorAll('[data-smg-section=equipment] [data-plan-entry]')){
+    if(!daily&&source(gear,'DELETE')?.checked)continue;
+    const members=readJSON(gear,'crewRecipe',[]);if(!members.length)continue;
+    const values=daily?readJSON(gear,'crewValues',{}):{month:gear.querySelector('[data-field=count]')?.value??gear.querySelector('[data-plan-month-value]')?.dataset.value??0};
+    if(daily)gear.querySelectorAll('[data-field=planned_count]').forEach(input=>values[input.dataset.date]=input.value);
+    for(const [day,value] of Object.entries(values)){
+     const count=Number(value);if(!Number.isInteger(count)||count<0)return;
+     for(const member of members){const key=String(member.brigade_id)+'|'+day;totals.set(key,(totals.get(key)||0)+count*member.count);}
+    }
+   }
+   for(const people of matrix.querySelectorAll('[data-smg-section=labor] [data-plan-entry][data-brigade-id]')){
+    if(!people.dataset.brigadeId)continue;
+    const cache=readJSON(people,'crewCounts',{});
+    for(const input of people.querySelectorAll(daily?'[data-field=planned_count]':'[data-field=count]')){
+     const day=daily?input.dataset.date:'month',before=Number(cache[day]||0),after=totals.get(people.dataset.brigadeId+'|'+day)||0;
+     const current=Number(input.value);if(!Number.isFinite(current)||current<0)continue;
+     const extra=Math.max(0,current-before),total=extra+after;input.min=String(after);input.title='Из экипажа: '+after+'. Дополнительно: '+extra+'.';
+     cache[day]=after;
+     if(String(total)!==input.value){input.value=String(total);input.dispatchEvent(new Event('input',{bubbles:true}));}
+     if(after||before){
+      let note=people.querySelector('[data-crew-note]');if(!note){note=document.createElement('small');note.className='d-block text-muted';note.dataset.crewNote='';people.querySelector('.matrix-label strong').after(note);}
+      note.textContent=daily?'Численность включает экипаж техники. Можно добавить людей сверх экипажа.':'Экипаж техники: '+after+' чел. · Дополнительно: '+extra+' чел.';
+     }
+    }
+    people.dataset.crewCounts=JSON.stringify(cache);
+   }
+  }finally{crewUpdating=false;}
+ }
+ matrix.addEventListener('input',event=>{if(event.target.closest('[data-smg-section=equipment]'))syncTableCrew();});
+ requestAnimationFrame(syncTableCrew);
  filter();
 })();

@@ -1,4 +1,5 @@
 """Grouped read-only daily SMG table with immutable GPR comparisons."""
+import json
 from collections import defaultdict
 from datetime import timedelta
 from decimal import Decimal
@@ -21,6 +22,16 @@ def matrix(schedule,entries):
         if not entry.comparison:continue
         first=next(iter(entry.rows or entry.original),{})
         entry.reference=first.get('equipment_number','')
+        from .table_resource_crew import daily_recipe,display_recipe,daily_crew_counts,canonical_members
+        entry.brigade_id=first.get('brigade_id','')
+        captured=daily_recipe(entry) if entry.kind=='equipment' else []
+        machine=equipment.get(first.get('equipment_type_id'))
+        members=captured if captured is not None else display_recipe(schedule.company,machine,{}) if machine else []
+        if entry.metadata.get('resource_assignment_id'):members=[]
+        entry.crew_recipe_json=json.dumps([{'brigade_id':m['brigade_id'],'count':m['count']} for m in canonical_members(schedule.company,members)])
+        entry.crew_counts_json=json.dumps(daily_crew_counts(entry)) if entry.kind=='labor' else '{}'
+        entry.crew_values_json=json.dumps({r['date']:str(r.get('planned_count',0)) for r in entry.rows}) if entry.kind=='equipment' else '{}'
+        entry.crew_note='Численность включает экипаж техники. Можно добавить людей сверх экипажа.' if entry.kind=='labor' and any(daily_crew_counts(entry).values()) else ''
         group='Без группы'
         if entry.kind=='work':
             work=works.get(entry.metadata.get('id'))
@@ -29,12 +40,12 @@ def matrix(schedule,entries):
             group=entry.metadata.get('complex_object_name') or 'Самостоятельные работы'
         elif entry.kind=='labor':
             brigade=brigades.get(first.get('brigade_id'))
-            if brigade:group=' · '.join(str(v) for v in [brigade.macro_group,brigade.group] if v) or 'Должность'
+            if brigade:group=str(brigade.group) if brigade.group_id else 'Без группы'
         elif entry.kind=='equipment':
             machine=equipment.get(first.get('equipment_type_id'))
             group=str(machine.category) if machine and machine.category_id else 'Техника'
         else:group='ГСМ'
-        if entry.kind!='work':group='Назначения ресурсов' if entry.metadata.get('resource_assignment_id') else 'Общие ресурсы объекта'
+        if entry.kind not in {'work','labor'}:group='Назначения ресурсов' if entry.metadata.get('resource_assignment_id') else 'Общие ресурсы объекта'
         entry.has_deviation=bool(schedule.source_id) and any(row['delta'] for row in entry.comparison)
         grouped[entry.kind][group].append(entry)
         composites={}

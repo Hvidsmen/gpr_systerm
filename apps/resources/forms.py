@@ -67,14 +67,23 @@ class EquipmentTypeForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields['category'].queryset = EquipmentCategory.objects.filter(company_id=self.instance.company_id)
         self.fields['category'].empty_label = 'Выберите категорию'
+        self.fields['parent'].queryset = EquipmentType.objects.filter(company_id=self.instance.company_id,parent__isnull=True,merge_source__isnull=True).exclude(pk=self.instance.pk)
+        self.fields['parent'].empty_label = 'Самостоятельный вид техники'
+        self.fields['parent'].help_text = 'Выберите вид для этой техники. Оставьте пустым, чтобы создать самостоятельный вид.'
         self.fields['unit'].required = False
 
     def clean_unit(self):
         return self.cleaned_data.get('unit') or 'ед.'
 
+    def clean_parent(self):
+        parent=self.cleaned_data.get('parent')
+        if parent and self.instance.pk and self.instance.model_variants.exists():
+            raise forms.ValidationError('У этого вида уже есть техника. Сначала перенесите её в другой вид.')
+        return parent
+
     class Meta:
         model = EquipmentType
-        fields = ['excel_aliases', 'name', 'category', 'driver_categories', 'driver_classes', 'unit', 'is_active']
+        fields = ['excel_aliases', 'name', 'parent', 'category', 'driver_categories', 'driver_classes', 'unit', 'is_active']
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control'}),
             'unit': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'ед.'}),
@@ -83,6 +92,7 @@ class EquipmentTypeForm(forms.ModelForm):
         }
         labels = {
             'name': 'Название',
+            'parent': 'Вид техники',
             'category': 'Категория',
             'is_active': 'Активна',
         }

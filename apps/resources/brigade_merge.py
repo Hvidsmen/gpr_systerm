@@ -45,6 +45,10 @@ def normalize_brigade_snapshot(snapshot, aliases, *, in_place=False):
             a, b = Decimal(str(destination.get(hours) or 0)), Decimal(str(row.get(hours) or 0))
             if a + b and destination.get(rate) is not None and row.get(rate) is not None:
                 destination[rate] = str((a * Decimal(str(destination[rate])) + b * Decimal(str(row[rate]))) / (a + b))
+            if monthly and ('count' in destination.get('crew_data',{}) or 'count' in row.get('crew_data',{})):
+                destination['crew_data']={'count':destination.get('crew_data',{}).get('count',0)+row.get('crew_data',{}).get('count',0)}
+            if not monthly and ('table_crew_count' in destination or 'table_crew_count' in row):
+                destination['table_crew_count']=destination.get('table_crew_count',0)+row.get('table_crew_count',0)
             for field in fields:
                 if destination.get(field) is not None or row.get(field) is not None:
                     value = Decimal(str(destination.get(field) or 0)) + Decimal(str(row.get(field) or 0))
