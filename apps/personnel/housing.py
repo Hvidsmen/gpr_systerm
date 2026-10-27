@@ -34,7 +34,7 @@ def require_available(employee,obj,day,lock=False):
 
 def matching_employee(person):
     """Only unambiguous company identities; matching names never merge two people."""
-    qs=Employee.objects.filter(company=person.company)
+    qs=Employee.objects.filter(company=person.company,is_active=True)
     name=' '.join(person.full_name.split()).casefold()
     if person.employee_number:
         candidates=list(qs.filter(employee_number=person.employee_number)[:2])

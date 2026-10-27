@@ -24,9 +24,12 @@ class PersonForm(StyledModelForm):
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
         from apps.resources.models import Employee
-        self.fields['employee'].queryset=Employee.objects.filter(company=self.instance.company).select_related('position')
+        from django.db.models import Q
+        current=self.instance.employee_id if self.instance.pk else None
+        self.fields['employee'].queryset=Employee.objects.filter(company=self.instance.company).filter(Q(is_active=True)|Q(pk=current)).select_related('position').order_by('last_name','first_name','middle_name','employee_number','pk')
+        self.fields['employee'].label_from_instance=lambda e:e.display_name+(' · № '+e.employee_number if e.employee_number else '')+(' · '+str(e.position) if e.position_id else '')+(' · Архивный, сохранённая связь' if not e.is_active else '')
         self.fields['full_name'].required=False
-        self.fields['employee'].help_text='Эта связь позволяет выбирать человека в производственном факте после заезда в подходящий ВЖГ.'
+        self.fields['employee'].help_text='Для новой связи доступны только активные сотрудники. После заезда в подходящий ВЖГ сотрудник станет доступен в производственном факте.'
     def clean(self):
         data=super().clean();employee=data.get('employee')
         if self.instance.pk and self.instance.employee_id and self.instance.employee_id!=(employee.pk if employee else None) and self.instance.stays.exists():self.add_error('employee','У карточки уже есть история размещения. Связь сотрудника с историей нельзя заменить.')
