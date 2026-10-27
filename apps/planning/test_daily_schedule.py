@@ -18,7 +18,7 @@ def activate(user,schedule):
     from .daily_schedule_approval import requires_approval,transition
     if requires_approval(schedule):
         schedule=transition(manager,schedule,'submit')
-        for role,action in [('PRODUCTION_HEAD','approve_production'),('HR_HEAD','approve_hr'),('TECH_HEAD','approve_tech'), ('SECURITY_HEAD','approve_security'),('CEO','approve')]:
+        for role,action in [('PRODUCTION_HEAD','approve_production'),('HR_HEAD','approve_hr'),('TECH_HEAD','approve_tech'), ('SECURITY_HEAD','approve_security'),('SBO_HEAD','approve_sbo'),('CEO','approve')]:
             actor=User.objects.filter(company=user.company,role__code=role,is_active=True).first()
             schedule=transition(actor,schedule,action)
     return apply_schedule(manager,schedule)

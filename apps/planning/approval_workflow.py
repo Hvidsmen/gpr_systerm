@@ -5,11 +5,7 @@ from django.utils import timezone
 from core.permissions import approval_role, require_global_action
 from .approval_context import authorized_transition
 from .models import GlobalPlanVersion, GlobalPlanReview, GlobalPlanDecision
-
-SECTIONS = [('PRODUCTION', 'Работы', 'PRODUCTION_HEAD', 'approve_production'),
-            ('HR', 'Должность', 'HR_HEAD', 'approve_hr'),
-            ('TECH', 'Техника и ГСМ', 'TECH_HEAD', 'approve_tech'),
-            ('SECURITY', 'Служба безопасности', 'SECURITY_HEAD', 'approve_security')]
+from core.plan_approval import DEPARTMENTS as SECTIONS, REQUIRED_SECTIONS, DEPARTMENT_ROLES
 
 
 def current_review(version):
@@ -21,7 +17,7 @@ def approved_sections(review):
 
 
 def ready(review):
-    return {'ESTIMATE', 'PRODUCTION', 'HR', 'TECH', 'SECURITY'} <= approved_sections(review)
+    return REQUIRED_SECTIONS | {'ESTIMATE'} <= approved_sections(review)
 
 
 def baseline_snapshot(version):
@@ -81,7 +77,7 @@ def transition(version, user, action, comment=''):
             raise ValidationError('Раздел уже согласован в этом раунде.')
     elif action == 'approve':
         if version.status != 'SUBMITTED' or not ready(review):
-            raise ValidationError('Требуются согласования сметчика и всех четырех профильных служб.')
+            raise ValidationError('Требуются согласования сметчика и всех профильных служб, включая Службу СБО.')
         from .estimate_review import require_approved
         require_approved(version)
         version.status = 'APPROVED'
@@ -89,7 +85,7 @@ def transition(version, user, action, comment=''):
         version.approved_at = timezone.now()
     elif action == 'reject':
         permitted = version.status == 'SUBMITTED' and (role != 'CEO' or ready(review))
-        if role in {'PRODUCTION_HEAD','HR_HEAD','TECH_HEAD','SECURITY_HEAD'} and 'ESTIMATE' not in approved_sections(review):permitted=False
+        if role in DEPARTMENT_ROLES and 'ESTIMATE' not in approved_sections(review):permitted=False
         permitted |= version.status == 'APPROVED' and role in {'CEO', 'ADMIN'}
         if not permitted:
             raise ValidationError('На этом этапе возврат на доработку недоступен.')
@@ -132,12 +128,12 @@ def panel(version, user):
     estimator_decision = review.decisions.filter(section='ESTIMATE', action='APPROVE').first() if review else None
     sections.append({'label':'Сметчик — цены и состав работ','decision':estimator_decision,'approved':bool(estimator_decision) and version.status not in {'DRAFT','REJECTED'},'can_approve':False})
     for section, label, assigned, action in SECTIONS:
-        if section=='SECURITY' and version.status in {'APPROVED','COMPLETED'} and section not in approved:continue
+        if section in {'SECURITY','SBO'} and version.status in {'APPROVED','COMPLETED'} and section not in approved:continue
         decision = review.decisions.filter(section=section, action='APPROVE').first() if review else None
         sections.append({'label': label, 'decision': decision, 'approved': section in approved and version.status not in ['DRAFT', 'REJECTED'],
                          'action': action, 'can_approve': submitted and 'ESTIMATE' in approved_sections(review) and role in {assigned, 'ADMIN'} and not decision})
     return {'legacy_review': bool(review and review.legacy_approved and version.status not in ['DRAFT', 'REJECTED']), 'approval_sections': sections, 'approval_ready': ready(review),'estimator_ready':bool(estimator_decision),
             'can_final_approve': submitted and role in {'CEO', 'ADMIN'} and ready(review),
-            'can_return': (submitted and (role=='ADMIN' or role in {'PRODUCTION_HEAD','HR_HEAD','TECH_HEAD','SECURITY_HEAD'} and bool(estimator_decision) or role=='CEO' and ready(review))) or version.status=='APPROVED' and role in {'CEO','ADMIN'},
+            'can_return': (submitted and (role=='ADMIN' or role in DEPARTMENT_ROLES and bool(estimator_decision) or role=='CEO' and ready(review))) or version.status=='APPROVED' and role in {'CEO','ADMIN'},
             'can_complete': version.status == 'APPROVED' and role in {'CEO', 'ADMIN'},
             'review_history': version.review_rounds.prefetch_related('decisions').order_by('-number')}

@@ -79,12 +79,13 @@ class DailyScheduleDetail(View):
         review=current(schedule)
         decisions=list(review.decisions.all()) if review else []
         approved={d.section for d in decisions if d.action=='APPROVE'}
-        ready={'PRODUCTION','HR','TECH','SECURITY'}<=approved
+        from core.plan_approval import REQUIRED_SECTIONS,SECTION_ACTIONS,DEPARTMENT_ROLES
+        ready=REQUIRED_SECTIONS<=approved
         latest=schedule.estimate_reviews.order_by('-pk').first()
         checked=check_valid(schedule,latest)
         role=role_code(request.user)
-        actions=[{'label':label,'action':{'PRODUCTION':'approve_production','HR':'approve_hr','TECH':'approve_tech','SECURITY':'approve_security'}[section],'done':section in approved,'allowed':schedule.status=='SUBMITTED' and role in {assigned,'ADMIN'} and section not in approved} for section,label,assigned in SECTIONS if not (section=='SECURITY' and schedule.status in {'APPROVED','APPLIED','ARCHIVED'} and section not in approved)]
-        approval={'smg_requires_approval':requires_approval(schedule),'smg_review':review,'smg_decisions':decisions,'smg_actions':actions,'smg_checked':checked,'smg_final_allowed':schedule.status=='SUBMITTED' and ready and role in {'CEO','ADMIN'},'smg_return_allowed':schedule.status=='SUBMITTED' and (role in {'PRODUCTION_HEAD','HR_HEAD','TECH_HEAD','SECURITY_HEAD','ADMIN'} or role=='CEO' and ready)}
+        actions=[{'label':label,'action':SECTION_ACTIONS[section],'done':section in approved,'allowed':schedule.status=='SUBMITTED' and role in {assigned,'ADMIN'} and section not in approved} for section,label,assigned in SECTIONS if not (section in {'SECURITY','SBO'} and schedule.status in {'APPROVED','APPLIED','ARCHIVED'} and section not in approved)]
+        approval={'smg_requires_approval':requires_approval(schedule),'smg_review':review,'smg_decisions':decisions,'smg_actions':actions,'smg_checked':checked,'smg_final_allowed':schedule.status=='SUBMITTED' and ready and role in {'CEO','ADMIN'},'smg_return_allowed':schedule.status=='SUBMITTED' and (role in DEPARTMENT_ROLES|{'ADMIN'} or role=='CEO' and ready)}
         from .daily_schedule_table_forms import AddEntryForm
         from .independent_smg_views import ReferenceForm
         reference_form=ReferenceForm(schedule=schedule,user=request.user) if editable and role_code(request.user) in PLAN_ROLES else None

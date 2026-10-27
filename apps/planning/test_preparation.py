@@ -115,7 +115,7 @@ class PreparationTests(TestCase):
         with self.assertRaises(PermissionDenied):smg_transition(self.planner,schedule,'submit')
         result=smg_transition(self.manager,schedule,'submit')
         self.assertEqual(result.status,'SUBMITTED')
-        for role,action in [('PRODUCTION_HEAD','approve_production'),('HR_HEAD','approve_hr'),('TECH_HEAD','approve_tech'),('SECURITY_HEAD','approve_security'),('CEO','approve')]:
+        for role,action in [('PRODUCTION_HEAD','approve_production'),('HR_HEAD','approve_hr'),('TECH_HEAD','approve_tech'),('SECURITY_HEAD','approve_security'),('SBO_HEAD','approve_sbo'),('CEO','approve')]:
             result=smg_transition(self.approvers[role],result,action)
         from .daily_schedule import activate
         with self.assertRaises(PermissionDenied):activate(self.other_manager,result)

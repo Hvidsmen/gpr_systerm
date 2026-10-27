@@ -6,6 +6,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 from core.permissions import ROLES,role_code,require_roles,DISPATCHER_ROLES
+from core.plan_approval import DEPARTMENTS,ROLE_SECTIONS
 from apps.accounts.models import User
 from .models import WorkTask,WorkTaskEvent,DailyTaskCursor,EstimateReviewTask,GlobalPlanVersion,CarryoverReviewTask
 
@@ -77,7 +78,7 @@ def sync_version(version):
     if not review or version.status not in {'SUBMITTED','APPROVED','COMPLETED'}:return
     decisions={d.section:d for d in review.decisions.filter(action='APPROVE')}
     if version.status in {'APPROVED','COMPLETED'}:
-        mapping={'PRODUCTION_HEAD':'PRODUCTION','HR_HEAD':'HR','TECH_HEAD':'TECH','SECURITY_HEAD':'SECURITY','CEO':'CEO','ESTIMATOR':'ESTIMATE'}
+        mapping={**ROLE_SECTIONS,'CEO':'CEO','ESTIMATOR':'ESTIMATE'}
         for task in WorkTask.objects.filter(review=review,status__in=ACTIVE).exclude(kind='REMARK'):
             decision=decisions.get(mapping.get(task.target_role))
             state(task,'DONE' if decision else 'SUPERSEDED',decision.actor if decision else None,'План уже утвержден.')
@@ -86,7 +87,7 @@ def sync_version(version):
         for task in WorkTask.objects.filter(review=review,kind='APPROVAL',status__in=ACTIVE):
             state(task,'SUPERSEDED',text='Сначала требуется проверка сметчика.')
     else:
-        for section,label,role in [('PRODUCTION','Работы','PRODUCTION_HEAD'),('HR','Должность','HR_HEAD'),('TECH','Техника и ГСМ','TECH_HEAD'),('SECURITY','Служба безопасности','SECURITY_HEAD')]:
+        for section,label,role,_ in DEPARTMENTS:
             people=list(User.objects.filter(company_id=version.company_id,role__code=role,is_active=True)[:2])
             task=ensure(version.company,f'approval:{review.pk}:{section}',kind='APPROVAL',title=f'Согласовать план: {label}',target_role=role,assigned_to=people[0] if len(people)==1 else None,created_by=review.submitted_by,version=version,review=review,construction_object_id=version.construction_object_id,due_date=timezone.localdate()+timedelta(days=2),description=f'Раунд {review.number}. Раздел: {label}.')
             if task.status=='OPEN' and task.assigned_to_id and (not task.assigned_to.is_active or role_code(task.assigned_to)!=role):
@@ -103,7 +104,7 @@ def sync_version(version):
         if 'ESTIMATE' in decisions:state(task,'DONE',decisions['ESTIMATE'].actor)
         elif latest and latest.status=='OPEN':state(task,'SUPERSEDED',text='Проверка назначена конкретному сметчику.')
     if not ready(review):
-        for old in WorkTask.objects.filter(review=review,target_role='CEO',kind='APPROVAL',status__in=ACTIVE):state(old,'SUPERSEDED',text='Требуются согласования всех служб, включая СБ.')
+        for old in WorkTask.objects.filter(review=review,target_role='CEO',kind='APPROVAL',status__in=ACTIVE):state(old,'SUPERSEDED',text='Требуются согласования всех служб, включая Службу СБО.')
     if ready(review):
         people=list(User.objects.filter(company_id=version.company_id,role__code='CEO',is_active=True)[:2])
         task=ensure(version.company,f'approval:{review.pk}:CEO',kind='APPROVAL',title='Утвердить план',target_role='CEO',assigned_to=people[0] if len(people)==1 else None,created_by=review.submitted_by,version=version,review=review,construction_object_id=version.construction_object_id,due_date=timezone.localdate()+timedelta(days=2))

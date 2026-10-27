@@ -145,5 +145,5 @@ class ApprovalList(View):
                 continue
             if role == 'CEO' and version.status == 'SUBMITTED' and not ready(review):
                 continue
-            rows.append({'version': version, 'sections': [{'label':'Сметчик','done':'ESTIMATE' in approved}]+[{'label': label, 'done': part in approved} for part, label, _, _ in SECTIONS], 'ready': ready(review), 'legacy': bool(review and review.legacy_approved)})
-        return render(request, 'planning/approval_list.html', {'rows': rows})
+            rows.append({'version': version, 'sections': [{'label':'Сметчик','done':'ESTIMATE' in approved}]+[{'label': label, 'done': part in approved, 'not_required':part in {'SECURITY','SBO'} and version.status=='APPROVED' and part not in approved} for part, label, _, _ in SECTIONS], 'ready': ready(review), 'legacy': bool(review and review.legacy_approved)})
+        return render(request, 'planning/approval_list.html', {'rows': rows,'approval_columns':['Сметчик']+[label for _,label,_,_ in SECTIONS]})

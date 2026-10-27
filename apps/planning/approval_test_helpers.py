@@ -1,14 +1,15 @@
 from apps.accounts.models import User, Role
 from .global_services import GlobalPlanService
+from core.plan_approval import DEPARTMENTS
 
 
 def approval_users(company):
     return {code: User.objects.create_user(username=f'approval-{company.pk}-{code}', company=company,
-        role=Role.objects.get(code=code)) for code in ['PRODUCTION_HEAD', 'HR_HEAD', 'TECH_HEAD', 'SECURITY_HEAD', 'CEO']}
+        role=Role.objects.get(code=code)) for code in [*[role for _,_,role,_ in DEPARTMENTS], 'CEO']}
 
 
 def departments(version, users):
-    for code, action in [('PRODUCTION_HEAD','approve_production'), ('HR_HEAD','approve_hr'), ('TECH_HEAD','approve_tech'), ('SECURITY_HEAD','approve_security')]:
+    for _,_,code,action in DEPARTMENTS:
         version = GlobalPlanService.transition(version, users[code], action)
     return version
 

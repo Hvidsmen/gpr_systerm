@@ -132,7 +132,8 @@ class TaskDetail(View):
                 with transaction.atomic():
                     task=service.visible(request.user).select_for_update().select_related('version','review','schedule_review').defer('version__snapshot','review__snapshot','schedule_review__snapshot').get(pk=pk)
                     if task.kind!='APPROVAL' or task.status!='OPEN' or not service.is_executor(request.user,task):raise PermissionDenied
-                    commands={'PRODUCTION_HEAD':'approve_production','HR_HEAD':'approve_hr','TECH_HEAD':'approve_tech','SECURITY_HEAD':'approve_security','CEO':'approve'}
+                    from core.plan_approval import ROLE_ACTIONS
+                    commands={**ROLE_ACTIONS,'CEO':'approve'}
                     if task.schedule_id:
                         from .daily_schedule_approval import transition
                         schedule=task.schedule

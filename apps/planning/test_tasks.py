@@ -102,7 +102,7 @@ class TaskTests(TestCase):
         task.refresh_from_db();self.assertEqual(task.status,'OPEN')
         self.assertTrue(task.events.filter(action='Открыто').exists())
 
-    def test_parallel_approval_tasks_ceo_only_after_four_and_stale_round(self):
+    def test_parallel_approval_tasks_ceo_only_after_five_and_stale_round(self):
         version=self.create().baseline_version
         version=self.legacy_submission(version)
         self.assertEqual(WorkTask.objects.filter(kind='APPROVAL',status='OPEN').count(),0)
@@ -119,7 +119,7 @@ class TaskTests(TestCase):
         est=tasks.claim_estimate(self.estimator,queue)
         for wid in estimate_review.work_ids(version):estimate_review.review_work(self.estimator,est,wid,True)
         estimate_review.finish(self.estimator,est,True)
-        self.assertEqual(WorkTask.objects.filter(kind='APPROVAL',status='OPEN').count(),4)
+        self.assertEqual(WorkTask.objects.filter(kind='APPROVAL',status='OPEN').count(),5)
         version=departments(version,self.approvers)
         self.assertEqual(WorkTask.objects.filter(target_role='CEO',status='OPEN').count(),1)
         version=GlobalPlanService.transition(version,self.approvers['CEO'],'reject','Исправить')
@@ -130,7 +130,7 @@ class TaskTests(TestCase):
         estimator_check(version,self.planner)
         version=GlobalPlanService.transition(version,version.preparation.manager,'submit')
         repair.refresh_from_db();self.assertEqual(repair.status,'DONE')
-        self.assertEqual(WorkTask.objects.filter(kind='APPROVAL',status='OPEN').count(),4)
+        self.assertEqual(WorkTask.objects.filter(kind='APPROVAL',status='OPEN').count(),5)
 
     def test_remarks_need_author_acceptance_and_block_estimator(self):
         version=self.create().baseline_version
@@ -229,7 +229,7 @@ class TaskTests(TestCase):
         version=self.create().baseline_version
         estimator_check(version,self.planner)
         version=GlobalPlanService.transition(version,version.preparation.manager,'submit')
-        for role,action in [('PRODUCTION_HEAD','approve_production'),('HR_HEAD','approve_hr'),('TECH_HEAD','approve_tech')]:
+        for role,action in [('PRODUCTION_HEAD','approve_production'),('HR_HEAD','approve_hr'),('TECH_HEAD','approve_tech'),('SBO_HEAD','approve_sbo')]:
             version=GlobalPlanService.transition(version,self.approvers[role],action)
         review=current_review(version)
         ceo=tasks.ensure(self.company,f'approval:{review.pk}:CEO',kind='APPROVAL',title='Old CEO task',version=version,review=review,target_role='CEO',assigned_to=self.approvers['CEO'])

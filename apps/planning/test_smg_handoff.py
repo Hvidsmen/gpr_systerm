@@ -32,10 +32,10 @@ class SmgHandoffTests(TestCase):
         self.schedule.refresh_from_db();self.assertEqual(self.schedule.status,'SUBMITTED')
         task.refresh_from_db();self.assertEqual(task.status,'DONE')
         self.assertEqual(DailyScheduleReview.objects.count(),1)
-        for role,action in [('PRODUCTION_HEAD','approve_production'),('HR_HEAD','approve_hr'),('TECH_HEAD','approve_tech'),('SECURITY_HEAD','approve_security'),('CEO','approve')]:self.schedule=transition(self.approvers[role],self.schedule,action)
+        for role,action in [('PRODUCTION_HEAD','approve_production'),('HR_HEAD','approve_hr'),('TECH_HEAD','approve_tech'),('SECURITY_HEAD','approve_security'),('SBO_HEAD','approve_sbo'),('CEO','approve')]:self.schedule=transition(self.approvers[role],self.schedule,action)
         self.assertEqual(daily.activate(self.manager,self.schedule).status,'APPLIED')
 
-    def test_deviation_requires_three_heads_then_ceo_then_application(self):
+    def test_deviation_requires_five_heads_then_ceo_then_application(self):
         self.checked(120)
         with self.assertRaises(PermissionDenied):daily.activate(self.planner,self.schedule)
         launch=WorkTask.objects.get(kind='SUBMISSION')
@@ -43,12 +43,12 @@ class SmgHandoffTests(TestCase):
         self.client.post(reverse('planning:task_detail',args=[launch.pk]),{'action':'launch'})
         self.schedule.refresh_from_db();self.assertEqual(self.schedule.status,'SUBMITTED')
         launch.refresh_from_db();self.assertEqual(launch.status,'DONE')
-        self.assertEqual(WorkTask.objects.filter(schedule=self.schedule,kind='APPROVAL',status='OPEN').count(),4)
+        self.assertEqual(WorkTask.objects.filter(schedule=self.schedule,kind='APPROVAL',status='OPEN').count(),5)
         self.assertFalse(WorkTask.objects.filter(schedule=self.schedule,target_role='CEO').exists())
         with self.assertRaises(ValidationError):transition(self.approvers['CEO'],self.schedule,'approve')
         with self.assertRaises(PermissionDenied):daily.save_entry(self.planner,self.entry,self.values(self.entry),1)
         frozen=self.schedule.approval_reviews.get().snapshot
-        for role in ['PRODUCTION_HEAD','HR_HEAD','TECH_HEAD','SECURITY_HEAD','CEO']:
+        for role in ['PRODUCTION_HEAD','HR_HEAD','TECH_HEAD','SECURITY_HEAD','SBO_HEAD','CEO']:
             task=WorkTask.objects.get(schedule=self.schedule,kind='APPROVAL',target_role=role,status='OPEN')
             self.client.force_login(self.approvers[role])
             self.assertEqual(self.client.post(reverse('planning:task_detail',args=[task.pk]),{'action':'approve'}).status_code,302)
