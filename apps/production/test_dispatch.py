@@ -39,6 +39,9 @@ class DispatcherTests(TestCase):
         response=self.client.get(self.url,{'construction_object':self.obj.pk,'date':str(self.day),'section':section})
         self.assertEqual(response.status_code,200)
         data={'construction_object':str(self.obj.pk),'date':str(self.day),'section':section,'revision':str(response.context['status'].revision),'action':'save'}
+        if section=='works':
+            data['labor_revision']=str(response.context['labor_revision'])
+            data['production_snapshot']=response.context['production_snapshot']
         for group in response.context['groups']:
             fs=group['formset']
             for field in fs.management_form:data[field.html_name]=field.value()
@@ -46,7 +49,7 @@ class DispatcherTests(TestCase):
                 for field in form:
                     if field.name=='DELETE':continue
                     value=field.value()
-                    data[field.html_name]=str(value) if value is not None and value is not False else ''
+                    data[field.html_name]=value if isinstance(value,list) else str(value) if value is not None and value is not False else ''
         return data
 
     def test_work_deviation_confirmation_and_revision(self):
@@ -175,6 +178,9 @@ class DispatcherTests(TestCase):
         data=self.payload('PERSONNEL_DISPATCHER','labor')
         data['action']='confirm'
         self.assertEqual(self.client.post(self.url,data).status_code,302)
+        # Login middleware may already have advanced the cursor beyond this fixed fixture day.
+        from apps.planning.models import DailyTaskCursor
+        DailyTaskCursor.objects.filter(user=self.users['PERSONNEL_DISPATCHER'],construction_object=self.obj).update(last_date=self.day-timedelta(days=1))
         generate_daily(self.users['PERSONNEL_DISPATCHER'],today=self.day+timedelta(days=1))
         self.assertEqual(WorkTask.objects.get(kind='FACT',fact_date=self.day).status,'DONE')
 

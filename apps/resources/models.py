@@ -86,6 +86,8 @@ class Employee(BaseCompanyModel):
 
 class BrigadeGroup(BaseCompanyModel):
     name = models.CharField(_('название'), max_length=150)
+    is_general_staff = models.BooleanField('Постоянный персонал', default=False,
+        help_text='Сотрудники этой группы учитываются без обязательной привязки к производственным работам, например повара.')
 
     class Meta:
         verbose_name = _('группа бригад')

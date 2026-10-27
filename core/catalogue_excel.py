@@ -75,7 +75,7 @@ SCHEMAS = {
         ('Должность', 'display_position'), ('Организация', 'zup_organisation'),
         ('Подразделение', 'display_department'), ('Активен', 'is_active')], ['position']),
     'resources.EquipmentCategory': ('equipment-categories', 'Группы техники', [('Название', 'name')], []),
-    'resources.BrigadeGroup': ('position-groups', 'Группы должностей', [('Название', 'name')], []),
+    'resources.BrigadeGroup': ('position-groups', 'Группы должностей', [('Название', 'name'), ('Постоянный персонал', 'is_general_staff')], []),
     'resources.BrigadeMacroGroup': ('position-macro-groups', 'Макрогруппы должностей', [('Название', 'name')], []),
     'resources.Equipment': ('equipment-units', 'Конкретная техника', [
         ('Госномер', 'plate_number'), ('Название', 'name'), ('Техника или модель', 'type.name'),

@@ -1,0 +1,9 @@
+<section class="card card-body mb-3" data-entry-step="4" data-production-report>
+<div class="d-flex justify-content-between flex-wrap gap-2"><h2>Сводный отчёт за {{ day|date:'d.m.Y' }}</h2><button type="button" class="btn btn-sm btn-outline-primary" data-report-copy>Скопировать в Excel</button></div>
+<p class="small text-muted">{{ object.name }}. Сводка учитывает текущие значения формы и сохранённый ввод коллег. Несохранённые записи помечены как черновик. Между вкладками можно свободно переключаться.</p>
+<div class="production-report-totals" data-report-totals></div><div data-report-issues role="status" class="my-3"></div>
+<h3 class="h5 mt-3">Работы и сотрудники</h3><div class="table-responsive"><table class="table table-sm production-report-table"><thead><tr><th>Работа</th><th>Объём</th><th>Ед.</th><th>Сотрудники и смены</th><th>Ввод</th></tr></thead><tbody data-report-works></tbody></table></div>
+<h3 class="h5 mt-3">Сотрудники</h3><div class="table-responsive"><table class="table table-sm production-report-table"><thead><tr><th>Сотрудник / должность</th><th>Смена</th><th>Выполненные работы / занятость</th><th>Ввод</th></tr></thead><tbody data-report-people></tbody></table></div>
+<p class="small" data-report-copy-status aria-live="polite"></p>
+</section>
+{{ production_report_people|json_script:'production-report-people' }}

@@ -26,7 +26,7 @@ class ShiftActivity(BaseCompanyModel):
             if self.work.section.construction_object_id!=self.construction_object_id:raise ValidationError({'work':'Работа другого объекта.'})
             if self.work.kind=='COMPOSITE' and not self.work_item_id:raise ValidationError({'work_item':'Выберите работу в составе комплекса.'})
         if self.work_item_id and (not self.work_id or self.work_item.project_work_id!=self.work_id):raise ValidationError({'work_item':'Работа не принадлежит выбранному комплексу.'})
-        requires_work=not self.general and getattr(self,'state','WORKING')=='WORKING'
+        requires_work=getattr(self,'assignment_reviewed',True) and not self.general and getattr(self,'state','WORKING')=='WORKING'
         if requires_work and not self.work_id and not self.activity.strip():raise ValidationError({'activity':'Укажите работу либо причину её отсутствия.'})
         if getattr(self,'state','WORKING')!='WORKING' and not self.activity.strip():raise ValidationError({'activity':'Укажите причину простоя или описание ремонта.'})
         if self.general and self.work_id:raise ValidationError({'general':'Для назначения на объект в целом уберите выбранную работу.'})
@@ -58,9 +58,11 @@ class EquipmentActivity(ShiftActivity):
 
 
 class EmployeeActivity(ShiftActivity):
+    assignment_reviewed=models.BooleanField(default=True,editable=False)
     employee=models.ForeignKey('resources.Employee',on_delete=models.PROTECT,verbose_name='Сотрудник (ФИО)')
     position=models.ForeignKey('resources.Position',on_delete=models.PROTECT,null=True,blank=True,verbose_name='Должность на дату факта')
     equipment=models.ForeignKey('resources.Equipment',on_delete=models.PROTECT,null=True,blank=True,verbose_name='Техника экипажа')
+    reported_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,blank=True,editable=False,related_name='reported_employee_activities')
     class Meta:
         constraints=[models.UniqueConstraint(fields=['employee','date','shift'],name='one_employee_shift_location')]
     def clean(self):
@@ -72,6 +74,70 @@ class EmployeeActivity(ShiftActivity):
         if self.equipment_id and EquipmentActivity.objects.filter(equipment_id=self.equipment_id,date=self.date,shift=self.shift).exclude(construction_object_id=self.construction_object_id).exists():raise ValidationError({'equipment':'Техника в этой смене находится на другом объекте.'})
         if self.position_id and self.position.company_id!=self.company_id:raise ValidationError({'employee':'Должность другой компании.'})
     def __str__(self):return f'{self.employee} · {self.date} · смена {self.shift}'
+
+
+class EmployeeWorkLink(BaseCompanyModel):
+    activity = models.ForeignKey(EmployeeActivity, on_delete=models.CASCADE, related_name='work_links')
+    work = models.ForeignKey('works.ProjectWork', on_delete=models.PROTECT)
+    work_item = models.ForeignKey('works.ProjectWorkItem', on_delete=models.PROTECT, null=True, blank=True)
+
+    class Meta:
+        ordering = ['pk']
+        constraints = [
+            models.UniqueConstraint(fields=['activity','work'], condition=models.Q(work_item__isnull=True), name='unique_employee_simple_work'),
+            models.UniqueConstraint(fields=['activity','work','work_item'], condition=models.Q(work_item__isnull=False), name='unique_employee_component_work'),
+        ]
+
+    def clean(self):
+        super().clean()
+        if self.activity.company_id != self.company_id or self.work.company_id != self.company_id:
+            raise ValidationError('Связь сотрудника и работы другой компании.')
+        if self.work.section.construction_object_id != self.activity.construction_object_id:
+            raise ValidationError('Работа другого объекта.')
+        if self.work_item_id and (self.work_item.company_id != self.company_id or self.work_item.project_work_id != self.work_id):
+            raise ValidationError('Работа не входит в выбранный комплекс.')
+        if self.work.kind == 'COMPOSITE' and not self.work_item_id:
+            raise ValidationError('Выберите работу в составе комплекса.')
+
+
+class ProductionEntryDay(BaseCompanyModel):
+    roster_started=models.BooleanField(default=False)
+    construction_object=models.ForeignKey('projects.ConstructionObject',on_delete=models.CASCADE)
+    date=models.DateField()
+    dispatcher=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT)
+    revision=models.PositiveIntegerField(default=0)
+    confirmed_at=models.DateTimeField(null=True,blank=True)
+
+    class Meta:
+        constraints=[models.UniqueConstraint(fields=['construction_object','date','dispatcher'],name='unique_production_dispatcher_day')]
+
+
+class WorkFactClaim(BaseCompanyModel):
+    construction_object=models.ForeignKey('projects.ConstructionObject',on_delete=models.CASCADE)
+    date=models.DateField()
+    work=models.ForeignKey('works.ProjectWork',on_delete=models.CASCADE)
+    work_item=models.ForeignKey('works.ProjectWorkItem',on_delete=models.CASCADE,null=True,blank=True)
+    dispatcher=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.CASCADE)
+    session_key=models.UUIDField()
+    expires_at=models.DateTimeField(db_index=True)
+
+    class Meta:
+        constraints=[
+            models.UniqueConstraint(fields=['construction_object','date','work'],condition=models.Q(work_item__isnull=True),name='unique_simple_work_fact_claim'),
+            models.UniqueConstraint(fields=['construction_object','date','work','work_item'],condition=models.Q(work_item__isnull=False),name='unique_item_work_fact_claim'),
+        ]
+
+
+class EmployeeFactClaim(BaseCompanyModel):
+    construction_object=models.ForeignKey('projects.ConstructionObject',on_delete=models.CASCADE)
+    date=models.DateField()
+    employee=models.ForeignKey('resources.Employee',on_delete=models.CASCADE)
+    shift=models.PositiveSmallIntegerField(default=1)
+    dispatcher=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.CASCADE)
+    session_key=models.UUIDField()
+    expires_at=models.DateTimeField(db_index=True)
+    class Meta:
+        constraints=[models.UniqueConstraint(fields=['employee','date','shift'],name='unique_employee_fact_claim')]
 
 
 class FactSectionDay(BaseCompanyModel):

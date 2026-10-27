@@ -129,9 +129,16 @@ class BrigadeCatalogForm(EquipmentCategoryForm):
 
 
 class BrigadeGroupForm(BrigadeCatalogForm):
+    staffing_mode_present = forms.CharField(initial='1', widget=forms.HiddenInput, required=False)
+
+    def clean_is_general_staff(self):
+        if not self.data.get('staffing_mode_present'):
+            return self.instance.is_general_staff
+        return self.cleaned_data['is_general_staff']
+
     class Meta:
         model = BrigadeGroup
-        fields = ['name']
+        fields = ['name', 'is_general_staff']
 
 
 class BrigadeMacroGroupForm(BrigadeCatalogForm):

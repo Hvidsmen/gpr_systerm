@@ -152,7 +152,7 @@ def check_route(user, match, method):
         require_roles(user, READ_ROLES)
         return
     if namespace == 'production':
-        if name == 'fact_day_workspace':
+        if name in {'fact_day_workspace','work_claims'}:
             require_roles(user, ROLES if method in {'GET','HEAD'} else FACT_ROLES)
             return
         if role in DISPATCHER_ROLES and method not in {'GET','HEAD'}:

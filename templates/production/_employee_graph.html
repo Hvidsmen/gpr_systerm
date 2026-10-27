@@ -1,0 +1,9 @@
+<section class="card card-body mb-3" data-entry-step="3" data-employee-graph>
+<h2>Связи сотрудников и работ</h2>
+<p class="small text-muted">Выберите работу слева, затем сотрудника справа — связь появится или удалится. Можно перетянуть точку от работы к сотруднику. Карточки упорядочиваются автоматически.</p>
+<p class="small" data-graph-message aria-live="polite"></p>
+<div class="employee-graph-search"><input type="search" class="form-control" data-graph-work-search placeholder="Поиск работы, раздела или комплекса" aria-label="Поиск работ"><input type="search" class="form-control" data-graph-person-search placeholder="Поиск сотрудника или должности" aria-label="Поиск сотрудников"></div>
+<div class="employee-graph-canvas"><svg data-graph-lines aria-label="Связи работ и сотрудников"></svg><div class="employee-graph-columns"><div><h3 class="h5">Выполненные работы</h3><div data-graph-works></div></div><div><h3 class="h5">Сотрудники</h3><div data-graph-people></div></div></div></div>
+<p class="small text-muted">Для связи доступны работы с введённым объёмом за этот день, включая сохранённый ввод коллег. Черновик можно сохранить до назначения работ сотрудникам.</p>
+</section>
+{{ production_graph_saved|json_script:'production-graph-saved' }}

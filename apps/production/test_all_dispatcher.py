@@ -64,6 +64,9 @@ class AllFactDispatcherTests(TestCase):
 
     def test_late_generated_task_uses_all_confirmations(self):
         for section in ['works','labor','mechanization']:self.confirm(section)
+        # Login middleware may already have moved the cursor past the fixed fixture date.
+        from apps.planning.models import DailyTaskCursor
+        DailyTaskCursor.objects.filter(user=self.users[ROLE],construction_object=self.obj).update(last_date=self.day-timedelta(days=1))
         generate_daily(self.users[ROLE],today=self.day+timedelta(days=1))
         task=WorkTask.objects.get(assigned_to=self.users[ROLE],kind='FACT',fact_date=self.day)
         self.assertEqual(task.status,'DONE')

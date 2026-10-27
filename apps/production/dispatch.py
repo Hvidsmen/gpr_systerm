@@ -31,6 +31,10 @@ def required_fact_sections(user):
     return set(sections_for(user)) if user and role_code(user) in DISPATCHER_ROLES else None
 
 def fact_sections_confirmed(user,company_id,object_id,day):
+    if user and role_code(user)=='DISPATCHER':
+        from .dispatch_models import ProductionEntryDay
+        entry=ProductionEntryDay.objects.filter(company_id=company_id,construction_object_id=object_id,date=day,dispatcher=user).first()
+        if entry:return bool(entry.confirmed_at)
     required=required_fact_sections(user)
     confirmed=set(FactSectionDay.objects.filter(company_id=company_id,construction_object_id=object_id,date=day,section__in=required or [],confirmed_at__isnull=False).values_list('section',flat=True))
     return bool(required) and required<=confirmed
@@ -57,14 +61,18 @@ def plans(obj,day):
                     identity=row.get('brigade_id') if entry.kind=='labor' else row.get('equipment_type_id')
                     value=row.get('planned_workers',row.get('planned_count',0)) if entry.kind=='labor' else row.get('planned_count',0)
                     resources[entry.kind][identity]+=Decimal(str(value or 0))
+    packages=set(ProjectWork.objects.filter(company=obj.company,kind='COMPOSITE',pk__in=[key[0] for key in works if key[1] is None]).values_list('pk',flat=True))
+    works={key:value for key,value in works.items() if key[1] is not None or key[0] not in packages}
     return works,resources
 
 class ScopeFormMixin:
-    def __init__(self,*args,user,obj,day,work_plan=None,actuated=False,equipment_baselines=None,day_resource_plan=None,**kwargs):
+    def __init__(self,*args,user,obj,day,work_plan=None,actuated=False,equipment_baselines=None,day_resource_plan=None,activity_work_keys=None,activity_choices=None,**kwargs):
         super().__init__(*args,**({'user':user,**kwargs} if isinstance(self,DailyFactForm) else kwargs))
         self.obj=obj;self.day=day;self.work_plan=work_plan or {};self.actuated=actuated
         self.equipment_baselines=equipment_baselines or {}
         self.day_resource_plan=day_resource_plan
+        self.activity_work_keys=set(activity_work_keys or [])
+        self.activity_choices=activity_choices or []
         self.instance.company=user.company;self.instance.date=day
         if hasattr(self.instance,'construction_object_id'):self.instance.construction_object=obj
         for name in ['date','construction_object']:self.fields.pop(name,None)
@@ -81,6 +89,8 @@ class ScopeFormMixin:
         for field in self.fields.values():field.widget.attrs.setdefault('class','form-control')
 
 class WorkForm(ScopeFormMixin,DailyFactForm):
+    work_claim_token=forms.CharField(required=False,widget=forms.HiddenInput)
+    work_editing=forms.CharField(required=False,initial='1',widget=forms.HiddenInput)
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
         self.fields['project_work'].queryset=self.fields['project_work'].queryset.filter(section__construction_object=self.obj)
@@ -103,6 +113,10 @@ class ActivityForm(ScopeFormMixin,forms.ModelForm):
         actual=DailyFact.objects.filter(company=self.obj.company,date=self.day,project_work__section__construction_object=self.obj)
         work_ids={key[0] for key in self.work_plan}|set(actual.values_list('project_work_id',flat=True))
         item_ids={key[1] for key in self.work_plan if key[1]}|set(actual.exclude(work_item=None).values_list('work_item_id',flat=True))
+        work_ids|={key[0] for key in self.activity_work_keys}
+        item_ids|={key[1] for key in self.activity_work_keys if key[1]}
+        if self.instance.work_id:work_ids.add(self.instance.work_id)
+        if self.instance.work_item_id:item_ids.add(self.instance.work_item_id)
         if isinstance(self.instance,EquipmentActivity):
             work_ids |= {row['assignment'].work_id for row in self.equipment_baselines.values() if row['assignment'].work_id}
             item_ids |= {row['assignment'].work_item_id for row in self.equipment_baselines.values() if row['assignment'].work_item_id}
@@ -117,7 +131,11 @@ class ActivityForm(ScopeFormMixin,forms.ModelForm):
             if employee:
                 if not employee.position_id:self.add_error('employee','Сначала назначьте сотруднику должность в справочнике.')
                 elif not self.instance.pk or self.instance.employee_id!=employee.pk:self.instance.position=employee.position
-        if data.get('general'):
+            from .production_entry import is_general_employee
+            if is_general_employee(employee) and not data.get('work') and not data.get('work_item'):
+                data['general']=True
+        general_allowed=isinstance(self.instance,EmployeeActivity) and (getattr(self,'production_entry',False) or is_general_employee(data.get('employee')))
+        if data.get('general') and not general_allowed:
             schedule=smg(self.obj,self.day)
             if schedule:
                 matched=[]
@@ -132,10 +150,19 @@ class ActivityForm(ScopeFormMixin,forms.ModelForm):
         return data
 
 class PersonForm(ActivityForm):
+    person_claim_token=forms.CharField(required=False,widget=forms.HiddenInput)
+    person_editing=forms.CharField(required=False,initial='1',widget=forms.HiddenInput)
+    prepared_from_previous=False
+    def has_changed(self):
+        return self.prepared_from_previous or super().has_changed()
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
-        self.fields['employee'].queryset=self.fields['employee'].queryset.select_related('position')
-        self.fields['employee'].label_from_instance=lambda e: f"{' '.join(filter(None,[e.last_name,e.first_name,e.middle_name]))} · {e.position or 'Должность не указана'}"
+        self.fields['employee'].queryset=self.fields['employee'].queryset.select_related('position__planning_mapping__brigade__group')
+        self.fields['employee'].label_from_instance=lambda e: f"{e.display_name} · {e.position or 'Должность не указана'}"
+        self.fields['general'].label='Работал без привязки к работе'
+    def clean(self):
+        if not getattr(self,'production_entry',False):self.instance.assignment_reviewed=True
+        return super().clean()
     class Meta:
         model=EmployeeActivity
         fields=['employee','shift','general','work','work_item','equipment','activity']
@@ -236,6 +263,21 @@ class DispatcherDayView(CompanyRequiredMixin,View):
             context['equipment_assignments_url']=reverse('production:equipment_assignment_list')+'?'+urlencode({'construction_object':obj.pk,'date':day.isoformat()})
         status,_=FactSectionDay.objects.get_or_create(company=obj.company,construction_object=obj,date=day,section=section)
         work_plan,resource_plan=plans(obj,day)
+        from .production_entry import ProductionPersonForm, candidate_keys, previous_people, work_catalogue, GENERAL_PATH
+        catalogue=work_catalogue(obj)
+        own_entry=section=='works' and role_code(request.user)=='DISPATCHER'
+        activity_keys=candidate_keys(obj,day,work_plan,catalogue,request.POST if bound else None,user=request.user if own_entry else None)
+        people_status=FactSectionDay.objects.filter(company=obj.company,construction_object=obj,date=day,section='labor').first()
+        context['labor_revision']=request.POST.get('labor_revision','') if bound else (people_status.revision if people_status else 0)
+        context['production_work_choices']=catalogue
+        context['own_entry']=own_entry
+        if section=='works':
+            from .dispatch_models import ProductionEntryDay
+            context['my_production_entry']=ProductionEntryDay.objects.filter(company=obj.company,construction_object=obj,date=day,dispatcher=request.user).first()
+            context['other_production_entries']=ProductionEntryDay.objects.filter(company=obj.company,construction_object=obj,date=day).exclude(dispatcher=request.user).select_related('dispatcher')
+            if own_entry:
+                context['other_work_rows']=DailyFact.objects.filter(company=obj.company,project_work__section__construction_object=obj,date=day).exclude(Q(reported_by=request.user)|Q(reported_by=None)).select_related('project_work','work_item','reported_by')
+                context['other_people_rows']=EmployeeActivity.objects.filter(company=obj.company,construction_object=obj,date=day).exclude(Q(reported_by=request.user)|Q(reported_by=None)).select_related('employee','work','work_item','reported_by')
         existing_actuation=DayActuation.objects.filter(company=obj.company,construction_object=obj,date=day).first()
         initial_actuation={'actuated':bool(existing_actuation),'actuation_type':existing_actuation.actuation_type if existing_actuation else 'FULL_DAY','reason':existing_actuation.reason if existing_actuation else ''}
         actuation=DayActuationForm(request.POST if bound and section=='works' else None,initial=initial_actuation)
@@ -247,17 +289,24 @@ class DispatcherDayView(CompanyRequiredMixin,View):
                     prefix=key[:-len('project_work')];data[prefix+'actual_quantity']='0';data[prefix+'DELETE']=''
         context['actuation']=actuation if section=='works' else None
 
-        definitions=[('works',DailyFact,WorkForm)] if section=='works' else [('labor',EmployeeActivity,PersonForm)] if section=='labor' else [('equipment',EquipmentActivity,MachineForm),('fuel',FuelFact,FuelForm)]
+        definitions=[('works',DailyFact,WorkForm),('labor',EmployeeActivity,ProductionPersonForm)] if section=='works' else [('labor',EmployeeActivity,PersonForm)] if section=='labor' else [('equipment',EquipmentActivity,MachineForm),('fuel',FuelFact,FuelForm)]
         groups=[]
         for prefix,model,form in definitions:
             qs=model.objects.filter(company=obj.company,date=day)
             qs=qs.filter(project_work__section__construction_object=obj) if prefix=='works' else qs.filter(construction_object=obj)
             if prefix=='fuel':qs=qs.filter(equipment_ref='')
+            if own_entry and prefix in {'works','labor'}:qs=qs.filter(Q(reported_by=request.user)|Q(reported_by=None))
+            if prefix=='labor':
+                qs=qs.select_related('employee__position__planning_mapping__brigade__group','position').prefetch_related('work_links')
+                if section=='works':qs=qs.exclude(**{GENERAL_PATH:True})
             initial=[]
             if prefix=='works':
-                existing=set(qs.values_list('project_work_id','work_item_id'))
+                existing=set(DailyFact.objects.filter(company=obj.company,project_work__section__construction_object=obj,date=day).values_list('project_work_id','work_item_id'))
                 available=set(ProjectWork.objects.filter(company=obj.company,section__construction_object=obj,merged_source__isnull=True).values_list('pk',flat=True))
-                initial=[{'project_work':w,'work_item':i,'actual_quantity':None} for w,i in work_plan if (w,i) not in existing and w in available]
+                initial=[{'project_work':row['work'],'work_item':row['item'],'actual_quantity':None} for row in catalogue if (row['work'],row['item']) in activity_keys and (row['work'],row['item']) not in existing and row['work'] in available]
+            carried_day=None
+            if prefix=='labor' and context['editable'] and not qs.exists() and (status.revision==0 or own_entry and (not context.get('my_production_entry') or not context['my_production_entry'].roster_started)):
+                carried_day,initial=previous_people(obj,day,production=section=='works',user=request.user if own_entry else None)
             if prefix=='fuel':
                 existing_types=set(qs.values_list('fuel_type',flat=True))
                 initial=[{'fuel_type':kind,'opening_balance':None,'received_liters':None,'actual_liters':None,'actual_balance':None} for kind in resource_plan['fuel'] if kind not in existing_types]
@@ -267,7 +316,7 @@ class DispatcherDayView(CompanyRequiredMixin,View):
             extra=len(initial)+1
             if prefix=='equipment' and (equipment_baselines or existing):extra=len(initial)
             factory=modelformset_factory(model,form=form,formset=ScopedSet,extra=extra,can_delete=True,max_num=2000,absolute_max=2000)
-            formset=factory(data,prefix=prefix,queryset=qs.order_by('pk'),initial=initial,form_kwargs={'user':request.user,'obj':obj,'day':day,'work_plan':work_plan,'actuated':bool(actuated),'equipment_baselines':equipment_baselines,'day_resource_plan':resource_plan})
+            formset=factory(data,prefix=prefix,queryset=qs.order_by('pk'),initial=initial,form_kwargs={'user':request.user,'obj':obj,'day':day,'work_plan':work_plan,'actuated':bool(actuated),'equipment_baselines':equipment_baselines,'day_resource_plan':resource_plan,'activity_work_keys':activity_keys,'activity_choices':catalogue})
             if prefix=='equipment':
                 for row in formset:
                     try:key=(int(row.initial.get('equipment') or row['equipment'].value()),int(row.initial.get('shift') or row['shift'].value() or 1))
@@ -294,10 +343,15 @@ class DispatcherDayView(CompanyRequiredMixin,View):
                     if not work:continue
                     item=ProjectWorkItem.objects.filter(pk=key[1],company=obj.company).first() if key[1] else None
                     row.hint=f'{work.complex_object or "Самостоятельные работы"} → {work.name}'+(f' → {item.name}' if item else '')+f' · {item.unit if item else work.unit} · План СМГ: {work_plan.get(key,0)} · Ранее: {cumulative.get(key,0)}'+(' · Вне СМГ' if key not in work_plan else '')
+                    row.fields['project_work'].widget=forms.HiddenInput()
+                    row.fields['work_item'].widget=forms.HiddenInput()
             if prefix=='labor':
-                for row in formset:
+                for index,row in enumerate(formset):
+                    if carried_day and not row.instance.pk and index < len(initial):
+                        row.prepared_from_previous=True
+                        row.hint=f'Подставлено из факта за {carried_day:%d.%m.%Y}. Проверьте сотрудника, смену и работы.'
                     if row.instance.pk:row.hint=f'Должность на дату факта: {row.instance.position or "не указана"}'
-            groups.append({'prefix':prefix,'formset':formset})
+            groups.append({'prefix':prefix,'formset':formset,'carried_day':carried_day})
         records={r.section:r for r in FactSectionDay.objects.filter(company=obj.company,construction_object=obj,date=day)}
         context['revision']=request.POST.get('revision','') if bound else status.revision
         context.update(groups=groups,status=status,object=obj,day=day,summary=[{'label':label,'confirmed':bool(records.get(key) and records[key].confirmed_at),'started':key in records} for key,label in LABELS.items()],deviation_comment=request.POST.get('deviation_comment','') if bound else status.deviation_comment)
@@ -314,15 +368,36 @@ class DispatcherDayView(CompanyRequiredMixin,View):
             context['comparison']=[{'name':names.get(key,'Ресурс'),'plan':expected.get(key,0),'actual':totals.get(key,0)} for key in set(expected)|set(totals)]
 
 
-        detail_model=EmployeeActivity if section=='labor' else EquipmentActivity
-        legacy_model=LaborFact if section=='labor' else EquipmentFact
-        legacy_exists=section!='works' and status.revision==0 and not detail_model.objects.filter(company=obj.company,construction_object=obj,date=day).exists() and legacy_model.objects.filter(company=obj.company,construction_object=obj,date=day).exists()
+        detail_model=EmployeeActivity if section in {'works','labor'} else EquipmentActivity
+        legacy_model=LaborFact if section in {'works','labor'} else EquipmentFact
+        legacy_revision=(people_status.revision if people_status else 0) if section=='works' else status.revision
+        legacy_exists=legacy_revision==0 and not detail_model.objects.filter(company=obj.company,construction_object=obj,date=day).exists() and legacy_model.objects.filter(company=obj.company,construction_object=obj,date=day).exists()
         context['legacy_exists']=legacy_exists
         context['crew']=EmployeeActivity.objects.filter(company=obj.company,construction_object=obj,date=day,equipment__isnull=False).select_related('employee','equipment','position') if section=='mechanization' else []
         context['machine_states']=[(label,EquipmentActivity.objects.filter(company=obj.company,construction_object=obj,date=day,state=state).values('equipment_id').distinct().count()) for state,label in EquipmentActivity.STATES]
+        if section=='works':
+            from . import entry_concurrency
+            from .production_entry import report_data
+            report=report_data(obj,day)
+            context['production_graph_saved']=report['works']
+            context['production_report_people']=report['people']
+            context['production_snapshot']=request.POST.get('production_snapshot','') if bound else entry_concurrency.snapshot(request.user,obj,day,groups)
+            if bound:
+                try:
+                    if request.POST.get('action')=='confirm':
+                        for group in groups:
+                            if group['prefix']!='labor':continue
+                            for form in group['formset']:
+                                if form.data.get(form.add_prefix('person_editing'))=='0' and form['employee'].value() and not form['id'].value() and not form.data.get(form.add_prefix('DELETE')):
+                                    raise ValidationError('Возьмите сотрудников из списка на вкладке «Люди» или уберите отсутствующих перед подтверждением. Черновик работ можно сохранить отдельно.')
+                    production_baseline=entry_concurrency.prepare(request.user,obj,day,groups,context['production_snapshot'])
+                except ValidationError as exc:
+                    context['error']='; '.join(exc.messages)
+                    return render(request,'production/dispatcher_day.html',context,status=400)
         if bound:
             valid=[g['formset'].is_valid() for g in groups]
             if all(valid) and (section!='works' or actuation.is_valid()):
+                people_changed=any(form.has_changed() for group in groups if group['prefix']=='labor' for form in group['formset'] if form.cleaned_data)
                 try:
                     with transaction.atomic():
                         # Every operational write locks object before its day
@@ -331,7 +406,7 @@ class DispatcherDayView(CompanyRequiredMixin,View):
                         type(obj).objects.filter(pk=obj.pk,company=obj.company).update(name=F('name'))
                         try:revision=int(request.POST.get('revision',''))
                         except (ValueError,TypeError):raise ValidationError('Неверная версия формы. Обновите страницу.')
-                        if not FactSectionDay.objects.filter(pk=status.pk,revision=revision).update(revision=F('revision')+1):raise ValidationError('Факт изменён в другой вкладке. Обновите страницу.')
+                        if not FactSectionDay.objects.filter(pk=status.pk,**({} if section=='works' else {'revision':revision})).update(revision=F('revision')+1):raise ValidationError('Факт изменён в другой вкладке. Обновите страницу.')
                         type(obj).objects.select_for_update().get(pk=obj.pk)
                         machine_ids={key[0] for key in equipment_baselines}
                         for group in groups:
@@ -344,25 +419,47 @@ class DispatcherDayView(CompanyRequiredMixin,View):
                             if (equipment_baselines or submitted) and submitted!=latest_equipment_version:
                                 raise ValidationError('Назначения или состояния техники изменились. Обновите день перед подтверждением.')
                         current=FactSectionDay.objects.select_for_update().get(pk=status.pk)
+                        people_current=None
+                        if section=='works':
+                            try:people_revision=int(request.POST.get('labor_revision',''))
+                            except (ValueError,TypeError):raise ValidationError('Неверная версия списка сотрудников. Обновите день.')
+                            people_current,_=FactSectionDay.objects.get_or_create(company=obj.company,construction_object=obj,date=day,section='labor')
+                            people_current=FactSectionDay.objects.select_for_update().get(pk=people_current.pk)
+                            entry_concurrency.check_locked(groups,obj,day,production_baseline)
+                            from .work_claims import check_form_claims
+                            check_form_claims(request.user,obj,day,groups)
+                        if section!='works':
+                            from .work_claims import check_form_claims
+                            check_form_claims(request.user,obj,day,groups)
                         latest_works,latest_resources=plans(obj,day)
                         if latest_works!=work_plan or latest_resources!=resource_plan:raise ValidationError('План СМГ изменился. Обновите страницу перед сохранением факта.')
                         if section=='works':
+                            other_authors=DailyFact.objects.filter(company=obj.company,project_work__section__construction_object=obj,date=day).exclude(Q(reported_by=request.user)|Q(reported_by=None)).exists()
+                            actuation_changed=bool(actuated)!=bool(existing_actuation) or bool(actuated and existing_actuation and any(actuation.cleaned_data.get(key)!=getattr(existing_actuation,key) for key in ('actuation_type','reason')))
+                            if own_entry and other_authors and actuation_changed:
+                                raise ValidationError('Актировка меняет весь объект. Когда факт вводят несколько диспетчеров, её должен оформить ответственный за общий день.')
                             if actuated:
-                                record,_=DayActuation.objects.update_or_create(company=obj.company,construction_object=obj,date=day,defaults={'actuation_type':actuation.cleaned_data['actuation_type'],'reason':actuation.cleaned_data['reason'],'reported_by':request.user})
-                                record.full_clean()
-                                DailyFact.objects.filter(company=obj.company,project_work__section__construction_object=obj,date=day).update(actual_quantity=0,actual_value=0)
-                            else:DayActuation.objects.filter(company=obj.company,construction_object=obj,date=day).delete()
-                        if legacy_exists and not request.POST.get('replace_legacy'):raise ValidationError('На эту дату уже есть сводный факт. Подтвердите его замену детализацией по ФИО или машинам.')
+                                if actuation_changed or not existing_actuation:
+                                    record,_=DayActuation.objects.update_or_create(company=obj.company,construction_object=obj,date=day,defaults={'actuation_type':actuation.cleaned_data['actuation_type'],'reason':actuation.cleaned_data['reason'],'reported_by':request.user})
+                                    record.full_clean()
+                                zeroes=DailyFact.objects.filter(company=obj.company,project_work__section__construction_object=obj,date=day)
+                                if own_entry:zeroes=zeroes.filter(Q(reported_by=request.user)|Q(reported_by=None))
+                                zeroes.update(actual_quantity=0,actual_value=0)
+                            elif actuation_changed:DayActuation.objects.filter(company=obj.company,construction_object=obj,date=day).delete()
+                        if legacy_exists and not request.POST.get('replace_legacy') and (section!='works' or people_changed):raise ValidationError('На эту дату уже есть сводный факт. Подтвердите его замену детализацией по ФИО или машинам.')
                         for group in groups:
                             fs=group['formset'];rows=fs.save(commit=False)
                             for row in fs.deleted_objects:row.delete()
                             for row in rows:
-                                if isinstance(row,DailyFact):row.reported_by=request.user
+                                if isinstance(row,(DailyFact,EmployeeActivity)) and not row.reported_by_id:row.reported_by=request.user
                                 if isinstance(row,EquipmentActivity) and not row.pk:
                                     baseline=equipment_baselines.get((row.equipment_id,row.shift))
                                     if baseline:
                                         row.standing_assignment=baseline['assignment'];row.source_state=baseline['state_record']
                                 row.full_clean();row.save()
+                            from .production_entry import sync_links
+                            for form in fs:
+                                if form.cleaned_data and not form.cleaned_data.get('DELETE'):sync_links(form)
                         if section=='mechanization':
                             present=set(EquipmentActivity.objects.filter(company=obj.company,construction_object=obj,date=day).values_list('equipment_id','shift'))
                             if set(equipment_baselines)-present:
@@ -371,6 +468,12 @@ class DispatcherDayView(CompanyRequiredMixin,View):
                         if section in {'labor','mechanization'}:
                             previous_totals=[{k:str(v) if isinstance(v,Decimal) or hasattr(v,'isoformat') else v for k,v in row.items()} for row in legacy_model.objects.filter(company=obj.company,construction_object=obj,date=day).values()]
                             project_resources(obj,day,section)
+                        if section=='works' and people_changed:
+                            previous_totals=[{k:str(v) if isinstance(v,Decimal) or hasattr(v,'isoformat') else v for k,v in row.items()} for row in LaborFact.objects.filter(company=obj.company,construction_object=obj,date=day).values()]
+                            project_resources(obj,day,'labor')
+                            people_current.revision+=1
+                            people_current.confirmed_at=None;people_current.confirmed_by=None
+                            people_current.save()
                         current.deviation_comment=request.POST.get('deviation_comment','').strip()[:4000]
                         if request.POST.get('action')=='confirm':
                             if section in {'labor','mechanization'}:
@@ -388,16 +491,35 @@ class DispatcherDayView(CompanyRequiredMixin,View):
                                 if set(resource_plan['fuel'])-present_fuels:raise ValidationError('Заполните ГСМ объекта по всем видам топлива СМГ, включая явные нули.')
                             if section=='works':
                                 present=set(DailyFact.objects.filter(company=obj.company,date=day,project_work__section__construction_object=obj).values_list('project_work_id','work_item_id'))
-                                if set(work_plan)-present:raise ValidationError('Заполните все работы СМГ, включая нулевой факт и причины отклонения.')
+                                if not own_entry and set(work_plan)-present:raise ValidationError('Заполните все работы СМГ, включая нулевой факт и причины отклонения.')
+                                from .dispatch_models import EmployeeWorkLink
+                                people=EmployeeActivity.objects.filter(company=obj.company,construction_object=obj,date=day)
+                                if own_entry:people=people.filter(reported_by=request.user)
+                                if people.filter(assignment_reviewed=False).exists():raise ValidationError('На шаге «Связи» назначьте работы каждому сотруднику или отметьте работу без привязки.')
+                                used=set(people.exclude(work=None).values_list('work_id','work_item_id'))
+                                used.update(EmployeeWorkLink.objects.filter(company=obj.company,activity__in=people).values_list('work_id','work_item_id'))
+                                if used-present:raise ValidationError('Заполните факт по работам, выбранным у сотрудников, или отметьте работу сотрудника без привязки.')
                             current.confirmed_at=timezone.now();current.confirmed_by=request.user
                         else:current.confirmed_at=None;current.confirmed_by=None
+                        if section=='works':
+                            entry,_=ProductionEntryDay.objects.get_or_create(company=obj.company,construction_object=obj,date=day,dispatcher=request.user)
+                            entry.roster_started=entry.roster_started or people_changed or request.POST.get('action')=='confirm'
+                            entry.revision+=1
+                            entry.confirmed_at=timezone.now() if request.POST.get('action')=='confirm' else None
+                            entry.save()
+                            contributions=ProductionEntryDay.objects.filter(company=obj.company,construction_object=obj,date=day)
+                            if request.POST.get('action')=='confirm' and not own_entry:contributions.update(confirmed_at=timezone.now())
+                            if contributions.filter(confirmed_at=None).exists():current.confirmed_at=None;current.confirmed_by=None
                         current.save()
+                        if section=='works' and request.POST.get('claim_session'):
+                            from .work_claims import release_session
+                            release_session(request.user,obj,day,request.POST.get('claim_session'))
                         from apps.audit.models import AuditLog
                         AuditLog.objects.create(user=request.user,action='UPDATE',entity_type='production.factsectionday',entity_id=str(current.pk),new_value={'section':section,'confirmed':bool(current.confirmed_at),'revision':current.revision,'previous_resource_totals':previous_totals},comment='Ввод факта за день по направлению')
                         from apps.planning.models import WorkTask
                         from apps.planning.task_services import state
                         for task in WorkTask.objects.filter(company=obj.company,construction_object=obj,fact_date=day,kind='FACT',status__in=['OPEN','DONE']).select_related('assigned_to__role'):
-                            if task.assigned_to and section in (required_fact_sections(task.assigned_to) or set()):
+                            if task.assigned_to and ({section}|({'labor'} if section=='works' and people_changed else set())) & (required_fact_sections(task.assigned_to) or set()):
                                 complete=fact_sections_confirmed(task.assigned_to,obj.company_id,obj.pk,day)
                                 state(task,'DONE' if complete else 'OPEN',request.user,'Все необходимые направления подтверждены.' if complete else 'Требуется подтверждение направлений факта.')
                     messages.success(request,'Факт подтверждён.' if request.POST.get('action')=='confirm' else 'Черновик факта сохранён.')

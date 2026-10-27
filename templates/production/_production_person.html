@@ -1,0 +1,7 @@
+<div class="production-person border rounded p-3 mb-3" data-production-person>
+<p class="small text-muted mb-2">{{ row.hint }}</p>
+{% for field in row.hidden_fields %}{{ field }}{{ field.errors }}{% endfor %}<div class="text-danger">{{ row.non_field_errors }}</div>
+<div class="production-person-fields"><div>{{ row.employee.label_tag }}{{ row.employee }}{{ row.employee.errors }}</div><div>{{ row.shift.label_tag }}{{ row.shift }}{{ row.shift.errors }}</div><div hidden>{{ row.work_mode.label_tag }}{{ row.work_mode }}{{ row.work_mode.errors }}</div></div>
+<div hidden data-person-targets class="my-3"><strong class="small">Работы сотрудника</strong><ul class="small my-2" data-person-target-labels></ul><button type="button" class="btn btn-sm btn-outline-primary" data-person-pick>Выбрать работы</button>{{ row.work_targets.errors }}</div>
+<details><summary class="small">Комментарий</summary>{{ row.activity }}{{ row.activity.errors }}</details><label class="small d-inline-flex align-items-center gap-2 mt-2">{{ row.DELETE }} Убрать сотрудника из этого дня</label>
+</div>

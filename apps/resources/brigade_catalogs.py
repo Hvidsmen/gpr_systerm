@@ -7,8 +7,8 @@ from core.permissions import require_roles, PLAN_ROLES
 from .models import BrigadeGroup, BrigadeMacroGroup
 from .forms import BrigadeGroupForm, BrigadeMacroGroupForm
 
-CONFIG = {'group': (BrigadeGroup, BrigadeGroupForm, 'Группы бригад'),
-    'macro': (BrigadeMacroGroup, BrigadeMacroGroupForm, 'Макрогруппы бригад')}
+CONFIG = {'group': (BrigadeGroup, BrigadeGroupForm, 'Группы должностей'),
+    'macro': (BrigadeMacroGroup, BrigadeMacroGroupForm, 'Макрогруппы должностей')}
 
 
 class BrigadeCatalogList(View):
@@ -65,6 +65,6 @@ class BrigadeGroupUpdate(View):
                 except IntegrityError:
                     form.add_error('name', 'Такая запись уже есть в справочнике.')
                 else:
-                    messages.success(request, 'Название группы сохранено.')
+                    messages.success(request, 'Группа должностей сохранена.')
                     return redirect('resources:brigade_group_list')
         return render(request, 'resources/brigade_group_form.html', {'form': form})
