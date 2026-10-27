@@ -18,7 +18,9 @@ def matrix(schedule,entries):
     grouped={kind:defaultdict(list) for kind in service.FIELDS};totals={kind:{} for kind in service.FIELDS}
     from .resource_catalogue_links import catalogue_links
     catalogue=catalogue_links(schedule.company)
-    from .resource_group_totals import equipment_group,group_label,attach_resource_totals
+    from .resource_group_totals import equipment_groups,labor_groups,group_label,attach_resource_totals
+    equipment_categories=equipment_groups(equipment,schedule.company)
+    position_groups=labor_groups(brigades,schedule.company)
     for entry in entries:
         # Hours remain in saved inputs and calculations, outside the editor.
         if entry.kind in {'labor','equipment'}:entry.comparison=[row for row in entry.comparison if row['field']=='planned_count']
@@ -43,11 +45,10 @@ def matrix(schedule,entries):
             locate_work(entry,work)
             group=entry.metadata.get('complex_object_name') or 'Самостоятельные работы'
         elif entry.kind=='labor':
-            brigade=brigades.get(first.get('brigade_id'))
-            if brigade:group=str(brigade.group) if brigade.group_id else 'Без группы'
+            group=position_groups.get(first.get('brigade_id'),'Без группы')
         elif entry.kind=='equipment':
             machine=equipment.get(first.get('equipment_type_id'))
-            group=equipment_group(machine,schedule.company)
+            group=equipment_categories.get(first.get('equipment_type_id'),('Без категории','none'))
         else:group='ГСМ'
         if entry.kind not in {'work','labor','equipment'}:group='Назначения ресурсов' if entry.metadata.get('resource_assignment_id') else 'Общие ресурсы объекта'
         entry.has_deviation=bool(schedule.source_id) and any(row['delta'] for row in entry.comparison)

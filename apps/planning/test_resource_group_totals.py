@@ -69,6 +69,43 @@ class ResourceGroupTotalTests(TestCase):
         self.assertEqual(groups[0]['totals'][0]['after'],9)
         self.assertEqual(response.context['plan_sections'][2]['totals'][0]['after'],9)
 
+    def test_legacy_assignment_and_smg_use_merged_cards_current_category(self):
+        from apps.resources.equipment_merge import merge_equipment
+        from .daily_schedule_table import add_entry
+        old_category=EquipmentCategory.objects.create(company=self.company,name=self.equipment.name)
+        self.equipment.category=old_category;self.equipment.save()
+        category=EquipmentCategory.objects.create(company=self.company,name='Специализированная техника')
+        target=EquipmentType.objects.create(company=self.company,name=self.equipment.name,category=category)
+        assignment=fixtures.WorkResourceTests.assignment(self,self.version,count=1,include_crew=False,end_date=fixtures.JAN.replace(day=31),shifts_per_day=1)
+        schedule=create(self.planner,self.obj,fixtures.JAN)
+        entry=add_entry(self.planner,schedule,{'kind':'equipment','equipment':self.equipment,'rate':0})
+        captured=list(entry.rows)
+        merge_equipment(self.planner,target.pk,[self.equipment.pk])
+        assignment.refresh_from_db();self.assertEqual(assignment.equipment_type_id,self.equipment.pk)
+        response=self.client.get(reverse('planning:workspace_edit',args=[self.version.pk]))
+        groups=response.context['plan_sections'][2]['groups']
+        self.assertEqual([g['label'] for g in groups],[category.name])
+        self.assertEqual(groups[0]['totals'][0]['after'],1)
+        self.assertEqual(groups[0]['entries'][0].catalogue_url,reverse('resources:equipment_type_update',args=[target.pk]))
+        response=self.client.get(reverse('planning:daily_schedule_detail',args=[schedule.pk]))
+        self.assertEqual([g['label'] for g in response.context['plan_sections'][2]['groups']],[category.name])
+        entry.refresh_from_db();self.assertEqual(entry.rows,captured)
+
+    def test_merged_position_uses_current_group_even_in_approved_smg(self):
+        from apps.resources.brigade_merge import merge_brigades
+        from .daily_schedule_table import add_entry
+        from .models import DailySchedule
+        schedule=create(self.planner,self.obj,fixtures.JAN)
+        entry=add_entry(self.planner,schedule,{'kind':'labor','brigade':self.driver,'rate':0})
+        captured=list(entry.rows)
+        target=Brigade.objects.create(company=self.company,name='Текущая должность',group=self.group)
+        merge_brigades(self.planner,target.pk,[self.driver.pk])
+        DailySchedule.objects.filter(pk=schedule.pk).update(status='APPROVED')
+        response=self.client.get(reverse('planning:daily_schedule_detail',args=[schedule.pk]))
+        self.assertEqual(response.status_code,200)
+        self.assertEqual([g['label'] for g in response.context['plan_sections'][1]['groups']],[self.group.name])
+        entry.refresh_from_db();self.assertEqual(entry.rows,captured)
+
     def test_smg_equipment_categories_combine_types_and_preserve_separate_categories(self):
         from .daily_schedule_table import add_entry,save_table
         category=EquipmentCategory.objects.create(company=self.company,name='Землеройная техника')

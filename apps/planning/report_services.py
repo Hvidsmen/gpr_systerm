@@ -215,14 +215,16 @@ def grouped(rows):
     for path, row in rows:
         branch = root
         for name in path:
-            node = branch.setdefault(name, {"label": name, "rows": [], "nodes": {}})
+            key=name['key'] if isinstance(name,dict) else name
+            label=name['label'] if isinstance(name,dict) else name
+            node = branch.setdefault(key, {"label": label, "rows": [], "nodes": {}})
             branch = node["nodes"]
         node["rows"].append(row)
 
     def finish(nodes):
         return [
             {**node, "children": finish(node["nodes"])}
-            for _, node in sorted(nodes.items(), key=lambda pair: pair[0].casefold())
+            for _, node in sorted(nodes.items(), key=lambda pair: (pair[1]['label'].casefold(),str(pair[0])))
         ]
 
     return finish(root)
@@ -300,7 +302,7 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
         for w in ProjectWork.objects.filter(
             company=user.company, section__construction_object_id__in=fact_object_ids
         )
-        .select_related("work_group", "section")
+        .select_related("work_group", "section", "complex_object")
         .prefetch_related("items")
     }
     actual_prices = defaultdict(list)
@@ -316,7 +318,7 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
     equipment_catalog = {
         r.pk: r
         for r in EquipmentType.objects.filter(company=user.company).select_related(
-            "category"
+            "category", "parent__category"
         )
     }
     from apps.works.models import WorkMergeSource
@@ -621,7 +623,15 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
                     spec.get("section_name") or (work.section.name if work else "Без раздела")
 
                 )
-                path = [row["label"], group_label] if filters.get("work_order") == "work_section" else [group_label]
+                if filters.get('work_order')=='catalogue':
+                    from types import SimpleNamespace
+                    from .plan_workbench import locate_work
+                    entry=SimpleNamespace(metadata=spec,label=row['label'])
+                    locate_work(entry,work)
+                    path=[{'key':entry.hierarchy_section_key,'label':entry.hierarchy_section_name},
+                          {'key':entry.hierarchy_object_key,'label':entry.hierarchy_object_name}]
+                else:
+                    path = [row["label"], group_label] if filters.get("work_order") == "work_section" else [group_label]
                 rows.append((path, row))
             rows = reorder_work_rows(rows, filters.get("work_levels"), filters.get("money_basis", "real"))
             work_groups = grouped(rows)
@@ -658,7 +668,7 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
             for key in sorted(resource_keys[kind], key=str):
                 if kind == "labor":
                     row = brigade_catalog.get(key)
-                    meta = resource_meta[kind].get(key) or (
+                    meta = dict(resource_meta[kind].get(key) or (
                         {
                             "name": row.name,
                             "unit": row.unit,
@@ -675,7 +685,11 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
                         }
                         if row
                         else {"name": "Удалённая бригада", "unit": "чел."}
-                    )
+                    ))
+                    if plan_only and not filters.get('consolidated') and row:
+                        # Classification is a current catalogue property; approved
+                        # quantities, labels, units and prices stay in the snapshot.
+                        meta.update(group_id=row.group_id,group_name=row.group.name if row.group_id else 'Без группы')
                     if (
                         filters.get("labor_q", "").casefold().strip()
                         not in meta["name"].casefold()
@@ -688,13 +702,13 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
                         and filters["brigade_group"].pk != meta.get("group_id")
                     ):
                         continue
-                    path = [meta.get("group_name", "Без группы")]
+                    path = [meta.get("group_name") or "Без группы"]
                     identity = (obj.pk, key)
                     row_label, unit = meta["name"], meta.get("unit", "чел.")
                 elif kind == "equipment":
                     pk, number = key
                     row = equipment_catalog.get(pk)
-                    meta = resource_meta[kind].get(pk) or (
+                    meta = dict(resource_meta[kind].get(pk) or (
                         {
                             "name": row.name,
                             "unit": row.unit,
@@ -707,7 +721,11 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
                         }
                         if row
                         else {"name": "Удалённый вид техники", "unit": "ед."}
-                    )
+                    ))
+                    if plan_only and not filters.get('consolidated') and row:
+                        from apps.resources.equipment_catalogue import category_for
+                        category=category_for(row,user.company)
+                        meta.update(category_id=category.pk if category else None,category_name=category.name if category else 'Без категории')
                     row_label, unit = (meta["name"] + " " + number).strip(), meta.get(
                         "unit", "ед."
                     )
@@ -718,7 +736,7 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
                         and filters["equipment_category"].pk != meta.get("category_id")
                     ):
                         continue
-                    path, identity = [meta.get("category_name", "Без категории")], (
+                    path, identity = [meta.get("category_name") or "Без категории"], (
                         obj.pk,
                         pk,
                         number,
@@ -761,7 +779,12 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
                             ),
                         )
                     )
-            sections.append({"kind": kind, "label": label, "groups": grouped(rows)})
+            groups=grouped(rows)
+            if plan_only:
+                from .resource_group_totals import labor_group_order,equipment_group_order
+                order=labor_group_order if kind=='labor' else equipment_group_order if kind=='equipment' else None
+                if order:groups.sort(key=lambda node:order(node['label']))
+            sections.append({"kind": kind, "label": label, "groups": groups})
         for section in sections:
             if section["kind"] != "works" and not filters.get("dashboard_compact"):
                 section["subtotals"] = add_resource_subtotals(section["groups"])

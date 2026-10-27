@@ -36,6 +36,44 @@ class GlobalMatrixTests(TestCase):
         )
         return rows_in(section["groups"])
 
+    def test_approved_view_uses_current_resource_groups_without_rewriting_snapshot(self):
+        from apps.resources.models import BrigadeGroup,EquipmentCategory
+        old=EquipmentCategory.objects.create(company=self.company,name=self.equipment.name)
+        self.equipment.category=old;self.equipment.save()
+        ResourceMonthAllocation.objects.create(company=self.company,version=self.version,month=date(2026,1,1),kind='equipment',equipment_type=self.equipment,count=3)
+        version=self.approve(self.version);saved=deepcopy(version.snapshot)
+        group=BrigadeGroup.objects.create(company=self.company,name='ИТР Состав')
+        self.brigade.group=group;self.brigade.save()
+        category=EquipmentCategory.objects.create(company=self.company,name='Специализированная техника')
+        self.equipment.category=category;self.equipment.save()
+        response=self.client.get(self.url)
+        self.assertEqual(response.status_code,200)
+        sections={s['kind']:s for s in response.context['objects'][0]['sections']}
+        self.assertEqual([n['label'] for n in sections['labor']['groups']],[group.name])
+        self.assertEqual([n['label'] for n in sections['equipment']['groups']],[category.name])
+        labor=self.rows(response,'labor')[0]
+        self.assertEqual(labor['cells'][0]['plan'],10)
+        self.assertEqual(self.rows(response,'equipment')[0]['cells'][0]['plan'],3)
+        filtered=self.client.get(self.url,{'brigade_group':group.pk,'equipment_category':category.pk})
+        self.assertEqual(len(self.rows(filtered,'labor')),1)
+        self.assertEqual(len(self.rows(filtered,'equipment')),1)
+        version.refresh_from_db();self.assertEqual(version.snapshot,saved)
+
+    def test_approved_view_keeps_section_object_package_and_component_hierarchy(self):
+        from apps.works.models import ComplexObject
+        facility=ComplexObject.objects.create(company=self.company,construction_object=self.obj,section=self.composite.section,name='УЗА 33')
+        self.composite.complex_object=facility;self.composite.save()
+        version=self.approve(self.version);saved=deepcopy(version.snapshot)
+        response=self.client.get(self.url)
+        section=next(s for s in response.context['objects'][0]['sections'] if s['kind']=='works')
+        root=next(n for n in section['groups'] if n['label']==self.composite.section.name)
+        obj=next(n for n in root['children'] if n['label']==facility.name)
+        package=next(r for r in obj['rows'] if r['label']==self.composite.name)
+        self.assertTrue(package['children'])
+        self.assertEqual(response.context['form']['work_order'].value(),'catalogue')
+        self.assertEqual(self.client.get(self.url,{'work_order':''}).context['form']['work_order'].value(),'catalogue')
+        version.refresh_from_db();self.assertEqual(version.snapshot,saved)
+
     def test_zero_work_money_totals_are_hidden(self):
         self.version.work_allocations.update(quantity=0)
         response = self.client.get(self.url)

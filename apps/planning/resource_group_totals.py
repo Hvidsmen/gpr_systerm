@@ -14,6 +14,31 @@ def equipment_group(equipment,company):
     return (category.name,str(category.pk))
 
 
+def equipment_groups(catalogue,company):
+    """Old assignments can retain a merged ID while the card opens its target."""
+    from apps.resources.equipment_merge import equipment_aliases
+    aliases=equipment_aliases(company)
+    result={}
+    for pk,equipment in catalogue.items():
+        current=pk;seen=set()
+        while current in aliases and current not in seen:
+            seen.add(current);current=aliases[current]
+        result[pk]=equipment_group(catalogue.get(current,equipment),company)
+    return result
+
+
+def labor_groups(catalogue,company):
+    from apps.resources.brigade_merge import brigade_aliases
+    aliases=brigade_aliases(company);result={}
+    for pk,brigade in catalogue.items():
+        current=pk;seen=set()
+        while current in aliases and current not in seen:
+            seen.add(current);current=aliases[current]
+        resolved=catalogue.get(current,brigade)
+        result[pk]=resolved.group.name if resolved.group_id else 'Без группы'
+    return result
+
+
 def group_label(key):
     return key[0] if isinstance(key,tuple) else key
 
