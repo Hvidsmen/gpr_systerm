@@ -57,7 +57,7 @@ class UnitForm(forms.ModelForm):
                 data['type'] = data['model']
         if self.instance.pk:
             from apps.production.models import EquipmentActivity,EmployeeActivity
-            used=EquipmentActivity.objects.filter(equipment=self.instance).exists() or EmployeeActivity.objects.filter(equipment=self.instance).exists() or self.instance.standing_assignments.exists()
+            used=EquipmentActivity.objects.filter(equipment=self.instance).exists() or EmployeeActivity.objects.filter(equipment=self.instance).exists() or self.instance.standing_assignments.exists() or self.instance.transport_events.exists() or self.instance.transport_days.exists()
             if used and (data.get('type') != self._original_type or 'plate_number' in self.changed_data):raise forms.ValidationError('Для машины с историей назначений или фактом техника для планирования и номер сохраняются в истории. Создайте отдельную единицу для другой идентичности.')
         if not any(data.get(key) for key in ['plate_number','inventory_number','vin']):raise forms.ValidationError('Укажите госномер, инвентарный или заводской номер.')
         return data
@@ -134,5 +134,8 @@ def unit_detail(request, pk):
     from apps.production.equipment_operations_models import EquipmentAssignment
     from core.permissions import scope_queryset
     history_visible=scope_queryset(EquipmentAssignment.objects.all(), request.user).filter(equipment=unit).exists()
+    from apps.production.transport import camps_for
+    camps=camps_for(request.user)
+    transport_history_visible=unit.transport_events.filter(Q(from_camp__in=camps)|Q(to_camp__in=camps)).exists()
     return render(request, 'resources/equipment_unit_detail.html', {'unit':unit,'as_of':timezone.localdate(),
-        'return_query':query,'unit_list_url':list_url(query),'history_visible':history_visible,'editable':role_code(request.user) in PLAN_ROLES})
+        'return_query':query,'unit_list_url':list_url(query),'history_visible':history_visible,'transport_history_visible':transport_history_visible,'editable':role_code(request.user) in PLAN_ROLES})

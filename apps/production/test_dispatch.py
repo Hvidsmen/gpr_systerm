@@ -1,7 +1,8 @@
-from datetime import date
+from datetime import date,timedelta
 from decimal import Decimal
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 from apps.accounts.models import Company,Role,User
 from apps.projects.models import Project,ConstructionObject,Section
 from apps.resources.models import Brigade,Employee,EquipmentType,Equipment
@@ -24,7 +25,7 @@ class DispatcherTests(TestCase):
         cls.type=EquipmentType.objects.create(company=cls.company,name='Crane')
         cls.machine=Equipment.objects.create(company=cls.company,type=cls.type,plate_number='123',name='Crane 123')
         cls.reason=DeviationReason.objects.create(company=cls.company,name='Материалы')
-        cls.day=date(2026,10,24)
+        cls.day=timezone.localdate()-timedelta(days=1)
         from apps.personnel.models import Camp,CampObjectLink,CampStay,Person
         cls.housing_camp=Camp.objects.create(company=cls.company,name='ВЖГ Dispatcher')
         CampObjectLink.objects.create(company=cls.company,camp=cls.housing_camp,construction_object=cls.obj)

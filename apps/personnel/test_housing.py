@@ -1,3 +1,4 @@
+from unittest.mock import patch
 from datetime import timedelta
 from io import BytesIO
 from django.core.exceptions import ValidationError
@@ -30,8 +31,8 @@ class HousingTests(TestCase):
         cls.second_employee=Employee.objects.create(company=cls.company,last_name='Петров',first_name='Петр',position=cls.position,employee_number='002')
         cls.person=Person.objects.create(company=cls.company,employee=cls.employee,full_name=cls.employee.display_name,employee_number='001')
         cls.second_person=Person.objects.create(company=cls.company,employee=cls.second_employee,full_name=cls.second_employee.display_name,employee_number='002')
-        cls.day=timezone.localdate()-timedelta(days=5)
-        cls.stay=CampStay.objects.create(company=cls.company,camp=cls.a,person=cls.person,arrived_on=cls.day-timedelta(days=2))
+        cls.day=timezone.localdate()-timedelta(days=1)
+        cls.stay=CampStay.objects.create(company=cls.company,camp=cls.a,person=cls.person,arrived_on=cls.day-timedelta(days=1))
         cls.hr=User.objects.create_user(username='housing-hr',company=cls.company,role=Role.objects.get(code='PERSONNEL_DISPATCHER'))
         cls.hr2=User.objects.create_user(username='housing-hr2',company=cls.company,role=Role.objects.get(code='PERSONNEL_DISPATCHER'))
         cls.dispatcher=User.objects.create_user(username='housing-production',company=cls.company,role=Role.objects.get(code='DISPATCHER'))
@@ -108,7 +109,8 @@ class HousingTests(TestCase):
     def test_cancel_requires_reason_and_version_and_preserves_history(self):
         with self.assertRaises(ValidationError):housing.cancel_stay(self.hr,self.stay,'',self.stay.updated_at.isoformat())
         with self.assertRaises(ValidationError):housing.cancel_stay(self.hr,self.stay,'Ошибка','old')
-        housing.cancel_stay(self.hr,self.stay,'Ошибка исходной даты',self.stay.updated_at.isoformat())
+        with patch('django.utils.timezone.localdate',return_value=self.day):
+            housing.cancel_stay(self.hr,self.stay,'Ошибка исходной даты',self.stay.updated_at.isoformat())
         self.assertEqual(self.visible(self.obj),set());self.stay.refresh_from_db();self.assertIsNotNone(self.stay.cancelled_at)
         self.assertEqual(self.person.stays.count(),1)
         self.assertEqual(HousingEvent.objects.get().kind,'CANCEL')

@@ -424,6 +424,8 @@
         </details>{% endif %}
         {% if request.user|may:'production:fact_day_workspace' or request.user|may:'planning:journal_fact_list' %}<details class="nav-group"><summary>Факты</summary>
         {% if request.user|may:'production:fact_day_workspace' %}<a class="nav-link" href="{% url 'production:fact_day_workspace' %}" ><i class="bi bi-clipboard-data"></i> Факт за день</a>{% endif %}
+        {% if request.user|may:'production:fact_history' %}<a class="nav-link" href="{% url 'production:fact_history' %}"><i class="bi bi-clock-history"></i> История изменений факта</a>{% endif %}
+        {% if request.user|may:'production:transport_board' %}<a class="nav-link" href="{% url 'production:transport_board' %}"><i class="bi bi-truck"></i> Техника на ВЖГ</a>{% endif %}
         {% if request.user|may:'planning:pivot_fact_list' %}<a class="nav-link" href="{% url 'planning:pivot_fact_list' %}"><i class="bi bi-layout-three-columns"></i> Сводная таблица факта</a>{% endif %}
         {% if request.user|may:'planning:journal_fact_list' %}<a class="nav-link" href="{% url 'planning:journal_fact_list' %}" data-paths="/planning/journals/facts/"><i class="bi bi-journal-check"></i> Журналы фактов</a>{% endif %}
         </details>{% endif %}

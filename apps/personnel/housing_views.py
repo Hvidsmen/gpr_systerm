@@ -4,7 +4,8 @@ from io import BytesIO
 from django import forms
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.core.exceptions import ValidationError
+from django.core.exceptions import ValidationError,PermissionDenied
+from core.fact_edit_window import can_edit_fact_day,require_fact_day,window_context
 from django.db import transaction,IntegrityError
 from django.db.models import Q
 from django.http import HttpResponse,Http404
@@ -94,6 +95,9 @@ def workspace(request):
     camps=scoped(request,Camp).order_by('name')
     camp=get_object_or_404(camps,pk=camp_id) if camp_id else camps.first()
     if camp is None:return render(request,'personnel/housing.html',{'camps':camps,'day':day})
+    if request.method=='POST':
+        try:require_fact_day(request.user,day)
+        except ValidationError as exc:raise PermissionDenied('; '.join(exc.messages))
     kind=request.GET.get('action','ARRIVAL');kind=kind if kind in {'ARRIVAL','DEPARTURE','TRANSFER'} else 'ARRIVAL'
     form=MovementForm(request.POST if request.method=='POST' else None,company=request.user.company,camp=camp,day=day,
         initial={'kind':kind,'date':day,'snapshot':housing.movement_snapshot(request.user),'people':[request.GET['person']] if request.GET.get('person','').isdigit() else []})
@@ -114,13 +118,14 @@ def workspace(request):
         'positions':Position.objects.filter(company=request.user.company,employees__personnel_card__stays__in=housing.present_stays(request.user.company,day).filter(camp=camp)).distinct().order_by('name'),
         'selected_position':position,'events':events,'total':count,'objects':camp.objects_served.filter(company=request.user.company),
         'unknown_count':Person.objects.filter(company=request.user.company,stays__isnull=True).count(),
-        'unlinked_count':Person.objects.filter(company=request.user.company,employee=None).count()})
+        'unlinked_count':Person.objects.filter(company=request.user.company,employee=None).count(),**window_context(request.user,day)})
 
 
 @login_required
 def history(request,pk):
     person=get_object_or_404(scoped(request,Person),pk=pk)
     stays=person.stays.select_related('camp','recorded_by','cancelled_by')
+    for stay in stays:stay.can_cancel=can_edit_fact_day(request.user,stay.arrived_on)
     events=person.housing_events.select_related('from_camp','to_camp','recorded_by')
     return render(request,'personnel/housing_history.html',{'person':person,'stays':stays,'events':events})
 
@@ -129,6 +134,8 @@ def history(request,pk):
 @require_http_methods(['GET','POST'])
 def cancel(request,pk):
     stay=get_object_or_404(scoped(request,CampStay).select_related('person','camp'),pk=pk)
+    try:require_fact_day(request.user,stay.arrived_on)
+    except ValidationError as exc:raise PermissionDenied('; '.join(exc.messages))
     class CancelForm(forms.Form):
         reason=forms.CharField(label='Причина отмены',max_length=500,widget=forms.Textarea(attrs={'class':'form-control','rows':3}))
         version=forms.CharField(widget=forms.HiddenInput)

@@ -221,10 +221,10 @@ def project_resources(obj,day,section):
         LaborFact.objects.filter(company=company,construction_object=obj,date=day).delete()
         for brigade_id,employees in counts.items():LaborFact.objects.create(company=company,construction_object=obj,date=day,brigade_id=brigade_id,actual_workers=len(employees))
     elif section=='mechanization':
-        rows=EquipmentActivity.objects.filter(company=company,construction_object=obj,date=day).select_related('equipment')
+        rows=EquipmentActivity.objects.filter(company=company,construction_object=obj,date=day).select_related('equipment__type')
         counts={}
         for row in rows:
-            key=(row.equipment.type_id,(row.equipment.plate_number or row.equipment.inventory_number or row.equipment.vin)[:50])
+            key=(row.equipment.type.parent_id or row.equipment.type_id,(row.equipment.plate_number or row.equipment.inventory_number or row.equipment.vin)[:50])
             working=counts.setdefault(key,set())
             if row.state=='WORKING':working.add(row.equipment_id)
         required=plans(obj,day)[1]['equipment']
@@ -237,6 +237,8 @@ def project_resources(obj,day,section):
 
 class DispatcherDayView(CompanyRequiredMixin,View):
     def get(self,request):
+        if role_code(request.user)=='MECHANIZATION_DISPATCHER' and not request.GET.get('construction_object'):
+            return redirect('production:transport_board')
         if role_code(request.user)=='FOREMAN':
             from .views.day_workspace import FactDayWorkspaceView
             return FactDayWorkspaceView.as_view()(request)
@@ -246,7 +248,8 @@ class DispatcherDayView(CompanyRequiredMixin,View):
         if role_code(request.user)=='FOREMAN':
             from .views.day_workspace import FactDayWorkspaceView
             return FactDayWorkspaceView.as_view()(request)
-        return self.display(request,bound=True)
+        try:return self.display(request,bound=True)
+        except ValidationError as exc:raise PermissionDenied("; ".join(exc.messages))
     def display(self,request,bound=False):
         selector=ObjectDateForm(request.POST if bound else request.GET or None,user=request.user,initial={'date':timezone.localdate()})
         allowed=sections_for(request.user)
@@ -255,6 +258,10 @@ class DispatcherDayView(CompanyRequiredMixin,View):
         context={'selector':selector,'section':section,'tabs':[(s,LABELS[s]) for s in allowed],'editable':role_code(request.user) in FACT_ROLES}
         if not selector.is_bound or not selector.is_valid():return render(request,'production/dispatcher_day.html',context,status=400 if bound else 200)
         obj=selector.cleaned_data['construction_object'];day=selector.cleaned_data['date']
+        from core.fact_edit_window import window_context,require_fact_day
+        context.update(window_context(request.user,day))
+        context['editable']=context['editable'] and context['fact_day_editable']
+        if bound:require_fact_day(request.user,day)
         from . import equipment_operations
         equipment_baselines,equipment_version=equipment_operations.prepare(obj,day) if section=='mechanization' else ({},'')
         if section=='mechanization':
@@ -275,9 +282,6 @@ class DispatcherDayView(CompanyRequiredMixin,View):
             from .dispatch_models import ProductionEntryDay
             context['my_production_entry']=ProductionEntryDay.objects.filter(company=obj.company,construction_object=obj,date=day,dispatcher=request.user).first()
             context['other_production_entries']=ProductionEntryDay.objects.filter(company=obj.company,construction_object=obj,date=day).exclude(dispatcher=request.user).select_related('dispatcher')
-            if own_entry:
-                context['other_work_rows']=DailyFact.objects.filter(company=obj.company,project_work__section__construction_object=obj,date=day).exclude(Q(reported_by=request.user)|Q(reported_by=None)).select_related('project_work','work_item','reported_by')
-                context['other_people_rows']=EmployeeActivity.objects.filter(company=obj.company,construction_object=obj,date=day).exclude(Q(reported_by=request.user)|Q(reported_by=None)).select_related('employee','work','work_item','reported_by')
         existing_actuation=DayActuation.objects.filter(company=obj.company,construction_object=obj,date=day).first()
         initial_actuation={'actuated':bool(existing_actuation),'actuation_type':existing_actuation.actuation_type if existing_actuation else 'FULL_DAY','reason':existing_actuation.reason if existing_actuation else ''}
         actuation=DayActuationForm(request.POST if bound and section=='works' else None,initial=initial_actuation)
@@ -295,7 +299,6 @@ class DispatcherDayView(CompanyRequiredMixin,View):
             qs=model.objects.filter(company=obj.company,date=day)
             qs=qs.filter(project_work__section__construction_object=obj) if prefix=='works' else qs.filter(construction_object=obj)
             if prefix=='fuel':qs=qs.filter(equipment_ref='')
-            if own_entry and prefix in {'works','labor'}:qs=qs.filter(Q(reported_by=request.user)|Q(reported_by=None))
             if prefix=='labor':
                 qs=qs.select_related('employee__position__planning_mapping__brigade__group','position').prefetch_related('work_links')
                 if section=='works':qs=qs.exclude(**{GENERAL_PATH:True})
@@ -431,6 +434,7 @@ class DispatcherDayView(CompanyRequiredMixin,View):
                         if section!='works':
                             from .work_claims import check_form_claims
                             check_form_claims(request.user,obj,day,groups)
+                        require_fact_day(request.user,day)
                         latest_works,latest_resources=plans(obj,day)
                         if latest_works!=work_plan or latest_resources!=resource_plan:raise ValidationError('План СМГ изменился. Обновите страницу перед сохранением факта.')
                         if section=='works':
@@ -447,11 +451,17 @@ class DispatcherDayView(CompanyRequiredMixin,View):
                                 zeroes.update(actual_quantity=0,actual_value=0)
                             elif actuation_changed:DayActuation.objects.filter(company=obj.company,construction_object=obj,date=day).delete()
                         if legacy_exists and not request.POST.get('replace_legacy') and (section!='works' or people_changed):raise ValidationError('На эту дату уже есть сводный факт. Подтвердите его замену детализацией по ФИО или машинам.')
+                        if section=='works':
+                            changed_authors={form.instance.reported_by_id for group in groups if group['prefix'] in {'works','labor'} for form in group['formset'] if form.instance.pk and form.has_changed() and form.instance.reported_by_id}
+                            ProductionEntryDay.objects.filter(company=obj.company,construction_object=obj,date=day,dispatcher_id__in=changed_authors).exclude(dispatcher=request.user).update(confirmed_at=None)
                         for group in groups:
                             fs=group['formset'];rows=fs.save(commit=False)
+                            for row in [*fs.deleted_objects,*rows]:
+                                if isinstance(row,EquipmentActivity) and row.pk and hasattr(row,'transport_record'):
+                                    raise ValidationError('Эта техника учтена в журнале ВЖГ. Измените её через «Техника на ВЖГ».')
                             for row in fs.deleted_objects:row.delete()
                             for row in rows:
-                                if isinstance(row,(DailyFact,EmployeeActivity)) and not row.reported_by_id:row.reported_by=request.user
+                                if isinstance(row,(DailyFact,EmployeeActivity)) and not row.pk and not row.reported_by_id:row.reported_by=request.user
                                 if isinstance(row,EquipmentActivity) and not row.pk:
                                     baseline=equipment_baselines.get((row.equipment_id,row.shift))
                                     if baseline:
@@ -514,6 +524,7 @@ class DispatcherDayView(CompanyRequiredMixin,View):
                         if section=='works' and request.POST.get('claim_session'):
                             from .work_claims import release_session
                             release_session(request.user,obj,day,request.POST.get('claim_session'))
+                        require_fact_day(request.user,day)
                         from apps.audit.models import AuditLog
                         AuditLog.objects.create(user=request.user,action='UPDATE',entity_type='production.factsectionday',entity_id=str(current.pk),new_value={'section':section,'confirmed':bool(current.confirmed_at),'revision':current.revision,'previous_resource_totals':previous_totals},comment='Ввод факта за день по направлению')
                         from apps.planning.models import WorkTask

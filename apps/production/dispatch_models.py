@@ -1,11 +1,13 @@
 """Named people and individual machines in daily operational facts."""
+
+from core.fact_history import ActualHistoryMixin
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 from core.models import BaseCompanyModel
 
 
-class ShiftActivity(BaseCompanyModel):
+class ShiftActivity(ActualHistoryMixin, BaseCompanyModel):
     construction_object=models.ForeignKey('projects.ConstructionObject',on_delete=models.PROTECT,verbose_name='Объект')
     date=models.DateField('Дата')
     shift=models.PositiveSmallIntegerField('Смена',default=1)
@@ -43,6 +45,16 @@ class EquipmentActivity(ShiftActivity):
     def clean(self):
         super().clean()
         if self.state=='WORKING' and not self.work_id and not self.activity.strip():raise ValidationError({'activity':'Опишите, что делала техника общего назначения, или выберите работу.'})
+        from .transport_models import EquipmentTransportEvent
+        if self.equipment_id and self.date and EquipmentTransportEvent.objects.filter(equipment_id=self.equipment_id,cancelled_at=None,date__lte=self.date).exclude(kind='CONDITION').exists():
+            from .transport import present,condition_on
+            location=present(self.company,self.date).filter(equipment_id=self.equipment_id).first()
+            if not location:raise ValidationError({'equipment':'Техника не находится на ВЖГ на эту дату. Проверьте журнал транспорта.'})
+            if self.state in {'WORKING','IDLE'} and condition_on(self.equipment,self.date)!='READY':
+                raise ValidationError({'state':'Техника не исправна по журналу ВЖГ. Проверьте техническое состояние.'})
+            previous=type(self).objects.filter(pk=self.pk).values('construction_object_id').first() if self.pk else None
+            if (not previous or previous['construction_object_id']!=self.construction_object_id) and not location.camp.object_links.filter(company=self.company,construction_object_id=self.construction_object_id).exists():
+                raise ValidationError({'construction_object':'Объект не связан с ВЖГ, на котором находится машина.'})
         from .equipment_operations_models import EquipmentAssignment
         if self.equipment_id and self.date and EquipmentAssignment.objects.filter(equipment_id=self.equipment_id,shift=self.shift,start_date__lte=self.date,cancelled_at__isnull=True).filter(models.Q(end_date__isnull=True)|models.Q(end_date__gte=self.date)).exclude(construction_object_id=self.construction_object_id).exists():
             raise ValidationError({'equipment':'На эту дату и смену техника назначена другому объекту. Сначала завершите прежнее назначение.'})
@@ -76,7 +88,7 @@ class EmployeeActivity(ShiftActivity):
     def __str__(self):return f'{self.employee} · {self.date} · смена {self.shift}'
 
 
-class EmployeeWorkLink(BaseCompanyModel):
+class EmployeeWorkLink(ActualHistoryMixin, BaseCompanyModel):
     activity = models.ForeignKey(EmployeeActivity, on_delete=models.CASCADE, related_name='work_links')
     work = models.ForeignKey('works.ProjectWork', on_delete=models.PROTECT)
     work_item = models.ForeignKey('works.ProjectWorkItem', on_delete=models.PROTECT, null=True, blank=True)

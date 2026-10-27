@@ -1,4 +1,7 @@
 """Validated operational changes and read-only daily fact preparation."""
+
+from core.fact_history import with_history_actor
+from core.fact_edit_window import require_fact_day
 import hashlib
 import json
 from datetime import timedelta
@@ -55,6 +58,7 @@ def _state(actor, assignment, day, state, reason):
     return record
 
 
+@with_history_actor
 def create_assignment(actor, assignment, state='KEEP', reason=''):
     _authorize(actor, assignment.construction_object)
     with transaction.atomic():
@@ -63,6 +67,7 @@ def create_assignment(actor, assignment, state='KEEP', reason=''):
             raise ValidationError('Нельзя создать назначение для неактивной техники.')
         if assignment.start_date and assignment.start_date > timezone.localdate():
             raise ValidationError('Для действующего назначения выберите текущую или прошедшую дату.')
+        require_fact_day(actor,assignment.start_date)
         assignment.company = actor.company
         assignment.created_by = actor
         assignment.full_clean()
@@ -101,22 +106,26 @@ def _current(actor, assignment_id, revision):
     return record
 
 
+@with_history_actor
 def change_state(actor, assignment, revision, day, state, reason):
     _authorize(actor, assignment.construction_object)
     with transaction.atomic():
         _lock(assignment.construction_object, assignment.equipment_id)
         current = _current(actor, assignment.pk, revision)
+        require_fact_day(actor,day)
         record = _state(actor, current, day, state, reason)
         current.revision += 1
         current.save(update_fields=['revision', 'updated_at'])
         return record
 
 
+@with_history_actor
 def close_assignment(actor, assignment, revision, last_day):
     _authorize(actor, assignment.construction_object)
     with transaction.atomic():
         _lock(assignment.construction_object, assignment.equipment_id)
         current = _current(actor, assignment.pk, revision)
+        require_fact_day(actor,last_day)
         if current.end_date and last_day > current.end_date:
             raise ValidationError('Чтобы продлить завершённый период, создайте новое назначение.')
         if current.state_changes.filter(effective_date__gt=last_day).exists():
@@ -128,11 +137,13 @@ def close_assignment(actor, assignment, revision, last_day):
         return current
 
 
+@with_history_actor
 def change_assignment(actor, assignment, revision, day, *, work, work_item, general, activity):
     _authorize(actor, assignment.construction_object)
     with transaction.atomic():
         _lock(assignment.construction_object, assignment.equipment_id)
         current = _current(actor, assignment.pk, revision)
+        require_fact_day(actor,day)
         if day > timezone.localdate() or day < current.start_date or current.end_date and day > current.end_date:
             raise ValidationError('Выберите текущую или прошедшую дату внутри назначения.')
         old = _values(current); previous_end = current.end_date
@@ -153,6 +164,7 @@ def change_assignment(actor, assignment, revision, day, *, work, work_item, gene
         return changed
 
 
+@with_history_actor
 def cancel_assignment(actor, assignment, revision, reason):
     _authorize(actor, assignment.construction_object)
     with transaction.atomic():
@@ -160,6 +172,7 @@ def cancel_assignment(actor, assignment, revision, reason):
         current = _current(actor, assignment.pk, revision)
         if not reason.strip():
             raise ValidationError('Укажите причину отмены ошибочного назначения.')
+        require_fact_day(actor,current.start_date)
         own = current.daily_facts.all()
         confirmed = FactSectionDay.objects.filter(company=current.company,
             construction_object=current.construction_object, section='mechanization',

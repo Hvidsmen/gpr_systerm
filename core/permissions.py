@@ -100,6 +100,13 @@ def scope_queryset(queryset, user, include_archived=False):
 def check_route(user, match, method):
     namespace, name = match.namespace, match.url_name
     role = role_code(user)
+    if namespace == 'production' and name=='fact_history':
+        require_roles(user,READ_ROLES|FACT_ROLES)
+        return
+    if namespace == 'production' and name in {'transport_board','transport_claims','transport_create','transport_history'}:
+        from apps.production.transport import OPERATORS,READERS
+        require_roles(user,READERS if method in {'GET','HEAD'} and name in {'transport_board','transport_history'} else OPERATORS)
+        return
     if namespace == 'production' and name in {'equipment_assignment_list', 'equipment_history_detail'}:
         require_roles(user, READ_ROLES | {'MECHANIZATION_DISPATCHER', 'ALL_FACT_DISPATCHER'} if method in {'GET', 'HEAD'} else {'ADMIN', 'MECHANIZATION_DISPATCHER', 'ALL_FACT_DISPATCHER'});return
     if namespace == 'resources' and name in {'employee_zup_import','employee_position_report','brigade_zup_employees'}:

@@ -3,6 +3,8 @@
 Хранят факты выполнения работ: объёмы, должности, техника, топливо.
 """
 
+from core.fact_history import ActualHistoryMixin
+
 from django.db import models, transaction
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -28,7 +30,7 @@ class DeviationReason(BaseCompanyModel):
         return self.name
 
 
-class DailyFact(BaseCompanyModel):
+class DailyFact(ActualHistoryMixin, BaseCompanyModel):
     outside_smg = models.BooleanField("Вне СМГ", default=False)
     smg_plan_quantity = models.DecimalField("План СМГ на дату ввода", max_digits=15, decimal_places=3, null=True, blank=True)
 
@@ -190,7 +192,7 @@ class ObjectResourceRecord(BaseCompanyModel):
                 )
 
 
-class LaborFact(ObjectResourceRecord):
+class LaborFact(ActualHistoryMixin, ObjectResourceRecord):
     """Факт по людским ресурсам (бригадам)."""
 
     date = models.DateField(_("дата"))
@@ -292,7 +294,7 @@ class EquipmentPlan(ObjectResourceRecord):
         return f"{self.equipment_type.name} — {self.date}: {self.planned_count} ед. ({work_name})"
 
 
-class EquipmentFact(ObjectResourceRecord):
+class EquipmentFact(ActualHistoryMixin, ObjectResourceRecord):
     """Факт по механизмам и технике."""
 
     date = models.DateField(_("дата"))
@@ -331,7 +333,7 @@ class EquipmentFact(ObjectResourceRecord):
         return f"{self.equipment_type.name} — {self.date}: {self.machine_hours} м/ч ({work_name})"
 
 
-class FuelFact(ObjectResourceRecord):
+class FuelFact(ActualHistoryMixin, ObjectResourceRecord):
     opening_balance = models.DecimalField("Остаток на начало, л", max_digits=15, decimal_places=2, default=0)
     received_liters = models.DecimalField("Поступление, л", max_digits=15, decimal_places=2, default=0)
 
@@ -434,7 +436,7 @@ class LegacyResourceRecord(BaseCompanyModel):
         ordering = ["source_model", "source_pk"]
 
 
-class DayActuation(BaseCompanyModel):
+class DayActuation(ActualHistoryMixin, BaseCompanyModel):
     """Recorded shutdown of all work on a construction object for one day."""
     TYPES = [('DAY', 'Дневная'), ('NIGHT', 'Ночная'), ('FULL_DAY', 'Суточная')]
     construction_object = models.ForeignKey('projects.ConstructionObject', on_delete=models.CASCADE, verbose_name='Строительный объект')
@@ -456,3 +458,6 @@ class DayActuation(BaseCompanyModel):
 
 from .dispatch_models import EmployeeActivity, EquipmentActivity, FactSectionDay
 from .equipment_operations_models import EquipmentAssignment, EquipmentStateChange
+from .transport_models import EquipmentCampStay, EquipmentTransportEvent, EquipmentDayRecord, EquipmentTransportControl
+
+from .history_models import FactRevision

@@ -1,4 +1,7 @@
 """Actual camp residence, independent of project assignment and planned calendars."""
+
+from core.fact_history import with_history_actor
+from core.fact_edit_window import require_fact_day
 from datetime import date
 from django.core import signing
 from django.core.exceptions import ValidationError
@@ -101,8 +104,10 @@ def check_snapshot(user,signed,people):
 
 
 @transaction.atomic
+@with_history_actor
 def move(user,kind,camp,day,people,employees=(),target=None,comment='',snapshot=None):
     if camp.company_id!=user.company_id or target and target.company_id!=user.company_id:raise ValidationError('ВЖГ другой компании.')
+    require_fact_day(user,day)
     if kind not in {'ARRIVAL','DEPARTURE','TRANSFER'}:raise ValidationError('Неизвестное действие.')
     if kind=='TRANSFER' and (not target or target.pk==camp.pk):raise ValidationError('Выберите другой ВЖГ для перевода.')
     if day>timezone.localdate():raise ValidationError('Фактическое событие нельзя вносить будущей датой. Плановые даты задаются графиком.')
@@ -125,6 +130,7 @@ def move(user,kind,camp,day,people,employees=(),target=None,comment='',snapshot=
     camp=locked_camps[camp.pk];target=locked_camps[target.pk] if target else None
     if kind=='ARRIVAL' and not camp.is_active or target and not target.is_active:raise ValidationError('Для заезда выберите действующий ВЖГ.')
     for person in locked:
+        require_fact_day(user,day)
         current=present_stays(user.company,day).filter(person=person).first()
         if kind=='ARRIVAL':
             if current:raise ValidationError(f'{person}: уже находится в {current.camp}. Используйте перевод.')
@@ -135,10 +141,12 @@ def move(user,kind,camp,day,people,employees=(),target=None,comment='',snapshot=
             stay=current
             if kind=='TRANSFER':stay=CampStay.objects.create(company=user.company,person=person,camp=target,arrived_on=day,comment=comment,recorded_by=user)
         HousingEvent.objects.create(company=user.company,person=person,date=day,kind=kind,from_camp=camp if kind!='ARRIVAL' else None,to_camp=target if kind=='TRANSFER' else camp if kind=='ARRIVAL' else None,stay=stay,comment=comment,recorded_by=user)
+    require_fact_day(user,day)
     return len(locked)
 
 
 @transaction.atomic
+@with_history_actor
 def cancel_stay(user,stay,reason,version):
     if stay.company_id!=user.company_id:raise ValidationError('Размещение другой компании.')
     if not reason.strip():raise ValidationError('Укажите причину отмены.')
@@ -147,9 +155,11 @@ def cancel_stay(user,stay,reason,version):
     if stay.person.employee_id:Employee.objects.select_for_update().get(pk=stay.person.employee_id,company=user.company)
     Person.objects.select_for_update().get(pk=stay.person_id,company=user.company)
     current=CampStay.objects.select_for_update().get(pk=stay.pk,company=user.company)
+    require_fact_day(user,current.arrived_on)
     if current.updated_at.isoformat()!=version or current.cancelled_at:raise ValidationError('Запись уже изменена. Обновите историю.')
     current.cancelled_at=timezone.now();current.cancelled_by=user;current.cancellation_reason=reason.strip();current.save()
     HousingEvent.objects.create(company=user.company,person=current.person,date=timezone.localdate(),kind='CANCEL',from_camp=current.camp,stay=current,comment=reason,recorded_by=user)
+    require_fact_day(user,current.arrived_on)
 
 
 def schedule_slot(person):
@@ -160,11 +170,21 @@ def schedule_slot(person):
     return None
 
 
-def bootstrap_legacy(company,slots=None):
+@transaction.atomic
+def bootstrap_legacy(company,slots=None,*,user=None):
+    if user and user.company_id!=company.pk:raise ValidationError('Импорт другой компании.')
+    from core.fact_history import history_actor
+    with history_actor(user):
+        dates=_bootstrap_legacy(company,slots,user)
+        if user:
+            for day in dates:require_fact_day(user,day)
+
+
+def _bootstrap_legacy(company,slots,user):
     """Preserve source values; infer residence only from consistent explicit actual dates."""
     slots=list((slots if slots is not None else StaffingSlot.objects.filter(company=company)).select_related('person','housing_camp'))
     camps={' '.join(c.name.split()).casefold():c for c in Camp.objects.filter(company=company)}
-    by_person={}
+    by_person={};seeded_dates=[]
     for slot in slots:
         name=' '.join(slot.camp.split())
         if name and not slot.housing_camp_id:
@@ -185,12 +205,20 @@ def bootstrap_legacy(company,slots=None):
         eligible=[s for s in rows if s.housing_camp_id and s.arrival_date and s.arrival_date<=timezone.localdate() and s.status=='МВ']
         if eligible and len({(s.housing_camp_id,s.arrival_date) for s in eligible})==1:
             row=eligible[0]
+            if user:require_fact_day(user,row.arrival_date)
+            seeded_dates.append(row.arrival_date)
             stay=CampStay.objects.create(company=company,person=person,camp=row.housing_camp,arrived_on=row.arrival_date,comment='Перенесено из кадровой таблицы')
             HousingEvent.objects.create(company=company,person=person,date=row.arrival_date,kind='ARRIVAL',to_camp=row.housing_camp,stay=stay,comment=stay.comment)
         elif not eligible:
             closed=[s for s in rows if s.status=='МО' and s.housing_camp_id and s.arrival_date and s.departure_date and s.arrival_date<s.departure_date<=timezone.localdate()]
             if closed and len({(s.housing_camp_id,s.arrival_date,s.departure_date) for s in closed})==1:
-                row=closed[0];CampStay.objects.create(company=company,person=person,camp=row.housing_camp,arrived_on=row.arrival_date,departed_on=row.departure_date,comment='Перенесено из кадровой таблицы')
+                row=closed[0]
+                if user:
+                    require_fact_day(user,row.arrival_date);require_fact_day(user,row.departure_date)
+                seeded_dates.extend([row.arrival_date,row.departure_date])
+                CampStay.objects.create(company=company,person=person,camp=row.housing_camp,arrived_on=row.arrival_date,departed_on=row.departure_date,comment='Перенесено из кадровой таблицы')
+
+    return seeded_dates
 
 
 def schedule_snapshot(person):

@@ -54,3 +54,15 @@ class LegacyResourceAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+
+from .history_models import FactRevision
+
+@admin.register(FactRevision)
+class FactRevisionAdmin(admin.ModelAdmin):
+    list_display=['created_at','company','direction','fact_date','operation','label','actor_name']
+    list_filter=['company','direction','operation']
+    search_fields=['label','actor_name','entity_id']
+    def has_add_permission(self,request):return False
+    def has_change_permission(self,request,obj=None):return False
+    def has_delete_permission(self,request,obj=None):return False

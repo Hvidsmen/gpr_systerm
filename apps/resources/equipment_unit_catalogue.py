@@ -7,7 +7,7 @@ from django.db.models.functions import Coalesce
 from django.utils import timezone
 from .models import Equipment, EquipmentCategory, EquipmentType
 
-STATES = [('WORKING', 'Работает'), ('IDLE', 'Исправна, не задействована'), ('REPAIR', 'В ремонте'), ('UNKNOWN', 'Нет сведений')]
+STATES = [('READY', 'Исправна'), ('SCRAP', 'Под списание / на запчасти'), ('WRITTEN_OFF', 'Списана'), ('WORKING', 'Работает'), ('IDLE', 'Исправна, не задействована'), ('REPAIR', 'В ремонте'), ('UNKNOWN', 'Нет сведений')]
 
 
 class UnitFilterForm(forms.Form):
@@ -48,10 +48,19 @@ def with_unit_state(queryset, company, day=None):
     history = EquipmentStateChange.objects.filter(company=company, equipment_id=OuterRef('pk'),
         assignment__company=company, assignment__cancelled_at__isnull=True,
         is_cancelled=False, effective_date__lte=day).order_by('-effective_date', '-shift', '-pk')
+    from apps.production.transport_models import EquipmentTransportEvent,EquipmentCampStay
+    technical=EquipmentTransportEvent.objects.filter(company=company,equipment_id=OuterRef('pk'),kind='CONDITION',cancelled_at=None,date__lte=day).order_by('-date','-pk')
+    disposal=EquipmentTransportEvent.objects.filter(company=company,equipment_id=OuterRef('pk'),kind='WRITEOFF',cancelled_at=None,date__lte=day).order_by('-date','-pk')
+    stays=EquipmentCampStay.objects.filter(company=company,equipment_id=OuterRef('pk'),cancelled_at=None,arrived_on__lte=day).filter(Q(departed_on=None)|Q(departed_on__gt=day)).order_by('-arrived_on','-pk')
     return queryset.annotate(
-        unit_state=Coalesce(Subquery(history.values('state')[:1]), Value('UNKNOWN')),
-        unit_state_date=Subquery(history.values('effective_date')[:1]),
-        unit_state_shift=Subquery(history.values('shift')[:1]),
+        transport_camp_name=Subquery(stays.values('camp__name')[:1]),
+        _transport_condition=Subquery(technical.values('condition')[:1]),
+        _transport_condition_date=Subquery(technical.values('date')[:1]),
+        _transport_disposal_date=Subquery(disposal.values('date')[:1]),
+    ).annotate(
+        unit_state=Case(When(_transport_disposal_date__isnull=False,then=Value('WRITTEN_OFF')),default=Coalesce('_transport_condition',Subquery(history.values('state')[:1]),Value('UNKNOWN')),output_field=CharField()),
+        unit_state_date=Coalesce('_transport_disposal_date','_transport_condition_date',Subquery(history.values('effective_date')[:1])),
+        unit_state_shift=Case(When(_transport_condition__isnull=False,then=Value(None)),When(_transport_disposal_date__isnull=False,then=Value(None)),default=Subquery(history.values('shift')[:1])),
         planning_type_name=Coalesce('type__parent__name', 'type__name'),
         group_name=Coalesce('type__category__name', 'type__parent__category__name', Value('Без группы')),
     ).annotate(unit_state_label=Case(*[When(unit_state=code, then=Value(label)) for code, label in STATES],
@@ -95,5 +104,5 @@ def present_unit(unit):
     unit.model_reference = unit.type if unit.type.parent_id else None
     unit.display_model = unit.brand_model or (unit.type.brand_model or unit.type.name if unit.type.parent_id else unit.name)
     unit.identifier = unit.plate_number or unit.inventory_number or unit.vin or 'Номер не указан'
-    unit.state_colour = {'WORKING': 'success', 'IDLE': 'warning', 'REPAIR': 'danger'}.get(unit.unit_state, 'secondary')
+    unit.state_colour = {'READY':'success','SCRAP':'warning','WRITTEN_OFF':'secondary','WORKING': 'success', 'IDLE': 'warning', 'REPAIR': 'danger'}.get(unit.unit_state, 'secondary')
     return unit

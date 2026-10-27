@@ -85,7 +85,7 @@ class ProductionEntryTests(TestCase):
         self.assertEqual(EmployeeActivity.objects.filter(employee=self.employee,date=self.day).count(),1)
         self.assertEqual(DailyFact.objects.get(project_work=third,date=previous).actual_quantity,9)
         other=self.payload('SECOND','works')
-        self.assertFalse(any(str(value)==str(third.pk) for name,value in other.items() if name.endswith('-project_work')))
+        self.assertTrue(any(str(value)==str(third.pk) for name,value in other.items() if name.endswith('-project_work')))
 
     def test_constant_personnel_reuses_previous_day_and_needs_no_job(self):
         EmployeeActivity.objects.create(company=self.company,construction_object=self.obj,date=self.day-timedelta(days=1),employee=self.cook,
@@ -168,7 +168,7 @@ class ProductionEntryTests(TestCase):
         response,details=self.post('SECOND',second);self.assertEqual(response.status_code,302,details)
         self.assertFalse(WorkFactClaim.objects.filter(work=self.work).exists())
         self.assertEqual(DailyFact.objects.get().reported_by,self.second)
-        self.assertEqual(self.claim('DISPATCHER',one).status_code,409)
+        self.assertEqual(self.claim('DISPATCHER',one).status_code,200)
 
     def test_presence_draft_can_be_saved_before_links_and_confirmation_requires_review(self):
         data=self.payload('DISPATCHER','works')
@@ -195,7 +195,7 @@ class ProductionEntryTests(TestCase):
         response,details=self.post('DISPATCHER',data);self.assertEqual(response.status_code,302,details)
         from .dispatch_models import EmployeeFactClaim
         self.assertFalse(EmployeeFactClaim.objects.exists())
-        self.assertEqual(self.claim('SECOND',two,key).status_code,409)
+        self.assertEqual(self.claim('SECOND',two,key).status_code,200)
 
     def test_employee_reservation_is_global_across_objects_but_per_shift(self):
         from apps.projects.models import ConstructionObject

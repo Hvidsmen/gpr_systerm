@@ -34,6 +34,15 @@ def public_claim(row,user,session):
         'expires_at':row.expires_at.isoformat()}
 
 
+def can_edit_person(user, activity):
+    role=role_code(user)
+    if role in {'ADMIN','ALL_FACT_DISPATCHER'}:return True
+    from .production_entry import is_general_employee
+    author_role=role_code(activity.reported_by) if activity.reported_by_id else None
+    direction='labor' if author_role=='PERSONNEL_DISPATCHER' or is_general_employee(activity.employee) else 'works'
+    return role=={'works':'DISPATCHER','labor':'PERSONNEL_DISPATCHER'}[direction]
+
+
 def status_rows(user,obj,day,session):
     now=timezone.now()
     values={work_key(row.work_id,row.work_item_id):public_claim(row,user,session) for row in
@@ -41,15 +50,14 @@ def status_rows(user,obj,day,session):
     for fact in DailyFact.objects.filter(company=obj.company,project_work__section__construction_object=obj,date=day).select_related('reported_by'):
         key=work_key(fact.project_work_id,fact.work_item_id)
         if key not in values:
-            own=fact.reported_by_id in {None,user.pk}
-            values[key]={'key':key,'state':'saved','owner':owner_name(fact.reported_by) if fact.reported_by_id else 'Общий ввод',
-                'own':own or role_code(user)!='DISPATCHER','mine':False}
+                        values[key]={'key':key,'state':'saved','owner':owner_name(fact.reported_by) if fact.reported_by_id else 'Общий ввод',
+                'own':True,'mine':False}
     for row in EmployeeFactClaim.objects.filter(company=obj.company,date=day,expires_at__gt=now).select_related('dispatcher'):
         values[f'employee:{row.employee_id}:{row.shift}']=public_claim(row,user,session)
     for row in EmployeeActivity.objects.filter(company=obj.company,date=day).select_related('reported_by'):
         key=f'employee:{row.employee_id}:{row.shift}'
         if key not in values:
-            own=row.construction_object_id==obj.pk and (row.reported_by_id in {None,user.pk} or role_code(user) in {'ADMIN','ALL_FACT_DISPATCHER'})
+            own=row.construction_object_id==obj.pk and can_edit_person(user,row)
             values[key]={'key':key,'state':'saved','owner':owner_name(row.reported_by) if row.reported_by_id else 'Общий ввод','own':own,'mine':False,'other_object':row.construction_object_id!=obj.pk}
     return list(values.values())
 
@@ -71,6 +79,9 @@ def check_form_claims(user,obj,day,groups):
                 if not form.cleaned_data or not form.has_changed():continue
                 employee=form.cleaned_data.get('employee');shift=form.cleaned_data.get('shift')
                 if not employee:continue
+                if form.instance.pk:
+                    saved_person=EmployeeActivity.objects.select_related('employee__position__planning_mapping__brigade__group','reported_by__role').get(pk=form.instance.pk,company=obj.company)
+                    if not can_edit_person(user,saved_person):raise ValidationError('Это запись другого направления. Она доступна только для просмотра.')
                 # Lock employee before inspecting a reservation, including across objects.
                 Employee.objects.select_for_update().get(pk=employee.pk,company=obj.company)
                 if getattr(form,'production_entry',False) and not form.cleaned_data.get('DELETE'):
@@ -120,6 +131,10 @@ def claims(request):
             from .production_entry import report_data
             return JsonResponse({'claims':status_rows(request.user,obj,day,session),'report':report_data(obj,day)})
         action=data.get('action')
+        if action not in {'release','release_session'}:
+            from core.fact_edit_window import require_fact_day
+            try:require_fact_day(request.user,day)
+            except ValidationError as exc:return JsonResponse({'error':'; '.join(exc.messages)},status=403)
         if action=='release_session':
             release_session(request.user,obj,day,session)
             return JsonResponse({'released':True})
@@ -136,6 +151,10 @@ def claims(request):
         with transaction.atomic():
             type(obj).objects.filter(pk=obj.pk,company=obj.company).update(name=F('name'))
             row=WorkFactClaim.objects.select_for_update().filter(company=obj.company,construction_object=obj,date=day,work=work,work_item_id=item_id).first()
+            if action!='release':
+                from core.fact_edit_window import require_fact_day
+                try:require_fact_day(request.user,day)
+                except ValidationError as exc:return JsonResponse({'error':'; '.join(exc.messages)},status=403)
             now=timezone.now()
             mine=bool(row and row.dispatcher_id==request.user.pk and row.session_key==session)
             if action=='release':
@@ -144,8 +163,6 @@ def claims(request):
             if row and row.expires_at>now and not mine:
                 return JsonResponse({'error':f'Работу уже взял {owner_name(row.dispatcher)}.','claim':public_claim(row,request.user,session)},status=409)
             fact=DailyFact.objects.filter(company=obj.company,project_work=work,work_item_id=item_id,date=day).select_related('reported_by').first()
-            if fact and fact.reported_by_id not in {None,request.user.pk} and role_code(request.user)=='DISPATCHER':
-                return JsonResponse({'error':f'Факт этой работы уже внёс {owner_name(fact.reported_by)}. Он доступен вам для просмотра.'},status=409)
             if action=='renew' and (not mine or row.expires_at<=now):
                 return JsonResponse({'error':'Резерв истёк. Нажмите «Взять в работу» снова.'},status=409)
             if row is None:row=WorkFactClaim(company=obj.company,construction_object=obj,date=day,work=work,work_item_id=item_id)
@@ -169,8 +186,11 @@ def employee_claim(user,obj,day,session,action,parts):
             return JsonResponse({'released':mine})
         if row and row.expires_at>now and not mine:
             return JsonResponse({'error':f'Сотрудника уже взял {owner_name(row.dispatcher)}.','claim':public_claim(row,user,session)},status=409)
+        from core.fact_edit_window import require_fact_day
+        try:require_fact_day(user,day)
+        except ValidationError as exc:return JsonResponse({'error':'; '.join(exc.messages)},status=403)
         saved=EmployeeActivity.objects.filter(company=obj.company,date=day,employee=employee,shift=shift).first()
-        if saved and (saved.construction_object_id!=obj.pk or saved.reported_by_id not in {None,user.pk} and role_code(user) not in {'ADMIN','ALL_FACT_DISPATCHER'}):
+        if saved and (saved.construction_object_id!=obj.pk or not can_edit_person(user,saved)):
             return JsonResponse({'error':'Этот сотрудник за эту смену уже учтён другим диспетчером или на другом объекте.'},status=409)
         if role_code(user)!='PERSONNEL_DISPATCHER' and not saved:
             from apps.personnel.housing import require_available

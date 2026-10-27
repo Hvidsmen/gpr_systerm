@@ -1,0 +1,35 @@
+const {chromium}=require('playwright');
+const fs=require('fs');
+const assert=require('assert');
+const c=JSON.parse(process.env.TRANSPORT_CONFIG);
+(async()=>{
+ const browser=await chromium.launch({executablePath:c.chromium,headless:true,args:['--no-sandbox']});
+ const context=await browser.newContext({viewport:{width:1500,height:1000}}),other=await browser.newContext({viewport:{width:1500,height:1000}});
+ await context.addCookies([{name:'sessionid',value:c.cookie,url:c.base}]);await other.addCookies([{name:'sessionid',value:c.second_cookie,url:c.base}]);
+ const errors=[];
+ for(const ctx of [context,other])await ctx.route('**/*',route=>{const url=route.request().url();if(url.startsWith(c.base))return route.continue();if(/bootstrap.*\.css/.test(url))return route.fulfill({contentType:'text/css',body:fs.readFileSync('/tmp/catalogue-bootstrap.css','utf8')});return route.abort();});
+ const page=await context.newPage(),colleague=await other.newPage();page.on('pageerror',e=>errors.push(e.message));colleague.on('pageerror',e=>errors.push(e.message));
+ const plus=n=>new Date(Date.parse(c.day)+n*86400000).toISOString().slice(0,10);
+ const url=(day=c.day,camp=c.camp,tab='day')=>c.base+c.board+`?camp=${camp}&date=${day}&tab=${tab}`;
+ const dialog=page.locator('[data-action-dialog]');
+ async function save(){await Promise.all([page.waitForNavigation(),dialog.getByRole('button',{name:'Сохранить',exact:true}).click()]);assert(!await page.locator('.errorlist').count(),(await page.locator('body').textContent()).slice(-2000));}
+ await page.goto(url());await page.getByRole('button',{name:'Приезд техники',exact:true}).click();await dialog.locator('[name=equipment]').selectOption([String(c.machine),String(c.second)]);await dialog.locator('[name=comment]').fill('Заезд по факту');await save();
+ assert.strictEqual(await page.locator('[data-transport-row]').count(),2);
+ await colleague.goto(url());await page.locator(`[data-edit-machine="${c.machine}"]`).click();await colleague.locator(`[data-edit-machine="${c.machine}"]`).click();await colleague.locator('[data-transport-error]').waitFor({state:'visible'});assert((await colleague.locator('[data-transport-error]').textContent()).includes('редактирует'));
+ await dialog.getByRole('button',{name:'Отмена',exact:true}).click();await page.waitForTimeout(200);
+ await page.locator(`[data-edit-machine="${c.machine}"]`).click();await dialog.locator('[name=target]').selectOption(`work:${c.work}:0`);await save();
+ await page.locator(`[data-select-machine][value="${c.second}"]`).check();await page.getByRole('button',{name:'Состояние',exact:true}).click();await dialog.locator('[name=condition]').selectOption('REPAIR');await save();
+ assert((await page.locator(`[data-transport-row="${c.second}"]`).textContent()).includes('В ремонте'));
+ await page.screenshot({path:'/tmp/transport-day-wide.png',fullPage:true,animations:'disabled'});
+ await page.setViewportSize({width:390,height:844});await page.screenshot({path:'/tmp/transport-day-mobile.png',fullPage:true,animations:'disabled'});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2));await page.setViewportSize({width:1500,height:1000});
+ const download=page.waitForEvent('download');await page.getByRole('link',{name:'Выгрузить Excel',exact:true}).click();assert((await download).suggestedFilename().endsWith('.xlsx'));
+ await page.goto(url(plus(1)));assert((await page.locator(`[data-transport-row="${c.machine}"]`).textContent()).includes('Не заполнено'));
+ await page.locator(`[data-edit-machine="${c.machine}"]`).click();await dialog.locator('[name=repeat]').check();await save();assert((await page.locator(`[data-transport-row="${c.machine}"]`).textContent()).includes('Work'));
+ await page.goto(url(plus(1)));await page.locator(`[data-select-machine][value="${c.second}"]`).check();await page.getByRole('button',{name:'Перевести',exact:true}).click();await dialog.locator('[name=target_camp]').selectOption(String(c.target));await save();assert.strictEqual(await page.locator('[data-transport-row]').count(),1);
+ await page.goto(url(plus(1),c.target));assert.strictEqual(await page.locator('[data-transport-row]').count(),1);
+ await page.goto(url(plus(1),c.camp,'calendar'));await page.screenshot({path:'/tmp/transport-calendar.png',fullPage:true,animations:'disabled'});assert.strictEqual(await page.locator('.transport-calendar tbody tr').count(),2);
+ await page.goto(url(plus(1),c.camp,'events'));assert((await page.locator('body').textContent()).includes('Перевод'));
+ await page.getByRole('link',{name:/123.*Crane 123/}).first().click();assert((await page.locator('body').textContent()).includes('Работа по дням'));
+ await page.goto(url(plus(-1)));assert((await page.locator('[data-fact-window]').textContent()).includes('закрыты'));assert.strictEqual(await page.locator('[data-transport-action]').count(),0);
+ assert.deepStrictEqual(errors,[]);await browser.close();console.log('PASS: transport arrivals, daily use and repeated work target, repair, live editing reservation, transfer, calendar, history, Excel and responsive roster');
+})().catch(e=>{console.error(e);process.exit(1)});

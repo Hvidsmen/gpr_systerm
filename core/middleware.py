@@ -12,7 +12,9 @@ class CompanyAccessMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
-        return self.get_response(request)
+        from .fact_history import history_actor
+        with history_actor(request.user):
+            return self.get_response(request)
 
     def process_view(self, request, view_func, view_args, view_kwargs):
         match = request.resolver_match

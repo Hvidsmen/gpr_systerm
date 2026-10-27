@@ -148,7 +148,7 @@ def import_excel(request):
                 messages.error(request,'Предпросмотр устарел. Выберите файл заново и подтвердите загрузку.')
             else:
                 try:
-                    board,created=importer.apply(request.user.company,pending['name'],pending['data'])
+                    board,created=importer.apply(request.user.company,pending['name'],pending['data'],user=request.user)
                     request.session.pop('personnel_import',None)
                     messages.success(request,'Данные загружены.' if created else 'Этот файл уже загружен. Открыта существующая таблица.')
                     return redirect('personnel:board_detail',pk=board.pk)

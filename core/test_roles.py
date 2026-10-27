@@ -1,9 +1,10 @@
-from datetime import date
+from datetime import date,timedelta
 from types import SimpleNamespace
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.test import TestCase
 from django.db import transaction
 from django.urls import reverse
+from django.utils import timezone
 from apps.accounts.models import Company, Role, User
 from apps.projects.models import Project, ConstructionObject, Section
 from apps.works.models import ProjectWork
@@ -21,7 +22,7 @@ class RoleAccessTests(TestCase):
         cls.users = {code: User.objects.create_user(username=code.lower(), company=cls.company, role=Role.objects.get(code=code))
                      for code in ('ADMIN', 'PLANNER', 'MANAGER', 'FOREMAN')}
         cls.no_role = User.objects.create_user(username='no-role', company=cls.company)
-        cls.day = date(2026, 10, 6)
+        cls.day = timezone.localdate()-timedelta(days=1)
         project = Project.objects.create(company=cls.company, name='Project', code='p')
         cls.objects = [ConstructionObject.objects.create(company=cls.company, project=project, name='Object ' + str(i), code=str(i)) for i in range(2)]
         cls.users['FOREMAN'].assigned_objects.add(cls.objects[0])

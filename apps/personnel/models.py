@@ -1,3 +1,4 @@
+from core.fact_history import ActualHistoryMixin
 from django.conf import settings
 from django.db import models
 from django.core.exceptions import ValidationError
@@ -116,7 +117,7 @@ class CampObjectLink(PersonnelModel):
             raise ValidationError('Связь ВЖГ и объекта другой компании.')
 
 
-class CampStay(PersonnelModel):
+class CampStay(ActualHistoryMixin, PersonnelModel):
     person = models.ForeignKey(Person,on_delete=models.PROTECT,related_name='stays')
     camp = models.ForeignKey(Camp,on_delete=models.PROTECT,related_name='stays')
     arrived_on = models.DateField('Фактический заезд')
@@ -142,7 +143,7 @@ class CampStay(PersonnelModel):
     def __str__(self):return f'{self.person} · {self.camp} · {self.arrived_on}'
 
 
-class HousingEvent(PersonnelModel):
+class HousingEvent(ActualHistoryMixin, PersonnelModel):
     KINDS=[('ARRIVAL','Заезд'),('DEPARTURE','Выезд'),('TRANSFER','Перевод'),('CANCEL','Отмена записи')]
     person=models.ForeignKey(Person,on_delete=models.PROTECT,related_name='housing_events')
     date=models.DateField()

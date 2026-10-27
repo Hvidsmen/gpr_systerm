@@ -1,6 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}Назначения и состояния техники{% endblock %}
 {% block content %}
+{% if fact_window_message %}<div class="alert alert-info" data-fact-window>{{ fact_window_message }}</div>{% endif %}
 <h1>Назначения и состояния техники</h1>
 <p class="text-muted">Назначьте машину один раз на период и смену. Изменения состояния действуют с указанной даты и смены, а дневной факт подтверждается отдельно.</p>
 <form method="get" class="card card-body mb-3">{% include 'forms/fields.html' with form=selector %}<button class="btn btn-primary">Показать</button></form>

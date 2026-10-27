@@ -372,3 +372,14 @@ urlpatterns += [
         allowed_kinds=('labor_plan', 'equipment_plan', 'fuel_plan')),
         name='journal_plan_bulk_delete'),
 ]
+
+from . import transport_views
+urlpatterns += [
+    path('transport/', transport_views.board, name='transport_board'),
+    path('transport/claims/', transport_views.claims, name='transport_claims'),
+    path('transport/create/', transport_views.create_machine, name='transport_create'),
+    path('transport/<int:pk>/history/', transport_views.history, name='transport_history'),
+]
+
+from .history_views import history as fact_history
+urlpatterns += [path('fact-history/',fact_history,name='fact_history')]

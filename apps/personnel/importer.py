@@ -94,7 +94,7 @@ def valid_code(value):
 
 
 @transaction.atomic
-def apply(company, name, data):
+def apply(company, name, data, *, user=None):
     # Serialize same-company imports; the same workbook is never duplicated.
     from apps.accounts.models import Company
     Company.objects.select_for_update().get(pk=company.pk)
@@ -117,5 +117,5 @@ def apply(company, name, data):
             if matches and row['employee_number'] and person.full_name != row['name']: raise ValidationError(f"Строка {row['row']}: табельный номер уже принадлежит другому сотруднику.")
         StaffingSlot.objects.create(company=company,group=groups[row['group']],person=person,camp=row['camp'],status=row['status'],arrival_date=row['arrival'],departure_date=row['departure'],pattern=patterns.get((row['kind'],row['pattern'])),comment=row['comment'],source_row=row['row'])
     from .housing import bootstrap_legacy
-    bootstrap_legacy(company,StaffingSlot.objects.filter(group__board=board))
+    bootstrap_legacy(company,StaffingSlot.objects.filter(group__board=board),user=user)
     return board,True

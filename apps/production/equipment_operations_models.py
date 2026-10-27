@@ -1,4 +1,6 @@
 """Effective assignments and physical state history, separate from daily facts."""
+
+from core.fact_history import ActualHistoryMixin
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -6,7 +8,7 @@ from django.db.models import Q, F
 from core.models import BaseCompanyModel
 
 
-class EquipmentAssignment(BaseCompanyModel):
+class EquipmentAssignment(ActualHistoryMixin, BaseCompanyModel):
     equipment = models.ForeignKey('resources.Equipment', on_delete=models.PROTECT, related_name='standing_assignments', verbose_name='Техника')
     construction_object = models.ForeignKey('projects.ConstructionObject', on_delete=models.PROTECT, verbose_name='Объект')
     start_date = models.DateField('С какого дня')
@@ -58,7 +60,7 @@ class EquipmentAssignment(BaseCompanyModel):
                 raise ValidationError('У техники уже есть назначение на этот период и смену. Сначала завершите прежнее назначение.')
 
 
-class EquipmentStateChange(BaseCompanyModel):
+class EquipmentStateChange(ActualHistoryMixin, BaseCompanyModel):
     STATES = [('WORKING', 'Работает'), ('IDLE', 'Исправна, не задействована'), ('REPAIR', 'В ремонте')]
     equipment = models.ForeignKey('resources.Equipment', on_delete=models.PROTECT, related_name='state_history')
     assignment = models.ForeignKey(EquipmentAssignment, on_delete=models.PROTECT, related_name='state_changes')

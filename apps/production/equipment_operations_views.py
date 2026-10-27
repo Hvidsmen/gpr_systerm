@@ -14,6 +14,7 @@ from apps.works.models import ProjectWork, ProjectWorkItem
 from .forms import ObjectDateForm
 from .models import EquipmentAssignment, EquipmentStateChange
 from . import equipment_operations as operations
+from core.fact_edit_window import window_context
 
 DATE_WIDGET = forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date', 'class': 'form-control'})
 
@@ -88,6 +89,8 @@ def assignments(request):
     if not selector.is_bound or not selector.is_valid():
         return render(request, 'production/equipment_assignments.html', context, status=400 if request.method == 'POST' else 200)
     obj, day = selector.cleaned_data['construction_object'], selector.cleaned_data['date']
+    context.update(window_context(request.user,day))
+    context['editable']=context['editable'] and context['fact_day_editable']
     action = request.POST.get('action') if request.method == 'POST' else None
     target = None
     if action and action != 'create':
