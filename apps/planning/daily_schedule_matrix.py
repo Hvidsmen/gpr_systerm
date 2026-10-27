@@ -14,7 +14,7 @@ def matrix(schedule,entries):
     days=[start+timedelta(days=i) for i in range(end.day)]
     works={w.pk:w for w in ProjectWork.objects.filter(company_id=schedule.company_id,pk__in=[e.metadata.get('id') for e in entries if e.kind=='work']).select_related('section','complex_object')}
     brigades={b.pk:b for b in Brigade.objects.filter(company_id=schedule.company_id).select_related('group','macro_group')}
-    equipment={e.pk:e for e in EquipmentType.objects.filter(company_id=schedule.company_id).select_related('category','parent')}
+    equipment={e.pk:e for e in EquipmentType.objects.filter(company_id=schedule.company_id).select_related('category','parent__category')}
     grouped={kind:defaultdict(list) for kind in service.FIELDS};totals={kind:{} for kind in service.FIELDS}
     from .resource_catalogue_links import catalogue_links
     catalogue=catalogue_links(schedule.company)

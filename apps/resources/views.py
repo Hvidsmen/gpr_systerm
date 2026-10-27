@@ -156,7 +156,7 @@ class EquipmentTypeListView(CatalogFilterMixin, CompanyRequiredMixin, ListView):
     def get_queryset(self):
         return self.filter_queryset(EquipmentType.objects.filter(
             company=self.get_company(), merge_source__isnull=True
-        ).select_related('category','parent').prefetch_related('crew_positions__position','model_variants').order_by(*(['category__name','category_id','name','pk'] if self.request.GET.get('view','groups') == 'groups' else ['name','pk'])))
+        ).select_related('category','parent__category').prefetch_related('crew_positions__position','model_variants').order_by(*(['category__name','category_id','name','pk'] if self.request.GET.get('view','groups') == 'groups' else ['name','pk'])))
 
     def get_paginate_by(self, queryset):
         return None if self.request.GET.get('view','groups') == 'groups' else 20
@@ -168,11 +168,12 @@ class EquipmentTypeListView(CatalogFilterMixin, CompanyRequiredMixin, ListView):
             rows=list(context['equipment_types'])
             root_ids={row.parent_id or row.pk for row in rows}
             roots={row.pk:row for row in EquipmentType.objects.filter(company=self.get_company(),pk__in=root_ids,merge_source__isnull=True).select_related('category').prefetch_related('crew_positions__position').order_by('name','pk')}
-            matched={row.pk for row in rows}
-            nodes={pk:{'root':root,'children':[],'root_matches':pk in matched} for pk,root in roots.items()}
-            for row in rows:
-                if row.parent_id in nodes:nodes[row.parent_id]['children'].append(row)
-            context['equipment_hierarchy']=list(nodes.values())
+            from .equipment_catalogue import hierarchy
+            context['equipment_category_groups']=hierarchy(rows,roots,self.get_company())
+            context['equipment_hierarchy']=[node for group in context['equipment_category_groups'] for node in group['nodes']]
+        filtered=self.object_list
+        context['equipment_type_count']=filtered.filter(parent__isnull=True).count()
+        context['equipment_model_count']=filtered.filter(parent__isnull=False).count()
         for mode in ['groups','table']:
             params = self.request.GET.copy()
             params.pop('page',None)

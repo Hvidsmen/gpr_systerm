@@ -120,7 +120,7 @@ class DailyScheduleDetail(View):
         if request.POST.get('action')=='remove_entry':
             from .plan_workbench import remove_smg_entry
             try:
-                remove_smg_entry(request.user,schedule,int(request.POST.get('entry_id','')),int(request.POST.get('revision','')))
+                remove_smg_entry(request.user,schedule,int(request.POST.get('entry_id','')),int(request.POST.get('revision','')),removal_actions=request.POST.get('crew_removal_actions'))
                 messages.success(request,'Строка удалена из СМГ. Справочник сохранён.')
             except (ValueError,TypeError,DailyScheduleEntry.DoesNotExist):messages.error(request,'Строка недоступна. Обновите страницу.')
             except ValidationError as exc:messages.error(request,'; '.join(exc.messages))

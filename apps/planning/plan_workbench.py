@@ -82,7 +82,7 @@ def month_matrix(version,month,work_forms,resource_forms):
     catalogue=catalogue_links(version.company)
     from apps.resources.models import EquipmentType
     from .resource_group_totals import equipment_group,group_label,attach_resource_totals
-    equipment={e.pk:e for e in EquipmentType.objects.filter(company=version.company).select_related('parent')}
+    equipment={e.pk:e for e in EquipmentType.objects.filter(company=version.company).select_related('category','parent__category')}
     brigades={b.pk:b for b in Brigade.objects.filter(company=version.company).select_related('group')}
     def labor_group(brigade_id):
         b=brigades.get(brigade_id)
@@ -181,7 +181,7 @@ def add_month_resource(user,version,month,data):
 
 
 @transaction.atomic
-def remove_smg_entry(user,schedule,entry_id,revision):
+def remove_smg_entry(user,schedule,entry_id,revision,*,removal_actions=None):
     from .daily_schedule_table import locked
     from .preparation import require_resource_input
     schedule=locked(user,schedule)
@@ -196,11 +196,13 @@ def remove_smg_entry(user,schedule,entry_id,revision):
         work=entry.metadata.get('id')
         if any(w==work for a in schedule.resource_assignments.all() for w,i in identities(a)) or schedule.entries.filter(graph_links__work_id=work).exists():
             raise ValidationError('Сначала снимите связи этой работы с ресурсами в интерфейсе связей.')
+    if entry.kind=='labor':
+        from .crew_removal import daily
+        first=next(iter(entry.rows or entry.original),{})
+        daily(user,schedule,first.get('brigade_id'),removal_actions)
     from apps.audit.models import AuditLog
     AuditLog.objects.create(user=user,action='DELETE',entity_type='planning.dailyscheduleentry',entity_id=str(entry.pk),old_value={'label':entry.label,'kind':entry.kind},comment='Удалена строка черновика СМГ')
-    if entry.kind=='labor' and any(int(v) for v in entry.metadata.get('table_crew_counts',{}).values()):
-        raise ValidationError('Должность входит в экипаж техники. Сначала удалите технику или измените её экипаж.')
-    equipment=entry.kind=='equipment'
+    equipment=entry.kind in {'equipment','labor'}
     entry.delete()
     if equipment:
         from .table_resource_crew import sync_daily

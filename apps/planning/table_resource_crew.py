@@ -50,10 +50,14 @@ def daily_crew_input(entry):
 
 
 @transaction.atomic
-def sync_monthly(user,version,month,*,edited_counts=None,removed_brigades=()):
+def sync_monthly(user,version,month,*,edited_counts=None,removed_brigades=(),removal_actions=None):
     if version.company_id!=user.company_id:raise PermissionDenied
     edited_counts=edited_counts or {}
     rows=list(version.resource_allocations.select_for_update().filter(company=user.company,month=month).select_related('equipment_type','brigade'))
+    if removed_brigades:
+        from .crew_removal import monthly
+        monthly(user,rows,removed_brigades,removal_actions)
+        rows=list(version.resource_allocations.filter(company=user.company,month=month).select_related('equipment_type','brigade'))
     labor={r.brigade_id:r for r in rows if r.kind=='labor'}
     wanted=defaultdict(int);members={};created=0
     for source in rows:
@@ -66,7 +70,6 @@ def sync_monthly(user,version,month,*,edited_counts=None,removed_brigades=()):
             wanted[member['brigade_id']]+=source.count*member['count']
     valid=set(Brigade.objects.filter(company=user.company,pk__in=members).values_list('pk',flat=True))
     if valid!=set(members):raise ValidationError('Должность экипажа недоступна в компании. Проверьте состав техники.')
-    if set(removed_brigades)&set(members):raise ValidationError('Должность входит в экипаж техники. Сначала удалите технику или измените её экипаж.')
     for brigade_id,member in members.items():
         if brigade_id not in labor:
             row=ResourceMonthAllocation.objects.create(company=user.company,version=version,month=month,kind='labor',brigade_id=brigade_id,rate=member['rate'])

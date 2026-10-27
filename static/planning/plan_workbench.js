@@ -27,7 +27,7 @@
   matrix.querySelectorAll('[data-smg-section]').forEach(section=>{
    let matches=0;
    section.querySelectorAll('[data-plan-entry]').forEach(entry=>{
-    const deleted=!daily&&source(entry,'DELETE')?.checked;
+    const deleted=entry.dataset.crewRemoval==='true'||!daily&&source(entry,'DELETE')?.checked;
     const type=section.dataset.smgSection,chosen=name=>filters[name]?.values()||[],matchFilter=(name,value)=>!chosen(name).length||chosen(name).includes(value);
     const group=entry.closest('[data-smg-group]')?.querySelector('summary').textContent||'';
     const extra=type==='work'?matchFilter('section',entry.dataset.sectionKey)&&matchFilter('object',entry.dataset.objectKey||group)&&matchFilter('package',entry.dataset.package)&&(!chosen('work').length||chosen('work').some(v=>v.split('|')[0]===entry.dataset.entryId)):matchFilter(type,entry.dataset.label);
@@ -133,12 +133,57 @@
   }catch(error){message(error.message);}
  });
  // A single delete gesture; GPR marks the formset row, SMG uses a reviewed POST.
- const remove=root.querySelector('[data-plan-delete-dialog]');let deleteEntry=null;
+ const remove=root.querySelector('[data-plan-delete-dialog]');let deleteEntry=null,deleteMachines=[];
+ const removalField=remove.querySelector('[name=crew_removal_actions]');
+ let removalDecisions={};try{
+  const parsed=JSON.parse(removalField.value||'{}');
+  if(parsed&&typeof parsed==='object'&&!Array.isArray(parsed))removalDecisions=Object.fromEntries(Object.entries(parsed).filter(([pk,a])=>/^\d+$/.test(pk)&&a&&['detach','remove_equipment'].includes(a.mode)&&a.equipment&&typeof a.equipment==='object'));
+ }catch{}
+ let nativeRemovalField=null;
+ if(!daily){nativeRemovalField=removalField.cloneNode();native.append(nativeRemovalField);}
+ function machineId(entry){return daily?entry.dataset.entryId:source(entry,'id')?.value;}
+ function activeMachines(brigade){
+  return [...matrix.querySelectorAll('[data-smg-section=equipment] [data-plan-entry]')].filter(gear=>
+   gear.dataset.crewRemoval!=='true'&&!(source(gear,'DELETE')?.checked)&&machineId(gear)&&
+   JSON.parse(gear.dataset.crewRecipe||'[]').some(member=>String(member.brigade_id)===String(brigade)));
+ }
+ function presentRemoval(brigade,action){
+  for(const gear of activeMachines(brigade)){
+   if(action.mode==='remove_equipment')gear.dataset.crewRemoval='true';
+   else gear.dataset.crewRecipe=JSON.stringify(JSON.parse(gear.dataset.crewRecipe||'[]').filter(member=>String(member.brigade_id)!==String(brigade)));
+  }
+ }
+ if(!daily)for(const [brigade,action] of Object.entries(removalDecisions).sort((a,b)=>(a[1].order||0)-(b[1].order||0)))presentRemoval(brigade,action);
  root.querySelectorAll('[data-plan-delete]').forEach(button=>button.addEventListener('click',()=>{
   if(daily&&!canLeave())return;deleteEntry=button.closest('[data-plan-entry]');remove.querySelector('[data-plan-delete-name]').textContent=deleteEntry.dataset.label;
+  const labor=deleteEntry.closest('[data-smg-section]').dataset.smgSection==='labor';
+  deleteMachines=labor?activeMachines(deleteEntry.dataset.brigadeId):[];
+  remove.querySelector('[data-plan-delete-crew]').hidden=!deleteMachines.length;
+  remove.querySelector('[data-plan-confirm-delete]').hidden=Boolean(deleteMachines.length);
+  remove.querySelectorAll('[data-plan-delete-mode]').forEach(button=>button.hidden=!deleteMachines.length);
+  remove.querySelector('[data-plan-delete-machines]').replaceChildren(...deleteMachines.map(gear=>{const li=document.createElement('li');li.textContent=gear.dataset.label;return li;}));
   remove.querySelector('[name=entry_id]').value=deleteEntry.dataset.entryId;remove.querySelector('[name=revision]').value=deleteEntry.dataset.revision;remove.showModal();
  }));
- if(!daily)remove.querySelector('form').addEventListener('submit',event=>{event.preventDefault();const row=source(deleteEntry,'DELETE')?.closest('.allocation-row');row?.querySelector('[data-remove-row]').click();deleteEntry.hidden=true;remove.close();filter();message('Строка исключена из плана. Нажмите «Сохранить».');});
+ remove.querySelector('form').addEventListener('submit',event=>{
+  const mode=event.submitter?.dataset.planDeleteMode;
+  if(deleteMachines.length&&!mode){event.preventDefault();return;}
+  if(mode){
+   const equipment=Object.fromEntries(deleteMachines.map(gear=>[machineId(gear),daily?gear.dataset.revision:'']));
+   removalDecisions[deleteEntry.dataset.brigadeId]={mode,equipment,order:Object.keys(removalDecisions).length};
+   removalField.value=JSON.stringify(removalDecisions);
+  }
+  if(daily)return;
+  event.preventDefault();
+  if(deleteEntry.closest('[data-smg-section]').dataset.smgSection==='equipment'){
+   for(const action of Object.values(removalDecisions))delete action.equipment[machineId(deleteEntry)];
+   removalField.value=JSON.stringify(removalDecisions);
+  }
+  nativeRemovalField.value=removalField.value;
+  if(mode)presentRemoval(deleteEntry.dataset.brigadeId,removalDecisions[deleteEntry.dataset.brigadeId]);
+  const row=source(deleteEntry,'DELETE')?.closest('.allocation-row');row?.querySelector('[data-remove-row]').click();
+  deleteEntry.hidden=true;remove.close();syncTableCrew();filter();
+  message(mode==='remove_equipment'?'Должность и связанная техника исключены из плана. Нажмите «Сохранить».':mode==='detach'?'Должность исключена из плана, техника остаётся. Нажмите «Сохранить».':'Строка исключена из плана. Нажмите «Сохранить».');
+ });
  if(!daily){
   root.querySelectorAll('[data-plan-remove-item]').forEach(button=>button.addEventListener('click',()=>{
    const entry=button.closest('[data-plan-entry]'),row=button.closest('tr'),field=source(entry,'quantity',button.dataset.planRemoveItem);
@@ -245,7 +290,7 @@
   try{
    const totals=new Map();
    for(const gear of matrix.querySelectorAll('[data-smg-section=equipment] [data-plan-entry]')){
-    if(!daily&&source(gear,'DELETE')?.checked)continue;
+    if(gear.dataset.crewRemoval==='true'||!daily&&source(gear,'DELETE')?.checked)continue;
     const members=readJSON(gear,'crewRecipe',[]);if(!members.length)continue;
     const values=daily?readJSON(gear,'crewValues',{}):{month:gear.querySelector('[data-field=count]')?.value??gear.querySelector('[data-plan-month-value]')?.dataset.value??0};
     if(daily)gear.querySelectorAll('[data-field=planned_count]').forEach(input=>values[input.dataset.date]=input.value);
@@ -255,6 +300,7 @@
     }
    }
    for(const people of matrix.querySelectorAll('[data-smg-section=labor] [data-plan-entry][data-brigade-id]')){
+    if(!daily&&source(people,'DELETE')?.checked)continue;
     if(!people.dataset.brigadeId)continue;
     const cache=readJSON(people,'crewCounts',{});
     for(const input of people.querySelectorAll(daily?'[data-field=planned_count]':'[data-field=count]')){

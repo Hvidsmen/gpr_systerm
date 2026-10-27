@@ -11,6 +11,25 @@
 {% if plan_add_form %}<dialog class="plan-workbench-dialog" data-plan-add-dialog aria-labelledby="plan-add-title"><header class="d-flex justify-content-between align-items-center gap-2"><h2 class="h5" id="plan-add-title">Добавить ресурс</h2><button type="button" class="btn-close" aria-label="Закрыть" data-plan-close-dialog></button></header><form id="{% if plan_is_daily %}smg-add-entry{% else %}gpr-add-entry{% endif %}" method="post" action="{{ plan_add_url }}" class="mt-3">{% csrf_token %}{% if not plan_is_daily %}<input type="hidden" name="action" value="add_table_resource">{% endif %}{{ plan_add_form.non_field_errors }}{% for field in plan_add_form %}<div class="mb-3" data-add-field="{{ field.name }}" {% if field.is_hidden or field.name == 'kind' or field.name == 'selection' %}hidden{% endif %}>{% if field.is_hidden or field.name == 'kind' or field.name == 'selection' %}{{ field }}{% else %}{{ field.label_tag }}{{ field }}{{ field.errors }}{% endif %}</div>{% endfor %}<p class="small text-muted">Ресурс добавится с нулевыми значениями. Для техники также добавятся должности экипажа из справочника. Их численность рассчитывается от количества техники. В строке должности укажите общую численность, включая дополнительных людей. Заполните количество в таблице и сохраните план. Техника выбирается по виду, ГСМ относится к объекту.</p><div class="d-flex gap-2"><button class="btn btn-primary">Добавить в план</button><button class="btn btn-outline-secondary" type="button" data-plan-close-dialog>Отмена</button></div></form></dialog>{% endif %}
 <dialog class="plan-workbench-dialog" data-plan-excel-dialog aria-labelledby="plan-excel-title"><h2 class="h5" id="plan-excel-title">Работа с Excel</h2><p>«Копировать таблицу в Excel» переносит все строки по текущим фильтрам, включая свёрнутые группы. В Excel выберите первую ячейку и нажмите Ctrl+V.</p><p>Кнопка «Копировать значения» возле работы или ресурса копирует только числа выбранной строки — без названия и итогов.</p>{% if plan_is_daily %}<p>Для ввода скопируйте строку дневных значений из Excel, выберите первый день показателя в СМГ и нажмите Ctrl+V. Для строки с названием и итогами откроется предпросмотр диапазона. После вставки нажмите «Сохранить».</p>{% else %}<p>Для ввода одного месячного значения скопируйте число и вставьте в нужную ячейку. Для нескольких месяцев используйте Excel: импорт, экспорт и шаблон в меню «Ещё».</p>{% endif %}<button class="btn btn-outline-secondary" type="button" data-plan-close-dialog>Закрыть</button></dialog>
 {% if not plan_is_daily %}<dialog class="plan-workbench-dialog" data-plan-settings-dialog aria-labelledby="plan-settings-title"><h2 class="h5" id="plan-settings-title">Параметры работы</h2><p data-plan-settings-name></p><label class="form-label">Профиль распределения<select class="form-select" data-plan-settings-profile data-native-select></select></label><p class="small text-muted">Профиль распределяет месячный объём по дням при расчёте ГПР.</p><button type="button" class="btn btn-primary" data-plan-apply-settings>Применить</button> <button type="button" class="btn btn-outline-secondary" data-plan-close-dialog>Отмена</button></dialog>{% endif %}
-<dialog class="plan-workbench-dialog" data-plan-delete-dialog aria-labelledby="plan-delete-title"><h2 class="h5" id="plan-delete-title">Удалить строку из плана?</h2><p data-plan-delete-name></p><p class="small text-muted">Запись в справочнике сохранится.</p><form method="post" action="{{ plan_add_url }}">{% csrf_token %}<input type="hidden" name="action" value="remove_entry"><input type="hidden" name="entry_id"><input type="hidden" name="revision"><button class="btn btn-danger" data-plan-confirm-delete>Удалить из плана</button> <button class="btn btn-outline-secondary" type="button" data-plan-close-dialog>Отмена</button></form></dialog>
+<dialog class="plan-workbench-dialog" data-plan-delete-dialog aria-labelledby="plan-delete-title">
+  <h2 class="h5" id="plan-delete-title">Удалить строку из плана?</h2>
+  <p data-plan-delete-name></p>
+  <div data-plan-delete-crew hidden>
+    <p>Должность входит в экипаж техники. Как удалить её из текущего плана?</p>
+    <ul data-plan-delete-machines></ul>
+    <p class="small text-muted">Если оставить технику, связь с этой должностью снимется в текущем плане. При изменении количества техники должность снова не добавится.</p>
+  </div>
+  <p class="small text-muted">Записи и состав экипажей в справочнике сохранятся.</p>
+  <form method="post" action="{{ plan_add_url }}">{% csrf_token %}
+    <input type="hidden" name="action" value="remove_entry"><input type="hidden" name="entry_id"><input type="hidden" name="revision">
+    <input type="hidden" name="crew_removal_actions" value="{{ request.POST.crew_removal_actions|default:'{}' }}">
+    <div class="d-flex flex-wrap gap-2">
+      <button class="btn btn-danger" data-plan-confirm-delete>Удалить из плана</button>
+      <button class="btn btn-primary" data-plan-delete-mode="detach" hidden>Удалить должность, оставить технику</button>
+      <button class="btn btn-outline-danger" data-plan-delete-mode="remove_equipment" hidden>Удалить должность и технику</button>
+      <button class="btn btn-outline-secondary" type="button" data-plan-close-dialog>Отмена</button>
+    </div>
+  </form>
+</dialog>
 <script src="{% static 'planning/graph_multiselect.js' %}" defer></script>
-<script src="{% static 'planning/plan_workbench.js' %}?v=20261027-7" defer></script>
+<script src="{% static 'planning/plan_workbench.js' %}?v=20261027-8" defer></script>

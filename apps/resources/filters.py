@@ -25,6 +25,12 @@ class BrigadeFilterForm(CatalogFilterForm):
 class EquipmentFilterForm(CatalogFilterForm):
     parent = forms.ModelChoiceField(label='Вид техники', queryset=EquipmentType.objects.filter(parent__isnull=True,merge_source__isnull=True), required=False, empty_label='Все виды техники')
     category = forms.ModelChoiceField(label='Категория', queryset=EquipmentCategory.objects.all(), required=False, empty_label='Все категории')
+    is_active = forms.ChoiceField(label='Статус',required=False,choices=[('','Все статусы'),('True','Активные'),('False','Неактивные')])
+
+    def __init__(self,*args,**kwargs):
+        super().__init__(*args,**kwargs)
+        self.fields['name'].widget.attrs['placeholder']='Название вида или модели'
+        self.fields['is_active'].widget.attrs['class']='form-select form-select-sm'
 
 
 class CatalogFilterMixin:
@@ -47,6 +53,9 @@ class CatalogFilterMixin:
             elif key == 'parent':
                 from django.db.models import Q
                 queryset = queryset.filter(Q(pk=value.pk)|Q(parent=value))
+            elif key == 'category' and queryset.model is EquipmentType:
+                from django.db.models import Q
+                queryset = queryset.filter(Q(category=value)|Q(category__isnull=True,parent__category=value))
             else:
                 queryset = queryset.filter(**{key:value})
         return queryset

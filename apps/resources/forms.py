@@ -69,7 +69,7 @@ class EquipmentTypeForm(forms.ModelForm):
         self.fields['category'].empty_label = 'Выберите категорию'
         self.fields['parent'].queryset = EquipmentType.objects.filter(company_id=self.instance.company_id,parent__isnull=True,merge_source__isnull=True).exclude(pk=self.instance.pk)
         self.fields['parent'].empty_label = 'Самостоятельный вид техники'
-        self.fields['parent'].help_text = 'Выберите вид для этой техники. Оставьте пустым, чтобы создать самостоятельный вид.'
+        self.fields['parent'].help_text = 'Для модели выберите её вид. Оставьте пустым, если создаёте вид для планирования в ГПР и СМГ.'
         self.fields['unit'].required = False
 
     def clean_unit(self):

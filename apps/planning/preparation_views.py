@@ -73,10 +73,10 @@ class PreparationView(View):
                         if resource_forms is None:raise ValidationError('Используйте дневной ввод ресурсов СМГ.')
                         if resource_forms.is_valid():
                             crew_edits={f.instance.pk:f.cleaned_data['count'] for f in resource_forms if f.instance.pk and not f.cleaned_data.get('DELETE') and f.cleaned_data.get('kind')=='labor' and 'count' in f.changed_data}
-                            removed={f.instance.brigade_id for f in resource_forms if f.cleaned_data.get('DELETE') and f.instance.kind=='labor'}
+                            removed=set(locked.resource_allocations.filter(pk__in=[f.instance.pk for f in resource_forms if f.cleaned_data.get('DELETE')],kind='labor').values_list('brigade_id',flat=True))
                             resource_forms.save()
                             from .table_resource_crew import sync_monthly
-                            sync_monthly(request.user,locked,month,edited_counts=crew_edits,removed_brigades=removed)
+                            sync_monthly(request.user,locked,month,edited_counts=crew_edits,removed_brigades=removed,removal_actions=request.POST.get('crew_removal_actions'))
                             locked.snapshot={};locked.save(update_fields=['snapshot'])
                             messages.success(request,'Ресурсы сохранены. Проверка работ сметчиком сохраняет силу, если сами работы не менялись.');return redirect(request.path+'?month='+month.isoformat())
                 elif action=='add_resource':

@@ -3,7 +3,7 @@ from openpyxl import load_workbook
 from django.test import TestCase
 from django.urls import reverse
 from apps.accounts.models import Company,Role,User
-from .models import EquipmentType
+from .models import EquipmentType,EquipmentCategory
 from .forms import EquipmentTypeForm
 
 
@@ -65,3 +65,30 @@ class EquipmentHierarchyTests(TestCase):
         book=load_workbook(BytesIO(response.content));rows=list(book.active.values);book.close()
         index=rows[0].index('Вид техники')
         self.assertEqual(next(row[index] for row in rows[1:] if row[0]=='JCB 3CX'),'Экскаваторы')
+
+    def test_categories_inherit_for_unclassified_models_and_status_filter_is_scoped(self):
+        category=EquipmentCategory.objects.create(company=self.company,name='Землеройная техника')
+        self.root.category=category;self.root.save()
+        self.child.is_active=False;self.child.save()
+        url=reverse('resources:equipment_type_list')
+        response=self.client.get(url,{'category':category.pk})
+        groups=response.context['equipment_category_groups']
+        self.assertEqual([g['label'] for g in groups],[category.name])
+        self.assertEqual(groups[0]['count'],2)
+        self.assertEqual(groups[0]['nodes'][0]['children'],[self.child])
+        response=self.client.get(url,{'is_active':'False','view':'table'})
+        self.assertEqual(list(response.context['equipment_types']),[self.child])
+        self.assertContains(response,'name="view" value="table"')
+        self.assertNotContains(response,'onclick="return confirm(')
+
+    def test_model_with_own_category_keeps_category_and_has_one_bulk_checkbox(self):
+        parent_category=EquipmentCategory.objects.create(company=self.company,name='Первая категория')
+        own=EquipmentCategory.objects.create(company=self.company,name='Вторая категория')
+        self.root.category=parent_category;self.root.save()
+        self.child.category=own;self.child.save()
+        response=self.client.get(reverse('resources:equipment_type_list'))
+        groups={g['label']:g for g in response.context['equipment_category_groups']}
+        self.assertEqual(groups[own.name]['nodes'][0]['children'],[self.child])
+        self.assertFalse(groups[own.name]['nodes'][0]['root_matches'])
+        self.assertEqual(response.content.decode().count(f'name="selected" value="{self.root.pk}"'),1)
+        self.assertEqual(response.content.decode().count(f'name="selected" value="{self.child.pk}"'),1)

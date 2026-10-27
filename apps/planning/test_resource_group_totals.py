@@ -2,7 +2,7 @@ from decimal import Decimal
 from types import SimpleNamespace
 from django.test import TestCase
 from django.urls import reverse
-from apps.resources.models import BrigadeGroup,EquipmentType,Brigade
+from apps.resources.models import BrigadeGroup,EquipmentType,EquipmentCategory,Brigade
 from apps.resources.position_catalog import brigade_for
 from . import test_work_resources as fixtures,resource_targets
 from .models import ResourceMonthAllocation,WorkMonthAllocation
@@ -21,6 +21,8 @@ class ResourceGroupTotalTests(TestCase):
         for row in [self.driver,self.helper_brigade]:row.group=self.group;row.save()
 
     def test_gpr_group_sum_includes_manual_and_shared_assignment_once(self):
+        category=EquipmentCategory.objects.create(company=self.company,name='Землеройная техника')
+        self.equipment.category=category;self.equipment.save()
         for brigade,count in [(self.driver,2),(self.helper_brigade,3)]:
             ResourceMonthAllocation.objects.create(company=self.company,version=self.version,month=fixtures.JAN,kind='labor',brigade=brigade,count=count)
         ResourceMonthAllocation.objects.create(company=self.company,version=self.version,month=fixtures.JAN,kind='equipment',equipment_type=self.equipment,count=2)
@@ -33,7 +35,7 @@ class ResourceGroupTotalTests(TestCase):
         labor=response.context['plan_sections'][1];equipment=response.context['plan_sections'][2]
         self.assertEqual(labor['groups'][0]['totals'][0]['after'],5)
         self.assertEqual(len(equipment['groups']),1)
-        self.assertEqual(equipment['groups'][0]['label'],self.equipment.name)
+        self.assertEqual(equipment['groups'][0]['label'],category.name)
         self.assertEqual(equipment['groups'][0]['totals'][0]['after'],9)
         self.assertEqual(equipment['totals'][0]['after'],9)
         self.assertContains(response,'data-plan-group-total-number')
@@ -56,15 +58,32 @@ class ResourceGroupTotalTests(TestCase):
         self.assertContains(response,'data-plan-total-date="2026-01-01"')
         self.assertContains(response,'Среднее за месяц')
 
-    def test_distinct_equipment_types_with_equal_names_remain_separate(self):
+    def test_equipment_types_group_by_category_and_uncategorized_together(self):
         other=EquipmentType.objects.create(company=self.company,name=self.equipment.name)
         for equipment,count in [(self.equipment,2),(other,7)]:
             ResourceMonthAllocation.objects.create(company=self.company,version=self.version,month=fixtures.JAN,kind='equipment',equipment_type=equipment,count=count)
         response=self.client.get(reverse('planning:workspace_edit',args=[self.version.pk]))
         groups=response.context['plan_sections'][2]['groups']
-        self.assertEqual(len(groups),2)
-        self.assertEqual(sorted(g['totals'][0]['after'] for g in groups),[2,7])
+        self.assertEqual(len(groups),1)
+        self.assertEqual(groups[0]['label'],'Без категории')
+        self.assertEqual(groups[0]['totals'][0]['after'],9)
         self.assertEqual(response.context['plan_sections'][2]['totals'][0]['after'],9)
+
+    def test_smg_equipment_categories_combine_types_and_preserve_separate_categories(self):
+        from .daily_schedule_table import add_entry,save_table
+        category=EquipmentCategory.objects.create(company=self.company,name='Землеройная техника')
+        second_category=EquipmentCategory.objects.create(company=self.company,name='Подъёмная техника')
+        self.equipment.category=category;self.equipment.save()
+        other=EquipmentType.objects.create(company=self.company,name='Другая машина',category=category)
+        crane=EquipmentType.objects.create(company=self.company,name='Кран',category=second_category)
+        schedule=create(self.planner,self.obj,fixtures.JAN)
+        for equipment,count in [(self.equipment,2),(other,3),(crane,7)]:
+            entry=add_entry(self.planner,schedule,{'kind':'equipment','equipment':equipment,'rate':0})
+            save_table(self.planner,schedule,[{'id':entry.pk,'revision':entry.revision,'changes':[{'date':'2026-01-01','item_id':None,'field':'planned_count','value':str(count)}]}])
+        response=self.client.get(reverse('planning:daily_schedule_detail',args=[schedule.pk]))
+        groups={g['label']:g for g in response.context['plan_sections'][2]['groups']}
+        self.assertEqual(groups[category.name]['totals'][0]['cells'][0]['after'],5)
+        self.assertEqual(groups[second_category.name]['totals'][0]['cells'][0]['after'],7)
 
     def test_daily_reference_and_deviation_totals_use_daily_counts(self):
         entries=[SimpleNamespace(comparison=[{'before':99,'after':99,'cells':[{'date':'2026-01-01','before':1,'after':3},{'date':'2026-01-02','before':2,'after':4}]}]),

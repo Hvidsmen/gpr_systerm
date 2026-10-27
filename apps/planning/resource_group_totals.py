@@ -8,9 +8,10 @@ def number(value):
 
 
 def equipment_group(equipment,company):
-    if equipment is None:return ('Техника без вида','none')
-    root=equipment.parent if equipment.parent_id and equipment.parent.company_id==company.pk else equipment
-    return (root.name,str(root.pk))
+    from apps.resources.equipment_catalogue import category_for
+    category=category_for(equipment,company)
+    if category is None:return ('Без категории','none')
+    return (category.name,str(category.pk))
 
 
 def group_label(key):

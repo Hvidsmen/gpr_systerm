@@ -440,10 +440,10 @@ class WorkspaceEdit(View):
                         raise ValidationError("Версия уже отправлена на согласование.")
                     works.save()
                     crew_edits={f.instance.pk:f.cleaned_data['count'] for f in resources if f.instance.pk and not f.cleaned_data.get('DELETE') and f.cleaned_data.get('kind')=='labor' and 'count' in f.changed_data}
-                    crew_removed={f.instance.brigade_id for f in resources if f.cleaned_data.get('DELETE') and f.instance.kind=='labor'}
+                    crew_removed=set(locked.resource_allocations.filter(pk__in=[f.instance.pk for f in resources if f.cleaned_data.get('DELETE')],kind='labor').values_list('brigade_id',flat=True))
                     resources.save()
                     from .table_resource_crew import sync_monthly
-                    sync_monthly(request.user,locked,selected,edited_counts=crew_edits,removed_brigades=crew_removed)
+                    sync_monthly(request.user,locked,selected,edited_counts=crew_edits,removed_brigades=crew_removed,removal_actions=request.POST.get('crew_removal_actions'))
                     removed = None
                     if request.POST.get('action') == 'remove_zero_works':
                         from .zero_works import remove_zero_works

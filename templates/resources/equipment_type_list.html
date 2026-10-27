@@ -1,52 +1,57 @@
 {% extends 'base.html' %}
-{% load access %}
-{% load i18n %}
-
-{% block title %}Виды техники{% endblock %}
-
-{% block content %}<p><a class="btn btn-outline-primary" href="{% url 'resources:fleet_import' %}">Загрузить технику и должности · лист «Сводка»</a></p>
-{% if request.user|may:'resources:catalogue_purge' %}<p><a class="btn btn-outline-danger" href="{% url 'resources:catalogue_purge' 'equipment' %}">Удалить всю технику компании</a></p>{% endif %}
-<a class="btn btn-outline-primary mb-3" href="{% url 'resources:equipment_unit_list' %}">Конкретная техника · госномера и инвентарные номера</a>
+{% load access static %}
+{% block title %}Справочник техники{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'resources/equipment_catalogue.css' %}?v=20261027-1">{% endblock %}
+{% block content %}
+<div class="equipment-catalogue" data-equipment-catalogue data-company="{{ request.user.company_id }}" data-filtered="{{ filters_active|yesno:'true,false' }}">
+<header class="equipment-catalogue-heading">
+  <div><nav aria-label="Навигация" class="small mb-2"><a href="{% url 'dashboard:index' %}">Главная</a> / Справочники / Техника</nav><h2 class="mb-1"><i class="bi bi-truck" aria-hidden="true"></i> Справочник техники</h2><p class="text-muted mb-0">Категория → вид техники → техника и модели. В ГПР и СМГ планируется количество по виду.</p></div>
+  <div class="equipment-catalogue-actions">
+    {% if request.user|may:'resources:equipment_type_create' %}<a href="{% url 'resources:equipment_type_create' %}" class="btn btn-primary"><i class="bi bi-plus-circle" aria-hidden="true"></i> Добавить вид техники</a>{% endif %}
+    <details class="equipment-catalogue-menu"><summary class="btn btn-outline-secondary">Импорт и обслуживание</summary><div class="equipment-catalogue-menu-body">
+      {% if request.user|may:'resources:fleet_import' %}<a href="{% url 'resources:fleet_import' %}">Загрузить технику и должности · лист «Сводка»</a>{% endif %}
+      {% if request.user|may:'resources:equipment_type_import' %}<a href="{% url 'resources:equipment_type_import' %}">Загрузить виды техники из Excel</a>{% endif %}
+      {% if request.user|may:'resources:equipment_category_list' %}<a href="{% url 'resources:equipment_category_list' %}">Категории техники</a>{% endif %}
+      {% if request.user|may:'resources:equipment_type_merge' %}<a href="{% url 'resources:equipment_type_merge' %}">Объединить виды техники</a>{% endif %}
+      {% if request.user|may:'resources:catalogue_purge' %}<a class="text-danger border-top" href="{% url 'resources:catalogue_purge' 'equipment' %}">Удалить всю технику компании…</a>{% endif %}
+    </div></details>
+  </div>
+</header>
+<div class="equipment-catalogue-overview"><span>Найдено записей: <strong>{{ catalogue_count }}</strong></span><span>Видов: <strong>{{ equipment_type_count }}</strong></span><span>Техники и моделей: <strong>{{ equipment_model_count }}</strong></span><a class="ms-auto" href="{% url 'resources:equipment_unit_list' %}">Конкретные машины · госномера и инвентарные номера <i class="bi bi-arrow-right" aria-hidden="true"></i></a></div>
+<form method="get" class="card mb-3" aria-label="Поиск и фильтры техники"><div class="card-body equipment-catalogue-filters">
+  <input type="hidden" name="view" value="{% if equipment_grouped %}groups{% else %}table{% endif %}">
+  {% for field in filter_form %}<div><label class="form-label small mb-1" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}<div class="text-danger small">{{ field.errors }}</div></div>{% endfor %}
+  <div class="equipment-catalogue-filter-actions"><button class="btn btn-primary btn-sm">Применить</button><a class="btn btn-outline-secondary btn-sm" href="{{ request.path }}?view={% if equipment_grouped %}groups{% else %}table{% endif %}">Сбросить</a>{% if request.user|may:export_route %}<button class="btn btn-outline-success btn-sm" type="submit" formaction="{% url export_route %}">Экспорт в Excel</button>{% endif %}</div>
+</div></form>
+{% if equipment_duplicates %}<details class="equipment-catalogue-duplicates mb-3"><summary>Совпадающие названия: {{ equipment_duplicates|length }} групп — проверить</summary><p class="small mt-2 mb-1">Одинаковые названия могут относиться к разным категориям. Проверьте соответствия в предпросмотре импорта. Объединяйте записи, только если они обозначают один ресурс.</p><ul class="small mb-1">{% for duplicates in equipment_duplicates %}<li>«{{ duplicates.0.name }}» — {{ duplicates|length }} записей.</li>{% endfor %}</ul>{% if request.user|may:'resources:equipment_type_merge' %}<a href="{% url 'resources:equipment_type_merge' %}" class="small">Перейти к объединению</a>{% endif %}</details>{% endif %}
 {% with bulk_route='resources:bulk_delete' bulk_kind='equipment' %}
-{% include 'bulk/toolbar.html' %}
-{% if request.user|may:'resources:equipment_type_import' %}<a class="btn btn-outline-primary mb-3" href="{% url 'resources:equipment_type_import' %}">Загрузить из Excel</a>{% endif %}
-{% if request.user|may:'resources:equipment_category_list' %}<a class="btn btn-outline-secondary mb-3" href="{% url 'resources:equipment_category_list' %}">Категории техники</a>{% endif %}
-
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <div>
-        <h2 class="mb-1">
-            <i class="bi bi-truck"></i> Виды техники
-        </h2>
-        <nav aria-label="breadcrumb">
-            <ol class="breadcrumb mb-0">
-                <li class="breadcrumb-item">{% if request.user|may:'dashboard:index' %}<a href="{% url 'dashboard:index' %}">Главная</a>{% endif %}</li>
-                <li class="breadcrumb-item active">Виды техники</li>
-            </ol>
-        </nav>
-    </div>
-    {% if request.user|may:'resources:equipment_type_create' %}<a href="{% url 'resources:equipment_type_create' %}" class="btn btn-primary">
-        <i class="bi bi-plus-circle"></i> Добавить вид техники
-    </a>{% endif %}
+<div class="equipment-catalogue-viewbar"><div class="btn-group btn-group-sm" role="group" aria-label="Вид списка"><a class="btn {% if equipment_grouped %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{{ equipment_groups_url }}" {% if equipment_grouped %}aria-current="page"{% endif %}>По категориям</a><a class="btn {% if not equipment_grouped %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{{ equipment_table_url }}" {% if not equipment_grouped %}aria-current="page"{% endif %}>Таблица</a></div>
+{% if equipment_types %}{% if equipment_grouped %}<button type="button" class="btn btn-sm btn-outline-secondary" data-equipment-fold="open">Развернуть все</button><button type="button" class="btn btn-sm btn-outline-secondary" data-equipment-fold="close">Свернуть все</button>{% endif %}{% if request.user|may:bulk_route %}<button type="button" class="btn btn-sm btn-outline-secondary ms-auto" data-equipment-select-page>{% if equipment_grouped %}Выбрать все найденные{% else %}Выбрать на странице{% endif %}</button>{% endif %}{% endif %}
 </div>
-
-{% if request.user|may:'resources:equipment_type_merge' %}<a class="btn btn-outline-primary mb-3" href="{% url 'resources:equipment_type_merge' %}">Объединить виды техники</a>{% endif %}
-{% for duplicates in equipment_duplicates %}<div class="alert alert-warning">В справочнике несколько видов техники «{{ duplicates.0.name }}»: {{ duplicates|length }}. При импорте совещания выбирается первая запись (ID {{ duplicates.0.pk }}). Используйте «Объединить виды техники» для устранения дублей.</div>{% endfor %}
-{% include 'resources/catalog_filters.html' %}
-<div class="d-flex gap-2 mb-3"><a class="btn btn-sm {% if equipment_grouped %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{{ equipment_groups_url }}">По видам техники</a><a class="btn btn-sm {% if not equipment_grouped %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{{ equipment_table_url }}">Таблица</a></div>
+{% include 'bulk/toolbar.html' with bulk_contextual=True %}
 {% if equipment_types %}
-{% if equipment_grouped %}
-<div class="d-flex gap-2 mb-3"><button type="button" class="btn btn-sm btn-outline-secondary" onclick="document.querySelectorAll('[data-equipment-type]').forEach(e=>e.open=true)">Развернуть все</button><button type="button" class="btn btn-sm btn-outline-secondary" onclick="document.querySelectorAll('[data-equipment-type]').forEach(e=>e.open=false)">Свернуть все</button></div>
-{% for node in equipment_hierarchy %}<details data-equipment-type="{{ node.root.pk }}" open class="card mb-3"><summary class="card-header"><span class="small text-muted me-2">Вид техники</span><strong>{{ node.root.name }}</strong> <span class="badge bg-secondary">Техника: {{ node.children|length }}</span></summary>
-<div class="px-3 py-2 d-flex flex-wrap align-items-center gap-2">{% if node.root_matches and request.user|may:bulk_route %}{% include 'bulk/checkbox.html' with record=node.root %}{% endif %}<span class="small text-muted">{{ node.root.category|default:'Без категории' }} · {{ node.root.unit }}</span>{% if request.user|may:'resources:equipment_type_create' %}<a class="btn btn-sm btn-outline-primary" href="{% url 'resources:equipment_type_create' %}?parent={{ node.root.pk }}">Добавить технику</a>{% endif %}<a class="btn btn-sm btn-outline-primary" href="{% url 'resources:equipment_crew' node.root.pk %}">Экипаж вида</a>{% if request.user|may:'resources:equipment_type_update' %}<a class="btn btn-sm btn-outline-secondary" href="{% url 'resources:equipment_type_update' node.root.pk %}">Изменить вид</a>{% endif %}{% if request.user|may:'resources:equipment_type_delete' %}<a class="btn btn-sm btn-outline-danger" href="{% url 'resources:equipment_type_delete' node.root.pk %}">Удалить вид</a>{% endif %}</div>
-<details class="mx-3 mb-2 small"><summary>Экипаж вида техники</summary><ul>{% for member in node.root.crew_positions.all %}<li>{{ member.position }} — {{ member.count }} чел.{% if member.is_replacement %} *{% endif %}</li>{% empty %}<li>Экипаж не задан</li>{% endfor %}</ul><div class="text-muted mb-2">Категории водителя: {{ node.root.driver_category_labels|join:', '|default:'—' }} · Классы: {{ node.root.driver_class_labels|join:', '|default:'—' }}</div></details>
-{% if node.children %}<div class="ms-3 mb-3 ps-2" style="border-left:1px solid #c9dbe6">{% include 'resources/_equipment_table.html' with group_items=node.children %}</div>{% else %}<p class="small text-muted px-3 mb-3">Техника этого вида пока не добавлена.</p>{% endif %}</details>{% endfor %}
-{% else %}{% include 'resources/_equipment_table.html' with group_items=equipment_types %}{% endif %}
-{% include 'resources/catalog_pagination.html' %}
-{% else %}
-    <div class="alert alert-info">
-        <i class="bi bi-info-circle"></i> {% if filters_active %}По выбранным фильтрам виды техники не найдены.{% else %}Виды техники ещё не добавлены.{% endif %}
-        {% if request.user|may:'resources:equipment_type_create' %}<a href="{% url 'resources:equipment_type_create' %}" class="alert-link">Добавить первый вид техники</a>{% endif %}
-    </div>
-{% endif %}
+  {% if equipment_grouped %}
+    {% for category in equipment_category_groups %}
+    <details class="equipment-category" data-equipment-category="{{ category.category.pk|default:'none' }}" open>
+      <summary><strong>{{ category.label }}</strong><span class="equipment-catalogue-count">Записей: {{ category.count }}</span></summary>
+      <div class="equipment-category-body">
+        {% if request.user|may:bulk_route %}<button type="button" class="btn btn-sm btn-link mb-2" data-equipment-select-category>Выбрать записи категории</button>{% endif %}
+        {% for node in category.nodes %}<details class="equipment-type" data-equipment-type="{{ node.root.pk }}" {% if filters_active %}open{% endif %}>
+          <summary><span class="small text-muted">Вид техники</span><strong>{{ node.root.name }}</strong>{% if not node.root.is_active %}<span class="badge bg-secondary">Неактивен</span>{% endif %}<span class="equipment-catalogue-count">Техника: {{ node.children|length }}</span></summary>
+          <div class="equipment-type-body">
+            <div class="equipment-type-actions">{% if node.root_matches and request.user|may:bulk_route %}<label class="small d-flex align-items-center gap-2">{% include 'bulk/checkbox.html' with record=node.root %} Выбрать вид</label>{% elif not node.root_matches %}<span class="small text-muted">Вид показан для понимания иерархии</span>{% endif %}<span class="small text-muted">{{ node.root.unit }} · {% if node.root.is_active %}Доступен в ГПР и СМГ{% else %}Недоступен для новых планов{% endif %}</span>
+              <span class="ms-auto d-flex flex-wrap gap-2">{% if request.user|may:'resources:equipment_type_create' %}<a class="btn btn-sm btn-outline-primary" href="{% url 'resources:equipment_type_create' %}?parent={{ node.root.pk }}">Добавить технику</a>{% endif %}<a class="btn btn-sm btn-outline-primary" href="{% url 'resources:equipment_crew' node.root.pk %}">Экипаж вида</a>{% if request.user|may:'resources:equipment_type_update' %}<a class="btn btn-sm btn-outline-secondary" href="{% url 'resources:equipment_type_update' node.root.pk %}">Изменить вид</a>{% endif %}{% if request.user|may:'resources:equipment_type_delete' %}<a class="btn btn-sm btn-outline-danger" href="{% url 'resources:equipment_type_delete' node.root.pk %}" aria-label="Удалить вид {{ node.root.name }}" title="Удалить вид"><i class="bi bi-trash" aria-hidden="true"></i></a>{% endif %}</span>
+            </div>
+            <div class="equipment-crew-preview small"><strong>Экипаж вида:</strong> {% for member in node.root.crew_positions.all %}<span>{{ member.position }} — {{ member.count }} чел.{% if member.is_replacement %} *{% endif %}</span>{% empty %}<span class="text-muted">Не задан</span>{% endfor %}</div>
+            {% if node.children %}{% include 'resources/_equipment_table.html' with group_items=node.children %}{% else %}<p class="small text-muted mb-0">Техника и модели пока не добавлены. {% if node.root.is_active %}Сам вид уже можно использовать в планах.{% else %}Включите вид в его карточке, чтобы использовать в новых планах.{% endif %}</p>{% endif %}
+          </div>
+        </details>{% endfor %}
+      </div>
+    </details>{% endfor %}
+  {% else %}{% include 'resources/_equipment_table.html' with group_items=equipment_types %}{% endif %}
+  {% include 'resources/catalog_pagination.html' %}
+{% else %}<div class="card p-4 text-center"><h3 class="h5">{% if filters_active %}По этим фильтрам техника не найдена{% else %}Добавьте первый вид техники{% endif %}</h3><p class="text-muted mb-2">{% if filters_active %}Измените название, категорию, вид или статус.{% else %}Укажите название, категорию и экипаж. Затем можно добавить модели и конкретные машины.{% endif %}</p>{% if filters_active %}<a href="{{ request.path }}" class="align-self-center btn btn-outline-primary">Сбросить фильтры</a>{% elif request.user|may:'resources:equipment_type_create' %}<a href="{% url 'resources:equipment_type_create' %}" class="align-self-center btn btn-primary">Добавить вид техники</a>{% endif %}</div>{% endif %}
 {% endwith %}
+</div>
 {% endblock %}
+{% block extra_js %}<script src="{% static 'resources/equipment_catalogue.js' %}?v=20261027-1" defer></script>{% endblock %}
