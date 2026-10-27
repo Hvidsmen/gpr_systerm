@@ -336,6 +336,8 @@
     {% block extra_css %}{% endblock %}
 <link rel="stylesheet" href="{% static 'core/forms.css' %}">
 <link rel="stylesheet" href="{% static 'core/portal.css' %}?v=20261023-date-lines">
+<link rel="stylesheet" href="{% static 'core/sidebar.css' %}?v=20261028">
+<script src="{% static 'core/sidebar.js' %}?v=20261028" defer></script>
 <script src="{% static 'core/forms.js' %}?v=20261027-dialog" defer></script>
 </head>
 <body{% if not user.is_authenticated %} class="without-sidebar"{% endif %}>
@@ -401,51 +403,7 @@
 
 <!-- ========== SIDEBAR ========== -->
 {% if user.is_authenticated %}
-<aside class="sidebar" id="sidebar">
-    <nav class="nav flex-column py-2" aria-label="Основное меню">
-        {% if user.company %}<div class="px-3 py-2 text-muted small text-truncate" title="{{ user.company.name }}">{{ user.company.name }}</div>{% endif %}
-{% if task_inbox_access %}<a class="nav-link" href="{% url 'planning:task_list' %}" data-paths="/planning/tasks/ /planning/carryover-tasks/"><i class="bi bi-inbox"></i> Задания {% if task_inbox_count %}<span class="badge bg-danger">{{ task_inbox_count }}</span>{% endif %}</a>{% endif %}
-        {% if request.user|may:'dashboard:index' %}<a class="nav-link" href="{% url 'dashboard:index' %}" ><i class="bi bi-bar-chart"></i> Обзор</a>{% endif %}
-        {% if request.user|may:'dashboard:revenue' or request.user|may:'planning:report_matrix' %}<details class="nav-group"><summary>План/Факт</summary>
-        {% if request.user|may:'dashboard:revenue' %}<a class="nav-link" href="{% url 'dashboard:revenue' %}" data-paths="/dashboard/revenue/"><i class="bi bi-bar-chart"></i> Дашборд</a>{% endif %}
-        {% if request.user|may:'planning:pivot_report_list' %}<a class="nav-link" href="{% url 'planning:pivot_report_list' %}" data-paths="/planning/reports/pivot/"><i class="bi bi-layout-three-columns"></i> Сводная таблица</a>{% endif %}
-        {% if request.user|may:'planning:report_matrix' %}<a class="nav-link" href="{% url 'planning:report_matrix' %}" data-paths="/planning/reports/plan-fact/"><i class="bi bi-table"></i> Таблица</a>{% endif %}
-        </details>{% endif %}
-        {% if request.user|may:'personnel:board_list' %}<a class="nav-link" href="{% url 'personnel:board_list' %}" data-paths="/personnel/"><i class="bi bi-person-vcard"></i> Персонал</a>{% endif %}
-        {% if request.user|may:'planning:workspace_list' or request.user|may:'planning:project_plan_list' or request.user|may:'planning:approval_list' or request.user|may:'planning:global_list' or request.user|may:'planning:journal_plan_list' or request.user|may:'rotation:plan_list' %}<details class="nav-group"><summary>Планирование</summary>
-        {% if request.user|may:'planning:workspace_list' %}<a class="nav-link" href="{% url 'planning:workspace_list' %}" data-paths="/planning/workspace/ /planning/workspace-versions/"><i class="bi bi-calendar-range"></i> Планирование ГПР</a>{% endif %}
-        {% if request.user|may:'planning:daily_schedule_list' %}<a class="nav-link" href="{% url 'planning:daily_schedule_list' %}" data-paths="/planning/daily-schedule/"><i class="bi bi-calendar-day"></i> Планирование СМГ</a>{% endif %}
-        {% if request.user|may:'planning:object_plan_list' %}<a class="nav-link" href="{% url 'planning:object_plan_list' %}" data-paths="/planning/object-plans/"><i class="bi bi-list-check"></i> План на весь объект</a>{% endif %}
-        {% if estimate_review_access %}<a class="nav-link" href="{% url 'planning:estimate_review_list' %}"><i class="bi bi-clipboard-check" aria-hidden="true"></i> Проверка сметчиком {% if estimate_reviews_due %}<span class="badge bg-warning text-dark">{{ estimate_reviews_due }}</span>{% endif %}</a>{% endif %}
-        {% if request.user|may:'planning:project_plan_list' %}<a class="nav-link" href="{% url 'planning:project_plan_list' %}" data-paths="/planning/project-plans/"><i class="bi bi-layers"></i> Сводные версии проектов</a>{% endif %}
-        {% if request.user|may:'planning:approval_list' %}<a class="nav-link" href="{% url 'planning:approval_list' %}" data-paths="/planning/approvals/"><i class="bi bi-clipboard-check"></i> Согласование планов</a>{% endif %}
-        {% if request.user|may:'planning:global_list' %}<a class="nav-link" href="{% url 'planning:global_list' %}" data-paths="/planning/global/"><i class="bi bi-clipboard-check"></i> Все версии</a>{% endif %}
-        {% if request.user|may:'planning:journal_plan_list' %}<a class="nav-link" href="{% url 'planning:journal_plan_list' %}" data-paths="/planning/journals/plans/"><i class="bi bi-journal-text"></i> Журналы планов</a>{% endif %}
-        </details>{% endif %}
-        {% if request.user|may:'production:fact_day_workspace' or request.user|may:'planning:journal_fact_list' %}<details class="nav-group"><summary>Факты</summary>
-        {% if request.user|may:'production:fact_day_workspace' %}<a class="nav-link" href="{% url 'production:fact_day_workspace' %}" ><i class="bi bi-clipboard-data"></i> Факт за день</a>{% endif %}
-        {% if request.user|may:'production:fact_history' %}<a class="nav-link" href="{% url 'production:fact_history' %}"><i class="bi bi-clock-history"></i> История изменений факта</a>{% endif %}
-        {% if request.user|may:'production:transport_board' %}<a class="nav-link" href="{% url 'production:transport_board' %}"><i class="bi bi-truck"></i> Техника на ВЖГ</a>{% endif %}
-        {% if request.user|may:'planning:pivot_fact_list' %}<a class="nav-link" href="{% url 'planning:pivot_fact_list' %}"><i class="bi bi-layout-three-columns"></i> Сводная таблица факта</a>{% endif %}
-        {% if request.user|may:'planning:journal_fact_list' %}<a class="nav-link" href="{% url 'planning:journal_fact_list' %}" data-paths="/planning/journals/facts/"><i class="bi bi-journal-check"></i> Журналы фактов</a>{% endif %}
-        </details>{% endif %}
-        {% if request.user|may:'estimates:estimate_list' %}<a class="nav-link" href="{% url 'estimates:estimate_list' %}" data-paths="/estimates/"><i class="bi bi-file-earmark-spreadsheet"></i> Сметы</a>{% endif %}
-        {% if request.user|may:'resources:employee_list' or request.user|may:'projects:project_list' or request.user|may:'works:work_list' %}<details class="nav-group"><summary>Справочники</summary>
-        {% if request.user|may:'projects:project_list' %}<a class="nav-link" href="{% url 'projects:project_list' %}" data-paths="/projects/"><i class="bi bi-folder"></i> Объекты и проекты</a>{% endif %}
-        {% if request.user|may:'works:work_list' %}<a class="nav-link" href="{% url 'works:work_list' %}" data-paths="/works/"><i class="bi bi-list-task"></i> Работы</a>{% endif %}
-        {% if request.user|may:'works:group_list' %}<a class="nav-link" href="{% url 'works:group_list' %}"><i class="bi bi-collection"></i> Группы работ</a>{% endif %}
-        {% if request.user|may:'works:unit_list' %}<a class="nav-link" href="{% url 'works:unit_list' %}"><i class="bi bi-rulers"></i> Единицы измерения</a>{% endif %}
-        {% if request.user|may:'resources:employee_list' %}<a class="nav-link" href="{% url 'resources:employee_list' %}" ><i class="bi bi-person-badge"></i> Сотрудники</a>{% endif %}
-        {% if request.user|may:'resources:brigade_list' %}<a class="nav-link" href="{% url 'resources:brigade_list' %}" ><i class="bi bi-people"></i> Должность</a>{% endif %}
-        {% if request.user|may:'resources:equipment_type_list' %}<a class="nav-link" href="{% url 'resources:equipment_type_list' %}" ><i class="bi bi-truck"></i> Техника</a>{% endif %}
-        {% if request.user|may:'planning:profile_list' %}<a class="nav-link" href="{% url 'planning:profile_list' %}" data-paths="/planning/profiles/ /planning/profile-items/"><i class="bi bi-graph-up"></i> Профили нагрузки</a>{% endif %}
-        {% if request.user|may:'planning:calendar_list' %}<a class="nav-link" href="{% url 'planning:calendar_list' %}" data-paths="/planning/calendars/ /planning/calendar-days/"><i class="bi bi-calendar"></i> Календари</a>{% endif %}
-        </details>{% endif %}
-        {% if request.user|may:'accounts:user_list' %}<div class="border-top my-2"></div><a class="nav-link" href="{% url 'accounts:one_c' %}"><i class="bi bi-database-gear"></i> Интеграция с 1С</a><a class="nav-link ps-4" href="{% url 'accounts:one_c_jobs' %}"><i class="bi bi-list-task"></i> Задания</a>{% endif %}
-        {% if request.user|may:'accounts:portal_updates' %}<a class="nav-link" href="{% url 'accounts:portal_updates' %}"><i class="bi bi-arrow-repeat"></i> Обновление приложения</a>{% endif %}
-        {% if request.user|may:'accounts:user_list' %}<a class="nav-link" href="{% url 'accounts:user_list' %}" ><i class="bi bi-person-gear"></i> Пользователи и доступ</a>{% endif %}
-    </nav>
-</aside>
+{% include 'core/sidebar.html' %}
 {% endif %}
 
 <!-- ========== MAIN CONTENT ========== -->
@@ -474,25 +432,6 @@
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // Mobile sidebar toggle
-        var sidebarToggle = document.getElementById('sidebarToggle');
-        var sidebar = document.getElementById('sidebar');
-        var sidebarOverlay = document.getElementById('sidebarOverlay');
-
-        if (sidebarToggle && sidebar) {
-            sidebarToggle.addEventListener('click', function() {
-                const open = sidebar.classList.toggle('show');
-                sidebarOverlay.classList.toggle('show', open);
-                sidebarToggle.setAttribute('aria-expanded', String(open));
-            });
-
-            sidebarOverlay.addEventListener('click', function() {
-                sidebar.classList.remove('show');
-                sidebarOverlay.classList.remove('show');
-                sidebarToggle.setAttribute('aria-expanded', 'false');
-            });
-        }
-
         // Scroll to top button
         var scrollToTopBtn = document.getElementById('scrollToTop');
         if (scrollToTopBtn) {
@@ -509,25 +448,7 @@
             });
         }
 
-        // Select the most specific navigation item, including nested pages.
-        const currentPath = window.location.pathname;
-        let activeLink = null;
-        let bestMatch = 0;
-        document.querySelectorAll('.sidebar .nav-link').forEach(function(link) {
-            const paths = (link.dataset.paths || link.getAttribute('href')).split(' ');
-            paths.forEach(path => {
-                if (currentPath.startsWith(path) && path.length > bestMatch) {
-                    activeLink = link;
-                    bestMatch = path.length;
-                }
-            });
-        });
-        if (activeLink) {
-            activeLink.classList.add('active');
-            activeLink.setAttribute('aria-current', 'page');
-            const group = activeLink.closest('details');
-            if (group) group.open = true;
-        }
+
     });
 </script>
 

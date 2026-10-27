@@ -1,0 +1,54 @@
+/* Task navigation; existing route permissions remain in the template. */
+:root { --sidebar-width: 248px; }
+.without-sidebar { --sidebar-width: 0px; }
+.sidebar { background: #f4f7fb; scrollbar-gutter: stable; }
+.sidebar .sidebar-nav { min-height: 100%; padding: 12px 0; }
+.sidebar-company {
+  margin: 0 16px 12px; color: #52667c; font-size: 12px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sidebar .nav-link, .sidebar .nav-group > summary {
+  display: flex; align-items: center; gap: 10px; min-height: 40px;
+  margin: 2px 8px; padding: 9px 12px; border: 0; border-radius: 6px;
+  color: #344d67; font-size: 13px; font-weight: 500; line-height: 1.4;
+  text-decoration: none;
+}
+.sidebar .nav-link i, .sidebar .nav-group > summary > i {
+  flex: 0 0 18px; width: 18px; text-align: center; font-size: 16px;
+}
+.sidebar .nav-group { margin: 3px 0; }
+.sidebar .nav-group > summary { list-style: none; cursor: pointer; }
+.sidebar .nav-group > summary::-webkit-details-marker { display: none; }
+.sidebar .nav-group > summary > span { flex: 1; }
+.sidebar .nav-group > summary::after {
+  content: ''; flex: 0 0 6px; width: 6px; height: 6px; margin-right: 3px;
+  border: solid currentColor; border-width: 0 1.5px 1.5px 0;
+  transform: rotate(-45deg); transition: transform .15s;
+}
+.sidebar .nav-group[open] > summary::after { transform: rotate(45deg); }
+.sidebar .nav-group .nav-link {
+  margin-left: 23px; padding-left: 13px; font-weight: 400; font-size: 12.5px;
+}
+.sidebar .nav-link:hover, .sidebar .nav-group > summary:hover {
+  background: #e7eef7; color: #164f86;
+}
+.sidebar .nav-link.active {
+  background: #dfedf9; color: #174e82; font-weight: 600;
+  box-shadow: inset 3px 0 #24749b;
+}
+.sidebar .nav-group.has-active > summary { color: #174e82; font-weight: 650; }
+.sidebar .nav-link:focus-visible, .sidebar .nav-group > summary:focus-visible {
+  outline: 2px solid #087fa0; outline-offset: -2px;
+}
+.sidebar .sidebar-admin {
+  margin-top: auto; padding-top: 12px; border-top: 1px solid #dce5ef;
+}
+.sidebar .sidebar-admin > summary { margin-top: 8px; }
+@media (max-width: 992px) {
+  .sidebar { width: min(280px, calc(100vw - 48px)); }
+  body.sidebar-open { overflow: hidden; }
+  .sidebar .nav-link, .sidebar .nav-group > summary { min-height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sidebar .nav-group > summary::after { transition: none; }
+}

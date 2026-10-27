@@ -1,0 +1,56 @@
+{% load access %}
+<aside class="sidebar" id="sidebar">
+    <nav class="nav flex-column sidebar-nav" aria-label="Основное меню">
+        {% if user.company %}<div class="sidebar-company" title="{{ user.company.name }}">{{ user.company.name }}</div>{% endif %}
+        {% if request.user|may:'dashboard:index' %}<a class="nav-link" href="{% url 'dashboard:index' %}" ><i class="bi bi-bar-chart" aria-hidden="true"></i> Обзор</a>{% endif %}
+        {% if task_inbox_access %}<a class="nav-link" href="{% url 'planning:task_list' %}" data-paths="/planning/tasks/ /planning/carryover-tasks/"><i class="bi bi-inbox" aria-hidden="true"></i> Мои задания {% if task_inbox_count %}<span class="badge bg-danger">{{ task_inbox_count }}</span>{% endif %}</a>{% endif %}
+        {% if request.user|may:'personnel:board_list' %}<a class="nav-link" href="{% url 'personnel:board_list' %}" data-paths="/personnel/"><i class="bi bi-person-vcard" aria-hidden="true"></i> Персонал</a>{% endif %}
+        {% if request.user|may:'planning:workspace_list' or request.user|may:'planning:project_plan_list' or request.user|may:'planning:approval_list' or request.user|may:'planning:global_list' or request.user|may:'planning:journal_plan_list' or request.user|may:'planning:daily_schedule_list' or request.user|may:'planning:object_plan_list' or estimate_review_access %}<details class="nav-group"><summary><i class="bi bi-calendar-range" aria-hidden="true"></i><span>Планирование</span></summary>
+        {% if request.user|may:'planning:workspace_list' %}<a class="nav-link" href="{% url 'planning:workspace_list' %}" data-paths="/planning/workspace/ /planning/workspace-versions/"><i class="bi bi-calendar-range" aria-hidden="true"></i> ГПР</a>{% endif %}
+        {% if request.user|may:'planning:daily_schedule_list' %}<a class="nav-link" href="{% url 'planning:daily_schedule_list' %}" data-paths="/planning/daily-schedule/"><i class="bi bi-calendar-day" aria-hidden="true"></i> СМГ</a>{% endif %}
+        {% if request.user|may:'planning:object_plan_list' %}<a class="nav-link" href="{% url 'planning:object_plan_list' %}" data-paths="/planning/object-plans/"><i class="bi bi-list-check" aria-hidden="true"></i> План на весь объект</a>{% endif %}
+        {% if estimate_review_access %}<a class="nav-link" href="{% url 'planning:estimate_review_list' %}"><i class="bi bi-clipboard-check" aria-hidden="true"></i> Проверка сметчиком {% if estimate_reviews_due %}<span class="badge bg-warning text-dark">{{ estimate_reviews_due }}</span>{% endif %}</a>{% endif %}
+        {% if request.user|may:'planning:project_plan_list' %}<a class="nav-link" href="{% url 'planning:project_plan_list' %}" data-paths="/planning/project-plans/"><i class="bi bi-layers" aria-hidden="true"></i> Сводные версии проектов</a>{% endif %}
+        {% if request.user|may:'planning:approval_list' %}<a class="nav-link" href="{% url 'planning:approval_list' %}" data-paths="/planning/approvals/"><i class="bi bi-clipboard-check" aria-hidden="true"></i> Согласование планов</a>{% endif %}
+        {% if request.user|may:'planning:global_list' %}<a class="nav-link" href="{% url 'planning:global_list' %}" data-paths="/planning/global/"><i class="bi bi-clipboard-check" aria-hidden="true"></i> Все версии</a>{% endif %}
+        {% if request.user|may:'planning:journal_plan_list' %}<a class="nav-link" href="{% url 'planning:journal_plan_list' %}" data-paths="/planning/journals/plans/"><i class="bi bi-journal-text" aria-hidden="true"></i> Журналы планов</a>{% endif %}
+        </details>{% endif %}
+        {% if request.user|may:'production:fact_day_workspace' or request.user|may:'planning:journal_fact_list' or request.user|may:'production:fact_history' or request.user|may:'production:transport_board' or request.user|may:'personnel:housing' or request.user|may:'planning:pivot_fact_list' %}<details class="nav-group"><summary><i class="bi bi-clipboard-data" aria-hidden="true"></i><span>Внесение факта</span></summary>
+        {% if request.user|may:'production:fact_day_workspace' %}<a class="nav-link" href="{% url 'production:fact_day_workspace' %}" ><i class="bi bi-clipboard-data" aria-hidden="true"></i> Производство</a>{% endif %}
+        {% if request.user|may:'personnel:housing' %}<a class="nav-link" href="{% url 'personnel:housing' %}" data-paths="/personnel/housing/ /personnel/camps/"><i class="bi bi-person-vcard" aria-hidden="true"></i> Персонал · ВЖГ</a>{% endif %}
+        {% if request.user|may:'production:transport_board' %}<a class="nav-link" href="{% url 'production:transport_board' %}"><i class="bi bi-truck" aria-hidden="true"></i> Транспорт · ВЖГ</a>{% endif %}
+        {% if request.user|may:'production:fact_history' %}<a class="nav-link" href="{% url 'production:fact_history' %}"><i class="bi bi-clock-history" aria-hidden="true"></i> История изменений факта</a>{% endif %}
+        
+        {% if request.user|may:'planning:pivot_fact_list' %}<a class="nav-link" href="{% url 'planning:pivot_fact_list' %}"><i class="bi bi-layout-three-columns" aria-hidden="true"></i> Сводная таблица факта</a>{% endif %}
+        {% if request.user|may:'planning:journal_fact_list' %}<a class="nav-link" href="{% url 'planning:journal_fact_list' %}" data-paths="/planning/journals/facts/"><i class="bi bi-journal-check" aria-hidden="true"></i> Журналы фактов</a>{% endif %}
+        </details>{% endif %}
+        {% if request.user|may:'dashboard:revenue' or request.user|may:'planning:report_matrix' or request.user|may:'planning:pivot_report_list' %}<details class="nav-group"><summary><i class="bi bi-bar-chart" aria-hidden="true"></i><span>План и факт</span></summary>
+        {% if request.user|may:'dashboard:revenue' %}<a class="nav-link" href="{% url 'dashboard:revenue' %}" data-paths="/dashboard/revenue/"><i class="bi bi-bar-chart" aria-hidden="true"></i> Обзор показателей</a>{% endif %}
+        {% if request.user|may:'planning:pivot_report_list' %}<a class="nav-link" href="{% url 'planning:pivot_report_list' %}" data-paths="/planning/reports/pivot/"><i class="bi bi-layout-three-columns" aria-hidden="true"></i> Сводная таблица</a>{% endif %}
+        {% if request.user|may:'planning:report_matrix' %}<a class="nav-link" href="{% url 'planning:report_matrix' %}" data-paths="/planning/reports/plan-fact/"><i class="bi bi-table" aria-hidden="true"></i> Таблица план и факт</a>{% endif %}
+        </details>{% endif %}
+        {% if request.user|may:'estimates:estimate_list' %}<a class="nav-link" href="{% url 'estimates:estimate_list' %}" data-paths="/estimates/"><i class="bi bi-file-earmark-spreadsheet" aria-hidden="true"></i> Сметы</a>{% endif %}
+        {% if request.user|may:'resources:employee_list' or request.user|may:'projects:project_list' or request.user|may:'works:work_list' or request.user|may:'works:group_list' or request.user|may:'works:unit_list' or request.user|may:'resources:brigade_list' or request.user|may:'resources:equipment_type_list' or request.user|may:'planning:profile_list' or request.user|may:'planning:calendar_list' %}<details class="nav-group"><summary><i class="bi bi-journal-text" aria-hidden="true"></i><span>Справочники</span></summary>
+        {% if request.user|may:'projects:project_list' %}<a class="nav-link" href="{% url 'projects:project_list' %}" data-paths="/projects/"><i class="bi bi-folder" aria-hidden="true"></i> Объекты и проекты</a>{% endif %}
+        {% if request.user|may:'works:work_list' %}<a class="nav-link" href="{% url 'works:work_list' %}" data-paths="/works/"><i class="bi bi-list-task" aria-hidden="true"></i> Работы</a>{% endif %}
+        {% if request.user|may:'works:group_list' %}<a class="nav-link" href="{% url 'works:group_list' %}"><i class="bi bi-collection" aria-hidden="true"></i> Группы работ</a>{% endif %}
+        {% if request.user|may:'works:unit_list' %}<a class="nav-link" href="{% url 'works:unit_list' %}"><i class="bi bi-rulers" aria-hidden="true"></i> Единицы измерения</a>{% endif %}
+        {% if request.user|may:'resources:employee_list' %}<a class="nav-link" href="{% url 'resources:employee_list' %}" ><i class="bi bi-person-badge" aria-hidden="true"></i> Сотрудники</a>{% endif %}
+        {% if request.user|may:'resources:brigade_list' %}<a class="nav-link" href="{% url 'resources:brigade_list' %}" ><i class="bi bi-people" aria-hidden="true"></i> Должности</a>{% endif %}
+        {% if request.user|may:'resources:equipment_type_list' %}<a class="nav-link" href="{% url 'resources:equipment_type_list' %}" ><i class="bi bi-truck" aria-hidden="true"></i> Техника</a>{% endif %}
+        {% if request.user|may:'planning:profile_list' %}<a class="nav-link" href="{% url 'planning:profile_list' %}" data-paths="/planning/profiles/ /planning/profile-items/"><i class="bi bi-graph-up" aria-hidden="true"></i> Профили нагрузки</a>{% endif %}
+        {% if request.user|may:'planning:calendar_list' %}<a class="nav-link" href="{% url 'planning:calendar_list' %}" data-paths="/planning/calendars/ /planning/calendar-days/"><i class="bi bi-calendar" aria-hidden="true"></i> Календари</a>{% endif %}
+        </details>{% endif %}
+        {% if request.user|may:'accounts:user_list' or request.user|may:'accounts:portal_updates' %}
+        <details class="nav-group sidebar-admin">
+            <summary><i class="bi bi-gear" aria-hidden="true"></i><span>Администрирование</span></summary>
+            {% if request.user|may:'accounts:user_list' %}
+            <a class="nav-link" href="{% url 'accounts:one_c' %}" data-paths="/accounts/integrations/1c/"><i class="bi bi-database-gear" aria-hidden="true"></i> Интеграция с 1С</a>
+            <a class="nav-link" href="{% url 'accounts:one_c_jobs' %}"><i class="bi bi-list-task" aria-hidden="true"></i> Задания обмена с 1С</a>
+            <a class="nav-link" href="{% url 'accounts:user_list' %}" data-paths="/accounts/users/ /accounts/access-groups/ /accounts/ad/ /accounts/view-as/"><i class="bi bi-person-gear" aria-hidden="true"></i> Пользователи и доступ</a>
+            {% endif %}
+            {% if request.user|may:'accounts:portal_updates' %}<a class="nav-link" href="{% url 'accounts:portal_updates' %}"><i class="bi bi-arrow-repeat" aria-hidden="true"></i> Обновление приложения</a>{% endif %}
+        </details>
+        {% endif %}
+    </nav>
+</aside>

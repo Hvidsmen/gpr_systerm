@@ -205,7 +205,7 @@ def board(request):
                 inside=any(s.equipment_id==machine.pk and s.arrived_on<=date_value and (s.departed_on is None or s.departed_on>date_value) for s in stays)
                 state=conditions[machine.pk,date_value] if inside else '';record=records.get((machine.pk,date_value))
                 code= ('✓' if record.status=='WORKED' else 'П') if inside and record else {'READY':'—','REPAIR':'Р','SCRAP':'З'}.get(state,'?') if inside else '·'
-                if date_value>timezone.localdate():code='·'
+                if date_value>timezone.localdate() and not record and state=='READY':code='·'
                 cells.append({'date':date_value,'code':code,'state':state,'status':record.status if record else ''})
             calendar.append({'machine':machine,'cells':cells})
         context.update(calendar=calendar,dates=days)

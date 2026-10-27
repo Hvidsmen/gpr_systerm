@@ -6,7 +6,7 @@ from django.core.exceptions import ValidationError
 from django.test import SimpleTestCase,TestCase
 from django.urls import reverse
 from django.utils import timezone
-from core.fact_edit_window import can_edit_fact_day,edit_deadline,require_fact_day
+from core.fact_edit_window import can_edit_fact_day,edit_deadline,require_fact_day,window_message
 from apps.production import test_dispatch as fixtures
 from apps.production.models import DailyFact
 from apps.production.history_models import FactRevision
@@ -21,6 +21,16 @@ def actor(code):
 
 
 class FactWindowBoundaryTests(SimpleTestCase):
+    def test_only_admin_and_superuser_can_enter_future_actuals(self):
+        today=date(2026,1,15);future=today+timedelta(days=30)
+        admin=actor('ADMIN');superuser=actor('DISPATCHER');superuser.is_superuser=True
+        for user in [admin,superuser]:
+            self.assertTrue(can_edit_fact_day(user,future,today=today))
+            self.assertEqual(window_message(user,future,today=today),'')
+            self.assertFalse(can_edit_fact_day(user,None,today=today))
+        for code in ['DISPATCHER','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER','ALL_FACT_DISPATCHER','PLANNER','HR_HEAD','MANAGER']:
+            with self.subTest(role=code):self.assertFalse(can_edit_fact_day(actor(code),future,today=today))
+
     def test_fact_date_and_following_day_are_open_for_every_dispatcher_direction(self):
         day=date(2026,1,15)
         for code in ['DISPATCHER','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER','ALL_FACT_DISPATCHER']:
@@ -49,6 +59,31 @@ class FactWindowIntegrationTests(TestCase):
     def post_work(self,code,amount=5,action='save'):
         data=self.payload(code,'works');data['works-0-actual_quantity']=str(amount);data['works-0-deviation_reason']=self.reason.pk;data['action']=action
         return self.client.post(self.url,data)
+
+    def test_admin_can_save_future_work_personnel_and_transport_with_history(self):
+        self.day=timezone.localdate()+timedelta(days=10)
+        admin=self.users['ADMIN'];camp=self.housing_camp
+        self.client.force_login(admin)
+        for path,data in [(self.url,{'construction_object':self.obj.pk,'date':str(self.day),'section':'works'}),(reverse('personnel:housing'),{'camp':camp.pk,'date':str(self.day)}),(reverse('production:transport_board'),{'camp':camp.pk,'date':str(self.day)})]:
+            response=self.client.get(path,data)
+            self.assertEqual(response.status_code,200)
+            self.assertTrue(response.context['fact_day_editable'])
+            self.assertNotContains(response,'Будущий день доступен для просмотра')
+        data=self.payload('ADMIN','works')
+        data.update({'works-0-project_work':self.work.pk,'works-0-actual_quantity':'3','works-0-deviation_reason':self.reason.pk})
+        self.assertEqual(self.client.post(self.url,data).status_code,302)
+        fact=DailyFact.objects.get(date=self.day);self.assertEqual(fact.actual_quantity,3)
+        housing.move(admin,'DEPARTURE',camp,self.day+timedelta(days=1),[self.housing_person])
+        self.assertEqual(self.housing_person.stays.get().departed_on,self.day+timedelta(days=1))
+        transport.move(admin,camp,self.day,[self.machine.pk],'ARRIVAL',signed=transport.snapshot(admin,camp,self.day))
+        transport.save_day(admin,camp,self.day,[self.machine.pk],'WORKED',signed=transport.snapshot(admin,camp,self.day))
+        self.assertEqual(EquipmentDayRecord.objects.get(date=self.day).status,'WORKED')
+        calendar=self.client.get(reverse('production:transport_board'),{'camp':camp.pk,'date':str(self.day),'tab':'calendar'})
+        cell=next(c for row in calendar.context['calendar'] for c in row['cells'] if c['date']==self.day)
+        self.assertEqual(cell['code'],'✓')
+        changes=FactRevision.objects.filter(fact_date=self.day,actor=admin)
+        self.assertTrue(changes.filter(entity_type='production.dailyfact',entity_id=str(fact.pk)).exists())
+        self.assertTrue(changes.filter(entity_type='production.equipmentdayrecord').exists())
 
     def test_repeated_colleague_corrections_remain_available_even_after_confirmation(self):
         with patch('django.utils.timezone.localdate',return_value=self.day):self.assertEqual(self.post_work('DISPATCHER',5,'confirm').status_code,302)

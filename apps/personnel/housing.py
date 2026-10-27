@@ -110,7 +110,6 @@ def move(user,kind,camp,day,people,employees=(),target=None,comment='',snapshot=
     require_fact_day(user,day)
     if kind not in {'ARRIVAL','DEPARTURE','TRANSFER'}:raise ValidationError('Неизвестное действие.')
     if kind=='TRANSFER' and (not target or target.pk==camp.pk):raise ValidationError('Выберите другой ВЖГ для перевода.')
-    if day>timezone.localdate():raise ValidationError('Фактическое событие нельзя вносить будущей датой. Плановые даты задаются графиком.')
     if kind=='ARRIVAL' and not camp.is_active or target and not target.is_active:raise ValidationError('Для заезда выберите действующий ВЖГ.')
     from apps.accounts.models import Company
     Company.objects.filter(pk=user.company_id).update(name=F('name'))

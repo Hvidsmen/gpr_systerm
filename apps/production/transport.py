@@ -136,11 +136,6 @@ def audit(user, record, action, values):
     AuditLog.objects.create(user=user, action=action, entity_type=record._meta.label, entity_id=str(record.pk), new_value=values, comment='Учёт техники по ВЖГ')
 
 
-def _day(day):
-    if day > timezone.localdate():
-        raise ValidationError('Факт нельзя вносить будущей датой.')
-
-
 def _valid_timeline(machine, since):
     """Retroactive changes must not invalidate saved daily facts."""
     for row in machine.transport_days.filter(date__gte=since).select_related('camp'):
@@ -153,7 +148,7 @@ def _valid_timeline(machine, since):
 @transaction.atomic
 @with_history_actor
 def move(user, camp, day, ids, kind, *, target=None, condition='READY', comment='', signed, session=None):
-    authorize(user, camp); _day(day); require_fact_day(user,day)
+    authorize(user, camp); require_fact_day(user,day)
     if kind not in {'ARRIVAL', 'DEPARTURE', 'TRANSFER', 'WRITEOFF'}:
         raise ValidationError('Выберите действие с техникой.')
     if kind == 'TRANSFER':
@@ -214,7 +209,7 @@ def move(user, camp, day, ids, kind, *, target=None, condition='READY', comment=
 @transaction.atomic
 @with_history_actor
 def set_condition(user, camp, day, ids, condition, *, comment='', signed, session=None):
-    authorize(user, camp); _day(day); require_fact_day(user,day)
+    authorize(user, camp); require_fact_day(user,day)
     if condition not in dict(CONDITIONS):
         raise ValidationError('Выберите техническое состояние.')
     versions = _payload(user, camp, day, signed); session = _session(session)
@@ -261,7 +256,7 @@ def _project(user, record, previous_activity):
 @transaction.atomic
 @with_history_actor
 def save_day(user, camp, day, ids, status, *, construction_object=None, work=None, work_item=None, comment='', repeat=False, signed, session=None):
-    authorize(user, camp); _day(day); require_fact_day(user,day)
+    authorize(user, camp); require_fact_day(user,day)
     if status not in {'WORKED', 'IDLE', 'CLEAR'}:
         raise ValidationError('Выберите «Работала», «Простой» или очистку дня.')
     versions = _payload(user, camp, day, signed); session = _session(session)

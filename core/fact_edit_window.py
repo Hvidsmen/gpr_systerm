@@ -1,4 +1,4 @@
-"""Dispatcher actual entry stays open on the fact date and the next local day."""
+"""Dispatchers edit the fact date and next day; admins may edit any date."""
 from datetime import timedelta
 from django.core.exceptions import ValidationError
 from django.utils import timezone
@@ -11,7 +11,11 @@ def edit_deadline(day):
 
 def can_edit_fact_day(user, day, *, today=None):
     today = today or timezone.localdate()
-    if day is None or day > today:
+    if day is None:
+        return False
+    if role_code(user) == 'ADMIN':
+        return True
+    if day > today:
         return False
     # Supervisory access is retained; ordinary dispatchers share the same window
     # in production, personnel, transport and the combined dispatcher role.
@@ -21,6 +25,8 @@ def can_edit_fact_day(user, day, *, today=None):
 def window_message(user, day, *, today=None):
     today = today or timezone.localdate()
     if day is None:return 'Укажите дату факта.'
+    if role_code(user) == 'ADMIN':
+        return ''
     if day > today:
         return 'Будущий день доступен для просмотра. Факт можно вносить начиная с даты его выполнения.'
     if role_code(user) not in DISPATCHER_ROLES:
