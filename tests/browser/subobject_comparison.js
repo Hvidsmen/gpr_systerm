@@ -1,0 +1,41 @@
+const {chromium}=require('playwright'),assert=require('node:assert/strict'),fs=require('node:fs');
+const c=JSON.parse(process.env.SUBOBJECT_COMPARISON_CONFIG);
+(async()=>{
+ const browser=await chromium.launch({executablePath:c.chromium,headless:true,args:['--no-sandbox']});
+ try{
+  const context=await browser.newContext({viewport:{width:1720,height:1050}});
+  await context.route('**/*',route=>{const url=route.request().url();if(url.startsWith(c.base))return route.continue();
+   if(url.endsWith('/bootstrap.min.css'))return route.fulfill({contentType:'text/css',body:fs.readFileSync('/tmp/catalogue-bootstrap.css')});
+   if(url.endsWith('/bootstrap-icons.css'))return route.fulfill({contentType:'text/css',body:fs.readFileSync('/tmp/catalogue-bootstrap-icons.css')});return route.abort();});
+  await context.addCookies([{name:'sessionid',value:c.cookie,url:c.base}]);
+  const page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));
+  await page.goto(c.base+c.url,{waitUntil:'networkidle'});
+  const root=page.locator('#smg-parent-comparison');await root.locator(':scope>summary').click();
+  const rows=root.locator('[data-comparison-row]');
+  assert(await root.locator('[data-comparison-level=section]').count());
+  assert((await root.locator('[data-comparison-level=object]').allTextContents()).some(text=>text.includes('УЗА 33')));
+  assert.deepEqual(await root.locator('[data-comparison-level=position_group] [data-comparison-label]').allTextContents(),['ИТР Состав','Вспомогательный персонал']);
+  assert.deepEqual(await root.locator('[data-comparison-level=equipment_category] [data-comparison-label]').allTextContents(),['Специализированная техника','Вспомогательная техника']);
+  const packageRow=root.locator('[data-comparison-level=package]'),values=await packageRow.locator('td').allTextContents();
+  assert(values.includes('10'),'Completed packages are in the package heading');
+  assert.equal(await packageRow.locator('td.table-info').count(),1);
+  await packageRow.locator('[data-comparison-toggle]').click();
+  assert.equal(await root.locator('[data-comparison-level=work]:visible').count(),1,'Only the unrelated standalone work remains visible');
+  assert.deepEqual(await packageRow.locator('td').allTextContents(),values);
+  await page.reload({waitUntil:'networkidle'});await root.locator(':scope>summary').click();
+  assert.equal(await packageRow.locator('[data-comparison-toggle]').getAttribute('aria-expanded'),'false');
+  await root.locator('[data-comparison-expand=false]').click();
+  assert.equal(await root.locator('[data-comparison-row]:visible').count(),3,'Only Works, Positions and Equipment roots remain');
+  assert((await root.locator('[data-comparison-key="comparison:equipment"] td').allTextContents()).includes('4'));
+  await root.locator('[data-comparison-expand=true]').click();
+  assert.equal(await root.locator('[data-comparison-row]:visible').count(),await rows.count());
+  assert(!(await root.innerText()).includes('Машино-часы'));assert(!(await root.innerText()).includes('Трудозатраты'));
+  await root.scrollIntoViewIfNeeded();await page.screenshot({path:'/tmp/subobject-comparison-wide.png'});
+  await page.setViewportSize({width:390,height:844});
+  await page.waitForFunction(()=>document.getElementById('sidebar').getBoundingClientRect().right<=1);
+  await root.locator('[data-comparison-expand=false]').click();await root.scrollIntoViewIfNeeded();
+  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2));
+  await page.screenshot({path:'/tmp/subobject-comparison-mobile.png'});
+  assert.deepEqual(errors,[]);console.log('Subobject comparison: work identities and levels, ordered resource groups, inline totals, independent collapse, fold persistence, own contribution column and mobile passed.');
+ }finally{await browser.close();}
+})().catch(error=>{console.error(error);process.exit(1);});

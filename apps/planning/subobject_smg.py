@@ -193,10 +193,10 @@ def comparison(schedule):
     for pk,spec in specs.items():
         parent_totals=defaultdict(Decimal)
         for row in spec.get('plans',[]):parent_totals[row.get('item_id')]+=Decimal(str(row['quantity']))
-        positions=[{'id':None,'name':spec['name'],'unit':spec['unit']}] if spec['kind']=='SIMPLE' else [{'id':i['id'],'name':spec['name']+' → '+i['name'],'unit':i['unit']} for i in spec['items']]
+        positions=[{'id':None,'name':spec['name'],'label':spec['name'],'unit':spec['unit']}] if spec['kind']=='SIMPLE' else [{'id':i['id'],'name':spec['name']+' → '+i['name'],'label':i['name'],'unit':i['unit']} for i in spec['items']]
         for position in positions:
             cells=[totals[pk][s.pk][position['id']] for s in schedules];overall=sum(cells,ZERO);baseline=parent_totals[position['id']]
-            rows.append({'name':position['name'],'unit':position['unit'],'gpr':baseline,'total':overall,'own':totals[pk][schedule.pk][position['id']],'delta':overall-baseline,'cells':cells,'kind':'work'})
+            rows.append({'name':position['name'],'label':position['label'],'work_id':pk,'item_id':position['id'],'unit':position['unit'],'gpr':baseline,'total':overall,'own':totals[pk][schedule.pk][position['id']],'delta':overall-baseline,'cells':cells,'kind':'work'})
         if spec['kind']=='COMPOSITE' and spec.get('items'):
             cells=[]
             for s in schedules:
@@ -204,9 +204,12 @@ def comparison(schedule):
                 combined={i:prior[i]+current[i] for i in prior.keys()|current.keys()}
                 cells.append(quantity_from_totals(spec,combined)-quantity_from_totals(spec,prior))
             baseline=sum((Decimal(str(r['quantity'])) for r in spec.get('daily',[])),ZERO);overall=sum(cells,ZERO)
-            rows.append({'name':spec['name']+' · готовые комплексы','unit':spec['unit'],'gpr':baseline,'total':overall,'own':cells[schedules.index(schedule)] if schedule in schedules else ZERO,'delta':overall-baseline,'cells':cells,'kind':'work'})
+            rows.append({'name':spec['name']+' · готовые комплексы','label':'Готовые комплексы','work_id':pk,'package_total':True,'unit':spec['unit'],'gpr':baseline,'total':overall,'own':cells[schedules.index(schedule)] if schedule in schedules else ZERO,'delta':overall-baseline,'cells':cells,'kind':'work'})
     rows+=resource_comparison(schedule,schedules)
-    return {'source':schedule.source,'schedules':schedules,'rows':rows,'unmapped':unmapped}
+    from .subobject_comparison_layout import hierarchy
+    return {'source':schedule.source,'schedules':schedules,'rows':rows,'unmapped':unmapped,
+            'tree':hierarchy(rows,specs,schedule.company,len(schedules)),
+            'own_index':schedules.index(schedule)}
 
 
 def resource_comparison(schedule,schedules):
@@ -214,8 +217,8 @@ def resource_comparison(schedule,schedules):
     from .daily_schedule import bounds,row_value
     from apps.resources.models import BrigadeMerge,Brigade,EquipmentType
     snapshot=period_snapshot(schedule.source,*bounds(schedule.month))
-    brigades={b.pk:b for b in Brigade.objects.filter(company_id=schedule.company_id)}
-    gear={e.pk:e for e in EquipmentType.objects.filter(company_id=schedule.company_id)}
+    brigades={b.pk:b for b in Brigade.objects.filter(company_id=schedule.company_id).select_related('group')}
+    gear={e.pk:e for e in EquipmentType.objects.filter(company_id=schedule.company_id).select_related('category','parent__category')}
     aliases=dict(BrigadeMerge.objects.filter(company_id=schedule.company_id).values_list('source_id','target_id'))
     def identity(kind,row):
         key=row.get('brigade_id') if kind=='labor' else row.get('equipment_type_id') if kind=='equipment' else row.get('fuel_type','')
@@ -244,8 +247,16 @@ def resource_comparison(schedule,schedules):
     days=Decimal(bounds(schedule.month)[1].day);result=[]
     for (kind,key),by_schedule in sorted(values.items(),key=lambda pair:(list(fields).index(pair[0][0]),str(pair[0][1]))):
         label=brigades[key].name if kind=='labor' and key in brigades else gear[key].name if kind=='equipment' and key in gear else labels[kind,key]
+        group_key='none';group_label='Без группы' if kind=='labor' else 'Без категории'
+        if kind=='labor' and key in brigades and brigades[key].group_id and brigades[key].group.company_id==schedule.company_id:
+            group_key=str(brigades[key].group_id);group_label=brigades[key].group.name
+        elif kind=='equipment':
+            from .resource_group_totals import equipment_group
+            group_label,group_key=equipment_group(gear.get(key),schedule.company)
         for field,measure,unit in fields[kind]:
             divisor=days if field=='planned_count' else Decimal(1)
             cells=[by_schedule[s.pk][field]/divisor for s in schedules];baseline=by_schedule[None][field]/divisor;total=sum(cells,ZERO)
-            result.append({'kind':kind,'name':label+' · '+measure,'unit':unit,'gpr':baseline,'total':total,'own':by_schedule[schedule.pk][field]/divisor,'delta':total-baseline,'cells':cells})
+            result.append({'kind':kind,'name':label+' · '+measure,'label':label,'resource_id':key,'measure_field':field,
+                'group_key':group_key,'group_label':group_label,'unit':unit,'gpr':baseline,'total':total,
+                'own':by_schedule[schedule.pk][field]/divisor,'delta':total-baseline,'cells':cells})
     return result

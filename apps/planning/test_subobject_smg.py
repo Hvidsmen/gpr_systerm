@@ -5,8 +5,8 @@ from django.core.exceptions import ValidationError,PermissionDenied
 from django.test import TestCase
 from django.urls import reverse
 from apps.projects.models import ConstructionObject,Section
-from apps.works.models import ProjectWork,ProjectWorkItem
-from apps.resources.models import EquipmentType
+from apps.works.models import ProjectWork,ProjectWorkItem,ComplexObject
+from apps.resources.models import EquipmentType,EquipmentCategory,Brigade,BrigadeGroup,BrigadeMacroGroup
 from . import test_workspace as fixtures,independent_smg as independent
 from .models import GlobalPlanVersion,WorkMonthAllocation,ResourceMonthAllocation,DailySchedule,SubobjectWorkOrigin,WorkResourceAssignment
 from .workspace_services import WorkspaceService,build_workspace_snapshot
@@ -72,6 +72,71 @@ class SubobjectSMGTests(TestCase):
         self.assertEqual(response.status_code,200)
         self.assertContains(response,'Σ СМГ');self.assertContains(response,'КТП-2')
         self.assertFalse(response.context['has_direct_reference'])
+        self.source.refresh_from_db();self.assertEqual(self.source.snapshot,self.snapshot)
+
+    def test_comparison_work_hierarchy_keeps_parent_context_and_inline_package_total(self):
+        facility=ComplexObject.objects.create(company=self.company,construction_object=self.obj,section=self.composite.section,name='УЗА 33')
+        self.composite.complex_object=facility;self.composite.save()
+        # Model a captured object label in the already approved source.
+        snapshot=deepcopy(self.snapshot)
+        next(s for s in snapshot['works'] if s['id']==self.composite.pk).update(complex_object_id=facility.pk,complex_object_name=facility.name)
+        GlobalPlanVersion.objects.filter(pk=self.source.pk).update(snapshot=snapshot)
+        self.source.refresh_from_db()
+        schedule=self.schedule(copy=False)
+        tree=comparison(schedule)['tree']
+        package=next(n for n in tree if n['level']=='package')
+        self.assertEqual(package['label'],self.composite.name)
+        self.assertEqual(package['gpr'],10)
+        self.assertEqual(package['measure'],'Готовые комплексы')
+        self.assertEqual([n['label'] for n in tree if package['key'] in n['ancestors'].split()],[self.a.name,self.b.name])
+        self.assertTrue(any(n['level']=='section' and n['label']==self.composite.section.name for n in tree))
+        self.assertTrue(any(n['level']=='object' and n['label']=='УЗА 33' for n in tree))
+        self.assertFalse(any(n['label']=='Готовые комплексы' for n in tree))
+        self.source.refresh_from_db();self.assertEqual(self.source.snapshot,snapshot)
+
+    def test_equally_named_packages_on_different_objects_remain_separate(self):
+        first=ComplexObject.objects.create(company=self.company,construction_object=self.obj,section=self.composite.section,name='УЗА 28')
+        second=ComplexObject.objects.create(company=self.company,construction_object=self.obj,section=self.composite.section,name='УЗА 33')
+        self.composite.complex_object=first;self.composite.save()
+        other=ProjectWork.objects.create(company=self.company,section=self.composite.section,complex_object=second,name=self.composite.name,kind='COMPOSITE',unit=self.composite.unit,allow_fractional=True)
+        ProjectWorkItem.objects.create(company=self.company,project_work=other,name=self.a.name,unit=self.a.unit,quantity_per_unit=2,weight=100)
+        GlobalPlanVersion.objects.filter(pk=self.source.pk).update(status='DRAFT')
+        WorkMonthAllocation.objects.create(company=self.company,version=self.source,work=other,month=JAN,quantity=2)
+        snapshot=build_workspace_snapshot(self.source)
+        GlobalPlanVersion.objects.filter(pk=self.source.pk).update(status='APPROVED',snapshot=snapshot)
+        self.source.refresh_from_db()
+        tree=comparison(self.schedule(copy=False))['tree']
+        packages=[n for n in tree if n['level']=='package']
+        self.assertEqual([n['label'] for n in packages],[self.composite.name]*2)
+        self.assertEqual(len({n['key'] for n in packages}),2)
+        self.assertEqual(sorted(n['gpr'] for n in packages),[2,10])
+        self.assertNotEqual(packages[0]['ancestors'],packages[1]['ancestors'])
+
+    def test_resource_hierarchy_orders_groups_totals_counts_and_hides_hour_measures(self):
+        schedule=self.schedule(copy=False)
+        expected=['ИТР Состав','Водитель спец.техники','Водители вспомогательной техники','Основной рабочий состав','Вспомогательный персонал']
+        macro=BrigadeMacroGroup.objects.create(company=self.company,name='Макрогруппу не показывать')
+        for index,label in enumerate(reversed(expected)):
+            group=BrigadeGroup.objects.create(company=self.company,name=label)
+            brigade=Brigade.objects.create(company=self.company,name='Должность '+str(index),group=group,macro_group=macro)
+            entry=add_entry(self.planner,schedule,{'kind':'labor','brigade':brigade,'rate':0})
+            self.set_values(entry,index+1,field='planned_count')
+        specialized=EquipmentCategory.objects.create(company=self.company,name='Специализированная техника')
+        auxiliary=EquipmentCategory.objects.create(company=self.company,name='Вспомогательная техника')
+        self.equipment.category=specialized;self.equipment.save()
+        extra=EquipmentType.objects.create(company=self.company,name='Вспомогательная машина',category=auxiliary)
+        entry=add_entry(self.planner,schedule,{'kind':'equipment','equipment':extra,'rate':0})
+        self.set_values(entry,2,field='planned_count')
+        report=comparison(schedule);tree=report['tree']
+        self.assertEqual([n['label'] for n in tree if n['level']=='position_group'],expected)
+        self.assertEqual([n['label'] for n in tree if n['level']=='equipment_category'],[specialized.name,auxiliary.name])
+        root=next(n for n in tree if n['key']=='comparison:labor')
+        self.assertEqual(root['total'],sum(n['total'] for n in tree if n['level']=='position_group'))
+        self.assertEqual(next(n['gpr'] for n in tree if n['label']==specialized.name),3)
+        self.assertFalse(any(n.get('measure_field') in {'planned_hours','planned_machine_hours'} for n in tree))
+        response=self.client.get(reverse('planning:daily_schedule_detail',args=[schedule.pk]))
+        self.assertContains(response,'data-comparison-toggle')
+        self.assertNotContains(response,macro.name)
         self.source.refresh_from_db();self.assertEqual(self.source.snapshot,self.snapshot)
 
     def test_complex_completion_is_calculated_per_child_not_from_fragments(self):
