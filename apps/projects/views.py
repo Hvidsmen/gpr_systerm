@@ -1,3 +1,4 @@
+from core.catalogue_excel import CatalogueExcelMixin
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect
 from django.contrib import messages
@@ -12,7 +13,7 @@ from .forms import ProjectForm, ConstructionObjectForm, SectionForm
 from core.mixins import CompanyScopedMixin
 from core.permissions import scope_queryset, role_code
 
-class ProjectListView(CompanyScopedMixin, ListView):
+class ProjectListView(CatalogueExcelMixin, CompanyScopedMixin, ListView):
     model = Project
     template_name = 'projects/project_list.html'
     context_object_name = 'projects'
@@ -71,7 +72,7 @@ class ProjectDeleteView(CompanyScopedMixin, DeleteView):
         return super().delete(request, *args, **kwargs)
 
 
-class ConstructionObjectListView(CompanyScopedMixin, ListView):
+class ConstructionObjectListView(CatalogueExcelMixin, CompanyScopedMixin, ListView):
     template_name = 'projects/object_list.html'
     context_object_name = 'construction_objects'
     paginate_by = 20
@@ -122,7 +123,7 @@ from .models import Section, ConstructionObject
 from .forms import SectionForm
 
 
-class SectionListView(CompanyScopedMixin, ListView):
+class SectionListView(CatalogueExcelMixin, CompanyScopedMixin, ListView):
     """Список разделов строительного объекта."""
     model = Section
     template_name = 'projects/section_list.html'

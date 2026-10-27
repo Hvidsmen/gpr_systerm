@@ -1,3 +1,4 @@
+from core.catalogue_excel import CatalogueExcelMixin
 from .crew_views import EquipmentCrewEditorMixin
 from .filters import CatalogFilterMixin, BrigadeFilterForm, EquipmentFilterForm
 from django.views.generic import ListView, CreateView
@@ -12,7 +13,7 @@ from .models import Employee, Brigade
 from .forms import EmployeeForm, BrigadeForm
 from django.shortcuts import get_object_or_404, redirect  # ← ДОБАВЛЕНО
 
-class EmployeeListView(CompanyScopedMixin, ListView):
+class EmployeeListView(CatalogueExcelMixin, CompanyScopedMixin, ListView):
     model = Employee
     template_name = 'resources/employee_list.html'
     context_object_name = 'employees'
@@ -258,7 +259,7 @@ from django.views.decorators.http import require_POST
 from core.permissions import require_roles, PLAN_ROLES
 
 
-class EquipmentCategoryListView(CompanyScopedMixin, ListView):
+class EquipmentCategoryListView(CatalogueExcelMixin, CompanyScopedMixin, ListView):
     model = EquipmentCategory
     template_name = 'resources/equipment_category_list.html'
     context_object_name = 'categories'

@@ -103,6 +103,9 @@ def catalog_list(request):
     from django.core.paginator import Paginator
     rows=EstimateCatalog.objects.filter(company=request.user.company,kind=kind).order_by('name')
     if request.GET.get('q'):rows=rows.filter(name__icontains=request.GET['q'])
+    if request.GET.get('export') == 'xlsx':
+        from core.catalogue_excel import catalogue_response
+        return catalogue_response(request, rows)
     return render(request,'estimates/catalog.html',{'page':Paginator(rows,100).get_page(request.GET.get('page')),'kind':kind})
 
 

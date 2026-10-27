@@ -1,3 +1,4 @@
+from core.catalogue_excel import CatalogueExcelMixin
 import re
 
 from django.db import connection
@@ -23,7 +24,7 @@ from core.mixins import CompanyRequiredMixin, CompanyScopedMixin
 from core.permissions import scope_queryset
 
 
-class WorkListView(CompanyScopedMixin, ListView):
+class WorkListView(CatalogueExcelMixin, CompanyScopedMixin, ListView):
     model = ProjectWork
     template_name = "works/work_list.html"
     context_object_name = "works"

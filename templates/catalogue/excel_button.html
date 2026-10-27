@@ -1,0 +1,1 @@
+{% load catalogue_excel %}{% catalogue_export_url as excel_url %}{% if excel_url %}<a class="btn btn-sm btn-outline-success mb-3" href="{{ excel_url }}" title="Выгрузить все найденные записи со всех страниц">Экспорт в Excel</a>{% endif %}

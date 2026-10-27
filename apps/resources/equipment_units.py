@@ -44,8 +44,12 @@ class UnitForm(forms.ModelForm):
 def units(request,pk=None):
     require_roles(request.user,READ_ROLES if request.method=='GET' else PLAN_ROLES)
     instance=get_object_or_404(Equipment,pk=pk,company=request.user.company) if pk else None
+    units_queryset = Equipment.objects.filter(company=request.user.company).select_related('type__parent', 'operator_position')
+    if request.method == 'GET' and request.GET.get('export') == 'xlsx':
+        from core.catalogue_excel import catalogue_response
+        return catalogue_response(request, units_queryset)
     form=UnitForm(request.POST if request.method=='POST' else None,instance=instance,company=request.user.company)
     if request.method=='POST' and form.is_valid():
         form.save();messages.success(request,'Единица техники сохранена.')
         return redirect('resources:equipment_unit_list')
-    return render(request,'resources/equipment_units.html',{'form':form,'units':Equipment.objects.filter(company=request.user.company).select_related('type__parent','operator_position'),'editable':role_code(request.user) in PLAN_ROLES,'editing':instance},status=400 if request.method=='POST' else 200)
+    return render(request,'resources/equipment_units.html',{'form':form,'units':units_queryset,'editable':role_code(request.user) in PLAN_ROLES,'editing':instance},status=400 if request.method=='POST' else 200)

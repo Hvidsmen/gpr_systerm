@@ -1,5 +1,6 @@
 {% extends 'base.html' %}{% load access %}
-{% block content %}{% with bulk_route='works:bulk_delete' bulk_kind=bulk_catalog_kind %}{% include 'bulk/toolbar.html' %}
+{% block content %}
+{% include 'catalogue/excel_button.html' %}{% with bulk_route='works:bulk_delete' bulk_kind=bulk_catalog_kind %}{% include 'bulk/toolbar.html' %}
 <h1>{{ title }}</h1>
 {% if kind == 'unit' %}{% if request.user|may:'works:unit_merge' %}<p class="small text-muted">Отметьте равнозначные обозначения галочками и нажмите «Объединить выбранные единицы».</p>{% endif %}{% endif %}
 {% if request.user|may:'works:group_create' %}<button class="btn btn-primary mb-3" type="button" data-catalog-open="{% if title == 'Группы работ' %}group{% else %}unit{% endif %}">+ Добавить</button>{% endif %}

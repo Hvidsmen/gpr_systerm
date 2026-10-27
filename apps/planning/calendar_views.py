@@ -1,3 +1,4 @@
+from core.catalogue_excel import CatalogueExcelMixin
 import datetime
 from django.shortcuts import get_object_or_404, redirect
 from django.contrib import messages
@@ -10,7 +11,7 @@ from .forms import ProductionCalendarForm, CalendarDayForm
 from .services import CalendarAutoFillService
 
 
-class CalendarListView(CompanyScopedMixin, ListView):
+class CalendarListView(CatalogueExcelMixin, CompanyScopedMixin, ListView):
     """Список производственных календарей."""
     model = ProductionCalendar
     template_name = 'planning/calendar_list.html'

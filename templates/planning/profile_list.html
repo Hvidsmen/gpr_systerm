@@ -5,6 +5,7 @@
 {% block title %}Профили нагрузки - ЯДС ОС{% endblock %}
 
 {% block content %}
+{% include 'catalogue/excel_button.html' %}
 {% with bulk_route='planning:bulk_delete' bulk_kind='profiles' %}
 {% include 'bulk/toolbar.html' %}
 <!-- Page header -->

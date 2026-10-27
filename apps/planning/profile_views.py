@@ -1,3 +1,4 @@
+from core.catalogue_excel import CatalogueExcelMixin
 from django.shortcuts import get_object_or_404
 from django.contrib import messages
 from django.views.generic import ListView, DetailView, CreateView, UpdateView, DeleteView
@@ -8,7 +9,7 @@ from .models import LoadProfile, LoadProfileItem
 from .forms import LoadProfileForm, LoadProfileItemForm
 
 
-class LoadProfileListView(CompanyScopedMixin, ListView):
+class LoadProfileListView(CatalogueExcelMixin, CompanyScopedMixin, ListView):
     """Список профилей нагрузки."""
     model = LoadProfile
     template_name = 'planning/profile_list.html'

@@ -5,6 +5,7 @@
 {% block title %}Производственные календари - ЯДС ОС{% endblock %}
 
 {% block content %}
+{% include 'catalogue/excel_button.html' %}
 {% with bulk_route='planning:bulk_delete' bulk_kind='calendars' %}
 {% include 'bulk/toolbar.html' %}
 <div class="page-header d-flex justify-content-between align-items-center">

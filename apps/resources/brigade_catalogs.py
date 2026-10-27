@@ -16,7 +16,11 @@ class BrigadeCatalogList(View):
 
     def get(self, request):
         model, form, title = CONFIG[self.kind]
-        return render(request, 'resources/brigade_catalog_list.html', {'kind':self.kind, 'bulk_catalog_kind':'brigade_groups' if self.kind == 'group' else 'brigade_macros', 'title':title, 'records':model.objects.filter(company=request.user.company)})
+        records = model.objects.filter(company=request.user.company)
+        if request.GET.get('export') == 'xlsx':
+            from core.catalogue_excel import catalogue_response
+            return catalogue_response(request, records)
+        return render(request, 'resources/brigade_catalog_list.html', {'kind':self.kind, 'bulk_catalog_kind':'brigade_groups' if self.kind == 'group' else 'brigade_macros', 'title':title, 'records':records})
 
 
 def quick_create(kind):

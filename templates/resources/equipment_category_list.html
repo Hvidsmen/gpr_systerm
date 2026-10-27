@@ -1,5 +1,6 @@
 {% extends 'base.html' %}{% load access %}
-{% block content %}{% with bulk_route='resources:bulk_delete' bulk_kind='equipment_categories' %}{% include 'bulk/toolbar.html' %}
+{% block content %}
+{% include 'catalogue/excel_button.html' %}{% with bulk_route='resources:bulk_delete' bulk_kind='equipment_categories' %}{% include 'bulk/toolbar.html' %}
 <h1>Категории техники</h1>
 {% if request.user|may:'resources:equipment_category_create' %}<button class="btn btn-primary mb-3" type="button" data-catalog-open="category">+ Добавить категорию</button>{% endif %}
 <ul class="list-group">{% for category in categories %}<li class="list-group-item">{% include 'bulk/checkbox.html' with record=category %} {{ category.name }}{% if request.user|may:'resources:equipment_category_update' %}<a class="btn btn-sm btn-outline-secondary float-end" href="{% url 'resources:equipment_category_update' category.pk %}">Изменить название</a>{% endif %}</li>{% empty %}<li class="list-group-item text-muted">Справочник пока пуст.</li>{% endfor %}</ul>

@@ -69,7 +69,11 @@ class CatalogList(View):
 
     def get(self, request):
         model, form_class, title = CONFIG[self.kind]
-        return render(request, 'works/catalog_list.html', {'title':title, 'kind':self.kind, 'bulk_catalog_kind':'units' if self.kind == 'unit' else 'work_groups', 'records':model.objects.filter(company=request.user.company), 'form':form_class(company=request.user.company)})
+        records = model.objects.filter(company=request.user.company)
+        if request.GET.get('export') == 'xlsx':
+            from core.catalogue_excel import catalogue_response
+            return catalogue_response(request, records)
+        return render(request, 'works/catalog_list.html', {'title':title, 'kind':self.kind, 'bulk_catalog_kind':'units' if self.kind == 'unit' else 'work_groups', 'records':records, 'form':form_class(company=request.user.company)})
 
 
 class WorkGroupList(CatalogList):
