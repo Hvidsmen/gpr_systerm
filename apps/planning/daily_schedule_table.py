@@ -85,13 +85,22 @@ def add_entry(user,schedule,data):
         identity=service.resource_identity(row,kind)
         key=kind+':'+hashlib.sha256(json.dumps(identity).encode()).hexdigest()
         original=[dict(row,date=day.isoformat()) for day,_ in service.identities(SimpleNamespace(schedule=schedule,kind=kind,label=label,metadata={}))]
-    if schedule.entries.filter(key=key).exists():raise ValidationError('Эта позиция уже есть в СМГ. Измените ее дневные значения.')
+    existing=schedule.entries.filter(key=key).first()
+    if existing:
+        if kind=='equipment':
+            from .table_resource_crew import add_daily_crew
+            if add_daily_crew(user,schedule,data['equipment']):return existing
+        raise ValidationError('Эта позиция уже есть в СМГ. Измените ее дневные значения.')
     entry=DailyScheduleEntry.objects.create(schedule=schedule,key=key,kind=kind,label=label,metadata=metadata,original=original,rows=original)
     if kind=='work':
         from .subobject_smg import annotate_entry
         annotate_entry(entry,work);entry.save(update_fields=['metadata','gpr_work'])
     values=[{field:Decimal(0) for field,_,_ in service.FIELDS[kind]} for _ in service.identities(entry)]
-    return service.save_entry(user,entry,values,0)
+    entry=service.save_entry(user,entry,values,0)
+    if kind=='equipment':
+        from .table_resource_crew import add_daily_crew
+        add_daily_crew(user,schedule,data['equipment'])
+    return entry
 
 
 @transaction.atomic

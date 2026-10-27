@@ -25,7 +25,7 @@ class AddEntryForm(forms.Form):
         if isinstance(schedule,DailySchedule) and parent_reference(schedule):self.fields['selection'].label='Работа · каталог субобъекта и общего ГПР'
         self.fields['work'].widget=forms.HiddenInput()
         self.fields['work'].label_from_instance=lambda work:f'{work.section.construction_object} · {work.section.name} · {work.name} · {work.unit} · ID {work.pk}'
-        self.fields['brigade'].queryset=Brigade.objects.filter(company_id=schedule.company_id)
+        self.fields['brigade'].queryset=Brigade.objects.filter(company_id=schedule.company_id,merge_source__isnull=True,is_active=True)
         from apps.resources.equipment_levels import gpr_types
         self.fields['equipment'].queryset=gpr_types(EquipmentType.objects.filter(company_id=schedule.company_id,merge_source__isnull=True,is_active=True))
         self.auto_id='plan-add-%s'

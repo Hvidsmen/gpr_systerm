@@ -46,13 +46,13 @@ class PlanWorkbenchTests(TestCase):
         self.assertTrue(all(r['equipment_number']=='' and Decimal(r['planned_count'])==0 for r in entry.rows))
         variant=EquipmentType.objects.create(company=self.company,parent=self.equipment,name='Модель с номером')
         self.assertEqual(self.client.post(self.url,{'action':'add_table_resource','kind':'equipment','equipment':variant.pk}).status_code,400)
-        self.assertEqual(self.version.resource_allocations.count(),1)
+        self.assertEqual(self.version.resource_allocations.filter(kind='equipment').count(),1)
 
     def test_resource_add_reuses_existing_row_without_overwriting_values(self):
         row=ResourceMonthAllocation.objects.create(company=self.company,version=self.version,month=JAN,kind='equipment',equipment_type=self.equipment,count=3,hours=124,rate=55)
         self.client.post(self.url,{'action':'add_table_resource','kind':'equipment','equipment':self.equipment.pk,'rate':'99'})
         row.refresh_from_db();self.assertEqual((row.count,row.hours,row.rate),(3,124,55))
-        self.assertEqual(self.version.resource_allocations.count(),1)
+        self.assertEqual(self.version.resource_allocations.filter(kind='equipment').count(),1)
 
     def test_manager_same_surface_edits_resources_but_cannot_forge_work_changes_or_deletions(self):
         resource=ResourceMonthAllocation.objects.create(company=self.company,version=self.version,month=JAN,kind='labor',brigade=self.brigade,count=1)

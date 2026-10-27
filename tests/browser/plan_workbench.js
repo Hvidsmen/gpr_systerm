@@ -10,6 +10,16 @@ const c=JSON.parse(process.env.PLAN_WORKBENCH_CONFIG);
    if(url.endsWith('/bootstrap-icons.css'))return route.fulfill({contentType:'text/css',body:fs.readFileSync('/tmp/catalogue-bootstrap-icons.css')});return route.abort();});
   await context.addCookies([{name:'sessionid',value:c.cookie,url:c.base}]);
   const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
+  async function addEquipmentCrew(){
+   await page.locator('[data-plan-add-resource=equipment]').click();
+   const dialog=page.locator('[data-plan-add-dialog]');
+   await dialog.locator('[data-add-field=equipment] .search-select-button').click();
+   const popup=dialog.locator('.search-select-popup:not([hidden])');
+   await popup.locator('input').fill('Экскаватор с машинистом');
+   await popup.getByRole('option',{name:'Экскаватор с машинистом',exact:true}).click();
+   await Promise.all([page.waitForNavigation({waitUntil:'networkidle'}),dialog.getByRole('button',{name:'Добавить в план',exact:true}).click()]);
+   const labor=await page.locator('[data-smg-section=labor]').innerText();assert(labor.includes('Машинист')&&labor.includes('Помощник'),'Adding equipment includes catalogue crew positions');
+  }
   await page.goto(c.base+c.gpr,{waitUntil:'networkidle'});
   const gprAdd=await page.locator('.plan-workbench-add').innerText();
   async function assertHierarchy(){
@@ -58,6 +68,7 @@ const c=JSON.parse(process.env.PLAN_WORKBENCH_CONFIG);
   assert(await page.locator('[data-smg-section=labor] [data-plan-month-input]').count());
   assert.equal(await page.locator('[data-smg-section=equipment] > [data-plan-section-totals]').count(),1);
   assert(!(await page.locator('[data-smg-section=equipment] > [data-plan-section-totals]').evaluate(node=>Boolean(node.previousElementSibling&&node.previousElementSibling.hasAttribute('data-smg-group')))));
+  await addEquipmentCrew();
   await page.screenshot({path:'/tmp/unified-gpr-wide.png',fullPage:false});
   await page.goto(c.base+c.report,{waitUntil:'networkidle'});
   const resourceTotal=page.locator('[data-resource-section-total=equipment]');assert.equal(await resourceTotal.count(),1);
@@ -71,6 +82,7 @@ const c=JSON.parse(process.env.PLAN_WORKBENCH_CONFIG);
   assert.equal(await page.locator('[data-plan-month-input]').count(),0);assert.equal(await page.locator('.smg-day-input').count(),31);
   assert.equal(await page.locator('[data-workbench-year]').count(),1);
   await page.locator('[data-plan-copy-table]').click();copy=await page.evaluate(()=>navigator.clipboard.readText());assert.equal(copy.split('\r\n')[0].split('\t').length,34);
+  await addEquipmentCrew();
   await page.screenshot({path:'/tmp/unified-smg-wide.png',fullPage:false});
   for(const url of [c.gpr,c.smg]){
    await page.goto(c.base+url,{waitUntil:'networkidle'});await page.setViewportSize({width:390,height:844});

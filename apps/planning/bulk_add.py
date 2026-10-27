@@ -36,7 +36,7 @@ class BulkAddForm(CompanyFormMixin, forms.Form):
         else:
             querysets = {
                 'works': lambda: ProjectWork.objects.filter(merged_source__isnull=True,company=self.company, section__construction_object=version.construction_object),
-                'labor': lambda: Brigade.objects.filter(company=self.company, is_active=True),
+                'labor': lambda: Brigade.objects.filter(company=self.company, is_active=True, merge_source__isnull=True),
                 'equipment': lambda: EquipmentType.objects.filter(company=self.company, is_active=True,parent__isnull=True),
             }
             self.fields['items'] = forms.ModelMultipleChoiceField(label=TITLES[kind],

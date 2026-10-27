@@ -160,6 +160,9 @@ def add_month_resource(user,version,month,data):
         version.snapshot={};version.save(update_fields=['snapshot'])
         from apps.audit.models import AuditLog
         AuditLog.objects.create(user=user,action='CREATE',entity_type='planning.resourcemonthallocation',entity_id=str(row.pk),new_value={'kind':kind,'month':month.isoformat()},comment='Добавлена строка ресурса через общий интерфейс планирования')
+    if kind=='equipment':
+        from .table_resource_crew import add_monthly_crew
+        created=bool(add_monthly_crew(user,version,month,data['equipment'])) or created
     return created
 
 
