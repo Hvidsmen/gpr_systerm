@@ -336,25 +336,16 @@ class DispatcherDayView(CompanyRequiredMixin,View):
                     row.baseline=baseline
                     row.daily_deviation=bool(baseline and row.instance.pk and any(getattr(row.instance,k+'_id' if k in {'equipment','work','work_item'} else k)!=v for k,v in baseline['values'].items()))
             if prefix=='works':
-                from django.db.models import Sum
-                cumulative={}
-                for row in DailyFact.objects.filter(company=obj.company,project_work__section__construction_object=obj,date__lt=day).values('project_work_id','work_item_id').annotate(q=Sum('actual_quantity')):cumulative[(row['project_work_id'],row['work_item_id'])]=row['q']
-                for row in formset:
-                    try:key=(int(row['project_work'].value()),int(row['work_item'].value()) if row['work_item'].value() else None)
-                    except (TypeError,ValueError):continue
-                    work=ProjectWork.objects.filter(pk=key[0],company=obj.company).select_related('section__construction_object','complex_object').first()
-                    if not work:continue
-                    item=ProjectWorkItem.objects.filter(pk=key[1],company=obj.company).first() if key[1] else None
-                    row.hint=f'{work.complex_object or "Самостоятельные работы"} → {work.name}'+(f' → {item.name}' if item else '')+f' · {item.unit if item else work.unit} · План СМГ: {work_plan.get(key,0)} · Ранее: {cumulative.get(key,0)}'+(' · Вне СМГ' if key not in work_plan else '')
-                    row.fields['project_work'].widget=forms.HiddenInput()
-                    row.fields['work_item'].widget=forms.HiddenInput()
+                from .work_entry_ui import prepare_rows
+                work_groups,work_extra=prepare_rows(formset,obj,day,work_plan,catalogue)
             if prefix=='labor':
                 for index,row in enumerate(formset):
                     if carried_day and not row.instance.pk and index < len(initial):
                         row.prepared_from_previous=True
                         row.hint=f'Подставлено из факта за {carried_day:%d.%m.%Y}. Проверьте сотрудника, смену и работы.'
                     if row.instance.pk:row.hint=f'Должность на дату факта: {row.instance.position or "не указана"}'
-            groups.append({'prefix':prefix,'formset':formset,'carried_day':carried_day})
+            groups.append({'prefix':prefix,'formset':formset,'carried_day':carried_day,
+                **({'work_groups':work_groups,'work_extra':work_extra} if prefix=='works' else {})})
         records={r.section:r for r in FactSectionDay.objects.filter(company=obj.company,construction_object=obj,date=day)}
         context['revision']=request.POST.get('revision','') if bound else status.revision
         context.update(groups=groups,status=status,object=obj,day=day,summary=[{'label':label,'confirmed':bool(records.get(key) and records[key].confirmed_at),'started':key in records} for key,label in LABELS.items()],deviation_comment=request.POST.get('deviation_comment','') if bound else status.deviation_comment)

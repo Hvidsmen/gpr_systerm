@@ -1,7 +1,10 @@
 (() => {
  'use strict';
  const form=document.querySelector('[data-production-form]');if(!form)return;
- const url=form.dataset.claimUrl,csrf=form.querySelector('[name=csrfmiddlewaretoken]').value,session=crypto.randomUUID();
+ // randomUUID is restricted to secure contexts; getRandomValues also works on HTTP.
+ const bytes=crypto.getRandomValues(new Uint8Array(16));bytes[6]=(bytes[6]&15)|64;bytes[8]=(bytes[8]&63)|128;
+ const hex=[...bytes].map(value=>value.toString(16).padStart(2,'0')).join('');
+ const url=form.dataset.claimUrl,csrf=form.querySelector('[name=csrfmiddlewaretoken]').value,session=`${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
  const hidden=document.createElement('input');hidden.type='hidden';hidden.name='claim_session';hidden.value=session;form.append(hidden);
  const scope={construction_object:form.elements.construction_object.value,date:form.elements.date.value,session};
  let claims=new Map(),generation=0,busy=false,lastActivity=Date.now(),lastRenew=0,submitting=false;
@@ -18,9 +21,9 @@
  }
  function capture(row){return [...row.querySelectorAll('input,select,textarea')].filter(i=>!['person_claim_token','person_editing','work_claim_token','work_editing'].some(n=>i.name.endsWith('-'+n))).map(i=>({name:i.name,value:i.value,checked:i.checked,type:i.type}));}
  function reset(row){const baseline=JSON.parse(row.dataset.entryOriginal);row.querySelectorAll('[name$="-work_targets"]').forEach(i=>i.remove());for(const entry of baseline){if(entry.name.endsWith('-work_targets')){const i=document.createElement('input');i.type='hidden';i.name=entry.name;i.value=entry.value;row.append(i);}else{const i=[...row.querySelectorAll('[name]')].find(i=>i.name===entry.name);if(i){i.value=entry.value;if(entry.type==='checkbox')i.checked=entry.checked;}}}}
- function wire(){for(const row of rows()){if(row.querySelector('[data-entry-claim]'))continue;row.dataset.entryOriginal=JSON.stringify(capture(row));row.dataset.entryKey=keyOf(row);
-   const bar=document.createElement('div');bar.dataset.entryClaim='';bar.className='work-claim-bar';
-   for(const [tag,attr,text] of [['span','label',''],['button','take','Взять в работу'],['button','release','Освободить'],['span','error','']]){const el=document.createElement(tag);el.dataset[attr]='';el.textContent=text;if(tag==='button'){el.type='button';el.className='btn btn-sm btn-outline-primary';}else el.className=attr==='error'?'small text-danger':'small';bar.append(el);}row.prepend(bar);
+ function wire(){for(const row of rows()){if(row.dataset.entryWired)continue;row.dataset.entryWired='1';row.dataset.entryOriginal=JSON.stringify(capture(row));row.dataset.entryKey=keyOf(row);
+   if(!row.querySelector('[data-entry-claim]')){const bar=document.createElement('div');bar.dataset.entryClaim='';bar.className='work-claim-bar';
+   for(const [tag,attr,text] of [['span','label',''],['button','take','Взять в работу'],['button','release','Освободить'],['span','error','']]){const el=document.createElement(tag);el.dataset[attr]='';el.textContent=text;if(tag==='button'){el.type='button';el.className='btn btn-sm btn-outline-primary';}else el.className=attr==='error'?'small text-danger':'small';bar.append(el);}row.prepend(bar);}
    if(form.dataset.productionBound==='1'&&editing(row)?.value==='1'&&(person(row)?field(row,'employee')?.value:field(row,'actual_quantity')?.value))row.dataset.entryDirty='1';render(row);
   }}
  function changed(){form.dispatchEvent(new Event('production-claims-change'));}
@@ -34,7 +37,7 @@
  form.addEventListener('input',e=>{const row=e.target.closest('[data-work-fact-row],[data-production-person]');if(row&&controls(row).includes(e.target)&&!(e.target.name?.endsWith('-DELETE')&&!field(row,'id')?.value))row.dataset.entryDirty='1';lastActivity=Date.now();});
  form.addEventListener('change',e=>{wire();const row=e.target.closest('[data-work-fact-row],[data-production-person]');if(row){if(row.dataset.personDirty||controls(row).includes(e.target)&&!(e.target.name?.endsWith('-DELETE')&&!field(row,'id')?.value))row.dataset.entryDirty='1';const old=row.dataset.entryKey,key=keyOf(row);if(old!==key){if(claims.get(old)?.mine){generation++;request('release',old).catch(()=>{});claims.delete(old);}row.dataset.entryKey=key;}render(row);}lastActivity=Date.now();});
  async function poll(){if(document.hidden||busy)return;const version=generation;try{const response=await fetch(url+'?'+new URLSearchParams(scope),{credentials:'same-origin'});if(!response.ok)return;const data=await response.json();if(version!==generation)return;claims=new Map(data.claims.map(c=>[c.key,c]));if(data.report)form.dispatchEvent(new CustomEvent('production-report-update',{detail:data.report}));wire();rows().forEach(render);changed();}catch(error){/* Retry without clearing input. */}}
- form.addEventListener('submit',event=>{const lost=rows().find(row=>!(field(row,'DELETE')?.checked&&!field(row,'id')?.value)&&(row.dataset.entryDirty||row.dataset.personDirty)&&!claims.get(keyOf(row))?.mine);if(lost){event.preventDefault();const panel=lost.closest('[data-entry-step]');form.querySelector(`[data-step="${panel.dataset.entryStep}"]`)?.click();lost.querySelector('[data-error]').textContent='Возьмите запись снова или отмените изменения. Введённые значения сохранены в форме.';lost.scrollIntoView({block:'center'});return;}
+ form.addEventListener('submit',event=>{const lost=rows().find(row=>!(field(row,'DELETE')?.checked&&!field(row,'id')?.value)&&(row.dataset.entryDirty||row.dataset.personDirty)&&!claims.get(keyOf(row))?.mine);if(lost){event.preventDefault();const panel=lost.closest('[data-entry-step]');form.querySelector(`[data-step="${panel.dataset.entryStep}"]`)?.click();let group=lost.closest('details');while(group){group.open=true;group=group.parentElement.closest('details');}lost.querySelector('[data-error]').textContent='Возьмите запись снова или отмените изменения. Введённые значения сохранены в форме.';lost.scrollIntoView({block:'center'});return;}
   // Disabled identity controls still have to be posted for owned rows.
   rows().forEach(row=>{if(claims.get(keyOf(row))?.mine){for(const name of person(row)?['employee','shift']:['project_work','work_item']){const input=field(row,name);if(input)input.disabled=false;}}});submitting=true;
  });
