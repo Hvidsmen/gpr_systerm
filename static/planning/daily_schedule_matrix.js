@@ -32,6 +32,9 @@
   const handoff=document.querySelector('[data-smg-handoff]');
   document.querySelector('[data-smg-open-handoff]')?.addEventListener('click',()=>{if(requireSaved())handoff.showModal();});
   document.querySelector('[data-smg-close-handoff]')?.addEventListener('click',()=>handoff.close());
+  const rework=document.querySelector('[data-smg-rework]');
+  document.querySelector('[data-smg-open-rework]')?.addEventListener('click',()=>{if(requireSaved())rework.showModal();});
+  document.querySelector('[data-smg-close-rework]')?.addEventListener('click',()=>rework.close());
   const more=document.getElementById('smg-more-actions'),moreButton=document.querySelector('[popovertarget="smg-more-actions"]');
   function positionMore(){if(!more?.matches(':popover-open'))return;const rect=moreButton.getBoundingClientRect();more.style.margin='0';more.style.inset='auto';more.style.top=Math.min(rect.bottom+5,window.innerHeight-more.offsetHeight-8)+'px';more.style.left=Math.max(8,Math.min(rect.left,window.innerWidth-more.offsetWidth-8))+'px';}
   more?.addEventListener('toggle',positionMore);window.addEventListener('resize',positionMore);window.addEventListener('scroll',positionMore,{passive:true});

@@ -206,6 +206,10 @@ class DailyScheduleApply(View):
             if action=='apply':
                 service.activate(request.user,schedule)
                 messages.success(request,'Дневной СМГ применен к оперативным отчетам. Утвержденный ГПР сохранен.')
+            elif action=='return_applied':
+                from .smg_rework import return_applied
+                return_applied(request.user,schedule,request.POST.get('comment',''),request.POST.get('version',''))
+                messages.success(request,'СМГ возвращён в доработку. Факт и закрытые дни сохранены. После исправлений повторно проверьте и согласуйте СМГ, затем примените его.')
             else:
                 from .daily_schedule_approval import transition
                 transition(request.user,schedule,action,request.POST.get('comment',''))
