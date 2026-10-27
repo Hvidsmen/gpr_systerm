@@ -27,8 +27,8 @@
 
 <h3 class="h6" id="work-resource-title">Добавить ресурс</h3><p id="work-resource-target"></p>
 <div class="alert alert-danger" id="work-resource-errors" role="alert" hidden></div>
-<div data-resource-field="equipment"><label class="form-label">Вид техники</label>{{ inline_resource_form.equipment_type }}<p class="mt-2">{{ inline_resource_form.include_crew }} {{ inline_resource_form.include_crew.label }}</p></div>
-<div data-resource-field="labor"><label class="form-label">Должность</label>{{ inline_resource_form.position }}</div>
+<div data-resource-field="equipment"><label class="form-label">Техника для планирования</label>{{ inline_resource_form.equipment_type }}<p class="mt-2">{{ inline_resource_form.include_crew }} {{ inline_resource_form.include_crew.label }}</p></div>
+<div data-resource-field="labor"><label class="form-label">Должность</label>{{ inline_resource_form.position }}<p class="small text-muted">Для добавления показаны должности с активными сотрудниками.</p></div>
 <div data-resource-field="fuel"><label class="form-label">Вид ГСМ</label>{{ inline_resource_form.fuel_type }}<label class="form-label mt-2">Расход в день, л</label>{{ inline_resource_form.daily_liters }}<label class="form-label mt-2">Цена литра, ₽</label>{{ inline_resource_form.fuel_price }}</div>
 {% include 'planning/_resource_targets_picker.html' with target_form=inline_resource_form %}
 <div class="row mt-3"><div class="col-sm-6"><label class="form-label">Начало</label>{{ inline_resource_form.start_date }}</div><div class="col-sm-6"><label class="form-label">Окончание</label>{{ inline_resource_form.end_date }}</div></div>
@@ -40,4 +40,4 @@
 <div id="work-resource-editor-fallback"></div>
 {% endif %}
 <script src="{% static 'planning/resource_targets.js' %}?v=20261026-pool3" defer></script>
-<script src="{% static 'planning/resource_editor.js' %}?v=20261026-pool3" defer></script>
+<script src="{% static 'planning/resource_editor.js' %}?v=20261027-active-staff" defer></script>

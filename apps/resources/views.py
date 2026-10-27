@@ -248,7 +248,7 @@ class EquipmentTypeDeleteView(CompanyRequiredMixin, DeleteView):
 
     def delete(self, request, *args, **kwargs):
         et = self.get_object()
-        messages.success(request, f'Вид техники "{et.name}" удалён')
+        messages.success(request, f'Техника для планирования "{et.name}" удалена')
         return super().delete(request, *args, **kwargs)
 
 from .models import EquipmentCategory
@@ -274,6 +274,6 @@ def equipment_category_create(request):
             with transaction.atomic():
                 category = form.save()
         except IntegrityError:
-            return JsonResponse({'errors': {'name': ['Такая категория уже существует.']}}, status=400)
+            return JsonResponse({'errors': {'name': ['Такая группа техники уже существует.']}}, status=400)
         return JsonResponse({'value': str(category.pk), 'label': category.name}, status=201)
     return JsonResponse({'errors': form.errors}, status=400)

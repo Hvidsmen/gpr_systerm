@@ -8,7 +8,7 @@ class UnitForm(forms.ModelForm):
     class Meta:
         model=Equipment
         fields=['type','plate_number','name','brand_model','manufacture_year','inventory_number','vin','site_name','operator_position','is_active']
-        labels={'type':'Вид техники','plate_number':'Госномер / инвентарный номер','name':'Название','is_active':'Активна'}
+        labels={'type':'Техника для планирования','plate_number':'Госномер / инвентарный номер','name':'Название','is_active':'Активна'}
     def __init__(self,*args,company,**kwargs):
         super().__init__(*args,**kwargs)
         self.instance.company=company
@@ -31,7 +31,7 @@ class UnitForm(forms.ModelForm):
         if self.instance.pk:
             from apps.production.models import EquipmentActivity,EmployeeActivity
             used=EquipmentActivity.objects.filter(equipment=self.instance).exists() or EmployeeActivity.objects.filter(equipment=self.instance).exists() or self.instance.standing_assignments.exists()
-            if used and (data.get('type') != self._original_type or 'plate_number' in self.changed_data):raise forms.ValidationError('Для машины с историей назначений или фактом вид техники и номер сохраняются в истории. Создайте отдельную единицу для другой идентичности.')
+            if used and (data.get('type') != self._original_type or 'plate_number' in self.changed_data):raise forms.ValidationError('Для машины с историей назначений или фактом техника для планирования и номер сохраняются в истории. Создайте отдельную единицу для другой идентичности.')
         if not any(data.get(key) for key in ['plate_number','inventory_number','vin']):raise forms.ValidationError('Укажите госномер, инвентарный или заводской номер.')
         return data
     def validate_unique(self):

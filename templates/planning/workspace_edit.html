@@ -132,7 +132,7 @@ function groupAllocationRows(panel) {
   const rows=Array.from(target.querySelectorAll('.allocation-row'));
   const previous=new Map(Array.from(target.querySelectorAll('.allocation-group')).map(group=>[group.dataset.groupKey,group.open]));
   const fieldNames={works:['section'],labor:['group'],equipment:['category']}[kind];
-  const emptyLabels={works:{section:'Без раздела'},labor:{group:'Без группы'},equipment:{category:'Без категории'}};
+  const emptyLabels={works:{section:'Без раздела'},labor:{group:'Без группы'},equipment:{category:'Без группы'}};
   const labels={};
   fieldNames.forEach(name=>{labels[name]=new Map(Array.from(panel.querySelector('[data-filter-key="'+name+'"]').options).filter(option=>option.value).map(option=>[option.value,option.textContent]));});
   const root=document.createDocumentFragment(),groups=new Map();
@@ -392,7 +392,7 @@ document.querySelectorAll('.allocation-row').forEach(row=>{
 });
 function showResource(row) {
   const kind = row.querySelector('[name$="-kind"]').value;
-  const labels={count:kind==='labor'?'Людей':'Кол-во',hours:'Часы/мес.',balance:'Остаток, л',liters:'Расход/мес., л',load_profile:'Профиль',equipment_type:'Вид техники',equipment_number:'Номер'};
+  const labels={count:kind==='labor'?'Людей':'Кол-во',hours:'Часы/мес.',balance:'Остаток, л',liters:'Расход/мес., л',load_profile:'Профиль',equipment_type:'Техника для планирования',equipment_number:'Номер'};
   const fields = {labor:['brigade','count'], equipment:['equipment_type','equipment_number','count'], fuel:['fuel_type','balance','liters']}[kind] || [];
   row.querySelectorAll('[data-field]').forEach(group => {
     const name = group.dataset.field;

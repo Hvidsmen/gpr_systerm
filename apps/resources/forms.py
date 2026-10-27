@@ -66,10 +66,10 @@ class EquipmentTypeForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['category'].queryset = EquipmentCategory.objects.filter(company_id=self.instance.company_id)
-        self.fields['category'].empty_label = 'Выберите категорию'
+        self.fields['category'].empty_label = 'Выберите группу техники'
         self.fields['parent'].queryset = EquipmentType.objects.filter(company_id=self.instance.company_id,parent__isnull=True,merge_source__isnull=True).exclude(pk=self.instance.pk)
-        self.fields['parent'].empty_label = 'Самостоятельный вид техники'
-        self.fields['parent'].help_text = 'Для модели выберите её вид. Оставьте пустым, если создаёте вид для планирования в ГПР и СМГ.'
+        self.fields['parent'].empty_label = 'Отдельная позиция в ГПР и СМГ'
+        self.fields['parent'].help_text = 'Для модели, например «CAT 320», выберите плановую позицию «Экскаватор». Если добавляете саму технику для ГПР и СМГ, оставьте поле пустым.'
         self.fields['unit'].required = False
 
     def clean_unit(self):
@@ -78,7 +78,7 @@ class EquipmentTypeForm(forms.ModelForm):
     def clean_parent(self):
         parent=self.cleaned_data.get('parent')
         if parent and self.instance.pk and self.instance.model_variants.exists():
-            raise forms.ValidationError('У этого вида уже есть техника. Сначала перенесите её в другой вид.')
+            raise forms.ValidationError('К этой плановой позиции уже привязаны модели. Сначала перенесите их к другой технике для планирования.')
         return parent
 
     class Meta:
@@ -92,8 +92,8 @@ class EquipmentTypeForm(forms.ModelForm):
         }
         labels = {
             'name': 'Название',
-            'parent': 'Вид техники',
-            'category': 'Категория',
+            'parent': 'Техника для планирования',
+            'category': 'Группа техники',
             'is_active': 'Активна',
         }
 
@@ -114,7 +114,7 @@ class EquipmentCategoryForm(forms.ModelForm):
         name = self.cleaned_data['name']
         names = EquipmentCategory.objects.filter(company=self.instance.company).exclude(pk=self.instance.pk).values_list('name', flat=True)
         if any(existing.casefold() == name.casefold() for existing in names):
-            raise forms.ValidationError('Такая категория уже есть в справочнике.')
+            raise forms.ValidationError('Такая группа техники уже есть в справочнике.')
         return name
 
 

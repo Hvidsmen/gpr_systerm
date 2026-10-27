@@ -79,7 +79,7 @@ class MatrixReportForm(forms.Form):
     equipment_category = forms.ModelChoiceField(
         queryset=EquipmentCategory.objects.none(),
         required=False,
-        label="Категория техники",
+        label="Группа техники",
     )
     fuel_type = forms.ChoiceField(
         required=False,

@@ -64,6 +64,8 @@ class SingleGPRTests(TestCase):
         self.handoff();self.checked();preparation.ready(self.manager,self.version)
         position=Position.objects.create(company=self.company,name='Предварительный ресурс')
         work_resources.brigade_for(position)
+        from apps.resources.models import Employee
+        Employee.objects.create(company=self.company, position=position, first_name='Иван', last_name='Иванов')
         self.client.force_login(self.planner)
         endpoint=reverse('planning:preparation_add_assignment',args=[self.version.pk])
         response=self.client.post(endpoint,{'resource_kind':'labor','position':position.pk,'work':self.simple.pk,'work_item':'',

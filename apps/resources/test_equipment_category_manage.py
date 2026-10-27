@@ -17,7 +17,7 @@ class EquipmentCategoryManageTests(TestCase):
         selected = [self.category.pk, other.pk]
         self.assertContains(self.client.get(reverse('resources:equipment_category_list')), 'Объединить выбранные')
         response = self.client.post(url, {'selected': selected, 'merge_stage': 'select'})
-        self.assertContains(response, 'Основная категория')
+        self.assertContains(response, 'Основная группа техники')
         brigade.refresh_from_db()
         self.assertEqual(brigade.category, other)
         self.assertRedirects(self.client.post(url, {'selected': selected, 'target': self.category.pk, 'merge_stage': 'confirm'}), reverse('resources:equipment_category_list'))
@@ -47,7 +47,7 @@ class EquipmentCategoryManageTests(TestCase):
         self.assertEqual(self.category.name, 'Новая категория')
         self.assertEqual(brigade.category_id, self.category.pk)
         EquipmentCategory.objects.create(company=self.company, name='Занято')
-        self.assertContains(self.client.post(url, {'name': 'занято'}), 'Такая категория уже есть')
+        self.assertContains(self.client.post(url, {'name': 'занято'}), 'Такая группа техники уже есть')
         self.category.refresh_from_db()
         self.assertEqual(self.category.name, 'Новая категория')
 

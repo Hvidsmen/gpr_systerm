@@ -29,13 +29,13 @@ class BrigadeFilterForm(CatalogFilterForm):
 
 
 class EquipmentFilterForm(CatalogFilterForm):
-    parent = forms.ModelChoiceField(label='Вид техники', queryset=EquipmentType.objects.filter(parent__isnull=True,merge_source__isnull=True), required=False, empty_label='Все виды техники')
-    category = forms.ModelChoiceField(label='Категория', queryset=EquipmentCategory.objects.all(), required=False, empty_label='Все категории')
+    parent = forms.ModelChoiceField(label='Техника для планирования', queryset=EquipmentType.objects.filter(parent__isnull=True,merge_source__isnull=True), required=False, empty_label='Вся техника для планирования')
+    category = forms.ModelChoiceField(label='Группа техники', queryset=EquipmentCategory.objects.all(), required=False, empty_label='Все группы техники')
     is_active = forms.ChoiceField(label='Статус',required=False,choices=[('','Все статусы'),('True','Активные'),('False','Неактивные')])
 
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
-        self.fields['name'].widget.attrs['placeholder']='Название вида или модели'
+        self.fields['name'].widget.attrs['placeholder']='Название техники или модели'
         self.fields['is_active'].widget.attrs['class']='form-select form-select-sm'
 
 

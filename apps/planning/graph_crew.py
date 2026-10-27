@@ -9,7 +9,7 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.http import require_http_methods
 from apps.resources.models import EquipmentType, EquipmentCrewPosition, Position
-from apps.resources.position_catalog import available_positions, position_label
+from apps.resources.position_catalog import planning_positions, position_label
 from .models import DailySchedule
 from . import resource_editor, work_resources, resource_targets
 
@@ -33,7 +33,7 @@ def check_open(owner,machine):
 
 def editor_data(owner,machine,equipment):
     existing={row['position_id'] for row in machine.crew_snapshot}|{row['position_id'] for row in catalogue_rows(equipment)}
-    positions={p.pk:{'id':p.pk,'name':position_label(p)} for p in available_positions(owner.company)}
+    positions={p.pk:{'id':p.pk,'name':position_label(p)} for p in planning_positions(owner.company)}
     for position in Position.objects.filter(company=owner.company,pk__in=existing):
         positions.setdefault(position.pk,{'id':position.pk,'name':position.name})
     return {'assignment_id':machine.pk,'revision':machine.updated_at.isoformat(),'catalogue_revision':catalogue_revision(equipment),
@@ -65,7 +65,7 @@ def crew(request,pk,kind='gpr'):
                 raise ValidationError('Техника или её экипаж уже изменены. Закройте настройку и откройте её снова.',code='stale')
             rows=payload.get('crew')
             if not isinstance(rows,list) or len(rows)>100:raise ValueError
-            allowed_ids=set(available_positions(owner.company).values_list('pk',flat=True))|{r['position_id'] for r in machine.crew_snapshot}|{r['position_id'] for r in catalogue_rows(equipment)}
+            allowed_ids=set(planning_positions(owner.company).values_list('pk',flat=True))|{r['position_id'] for r in machine.crew_snapshot}|{r['position_id'] for r in catalogue_rows(equipment)}
             allowed=set(Position.objects.filter(company=owner.company,pk__in=allowed_ids).values_list('pk',flat=True))
             seen=set();sources=set();transfers=[];transfer_rates={}
             previous={r['position_id']:r['count'] for r in machine.crew_snapshot} if machine.include_crew else {}

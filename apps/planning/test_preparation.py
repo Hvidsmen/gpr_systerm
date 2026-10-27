@@ -23,6 +23,9 @@ class PreparationTests(TestCase):
     setUpTestData=classmethod(fixtures.WorkspaceTests.setUpTestData.__func__)
 
     def setUp(self):
+        from apps.resources.models import Employee
+        from apps.resources.position_catalog import position_for
+        Employee.objects.create(company=self.company, position=position_for(self.brigade), first_name='Иван', last_name='Иванов')
         self.estimator=User.objects.create_user(username='parallel-estimator',company=self.company,role=Role.objects.get(code='ESTIMATOR'))
         self.other_manager=User.objects.create_user(username='other-project-manager',company=self.company,role=Role.objects.get(code='MANAGER'))
         self.version=WorkspaceService.create(self.planner,self.obj,'Новый процесс',JAN,date(2026,1,31)).baseline_version

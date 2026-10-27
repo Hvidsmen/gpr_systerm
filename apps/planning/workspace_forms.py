@@ -125,6 +125,10 @@ class ResourceAllocationForm(AllocationMixin, forms.ModelForm):
         from django.db.models import Q
         field=self.fields['equipment_type']
         field.queryset=field.queryset.filter(Q(pk__in=gpr_types(field.queryset).values('pk'))|Q(pk=self.instance.equipment_type_id))
+        from apps.resources.position_catalog import planning_brigades
+        field=self.fields['brigade']
+        current_brigade_id=self.instance.brigade_id if self.instance.pk else None
+        field.queryset=field.queryset.filter(Q(pk__in=planning_brigades(self.company).values('pk'))|Q(pk=current_brigade_id))
 
     class Meta:
         model = ResourceMonthAllocation
@@ -158,9 +162,11 @@ class AllocationFormset(BaseModelFormSet):
         # once per request, while keeping each field's queryset for POST validation.
         for name, field in form.fields.items():
             if isinstance(field, forms.ModelChoiceField) and not field.widget.is_hidden:
-                if name not in self._choice_cache:
-                    self._choice_cache[name] = list(field.choices)
-                field.choices = self._choice_cache[name]
+                # A saved row may retain a position without current employees.
+                key=(name,form.instance.brigade_id if form.instance.pk else None) if name=='brigade' else name
+                if key not in self._choice_cache:
+                    self._choice_cache[key] = list(field.choices)
+                field.choices = self._choice_cache[key]
         if "id" in form.fields:
             form.fields["id"].queryset = self.get_queryset()
 

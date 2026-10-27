@@ -65,7 +65,7 @@ class ResourceGroupTotalTests(TestCase):
         response=self.client.get(reverse('planning:workspace_edit',args=[self.version.pk]))
         groups=response.context['plan_sections'][2]['groups']
         self.assertEqual(len(groups),1)
-        self.assertEqual(groups[0]['label'],'Без категории')
+        self.assertEqual(groups[0]['label'],'Без группы')
         self.assertEqual(groups[0]['totals'][0]['after'],9)
         self.assertEqual(response.context['plan_sections'][2]['totals'][0]['after'],9)
 

@@ -18,7 +18,7 @@ def hierarchy(rows, roots, company):
             continue
         category = category_for(row, company)
         key = category.pk if category else None
-        group = categories.setdefault(key, {'category': category, 'label': category.name if category else 'Без категории', 'nodes': {}, 'count': 0})
+        group = categories.setdefault(key, {'category': category, 'label': category.name if category else 'Без группы', 'nodes': {}, 'count': 0})
         node = group['nodes'].setdefault(root.pk, {'root': root, 'children': [], 'root_matches': False})
         group['count'] += 1
         if row.parent_id:

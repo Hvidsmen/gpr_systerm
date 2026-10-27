@@ -47,6 +47,19 @@ def available_positions(company):
         planning_mapping__brigade__merge_source__isnull=True).select_related('planning_mapping__brigade')
 
 
+def planning_positions(company):
+    """New plan choices require a current employee, not just an active catalogue row."""
+    from django.db.models import Exists, OuterRef
+    from .models import Employee
+    employees = Employee.objects.filter(company=company, is_active=True, position_id=OuterRef('pk'))
+    return available_positions(company).filter(Exists(employees))
+
+
+def planning_brigades(company):
+    return Brigade.objects.filter(company=company, is_active=True, merge_source__isnull=True,
+        position_mapping__company=company, position_mapping__position__in=planning_positions(company))
+
+
 def position_label(position):
     return position.planning_mapping.brigade.name
 

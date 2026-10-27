@@ -42,7 +42,7 @@ def config(kind):
             "resources:brigade_macro_group_list",
             "Макрогруппы бригад",
         ),
-        "equipment": (EquipmentType, "resources:equipment_type_list", "Виды техники"),
+        "equipment": (EquipmentType, "resources:equipment_type_list", "Техника для планирования"),
         "equipment_categories": (
             EquipmentCategory,
             "resources:equipment_category_list",

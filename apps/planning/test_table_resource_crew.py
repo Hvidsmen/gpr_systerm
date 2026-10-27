@@ -79,6 +79,9 @@ class TableEquipmentCrewTests(TestCase):
 
     def test_search_excludes_merged_and_inactive_positions_in_both_editors(self):
         target=Brigade.objects.create(company=self.company,name='Старший производитель работ')
+        from apps.resources.models import Employee
+        from apps.resources.position_catalog import position_for
+        Employee.objects.create(company=self.company, position=position_for(target), first_name='Иван', last_name='Иванов')
         old=Brigade.objects.create(company=self.company,name='Производитель работ')
         inactive=Brigade.objects.create(company=self.company,name='Производитель работ неактивный',is_active=False)
         BrigadeMerge.objects.create(company=self.company,source=old,target=target,created_by=self.planner,audit={'test':True})

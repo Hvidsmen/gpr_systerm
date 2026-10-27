@@ -14,10 +14,15 @@ class BulkAddTests(TestCase):
         self.user = User.objects.create_user(username='bulk-planner', company=self.company, role=Role.objects.get(code='PLANNER'))
         project = Project.objects.create(company=self.company, name='Project')
         self.obj = ConstructionObject.objects.create(company=self.company, project=project, name='Object')
+        self.user.assigned_objects.add(self.obj)
         section = Section.objects.create(company=self.company, construction_object=self.obj, name='Section')
         profile = LoadProfile.objects.create(company=self.company, name='Profile')
         self.works = [ProjectWork.objects.create(company=self.company, section=section, name='Work '+str(i), unit='м', load_profile=profile) for i in range(2)]
         self.brigades = [Brigade.objects.create(company=self.company, name='Brigade '+str(i)) for i in range(2)]
+        from apps.resources.models import Employee
+        from apps.resources.position_catalog import position_for
+        for brigade in self.brigades:
+            Employee.objects.create(company=self.company, position=position_for(brigade), first_name='Иван', last_name='Иванов')
         self.equipment = [EquipmentType.objects.create(company=self.company, name='Type '+str(i)) for i in range(2)]
         self.workspace = PlanningWorkspace.objects.create(company=self.company, construction_object=self.obj, name='Plan', start_date=date(2026,1,1), end_date=date(2026,3,31))
         self.version = GlobalPlanVersion.objects.create(company=self.company, construction_object=self.obj, workspace=self.workspace, version_kind='BASELINE', version_number=1, start_date=self.workspace.start_date, end_date=self.workspace.end_date)

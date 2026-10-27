@@ -23,7 +23,7 @@ class EquipmentHierarchyTests(TestCase):
         url=reverse('resources:equipment_type_create')
         response=self.client.get(url,{'parent':self.root.pk})
         self.assertEqual(response.context['form']['parent'].value(),self.root.pk)
-        self.assertContains(response,'Вид техники')
+        self.assertContains(response,'Техника для планирования')
         self.assertEqual(self.client.post(url,self.payload()).status_code,302)
         child=EquipmentType.objects.get(name='CAT 320')
         self.assertEqual(child.parent,self.root)
@@ -59,11 +59,11 @@ class EquipmentHierarchyTests(TestCase):
 
     def test_table_and_excel_expose_type(self):
         response=self.client.get(reverse('resources:equipment_type_list'),{'view':'table'})
-        self.assertContains(response,'<th>Вид техники</th>',html=True)
+        self.assertContains(response,'<th>Техника для планирования</th>',html=True)
         response=self.client.get(reverse('resources:equipment_type_export'),{'parent':self.root.pk})
         self.assertEqual(response.status_code,200)
         book=load_workbook(BytesIO(response.content));rows=list(book.active.values);book.close()
-        index=rows[0].index('Вид техники')
+        index=rows[0].index('Техника для планирования')
         self.assertEqual(next(row[index] for row in rows[1:] if row[0]=='JCB 3CX'),'Экскаваторы')
 
     def test_categories_inherit_for_unclassified_models_and_status_filter_is_scoped(self):

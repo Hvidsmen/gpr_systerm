@@ -51,9 +51,9 @@ class BrigadeExport(CatalogExcelExport, BrigadeListView):
 
 
 class EquipmentTypeExport(CatalogExcelExport, EquipmentTypeListView):
-    headers = ['Название', 'Вид техники', 'Категория', 'Единица измерения', 'Активна', 'Категории водителя', 'Классы водителя']
+    headers = ['Название', 'Техника для планирования', 'Группа техники', 'Единица измерения', 'Активна', 'Категории водителя', 'Классы водителя']
     filename = 'equipment_types.xlsx'
-    sheet_title = 'Виды техники'
+    sheet_title = 'Техника для планирования'
 
     def values(self, row):
         return [row.name, row.parent.name if row.parent_id else '', row.category.name if row.category_id else '', row.unit, 'Да' if row.is_active else 'Нет', ', '.join(row.driver_category_labels), ', '.join(row.driver_class_labels)]

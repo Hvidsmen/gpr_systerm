@@ -10,7 +10,7 @@ def number(value):
 def equipment_group(equipment,company):
     from apps.resources.equipment_catalogue import category_for
     category=category_for(equipment,company)
-    if category is None:return ('Без категории','none')
+    if category is None:return ('Без группы','none')
     return (category.name,str(category.pk))
 
 
@@ -62,7 +62,7 @@ def labor_group_order(label):
 def equipment_group_order(label):
     name=''.join(character for character in label.casefold() if character.isalnum())
     priorities={'специализированнаятехника':0,'вспомогательнаятехника':1}
-    return (priorities.get(name,3 if name=='безкатегории' else 2),label.casefold())
+    return (priorities.get(name,3 if name in {'безкатегории','безгруппы'} else 2),label.casefold())
 
 
 def total(entries,kind):

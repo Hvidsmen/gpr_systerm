@@ -14,27 +14,27 @@ class EquipmentCategoryMerge(View):
         try:
             ids = {int(value) for value in request.POST.getlist('selected')}
         except (TypeError, ValueError):
-            raise Http404('Неверный выбор категорий.')
+            raise Http404('Неверный выбор групп техники.')
         if len(ids) < 2 or len(ids) > 500:
-            messages.error(request, 'Выберите от двух до 500 категорий для объединения.')
+            messages.error(request, 'Выберите от двух до 500 групп техники для объединения.')
             return redirect('resources:equipment_category_list')
         with transaction.atomic():
             groups = list(EquipmentCategory.objects.select_for_update().filter(
                 company=request.user.company, pk__in=ids).order_by('name', 'pk'))
             if len(groups) != len(ids):
-                raise Http404('Категория не найдена.')
+                raise Http404('Группа техники не найдена.')
             if request.POST.get('merge_stage') == 'confirm':
                 try:
                     target_id = int(request.POST.get('target', ''))
                 except (TypeError, ValueError):
-                    raise Http404('Не выбрана основная категория.')
+                    raise Http404('Не выбрана основная группа техники.')
                 if target_id not in ids:
-                    raise Http404('Основная категория должна быть выбрана в списке.')
+                    raise Http404('Основная группа техники должна быть выбрана в списке.')
                 target = next(group for group in groups if group.pk == target_id)
                 sources = ids - {target_id}
                 moved = EquipmentType.objects.filter(company=request.user.company, category_id__in=sources).update(category_id=target_id)
                 EquipmentCategory.objects.filter(company=request.user.company, pk__in=sources).delete()
-                messages.success(request, f'Категории объединены в «{target.name}». Перенесено видов техники: {moved}.')
+                messages.success(request, f'Группы техники объединены в «{target.name}». Перенесено позиций техники: {moved}.')
                 return redirect('resources:equipment_category_list')
             return render(request, 'resources/equipment_category_merge.html', {'groups': groups})
 
@@ -66,6 +66,6 @@ class EquipmentCategoryUpdate(View):
                 except IntegrityError:
                     form.add_error('name', 'Такая запись уже есть в справочнике.')
                 else:
-                    messages.success(request, 'Название категории сохранено.')
+                    messages.success(request, 'Название группы техники сохранено.')
                     return redirect('resources:equipment_category_list')
         return render(request, 'resources/equipment_category_form.html', {'form': form})

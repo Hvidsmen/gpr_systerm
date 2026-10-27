@@ -716,7 +716,7 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
                             "category_name": (
                                 row.category.name
                                 if row.category_id
-                                else "Без категории"
+                                else "Без группы"
                             ),
                         }
                         if row
@@ -725,7 +725,7 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
                     if plan_only and not filters.get('consolidated') and row:
                         from apps.resources.equipment_catalogue import category_for
                         category=category_for(row,user.company)
-                        meta.update(category_id=category.pk if category else None,category_name=category.name if category else 'Без категории')
+                        meta.update(category_id=category.pk if category else None,category_name=category.name if category else 'Без группы')
                     row_label, unit = (meta["name"] + " " + number).strip(), meta.get(
                         "unit", "ед."
                     )
@@ -736,7 +736,7 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
                         and filters["equipment_category"].pk != meta.get("category_id")
                     ):
                         continue
-                    path, identity = [meta.get("category_name") or "Без категории"], (
+                    path, identity = [meta.get("category_name") or "Без группы"], (
                         obj.pk,
                         pk,
                         number,

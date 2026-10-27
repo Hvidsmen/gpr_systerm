@@ -12,9 +12,9 @@
         <h2 class="mb-1">
             <i class="bi bi-truck"></i>
             {% if equipmenttype %}
-                Редактировать {% if equipmenttype.parent_id %}технику{% else %}вид техники{% endif %} «{{ equipmenttype.name }}»
+                Редактировать {% if equipmenttype.parent_id %}модель{% else %}технику для планирования{% endif %} «{{ equipmenttype.name }}»
             {% else %}
-                Добавить {% if form.parent.value %}технику / модель{% else %}вид техники{% endif %}
+                Добавить {% if form.parent.value %}модель{% else %}технику для планирования{% endif %}
             {% endif %}
         </h2>
         <nav aria-label="breadcrumb">
@@ -63,20 +63,20 @@
                             {{ form.name.label }} <span class="text-danger">*</span>
                         </label>
                         {{ form.name }}
-                        <div class="form-text">Для вида: «Экскаватор гусеничный». Для модели: «CAT 320».</div>
+                        <div class="form-text">Для планирования: «Экскаватор гусеничный». Для модели: «CAT 320».</div>
                         {% if form.name.errors %}
                             <div class="text-danger small mt-1">{{ form.name.errors }}</div>
                         {% endif %}
                     </div>
 
-                    <div class="mb-3"><label class="form-label" for="{{ form.parent.id_for_label }}">Вид техники</label>{{ form.parent }}<div class="form-text">{{ form.parent.help_text }}</div>{{ form.parent.errors }}</div>
+                    <div class="mb-3"><label class="form-label" for="{{ form.parent.id_for_label }}">Техника для планирования</label>{{ form.parent }}<div class="form-text">{{ form.parent.help_text }}</div>{{ form.parent.errors }}</div>
                     <div class="mb-3">
                         <label for="{{ form.category.id_for_label }}" class="form-label">
                             {{ form.category.label }}
                         </label>
                         <div class="input-group">{{ form.category }}
-                        {% if request.user|may:'resources:equipment_category_create' %}<button type="button" class="btn btn-outline-primary" data-catalog-open="category" aria-label="Добавить категорию техники">+</button>{% endif %}</div>
-                        <div class="form-text">Категория объединяет виды техники, например «Землеройная техника». Для модели без своей категории используется категория её вида. Новую категорию можно создать кнопкой «+».</div>
+                        {% if request.user|may:'resources:equipment_category_create' %}<button type="button" class="btn btn-outline-primary" data-catalog-open="category" aria-label="Добавить группу техники">+</button>{% endif %}</div>
+                        <div class="form-text">Группа нужна для разделов и итогов в ГПР и СМГ, например «Специализированная техника» или «Вспомогательная техника». Модель без своей группы использует группу выбранной техники для планирования. Кнопка «+» создаёт новую группу.</div>
                         {% if form.category.errors %}
                             <div class="text-danger small mt-1">{{ form.category.errors }}</div>
                         {% endif %}
@@ -110,14 +110,14 @@
                         <label class="form-check-label" for="{{ form.is_active.id_for_label }}">
                             {{ form.is_active.label }}
                         </label>
-                        <div class="form-text">Неактивные виды техники не будут отображаться в списках выбора</div>
+                        <div class="form-text">Неактивная техника не отображается в списках выбора</div>
                         {% if form.is_active.errors %}
                             <div class="text-danger small mt-1">{{ form.is_active.errors }}</div>
                         {% endif %}
                     </div>
 
                     {% include 'resources/_crew_editor.html' %}
-                    <p class="small text-muted mt-2">При добавлении вида в ГПР или СМГ используется экипаж этого вида. Экипаж отдельной модели не заменяет экипаж вида автоматически.</p>
+                    <p class="small text-muted mt-2">В ГПР и СМГ используется экипаж выбранной техники для планирования. У модели может быть свой экипаж; он не заменяет основной автоматически.</p>
                     <div class="d-flex gap-2 mt-4 pt-3 border-top">
                         <button type="submit" class="btn btn-success">
                             <i class="bi bi-save"></i> Сохранить
@@ -137,9 +137,9 @@
             </div>
             <div class="card-body">
                 <ul class="mb-0 small">
-                    <li><strong>Название</strong> — полное наименование вида техники (обязательное поле)</li>
-                    <li><strong>Категория</strong> — группа, к которой относится техника (необязательно)</li>
-                    <li><strong>Активна</strong> — если выключено, вид техники не будет доступен в списках выбора при создании планов и фактов</li>
+                    <li><strong>Название</strong> — наименование техники или модели (обязательное поле)</li>
+                    <li><strong>Группа техники</strong> — группа, к которой относится техника (необязательно)</li>
+                    <li><strong>Активна</strong> — если выключено, техника не будет доступна в списках выбора при создании планов и фактов</li>
                 </ul>
             </div>
         </div>

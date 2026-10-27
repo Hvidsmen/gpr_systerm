@@ -10,7 +10,7 @@ from openpyxl import Workbook, load_workbook
 from core.permissions import require_roles, PLAN_ROLES
 from .models import EquipmentType, EquipmentCategory
 
-HEADERS = ['Название', 'Категория', 'Единица измерения', 'Активна']
+HEADERS = ['Название', 'Группа техники', 'Единица измерения', 'Активна']
 MAX_ROWS = 5000
 
 
@@ -46,10 +46,13 @@ def read_rows(file):
         sheet.reset_dimensions()
         iterator = sheet.iter_rows()
         header = next(iterator, ())
-        columns = {text_value(cell.value).casefold(): index for index, cell in enumerate(header)}
+        def header_key(value):
+            key = text_value(value).casefold()
+            return 'группа техники' if key == 'категория' else key
+        columns = {header_key(cell.value): index for index, cell in enumerate(header)}
         if 'название' not in columns:
             return [], ['В первой строке должен быть заголовок «Название». Скачайте шаблон.']
-        recognized = [text_value(cell.value).casefold() for cell in header if text_value(cell.value).casefold() in {h.casefold() for h in HEADERS}]
+        recognized = [header_key(cell.value) for cell in header if header_key(cell.value) in {h.casefold() for h in HEADERS}]
         if len(recognized) != len(set(recognized)):
             return [], ['Заголовки столбцов не должны повторяться.']
         for number, cells in enumerate(iterator, 2):
@@ -67,7 +70,7 @@ def read_rows(file):
                 values.append(text_value(cell.value) if cell is not None else '')
             name, category, unit, active = values
             unit = unit or 'ед.'
-            for title, value, limit in [('Название',name,150), ('Категория',category,100), ('Единица измерения',unit,50)]:
+            for title, value, limit in [('Название',name,150), ('Группа техники',category,100), ('Единица измерения',unit,50)]:
                 if len(value) > limit:
                     errors.append(f'Строка {number}: «{title}» — не более {limit} символов.')
             if not name:
@@ -129,7 +132,7 @@ def equipment_import_template(request):
     require_roles(request.user, PLAN_ROLES)
     workbook = Workbook()
     sheet = workbook.active
-    sheet.title = 'Виды техники'
+    sheet.title = 'Техника для планирования'
     sheet.append(HEADERS)
     sheet.freeze_panes = 'A2'
     for column, width in [('A',45),('B',30),('C',24),('D',16)]:
@@ -137,8 +140,8 @@ def equipment_import_template(request):
     guide = workbook.create_sheet('Инструкция')
     for line in [
         'Заполните первый лист. Заголовки первой строки не изменяйте.',
-        'Название обязательно. Категория и единица измерения необязательны.',
-        'Новые категории создаются автоматически в вашей компании.',
+        'Название обязательно. Группа техники и единица измерения необязательны.',
+        'Новые группы техники создаются автоматически в вашей компании.',
         'Единица измерения по умолчанию: ед. Активна: Да или Нет, по умолчанию Да.',
         'Существующие названия и повторы в файле пропускаются без обновления.',
         'При ошибке в любой строке весь импорт отменяется. Не более 5000 строк.',

@@ -23,7 +23,7 @@ def planning_filters(version):
     specs = {
         'works': [field('section','Раздел',choices(Section.objects.filter(company=company, construction_object=version.construction_object).order_by('name', 'pk'))), field('kind','Вид работы',[{'value':key,'label':label} for key,label in ProjectWork.Kind.choices])],
         'labor': [field('group','Группа',choices(BrigadeGroup.objects.filter(company=company)))],
-        'equipment': [field('category','Категория',choices(EquipmentCategory.objects.filter(company=company)))],
+        'equipment': [field('category','Группа техники',choices(EquipmentCategory.objects.filter(company=company)))],
         'fuel': [field('fuel_type','Вид ГСМ',[{'value':key,'label':label} for key,label in fuel])],
     }
     return data, specs

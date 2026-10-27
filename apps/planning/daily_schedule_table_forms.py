@@ -9,7 +9,7 @@ class AddEntryForm(forms.Form):
     selection=forms.ChoiceField(label='Объект / комплекс / работа',required=False)
     work=forms.ModelChoiceField(label='Работа',queryset=ProjectWork.objects.none(),required=False)
     brigade=forms.ModelChoiceField(label='Должность',queryset=Brigade.objects.none(),required=False)
-    equipment=forms.ModelChoiceField(label='Вид техники',queryset=EquipmentType.objects.none(),required=False)
+    equipment=forms.ModelChoiceField(label='Техника для планирования',queryset=EquipmentType.objects.none(),required=False)
     reference=forms.CharField(max_length=50,required=False,widget=forms.HiddenInput())
     fuel=forms.ChoiceField(label='Вид ГСМ',choices=[('','Выберите значение'),*ResourceMonthAllocation._meta.get_field('fuel_type').choices],required=False)
     rate=forms.DecimalField(label='Ставка за час / цена за литр',max_digits=12,decimal_places=2,min_value=0,initial=0,required=False)
@@ -25,7 +25,9 @@ class AddEntryForm(forms.Form):
         if isinstance(schedule,DailySchedule) and parent_reference(schedule):self.fields['selection'].label='Работа · каталог субобъекта и общего ГПР'
         self.fields['work'].widget=forms.HiddenInput()
         self.fields['work'].label_from_instance=lambda work:f'{work.section.construction_object} · {work.section.name} · {work.name} · {work.unit} · ID {work.pk}'
-        self.fields['brigade'].queryset=Brigade.objects.filter(company_id=schedule.company_id,merge_source__isnull=True,is_active=True)
+        from apps.resources.position_catalog import planning_brigades
+        self.fields['brigade'].queryset=planning_brigades(schedule.company)
+        self.fields['brigade'].help_text='Только должности с активными сотрудниками компании.'
         from apps.resources.equipment_levels import gpr_types
         self.fields['equipment'].queryset=gpr_types(EquipmentType.objects.filter(company_id=schedule.company_id,merge_source__isnull=True,is_active=True))
         self.auto_id='plan-add-%s'

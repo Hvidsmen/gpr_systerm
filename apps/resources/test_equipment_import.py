@@ -26,6 +26,17 @@ class EquipmentImportTests(TestCase):
         workbook.close()
         return SimpleUploadedFile('types.xlsx', output.getvalue())
 
+    def test_new_group_header_and_legacy_category_header_are_compatible(self):
+        from .equipment_import import read_rows
+        for header in ['Группа техники', 'Категория']:
+            rows, errors = read_rows(self.file([['Экскаватор', 'Специализированная техника', 'ед.', 'Да']],
+                headers=['Название', header, 'Единица измерения', 'Активна']))
+            self.assertFalse(errors)
+            self.assertEqual(rows[0][1], 'Специализированная техника')
+        rows, errors = read_rows(self.file([['Экскаватор', 'A', 'B']], headers=['Название', 'Категория', 'Группа техники']))
+        self.assertTrue(errors)
+        self.assertFalse(rows)
+
     def test_import_defaults_duplicates_categories_and_company_scope(self):
         foreign = Company.objects.create(name='Foreign Excel')
         category = EquipmentCategory.objects.create(company=foreign, name='Землеройная')

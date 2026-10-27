@@ -59,6 +59,12 @@
     const target=targetById(work),child=target?.items.find(i=>String(i.id)===String(item));
     const initial={assignment_id:'',resource_revision:'',resource_kind:kind,work,work_item:item,start_date:data.start_date,end_date:data.end_date,count:1,shifts_per_day:1,hours_per_shift:8,daily_liters:0,fuel_price:0,equipment_type:'',position:'',fuel_type:'',include_crew:kind==='equipment',refresh_crew:false};
     if(assignment)Object.assign(initial,assignment,{assignment_id:assignment.id,resource_revision:assignment.revision});
+    // Keep the saved position editable after its last employee becomes inactive.
+    // This option belongs only to this editor; new-resource forms keep the filtered list.
+    const position=field('position');
+    if(kind==='labor'&&assignment?.position&&position&&!Array.from(position.options).some(option=>option.value===String(assignment.position))){
+      position.add(new Option(assignment.label,String(assignment.position)));
+    }
     Object.entries(initial).forEach(([name,value])=>{if(name==='targets')return;const input=field(name);if(!input)return;if(input.type==='checkbox')input.checked=Boolean(value);else input.value=value;});
     editor.querySelector('#work-resource-title').textContent=(assignment?'Изменить ресурс: ':'Добавить ресурс: ')+kinds[kind];
     editor.querySelector('#work-resource-target').textContent=work?'К работе: '+(child?target.name+' → '+child.name:(target?.name||assignment?.target||'Работа удалена из плана')):'Вне работ · общие ресурсы объекта';

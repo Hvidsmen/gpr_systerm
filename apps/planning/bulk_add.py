@@ -8,7 +8,7 @@ from django.shortcuts import render, redirect
 from django.urls import reverse
 from django.views import View
 from apps.production.forms import CompanyFormMixin
-from apps.resources.models import Brigade, EquipmentType
+from apps.resources.models import EquipmentType
 from apps.works.models import ProjectWork
 from .models import GlobalPlanVersion, ResourceMonthAllocation, WorkMonthAllocation
 from .workspace_services import months_between
@@ -34,9 +34,10 @@ class BulkAddForm(CompanyFormMixin, forms.Form):
                 choices=ResourceMonthAllocation._meta.get_field('fuel_type').choices,
                 widget=forms.CheckboxSelectMultiple())
         else:
+            from apps.resources.position_catalog import planning_brigades
             querysets = {
                 'works': lambda: ProjectWork.objects.filter(merged_source__isnull=True,company=self.company, section__construction_object=version.construction_object),
-                'labor': lambda: Brigade.objects.filter(company=self.company, is_active=True, merge_source__isnull=True),
+                'labor': lambda: planning_brigades(self.company),
                 'equipment': lambda: EquipmentType.objects.filter(company=self.company, is_active=True,parent__isnull=True),
             }
             self.fields['items'] = forms.ModelMultipleChoiceField(label=TITLES[kind],
@@ -58,11 +59,11 @@ class WorkspaceBulkAdd(View):
         if kind not in TITLES:
             raise Http404('Неизвестный вид ресурса')
         version = version_for(request, pk)
+        if version.status not in ['DRAFT','REJECTED']:
+            raise PermissionDenied('Редактировать можно только черновик или отклонённый план.')
         if kind!='works':
             from .preparation import require_resource_input
             require_resource_input(request.user,version)
-        if version.status not in ['DRAFT','REJECTED']:
-            raise PermissionDenied('Редактировать можно только черновик или отклонённый план.')
         available = [month.isoformat() for month in editable_months(version)]
         selected = request.GET.get('month')
         initial = {'months': available if request.GET.get('scope') == 'period' and version.version_kind == 'BASELINE' else [selected if selected in available else available[0]]}

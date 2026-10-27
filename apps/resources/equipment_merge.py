@@ -66,11 +66,11 @@ def normalize_equipment_snapshot(snapshot, aliases, *, in_place=False):
 
 class EquipmentChoice(forms.ModelChoiceField):
     def label_from_instance(self, item):
-        return f'{item.name} · {item.category or "Без категории"} · {item.unit} · ID {item.pk}'
+        return f'{item.name} · {item.category or "Без группы"} · {item.unit} · ID {item.pk}'
 
 
 class EquipmentMergeForm(forms.Form):
-    target = EquipmentChoice(queryset=EquipmentType.objects.none(), label='Оставить вид техники')
+    target = EquipmentChoice(queryset=EquipmentType.objects.none(), label='Оставить технику для планирования')
     sources = forms.ModelMultipleChoiceField(queryset=EquipmentType.objects.none(), label='Объединить с ним', widget=forms.CheckboxSelectMultiple)
     confirm = forms.BooleanField(label='Подтверждаю перенос данных и объединение')
 
@@ -137,7 +137,7 @@ def merge_equipment(user, target_id, source_ids):
         raise ValidationError('Выберите доступные виды техники своей компании; оставляемая запись должна быть отдельной.')
     target = records[target_id]
     if not target.is_active:
-        raise ValidationError('Оставляемый вид техники должен быть активен.')
+        raise ValidationError('Оставляемая техника для планирования должна быть активна.')
     from apps.production.models import EquipmentPlan, EquipmentFact
     from apps.planning.models import ResourceMonthAllocation
     from django.core.serializers.json import DjangoJSONEncoder

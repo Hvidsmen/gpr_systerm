@@ -24,6 +24,9 @@ class WorkResourceTests(TestCase):
         self.helper=Position.objects.create(company=self.company,name='Помощник',default_hourly_rate=50)
         service.brigade_for(self.position)
         service.brigade_for(self.helper)
+        from apps.resources.models import Employee
+        for position in [self.position, self.helper]:
+            Employee.objects.create(company=self.company, position=position, first_name='Иван', last_name='Иванов')
         self.crew=EquipmentCrewPosition.objects.create(company=self.company,equipment_type=self.equipment,position=self.position,count=1,is_replacement=True)
         EquipmentCrewPosition.objects.create(company=self.company,equipment_type=self.equipment,position=self.helper,count=1)
         self.version=WorkspaceService.create(self.planner,self.obj,'Staff',JAN,date(2026,1,31)).baseline_version

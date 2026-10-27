@@ -6,7 +6,7 @@
                     <thead class="table-light">
                         <tr>{% if request.user|may:bulk_route %}<th style="width:36px" aria-label="Выбор строк"></th>{% endif %}
                             <th>Название</th>
-                            <th>Вид техники</th><th>Категория</th><th>Экипаж</th>
+                            <th>Техника для планирования</th><th>Группа техники</th><th>Экипаж</th>
                             <th>Статус</th>
                             <th>Действия</th>
                         </tr>
@@ -15,7 +15,7 @@
                         {% for et in group_items %}
                             <tr>{% if request.user|may:bulk_route %}<td>{% include 'bulk/checkbox.html' with record=et %}</td>{% endif %}
                                 <td>{% include 'resources/_equipment_preview.html' %}<div class="small text-muted">{% if et.parent_id %}Техника / модель{% else %}Вид для ГПР и СМГ{% endif %} · {{ et.unit }}</div></td>
-                                <td>{{ et.parent|default:"Самостоятельный вид" }}</td><td>{% firstof et.category et.parent.category 'Без категории' %}</td><td>{% with crew=et.crew_positions.all %}{% if crew %}Должностей: {{ crew|length }}{% else %}<span class="text-muted">Не задан</span>{% endif %}{% endwith %}</td>
+                                <td>{{ et.parent|default:"Отдельная плановая позиция" }}</td><td>{% firstof et.category et.parent.category 'Без группы' %}</td><td>{% with crew=et.crew_positions.all %}{% if crew %}Должностей: {{ crew|length }}{% else %}<span class="text-muted">Не задан</span>{% endif %}{% endwith %}</td>
                                 <td>
                                     {% if et.is_active %}
                                         <span class="badge bg-success">Активна</span>
