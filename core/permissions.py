@@ -112,7 +112,7 @@ def check_route(user, match, method):
     if namespace == 'accounts' and name in {'password_change','access_pending','impersonation_stop'}:
         return
     if namespace == 'planning' and name=='workspace_edit':
-        require_roles(user, READ_ROLES if method in {'GET','HEAD'} else PLAN_ROLES);return
+        require_roles(user, READ_ROLES if method in {'GET','HEAD'} else PLAN_ROLES|{'MANAGER'});return
     if namespace == 'planning' and name=='smg_copy_gpr':
         require_roles(user,PLAN_ROLES|{'MANAGER'});return
     if namespace == 'planning' and name.startswith('object_plan_'):

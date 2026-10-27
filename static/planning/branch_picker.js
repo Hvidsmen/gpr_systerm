@@ -38,6 +38,7 @@
   packageFilter.addEventListener('change', refresh);
   search.addEventListener('input', refresh);
   document.querySelectorAll('[data-open-branch]').forEach(button => button.addEventListener('click', () => {
+    if(window.planWorkbench&&!window.planWorkbench.canLeave())return;
     currentLevel = button.dataset.openBranch;
     dialog.querySelector('#branch-picker-title').textContent = copy[currentLevel][0];
     dialog.querySelector('[data-branch-label]').textContent = copy[currentLevel][1];

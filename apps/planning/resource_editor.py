@@ -19,7 +19,7 @@ def planned_targets(owner):
     if isinstance(owner,DailySchedule):
         from types import SimpleNamespace
         allocations=[SimpleNamespace(work_id=e.metadata['id'],selected_item_ids=[i['id'] for i in e.metadata.get('items',[])]) for e in owner.entries.filter(kind='work') if e.metadata.get('id') and (e.rows or e.original)]
-    else:allocations=list(estimate_review.review_allocations(owner).exclude(quantity=0,item_quantities={}))
+    else:allocations=list(estimate_review.review_allocations(owner))
     ids={a.work_id for a in allocations}
     selected={work_id:set() for work_id in ids}; full=set()
     for allocation in allocations:

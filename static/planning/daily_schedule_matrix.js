@@ -1,34 +1,6 @@
 (() => {
   const root = document.getElementById('smg-matrix');
   if (!root) return;
-  const search = document.getElementById('smg-search');
-  const kind = document.getElementById('smg-kind');
-  const deviations = document.getElementById('smg-deviations');
-  function filter() {
-    const query = search.value.trim().toLocaleLowerCase();
-    let count = 0;
-    root.querySelectorAll('[data-smg-section]').forEach(section => {
-      let matches = 0;
-      section.querySelectorAll('[data-smg-entry]').forEach(entry => {
-        entry.hidden = !entry.dataset.name.toLocaleLowerCase().includes(query)
-          || (deviations.checked && entry.dataset.deviation !== 'true');
-        if (!entry.hidden) matches++;
-      });
-      section.querySelectorAll('[data-smg-group]').forEach(group => {
-        group.hidden = ![...group.querySelectorAll('[data-smg-entry]')].some(entry => !entry.hidden);
-      });
-      section.hidden = (kind.value && kind.value !== section.dataset.smgSection) || !matches;
-      if (!section.hidden) count += matches;
-    });
-    document.getElementById('smg-empty').hidden = count > 0;
-  }
-  [search,kind,deviations].forEach(field => field.addEventListener('input',filter));
-  document.getElementById('smg-reset').addEventListener('click',() => {
-    search.value = ''; kind.value = ''; deviations.checked = false; filter();
-  });
-  document.querySelectorAll('[data-smg-expand]').forEach(button => button.addEventListener('click',() => {
-    root.querySelectorAll('details').forEach(details => { details.open = button.dataset.smgExpand === 'true'; });
-  }));
   const save = document.getElementById('smg-save-table');
   const status = document.getElementById('smg-save-status');
   const add = document.getElementById('smg-add-entry');
@@ -62,14 +34,6 @@
   const more=document.getElementById('smg-more-actions'),moreButton=document.querySelector('[popovertarget="smg-more-actions"]');
   function positionMore(){if(!more?.matches(':popover-open'))return;const rect=moreButton.getBoundingClientRect();more.style.margin='0';more.style.inset='auto';more.style.top=Math.min(rect.bottom+5,window.innerHeight-more.offsetHeight-8)+'px';more.style.left=Math.max(8,Math.min(rect.left,window.innerWidth-more.offsetWidth-8))+'px';}
   more?.addEventListener('toggle',positionMore);window.addEventListener('resize',positionMore);window.addEventListener('scroll',positionMore,{passive:true});
-  if (add) {
-    const selector = add.querySelector('[name="kind"]');
-    const fields = {work:['selection'],labor:['brigade','rate'],equipment:['equipment','rate'],fuel:['fuel','rate']};
-    const showFields = () => add.querySelectorAll('[data-add-field]').forEach(wrapper => {
-      wrapper.hidden = wrapper.dataset.addField !== 'kind' && !(fields[selector.value] || []).includes(wrapper.dataset.addField);
-    });
-    selector.addEventListener('change',showFields); showFields();
-  }
   if (save) save.addEventListener('click',async () => {
     const edits = changed();
     if (!edits.length) { message('Сохранено','saved'); return; }
@@ -89,5 +53,5 @@
       saving=false;message('Сохранено','saved');window.location.reload();
     } catch (error) { saving=false;message((error.message || 'Ошибка сохранения.')+' Изменения остаются в таблице.','error');save.disabled=false;inputs.forEach(input=>input.disabled=false); }
   });
-  filter();
+  window.smgSaveUI={canLeave:requireSaved};
 })();

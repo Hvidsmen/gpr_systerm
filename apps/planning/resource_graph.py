@@ -42,7 +42,7 @@ def graph(request, pk, kind='gpr'):
     choices=dict(form.fields['targets'].choices)
     work_ids=set()
     if kind=='gpr':
-        allocations=owner.work_allocations.filter(month=month).exclude(quantity=0,item_quantities={})
+        allocations=owner.work_allocations.filter(month=month)
         selected={}
         for row in allocations:
             selected.setdefault(row.work_id,set()).update(row.selected_item_ids or [i['id'] for t in context['resource_targets'] if t['id']==row.work_id for i in t['items']])

@@ -22,7 +22,7 @@ def matrix(schedule,entries):
         group='Без группы'
         if entry.kind=='work':
             work=works.get(entry.metadata.get('id'))
-            group=entry.metadata.get('complex_object_name') or entry.metadata.get('section_name') or (work.section.name if work else 'Работы')
+            group=entry.metadata.get('complex_object_name') or 'Самостоятельные работы'
         elif entry.kind=='labor':
             brigade=brigades.get(first.get('brigade_id'))
             if brigade:group=' · '.join(str(v) for v in [brigade.macro_group,brigade.group] if v) or 'Должность'
@@ -30,7 +30,7 @@ def matrix(schedule,entries):
             machine=equipment.get(first.get('equipment_type_id'))
             group=str(machine.category) if machine and machine.category_id else 'Техника'
         else:group='ГСМ'
-        if entry.metadata.get('target_label'):group=entry.metadata['target_label']+' · '+group
+        if entry.kind!='work':group='Назначения ресурсов' if entry.metadata.get('resource_assignment_id') else 'Общие ресурсы объекта'
         entry.has_deviation=bool(schedule.source_id) and any(row['delta'] for row in entry.comparison)
         grouped[entry.kind][group].append(entry)
         composites={}
@@ -38,6 +38,7 @@ def matrix(schedule,entries):
             composites['before']=entry.metadata.get('original_daily',[])
             composites['after']=service.finalize_work(entry.metadata,entry.rows,SimpleNamespace(start_date=start,end_date=end),entry.metadata.get('history',[]))['daily']
         for comparison in entry.comparison:
+            comparison['norm']=next((item.get('norm','') for item in entry.metadata.get('items',[]) if str(item['id'])==comparison['item_id']),'') if entry.kind=='work' else ''
             comparison['item_id_value']=int(comparison['item_id']) if comparison['item_id'] not in (None,'None') else ''
             comparison['step']=str(Decimal(1).scaleb(-next((digits for name,_,digits in service.FIELDS[entry.kind] if name==comparison['field']),6)))
             values={side:defaultdict(Decimal) for side in ['before','after']}

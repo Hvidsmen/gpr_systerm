@@ -18,7 +18,7 @@
    else if(resourceState==='error'){status.textContent='Ресурс не сохранён'+(planDirty?' · В плане есть изменения':'');status.dataset.state='error';}
    else if(planDirty||resourceState==='dirty'){status.textContent=resourceState==='saved'&&planDirty?'Ресурс сохранён · Есть изменения плана':planDirty&&resourceState==='dirty'?'Есть изменения плана и ресурса':planDirty?'Есть изменения плана':'Есть изменения ресурса';status.dataset.state='dirty';}
    else if(initialError){status.textContent='План не сохранён — проверьте ошибки';status.dataset.state='error';}
-   else {status.textContent=resourceState==='saved'?'Ресурс сохранён':allocation?'Сохранено':header.querySelector('[data-plan-action-title-locked]')?'План зафиксирован':status.textContent||'Сохранено';status.dataset.state='saved';}
+   else {status.textContent=header.dataset.planReadonly==='true'?'Режим просмотра':resourceState==='saved'?'Ресурс сохранён':allocation?'Сохранено':header.querySelector('[data-plan-action-title-locked]')?'План зафиксирован':status.textContent||'Сохранено';status.dataset.state='saved';}
  }
  function markPlanDirty(){if(allocation){allocation.dataset.dirty='true';warning.hidden=true;update();}}
  function isPlanInput(input){return input.form===allocation&&(allocation.id!=='allocation-editor'?Boolean(input.name):/^(works|resources)-\d+-/.test(input.name||'')||input.matches('[data-item-id]'));}

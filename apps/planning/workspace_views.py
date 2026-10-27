@@ -297,6 +297,14 @@ class WorkspaceEdit(View):
             **kwargs,
         )
         from core.permissions import role_code
+        if role_code(request.user)=='MANAGER':
+            for form in works:
+                for field in form.fields.values():field.disabled=True
+            from .preparation import require_resource_input
+            try:require_resource_input(request.user,version)
+            except (PermissionDenied,ValidationError):
+                for form in resources:
+                    for field in form.fields.values():field.disabled=True
         if role_code(request.user)=='PLANNER' and version.workspace.parent_gpr_id:
             for form in resources:
                 for field in form.fields.values():field.disabled=True
@@ -323,7 +331,19 @@ class WorkspaceEdit(View):
         from .gpr_ui import path_context
         approval=panel(version,request.user)
         allowed_months=[m for m in months if not version.planning_month or m>=version.planning_month and (version.scenario in {'REMAINING','ENTERED'} or m==version.planning_month)]
+        from .plan_workbench import month_matrix
+        from .daily_schedule_table_forms import AddEntryForm
+        visible=month_matrix(version,selected,works,resources)
+        can_work=role_code(request.user) in {'ADMIN','PLANNER'}
+        if not can_work:
+            for group in visible['sections'][0]['groups']:
+                for entry in group['entries']:entry.can_edit=False;entry.profile=False
         return {
+            'plan_sections':visible['sections'],'plan_is_daily':False,'plan_kind_label':'ГПР','plan_month':selected,'days':[],
+            'plan_years':sorted({m.year for m in allowed_months}),'plan_month_options':[{'month':m,'url':reverse('planning:workspace_edit',args=[version.pk])+'?month='+m.isoformat()} for m in allowed_months],
+            'plan_can_add_work':can_work,'plan_can_add_resources':resource_data['can_prepare_resources'],'table_editable':can_work or resource_data['can_prepare_resources'],
+            'plan_add_form':AddEntryForm(schedule=version) if resource_data['can_prepare_resources'] else None,
+            'plan_add_url':reverse('planning:workspace_edit',args=[version.pk])+'?month='+selected.isoformat(),
             **resource_data, **approval, **path_context(version,{**resource_data,**approval},request.user),
             'object':version,'gpr_single_page':True,'editor_has_errors':request.method=='POST',
             'editor_months':allowed_months,'editor_years':sorted({m.year for m in allowed_months}),
@@ -374,7 +394,7 @@ class WorkspaceEdit(View):
     def get(self, request, pk):
         from core.permissions import scope_queryset
         version=get_object_or_404(scope_queryset(GlobalPlanVersion.objects.filter(workspace__isnull=False),request.user),pk=pk)
-        if version.status not in {'DRAFT','REJECTED'} or role_code(request.user) not in {'ADMIN','PLANNER'}:
+        if version.status not in {'DRAFT','REJECTED'} or role_code(request.user) not in {'ADMIN','PLANNER','MANAGER'}:
             from .global_views import GlobalDetail
             request.gpr_single_page=True
             return GlobalDetail.as_view()(request,pk=pk)
@@ -387,7 +407,28 @@ class WorkspaceEdit(View):
         )
 
     def post(self, request, pk):
+        from core.permissions import require_roles
+        require_roles(request.user,{'ADMIN','PLANNER','MANAGER'})
         version, selected, months = self.setup_version(request, pk)
+        if role_code(request.user)=='MANAGER':
+            from .preparation import require_resource_input
+            require_resource_input(request.user,version)
+            if request.POST.get('action') not in {None,'save','add_table_resource'}:raise PermissionDenied('Руководитель редактирует и подтверждает ресурсы. Работы составляет планировщик.')
+        from core.permissions import require_planning_object
+        require_planning_object(request.user,version.construction_object_id)
+        if request.POST.get('action')=='add_table_resource':
+            from .daily_schedule_table_forms import AddEntryForm
+            from .plan_workbench import add_month_resource
+            form=AddEntryForm(request.POST,schedule=version)
+            if form.is_valid():
+                try:
+                    created=add_month_resource(request.user,version,selected,form.cleaned_data)
+                    messages.success(request,'Ресурс добавлен. Заполните месячные значения и сохраните план.' if created else 'Этот ресурс уже есть в месяце. Измените его значения в таблице.')
+                    return redirect(reverse('planning:workspace_edit',args=[version.pk])+'?month='+selected.isoformat())
+                except ValidationError as exc:form.add_error(None,exc)
+            works,resources=self.forms(request,version,selected)
+            ctx=self.context(request,version,selected,months,works,resources);ctx['plan_add_form']=form
+            return render(request,'planning/workspace_edit.html',ctx,status=400)
         works, resources = self.forms(request, version, selected, True)
         if works.is_valid() and resources.is_valid():
             try:

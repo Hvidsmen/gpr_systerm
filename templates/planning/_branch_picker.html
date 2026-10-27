@@ -3,14 +3,14 @@
 <div class="d-flex align-items-center justify-content-between gap-3 mb-3"><h2 class="h5 mb-0" id="branch-picker-title">Добавить из справочника</h2><button type="button" class="btn-close" aria-label="Закрыть" data-close-branch></button></div>
 <p class="small text-muted" data-branch-description></p>
 <p class="small text-muted">Сначала сохраните введённые изменения в таблице.</p>
-<form method="post" action="{% url 'planning:workspace_add_branch' version.pk %}">{% csrf_token %}
+<form method="post" action="{% if branch_action %}{{ branch_action }}{% else %}{% url 'planning:workspace_add_branch' version.pk %}{% endif %}">{% csrf_token %}{% if plan_is_daily %}<input type="hidden" name="kind" value="work">{% endif %}
 <p><label for="branch-picker-search">Поиск по названию</label><input type="search" class="form-control" id="branch-picker-search" data-branch-search placeholder="Начните вводить название" autocomplete="off"></p>
 <div class="row g-2 mb-3">
 <p class="col-md-6 mb-0" data-branch-object-filter hidden><label for="branch-picker-object">Комплексный объект</label><select id="branch-picker-object" class="form-select" data-branch-object data-native-select="true"></select></p>
 <p class="col-md-6 mb-0" data-branch-package-filter hidden><label for="branch-picker-package">Комплексная работа</label><select id="branch-picker-package" class="form-select" data-branch-package data-native-select="true"></select></p>
 </div>
 <p><label for="{{ branch_form.selection.id_for_label }}" data-branch-label>Выберите позицию</label>{{ branch_form.selection }}</p>
-<div class="branch-picker-months"><strong class="small">Месяцы</strong>{{ branch_form.months }}</div>
+{% if branch_form.months %}<div class="branch-picker-months"><strong class="small">Месяцы</strong>{{ branch_form.months }}</div>{% endif %}
 <p class="small text-muted mt-2" data-branch-empty hidden>В справочнике нет подходящих позиций для этого строительного объекта.</p>
 <div class="d-flex gap-2 mt-3"><button class="btn btn-primary" data-submit-branch>Добавить в план</button><button type="button" class="btn btn-outline-secondary" data-close-branch>Отмена</button></div>
 </form>

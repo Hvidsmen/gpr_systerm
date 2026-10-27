@@ -158,7 +158,10 @@ class InlineResourceTests(TestCase):
         self.assertEqual(item['unit'],self.a.unit)
         self.assertEqual(Decimal(item['plan'][0]['quantity']),17)
         self.assertEqual(item['plan'][0]['label'],'01.2026')
-        self.assertEqual(self.client.post(reverse('planning:workspace_edit',args=[self.version.pk]),{}).status_code,403)
+        # The shared editor now accepts manager resource forms; an empty formset
+        # is invalid and must not change the planner's work quantities.
+        self.assertEqual(self.client.post(reverse('planning:workspace_edit',args=[self.version.pk]),{}).status_code,200)
+        allocation.refresh_from_db();self.assertEqual(allocation.item_quantities,{str(self.a.pk):'17',str(self.b.pk):'5'})
 
     def test_handoff_link_opens_form_for_admin_without_creating_tasks(self):
         from apps.accounts.models import User,Role

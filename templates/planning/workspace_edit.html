@@ -1,7 +1,9 @@
 {% extends 'base.html' %}
 {% load access static %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'planning/plan_actions.css' %}">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'planning/plan_actions.css' %}"><link rel="stylesheet" href="{% static 'planning/report_matrix.css' %}"><link rel="stylesheet" href="{% static 'planning/plan_workbench.css' %}?v=20261027-2">{% endblock %}
 {% block content %}
+<div class="plan-workbench" data-plan-workbench="gpr">
+{% include 'planning/planning_tabs.html' %}
 {% include 'planning/_workspace_actions.html' %}
 {% if version.approval_round %}{% include 'planning/approval_panel.html' %}{% endif %}
 {% if workspace.is_macro_consolidation %}<div class="alert alert-info"><a href="{% url 'planning:macro_history_detail' workspace.pk %}">Общий ГПР макрообъекта: история → загрузка → согласование → СМГ → отчет</a>. История сохранена; новые месяцы — с {{ workspace.continuation_start|date:'m.Y' }}.</div>{% endif %}{% if workspace.continued_from_review_id %}<div class="alert alert-info">Прошлый период сохранен из <a href="{% url 'planning:global_detail' workspace.continued_from_review.version_id %}">предыдущего ГПР</a>. Новый период для планирования — с {{ workspace.continuation_start|date:'m.Y' }}. Прошлые месяцы доступны в сводном плане.</div>{% endif %}
@@ -50,11 +52,10 @@
 @media(max-width:575px) { .allocation-row .allocation-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .allocation-grid > [data-field] { grid-column:span 1 !important; } .allocation-grid > [data-field="work"], .allocation-grid > [data-field="brigade"], .allocation-grid > [data-field="equipment_type"], .allocation-grid > [data-field="fuel_type"], .allocation-grid > [data-field="load_profile"] { grid-column:1/-1 !important; } }
 
 </style>
-{% if request.user|may:'planning:workspace_add_work' or request.user|may:'planning:workspace_bulk_add' %}
-<div class="card mb-3"><div class="card-body"><h2>Добавить списком</h2><p>Сначала сохраните введённые месячные данные. В списке отметьте несколько позиций и отметьте нужные месяцы или выберите все доступные.</p>
-<div class="d-flex flex-wrap gap-2"><a class="btn btn-outline-primary" href="{% url 'planning:workspace_bulk_add' version.pk 'works' %}?month={{ selected_month|date:'Y-m-d' }}">Работы</a>{% if can_prepare_resources %}{% for section in resource_sections %}<a class="btn btn-outline-primary" href="{% url 'planning:workspace_bulk_add' version.pk section.kind %}?month={{ selected_month|date:'Y-m-d' }}">{{ section.title }}</a>{% endfor %}{% endif %}</div>
-</div></div>{% endif %}
-
+{% include 'planning/_plan_workbench_toolbar.html' %}
+{% if future_manual %}<div class="alert alert-info">{% if version.scenario == 'ENTERED' %}Будущее содержит только явно введенные объемы. Невведенные остатки не переносятся автоматически.{% else %}Будущее рассчитывается автоматически по пропорциям базового плана. Если остался один будущий месяц, весь остаток работ автоматически попадает в него. Для нескольких будущих месяцев с нулевыми пропорциями заполните распределение вручную. Сумма ручных объемов должна совпадать с остатком.{% endif %}</div>{% endif %}
+{% if work_forms.non_form_errors or resource_forms.non_form_errors %}<div class="alert alert-danger" role="alert">{{ work_forms.non_form_errors }}{{ resource_forms.non_form_errors }}</div>{% endif %}
+{% include 'planning/_plan_workbench_matrix.html' %}
 <details class="card mb-3" id="gpr-excel-tools"><summary class="p-3 fw-semibold">Excel: импорт, экспорт и шаблон</summary><div class="card-body pt-0"><p>Сначала сохраните введённые данные. Файл содержит четыре листа: Работы, Должность, Техника, ГСМ.</p><div class="d-flex flex-wrap gap-2">
 {% if request.user|may:'planning:workspace_excel_export' %}
 <a class="btn btn-sm btn-outline-primary" href="{% url 'planning:workspace_excel_export' version.pk %}?scope=period">Экспорт всего периода</a>
@@ -67,13 +68,20 @@
 {% if request.user|may:'planning:workspace_excel_import' %}<a class="btn btn-sm btn-primary" href="{% url 'planning:workspace_excel_import' version.pk %}?scope=period">Импорт всего периода</a><a class="btn btn-sm btn-primary" href="{% url 'planning:workspace_excel_import' version.pk %}?scope=year&year={{ selected_month.year }}">Импорт {{ selected_month.year }} года</a><a class="btn btn-sm btn-primary" href="{% url 'planning:workspace_excel_import' version.pk %}?scope=month&month={{ selected_month|date:'Y-m-d' }}">Импорт {{ selected_month|date:'m.Y' }}</a>{% endif %}
 {% if request.user|may:'planning:meeting_import' %}<a class="btn btn-sm btn-outline-primary" href="{% url 'planning:workspace_meeting_import' version.pk %}">Импорт файла совещания в эту версию</a> <a class="btn btn-sm btn-outline-primary" href="{% url 'planning:workspace_gpr_import' version.pk %}">Импорт ГПР за весь период</a> <a class="btn btn-sm btn-outline-primary" href="{% url 'planning:workspace_gpr_import' version.pk %}?scope=month&amp;month={{ selected_month|date:'Y-m-d' }}">Импорт ГПР за {{ selected_month|date:'m.Y' }}</a>{% endif %}
 </div></div></details>
+<div data-plan-native hidden>
+{% if request.user|may:'planning:workspace_add_work' or request.user|may:'planning:workspace_bulk_add' %}
+<div class="card mb-3"><div class="card-body"><h2>Добавить списком</h2><p>Сначала сохраните введённые месячные данные. В списке отметьте несколько позиций и отметьте нужные месяцы или выберите все доступные.</p>
+<div class="d-flex flex-wrap gap-2"><a class="btn btn-outline-primary" href="{% url 'planning:workspace_bulk_add' version.pk 'works' %}?month={{ selected_month|date:'Y-m-d' }}">Работы</a>{% if can_prepare_resources %}{% for section in resource_sections %}<a class="btn btn-outline-primary" href="{% url 'planning:workspace_bulk_add' version.pk section.kind %}?month={{ selected_month|date:'Y-m-d' }}">{{ section.title }}</a>{% endfor %}{% endif %}</div>
+</div></div>{% endif %}
+
+
 <nav class="plan-month-picker" aria-label="Месяцы плана" data-plan-month-picker data-current-month="{{ selected_month|date:'Y-m-d' }}">
 <label>Год<select class="form-select form-select-sm" data-plan-year data-native-select="true">{% for year in editor_years %}<option value="{{ year|stringformat:'d' }}" {% if year == selected_month.year %}selected{% endif %}>{{ year|stringformat:'d' }}</option>{% endfor %}</select></label>
 <label>Месяц<select class="form-select form-select-sm" data-plan-month data-native-select="true">{% for month in editor_months %}<option value="{{ month|date:'Y-m-d' }}" {% if month == selected_month %}selected{% endif %}>{{ month|date:'m.Y' }}{% if version.planning_month and month > version.planning_month %} · остаток{% endif %}</option>{% endfor %}</select></label>
 </nav>
 <h2>{{ selected_month|date:'m.Y' }}</h2>
-{% if future_manual %}<div class="alert alert-info">{% if version.scenario == 'ENTERED' %}Будущее содержит только явно введенные объемы. Невведенные остатки не переносятся автоматически.{% else %}Будущее рассчитывается автоматически по пропорциям базового плана. Если остался один будущий месяц, весь остаток работ автоматически попадает в него. Для нескольких будущих месяцев с нулевыми пропорциями заполните распределение вручную. Сумма ручных объемов должна совпадать с остатком.{% endif %}</div>{% endif %}
-<form method="post" id="allocation-editor" action="{% url 'planning:workspace_edit' version.pk %}?month={{ selected_month|date:'Y-m-d' }}">
+
+<form method="post" id="allocation-editor" novalidate action="{% url 'planning:workspace_edit' version.pk %}?month={{ selected_month|date:'Y-m-d' }}">
 {% csrf_token %}{{ work_forms.management_form }}{{ resource_forms.management_form }}
 {{ work_forms.non_form_errors }}{{ resource_forms.non_form_errors }}
 {% if resource_forms.total_error_count %}<div class="alert alert-danger" role="alert">Проверьте данные ресурсов.<ul>{% for form in resource_forms %}{% for field in form %}{% for error in field.errors %}<li>{{ field.label }}: {{ error }}</li>{% endfor %}{% endfor %}{% for error in form.non_field_errors %}<li>{{ error }}</li>{% endfor %}{% endfor %}</ul></div>{% endif %}
@@ -101,6 +109,7 @@
 </div></details>{% endfor %}
 
 </form>
+</div>
 {% include 'planning/_resource_editor.html' %}
 {% include 'planning/_gpr_handoff.html' %}
 {% include 'planning/_branch_picker.html' %}
@@ -414,4 +423,5 @@ const focusWork=new URLSearchParams(window.location.search).get('focus_work');
 if(focusWork){const row=Array.from(document.querySelectorAll('#work-rows .allocation-row')).find(r=>r.querySelector('[name$="-work"]')?.value===focusWork);if(row){revealAllocationRow(row);row.scrollIntoView({block:'center'});row.querySelector('[name$="-quantity"]')?.focus();}}
 document.querySelectorAll('.allocation-row .errorlist').forEach(error=>revealAllocationRow(error.closest('.allocation-row')));
 </script>
+</div>
 {% endblock %}

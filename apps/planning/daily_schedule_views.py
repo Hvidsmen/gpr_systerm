@@ -24,19 +24,21 @@ def summary(entry):
         field=key.split(':')[-1]
         label=next(label for name,label,_ in service.FIELDS[entry.kind] if name==field)
         if entry.kind=='work':
-            item=items.get(key.split(':')[0]);label=(item['name']+' · '+item['unit']) if item else entry.metadata.get('unit','Объем')
+            item=items.get(key.split(':')[0]);label=(item['name']+' · '+item['unit']) if item else 'Объём · '+entry.metadata.get('unit','')
         a,b=before.get(key,Decimal(0)),after.get(key,Decimal(0))
         if field=='planned_count':
             count=Decimal(service.bounds(entry.schedule.month)[1].day)
             a,b=a/count,b/count
             label='Средняя численность, чел.' if entry.kind=='labor' else 'Среднее количество, ед.'
         result.append(dict(label=label,before=a,after=b,delta=b-a,field=field,item_id=key.split(':')[0] if entry.kind=='work' else None))
+    order={str(item['id']):index for index,item in enumerate(entry.metadata.get('items',[]))} if entry.kind=='work' else {field:index for index,(field,_,_) in enumerate(service.FIELDS[entry.kind])}
+    result.sort(key=lambda row:order.get(row['item_id'] if entry.kind=='work' else row['field'],len(order)))
     if entry.kind=='work' and entry.metadata.get('kind')=='COMPOSITE':
         from types import SimpleNamespace
         generated=service.finalize_work(entry.metadata,entry.rows,SimpleNamespace(start_date=entry.schedule.month,end_date=service.bounds(entry.schedule.month)[1]),entry.metadata.get('history',[]))
         a=sum((Decimal(str(r['quantity'])) for r in entry.metadata.get('original_daily',[])),Decimal(0))
         b=sum((Decimal(str(r['quantity'])) for r in generated['daily']),Decimal(0))
-        result.insert(0,dict(label='Работа, '+entry.metadata.get('unit',''),before=a,after=b,delta=b-a,field='work_total',item_id=None))
+        result.insert(0,dict(label='Готовые комплексы · '+entry.metadata.get('unit',''),before=a,after=b,delta=b-a,field='work_total',item_id=None))
     return result
 
 
@@ -66,6 +68,7 @@ class DailyScheduleDetail(View):
         entries=list(schedule.entries.select_related('gpr_work__section'))
         for entry in entries:
             entry.schedule=schedule
+            entry.incomplete=entry.kind=='work' and len(entry.metadata.get('items',[]))<len(entry.metadata.get('valuation_items',entry.metadata.get('items',[])))
             entry.needs_gpr_mapping=is_subobject and entry.kind=='work' and (not entry.gpr_work_id or entry.gpr_work.section.construction_object_id!=schedule.source.construction_object_id)
             entry.can_edit=(entry.kind=='work' and role_code(request.user) in PLAN_ROLES) or (entry.kind!='work' and resource_editor)
             entry.comparison=summary(entry)
@@ -94,13 +97,32 @@ class DailyScheduleDetail(View):
         from .smg_ui import editor_context
         from apps.works.models import ProjectWork
         parent_choices=ProjectWork.objects.filter(company=request.user.company,section__construction_object_id=schedule.source.construction_object_id,merged_source__isnull=True) if is_subobject else []
-        return render(request,'planning/daily_schedule_detail.html',dict(gpr_copy_form=copy_form,linked_object_plans=linked_plans(schedule,request.user),schedule=schedule,entries=entries,reference_form=reference_form,can_activate_smg=resource_manager and schedule.status=='APPROVED',can_edit=role_code(request.user) in PLAN_ROLES,table_editable=editable,add_form=add_form or (AddEntryForm(schedule=schedule) if editable else None),has_deviations=any(service.differences(e,e.rows) for e in entries),is_subobject_smg=is_subobject,has_direct_reference=bool(schedule.source_id) and not is_subobject,parent_work_choices=parent_choices,parent_comparison=parent_comparison(schedule) if is_subobject else None,**approval,**matrix(schedule,entries),**editor_context(request.user,schedule,approval)))
+        from .work_selection_views import ScheduleBranchForm
+        from django.urls import reverse
+        editor=editor_context(request.user,schedule,approval)
+        layout=matrix(schedule,entries)
+        layout['sections'][1]['label']='Должности'
+        month_options=[{'month':s.month,'url':reverse('planning:daily_schedule_detail',args=[s.pk])} for s in editor['smg_month_choices']]
+        unified={'plan_is_daily':True,'plan_kind_label':'СМГ','plan_sections':layout['sections'],'plan_month':schedule.month,
+            'plan_month_options':month_options,'plan_years':sorted({s['month'].year for s in month_options}),
+            'plan_can_add_work':editable and role_code(request.user) in PLAN_ROLES,'plan_can_add_resources':editable and bool(resource_editor),
+            'plan_add_form':add_form,'plan_add_url':request.path,
+            'branch_form':ScheduleBranchForm(schedule=schedule) if editable and role_code(request.user) in PLAN_ROLES else None,'branch_action':request.path}
+        return render(request,'planning/daily_schedule_detail.html',dict(gpr_copy_form=copy_form,linked_object_plans=linked_plans(schedule,request.user),schedule=schedule,entries=entries,reference_form=reference_form,can_activate_smg=resource_manager and schedule.status=='APPROVED',can_edit=role_code(request.user) in PLAN_ROLES,table_editable=editable,add_form=add_form or (AddEntryForm(schedule=schedule) if editable else None),has_deviations=any(service.differences(e,e.rows) for e in entries),is_subobject_smg=is_subobject,has_direct_reference=bool(schedule.source_id) and not is_subobject,parent_work_choices=parent_choices,parent_comparison=parent_comparison(schedule) if is_subobject else None,**approval,**layout,**editor,**unified))
 
     def post(self,request,pk):
         require_roles(request.user,PLAN_ROLES | {'MANAGER'})
         schedule=get_object_or_404(DailySchedule,pk=pk,company=request.user.company)
         if schedule.status!='DRAFT':raise PermissionDenied('СМГ зафиксирован. Создайте новую редакцию.')
         from .daily_schedule_table import save_table,add_entry
+        if request.POST.get('action')=='remove_entry':
+            from .plan_workbench import remove_smg_entry
+            try:
+                remove_smg_entry(request.user,schedule,int(request.POST.get('entry_id','')),int(request.POST.get('revision','')))
+                messages.success(request,'Строка удалена из СМГ. Справочник сохранён.')
+            except (ValueError,TypeError,DailyScheduleEntry.DoesNotExist):messages.error(request,'Строка недоступна. Обновите страницу.')
+            except ValidationError as exc:messages.error(request,'; '.join(exc.messages))
+            return redirect('planning:daily_schedule_detail',pk=pk)
         if request.content_type=='application/json':
             try:
                 payload=json.loads(request.body)
