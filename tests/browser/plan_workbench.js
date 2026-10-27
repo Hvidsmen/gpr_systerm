@@ -23,7 +23,17 @@ const c=JSON.parse(process.env.PLAN_WORKBENCH_CONFIG);
    const selector=daily?'.smg-day-input':'[data-plan-month-input]';
    const machine=()=>page.locator('[data-plan-entry][data-label="Экскаватор с машинистом"] '+selector).first();
    const people=()=>page.locator('[data-plan-entry][data-label="Машинист"] '+selector).first();
-   const initial=Number(await people().inputValue());await machine().fill('1');
+   const initial=Number(await people().inputValue());
+   const resourceGroup=()=>machine().locator('xpath=ancestor::details[@data-smg-group][1]');
+   const subtotal=()=>resourceGroup().locator('[data-plan-group-totals] [data-plan-total-after]');
+   assert.equal(await resourceGroup().locator('[data-plan-group-totals] input').count(),0,'Subtotals are read-only');
+   await machine().fill('1');
+   await page.waitForFunction(({daily})=>{const group=document.querySelector('[data-plan-entry][data-label="Экскаватор с машинистом"]').closest('[data-smg-group]');return Math.abs(Number(group.querySelector('[data-plan-group-totals] [data-plan-total-after]').dataset.value)-(daily?1/31:1))<1e-8;},{daily});
+   if(daily)assert.equal(await resourceGroup().locator('[data-plan-total-date="2026-01-01"]').getAttribute('data-value'),'1');
+   await resourceGroup().locator(':scope>summary').click();assert(!(await resourceGroup().evaluate(node=>node.open)));
+   assert(await resourceGroup().locator('[data-plan-group-total-number]').isVisible(),'Collapsed groups retain the total');
+   await resourceGroup().locator(':scope>summary').click();
+
    assert.equal(Number(await people().inputValue()),initial+1,'Crew follows machine immediately');
    async function persistCrew(){await Promise.all([page.waitForNavigation({waitUntil:'networkidle'}),daily?page.locator('#smg-save-table').click():page.locator('[data-plan-action-header] button[form=allocation-editor][value=save]').click()]);}
    await persistCrew();assert.equal(Number(await people().inputValue()),initial+1,'Crew count persists after save');
@@ -41,7 +51,7 @@ const c=JSON.parse(process.env.PLAN_WORKBENCH_CONFIG);
    const cardForm=card.locator('form').filter({has:card.locator('#id_group')});
    await Promise.all([card.waitForNavigation({waitUntil:'networkidle'}),cardForm.locator('button[type=submit]').click()]);
    await card.close();assert.equal(page.url(),planUrl);assert.equal(Number(await people().inputValue()),pending);
-   await persistCrew();assert((await page.locator('[data-smg-section=labor] summary').allTextContents()).some(text=>text.trim()===label));
+   await persistCrew();assert((await page.locator('[data-smg-section=labor] [data-plan-group-name]').allTextContents()).some(text=>text.trim()===label));
    const [equipmentCard]=await Promise.all([context.waitForEvent('page'),page.locator('[data-plan-entry][data-label="Экскаватор с машинистом"] [data-resource-catalogue]').click()]);
    await equipmentCard.waitForLoadState('networkidle');assert.equal(await equipmentCard.locator('#id_name').inputValue(),'Экскаватор с машинистом');await equipmentCard.close();
    if(daily){
@@ -53,6 +63,13 @@ const c=JSON.parse(process.env.PLAN_WORKBENCH_CONFIG);
     await fillPeople().fill('7');assert((await page.locator('[data-plan-entry][data-label="Машинист"] .smg-day-input').evaluateAll(inputs=>inputs.map(input=>input.value))).every(value=>value==='7'));
     await persistCrew();await fillMachine().fill('4');assert((await page.locator('[data-plan-entry][data-label="Машинист"] .smg-day-input').evaluateAll(inputs=>inputs.map(input=>input.value))).every(value=>value==='8'));
     await persistCrew();
+    assert.equal(await resourceGroup().locator('[data-plan-group-totals] [data-plan-total-after]').getAttribute('data-value'),'4');
+    const peopleGroup=page.locator('[data-plan-entry][data-label="Машинист"]').locator('xpath=ancestor::details[@data-smg-group][1]');
+    assert.equal(await peopleGroup.locator('[data-plan-group-totals] [data-plan-total-after]').getAttribute('data-value'),'8');
+    await page.locator('#smg-search').fill('Экскаватор с машинистом');
+    assert.equal(await resourceGroup().locator('[data-plan-group-total-caption]').innerText(),'По фильтру');
+    assert.equal(await page.locator('[data-smg-section=equipment] [data-plan-section-totals] [data-plan-total-after]').getAttribute('data-value'),'4');
+    await page.locator('#smg-reset').click();
     // Disabled/closed day controls must never be filled by the monthly action.
     await machine().evaluate(input=>input.disabled=true);await fillMachine().fill('5');
     assert.equal(await machine().inputValue(),'4');

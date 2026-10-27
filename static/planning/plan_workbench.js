@@ -43,6 +43,7 @@
    if(!section.hidden)count+=matches;
   });
   document.getElementById('smg-empty').hidden=count>0||!terms.length&&!kind.value&&!deviations.checked;
+  refreshResourceTotals();
  }
  const container=root.querySelector('[data-plan-multi-filters]');
  if(window.graphMultiselect){
@@ -169,6 +170,47 @@
   native.addEventListener('submit',event=>{if(!event.defaultPrevented)native.dataset.workbenchSubmitting='true';});
   syncComputed();
  }
+ // Resource subtotals use the same visible rows as the table, including crews once.
+ function refreshResourceTotals(){
+  const format=value=>new Intl.NumberFormat('ru-RU',{maximumFractionDigits:6}).format(value);
+  const numeric=value=>{const n=Number(value);return Number.isFinite(n)?n:0;};
+  const filtered=Boolean(search.value.trim()||deviations.checked||Object.values(filters).some(f=>f.values().length));
+  function sum(entries){
+   const result={before:0,after:0,days:new Map()};
+   for(const entry of entries){
+    if(entry.hidden||!daily&&source(entry,'DELETE')?.checked)continue;
+    const row=entry.querySelector('[data-plan-measure]');if(!row)continue;
+    const cells=[...row.querySelectorAll('[data-smg-day-cell]')];
+    if(daily&&cells.length){
+     let before=0,after=0;
+     cells.forEach(cell=>{const b=numeric(cell.dataset.before),a=numeric(cell.querySelector('input')?.value??cell.dataset.value);before+=b;after+=a;
+      const value=result.days.get(cell.dataset.date)||{before:0,after:0};value.before+=b;value.after+=a;result.days.set(cell.dataset.date,value);});
+     result.before+=before/cells.length;result.after+=after/cells.length;
+    }else{
+     const cell=row.querySelector('[data-plan-month-value]');result.after+=numeric(cell?.querySelector('input')?.value??cell?.dataset.value);
+    }
+   }
+   return result;
+  }
+  function write(target,value){
+   const set=(selector,n)=>target.querySelectorAll(selector).forEach(cell=>{cell.textContent=format(n);cell.dataset.value=String(n);});
+   set('[data-plan-total-before]',value.before);set('[data-plan-total-after]',value.after);set('[data-plan-total-delta]',value.after-value.before);
+   target.querySelectorAll('[data-plan-total-delta]').forEach(cell=>{cell.classList.toggle('text-success',value.after>value.before);cell.classList.toggle('text-danger',value.after<value.before);});
+   target.querySelectorAll('[data-plan-total-date]').forEach(cell=>{const day=value.days.get(cell.dataset.planTotalDate)||{before:0,after:0};cell.textContent=format(day.after);cell.dataset.value=String(day.after);cell.dataset.before=String(day.before);const differs=target.dataset.totalReference==='true'&&Math.abs(day.after-day.before)>1e-9;cell.classList.toggle('table-warning',differs);if(differs){const hint=document.createElement('small');hint.textContent='ГПР: '+format(day.before);cell.append(hint);}});
+   target.querySelectorAll('[data-plan-total-caption]').forEach(caption=>{caption.dataset.fullCaption??=caption.textContent;caption.textContent=filtered?'Итого по фильтру'+(target.dataset.totalUnit?' · '+target.dataset.totalUnit:''):caption.dataset.fullCaption;});
+  }
+  matrix.querySelectorAll('[data-smg-section=labor],[data-smg-section=equipment]').forEach(section=>{
+   section.querySelectorAll('[data-smg-group]').forEach(group=>{
+    const target=group.querySelector('[data-plan-group-totals]');if(!target)return;
+    const value=sum(group.querySelectorAll('[data-plan-entry]'));write(target,value);
+    group.querySelector('[data-plan-group-total-number]').textContent=format(value.after);
+    const caption=group.querySelector('[data-plan-group-total-caption]');caption.dataset.fullCaption??=caption.textContent;caption.textContent=filtered?'По фильтру':caption.dataset.fullCaption;
+   });
+   const overall=section.querySelector('[data-plan-section-totals]');if(overall)write(overall,sum(section.querySelectorAll('[data-plan-entry]')));
+  });
+ }
+ let totalsScheduled=false;
+ matrix.addEventListener('input',()=>{if(totalsScheduled)return;totalsScheduled=true;requestAnimationFrame(()=>{totalsScheduled=false;refreshResourceTotals();});});
  // A monthly headcount is a fill value, repeated on every editable day.
  function refreshMonthFill(row){
   const fill=row.querySelector('[data-smg-fill-month]');if(!fill)return;
@@ -231,6 +273,6 @@
   }finally{crewUpdating=false;}
  }
  matrix.addEventListener('input',event=>{if(event.target.closest('[data-smg-section=equipment]'))syncTableCrew();});
- requestAnimationFrame(()=>{syncTableCrew();if(daily)matrix.querySelectorAll('[data-smg-fill-month]').forEach(fill=>refreshMonthFill(fill.closest('tr')));});
+ requestAnimationFrame(()=>{syncTableCrew();if(daily)matrix.querySelectorAll('[data-smg-fill-month]').forEach(fill=>refreshMonthFill(fill.closest('tr')));refreshResourceTotals();});
  filter();
 })();

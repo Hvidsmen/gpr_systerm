@@ -80,6 +80,9 @@ def month_matrix(version,month,work_forms,resource_forms):
     from .table_resource_crew import display_recipe
     from .resource_catalogue_links import catalogue_links
     catalogue=catalogue_links(version.company)
+    from apps.resources.models import EquipmentType
+    from .resource_group_totals import equipment_group,group_label,attach_resource_totals
+    equipment={e.pk:e for e in EquipmentType.objects.filter(company=version.company).select_related('parent')}
     brigades={b.pk:b for b in Brigade.objects.filter(company=version.company).select_related('group')}
     def labor_group(brigade_id):
         b=brigades.get(brigade_id)
@@ -129,7 +132,7 @@ def month_matrix(version,month,work_forms,resource_forms):
         entry.crew_recipe_json=json.dumps(display_recipe(version.company,row.equipment_type,row.crew_data)) if kind=='equipment' else '[]'
         entry.crew_counts_json=json.dumps({'month':row.crew_data.get('count',0)}) if kind=='labor' else '{}'
         entry.crew_note='Численность включает экипаж техники. Можно добавить людей сверх экипажа.' if kind=='labor' and row.crew_data.get('count') else ''
-        grouped[kind][labor_group(row.brigade_id) if kind=='labor' else 'Общие ресурсы объекта'].append(entry)
+        grouped[kind][labor_group(row.brigade_id) if kind=='labor' else equipment_group(equipment.get(row.equipment_type_id),version.company) if kind=='equipment' else 'Общие ресурсы объекта'].append(entry)
     # Captured assignments are shown once in the same summary as manual inputs.
     # Their dates, crew and quantities keep being edited by the existing service.
     from .work_resources import owner_rows,expand
@@ -146,15 +149,12 @@ def month_matrix(version,month,work_forms,resource_forms):
                 value=sum((decimal(r.get(field)) for r in rows),ZERO)
                 if field=='planned_count':value/=days
                 comparisons.append(measure(title,value))
-            grouped[kind][labor_group(rows[0].get('brigade_id')) if kind=='labor' else 'Назначения ресурсов'].append(SimpleNamespace(**catalogue(kind,rows[0].get('brigade_id') if kind=='labor' else rows[0].get('equipment_type_id')),pk='assignment:'+key,label=label,kind=kind,path=label,native_prefix='',can_edit=False,
+            grouped[kind][labor_group(rows[0].get('brigade_id')) if kind=='labor' else equipment_group(equipment.get(rows[0].get('equipment_type_id')),version.company) if kind=='equipment' else 'Назначения ресурсов'].append(SimpleNamespace(**catalogue(kind,rows[0].get('brigade_id') if kind=='labor' else rows[0].get('equipment_type_id')),pk='assignment:'+key,label=label,kind=kind,path=label,native_prefix='',can_edit=False,
                 metadata={'resource_assignment_id':assignment.pk,'target_label':rows[0].get('target_label','')},reference='',comparison=comparisons,errors=[],assignment_id=assignment.pk))
-    sections=[{'kind':kind,'label':LABELS[kind],'groups':[{'label':name,'entries':entries} for name,entries in sorted(groups.items())],
+    sections=[{'kind':kind,'label':LABELS[kind],'groups':[{'label':group_label(name),'entries':entries} for name,entries in sorted(groups.items())],
         'totals':[],'count':sum(len(entries) for entries in groups.values())} for kind,groups in grouped.items()]
 
-    for section in sections:
-        if section['kind'] in {'labor','equipment'} and section['count']:
-            total=sum((decimal(entry.comparison[0]['after']) for group in section['groups'] for entry in group['entries']),ZERO)
-            section['totals']=[measure('Итого · '+('чел.' if section['kind']=='labor' else 'ед.'),total)]
+    attach_resource_totals(sections)
     attach_work_hierarchy(sections)
     return {'sections':sections,'days':[]}
 

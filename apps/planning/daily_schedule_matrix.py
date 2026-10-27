@@ -14,10 +14,11 @@ def matrix(schedule,entries):
     days=[start+timedelta(days=i) for i in range(end.day)]
     works={w.pk:w for w in ProjectWork.objects.filter(company_id=schedule.company_id,pk__in=[e.metadata.get('id') for e in entries if e.kind=='work']).select_related('section','complex_object')}
     brigades={b.pk:b for b in Brigade.objects.filter(company_id=schedule.company_id).select_related('group','macro_group')}
-    equipment={e.pk:e for e in EquipmentType.objects.filter(company_id=schedule.company_id).select_related('category')}
+    equipment={e.pk:e for e in EquipmentType.objects.filter(company_id=schedule.company_id).select_related('category','parent')}
     grouped={kind:defaultdict(list) for kind in service.FIELDS};totals={kind:{} for kind in service.FIELDS}
     from .resource_catalogue_links import catalogue_links
     catalogue=catalogue_links(schedule.company)
+    from .resource_group_totals import equipment_group,group_label,attach_resource_totals
     for entry in entries:
         # Hours remain in saved inputs and calculations, outside the editor.
         if entry.kind in {'labor','equipment'}:entry.comparison=[row for row in entry.comparison if row['field']=='planned_count']
@@ -46,9 +47,9 @@ def matrix(schedule,entries):
             if brigade:group=str(brigade.group) if brigade.group_id else 'Без группы'
         elif entry.kind=='equipment':
             machine=equipment.get(first.get('equipment_type_id'))
-            group=str(machine.category) if machine and machine.category_id else 'Техника'
+            group=equipment_group(machine,schedule.company)
         else:group='ГСМ'
-        if entry.kind not in {'work','labor'}:group='Назначения ресурсов' if entry.metadata.get('resource_assignment_id') else 'Общие ресурсы объекта'
+        if entry.kind not in {'work','labor','equipment'}:group='Назначения ресурсов' if entry.metadata.get('resource_assignment_id') else 'Общие ресурсы объекта'
         entry.has_deviation=bool(schedule.source_id) and any(row['delta'] for row in entry.comparison)
         grouped[entry.kind][group].append(entry)
         composites={}
@@ -79,7 +80,8 @@ def matrix(schedule,entries):
                 for cell,source in zip(total['cells'],comparison['cells']):
                     for key in ['before','after','delta']:cell[key]+=source[key]
     labels={'work':'Работы','labor':'Должность','equipment':'Техника','fuel':'ГСМ'}
-    sections=[{'kind':kind,'label':labels[kind],'groups':[{'label':name,'entries':sorted(rows,key=lambda e:(e.label.casefold(),e.pk))} for name,rows in sorted(groups.items())],'totals':list(totals[kind].values()),'count':sum(len(rows) for rows in groups.values())} for kind,groups in grouped.items()]
+    sections=[{'kind':kind,'label':labels[kind],'groups':[{'label':group_label(name),'entries':sorted(rows,key=lambda e:(e.label.casefold(),e.pk))} for name,rows in sorted(groups.items())],'totals':list(totals[kind].values()),'count':sum(len(rows) for rows in groups.values())} for kind,groups in grouped.items()]
     from .plan_workbench import attach_work_hierarchy
+    attach_resource_totals(sections)
     attach_work_hierarchy(sections)
     return {'sections':sections,'days':days}
