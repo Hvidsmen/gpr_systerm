@@ -102,13 +102,15 @@ class DailyScheduleDetail(View):
         editor=editor_context(request.user,schedule,approval)
         layout=matrix(schedule,entries)
         layout['sections'][1]['label']='Должности'
+        parent_data=parent_comparison(schedule) if is_subobject else None
+        if parent_data:parent_data['rows']=[row for row in parent_data['rows'] if not (row['kind'] in {'labor','equipment'} and row['unit']=='ч')]
         month_options=[{'month':s.month,'url':reverse('planning:daily_schedule_detail',args=[s.pk])} for s in editor['smg_month_choices']]
         unified={'plan_is_daily':True,'plan_kind_label':'СМГ','plan_sections':layout['sections'],'plan_month':schedule.month,
             'plan_month_options':month_options,'plan_years':sorted({s['month'].year for s in month_options}),
             'plan_can_add_work':editable and role_code(request.user) in PLAN_ROLES,'plan_can_add_resources':editable and bool(resource_editor),
             'plan_add_form':add_form,'plan_add_url':request.path,
             'branch_form':ScheduleBranchForm(schedule=schedule) if editable and role_code(request.user) in PLAN_ROLES else None,'branch_action':request.path}
-        return render(request,'planning/daily_schedule_detail.html',dict(gpr_copy_form=copy_form,linked_object_plans=linked_plans(schedule,request.user),schedule=schedule,entries=entries,reference_form=reference_form,can_activate_smg=resource_manager and schedule.status=='APPROVED',can_edit=role_code(request.user) in PLAN_ROLES,table_editable=editable,add_form=add_form or (AddEntryForm(schedule=schedule) if editable else None),has_deviations=any(service.differences(e,e.rows) for e in entries),is_subobject_smg=is_subobject,has_direct_reference=bool(schedule.source_id) and not is_subobject,parent_work_choices=parent_choices,parent_comparison=parent_comparison(schedule) if is_subobject else None,**approval,**layout,**editor,**unified))
+        return render(request,'planning/daily_schedule_detail.html',dict(gpr_copy_form=copy_form,linked_object_plans=linked_plans(schedule,request.user),schedule=schedule,entries=entries,reference_form=reference_form,can_activate_smg=resource_manager and schedule.status=='APPROVED',can_edit=role_code(request.user) in PLAN_ROLES,table_editable=editable,add_form=add_form or (AddEntryForm(schedule=schedule) if editable else None),has_deviations=any(service.differences(e,e.rows) for e in entries),is_subobject_smg=is_subobject,has_direct_reference=bool(schedule.source_id) and not is_subobject,parent_work_choices=parent_choices,parent_comparison=parent_data,**approval,**layout,**editor,**unified))
 
     def post(self,request,pk):
         require_roles(request.user,PLAN_ROLES | {'MANAGER'})
@@ -153,7 +155,7 @@ class DailyScheduleEdit(View):
             try:require_resource_input(request.user,entry.schedule)
             except (PermissionDenied,ValidationError):editable=False
         if bound and not editable:raise PermissionDenied('Примененный СМГ зафиксирован. Создайте новую редакцию.')
-        fields=service.FIELDS[entry.kind]
+        fields=[field for field in service.FIELDS[entry.kind] if entry.kind not in {'labor','equipment'} or field[0]=='planned_count']
         class DayForm(forms.Form):
             pass
         for key,label,digits in fields:DayForm.base_fields[key]=forms.DecimalField(label=label,min_value=0,max_digits=18,decimal_places=digits,widget=forms.NumberInput(attrs={'class':'form-control form-control-sm','step':str(Decimal(1).scaleb(-digits))}))
@@ -172,7 +174,9 @@ class DailyScheduleEdit(View):
         error=None
         if bound and formset.is_valid():
             try:
-                entry=service.save_entry(request.user,entry,[f.cleaned_data for f in formset],int(request.POST.get('revision','-1')))
+                # Hidden hours are preserved when a user edits the count.
+                values=[{**{key:service.row_value(entry.kind,stored.get((day.isoformat(),item['id']),{}),key) for key,_,_ in service.FIELDS[entry.kind]},**form.cleaned_data} for (day,item),form in zip(identities,formset)]
+                entry=service.save_entry(request.user,entry,values,int(request.POST.get('revision','-1')))
                 if entry.schedule.source_id and service.differences(entry,entry.rows):messages.warning(request,'Месячный итог СМГ отличается от ГПР. Отклонение сохранено и показано в сравнении.')
                 else:messages.success(request,'Дневной СМГ сохранен.')
                 return redirect('planning:daily_schedule_edit',pk=entry.pk)
@@ -186,7 +190,8 @@ class DailyScheduleEdit(View):
                 except Exception:delta=None
                 cells.append(dict(field=form[key],base=base,delta=delta,key=key))
             display.append(dict(day=day,item=item,cells=cells))
-        return render(request,'planning/daily_schedule_edit.html',dict(entry=entry,schedule=entry.schedule,formset=formset,rows=display,error=error,editable=editable,comparison=summary(entry),fields=fields))
+        visible_summary=[row for row in summary(entry) if entry.kind not in {'labor','equipment'} or row['field']=='planned_count']
+        return render(request,'planning/daily_schedule_edit.html',dict(entry=entry,schedule=entry.schedule,formset=formset,rows=display,error=error,editable=editable,comparison=visible_summary,fields=fields))
     def get(self,request,pk):return self.display(request,pk)
     def post(self,request,pk):return self.display(request,pk,True)
 

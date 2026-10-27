@@ -16,6 +16,8 @@ def matrix(schedule,entries):
     equipment={e.pk:e for e in EquipmentType.objects.filter(company_id=schedule.company_id).select_related('category')}
     grouped={kind:defaultdict(list) for kind in service.FIELDS};totals={kind:{} for kind in service.FIELDS}
     for entry in entries:
+        # Hours remain in saved inputs and calculations, outside the editor.
+        if entry.kind in {'labor','equipment'}:entry.comparison=[row for row in entry.comparison if row['field']=='planned_count']
         if not entry.comparison:continue
         first=next(iter(entry.rows or entry.original),{})
         entry.reference=first.get('equipment_number','')

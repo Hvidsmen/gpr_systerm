@@ -30,5 +30,5 @@ class PlanWorkbenchBrowserTests(StaticLiveServerTestCase):
         self.assertEqual(result.returncode,0,result.stdout+'\n'+result.stderr)
         row.refresh_from_db();self.assertEqual(row.quantity,10)
         self.assertEqual(row.item_quantities,{str(self.a.pk):'42',str(self.b.pk):'30'})
-        gear.refresh_from_db();self.assertEqual(gear.count,3);self.assertEqual(gear.hours,124)
+        gear.refresh_from_db();self.assertEqual(gear.count,3);self.assertEqual(gear.hours,16)
         print(result.stdout.strip())

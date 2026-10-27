@@ -75,7 +75,7 @@ def month_matrix(version,month,work_forms,resource_forms):
         name=str(row.brigade if kind=='labor' else row.equipment_type if kind=='equipment' else row.get_fuel_type_display())
         entry=SimpleNamespace(pk='resource:'+form.prefix,label=name,kind=kind,native_prefix=form.prefix,path=name,metadata={},reference=row.equipment_number,can_edit=not any(f.disabled for f in form.fields.values()),
             comparison=[],errors=[str(error) for errors in form.errors.values() for error in errors])
-        fields=[('Средняя численность, чел.' if kind=='labor' else 'Среднее количество, ед.','count',0),('Чел·ч' if kind=='labor' else 'Маш·ч','hours',2)] if kind!='fuel' else [('Расход, л','liters',2),('Остаток, л','balance',2)]
+        fields=[('Средняя численность, чел.' if kind=='labor' else 'Среднее количество, ед.','count',0)] if kind!='fuel' else [('Расход, л','liters',2),('Остаток, л','balance',2)]
         for label,field,digits in fields:entry.comparison.append(measure(label,form[field].value(),field,digits=digits))
         grouped[kind]['Общие ресурсы объекта'].append(entry)
     # Captured assignments are shown once in the same summary as manual inputs.
@@ -88,7 +88,7 @@ def month_matrix(version,month,work_forms,resource_forms):
         for key,(kind,label,rows) in expand(assignment).items():
             rows=[r for r in rows if r['date'].startswith(prefix)]
             if not rows:continue
-            fields=[('Среднее количество · '+('чел.' if kind=='labor' else 'ед.'),'planned_count',0),('Чел·ч' if kind=='labor' else 'Маш·ч','planned_hours' if kind=='labor' else 'planned_machine_hours',2)] if kind!='fuel' else [('Расход · л','planned_liters',2)]
+            fields=[('Среднее количество · '+('чел.' if kind=='labor' else 'ед.'),'planned_count',0)] if kind!='fuel' else [('Расход · л','planned_liters',2)]
             comparisons=[]
             for title,field,_ in fields:
                 value=sum((decimal(r.get(field)) for r in rows),ZERO)
