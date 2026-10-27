@@ -1,7 +1,16 @@
 from django.urls import path
-from . import views
+from . import views, housing_views
 app_name='personnel'
 urlpatterns=[
+    path('housing/',housing_views.workspace,name='housing'),
+    path('housing/export/',housing_views.roster_export,name='housing_export'),
+    path('camps/',housing_views.camps,name='camps'),
+    path('camps/create/',housing_views.camp_edit,name='camp_create'),
+    path('camps/<int:pk>/',housing_views.camp_edit,name='camp_edit'),
+    path('housing/people/<int:pk>/',housing_views.history,name='housing_history'),
+    path('housing/stays/<int:pk>/cancel/',housing_views.cancel,name='housing_cancel'),
+    path('people/<int:pk>/schedule/',housing_views.schedule,name='person_schedule'),
+    path('people/link/',housing_views.link_people,name='link_people'),
     path('',views.board_list,name='board_list'),
     path('create/',views.board_create,name='board_create'),
     path('import/',views.import_excel,name='import'),

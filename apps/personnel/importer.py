@@ -116,4 +116,6 @@ def apply(company, name, data):
             person = matches[0] if matches else Person.objects.create(company=company,full_name=row['name'],phone=row['phone'],employee_number=row['employee_number'])
             if matches and row['employee_number'] and person.full_name != row['name']: raise ValidationError(f"Строка {row['row']}: табельный номер уже принадлежит другому сотруднику.")
         StaffingSlot.objects.create(company=company,group=groups[row['group']],person=person,camp=row['camp'],status=row['status'],arrival_date=row['arrival'],departure_date=row['departure'],pattern=patterns.get((row['kind'],row['pattern'])),comment=row['comment'],source_row=row['row'])
+    from .housing import bootstrap_legacy
+    bootstrap_legacy(company,StaffingSlot.objects.filter(group__board=board))
     return board,True

@@ -67,6 +67,9 @@ def previous_people(obj, day, *, production, user=None):
     if production and user:qs=qs.filter(Q(reported_by=user)|Q(reported_by=None))
     previous = qs.aggregate(day=Max('date'))['day']
     if previous is None:return None, []
+    if production:
+        from apps.personnel.housing import available_employee_ids
+        qs=qs.filter(employee_id__in=available_employee_ids(obj,day))
     rows = qs.filter(date=previous).select_related('employee__position__planning_mapping__brigade__group').prefetch_related('work_links').order_by('employee__last_name','employee__first_name','employee_id','shift','pk')
     initial=[]
     for row in rows:
@@ -87,6 +90,9 @@ class ProductionPersonForm(PersonForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        from apps.personnel.housing import available_employee_ids
+        self.fields['employee'].queryset=self.fields['employee'].queryset.filter(Q(pk__in=available_employee_ids(self.obj,self.day))|Q(pk=self.instance.employee_id if self.instance.pk else None))
+        self.fields['employee'].help_text='Только фактически находящиеся в ВЖГ, связанных с выбранным объектом, на дату факта.'
         self.initial.setdefault('work_targets',[])
         self.initial.setdefault('work_mode','pending')
         self.fields['employee'].queryset=self.fields['employee'].queryset.exclude(

@@ -73,6 +73,11 @@ def check_form_claims(user,obj,day,groups):
                 if not employee:continue
                 # Lock employee before inspecting a reservation, including across objects.
                 Employee.objects.select_for_update().get(pk=employee.pk,company=obj.company)
+                if getattr(form,'production_entry',False) and not form.cleaned_data.get('DELETE'):
+                    retained=form.instance.pk and EmployeeActivity.objects.filter(pk=form.instance.pk,employee=employee,date=day,construction_object=obj,shift=shift).exists()
+                    if not retained:
+                        from apps.personnel.housing import require_available
+                        require_available(employee,obj,day,lock=True)
                 claim=EmployeeFactClaim.objects.filter(company=obj.company,date=day,employee=employee,shift=shift,expires_at__gt=now).select_related('dispatcher').first()
                 supplied=form.cleaned_data.get('person_claim_token','')
                 if claim and (claim.dispatcher_id!=user.pk or str(claim.session_key)!=supplied or claim.construction_object_id!=obj.pk):
@@ -167,6 +172,10 @@ def employee_claim(user,obj,day,session,action,parts):
         saved=EmployeeActivity.objects.filter(company=obj.company,date=day,employee=employee,shift=shift).first()
         if saved and (saved.construction_object_id!=obj.pk or saved.reported_by_id not in {None,user.pk} and role_code(user) not in {'ADMIN','ALL_FACT_DISPATCHER'}):
             return JsonResponse({'error':'Этот сотрудник за эту смену уже учтён другим диспетчером или на другом объекте.'},status=409)
+        if role_code(user)!='PERSONNEL_DISPATCHER' and not saved:
+            from apps.personnel.housing import require_available
+            try:require_available(employee,obj,day,lock=True)
+            except ValidationError as exc:return JsonResponse({'error':'; '.join(exc.messages)},status=409)
         if not employee.is_active and not saved:return JsonResponse({'error':'Сотрудник неактивен.'},status=400)
         if action=='renew' and (not mine or row.expires_at<=now):return JsonResponse({'error':'Резерв сотрудника истёк. Возьмите его снова.'},status=409)
         if row is None:row=EmployeeFactClaim(company=obj.company,date=day,employee=employee,shift=shift)

@@ -10,14 +10,14 @@ from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
-from core.permissions import require_roles
+from core.permissions import require_roles,role_code
 from .models import Board, Person, StaffingGroup, StaffingSlot
 from .forms import BoardForm, PersonForm, GroupForm, SlotForm, CalendarForm, ImportForm
 from .services import report
 from . import importer
 
 
-def access(request): require_roles(request.user, {'ADMIN','HR_HEAD'})
+def access(request): require_roles(request.user, {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'})
 def scoped(request, model):
     access(request)
     return model.objects.filter(company_id=request.user.company_id)
@@ -25,6 +25,7 @@ def scoped(request, model):
 
 @login_required
 def board_list(request):
+    if role_code(request.user)=='PERSONNEL_DISPATCHER' and not request.GET.get('tables'):return redirect('personnel:housing')
     return render(request,'personnel/boards.html',{'boards':scoped(request,Board)})
 
 
@@ -54,7 +55,9 @@ def board_detail(request,pk):
 
 @login_required
 def people(request):
-    queryset=scoped(request,Person).prefetch_related('assignments__group__board')
+    queryset=scoped(request,Person).select_related('employee').prefetch_related('assignments__group__board')
+    if request.GET.get('unlinked'):queryset=queryset.filter(employee=None)
+    if request.GET.get('unplaced'):queryset=queryset.filter(stays__isnull=True)
     query=request.GET.get('q','').strip()
     if query: queryset=queryset.filter(Q(full_name__icontains=query)|Q(employee_number__icontains=query)|Q(phone__icontains=query))
     return render(request,'personnel/people.html',{'people':queryset,'query':query})
@@ -66,8 +69,24 @@ def person_edit(request,pk=None):
     queryset=scoped(request,Person)
     obj=get_object_or_404(queryset,pk=pk) if pk else Person(company=request.user.company)
     form=PersonForm(request.POST if request.method=='POST' else None,instance=obj)
-    if request.method=='POST' and form.is_valid():
-        form.save();messages.success(request,'Карточка сотрудника сохранена.');return redirect('personnel:people')
+    saved=False
+    if request.method=='POST':
+        with transaction.atomic():
+            # Match movement/import lock order before checking identity against history.
+            from apps.accounts.models import Company
+            from django.db.models import F
+            Company.objects.filter(pk=request.user.company_id).update(name=F('name'))
+            if pk:obj=get_object_or_404(queryset.select_for_update(),pk=pk)
+            form=PersonForm(request.POST,instance=obj)
+            if form.is_valid():
+                person=form.save()
+                if not person.employee_id:
+                    from .housing import matching_employee
+                    employee=matching_employee(person)
+                    if employee:person.employee=employee;person.save(update_fields=['employee','updated_at'])
+                saved=True
+        if saved:
+            messages.success(request,'Карточка сотрудника сохранена.');return redirect('personnel:people')
     return render(request,'personnel/form.html',{'form':form,'title':'Карточка сотрудника'})
 
 
@@ -89,7 +108,9 @@ def slot_edit(request,group_pk,pk=None):
     obj=get_object_or_404(group.slots,pk=pk) if pk else StaffingSlot(company=request.user.company,group=group)
     form=SlotForm(request.POST if request.method=='POST' else None,instance=obj,board=group.board)
     if request.method=='POST' and form.is_valid():
-        form.save();return redirect('personnel:board_detail',pk=group.board_id)
+        slot=form.save()
+        Person.objects.filter(schedule_slot=slot).exclude(pk=slot.person_id).update(schedule_slot=None)
+        return redirect('personnel:board_detail',pk=group.board_id)
     return render(request,'personnel/form.html',{'form':form,'board':group.board,'title':group.position+' — сотрудник / вакансия','slot':obj if obj.pk else None,'person_link':True})
 
 
@@ -97,6 +118,9 @@ def slot_edit(request,group_pk,pk=None):
 @require_http_methods(['GET','POST'])
 def calendar_edit(request,pk):
     slot=get_object_or_404(scoped(request,StaffingSlot).select_related('group__board'),pk=pk)
+    if request.method=='GET' and slot.person_id:
+        from django.urls import reverse
+        return redirect(reverse('personnel:person_schedule',args=[slot.person_id])+f'?slot={slot.pk}')
     form=CalendarForm(request.POST if request.method=='POST' else None)
     if request.method=='POST' and form.is_valid():
         with transaction.atomic():

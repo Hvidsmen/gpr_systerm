@@ -25,6 +25,11 @@ class DispatcherTests(TestCase):
         cls.machine=Equipment.objects.create(company=cls.company,type=cls.type,plate_number='123',name='Crane 123')
         cls.reason=DeviationReason.objects.create(company=cls.company,name='Материалы')
         cls.day=date(2026,10,24)
+        from apps.personnel.models import Camp,CampObjectLink,CampStay,Person
+        cls.housing_camp=Camp.objects.create(company=cls.company,name='ВЖГ Dispatcher')
+        CampObjectLink.objects.create(company=cls.company,camp=cls.housing_camp,construction_object=cls.obj)
+        cls.housing_person=Person.objects.create(company=cls.company,full_name=cls.employee.display_name,employee=cls.employee)
+        CampStay.objects.create(company=cls.company,person=cls.housing_person,camp=cls.housing_camp,arrived_on=cls.day)
         cls.url=reverse('production:fact_day_workspace')
         cls.users={}
         for code in ['ADMIN','DISPATCHER','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER']:

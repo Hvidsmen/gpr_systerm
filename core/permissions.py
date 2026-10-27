@@ -119,7 +119,7 @@ def check_route(user, match, method):
         require_roles(user, READ_ROLES)
         return
     if namespace == 'personnel':
-        require_roles(user, {'ADMIN', 'HR_HEAD'})
+        require_roles(user, {'ADMIN', 'HR_HEAD', 'PERSONNEL_DISPATCHER'})
         return
     if namespace == 'planning' and name in {'work_resources_gpr','work_resources_smg','work_resource_edit_gpr','work_resource_edit_smg','work_resources_graph_gpr','work_resources_graph_smg','work_resources_links_gpr','work_resources_links_smg','work_resources_save_smg'}:
         require_roles(user, READ_ROLES if method in {'GET','HEAD'} else {'ADMIN','PLANNER','MANAGER'})

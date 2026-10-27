@@ -210,6 +210,9 @@ class ProductionEntryTests(TestCase):
 
     def test_distinct_people_can_save_from_same_baseline_and_stale_links_cannot_overwrite(self):
         another=Employee.objects.create(company=self.company,position=self.employee.position,last_name='Другой',first_name='Сотрудник')
+        from apps.personnel.models import Person,CampStay
+        person=Person.objects.create(company=self.company,employee=another,full_name=another.display_name)
+        CampStay.objects.create(company=self.company,person=person,camp=self.housing_camp,arrived_on=self.day)
         left=self.payload('DISPATCHER','works');right=self.payload('SECOND','works')
         left.update({'labor-0-employee':self.employee.pk,'labor-0-work_mode':'general'})
         right.update({'labor-0-employee':another.pk,'labor-0-work_mode':'general'})
