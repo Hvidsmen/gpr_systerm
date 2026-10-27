@@ -55,9 +55,17 @@ class BrigadeListView(CatalogFilterMixin, CompanyRequiredMixin, ListView):
     paginate_by = 20
 
     def get_queryset(self):
+        company = self.get_company()
+        employee_scope = Q(position_mapping__company=company,
+            position_mapping__position__company=company,
+            position_mapping__position__employees__company=company)
         return self.filter_queryset(Brigade.objects.filter(
-            company=self.get_company(), merge_source__isnull=True
-        ).select_related('group', 'macro_group','position_mapping__position').annotate(employee_count=Count('position_mapping__position__employees',filter=Q(position_mapping__position__employees__company=self.get_company()),distinct=True)).order_by('code'))
+            company=company, merge_source__isnull=True
+        ).select_related('group', 'macro_group', 'position_mapping__position').annotate(
+            employee_count=Count('position_mapping__position__employees', filter=employee_scope, distinct=True),
+            active_employee_count=Count('position_mapping__position__employees',
+                filter=employee_scope & Q(position_mapping__position__employees__is_active=True), distinct=True),
+        ).order_by('code', 'pk'))
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)

@@ -58,7 +58,7 @@
                             </small>
                             {% endif %}
                         </td>
-                        <td>{% if brigade.employee_count %}<a href="{% url 'resources:employee_list' %}?catalogue_position={{ brigade.position_mapping.position_id }}&amp;include_archived=1">{{ brigade.employee_count }}</a>{% else %}0{% endif %}</td>
+                        <td>{% if brigade.employee_count %}<a href="{% url 'resources:employee_list' %}?catalogue_position={{ brigade.position_mapping.position_id }}&amp;include_archived=1" title="Все сотрудники, включая архивных">{{ brigade.employee_count }}</a>{% else %}0{% endif %}<br><small class="text-muted">Активных: {% if brigade.active_employee_count %}<a href="{% url 'resources:employee_list' %}?catalogue_position={{ brigade.position_mapping.position_id }}">{{ brigade.active_employee_count }}</a>{% else %}0{% endif %}</small></td>
                         <td>{{ brigade.group|default:"—" }}</td><td>{{ brigade.macro_group|default:"—" }}</td>
                         <td>{{ brigade.unit }}</td>
                         <td>

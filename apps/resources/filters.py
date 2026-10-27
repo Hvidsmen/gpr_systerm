@@ -20,6 +20,12 @@ class CatalogFilterForm(forms.Form):
 class BrigadeFilterForm(CatalogFilterForm):
     group = forms.ModelChoiceField(label='Группа', queryset=BrigadeGroup.objects.all(), required=False, empty_label='Все группы')
     macro_group = forms.ModelChoiceField(label='Макрогруппа', queryset=BrigadeMacroGroup.objects.all(), required=False, empty_label='Все макрогруппы')
+    active_employees = forms.ChoiceField(label='Активные сотрудники', required=False,
+        choices=[('', 'Все должности'), ('yes', 'Есть активные'), ('no', 'Нет активных')])
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['active_employees'].widget.attrs['class'] = 'form-select form-select-sm'
 
 
 class EquipmentFilterForm(CatalogFilterForm):
@@ -56,6 +62,8 @@ class CatalogFilterMixin:
             elif key == 'category' and queryset.model is EquipmentType:
                 from django.db.models import Q
                 queryset = queryset.filter(Q(category=value)|Q(category__isnull=True,parent__category=value))
+            elif key == 'active_employees':
+                queryset = queryset.filter(active_employee_count__gt=0) if value == 'yes' else queryset.filter(active_employee_count=0)
             else:
                 queryset = queryset.filter(**{key:value})
         return queryset
