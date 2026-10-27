@@ -242,6 +242,8 @@ def work_matches(spec, filters):
 
 
 def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
+    from .resource_catalogue_links import catalogue_links
+    catalogue=catalogue_links(user.company)
     start, end = filters["start"], filters["end"]
     if filters.get("month"):
         month = filters["month"]
@@ -735,20 +737,9 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
                 }
                 fact = resource_facts[kind].get(identity, {})
                 operation = "sum" if kind == "fuel" else "average"
-                rows.append(
-                    (
-                        path,
-                        make_row(
-                            f"o{obj.pk}-{kind}-{key}",
-                            row_label if kind != "fuel" else "Расход",
-                            unit,
-                            plan,
-                            fact,
-                            buckets,
-                            operation,
-                        ),
-                    )
-                )
+                resource_row=make_row(f"o{obj.pk}-{kind}-{key}",row_label if kind != "fuel" else "Расход",unit,plan,fact,buckets,operation)
+                resource_row.update(catalogue(kind,key if kind=='labor' else pk if kind=='equipment' else None))
+                rows.append((path,resource_row))
                 if kind == "fuel":
                     balance = {
                         day: resource_plan_value(

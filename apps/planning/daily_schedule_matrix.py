@@ -16,6 +16,8 @@ def matrix(schedule,entries):
     brigades={b.pk:b for b in Brigade.objects.filter(company_id=schedule.company_id).select_related('group','macro_group')}
     equipment={e.pk:e for e in EquipmentType.objects.filter(company_id=schedule.company_id).select_related('category')}
     grouped={kind:defaultdict(list) for kind in service.FIELDS};totals={kind:{} for kind in service.FIELDS}
+    from .resource_catalogue_links import catalogue_links
+    catalogue=catalogue_links(schedule.company)
     for entry in entries:
         # Hours remain in saved inputs and calculations, outside the editor.
         if entry.kind in {'labor','equipment'}:entry.comparison=[row for row in entry.comparison if row['field']=='planned_count']
@@ -24,6 +26,7 @@ def matrix(schedule,entries):
         entry.reference=first.get('equipment_number','')
         from .table_resource_crew import daily_recipe,display_recipe,daily_crew_counts,canonical_members
         entry.brigade_id=first.get('brigade_id','')
+        vars(entry).update(catalogue(entry.kind,first.get('brigade_id') if entry.kind=='labor' else first.get('equipment_type_id')))
         captured=daily_recipe(entry) if entry.kind=='equipment' else []
         machine=equipment.get(first.get('equipment_type_id'))
         members=captured if captured is not None else display_recipe(schedule.company,machine,{}) if machine else []
@@ -66,6 +69,9 @@ def matrix(schedule,entries):
             comparison['cells']=[{'before':values['before'][day.isoformat()],'after':values['after'][day.isoformat()],'delta':values['after'][day.isoformat()]-values['before'][day.isoformat()]} for day in days]
             for cell,day in zip(comparison['cells'],days):
                 cell['date']=day.isoformat();cell['locked']=bool(schedule.locked_before and day<schedule.locked_before)
+            open_counts={cell['after'] for cell in comparison['cells'] if not cell['locked']}
+            comparison['month_fill']=entry.kind in {'labor','equipment'} and comparison['field']=='planned_count' and bool(open_counts) and not entry.metadata.get('resource_assignment_id')
+            comparison['month_fill_value']=next(iter(open_counts)) if len(open_counts)==1 else ''
             entry.has_deviation=entry.has_deviation or (bool(schedule.source_id) and any(cell['delta'] for cell in comparison['cells']))
             if entry.kind!='work':
                 total=totals[entry.kind].setdefault(comparison['field'],{'label':comparison['label'],'before':Decimal(0),'after':Decimal(0),'delta':Decimal(0),'cells':[{'before':Decimal(0),'after':Decimal(0),'delta':Decimal(0)} for day in days]})

@@ -27,13 +27,16 @@ class PlanWorkbenchBrowserTests(StaticLiveServerTestCase):
         for position in [self.position,self.helper]:
             EquipmentCrewPosition.objects.create(company=self.company,equipment_type=crew_gear,position=position,count=1)
         model=EquipmentType.objects.create(company=self.company,name='JCB 3CX',parent=crew_gear)
+        from apps.resources.models import BrigadeGroup
+        group=BrigadeGroup.objects.create(company=self.company,name='Машинисты')
+        other_group=BrigadeGroup.objects.create(company=self.company,name='Рабочие')
         schedule=create(self.planner,self.obj,fixtures.JAN)
         from .daily_schedule_table import add_work_branch
         work=add_work_branch(self.planner,schedule,'item:'+str(self.a.pk))[0]
         def cookie(user):
             client=Client();client.force_login(user);return client.cookies['sessionid'].value
         config={'base':self.live_server_url,'gpr':reverse('planning:workspace_edit',args=[self.version.pk]),'smg':reverse('planning:daily_schedule_detail',args=[schedule.pk]),'report':reverse('planning:global_detail',args=[self.version.pk]),
-            'catalogue':reverse('resources:equipment_type_list'),'type_edit':reverse('resources:equipment_type_update',args=[model.pk]),'crew_type':crew_gear.pk,'cookie':cookie(self.planner),'manager_cookie':cookie(self.manager),'a':self.a.pk,'b':self.b.pk,'brigade':self.brigade.pk,'work_entry':work.pk,'chromium':shutil.which('chromium')}
+            'catalogue':reverse('resources:equipment_type_list'),'type_edit':reverse('resources:equipment_type_update',args=[model.pk]),'crew_type':crew_gear.pk,'catalogue_group':group.pk,'catalogue_other_group':other_group.pk,'cookie':cookie(self.planner),'manager_cookie':cookie(self.manager),'a':self.a.pk,'b':self.b.pk,'brigade':self.brigade.pk,'work_entry':work.pk,'chromium':shutil.which('chromium')}
         script=Path(__file__).resolve().parents[2]/'tests/browser/plan_workbench.js'
         result=subprocess.run(['node',str(script)],cwd=script.parents[2],text=True,capture_output=True,env=dict(os.environ,PLAN_WORKBENCH_CONFIG=json.dumps(config)),timeout=120)
         self.assertEqual(result.returncode,0,result.stdout+'\n'+result.stderr)

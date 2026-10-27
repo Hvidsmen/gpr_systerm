@@ -78,6 +78,8 @@ def month_matrix(version,month,work_forms,resource_forms):
     grouped={kind:defaultdict(list) for kind in LABELS}
     from apps.resources.models import Brigade
     from .table_resource_crew import display_recipe
+    from .resource_catalogue_links import catalogue_links
+    catalogue=catalogue_links(version.company)
     brigades={b.pk:b for b in Brigade.objects.filter(company=version.company).select_related('group')}
     def labor_group(brigade_id):
         b=brigades.get(brigade_id)
@@ -123,6 +125,7 @@ def month_matrix(version,month,work_forms,resource_forms):
         fields=[('Средняя численность, чел.' if kind=='labor' else 'Среднее количество, ед.','count',0)] if kind!='fuel' else [('Расход, л','liters',2),('Остаток, л','balance',2)]
         for label,field,digits in fields:entry.comparison.append(measure(label,form[field].value(),field,digits=digits))
         entry.brigade_id=row.brigade_id or ''
+        vars(entry).update(catalogue(kind,row.brigade_id if kind=='labor' else row.equipment_type_id))
         entry.crew_recipe_json=json.dumps(display_recipe(version.company,row.equipment_type,row.crew_data)) if kind=='equipment' else '[]'
         entry.crew_counts_json=json.dumps({'month':row.crew_data.get('count',0)}) if kind=='labor' else '{}'
         entry.crew_note='Численность включает экипаж техники. Можно добавить людей сверх экипажа.' if kind=='labor' and row.crew_data.get('count') else ''
@@ -143,10 +146,11 @@ def month_matrix(version,month,work_forms,resource_forms):
                 value=sum((decimal(r.get(field)) for r in rows),ZERO)
                 if field=='planned_count':value/=days
                 comparisons.append(measure(title,value))
-            grouped[kind][labor_group(rows[0].get('brigade_id')) if kind=='labor' else 'Назначения ресурсов'].append(SimpleNamespace(pk='assignment:'+key,label=label,kind=kind,path=label,native_prefix='',can_edit=False,
+            grouped[kind][labor_group(rows[0].get('brigade_id')) if kind=='labor' else 'Назначения ресурсов'].append(SimpleNamespace(**catalogue(kind,rows[0].get('brigade_id') if kind=='labor' else rows[0].get('equipment_type_id')),pk='assignment:'+key,label=label,kind=kind,path=label,native_prefix='',can_edit=False,
                 metadata={'resource_assignment_id':assignment.pk,'target_label':rows[0].get('target_label','')},reference='',comparison=comparisons,errors=[],assignment_id=assignment.pk))
     sections=[{'kind':kind,'label':LABELS[kind],'groups':[{'label':name,'entries':entries} for name,entries in sorted(groups.items())],
         'totals':[],'count':sum(len(entries) for entries in groups.values())} for kind,groups in grouped.items()]
+
     for section in sections:
         if section['kind'] in {'labor','equipment'} and section['count']:
             total=sum((decimal(entry.comparison[0]['after']) for group in section['groups'] for entry in group['entries']),ZERO)

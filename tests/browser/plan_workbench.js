@@ -30,6 +30,36 @@ const c=JSON.parse(process.env.PLAN_WORKBENCH_CONFIG);
    await people().fill(String(initial+3));await persistCrew();
    await machine().fill('2');assert.equal(Number(await people().inputValue()),initial+4,'Additional people survive a machine-count change');
    await persistCrew();assert.equal(Number(await people().inputValue()),initial+4);
+   // Catalogue edits open a separate tab and retain pending plan quantities.
+   const pending=Number(await people().inputValue())+1;await people().fill(String(pending));
+   const planUrl=page.url(),label=daily?'Рабочие':'Машинисты';
+   const [card]=await Promise.all([context.waitForEvent('page'),page.locator('[data-plan-entry][data-label="Машинист"] [data-resource-catalogue]').click()]);
+   await card.waitForLoadState('networkidle');
+   await card.locator('#id_group + .search-select-shell .search-select-button').click();
+   const choices=card.locator('.search-select-popup:not([hidden])');await choices.locator('input').fill(label);
+   await choices.getByRole('option',{name:label,exact:true}).click();
+   const cardForm=card.locator('form').filter({has:card.locator('#id_group')});
+   await Promise.all([card.waitForNavigation({waitUntil:'networkidle'}),cardForm.locator('button[type=submit]').click()]);
+   await card.close();assert.equal(page.url(),planUrl);assert.equal(Number(await people().inputValue()),pending);
+   await persistCrew();assert((await page.locator('[data-smg-section=labor] summary').allTextContents()).some(text=>text.trim()===label));
+   const [equipmentCard]=await Promise.all([context.waitForEvent('page'),page.locator('[data-plan-entry][data-label="Экскаватор с машинистом"] [data-resource-catalogue]').click()]);
+   await equipmentCard.waitForLoadState('networkidle');assert.equal(await equipmentCard.locator('#id_name').inputValue(),'Экскаватор с машинистом');await equipmentCard.close();
+   if(daily){
+    const fillMachine=()=>page.locator('[data-plan-entry][data-label="Экскаватор с машинистом"] [data-smg-fill-month]');
+    const fillPeople=()=>page.locator('[data-plan-entry][data-label="Машинист"] [data-smg-fill-month]');
+    await fillMachine().fill('3');
+    assert((await page.locator('[data-plan-entry][data-label="Экскаватор с машинистом"] .smg-day-input').evaluateAll(inputs=>inputs.map(input=>input.value))).every(value=>value==='3'));
+    await persistCrew();
+    await fillPeople().fill('7');assert((await page.locator('[data-plan-entry][data-label="Машинист"] .smg-day-input').evaluateAll(inputs=>inputs.map(input=>input.value))).every(value=>value==='7'));
+    await persistCrew();await fillMachine().fill('4');assert((await page.locator('[data-plan-entry][data-label="Машинист"] .smg-day-input').evaluateAll(inputs=>inputs.map(input=>input.value))).every(value=>value==='8'));
+    await persistCrew();
+    // Disabled/closed day controls must never be filled by the monthly action.
+    await machine().evaluate(input=>input.disabled=true);await fillMachine().fill('5');
+    assert.equal(await machine().inputValue(),'4');
+    assert((await page.locator('[data-plan-entry][data-label="Экскаватор с машинистом"] .smg-day-input').evaluateAll(inputs=>inputs.slice(1).map(input=>input.value))).every(value=>value==='5'));
+    await persistCrew();assert.equal(await machine().inputValue(),'4');
+   }
+
 
   }
   await page.goto(c.base+c.gpr,{waitUntil:'networkidle'});

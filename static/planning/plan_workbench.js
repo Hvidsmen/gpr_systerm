@@ -169,6 +169,32 @@
   native.addEventListener('submit',event=>{if(!event.defaultPrevented)native.dataset.workbenchSubmitting='true';});
   syncComputed();
  }
+ // A monthly headcount is a fill value, repeated on every editable day.
+ function refreshMonthFill(row){
+  const fill=row.querySelector('[data-smg-fill-month]');if(!fill)return;
+  const inputs=[...row.querySelectorAll('.smg-day-input:not(:disabled)')],values=inputs.map(input=>input.value);
+  fill.value=values.length&&values.every(value=>value===values[0])?values[0]:'';
+  fill.min=String(Math.max(0,...inputs.map(input=>Number(input.min)||0)));
+  const cells=[...row.querySelectorAll('[data-smg-day-cell]')];
+  const average=cells.reduce((sum,cell)=>sum+Number(cell.querySelector('input')?.value||cell.dataset.value||0),0)/Math.max(1,cells.length);
+  row.querySelector('[data-smg-month-average]').textContent=new Intl.NumberFormat('ru-RU',{maximumFractionDigits:6}).format(average);
+ }
+ if(daily){
+  matrix.addEventListener('input',event=>{
+   const fill=event.target.closest('[data-smg-fill-month]');
+   if(fill){
+    if(!fill.value)return;
+    if(!fill.checkValidity()){message('Для заполнения месяца введите целое количество не меньше численности экипажа.');return;}
+    const row=fill.closest('tr'),inputs=[...row.querySelectorAll('.smg-day-input:not(:disabled)')];
+    inputs.forEach(input=>input.value=fill.value);
+    inputs.forEach(input=>input.dispatchEvent(new Event('input',{bubbles:true})));
+    message('Количество повторено на все открытые дни. Нажмите «Сохранить».');
+   }else if(event.target.matches('.smg-day-input')){
+    event.target.closest('td').dataset.value=event.target.value;
+    refreshMonthFill(event.target.closest('tr'));
+   }
+  });
+ }
  // A position shows its total: captured machine crews plus separately planned people.
  let crewUpdating=false;
  const readJSON=(entry,name,fallback)=>{try{return JSON.parse(entry.dataset[name]||JSON.stringify(fallback));}catch{return fallback;}};
@@ -205,6 +231,6 @@
   }finally{crewUpdating=false;}
  }
  matrix.addEventListener('input',event=>{if(event.target.closest('[data-smg-section=equipment]'))syncTableCrew();});
- requestAnimationFrame(syncTableCrew);
+ requestAnimationFrame(()=>{syncTableCrew();if(daily)matrix.querySelectorAll('[data-smg-fill-month]').forEach(fill=>refreshMonthFill(fill.closest('tr')));});
  filter();
 })();
