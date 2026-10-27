@@ -12,8 +12,22 @@ const c=JSON.parse(process.env.PLAN_WORKBENCH_CONFIG);
   const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto(c.base+c.gpr,{waitUntil:'networkidle'});
   const gprAdd=await page.locator('.plan-workbench-add').innerText();
+  async function assertHierarchy(){
+   assert((await page.locator('[data-plan-level=section] > summary').first().innerText()).includes('Системы безопасности'));
+   assert((await page.locator('[data-plan-level=object] > summary').first().innerText()).includes('УЗА 26'));
+   assert((await page.locator('[data-plan-level=package] > summary').first().innerText()).includes('Монтаж системы'));
+   assert.equal(await page.locator('[data-plan-level=section] [data-plan-level=object] [data-plan-level=package]').count(),1);
+  }
+  await assertHierarchy();
+  await page.locator('[data-plan-level-select]').selectOption('package');await page.locator('[data-plan-fold-level=false]').click();
+  assert(!(await page.locator('[data-plan-level=package]').evaluate(node=>node.open)));
+  await page.locator('[data-plan-copy-table]').click();assert((await page.evaluate(()=>navigator.clipboard.readText())).includes('20'),'Folded works must remain in Excel copying');
+  await page.reload({waitUntil:'networkidle'});assert(!(await page.locator('[data-plan-level=package]').evaluate(node=>node.open)),'Fold state should survive reload');
+  await page.locator('[data-plan-level-select]').selectOption('package');await page.locator('[data-plan-fold-level=true]').click();
+  assert(await page.locator('[data-plan-level=package]').evaluate(node=>node.open));
+
   await page.locator('.plan-extra-filters > summary').click();
-  assert.equal(await page.locator('[data-plan-multi-filters] .rg-multi').count(),5);
+  assert.equal(await page.locator('[data-plan-multi-filters] .rg-multi').count(),6);
   await page.locator('[data-plan-filter=work] summary').click();await page.locator('[data-plan-filter=work] input[type=checkbox]').first().check();
   assert.equal(await page.locator('[data-plan-filter=work] input:checked').count(),1);
   await page.locator('#smg-reset').click();assert.equal(await page.locator('[data-plan-multi-filters] input:checked').count(),0);
@@ -42,8 +56,18 @@ const c=JSON.parse(process.env.PLAN_WORKBENCH_CONFIG);
   await add.locator('select[name=brigade]').selectOption(String(c.brigade),{force:true});
   await Promise.all([page.waitForNavigation({waitUntil:'networkidle'}),add.getByRole('button',{name:'Добавить в план',exact:true}).click()]);
   assert(await page.locator('[data-smg-section=labor] [data-plan-month-input]').count());
+  assert.equal(await page.locator('[data-smg-section=equipment] > [data-plan-section-totals]').count(),1);
+  assert(!(await page.locator('[data-smg-section=equipment] > [data-plan-section-totals]').evaluate(node=>Boolean(node.previousElementSibling&&node.previousElementSibling.hasAttribute('data-smg-group')))));
   await page.screenshot({path:'/tmp/unified-gpr-wide.png',fullPage:false});
-  await page.goto(c.base+c.smg,{waitUntil:'networkidle'});assert.equal(await page.locator('.plan-workbench-add').innerText(),gprAdd);
+  await page.goto(c.base+c.report,{waitUntil:'networkidle'});
+  const resourceTotal=page.locator('[data-resource-section-total=equipment]');assert.equal(await resourceTotal.count(),1);
+  assert(await resourceTotal.evaluate(node=>node.previousElementSibling?.tagName==='SUMMARY'),'Period total should be directly below the section heading');
+  assert.equal(await page.locator('summary').filter({hasText:'Итого: Техника'}).count(),0);
+  assert((await page.locator('label[for=id_labor_q]').textContent()).includes('Должность'));
+  assert((await page.locator('label[for=id_brigade_group]').textContent()).includes('Группа должностей'));
+  await resourceTotal.scrollIntoViewIfNeeded();await page.screenshot({path:'/tmp/planning-report-header-totals.png'});
+
+  await page.goto(c.base+c.smg,{waitUntil:'networkidle'});await assertHierarchy();assert.equal(await page.locator('.plan-workbench-add').innerText(),gprAdd);
   assert.equal(await page.locator('[data-plan-month-input]').count(),0);assert.equal(await page.locator('.smg-day-input').count(),31);
   assert.equal(await page.locator('[data-workbench-year]').count(),1);
   await page.locator('[data-plan-copy-table]').click();copy=await page.evaluate(()=>navigator.clipboard.readText());assert.equal(copy.split('\r\n')[0].split('\t').length,34);

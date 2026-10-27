@@ -21,9 +21,13 @@
     const deleted=!daily&&source(entry,'DELETE')?.checked;
     const type=section.dataset.smgSection,chosen=name=>filters[name]?.values()||[],matchFilter=(name,value)=>!chosen(name).length||chosen(name).includes(value);
     const group=entry.closest('[data-smg-group]')?.querySelector('summary').textContent||'';
-    const extra=type==='work'?matchFilter('object',group)&&matchFilter('package',entry.dataset.package)&&(!chosen('work').length||chosen('work').some(v=>v.split('|')[0]===entry.dataset.entryId)):matchFilter(type,entry.dataset.label);
+    const extra=type==='work'?matchFilter('section',entry.dataset.sectionKey)&&matchFilter('object',entry.dataset.objectKey||group)&&matchFilter('package',entry.dataset.package)&&(!chosen('work').length||chosen('work').some(v=>v.split('|')[0]===entry.dataset.entryId)):matchFilter(type,entry.dataset.label);
     entry.hidden=deleted||!extra||!terms.every(term=>entry.dataset.name.toLocaleLowerCase('ru').includes(term))||(deviations.checked&&entry.dataset.deviation!=='true');
-    if(!entry.hidden)matches++;
+    if(!entry.hidden){
+     matches++;
+     const active=terms.length||deviations.checked||Object.values(filters).some(f=>f.values().length);
+     if(active&&(!kind.value||kind.value===type))for(let parent=entry.parentElement;parent&&parent!==matrix;parent=parent.parentElement)if(parent.tagName==='DETAILS')parent.open=true;
+    }
    });
    section.querySelectorAll('[data-smg-group]').forEach(group=>{group.hidden=![...group.querySelectorAll('[data-plan-entry]')].some(e=>!e.hidden);});
    section.hidden=Boolean(kind.value&&kind.value!==section.dataset.smgSection)||(!matches&&Boolean(terms.length||deviations.checked));
@@ -33,15 +37,15 @@
  }
  const container=root.querySelector('[data-plan-multi-filters]');
  if(window.graphMultiselect){
-  const sets={object:new Map(),package:new Map(),work:new Map(),equipment:new Map(),labor:new Map()};
+  const sets={section:new Map(),object:new Map(),package:new Map(),work:new Map(),equipment:new Map(),labor:new Map()};
   matrix.querySelectorAll('[data-plan-entry]').forEach(entry=>{
    const type=entry.closest('[data-smg-section]').dataset.smgSection,group=entry.closest('[data-smg-group]').querySelector('summary').textContent;
    if(type==='work'){
-    sets.object.set(group,group);if(entry.dataset.package)sets.package.set(entry.dataset.package,entry.dataset.path);
+    sets.section.set(entry.dataset.sectionKey,entry.dataset.sectionLabel||'Без раздела');sets.object.set(entry.dataset.objectKey||group,(entry.dataset.sectionLabel?entry.dataset.sectionLabel+' → ':'')+(entry.dataset.objectLabel||group));if(entry.dataset.package)sets.package.set(entry.dataset.package,entry.dataset.path);
     for(const tr of entry.querySelectorAll('[data-plan-measure]'))if(!entry.dataset.package||tr.dataset.planItem)sets.work.set(entry.dataset.entryId+'|'+tr.dataset.planItem,entry.dataset.package?entry.dataset.path+' → '+tr.dataset.measure:entry.dataset.path);
    }else if(sets[type])sets[type].set(entry.dataset.label,entry.dataset.label);
   });
-  for(const [name,label] of [['object','Комплексный объект'],['package','Комплексная работа'],['work','Работа'],['equipment','Техника'],['labor','Должность']]){
+  for(const [name,label] of [['section','Раздел'],['object','Комплексный объект'],['package','Комплексная работа'],['work','Работа'],['equipment','Техника'],['labor','Должность']]){
    const host=document.createElement('div');host.dataset.planFilter=name;container.append(host);
    filters[name]=window.graphMultiselect.create(host,label,[...sets[name]].map(([value,label])=>({value,label})),filter);
   }
@@ -51,6 +55,18 @@
  root.querySelectorAll('[data-plan-expand],[data-expand-allocations],[data-collapse-allocations]').forEach(button=>button.addEventListener('click',()=>{
   const open=button.hasAttribute('data-expand-allocations')||button.dataset.planExpand==='true';matrix.querySelectorAll('details').forEach(d=>d.open=open);
  }));
+ root.querySelectorAll('[data-plan-fold-level]').forEach(button=>button.addEventListener('click',()=>{
+  const level=root.querySelector('[data-plan-level-select]').value,open=button.dataset.planFoldLevel==='true';
+  matrix.querySelectorAll('[data-plan-level="'+level+'"]').forEach(node=>{
+   node.open=open;if(open)for(let parent=node.parentElement;parent&&parent!==matrix;parent=parent.parentElement)if(parent.tagName==='DETAILS')parent.open=true;
+  });
+ }));
+ const foldKey='plan-hierarchy:'+location.pathname;
+ let folds={};try{folds=JSON.parse(localStorage.getItem(foldKey)||'{}')||{};}catch{}
+ matrix.querySelectorAll('[data-plan-node-key]').forEach(node=>{
+  if(Object.hasOwn(folds,node.dataset.planNodeKey))node.open=Boolean(folds[node.dataset.planNodeKey]);
+  node.addEventListener('toggle',()=>{folds[node.dataset.planNodeKey]=node.open;try{localStorage.setItem(foldKey,JSON.stringify(folds));}catch{}});
+ });
  function canLeave(){
   if(daily)return window.smgSaveUI?.canLeave()??![...matrix.querySelectorAll('.smg-day-input')].some(i=>i.value!==i.dataset.original);
   return window.gprSaveUI?.canLeave()??true;
@@ -100,7 +116,7 @@
      if(entry.hidden||entry.closest('[data-smg-section]').hidden)continue;
      for(const tr of entry.querySelectorAll('[data-plan-measure]')){const numbers=daily?[...tr.querySelectorAll('td')].map(td=>td.dataset.value??'0'):rowNumbers(tr);rows.push([textCell(entry.dataset.path),textCell(tr.dataset.measure),...numbers.map(value=>String(value).replace('.',','))]);}
     }
-    const first=matrix.querySelector('table thead');const headers=daily?[...first?.querySelectorAll('th')||[]].slice(2).map(th=>textCell(th.textContent)):['ГПР за месяц'];
+    const first=matrix.querySelector('[data-plan-entry]')?.closest('table').querySelector('thead');const headers=daily?[...first?.querySelectorAll('th')||[]].slice(2).map(th=>textCell(th.textContent)):['ГПР за месяц'];
     await clipboard([['Работа / ресурс','Показатель / ед.',...headers],...rows].map(row=>row.join('\t')).join('\r\n'));
     message('Скопировано строк: '+rows.length+'. В Excel выберите первую ячейку и нажмите Ctrl+V.');
    }

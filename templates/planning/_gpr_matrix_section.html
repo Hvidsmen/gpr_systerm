@@ -1,6 +1,7 @@
 <details class="matrix-section mb-2{% if work_block %} gpr-report-works{% elif show_matrix_resources %} gpr-report-resource-section gpr-report-kind-{{ section.kind }}{% endif %}" data-matrix-section="{{ section.kind }}" open>
-<summary class="{% if work_block %}gpr-report-work-title{% else %}h6{% endif %}">{% if work_block %}Работы и плановые объёмы{% else %}{{ section.label }}{% endif %}{% include 'planning/resource_totals_summary.html' with totals=section.subtotals %}{% if section.has_amount %}<strong class="ms-3">Итого: {{ section.amount|floatformat:"0g" }} ₽</strong>{% endif %}</summary>
+<summary class="{% if work_block %}gpr-report-work-title{% else %}h6{% endif %}">{% if work_block %}Работы и плановые объёмы{% else %}{{ section.label }}{% endif %}{% if section.kind != 'labor' and section.kind != 'equipment' or not section.total_node %}{% include 'planning/resource_totals_summary.html' with totals=section.subtotals %}{% endif %}{% if section.has_amount %}<strong class="ms-3">Итого: {{ section.amount|floatformat:"0g" }} ₽</strong>{% endif %}</summary>
 {% if work_block %}<p class="gpr-report-description">Ресурсы каждой работы показаны под ней, отдельным вложенным блоком.</p>{% endif %}
+{% if section.kind == 'labor' or section.kind == 'equipment' %}{% include 'planning/_resource_section_total.html' %}{% endif %}
 {% for node in section.groups %}{% include 'planning/report_group.html' %}{% empty %}<p class="text-muted small ms-3">Нет строк по выбранным условиям.</p>{% endfor %}
-{% if section.total_node %}{% include 'planning/report_group.html' with node=section.total_node %}{% endif %}
+{% if section.total_node and section.kind != 'labor' and section.kind != 'equipment' %}{% include 'planning/report_group.html' with node=section.total_node %}{% endif %}
 </details>

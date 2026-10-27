@@ -68,12 +68,12 @@ class MatrixReportForm(forms.Form):
         ],
         label="Вид работы",
     )
-    labor_q = forms.CharField(required=False, label="Название бригады")
+    labor_q = forms.CharField(required=False, label="Должность")
     macro_group = forms.ModelChoiceField(
         queryset=BrigadeMacroGroup.objects.none(), required=False, label="Макрогруппа"
     )
     brigade_group = forms.ModelChoiceField(
-        queryset=BrigadeGroup.objects.none(), required=False, label="Группа бригад"
+        queryset=BrigadeGroup.objects.none(), required=False, label="Группа должностей"
     )
     equipment_q = forms.CharField(required=False, label="Название / номер техники")
     equipment_category = forms.ModelChoiceField(

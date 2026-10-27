@@ -11,7 +11,7 @@ from . import daily_schedule as service
 def matrix(schedule,entries):
     start,end=service.bounds(schedule.month)
     days=[start+timedelta(days=i) for i in range(end.day)]
-    works={w.pk:w for w in ProjectWork.objects.filter(company_id=schedule.company_id,pk__in=[e.metadata.get('id') for e in entries if e.kind=='work']).select_related('section')}
+    works={w.pk:w for w in ProjectWork.objects.filter(company_id=schedule.company_id,pk__in=[e.metadata.get('id') for e in entries if e.kind=='work']).select_related('section','complex_object')}
     brigades={b.pk:b for b in Brigade.objects.filter(company_id=schedule.company_id).select_related('group','macro_group')}
     equipment={e.pk:e for e in EquipmentType.objects.filter(company_id=schedule.company_id).select_related('category')}
     grouped={kind:defaultdict(list) for kind in service.FIELDS};totals={kind:{} for kind in service.FIELDS}
@@ -24,6 +24,8 @@ def matrix(schedule,entries):
         group='Без группы'
         if entry.kind=='work':
             work=works.get(entry.metadata.get('id'))
+            from .plan_workbench import locate_work
+            locate_work(entry,work)
             group=entry.metadata.get('complex_object_name') or 'Самостоятельные работы'
         elif entry.kind=='labor':
             brigade=brigades.get(first.get('brigade_id'))
@@ -61,4 +63,6 @@ def matrix(schedule,entries):
                     for key in ['before','after','delta']:cell[key]+=source[key]
     labels={'work':'Работы','labor':'Должность','equipment':'Техника','fuel':'ГСМ'}
     sections=[{'kind':kind,'label':labels[kind],'groups':[{'label':name,'entries':sorted(rows,key=lambda e:(e.label.casefold(),e.pk))} for name,rows in sorted(groups.items())],'totals':list(totals[kind].values()),'count':sum(len(rows) for rows in groups.values())} for kind,groups in grouped.items()]
+    from .plan_workbench import attach_work_hierarchy
+    attach_work_hierarchy(sections)
     return {'sections':sections,'days':days}

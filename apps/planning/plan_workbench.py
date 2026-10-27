@@ -36,6 +36,44 @@ def catalogue_options(works,choices):
     return result
 
 
+def locate_work(entry,work):
+    """Prefer captured labels; use the catalogue to complete older SMG metadata."""
+    metadata=entry.metadata
+    section_id=metadata.get('section_id') or (work.section_id if work else None)
+    section_name=metadata.get('section_name') or (work.section.name if work else 'Без раздела')
+    object_id=metadata.get('complex_object_id') or (work.complex_object_id if work else None)
+    object_name=metadata.get('complex_object_name') or (work.complex_object.name if work and work.complex_object_id else 'Самостоятельные работы')
+    entry.hierarchy_section_key='section:'+str(section_id or 'none')
+    entry.hierarchy_section_name=section_name
+    entry.hierarchy_object_key=entry.hierarchy_section_key+':object:'+str(object_id or 'none')
+    entry.hierarchy_object_name=object_name
+    entry.hierarchy_has_object=bool(object_id)
+    entry.hierarchy_path=' → '.join([section_name,object_name,entry.label])
+
+
+def attach_work_hierarchy(sections):
+    """Group by identity, never merge equally named objects from different sections."""
+    for section in sections:
+        if section['kind']!='work':continue
+        roots={}
+        for group in section['groups']:
+            for entry in group['entries']:
+                root=roots.setdefault(entry.hierarchy_section_key,{'key':entry.hierarchy_section_key,'label':entry.hierarchy_section_name,'objects':{}})
+                obj=root['objects'].setdefault(entry.hierarchy_object_key,{'key':entry.hierarchy_object_key,'label':entry.hierarchy_object_name,'has_object':entry.hierarchy_has_object,'branches':[]})
+                count=sum(bool(row.get('item_id_value')) for row in entry.comparison)
+                obj['branches'].append({'key':'work:'+str(entry.metadata.get('id') or entry.pk),'label':entry.label,'entries':[entry],
+                    'is_package':entry.metadata.get('kind')=='COMPOSITE','count':count,'work_count':count or 1})
+        tree=[]
+        for root in roots.values():
+            root['objects']=sorted(root['objects'].values(),key=lambda obj:(obj['label'].casefold(),obj['key']))
+            for obj in root['objects']:
+                obj['branches'].sort(key=lambda b:(b['label'].casefold(),b['key']))
+                obj['count']=sum(b['work_count'] for b in obj['branches'])
+            root['count']=sum(obj['count'] for obj in root['objects'])
+            tree.append(root)
+        section['hierarchy']=sorted(tree,key=lambda node:(node['label'].casefold(),node['key']))
+
+
 def month_matrix(version,month,work_forms,resource_forms):
     grouped={kind:defaultdict(list) for kind in LABELS}
     def measure(label,value,field='',item=None,digits=6,norm=''):
@@ -67,6 +105,7 @@ def month_matrix(version,month,work_forms,resource_forms):
                 value=values.get(str(item.pk),'0') if values else decimal(quantity)*item.quantity_per_unit
                 entry.comparison.append(measure(item.name+' · '+item.unit,value,'quantity',item.pk,norm=item.quantity_per_unit))
         else:entry.comparison.append(measure('Объём · '+work.unit,quantity,'quantity',digits=3))
+        locate_work(entry,work)
         group=work.complex_object.name if work.complex_object_id else 'Самостоятельные работы'
         grouped['work'][group].append(entry)
     for form in resource_forms:
@@ -96,8 +135,14 @@ def month_matrix(version,month,work_forms,resource_forms):
                 comparisons.append(measure(title,value))
             grouped[kind]['Назначения ресурсов'].append(SimpleNamespace(pk='assignment:'+key,label=label,kind=kind,path=label,native_prefix='',can_edit=False,
                 metadata={'resource_assignment_id':assignment.pk,'target_label':rows[0].get('target_label','')},reference='',comparison=comparisons,errors=[],assignment_id=assignment.pk))
-    return {'sections':[{'kind':kind,'label':LABELS[kind],'groups':[{'label':name,'entries':entries} for name,entries in sorted(groups.items())],
-        'totals':[],'count':sum(len(entries) for entries in groups.values())} for kind,groups in grouped.items()],'days':[]}
+    sections=[{'kind':kind,'label':LABELS[kind],'groups':[{'label':name,'entries':entries} for name,entries in sorted(groups.items())],
+        'totals':[],'count':sum(len(entries) for entries in groups.values())} for kind,groups in grouped.items()]
+    for section in sections:
+        if section['kind'] in {'labor','equipment'} and section['count']:
+            total=sum((decimal(entry.comparison[0]['after']) for group in section['groups'] for entry in group['entries']),ZERO)
+            section['totals']=[measure('Итого · '+('чел.' if section['kind']=='labor' else 'ед.'),total)]
+    attach_work_hierarchy(sections)
+    return {'sections':sections,'days':[]}
 
 
 @transaction.atomic

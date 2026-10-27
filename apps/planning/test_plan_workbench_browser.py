@@ -15,15 +15,19 @@ class PlanWorkbenchBrowserTests(StaticLiveServerTestCase):
     prepare_owner=fixtures.WorkResourceTests.prepare_owner
     def test_same_editing_pattern_gpr_smg_and_excel_copy(self):
         fixtures.WorkResourceTests.setUpTestData.__func__(type(self));fixtures.WorkResourceTests.setUp(self)
-        self.composite.name='Монтаж системы';self.composite.save()
+        from apps.works.models import ComplexObject
+        self.composite.section.name='Системы безопасности';self.composite.section.save()
+        facility=ComplexObject.objects.create(company=self.company,construction_object=self.obj,section=self.composite.section,name='УЗА 26')
+        self.composite.name='Монтаж системы';self.composite.complex_object=facility;self.composite.save()
         self.a.name='Кабель';self.a.save();self.b.name='Оборудование';self.b.save()
         row=WorkMonthAllocation.objects.create(company=self.company,version=self.version,month=fixtures.JAN,work=self.composite,quantity=0,selected_item_ids=[self.a.pk],item_quantities={str(self.a.pk):'20'})
         gear=ResourceMonthAllocation.objects.create(company=self.company,version=self.version,month=fixtures.JAN,kind='equipment',equipment_type=self.equipment,count=2,hours=16)
         schedule=create(self.planner,self.obj,fixtures.JAN)
-        work=add_entry(self.planner,schedule,{'kind':'work','work':self.simple})
+        from .daily_schedule_table import add_work_branch
+        work=add_work_branch(self.planner,schedule,'item:'+str(self.a.pk))[0]
         def cookie(user):
             client=Client();client.force_login(user);return client.cookies['sessionid'].value
-        config={'base':self.live_server_url,'gpr':reverse('planning:workspace_edit',args=[self.version.pk]),'smg':reverse('planning:daily_schedule_detail',args=[schedule.pk]),
+        config={'base':self.live_server_url,'gpr':reverse('planning:workspace_edit',args=[self.version.pk]),'smg':reverse('planning:daily_schedule_detail',args=[schedule.pk]),'report':reverse('planning:global_detail',args=[self.version.pk]),
             'cookie':cookie(self.planner),'manager_cookie':cookie(self.manager),'a':self.a.pk,'b':self.b.pk,'brigade':self.brigade.pk,'work_entry':work.pk,'chromium':shutil.which('chromium')}
         script=Path(__file__).resolve().parents[2]/'tests/browser/plan_workbench.js'
         result=subprocess.run(['node',str(script)],cwd=script.parents[2],text=True,capture_output=True,env=dict(os.environ,PLAN_WORKBENCH_CONFIG=json.dumps(config)),timeout=120)
