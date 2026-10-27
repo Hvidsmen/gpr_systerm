@@ -311,6 +311,7 @@ class WorkspaceEdit(View):
         return works, resources
 
     def context(self, request, version, selected, months, works, resources):
+        from apps.works.planning_access import component_options
         from .selection_filters import planning_filters
         from apps.works.prices import rate_on
         from apps.works.models import WorkPrice
@@ -342,12 +343,12 @@ class WorkspaceEdit(View):
             'plan_sections':visible['sections'],'plan_is_daily':False,'plan_kind_label':'ГПР','plan_month':selected,'days':[],
             'plan_years':sorted({m.year for m in allowed_months}),'plan_month_options':[{'month':m,'url':reverse('planning:workspace_edit',args=[version.pk])+'?month='+m.isoformat()} for m in allowed_months],
             'plan_can_add_work':can_work,'plan_can_add_resources':resource_data['can_prepare_resources'],'table_editable':can_work or resource_data['can_prepare_resources'],
-            'plan_add_form':AddEntryForm(schedule=version) if resource_data['can_prepare_resources'] else None,
+            'plan_add_form':AddEntryForm(schedule=version,user=request.user) if resource_data['can_prepare_resources'] else None,
             'plan_add_url':reverse('planning:workspace_edit',args=[version.pk])+'?month='+selected.isoformat(),
             **resource_data, **approval, **path_context(version,{**resource_data,**approval},request.user),
             'object':version,'gpr_single_page':True,'editor_has_errors':request.method=='POST',
             'editor_months':allowed_months,'editor_years':sorted({m.year for m in allowed_months}),
-            "branch_form": BranchForm(version=version,initial={"months":[selected.isoformat()]}),
+            "branch_form": BranchForm(version=version,user=request.user,initial={"months":[selected.isoformat()]}),
             "version": version,
             "workspace": version.workspace,
             "selected_month": selected,
@@ -360,16 +361,10 @@ class WorkspaceEdit(View):
             "planning_filter_data": filter_data,
             "work_filters": filter_specs['works'],
             "composite_fractional": dict(ProjectWork.objects.filter(company=version.company, section__construction_object=version.construction_object, kind="COMPOSITE").values_list("pk", "allow_fractional")),
-            "composite_items": {
-                str(work.pk): [
-                    {"id": item.pk, "name": item.name, "unit": item.unit, "norm": str(item.quantity_per_unit)}
-                    for item in work.items.all() if item.company_id == version.company_id
-                ]
-                for work in ProjectWork.objects.filter(
-                    company=version.company, section__construction_object=version.construction_object,
-                    kind='COMPOSITE',
-                ).prefetch_related('items')
-            },
+            "composite_items": component_options(
+                ProjectWork.objects.filter(company=version.company,section__construction_object=version.construction_object,kind='COMPOSITE').prefetch_related('items'),
+                [form.instance for form in works],request.user,
+            ),
             "resource_forms": resources,
             "resources_read_only": role_code(request.user)=="PLANNER" and bool(version.workspace.parent_gpr_id),
             "resource_sections": [
@@ -419,7 +414,7 @@ class WorkspaceEdit(View):
         if request.POST.get('action')=='add_table_resource':
             from .daily_schedule_table_forms import AddEntryForm
             from .plan_workbench import add_month_resource
-            form=AddEntryForm(request.POST,schedule=version)
+            form=AddEntryForm(request.POST,schedule=version,user=request.user)
             if form.is_valid():
                 try:
                     created=add_month_resource(request.user,version,selected,form.cleaned_data)

@@ -82,8 +82,9 @@ class ReviewDetail(View):
     def show(self,request,task,change_form=None,item_form=None,work_id=None):
         obj=service.target(task)
         works=list(ProjectWork.objects.filter(company=request.user.company,pk__in=service.work_ids(obj)).select_related('section__construction_object').prefetch_related('items','price_history'))
+        from apps.works.planning_access import planning_works
         from .estimate_catalog import alternatives
-        replacements=list(alternatives(obj))
+        replacements=list(planning_works(alternatives(obj),request.user,whole=True))
         from .models import MacroCarryoverWork
         version=obj.source if isinstance(obj,DailySchedule) else obj
         aliases=dict(MacroCarryoverWork.objects.filter(company=request.user.company,workspace_id=version.workspace_id if version else None).values_list('source_work_id','target_work_id'))

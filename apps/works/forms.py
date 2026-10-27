@@ -16,7 +16,7 @@ class UnitChoiceMixin:
             self.fields.pop('is_legacy_structure',None)
         elif 'is_legacy_structure' in self.fields:
             self.fields['is_legacy_structure'].widget=forms.CheckboxInput(attrs={'class':'form-check-input'})
-            self.fields['is_legacy_structure'].help_text='Административная отметка этой записи. Видна и изменяется только администратором.'
+            self.fields['is_legacy_structure'].help_text='Отметку видит и меняет только администратор. Добавлять эту работу в ГПР и СМГ может только администратор.'
 
     def configure_catalog(self, company):
         units = MeasurementUnit.objects.filter(company=company)

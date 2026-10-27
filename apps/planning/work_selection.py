@@ -3,34 +3,46 @@ from copy import deepcopy
 from decimal import Decimal
 from django.core.exceptions import ValidationError
 from apps.works.models import ProjectWorkItem
+from apps.works.planning_access import planning_works, allowed_item_ids, planning_selection
 
 
-def choices(works,include_construction_object=False):
-    works=list(works.select_related('complex_object','section__construction_object').prefetch_related('items'))
+def choices(works,include_construction_object=False,*,user=None):
+    works=list(planning_works(works,user).select_related('complex_object','section__construction_object').prefetch_related('items'))
     objects={};packages=[];items=[]
     for work in works:
+        try:planning_selection(work,[],user)
+        except ValidationError:continue
+        allowed=allowed_item_ids(work,user)
         parent=str(work.complex_object) if work.complex_object_id else 'Без комплексного объекта'
         if include_construction_object:parent=str(work.section.construction_object)+' · '+parent
         if work.complex_object_id:objects[work.complex_object_id]=parent
         label=f'{parent} → {work.name}'
         packages.append((f'package:{work.pk}',label))
-        items.extend((f'item:{item.pk}',f'{label} → {item.name}') for item in work.items.all() if item.company_id==work.company_id)
+        items.extend((f'item:{item.pk}',f'{label} → {item.name}') for item in work.items.all() if item.company_id==work.company_id and item.pk in allowed)
     return [('', 'Выберите объект, комплекс или работу'),('Комплексные объекты',[(f'object:{pk}',name) for pk,name in objects.items()]),('Комплексные / самостоятельные работы',packages),('Работы в составе комплекса',items)]
 
 
-def resolve(works,selection):
+def resolve(works,selection,*,user=None):
+    works=planning_works(works,user)
     try:kind,raw=selection.split(':');pk=int(raw)
     except (AttributeError,ValueError):raise ValidationError('Выберите позицию справочника.')
     if kind=='object':
         rows=list(works.filter(complex_object_id=pk))
         if not rows:raise ValidationError('В выбранном объекте нет доступных комплексов работ.')
-        return [(work,[]) for work in rows]
+        result=[]
+        for work in rows:
+            try:result.append((work,planning_selection(work,[],user)))
+            except ValidationError:continue
+        if not result:raise ValidationError('В выбранном объекте нет доступных работ.')
+        return result
     if kind=='package':
         work=works.filter(pk=pk).first()
-        if work:return [(work,[])]
+        if work:return [(work,planning_selection(work,[],user))]
     if kind=='item':
         item=ProjectWorkItem.objects.filter(pk=pk,project_work__in=works).first()
         if item and item.company_id==item.project_work.company_id:
+            allowed=allowed_item_ids(item.project_work,user)
+            if item.pk not in allowed:raise ValidationError('Работа недоступна для добавления в план.')
             children={}
             for child in item.project_work.items.all():
                 if child.company_id!=item.company_id:raise ValidationError('Работа другой компании.')
@@ -39,7 +51,7 @@ def resolve(works,selection):
             while stack:
                 for child in children.get(stack.pop(),[]):
                     if child in selected:raise ValidationError('В составе работ есть цикл.')
-                    selected.add(child);stack.append(child)
+                    if child in allowed:selected.add(child);stack.append(child)
             return [(item.project_work,sorted(selected))]
     raise ValidationError('Позиция не относится к доступному строительному объекту.')
 

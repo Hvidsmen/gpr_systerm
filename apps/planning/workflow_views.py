@@ -93,7 +93,7 @@ class VersionRegenerateView(View):
                 if key in request.POST
             }
         )
-        form = MonthlyPlanForm(data, instance=plan)
+        form = MonthlyPlanForm(data, instance=plan,user=request.user)
         form.fields["project_work"].queryset = form.fields[
             "project_work"
         ].queryset.filter(company=request.user.company)

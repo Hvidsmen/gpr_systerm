@@ -175,6 +175,10 @@ class PlanDetailView(CompanyScopedMixin, DetailView):
 
 
 class MonthlyPlanCreateView(CompanyRequiredMixin, CreateView):
+    def get_form_kwargs(self):
+        kwargs=super().get_form_kwargs();kwargs['user']=self.request.user
+        return kwargs
+
     model = MonthlyPlan
     form_class = MonthlyPlanForm
     template_name = "planning/monthly_plan_form.html"
@@ -217,6 +221,10 @@ class MonthlyPlanCreateView(CompanyRequiredMixin, CreateView):
 
 class MonthlyPlanUpdateView(CompanyScopedMixin, UpdateView):
     """Редактирование месячного плана."""
+
+    def get_form_kwargs(self):
+        kwargs=super().get_form_kwargs();kwargs['user']=self.request.user
+        return kwargs
 
     model = MonthlyPlan
     form_class = MonthlyPlanForm

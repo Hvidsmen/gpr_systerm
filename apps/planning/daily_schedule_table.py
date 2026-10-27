@@ -63,7 +63,8 @@ def add_entry(user,schedule,data):
     if kind=='work':
         require_roles(user,PLAN_ROLES)
         work=data['work']
-        if not alternatives(schedule).filter(pk=work.pk).exists():raise ValidationError('Работа не принадлежит объекту или подключенной истории.')
+        from apps.works.planning_access import planning_works
+        if not planning_works(alternatives(schedule),user,whole=True).filter(pk=work.pk).exists():raise ValidationError('Работа не принадлежит объекту или подключенной истории.')
         work=local_work(user,schedule,work) if schedule.source_id else work
         metadata=specification(work);metadata['history']=[];metadata['original_daily']=[]
         label=work.name;key='work:'+str(work.pk)
@@ -117,10 +118,13 @@ def add_work_branch(user,schedule,selection,*,selected_items=None):
     require_roles(user,PLAN_ROLES)
     schedule=locked(user,schedule)
     result=[]
-    for work,selected in resolve(alternatives(schedule),selection):
+    for work,selected in resolve(alternatives(schedule),selection,user=user):
         if selected_items is not None:
             if not set(selected_items)<=set(work.items.values_list('pk',flat=True)):raise ValidationError('Состав работы общего ГПР изменён. Проверьте справочник.')
             selected=list(selected_items)
+            from apps.works.planning_access import planning_selection
+            permitted=planning_selection(work,selected,user)
+            if permitted!=selected:raise ValidationError('Выберите доступные работы комплекса по отдельности.')
         original_work=work
         work=local_work(user,schedule,work) if schedule.source_id else work
         if selected and work.pk!=original_work.pk:

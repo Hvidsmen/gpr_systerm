@@ -5,6 +5,16 @@ from .models import MonthlyPlan, LoadProfile, LoadProfileItem, ProductionCalenda
 
 
 class MonthlyPlanForm(forms.ModelForm):
+    def __init__(self,*args,user=None,**kwargs):
+        super().__init__(*args,**kwargs)
+        from apps.works.planning_access import planning_works
+        from core.permissions import scope_queryset
+        from django.db.models import Q
+        field=self.fields['project_work']
+        works=scope_queryset(field.queryset,user) if user else field.queryset.none()
+        available=planning_works(works,user,whole=True)
+        field.queryset=works.filter(Q(pk__in=available.values('pk'))|Q(pk=self.instance.project_work_id if self.instance.pk else None))
+
     class Meta:
         model = MonthlyPlan
         fields = ['project_work', 'year', 'month', 'planned_quantity', 'start_date', 'end_date', 'mismatch_strategy']

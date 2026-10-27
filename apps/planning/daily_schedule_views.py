@@ -89,7 +89,7 @@ class DailyScheduleDetail(View):
         from .daily_schedule_table_forms import AddEntryForm
         from .independent_smg_views import ReferenceForm
         reference_form=ReferenceForm(schedule=schedule,user=request.user) if editable and role_code(request.user) in PLAN_ROLES else None
-        add_form=add_form or (AddEntryForm(schedule=schedule) if editable else None)
+        add_form=add_form or (AddEntryForm(schedule=schedule,user=request.user) if editable else None)
         if add_form and role_code(request.user)=='MANAGER':add_form.fields['kind'].choices=[v for v in add_form.fields['kind'].choices if v[0]!='work']
         from .object_plans import linked_plans
         from .smg_copy import CopyForm
@@ -110,8 +110,8 @@ class DailyScheduleDetail(View):
             'plan_month_options':month_options,'plan_years':sorted({s['month'].year for s in month_options}),
             'plan_can_add_work':editable and role_code(request.user) in PLAN_ROLES,'plan_can_add_resources':editable and bool(resource_editor),
             'plan_add_form':add_form,'plan_add_url':request.path,
-            'branch_form':ScheduleBranchForm(schedule=schedule) if editable and role_code(request.user) in PLAN_ROLES else None,'branch_action':request.path}
-        return render(request,'planning/daily_schedule_detail.html',dict(gpr_copy_form=copy_form,linked_object_plans=linked_plans(schedule,request.user),schedule=schedule,entries=entries,reference_form=reference_form,can_activate_smg=resource_manager and schedule.status=='APPROVED',can_edit=role_code(request.user) in PLAN_ROLES,table_editable=editable,add_form=add_form or (AddEntryForm(schedule=schedule) if editable else None),has_deviations=any(service.differences(e,e.rows) for e in entries),is_subobject_smg=is_subobject,has_direct_reference=bool(schedule.source_id) and not is_subobject,parent_work_choices=parent_choices,parent_comparison=parent_data,**approval,**layout,**editor,**unified))
+            'branch_form':ScheduleBranchForm(schedule=schedule,user=request.user) if editable and role_code(request.user) in PLAN_ROLES else None,'branch_action':request.path}
+        return render(request,'planning/daily_schedule_detail.html',dict(gpr_copy_form=copy_form,linked_object_plans=linked_plans(schedule,request.user),schedule=schedule,entries=entries,reference_form=reference_form,can_activate_smg=resource_manager and schedule.status=='APPROVED',can_edit=role_code(request.user) in PLAN_ROLES,table_editable=editable,add_form=add_form or (AddEntryForm(schedule=schedule,user=request.user) if editable else None),has_deviations=any(service.differences(e,e.rows) for e in entries),is_subobject_smg=is_subobject,has_direct_reference=bool(schedule.source_id) and not is_subobject,parent_work_choices=parent_choices,parent_comparison=parent_data,**approval,**layout,**editor,**unified))
 
     def post(self,request,pk):
         require_roles(request.user,PLAN_ROLES | {'MANAGER'})
@@ -135,7 +135,7 @@ class DailyScheduleDetail(View):
             except (ValidationError,ValueError) as exc:
                 return JsonResponse({'error':'; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Неверный формат запроса.'},status=400)
         from .daily_schedule_table_forms import AddEntryForm
-        form=AddEntryForm(request.POST,schedule=schedule)
+        form=AddEntryForm(request.POST,schedule=schedule,user=request.user)
         if form.is_valid():
             try:
                 add_entry(request.user,schedule,form.cleaned_data)

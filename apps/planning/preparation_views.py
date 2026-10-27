@@ -52,7 +52,7 @@ class PreparationView(View):
         resource_add_form=None
         if self.kind=='smg':
             from .daily_schedule_table_forms import AddEntryForm
-            resource_add_form=AddEntryForm(request.POST if action=='add_resource' else None,schedule=owner)
+            resource_add_form=AddEntryForm(request.POST if action=='add_resource' else None,schedule=owner,user=request.user)
             resource_add_form.fields['kind'].choices=[v for v in resource_add_form.fields['kind'].choices if v[0]!='work']
             resource_add_form.fields.pop('work',None)
         if bound:

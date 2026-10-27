@@ -785,6 +785,9 @@ def apply_meeting_import(
                     )
                     continue
                 work = ProjectWork.objects.select_for_update().get(pk=row['target_id'], company=user.company, section__construction_object=obj)
+                from apps.works.planning_access import validate_plan_addition
+                existing=version.work_allocations.filter(work=work,month=month).first()
+                validate_plan_addition(work,existing.selected_item_ids if existing else [],user,existing)
                 WorkMonthAllocation.objects.update_or_create(
                     company=user.company,
                     version=version,
@@ -816,6 +819,9 @@ def apply_meeting_import(
                 )
         for (work_id, month), values in totals.items():
             work = ProjectWork.objects.get(pk=work_id, company=user.company)
+            from apps.works.planning_access import validate_plan_addition
+            existing=version.work_allocations.filter(work=work,month=month).first()
+            validate_plan_addition(work,existing.selected_item_ids if existing else [],user,existing)
             WorkMonthAllocation.objects.update_or_create(
                 company=user.company,
                 version=version,

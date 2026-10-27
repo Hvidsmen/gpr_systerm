@@ -5,6 +5,7 @@ from apps.projects.models import ConstructionObject
 from apps.works.models import ProjectWork
 from .models import WorkMonthAllocation, ResourceMonthAllocation
 from .workspace_services import months_between
+from apps.works.planning_access import planning_works,validate_plan_addition
 
 
 class WorkspaceForm(CompanyFormMixin, forms.Form):
@@ -51,10 +52,11 @@ class ForecastForm(forms.Form):
 
 
 class AllocationMixin(CompanyFormMixin):
-    def __init__(self, *args, version, month, **kwargs):
+    def __init__(self, *args, version, month, user=None, **kwargs):
         self.version = version
         self.month = month
-        super().__init__(*args, **kwargs)
+        self.user=user
+        super().__init__(*args, user=user, **kwargs)
         self.instance.version = version
         self.instance.company = version.company
         self.fields["month"].initial = month
@@ -83,7 +85,9 @@ class WorkAllocationForm(AllocationMixin, forms.ModelForm):
             section__construction_object=self.version.construction_object,
         )
 
-        self.fields["work"].queryset = works.select_related("complex_object")
+        from django.db.models import Q
+        available=planning_works(works,self.user,whole=True)
+        self.fields["work"].queryset = works.filter(Q(pk__in=available.values("pk"))|Q(pk=self.instance.work_id if self.instance.pk else None)).select_related("complex_object")
         self.fields["work"].label_from_instance = (
             lambda w: f"{str(w.complex_object) + ' → ' if w.complex_object_id else ''}{w.name} ({w.unit}, {w.get_kind_display()})"
         )
@@ -96,6 +100,10 @@ class WorkAllocationForm(AllocationMixin, forms.ModelForm):
             self.instance.item_quantities = {}
         data['selected_item_ids']=(data.get('selected_item_ids') or []) if self.add_prefix('selected_item_ids') in self.data else self.instance.selected_item_ids
         if 'work' in self.changed_data and self.instance.pk:data['selected_item_ids']=[]
+        if data.get('work'):
+            existing=WorkMonthAllocation.objects.get(pk=self.instance.pk) if self.instance.pk else None
+            try:validate_plan_addition(data['work'],data['selected_item_ids'],self.user,existing)
+            except forms.ValidationError as error:self.add_error(None,error)
         edited = data.get('edited_item_quantities')
         if edited is not None:
             if not isinstance(edited, dict) or not edited:
@@ -163,7 +171,8 @@ class AllocationFormset(BaseModelFormSet):
         for name, field in form.fields.items():
             if isinstance(field, forms.ModelChoiceField) and not field.widget.is_hidden:
                 # A saved row may retain a position without current employees.
-                key=(name,form.instance.brigade_id if form.instance.pk else None) if name=='brigade' else name
+                identity={'brigade':getattr(form.instance,'brigade_id',None),'work':getattr(form.instance,'work_id',None)}
+                key=(name,identity[name] if form.instance.pk else None) if name in identity else name
                 if key not in self._choice_cache:
                     self._choice_cache[key] = list(field.choices)
                 field.choices = self._choice_cache[key]
@@ -192,9 +201,9 @@ class AddWorkForm(CompanyFormMixin, forms.Form):
         queryset=ProjectWork.objects.filter(merged_source__isnull=True), label="Работа для всех месяцев"
     )
 
-    def __init__(self, *args, workspace, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.fields["work"].queryset = self.fields["work"].queryset.filter(
+    def __init__(self, *args, workspace, user=None, **kwargs):
+        super().__init__(*args, user=user, **kwargs)
+        self.fields["work"].queryset = planning_works(self.fields["work"].queryset,user,whole=True).filter(
             section__construction_object=workspace.construction_object
         )
 

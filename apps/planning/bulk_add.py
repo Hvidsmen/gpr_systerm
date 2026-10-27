@@ -26,8 +26,8 @@ def editable_months(version):
 class BulkAddForm(CompanyFormMixin, forms.Form):
     months = forms.MultipleChoiceField(label='Месяцы', widget=forms.CheckboxSelectMultiple())
 
-    def __init__(self, *args, version, kind, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, *args, version, kind, user=None, **kwargs):
+        super().__init__(*args, user=user, **kwargs)
         self.fields['months'].choices = [(m.isoformat(), m.strftime('%m.%Y')) for m in editable_months(version)]
         if kind == 'fuel':
             self.fields['items'] = forms.MultipleChoiceField(label='Виды ГСМ',
@@ -43,6 +43,8 @@ class BulkAddForm(CompanyFormMixin, forms.Form):
             self.fields['items'] = forms.ModelMultipleChoiceField(label=TITLES[kind],
                 queryset=querysets[kind]().order_by('name'), widget=forms.CheckboxSelectMultiple())
             if kind == 'works':
+                from apps.works.planning_access import planning_works
+                self.fields['items'].queryset=planning_works(self.fields['items'].queryset,user,whole=True)
                 self.fields['items'].label_from_instance = lambda w: f'{w.name} ({w.unit}, {w.get_kind_display()})'
             if kind == 'equipment':
                 self.fields['equipment_number'] = forms.CharField(label='Номер машины (необязательно)', max_length=50, required=False)

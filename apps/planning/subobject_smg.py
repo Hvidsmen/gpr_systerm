@@ -97,6 +97,7 @@ def local_work(user,schedule,source):
         if not complex_object.section_id:complex_object.section=section;complex_object.save(update_fields=['section'])
         section=complex_object.section
     work=ProjectWork(company=user.company,section=section,complex_object=complex_object,name=spec['name'],kind=spec['kind'],unit=canonical(user.company,spec['unit']),unit_price=Decimal(spec['unit_price']),allow_fractional=spec['allow_fractional'],load_profile=source.load_profile,work_group=source.work_group,rd_section=source.rd_section,rdc_point=source.rdc_point)
+    work.is_legacy_structure=source.is_legacy_structure
     work._price_actor=user;work.save()
     old={item.pk:item for item in source.items.all()};mapping={};parents=[]
     for frozen in expected:

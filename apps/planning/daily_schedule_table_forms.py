@@ -14,12 +14,13 @@ class AddEntryForm(forms.Form):
     fuel=forms.ChoiceField(label='Вид ГСМ',choices=[('','Выберите значение'),*ResourceMonthAllocation._meta.get_field('fuel_type').choices],required=False)
     rate=forms.DecimalField(label='Ставка за час / цена за литр',max_digits=12,decimal_places=2,min_value=0,initial=0,required=False)
 
-    def __init__(self,*args,schedule,**kwargs):
+    def __init__(self,*args,schedule,user=None,**kwargs):
         super().__init__(*args,**kwargs)
         from .estimate_catalog import alternatives
-        self.fields['work'].queryset=alternatives(schedule)
+        from apps.works.planning_access import planning_works
+        self.fields['work'].queryset=planning_works(alternatives(schedule),user,whole=True)
         from .work_selection import choices
-        self.fields['selection'].choices=choices(alternatives(schedule),include_construction_object=True)
+        self.fields['selection'].choices=choices(alternatives(schedule),include_construction_object=True,user=user)
         from .subobject_smg import parent_reference
         from .models import DailySchedule
         if isinstance(schedule,DailySchedule) and parent_reference(schedule):self.fields['selection'].label='Работа · каталог субобъекта и общего ГПР'

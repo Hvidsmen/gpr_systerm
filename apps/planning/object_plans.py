@@ -45,7 +45,7 @@ class BranchForm(forms.Form):
     quantity=forms.DecimalField(label='Количество выбранной позиции',min_value=Decimal('0'),max_digits=16,decimal_places=6,initial=1)
     def __init__(self,*args,plan,user,**kwargs):
         super().__init__(*args,**kwargs)
-        self.fields['selection'].choices=choices(works_for(plan,user))
+        self.fields['selection'].choices=choices(works_for(plan,user),user=user)
         self.fields['quantity'].help_text='Для комплекса — количество комплексов; объёмы его работ рассчитываются по нормативам. Уже добавленные объёмы сохраняются.'
 
 
@@ -69,7 +69,7 @@ def add_branch(user,plan,selection,quantity):
     plan=get_object_or_404(scope_queryset(ObjectWorkPlan.objects.select_for_update(),user),pk=plan.pk)
     require_planning_object(user,plan.construction_object_id)
     if quantity<0:raise ValidationError('Объём не может быть отрицательным.')
-    resolved=resolve(works_for(plan,user),selection)
+    resolved=resolve(works_for(plan,user),selection,user=user)
     count=0
     for work,selected in resolved:
         items=[i for i in work.items.all() if i.company_id==plan.company_id and (not selected or i.pk in selected)]

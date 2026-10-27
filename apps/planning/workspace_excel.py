@@ -422,7 +422,10 @@ def import_workbook(user, version, upload, months):
     works,resources=parse_workbook(upload,locked,months)
     from core.permissions import role_code
     if role_code(user)=='PLANNER' and version.workspace.parent_gpr_id:resources=[]
+    from apps.works.planning_access import validate_plan_addition
     for work,month,quantity,items in works:
+        existing=locked.work_allocations.filter(work=work,month=month).first()
+        validate_plan_addition(work,existing.selected_item_ids if existing else [],user,existing)
         row,_=WorkMonthAllocation.objects.get_or_create(company=user.company,version=locked,work=work,month=month)
         row.quantity=quantity;row.item_quantities=items;row.save()
     for kind,month,identity,quantities in resources:

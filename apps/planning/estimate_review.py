@@ -210,8 +210,9 @@ def replacement_comment(user,task,work_id,replacement_id,comment):
     if not replacement_id:return comment
     try:replacement_id=int(replacement_id)
     except (TypeError,ValueError):raise ValidationError('Выберите работу из списка рекомендаций.')
+    from apps.works.planning_access import planning_works
     from .estimate_catalog import alternatives
-    replacement=alternatives(target(task)).filter(pk=replacement_id,unit=work.unit,kind=work.kind).exclude(pk=work.pk).first()
+    replacement=planning_works(alternatives(target(task)),user,whole=True).filter(pk=replacement_id,unit=work.unit,kind=work.kind).exclude(pk=work.pk).first()
     if replacement is None:raise ValidationError('Рекомендуемая работа недоступна или несовместима с исходной.')
     recommendation=f'Рекомендуемая замена: {replacement.section.construction_object.name} · {replacement.section.name} · {replacement.name} · {replacement.unit} · ID {replacement.pk}.'
     return recommendation+('\n'+comment.strip() if comment.strip() else '')
@@ -221,8 +222,9 @@ def replacement_comment(user,task,work_id,replacement_id,comment):
 def replace_work(user,task,work_id,replacement_id):
     """Merge duplicates in this draft only; facts and approved versions stay intact."""
     task=lock_task(user,task,editing=True);work=scoped_work(task,work_id);obj=target(task)
+    from apps.works.planning_access import planning_works
     from .estimate_catalog import alternatives,local_work
-    replacement=alternatives(obj).select_for_update().filter(pk=replacement_id).first()
+    replacement=planning_works(alternatives(obj),user,whole=True).select_for_update().filter(pk=replacement_id).first()
     if replacement is None:raise ValidationError('Работа не принадлежит объекту или подключенной истории.')
     catalog_source=replacement.pk
     if not isinstance(obj,DailySchedule):replacement=local_work(user,obj,replacement)
