@@ -34,6 +34,12 @@ def labor_group_order(label):
     return (priorities.get(name,6 if name=='безгруппы' else 5),label.casefold())
 
 
+def equipment_group_order(label):
+    name=''.join(character for character in label.casefold() if character.isalnum())
+    priorities={'специализированнаятехника':0,'вспомогательнаятехника':1}
+    return (priorities.get(name,3 if name=='безкатегории' else 2),label.casefold())
+
+
 def total(entries,kind):
     unit='чел.' if kind=='labor' else 'ед.'
     comparisons=[entry.comparison[0] for entry in entries if entry.comparison]
@@ -53,8 +59,8 @@ def total(entries,kind):
 def attach_resource_totals(sections):
     for section in sections:
         if section['kind'] not in {'labor','equipment'}:continue
-        if section['kind']=='labor':
-            section['groups'].sort(key=lambda group:labor_group_order(group['label']))
+        order=labor_group_order if section['kind']=='labor' else equipment_group_order
+        section['groups'].sort(key=lambda group:order(group['label']))
         entries=[]
         for group in section['groups']:
             group.update(kind=section['kind'],unit='чел.' if section['kind']=='labor' else 'ед.',totals=[total(group['entries'],section['kind'])])
