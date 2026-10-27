@@ -9,6 +9,7 @@
       group.indeterminate = !group.checked && Array.from(group.closest('.ct-branch').querySelectorAll('[data-bulk-row]')).some(row => row.checked);
     });
     const count = rows.filter(row => row.checked).length;
+    form.querySelectorAll('[data-bulk-legacy]').forEach(button => {button.disabled=count===0;});
     if (form.hasAttribute('data-bulk-contextual')) form.hidden = count === 0 && groupCount === 0;
     form.querySelector('[data-bulk-count]').textContent = groupCount ? `Выбрано: ${groupCount} комплексных объектов, ${count} работ` : `Выбрано: ${count}`;
     const submit=form.querySelector('[data-bulk-submit]');

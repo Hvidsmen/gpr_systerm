@@ -4,12 +4,20 @@ from django.utils.translation import gettext_lazy as _
 
 from .models import ProjectWork, ProjectWorkItem, WorkTemplateItem, MeasurementUnit, ComplexObject
 from ..projects.models import Section, Project, ConstructionObject
-from core.permissions import scope_queryset
+from core.permissions import scope_queryset, role_code
 from .price_sources import source_field, identity
 from .prices import price_on
 
 
 class UnitChoiceMixin:
+    def configure_legacy(self,user):
+        self.instance._allow_legacy_structure_change=bool(user and role_code(user)=='ADMIN')
+        if not user or role_code(user)!='ADMIN':
+            self.fields.pop('is_legacy_structure',None)
+        elif 'is_legacy_structure' in self.fields:
+            self.fields['is_legacy_structure'].widget=forms.CheckboxInput(attrs={'class':'form-check-input'})
+            self.fields['is_legacy_structure'].help_text='Административная отметка этой записи. Видна и изменяется только администратором.'
+
     def configure_catalog(self, company):
         units = MeasurementUnit.objects.filter(company=company)
         self.fields['unit'] = forms.ChoiceField(
@@ -28,6 +36,7 @@ class ProjectWorkForm(UnitChoiceMixin, forms.ModelForm):
 
     def __init__(self, *args, user=None, fixed_object=None, **kwargs):
         super().__init__(*args, **kwargs)
+        self.configure_legacy(user)
         company = user.company if user else self.instance.company if self.instance.company_id else None
         if company:
             self.instance.company = company
@@ -119,7 +128,7 @@ class ProjectWorkForm(UnitChoiceMixin, forms.ModelForm):
 
     class Meta:
         model = ProjectWork
-        fields = ['excel_aliases', 
+        fields = ['excel_aliases','is_legacy_structure', 
             "name",
             "work_group",
             "complex_object",
@@ -170,8 +179,9 @@ class ProjectWorkItemForm(UnitChoiceMixin, forms.ModelForm):
         help_text='Расчётная сумма = объём / норматив × цена комплекса × доля / 100. Для всего комплекса сумма долей — 100%.')
     """Форма для создания/редактирования Работы в составе комплекса."""
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
+        self.configure_legacy(user)
         self.fields['load_profile'].required = True
         self.fields['load_profile'].help_text = 'Выберите профиль распределения объёма по рабочим дням.'
 
@@ -181,7 +191,7 @@ class ProjectWorkItemForm(UnitChoiceMixin, forms.ModelForm):
 
     class Meta:
         model = ProjectWorkItem
-        fields = ['excel_aliases', "name", "unit", "load_profile", "quantity_per_unit", 'weight']
+        fields = ['excel_aliases', 'is_legacy_structure', "name", "unit", "load_profile", "quantity_per_unit", 'weight']
         widgets = {
             "name": forms.TextInput(attrs={"class": "form-control"}),
             "unit": forms.TextInput(attrs={"class": "form-control"}),

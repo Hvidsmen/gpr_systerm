@@ -53,6 +53,9 @@ class WorkListView(CatalogueExcelMixin, CompanyScopedMixin, ListView):
             if values['selected_work']:
                 kind, selected_id=values['selected_work'].split(':')
                 queryset=queryset.filter(pk=selected_id) if kind=='w' else queryset.filter(pk__in=ProjectWorkItem.objects.filter(company=self.request.user.company,pk=selected_id).values('project_work_id'))
+            if values.get('legacy_only'):
+                matching_legacy=ProjectWorkItem.objects.filter(company=self.request.user.company,project_work_id=OuterRef('pk'),is_legacy_structure=True)
+                queryset=queryset.filter(Q(is_legacy_structure=True)|Exists(matching_legacy))
             # SQLite LIKE does not fold Cyrillic case. Its regex implementation
             # does; escape the query so punctuation remains literal.
             lookup = 'iregex' if connection.vendor == 'sqlite' else 'icontains'
@@ -90,7 +93,7 @@ class WorkListView(CatalogueExcelMixin, CompanyScopedMixin, ListView):
         query = values.get('q', '')
         context['search_query'] = query or values.get('subwork', '') or values.get('work', '')
         context['catalogue_reveal'] = bool(query or values.get('work') or values.get('subwork') or values.get('selected_work') or values.get('package'))
-        extra = ['project', 'section', 'package', 'selected_work', 'work', 'subwork']
+        extra = ['project', 'section', 'package', 'selected_work', 'work', 'subwork','legacy_only']
         context['advanced_filter_count'] = sum(bool(values.get(name)) for name in extra)
         context['advanced_filters_open'] = bool(context['advanced_filter_count'] or self.filter_form.errors)
         context['result_count'] = context['paginator'].count if context.get('paginator') else len(context['works'])
@@ -364,6 +367,7 @@ class WorkItemDeleteView(CompanyScopedMixin, DeleteView):
 class WorkItemCreateView(CompanyRequiredMixin, CreateView):
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
+        kwargs['user']=self.request.user
         work = get_object_or_404(
             scope_queryset(ProjectWork.objects.all(),self.request.user), pk=self.kwargs["work_pk"]
         )
@@ -427,6 +431,9 @@ from django.views.generic import UpdateView
 
 # Добавьте этот класс после WorkItemCreateView
 class WorkItemUpdateView(CompanyScopedMixin, UpdateView):
+    def get_form_kwargs(self):
+        return {**super().get_form_kwargs(),'user':self.request.user}
+
     model = ProjectWorkItem
     form_class = ProjectWorkItemForm
     template_name = "works/work_item_form.html"

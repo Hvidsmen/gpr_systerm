@@ -6,6 +6,7 @@ from .models import ComplexObject, ProjectWork, ProjectWorkItem
 
 
 class WorkListFilterForm(forms.Form):
+    legacy_only=forms.BooleanField(required=False,label='Есть пометка «Старая структура»',widget=forms.CheckboxInput(attrs={'class':'form-check-input'}))
     q = forms.CharField(required=False, max_length=255, label='Поиск',
         widget=forms.TextInput(attrs={'type': 'search', 'placeholder': 'Найти комплекс или работу в его составе'}))
 
@@ -45,6 +46,8 @@ class WorkListFilterForm(forms.Form):
 
     def __init__(self, *args, company, user=None, **kwargs):
         super().__init__(*args, **kwargs)
+        from core.permissions import role_code
+        if not user or role_code(user)!='ADMIN':self.fields.pop('legacy_only',None)
         projects = Project.objects.filter(company=company).order_by("name", "pk")
         objects = (
             ConstructionObject.objects.filter(company=company, project__company=company)
@@ -118,3 +121,4 @@ class WorkListFilterForm(forms.Form):
                 if isinstance(field, forms.ChoiceField)
                 else "form-control form-control-sm"
             )
+        if 'legacy_only' in self.fields:self.fields['legacy_only'].widget.attrs['class']='form-check-input'

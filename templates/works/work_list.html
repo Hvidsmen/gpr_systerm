@@ -49,7 +49,7 @@
 <div>{{ filter_form.package.label_tag }}{{ filter_form.package }}{{ filter_form.package.errors }}</div>
 <div>{{ filter_form.selected_work.label_tag }}{{ filter_form.selected_work }}{{ filter_form.selected_work.errors }}</div>
 <div>{{ filter_form.work.label_tag }}{{ filter_form.work }}{{ filter_form.work.errors }}</div>
-<div>{{ filter_form.subwork.label_tag }}{{ filter_form.subwork }}{{ filter_form.subwork.errors }}</div>
+<div>{{ filter_form.subwork.label_tag }}{{ filter_form.subwork }}{{ filter_form.subwork.errors }}</div>{% if filter_form.legacy_only %}<div class="form-check">{{ filter_form.legacy_only }} {{ filter_form.legacy_only.label_tag }}{{ filter_form.legacy_only.errors }}</div>{% endif %}
   </div>
 </details>
 <a href="{% url 'works:work_list' %}?view={{ view_mode }}">Сбросить</a>
@@ -80,8 +80,8 @@
 </thead>
 <tbody>{% for work in works %}<tr>{% if request.user|may:bulk_route %}<td>{% include 'bulk/checkbox.html' with record=work %}</td>{% endif %}
 <td>
-<a class="catalogue-name" href="{% url 'works:work_detail' work.pk %}?return_to={{ request.get_full_path|urlencode }}">{{ work.name|highlight:search_query }}</a>
-<span class="catalogue-meta">{% if work.kind == 'COMPOSITE' %}Комплекс работ · {{ work.items_count }} работ{% else %}Самостоятельная работа{% endif %}</span>{% if work.catalogue_matching_items %}<div class="catalogue-found-items">{% for item in work.catalogue_matching_items %}<a href="{% url 'works:work_detail' work.pk %}?return_to={{ request.get_full_path|urlencode }}#work-item-{{ item.pk }}">↳ {{ item.name|highlight:search_query }}</a>{% endfor %}</div>{% endif %}</td>
+<a class="catalogue-name" href="{% url 'works:work_detail' work.pk %}?return_to={{ request.get_full_path|urlencode }}">{{ work.name|highlight:search_query }}</a>{% include 'works/_legacy_structure_badge.html' with record=work %}
+<span class="catalogue-meta">{% if work.kind == 'COMPOSITE' %}Комплекс работ · {{ work.items_count }} работ{% else %}Самостоятельная работа{% endif %}</span>{% if work.catalogue_matching_items %}<div class="catalogue-found-items">{% for item in work.catalogue_matching_items %}<a href="{% url 'works:work_detail' work.pk %}?return_to={{ request.get_full_path|urlencode }}#work-item-{{ item.pk }}">↳ {{ item.name|highlight:search_query }}</a>{% include 'works/_legacy_structure_badge.html' with record=item %}{% endfor %}</div>{% endif %}</td>
 <td class="catalogue-location">
 <span>{{ work.section.construction_object.project.name }}</span>
 <span>{{ work.section.construction_object.name }} → {{ work.section.name }}</span>{% if work.complex_object_id %}<a href="{% url 'works:complex_object_detail' work.complex_object_id %}?return_to={{ request.get_full_path|urlencode }}">{{ work.complex_object.name }}</a>{% endif %}</td>

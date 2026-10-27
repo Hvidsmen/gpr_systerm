@@ -1,0 +1,1 @@
+{% load access %}{% if record.is_legacy_structure and request.user|may:'works:legacy_structure_bulk' %}<span class="badge bg-warning text-dark" data-legacy-structure>Старая структура</span>{% endif %}

@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from .legacy_structure import legacy_structure_bulk
 from .price_views import WorkPriceChange
 from .price_sources import WorkPriceSources
 from .unit_views import UnitUpdate, UnitDelete
@@ -9,6 +10,7 @@ from .catalogs import WorkGroupList, MeasurementUnitList, quick_create
 app_name = 'works'
 
 urlpatterns = [
+    path("legacy-structure/",legacy_structure_bulk,name="legacy_structure_bulk"),
     path("price-sources/", WorkPriceSources.as_view(), name="price_sources"),
     path("<int:pk>/price/", WorkPriceChange.as_view(), name="price_change"),
     path("catalogs/groups/", WorkGroupList.as_view(), name="group_list"),

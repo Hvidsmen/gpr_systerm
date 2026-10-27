@@ -128,6 +128,8 @@ def catalogue_response(request, queryset):
     queryset = queryset.filter(company=request.user.company)
     if related:
         queryset = queryset.select_related(*related)
+    from core.permissions import role_code
+    if queryset.model._meta.label=='works.ProjectWork' and role_code(request.user)=='ADMIN':columns=[*columns,('Старая структура','is_legacy_structure')]
     sheets = [(title, [label for label, path in columns], sheet_rows(queryset, columns))]
     label = queryset.model._meta.label
     if label == 'works.ProjectWork':
@@ -142,6 +144,7 @@ def catalogue_response(request, queryset):
             ('Родительская работа', 'parent.name'), ('Работа в комплексе', 'name'), ('Порядок', 'sequence'),
             ('Единица измерения', 'unit'), ('Норматив на единицу комплекса', 'quantity_per_unit'),
             ('Доля стоимости, %', 'weight'), ('Плановый объём', 'planned_quantity'), ('Профиль нагрузки', 'load_profile.name')]
+        if role_code(request.user)=='ADMIN':columns=[*columns,('Старая структура','is_legacy_structure')]
         sheets.append(('Работы в комплексах', [label for label, path in columns], sheet_rows(children, columns)))
     elif label == 'planning.LoadProfile':
         from apps.planning.models import LoadProfileItem

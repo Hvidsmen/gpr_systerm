@@ -93,7 +93,7 @@
 </i>
 </span>
 <span class="ct-heading">
-<a href="{% url 'works:work_detail' work.pk %}?return_to={{ request.get_full_path|urlencode }}" {% if work.catalogue_match %}data-search-hit{% endif %}>{{ work.name|highlight:search_query }}</a>
+<a href="{% url 'works:work_detail' work.pk %}?return_to={{ request.get_full_path|urlencode }}" {% if work.catalogue_match %}data-search-hit{% endif %}>{{ work.name|highlight:search_query }}</a>{% include 'works/_legacy_structure_badge.html' with record=work %}
 <span class="ct-caption">{% if work.kind == 'COMPOSITE' %}Комплекс работ · {{ work.items_count }} работ{% else %}Самостоятельная работа{% endif %}</span>
 </span>
 <span class="ct-status">{{ work.get_status_display }}</span>
@@ -105,7 +105,7 @@
 <span>Норматив на единицу комплекса</span>
 </div>{% for item in work.catalogue_items|default:work.items.all %}<div class="ct-item">
 <span class="ct-item-name">
-<a href="{% url 'works:work_detail' work.pk %}?return_to={{ request.get_full_path|urlencode }}#work-item-{{ item.pk }}" {% if item.catalogue_match %}data-search-hit{% endif %}>{{ item.name|highlight:search_query }}</a>
+<a href="{% url 'works:work_detail' work.pk %}?return_to={{ request.get_full_path|urlencode }}#work-item-{{ item.pk }}" {% if item.catalogue_match %}data-search-hit{% endif %}>{{ item.name|highlight:search_query }}</a>{% include 'works/_legacy_structure_badge.html' with record=item %}
 </span>
 <span class="ct-item-actions">
 <span class="ct-quantity">{{ item.quantity_per_unit }} <small>{{ item.unit }}</small>

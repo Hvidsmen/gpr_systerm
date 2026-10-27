@@ -11,7 +11,7 @@
 <span>{{ work.section.construction_object.project }}</span>
 <span>{{ work.section.construction_object }}</span>
 <span>{{ work.section.name }}</span>{% if work.complex_object_id %}<a href="{% url 'works:complex_object_detail' work.complex_object_id %}?return_to={{ catalogue_return|urlencode }}">{{ work.complex_object }}</a>{% endif %}</nav>
-<h1>{{ work.name }}</h1>
+<h1>{{ work.name }}</h1>{% include 'works/_legacy_structure_badge.html' with record=work %}
 <p>{{ work.get_kind_display }} · {{ work.get_status_display }}{% if work.rd_section %} · РД {{ work.rd_section }}{% endif %}
 {% if work.rdc_point %} · РДЦ {{ work.rdc_point }}{% endif %}</p>
 </div>
@@ -61,7 +61,7 @@
 </thead>
 <tbody>
 {% for item in items %}<tr id="work-item-{{ item.pk }}">
-<td class="catalogue-item-title">{% if item.parent_id %}<span class="catalogue-meta">В составе: {{ item.parent.name }}</span>{% endif %}<strong>{{ item.name }}</strong>
+<td class="catalogue-item-title">{% if item.parent_id %}<span class="catalogue-meta">В составе: {{ item.parent.name }}</span>{% endif %}<strong>{{ item.name }}</strong>{% include 'works/_legacy_structure_badge.html' with record=item %}
 </td>
 <td>{% if request.user|may:'works:work_structure_update' %}{{ item.structure_unit }}{{ item.structure_unit.errors }}{% else %}{{ item.unit }}{% endif %}</td>
 <td>{% if request.user|may:'works:work_structure_update' %}{{ item.structure_norm }}{{ item.structure_norm.errors }}{% else %}{{ item.quantity_per_unit }}{% endif %}</td>

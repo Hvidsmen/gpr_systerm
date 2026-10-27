@@ -20,7 +20,7 @@
     </div>
     <div class="card-body">
         <form method="post" data-catalogue-edit {% if not form.instance.pk %}data-new-record{% endif %}><input type="hidden" name="return_to" value="{{ catalogue_return }}">
-            {% csrf_token %}
+            {% csrf_token %}{% include 'works/_legacy_structure_field.html' %}
             {% if form.errors %}
             <div class="alert alert-danger">
                 <h5><i class="bi bi-exclamation-triangle"></i> Ошибки в форме:</h5>

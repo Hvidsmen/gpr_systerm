@@ -137,6 +137,7 @@ class WorkTemplateItem(BaseCompanyModel):
 
 
 class ProjectWork(BaseCompanyModel):
+    is_legacy_structure = models.BooleanField("Старая структура", default=False)
     rd_section = models.CharField("Раздел РД", max_length=255, blank=True)
     rdc_point = models.CharField("Пункт в РДЦ", max_length=255, blank=True)
     excel_aliases = models.JSONField('Названия в Excel', default=list, blank=True, validators=[validate_excel_aliases])
@@ -248,6 +249,7 @@ class ProjectWork(BaseCompanyModel):
                 if self.pk
                 else None
             )
+            if previous and not getattr(self,'_allow_legacy_structure_change',False):self.is_legacy_structure=previous.is_legacy_structure
             changed = (
                 previous
                 and previous.unit_price != self.unit_price
@@ -311,6 +313,16 @@ class ProjectWork(BaseCompanyModel):
 
 
 class ProjectWorkItem(BaseCompanyModel):
+    def save(self,*args,**kwargs):
+        if self.pk and not getattr(self,'_allow_legacy_structure_change',False) and (kwargs.get('update_fields') is None or 'is_legacy_structure' in kwargs['update_fields']):
+            from django.db import transaction
+            with transaction.atomic():
+                current=type(self).objects.select_for_update().get(pk=self.pk)
+                self.is_legacy_structure=current.is_legacy_structure
+                return super().save(*args,**kwargs)
+        return super().save(*args,**kwargs)
+
+    is_legacy_structure = models.BooleanField("Старая структура", default=False)
     excel_aliases = models.JSONField('Названия в Excel', default=list, blank=True, validators=[validate_excel_aliases])
     project_work = models.ForeignKey(
         ProjectWork,
