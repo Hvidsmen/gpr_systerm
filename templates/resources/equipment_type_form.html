@@ -1,12 +1,15 @@
 {% extends 'base.html' %}
 {% load access %}
 {% load i18n %}
+{% load static %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'resources/equipment_catalogue.css' %}?v=20261027-machines">{% endblock %}
 
 {% block title %}
     {% if equipmenttype %}Редактировать технику{% else %}Добавить технику{% endif %}
 {% endblock %}
 
 {% block content %}
+{% include 'resources/_equipment_nav.html' %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
         <h2 class="mb-1">
@@ -14,7 +17,7 @@
             {% if equipmenttype %}
                 Редактировать {% if equipmenttype.parent_id %}модель{% else %}технику для планирования{% endif %} «{{ equipmenttype.name }}»
             {% else %}
-                Добавить {% if form.parent.value %}модель{% else %}технику для планирования{% endif %}
+                Добавить {% if form.is_model or form.parent.value %}модель{% else %}технику для планирования{% endif %}
             {% endif %}
         </h2>
         <nav aria-label="breadcrumb">
@@ -27,7 +30,10 @@
             </ol>
         </nav>
     </div>
+    {% if equipmenttype %}{% if equipmenttype.parent_id %}{% include 'resources/_equipment_add_menu.html' with planning_type=equipmenttype.parent model_record=equipmenttype %}{% else %}{% include 'resources/_equipment_add_menu.html' with planning_type=equipmenttype %}{% endif %}{% endif %}
 </div>
+
+{% if equipmenttype %}<div class="alert alert-info d-flex flex-wrap justify-content-between align-items-center gap-2"><span>{% if equipmenttype.parent_id %}Модель в справочнике{% else %}Техника для планирования{% endif %} · Машин с номерами: <strong>{{ linked_machine_count }}</strong></span><a class="btn btn-sm btn-outline-primary" href="{% url 'resources:equipment_unit_list' %}?{% if equipmenttype.parent_id %}model{% else %}parent{% endif %}={{ equipmenttype.pk }}">Открыть машины с номерами</a></div>{% endif %}
 
 <div class="row justify-content-center">
     <div class="col-md-8">
@@ -70,6 +76,7 @@
                     </div>
 
                     <div class="mb-3"><label class="form-label" for="{{ form.parent.id_for_label }}">Техника для планирования</label>{{ form.parent }}<div class="form-text">{{ form.parent.help_text }}</div>{{ form.parent.errors }}</div>
+                    <div class="mb-3">{{ form.brand_model.label_tag }}{{ form.brand_model }}<div class="form-text">Короткое обозначение модели, например «CAT 320». Госномер, инвентарный номер и VIN заполняются в карточке конкретной машины.</div>{{ form.brand_model.errors }}</div>
                     <div class="mb-3">
                         <label for="{{ form.category.id_for_label }}" class="form-label">
                             {{ form.category.label }}

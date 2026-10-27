@@ -83,9 +83,10 @@ class EquipmentTypeForm(forms.ModelForm):
 
     class Meta:
         model = EquipmentType
-        fields = ['excel_aliases', 'name', 'parent', 'category', 'driver_categories', 'driver_classes', 'unit', 'is_active']
+        fields = ['excel_aliases', 'name', 'brand_model', 'parent', 'category', 'driver_categories', 'driver_classes', 'unit', 'is_active']
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control'}),
+            'brand_model': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Например, CAT 320'}),
             'unit': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'ед.'}),
             'category': forms.Select(attrs={'class': 'form-select'}),
             'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),

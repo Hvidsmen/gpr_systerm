@@ -1,6 +1,15 @@
 """Presentation hierarchy: category, planning type, then model variants."""
 
 
+def with_machine_counts(queryset, company):
+    from django.db.models import Count, OuterRef, Q, Subquery, Value
+    from django.db.models.functions import Coalesce
+    from .models import Equipment
+    machines = Equipment.objects.filter(company=company).filter(
+        Q(type_id=OuterRef('pk')) | Q(type__parent_id=OuterRef('pk'))).order_by().values('company').annotate(total=Count('pk'))
+    return queryset.annotate(machine_count=Coalesce(Subquery(machines.values('total')[:1]), Value(0)))
+
+
 def category_for(equipment, company):
     if equipment is None:
         return None

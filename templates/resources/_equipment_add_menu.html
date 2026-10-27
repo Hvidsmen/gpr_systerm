@@ -1,0 +1,6 @@
+{% load access %}{% if request.user|may:'resources:equipment_type_create' or request.user|may:'resources:equipment_unit_create' %}
+<details class="equipment-catalogue-menu equipment-add-menu" data-equipment-add-menu><summary class="btn btn-primary">+ Добавить</summary><div class="equipment-catalogue-menu-body">
+{% if request.user|may:'resources:equipment_type_create' %}<a href="{% url 'resources:equipment_type_create' %}"><strong>Технику для планирования</strong><small>Например, экскаватор · без номеров</small></a>
+<a href="{% url 'resources:equipment_type_create' %}?kind=model{% if planning_type %}&amp;parent={{ planning_type.pk }}{% endif %}"><strong>Модель</strong><small>Например, CAT 320 · относится к плановой позиции</small></a>{% endif %}
+{% if request.user|may:'resources:equipment_unit_create' %}<a href="{% url 'resources:equipment_unit_create' %}{% if model_record %}?model={{ model_record.pk }}{% elif planning_type %}?type={{ planning_type.pk }}{% endif %}"><strong>Машину с номерами</strong><small>Конкретная единица · госномер, инвентарный номер, VIN</small></a>{% endif %}
+</div></details>{% endif %}

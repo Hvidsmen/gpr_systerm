@@ -163,9 +163,10 @@ class EquipmentTypeListView(CatalogFilterMixin, CompanyRequiredMixin, ListView):
     paginate_by = 20
 
     def get_queryset(self):
-        return self.filter_queryset(EquipmentType.objects.filter(
+        from .equipment_catalogue import with_machine_counts
+        return self.filter_queryset(with_machine_counts(EquipmentType.objects.filter(
             company=self.get_company(), merge_source__isnull=True
-        ).select_related('category','parent__category').prefetch_related('crew_positions__position','model_variants').order_by(*(['category__name','category_id','name','pk'] if self.request.GET.get('view','groups') == 'groups' else ['name','pk'])))
+        ).select_related('category','parent__category').prefetch_related('crew_positions__position','model_variants'),self.get_company()).order_by(*(['category__name','category_id','name','pk'] if self.request.GET.get('view','groups') == 'groups' else ['name','pk'])))
 
     def get_paginate_by(self, queryset):
         return None if self.request.GET.get('view','groups') == 'groups' else 20
@@ -176,8 +177,8 @@ class EquipmentTypeListView(CatalogFilterMixin, CompanyRequiredMixin, ListView):
         if context['equipment_grouped']:
             rows=list(context['equipment_types'])
             root_ids={row.parent_id or row.pk for row in rows}
-            roots={row.pk:row for row in EquipmentType.objects.filter(company=self.get_company(),pk__in=root_ids,merge_source__isnull=True).select_related('category').prefetch_related('crew_positions__position').order_by('name','pk')}
-            from .equipment_catalogue import hierarchy
+            from .equipment_catalogue import hierarchy, with_machine_counts
+            roots={row.pk:row for row in with_machine_counts(EquipmentType.objects.filter(company=self.get_company(),pk__in=root_ids,merge_source__isnull=True).select_related('category').prefetch_related('crew_positions__position'),self.get_company()).order_by('name','pk')}
             context['equipment_category_groups']=hierarchy(rows,roots,self.get_company())
             context['equipment_hierarchy']=[node for group in context['equipment_category_groups'] for node in group['nodes']]
         filtered=self.object_list
@@ -201,6 +202,14 @@ class EquipmentTypeCreateView(EquipmentCrewEditorMixin, CompanyRequiredMixin, Cr
     form_class = EquipmentTypeForm
     template_name = 'resources/equipment_type_form.html'
 
+    def get_form(self, form_class=None):
+        form=super().get_form(form_class)
+        form.is_model=self.request.GET.get('kind')=='model' or bool(form['parent'].value())
+        if self.request.GET.get('kind')=='model':
+            form.fields['parent'].required=True
+            form.fields['parent'].help_text='Выберите, к какой технике для планирования относится модель, например «Экскаватор».'
+        return form
+
     def get_initial(self):
         initial=super().get_initial()
         parent=EquipmentType.objects.filter(company=self.get_company(),parent__isnull=True,merge_source__isnull=True,pk=self.request.GET.get('parent')).first() if self.request.GET.get('parent','').isdigit() else None
@@ -222,6 +231,12 @@ class EquipmentTypeUpdateView(EquipmentCrewEditorMixin, CompanyRequiredMixin, Up
     model = EquipmentType
     form_class = EquipmentTypeForm
     template_name = 'resources/equipment_type_form.html'
+
+    def get_context_data(self, **kwargs):
+        context=super().get_context_data(**kwargs)
+        from .equipment_catalogue import with_machine_counts
+        context['linked_machine_count']=with_machine_counts(EquipmentType.objects.filter(pk=self.object.pk),self.get_company()).get().machine_count
+        return context
 
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()

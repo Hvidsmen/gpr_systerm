@@ -1,9 +1,10 @@
-{% load access %}<details><summary class="text-primary fw-semibold">{{ et.name }}</summary><div class="border rounded p-3 mt-2 bg-light">
-<div><strong>Категория:</strong> {{ et.category|default:'—' }}</div>
+{% load access %}<details><summary class="text-primary fw-semibold">{% if et.parent_id %}{{ et.brand_model|default:et.name }}{% else %}{{ et.name }}{% endif %}</summary><div class="border rounded p-3 mt-2 bg-light">
+<p class="small text-muted">{% if et.parent_id %}Это модель в справочнике. Конкретные машины хранятся в отдельных карточках с номерами.{% else %}Эта позиция используется для количества техники в ГПР и СМГ.{% endif %}</p>
+<div><strong>Группа техники:</strong> {% firstof et.category et.parent.category 'Без группы' %}</div>
 {% if et.brand_model %}<div><strong>Марка / модель:</strong> {{ et.brand_model }}</div>{% endif %}
 <div><strong>Единица измерения:</strong> {{ et.unit }}</div>
 <div><strong>Категории водителя:</strong> {{ et.driver_category_labels|join:', '|default:'—' }}</div>
 <div><strong>Классы водителя:</strong> {{ et.driver_class_labels|join:', '|default:'—' }}</div>
 <div class="mt-2"><strong>Экипаж на смену:</strong><ul class="mb-2">{% for member in et.crew_positions.all %}<li>{{ member.position }} — {{ member.count }} чел.{% if member.is_replacement %} *{% endif %}</li>{% empty %}<li>Не задан</li>{% endfor %}</ul></div>
-{% if request.user|may:'resources:equipment_type_update' %}<a class="btn btn-sm btn-outline-primary" href="{% url 'resources:equipment_type_update' et.pk %}">Изменить технику и экипаж</a>{% endif %}
+<div class="d-flex flex-wrap gap-2"><a class="btn btn-sm btn-outline-primary" href="{% url 'resources:equipment_unit_list' %}?{% if et.parent_id %}model{% else %}parent{% endif %}={{ et.pk }}">Машины с номерами · {{ et.machine_count|default:0 }}</a>{% if request.user|may:'resources:equipment_type_update' %}<a class="btn btn-sm btn-outline-primary" href="{% url 'resources:equipment_type_update' et.pk %}">Изменить {% if et.parent_id %}модель{% else %}технику{% endif %} и экипаж</a>{% endif %}</div>
 </div></details>

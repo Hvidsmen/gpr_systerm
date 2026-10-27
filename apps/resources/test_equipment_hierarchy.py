@@ -36,7 +36,7 @@ class EquipmentHierarchyTests(TestCase):
         self.assertEqual([r.pk for r in nodes[self.root.pk]['children']],[self.child.pk])
         self.assertEqual(nodes[self.other.pk]['children'],[])
         self.assertContains(response,f'data-equipment-type="{self.root.pk}"')
-        self.assertContains(response,'Добавить технику')
+        self.assertContains(response,'data-equipment-add-menu')
         self.assertNotContains(response,'Модель для СМГ')
 
     def test_child_search_keeps_parent_context_without_selecting_unmatched_parent(self):

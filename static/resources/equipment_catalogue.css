@@ -1,4 +1,6 @@
 .equipment-catalogue { min-width:0; }
+.equipment-hub-nav{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px}
+.equipment-add-menu small{display:block;margin-top:3px;color:#61798b;font-size:12px;font-weight:400;white-space:normal}
 .equipment-catalogue [hidden] { display:none!important; }
 .equipment-catalogue-heading,.equipment-catalogue-actions,.equipment-catalogue-overview,.equipment-catalogue-viewbar,.equipment-type-actions { display:flex;flex-wrap:wrap;align-items:center;gap:12px; }
 .equipment-catalogue-heading { justify-content:space-between;align-items:flex-start;margin-bottom:16px; }

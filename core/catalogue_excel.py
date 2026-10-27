@@ -79,10 +79,11 @@ SCHEMAS = {
     'resources.BrigadeMacroGroup': ('position-macro-groups', 'Макрогруппы должностей', [('Название', 'name')], []),
     'resources.Equipment': ('equipment-units', 'Конкретная техника', [
         ('Госномер', 'plate_number'), ('Название', 'name'), ('Техника или модель', 'type.name'),
-        ('Техника для планирования', 'type.parent.name'), ('Марка / модель', 'brand_model'),
+        ('Техника для планирования', 'planning_type_name'), ('Группа техники', 'group_name'), ('Марка / модель', 'brand_model'),
         ('Год выпуска', 'manufacture_year'), ('Инвентарный номер', 'inventory_number'),
         ('VIN / заводской номер', 'vin'), ('Участок', 'site_name'),
-        ('Должность машиниста', 'operator_position.name'), ('Активна', 'is_active')],
+        ('Должность машиниста', 'operator_position.name'), ('Доступна для назначения', 'is_active'),
+        ('Последнее состояние', 'unit_state_label'), ('Дата состояния', 'unit_state_date'), ('Смена состояния', 'unit_state_shift')],
         ['type__parent', 'operator_position']),
     'projects.Project': ('projects', 'Проекты', [
         ('ID', 'pk'), ('Проект', 'name'), ('Описание', 'description'), ('Статус', 'get_status_display'),
@@ -120,6 +121,9 @@ SCHEMAS = {
 
 def catalogue_response(request, queryset):
     require_roles(request.user, READ_ROLES)
+    if queryset.model._meta.label == 'resources.Equipment' and 'unit_state' not in queryset.query.annotations:
+        from apps.resources.equipment_unit_catalogue import with_unit_state
+        queryset=with_unit_state(queryset, request.user.company)
     filename, title, columns, related = SCHEMAS[queryset.model._meta.label]
     queryset = queryset.filter(company=request.user.company)
     if related:
