@@ -117,6 +117,7 @@ def _rows(user, camp, day):
             'status':status,'status_label':dict(USES).get(status,'Не заполнено') if condition=='READY' else '—','previous':previous,'owner':owner,
             'planning_type':machine.type.parent if machine.type.parent_id else machine.type,
             'target':f'work:{record.work_id}:{record.work_item_id or 0}' if record and record.work_id else f'object:{record.construction_object_id}' if record and record.construction_object_id else '',
+            'details_url':reverse('production:transport_details',args=[machine.pk])+'?'+urlencode({'camp':camp.pk,'date':str(day)}),
             'history_url':reverse('production:transport_history',args=[machine.pk])})
     return sorted(rows,key=lambda r:(r['planning_type'].name.casefold(),r['machine'].plate_number,r['machine'].inventory_number,r['machine'].pk))
 
@@ -146,6 +147,18 @@ def _excel(camp,day,rows):
     for cell in ws[1]:cell.font=Font(bold=True,color='FFFFFF');cell.fill=PatternFill('solid',fgColor='087F99')
     ws.freeze_panes='D2';ws.auto_filter.ref=ws.dimensions
     for col in ws.columns:ws.column_dimensions[col[0].column_letter].width=min(60,max(14,max(len(str(c.value or '')) for c in col)+2))
+    from .transport_details_models import EquipmentDayDetails,DETAIL_FIELDS
+    from django.db.models import OuterRef,Subquery
+    ids=[r['machine'].pk for r in rows]
+    details=EquipmentDayDetails.objects.filter(company=camp.company,equipment_id__in=ids,date__lte=day)
+    latest=EquipmentDayDetails.objects.filter(company=camp.company,equipment_id=OuterRef('equipment_id'),date__lte=day).order_by('-date','-pk').values('pk')[:1]
+    notes=workbook.create_sheet('Ремонт и обслуживание');notes.append(['Дата сведений','Машина','ВЖГ',*[label for name,label in DETAIL_FIELDS]])
+    for detail in details.filter(pk=Subquery(latest)).select_related('equipment','camp'):
+        notes.append([detail.date.isoformat(),str(detail.equipment),detail.camp.name,*[getattr(detail,name) for name,label in DETAIL_FIELDS]])
+        for cell in notes[notes.max_row]:
+            if isinstance(cell.value,str):cell.data_type='s'
+    notes.freeze_panes='D2';notes.auto_filter.ref=notes.dimensions
+    for col in notes.columns:notes.column_dimensions[col[0].column_letter].width=30
     out=BytesIO();workbook.save(out)
     response=HttpResponse(out.getvalue(),content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     response['Content-Disposition']=f'attachment; filename="transport-{day.isoformat()}.xlsx"'
@@ -160,7 +173,7 @@ def board(request):
     default_camp=service.camps_for(request.user).filter(is_active=True).first() or service.camps_for(request.user).first()
     selector_data={**{'camp':str(default_camp.pk) if default_camp else '', 'date':timezone.localdate().isoformat()},**raw.dict()}
     selector=Selector(selector_data,user=request.user)
-    context={'selector':selector,'editable':role_code(request.user) in service.OPERATORS,'tab':request.GET.get('tab','day')}
+    context={'selector':selector,'editable':role_code(request.user) in service.OPERATORS,'tab':request.GET.get('tab','day'),'can_create':role_code(request.user) in service.OPERATORS}
     if not selector.is_valid():return render(request,'production/transport_board.html',context,status=400 if raw else 200)
     camp,day=selector.cleaned_data['camp'],selector.cleaned_data['date'];service.authorize(request.user,camp,False)
     context.update(window_context(request.user,day))
@@ -192,6 +205,8 @@ def board(request):
     occupied=service.present(request.user.company,day).values('equipment_id')
     disposed=EquipmentTransportEvent.objects.filter(company=request.user.company,kind='WRITEOFF',cancelled_at=None).values('equipment_id')
     context['arrival_ids']=list(Equipment.objects.filter(company=request.user.company,is_active=True).exclude(pk__in=occupied).exclude(pk__in=disposed).values_list('pk',flat=True))
+    from apps.resources.transport_import_models import TransportImportRow
+    context['import_errors']=TransportImportRow.objects.filter(company=request.user.company,status='PENDING',batch__applied_at__isnull=False).count()
     context['events']=EquipmentTransportEvent.objects.filter(company=request.user.company).filter(Q(from_camp=camp)|Q(to_camp=camp)).filter(date__lte=day).select_related('equipment','from_camp','to_camp','recorded_by','cancelled_by')[:100]
     if context['tab']=='calendar':
         start=day.replace(day=1);end=day.replace(day=monthrange(day.year,day.month)[1]);days=[start+timedelta(days=i) for i in range(end.day)]

@@ -17,6 +17,7 @@
                 </h4>
             </div>
             <div class="card-body">
+                {% if brigade %}<p class="small">Штатное расписание ЗУП: <strong>{{ brigade.staffing_status_label }}</strong>{% if brigade.staffing_synced_at %} · {{ brigade.staffing_synced_at|date:'d.m.Y H:i' }}{% endif %}. Признак обновляется автоматически из ЗУП и не зависит от наличия сотрудников.</p>{% endif %}
                 <form method="post">
                     {% csrf_token %}
 

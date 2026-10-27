@@ -15,10 +15,12 @@ def supported(table):
 
 @transaction.atomic
 def apply_names(run, report):
+    from .staffing_sync import snapshot_states, sync_states
+    states = snapshot_states(report)
     names = report.get('position_names')
     if not isinstance(names, list) or len(names) > 100000:
         raise ValidationError('Некорректный список должностей из 1С.')
-    if not names:
+    if not names and states is None:
         source=report.get('position_source',{})
         raise ValidationError('Должности не загружены: источник вернул 0 записей после отбора. '
                               f"Всего в dbo._Reference92: {source.get('total','неизвестно')}; "
@@ -39,7 +41,7 @@ def apply_names(run, report):
         if len(name) > Brigade._meta.get_field('name').max_length:
             raise ValidationError(f'Название длиннее 150 символов: {name[:70]}. Загрузка отменена целиком.')
         normalized.setdefault(name.casefold(), name)
-    if not normalized:raise ValidationError('Должности не загружены: все полученные наименования пустые.')
+    if not normalized and states is None:raise ValidationError('Должности не загружены: все полученные наименования пустые.')
     # Serialize imports for this company, including other worker processes.
     from .models import Company
     Company.objects.select_for_update().get(pk=run.connection.company_id)
@@ -52,8 +54,10 @@ def apply_names(run, report):
         created += 1
     result = {'created': created, 'existing': len(set(normalized) & existing),
               'duplicates': len(names) - empty - len(normalized), 'empty': empty}
+    staffing = sync_states(run, states if states is not None else {key:True for key in normalized}, complete=states is not None)
+    if states is not None:result['staffing'] = staffing
     AuditLog.objects.create(user=run.created_by, action='CREATE', entity_type='resources.Brigade',
-                            entity_id=str(run.pk), new_value=result,
+                            entity_id=str(run.pk), new_value={**result, 'staffing':staffing},
                             comment='Загрузка актуальных наименований должностей из 1С')
     return result
 

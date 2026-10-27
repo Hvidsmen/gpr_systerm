@@ -98,6 +98,21 @@ const path = require('node:path');
       await dialog.evaluate(node=>node.close());
       await popup.waitFor({state:'hidden'});
     }
+    // Scoped object selectors keep ancestors while searching and show connecting lines.
+    await page.evaluate(()=>{
+      const select=document.createElement('select');select.id='object-tree';select.name='object';
+      select.innerHTML='<option value="">Не выбрано</option><option value="" disabled data-object-id="10" data-object-label="КТП" data-object-path="КТП" data-object-ancestors="[]" data-object-depth="0" data-object-context="true">КТП</option><option value="11" data-object-id="11" data-object-label="КТП-1 Нефтепровод" data-object-path="КТП → КТП-1 Нефтепровод" data-object-ancestors="[10]" data-object-depth="1">КТП-1 Нефтепровод</option><option value="12" data-object-id="12" data-object-label="КТП-2 Нефтепровод" data-object-path="КТП → КТП-2 Нефтепровод" data-object-ancestors="[10]" data-object-depth="1">КТП-2 Нефтепровод</option>';
+      document.querySelector('main').append(select);
+    });
+    const tree=page.locator('#object-tree + .search-select-shell .search-select-button');await tree.waitFor();await tree.click();
+    assert.equal(await popup.locator('.search-select-tree-guide').count(),2);
+    await popup.locator('input').fill('КТП-2');
+    assert.equal(await popup.locator('[role=option]').count(),2);
+    assert.equal(await popup.locator('[role=option]').first().isDisabled(),true);
+    await page.screenshot({path:'/tmp/object-selector-tree.png',animations:'disabled'});
+    await popup.locator('input').press('ArrowDown');await popup.locator('input').press('Enter');
+    assert.equal(await page.locator('#object-tree').inputValue(),'12');
+    assert.equal(await tree.textContent(),'КТП → КТП-2 Нефтепровод');
     assert.deepEqual(errors, []);
     console.log('Searchable forms: passed validation, search, keyboard, multiple values, dependent options, dynamic rows, disabled fields, mobile layout and native dialog dropdowns.');
   } finally {await browser.close();}

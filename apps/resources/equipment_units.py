@@ -137,5 +137,9 @@ def unit_detail(request, pk):
     from apps.production.transport import camps_for
     camps=camps_for(request.user)
     transport_history_visible=unit.transport_events.filter(Q(from_camp__in=camps)|Q(to_camp__in=camps)).exists()
-    return render(request, 'resources/equipment_unit_detail.html', {'unit':unit,'as_of':timezone.localdate(),
+    from apps.production.transport import present,OPERATORS
+    current_stay=present(request.user.company,timezone.localdate()).filter(equipment=unit,camp__in=camps).first()
+    details_edit_url=(reverse('production:transport_details',args=[unit.pk])+'?'+urlencode({'camp':current_stay.camp_id,'date':str(timezone.localdate())})) if current_stay and role_code(request.user) in OPERATORS else ''
+    return render(request, 'resources/equipment_unit_detail.html', {'details_edit_url':details_edit_url,'unit':unit,'as_of':timezone.localdate(),
+        'details':unit.daily_details.filter(company=request.user.company,date__lte=timezone.localdate()).first(),
         'return_query':query,'unit_list_url':list_url(query),'history_visible':history_visible,'transport_history_visible':transport_history_visible,'editable':role_code(request.user) in PLAN_ROLES})

@@ -15,7 +15,7 @@ TITLES={
  'production.equipmentdayrecord':'Техника на ВЖГ за день','production.equipmentcampstay':'Пребывание машины в ВЖГ',
  'production.equipmenttransportevent':'Событие транспорта','production.equipmentassignment':'Назначение техники',
  'production.equipmentstatechange':'Состояние техники','production.laborfact':'Итог по должности',
- 'production.equipmentfact':'Итог по технике','production.fuelfact':'ГСМ','production.dayactuation':'Актировка',
+ 'production.equipmentfact':'Итог по технике','resources.transportimportrow':'Строка импорта техники','production.equipmentdaydetails':'Сведения по технике','production.campfuelday':'Баланс ГСМ на ВЖГ','production.fuelfact':'ГСМ','production.dayactuation':'Актировка',
  'personnel.campstay':'Пребывание сотрудника в ВЖГ','personnel.housingevent':'Событие персонала',
 }
 DIRECTIONS=[('works','Производство'),('labor','Персонал'),('mechanization','Транспорт и ГСМ')]
@@ -34,8 +34,11 @@ FIELD_LABELS={
  'assignment_reviewed':'Связи проверены','deviation_reason_id':'Причина отклонения','outside_smg':'Вне СМГ','smg_plan_quantity':'План СМГ',
  'reason':'Причина / пояснение','stay_id':'Период пребывания','activity_id':'Сотрудник за смену','is_cancelled':'Отменено','created_by_id':'Первоначальный автор',
  'planned_workers':'Плановая численность','planned_hours':'Плановые часы','planned_machine_hours':'Плановые машино-часы','hourly_rate':'Ставка за час',
+ 'source_file':'Файл','source_sheet':'Лист','source_row':'Строка','original':'Исходные данные','data':'Исправленные данные','error':'Ошибка','duplicate_of_id':'Совпавшая машина','resolved_by_id':'Кто обработал','resolved_at':'Дата обработки',
  'fuel_type':'Вид ГСМ','equipment_number':'Номер машины','equipment_ref':'Техника / назначение ГСМ',
 }
+from .transport_details_models import DETAIL_FIELDS
+FIELD_LABELS.update(dict(DETAIL_FIELDS))
 CHOICES={'WORKED':'Работала','WORKING':'Работала','IDLE':'Простой','READY':'Исправна','REPAIR':'В ремонте','SCRAP':'Под списание / на запчасти',
  'ARRIVAL':'Приезд / заезд','DEPARTURE':'Выезд','TRANSFER':'Перевод','WRITEOFF':'Списание','CONDITION':'Состояние','CANCEL':'Отмена'}
 

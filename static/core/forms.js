@@ -93,7 +93,7 @@
         this.close(); this.popup.remove(); this.shell.remove(); this.observer.disconnect(); instances.delete(this); return;
       }
       const selected = [...this.select.selectedOptions];
-      const text = selected.map(option => !option.value && /^[-–—]+$/.test(option.textContent.trim()) ? 'Выберите значение' : option.textContent.trim());
+      const text = selected.map(option => option.dataset.objectPath || (!option.value && /^[-–—]+$/.test(option.textContent.trim()) ? 'Выберите значение' : option.textContent.trim()));
       const label = this.select.labels?.[0]?.textContent.trim() || this.select.getAttribute('aria-label') || 'Выбор значения';
       const value = this.select.multiple ? (text.length ? text.slice(0, 2).join(', ') + (text.length > 2 ? ` · ещё ${text.length - 2}` : '') : 'Выберите значения') : (text[0] || 'Выберите значение');
       if (this.label.textContent !== value) this.label.textContent = value;
@@ -153,7 +153,17 @@
       this.sync();
     }
     render() {
-      const options = [...this.select.options].filter(option => !option.hidden && matches(option.textContent + ' ' + (option.parentElement.tagName === 'OPTGROUP' ? option.parentElement.label : ''), this.search.value));
+      const all = [...this.select.options].filter(option => !option.hidden);
+      let options = all.filter(option => matches((option.dataset.objectPath || option.textContent) + ' ' + (option.parentElement.tagName === 'OPTGROUP' ? option.parentElement.label : ''), this.search.value));
+      const ancestors = new Set(options.flatMap(option => JSON.parse(option.dataset.objectAncestors || '[]')).map(String));
+      const matched = new Set(options);
+      options = all.filter(option => matched.has(option) || ancestors.has(option.dataset.objectId));
+      const siblings = new Map();
+      options.filter(option => option.dataset.objectId).forEach(option => {
+        const path = JSON.parse(option.dataset.objectAncestors || '[]'), parent = String(path.at(-1) || '');
+        if (!siblings.has(parent)) siblings.set(parent,[]);
+        siblings.get(parent).push(option.dataset.objectId);
+      });
       this.options.replaceChildren();
       let previousGroup = null;
       options.slice(0, this.limit).forEach(option => {
@@ -168,8 +178,23 @@
         item.setAttribute('role', 'option'); item.setAttribute('aria-selected', String(option.selected));
         item.disabled = option.disabled || Boolean(group?.disabled);
         const mark = document.createElement('span'); mark.className = 'search-select-mark'; mark.textContent = option.selected ? '✓' : ''; mark.setAttribute('aria-hidden', 'true');
-        const text = document.createElement('span'); text.textContent = !option.value && /^[-–—]+$/.test(option.textContent.trim()) ? 'Не выбрано' : (option.textContent || 'Не выбрано');
-        item.append(mark, text);
+        const text = document.createElement('span'); text.textContent = option.dataset.objectLabel || (!option.value && /^[-–—]+$/.test(option.textContent.trim()) ? 'Не выбрано' : (option.textContent || 'Не выбрано'));
+        item.append(mark);
+        if (option.dataset.objectId) {
+          item.classList.add('search-select-tree-node'); item.title = option.dataset.objectPath;
+          const path = [...JSON.parse(option.dataset.objectAncestors || '[]').map(String),option.dataset.objectId];
+          const guides = document.createElement('span');guides.className='search-select-tree-guides';guides.setAttribute('aria-hidden','true');
+          for (let level=1;level<path.length;level++) {
+            const guide=document.createElement('span');guide.className='search-select-tree-guide';
+            if (level===path.length-1)guide.classList.add('tree-elbow');
+            if (siblings.get(path[level-1])?.at(-1)===path[level])guide.classList.add('tree-last');
+            guides.append(guide);
+          }
+          item.append(guides);
+          if (siblings.has(option.dataset.objectId))item.classList.add('tree-parent');
+          if (option.dataset.objectContext)item.classList.add('tree-context');
+        }
+        item.append(text);
         item.addEventListener('click', () => {
           if (this.disabled() || item.disabled) return;
           if (this.select.multiple) option.selected = !option.selected;

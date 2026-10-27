@@ -383,3 +383,9 @@ urlpatterns += [
 
 from .history_views import history as fact_history
 urlpatterns += [path('fact-history/',fact_history,name='fact_history')]
+
+from . import camp_fuel_views
+urlpatterns += [path('transport/fuel/',camp_fuel_views.board,name='camp_fuel')]
+
+from . import transport_details_views
+urlpatterns += [path('transport/<int:pk>/details/',transport_details_views.details,name='transport_details')]

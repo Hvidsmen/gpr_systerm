@@ -375,7 +375,8 @@ FROM [dbo].[_Reference92]
 '@)[0]
             $flags=@(Query $connection 'SELECT TOP (32) CONVERT(varchar(20),[_Marked],1) AS marked, CONVERT(varchar(20),[_Fld25711],1) AS excluded, COUNT_BIG(*) AS records FROM [dbo].[_Reference92] GROUP BY [_Marked],[_Fld25711] ORDER BY COUNT_BIG(*) DESC')
             $names=@(Query $connection 'SELECT [_Description] AS name FROM [dbo].[_Reference92] WHERE [_Marked]=0x00 AND [_Fld25711]=0x00')
-            Write-Json $reportPath @{positions_import=$true;position_names=@($names);position_source=$summary;position_flags=@($flags)}
+            $records=@(Query $connection 'SELECT CONVERT(varchar(32),[_IDRRef],2) AS ref, [_Description] AS name, CONVERT(varchar(20),[_Marked],1) AS marked, CONVERT(varchar(20),[_Fld25711],1) AS excluded FROM [dbo].[_Reference92]')
+            Write-Json $reportPath @{positions_import=$true;position_names=@($names);position_source=$summary;position_flags=@($flags);position_records=@($records);positions_snapshot_version=1}
             Write-Json $statusPath @{ok=$true;report=$reportPath}
             return
         }

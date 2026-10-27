@@ -42,12 +42,12 @@ class CatalogExcelExport:
 
 
 class BrigadeExport(CatalogExcelExport, BrigadeListView):
-    headers = ['Название', 'Группа', 'Макрогруппа', 'Описание', 'Активна', 'Единица измерения']
+    headers = ['Название', 'Группа', 'Макрогруппа', 'Описание', 'Активна', 'Единица измерения', 'Штатное расписание ЗУП', 'Обновлено из ЗУП']
     filename = 'brigades.xlsx'
     sheet_title = 'Бригады'
 
     def values(self, row):
-        return [row.name, row.group.name if row.group_id else '', row.macro_group.name if row.macro_group_id else '', row.description, 'Да' if row.is_active else 'Нет', row.unit]
+        return [row.name, row.group.name if row.group_id else '', row.macro_group.name if row.macro_group_id else '', row.description, 'Да' if row.is_active else 'Нет', row.unit, row.staffing_status_label, row.staffing_synced_at.isoformat() if row.staffing_synced_at else '']
 
 
 class EquipmentTypeExport(CatalogExcelExport, EquipmentTypeListView):

@@ -1,7 +1,7 @@
 {% extends 'base.html' %}{% load access static %}
 {% block title %}Машины с номерами{% endblock %}
 {% block extra_css %}<link rel="stylesheet" href="{% static 'resources/equipment_catalogue.css' %}?v=20261027-machines"><link rel="stylesheet" href="{% static 'resources/equipment_units.css' %}">{% endblock %}
-{% block content %}<section class="machine-catalogue" data-machine-catalogue>
+{% block content %}<p>{% if request.user|may:'resources:transport_import' %}<a href="{% url 'resources:transport_import' %}">Загрузить ежедневные сводки техники</a>{% endif %}</p><section class="machine-catalogue" data-machine-catalogue>
 {% include 'resources/_equipment_nav.html' with machines_tab=True %}
 <header class="equipment-catalogue-heading"><div><h1 class="h3 mb-2">Машины с номерами</h1><p class="text-muted mb-0">Каждая строка — конкретная машина. Номера отличают её от других машин той же модели.</p></div><div class="equipment-catalogue-actions">{% include 'resources/_equipment_add_menu.html' with planning_type=unit_parent model_record=unit_model %}{% if request.user|may:'resources:fleet_import' %}<a class="btn btn-outline-secondary" href="{% url 'resources:fleet_import' %}">Загрузить из Excel</a>{% endif %}</div></header>
 <div class="machine-summary" aria-label="Итоги по найденным машинам"><span>Найдено <strong>{{ counts.total }}</strong></span><span>Доступны для назначения <strong>{{ counts.available }}</strong></span><span>В ремонте <strong>{{ counts.repair }}</strong></span><span>Без сведений о состоянии <strong>{{ counts.unknown }}</strong></span></div>

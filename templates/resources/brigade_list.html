@@ -42,7 +42,7 @@
                 <thead class="table-light">
                     <tr>{% if request.user|may:bulk_route or request.user|may:'resources:brigade_bulk_group' %}<th style="width:36px" aria-label="Выбор строк"></th>{% endif %}
                         <th>Название</th><th>Сотрудники</th><th>Группа</th><th>Макрогруппа</th>
-                        <th>Ед. изм.</th><th>Описание</th>
+                        <th>Ед. изм.</th><th>Описание</th><th>Штатное расписание ЗУП</th>
                         <th style="width: 100px;">Статус</th>
                         <th style="width: 150px;">Действия</th>
                     </tr>
@@ -64,6 +64,7 @@
                         <td>
                             {{ brigade.description|default:"—" }}
                         </td>
+                        <td><span class="badge {% if brigade.staffing_current == True %}bg-success{% elif brigade.staffing_current == False %}bg-secondary{% else %}bg-light text-muted{% endif %}">{{ brigade.staffing_status_label }}</span>{% if brigade.staffing_synced_at %}<br><small class="text-muted">{{ brigade.staffing_synced_at|date:'d.m.Y H:i' }}</small>{% endif %}</td>
                         <td>
                             {% if brigade.is_active %}
                             <span class="badge bg-success">Активна</span>

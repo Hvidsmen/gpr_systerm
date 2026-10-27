@@ -113,6 +113,14 @@ class BrigadeMacroGroup(BaseCompanyModel):
 
 
 class Brigade(BaseCompanyModel):
+    staffing_current = models.BooleanField('Актуальна в штатном расписании ЗУП', null=True, default=None, editable=False)
+    staffing_synced_at = models.DateTimeField('Штатное расписание обновлено', null=True, editable=False)
+    staffing_source = models.CharField(max_length=400, blank=True, editable=False)
+
+    @property
+    def staffing_status_label(self):
+        return 'Актуальна' if self.staffing_current is True else 'Неактуальна' if self.staffing_current is False else 'Не получено из ЗУП'
+
     excel_aliases = models.JSONField('Названия в Excel', default=list, blank=True, validators=[validate_excel_aliases])
     """Справочник бригад."""
     code = models.CharField(
@@ -317,3 +325,4 @@ class EquipmentCrewPosition(BaseCompanyModel):
 class PositionPlanningBrigade(BaseCompanyModel):
     position = models.OneToOneField(Position,on_delete=models.PROTECT,related_name='planning_mapping')
     brigade = models.OneToOneField(Brigade,on_delete=models.PROTECT,related_name='position_mapping')
+from .transport_import_models import TransportImportBatch,TransportImportRow

@@ -224,7 +224,7 @@ class HousingTests(TestCase):
         self.assertEqual(self.client.get(reverse('personnel:board_list'),{'tables':'1'}).status_code,200)
         response=self.client.get(reverse('personnel:housing'),{'camp':self.a.pk,'date':str(self.day)})
         snapshot=response.context['form'].initial['snapshot']
-        data={'camp':self.a.pk,'kind':'ARRIVAL','date':str(self.day),'people':[self.second_person.pk],'snapshot':snapshot}
+        data={'camp':self.a.pk,'kind':'ARRIVAL','date':str(self.day),'employees':[self.second_employee.pk],'snapshot':snapshot}
         response=self.client.post(reverse('personnel:housing'),data);self.assertEqual(response.status_code,302)
         self.assertEqual(self.visible(self.obj),{self.employee.pk,self.second_employee.pk})
         response=self.client.post(reverse('personnel:housing'),data)

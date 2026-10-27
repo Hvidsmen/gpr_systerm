@@ -48,11 +48,13 @@ def available_positions(company):
 
 
 def planning_positions(company):
-    """New plan choices require a current employee, not just an active catalogue row."""
-    from django.db.models import Exists, OuterRef
+    """A confirmed current staffing position may be vacant. Keep legacy choices until first sync."""
+    from django.db.models import Exists, OuterRef, Q
     from .models import Employee
     employees = Employee.objects.filter(company=company, is_active=True, position_id=OuterRef('pk'))
-    return available_positions(company).filter(Exists(employees))
+    return available_positions(company).annotate(has_active_employee=Exists(employees)).filter(
+        Q(planning_mapping__brigade__staffing_current=True) |
+        Q(planning_mapping__brigade__staffing_current__isnull=True, has_active_employee=True))
 
 
 def planning_brigades(company):

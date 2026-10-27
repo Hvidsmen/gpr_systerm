@@ -1,6 +1,6 @@
-{% extends 'base.html' %}{% load revenue_tags estimate_tags %}{% block content %}
+{% extends 'base.html' %}{% load object_tree %}{% load revenue_tags estimate_tags %}{% block content %}
 <h1>Сводный отчет по сметам</h1>
-<form method="get" class="card p-3 mb-3"><label for="estimate-object">Объект</label><select id="estimate-object" name="object" class="form-select"><option value="">Все объекты</option>{% for obj in objects %}<option value="{{ obj.pk }}" {% if selected_object == obj.pk|stringformat:'s' %}selected{% endif %}>{{ obj.name }}</option>{% endfor %}</select><button class="btn btn-primary mt-2">Применить</button></form>
+<form method="get" class="card p-3 mb-3"><label for="estimate-object">Объект</label><select id="estimate-object" name="object" class="form-select"><option value="">Все объекты</option>{% object_options objects selected_object %}</select><button class="btn btn-primary mt-2">Применить</button></form>
 <p><a class="btn btn-outline-primary" href="{% url 'estimates:estimate_export' %}?mode=full&amp;object={{ selected_object|urlencode }}">Полный Excel</a> <a class="btn btn-outline-primary" href="{% url 'estimates:estimate_export' %}?mode=works&amp;object={{ selected_object|urlencode }}">Excel: работы и подработы</a></p>
 <div class="card p-3 mb-3"><strong>Итого по выбранным сметам</strong><span>Базисная стоимость: {{ totals.base|money }} ₽ · текущая: {{ totals.current|money }} ₽</span></div>
 <p class="text-muted">Нулевые и пустые стоимости отдельных материальных строк учитываются как 0 и не блокируют итоги. Отдельные загруженные документы суммируются, в том числе измененные варианты одной сметы.</p>

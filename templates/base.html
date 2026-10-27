@@ -334,11 +334,11 @@
     </style>
 
     {% block extra_css %}{% endblock %}
-<link rel="stylesheet" href="{% static 'core/forms.css' %}">
+<link rel="stylesheet" href="{% static 'core/forms.css' %}?v=20261028-object-tree">
 <link rel="stylesheet" href="{% static 'core/portal.css' %}?v=20261023-date-lines">
 <link rel="stylesheet" href="{% static 'core/sidebar.css' %}?v=20261028">
 <script src="{% static 'core/sidebar.js' %}?v=20261028" defer></script>
-<script src="{% static 'core/forms.js' %}?v=20261027-dialog" defer></script>
+<script src="{% static 'core/forms.js' %}?v=20261028-object-tree" defer></script>
 </head>
 <body{% if not user.is_authenticated %} class="without-sidebar"{% endif %}>
 

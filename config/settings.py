@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+FORM_RENDERER = 'core.form_renderer.ObjectTreeFormRenderer'
 
 # Monthly editors contain multiple fields per work/resource row. Allow the
 # supported formsets to submit together while keeping a finite parser limit.

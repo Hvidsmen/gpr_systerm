@@ -1,0 +1,6 @@
+{% extends 'base.html' %}{% load static %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'resources/transport_import.css' %}">{% endblock %}
+{% block content %}<a href="{% url 'production:transport_board' %}">← Ведение техники</a><h1 class="h3 mt-3">{{ title }}</h1>
+<p>Из каждого файла читается первый лист «Сводка». «Участок» — ВЖГ, «Категория» в файле — техника для планирования. Связи городков со строительными объектами настраиваются отдельно.</p><p>Файлы проверяются по порядку: первый файл, затем второй, сверху вниз. Первая корректная запись загружается, повторяющиеся VIN и конфликтующие номера попадают в блок ошибок диспетчера. Все исходные колонки сохраняются. Макросы не выполняются.</p>
+<p><a href="{% url 'resources:transport_import_errors' %}">Ошибки импорта техники</a></p>
+<form method="post" enctype="multipart/form-data" class="card card-body">{% csrf_token %}{% include 'forms/fields.html' with form=form %}<div class="mt-3"><button class="btn btn-primary">Проверить файлы</button></div></form>{% endblock %}

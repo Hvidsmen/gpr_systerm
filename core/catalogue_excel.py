@@ -132,7 +132,14 @@ def catalogue_response(request, queryset):
     if queryset.model._meta.label=='works.ProjectWork' and role_code(request.user)=='ADMIN':columns=[*columns,('Старая структура','is_legacy_structure')]
     sheets = [(title, [label for label, path in columns], sheet_rows(queryset, columns))]
     label = queryset.model._meta.label
-    if label == 'works.ProjectWork':
+    if label == 'resources.Equipment':
+        from apps.production.transport_details_models import EquipmentDayDetails,DETAIL_FIELDS
+        from django.utils import timezone
+        day=request.GET.get('as_of') or timezone.localdate()
+        children=EquipmentDayDetails.objects.filter(company=request.user.company,equipment_id__in=queryset.values('pk'),date__lte=day).select_related('equipment','camp').order_by('equipment_id','date')
+        detail_columns=[('Дата','date'),('Машина','equipment'),('ВЖГ','camp.name'),*[(label,name) for name,label in DETAIL_FIELDS]]
+        sheets.append(('Ремонт и обслуживание',[label for label,path in detail_columns],sheet_rows(children,detail_columns)))
+    elif label == 'works.ProjectWork':
         from apps.works.models import ProjectWorkItem
         children = ProjectWorkItem.objects.filter(company=request.user.company,
             project_work_id__in=queryset.values('pk')).select_related(

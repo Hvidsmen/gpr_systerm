@@ -18,6 +18,8 @@ class CatalogFilterForm(forms.Form):
 
 
 class BrigadeFilterForm(CatalogFilterForm):
+    staffing_current = forms.ChoiceField(label='Штатное расписание ЗУП', required=False,
+        choices=[('', 'Все должности'), ('yes', 'Актуальные'), ('no', 'Неактуальные'), ('unknown', 'Не получено из ЗУП')])
     group = forms.ModelChoiceField(label='Группа', queryset=BrigadeGroup.objects.all(), required=False, empty_label='Все группы')
     macro_group = forms.ModelChoiceField(label='Макрогруппа', queryset=BrigadeMacroGroup.objects.all(), required=False, empty_label='Все макрогруппы')
     active_employees = forms.ChoiceField(label='Активные сотрудники', required=False,
@@ -64,6 +66,8 @@ class CatalogFilterMixin:
                 queryset = queryset.filter(Q(category=value)|Q(category__isnull=True,parent__category=value))
             elif key == 'active_employees':
                 queryset = queryset.filter(active_employee_count__gt=0) if value == 'yes' else queryset.filter(active_employee_count=0)
+            elif key == 'staffing_current':
+                queryset = queryset.filter(staffing_current__isnull=True) if value == 'unknown' else queryset.filter(staffing_current=value=='yes')
             else:
                 queryset = queryset.filter(**{key:value})
         return queryset

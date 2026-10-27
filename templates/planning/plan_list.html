@@ -1,4 +1,4 @@
-{% extends 'base.html' %}
+{% extends 'base.html' %}{% load object_tree %}
 {% load access %}
 {% load i18n %}
 
@@ -60,11 +60,7 @@
                     </label>
                     <select id="object" name="object" class="form-select">
                         <option value="">— Все объекты —</option>
-                        {% for object in objects %}
-                        <option value="{{ object.pk }}" {% if selected_object == object.pk|stringformat:"d" %}selected{% endif %}>
-                            {{ object.name }}
-                        </option>
-                        {% endfor %}
+                        {% object_options objects selected_object %}
                     </select>
                 </div>
                 <div class="col-md-3">

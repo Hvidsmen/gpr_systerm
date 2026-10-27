@@ -99,12 +99,17 @@ def workspace(request):
         try:require_fact_day(request.user,day)
         except ValidationError as exc:raise PermissionDenied('; '.join(exc.messages))
     kind=request.GET.get('action','ARRIVAL');kind=kind if kind in {'ARRIVAL','DEPARTURE','TRANSFER'} else 'ARRIVAL'
+    selected_employee=request.GET.get('employee','')
+    if not selected_employee.isdigit() and request.GET.get('person','').isdigit():
+        selected_employee=str(Person.objects.filter(company=request.user.company,pk=request.GET['person']).values_list('employee_id',flat=True).first() or '')
     form=MovementForm(request.POST if request.method=='POST' else None,company=request.user.company,camp=camp,day=day,
-        initial={'kind':kind,'date':day,'snapshot':housing.movement_snapshot(request.user),'people':[request.GET['person']] if request.GET.get('person','').isdigit() else []})
+        initial={'kind':kind,'date':day,'snapshot':housing.movement_snapshot(request.user),'employees':[selected_employee] if selected_employee.isdigit() else []})
     if request.method=='POST' and form.is_valid():
         try:
-            count=housing.move(request.user,form.cleaned_data['kind'],camp,form.cleaned_data['date'],form.cleaned_data['people'],
-                employees=form.cleaned_data['employees'],target=form.cleaned_data.get('target'),comment=form.cleaned_data['comment'],snapshot=form.cleaned_data['snapshot'])
+            selected=form.cleaned_data['employees'];arrival=form.cleaned_data['kind']=='ARRIVAL'
+            people=[] if arrival else list(Person.objects.filter(company=request.user.company,employee__in=selected))
+            count=housing.move(request.user,form.cleaned_data['kind'],camp,form.cleaned_data['date'],people,
+                employees=selected if arrival else (),target=form.cleaned_data.get('target'),comment=form.cleaned_data['comment'],snapshot=form.cleaned_data['snapshot'])
         except (ValidationError,IntegrityError) as exc:form.add_error(None,'; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Размещение изменилось одновременно с вашим вводом. Обновите список.')
         else:
             messages.success(request,f'Перемещение сохранено. Сотрудников: {count}.');return redirect(camp_url(camp,form.cleaned_data['date']))

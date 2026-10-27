@@ -79,7 +79,7 @@ def append_revision(instance, before, after, using):
         raise ValueError('Автор изменения и фактическая запись должны относиться к одной компании.')
     metadata = after or before
     model = instance._meta.label_lower
-    direction = 'mechanization' if model in {'production.equipmentactivity','production.equipmentfact','production.fuelfact','production.equipmentdayrecord','production.equipmenttransportevent','production.equipmentcampstay','production.equipmentassignment','production.equipmentstatechange'} else 'labor' if model.startswith('personnel.') or model == 'production.laborfact' else 'works'
+    direction = 'mechanization' if model in {'production.equipmentactivity','production.equipmentfact','production.fuelfact','production.campfuelday','resources.transportimportrow','production.equipmentdaydetails','production.equipmentdayrecord','production.equipmenttransportevent','production.equipmentcampstay','production.equipmentassignment','production.equipmentstatechange'} else 'labor' if model.startswith('personnel.') or model == 'production.laborfact' else 'works'
     if model=='production.employeeactivity':
         from apps.production.production_entry import is_general_employee
         from core.permissions import role_code

@@ -1,0 +1,1 @@
+{% for option in options %}<option value="{{ option.value|stringformat:'s' }}"{% if option.selected %} selected{% endif %}{% for name, value in option.attrs.items %}{% if value is not False %} {{ name }}{% if value is not True %}="{{ value|stringformat:'s' }}"{% endif %}{% endif %}{% endfor %}>{{ option.label }}</option>{% endfor %}
