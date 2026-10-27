@@ -70,7 +70,35 @@ const path = require('node:path');
     assert.equal(await page.locator('#resource').inputValue(),'9');
     await page.locator('#rows select').evaluate(s=>s.remove());
     await page.waitForFunction(()=>!document.querySelector('#rows .search-select-shell'));
+    // The native dialog top layer must contain the popup, including its search focus.
+    await page.evaluate(() => {
+      const dialog=document.createElement('dialog');dialog.id='resource-dialog';
+      dialog.style.cssText='width:650px;max-width:calc(100vw - 32px);padding:24px;overflow:auto';
+      dialog.innerHTML='<form><label for="modal-equipment">Техника</label><select id="modal-equipment" name="equipment"><option value="">---------</option><option value="gear">Экскаватор</option></select><label for="modal-position">Должность</label><select id="modal-position" name="position"><option value="">---------</option><option value="person">Машинист экскаватора</option></select><button type="button">Добавить в план</button></form>';
+      document.querySelector('main').append(dialog);
+    });
+    const dialog=page.locator('#resource-dialog');
+    await dialog.locator('.search-select-button').first().waitFor({state:'attached'});
+    for(const width of [1440,390]) {
+      await page.setViewportSize({width,height:844});
+      await dialog.evaluate(node=>node.showModal());
+      for(const [id,value] of [['modal-equipment','gear'],['modal-position','person']]) {
+        const button=page.locator('#'+id+' + .search-select-shell .search-select-button');
+        await button.click();
+        assert.equal(await popup.evaluate(node=>node.closest('dialog')?.id),'resource-dialog');
+        await popup.locator('input').fill('экскаватор');
+        assert(await popup.locator('input').evaluate(node=>node===document.activeElement),'Dialog allows focus in dropdown search');
+        assert(await popup.locator('[role=option]').evaluate(node=>{const r=node.getBoundingClientRect();return node.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));}),'Dropdown is above the modal backdrop and can be clicked');
+        await popup.locator('[role=option]').click();
+        assert.equal(await page.locator('#'+id).inputValue(),value);
+        await button.click();await popup.locator('input').press('Escape');
+        assert(await dialog.evaluate(node=>node.open),'Escape closes the dropdown without closing its dialog');
+      }
+      await dialog.locator('.search-select-button').first().click();
+      await dialog.evaluate(node=>node.close());
+      await popup.waitFor({state:'hidden'});
+    }
     assert.deepEqual(errors, []);
-    console.log('Searchable forms: passed validation, search, keyboard, multiple values, dependent options, dynamic rows, disabled fields and mobile layout.');
+    console.log('Searchable forms: passed validation, search, keyboard, multiple values, dependent options, dynamic rows, disabled fields, mobile layout and native dialog dropdowns.');
   } finally {await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

@@ -3,6 +3,15 @@
  'use strict';
  const root=document.querySelector('[data-plan-workbench]');if(!root)return;
  const daily=root.dataset.planWorkbench==='smg',matrix=root.querySelector('[data-plan-matrix]');
+ // Account for the live header height, including workflow and save messages.
+ const header=root.querySelector('.plan-action-header');
+ function positionAddBar(){
+  if(!header)return;
+  const top=parseFloat(getComputedStyle(header).top)||0;
+  root.style.setProperty('--plan-workbench-add-top',(top+header.getBoundingClientRect().height+6)+'px');
+ }
+ if(header&&window.ResizeObserver)new ResizeObserver(positionAddBar).observe(header);
+ window.addEventListener('resize',positionAddBar);positionAddBar();
  const native=document.getElementById('allocation-editor');
  const search=document.getElementById('smg-search'),kind=document.getElementById('smg-kind'),deviations=document.getElementById('smg-deviations');
  const notice=root.querySelector('[data-plan-copy-status]');

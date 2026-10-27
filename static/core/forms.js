@@ -53,7 +53,11 @@
       this.clear.className = 'search-select-clear';
       this.clear.textContent = 'Снять выбор';
       this.popup.append(this.search, this.options, this.clear);
-      (select.closest('.modal') || document.body).append(this.popup);
+      // Native modal dialogs live in the top layer; their dropdown must be a descendant.
+      this.dialog = select.closest('dialog');
+      (select.closest('dialog, .modal') || document.body).append(this.popup);
+      this.onDialogClose = () => this.close();
+      this.dialog?.addEventListener('close', this.onDialogClose);
       this.button.addEventListener('click', () => this.isOpen ? this.close() : this.open());
       this.button.addEventListener('keydown', event => {
         if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {event.preventDefault(); this.open();}
@@ -85,6 +89,7 @@
     get isOpen() {return !this.popup.hidden;}
     sync() {
       if (!this.select.isConnected) {
+        this.dialog?.removeEventListener('close', this.onDialogClose);
         this.close(); this.popup.remove(); this.shell.remove(); this.observer.disconnect(); instances.delete(this); return;
       }
       const selected = [...this.select.selectedOptions];
