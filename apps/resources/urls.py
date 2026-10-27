@@ -98,3 +98,6 @@ from .brigade_batch_merge import batch_merge
 from .zup_positions import link_employees
 urlpatterns += [path('brigades/merge-first/',batch_merge,name='brigade_batch_merge'),
                 path('brigades/link-employees/',link_employees,name='brigade_link_employees')]
+
+from .brigade_bulk_group import assign_groups
+urlpatterns += [path('brigades/assign-groups/', assign_groups, name='brigade_bulk_group')]

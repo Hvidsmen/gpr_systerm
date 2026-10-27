@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+{% block title %}Назначить группу должностям{% endblock %}
+{% block content %}
+<h1>Назначить группу должностям</h1>
+<p>Выбрано должностей: {{ rows|length }}.</p>
+<details class="mb-3"><summary>Показать выбранные должности</summary><ul>{% for row in rows %}<li>{{ row.name }}</li>{% endfor %}</ul></details>
+<form method="post" action="{% url 'resources:brigade_bulk_group' %}" class="card card-body">{% csrf_token %}
+<input type="hidden" name="return_query" value="{{ return_query }}">{% for row in rows %}<input type="hidden" name="selected" value="{{ row.pk }}">{% endfor %}
+{% include 'forms/fields.html' %}
+<p class="small text-muted">«Не менять» сохраняет текущее назначение. «Без группы» снимает его у выбранных должностей.</p>
+<div class="d-flex gap-2"><button class="btn btn-primary">Применить к выбранным</button><a class="btn btn-outline-secondary" href="{{ return_url }}">Отмена</a></div>
+</form>
+{% endblock %}

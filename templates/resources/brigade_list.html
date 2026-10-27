@@ -1,13 +1,15 @@
 {% extends 'base.html' %}
-{% load access %}
+{% load access static %}
 {% load i18n %}
 
 {% block title %}Должность - ЯДС ОС{% endblock %}
 
+{% block extra_css %}<link rel="stylesheet" href="{% static 'resources/brigade_bulk_group.css' %}">{% endblock %}
 {% block content %}<p><a class="btn btn-outline-primary" href="{% url 'resources:fleet_import' %}">Загрузить технику и должности · лист «Сводка»</a></p>
 {% if request.user|may:'resources:catalogue_purge' %}<p><a class="btn btn-outline-danger" href="{% url 'resources:catalogue_purge' 'brigades' %}">Удалить все должности компании</a></p>{% endif %}
 {% with bulk_route='resources:bulk_delete' bulk_kind='brigades' %}
 {% include 'bulk/toolbar.html' %}
+{% include 'resources/_brigade_bulk_group.html' %}
 {% if request.user|may:'resources:brigade_merge' %}<a class="btn btn-outline-primary mb-3" href="{% url 'resources:brigade_merge' %}">Объединить должности</a>{% endif %}
 {% if brigade_duplicates %}<section class="alert alert-warning"><div class="d-flex flex-wrap gap-2 align-items-center"><strong>Групп одинаковых должностей: {{ brigade_duplicates|length }}</strong>{% if request.user|may:'resources:brigade_batch_merge' %}<a class="btn btn-primary btn-sm" href="{% url 'resources:brigade_batch_merge' %}">Объединить все дубли по первой записи</a>{% endif %}</div><details class="mt-2"><summary>Показать дубли</summary>{% for duplicates in brigade_duplicates %}<div class="small mt-1">Должность «{{ duplicates.0.name }}» имеет {{ duplicates|length }} записей. Остаётся первая: ID {{ duplicates.0.pk }}.</div>{% endfor %}</details></section>{% endif %}
 {% if request.user|may:'resources:brigade_link_employees' %}<form method="post" action="{% url 'resources:brigade_link_employees' %}" class="mb-3">{% csrf_token %}<button class="btn btn-outline-primary">Связать должности сотрудников</button><span class="small text-muted ms-2">По данным ЗУП, только при единственном совпадении в справочнике.</span></form>{% endif %}
@@ -38,7 +40,7 @@
         <div class="table-responsive">
             <table class="table table-hover mb-0">
                 <thead class="table-light">
-                    <tr>{% if request.user|may:bulk_route %}<th style="width:36px" aria-label="Выбор строк"></th>{% endif %}
+                    <tr>{% if request.user|may:bulk_route or request.user|may:'resources:brigade_bulk_group' %}<th style="width:36px" aria-label="Выбор строк"></th>{% endif %}
                         <th>Название</th><th>Сотрудники</th><th>Группа</th><th>Макрогруппа</th>
                         <th>Ед. изм.</th><th>Описание</th>
                         <th style="width: 100px;">Статус</th>
@@ -47,7 +49,7 @@
                 </thead>
                 <tbody>
                     {% for brigade in brigades %}
-                    <tr class="{% if not brigade.is_active %}table-secondary text-muted{% endif %}">{% if request.user|may:bulk_route %}<td>{% include 'bulk/checkbox.html' with record=brigade %}</td>{% endif %}
+                    <tr class="{% if not brigade.is_active %}table-secondary text-muted{% endif %}">{% if request.user|may:bulk_route or request.user|may:'resources:brigade_bulk_group' %}<td>{% include 'bulk/checkbox.html' with record=brigade %}</td>{% endif %}
                         <td>
                             <strong>{{ brigade.name }}</strong>
                             {% if brigade.members.exists %}

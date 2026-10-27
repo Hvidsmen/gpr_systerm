@@ -66,6 +66,8 @@ class BrigadeListView(CatalogFilterMixin, CompanyRequiredMixin, ListView):
         for item in Brigade.objects.filter(company=self.get_company(), merge_source__isnull=True).order_by('pk'):
             groups.setdefault(key(item.name), []).append(item)
         context['brigade_duplicates'] = [items for items in groups.values() if len(items) > 1]
+        from .brigade_bulk_group import GroupAssignmentForm
+        context['group_assignment_form'] = GroupAssignmentForm(company=self.get_company(), prefix='assignment')
         return context
 
 
