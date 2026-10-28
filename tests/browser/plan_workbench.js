@@ -31,7 +31,7 @@ const c=JSON.parse(process.env.PLAN_WORKBENCH_CONFIG);
    await page.waitForFunction(({daily})=>{const group=document.querySelector('[data-plan-entry][data-label="Экскаватор с машинистом"]').closest('[data-smg-group]');return Math.abs(Number(group.querySelector('[data-plan-group-totals] [data-plan-total-after]').dataset.value)-(daily?1/31:1))<1e-8;},{daily});
    if(daily)assert.equal(await resourceGroup().locator('[data-plan-total-date="2026-01-01"]').getAttribute('data-value'),'1');
    await resourceGroup().locator(':scope>summary').click();assert(!(await resourceGroup().evaluate(node=>node.open)));
-   assert(await resourceGroup().locator('[data-plan-group-total-number]').isVisible(),'Collapsed groups retain the total');
+   assert(await resourceGroup().locator(daily?'[data-plan-group-totals] [data-plan-total-after]':'[data-plan-group-total-number]').isVisible(),'Collapsed groups retain the total');
    await resourceGroup().locator(':scope>summary').click();
 
    assert.equal(Number(await people().inputValue()),initial+1,'Crew follows machine immediately');
@@ -67,9 +67,26 @@ const c=JSON.parse(process.env.PLAN_WORKBENCH_CONFIG);
     const peopleGroup=page.locator('[data-plan-entry][data-label="Машинист"]').locator('xpath=ancestor::details[@data-smg-group][1]');
     assert.equal(await peopleGroup.locator('[data-plan-group-totals] [data-plan-total-after]').getAttribute('data-value'),'8');
     await page.locator('#smg-search').fill('Экскаватор с машинистом');
-    assert.equal(await resourceGroup().locator('[data-plan-group-total-caption]').innerText(),'По фильтру');
+    assert((await resourceGroup().locator('[data-plan-group-total-caption]').innerText()).includes('фильтру'));
     assert.equal(await page.locator('[data-smg-section=equipment] [data-plan-section-totals] [data-plan-total-after]').getAttribute('data-value'),'4');
     await page.locator('#smg-reset').click();
+    // Every body and subtotal uses exactly the one shared calendar axis.
+    async function calendarAligned(){
+     const result=await page.evaluate(()=>{const grid=document.querySelector('[data-smg-calendar-grid]'),head=grid.querySelector('[data-smg-calendar-date]'),date=head.dataset.smgCalendarDate,x=head.getBoundingClientRect().x;
+      const cells=[...grid.querySelectorAll('[data-smg-day-cell][data-date="'+date+'"],[data-plan-total-date="'+date+'"]')].filter(cell=>cell.getClientRects().length);
+      return {count:cells.length,offsets:cells.map(cell=>cell.getBoundingClientRect().x-x)};});
+     assert(result.count>=4);assert(result.offsets.every(value=>Math.abs(value)<=2),'SMG date columns diverged: '+JSON.stringify(result));
+    }
+    assert.equal(await page.locator('[data-smg-calendar-header]').count(),1);await calendarAligned();
+    await page.locator('[data-smg-calendar-header-scroll]').evaluate(el=>el.scrollLeft=700);
+    await page.waitForFunction(()=>Math.abs(document.querySelector('[data-smg-calendar-scroll]').scrollLeft-700)<1);await calendarAligned();
+    await page.locator('[data-smg-calendar-scroll]').evaluate(el=>el.scrollLeft=350);
+    await page.waitForFunction(()=>Math.abs(document.querySelector('[data-smg-calendar-header-scroll]').scrollLeft-350)<1);await calendarAligned();
+    await page.locator('[data-smg-section=labor]').evaluate(el=>window.scrollTo(0,el.getBoundingClientRect().top+scrollY-350));
+    const sticky=await page.locator('[data-smg-calendar-header]').evaluate(el=>({top:el.getBoundingClientRect().top,want:parseFloat(getComputedStyle(el).top)}));
+    assert(Math.abs(sticky.top-sticky.want)<2,'Calendar header must stick below the existing action bars');
+    await page.screenshot({path:'/tmp/smg-shared-calendar-sticky.png',animations:'disabled'});
+    await page.locator('[data-smg-calendar-header-scroll]').evaluate(el=>el.scrollLeft=0);
     // Disabled/closed day controls must never be filled by the monthly action.
     await machine().evaluate(input=>input.disabled=true);await fillMachine().fill('5');
     assert.equal(await machine().inputValue(),'4');

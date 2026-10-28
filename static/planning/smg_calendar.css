@@ -1,0 +1,35 @@
+/* A single day axis and horizontal viewport for every SMG section. */
+.smg-calendar-grid{--smg-resource-width:340px;--smg-measure-width:200px;--smg-value-width:104px;--smg-numeric-columns:32;--smg-grid-width:calc(var(--smg-resource-width) + var(--smg-measure-width) + var(--smg-value-width)*var(--smg-numeric-columns));min-width:0}
+.smg-calendar-header{position:sticky;top:var(--smg-calendar-top,300px);z-index:1008;background:#f4f8fc;border:1px solid #cfdeeb;border-radius:6px;box-shadow:0 3px 8px #183b5614;margin-bottom:10px}
+.smg-calendar-header-scroll,.smg-calendar-scroll{overflow-x:auto;max-width:100%;scrollbar-width:thin;overscroll-behavior-x:contain}
+.smg-calendar-header-scroll:focus-visible,.smg-calendar-scroll:focus-visible{outline:2px solid #087fa0;outline-offset:2px}
+.smg-calendar-header-table{width:var(--smg-grid-width);table-layout:fixed;border-spacing:0;font-size:12px;font-variant-numeric:tabular-nums}
+.smg-calendar-header-table th{height:40px;padding:8px;text-align:center;border-right:1px solid #e1eaf3;font-weight:500;color:#48667f;background:#f4f8fc}
+.smg-calendar-header-table th:first-child{text-align:left;position:sticky;left:0;z-index:2;background:#f4f8fc}
+.smg-resource-column{width:var(--smg-resource-width)}.smg-measure-column{width:var(--smg-measure-width)}.smg-value-column{width:var(--smg-value-width)}
+.smg-calendar-canvas{width:var(--smg-grid-width);min-width:100%}
+.smg-calendar-grid .plan-workbench-section{padding-top:0!important;padding-bottom:8px!important;border-radius:6px}
+.smg-calendar-grid .matrix-scroll{width:var(--smg-grid-width);max-height:none;overflow:visible;border:0;border-radius:0;margin-left:calc(-1 * var(--smg-inset,0px));box-shadow:0 0 0 1px #dce6ef}
+.smg-calendar-grid .matrix-table{position:relative;table-layout:fixed;width:var(--smg-grid-width);min-width:0}
+.smg-calendar-grid .matrix-table th,.smg-calendar-grid .matrix-table td{min-width:0;max-width:none;box-sizing:border-box;overflow-wrap:anywhere;white-space:normal}
+.smg-calendar-grid .matrix-table .matrix-label{width:var(--smg-resource-width);min-width:0;max-width:none;padding-left:calc(var(--smg-inset,0px) + 10px);font-size:13px}
+.smg-calendar-grid [data-plan-measure]>th:not(.matrix-label){min-width:0}
+/* Retain table headings for screen readers and Excel copying, without repeats. */
+.smg-calendar-grid .matrix-table thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.smg-calendar-grid .matrix-table thead th{position:static;min-width:0;height:0;padding:0}
+.smg-calendar-grid .smg-day-input,.smg-calendar-grid [data-smg-fill-month]{min-width:0;width:100%;max-width:100%}
+.smg-calendar-grid .smg-work-map form{min-width:0}
+.smg-calendar-grid .smg-calendar-summary{display:grid;grid-template-columns:var(--smg-resource-width) var(--smg-measure-width) repeat(var(--smg-numeric-columns),var(--smg-value-width));align-items:stretch;width:var(--smg-grid-width);margin:0 0 8px calc(-1 * var(--smg-inset,0px));padding:0!important;font-size:13px!important;min-height:38px;background:#edf4fa;list-style:none;border-radius:0}
+.smg-calendar-summary::-webkit-details-marker{display:none}
+.smg-summary-label{min-width:0;overflow-wrap:anywhere}
+.smg-calendar-summary>.smg-summary-label{position:sticky;left:0;z-index:3;background:inherit;padding:9px 8px 9px calc(var(--smg-inset,0px) + 10px);box-shadow:1px 0 0 #dce6ef}
+.smg-calendar-summary>.smg-summary-label::before{content:'▸';display:inline-block;width:15px;font-size:11px}
+details[open]>.smg-calendar-summary>.smg-summary-label::before{content:'▾'}
+.smg-summary-values{display:contents}
+.smg-summary-value,.smg-summary-measure{min-width:0;padding:9px 8px;border-left:1px solid #dfe8f1;font-variant-numeric:tabular-nums;font-weight:600}
+.smg-summary-value{text-align:right}.smg-summary-value small{display:block;color:#64748b;font-size:10px;font-weight:400}
+.smg-summary-measure{font-size:11px;color:#526c83;font-weight:400}
+.smg-summary-heading>.smg-summary-label{grid-column:1/3}
+.smg-calendar-grid [data-smg-section=labor]>.smg-calendar-summary{background:#f0eef8}
+.smg-calendar-grid [data-smg-section=equipment]>.smg-calendar-summary{background:#eaf5f2}
+@media(max-width:700px){.smg-calendar-grid{--smg-resource-width:220px;--smg-measure-width:160px;--smg-value-width:96px}.smg-calendar-header-table th{font-size:11px}.smg-calendar-grid .matrix-table .matrix-label{font-size:12px}}

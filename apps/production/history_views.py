@@ -34,7 +34,7 @@ FIELD_LABELS={
  'assignment_reviewed':'Связи проверены','deviation_reason_id':'Причина отклонения','outside_smg':'Вне СМГ','smg_plan_quantity':'План СМГ',
  'reason':'Причина / пояснение','stay_id':'Период пребывания','activity_id':'Сотрудник за смену','is_cancelled':'Отменено','created_by_id':'Первоначальный автор',
  'planned_workers':'Плановая численность','planned_hours':'Плановые часы','planned_machine_hours':'Плановые машино-часы','hourly_rate':'Ставка за час',
- 'source_file':'Файл','source_sheet':'Лист','source_row':'Строка','original':'Исходные данные','data':'Исправленные данные','error':'Ошибка','duplicate_of_id':'Совпавшая машина','resolved_by_id':'Кто обработал','resolved_at':'Дата обработки',
+ 'planning_position_id':'Учитывается как должность СМГ','departure_destination':'Куда выезжает','source_file':'Файл','source_sheet':'Лист','source_row':'Строка','original':'Исходные данные','data':'Исправленные данные','error':'Ошибка','duplicate_of_id':'Совпавшая машина','resolved_by_id':'Кто обработал','resolved_at':'Дата обработки',
  'fuel_type':'Вид ГСМ','equipment_number':'Номер машины','equipment_ref':'Техника / назначение ГСМ',
 }
 from .transport_details_models import DETAIL_FIELDS

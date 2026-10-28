@@ -22,6 +22,7 @@ class PlanWorkbenchBrowserTests(StaticLiveServerTestCase):
         self.a.name='Кабель';self.a.save();self.b.name='Оборудование';self.b.save()
         row=WorkMonthAllocation.objects.create(company=self.company,version=self.version,month=fixtures.JAN,work=self.composite,quantity=0,selected_item_ids=[self.a.pk],item_quantities={str(self.a.pk):'20'})
         gear=ResourceMonthAllocation.objects.create(company=self.company,version=self.version,month=fixtures.JAN,kind='equipment',equipment_type=self.equipment,count=2,hours=16)
+        self.brigade.staffing_current=True;self.brigade.save(update_fields=['staffing_current'])
         from apps.resources.models import EquipmentType, EquipmentCrewPosition, EquipmentCategory
         category=EquipmentCategory.objects.create(company=self.company,name='Землеройная техника')
         crew_gear=EquipmentType.objects.create(company=self.company,name='Экскаватор с машинистом',category=category)

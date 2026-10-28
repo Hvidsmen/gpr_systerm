@@ -462,4 +462,4 @@ from .transport_models import EquipmentCampStay, EquipmentTransportEvent, Equipm
 
 from .history_models import FactRevision
 from .camp_fuel_models import CampFuelDay
-from .transport_details_models import EquipmentDayDetails
+from .transport_details_models import EquipmentDayDetails,EquipmentServiceStatus

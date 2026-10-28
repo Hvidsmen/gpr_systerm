@@ -20,7 +20,7 @@ class TransportImportBrowserTests(StaticLiveServerTestCase):
             path2=Path(temp)/'Сводка2.xlsm';path2.write_bytes(upload([row]).read())
             config={'base':self.live_server_url,'chromium':shutil.which('chromium'),'cookie':first.cookies['sessionid'].value,'second_cookie':second.cookies['sessionid'].value,
                 'upload':reverse('resources:transport_import'),'errors':reverse('resources:transport_import_errors'),'fuel':reverse('production:camp_fuel'),
-                'board':reverse('production:transport_board'),'camp':self.camp.pk,'day':str(self.day),'first':str(path),'second':str(path2)}
+                'board':reverse('production:transport_board'),'camp':self.camp.pk,'planning_type':self.type.pk,'day':str(self.day),'first':str(path),'second':str(path2)}
             script=Path(__file__).resolve().parents[2]/'tests/browser/transport_import.js'
             result=subprocess.run(['node',str(script)],capture_output=True,text=True,env=dict(os.environ,IMPORT_CONFIG=json.dumps(config)),timeout=180)
         self.assertEqual(result.returncode,0,result.stdout+'\n'+result.stderr)

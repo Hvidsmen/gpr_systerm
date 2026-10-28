@@ -9,6 +9,7 @@ urlpatterns=[
     path('camps/<int:pk>/',housing_views.camp_edit,name='camp_edit'),
     path('housing/people/<int:pk>/',housing_views.history,name='housing_history'),
     path('housing/stays/<int:pk>/cancel/',housing_views.cancel,name='housing_cancel'),
+    path('people/<int:pk>/individual-calendar/',housing_views.individual_calendar,name='individual_calendar'),
     path('people/<int:pk>/schedule/',housing_views.schedule,name='person_schedule'),
     path('people/link/',housing_views.link_people,name='link_people'),
     path('',views.board_list,name='board_list'),
@@ -26,3 +27,6 @@ urlpatterns=[
     path('groups/<int:group_pk>/slots/<int:pk>/',views.slot_edit,name='slot_edit'),
     path('slots/<int:pk>/calendar/',views.calendar_edit,name='calendar_edit'),
 ]
+
+from .housing_reconcile import reconcile
+urlpatterns += [path('housing/reconcile/',reconcile,name='housing_reconcile')]

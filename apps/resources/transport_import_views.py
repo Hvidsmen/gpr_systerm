@@ -53,7 +53,7 @@ def review(request,pk):
         try:service.apply(request.user,batch)
         except ValidationError as exc:error='; '.join(exc.messages)
         else:
-            messages.success(request,'Импорт завершён. Первые записи добавлены в справочник и ведение техники. Ошибки сохранены для исправления диспетчером.')
+            messages.success(request,'Импорт завершён. Сведения загружены в ведение техники; новые машины добавлены в справочник. Ошибки сохранены для исправления диспетчером.')
             return redirect('resources:transport_import_review',pk=batch.pk)
     rows=batch.rows.select_related('equipment','duplicate_of')
     return render(request,'resources/transport_import_review.html',{'batch':batch,'page_obj':Paginator(rows,50).get_page(request.GET.get('page')),
@@ -62,9 +62,13 @@ def review(request,pk):
 
 
 @login_required
-@require_http_methods(['GET'])
+@require_http_methods(['GET','POST'])
 def errors(request):
     require_roles(request.user,OPERATORS)
+    if request.method=='POST':
+        count=service.retry_existing(request.user)
+        messages.success(request,f'В ведение загружено существующих машин: {count}. Противоречия и повторы остались в ошибках.')
+        return redirect('resources:transport_import_errors')
     rows=TransportImportRow.objects.filter(company=request.user.company,status='PENDING',batch__applied_at__isnull=False).select_related('batch','duplicate_of').order_by('pk')
     if request.GET.get('q'):rows=rows.filter(error__icontains=request.GET['q'])
     if request.GET.get('export')=='xlsx':

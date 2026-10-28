@@ -15,12 +15,7 @@ from .transport_details_models import EquipmentDayDetails,DETAIL_FIELDS
 from apps.resources.models import Equipment
 
 
-class DetailsForm(forms.ModelForm):
-    signed=forms.CharField(widget=forms.HiddenInput)
-    class Meta:
-        model=EquipmentDayDetails
-        fields=[name for name,_ in DETAIL_FIELDS]
-        widgets={name:forms.Textarea(attrs={'rows':2}) for name in ('defects','request_details','request_status','parts_status','maintenance','comment')}
+from .transport_detail_forms import DetailsForm
 
 
 @login_required
@@ -40,7 +35,7 @@ def details(request,pk):
     previous=EquipmentDayDetails.objects.filter(company=request.user.company,equipment=machine,date__lt=day).first()
     initial={name:getattr(previous,name) for name,_ in DETAIL_FIELDS} if previous and not current else {}
     initial['signed']=transport.snapshot(request.user,camp,day)
-    form=DetailsForm(request.POST if request.method=='POST' else None,instance=current,initial=initial)
+    form=DetailsForm(request.POST if request.method=='POST' else None,instance=current,initial=initial,company=request.user.company)
     if request.method=='POST':
         try:require_fact_day(request.user,day)
         except ValidationError as exc:raise PermissionDenied('; '.join(exc.messages))

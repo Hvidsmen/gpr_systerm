@@ -6,7 +6,7 @@
   const dialog=root.querySelector('[data-action-dialog]'),form=root.querySelector('[data-transport-form]');
   if(!dialog||!form)return;
   const token=form.querySelector('[name=csrfmiddlewaretoken]').value;
-  const sessionField=form.elements.session,session=sessionField.value||crypto.randomUUID();sessionField.value=session;
+  const sessionField=form.elements.session,session=sessionField.value||([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g,c=>(c^crypto.getRandomValues(new Uint8Array(1))[0]&15>>c/4).toString(16));sessionField.value=session;
   const field=name=>form.elements[name], wrapper=name=>form.querySelector(`[data-transport-field="${name}"]`);
   const rows=[...root.querySelectorAll('[data-transport-row]')],checks=[...root.querySelectorAll('[data-select-machine]')];
   let reserved=[],submitting=false,pending=false;
@@ -22,6 +22,7 @@
     const response=await fetch(root.dataset.claimUrl,{method:'POST',credentials:'same-origin',headers:{'X-CSRFToken':token},body:data});
     const result=await response.json();if(!response.ok)throw new Error(result.error||'Не удалось проверить редактирование техники.');return result.owners;
   }
+  window.transportBoardLocks={session,claim};
   function showFields(){
     const action=field('action').value,day=action==='DAY',arrival=action==='ARRIVAL';
     form.querySelector('[data-dialog-title]').textContent=titles[action]||'Учёт техники';

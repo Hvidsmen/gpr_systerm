@@ -56,7 +56,10 @@ class ResourceGroupTotalTests(TestCase):
         self.assertEqual(result['after'],Decimal(15)/31)
         self.assertEqual(result['cells'][0]['date'],'2026-01-01')
         self.assertContains(response,'data-plan-total-date="2026-01-01"')
-        self.assertContains(response,'Среднее за месяц')
+        self.assertContains(response,'data-smg-calendar-header>',count=1)
+        body=response.content.decode().split('data-plan-group-totals="labor"',1)[1].split('</summary>',1)[0]
+        self.assertIn('data-plan-total-after',body)
+        self.assertIn('data-plan-total-date="2026-01-01"',body)
 
     def test_equipment_types_group_by_category_and_uncategorized_together(self):
         other=EquipmentType.objects.create(company=self.company,name=self.equipment.name)

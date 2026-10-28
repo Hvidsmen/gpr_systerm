@@ -190,7 +190,7 @@ class HousingTests(TestCase):
         response=self.client.get(reverse('personnel:housing_export'),{'camp':self.a.pk,'date':str(self.day),'q':'Иванов'})
         book=openpyxl.load_workbook(BytesIO(response.content));self.assertEqual(book.active.max_row,2)
         self.assertEqual(book.active['C2'].value,self.person.full_name)
-        self.person.full_name='=HYPERLINK("bad")';self.person.save()
+        self.employee.zup_full_name='=HYPERLINK("bad")';self.employee.save()
         response=self.client.get(reverse('personnel:housing_export'),{'camp':self.a.pk,'date':str(self.day)})
         self.assertTrue(openpyxl.load_workbook(BytesIO(response.content)).active['C2'].value.startswith("'="))
 
@@ -236,7 +236,8 @@ class HousingTests(TestCase):
         self.slot.status='МВ';self.slot.arrival_date=self.day-timedelta(days=5);self.slot.save()
         self.assertEqual(self.visible(self.obj),set())
         response=self.client.get(reverse('personnel:housing'),{'camp':self.a.pk,'date':str(self.day)})
-        self.assertEqual(response.context['total'],0)
+        self.assertEqual(response.context['rotation_stats']['present'],0)
+        self.assertEqual(response.context['rotation_stats']['rest'],1)
 
     def test_homonymous_personnel_cards_are_not_automatically_bound_or_duplicated(self):
         e=Employee.objects.create(company=self.company,last_name='Тезка',first_name='Сотрудник',position=self.position)

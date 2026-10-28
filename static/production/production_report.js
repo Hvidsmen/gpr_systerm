@@ -9,7 +9,7 @@
    if(!field(row,'id')?.value&&!row.dataset.entryDirty&&!row.dataset.personDirty&&field(row,'person_editing')?.value==='0'&&savedPeople.some(p=>p.employee===Number(employee.value)&&String(p.shift)===String(field(row,'shift').value)))return;
    if(field(row,'id')?.value&&!row.dataset.entryDirty&&!row.dataset.personDirty&&people.has(marker))return;
    if(field(row,'DELETE')?.checked){people.delete(marker);return;}const mode=field(row,'work_mode').value,label=employee.selectedOptions[0]?.textContent||'',parts=label.split(' · '),prior=people.get(marker);
-   people.set(marker,{employee:Number(employee.value),name:parts[0],position:parts.slice(1).join(' · '),shift:field(row,'shift').value,general:mode==='general',reviewed:mode!=='pending',constant:false,unclaimed:!prior&&field(row,'person_editing')?.value==='0',targets:mode==='works'?[...row.querySelectorAll('[name$="-work_targets"]')].map(i=>i.value):[],owner:'Мой ввод',draft:!prior||Boolean(row.dataset.entryDirty||row.dataset.personDirty)});
+   people.set(marker,{employee:Number(employee.value),name:parts[0],position:field(row,'planning_position')?.selectedOptions[0]?.value?field(row,'planning_position').selectedOptions[0].textContent:parts.slice(1).join(' · '),shift:field(row,'shift').value,general:mode==='general',reviewed:mode!=='pending',constant:false,unclaimed:!prior&&field(row,'person_editing')?.value==='0',targets:mode==='works'?[...row.querySelectorAll('[name$="-work_targets"]')].map(i=>i.value):[],owner:'Мой ввод',draft:!prior||Boolean(row.dataset.entryDirty||row.dataset.personDirty)});
   });return {works:[...works.values()],people:[...people.values()]};
  }
  function cell(tr,text){const td=document.createElement('td');td.textContent=text;tr.append(td);return td;}

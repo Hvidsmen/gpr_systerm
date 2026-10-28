@@ -154,7 +154,7 @@ def _excel(camp,day,rows):
     latest=EquipmentDayDetails.objects.filter(company=camp.company,equipment_id=OuterRef('equipment_id'),date__lte=day).order_by('-date','-pk').values('pk')[:1]
     notes=workbook.create_sheet('Ремонт и обслуживание');notes.append(['Дата сведений','Машина','ВЖГ',*[label for name,label in DETAIL_FIELDS]])
     for detail in details.filter(pk=Subquery(latest)).select_related('equipment','camp'):
-        notes.append([detail.date.isoformat(),str(detail.equipment),detail.camp.name,*[getattr(detail,name) for name,label in DETAIL_FIELDS]])
+        notes.append([detail.date.isoformat(),str(detail.equipment),detail.camp.name,*[str(getattr(detail,name)) if hasattr(getattr(detail,name),'_meta') else getattr(detail,'get_repair_stage_display')() if name=='repair_stage' else getattr(detail,name) for name,label in DETAIL_FIELDS]])
         for cell in notes[notes.max_row]:
             if isinstance(cell.value,str):cell.data_type='s'
     notes.freeze_panes='D2';notes.auto_filter.ref=notes.dimensions
@@ -198,7 +198,20 @@ def board(request):
     data=selector.cleaned_data
     filtered=[r for r in rows if (not data['condition'] or r['condition']==data['condition']) and (not data['use'] or (r['condition']=='READY' and (r['status'] or 'EMPTY')==data['use'])) and all(term.casefold() in ' '.join(str(value or '') for value in [r['machine'],r['machine'].vin,r['machine'].inventory_number,r['machine'].brand_model,r['planning_type'].name]).casefold() for term in data['q'].split())]
     if request.GET.get('export')=='xlsx':return _excel(camp,day,filtered)
-    context.update(camp=camp,day=day,rows=filtered,summary=_summary(rows),action_form=form,conditions=CONDITIONS,uses=USES,
+    from .transport_inline import prepare_rows
+    from .transport_details_models import DETAIL_FIELDS
+    from django.core.paginator import Paginator
+    page=Paginator(filtered,50).get_page(request.GET.get('page'))
+    display_rows=list(page.object_list)
+    if context['tab']=='day':
+        prepare_rows(request.user,camp,day,display_rows,context['editable'])
+        for row in display_rows:
+            row['target_widget']=forms.Select(choices=form.fields['target'].choices,attrs={'class':'form-select form-select-sm','data-detail-field':'target','aria-label':'Объект / работа: '+str(row['machine']),'disabled':not context['editable'] or row['condition']!='READY'}).render('target-'+str(row['machine'].pk),row['target'])
+    context.update(detail_columns=[label for name,label in DETAIL_FIELDS],page_obj=page,filtered_count=len(filtered))
+    new_form=NewMachineForm(company=request.user.company,prefix='new-machine')
+    new_form.fields.pop('site_name');new_form.fields.pop('is_active')
+    context['new_machine_form']=new_form
+    context.update(camp=camp,day=day,rows=display_rows,summary=_summary(rows),action_form=form,conditions=CONDITIONS,uses=USES,
         total=len(rows),ready=sum(r['condition']=='READY' for r in rows),worked=sum(r['status']=='WORKED' for r in rows),idle=sum(r['status']=='IDLE' for r in rows),
         missing=sum(r['condition']=='READY' and not r['status'] for r in rows),repair=sum(r['condition']=='REPAIR' for r in rows),scrap=sum(r['condition']=='SCRAP' for r in rows),
         query=urlencode({'camp':camp.pk,'date':str(day)}),export_query=urlencode({'camp':camp.pk,'date':str(day),'q':data['q'],'condition':data['condition'],'use':data['use']}),error_open=request.method=='POST',can_create=role_code(request.user) in service.OPERATORS)
@@ -276,7 +289,8 @@ def create_machine(request):
     camp=get_object_or_404(service.camps_for(request.user),pk=request.POST.get('camp',request.GET.get('camp')))
     try:day=date.fromisoformat(request.POST.get('date',request.GET.get('date','')))
     except ValueError:day=timezone.localdate()
-    form=NewMachineForm(request.POST if request.method=='POST' else None,company=request.user.company)
+    ajax=request.headers.get('Accept')=='application/json'
+    form=NewMachineForm(request.POST if request.method=='POST' else None,company=request.user.company,prefix='new-machine' if ajax else None)
     # Transport creates a physical machine; planning catalogues remain managed separately.
     form.fields.pop('site_name');form.fields.pop('is_active')
     if request.method=='POST' and form.is_valid():
@@ -287,7 +301,9 @@ def create_machine(request):
                 if form.cleaned_data['receive']:
                     service.move(request.user,camp,day,[machine.pk],'ARRIVAL',condition=form.cleaned_data['condition'],signed=service.snapshot(request.user,camp,day))
                 service.audit(request.user,machine,'CREATE',{'equipment':machine.pk,'received':form.cleaned_data['receive']})
+            if ajax:return JsonResponse({'saved':True,'id':machine.pk,'received':form.cleaned_data['receive']})
             messages.success(request,'Машина добавлена в справочник'+(' и принята в ВЖГ.' if form.cleaned_data['receive'] else '. Приезд можно оформить позднее.'))
             return redirect(reverse('production:transport_board')+'?'+urlencode({'camp':camp.pk,'date':str(day)}))
         except ValidationError as exc:form.add_error(None,ValidationError('; '.join(exc.messages)))
+    if ajax:return JsonResponse({'errors':form.errors},status=400)
     return render(request,'production/transport_create.html',{'form':form,'camp':camp,'day':day},status=400 if request.method=='POST' else 200)

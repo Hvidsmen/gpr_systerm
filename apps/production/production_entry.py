@@ -2,6 +2,7 @@
 from django import forms
 from django.db.models import Max, Q
 from apps.works.models import ProjectWork
+from apps.resources.models import Position
 from .dispatch_models import EmployeeActivity, EmployeeWorkLink
 from .models import DailyFact
 from .dispatch import PersonForm
@@ -72,10 +73,12 @@ def previous_people(obj, day, *, production, user=None):
         qs=qs.filter(employee_id__in=available_employee_ids(obj,day))
     rows = qs.filter(date=previous).select_related('employee__position__planning_mapping__brigade__group').prefetch_related('work_links').order_by('employee__last_name','employee__first_name','employee_id','shift','pk')
     initial=[]
+    from .production_positions import plan_positions
+    current_roles=set(plan_positions(obj,day)) if production else set()
     for row in rows:
         saved_targets=targets(row)
         initial.append({'employee':row.employee_id,'shift':row.shift,'general':row.general,
-            'work':row.work_id,'work_item':row.work_item_id,'equipment':row.equipment_id,'activity':row.activity,
+            'work':row.work_id,'work_item':row.work_item_id,'equipment':row.equipment_id,'activity':row.activity,'planning_position':row.planning_position_id if row.planning_position_id in current_roles else None,
             'work_mode':('general' if row.general else 'works' if saved_targets else 'pending') if row.assignment_reviewed else 'pending',
             'work_targets':[token(w,i) for w,i in saved_targets]})
     return previous, initial
@@ -86,10 +89,19 @@ class ProductionPersonForm(PersonForm):
     prepared_from_previous = False
     work_mode = forms.ChoiceField(label='Занятость', choices=[('pending','Связи пока не проверены'),('works','Выполнял работы'),('general','Работал без привязки к работе')],
         initial='pending', widget=forms.Select(attrs={'class':'form-select','data-native-select':'true'}))
+    planning_position=forms.ModelChoiceField(label='Закрывает должность СМГ',queryset=Position.objects.none(),required=False,empty_label='По штатной должности сотрудника')
+    class Meta(PersonForm.Meta):
+        fields=[*PersonForm.Meta.fields,'planning_position']
     work_targets = forms.MultipleChoiceField(label='Работы сотрудника', required=False, widget=forms.MultipleHiddenInput)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        from .production_positions import plan_positions
+        from apps.resources.models import Position
+        positions=set(plan_positions(self.obj,self.day))
+        if self.instance.pk and self.instance.planning_position_id:positions.add(self.instance.planning_position_id)
+        self.fields['planning_position'].queryset=Position.objects.filter(company=self.obj.company,pk__in=positions).order_by('name')
+        self.fields['planning_position'].help_text='Выберите должность плана, которую закрывает сотрудник. Штатная должность сотрудника не меняется.'
         from apps.personnel.housing import available_employee_ids
         self.fields['employee'].queryset=self.fields['employee'].queryset.filter(Q(pk__in=available_employee_ids(self.obj,self.day))|Q(pk=self.instance.employee_id if self.instance.pk else None))
         self.fields['employee'].help_text='Только фактически находящиеся в ВЖГ, связанных с выбранным объектом, на дату факта.'
@@ -160,8 +172,8 @@ def report_data(obj,day):
         .values('project_work_id','work_item_id','actual_quantity','reported_by__username'))
     people=[]
     for row in EmployeeActivity.objects.filter(company=obj.company,construction_object=obj,date=day).select_related(
-            'employee__position__planning_mapping__brigade__group','position','reported_by').prefetch_related('work_links'):
-        people.append({'id':row.pk,'employee':row.employee_id,'name':row.employee.display_name,'position':str(row.position or ''),
+            'employee__position__planning_mapping__brigade__group','position','planning_position','reported_by').prefetch_related('work_links'):
+        people.append({'id':row.pk,'employee':row.employee_id,'name':row.employee.display_name,'position':str(row.planning_position or row.position or ''),'staff_position':str(row.position or ''),
             'shift':row.shift,'general':row.general,'reviewed':row.assignment_reviewed,'constant':is_general_employee(row.employee),
             'targets':[token(w,i) for w,i in targets(row)],
             'owner':(row.reported_by.get_full_name() or row.reported_by.username) if row.reported_by_id else 'Общий ввод'})

@@ -59,7 +59,7 @@ def people(request):
     if request.GET.get('unlinked'):queryset=queryset.filter(employee=None)
     if request.GET.get('unplaced'):queryset=queryset.filter(stays__isnull=True)
     query=request.GET.get('q','').strip()
-    if query: queryset=queryset.filter(Q(full_name__icontains=query)|Q(employee_number__icontains=query)|Q(phone__icontains=query))
+    if query: queryset=queryset.filter(Q(full_name__icontains=query)|Q(employee_number__icontains=query)|Q(employee__employee_number__icontains=query)|Q(employee__zup_full_name__icontains=query)|Q(phone__icontains=query))
     return render(request,'personnel/people.html',{'people':queryset,'query':query})
 
 
@@ -68,6 +68,7 @@ def people(request):
 def person_edit(request,pk=None):
     queryset=scoped(request,Person)
     obj=get_object_or_404(queryset,pk=pk) if pk else Person(company=request.user.company)
+    if request.method=='GET' and obj.employee_id:return redirect('resources:employee_detail',pk=obj.employee_id)
     form=PersonForm(request.POST if request.method=='POST' else None,instance=obj)
     saved=False
     if request.method=='POST':
@@ -86,7 +87,8 @@ def person_edit(request,pk=None):
                     if employee:person.employee=employee;person.save(update_fields=['employee','updated_at'])
                 saved=True
         if saved:
-            messages.success(request,'Карточка сотрудника сохранена.');return redirect('personnel:people')
+            messages.success(request,'Связь со справочником сотрудников сохранена.')
+            return redirect('resources:employee_detail',pk=person.employee_id) if person.employee_id else redirect('personnel:people')
     return render(request,'personnel/form.html',{'form':form,'title':'Карточка сотрудника'})
 
 
@@ -178,7 +180,7 @@ def export(request,pk):
         # Export the same filtered rows; summary is explicitly the full board.
         for index,row in enumerate(group['rows']):
             s=row['slot'];p=s.person
-            values=[board.project,board.site,group['group'].position,group['group'].attendance_plan if index==0 else None,group['group'].staffing_plan if index==0 else None,p.full_name if p else 'Вакансия',s.camp,p.phone if p else '',p.employee_number if p else '',int(not s.person_id),int(bool(s.person_id)),s.pattern.kind if s.pattern_id else '',s.pattern.name if s.pattern_id else '',s.status,s.departure_date,s.arrival_date,row['elapsed'] if s.status=='МО' else None,row['elapsed'] if s.status=='МВ' else None,row['next_work'],row['next_leave'],s.comment]+row['codes']
+            values=[board.project,board.site,group['group'].position,group['group'].attendance_plan if index==0 else None,group['group'].staffing_plan if index==0 else None,p.full_name if p else 'Вакансия',s.camp,p.phone if p else '',p.display_employee_number if p else '',int(not s.person_id),int(bool(s.person_id)),s.pattern.kind if s.pattern_id else '',s.pattern.name if s.pattern_id else '',s.status,s.departure_date,s.arrival_date,row['elapsed'] if s.status=='МО' else None,row['elapsed'] if s.status=='МВ' else None,row['next_work'],row['next_leave'],s.comment]+row['codes']
             ws.append([safe(v) for v in values])
     ws.freeze_panes='F2';ws.auto_filter.ref=ws.dimensions
     for c in ws[1]:c.font=Font(bold=True,color='FFFFFF');c.fill=PatternFill('solid',fgColor='174A7E')

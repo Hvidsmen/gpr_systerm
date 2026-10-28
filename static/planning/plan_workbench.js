@@ -248,8 +248,8 @@
    section.querySelectorAll('[data-smg-group]').forEach(group=>{
     const target=group.querySelector('[data-plan-group-totals]');if(!target)return;
     const value=sum(group.querySelectorAll('[data-plan-entry]'));write(target,value);
-    group.querySelector('[data-plan-group-total-number]').textContent=format(value.after);
-    const caption=group.querySelector('[data-plan-group-total-caption]');caption.dataset.fullCaption??=caption.textContent;caption.textContent=filtered?'По фильтру':caption.dataset.fullCaption;
+    const number=group.querySelector('[data-plan-group-total-number]');if(number)number.textContent=format(value.after);
+    const caption=group.querySelector('[data-plan-group-total-caption]');if(caption&&!daily){caption.dataset.fullCaption??=caption.textContent;caption.textContent=filtered?'По фильтру':caption.dataset.fullCaption;}
    });
    const overall=section.querySelector('[data-plan-section-totals]');if(overall)write(overall,sum(section.querySelectorAll('[data-plan-entry]')));
   });

@@ -63,7 +63,7 @@ class TransportImportTests(TestCase):
         row=batch.rows.get(status='PENDING');count=Equipment.objects.count()
         service.resolve(self.operator,row,row.data,row.updated_at.isoformat(),close_duplicate=True)
         self.assertEqual(Equipment.objects.count(),count);row.refresh_from_db();self.assertEqual(row.status,'DUPLICATE')
-        again=self.preview();service.apply(self.admin,again);self.assertEqual(again.rows.get().status,'PENDING')
+        again=self.preview();service.apply(self.admin,again);self.assertEqual(again.rows.get().status,'APPLIED')
 
     def test_invalid_row_does_not_block_good_rows_or_discard_any_column(self):
         bad=self.row(vin='VIN-BAD',inventory='INV-BAD',plate='A300',year='190',condition='Не испр.',repair_status='В ожидании ЗЧ')
@@ -96,9 +96,11 @@ class TransportImportTests(TestCase):
         self.client.force_login(self.operator);url=reverse('production:transport_details',args=[row.equipment_id]);params={'camp':self.camp.pk,'date':str(self.day)}
         response=self.client.get(url,params);self.assertEqual(response.status_code,200)
         data=params.copy()
-        data.update({'defects':'Уточнение поломки','parts_status':'Доставлены','signed':response.context['form'].initial['signed']})
+        from apps.production.transport_details_models import EquipmentServiceStatus
+        delivered=EquipmentServiceStatus.objects.get(company=self.company,kind='PARTS',name='Доставлены')
+        data.update({'defects':'Уточнение поломки','parts_stage':delivered.pk,'signed':response.context['form'].initial['signed']})
         self.assertEqual(self.client.post(url,data).status_code,302)
-        self.assertEqual(EquipmentDayDetails.objects.get(equipment_id=row.equipment_id).parts_status,'Доставлены')
+        self.assertEqual(EquipmentDayDetails.objects.get(equipment_id=row.equipment_id).parts_stage.name,'Доставлены')
         self.assertEqual(self.client.post(url,data).status_code,400)
         self.client.force_login(self.admin)
         response=self.client.get(reverse('resources:equipment_unit_detail',args=[row.equipment_id]));self.assertContains(response,'Доставлены')

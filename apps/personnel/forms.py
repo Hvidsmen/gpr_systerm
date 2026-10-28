@@ -130,7 +130,8 @@ class MovementForm(forms.Form):
     kind=forms.ChoiceField(label='Действие',choices=[('ARRIVAL','Заезд'),('DEPARTURE','Выезд'),('TRANSFER','Перевод в другой ВЖГ')])
     date=forms.DateField(label='Фактическая дата',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
     employees=forms.ModelMultipleChoiceField(label='Сотрудники',queryset=None,widget=forms.SelectMultiple(attrs={'size':8,'data-personnel-searchable':''}))
-    target=forms.ModelChoiceField(label='ВЖГ назначения при переводе',queryset=None,required=False)
+    destination=forms.ChoiceField(label='Куда выезжает',choices=[('REST','На межвахтовый отдых'),('CAMP','В другой ВЖГ')],initial='REST',required=False)
+    target=forms.ModelChoiceField(label='ВЖГ назначения',queryset=None,required=False)
     comment=forms.CharField(label='Комментарий',required=False,widget=forms.Textarea(attrs={'rows':2}),max_length=4000)
     snapshot=forms.CharField(widget=forms.HiddenInput)
     def __init__(self,*args,company,camp,day,**kwargs):
@@ -160,6 +161,7 @@ class MovementForm(forms.Form):
                 from .housing import present_stays
                 ids=present_stays(self.company,data.get('date') or self.initial.get('date')).filter(camp=self.camp).values('person__employee_id')
                 if employees.exclude(pk__in=ids).exists():self.add_error('employees','Для выезда или перевода выберите сотрудников, находящихся в этом ВЖГ на выбранную дату.')
+        if data.get('kind')=='DEPARTURE' and data.get('destination')=='CAMP':data['kind']='TRANSFER'
         if data.get('kind')=='TRANSFER' and not data.get('target'):self.add_error('target','Выберите ВЖГ назначения.')
         return data
 

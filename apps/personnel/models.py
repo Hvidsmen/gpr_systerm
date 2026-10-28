@@ -38,7 +38,11 @@ class Person(PersonnelModel):
         super().clean()
         if self.employee_id and self.employee.company_id != self.company_id: raise ValidationError({'employee':'Сотрудник другой компании.'})
         if self.schedule_slot_id and (self.schedule_slot.company_id != self.company_id or self.schedule_slot.person_id != self.pk): raise ValidationError({'schedule_slot':'Выберите строку графика этого сотрудника.'})
-    def __str__(self): return self.full_name
+    @property
+    def display_employee_number(self):return self.employee.employee_number if self.employee_id else self.employee_number
+    @property
+    def display_name(self):return self.employee.display_name if self.employee_id else self.full_name
+    def __str__(self): return self.display_name
 
 
 class StaffingGroup(PersonnelModel):
@@ -145,6 +149,7 @@ class CampStay(ActualHistoryMixin, PersonnelModel):
 
 class HousingEvent(ActualHistoryMixin, PersonnelModel):
     KINDS=[('ARRIVAL','Заезд'),('DEPARTURE','Выезд'),('TRANSFER','Перевод'),('CANCEL','Отмена записи')]
+    departure_destination=models.CharField('Куда выезжает',max_length=10,choices=[('REST','На межвахтовый отдых'),('CAMP','В другой ВЖГ')],blank=True)
     person=models.ForeignKey(Person,on_delete=models.PROTECT,related_name='housing_events')
     date=models.DateField()
     kind=models.CharField(max_length=12,choices=KINDS)

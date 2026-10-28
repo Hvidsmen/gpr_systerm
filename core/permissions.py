@@ -103,10 +103,12 @@ def check_route(user, match, method):
     if namespace == 'resources' and name in {'transport_import','transport_import_review','transport_import_errors','transport_import_correction'}:
         from apps.production.transport import OPERATORS
         require_roles(user,OPERATORS);return
+    if namespace=='production' and name=='deviation_quick_add':
+        require_roles(user,FACT_ROLES);return
     if namespace == 'production' and name=='fact_history':
         require_roles(user,READ_ROLES|FACT_ROLES)
         return
-    if namespace == 'production' and name in {'transport_board','transport_claims','transport_create','transport_history','camp_fuel','transport_details'}:
+    if namespace == 'production' and name in {'transport_board','transport_claims','transport_create','transport_history','camp_fuel','transport_details','transport_cell','transport_employee_choices','transport_status_create'}:
         from apps.production.transport import OPERATORS,READERS
         require_roles(user,READERS if method in {'GET','HEAD'} and name in {'transport_board','transport_history','camp_fuel','transport_details'} else OPERATORS)
         return
@@ -114,6 +116,8 @@ def check_route(user, match, method):
         require_roles(user, READ_ROLES | {'MECHANIZATION_DISPATCHER', 'ALL_FACT_DISPATCHER'} if method in {'GET', 'HEAD'} else {'ADMIN', 'MECHANIZATION_DISPATCHER', 'ALL_FACT_DISPATCHER'});return
     if namespace == 'resources' and name in {'employee_zup_import','employee_position_report','brigade_zup_employees'}:
         require_roles(user, {'ADMIN'});return
+    if namespace=='resources' and name in {'employee_list','employee_detail'}:
+        require_roles(user,READ_ROLES|{'HR_HEAD','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER','ALL_FACT_DISPATCHER','DISPATCHER'});return
     if namespace == 'resources' and name in {'employee_create', 'employee_update'}:
         require_roles(user, {'ADMIN', 'HR_HEAD', 'PLANNER'});return
     if namespace == 'accounts' and name in {'password_change','access_pending','impersonation_stop'}:
@@ -128,6 +132,8 @@ def check_route(user, match, method):
     if namespace == 'planning' and name in {'pivot_report_list','pivot_fact_list','pivot_gpr_detail','pivot_smg_detail'}:
         require_roles(user, READ_ROLES)
         return
+    if namespace=='personnel' and name=='camps' and method in {'GET','HEAD'}:
+        require_roles(user,READ_ROLES|{'HR_HEAD','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER','ALL_FACT_DISPATCHER'});return
     if namespace == 'personnel':
         require_roles(user, {'ADMIN', 'HR_HEAD', 'PERSONNEL_DISPATCHER'})
         return

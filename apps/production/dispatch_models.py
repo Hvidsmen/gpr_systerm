@@ -73,6 +73,7 @@ class EmployeeActivity(ShiftActivity):
     assignment_reviewed=models.BooleanField(default=True,editable=False)
     employee=models.ForeignKey('resources.Employee',on_delete=models.PROTECT,verbose_name='Сотрудник (ФИО)')
     position=models.ForeignKey('resources.Position',on_delete=models.PROTECT,null=True,blank=True,verbose_name='Должность на дату факта')
+    planning_position=models.ForeignKey('resources.Position',on_delete=models.PROTECT,null=True,blank=True,related_name='+',verbose_name='Закрывает должность СМГ')
     equipment=models.ForeignKey('resources.Equipment',on_delete=models.PROTECT,null=True,blank=True,verbose_name='Техника экипажа')
     reported_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,blank=True,editable=False,related_name='reported_employee_activities')
     class Meta:
@@ -84,6 +85,7 @@ class EmployeeActivity(ShiftActivity):
             if EquipmentAssignment.objects.filter(equipment_id=self.equipment_id,shift=self.shift,start_date__lte=self.date,cancelled_at__isnull=True).filter(models.Q(end_date__isnull=True)|models.Q(end_date__gte=self.date)).exclude(construction_object_id=self.construction_object_id).exists():
                 raise ValidationError({'equipment':'На эту дату и смену техника назначена другому объекту. Проверьте назначение экипажа.'})
         if self.equipment_id and EquipmentActivity.objects.filter(equipment_id=self.equipment_id,date=self.date,shift=self.shift).exclude(construction_object_id=self.construction_object_id).exists():raise ValidationError({'equipment':'Техника в этой смене находится на другом объекте.'})
+        if self.planning_position_id and self.planning_position.company_id!=self.company_id:raise ValidationError({'planning_position':'Должность СМГ другой компании.'})
         if self.position_id and self.position.company_id!=self.company_id:raise ValidationError({'employee':'Должность другой компании.'})
     def __str__(self):return f'{self.employee} · {self.date} · смена {self.shift}'
 

@@ -30,7 +30,9 @@ def camp_url(camp,day):return reverse('personnel:housing')+f'?camp={camp.pk}&dat
 
 @login_required
 def camps(request):
-    qs=scoped(request,Camp).prefetch_related('objects_served')
+    from core.permissions import require_roles,READ_ROLES
+    require_roles(request.user,READ_ROLES|{'HR_HEAD','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER','ALL_FACT_DISPATCHER'})
+    qs=Camp.objects.filter(company=request.user.company).prefetch_related('objects_served')
     query=request.GET.get('q','').strip()
     if query:qs=qs.filter(Q(name__icontains=query)|Q(address__icontains=query)|Q(objects_served__name__icontains=query)).distinct()
     if request.GET.get('export')=='xlsx':
@@ -71,16 +73,19 @@ def camp_edit(request,pk=None):
 
 def roster_rows(company,camp,day,query='',position=''):
     stays=housing.present_stays(company,day).filter(camp=camp).select_related('person__employee__position','person__schedule_slot__pattern','person__schedule_slot__group__board','recorded_by')
-    if query:stays=stays.filter(Q(person__full_name__icontains=query)|Q(person__employee_number__icontains=query)|Q(person__employee__position__name__icontains=query))
+    if query:stays=stays.filter(Q(person__full_name__icontains=query)|Q(person__employee_number__icontains=query)|Q(person__employee__employee_number__icontains=query)|Q(person__employee__zup_full_name__icontains=query)|Q(person__employee__position__name__icontains=query))
     if position:stays=stays.filter(person__employee__position_id=position)
     days=[day.replace(day=n) for n in range(1,monthrange(day.year,day.month)[1]+1)]
     rows=[]
     for stay in stays.order_by('person__employee__position__name','person__full_name','pk'):
         person=stay.person;slot=housing.schedule_slot(person);calendar=calendar_for(slot) if slot else {}
-        planned_departure=next(iter(departure_days(calendar,day)),'')
+        planned_departure=next(iter(departure_days(calendar,stay.arrived_on)),'')
+        departure_date=date.fromisoformat(planned_departure) if planned_departure else None
+        until_departure=(departure_date-day).days if departure_date else None
         rows.append({'stay':stay,'person':person,'position':person.employee.position if person.employee_id else None,'slot':slot,
             'codes':[calendar.get(d.isoformat(),'') for d in days],'today_code':calendar.get(day.isoformat(),''),
-            'planned_departure':planned_departure,'planned_departure_display':date.fromisoformat(planned_departure) if planned_departure else None,
+            'planned_departure':planned_departure,'planned_departure_display':departure_date,'departure_days':until_departure,
+            'departure_warning':('overdue' if until_departure<0 else 'soon' if until_departure<=14 else '') if until_departure is not None else '',
             'position_label':str(person.employee.position) if person.employee_id and person.employee.position_id else slot.group.position if slot else 'Должность не указана'})
     rows.sort(key=lambda row:(row['position_label'].casefold(),row['person'].full_name.casefold()))
     return rows,days
@@ -90,11 +95,19 @@ def roster_rows(company,camp,day,query='',position=''):
 @require_http_methods(['GET','POST'])
 def workspace(request):
     access(request);day=selected_day(request)
-    camp_id=(request.POST if request.method=='POST' else request.GET).get('camp')
-    if camp_id and not str(camp_id).isdigit():raise Http404('ВЖГ не найден.')
+    from .rotation import RotationFilter,rotation_rows
+    raw=(request.GET if request.method=='GET' else request.POST).copy()
+    raw.setdefault('date',str(day))
+    if raw.get('camp') and not raw.getlist('camps'):raw.setlist('camps',[raw['camp']])
+    selector=RotationFilter(raw,company=request.user.company)
+    if not selector.is_valid():
+        if raw.get('camp'):raise Http404('ВЖГ не найден.')
+        return render(request,'personnel/housing.html',{'rotation_filter':selector,'day':day},status=400)
+    selected_camps=selector.selected_camps(request.user.company)
     camps=scoped(request,Camp).order_by('name')
-    camp=get_object_or_404(camps,pk=camp_id) if camp_id else camps.first()
-    if camp is None:return render(request,'personnel/housing.html',{'camps':camps,'day':day})
+    camp_id=(request.POST if request.method=='POST' else request.GET).get('camp')
+    camp=get_object_or_404(camps,pk=camp_id) if camp_id else selected_camps.first()
+    if camp is None:return render(request,'personnel/housing.html',{'rotation_filter':selector,'camps':camps,'day':day,'no_camp_match':True})
     if request.method=='POST':
         try:require_fact_day(request.user,day)
         except ValidationError as exc:raise PermissionDenied('; '.join(exc.messages))
@@ -113,17 +126,19 @@ def workspace(request):
         except (ValidationError,IntegrityError) as exc:form.add_error(None,'; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Размещение изменилось одновременно с вашим вводом. Обновите список.')
         else:
             messages.success(request,f'Перемещение сохранено. Сотрудников: {count}.');return redirect(camp_url(camp,form.cleaned_data['date']))
-    query=request.GET.get('q','').strip();position=request.GET.get('position','')
-    if position and not position.isdigit():position=''
-    rows,days=roster_rows(request.user.company,camp,day,query,position)
-    from apps.resources.models import Position
-    events=HousingEvent.objects.filter(company=request.user.company).filter(Q(from_camp=camp)|Q(to_camp=camp)).select_related('person','from_camp','to_camp','recorded_by')[:50]
-    count=housing.present_stays(request.user.company,day).filter(camp=camp).count()
-    return render(request,'personnel/housing.html',{'camp':camp,'camps':camps,'day':day,'rows':rows,'dates':days,'form':form,'query':query,
-        'positions':Position.objects.filter(company=request.user.company,employees__personnel_card__stays__in=housing.present_stays(request.user.company,day).filter(camp=camp)).distinct().order_by('name'),
-        'selected_position':position,'events':events,'total':count,'objects':camp.objects_served.filter(company=request.user.company),
+    values=selector.cleaned_data
+    rows,days,rotation_stats=rotation_rows(request.user.company,list(selected_camps),day,query=values.get('q',''),position=values.get('position'),state=values.get('state',''),include_unassigned=not values.get('construction_object') and not values.get('camps'))
+    events=HousingEvent.objects.filter(company=request.user.company).filter(Q(from_camp__in=selected_camps)|Q(to_camp__in=selected_camps)).select_related('person','from_camp','to_camp','recorded_by')[:50]
+    from .housing_plan import monthly_plan
+    plan_context=monthly_plan(request.user,camp,day,camps=selected_camps)
+    from apps.projects.models import ConstructionObject
+    objects=ConstructionObject.objects.filter(company=request.user.company,housing_camps__in=selected_camps).distinct()
+    return render(request,'personnel/housing.html',{**plan_context,'rotation_filter':selector,'rotation_stats':rotation_stats,'selected_camps':selected_camps,
+        'camp':camp,'camps':camps,'day':day,'rows':rows,'dates':days,'form':form,'query':values.get('q',''),
+        'events':events,'total':rotation_stats['people'],'objects':objects,
         'unknown_count':Person.objects.filter(company=request.user.company,stays__isnull=True).count(),
         'unlinked_count':Person.objects.filter(company=request.user.company,employee=None).count(),**window_context(request.user,day)})
+
 
 
 @login_required
@@ -215,8 +230,37 @@ def workbook_response(filename,title,rows):
 
 @login_required
 def roster_export(request):
-    camp_id=request.GET.get('camp','')
-    if not camp_id.isdigit():raise Http404('ВЖГ не найден.')
-    camp=get_object_or_404(scoped(request,Camp),pk=camp_id);day=selected_day(request)
-    rows,days=roster_rows(request.user.company,camp,day,request.GET.get('q','').strip(),request.GET.get('position','') if request.GET.get('position','').isdigit() else '')
-    return workbook_response('camp-roster.xlsx','Состав ВЖГ',[['ВЖГ','Дата','ФИО','Табельный номер','Должность','Заезд','Выезд по графику','Фактический выезд',*[d.strftime('%d.%m.%Y') for d in days]],*[[camp.name,day.isoformat(),r['person'].full_name,r['person'].employee_number,r['position_label'],r['stay'].arrived_on.isoformat(),r['planned_departure'],r['stay'].departed_on.isoformat() if r['stay'].departed_on else '',*r['codes']] for r in rows]])
+    from .rotation import RotationFilter,rotation_rows
+    raw=request.GET.copy();raw.setdefault('date',str(timezone.localdate()))
+    if raw.get('camp') and not raw.getlist('camps'):raw.setlist('camps',[raw['camp']])
+    selector=RotationFilter(raw,company=request.user.company)
+    if not selector.is_valid():raise Http404('Некорректные фильтры перевахты.')
+    camps=selector.selected_camps(request.user.company);data=selector.cleaned_data;day=data['date']
+    rows,days,_=rotation_rows(request.user.company,list(camps),day,query=data.get('q',''),position=data.get('position'),state=data.get('state',''),include_unassigned=not data.get('construction_object') and not data.get('camps'))
+    values=[['ВЖГ','Дата','Сотрудник / вакансия','Табельный номер','Должность','Вахта / отдых','Заезд','Выезд','Выезд по графику','Возвращение по графику',*[d.strftime('%d.%m.%Y') for d in days]]]
+    for row in rows:
+        person=row['person'];fmt=lambda value:value.isoformat() if value else ''
+        values.append([str(row['camp'] or ''),str(day),person.display_name if person else 'Вакансия',person.display_employee_number if person else '',row['position_label'],row['state_label'],fmt(row.get('arrived_on')),fmt(row.get('last_departure')),fmt(row.get('planned_departure_display')),fmt(row.get('planned_return')),*row['codes']])
+    return workbook_response('rotation.xlsx','Перевахта',values)
+
+
+
+@login_required
+@require_http_methods(['GET'])
+def individual_calendar(request,pk):
+    from datetime import timedelta
+    from django.http import JsonResponse
+    from .services import is_work
+    person=get_object_or_404(scoped(request,Person).select_related('employee','schedule_slot'),pk=pk)
+    raw=request.GET.get('month',timezone.localdate().strftime('%Y-%m'))
+    try:month=date.fromisoformat(raw+'-01')
+    except ValueError:return JsonResponse({'error':'Укажите месяц в формате ГГГГ-ММ.'},status=400)
+    slot=housing.schedule_slot(person);calendar=calendar_for(slot) if slot else {}
+    last=monthrange(month.year,month.month)[1]
+    days=[month.replace(day=n) for n in range(1,last+1)]
+    previous=(month-timedelta(days=1)).replace(day=1);following=(month+timedelta(days=32)).replace(day=1)
+    return JsonResponse({'name':person.display_name,'number':person.display_employee_number,'month':month.strftime('%Y-%m'),
+        'pattern':str(slot.pattern) if slot and slot.pattern_id else 'Индивидуальный график не назначен',
+        'offset':month.weekday(),'previous':previous.strftime('%Y-%m'),'next':following.strftime('%Y-%m'),
+        'edit_url':reverse('personnel:person_schedule',args=[person.pk]),
+        'days':[{'day':d.day,'date':str(d),'code':calendar.get(str(d),''),'work':is_work(calendar.get(str(d),'')),'today':d==timezone.localdate()} for d in days]})

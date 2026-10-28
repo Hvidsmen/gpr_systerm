@@ -389,3 +389,7 @@ urlpatterns += [path('transport/fuel/',camp_fuel_views.board,name='camp_fuel')]
 
 from . import transport_details_views
 urlpatterns += [path('transport/<int:pk>/details/',transport_details_views.details,name='transport_details')]
+from . import transport_inline
+urlpatterns += [path('transport/cell/',transport_inline.update,name='transport_cell'),path('transport/employee-options/',transport_inline.choices,name='transport_employee_choices'),path('transport/status-options/create/',transport_inline.add_status,name='transport_status_create')]
+from . import deviation_quick_add
+urlpatterns += [path('deviation-reasons/quick-add/',deviation_quick_add.create,name='deviation_quick_add')]

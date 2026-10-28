@@ -215,7 +215,7 @@ def project_resources(obj,day,section):
         from apps.resources.position_catalog import brigade_for
         counts=defaultdict(set)
         for row in EmployeeActivity.objects.filter(company=company,construction_object=obj,date=day).select_related('position'):
-            if row.position_id:counts[brigade_for(row.position)].add(row.employee_id)
+            if row.planning_position_id or row.position_id:counts[brigade_for(row.planning_position or row.position)].add(row.employee_id)
         required=plans(obj,day)[1]['labor']
         for brigade_id in Brigade.objects.filter(company=company,pk__in=required).values_list('pk',flat=True):counts.setdefault(brigade_id,set())
         LaborFact.objects.filter(company=company,construction_object=obj,date=day).delete()
@@ -350,6 +350,9 @@ class DispatcherDayView(CompanyRequiredMixin,View):
         context['revision']=request.POST.get('revision','') if bound else status.revision
         context.update(groups=groups,status=status,object=obj,day=day,summary=[{'label':label,'confirmed':bool(records.get(key) and records[key].confirmed_at),'started':key in records} for key,label in LABELS.items()],deviation_comment=request.POST.get('deviation_comment','') if bound else status.deviation_comment)
         context['resource_plan']=resource_plan
+        if section=='works':
+            from .production_positions import context as position_context
+            context.update(position_context(obj,day))
         if section in {'labor','mechanization'}:
             from django.db.models import Sum
             if section=='labor':

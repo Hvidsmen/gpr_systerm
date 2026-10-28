@@ -139,7 +139,7 @@ def move(user,kind,camp,day,people,employees=(),target=None,comment='',snapshot=
             current.departed_on=day;current.save(update_fields=['departed_on','updated_at'])
             stay=current
             if kind=='TRANSFER':stay=CampStay.objects.create(company=user.company,person=person,camp=target,arrived_on=day,comment=comment,recorded_by=user)
-        HousingEvent.objects.create(company=user.company,person=person,date=day,kind=kind,from_camp=camp if kind!='ARRIVAL' else None,to_camp=target if kind=='TRANSFER' else camp if kind=='ARRIVAL' else None,stay=stay,comment=comment,recorded_by=user)
+        HousingEvent.objects.create(company=user.company,person=person,date=day,kind=kind,departure_destination='REST' if kind=='DEPARTURE' else 'CAMP' if kind=='TRANSFER' else '',from_camp=camp if kind!='ARRIVAL' else None,to_camp=target if kind=='TRANSFER' else camp if kind=='ARRIVAL' else None,stay=stay,comment=comment,recorded_by=user)
     require_fact_day(user,day)
     return len(locked)
 
@@ -206,7 +206,7 @@ def _bootstrap_legacy(company,slots,user):
             row=eligible[0]
             if user:require_fact_day(user,row.arrival_date)
             seeded_dates.append(row.arrival_date)
-            stay=CampStay.objects.create(company=company,person=person,camp=row.housing_camp,arrived_on=row.arrival_date,comment='Перенесено из кадровой таблицы')
+            stay=CampStay.objects.create(company=company,person=person,camp=row.housing_camp,arrived_on=row.arrival_date,comment='Перенесено из кадровой таблицы',recorded_by=user)
             HousingEvent.objects.create(company=company,person=person,date=row.arrival_date,kind='ARRIVAL',to_camp=row.housing_camp,stay=stay,comment=stay.comment)
         elif not eligible:
             closed=[s for s in rows if s.status=='МО' and s.housing_camp_id and s.arrival_date and s.departure_date and s.arrival_date<s.departure_date<=timezone.localdate()]
@@ -215,7 +215,7 @@ def _bootstrap_legacy(company,slots,user):
                 if user:
                     require_fact_day(user,row.arrival_date);require_fact_day(user,row.departure_date)
                 seeded_dates.extend([row.arrival_date,row.departure_date])
-                CampStay.objects.create(company=company,person=person,camp=row.housing_camp,arrived_on=row.arrival_date,departed_on=row.departure_date,comment='Перенесено из кадровой таблицы')
+                CampStay.objects.create(company=company,person=person,camp=row.housing_camp,arrived_on=row.arrival_date,departed_on=row.departure_date,comment='Перенесено из кадровой таблицы',recorded_by=user)
 
     return seeded_dates
 

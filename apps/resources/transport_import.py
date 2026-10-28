@@ -1,5 +1,6 @@
 """Import the first Summary sheet; collisions stay editable in a dispatcher queue."""
 import hashlib,json,re,unicodedata
+from collections import defaultdict
 from datetime import date,datetime
 from zipfile import ZipFile
 from openpyxl import load_workbook
@@ -14,7 +15,8 @@ from apps.accounts.models import Company
 from apps.personnel.models import Camp
 from apps.production import transport
 from apps.production.transport_models import EquipmentCampStay,EquipmentTransportEvent,EquipmentDayRecord
-from apps.production.transport_details_models import EquipmentDayDetails,DETAIL_FIELDS
+from apps.production.transport_details_models import EquipmentDayDetails
+from apps.production.transport_detail_values import SOURCE_DETAIL_FIELDS as DETAIL_FIELDS,from_source,lookup_context
 from .models import Equipment,EquipmentType
 from .transport_import_models import TransportImportBatch,TransportImportRow
 from .fleet_import import index,key
@@ -40,7 +42,8 @@ def usable(value):return key(value) not in PLACEHOLDERS
 def fingerprint(company):
     # Only the master data used to resolve incoming rows. Existing actual records
     # are never overwritten by this importer.
-    models=[Equipment,EquipmentType,Camp]
+    from apps.production.transport_models import EquipmentTransportControl
+    models=[Equipment,EquipmentType,Camp,EquipmentTransportControl]
     payload={m._meta.label:list(m.objects.filter(company=company).order_by('pk').values()) for m in models}
     return hashlib.sha256(json.dumps(payload,default=str,sort_keys=True).encode()).hexdigest()
 
@@ -102,29 +105,34 @@ def validate(data):
 
 
 def collisions(company,rows):
-    seen={name:{} for name in ['vin','inventory','plate']};result=[]
-    for unit in Equipment.objects.filter(company=company).order_by('pk'):
-        for field,attr in [('vin','vin'),('plate','plate_number'),('inventory','inventory_number')]:
+    masters={name:defaultdict(list) for name in ['vin','inventory','plate']};seen={name:{} for name in masters};result=[]
+    units={u.pk:u for u in Equipment.objects.filter(company=company).order_by('pk')}
+    attrs={'vin':'vin','plate':'plate_number','inventory':'inventory_number'}
+    for unit in units.values():
+        for field,attr in attrs.items():
             value=getattr(unit,attr)
-            if usable(value) and not (field=='inventory' and key(value)=='сск'):seen[field].setdefault(normalized(value),(unit.pk,f'машина №{unit.pk}'))
+            if usable(value) and not (field=='inventory' and key(value)=='сск'):masters[field][normalized(value)].append(unit.pk)
     for row in rows:
-        data=row['data'];errors=validate(data)
+        data=row['data'];errors=validate(data);candidates=set();duplicate=None
         if row.get('error'):errors.insert(0,row['error'])
-        duplicate=None;candidate_ids=set()
-        for field in ['vin','inventory','plate']:
+        for field in masters:
             value=data.get(field,'')
             if not usable(value) or field=='inventory' and key(value)=='сск':continue
-            found=seen[field].get(normalized(value))
-            if found:
-                errors.append(f'{dict(vin="VIN / заводской номер",inventory="Инвентарный номер",plate="Госномер")[field]} {value}: уже есть {found[1]}.')
-                if found[0]:candidate_ids.add(found[0])
-        duplicate=next(iter(candidate_ids)) if len(candidate_ids)==1 else None
-        result.append({**row,'error':' '.join(errors),'duplicate_of_id':duplicate})
+            ids=masters[field].get(normalized(value),[]);candidates.update(ids)
+            if len(ids)>1:errors.append(f'{value}: номер уже указан у нескольких машин справочника.')
+            if normalized(value) in seen[field]:errors.append(f'{value}: повтор строки {seen[field][normalized(value)]}.')
+        if len(candidates)>1:errors.append('Номера указывают на разные машины справочника.')
+        elif candidates:
+            duplicate=next(iter(candidates));unit=units[duplicate]
+            for field,attr in attrs.items():
+                incoming=data.get(field,'');actual=getattr(unit,attr)
+                if usable(incoming) and usable(actual) and not (field=='inventory' and (key(incoming)=='сск' or key(actual)=='сск')) and normalized(incoming)!=normalized(actual):
+                    errors.append(f'{incoming}: не совпадает с номером существующей машины {actual}.')
+        result.append({**row,'error':' '.join(errors),'duplicate_of_id':duplicate,'equipment_id':duplicate if not errors else None})
         if not errors:
             for field in seen:
                 value=data.get(field,'')
-                if usable(value) and not (field=='inventory' and key(value)=='сск'):
-                    seen[field][normalized(value)]=(None,f'{row["source_file"]}, строка {row["source_row"]}')
+                if usable(value) and not (field=='inventory' and key(value)=='сск'):seen[field][normalized(value)]=f'{row["source_file"]}, строка {row["source_row"]}'
     return result
 
 
@@ -151,30 +159,46 @@ def _camp(user,site):
     return camp
 
 
-def _apply_row(user,row):
+def _apply_row(user,row,lookups=None):
     data=row.data;errors=validate(data)
+    data['_existing_card']=bool(row.equipment_id)
     if errors:raise ValidationError(errors)
     camp=_camp(user,data['site'])
-    roots=index(EquipmentType.objects.filter(company=user.company,merge_source__isnull=True,parent=None),True)
-    root=roots.get(key(data['planning_type']))
-    if root is None:root=EquipmentType.objects.create(company=user.company,name=data['planning_type'])
-    if not root.is_active:raise ValidationError('Техника для планирования неактивна.')
-    name=data['planning_type']+' / '+data['model']
-    variants=index(EquipmentType.objects.filter(company=user.company,parent=root,merge_source__isnull=True),True)
-    model=variants.get(key(name))
-    if model is None:model=EquipmentType.objects.create(company=user.company,parent=root,name=name,brand_model=data['model'],category=root.category)
-    if not model.is_active:raise ValidationError('Модель неактивна.')
-    machine=Equipment(company=user.company,type=model,name=data['model'],brand_model=data['model'],manufacture_year=int(data['year']) if data['year'] else None,
-        inventory_number=data['inventory'],plate_number=data['plate'] if usable(data['plate']) else '',vin=data['vin'] if usable(data['vin']) else '',site_name=camp.name)
-    machine.full_clean();machine.save()
-    # New machines only: importing a snapshot never overwrites an existing actual.
-    EquipmentCampStay.objects.create(company=user.company,equipment=machine,camp=camp,arrived_on=row.date)
+    if row.equipment_id:
+        machine=Equipment.objects.select_for_update().get(company=user.company,pk=row.equipment_id)
+    else:
+        roots=index(EquipmentType.objects.filter(company=user.company,merge_source__isnull=True,parent=None),True)
+        root=roots.get(key(data['planning_type']))
+        if root is None:root=EquipmentType.objects.create(company=user.company,name=data['planning_type'])
+        if not root.is_active:raise ValidationError('Техника для планирования неактивна.')
+        name=data['planning_type']+' / '+data['model']
+        variants=index(EquipmentType.objects.filter(company=user.company,parent=root,merge_source__isnull=True),True)
+        model=variants.get(key(name))
+        if model is None:model=EquipmentType.objects.create(company=user.company,parent=root,name=name,brand_model=data['model'],category=root.category)
+        if not model.is_active:raise ValidationError('Модель неактивна.')
+        machine=Equipment(company=user.company,type=model,name=data['model'],brand_model=data['model'],manufacture_year=int(data['year']) if data['year'] else None,
+            inventory_number=data['inventory'],plate_number=data['plate'] if usable(data['plate']) else '',vin=data['vin'] if usable(data['vin']) else '',site_name=camp.name)
+        machine.full_clean();machine.save()
     condition='READY' if key(data['condition']) in {'испр','исправна'} else 'SCRAP' if key(data['condition']) in {'под списание','на запчасти'} else 'REPAIR'
-    EquipmentTransportEvent.objects.create(company=user.company,equipment=machine,date=row.date,kind='ARRIVAL',to_camp=camp,recorded_by=user,comment=f'Импорт: {row.source_file}, строка {row.source_row}')
-    EquipmentTransportEvent.objects.create(company=user.company,equipment=machine,date=row.date,kind='CONDITION',to_camp=camp,condition=condition,recorded_by=user)
-    if condition=='READY':EquipmentDayRecord.objects.create(company=user.company,equipment=machine,camp=camp,date=row.date,status='WORKED' if key(data['repair_status'])=='в работе' else 'IDLE',recorded_by=user)
-    values={name:data.get(name,'') for name,_ in DETAIL_FIELDS};values['in_gpr']={'да':True,'нет':False}.get(key(data.get('in_gpr','')))
-    details=EquipmentDayDetails(company=user.company,equipment=machine,camp=camp,date=row.date,recorded_by=user,**values);details.full_clean();details.save()
+    stay=transport.present(user.company,row.date).filter(equipment=machine).select_related('camp').first()
+    if stay and stay.camp_id!=camp.pk:
+        transport.move(user,stay.camp,row.date,[machine.pk],'TRANSFER',target=camp,signed=transport.snapshot(user,stay.camp,row.date),comment=f'Импорт: {row.source_file}, строка {row.source_row}')
+    elif not stay:
+        transport.move(user,camp,row.date,[machine.pk],'ARRIVAL',condition=condition,signed=transport.snapshot(user,camp,row.date),comment=f'Импорт: {row.source_file}, строка {row.source_row}')
+    if transport.condition_on(machine,row.date)!=condition:
+        if condition!='READY' and machine.transport_days.filter(company=user.company,date=row.date).exists():transport.save_day(user,camp,row.date,[machine.pk],'CLEAR',signed=transport.snapshot(user,camp,row.date))
+        transport.set_condition(user,camp,row.date,[machine.pk],condition,signed=transport.snapshot(user,camp,row.date))
+    if condition=='READY':
+        previous=machine.transport_days.filter(company=user.company,date=row.date,camp=camp).first()
+        status='WORKED' if key(data['repair_status'])=='в работе' else 'IDLE'
+        target={'construction_object':previous.construction_object,'work':previous.work,'work_item':previous.work_item} if previous and status=='WORKED' else {}
+        transport.save_day(user,camp,row.date,[machine.pk],status,signed=transport.snapshot(user,camp,row.date),comment=data.get('comment',''),**target)
+    values=from_source(user.company,data,lookups)
+    values.update({name:data.get(name,'') for name in ['shift_one','shift_two','repair_date','expected_parts_date','repair_status','request_status','parts_status','maintenance']})
+    details=EquipmentDayDetails.objects.filter(company=user.company,equipment=machine,date=row.date).first() or EquipmentDayDetails(company=user.company,equipment=machine,camp=camp,date=row.date,recorded_by=user)
+    details.camp=camp
+    for field,value in values.items():setattr(details,field,value)
+    details.full_clean();details.save()
     row.status='APPLIED';row.error='';row.equipment=machine;row.camp=camp;row.resolved_by=user;row.resolved_at=timezone.now();row.save()
     return machine
 
@@ -186,13 +210,15 @@ def apply(user,batch):
     transport._company_mutex(user);Company.objects.select_for_update().get(pk=user.company_id)
     batch=TransportImportBatch.objects.select_for_update().get(pk=batch.pk,company=user.company)
     if batch.applied_at:raise ValidationError('Этот импорт уже применён.')
-    if fingerprint(user.company)!=batch.fingerprint:raise ValidationError('Справочники изменились. Создайте новый предпросмотр.')
+    if fingerprint(user.company)!=batch.fingerprint:raise ValidationError('Справочники или ведение техники изменились. Создайте новый предпросмотр.')
+    lookups=lookup_context(user.company)
     for row in batch.rows.select_for_update().order_by('pk'):
         issues=collisions(user.company,[{'data':row.data,'source_file':row.source_file,'source_row':row.source_row,'error':''}])[0]
         if row.status!='READY' or issues['error']:
             row.status='PENDING';row.error=row.error or issues['error'];row.duplicate_of_id=issues['duplicate_of_id'];row.save();continue
         try:
-            with transaction.atomic():_apply_row(user,row)
+            row.equipment_id=issues['equipment_id']
+            with transaction.atomic():_apply_row(user,row,lookups)
         except (ValidationError,PermissionDenied) as exc:
             row.refresh_from_db();row.status='PENDING';row.error='; '.join(exc.messages) if isinstance(exc,ValidationError) else str(exc);row.save()
     batch.applied_at=timezone.now();batch.save();require_fact_day(user,batch.date)
@@ -212,5 +238,28 @@ def resolve(user,row,data,version,*,close_duplicate=False):
     require_fact_day(user,row.date)
     checked=collisions(user.company,[{'data':data,'source_file':row.source_file,'source_row':row.source_row,'error':''}])[0]
     if checked['error']:raise ValidationError(checked['error'])
-    row.data=data;_apply_row(user,row);require_fact_day(user,row.date)
+    for earlier in row.batch.rows.filter(status='APPLIED').exclude(pk=row.pk):
+        if any(usable(data.get(field)) and normalized(data.get(field))==normalized(earlier.data.get(field)) for field in ['vin','plate']):raise ValidationError('Эта машина уже загружена из другой строки этого импорта. Закройте повтор либо исправьте номера.')
+    row.data=data;row.equipment_id=checked['equipment_id'];_apply_row(user,row);require_fact_day(user,row.date)
     return row
+
+
+@with_history_actor
+@transaction.atomic
+def retry_existing(user):
+    require_roles(user,transport.OPERATORS);transport._company_mutex(user)
+    Company.objects.select_for_update().get(pk=user.company_id)
+    count=0
+    for batch in TransportImportBatch.objects.filter(company=user.company,applied_at__isnull=False).order_by('pk'):
+        successful=[{'data':row.data,'source_file':row.source_file,'source_row':row.source_row,'error':''} for row in batch.rows.filter(status='APPLIED')]
+        for row in batch.rows.select_for_update().filter(status='PENDING').order_by('pk'):
+            candidate={'data':row.data,'source_file':row.source_file,'source_row':row.source_row,'error':''}
+            check=collisions(user.company,[*successful,candidate])[-1]
+            if check['error'] or not check['equipment_id']:continue
+            try:
+                with transaction.atomic():
+                    require_fact_day(user,row.date);row.equipment_id=check['equipment_id'];_apply_row(user,row)
+            except (ValidationError,PermissionDenied) as exc:
+                row.refresh_from_db();row.error='; '.join(exc.messages) if isinstance(exc,ValidationError) else str(exc);row.save()
+            else:successful.append(candidate);count+=1
+    return count
