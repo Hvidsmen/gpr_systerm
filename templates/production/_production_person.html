@@ -5,17 +5,17 @@
 <div class="production-person-employee"><span class="visually-hidden">{{ row.employee.label_tag }}</span>{{ row.employee }}{{ row.employee.errors }}</div>
 <div class="production-person-shift" title="Смена"><span class="visually-hidden">{{ row.shift.label_tag }}</span>{{ row.shift }}{{ row.shift.errors }}</div>
 {% if editable %}<div class="work-claim-bar production-person-claim" data-entry-claim><span class="small" data-label>Проверка записи…</span><button type="button" class="btn btn-sm btn-outline-primary" data-take disabled>Взять в работу</button><button type="button" class="btn btn-sm btn-outline-primary" data-release hidden>Освободить</button></div>
-<button type="button" class="btn btn-primary btn-sm" data-person-save aria-label="{% if row.instance.pk %}Сохранить сотрудника{% else %}Добавить в факт{% endif %}" title="Сохранить черновик страницы. Подтверждение всего дня — внизу.">{% if row.instance.pk %}Сохранить{% else %}Добавить{% endif %}</button>{% endif %}
+<div class="production-person-save-actions"><span class="small" data-autosave-row-state role="status"></span><button type="button" class="btn btn-sm btn-outline-danger" data-person-remove title="Убрать сотрудника из факта за этот день">Удалить</button></div>{% endif %}
 </div></div>
 <span class="small text-danger" data-error role="alert"></span>
 <details class="production-person-details"{% if row.planning_position.errors or row.activity.errors or row.DELETE.errors or row.work_targets.errors %} open{% endif %}>
-<summary aria-label="Сведения о сотруднике" title="Должность СМГ, местонахождение, комментарий и удаление">⋯</summary>
+<summary aria-label="Сведения о сотруднике" title="Должность СМГ, местонахождение и комментарий">⋯</summary>
 <div class="production-person-extra">
 <p class="small text-muted mb-1">{{ row.hint }}</p><p class="small mb-2" data-employee-location role="status"></p>
 <div class="mb-2">{{ row.planning_position.label_tag }}{{ row.planning_position }}{{ row.planning_position.errors }}<p class="small text-muted mb-0">{{ row.planning_position.help_text }}</p></div>
 <div hidden data-person-targets><strong class="small">Работы сотрудника</strong><ul class="small my-2" data-person-target-labels></ul><button type="button" class="btn btn-sm btn-outline-primary" data-person-pick>Выбрать работы</button>{{ row.work_targets.errors }}</div>
 <div class="mb-2">{{ row.activity.label_tag }}{{ row.activity }}{{ row.activity.errors }}</div>
-<label class="small d-inline-flex align-items-center gap-2">{{ row.DELETE }} Убрать сотрудника из этого дня</label>
-<p class="small text-muted mb-0">«Добавить» или «Сохранить» сохраняет черновик страницы. Подтверждение всего дня — внизу.</p>
+<div hidden>{{ row.DELETE }}</div>
+<p class="small text-muted mb-0">Изменения сохраняются автоматически. Подтверждение всего дня — внизу.</p>
 </div></details>
 </div>

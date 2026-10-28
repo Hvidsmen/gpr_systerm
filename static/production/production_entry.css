@@ -38,3 +38,10 @@
 .production-person-details>summary{position:absolute;right:8px;top:8px;width:28px;height:32px;display:flex;align-items:center;justify-content:center;list-style:none;border:1px solid #c7dce7;border-radius:5px;cursor:pointer;color:#315a71;font-size:20px;line-height:1}
 .production-person-details>summary::-webkit-details-marker{display:none}.production-person-details>summary:focus-visible{outline:2px solid #0087a4;outline-offset:2px}
 .production-person-extra{margin-top:8px;padding-top:8px;border-top:1px solid #e1ebf2}.production-person-extra label{font-size:12px}
+
+form[data-production-form]{width:100%;max-width:960px;margin-inline:auto}
+form[data-production-form] .production-steps{top:var(--navbar-height,48px)}
+
+.production-person-save-actions{display:flex;align-items:center;gap:6px;white-space:nowrap}.production-person-save-actions [data-autosave-row-state]{max-width:85px;overflow:hidden;text-overflow:ellipsis;font-size:10px}.production-person-auto-deleting{opacity:.65}.production-person-auto-failed{border-color:#dc3545!important}
+
+.production-save-footer{flex-wrap:wrap}.production-save-footer [data-autosave-state]{min-width:0;flex:1 1 180px;overflow-wrap:anywhere}

@@ -75,7 +75,7 @@ def previous_people(obj, day, *, production, user=None):
     current_roles=set(plan_positions(obj,day)) if production else set()
     for row in rows:
         saved_targets=targets(row)
-        initial.append({'employee':row.employee_id,'shift':row.shift,'general':row.general,
+        initial.append({'employee':row.employee_id,'role':row.planning_position_id or row.position_id,'shift':row.shift,'general':row.general,
             'work':row.work_id,'work_item':row.work_item_id,'equipment':row.equipment_id,'activity':row.activity,'planning_position':row.planning_position_id if row.planning_position_id in current_roles else None,
             'work_mode':('general' if row.general else 'works' if saved_targets else 'pending') if row.assignment_reviewed else 'pending',
             'work_targets':[token(w,i) for w,i in saved_targets]})
@@ -170,7 +170,7 @@ def report_data(obj,day):
     for row in EmployeeActivity.objects.filter(company=obj.company,construction_object=obj,date=day).select_related(
             'employee__position__planning_mapping__brigade__group','position','planning_position','reported_by').prefetch_related('work_links'):
         people.append({'id':row.pk,'employee':row.employee_id,'name':row.employee.display_name,'position':str(row.planning_position or row.position or ''),'staff_position':str(row.position or ''),
-            'shift':row.shift,'general':row.general,'reviewed':row.assignment_reviewed,'constant':is_general_employee(row.employee),
+            'role':row.planning_position_id or row.position_id,'shift':row.shift,'general':row.general,'reviewed':row.assignment_reviewed,'constant':is_general_employee(row.employee),
             'targets':[token(w,i) for w,i in targets(row)],
             'owner':(row.reported_by.get_full_name() or row.reported_by.username) if row.reported_by_id else 'Общий ввод'})
     return {'works':works,'people':people}

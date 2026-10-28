@@ -45,9 +45,7 @@ class ProductionEntryBrowserTests(StaticLiveServerTestCase):
         fact=DailyFact.objects.get(project_work=self.work,date=self.day)
         self.assertEqual(fact.reported_by_id,self.users['DISPATCHER'].pk)
         self.assertEqual(fact.actual_quantity,4)
-        revision=FactRevision.objects.filter(entity_type='production.dailyfact',entity_id=str(fact.pk),operation='UPDATE').latest('pk')
-        self.assertEqual(revision.actor_id,self.second.pk)
         from decimal import Decimal
-        self.assertEqual(Decimal(revision.before['fields']['actual_quantity']),Decimal('5'))
-        self.assertEqual(Decimal(revision.after['fields']['actual_quantity']),Decimal('4'))
+        revisions=FactRevision.objects.filter(entity_type='production.dailyfact',entity_id=str(fact.pk),operation='UPDATE',actor=self.second)
+        self.assertTrue(any(Decimal(row.before['fields']['actual_quantity'])==5 and Decimal(row.after['fields']['actual_quantity'])==4 for row in revisions))
         print(result.stdout.strip())

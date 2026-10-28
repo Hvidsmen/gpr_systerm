@@ -64,6 +64,30 @@ def actuation_version(obj,day):
     return record.updated_at.isoformat() if record else None
 
 
+def saved_state(user,obj,day,groups,baseline):
+    """Rebase only rows saved by this request; keep stale colleague baselines stale."""
+    baseline['actuation']=actuation_version(obj,day)
+    result=[]
+    for group in groups:
+        prefix=group['prefix']
+        if prefix not in {'works','labor'}:continue
+        entries=baseline['rows'][prefix]
+        baseline['rows'][prefix]={key:value for key,value in entries.items() if key.startswith('pk:')}
+        entries=baseline['rows'][prefix]
+        for form in group['formset']:
+            if not form.cleaned_data or not form.has_changed():continue
+            original=form['id'].value()
+            if original:entries.pop('pk:'+str(original),None)
+            deleted=bool(form.cleaned_data.get('DELETE'))
+            identity=form.instance.pk if not deleted else None
+            result.append({'prefix':form.prefix,'id':identity,'deleted':deleted})
+            if identity:
+                values={name:normalized(field,form[name].value()) for name,field in form.fields.items() if name not in {'work_claim_token','work_editing','person_claim_token','person_editing'}}
+                values['id']=str(identity)
+                entries['pk:'+str(identity)]={'version':form.instance.updated_at.isoformat(),'values':values}
+    return {'production_snapshot':signing.dumps(baseline,salt=SALT,compress=True),'rows':result}
+
+
 def check_locked(groups,obj=None,day=None,baseline=None):
     if obj and baseline is not None and baseline.get('actuation')!=actuation_version(obj,day):
         raise ValidationError('Актировка объекта изменилась. Обновите день перед сохранением.')

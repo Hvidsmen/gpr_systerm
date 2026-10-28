@@ -9,6 +9,7 @@ from django.db import transaction, IntegrityError
 from django.db.models import Q
 from django.forms import BaseModelFormSet, modelformset_factory
 from django.shortcuts import render, redirect
+from django.http import JsonResponse
 from django.urls import reverse
 from django.utils import timezone
 from django.views import View
@@ -168,6 +169,7 @@ class PersonForm(ActivityForm):
     class Meta:
         model=EmployeeActivity
         fields=['employee','shift','general','work','work_item','equipment','activity']
+        error_messages={'__all__':{'unique_together':'Этот сотрудник уже учтён в эту дату и смену. Измените существующую запись.'}}
 
 class MachineForm(ActivityForm):
     prepared_from_assignment=False
@@ -209,6 +211,26 @@ class ScopedSet(BaseModelFormSet):
         super().add_fields(form,index)
         form.fields['id'].queryset=self.get_queryset()
 
+    def clean(self):
+        super().clean()
+        if self.model is not EmployeeActivity:return
+        seen=set()
+        for form in self.forms:
+            data=getattr(form,'cleaned_data',{})
+            if data.get('DELETE'):continue
+            employee=data.get('employee')
+            if employee:
+                key=(employee.pk,data.get('shift'))
+            elif not data and form.instance.pk:
+                # Unedited saved rows are still part of this day's roster.
+                key=(form.instance.employee_id,form.instance.shift)
+            else:continue
+            if key in seen:
+                message='Этот сотрудник уже указан в этой смене. Измените существующую строку или уберите повтор.'
+                form.add_error('employee',message)
+                raise ValidationError(message,code='duplicate_employee_shift')
+            seen.add(key)
+
 
 def project_resources(obj,day,section):
     """Project detail into the existing report totals; never add a second total."""
@@ -237,6 +259,19 @@ def project_resources(obj,day,section):
         for (equipment_type_id,number),machines in counts.items():EquipmentFact.objects.create(company=company,construction_object=obj,date=day,equipment_type_id=equipment_type_id,equipment_number=number,actual_count=len(machines))
 
 
+def dispatcher_response(request,context,status=200):
+    if request.method=='POST' and request.POST.get('autosave')=='1' and request.POST.get('section')=='works':
+        errors=[]
+        for group in context.get('groups',[]):
+            for form in group['formset']:
+                if form.errors:errors.append({'prefix':form.prefix,'fields':{name:list(messages) for name,messages in form.errors.items()}})
+            errors.extend({'prefix':group['prefix'],'message':str(error)} for error in group['formset'].non_form_errors())
+        actuation=context.get('actuation')
+        if actuation and actuation.errors:errors.append({'prefix':'actuation','fields':{key:list(values) for key,values in actuation.errors.items()}})
+        return JsonResponse({'error':context.get('error') or 'Изменения не сохранены. Проверьте заполнение выделенных записей.','errors':errors},status=max(status,400))
+    return render(request,'production/dispatcher_day.html',context,status=status)
+
+
 class DispatcherDayView(CompanyRequiredMixin,View):
     def get(self,request):
         if role_code(request.user)=='MECHANIZATION_DISPATCHER' and not request.GET.get('construction_object'):
@@ -258,7 +293,7 @@ class DispatcherDayView(CompanyRequiredMixin,View):
         section=(request.POST if bound else request.GET).get('section',allowed[0])
         if section not in allowed:raise PermissionDenied('Другое направление факта.')
         context={'selector':selector,'section':section,'tabs':[(s,LABELS[s]) for s in allowed],'editable':role_code(request.user) in FACT_ROLES}
-        if not selector.is_bound or not selector.is_valid():return render(request,'production/dispatcher_day.html',context,status=400 if bound else 200)
+        if not selector.is_bound or not selector.is_valid():return dispatcher_response(request,context,status=400 if bound else 200)
         obj=selector.cleaned_data['construction_object'];day=selector.cleaned_data['date']
         from core.fact_edit_window import window_context,require_fact_day
         context.update(window_context(request.user,day))
@@ -395,7 +430,7 @@ class DispatcherDayView(CompanyRequiredMixin,View):
                     production_baseline=entry_concurrency.prepare(request.user,obj,day,groups,context['production_snapshot'])
                 except ValidationError as exc:
                     context['error']='; '.join(exc.messages)
-                    return render(request,'production/dispatcher_day.html',context,status=400)
+                    return dispatcher_response(request,context,status=400)
         if bound:
             valid=[g['formset'].is_valid() for g in groups]
             if all(valid) and (section!='works' or actuation.is_valid()):
@@ -520,7 +555,7 @@ class DispatcherDayView(CompanyRequiredMixin,View):
                             if request.POST.get('action')=='confirm' and not own_entry:contributions.update(confirmed_at=timezone.now())
                             if contributions.filter(confirmed_at=None).exists():current.confirmed_at=None;current.confirmed_by=None
                         current.save()
-                        if section=='works' and request.POST.get('claim_session'):
+                        if section=='works' and request.POST.get('claim_session') and request.POST.get('autosave')!='1':
                             from .work_claims import release_session
                             release_session(request.user,obj,day,request.POST.get('claim_session'))
                         require_fact_day(request.user,day)
@@ -532,10 +567,14 @@ class DispatcherDayView(CompanyRequiredMixin,View):
                             if task.assigned_to and ({section}|({'labor'} if section=='works' and people_changed else set())) & (required_fact_sections(task.assigned_to) or set()):
                                 complete=fact_sections_confirmed(task.assigned_to,obj.company_id,obj.pk,day)
                                 state(task,'DONE' if complete else 'OPEN',request.user,'Все необходимые направления подтверждены.' if complete else 'Требуется подтверждение направлений факта.')
+                        if section=='works' and request.POST.get('autosave')=='1' and request.POST.get('action')!='confirm':
+                            result=entry_concurrency.saved_state(request.user,obj,day,groups,production_baseline)
+                            autosave_response=JsonResponse({**result,'revision':current.revision,'labor_revision':people_current.revision,'report':report_data(obj,day)})
+                    if section=='works' and request.POST.get('autosave')=='1' and request.POST.get('action')!='confirm':return autosave_response
                     messages.success(request,'Факт подтверждён.' if request.POST.get('action')=='confirm' else 'Черновик факта сохранён.')
                     destination={'construction_object':obj.pk,'date':day.isoformat(),'section':section}
                     if section=='works' and request.POST.get('return_step')=='2':destination['entry_step']='2'
                     return redirect(reverse('production:fact_day_workspace')+'?'+urlencode(destination))
                 except (ValidationError,IntegrityError) as exc:context['error']='; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Повтор записи: сотрудник или техника уже учтены в этой смене. Обновите страницу и проверьте объект.'
-            return render(request,'production/dispatcher_day.html',context,status=400)
-        return render(request,'production/dispatcher_day.html',context)
+            return dispatcher_response(request,context,status=400)
+        return dispatcher_response(request,context)

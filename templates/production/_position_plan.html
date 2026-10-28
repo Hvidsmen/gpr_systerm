@@ -13,5 +13,5 @@
 {% if editable %}<button type="button" class="btn btn-sm btn-outline-primary" data-add-for-position="{{ row.id }}">Назначить сотрудника</button>{% endif %}
 </section>{% empty %}<p>В применённом СМГ на эту дату должности не запланированы. Можно внести фактически работавших сотрудников.</p>{% endfor %}
 <section class="border rounded p-3 mb-3"><h4 class="h6">Другие сотрудники / без должности СМГ</h4><div data-position-people=""></div></section>
-<p class="small text-muted mb-0" data-position-plan-note>Итоги учитывают сохранённый факт всех диспетчеров и несохранённые изменения текущей формы. «Добавить в факт» сохраняет черновик страницы.</p>
+<p class="small text-muted mb-0" data-position-plan-note>Итоги учитывают сохранённый факт всех диспетчеров и несохранённые изменения текущей формы. Изменения сохраняются автоматически.</p>
 </section>{{ position_plan_saved|json_script:'position-plan-saved' }}{{ position_employee_roles|json_script:'position-employee-roles' }}

@@ -1,6 +1,6 @@
 (()=>{
  'use strict';const source=document.getElementById('position-plan-saved');if(!source)return;
- const saved=JSON.parse(source.textContent),staff=JSON.parse(document.getElementById('position-employee-roles').textContent),host=document.querySelector('[data-rows=labor]');
+ let saved=JSON.parse(source.textContent);const staff=JSON.parse(document.getElementById('position-employee-roles').textContent),host=document.querySelector('[data-rows=labor]');
  const field=(row,name)=>row.querySelector(`[name$="-${name}"]`),containers=new Map([...host.querySelectorAll('[data-position-people]')].map(el=>[el.dataset.positionPeople,el]));
  const number=new Intl.NumberFormat('ru-RU',{maximumFractionDigits:2});
  function write(el,value){const text=number.format(value);if(el.textContent!==text)el.textContent=text;}
@@ -25,5 +25,6 @@
  });
  host.addEventListener('change',event=>{const row=event.target.closest('[data-production-person]');if(row&&event.target===field(row,'planning_position'))delete row.dataset.requestedPosition;refresh();});
  new MutationObserver(records=>{if(records.some(record=>[...record.addedNodes,...record.removedNodes].some(node=>node.nodeType===1&&(node.matches('[data-production-person]')||node.querySelector('[data-production-person]')))))refresh();}).observe(host,{childList:true,subtree:true});
+ host.closest('form').addEventListener('production-report-update',event=>{saved=event.detail.people.map(row=>({id:row.id,employee:row.employee,role:row.role}));refresh();});
  refresh();
 })();
