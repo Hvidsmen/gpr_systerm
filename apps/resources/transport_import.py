@@ -2,6 +2,8 @@
 import hashlib,json,re,unicodedata
 from collections import defaultdict
 from datetime import date,datetime
+from io import BytesIO
+from openpyxl.utils import get_column_letter
 from zipfile import ZipFile
 from openpyxl import load_workbook
 from django.core.exceptions import ValidationError,PermissionDenied
@@ -40,8 +42,7 @@ def normalized(value):return re.sub(r'[\s\-]+','',unicodedata.normalize('NFKC',t
 def usable(value):return key(value) not in PLACEHOLDERS
 
 def fingerprint(company):
-    # Only the master data used to resolve incoming rows. Existing actual records
-    # are never overwritten by this importer.
+    # A change in master data or the transport journal invalidates the preview.
     from apps.production.transport_models import EquipmentTransportControl
     models=[Equipment,EquipmentType,Camp,EquipmentTransportControl]
     payload={m._meta.label:list(m.objects.filter(company=company).order_by('pk').values()) for m in models}
@@ -55,7 +56,9 @@ def read_files(files):
         try:
             with ZipFile(upload) as archive:
                 if sum(i.file_size for i in archive.infolist())>50*1024*1024:raise ValidationError('Слишком большой файл после распаковки.')
-            upload.seek(0);book=load_workbook(upload,read_only=True,data_only=False)
+            upload.seek(0);raw=upload.read()
+            book=load_workbook(BytesIO(raw),read_only=True,data_only=False,keep_links=False)
+            cached=load_workbook(BytesIO(raw),read_only=True,data_only=True,keep_links=False)
         except ValidationError:raise
         except Exception:raise ValidationError(f'Не удалось прочитать {upload.name}.')
         try:
@@ -66,23 +69,36 @@ def read_files(files):
             if len(headers)<21:raise ValidationError(f'{upload.name}: нужны все 21 колонка сводки.')
             if headers[:8]!=HEADERS[:8]:raise ValidationError(f'{upload.name}: не найдены основные 8 колонок сводки.')
             if headers[8:19]!=HEADERS[8:19] or not headers[19].startswith('Проведение ТО') or headers[20]!='Примечание':raise ValidationError(f'{upload.name}: структура дополнительных колонок отличается от сводки. Данные не загружены.')
-            for number,cells in enumerate(sheet.iter_rows(min_row=2),2):
+            for number,(cells,results) in enumerate(zip(sheet.iter_rows(min_row=2),cached.worksheets[0].iter_rows(min_row=2)),2):
                 values=[c.value for c in cells]
-                if number==2 and values[:21]==list(range(1,22)):continue
+                if number==2 and (values[:21]==list(range(1,22)) or [c.value for c in results[:21]]==list(range(1,22))):continue
                 if not any(v is not None for v in values):continue
                 if not values[2] and not any(values[3:6]):continue
                 original={label or f'Столбец {n+1}':text(values[n]) for n,label in enumerate(headers)}
-                data=dict(zip(FIELDS,[text(v) for v in values[:21]]));errors=[]
+                data={};formula_errors={}
+                for index,(name,cell,result) in enumerate(zip(FIELDS,cells,results)):
+                    value=cell.value
+                    if cell.data_type=='f':
+                        value=result.value
+                        if index and result.data_type=='e':formula_errors[name]=f'Ячейка {cell.coordinate} («{HEADERS[index]}»): результат формулы содержит ошибку Excel {result.value}.';value=None
+                        elif index and value is None and result.data_type not in {'s','str','inlineStr'}:formula_errors[name]=missing_formula_result(name,number)
+                    elif index and cell.data_type=='e':formula_errors[name]=f'Ячейка {cell.coordinate} («{HEADERS[index]}»): ошибка Excel {cell.value}.';value=None
+                    data[name]=('Да' if value else 'Нет') if name=='in_gpr' and isinstance(value,bool) else text(value)
+                if formula_errors:data['_formula_errors']=formula_errors
                 if key(data['year']) in PLACEHOLDERS:data['year']=''
-                if any(c.data_type=='f' for c in cells):errors.append('Формулы не загружаются как реквизиты. Замените их значениями.')
-                rows.append({'source_file':upload.name[:255],'source_sheet':sheet.title,'source_row':number,'original':original,'data':data,'error':' '.join(errors)})
-        finally:book.close()
+                rows.append({'source_file':upload.name[:255],'source_sheet':sheet.title,'source_row':number,'original':original,'data':data,'error':''})
+        finally:book.close();cached.close()
     if not rows:raise ValidationError('На первых листах «Сводка» нет машин.')
     return rows
 
 
+def missing_formula_result(name,row):
+    index=FIELDS.index(name)
+    return f'Ячейка {get_column_letter(index+1)}{row} («{HEADERS[index]}»): в книге не сохранён результат формулы. Пересчитайте и сохраните файл в Excel, затем загрузите его повторно.'
+
+
 def validate(data):
-    errors=[]
+    errors=[message for name,message in data.get('_formula_errors',{}).items() if not data.get(name)]
     for field,label,limit in [('model','Марка / модель',150),('planning_type','Техника для планирования',100),('site','ВЖГ',150)]:
         if not data.get(field):errors.append(f'Не заполнено: {label}.')
         elif len(data[field])>limit:errors.append(f'{label}: слишком длинное значение.')
@@ -244,22 +260,45 @@ def resolve(user,row,data,version,*,close_duplicate=False):
     return row
 
 
+def _queued_values(row):
+    data=dict(row.data)
+    # Older versions rejected formula-based row numbering too. The order number
+    # is informational; the actual workbook row and original expression are kept.
+    if str(data.get('number','')).startswith('='):data['number']=''
+    if 'Формулы не загружаются как реквизиты' in row.error:
+        errors=dict(data.get('_formula_errors',{}))
+        for name in FIELDS[1:]:
+            if str(data.get(name,'')).startswith('='):
+                data[name]='';errors[name]=missing_formula_result(name,row.source_row)
+        if errors:data['_formula_errors']=errors
+    return data
+
+
 @with_history_actor
 @transaction.atomic
-def retry_existing(user):
+def retry_pending(user,*,existing_only=False):
     require_roles(user,transport.OPERATORS);transport._company_mutex(user)
     Company.objects.select_for_update().get(pk=user.company_id)
     count=0
     for batch in TransportImportBatch.objects.filter(company=user.company,applied_at__isnull=False).order_by('pk'):
-        successful=[{'data':row.data,'source_file':row.source_file,'source_row':row.source_row,'error':''} for row in batch.rows.filter(status='APPLIED')]
+        successful=list(batch.rows.filter(status='APPLIED').order_by('pk'))
         for row in batch.rows.select_for_update().filter(status='PENDING').order_by('pk'):
-            candidate={'data':row.data,'source_file':row.source_file,'source_row':row.source_row,'error':''}
-            check=collisions(user.company,[*successful,candidate])[-1]
-            if check['error'] or not check['equipment_id']:continue
+            data=_queued_values(row)
+            repeated=next((previous for previous in successful if any(usable(data.get(field)) and not (field=='inventory' and key(data[field])=='сск') and normalized(data[field])==normalized(previous.data.get(field,'')) for field in ['vin','plate','inventory'])),None)
+            if repeated:
+                row.data=data;row.error='; '.join(['Эта машина уже загружена из другой строки этого импорта. Закройте повтор либо исправьте номера.',*validate(data)]);row.duplicate_of_id=repeated.equipment_id;row.save();continue
+            check=collisions(user.company,[{'data':data,'source_file':row.source_file,'source_row':row.source_row,'error':''}])[0]
+            if check['error']:
+                row.data=data;row.error=check['error'];row.duplicate_of_id=check['duplicate_of_id'];row.save();continue
+            if existing_only and not check['equipment_id']:continue
             try:
                 with transaction.atomic():
-                    require_fact_day(user,row.date);row.equipment_id=check['equipment_id'];_apply_row(user,row)
+                    require_fact_day(user,row.date);row.data=data;row.equipment_id=check['equipment_id'];_apply_row(user,row)
             except (ValidationError,PermissionDenied) as exc:
                 row.refresh_from_db();row.error='; '.join(exc.messages) if isinstance(exc,ValidationError) else str(exc);row.save()
-            else:successful.append(candidate);count+=1
+            else:successful.append(row);count+=1
     return count
+
+
+def retry_existing(user):
+    return retry_pending(user,existing_only=True)

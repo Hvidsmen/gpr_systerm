@@ -41,3 +41,25 @@ class HousingPlanTests(TestCase):
         result=monthly_plan(self.hr,self.b,self.day)
         self.assertEqual(result['housing_plan_groups'],[])
         self.assertEqual(str(add_month(self.month.replace(month=12),1)),f'{self.month.year+1}-01-01')
+
+    def test_position_header_contains_separate_sources_and_totals_are_per_source(self):
+        from .housing_plan import position_headers
+        from .rotation import rotation_rows
+        from .models import StaffingSlot
+        StaffingSlot.objects.create(company=self.company,group=self.group,person=self.second_person,housing_camp=self.a,status='МО')
+        smg=DailySchedule.objects.create(company=self.company,construction_object=self.obj,month=self.month,status='APPLIED',revision=1,created_by=self.hr)
+        DailyScheduleEntry.objects.create(schedule=smg,key='labor:header',kind='labor',label='Монтажник',rows=[{'date':str(self.month+timedelta(days=n)),'brigade_id':self.brigade,'planned_count':'3'} for n in range(monthrange(self.month.year,self.month.month)[1])])
+        context=monthly_plan(self.hr,self.a,self.day);rows,_,stats=rotation_rows(self.company,[self.a],self.day)
+        groups=position_headers(self.company,rows,context)
+        self.assertEqual(len(groups),1);self.assertEqual(groups[0]['people'],2);self.assertEqual(groups[0]['rest'],1)
+        plans={p['kind']:p for p in groups[0]['plans']}
+        self.assertEqual(plans['СМГ']['months'][0]['value'],3);self.assertEqual(plans['ГПР']['months'][0]['value'],10)
+        self.assertEqual(sorted(s['current_total'] for s in context['housing_plan_groups']),[3,10]);self.assertNotIn('housing_plan_totals',context)
+
+    def test_planned_position_without_people_is_visible_without_fabricating_a_vacancy(self):
+        from .housing_plan import position_headers
+        result=monthly_plan(self.hr,self.a,self.day)
+        groups=position_headers(self.company,[],result)
+        self.assertEqual(len(groups),1);self.assertEqual(groups[0]['people'],0);self.assertEqual(groups[0]['vacancies'],0)
+        self.assertEqual(len(groups[0]['plans'][0]['months']),5)
+        self.assertEqual(position_headers(self.company,[],result,query='несуществующий сотрудник'),[])

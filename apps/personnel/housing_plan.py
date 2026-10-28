@@ -85,3 +85,51 @@ def monthly_plan(user,camp,day,*,camps=None):
         output.append({'object':group['object'],'kind':group['kind'],'rows':rows,'used_for':sorted(group['used_for']),
             'columns':[{'month':month,'versions':', '.join(str(v) for v in sorted(bucket['versions'])),'available':bool(bucket['days'])} for month,bucket in zip(months,group['months'])]})
     return {'housing_plan_months':months,'housing_plan_groups':output}
+
+
+def position_headers(company,rows,plan_context,*,query='',position=None,state=''):
+    """Attach each source's monthly plan to its position; keep source totals separate."""
+    from apps.resources.models import Position
+    aliases=brigade_aliases(company)
+    def canonical(pk):
+        seen=set()
+        while pk in aliases and pk not in seen:seen.add(pk);pk=aliases[pk]
+        return pk
+    def normalized(value):return ' '.join(str(value).split()).casefold()
+    sources=plan_context['housing_plan_groups'];months=plan_context['housing_plan_months']
+    by_name=defaultdict(set);plans={}
+    for source in sources:
+        totals=[]
+        for index,column in enumerate(source['columns']):
+            totals.append({'month':column['month'],'value':sum((row['values'][index] or Decimal(0) for row in source['rows']),Decimal(0)) if column['available'] else None,'versions':column['versions']})
+        source['totals']=totals;source['current_total']=totals[0]['value']
+        for row in source['rows']:
+            by_name[normalized(row['name'])].add(row['id'])
+            plans.setdefault(row['id'],{'name':row['name'],'sources':[]})['sources'].append({'object':source['object'],'kind':source['kind'],'used_for':source['used_for'],
+                'months':[{'month':month,'value':value,'versions':column['versions']} for month,value,column in zip(months,row['values'],source['columns'])]})
+    position_ids={row['position'].pk for row in rows if row.get('position')}
+    if position:position_ids.add(position.pk)
+    mappings={}
+    for item in Position.objects.filter(company=company,pk__in=position_ids).select_related('planning_mapping'):
+        mapping=getattr(item,'planning_mapping',None)
+        if mapping:mappings[item.pk]=canonical(mapping.brigade_id)
+    groups={};matched=set()
+    for row in rows:
+        label=row['position_label'];key=normalized(label)
+        group=groups.setdefault(key,{'name':label,'rows':[],'plan_ids':set()});group['rows'].append(row)
+        mapped=mappings.get(row['position'].pk) if row.get('position') else None
+        if mapped in plans:group['plan_ids'].add(mapped)
+        elif len(by_name[key])==1:group['plan_ids'].update(by_name[key])
+    for group in groups.values():matched.update(group['plan_ids'])
+    if not query and not state:
+        selected=mappings.get(position.pk) if position else None
+        for pk,plan in plans.items():
+            if pk in matched or position and pk!=selected and normalized(plan['name'])!=normalized(position.name):continue
+            key=normalized(plan['name']);group=groups.setdefault(key,{'name':plan['name'],'rows':[],'plan_ids':set()});group['plan_ids'].add(pk)
+    output=[]
+    for group in groups.values():
+        members=group['rows'];group['people']=sum(bool(r['person']) for r in members);group['on_shift']=sum(r['state']=='MV' for r in members)
+        group['rest']=sum(r['state']=='MO' for r in members);group['vacancies']=sum(not r['person'] for r in members);group['present']=sum(bool(r.get('verified')) for r in members)
+        group['plans']=[{**source,'position':plans[pk]['name']} for pk in sorted(group['plan_ids']) for source in plans[pk]['sources']]
+        output.append(group)
+    return sorted(output,key=lambda group:normalized(group['name']))

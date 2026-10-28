@@ -129,13 +129,14 @@ def workspace(request):
     values=selector.cleaned_data
     rows,days,rotation_stats=rotation_rows(request.user.company,list(selected_camps),day,query=values.get('q',''),position=values.get('position'),state=values.get('state',''),include_unassigned=not values.get('construction_object') and not values.get('camps'))
     events=HousingEvent.objects.filter(company=request.user.company).filter(Q(from_camp__in=selected_camps)|Q(to_camp__in=selected_camps)).select_related('person','from_camp','to_camp','recorded_by')[:50]
-    from .housing_plan import monthly_plan
+    from .housing_plan import monthly_plan,position_headers
     plan_context=monthly_plan(request.user,camp,day,camps=selected_camps)
+    position_groups=position_headers(request.user.company,rows,plan_context,query=values.get('q',''),position=values.get('position'),state=values.get('state',''))
     from apps.projects.models import ConstructionObject
     objects=ConstructionObject.objects.filter(company=request.user.company,housing_camps__in=selected_camps).distinct()
     from .lodging_views import summary_context
     plan_context.update(summary_context(request.user,camp,day,camps=selected_camps))
-    return render(request,'personnel/housing.html',{**plan_context,'rotation_filter':selector,'rotation_stats':rotation_stats,'selected_camps':selected_camps,
+    return render(request,'personnel/housing.html',{**plan_context,'rotation_filter':selector,'rotation_stats':rotation_stats,'position_groups':position_groups,'selected_camps':selected_camps,
         'camp':camp,'camps':camps,'day':day,'rows':rows,'dates':days,'form':form,'query':values.get('q',''),
         'events':events,'total':rotation_stats['people'],'objects':objects,
         'unknown_count':Person.objects.filter(company=request.user.company,stays__isnull=True).count(),

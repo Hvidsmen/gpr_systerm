@@ -66,8 +66,8 @@ def review(request,pk):
 def errors(request):
     require_roles(request.user,OPERATORS)
     if request.method=='POST':
-        count=service.retry_existing(request.user)
-        messages.success(request,f'В ведение загружено существующих машин: {count}. Противоречия и повторы остались в ошибках.')
+        count=service.retry_pending(request.user)
+        messages.success(request,f'В ведение загружено записей: {count}. Исправлена обработка формул; противоречия, повторы и ячейки без результата остались для проверки.')
         return redirect('resources:transport_import_errors')
     rows=TransportImportRow.objects.filter(company=request.user.company,status='PENDING',batch__applied_at__isnull=False).select_related('batch','duplicate_of').order_by('pk')
     if request.GET.get('q'):rows=rows.filter(error__icontains=request.GET['q'])
