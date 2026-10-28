@@ -6,4 +6,5 @@
 <div class="mt-2">{{ row.planning_position.label_tag }}{{ row.planning_position }}{{ row.planning_position.errors }}<p class="small text-muted mb-0">{{ row.planning_position.help_text }}</p></div>
 <div hidden data-person-targets class="my-3"><strong class="small">Работы сотрудника</strong><ul class="small my-2" data-person-target-labels></ul><button type="button" class="btn btn-sm btn-outline-primary" data-person-pick>Выбрать работы</button>{{ row.work_targets.errors }}</div>
 <details><summary class="small">Комментарий</summary>{{ row.activity }}{{ row.activity.errors }}</details><label class="small d-inline-flex align-items-center gap-2 mt-2">{{ row.DELETE }} Убрать сотрудника из этого дня</label>
+{% if editable %}<div class="d-flex align-items-center flex-wrap gap-2 mt-3"><button type="button" class="btn btn-primary btn-sm" data-person-save>{% if row.instance.pk %}Сохранить сотрудника{% else %}Добавить в факт{% endif %}</button><span class="small text-muted">Сохранится черновик страницы. Подтверждение всего дня — внизу.</span></div>{% endif %}
 </div>

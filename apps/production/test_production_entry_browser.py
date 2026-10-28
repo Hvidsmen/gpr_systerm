@@ -47,4 +47,7 @@ class ProductionEntryBrowserTests(StaticLiveServerTestCase):
         self.assertEqual(fact.actual_quantity,4)
         revision=FactRevision.objects.filter(entity_type='production.dailyfact',entity_id=str(fact.pk),operation='UPDATE').latest('pk')
         self.assertEqual(revision.actor_id,self.second.pk)
+        from decimal import Decimal
+        self.assertEqual(Decimal(revision.before['fields']['actual_quantity']),Decimal('5'))
+        self.assertEqual(Decimal(revision.after['fields']['actual_quantity']),Decimal('4'))
         print(result.stdout.strip())

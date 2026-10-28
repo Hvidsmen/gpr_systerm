@@ -64,6 +64,27 @@ class BedForm(forms.ModelForm):
         for f in self.fields.values():f.widget.attrs['class']='form-select' if isinstance(f.widget,forms.Select) else 'form-control'
 
 
+class QuickBedForm(StyledForm):
+    building=forms.ModelChoiceField(label='Вагон / корпус',queryset=LodgingBuilding.objects.none(),required=False)
+    new_building_name=forms.CharField(label='Или новый вагон / корпус',max_length=200,required=False)
+    new_building_inventory_number=forms.CharField(label='Инвентарный номер нового вагона',max_length=80,required=False)
+    room=forms.CharField(label='Комната',max_length=60,required=False)
+    number=forms.CharField(label='Номер места',max_length=60)
+    note=forms.CharField(label='Примечание к месту',max_length=500,required=False)
+    def __init__(self,*args,company,camp,**kwargs):
+        kwargs.setdefault('auto_id','quick_bed_%s')
+        super().__init__(*args,**kwargs)
+        self.fields['building'].queryset=LodgingBuilding.objects.filter(company=company,camp=camp,is_active=True)
+        self.style()
+        for field in self.fields.values():field.widget.attrs['form']='lodging-quick-bed-form'
+    def clean(self):
+        data=super().clean()
+        if data.get('building') and data.get('new_building_name'):self.add_error('new_building_name','Выберите существующий вагон или введите новый.')
+        if not data.get('building') and not data.get('new_building_name'):self.add_error('building','Выберите вагон или укажите название нового.')
+        if data.get('new_building_inventory_number') and not data.get('new_building_name'):self.add_error('new_building_name','Укажите название нового вагона.')
+        return data
+
+
 class CorrectionForm(forms.ModelForm):
     version=forms.CharField(widget=forms.HiddenInput)
     reason=forms.CharField(label='Причина исправления',max_length=500,widget=forms.Textarea(attrs={'rows':2}))

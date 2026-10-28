@@ -156,7 +156,7 @@ class CampStay(ActualHistoryMixin, PersonnelModel):
 
 class HousingEvent(ActualHistoryMixin, PersonnelModel):
     KINDS=[('ARRIVAL','Заезд'),('DEPARTURE','Выезд'),('TRANSFER','Перевод'),('CANCEL','Отмена записи')]
-    departure_destination=models.CharField('Куда выезжает',max_length=10,choices=[('REST','На межвахтовый отдых'),('CAMP','В другой ВЖГ')],blank=True)
+    departure_destination=models.CharField('Куда выезжает',max_length=10,choices=[('REST','На межвахтовый отдых'),('CAMP','В другой ВЖГ'),('DISMISSAL','По увольнению')],blank=True)
     person=models.ForeignKey(Person,on_delete=models.PROTECT,related_name='housing_events')
     date=models.DateField()
     kind=models.CharField(max_length=12,choices=KINDS)

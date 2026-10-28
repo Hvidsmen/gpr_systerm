@@ -1,6 +1,7 @@
 (() => {
  'use strict';
  const form=document.querySelector('[data-production-form]'),graph=document.querySelector('[data-employee-graph]');if(!form||!graph)return;
+ const employeeLocations=JSON.parse(document.getElementById('production-employee-locations')?.textContent||'{}'),savedPeople=JSON.parse(document.getElementById('production-report-people')?.textContent||'[]');
  const catalogue=JSON.parse(document.getElementById('production-work-choices').textContent);let saved=JSON.parse(document.getElementById('production-graph-saved').textContent);const labels=new Map(catalogue.map(w=>[w.token,w]));
  const workHost=graph.querySelector('[data-graph-works]'),peopleHost=graph.querySelector('[data-graph-people]'),svg=graph.querySelector('svg'),canvas=graph.querySelector('.employee-graph-canvas'),message=graph.querySelector('[data-graph-message]');
  const key=(w,i)=>i?`item:${w}:${i}`:`work:${w}`,field=(row,name)=>row.querySelector(`[name$="-${name}"]`),personRows=()=>[...form.querySelectorAll('[data-production-person]')];
@@ -31,6 +32,9 @@
   for(const person of orderedPeople){const row=person.row,mode=field(row,'work_mode').value,group=person.workTokens.length?'Связаны с работами':mode==='general'?'Работали без привязки':'Связи пока не проверены';
    if(group!==previousGroup){const h=document.createElement('p');h.className='small text-muted mt-3 mb-2';h.textContent=group;peopleHost.append(h);previousGroup=group;}
    const card=document.createElement('div');card.className='employee-graph-card graph-person';card.dataset.person=person.id;const name=document.createElement('strong');name.textContent=(field(row,'employee').selectedOptions[0]?.textContent||'Сотрудник').split(' · ')[0];card.append(name);
+   const employeeId=field(row,'employee').value,planning=field(row,'planning_position'),plannedRole=planning?.value?planning.selectedOptions[0]?.textContent:'',snapshot=savedPeople.find(item=>String(item.id)===String(field(row,'id')?.value)),staffRole=snapshot?.staff_position||employeeLocations[employeeId]?.position_label||'';
+   const position=document.createElement('p');position.className='small my-2';position.dataset.graphPersonPosition='';position.textContent='Должность в факте: '+(plannedRole||staffRole||'Не указана');card.append(position);
+   if(plannedRole&&staffRole&&plannedRole.trim().toLocaleLowerCase('ru')!==staffRole.trim().toLocaleLowerCase('ru')){const staff=document.createElement('p');staff.className='small text-muted mb-2';staff.dataset.graphStaffPosition='';staff.textContent='Штатная должность: '+staffRole;card.append(staff);}
    const meta=document.createElement('p');meta.className='small text-muted my-2';meta.textContent=`Смена ${field(row,'shift').value} · `+(person.workTokens.length?`Связей: ${person.workTokens.length}`:group);card.append(meta);
    const port=button('●',()=>{if(active)connect(active,row);else{message.textContent='Выберите работу слева, затем нажмите точку сотрудника.';highlight(null,person.id);}});port.classList.add('graph-port');port.setAttribute('aria-label','Связать сотрудника '+name.textContent);card.append(port);
    const actions=document.createElement('div');actions.className='d-flex gap-2 flex-wrap';actions.append(button('Выбрать работы',()=>{if(!editable(row)){message.textContent='Возьмите сотрудника на шаге «Люди».';return;}row.querySelector('[data-person-pick]').click();}),button(mode==='general'?'Назначить работы':'Без привязки',()=>update(row,[],mode==='general'?'pending':'general')));card.append(actions);

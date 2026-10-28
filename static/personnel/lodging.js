@@ -13,6 +13,23 @@
  document.querySelectorAll('[data-lodging-action]').forEach(button=>button.addEventListener('click',async()=>{await releaseClaim();kind.value=button.dataset.lodgingAction;employee.value=button.dataset.employee||'';bed.value=button.dataset.bed||'';employee.dispatchEvent(new Event('change',{bubbles:true}));kind.dispatchEvent(new Event('change',{bubbles:true}));bed.dispatchEvent(new Event('change',{bubbles:true}));const panel=document.getElementById('movement');panel.open=true;panel.scrollIntoView({block:'center',behavior:'smooth'});refresh();}));
  document.querySelector('[data-open-lodging-movement]')?.addEventListener('click',()=>{document.getElementById('movement').open=true;});
  form.addEventListener('submit',e=>{if(!claimed||!signed.value){e.preventDefault();say('Сначала начните оформление сотрудника и места.',true);return;}posting=true;save.disabled=true;});
+ const quickForm=document.querySelector('[data-quick-bed-form]'),quickPanel=document.querySelector('[data-lodging-quick-bed]');
+ quickForm?.addEventListener('submit',async event=>{
+  event.preventDefault();const button=quickPanel.querySelector('button[type=submit]'),message=quickPanel.querySelector('[data-quick-bed-message]');
+  if(button.disabled)return;button.disabled=true;message.textContent='Создаём место…';message.classList.remove('text-danger');
+  try{
+   const data=new FormData(quickForm);data.set('date',day.value);
+   const response=await fetch(quickForm.action,{method:'POST',credentials:'same-origin',headers:{'X-CSRFToken':csrf},body:data});
+   const result=await response.json();
+   if(!response.ok)throw new Error(result.error||Object.values(result.errors||{}).flat().map(error=>error.message).join(' ')||'Не удалось создать место.');
+   await releaseClaim();
+   bed.add(new Option(result.label,String(result.id),false,true));bed.dispatchEvent(new Event('change',{bubbles:true}));
+   const buildings=quickForm.elements.namedItem('building');
+   if(![...buildings.options].some(option=>option.value===String(result.building.id)))buildings.add(new Option(result.building.name,String(result.building.id)));
+   quickForm.reset();quickPanel.open=false;refresh();say('Новое место выбрано. Начните оформление сотрудника и места.');message.textContent='';
+  }catch(error){message.textContent=error.message;message.classList.add('text-danger');}
+  finally{button.disabled=false;}
+ });
  setInterval(async()=>{if(!claimed||document.hidden)return;try{const result=await request('renew');signed.value=result.signed;}catch(error){setClaim(false);refresh();say(error.message,true);}},60000);
  window.addEventListener('pagehide',()=>{if(claimed&&!posting)fetch(form.dataset.claimUrl,{method:'POST',credentials:'same-origin',keepalive:true,headers:{'Content-Type':'application/json','X-CSRFToken':csrf},body:JSON.stringify({...held,action:'release'})}).catch(()=>{});});
  window.addEventListener('beforeunload',e=>{if(claimed&&!posting){e.preventDefault();e.returnValue='';}});refresh();

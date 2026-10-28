@@ -1,0 +1,9 @@
+<details class="border rounded p-3 mt-2" data-lodging-quick-bed>
+<summary>Добавить место</summary>
+<div class="lodging-movement-fields mt-3">
+{% for field in quick_bed_form %}<div>{{ field.label_tag }}{{ field }}</div>{% endfor %}
+</div>
+<p class="small text-muted mt-2">Место появится в списке и будет выбрано для заселения. Укажите существующий вагон либо создайте новый.</p>
+<button class="btn btn-outline-primary" type="submit" form="lodging-quick-bed-form">Создать и выбрать место</button>
+<p class="small mt-2 mb-0" role="status" data-quick-bed-message></p>
+</details>

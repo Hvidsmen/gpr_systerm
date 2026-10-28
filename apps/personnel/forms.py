@@ -127,10 +127,11 @@ class CampForm(StyledModelForm):
 
 
 class MovementForm(forms.Form):
-    kind=forms.ChoiceField(label='Действие',choices=[('ARRIVAL','Заезд'),('DEPARTURE','Выезд'),('TRANSFER','Перевод в другой ВЖГ')])
+    kind=forms.ChoiceField(label='Действие',choices=[('ARRIVAL','Заезд'),('DEPARTURE','Выезд'),('TRANSFER','Перевод в другой ВЖГ'),('DISMISSAL','Выезд по увольнению')])
     date=forms.DateField(label='Фактическая дата',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
+    camp=forms.ModelChoiceField(label='ВЖГ заезда / исходный ВЖГ',queryset=None)
     employees=forms.ModelMultipleChoiceField(label='Сотрудники',queryset=None,widget=forms.SelectMultiple(attrs={'size':8,'data-personnel-searchable':''}))
-    destination=forms.ChoiceField(label='Куда выезжает',choices=[('REST','На межвахтовый отдых'),('CAMP','В другой ВЖГ')],initial='REST',required=False)
+    destination=forms.ChoiceField(label='Куда / причина выезда',choices=[('REST','На межвахтовый отдых'),('CAMP','В другой ВЖГ'),('DISMISSAL','По увольнению')],initial='REST',required=False)
     target=forms.ModelChoiceField(label='ВЖГ назначения',queryset=None,required=False)
     comment=forms.CharField(label='Комментарий',required=False,widget=forms.Textarea(attrs={'rows':2}),max_length=4000)
     snapshot=forms.CharField(widget=forms.HiddenInput)
@@ -139,6 +140,8 @@ class MovementForm(forms.Form):
         from .housing import present_stays
         from apps.resources.models import Employee
         super().__init__(*args,**kwargs)
+        self.fields['camp'].queryset=Camp.objects.filter(company=company).order_by('name','pk')
+        self.initial.setdefault('camp',camp.pk)
         kind=self.data.get('kind',self.initial.get('kind','ARRIVAL'))
         employees=Employee.objects.filter(company=company).select_related('position')
         present=present_stays(company,day).filter(camp=camp).values('person__employee_id')
@@ -146,22 +149,29 @@ class MovementForm(forms.Form):
         # The browser switches the visible choices without clearing the form.
         self.fields['employees'].queryset=employees.filter(Q(is_active=True)|Q(pk__in=present)).order_by('last_name','first_name','pk')
         self.fields['employees'].widget.attrs['data-present-employees']=','.join(str(pk) for pk in present.values_list('person__employee_id',flat=True) if pk)
+        import json
+        by_camp={}
+        for camp_id,employee_id in present_stays(company,day).exclude(person__employee=None).values_list('camp_id','person__employee_id'):
+            by_camp.setdefault(str(camp_id),[]).append(str(employee_id))
+        self.fields['employees'].widget.attrs['data-present-by-camp']=json.dumps(by_camp)
         self.fields['employees'].widget.attrs['data-active-employees']=','.join(str(pk) for pk in employees.filter(is_active=True).values_list('pk',flat=True))
         self.fields['employees'].label_from_instance=lambda e:e.display_name+(' · '+str(e.position) if e.position_id else '')+(' · № '+e.employee_number if e.employee_number else '')+(' · архивный, находится в ВЖГ' if not e.is_active else '')
         self.camp=camp;self.company=company
-        self.fields['target'].queryset=Camp.objects.filter(company=company,is_active=True).exclude(pk=camp.pk)
+        self.fields['target'].queryset=Camp.objects.filter(company=company,is_active=True)
         for field in self.fields.values():field.widget.attrs.setdefault('class','form-select' if isinstance(field.widget,forms.Select) else 'form-control')
     def clean(self):
         data=super().clean()
+        camp=data.get('camp') or self.camp
         employees=data.get('employees')
         if employees:
             if data.get('kind')=='ARRIVAL' and employees.filter(is_active=False).exists():
                 self.add_error('employees','Для заезда выберите активных сотрудников.')
-            elif data.get('kind') in {'DEPARTURE','TRANSFER'}:
+            elif data.get('kind') in {'DEPARTURE','TRANSFER','DISMISSAL'}:
                 from .housing import present_stays
-                ids=present_stays(self.company,data.get('date') or self.initial.get('date')).filter(camp=self.camp).values('person__employee_id')
+                ids=present_stays(self.company,data.get('date') or self.initial.get('date')).filter(camp=camp).values('person__employee_id')
                 if employees.exclude(pk__in=ids).exists():self.add_error('employees','Для выезда или перевода выберите сотрудников, находящихся в этом ВЖГ на выбранную дату.')
         if data.get('kind')=='DEPARTURE' and data.get('destination')=='CAMP':data['kind']='TRANSFER'
+        if data.get('kind')=='DISMISSAL':data['kind']='DEPARTURE';data['destination']='DISMISSAL'
         if data.get('kind')=='TRANSFER' and not data.get('target'):self.add_error('target','Выберите ВЖГ назначения.')
         return data
 

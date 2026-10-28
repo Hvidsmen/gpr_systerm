@@ -1,1 +1,17 @@
-<section class="production-position-plan mb-3" aria-label="Потребность в сотрудниках по СМГ"><h3 class="h5">План по должностям · {{ day|date:'d.m.Y' }}</h3><p class="small text-muted">Назначайте сотрудников на должности плана. Их штатные должности могут отличаться. Один сотрудник учитывается один раз в выбранной должности.</p><div class="table-responsive"><table class="table table-sm"><thead><tr><th>Должность СМГ</th><th>План на дату</th><th>Назначено</th><th>Ещё требуется</th><th></th></tr></thead><tbody>{% for row in position_plan %}<tr data-position-plan="{{ row.id }}" data-plan-count="{{ row.plan }}"><th>{{ row.name }}</th><td>{{ row.plan }}</td><td data-position-assigned>{{ row.actual }}</td><td data-position-remaining>{{ row.remaining }}</td><td>{% if editable %}<button type="button" class="btn btn-sm btn-outline-primary" data-add-for-position="{{ row.id }}">Назначить сотрудника</button>{% endif %}</td></tr>{% empty %}<tr><td colspan="5">В применённом СМГ на эту дату должности не запланированы. Можно внести фактически работавших сотрудников.</td></tr>{% endfor %}</tbody></table></div><p class="small text-muted mb-0" data-position-plan-note>Показаны назначения всех диспетчеров и изменения текущей формы. Сохраните черновик, чтобы зафиксировать изменения.</p></section>{{ position_plan_saved|json_script:'position-plan-saved' }}{{ position_employee_roles|json_script:'position-employee-roles' }}
+<section class="production-position-plan mb-3" aria-label="Потребность в сотрудниках по СМГ">
+<h3 class="h5">План по должностям · {{ day|date:'d.m.Y' }}</h3>
+<div class="d-flex flex-wrap gap-3 border rounded p-3 mb-3" aria-label="Итоги сотрудников" aria-live="polite">
+<span>План СМГ: <strong data-position-total="plan">{{ position_totals.plan }}</strong></span>
+<span>Сотрудников в факте: <strong data-position-total="assigned">{{ position_totals.assigned }}</strong></span>
+<span>Ещё требуется: <strong data-position-total="remaining">{{ position_totals.remaining }}</strong></span>
+<span>Вне должностей плана: <strong data-position-total="unplanned">{{ position_totals.unplanned }}</strong></span>
+</div>
+<p class="small text-muted">Форма сотрудника находится под выбранной должностью СМГ. Штатная должность сотрудника может отличаться. Итог факта считает уникальных сотрудников; потребность — отдельно по каждой должности.</p>
+{% for row in position_plan %}<section class="border rounded p-3 mb-3" data-position-plan="{{ row.id }}" data-plan-count="{{ row.plan }}">
+<div class="d-flex justify-content-between gap-2 flex-wrap mb-2"><h4 class="h6 mb-0">{{ row.name }}</h4><span class="small">План {{ row.plan }} · Назначено <strong data-position-assigned>{{ row.actual }}</strong> · Ещё требуется <strong data-position-remaining>{{ row.remaining }}</strong></span></div>
+<div data-position-people="{{ row.id }}"></div>
+{% if editable %}<button type="button" class="btn btn-sm btn-outline-primary" data-add-for-position="{{ row.id }}">Назначить сотрудника</button>{% endif %}
+</section>{% empty %}<p>В применённом СМГ на эту дату должности не запланированы. Можно внести фактически работавших сотрудников.</p>{% endfor %}
+<section class="border rounded p-3 mb-3"><h4 class="h6">Другие сотрудники / без должности СМГ</h4><div data-position-people=""></div></section>
+<p class="small text-muted mb-0" data-position-plan-note>Итоги учитывают сохранённый факт всех диспетчеров и несохранённые изменения текущей формы. «Добавить в факт» сохраняет черновик страницы.</p>
+</section>{{ position_plan_saved|json_script:'position-plan-saved' }}{{ position_employee_roles|json_script:'position-employee-roles' }}

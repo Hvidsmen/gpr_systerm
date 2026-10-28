@@ -35,6 +35,7 @@ from . import lodging_views
 urlpatterns += [
     path('lodging/',lodging_views.board,name='lodging'),
     path('lodging/claims/',lodging_views.claims,name='lodging_claims'),
+    path('lodging/beds/quick-create/',lodging_views.quick_bed,name='lodging_quick_bed'),
     path('lodging/sync/',lodging_views.sync,name='lodging_sync'),
     path('lodging/sync/status/',lodging_views.sync_status,name='lodging_sync_status'),
     path('lodging/buildings/create/',lodging_views.building_edit,name='lodging_building_create'),

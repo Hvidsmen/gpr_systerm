@@ -23,5 +23,6 @@ def context(obj,day):
         saved.append({'id':row.pk,'employee':row.employee_id,'role':role})
     from django.db.models import Q
     employees=Employee.objects.filter(company=obj.company).filter(Q(is_active=True)|Q(pk__in=[row['employee'] for row in saved])).values_list('pk','position_id')
-    return {'position_plan':[{'id':pk,'name':brigade.name,'plan':count,'actual':len(counts[pk]),'remaining':max(0,count-len(counts[pk]))} for pk,(brigade,count) in roles.items()],
+    totals={'plan':sum(count for _,count in roles.values()),'assigned':len({row['employee'] for row in saved}),'remaining':sum(max(0,count-len(counts[pk])) for pk,(_,count) in roles.items()),'unplanned':len({row['employee'] for row in saved if row['role'] not in roles})}
+    return {'position_totals':totals,'position_plan':[{'id':pk,'name':brigade.name,'plan':count,'actual':len(counts[pk]),'remaining':max(0,count-len(counts[pk]))} for pk,(brigade,count) in roles.items()],
         'position_plan_saved':saved,'position_employee_roles':dict(employees)}

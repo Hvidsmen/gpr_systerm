@@ -12,6 +12,22 @@ class PositionAccountingTests(TestCase):
     @classmethod
     def setUpTestData(cls):ProductionEntryTests.setUpTestData.__func__(cls)
     payload=ProductionEntryTests.payload
+    def test_totals_count_unique_people_and_do_not_cover_another_role_deficit(self):
+        from .production_positions import context
+        from apps.resources.models import Employee
+        one=Brigade.objects.create(company=self.company,name='Первая плановая должность')
+        two=Brigade.objects.create(company=self.company,name='Вторая плановая должность')
+        role=position_for(one)
+        for brigade,count in [(one,1),(two,3)]:
+            DailyScheduleEntry.objects.create(schedule=self.schedule,key=f'labor:totals:{brigade.pk}',kind='labor',label=brigade.name,rows=[{'date':str(self.day),'brigade_id':brigade.pk,'planned_count':str(count)}])
+        # Remove the fixture's unrelated resource entries to isolate this plan.
+        self.schedule.entries.filter(kind='labor').exclude(key__startswith='labor:totals:').delete()
+        second=Employee.objects.create(company=self.company,last_name='Дополнительный',first_name='Сотрудник',position=self.employee.position)
+        for employee,shift in [(self.employee,1),(self.employee,2),(second,1)]:
+            EmployeeActivity.objects.create(company=self.company,construction_object=self.obj,date=self.day,employee=employee,position=employee.position,planning_position=role,shift=shift,general=True)
+        values=context(self.obj,self.day)
+        self.assertEqual(values['position_totals'],{'plan':4,'assigned':2,'remaining':3,'unplanned':0})
+        self.assertEqual(next(row for row in values['position_plan'] if row['id']==role.pk)['actual'],2)
     def test_different_staff_role_can_cover_smg_role_without_changing_employee(self):
         brigade=Brigade.objects.create(company=self.company,name='Должность плана')
         position=position_for(brigade)

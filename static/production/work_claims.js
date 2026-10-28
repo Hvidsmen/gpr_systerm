@@ -16,6 +16,7 @@
   controls(row).forEach(i=>{i.disabled=!mine&&!(i.name?.endsWith('-DELETE')&&!field(row,'id')?.value);});editing(row).value=mine?'1':'0';token(row).value=mine?session:'';
   // Identity belongs to the reservation too: it cannot change under edited data.
   for(const name of person(row)?['employee','shift']:['project_work','work_item']){const input=field(row,name);if(input)input.disabled=Boolean(mine||row.dataset.entryDirty);}
+  const personSave=row.querySelector('[data-person-save]');if(personSave)personSave.disabled=!keyOf(row)||Boolean(claim&&!mine&&(claim.state==='editing'||!claim.own));
   const take=bar.querySelector('[data-take]'),release=bar.querySelector('[data-release]');take.hidden=mine;take.disabled=!keyOf(row)||Boolean(claim&& !mine&& (claim.state==='editing'||!claim.own));release.hidden=!mine&&!row.dataset.entryDirty;release.textContent=row.dataset.entryDirty?'Отменить изменения':'Освободить';
   bar.querySelector('[data-label]').textContent=mine?'Вы заполняете '+(person(row)?'сотрудника и его связи':'эту работу'):claim?.state==='editing'?'Заполняет: '+claim.owner+(claim.own?' · другая вкладка':''):claim?.state==='saved'?(claim.own?'Внёс: '+claim.owner+' · можно исправить':'Уже учтено: '+claim.owner+(claim.other_object?' · другой объект':' · только просмотр')):row.dataset.entryDirty?'Резерв истёк. Возьмите запись снова — значения остались в форме.':keyOf(row)?'Запись свободна':'Сначала выберите '+(person(row)?'сотрудника и смену':'работу');
  }
@@ -30,6 +31,20 @@
  form.querySelector('[data-person-take-list]')?.addEventListener('click',async event=>{
   const button=event.currentTarget,result=form.querySelector('[data-person-take-result]');button.disabled=true;busy=true;generation++;let taken=0,blocked=0;
   try{for(const row of rows().filter(person)){if(!keyOf(row)||field(row,'DELETE')?.checked)continue;if(claims.get(keyOf(row))?.mine){taken++;continue;}try{const data=await request('take',keyOf(row));claims.set(keyOf(row),data.claim);taken++;}catch(error){blocked++;row.querySelector('[data-error]').textContent=error.message;}render(row);}result.textContent=`Взято: ${taken}`+(blocked?` · Недоступно: ${blocked}. Проверьте сообщения у сотрудников.`:'');changed();lastActivity=Date.now();}finally{button.disabled=false;busy=false;}
+ });
+ form.addEventListener('click',async event=>{
+  const button=event.target.closest('[data-person-save]');if(!button)return;
+  const row=button.closest('[data-production-person]'),key=keyOf(row),error=row.querySelector('[data-error]');
+  if(busy||!key)return;busy=true;generation++;button.disabled=true;error.textContent='';
+  try{
+   if(!claims.get(key)?.mine){const data=await request('take',key);claims.set(key,data.claim);}
+   render(row);
+   if(row.dataset.requestedPosition){const role=field(row,'planning_position');role.value=row.dataset.requestedPosition;role.dispatchEvent(new Event('change',{bubbles:true}));}
+   row.dataset.entryDirty='1';changed();
+   let returnStep=form.querySelector('[name=return_step]');if(!returnStep){returnStep=document.createElement('input');returnStep.type='hidden';returnStep.name='return_step';form.append(returnStep);}returnStep.value='2';
+   form.requestSubmit(form.querySelector('button[name=action][value=save]'));
+  }catch(failure){error.textContent=failure.message;render(row);}
+  finally{busy=false;render(row);}
  });
  form.addEventListener('click',async event=>{const take=event.target.closest('[data-take]'),release=event.target.closest('[data-release]');if(!take&&!release)return;const row=event.target.closest('[data-work-fact-row],[data-production-person]'),key=keyOf(row),error=row.querySelector('[data-error]');error.textContent='';busy=true;generation++;
   try{if(take){const data=await request('take',key);claims.set(key,data.claim);}else{if(claims.get(key)?.mine)await request('release',key);reset(row);delete row.dataset.entryDirty;delete row.dataset.personDirty;claims.delete(key);}render(row);changed();lastActivity=Date.now();}catch(failure){error.textContent=failure.message;render(row);}finally{busy=false;}

@@ -105,10 +105,11 @@ def check_snapshot(user,signed,people):
 
 @transaction.atomic
 @with_history_actor
-def move(user,kind,camp,day,people,employees=(),target=None,comment='',snapshot=None):
+def move(user,kind,camp,day,people,employees=(),target=None,comment='',snapshot=None,departure_destination='REST'):
     if camp.company_id!=user.company_id or target and target.company_id!=user.company_id:raise ValidationError('ВЖГ другой компании.')
     require_fact_day(user,day)
     if kind not in {'ARRIVAL','DEPARTURE','TRANSFER'}:raise ValidationError('Неизвестное действие.')
+    if kind=='DEPARTURE' and departure_destination not in {'REST','DISMISSAL'}:raise ValidationError('Выберите причину выезда.')
     if kind=='TRANSFER' and (not target or target.pk==camp.pk):raise ValidationError('Выберите другой ВЖГ для перевода.')
     if kind=='ARRIVAL' and not camp.is_active or target and not target.is_active:raise ValidationError('Для заезда выберите действующий ВЖГ.')
     from apps.accounts.models import Company
@@ -139,7 +140,7 @@ def move(user,kind,camp,day,people,employees=(),target=None,comment='',snapshot=
             current.departed_on=day;current.save(update_fields=['departed_on','updated_at'])
             stay=current
             if kind=='TRANSFER':stay=CampStay.objects.create(company=user.company,person=person,camp=target,arrived_on=day,comment=comment,recorded_by=user)
-        HousingEvent.objects.create(company=user.company,person=person,date=day,kind=kind,departure_destination='REST' if kind=='DEPARTURE' else 'CAMP' if kind=='TRANSFER' else '',from_camp=camp if kind!='ARRIVAL' else None,to_camp=target if kind=='TRANSFER' else camp if kind=='ARRIVAL' else None,stay=stay,comment=comment,recorded_by=user)
+        HousingEvent.objects.create(company=user.company,person=person,date=day,kind=kind,departure_destination=departure_destination if kind=='DEPARTURE' else 'CAMP' if kind=='TRANSFER' else '',from_camp=camp if kind!='ARRIVAL' else None,to_camp=target if kind=='TRANSFER' else camp if kind=='ARRIVAL' else None,stay=stay,comment=comment,recorded_by=user)
     require_fact_day(user,day)
     return len(locked)
 

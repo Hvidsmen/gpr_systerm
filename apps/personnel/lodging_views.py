@@ -6,7 +6,7 @@ from urllib.parse import urlencode
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
-from django.db import transaction
+from django.db import transaction,IntegrityError
 from django.http import JsonResponse,Http404
 from django.shortcuts import get_object_or_404,render,redirect
 from django.urls import reverse
@@ -17,7 +17,7 @@ from core.fact_edit_window import can_edit_fact_day,window_context
 from apps.resources.models import Employee
 from .models import Camp,LodgingBuilding,LodgingBed,LodgingStay,LodgingEvent,LodgingControl
 from . import lodging,lodging_sync
-from .lodging_forms import LodgingFilter,LodgingMovementForm,BuildingForm,BedForm,CorrectionForm
+from .lodging_forms import LodgingFilter,LodgingMovementForm,BuildingForm,BedForm,CorrectionForm,QuickBedForm
 
 
 def parameters(request):
@@ -100,10 +100,37 @@ def board(request):
     groups=[{'building':b,'places':[r for r in rows if r['bed'].building_id==b.pk]} for b in LodgingBuilding.objects.filter(company=request.user.company,camp=camp)]
     if q or state:groups=[g for g in groups if g['places']]
     context={'groups':groups,'selector':selector,'has_camps':camps.exists(),'camp':camp,'day':day,'form':form,'rows':rows,'stats':dict(stats),'organizations':sorted(organizations.items()),'editable':editable,'catalogue_editable':role_code(request.user) in lodging.OPERATORS,'events':events,
+        'quick_bed_form':QuickBedForm(company=request.user.company,camp=camp),
         'movement_open':request.method=='POST' or bool(request.GET.get('employee')),
         'roster_data':[{'employee':s.employee_id,'bed':s.bed_id,'planned_departure':str(s.planned_departure or ''),'keys_issued':s.keys_issued,'pass_number':s.pass_number,'comment':s.comment} for s in lodging.present(request.user.company,day).filter(camp=camp)],
         **summary_context(request.user,camp,day),**window_context(request.user,day)}
     return render(request,'personnel/lodging.html',context)
+
+
+@login_required
+@require_POST
+def quick_bed(request):
+    require_roles(request.user,lodging.OPERATORS)
+    camp,day=parameters(request)
+    form=QuickBedForm(request.POST,company=request.user.company,camp=camp)
+    if not form.is_valid():return JsonResponse({'errors':form.errors.get_json_data()},status=400)
+    data=form.cleaned_data
+    from core.fact_history import history_actor
+    try:
+        with transaction.atomic(),history_actor(request.user):
+            lodging.mutex(request.user)
+            if data.get('building'):
+                building=get_object_or_404(LodgingBuilding.objects.select_for_update(),pk=data['building'].pk,company=request.user.company,camp=camp,is_active=True)
+            else:
+                building=LodgingBuilding(company=request.user.company,camp=camp,name=data['new_building_name'],inventory_number=data['new_building_inventory_number'])
+                building.save()
+            bed=LodgingBed(company=request.user.company,building=building,room=data['room'],number=data['number'],note=data['note'])
+            bed.save()
+    except ValidationError as exc:
+        return JsonResponse({'error':'; '.join(exc.messages)},status=400)
+    except IntegrityError:
+        return JsonResponse({'error':'Такой вагон или место уже существует. Выберите его в списке либо укажите другой номер.'},status=409)
+    return JsonResponse({'id':bed.pk,'label':str(bed)+' — Свободно','building':{'id':building.pk,'name':building.name}},status=201)
 
 
 @login_required

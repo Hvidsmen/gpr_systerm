@@ -533,7 +533,9 @@ class DispatcherDayView(CompanyRequiredMixin,View):
                                 complete=fact_sections_confirmed(task.assigned_to,obj.company_id,obj.pk,day)
                                 state(task,'DONE' if complete else 'OPEN',request.user,'Все необходимые направления подтверждены.' if complete else 'Требуется подтверждение направлений факта.')
                     messages.success(request,'Факт подтверждён.' if request.POST.get('action')=='confirm' else 'Черновик факта сохранён.')
-                    return redirect(reverse('production:fact_day_workspace')+'?'+urlencode({'construction_object':obj.pk,'date':day.isoformat(),'section':section}))
+                    destination={'construction_object':obj.pk,'date':day.isoformat(),'section':section}
+                    if section=='works' and request.POST.get('return_step')=='2':destination['entry_step']='2'
+                    return redirect(reverse('production:fact_day_workspace')+'?'+urlencode(destination))
                 except (ValidationError,IntegrityError) as exc:context['error']='; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Повтор записи: сотрудник или техника уже учтены в этой смене. Обновите страницу и проверьте объект.'
             return render(request,'production/dispatcher_day.html',context,status=400)
         return render(request,'production/dispatcher_day.html',context)
