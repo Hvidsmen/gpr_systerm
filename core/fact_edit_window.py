@@ -19,7 +19,7 @@ def can_edit_fact_day(user, day, *, today=None):
         return False
     # Supervisory access is retained; ordinary dispatchers share the same window
     # in production, personnel, transport and the combined dispatcher role.
-    return role_code(user) not in DISPATCHER_ROLES or today <= edit_deadline(day)
+    return role_code(user) not in (DISPATCHER_ROLES|{'COMMANDANT'}) or today <= edit_deadline(day)
 
 
 def window_message(user, day, *, today=None):
@@ -29,7 +29,7 @@ def window_message(user, day, *, today=None):
         return ''
     if day > today:
         return 'Будущий день доступен для просмотра. Факт можно вносить начиная с даты его выполнения.'
-    if role_code(user) not in DISPATCHER_ROLES:
+    if role_code(user) not in (DISPATCHER_ROLES|{'COMMANDANT'}):
         return ''
     deadline = edit_deadline(day)
     if today > deadline:

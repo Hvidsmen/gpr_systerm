@@ -30,3 +30,16 @@ urlpatterns=[
 
 from .housing_reconcile import reconcile
 urlpatterns += [path('housing/reconcile/',reconcile,name='housing_reconcile')]
+
+from . import lodging_views
+urlpatterns += [
+    path('lodging/',lodging_views.board,name='lodging'),
+    path('lodging/claims/',lodging_views.claims,name='lodging_claims'),
+    path('lodging/sync/',lodging_views.sync,name='lodging_sync'),
+    path('lodging/sync/status/',lodging_views.sync_status,name='lodging_sync_status'),
+    path('lodging/buildings/create/',lodging_views.building_edit,name='lodging_building_create'),
+    path('lodging/buildings/<int:pk>/',lodging_views.building_edit,name='lodging_building_edit'),
+    path('lodging/buildings/<int:building_pk>/beds/create/',lodging_views.bed_edit,name='lodging_bed_create'),
+    path('lodging/buildings/<int:building_pk>/beds/<int:pk>/',lodging_views.bed_edit,name='lodging_bed_edit'),
+    path('lodging/stays/<int:pk>/',lodging_views.stay_edit,name='lodging_stay_edit'),
+]

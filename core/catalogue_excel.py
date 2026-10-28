@@ -120,7 +120,7 @@ SCHEMAS = {
 
 
 def catalogue_response(request, queryset):
-    require_roles(request.user,READ_ROLES|({'HR_HEAD','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER','ALL_FACT_DISPATCHER','DISPATCHER'} if queryset.model._meta.label=='resources.Employee' else set()))
+    require_roles(request.user,READ_ROLES|({'HR_HEAD','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER','ALL_FACT_DISPATCHER','DISPATCHER','COMMANDANT'} if queryset.model._meta.label=='resources.Employee' else set()))
     if queryset.model._meta.label == 'resources.Equipment' and 'unit_state' not in queryset.query.annotations:
         from apps.resources.equipment_unit_catalogue import with_unit_state
         queryset=with_unit_state(queryset, request.user.company)

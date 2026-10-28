@@ -1,0 +1,2 @@
+{% extends 'base.html' %}
+{% block content %}<a href="{% url 'personnel:lodging' %}?camp={{ camp.pk }}&amp;date={{ day|date:'Y-m-d' }}">← Проживание · {{ camp.name }}</a><section class="card card-body mt-3" style="max-width:800px"><h1 class="h4">{{ title }}</h1><form method="post">{% csrf_token %}<input type="hidden" name="camp" value="{{ camp.pk }}"><input type="hidden" name="date" value="{{ day|date:'Y-m-d' }}"><input type="hidden" name="version" value="{{ version }}">{{ form.as_p }}<button class="btn btn-primary">Сохранить</button></form></section>{% endblock %}

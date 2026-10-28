@@ -165,3 +165,5 @@ class HousingEvent(ActualHistoryMixin, PersonnelModel):
         for name in ('person','from_camp','to_camp','stay'):
             obj=getattr(self,name,None)
             if obj and obj.company_id!=self.company_id:raise ValidationError('Событие другой компании.')
+
+from .lodging_models import LodgingBuilding,LodgingBed,LodgingStay,LodgingEvent,LodgingControl,LodgingResolution

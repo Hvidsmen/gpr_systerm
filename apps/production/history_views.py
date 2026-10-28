@@ -18,7 +18,8 @@ TITLES={
  'production.equipmentfact':'Итог по технике','resources.transportimportrow':'Строка импорта техники','production.equipmentdaydetails':'Сведения по технике','production.campfuelday':'Баланс ГСМ на ВЖГ','production.fuelfact':'ГСМ','production.dayactuation':'Актировка',
  'personnel.campstay':'Пребывание сотрудника в ВЖГ','personnel.housingevent':'Событие персонала',
 }
-DIRECTIONS=[('works','Производство'),('labor','Персонал'),('mechanization','Транспорт и ГСМ')]
+TITLES.update({'personnel.lodgingstay':'Проживание','personnel.lodgingevent':'Событие коменданта','personnel.lodgingbuilding':'Вагон / корпус','personnel.lodgingbed':'Жилое место','personnel.lodgingresolution':'Объяснение сверки'})
+DIRECTIONS=[('lodging','Комендант'),('works','Производство'),('labor','Персонал'),('mechanization','Транспорт и ГСМ')]
 FIELD_LABELS={
  'actual_quantity':'Фактический объём','actual_value':'Стоимость','reported_by_id':'Первоначальный автор',
  'recorded_by_id':'Первоначальный автор','actual_workers':'Численность','actual_count':'Количество техники',
@@ -39,14 +40,17 @@ FIELD_LABELS={
 }
 from .transport_details_models import DETAIL_FIELDS
 FIELD_LABELS.update(dict(DETAIL_FIELDS))
+FIELD_LABELS.update({'organization_snapshot':'Организация при заселении','position_snapshot':'Должность при заселении','department_snapshot':'Подразделение при заселении','bed_id':'Место','from_bed_id':'С прежнего места','to_bed_id':'На новое место','room':'Комната','number':'Номер места','building_id':'Вагон / корпус','planned_departure':'Плановое освобождение','keys_issued':'Ключи выданы','pass_number':'Пропуск','fingerprint':'Версия сверки'})
 CHOICES={'WORKED':'Работала','WORKING':'Работала','IDLE':'Простой','READY':'Исправна','REPAIR':'В ремонте','SCRAP':'Под списание / на запчасти',
- 'ARRIVAL':'Приезд / заезд','DEPARTURE':'Выезд','TRANSFER':'Перевод','WRITEOFF':'Списание','CONDITION':'Состояние','CANCEL':'Отмена'}
+ 'CHECKIN':'Заселение','CHECKOUT':'Выселение','MOVE':'Переселение','UPDATE':'Изменение сведений','AVAILABLE':'Доступно','RESERVED':'Зарезервировано','UNAVAILABLE':'Недоступно','ARRIVAL':'Приезд / заезд','DEPARTURE':'Выезд','TRANSFER':'Перевод','WRITEOFF':'Списание','CONDITION':'Состояние','CANCEL':'Отмена'}
 
 
 def visible_revisions(user):
     records=FactRevision.objects.filter(company=user.company)
     role=role_code(user)
     direction={'DISPATCHER':'works','PERSONNEL_DISPATCHER':'labor','MECHANIZATION_DISPATCHER':'mechanization'}.get(role)
+    if role=='COMMANDANT':direction='lodging'
+    if role=='PERSONNEL_DISPATCHER':records=records.filter(direction__in=['labor','lodging']);direction=None
     if direction:records=records.filter(direction=direction)
     if role in {'DISPATCHER','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER','ALL_FACT_DISPATCHER','PLANNER','FOREMAN'}:
         objects=scope_queryset(ConstructionObject.objects.all(),user).values('pk')
@@ -91,7 +95,7 @@ def changes(record):
 @login_required
 @require_GET
 def history(request):
-    require_roles(request.user,READ_ROLES|FACT_ROLES)
+    require_roles(request.user,READ_ROLES|FACT_ROLES|{'COMMANDANT'})
     form=HistoryFilter(request.GET)
     records=visible_revisions(request.user)
     if form.is_valid():

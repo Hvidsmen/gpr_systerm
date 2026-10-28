@@ -1,0 +1,27 @@
+const {chromium}=require('playwright'),fs=require('fs'),assert=require('node:assert/strict');
+(async()=>{const c=JSON.parse(process.env.LODGING_CONFIG),browser=await chromium.launch({executablePath:c.chromium,headless:true,args:['--no-sandbox']}),errors=[];
+ try{
+ async function open(cookie){const context=await browser.newContext({viewport:{width:1520,height:1040}});await context.addCookies([{name:'sessionid',value:cookie,url:c.base}]);await context.route('**/*',route=>{const url=route.request().url();if(url.startsWith(c.base))return route.continue();if(url.includes('bootstrap')&&url.includes('.css'))return route.fulfill({body:fs.readFileSync('/tmp/catalogue-bootstrap.css'),contentType:'text/css'});return route.abort();});const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));return page;}
+ const [a,b,hr]=await Promise.all(c.cookies.map(open)),query=`?camp=${c.camp}&date=${c.day}`;
+ await Promise.all([a.goto(c.base+c.board+query),b.goto(c.base+c.board+query),hr.goto(c.base+c.housing+query)]);
+ assert.equal(await a.locator('[data-lodging-bed]').count(),3);assert.equal(await hr.locator('[data-sync-count]').textContent(),'1');
+ async function start(page,employee,bed,kind='CHECKIN'){const f=page.locator('[data-lodging-movement]');await page.locator('#movement').evaluate(d=>d.open=true);await f.locator('[name=kind]').selectOption(kind);await f.locator('[name=employee]').selectOption(String(employee));if(['CHECKIN','MOVE'].includes(kind))await f.locator('[name=bed]').selectOption(String(bed));await f.locator('[data-lodging-take]').click();return f;}
+ const fa=await start(a,c.second_employee,c.bed);await fa.locator('[data-lodging-lock-label]').filter({hasText:'Вы оформляете'}).waitFor();
+ const fb=await start(b,c.employee,c.bed);await fb.locator('[data-lodging-lock-label]').filter({hasText:'Место сейчас оформляет'}).waitFor();assert(await fb.locator('[data-lodging-save]').isDisabled());
+ await fb.locator('[name=employee]').selectOption(String(c.second_employee));await fb.locator('[name=bed]').selectOption(String(c.bed2));await fb.locator('[data-lodging-take]').click();await fb.locator('[data-lodging-lock-label]').filter({hasText:'Сотрудника сейчас оформляет'}).waitFor();
+ await fb.locator('[name=employee]').selectOption(String(c.employee));await fb.locator('[data-lodging-take]').click();await fb.locator('[data-lodging-lock-label]').filter({hasText:'Вы оформляете'}).waitFor();await fb.locator('[data-lodging-release]').click();
+ await fa.locator('[name=keys_issued]').check();await fa.locator('[name=pass_number]').fill('PASS-101');await Promise.all([a.waitForNavigation(),fa.locator('[data-lodging-save]').click()]);
+ assert.equal(await a.locator('[data-lodging-occupied]').textContent(),'1');await hr.reload();assert.equal(await hr.locator('[data-sync-count]').textContent(),'2');
+ await hr.getByRole('link',{name:'Открыть сверку',exact:true}).click();const arrival=hr.locator('[data-sync-issue=ARRIVAL]');assert.equal(await arrival.count(),1);await Promise.all([hr.waitForNavigation(),arrival.getByRole('button',{name:'Подтвердить заезд'}).click()]);assert.equal(await hr.locator('[data-sync-issue=ARRIVAL]').count(),0);
+ await a.goto(c.base+c.board+query);const move=await start(a,c.second_employee,c.bed3,'MOVE');await move.locator('[data-lodging-lock-label]').filter({hasText:'Вы оформляете'}).waitFor();await Promise.all([a.waitForNavigation(),move.locator('[data-lodging-save]').click()]);
+ assert.equal(await a.locator(`[data-lodging-bed="${c.bed}"]`).getAttribute('data-state'),'FREE');assert.equal(await a.locator(`[data-lodging-bed="${c.bed3}"]`).getAttribute('data-employee'),String(c.second_employee));
+ await a.locator('#places').scrollIntoViewIfNeeded();await a.screenshot({path:'/tmp/lodging-places-wide.png',fullPage:true,animations:'disabled'});
+ const download=a.waitForEvent('download');await a.getByRole('button',{name:'Выгрузить Excel',exact:true}).click();assert.equal((await download).suggestedFilename(),'lodging.xlsx');
+ await hr.goto(c.base+c.housing+query+`&action=DEPARTURE&employee=${c.second_employee}#movement`);await hr.locator('[data-housing-tab=movement]').click();await hr.locator('[name=employees]').selectOption([String(c.second_employee)]);await Promise.all([hr.waitForNavigation(),hr.getByRole('button',{name:'Сохранить перемещение'}).click()]);
+ await a.goto(c.base+c.sync+query);assert.equal(await a.locator('[data-sync-issue=DEPARTED_OPEN]').count(),1);await a.screenshot({path:'/tmp/lodging-personnel-reconciliation.png',fullPage:true,animations:'disabled'});
+ await a.goto(c.base+c.board+query);const checkout=await start(a,c.second_employee,null,'CHECKOUT');await checkout.locator('[data-lodging-lock-label]').filter({hasText:'Вы оформляете'}).waitFor();await Promise.all([a.waitForNavigation(),checkout.locator('[data-lodging-save]').click()]);
+ await a.setViewportSize({width:390,height:844});assert(await a.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2));await a.screenshot({path:'/tmp/lodging-places-mobile.png',fullPage:true,animations:'disabled'});
+ await a.goto(c.base+c.sync+query);assert.equal(await a.locator('[data-sync-issue=DEPARTED_OPEN]').count(),0);
+ assert.deepEqual(errors,[]);console.log('PASS: independent accommodation and personnel entry, unsaved person/bed locks, independent colleague input, HR arrival confirmation, same-day internal move, departure discrepancy and checkout, history, Excel, desktop and mobile');
+ }finally{await browser.close();}
+})().catch(e=>{console.error(e);process.exit(1)});

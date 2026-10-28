@@ -49,6 +49,7 @@ def snapshot(instance):
     if instance._meta.label_lower == 'production.employeeworklink':
         obj_id = instance.activity.construction_object_id; day = instance.activity.date
     camp_ids = [getattr(instance, name) for name in ('camp_id', 'from_camp_id', 'to_camp_id') if getattr(instance, name, None)]
+    if instance._meta.label_lower=='personnel.lodgingbed':camp_ids.append(instance.building.camp_id)
     label=str(instance)
     if instance._meta.label_lower in {'production.equipmentcampstay','production.equipmentdayrecord','production.equipmenttransportevent'}:
         label=str(instance.equipment)+' · '+str(day)
@@ -80,6 +81,7 @@ def append_revision(instance, before, after, using):
     metadata = after or before
     model = instance._meta.label_lower
     direction = 'mechanization' if model in {'production.equipmentactivity','production.equipmentfact','production.fuelfact','production.campfuelday','resources.transportimportrow','production.equipmentdaydetails','production.equipmentdayrecord','production.equipmenttransportevent','production.equipmentcampstay','production.equipmentassignment','production.equipmentstatechange'} else 'labor' if model.startswith('personnel.') or model == 'production.laborfact' else 'works'
+    if model.startswith('personnel.lodging'):direction='lodging'
     if model=='production.employeeactivity':
         from apps.production.production_entry import is_general_employee
         from core.permissions import role_code

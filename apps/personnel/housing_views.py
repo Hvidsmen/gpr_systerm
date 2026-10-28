@@ -133,6 +133,8 @@ def workspace(request):
     plan_context=monthly_plan(request.user,camp,day,camps=selected_camps)
     from apps.projects.models import ConstructionObject
     objects=ConstructionObject.objects.filter(company=request.user.company,housing_camps__in=selected_camps).distinct()
+    from .lodging_views import summary_context
+    plan_context.update(summary_context(request.user,camp,day,camps=selected_camps))
     return render(request,'personnel/housing.html',{**plan_context,'rotation_filter':selector,'rotation_stats':rotation_stats,'selected_camps':selected_camps,
         'camp':camp,'camps':camps,'day':day,'rows':rows,'dates':days,'form':form,'query':values.get('q',''),
         'events':events,'total':rotation_stats['people'],'objects':objects,
