@@ -78,7 +78,7 @@ def roster_rows(company,camp,day,query='',position=''):
     days=[day.replace(day=n) for n in range(1,monthrange(day.year,day.month)[1]+1)]
     rows=[]
     for stay in stays.order_by('person__employee__position__name','person__full_name','pk'):
-        person=stay.person;slot=housing.schedule_slot(person);calendar=calendar_for(slot) if slot else {}
+        person=stay.person;slot=housing.schedule_slot(person);calendar=calendar_for(slot,start=day.replace(day=1),end=day+timedelta(days=730)) if slot else {}
         planned_departure=next(iter(departure_days(calendar,stay.arrived_on)),'')
         departure_date=date.fromisoformat(planned_departure) if planned_departure else None
         until_departure=(departure_date-day).days if departure_date else None
@@ -125,7 +125,14 @@ def workspace(request):
                 employees=selected if arrival else (),target=form.cleaned_data.get('target'),comment=form.cleaned_data['comment'],snapshot=form.cleaned_data['snapshot'])
         except (ValidationError,IntegrityError) as exc:form.add_error(None,'; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Размещение изменилось одновременно с вашим вводом. Обновите список.')
         else:
-            messages.success(request,f'Перемещение сохранено. Сотрудников: {count}.');return redirect(camp_url(camp,form.cleaned_data['date']))
+            messages.success(request,f'Перемещение сохранено. Сотрудников: {count}.')
+            from .rotation_calendar import cycle_definition
+            missing=0
+            for person in Person.objects.filter(company=request.user.company,employee__in=selected).select_related('schedule_slot__pattern'):
+                assigned=housing.schedule_slot(person)
+                if not (assigned and assigned.pattern_id and cycle_definition(assigned.pattern)):missing+=1
+            if missing:messages.warning(request,f'У {missing} сотрудников цикл вахта/отдых не задан. Укажите его через «Изменить график»; прогноз для них пока не пересчитан.')
+            return redirect(camp_url(camp,form.cleaned_data['date'])+'#roster')
     values=selector.cleaned_data
     rows,days,rotation_stats=rotation_rows(request.user.company,list(selected_camps),day,query=values.get('q',''),position=values.get('position'),state=values.get('state',''),include_unassigned=not values.get('construction_object') and not values.get('camps'))
     events=HousingEvent.objects.filter(company=request.user.company).filter(Q(from_camp__in=selected_camps)|Q(to_camp__in=selected_camps)).select_related('person','from_camp','to_camp','recorded_by')[:50]
@@ -193,12 +200,32 @@ def schedule(request,pk):
                 try:housing.check_schedule(person,form.cleaned_data['version'],slot)
                 except ValidationError as exc:form.add_error(None,'; '.join(exc.messages))
             if not form.errors:
+                if slot and slot.group.board.import_digest:
+                    # Personal changes must not rewrite the imported opening balance.
+                    from .models import ShiftPattern
+                    board=Board.objects.filter(company=person.company,name='Графики сотрудников ВЖГ',import_digest='').order_by('pk').first()
+                    if board is None:board=Board.objects.create(company=person.company,name='Графики сотрудников ВЖГ')
+                    position=str(person.employee.position) if person.employee_id and person.employee.position_id else slot.group.position
+                    group=board.groups.filter(position=position).first() or StaffingGroup.objects.create(company=person.company,board=board,position=position)
+                    original=slot
+                    if pattern and not form.cleaned_data.get('on_days'):pattern=ShiftPattern.objects.create(company=person.company,board=board,name=pattern.name,kind=pattern.kind,calendar=pattern.calendar,on_days=pattern.on_days,off_days=pattern.off_days,cycle_codes=pattern.cycle_codes)
+                    slot=StaffingSlot(company=person.company,group=group,person=person,housing_camp=original.housing_camp,camp=original.camp,status=original.status,arrival_date=original.arrival_date,departure_date=original.departure_date,calendar=dict(original.calendar),comment='Личный график; начальные данные сохранены в исходной таблице.')
                 if not slot:
                     board=pattern.board if pattern else Board.objects.filter(company=person.company,name='Графики сотрудников ВЖГ',import_digest='').order_by('pk').first()
                     if board is None:board=Board.objects.create(company=person.company,name='Графики сотрудников ВЖГ')
                     position=str(person.employee.position) if person.employee_id and person.employee.position_id else 'Без должности'
                     group=board.groups.filter(position=position).first() or StaffingGroup.objects.create(company=person.company,board=board,position=position)
                     slot=StaffingSlot(company=person.company,group=group,person=person)
+                if form.cleaned_data.get('on_days'):
+                    from .models import ShiftPattern
+                    from .rotation_calendar import cycle_definition,work
+                    from collections import Counter
+                    cycle=cycle_definition(pattern)
+                    codes=cycle['codes'] if cycle else list(pattern.calendar.values()) if pattern else []
+                    defaults=Counter(str(code) for code in codes if work(code)).most_common(1)
+                    hours=str(form.cleaned_data['hours']) if form.cleaned_data.get('hours') is not None else defaults[0][0] if defaults else 'МВ'
+                    on,off=form.cleaned_data['on_days'],form.cleaned_data['off_days']
+                    pattern=ShiftPattern.objects.create(company=person.company,board=slot.group.board,name=f'Индивидуальный ({on}/{off})',kind=pattern.kind if pattern else '',on_days=on,off_days=off,cycle_codes=[hours]*on+['МО']*off)
                 slot.pattern=pattern
                 start,end=form.cleaned_data.get('start'),form.cleaned_data.get('end')
                 if start:
@@ -240,10 +267,10 @@ def roster_export(request):
     if not selector.is_valid():raise Http404('Некорректные фильтры перевахты.')
     camps=selector.selected_camps(request.user.company);data=selector.cleaned_data;day=data['date']
     rows,days,_=rotation_rows(request.user.company,list(camps),day,query=data.get('q',''),position=data.get('position'),state=data.get('state',''),include_unassigned=not data.get('construction_object') and not data.get('camps'))
-    values=[['ВЖГ','Дата','Сотрудник / вакансия','Табельный номер','Должность','Вахта / отдых','Заезд','Выезд','Выезд по графику','Возвращение по графику',*[d.strftime('%d.%m.%Y') for d in days]]]
+    values=[['ВЖГ','Дата','Сотрудник / вакансия','Табельный номер','Должность','Вахта / отдых','Заезд','Выезд','Выезд по графику','Возвращение по графику','Дней на вахте / МО','Начало текущей вахты / МО','Источник начала периода','График',*[d.strftime('%d.%m.%Y') for d in days]]]
     for row in rows:
         person=row['person'];fmt=lambda value:value.isoformat() if value else ''
-        values.append([str(row['camp'] or ''),str(day),person.display_name if person else 'Вакансия',person.display_employee_number if person else '',row['position_label'],row['state_label'],fmt(row.get('arrived_on')),fmt(row.get('last_departure')),fmt(row.get('planned_departure_display')),fmt(row.get('planned_return')),*row['codes']])
+        values.append([str(row['camp'] or ''),str(day),person.display_name if person else 'Вакансия',person.display_employee_number if person else '',row['position_label'],row['state_label'],fmt(row.get('arrived_on')),fmt(row.get('last_departure')),fmt(row.get('planned_departure_display')),fmt(row.get('planned_return')),row.get('state_days'),fmt(row.get('state_since')),row.get('state_days_source',''),row.get('schedule_label',''),*row['codes']])
     return workbook_response('rotation.xlsx','Перевахта',values)
 
 
@@ -258,11 +285,13 @@ def individual_calendar(request,pk):
     raw=request.GET.get('month',timezone.localdate().strftime('%Y-%m'))
     try:month=date.fromisoformat(raw+'-01')
     except ValueError:return JsonResponse({'error':'Укажите месяц в формате ГГГГ-ММ.'},status=400)
-    slot=housing.schedule_slot(person);calendar=calendar_for(slot) if slot else {}
+    slot=housing.schedule_slot(person);calendar=calendar_for(slot,start=month,end=month+timedelta(days=730)) if slot else {}
     last=monthrange(month.year,month.month)[1]
     days=[month.replace(day=n) for n in range(1,last+1)]
     previous=(month-timedelta(days=1)).replace(day=1);following=(month+timedelta(days=32)).replace(day=1)
+    from .rotation_calendar import description
     return JsonResponse({'name':person.display_name,'number':person.display_employee_number,'month':month.strftime('%Y-%m'),
+        'schedule_info':description(slot,min(max(timezone.localdate(),month),days[-1])),
         'pattern':str(slot.pattern) if slot and slot.pattern_id else 'Индивидуальный график не назначен',
         'offset':month.weekday(),'previous':previous.strftime('%Y-%m'),'next':following.strftime('%Y-%m'),
         'edit_url':reverse('personnel:person_schedule',args=[person.pk]),

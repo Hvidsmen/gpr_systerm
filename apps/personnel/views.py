@@ -211,7 +211,7 @@ def pattern_create(request,board_pk):
         while day<=d['end']:
             calendar[day.isoformat()]=str(d['hours']) if (day-d['anchor']).days%cycle<d['on_days'] else 'МО'
             day+=timedelta(days=1)
-        ShiftPattern.objects.create(company=request.user.company,board=board,name=d['name'],kind=d['kind'],calendar=calendar)
+        ShiftPattern.objects.create(company=request.user.company,board=board,name=d['name'],kind=d['kind'],calendar=calendar,on_days=d['on_days'],off_days=d['off_days'],cycle_codes=[str(d['hours'])]*d['on_days']+['МО']*d['off_days'])
         messages.success(request,'График создан. Выберите его в строке сотрудника; выходные и дни пути можно уточнить через «Изменить дни».')
         return redirect('personnel:board_detail',pk=board.pk)
     return render(request,'personnel/form.html',{'form':form,'board':board,'title':'Новый график перевахты: цикл вахта / отдых'})

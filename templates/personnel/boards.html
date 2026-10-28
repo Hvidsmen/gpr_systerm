@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}Персонал{% endblock %}
 {% block content %}
-{% include 'personnel/_housing_nav.html' %}<h1>Персонал</h1><p>Существующие кадровые таблицы и графики. Фактические заезды, выезды и переводы ведутся в «Размещении в ВЖГ».</p>
+{% include 'personnel/_housing_nav.html' %}<h1>Персонал</h1><p>Начальные данные перевахты: состав, вакансии, исходные графики и даты. Дальнейшие заезды, выезды и переводы ведутся в «Перевахте».</p>
 <div class="d-flex gap-2 flex-wrap mb-3"><a class="btn btn-primary" href="{% url 'personnel:import' %}">Загрузить Excel</a><a class="btn btn-outline-primary" href="{% url 'personnel:board_create' %}">Новая таблица</a><a class="btn btn-outline-primary" href="{% url 'personnel:people' %}">Реестр сотрудников</a></div>
 <div class="card p-3"><table class="table"><thead><tr><th>Таблица</th><th>Проект</th><th>Объект</th></tr></thead><tbody>{% for b in boards %}<tr><td><a href="{% url 'personnel:board_detail' b.pk %}">{{ b.name }}</a></td><td>{{ b.project }}</td><td>{{ b.site }}</td></tr>{% empty %}<tr><td colspan="3">Загрузите лист «Нефтепровод» или создайте таблицу вручную.</td></tr>{% endfor %}</tbody></table></div>
 {% endblock %}

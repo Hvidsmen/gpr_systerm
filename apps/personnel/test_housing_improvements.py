@@ -26,6 +26,7 @@ class HousingImprovementsTests(TestCase):
         self.assertEqual(self.client.post(reverse('personnel:housing'),data).status_code,302)
         event=HousingEvent.objects.order_by('-pk').first();self.assertEqual(event.kind,'DEPARTURE');self.assertEqual(event.departure_destination,'REST')
     def test_warning_starts_fourteen_days_before_and_overdue_does_not_disappear(self):
+        self.pattern.on_days=15;self.pattern.off_days=30;self.pattern.cycle_codes=['10']*15+['ДП']+['МО']*29
         self.pattern.calendar={str(self.day+timedelta(days=14)):'ДП',str(self.day+timedelta(days=15)):'МО'};self.pattern.save()
         rows,_=roster_rows(self.company,self.a,self.day);self.assertEqual(rows[0]['departure_warning'],'soon')
         rows,_=roster_rows(self.company,self.a,self.day-timedelta(days=1));self.assertEqual(rows[0]['departure_warning'],'')

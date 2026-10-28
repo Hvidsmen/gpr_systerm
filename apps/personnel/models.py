@@ -63,11 +63,18 @@ class ShiftPattern(PersonnelModel):
     name = models.CharField('График', max_length=150)
     kind = models.CharField('Вид графика', max_length=20, blank=True)
     calendar = models.JSONField(default=dict, blank=True)
+    on_days = models.PositiveSmallIntegerField('Дней на вахте',default=0)
+    off_days = models.PositiveSmallIntegerField('Дней межвахтового отдыха',default=0)
+    cycle_codes = models.JSONField('Дни повторяющегося цикла',default=list,blank=True)
     class Meta:
         ordering = ['kind', 'name', 'pk']
     def clean(self):
         if self.board_id and self.board.company_id != self.company_id: raise ValidationError('График другой компании.')
-    def __str__(self): return f'{self.kind} · {self.name}'
+        if bool(self.on_days)!=bool(self.off_days) or self.on_days>365 or self.off_days>365:raise ValidationError('Укажите обе длительности цикла от 1 до 365 дней.')
+        if self.cycle_codes and (not self.on_days or not isinstance(self.cycle_codes,list) or len(self.cycle_codes)!=self.on_days+self.off_days):raise ValidationError('Число дней календаря цикла должно соответствовать вахте и отдыху.')
+        from .importer import valid_code
+        if any(not isinstance(code,str) or not valid_code(code) for code in self.cycle_codes):raise ValidationError('В цикле допустимы часы от 0 до 24 или МВ, МО, В, ДП.')
+    def __str__(self): return ' · '.join(value for value in [self.kind,self.name] if value)
 
 
 class StaffingSlot(PersonnelModel):

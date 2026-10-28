@@ -170,6 +170,9 @@ class PersonScheduleForm(forms.Form):
     version=forms.CharField(widget=forms.HiddenInput)
     slot=forms.ModelChoiceField(label='Использовать строку существующей таблицы',queryset=StaffingSlot.objects.none(),required=False)
     pattern=forms.ModelChoiceField(label='График',queryset=None,required=False)
+    on_days=forms.IntegerField(label='Новый цикл · дней на вахте',min_value=1,max_value=365,required=False,help_text='Оставьте пустым, чтобы использовать цикл выбранного графика.')
+    off_days=forms.IntegerField(label='Новый цикл · дней отдыха',min_value=1,max_value=365,required=False)
+    hours=forms.DecimalField(label='Часов в рабочий день нового цикла',min_value=0,max_value=24,decimal_places=2,max_digits=4,required=False,help_text='Если не указаны, сохраняется обычная продолжительность рабочего дня выбранного графика.')
     start=forms.DateField(label='Изменить дни с',required=False,widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
     end=forms.DateField(label='По',required=False,widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
     code=forms.CharField(label='Часы или МВ / МО / В / ДП. Пусто — вернуть график',required=False,max_length=10)
@@ -185,9 +188,13 @@ class PersonScheduleForm(forms.Form):
         self.initial['version']=schedule_snapshot(person)
         slot=schedule_slot(person)
         if slot:self.initial.update(slot=slot.pk,pattern=slot.pattern_id)
+        from .rotation_calendar import description
+        from django.utils import timezone
+        self.fields['pattern'].help_text=description(slot,timezone.localdate())+' Фактический заезд начинает вахту, выезд на МО — отдых. Перевод между ВЖГ сохраняет текущий цикл.'
         for f in self.fields.values():f.widget.attrs['class']='form-select' if isinstance(f.widget,forms.Select) else 'form-control'
     def clean(self):
         data=super().clean();start,end=data.get('start'),data.get('end')
+        if bool(data.get('on_days'))!=bool(data.get('off_days')):raise forms.ValidationError('Укажите обе длительности нового цикла: вахту и отдых.')
         if bool(start)!=bool(end):raise forms.ValidationError('Укажите обе границы периода.')
         if start and end:
             check=CalendarForm({'start':start,'end':end,'code':data.get('code','')})

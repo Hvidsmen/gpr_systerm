@@ -7,8 +7,14 @@ def days(month):
     return [date(month.year, month.month, d) for d in range(1, monthrange(month.year, month.month)[1]+1)]
 
 
-def calendar_for(slot):
+def source_calendar(slot):
     return {**(slot.pattern.calendar if slot.pattern_id else {}), **slot.calendar}
+
+
+def calendar_for(slot,*,start=None,end=None,stays=None):
+    from .rotation_calendar import project
+    base=source_calendar(slot)
+    return project(slot,base,start=start,end=end,stays=stays)[0]
 
 
 def report(board, month, query='', status='', camp=''):
@@ -24,7 +30,7 @@ def report(board, month, query='', status='', camp=''):
         stats['shortage'] = max(group.staffing_plan - stats['employed'], 0)
         rows = []
         for slot in slots:
-            cal = calendar_for(slot)
+            cal = source_calendar(slot)
             start = slot.arrival_date if slot.status == 'МВ' else slot.departure_date if slot.status == 'МО' else None
             elapsed = (today-start).days if start and start <= today else None
             working = sorted(d for d, value in cal.items() if d >= today.isoformat() and is_work(value))
@@ -50,7 +56,10 @@ def is_work(value):
 def departure_days(calendar, today):
     result = []
     for key, value in sorted(calendar.items()):
-        if key < today.isoformat() or value != 'ДП': continue
+        if key < today.isoformat():continue
+        if value=='МО' and is_work(calendar.get((date.fromisoformat(key)-timedelta(days=1)).isoformat())):
+            result.append(key);continue
+        if value != 'ДП': continue
         day = date.fromisoformat(key) + timedelta(days=1)
         while calendar.get(day.isoformat()) == 'ДП': day += timedelta(days=1)
         # An outgoing trip is followed by rest; incoming trips precede work.

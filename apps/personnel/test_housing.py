@@ -40,7 +40,7 @@ class HousingTests(TestCase):
         cls.users={'DISPATCHER':cls.dispatcher};cls.url=reverse('production:fact_day_workspace')
         cls.board=Board.objects.create(company=cls.company,name='Существующая таблица')
         cls.group=StaffingGroup.objects.create(company=cls.company,board=cls.board,position='Монтажник')
-        cls.pattern=ShiftPattern.objects.create(company=cls.company,board=cls.board,name='60/30',calendar={cls.day.isoformat():'10',(cls.day+timedelta(days=1)).isoformat():'ДП',(cls.day+timedelta(days=2)).isoformat():'МО'})
+        cls.pattern=ShiftPattern.objects.create(company=cls.company,board=cls.board,name='2/2',on_days=2,off_days=2,cycle_codes=['10','10','ДП','МО'],calendar={cls.day.isoformat():'10',(cls.day+timedelta(days=1)).isoformat():'ДП',(cls.day+timedelta(days=2)).isoformat():'МО'})
         cls.slot=StaffingSlot.objects.create(company=cls.company,group=cls.group,person=cls.person,housing_camp=cls.a,pattern=cls.pattern)
         cls.other=Company.objects.create(name='Secret company')
         cls.foreign_camp=Camp.objects.create(company=cls.other,name='Secret camp')

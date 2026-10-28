@@ -1,4 +1,4 @@
-"""Actual camp residence, independent of project assignment and planned calendars."""
+"""Actual camp residence and its dated movement history."""
 
 from core.fact_history import with_history_actor
 from core.fact_edit_window import require_fact_day
@@ -161,9 +161,9 @@ def cancel_stay(user,stay,reason,version):
     require_fact_day(user,current.arrived_on)
 
 
-def schedule_slot(person):
+def schedule_slot(person,slots=None):
     if person.schedule_slot_id and person.schedule_slot.person_id==person.pk and person.schedule_slot.company_id==person.company_id:return person.schedule_slot
-    slots=list(person.assignments.select_related('pattern','group__board').order_by('-pk'))
+    slots=sorted(slots,key=lambda row:-row.pk) if slots is not None else list(person.assignments.select_related('pattern','group__board').order_by('-pk'))
     if len(slots)==1:return slots[0]
     if slots and len({(s.pattern_id,str(sorted(s.calendar.items()))) for s in slots})==1:return slots[0]
     return None
