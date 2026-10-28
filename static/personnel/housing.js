@@ -4,6 +4,14 @@
  function show(name){panels.forEach(p=>{p.hidden=p.dataset.housingPanel!==name;});tabs.forEach(t=>t.setAttribute('aria-current',t.dataset.housingTab===name?'page':'false'));}
  tabs.forEach(t=>t.addEventListener('click',()=>show(t.dataset.housingTab)));
  show(form?.querySelector('.errorlist')||location.hash==='#movement'?'movement':'roster');
+ const filter=document.querySelector('[data-rotation-filter]');
+ filter?.querySelectorAll('input[name=state]').forEach(input=>input.addEventListener('change',()=>filter.requestSubmit()));
+ if(filter){
+  const anchor=document.querySelector('[data-rotation-filter-anchor]'),expand=filter.querySelector('[data-rotation-filter-expand]');
+  expand?.addEventListener('click',()=>{const opened=filter.classList.toggle('is-expanded');expand.setAttribute('aria-expanded',String(opened));});
+  const offset=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--navbar-height'))||48;
+  if(anchor&&'IntersectionObserver' in window)new IntersectionObserver(entries=>{const entry=entries[0];filter.classList.toggle('is-pinned',!entry.isIntersecting&&entry.boundingClientRect.top<offset);},{rootMargin:`-${offset}px 0px 0px 0px`}).observe(anchor);
+ }
  if(!form)return;
  form.querySelectorAll('[data-personnel-searchable]').forEach(select=>{const count=document.createElement('div');count.className='housing-count';count.setAttribute('aria-live','polite');select.after(count);const update=()=>{count.textContent='Выбрано: '+select.selectedOptions.length;};select.addEventListener('change',update);update();});
  const kind=form.querySelector('[name=kind]'),target=form.querySelector('[name=target]'),employees=form.querySelector('[name=employees]'),destination=form.querySelector('[name=destination]');

@@ -86,3 +86,53 @@ class RotationTests(TestCase):
             self.slot.calendar={str(self.day):code};self.slot.save()
             _,_,stats=rotation_rows(self.company,[self.a],self.day)
             self.assertEqual((stats['working'],stats['travelling'],stats['no_schedule']),(working,travel,missing),code)
+
+    def test_trip_filters_distinguish_multiday_incoming_and_outgoing_without_guessing(self):
+        self.slot.pattern=None
+        for following,expected in [('10','ARRIVING'),('МО','DEPARTING'),('',None)]:
+            self.slot.calendar={str(self.day):'ДП',str(self.day+timedelta(days=1)):'ДП',str(self.day+timedelta(days=2)):following};self.slot.save()
+            for state in ['ARRIVING','DEPARTING']:
+                rows,_,_=rotation_rows(self.company,[self.a],self.day,state=state)
+                self.assertEqual(len(rows),int(state==expected))
+
+    def test_actual_arrivals_departures_and_transfers_are_scoped_to_selected_day(self):
+        CampStay.objects.create(company=self.company,person=self.second_person,camp=self.a,arrived_on=self.day)
+        rows,_,_=rotation_rows(self.company,[self.a],self.day,state='ARRIVING')
+        self.assertEqual([r['person'].pk for r in rows],[self.second_person.pk])
+        self.stay.departed_on=self.day;self.stay.save()
+        CampStay.objects.create(company=self.company,person=self.person,camp=self.b,arrived_on=self.day)
+        rows,_,_=rotation_rows(self.company,[self.a],self.day,state='DEPARTING')
+        self.assertEqual([r['person'].pk for r in rows],[self.person.pk]);self.assertEqual(rows[0]['departure_camp'],self.a)
+        self.assertEqual(rotation_rows(self.company,[self.a],self.day+timedelta(days=1),state='DEPARTING')[0],[])
+
+    def test_departure_critical_filters_have_explicit_fourteen_day_boundary(self):
+        self.stay.arrived_on=self.day-timedelta(days=5);self.stay.save()
+        self.slot.pattern=None
+        for offset,expected in [(-1,'DEPARTURE_OVERDUE'),(0,'DEPARTURE_PENDING'),(14,'DEPARTURE_PENDING'),(15,None)]:
+            departure=self.day+timedelta(days=offset)
+            self.slot.calendar={str(departure):'ДП',str(departure+timedelta(days=1)):'МО'};self.slot.save()
+            for state in ['DEPARTURE_OVERDUE','DEPARTURE_PENDING']:
+                rows,_,_=rotation_rows(self.company,[self.a],self.day,state=state)
+                self.assertEqual(len(rows),int(expected==state),(offset,state))
+        self.stay.departed_on=self.day;self.stay.save()
+        self.assertEqual(rotation_rows(self.company,[self.a],self.day,state='DEPARTURE_PENDING')[0],[])
+
+    def test_overdue_return_keeps_missed_date_until_actual_arrival(self):
+        due=self.day-timedelta(days=2)
+        StaffingSlot.objects.create(company=self.company,group=self.group,person=self.second_person,housing_camp=self.a,status='МО',departure_date=due-timedelta(days=2),calendar={str(due):'10',str(self.day):'10',str(self.day+timedelta(days=1)):'10'})
+        rows,_,stats=rotation_rows(self.company,[self.a],self.day,state='ARRIVAL_OVERDUE')
+        self.assertEqual(stats['people'],1);self.assertEqual(rows[0]['planned_return'],due)
+        response=self.client.get(reverse('personnel:housing'),{'camp':self.a.pk,'date':str(self.day),'state':'ARRIVAL_OVERDUE'})
+        self.assertContains(response,'housing-arrival-overdue');self.assertContains(response,due.strftime('%d.%m.%Y'))
+        CampStay.objects.create(company=self.company,camp=self.a,person=self.second_person,arrived_on=self.day)
+        self.assertEqual(rotation_rows(self.company,[self.a],self.day,state='ARRIVAL_OVERDUE')[0],[])
+
+    def test_critical_filters_do_not_fabricate_missing_schedule_dates_and_export_matches(self):
+        StaffingSlot.objects.create(company=self.company,group=self.group,person=self.second_person,housing_camp=self.a,status='МО')
+        data={'camp':self.a.pk,'date':str(self.day),'state':'ARRIVAL_OVERDUE'}
+        page=self.client.get(reverse('personnel:housing'),data)
+        self.assertEqual(page.context['rotation_stats']['people'],0);self.assertContains(page,'data-rotation-filter')
+        from openpyxl import load_workbook
+        from io import BytesIO
+        exported=self.client.get(reverse('personnel:housing_export'),data)
+        self.assertEqual(load_workbook(BytesIO(exported.content)).active.max_row,1)
