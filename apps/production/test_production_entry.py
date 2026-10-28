@@ -54,7 +54,7 @@ class ProductionEntryTests(TestCase):
         self.assertEqual(LaborFact.objects.get().actual_workers,1)
         self.assertTrue(ProductionEntryDay.objects.get(dispatcher=self.users['DISPATCHER']).confirmed_at)
 
-    def test_worked_without_job_is_explicit_and_general_staff_is_not_offered_in_production(self):
+    def test_worked_without_job_is_explicit_and_any_active_staff_can_be_entered_in_production(self):
         data=self.payload('DISPATCHER','works')
         data[self.row(data,self.work)+'actual_quantity']='5'
         data.update({'labor-0-employee':self.employee.pk,'labor-0-work_mode':'general'})
@@ -63,8 +63,8 @@ class ProductionEntryTests(TestCase):
         self.assertTrue(activity.general);self.assertIsNone(activity.work_id);self.assertFalse(activity.work_links.exists())
         self.assertEqual(LaborFact.objects.get().actual_workers,1)
         data=self.payload('DISPATCHER','works');data['labor-1-employee']=self.cook.pk;data['labor-1-work_mode']='general'
-        response,details=self.post('DISPATCHER',data);self.assertEqual(response.status_code,400)
-        self.assertFalse(EmployeeActivity.objects.filter(employee=self.cook).exists())
+        response,details=self.post('DISPATCHER',data);self.assertEqual(response.status_code,302,details)
+        self.assertEqual(EmployeeActivity.objects.get(employee=self.cook).entry_direction,'works')
 
     def test_previous_jobs_and_people_prefill_only_for_this_dispatcher_without_copying_quantities(self):
         previous=self.day-timedelta(days=1)

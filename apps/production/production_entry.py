@@ -64,13 +64,11 @@ def candidate_keys(obj, day, work_plan, catalogue, data=None, user=None):
 def previous_people(obj, day, *, production, user=None):
     qs = EmployeeActivity.objects.filter(company=obj.company, construction_object=obj, date__lt=day,
         employee__company=obj.company, employee__is_active=True)
-    qs = qs.exclude(**{GENERAL_PATH:True}) if production else qs.filter(**{GENERAL_PATH:True})
+    from .employee_pool import labor_direction
+    qs = qs.exclude(labor_direction()) if production else qs.filter(labor_direction())
     if production and user:qs=qs.filter(Q(reported_by=user)|Q(reported_by=None))
     previous = qs.aggregate(day=Max('date'))['day']
     if previous is None:return None, []
-    if production:
-        from apps.personnel.housing import available_employee_ids
-        qs=qs.filter(employee_id__in=available_employee_ids(obj,day))
     rows = qs.filter(date=previous).select_related('employee__position__planning_mapping__brigade__group').prefetch_related('work_links').order_by('employee__last_name','employee__first_name','employee_id','shift','pk')
     initial=[]
     from .production_positions import plan_positions
@@ -102,13 +100,11 @@ class ProductionPersonForm(PersonForm):
         if self.instance.pk and self.instance.planning_position_id:positions.add(self.instance.planning_position_id)
         self.fields['planning_position'].queryset=Position.objects.filter(company=self.obj.company,pk__in=positions).order_by('name')
         self.fields['planning_position'].help_text='Выберите должность плана, которую закрывает сотрудник. Штатная должность сотрудника не меняется.'
-        from apps.personnel.housing import available_employee_ids
-        self.fields['employee'].queryset=self.fields['employee'].queryset.filter(Q(pk__in=available_employee_ids(self.obj,self.day))|Q(pk=self.instance.employee_id if self.instance.pk else None))
-        self.fields['employee'].help_text='Только фактически находящиеся в ВЖГ, связанных с выбранным объектом, на дату факта.'
+        from .employee_pool import prepare,apply
+        apply(self.fields['employee'],self.employee_pool or prepare(self.obj,self.day),self.instance.employee if self.instance.employee_id else None)
+        self.fields['employee'].help_text='Все активные сотрудники. Сначала — ВЖГ этого объекта, затем другие ВЖГ и сотрудники без оформленного нахождения.'
         self.initial.setdefault('work_targets',[])
         self.initial.setdefault('work_mode','pending')
-        self.fields['employee'].queryset=self.fields['employee'].queryset.exclude(
-            position__planning_mapping__brigade__group__is_general_staff=True) if not self.instance.pk else self.fields['employee'].queryset
         self.fields['work_targets'].choices=[(row['token'],row['label']) for row in self.activity_choices if (row['work'],row['item']) in self.activity_work_keys]
         if self.instance.pk:
             self.initial['work_targets']=[token(w,i) for w,i in targets(self.instance)]

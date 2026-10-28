@@ -1,0 +1,22 @@
+const {chromium}=require('playwright'),fs=require('fs'),assert=require('node:assert/strict');
+(async()=>{const c=JSON.parse(process.env.PRODUCTION_POOL_CONFIG),browser=await chromium.launch({executablePath:c.chromium,headless:true,args:['--no-sandbox']}),errors=[];
+ try{
+ async function open(cookie){const ctx=await browser.newContext({viewport:{width:1480,height:1040}});await ctx.addCookies([{name:'sessionid',value:cookie,url:c.base}]);await ctx.route('**/*',route=>{const url=route.request().url();if(url.startsWith(c.base))return route.continue();if(url.includes('bootstrap')&&url.includes('.css'))return route.fulfill({body:fs.readFileSync('/tmp/catalogue-bootstrap.css'),contentType:'text/css'});return route.abort();});const p=await ctx.newPage();p.on('pageerror',e=>errors.push(e.message));return p;}
+ const prod=await open(c.production_cookie),hr=await open(c.hr_cookie),url=c.base+c.production+`?construction_object=${c.object}&date=${c.day}&section=works`;
+ await prod.goto(url);await prod.locator('[data-step="2"]').click();const row=prod.locator('[data-production-person]').first(),select=row.locator('[name$="-employee"]');
+ const options=await select.locator('option').evaluateAll(items=>items.map(o=>o.value).filter(Boolean));assert(options.includes(String(c.unknown)));assert(options.includes(String(c.away)));assert(options.includes(String(c.missing_role)));assert(options.includes(String(c.cook)));assert(!options.includes(String(c.inactive)));
+ const groups=await select.locator('optgroup').evaluateAll(items=>items.map(g=>({label:g.label,ids:[...g.children].map(o=>o.value)})));assert(groups[0].ids.includes(String(c.employee)));assert(groups[1].ids.includes(String(c.away)));assert(groups[2].ids.includes(String(c.unknown)));
+ await select.selectOption(String(c.away));assert((await row.locator('[data-employee-location]').textContent()).includes('Другой ВЖГ'));
+ await select.selectOption(String(c.unknown));assert((await row.locator('[data-employee-location]').textContent()).includes('Нахождение в ВЖГ не оформлено'));
+ await row.locator('[data-take]').click();await row.locator('[data-label]').filter({hasText:'Вы заполняете'}).waitFor();await prod.screenshot({path:'/tmp/production-all-active-employees.png',fullPage:true,animations:'disabled'});
+ await prod.locator('[data-step="3"]').click();await prod.locator('.graph-person').getByRole('button',{name:'Без привязки',exact:true}).click();
+ await prod.locator('[data-step="4"]').click();const report=prod.locator('[data-report-people]');assert((await report.textContent()).includes('Алексеев'));assert(!(await report.textContent()).includes('UNKNOWN'));assert(!(await report.textContent()).includes('Нахождение в ВЖГ'));
+ await Promise.all([prod.waitForNavigation(),prod.locator('button[name=action][value=save]').click()]);assert.equal(await prod.locator('.alert-danger').count(),0);
+ await hr.goto(c.base+c.sync+`?camp=${c.camp}&date=${c.day}`);const issue=hr.locator(`[data-sync-issue=PRODUCTION][data-employee="${c.unknown}"]`);assert.equal(await issue.count(),1);assert((await issue.textContent()).includes('Производственный факт'));
+ const form=issue.locator('[data-production-arrival]');assert.equal(await form.locator('[name=target_camp]').inputValue(),'');await hr.screenshot({path:'/tmp/production-missing-camp-reconciliation.png',fullPage:true,animations:'disabled'});
+ await form.locator('[name=target_camp]').selectOption(String(c.other_camp));await Promise.all([hr.waitForNavigation(),form.getByRole('button',{name:'Оформить заезд',exact:true}).click()]);assert.equal(await hr.locator(`[data-sync-issue=PRODUCTION][data-employee="${c.unknown}"]`).count(),0);
+ await prod.goto(url);await prod.locator('[data-step="2"]').click();assert((await prod.locator('[data-production-person]').first().locator('[data-employee-location]').textContent()).includes('Другой ВЖГ'));
+ await prod.setViewportSize({width:390,height:844});assert(await prod.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2));await prod.screenshot({path:'/tmp/production-all-active-mobile.png',fullPage:true,animations:'disabled'});
+ assert.deepEqual(errors,[]);console.log('PASS: all active employees including other camps, no residence, general staff and no position; dated group priority and hints; reservations, saving without a camp, clean summary, explicit camp selection in HR reconciliation and mobile');
+ }finally{await browser.close();}
+})().catch(e=>{console.error(e);process.exit(1)});

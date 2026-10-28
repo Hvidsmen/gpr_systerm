@@ -83,9 +83,8 @@ def append_revision(instance, before, after, using):
     direction = 'mechanization' if model in {'production.equipmentactivity','production.equipmentfact','production.fuelfact','production.campfuelday','resources.transportimportrow','production.equipmentdaydetails','production.equipmentdayrecord','production.equipmenttransportevent','production.equipmentcampstay','production.equipmentassignment','production.equipmentstatechange'} else 'labor' if model.startswith('personnel.') or model == 'production.laborfact' else 'works'
     if model.startswith('personnel.lodging'):direction='lodging'
     if model=='production.employeeactivity':
-        from apps.production.production_entry import is_general_employee
-        from core.permissions import role_code
-        direction='labor' if is_general_employee(instance.employee) or instance.reported_by_id and role_code(instance.reported_by)=='PERSONNEL_DISPATCHER' else 'works'
+        from apps.production.employee_pool import activity_direction
+        direction=activity_direction(instance)
     return FactRevision.objects.using(using).create(company_id=instance.company_id, entity_type=model, entity_id=str(instance.pk),
         operation='CREATE' if before is None else 'DELETE' if after is None else 'UPDATE', before=before, after=after,
         actor=actor, actor_name=(((actor.get_full_name() or actor.username) + (' (в режиме '+acting['target'].username+')' if acting else ''))[:300]) if actor else 'Система / импорт',

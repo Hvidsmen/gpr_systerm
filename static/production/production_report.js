@@ -1,6 +1,7 @@
 (() => {
  'use strict';
  const form=document.querySelector('[data-production-form]'),panel=document.querySelector('[data-production-report]');if(!form||!panel)return;
+ const employeeLocations=JSON.parse(document.getElementById('production-employee-locations')?.textContent||'{}');
  const choices=JSON.parse(document.getElementById('production-work-choices').textContent),catalogue=new Map(choices.map(w=>[w.token,w]));let savedWorks=JSON.parse(document.getElementById('production-graph-saved').textContent),savedPeople=JSON.parse(document.getElementById('production-report-people').textContent);
  const field=(row,name)=>row.querySelector(`[name$="-${name}"]`),key=(w,i)=>i?`item:${w}:${i}`:`work:${w}`;let exportRows=[];
  function collect(){const works=new Map(savedWorks.map(w=>[key(w.project_work_id,w.work_item_id),{token:key(w.project_work_id,w.work_item_id),quantity:String(w.actual_quantity),owner:w.reported_by__username||'Общий ввод',draft:false}])),people=new Map(savedPeople.map(p=>['pk:'+p.id,{...p,draft:false}]));
@@ -9,7 +10,7 @@
    if(!field(row,'id')?.value&&!row.dataset.entryDirty&&!row.dataset.personDirty&&field(row,'person_editing')?.value==='0'&&savedPeople.some(p=>p.employee===Number(employee.value)&&String(p.shift)===String(field(row,'shift').value)))return;
    if(field(row,'id')?.value&&!row.dataset.entryDirty&&!row.dataset.personDirty&&people.has(marker))return;
    if(field(row,'DELETE')?.checked){people.delete(marker);return;}const mode=field(row,'work_mode').value,label=employee.selectedOptions[0]?.textContent||'',parts=label.split(' · '),prior=people.get(marker);
-   people.set(marker,{employee:Number(employee.value),name:parts[0],position:field(row,'planning_position')?.selectedOptions[0]?.value?field(row,'planning_position').selectedOptions[0].textContent:parts.slice(1).join(' · '),shift:field(row,'shift').value,general:mode==='general',reviewed:mode!=='pending',constant:false,unclaimed:!prior&&field(row,'person_editing')?.value==='0',targets:mode==='works'?[...row.querySelectorAll('[name$="-work_targets"]')].map(i=>i.value):[],owner:'Мой ввод',draft:!prior||Boolean(row.dataset.entryDirty||row.dataset.personDirty)});
+   people.set(marker,{employee:Number(employee.value),name:employeeLocations[employee.value]?.name||parts[0],position:field(row,'planning_position')?.selectedOptions[0]?.value?field(row,'planning_position').selectedOptions[0].textContent:(prior?.staff_position??employeeLocations[employee.value]?.position_label??parts[1]??''),shift:field(row,'shift').value,general:mode==='general',reviewed:mode!=='pending',constant:false,unclaimed:!prior&&field(row,'person_editing')?.value==='0',targets:mode==='works'?[...row.querySelectorAll('[name$="-work_targets"]')].map(i=>i.value):[],owner:'Мой ввод',draft:!prior||Boolean(row.dataset.entryDirty||row.dataset.personDirty)});
   });return {works:[...works.values()],people:[...people.values()]};
  }
  function cell(tr,text){const td=document.createElement('td');td.textContent=text;tr.append(td);return td;}

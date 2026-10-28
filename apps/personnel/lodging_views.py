@@ -196,6 +196,12 @@ def sync(request):
                 actual=date.fromisoformat(request.POST.get('actual_date',''))
                 lodging_sync.confirm_arrival(request.user,camp,day,request.POST.get('signed'),actual,request.POST.get('reason',''))
                 messages.success(request,'Заезд подтверждён. Сверка обновлена.')
+            elif request.POST.get('action')=='production_arrival':
+                if not str(request.POST.get('target_camp','')).isdigit():raise ValidationError('Выберите фактический ВЖГ.')
+                target=get_object_or_404(Camp,company=request.user.company,is_active=True,pk=request.POST['target_camp'])
+                actual=date.fromisoformat(request.POST.get('actual_date',''))
+                lodging_sync.confirm_production_arrival(request.user,camp,day,request.POST.get('signed'),target,actual)
+                messages.success(request,'Заезд оформлен. Производственный факт сохранён без изменений.')
             elif request.POST.get('action')=='explain':
                 lodging_sync.explain(request.user,camp,day,request.POST.get('signed'),request.POST.get('reason',''));messages.success(request,'Объяснение сохранено в истории.')
             else:raise ValidationError('Выберите действие сверки.')
@@ -203,7 +209,7 @@ def sync(request):
         else:return redirect(reverse('personnel:lodging_sync')+'?'+urlencode({'camp':camp.pk,'date':str(day)}))
     rows=lodging_sync.issues(request.user.company,selected,day,include_resolved=request.GET.get('resolved')=='1')
     for row in rows:row['signed']=lodging_sync.signed_issue(request.user,row)
-    return render(request,'personnel/lodging_sync.html',{'camp':camp,'day':day,'issues':rows,'error':error,'can_explain':role_code(request.user) in lodging.OPERATORS|lodging_sync.HR_OPERATORS and can_edit_fact_day(request.user,day),
+    return render(request,'personnel/lodging_sync.html',{'camp':camp,'day':day,'issues':rows,'error':error,'arrival_camps':Camp.objects.filter(company=request.user.company,is_active=True),'can_explain':role_code(request.user) in lodging.OPERATORS|lodging_sync.HR_OPERATORS and can_edit_fact_day(request.user,day),
         'can_confirm':role_code(request.user) in lodging_sync.HR_OPERATORS and can_edit_fact_day(request.user,day),'can_lodge':role_code(request.user) in lodging.OPERATORS and can_edit_fact_day(request.user,day),'can_hr':role_code(request.user) in lodging_sync.HR_OPERATORS,
         **summary_context(request.user,camp,day)})
 

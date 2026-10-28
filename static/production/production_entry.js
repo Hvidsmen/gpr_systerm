@@ -1,8 +1,10 @@
 (() => {
  const source=document.getElementById('production-work-choices'),dialog=document.querySelector('[data-person-work-dialog]');if(!source||!dialog)return;
+ const employeeLocations=JSON.parse(document.getElementById('production-employee-locations')?.textContent||'{}');
  const choices=JSON.parse(source.textContent),labels=new Map(choices.map(row=>[row.token,row.label]));let owner=null;
  const token=(work,item)=>item?'item:'+work+':'+item:'work:'+work;
  function refresh(row){
+  const employee=row.querySelector('[name$="-employee"]'),hint=row.querySelector('[data-employee-location]'),location=employeeLocations[employee?.value];if(hint){hint.textContent=location?location.text+(location.group===2?' · Факт доступен. После сохранения работы сведения попадут в сверку.':''):'';hint.classList.toggle('text-warning-emphasis',Boolean(location&&location.group===2));hint.classList.toggle('text-muted',!location||location.group!==2);}
   const mode=row.querySelector('[name$="-work_mode"]'),box=row.querySelector('[data-person-targets]');if(!mode||!box)return;box.hidden=true;
   const list=row.querySelector('[data-person-target-labels]');list.replaceChildren();
   const selected=[...row.querySelectorAll('[name$="-work_targets"]')].map(input=>input.value);

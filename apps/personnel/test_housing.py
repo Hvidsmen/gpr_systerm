@@ -130,21 +130,21 @@ class HousingTests(TestCase):
         self.assertEqual(set(self.a.objects_served.values_list('pk',flat=True)),{self.obj2.pk,self.obj3.pk})
         self.assertEqual(self.visible(self.obj),set());self.assertEqual(self.visible(self.obj3),{self.employee.pk})
 
-    def test_production_choices_and_direct_post_require_actual_residence(self):
+    def test_production_accepts_active_employees_without_or_after_camp_residence(self):
         data=self.payload('DISPATCHER','works')
         data.update({'labor-0-employee':self.second_employee.pk,'labor-0-work_mode':'general'})
-        response=self.client.post(self.url,data);self.assertEqual(response.status_code,400)
-        self.assertFalse(EmployeeActivity.objects.exists())
+        response=self.client.post(self.url,data);self.assertEqual(response.status_code,302)
+        self.assertTrue(EmployeeActivity.objects.filter(employee=self.second_employee).exists())
         data=self.payload('DISPATCHER','works');data.update({'labor-0-employee':self.employee.pk,'labor-0-work_mode':'general'})
         housing.move(self.hr,'DEPARTURE',self.a,self.day,[self.person])
-        self.client.force_login(self.dispatcher);response=self.client.post(self.url,data);self.assertEqual(response.status_code,400)
-        self.assertFalse(EmployeeActivity.objects.exists())
+        self.client.force_login(self.dispatcher);response=self.client.post(self.url,data);self.assertEqual(response.status_code,302)
+        self.assertTrue(EmployeeActivity.objects.filter(employee=self.employee).exists())
 
-    def test_employee_claim_without_camp_is_rejected_and_saved_historical_row_remains_editable(self):
+    def test_employee_claim_without_camp_and_saved_historical_row_remain_editable(self):
         from uuid import uuid4
         self.client.force_login(self.dispatcher)
         response=self.client.post(reverse('production:work_claims'),{'construction_object':self.obj.pk,'date':str(self.day),'session':str(uuid4()),'key':f'employee:{self.second_employee.pk}:1','action':'take'},content_type='application/json')
-        self.assertEqual(response.status_code,409)
+        self.assertEqual(response.status_code,200)
         data=self.payload('DISPATCHER','works');data.update({'labor-0-employee':self.employee.pk,'labor-0-work_mode':'general'})
         self.assertEqual(self.client.post(self.url,data).status_code,302)
         housing.move(self.hr,'DEPARTURE',self.a,self.day,[self.person])

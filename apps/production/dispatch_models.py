@@ -70,6 +70,7 @@ class EquipmentActivity(ShiftActivity):
 
 
 class EmployeeActivity(ShiftActivity):
+    entry_direction=models.CharField('Направление ввода',max_length=5,choices=[('works','Производство'),('labor','Персонал')],blank=True,default='',editable=False)
     assignment_reviewed=models.BooleanField(default=True,editable=False)
     employee=models.ForeignKey('resources.Employee',on_delete=models.PROTECT,verbose_name='Сотрудник (ФИО)')
     position=models.ForeignKey('resources.Position',on_delete=models.PROTECT,null=True,blank=True,verbose_name='Должность на дату факта')

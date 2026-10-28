@@ -66,13 +66,14 @@ def plans(obj,day):
     return works,resources
 
 class ScopeFormMixin:
-    def __init__(self,*args,user,obj,day,work_plan=None,actuated=False,equipment_baselines=None,day_resource_plan=None,activity_work_keys=None,activity_choices=None,**kwargs):
+    def __init__(self,*args,user,obj,day,work_plan=None,actuated=False,equipment_baselines=None,day_resource_plan=None,activity_work_keys=None,activity_choices=None,employee_pool=None,**kwargs):
         super().__init__(*args,**({'user':user,**kwargs} if isinstance(self,DailyFactForm) else kwargs))
         self.obj=obj;self.day=day;self.work_plan=work_plan or {};self.actuated=actuated
         self.equipment_baselines=equipment_baselines or {}
         self.day_resource_plan=day_resource_plan
         self.activity_work_keys=set(activity_work_keys or [])
         self.activity_choices=activity_choices or []
+        self.employee_pool=employee_pool
         self.instance.company=user.company;self.instance.date=day
         if hasattr(self.instance,'construction_object_id'):self.instance.construction_object=obj
         for name in ['date','construction_object']:self.fields.pop(name,None)
@@ -129,8 +130,9 @@ class ActivityForm(ScopeFormMixin,forms.ModelForm):
         if isinstance(self.instance,EmployeeActivity):
             employee=data.get('employee')
             if employee:
-                if not employee.position_id:self.add_error('employee','Сначала назначьте сотруднику должность в справочнике.')
+                if not employee.position_id and not getattr(self,'production_entry',False):self.add_error('employee','Сначала назначьте сотруднику должность в справочнике.')
                 elif not self.instance.pk or self.instance.employee_id!=employee.pk:self.instance.position=employee.position
+                self.instance.entry_direction='works' if getattr(self,'production_entry',False) else 'labor'
             from .production_entry import is_general_employee
             if is_general_employee(employee) and not data.get('work') and not data.get('work_item'):
                 data['general']=True
@@ -293,6 +295,9 @@ class DispatcherDayView(CompanyRequiredMixin,View):
                     prefix=key[:-len('project_work')];data[prefix+'actual_quantity']='0';data[prefix+'DELETE']=''
         context['actuation']=actuation if section=='works' else None
 
+        from .employee_pool import prepare as prepare_employee_pool,labor_direction
+        employee_pool=prepare_employee_pool(obj,day) if section=='works' else None
+        if employee_pool:context['production_employee_locations']=employee_pool['locations']
         definitions=[('works',DailyFact,WorkForm),('labor',EmployeeActivity,ProductionPersonForm)] if section=='works' else [('labor',EmployeeActivity,PersonForm)] if section=='labor' else [('equipment',EquipmentActivity,MachineForm),('fuel',FuelFact,FuelForm)]
         groups=[]
         for prefix,model,form in definitions:
@@ -301,7 +306,7 @@ class DispatcherDayView(CompanyRequiredMixin,View):
             if prefix=='fuel':qs=qs.filter(equipment_ref='')
             if prefix=='labor':
                 qs=qs.select_related('employee__position__planning_mapping__brigade__group','position').prefetch_related('work_links')
-                if section=='works':qs=qs.exclude(**{GENERAL_PATH:True})
+                if section=='works':qs=qs.exclude(labor_direction())
             initial=[]
             if prefix=='works':
                 existing=set(DailyFact.objects.filter(company=obj.company,project_work__section__construction_object=obj,date=day).values_list('project_work_id','work_item_id'))
@@ -319,7 +324,7 @@ class DispatcherDayView(CompanyRequiredMixin,View):
             extra=len(initial)+1
             if prefix=='equipment' and (equipment_baselines or existing):extra=len(initial)
             factory=modelformset_factory(model,form=form,formset=ScopedSet,extra=extra,can_delete=True,max_num=2000,absolute_max=2000)
-            formset=factory(data,prefix=prefix,queryset=qs.order_by('pk'),initial=initial,form_kwargs={'user':request.user,'obj':obj,'day':day,'work_plan':work_plan,'actuated':bool(actuated),'equipment_baselines':equipment_baselines,'day_resource_plan':resource_plan,'activity_work_keys':activity_keys,'activity_choices':catalogue})
+            formset=factory(data,prefix=prefix,queryset=qs.order_by('pk'),initial=initial,form_kwargs={'user':request.user,'obj':obj,'day':day,'work_plan':work_plan,'actuated':bool(actuated),'equipment_baselines':equipment_baselines,'day_resource_plan':resource_plan,'activity_work_keys':activity_keys,'activity_choices':catalogue,'employee_pool':employee_pool})
             if prefix=='equipment':
                 for row in formset:
                     try:key=(int(row.initial.get('equipment') or row['equipment'].value()),int(row.initial.get('shift') or row['shift'].value() or 1))
