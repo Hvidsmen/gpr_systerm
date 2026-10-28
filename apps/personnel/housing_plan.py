@@ -64,12 +64,14 @@ def monthly_plan(user,camp,day,*,camps=None):
                 marker=(origin.pk,id(chosen),when)
                 if marker in used:
                     kind='СМГ' if chosen.snapshot.get('daily_schedule_applied') else 'ГПР'
-                    if (origin.pk,kind) in groups:groups[origin.pk,kind]['used_for'].add(obj.name)
+                    if (origin.pk,kind) in groups:
+                        groups[origin.pk,kind]['used_for'].add(obj.name);groups[origin.pk,kind]['used_for_ids'].add(obj.pk)
                     continue
                 used.add(marker)
                 kind='СМГ' if chosen.snapshot.get('daily_schedule_applied') else 'ГПР'
-                group=groups.setdefault((origin.pk,kind),{'object':origin,'kind':kind,'months':[{'days':set(),'values':defaultdict(lambda:defaultdict(Decimal)),'versions':set()} for _ in months], 'used_for':set()})
+                group=groups.setdefault((origin.pk,kind),{'object':origin,'kind':kind,'months':[{'days':set(),'values':defaultdict(lambda:defaultdict(Decimal)),'versions':set()} for _ in months], 'used_for':set(),'used_for_ids':set()})
                 group['used_for'].add(obj.name)
+                group['used_for_ids'].add(obj.pk)
                 bucket=group['months'][month_index];bucket['days'].add(when)
                 bucket['versions'].add(getattr(chosen.version,'revision',getattr(chosen.version,'version_number','')))
                 for pk,values in index[id(chosen)].items():bucket['values'][pk][when]+=values.get(when,Decimal(0))
@@ -82,7 +84,7 @@ def monthly_plan(user,camp,day,*,camps=None):
         for pk in sorted(keys,key=lambda pk:labels.get(pk,'Должность').casefold()):
             values=[sum(bucket['values'][pk].values(),Decimal(0))/len(bucket['days']) if bucket['days'] else None for bucket in group['months']]
             rows.append({'id':pk,'name':labels.get(pk,'Должность'),'actual':len(actual[pk]),'values':values})
-        output.append({'object':group['object'],'kind':group['kind'],'rows':rows,'used_for':sorted(group['used_for']),
+        output.append({'object':group['object'],'kind':group['kind'],'rows':rows,'used_for':sorted(group['used_for']),'used_for_ids':sorted(group['used_for_ids']),
             'columns':[{'month':month,'versions':', '.join(str(v) for v in sorted(bucket['versions'])),'available':bool(bucket['days'])} for month,bucket in zip(months,group['months'])]})
     return {'housing_plan_months':months,'housing_plan_groups':output}
 
@@ -97,16 +99,34 @@ def position_headers(company,rows,plan_context,*,query='',position=None,state=''
         while pk in aliases and pk not in seen:seen.add(pk);pk=aliases[pk]
         return pk
     def normalized(value):return ' '.join(str(value).split()).casefold()
+    def maximum(values):return max((value for value in values if value is not None),default=None)
     sources=plan_context['housing_plan_groups'];months=plan_context['housing_plan_months']
+    from .models import CampObjectLink
+    linked_camps=defaultdict(set)
+    catalogue=list(ConstructionObject.objects.filter(company=company).values_list('pk','parent_id','project_id'))
+    object_ids=set()
+    for source in sources:
+        scope={source['object'].pk}
+        while True:
+            children={pk for pk,parent,project in catalogue if parent in scope and project==source['object'].project_id}
+            if children<=scope:break
+            scope.update(children)
+        source['scope_object_ids']=scope;object_ids.update(scope)
+    for obj,pk in CampObjectLink.objects.filter(company=company,construction_object_id__in=object_ids).values_list('construction_object_id','camp_id'):linked_camps[obj].add(pk)
     by_name=defaultdict(set);plans={}
     for source in sources:
         totals=[]
         for index,column in enumerate(source['columns']):
             totals.append({'month':column['month'],'value':sum((row['values'][index] or Decimal(0) for row in source['rows']),Decimal(0)) if column['available'] else None,'versions':column['versions']})
         source['totals']=totals;source['current_total']=totals[0]['value']
+        source['peak_total']=maximum(cell['value'] for cell in totals)
+        source['scope_camp_ids']=set().union(*(linked_camps[pk] for pk in source['scope_object_ids']))
+        scoped=[row for row in rows if row.get('camp') and row['camp'].pk in source['scope_camp_ids']]
+        source['on_shift']=rotation_stats(scoped)['on_shift']
+        source['shortage']=max(source['peak_total']-source['on_shift'],Decimal(0)) if source['peak_total'] is not None else None
         for row in source['rows']:
             by_name[normalized(row['name'])].add(row['id'])
-            plans.setdefault(row['id'],{'name':row['name'],'sources':[]})['sources'].append({'object':source['object'],'kind':source['kind'],'used_for':source['used_for'],
+            plans.setdefault(row['id'],{'name':row['name'],'sources':[]})['sources'].append({'object':source['object'],'kind':source['kind'],'used_for':source['used_for'],'peak':maximum(row['values']),'brigade_id':row['id'],'scope_camp_ids':source['scope_camp_ids'],
                 'months':[{'month':month,'value':value,'versions':column['versions']} for month,value,column in zip(months,row['values'],source['columns'])]})
     position_ids={row['position'].pk for row in rows if row.get('position')}
     if position:position_ids.add(position.pk)
@@ -114,13 +134,14 @@ def position_headers(company,rows,plan_context,*,query='',position=None,state=''
     for item in Position.objects.filter(company=company,pk__in=position_ids).select_related('planning_mapping'):
         mapping=getattr(item,'planning_mapping',None)
         if mapping:mappings[item.pk]=canonical(mapping.brigade_id)
-    groups={};matched=set()
+    groups={};matched=set();row_plan_ids={}
     for row in rows:
         label=row['position_label'];key=normalized(label)
         group=groups.setdefault(key,{'name':label,'rows':[],'plan_ids':set()});group['rows'].append(row)
         mapped=mappings.get(row['position'].pk) if row.get('position') else None
-        if mapped in plans:group['plan_ids'].add(mapped)
-        elif len(by_name[key])==1:group['plan_ids'].update(by_name[key])
+        if mapped in plans:group['plan_ids'].add(mapped);row_plan_ids[id(row)]=mapped
+        elif len(by_name[key])==1:
+            group['plan_ids'].update(by_name[key]);row_plan_ids[id(row)]=next(iter(by_name[key]))
     for group in groups.values():matched.update(group['plan_ids'])
     if not query and not state:
         selected=mappings.get(position.pk) if position else None
@@ -131,5 +152,9 @@ def position_headers(company,rows,plan_context,*,query='',position=None,state=''
     for group in groups.values():
         group.update(rotation_stats(group['rows']))
         group['plans']=[{**source,'position':plans[pk]['name']} for pk in sorted(group['plan_ids']) for source in plans[pk]['sources']]
+        for plan in group['plans']:
+            scoped=[row for row in group['rows'] if row_plan_ids.get(id(row))==plan['brigade_id'] and row.get('camp') and row['camp'].pk in plan['scope_camp_ids']]
+            plan['on_shift']=rotation_stats(scoped)['on_shift']
+            plan['shortage']=max(plan['peak']-plan['on_shift'],Decimal(0)) if plan['peak'] is not None else None
         output.append(group)
     return sorted(output,key=lambda group:normalized(group['name']))

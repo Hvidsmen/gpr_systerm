@@ -12,6 +12,29 @@ from .models import Camp,CampStay,StaffingSlot
 from . import housing
 from .services import calendar_for,departure_days,is_work
 
+STATUS_HELP={
+    '':'Все сотрудники и вакансии, подходящие под остальные фильтры.',
+    'DEPARTURE_OVERDUE':'Плановая дата выезда прошла, сотрудник ещё числится на вахте. Проверьте и оформите фактический выезд или уточните график.',
+    'DEPARTURE_PENDING':'Сотрудник на вахте; выезд по графику сегодня или в ближайшие 14 дней включительно.',
+    'ARRIVAL_OVERDUE':'Плановая дата возвращения прошла, а сотрудник пока на МО или со статусом, который нужно уточнить. Фактический заезд не подтверждён.',
+    'ARRIVING':'На выбранную дату указан фактический или исходный заезд, запланировано возвращение либо в графике стоит входящий день пути.',
+    'DEPARTING':'На выбранную дату указан фактический или исходный выезд либо выезд по графику. Включает дни пути на выезд и переводы из выбранного ВЖГ.',
+    'MV':'Сотрудник числится на вахте по фактическим перемещениям; если их нет — по начальным данным. Это не означает, что сегодня у него рабочий день.',
+    'MO':'Сотрудник на межвахтовом отдыхе по фактическому выезду; если перемещений нет — по начальным данным.',
+    'TRAVEL':'В индивидуальном графике на выбранную дату стоит ДП — день пути. Направление поездки может быть на вахту или с вахты.',
+    'VACANCY':'Штатная строка без назначенного сотрудника. Это свободная позиция из таблицы, а не рассчитанный дефицит по СМГ или ГПР.',
+    'WORKING':'В индивидуальном графике на выбранную дату стоят рабочие часы больше нуля или МВ. Это рабочий день по графику, а не подтверждённый производственный факт.',
+    'UNKNOWN':'По фактическим перемещениям и начальным данным нельзя определить, находится сотрудник на вахте или на МО. Уточните исходный статус или оформите перемещение.',
+}
+
+
+class RotationStatusSelect(forms.RadioSelect):
+    def create_option(self,name,value,label,selected,index,subindex=None,attrs=None):
+        option=super().create_option(name,value,label,selected,index,subindex,attrs)
+        option['attrs']['title']=STATUS_HELP.get(str(value),'')
+        option['attrs']['aria-description']=option['attrs']['title']
+        return option
+
 
 class RotationFilter(forms.Form):
     construction_object=forms.ModelChoiceField(label='Объект',queryset=ConstructionObject.objects.none(),required=False,empty_label='Все объекты')
@@ -19,13 +42,14 @@ class RotationFilter(forms.Form):
     date=forms.DateField(label='На дату',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
     q=forms.CharField(label='Сотрудник',required=False,widget=forms.TextInput(attrs={'placeholder':'ФИО, должность или табельный номер'}))
     position=forms.ModelChoiceField(label='Должность',queryset=Position.objects.none(),required=False,empty_label='Все должности')
-    state=forms.ChoiceField(label='Статус',required=False,widget=forms.RadioSelect,choices=[('','Все'),('DEPARTURE_OVERDUE','Выезд просрочен'),('DEPARTURE_PENDING','Ожидает выезда'),('ARRIVAL_OVERDUE','Заезд просрочен'),('ARRIVING','Заезжают'),('DEPARTING','Выезжают'),('MV','На вахте'),('MO','Межвахтовый отдых'),('TRAVEL','В пути'),('VACANCY','Вакансии'),('WORKING','В работе'),('UNKNOWN','Уточнить статус')])
+    state=forms.ChoiceField(label='Статус',required=False,widget=RotationStatusSelect,choices=[('','Все'),('DEPARTURE_OVERDUE','Выезд просрочен'),('DEPARTURE_PENDING','Ожидает выезда'),('ARRIVAL_OVERDUE','Заезд просрочен'),('ARRIVING','Заезжают'),('DEPARTING','Выезжают'),('MV','На вахте'),('MO','Межвахтовый отдых'),('TRAVEL','В пути'),('VACANCY','Вакансии'),('WORKING','В работе'),('UNKNOWN','Уточнить статус')])
     def __init__(self,*args,company,**kwargs):
         super().__init__(*args,**kwargs)
         if not self['state'].value():self.initial['state']=''
         self.fields['construction_object'].queryset=ConstructionObject.objects.filter(company=company)
         self.fields['camps'].queryset=Camp.objects.filter(company=company)
         self.fields['position'].queryset=Position.objects.filter(company=company).order_by('name')
+        self.status_explanations=[(label,STATUS_HELP[value]) for value,label in self.fields['state'].choices]
     def selected_camps(self,company):
         camps=self.fields['camps'].queryset
         obj=self.cleaned_data.get('construction_object')

@@ -6,6 +6,11 @@
  tabs.forEach(t=>t.addEventListener('click',()=>{show(t.dataset.housingTab);history.replaceState(null,'','#'+t.dataset.housingTab);}));
  window.addEventListener('hashchange',()=>show(linkedTab()));
  show(form?.querySelector('.errorlist')?'movement':linkedTab());
+ document.querySelectorAll('[data-plan-month-toggle]').forEach(button=>button.addEventListener('click',event=>{
+  event.preventDefault();event.stopPropagation();
+  const detail=document.getElementById(button.getAttribute('aria-controls'));if(!detail)return;
+  detail.hidden=!detail.hidden;button.setAttribute('aria-expanded',String(!detail.hidden));
+ }));
  const filter=document.querySelector('[data-rotation-filter]');
  filter?.querySelectorAll('input[name=state]').forEach(input=>input.addEventListener('change',()=>filter.requestSubmit()));
  if(filter){
