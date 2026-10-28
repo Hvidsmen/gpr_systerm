@@ -13,6 +13,51 @@ from .models import WorkTask,WorkTaskEvent,DailyTaskCursor,EstimateReviewTask,Gl
 ACTIVE={'OPEN','IN_REVIEW'}
 
 
+def filter_scope(query, user, scope):
+    if scope == 'outgoing':
+        return query.filter(created_by=user)
+    if scope == 'all' and role_code(user) in {'ADMIN', 'OBSERVER'}:
+        return query
+    return query.filter(Q(assigned_to=user) | Q(assigned_to__isnull=True, target_role=role_code(user)))
+
+
+def filter_status(query, status):
+    if status == 'not_taken':
+        return query.filter(status='OPEN', started_at__isnull=True)
+    if status == 'in_progress':
+        return query.filter(Q(status='OPEN', started_at__isnull=False) | Q(status='IN_REVIEW'))
+    if status == 'history':
+        return query.exclude(status__in=ACTIVE)
+    if status == 'active':
+        return query.filter(status__in=ACTIVE)
+    if status == 'overdue':
+        return query.filter(status__in=ACTIVE, due_date__lt=timezone.localdate())
+    if status in dict(WorkTask._meta.get_field('status').choices):
+        return query.filter(status=status)
+    return query if status == 'all' else query.none()
+
+
+@transaction.atomic
+def take(user, task):
+    require_roles(user, ROLES - {'OBSERVER'})
+    from django.shortcuts import get_object_or_404
+    task = get_object_or_404(visible(user).select_for_update(), pk=task.pk)
+    if not is_executor(user, task):
+        raise PermissionDenied
+    if task.status != 'OPEN':
+        raise ValidationError('Задание уже завершено или передано на проверку.')
+    if task.kind == 'ESTIMATE' and not task.estimate_id:
+        raise ValidationError('Используйте действие «Взять проверку сметчика».')
+    if task.started_at:
+        return task
+    if not task.assigned_to_id:
+        task.assigned_to = user
+    task.started_at = timezone.now()
+    task.save(update_fields=['started_at', 'assigned_to', 'updated_at'])
+    event(task, user, 'Принято в работу')
+    return task
+
+
 def event(task,actor,action,text=''):
     WorkTaskEvent.objects.create(company_id=task.company_id,task=task,actor=actor,actor_name=actor.full_name if actor else 'Система',action=action,text=text[:8000])
 
@@ -24,6 +69,11 @@ def state(task,status,actor=None,text=''):
         if current is None:return
         task.status=current.status
         if task.status=='CLOSED_ADMIN' or task.status==status:return
+        # Returning a result for correction keeps it in work; a new workflow
+        # round after a terminal state needs a fresh acceptance.
+        if status == 'OPEN' and current.status not in ACTIVE:
+            task.started_at = None
+            task.save(update_fields=['started_at'])
         task.status=status;task.save(update_fields=['status','updated_at']);event(task,actor,task.get_status_display(),text)
 
 
@@ -189,7 +239,7 @@ def claim_estimate(user,task):
     estimate=EstimateReviewTask.objects.create(company=user.company,assigned_to=user,created_by=task.created_by or version.created_by,version=version)
     task.estimate=estimate;task.assigned_to=user;task.save(update_fields=['estimate','assigned_to'])
     # Keep one inbox row when the normal estimator service synchronizes it later.
-    task.key=f'estimate:{estimate.pk}';task.save(update_fields=['key']);event(task,user,'Принято в работу')
+    task.key=f'estimate:{estimate.pk}';task.started_at=timezone.now();task.save(update_fields=['key','started_at','updated_at']);event(task,user,'Принято в работу')
     return estimate
 
 
@@ -205,6 +255,8 @@ def discussion_action(user,task,action,text=''):
     if action=='resolve':
         if not is_executor(user,task):raise PermissionDenied
         if not text.strip():raise ValidationError('Опишите, что исправлено.')
+        if not task.started_at:
+            task.started_at=timezone.now();task.save(update_fields=['started_at','updated_at'])
         state(task,'IN_REVIEW',user,text)
     elif action=='cancel':
         if user.pk!=task.created_by_id:raise PermissionDenied('Задание отменяет его автор.')

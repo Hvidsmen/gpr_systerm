@@ -1339,6 +1339,7 @@ class MacroHistorySource(BaseCompanyModel):
 
 
 class WorkTask(BaseCompanyModel):
+    started_at = models.DateTimeField(null=True, blank=True)
     schedule_review = models.ForeignKey('DailyScheduleReview',null=True,blank=True,on_delete=models.CASCADE,related_name='work_tasks')
     key = models.CharField(max_length=180)
     kind = models.CharField(max_length=20,choices=[('RESOURCES','Подготовка ресурсов'),('SUBMISSION','Следующий этап плана'),('ESTIMATE','Проверка сметчика'),('REMARK','Замечание'),('APPROVAL','Согласование'),('FACT','Факт за день'),('CARRYOVER','Уточнение остатков'),('MANUAL','Задание')])
@@ -1363,6 +1364,12 @@ class WorkTask(BaseCompanyModel):
         ordering=['due_date','-created_at','-pk']
         constraints=[models.UniqueConstraint(fields=['company','key'],name='unique_company_work_task')]
         indexes=[models.Index(fields=['company','assigned_to','status'])]
+
+    @property
+    def progress_label(self):
+        if self.status == 'OPEN':
+            return 'В работе' if self.started_at else 'Ещё не взято'
+        return self.get_status_display()
 
     @property
     def role_label(self):

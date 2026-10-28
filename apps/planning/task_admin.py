@@ -51,15 +51,8 @@ def close_tasks(user,ids,reason,signature):
 
 def filtered(user,params):
     query=service.visible(user).filter(status__in=service.ACTIVE)
-    status=params.get('status','active')
-    if status=='overdue':query=query.filter(due_date__lt=timezone.localdate())
-    elif status in service.ACTIVE:query=query.filter(status=status)
-    elif status not in {'active','all'}:return query.none()
-    scope=params.get('scope','all')
-    if scope=='outgoing':query=query.filter(created_by=user)
-    elif scope=='incoming':
-        from django.db.models import Q
-        query=query.filter(Q(assigned_to=user)|Q(assigned_to__isnull=True,target_role=role_code(user)))
+    query=service.filter_status(query,params.get('status','active'))
+    query=service.filter_scope(query,user,params.get('scope','all'))
     if params.get('kind') in dict(WorkTask._meta.get_field('kind').choices):query=query.filter(kind=params['kind'])
     return query
 

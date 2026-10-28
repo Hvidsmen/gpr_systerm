@@ -50,17 +50,20 @@ class TaskList(View):
             for dispatcher in User.objects.filter(company=request.user.company,is_active=True,role__code__in=DISPATCHER_ROLES).select_related('role','company'):service.generate_daily(dispatcher)
         service.sync_company(request.user.company)
         tasks=service.visible(request.user)
-        mode=request.GET.get('status','active')
-        if mode=='active':tasks=tasks.filter(status__in=service.ACTIVE)
-        elif mode=='overdue':tasks=tasks.filter(status__in=service.ACTIVE,due_date__lt=timezone.localdate())
-        elif mode in dict(WorkTask._meta.get_field('status').choices):tasks=tasks.filter(status=mode)
-        scope=request.GET.get('scope','all' if role_code(request.user) in {'ADMIN','OBSERVER'} else 'mine')
-        if scope=='outgoing':tasks=tasks.filter(created_by=request.user)
-        elif scope=='incoming':tasks=tasks.filter(assigned_to=request.user)|tasks.filter(assigned_to__isnull=True,target_role=role_code(request.user))
-        if request.GET.get('kind') in dict(WorkTask._meta.get_field('kind').choices):tasks=tasks.filter(kind=request.GET['kind'])
+        mode=request.GET.get('status','not_taken')
+        valid_statuses={'not_taken','in_progress','history','active','overdue','all'} | set(dict(WorkTask._meta.get_field('status').choices))
+        if mode not in valid_statuses:mode='not_taken'
+        scope=request.GET.get('scope','incoming')
+        if scope not in {'incoming','outgoing','all'} or scope=='all' and role_code(request.user) not in {'ADMIN','OBSERVER'}:scope='incoming'
+        tasks=service.filter_scope(tasks,request.user,scope)
+        kind=request.GET.get('kind','')
+        if kind in dict(WorkTask._meta.get_field('kind').choices):tasks=tasks.filter(kind=kind)
+        else:kind=''
+        stages=[{'value':value,'label':label,'count':service.filter_status(tasks,value).count()} for value,label in [('not_taken','Ещё не взяты'),('in_progress','В работе'),('history','История')]]
+        tasks=service.filter_status(tasks,mode)
         from django.core.paginator import Paginator
         page=Paginator(tasks.select_related('assigned_to','created_by','construction_object').order_by('due_date','-created_at','-pk'),50).get_page(request.GET.get('page'))
-        return render(request,'planning/task_list.html',{'page':page,'status':mode,'scope':scope,'kinds':WorkTask._meta.get_field('kind').choices,'can_create':role_code(request.user)!='OBSERVER','needs_objects':role_code(request.user) in {'DISPATCHER','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER'} and not request.user.assigned_objects.exists()})
+        return render(request,'planning/task_list.html',{'page':page,'stages':stages,'kind':kind,'can_view_all':role_code(request.user) in {'ADMIN','OBSERVER'},'status_options':[('active','Все активные'),('overdue','Просроченные'),('IN_REVIEW','На проверке автора'),('all','Все статусы'),('DONE','Выполненные'),('CLOSED_ADMIN','Принудительно закрытые'),('SUPERSEDED','Заменённые / отменённые')],'status':mode,'scope':scope,'kinds':WorkTask._meta.get_field('kind').choices,'can_create':role_code(request.user)!='OBSERVER','needs_objects':role_code(request.user) in {'DISPATCHER','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER'} and not request.user.assigned_objects.exists()})
 
 
 class TaskCreate(View):
@@ -107,7 +110,8 @@ class TaskDetail(View):
         task=get_object_or_404(service.visible(request.user),pk=pk)
         action=request.POST.get('action');text=request.POST.get('text','')[:8000]
         try:
-            if action in {'comment','resolve','accept','reopen','cancel'}:service.discussion_action(request.user,task,action,text)
+            if action=='take':service.take(request.user,task)
+            elif action in {'comment','resolve','accept','reopen','cancel'}:service.discussion_action(request.user,task,action,text)
             elif action=='fact_done':service.complete_fact(request.user,task,request.POST.getlist('confirmed'))
             elif action=='claim':
                 estimate=service.claim_estimate(request.user,task)
