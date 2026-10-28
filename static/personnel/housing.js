@@ -2,11 +2,21 @@
  'use strict';
  const tabs=[...document.querySelectorAll('[data-housing-tab]')],panels=[...document.querySelectorAll('[data-housing-panel]')],form=document.querySelector('[data-movement-form]');let dirty=false,submitting=false;
  function show(name){panels.forEach(p=>{p.hidden=p.dataset.housingPanel!==name;});tabs.forEach(t=>t.setAttribute('aria-current',t.dataset.housingTab===name?'page':'false'));}
- tabs.forEach(t=>t.addEventListener('click',()=>show(t.dataset.housingTab)));
- show(form?.querySelector('.errorlist')||location.hash==='#movement'?'movement':'roster');
+ function linkedTab(){const name=location.hash.slice(1);return panels.some(p=>p.dataset.housingPanel===name)?name:'roster';}
+ tabs.forEach(t=>t.addEventListener('click',()=>{show(t.dataset.housingTab);history.replaceState(null,'','#'+t.dataset.housingTab);}));
+ window.addEventListener('hashchange',()=>show(linkedTab()));
+ show(form?.querySelector('.errorlist')?'movement':linkedTab());
  const filter=document.querySelector('[data-rotation-filter]');
  filter?.querySelectorAll('input[name=state]').forEach(input=>input.addEventListener('change',()=>filter.requestSubmit()));
  if(filter){
+  const scrollKey='personnel:rotation-filter-position';
+  filter.addEventListener('submit',()=>{
+   const active=tabs.find(tab=>tab.getAttribute('aria-current')==='page');
+   filter.action=location.pathname+'#'+(active?.dataset.housingTab||'roster');
+   const target=new URL(filter.action,location.href);target.search=new URLSearchParams(new FormData(filter)).toString();
+   try{sessionStorage.setItem(scrollKey,JSON.stringify({url:target.href,top:scrollY,at:Date.now()}));}catch{}
+  });
+  try{const saved=JSON.parse(sessionStorage.getItem(scrollKey)||'null');sessionStorage.removeItem(scrollKey);if(saved&&saved.url===location.href&&Date.now()-saved.at<60000)requestAnimationFrame(()=>requestAnimationFrame(()=>scrollTo(0,saved.top)));}catch{}
   const anchor=document.querySelector('[data-rotation-filter-anchor]'),expand=filter.querySelector('[data-rotation-filter-expand]');
   expand?.addEventListener('click',()=>{const opened=filter.classList.toggle('is-expanded');expand.setAttribute('aria-expanded',String(opened));});
   const offset=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--navbar-height'))||48;
