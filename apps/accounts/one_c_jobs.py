@@ -27,41 +27,50 @@ class PositionScheduleForm(forms.Form):
 @require_http_methods(['GET','POST'])
 def jobs(request):
     require_roles(request.user, {'ADMIN'})
-    from .one_c_positions import source_confirmed
+    from .one_c_schedules import CATALOGUES, source_ready, last_run
     from .one_c import enqueue
     connection,_=OneCConnection.objects.get_or_create(company=request.user.company)
-    ready=source_confirmed(connection)
-    schedule_form=PositionScheduleForm(initial={'interval':connection.positions_interval_minutes})
+    readiness={item['kind']:source_ready(connection,item['kind']) for item in CATALOGUES}
+    schedule_forms={item['kind']:PositionScheduleForm(initial={'interval':getattr(connection,item['kind']+'_interval_minutes')},auto_id=item['kind']+'_%s') for item in CATALOGUES}
     if request.method=='POST':
         action=request.POST.get('action')
-        if action=='positions_run':
-            if not ready:messages.error(request,'Сначала подтвердите справочник должностей диагностикой текущего подключения.')
-            else:
-                run=enqueue(connection,request.user,positions=True)
-                messages.success(request,'Загрузка должностей поставлена в очередь.' if run else 'Уже выполняется задание 1С. Дождитесь его окончания и повторите запуск.')
-            return redirect('accounts:one_c_jobs')
-        elif action=='positions_schedule':
-            schedule_form=PositionScheduleForm(request.POST)
-            if schedule_form.is_valid():
-                interval=schedule_form.cleaned_data['interval']
-                if interval and not ready:schedule_form.add_error(None,'Сначала подтвердите справочник должностей диагностикой текущего подключения.')
-                else:
-                    from apps.audit.models import AuditLog
-                    from django.db import transaction
-                    with transaction.atomic():
-                        old=connection.positions_interval_minutes
-                        connection.positions_interval_minutes=interval
-                        connection.save(update_fields=['positions_interval_minutes'])
-                        AuditLog.objects.create(user=request.user,action='UPDATE',entity_type='accounts.OneCConnection',entity_id=str(connection.pk),old_value={'positions_interval_minutes':old},new_value={'positions_interval_minutes':interval},comment='Расписание загрузки должностей из 1С')
-                    messages.success(request,'Расписание загрузки должностей сохранено.' if interval else 'Автоматическая загрузка должностей отключена.')
-                    return redirect('accounts:one_c_jobs')
-        else:
+        actions={item['kind']+'_'+command:(item,command) for item in CATALOGUES for command in ('run','schedule')}
+        if action not in actions:
             from django.http import HttpResponseBadRequest
             return HttpResponseBadRequest('Неизвестное действие.')
-    last_positions=connection.runs.filter(report__positions_import=True,server=connection.server,database=connection.database).order_by('-created_at').first()
-    next_positions=None
-    if connection.positions_interval_minutes:
-        next_positions=last_positions.created_at+timedelta(minutes=connection.positions_interval_minutes) if last_positions else timezone.now()
+        item,command=actions[action]
+        kind=item['kind'];label=item['label']
+        unconfirmed=f'Сначала подтвердите источник {label} диагностикой текущего подключения.'
+        if command=='run':
+            if not readiness[kind]:messages.error(request,unconfirmed)
+            else:
+                run=enqueue(connection,request.user,**{kind:True})
+                messages.success(request,f'Загрузка {label} поставлена в очередь.' if run else 'Уже выполняется задание 1С. Дождитесь его окончания и повторите запуск.')
+            return redirect('accounts:one_c_jobs')
+        form=PositionScheduleForm(request.POST,auto_id=kind+'_%s')
+        schedule_forms[kind]=form
+        if form.is_valid():
+            interval=form.cleaned_data['interval']
+            if interval and not readiness[kind]:form.add_error(None,unconfirmed)
+            else:
+                from apps.audit.models import AuditLog
+                from django.db import transaction
+                field=kind+'_interval_minutes'
+                with transaction.atomic():
+                    current=OneCConnection.objects.select_for_update().get(pk=connection.pk)
+                    old=getattr(current,field)
+                    setattr(current,field,interval)
+                    current.save(update_fields=[field])
+                    AuditLog.objects.create(user=request.user,action='UPDATE',entity_type='accounts.OneCConnection',entity_id=str(connection.pk),old_value={field:old},new_value={field:interval},comment=f'Расписание загрузки {label} из 1С')
+                messages.success(request,f'Расписание загрузки {label} сохранено.' if interval else f'Автоматическая загрузка {label} отключена.')
+                return redirect('accounts:one_c_jobs')
+    now=timezone.now()
+    import_jobs=[]
+    for item in CATALOGUES:
+        kind=item['kind'];last=last_run(connection,kind)
+        interval=getattr(connection,kind+'_interval_minutes')
+        next_run=last.created_at+timedelta(minutes=interval) if last and interval else now if interval else None
+        import_jobs.append({**item,'ready':readiness[kind],'form':schedule_forms[kind],'interval':interval,'last':last,'next':next_run,'due':bool(next_run and next_run<=now)})
     query = OneCDiagnosticRun.objects.filter(connection__company=request.user.company).select_related('created_by').order_by('-created_at', '-pk')
     pending = query.filter(status__in=['QUEUED', 'RUNNING']).exists()
     status = request.GET.get('status', '')
@@ -87,5 +96,5 @@ def jobs(request):
     params = request.GET.copy()
     params.pop('page', None)
     return render(request, 'accounts/one_c_jobs.html', {'page': page, 'pending': pending, 'statuses': statuses,
-                  'connection':connection,'positions_ready':ready,'schedule_form':schedule_form,'last_positions':last_positions,'next_positions':next_positions,'positions_due':bool(next_positions and next_positions<=timezone.now()),'busy':bool(connection.active_until and connection.active_until>timezone.now()),
+                  'connection':connection,'import_jobs':import_jobs,'busy':bool(connection.active_until and connection.active_until>now),
                   'kinds': KINDS, 'selected_status': status, 'selected_kind': kind, 'params': params.urlencode()})

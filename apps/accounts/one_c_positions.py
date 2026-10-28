@@ -76,10 +76,5 @@ def source_confirmed(connection):
 
 
 def enqueue_due_positions(now):
-    from datetime import timedelta
-    from .models import OneCConnection
-    from .one_c import enqueue
-    for connection in OneCConnection.objects.filter(positions_interval_minutes__gt=0,active_until__isnull=True):
-        last=connection.runs.filter(report__positions_import=True,server=connection.server,database=connection.database).order_by('-created_at').first()
-        if (last is None or last.created_at+timedelta(minutes=connection.positions_interval_minutes)<=now) and source_confirmed(connection):
-            enqueue(connection,positions=True)
+    from .one_c_schedules import enqueue_due_imports
+    enqueue_due_imports(now, kinds=('positions',))

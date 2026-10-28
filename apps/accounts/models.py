@@ -157,6 +157,7 @@ class OneCConnection(models.Model):
     trust_certificate = models.BooleanField(default=False)
     diagnostic_interval_minutes = models.PositiveIntegerField(default=0)
     positions_interval_minutes = models.PositiveIntegerField(default=0)
+    employees_interval_minutes = models.PositiveIntegerField(default=0)
     active_until = models.DateTimeField(null=True, blank=True)
 
 

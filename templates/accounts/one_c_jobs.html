@@ -3,12 +3,17 @@
 {% block content %}
 <nav><a href="{% url 'accounts:one_c' %}">Интеграция с 1С</a> / Задания</nav>
 <h1>Задания 1С</h1>
-<section class="card p-3 my-3"><div class="d-flex justify-content-between flex-wrap gap-3"><div><h2>Загрузка должностей</h2><p>Источник: {{ connection.server }} / {{ connection.database }} · Справочник.Должности.</p><p class="text-muted">Только актуальные наименования. Дубли пропускаются, существующие ставки и настройки сохраняются.</p></div><form method="post">{% csrf_token %}<button class="btn btn-primary" name="action" value="positions_run" {% if not positions_ready or busy %}disabled{% endif %}>Запустить сейчас</button></form></div>
-{% if not positions_ready %}<p class="alert alert-warning">Справочник должностей для текущего подключения пока не подтверждён. <a href="{% url 'accounts:one_c' %}">Выполните диагностику подключения</a>.</p>{% elif busy %}<p role="status">Уже выполняется или ожидает задание 1С. После его окончания ручной запуск станет доступен.</p>{% endif %}
-<form method="post" class="border-top pt-3">{% csrf_token %}<input type="hidden" name="action" value="positions_schedule">{{ schedule_form.as_p }}<button class="btn btn-outline-primary">Сохранить расписание</button></form>
-<p class="mt-3 mb-1">{% if connection.positions_interval_minutes %}Расписание включено: каждые {{ connection.positions_interval_minutes }} мин.{% if positions_ready %} {% if positions_due %}Ближайший запуск — при следующей проверке фонового обработчика.{% else %}Ближайший срок: {{ next_positions }}.{% endif %}{% else %} Запуски приостановлены до подтверждения источника.{% endif %}{% else %}Расписание отключено — только ручной запуск.{% endif %}</p>
-{% if last_positions %}<p class="mb-0">Последний запуск: {{ last_positions.created_at }} · {{ last_positions.get_status_display }}.</p>{% endif %}
-<p class="small text-muted mt-2 mb-0">Расписание работает через фоновый портал и проверяется примерно раз в минуту. Одновременно выполняется одно задание 1С. Результаты — в истории ниже.</p></section>
+<div class="row g-3 my-1">
+{% for job in import_jobs %}<div class="col-12 col-xl-6"><section class="card p-3 h-100" data-import-job="{{ job.kind }}">
+<div class="d-flex justify-content-between flex-wrap gap-2"><h2 class="h5">{{ job.title }}</h2><form method="post">{% csrf_token %}<button class="btn btn-primary" name="action" value="{{ job.kind }}_run" {% if not job.ready or busy %}disabled{% endif %}>Запустить сейчас</button></form></div>
+<p class="mt-2">Источник: {{ connection.server }} / {{ connection.database }} · {{ job.source }}.</p><p class="text-muted">{{ job.description }}</p>
+{% if not job.ready %}<p class="alert alert-warning">Источник {{ job.label }} для текущего подключения пока не подтверждён. <a href="{% url 'accounts:one_c' %}">Выполните диагностику подключения</a>.</p>{% elif busy %}<p role="status">Уже выполняется или ожидает задание 1С. После его окончания ручной запуск станет доступен.</p>{% endif %}
+<form method="post" class="border-top pt-3">{% csrf_token %}<input type="hidden" name="action" value="{{ job.kind }}_schedule">{{ job.form.as_p }}<button class="btn btn-outline-primary">Сохранить расписание</button></form>
+<p class="mt-3 mb-1">{% if job.interval %}Расписание включено: каждые {{ job.interval }} мин.{% if job.ready %} {% if job.due %}Ближайший запуск — при следующей проверке фонового обработчика.{% else %}Ближайший срок: {{ job.next }}.{% endif %}{% else %} Запуски приостановлены до подтверждения источника.{% endif %}{% else %}Расписание отключено — только ручной запуск.{% endif %}</p>
+{% if job.last %}<p class="mb-1">Последний запуск: {{ job.last.created_at }} · {{ job.last.get_status_display }}.</p>{% if job.last.error %}<p class="text-danger mb-1">{{ job.last.error }}</p>{% endif %}{% endif %}
+<p class="mb-0"><a href="?kind={{ job.kind }}">История обновлений {{ job.label }}</a></p>
+</section></div>{% endfor %}</div>
+<p class="small text-muted my-3">Расписания проверяются фоновым обработчиком примерно раз в минуту. Задания сотрудников и должностей выполняются по очереди. Результаты — в истории ниже.</p>
 <h2>История запусков</h2>
 <p>Все задания интеграции вашей компании: ожидающие, выполняющиеся и завершённые, включая задания прежних подключений.</p>
 <form method="get" class="d-flex flex-wrap gap-2 mb-3">
