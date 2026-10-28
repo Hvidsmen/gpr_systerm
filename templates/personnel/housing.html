@@ -1,12 +1,21 @@
 {% extends 'base.html' %}{% load static %}
 {% block title %}Таблица перевахты{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'personnel/lodging.css' %}?v=20261028-1"><link rel="stylesheet" href="{% static 'personnel/housing.css' %}?v=20261028-position-headers">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'personnel/lodging.css' %}?v=20261028-1"><link rel="stylesheet" href="{% static 'personnel/housing.css' %}?v=20261028-roster-fact">{% endblock %}
 {% block content %}
 <h1>Таблица перевахты</h1><p class="text-muted">Сотрудники на вахте и межвахтовом отдыхе, индивидуальные графики и открытые вакансии. Можно выбрать объект с субобъектами и несколько ВЖГ.</p>
 {% include 'personnel/_housing_nav.html' %}
 <form method="get" class="card card-body mb-3" aria-label="Фильтры перевахты">{% include 'forms/fields.html' with form=rotation_filter %}<div class="mt-3"><button class="btn btn-primary">Открыть</button></div></form>
 {% if camp %}
-<section class="housing-total-cards mb-3" aria-label="Итоги перевахты"><article class="card card-body"><span>Всего сотрудников</span><strong data-rotation-total="people">{{ rotation_stats.people }}</strong><small>Требует уточнения: {{ rotation_stats.unknown }}</small></article><article class="card card-body"><span>На вахте</span><strong data-rotation-total="on_shift">{{ rotation_stats.on_shift }}</strong><small>Фактический заезд подтверждён: {{ rotation_stats.present }} чел.</small></article><article class="card card-body"><span>Межвахтовый отдых</span><strong data-rotation-total="rest">{{ rotation_stats.rest }}</strong><small>Сотрудники включены в перевахту</small></article><article class="card card-body"><span>Открытые вакансии</span><strong data-rotation-total="vacancies">{{ rotation_stats.vacancies }}</strong><small>Свободные штатные позиции</small></article></section>
+<h2 class="h5">Факт по таблице · {{ day|date:'d.m.Y' }}</h2>
+<section class="housing-total-cards mb-2" aria-label="Итоги перевахты">
+<article class="card card-body"><span>Всего сотрудников</span><strong data-rotation-total="people">{{ rotation_stats.people }}</strong><small>Статус не уточнён: {{ rotation_stats.unknown }}</small></article>
+<article class="card card-body"><span>В работе по графику</span><strong data-rotation-total="working">{{ rotation_stats.working }}</strong><small>Рабочие часы или МВ на выбранную дату</small></article>
+<article class="card card-body"><span>На вахте</span><strong data-rotation-total="on_shift">{{ rotation_stats.on_shift }}</strong><small>Фактический заезд подтверждён: {{ rotation_stats.present }} чел.</small></article>
+<article class="card card-body"><span>В пути по графику</span><strong data-rotation-total="travelling">{{ rotation_stats.travelling }}</strong><small>ДП на выбранную дату</small></article>
+<article class="card card-body"><span>Межвахтовый отдых</span><strong data-rotation-total="rest">{{ rotation_stats.rest }}</strong><small>По статусу перевахты</small></article>
+<article class="card card-body"><span>Открытые вакансии</span><strong data-rotation-total="vacancies">{{ rotation_stats.vacancies }}</strong><small>Свободные штатные позиции</small></article>
+</section>
+<p class="small text-muted" data-rotation-counts-note>Показатели рассчитаны по строкам с учётом фильтров. В работе и в пути — по индивидуальному графику; на вахте и на отдыхе — по размещению и статусу кадровой таблицы. Эти показатели могут пересекаться. График на дату не задан: {{ rotation_stats.no_schedule }} чел.</p>
 <p class="small text-muted">ВЖГ: {% for selected in selected_camps %}{{ selected.name }}{% if not forloop.last %}; {% endif %}{% endfor %}. Люди на отдыхе и вакансии включены в перевахту. В производственном факте доступны все активные сотрудники; местонахождение используется для сортировки и подсказок.</p>
 {% include 'personnel/_lodging_sync_summary.html' %}
 {% include 'personnel/_housing_plan.html' %}

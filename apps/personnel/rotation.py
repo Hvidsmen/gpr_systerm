@@ -1,5 +1,5 @@
 """Rotation includes people at work, people on rest, and vacant staffing slots.
-Actual residence remains a separate source of production eligibility.
+Actual residence and scheduled work are separate dated indicators.
 """
 from calendar import monthrange
 from collections import defaultdict
@@ -19,7 +19,7 @@ class RotationFilter(forms.Form):
     date=forms.DateField(label='На дату',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
     q=forms.CharField(label='Сотрудник',required=False,widget=forms.TextInput(attrs={'placeholder':'ФИО, должность или табельный номер'}))
     position=forms.ModelChoiceField(label='Должность',queryset=Position.objects.none(),required=False,empty_label='Все должности')
-    state=forms.ChoiceField(label='Вахта / отдых / вакансии',required=False,choices=[('','Все'),('MV','На вахте'),('MO','На межвахтовом отдыхе'),('VACANCY','Открытые вакансии'),('UNKNOWN','Требует уточнения')])
+    state=forms.ChoiceField(label='Вахта / отдых / вакансии',required=False,choices=[('','Все'),('WORKING','В работе по графику'),('MV','На вахте'),('TRAVEL','В пути по графику'),('MO','На межвахтовом отдыхе'),('VACANCY','Открытые вакансии'),('UNKNOWN','Требует уточнения')])
     def __init__(self,*args,company,**kwargs):
         super().__init__(*args,**kwargs)
         self.fields['construction_object'].queryset=ConstructionObject.objects.filter(company=company)
@@ -37,6 +37,22 @@ class RotationFilter(forms.Form):
             camps=camps.filter(object_links__company=company,object_links__construction_object_id__in=ids).distinct()
         if self.cleaned_data.get('camps'):camps=camps.filter(pk__in=self.cleaned_data['camps'])
         return camps.order_by('name','pk')
+
+
+def _day_code(row):
+    value=row.get('today_code')
+    return str(value).strip().upper() if value is not None else ''
+
+
+def rotation_stats(rows):
+    """Count roster people, never work hours or empty slots as workers."""
+    people=[row for row in rows if row.get('person')]
+    return {'people':len(people),'present':sum(bool(row.get('verified')) for row in people),
+        'on_shift':sum(row['state']=='MV' for row in people),'rest':sum(row['state']=='MO' for row in people),
+        'working':sum(is_work(_day_code(row)) for row in people),
+        'travelling':sum(_day_code(row)=='ДП' for row in people),
+        'no_schedule':sum(not _day_code(row) for row in people),
+        'vacancies':sum(not row.get('person') for row in rows),'unknown':sum(row['state']=='UNKNOWN' for row in people)}
 
 
 def rotation_rows(company,camps,day,*,query='',position=None,state='',include_unassigned=False):
@@ -80,11 +96,11 @@ def rotation_rows(company,camps,day,*,query='',position=None,state='',include_un
     for slot in vacant:
         calendar=calendar_for(slot)
         rows.append({'person':None,'slot':slot,'camp':slot_camp(slot),'position_label':slot.group.position,'state':'VACANCY','state_label':'Открытая вакансия','codes':[calendar.get(str(d),'') for d in days],'today_code':calendar.get(str(day),'')})
-    stats={'people':sum(bool(row['person']) for row in rows),'present':sum(bool(row.get('verified')) for row in rows),
-        'on_shift':sum(row['state']=='MV' for row in rows),'rest':sum(row['state']=='MO' for row in rows),'vacancies':len(vacant),'unknown':sum(row['state']=='UNKNOWN' for row in rows)}
     if query:
         terms=query.casefold().split()
         rows=[row for row in rows if all(term in (' '.join([row['person'].display_name if row['person'] else 'Вакансия',row['person'].display_employee_number if row['person'] else '',row['position_label']])).casefold() for term in terms)]
     if position:rows=[row for row in rows if row.get('position') and row['position'].pk==position.pk or not row.get('person') and row['position_label'].casefold()==position.name.casefold()]
-    if state:rows=[row for row in rows if row['state']==state]
-    return sorted(rows,key=lambda row:(row['position_label'].casefold(),row['state']=='VACANCY',row['person'].display_name.casefold() if row['person'] else '',row['slot'].pk if row['slot'] else 0)),days,stats
+    if state=='WORKING':rows=[row for row in rows if row.get('person') and is_work(_day_code(row))]
+    elif state=='TRAVEL':rows=[row for row in rows if row.get('person') and _day_code(row)=='ДП']
+    elif state:rows=[row for row in rows if row['state']==state]
+    return sorted(rows,key=lambda row:(row['position_label'].casefold(),row['state']=='VACANCY',row['person'].display_name.casefold() if row['person'] else '',row['slot'].pk if row['slot'] else 0)),days,rotation_stats(rows)

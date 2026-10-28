@@ -14,7 +14,7 @@ class RotationBrowserTests(StaticLiveServerTestCase):
         from .models import StaffingSlot
         from apps.projects.models import ConstructionObject
         HousingTests.setUpTestData.__func__(type(self))
-        StaffingSlot.objects.create(company=self.company,group=self.group,person=self.second_person,housing_camp=self.b,status='МО',pattern=self.pattern)
+        StaffingSlot.objects.create(company=self.company,group=self.group,person=self.second_person,housing_camp=self.b,status='МО',pattern=self.pattern,calendar={str(self.day):'ДП'})
         StaffingSlot.objects.create(company=self.company,group=self.group,housing_camp=self.b,pattern=self.pattern)
         parent=ConstructionObject.objects.create(company=self.company,project=self.project,name='Общий КТП')
         for obj in [self.obj,self.obj3]:obj.parent=parent;obj.save()

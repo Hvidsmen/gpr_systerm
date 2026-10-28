@@ -90,6 +90,7 @@ def monthly_plan(user,camp,day,*,camps=None):
 def position_headers(company,rows,plan_context,*,query='',position=None,state=''):
     """Attach each source's monthly plan to its position; keep source totals separate."""
     from apps.resources.models import Position
+    from .rotation import rotation_stats
     aliases=brigade_aliases(company)
     def canonical(pk):
         seen=set()
@@ -128,8 +129,7 @@ def position_headers(company,rows,plan_context,*,query='',position=None,state=''
             key=normalized(plan['name']);group=groups.setdefault(key,{'name':plan['name'],'rows':[],'plan_ids':set()});group['plan_ids'].add(pk)
     output=[]
     for group in groups.values():
-        members=group['rows'];group['people']=sum(bool(r['person']) for r in members);group['on_shift']=sum(r['state']=='MV' for r in members)
-        group['rest']=sum(r['state']=='MO' for r in members);group['vacancies']=sum(not r['person'] for r in members);group['present']=sum(bool(r.get('verified')) for r in members)
+        group.update(rotation_stats(group['rows']))
         group['plans']=[{**source,'position':plans[pk]['name']} for pk in sorted(group['plan_ids']) for source in plans[pk]['sources']]
         output.append(group)
     return sorted(output,key=lambda group:normalized(group['name']))

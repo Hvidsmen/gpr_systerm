@@ -61,5 +61,6 @@ class HousingPlanTests(TestCase):
         result=monthly_plan(self.hr,self.a,self.day)
         groups=position_headers(self.company,[],result)
         self.assertEqual(len(groups),1);self.assertEqual(groups[0]['people'],0);self.assertEqual(groups[0]['vacancies'],0)
+        self.assertEqual(groups[0]['working'],0);self.assertEqual(groups[0]['travelling'],0)
         self.assertEqual(len(groups[0]['plans'][0]['months']),5)
         self.assertEqual(position_headers(self.company,[],result,query='несуществующий сотрудник'),[])
