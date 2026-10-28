@@ -29,7 +29,7 @@ class BrigadeForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['unit'].required = False
-        for name in ('group', 'macro_group'):
+        for name in ('group',):
             self.fields[name].queryset = self.fields[name].queryset.filter(company_id=self.instance.company_id)
             self.fields[name].widget.attrs['class'] = 'form-select'
             self.fields[name].empty_label = 'Не выбрана'
@@ -39,7 +39,7 @@ class BrigadeForm(forms.ModelForm):
 
     class Meta:
         model = Brigade
-        fields = ['excel_aliases', 'name', 'group', 'macro_group', 'unit', 'description', 'is_active']
+        fields = ['excel_aliases', 'name', 'group', 'unit', 'description', 'is_active']
         widgets = {
             'code': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'БР-001'}),
             'unit': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'чел.'}),
@@ -67,6 +67,8 @@ class EquipmentTypeForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields['category'].queryset = EquipmentCategory.objects.filter(company_id=self.instance.company_id)
         self.fields['category'].empty_label = 'Выберите группу техники'
+        self.fields['category'].widget.attrs['data-equipment-group-select']=''
+        self.inline_groups=self.fields['category'].queryset
         self.fields['parent'].queryset = EquipmentType.objects.filter(company_id=self.instance.company_id,parent__isnull=True,merge_source__isnull=True).exclude(pk=self.instance.pk)
         self.fields['parent'].empty_label = 'Отдельная позиция в ГПР и СМГ'
         self.fields['parent'].help_text = 'Для модели, например «CAT 320», выберите плановую позицию «Экскаватор». Если добавляете саму технику для ГПР и СМГ, оставьте поле пустым.'

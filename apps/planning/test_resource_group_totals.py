@@ -38,8 +38,8 @@ class ResourceGroupTotalTests(TestCase):
         self.assertEqual(equipment['groups'][0]['label'],category.name)
         self.assertEqual(equipment['groups'][0]['totals'][0]['after'],9)
         self.assertEqual(equipment['totals'][0]['after'],9)
-        self.assertContains(response,'data-plan-group-total-number')
-        body=response.content.decode().split('data-plan-group-totals="labor"',1)[1].split('</tbody>',1)[0]
+        self.assertContains(response,'data-plan-group-totals="labor"')
+        body=response.content.decode().split('data-plan-group-totals="labor"',1)[1].split('</summary>',1)[0]
         self.assertNotIn('<input',body)
 
     def test_smg_group_daily_totals_and_month_average(self):
@@ -132,3 +132,15 @@ class ResourceGroupTotalTests(TestCase):
         self.assertEqual([c['after'] for c in result['cells']],[8,12])
         self.assertEqual((result['before'],result['after'],result['delta']),(Decimal('4.5'),10,Decimal('5.5')))
         self.assertEqual([c['delta'] for c in result['cells']],[5,6])
+
+    def test_average_display_rounds_up_after_aggregation_without_changing_daily_values(self):
+        from apps.analytics.templatetags.revenue_tags import average_number
+        from .templatetags.plan_tags import matrix_number
+        self.assertEqual(average_number(Decimal('24.1')),'25')
+        self.assertEqual(average_number(Decimal('24')),'24')
+        self.assertEqual(average_number(Decimal('0')),'0')
+        self.assertEqual(matrix_number(Decimal('23.333333'),'labor'),'24')
+        self.assertEqual(matrix_number(Decimal('24.1'),'equipment'),'25')
+        self.assertEqual(matrix_number(Decimal('24.1'),'works'),'24,1')
+        entries=[SimpleNamespace(comparison=[{'before':0,'after':Decimal('0.2'),'cells':[{'date':'2026-01-01','before':0,'after':Decimal('0.2')}]}]) for _ in range(2)]
+        result=total(entries,'equipment');self.assertEqual(result['after'],Decimal('0.4'));self.assertEqual(average_number(result['after']),'1')

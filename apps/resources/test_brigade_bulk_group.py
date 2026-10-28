@@ -31,15 +31,12 @@ class BulkPositionGroupTests(TestCase):
         self.assertEqual(self.post(**{'assignment-group': self.group.pk}).status_code, 302)
         self.assertEqual(logs.count(), 2, 'Unchanged assignments should not create duplicate audit entries')
 
-    def test_sets_both_groups_and_can_explicitly_clear_one(self):
-        self.post(**{'assignment-group': self.group.pk, 'assignment-macro_group': self.macro.pk})
-        self.a.refresh_from_db(); self.b.refresh_from_db()
-        self.assertEqual((self.b.group, self.b.macro_group), (self.group, self.macro))
-        self.post(**{'assignment-group': 'clear'})
-        self.b.refresh_from_db()
-        self.assertIsNone(self.b.group); self.assertEqual(self.b.macro_group, self.macro)
-        self.post(**{'assignment-macro_group': 'clear'})
-        self.b.refresh_from_db(); self.assertIsNone(self.b.macro_group)
+    def test_macro_group_is_not_editable_and_group_can_be_cleared(self):
+        self.post(**{'assignment-group':self.group.pk,'assignment-macro_group':self.macro.pk})
+        self.a.refresh_from_db();self.b.refresh_from_db()
+        self.assertEqual(self.b.group,self.group);self.assertIsNone(self.b.macro_group)
+        self.assertEqual(self.a.macro_group,self.macro)
+        self.post(**{'assignment-group':'clear'});self.b.refresh_from_db();self.assertIsNone(self.b.group)
 
     def test_empty_or_invalid_values_keep_selection_and_do_not_change_records(self):
         for values in [{}, {'assignment-group': 'invalid'}]:
@@ -84,7 +81,7 @@ class BulkPositionGroupTests(TestCase):
         sync_names(self.company.pk,[self.a.name,self.b.name])
         self.a.refresh_from_db(); self.b.refresh_from_db()
         self.assertEqual((self.a.group,self.a.macro_group),(self.group,self.macro))
-        self.assertEqual((self.b.group,self.b.macro_group),(self.group,self.macro))
+        self.assertEqual(self.b.group,self.group);self.assertIsNone(self.b.macro_group)
 
 
 import json, os, shutil, subprocess
@@ -109,7 +106,7 @@ class BulkPositionGroupBrowserTests(StaticLiveServerTestCase):
                               env=dict(os.environ,BULK_GROUP_BROWSER_CONFIG=json.dumps(config)),timeout=100)
         self.assertEqual(result.returncode,0,result.stdout+'\n'+result.stderr)
         a.refresh_from_db();b.refresh_from_db();other.refresh_from_db()
-        self.assertIsNone(a.group);self.assertEqual(a.macro_group,self.macro)
-        self.assertIsNone(b.group);self.assertEqual(b.macro_group,self.macro)
+        self.assertIsNone(a.group);self.assertIsNone(a.macro_group)
+        self.assertIsNone(b.group);self.assertIsNone(b.macro_group)
         self.assertIsNone(other.group);self.assertIsNone(other.macro_group)
         print(result.stdout.strip())

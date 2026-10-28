@@ -13,10 +13,21 @@ from . import transport_import as service
 from .transport_import_models import TransportImportBatch,TransportImportRow
 
 
+class MultipleFileInput(forms.ClearableFileInput):
+    allow_multiple_selected=True
+
+
+class MultipleFileField(forms.FileField):
+    widget=MultipleFileInput
+    def clean(self,value,initial=None):
+        if not value:return super().clean(None,initial)
+        files=value if isinstance(value,(list,tuple)) else [value]
+        return [super(MultipleFileField,self).clean(file,initial) for file in files]
+
+
 class UploadForm(forms.Form):
     date=forms.DateField(label='Дата сводки',initial=timezone.localdate,widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
-    first=forms.FileField(label='Первый файл · .xlsx / .xlsm')
-    second=forms.FileField(label='Второй файл · .xlsx / .xlsm',required=False)
+    files=MultipleFileField(label='Файлы сводок · .xlsx / .xlsm',widget=MultipleFileInput(attrs={'accept':'.xlsx,.xlsm'}),help_text='Можно выбрать один или несколько файлов одновременно.')
 
 
 class CorrectionForm(forms.Form):
@@ -35,9 +46,12 @@ class CorrectionForm(forms.Form):
 @require_http_methods(['GET','POST'])
 def upload(request):
     require_roles(request.user,OPERATORS)
-    form=UploadForm(request.POST if request.method=='POST' else None,request.FILES if request.method=='POST' else None)
+    uploads=request.FILES.copy()
+    if not uploads.getlist('files'):
+        uploads.setlist('files',[f for key in ('first','second') for f in uploads.getlist(key)])
+    form=UploadForm(request.POST if request.method=='POST' else None,uploads if request.method=='POST' else None)
     if request.method=='POST' and form.is_valid():
-        try:batch=service.preview(request.user,[f for f in (form.cleaned_data['first'],form.cleaned_data['second']) if f],form.cleaned_data['date'])
+        try:batch=service.preview(request.user,form.cleaned_data['files'],form.cleaned_data['date'])
         except ValidationError as exc:form.add_error(None,'; '.join(exc.messages))
         else:return redirect('resources:transport_import_review',pk=batch.pk)
     return render(request,'resources/transport_import.html',{'form':form,'title':'Загрузить ежедневные сводки техники'})

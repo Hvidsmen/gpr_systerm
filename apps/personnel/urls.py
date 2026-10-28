@@ -44,3 +44,9 @@ urlpatterns += [
     path('lodging/buildings/<int:building_pk>/beds/<int:pk>/',lodging_views.bed_edit,name='lodging_bed_edit'),
     path('lodging/stays/<int:pk>/',lodging_views.stay_edit,name='lodging_stay_edit'),
 ]
+
+from .initial_departure import edit as initial_departure
+urlpatterns += [path("people/<int:pk>/initial-departure/",initial_departure,name="initial_departure")]
+
+from . import lodging_import
+urlpatterns += [path("lodging/import/",lodging_import.upload,name="lodging_import"),path("lodging/import/<int:pk>/",lodging_import.review,name="lodging_import_review")]

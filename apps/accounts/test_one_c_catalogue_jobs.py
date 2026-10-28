@@ -13,8 +13,12 @@ from .test_one_c_employees import diagnostic
 
 def both_sources():
     report = diagnostic()
-    report['metadata_labels']['dbo._Reference92'] = {'name': 'Справочник.Должности', 'columns': {'_Fld25711': 'ИсключенаИзШтатногоРасписания'}}
-    report['schema'].extend({'schema': 'dbo', 'table': '_Reference92', 'column': column} for column in ['_Description', '_Marked', '_Fld25711'])
+    from .test_one_c_positions import staffing_diagnostic
+    staffing=staffing_diagnostic()
+    report['schema'].extend(staffing['schema'])
+    for key,label in staffing['metadata_labels'].items():
+        previous=report['metadata_labels'].get(key,{})
+        report['metadata_labels'][key]={**previous,**label,'columns':{**previous.get('columns',{}),**label['columns']}}
     return report
 
 

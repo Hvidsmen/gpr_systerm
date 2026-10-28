@@ -33,3 +33,6 @@ details[open]>.smg-calendar-summary>.smg-summary-label::before{content:'▾'}
 .smg-calendar-grid [data-smg-section=labor]>.smg-calendar-summary{background:#f0eef8}
 .smg-calendar-grid [data-smg-section=equipment]>.smg-calendar-summary{background:#eaf5f2}
 @media(max-width:700px){.smg-calendar-grid{--smg-resource-width:220px;--smg-measure-width:160px;--smg-value-width:96px}.smg-calendar-header-table th{font-size:11px}.smg-calendar-grid .matrix-table .matrix-label{font-size:12px}}
+
+/* The monthly SMG value remains distinct across headings and expanded rows. */
+.smg-calendar-grid [data-smg-calendar-month],.smg-calendar-grid [data-plan-total-after],.smg-calendar-grid [data-smg-month-cell]{background:#e3f3f7!important;color:#075d73;font-weight:700;box-shadow:inset 2px 0 #58adbe,inset -2px 0 #58adbe}

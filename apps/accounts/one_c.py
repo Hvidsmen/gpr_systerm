@@ -70,7 +70,10 @@ def process_queue():
             metadata_only=bool(run.report.get('metadata_only'))
             if metadata_only:command.append('-MetadataOnly')
             positions_import=bool(run.report.get('positions_import'))
-            if positions_import:command.append('-PositionsImport')
+            if positions_import:
+                from .one_c_positions import source_confirmed
+                if not source_confirmed(run.connection):raise ValidationError('Подтвердите структуру штатного расписания диагностикой ЗУП.')
+                command.append('-PositionsImport')
             employees_import=bool(run.report.get('employees_import'))
             if employees_import:
                 from .one_c_employees import source_confirmed
@@ -83,6 +86,7 @@ def process_queue():
             if not status.get('ok'):raise RuntimeError(status.get('error','Ошибка диагностики.'))
             run.report=json.loads((directory/'report.json').read_text(encoding='utf-8-sig'))
             if positions_import:
+                if run.report.get('positions_snapshot_version')!=2 or run.report.get('position_source',{}).get('table')!='dbo._Reference394':raise ValidationError('Обработчик вернул прежний источник должностей. Обновите проект и фоновый портал: должности загружаются только из штатного расписания.')
                 from .one_c_positions import apply_names
                 result=apply_names(run,run.report)
                 run.report={'positions_import':True,'positions_result':result,'position_source':run.report.get('position_source',{}),'position_flags':run.report.get('position_flags',[])}

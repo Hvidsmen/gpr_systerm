@@ -12,19 +12,19 @@ class ZupPositionCatalogueTests(TestCase):
     row=imports.EmployeesImportTests.row
     run_record=imports.EmployeesImportTests.run_record
 
-    def test_employee_import_populates_shared_catalogue_from_split_names_and_repeats(self):
+    def test_employee_import_does_not_create_catalogue_positions_and_repeats(self):
         from apps.accounts.one_c_employees import apply_employees
         rows=[self.row(position='',staffing_position='Аналитик /Управление цифровизации/'),
               self.row('2'*32,position='',staffing_position='аналитик /Другой отдел/',archived=1),
               self.row('3'*32,position='Инженер')]
         result=apply_employees(self.run_record(),{'employees':rows})
-        self.assertEqual(result['positions_result']['created'],2)
-        self.assertEqual(Brigade.objects.filter(company=self.company).count(),2)
+        self.assertEqual(result['positions_result']['created'],0)
+        self.assertEqual(Brigade.objects.filter(company=self.company).count(),0)
         self.assertFalse(Brigade.objects.filter(name__contains='/').exists())
         analyst=Employee.objects.get(zup_ref='1'*32)
-        self.assertEqual(str(analyst.position),'Аналитик')
+        self.assertIsNone(analyst.position)
         self.assertEqual(apply_employees(self.run_record(),{'employees':rows})['unchanged'],3)
-        self.assertEqual(Brigade.objects.filter(company=self.company).count(),2)
+        self.assertEqual(Brigade.objects.filter(company=self.company).count(),0)
 
     def test_reuse_manual_names_preserves_rates_status_groups_and_ambiguity(self):
         existing=Brigade.objects.create(company=self.company,name='Аналитик',is_active=False,description='Не менять')
@@ -49,9 +49,9 @@ class ZupPositionCatalogueTests(TestCase):
         url=reverse('resources:brigade_zup_employees')
         self.assertEqual(self.client.get(url).status_code,405)
         self.assertEqual(self.client.post(url).status_code,302)
-        self.assertEqual(list(Brigade.objects.filter(company=self.company).values_list('name',flat=True)),['Аналитик'])
+        self.assertFalse(Brigade.objects.filter(company=self.company).exists())
         self.assertEqual(self.client.post(url).status_code,302)
-        self.assertEqual(Brigade.objects.filter(company=self.company).count(),1)
+        self.assertEqual(Brigade.objects.filter(company=self.company).count(),0)
         self.admin.role=Role.objects.get(code='PLANNER');self.admin.save()
         self.assertEqual(self.client.post(url).status_code,403)
 

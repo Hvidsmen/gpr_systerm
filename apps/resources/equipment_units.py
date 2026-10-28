@@ -9,7 +9,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_GET
 from urllib.parse import parse_qsl, urlencode
 from core.permissions import READ_ROLES,PLAN_ROLES,require_roles,role_code
-from .models import Equipment,EquipmentType
+from .models import Equipment,EquipmentType,EquipmentCategory
 from .equipment_unit_catalogue import UnitFilterForm, filter_units, present_unit, unit_queryset
 
 class UnitForm(forms.ModelForm):
@@ -17,11 +17,16 @@ class UnitForm(forms.ModelForm):
         empty_label='Без отдельной модели')
     class Meta:
         model=Equipment
-        fields=['type','plate_number','name','brand_model','manufacture_year','inventory_number','vin','site_name','operator_position','is_active']
+        fields=['type','catalogue_group','plate_number','name','brand_model','manufacture_year','inventory_number','vin','site_name','operator_position','is_active']
         labels={'type':'Техника для планирования','plate_number':'Госномер / регистрационный знак','name':'Название машины','is_active':'Доступна для назначения'}
     def __init__(self,*args,company,**kwargs):
         super().__init__(*args,**kwargs)
         self.instance.company=company
+        self.fields['catalogue_group'].queryset=EquipmentCategory.objects.filter(company=company)
+        self.fields['catalogue_group'].label='Группа техники'
+        self.fields['catalogue_group'].empty_label='По группе техники для планирования'
+        self.fields['catalogue_group'].widget.attrs['data-equipment-group-select']=''
+        self.inline_groups=self.fields['catalogue_group'].queryset
         self._original_type = self.instance.type if self.instance.pk else None
         self.fields['type'].queryset=EquipmentType.objects.filter(company=company,merge_source__isnull=True,parent__isnull=True)
         if self._original_type:
@@ -40,7 +45,7 @@ class UnitForm(forms.ModelForm):
         self.fields['type'].help_text = 'Например, «Экскаватор». По этой позиции считается потребность в ГПР и СМГ.'
         self.fields['model'].help_text = 'Например, «CAT 320». Модель должна относиться к выбранной технике для планирования.'
         self.fields['is_active'].help_text = 'Отключённая машина сохраняет историю и не предлагается для новых назначений.'
-        self.order_fields(['type','model','name','brand_model','manufacture_year','plate_number','inventory_number','vin','site_name','operator_position','is_active'])
+        self.order_fields(['type','catalogue_group','model','name','brand_model','manufacture_year','plate_number','inventory_number','vin','site_name','operator_position','is_active'])
     def clean_type(self):
         category = self.cleaned_data['type']
         # Keep the existing model link and its history when the category is unchanged.

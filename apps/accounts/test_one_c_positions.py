@@ -38,10 +38,10 @@ class PositionImportTests(TestCase):
         self.assertEqual(existing.description, 'Сохранить')
 
     def test_table_queues_only_confirmed_source_and_keeps_diagnostic(self):
-        report = {'schema': [{'schema':'dbo','table':'_Reference92','column': col} for col in ['_Description','_Marked','_Fld25711']], 'metadata_labels': {'dbo._Reference92': {'name':'Справочник.Должности','columns':{'_Fld25711':'ИсключенаИзШтатногоРасписания'}}}}
+        report = staffing_diagnostic()
         diagnostic = self.run_record()
         diagnostic.status = 'DONE'; diagnostic.report = report; diagnostic.save()
-        url = reverse('accounts:one_c_table', args=['dbo','_Reference92'])
+        url = reverse('accounts:one_c_table', args=['dbo','_Reference394'])
         self.assertContains(self.client.get(url), 'Загрузить актуальные должности')
         self.assertEqual(self.client.post(url, {'action':'import_positions'}).status_code,302)
         queued = OneCDiagnosticRun.objects.get(status='QUEUED')
@@ -51,10 +51,14 @@ class PositionImportTests(TestCase):
 
     def test_empty_source_is_an_explicit_error_with_filter_counts(self):
         run=self.run_record()
-        with self.assertRaisesMessage(ValidationError,'Всего в dbo._Reference92: 100'):
+        with self.assertRaisesMessage(ValidationError,'Всего в dbo._Reference394: 100'):
             apply_names(run,{'position_names':[],'position_source':{'total':100,'not_marked':90,'excluded':90,'eligible':0}})
         self.assertFalse(Brigade.objects.filter(company=self.company).exists())
 
     def test_only_blank_names_cannot_report_success(self):
         with self.assertRaisesMessage(ValidationError,'все полученные наименования пустые'):
             apply_names(self.run_record(),{'position_names':[{'name':'   '}]})
+
+
+def staffing_diagnostic():
+    return {'schema':[{'schema':'dbo','table':'_Reference394','column':c} for c in ['_IDRRef','_Description','_Marked','_Fld31544','_Fld31546']], 'metadata_labels':{'dbo._Reference394':{'name':'Справочник.ШтатноеРасписание','columns':{'_Fld31544':'Утверждена','_Fld31546':'Закрыта'}}}}

@@ -16,6 +16,7 @@ from .dispatch_models import WorkFactClaim, EmployeeFactClaim, EmployeeActivity
 from apps.resources.models import Employee
 from .models import DailyFact
 from .forms import ObjectDateForm
+from .entry_concurrency import sqlite_serialized
 
 TTL=timedelta(minutes=5)
 
@@ -114,6 +115,7 @@ def check_form_claims(user,obj,day,groups):
 
 @login_required
 @require_http_methods(['GET','POST'])
+@sqlite_serialized
 def claims(request):
     require_roles(request.user,{'ADMIN','DISPATCHER','PERSONNEL_DISPATCHER','ALL_FACT_DISPATCHER'})
     try:
@@ -126,6 +128,8 @@ def claims(request):
         if request.method=='GET':
             from .production_entry import report_data
             return JsonResponse({'claims':status_rows(request.user,obj,day,session),'report':report_data(obj,day)})
+        from .collaboration import expire_presence
+        expire_presence(obj,day)
         action=data.get('action')
         if action not in {'release','release_session'}:
             from core.fact_edit_window import require_fact_day

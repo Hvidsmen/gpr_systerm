@@ -14,14 +14,15 @@
       if (work?.tagName === 'SELECT') heading.hidden = true;
       return;
     }
-    heading.hidden = false;
+    heading.hidden = false;row.dataset.planned=display.has_plan?'1':'0';const remove=row.querySelector('[data-work-remove]');if(remove)remove.hidden=display.has_plan;
     row.querySelector('[data-work-title]').textContent = display.title;
     row.querySelector('[data-work-path]').textContent = display.path;
     row.querySelector('[data-work-unplanned]').hidden = display.has_plan;
     row.querySelector('[data-work-plan]').textContent = display.has_plan ? `${number.format(display.plan)} ${display.unit}` : '—';
     row.querySelector('[data-work-previous]').textContent = `${number.format(display.previous)} ${display.unit}`;
   }
-  host.querySelectorAll('[data-work-fact-row]').forEach(refresh);
+  function refreshAll(){host.querySelectorAll('[data-work-fact-row]').forEach(refresh);}
+  refreshAll();host.closest('form').addEventListener('production-live-applied',refreshAll);
   host.addEventListener('change', event => {
     const row = event.target.closest('[data-work-fact-row]');
     if (row) refresh(row);

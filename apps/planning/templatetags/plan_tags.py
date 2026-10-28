@@ -40,10 +40,12 @@ def get_plan(plans_by_date, date_str):
 
 @register.filter
 def matrix_number(value, kind):
-    from decimal import Decimal
+    from decimal import Decimal, ROUND_CEILING
     if value is None:
         return "—"
     value = Decimal(value)
+    if kind in ("labor", "equipment"):
+        value=value.to_integral_value(rounding=ROUND_CEILING)
     if kind in ("labor", "equipment", "money"):
         return f"{value:,.0f}".replace(",", " ")
     return f"{value:,.3f}".rstrip("0").rstrip(".").replace(",", " ").replace(".", ",")

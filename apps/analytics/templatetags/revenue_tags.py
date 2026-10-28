@@ -1,4 +1,4 @@
-from decimal import Decimal
+from decimal import Decimal, ROUND_CEILING
 from django import template
 
 register = template.Library()
@@ -41,3 +41,11 @@ def volume(value):
 def compact_number(value, digits=6):
     result = number(value, digits)
     return result.rstrip('0').rstrip(',') if int(digits) > 0 and ',' in result else result
+
+
+@register.filter
+def average_number(value, kind='planned_count'):
+    """Round resource averages for presentation, retaining exact source quantities."""
+    if kind not in ('labor','equipment','planned_count'):return compact_number(value)
+    if value is None:return '—'
+    return number(Decimal(str(value)).to_integral_value(rounding=ROUND_CEILING),0)

@@ -78,7 +78,7 @@ SCHEMAS = {
     'resources.BrigadeGroup': ('position-groups', 'Группы должностей', [('Название', 'name'), ('Постоянный персонал', 'is_general_staff')], []),
     'resources.BrigadeMacroGroup': ('position-macro-groups', 'Макрогруппы должностей', [('Название', 'name')], []),
     'resources.Equipment': ('equipment-units', 'Конкретная техника', [
-        ('Госномер', 'plate_number'), ('Название', 'name'), ('Техника или модель', 'type.name'),
+        ('ID','pk'), ('Госномер', 'plate_number'), ('Название', 'name'), ('Техника или модель', 'type.name'),
         ('Техника для планирования', 'planning_type_name'), ('Группа техники', 'group_name'), ('Марка / модель', 'brand_model'),
         ('Год выпуска', 'manufacture_year'), ('Инвентарный номер', 'inventory_number'),
         ('VIN / заводской номер', 'vin'), ('Участок', 'site_name'),

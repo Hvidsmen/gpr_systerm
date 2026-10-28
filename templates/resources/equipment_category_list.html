@@ -1,5 +1,6 @@
 {% extends 'base.html' %}{% load access %}
 {% block content %}
+{% include 'resources/_equipment_nav.html' %}
 {% include 'catalogue/excel_button.html' %}{% with bulk_route='resources:bulk_delete' bulk_kind='equipment_categories' %}{% include 'bulk/toolbar.html' %}
 <h1>Группы техники</h1>
 {% if request.user|may:'resources:equipment_category_create' %}<button class="btn btn-primary mb-3" type="button" data-catalog-open="category">+ Добавить группу техники</button>{% endif %}

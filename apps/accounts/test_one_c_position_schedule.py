@@ -14,7 +14,8 @@ class PositionScheduleTests(TestCase):
         self.client.force_login(self.user)
         self.connection=OneCConnection.objects.create(company=self.company)
         self.url=reverse('accounts:one_c_jobs')
-        self.report={'schema':[{'schema':'dbo','table':'_Reference92','column':name} for name in ['_Description','_Marked','_Fld25711']],'metadata_labels':{'dbo._Reference92':{'name':'Справочник.Должности','columns':{'_Fld25711':'ИсключенаИзШтатногоРасписания'}}}}
+        from .test_one_c_positions import staffing_diagnostic
+        self.report=staffing_diagnostic()
         self.diagnostic=OneCDiagnosticRun.objects.create(connection=self.connection,server=self.connection.server,database=self.connection.database,status='DONE',report=self.report)
 
     def test_manual_launch_and_duplicate_prevention(self):

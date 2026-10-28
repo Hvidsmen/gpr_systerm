@@ -176,17 +176,5 @@ def apply(user,rows,signature):
 @require_http_methods(['GET','POST'])
 def fleet_import(request):
     require_roles(request.user,PLAN_ROLES)
-    form=UploadForm(request.POST or None,request.FILES or None);context={'form':form}
-    try:
-        if request.method=='POST' and request.POST.get('action')=='confirm':
-            try:payload=signing.loads(request.POST.get('token',''),salt=SALT,max_age=1800)
-            except signing.BadSignature:raise ValidationError('Предпросмотр устарел. Загрузите файл повторно.')
-            if (payload.get('user'),payload.get('company'))!=(request.user.pk,request.user.company_id):raise ValidationError('Предпросмотр принадлежит другому пользователю.')
-            report=apply(request.user,payload['rows'],payload['signature'])
-            messages.success(request,f'Добавлено машин: {report["new_units"]}; должностей: {report["new_roles"]}.')
-            return redirect('resources:equipment_unit_list')
-        if request.method=='POST' and form.is_valid():
-            rows=read_rows(form.cleaned_data['file']);report=inspect(request.user.company,rows)
-            context.update(report=report,token=signing.dumps({'user':request.user.pk,'company':request.user.company_id,'rows':rows,'signature':fingerprint(request.user.company)},salt=SALT,compress=True))
-    except (ValidationError,IntegrityError) as exc:context['error']='; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Конфликт записей. Загрузка отменена целиком; выполните предпросмотр повторно.'
-    return render(request,'resources/fleet_import.html',context)
+    from django.http import HttpResponseGone
+    return HttpResponseGone('Импорт техники и должностей с листа «Сводка» удалён. Используйте загрузку ежедневных сводок техники или импорт групп существующих записей.')

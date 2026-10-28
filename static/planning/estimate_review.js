@@ -13,6 +13,9 @@
     document.getElementById('review-visible').textContent = `Показано: ${shown.length} из ${cards.length}`;
     const counter = document.getElementById('review-selected');
     if (counter) counter.textContent = `Выбрано: ${boxes.filter(box => box.checked).length}`;
+    const selected=boxes.filter(box=>box.checked).length,bulk=document.getElementById('review-bulk');
+    if(bulk){bulk.hidden=selected===0;bulk.querySelectorAll('button[value=bulk_merge],button[value=composite_setup]').forEach(button=>button.disabled=selected<2);}
+    document.getElementById('review-empty').hidden=shown.length!==0;
     if (all) {
       const checked = visibleBoxes.filter(box => box.checked).length;
       all.checked = checked > 0 && checked === visibleBoxes.length;
@@ -42,7 +45,7 @@
     box.addEventListener('change', counts);
   });
   if (all) all.addEventListener('change', () => {
-    cards.filter(card => !card.hidden).forEach(card => { card.querySelector('.review-select').checked = all.checked; });
+    const wanted=all.checked;cards.filter(card => !card.hidden).forEach(card => { const box=card.querySelector('.review-select');if(box)box.checked=wanted; });
     counts();
   });
   document.querySelectorAll('.review-pair').forEach(button => button.addEventListener('click', () => {

@@ -4,7 +4,7 @@
 <div class="production-person-main-scroll"><div class="production-person-line">
 <div class="production-person-employee"><span class="visually-hidden">{{ row.employee.label_tag }}</span>{{ row.employee }}{{ row.employee.errors }}</div>
 <div class="production-person-shift" title="Смена"><span class="visually-hidden">{{ row.shift.label_tag }}</span>{{ row.shift }}{{ row.shift.errors }}</div>
-{% if editable %}<div class="work-claim-bar production-person-claim" data-entry-claim><span class="small" data-label>Проверка записи…</span><button type="button" class="btn btn-sm btn-outline-primary" data-take disabled>Взять в работу</button><button type="button" class="btn btn-sm btn-outline-primary" data-release hidden>Освободить</button></div>
+{% if editable %}<div class="work-claim-bar production-person-claim" data-entry-claim><span class="small" data-label>Проверка записи…</span><button type="button" class="btn btn-sm btn-outline-primary" data-take hidden disabled>Резерв</button><button type="button" class="btn btn-sm btn-outline-primary" data-release hidden>Освободить</button></div>
 <div class="production-person-save-actions"><span class="small" data-autosave-row-state role="status"></span><button type="button" class="btn btn-sm btn-outline-danger" data-person-remove title="Убрать сотрудника из факта за этот день">Удалить</button></div>{% endif %}
 </div></div>
 <span class="small text-danger" data-error role="alert"></span>
@@ -16,6 +16,6 @@
 <div hidden data-person-targets><strong class="small">Работы сотрудника</strong><ul class="small my-2" data-person-target-labels></ul><button type="button" class="btn btn-sm btn-outline-primary" data-person-pick>Выбрать работы</button>{{ row.work_targets.errors }}</div>
 <div class="mb-2">{{ row.activity.label_tag }}{{ row.activity }}{{ row.activity.errors }}</div>
 <div hidden>{{ row.DELETE }}</div>
-<p class="small text-muted mb-0">Изменения сохраняются автоматически. Подтверждение всего дня — внизу.</p>
+<p class="small text-muted mb-0">Изменения сохраняются автоматически. Ошибки и непроверенные связи показаны в сводном отчёте.</p>
 </div></details>
 </div>

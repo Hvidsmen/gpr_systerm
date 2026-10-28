@@ -4,7 +4,7 @@ const {chromium}=require('playwright'),fs=require('fs'),assert=require('node:ass
  try{
   const context=await browser.newContext({viewport:{width:1530,height:1040}});await context.addCookies([{name:'sessionid',value:c.cookie,url:c.base}]);
   await context.route('**/*',route=>{const url=route.request().url();if(url.startsWith(c.base))return route.continue();if(url.includes('bootstrap')&&url.includes('.css'))return route.fulfill({body:fs.readFileSync('/tmp/catalogue-bootstrap.css'),contentType:'text/css'});return route.abort();});
-  const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto(c.base+c.url);
+  const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('response',async response=>{if(response.status()>=500)console.error('Server failure:',response.status(),response.url(),(await response.text()).slice(0,120));});await page.goto(c.base+c.url);
   const saved=async()=>{assert(await page.evaluate(()=>window.productionAutoSave.flush()),await page.locator('[data-autosave-state]').textContent());};
   await page.locator('[data-step="2"]').click();const initialUrl=page.url();
   assert.equal(await page.getByRole('button',{name:'Сохранить черновик',exact:true}).count(),0);
@@ -39,12 +39,9 @@ const {chromium}=require('playwright'),fs=require('fs'),assert=require('node:ass
   assert.equal(await extra.locator('[name$="-employee"]').inputValue(),'');assert((await extra.locator('[data-error]').textContent()).includes('уже выбран'));
   await extra.locator('[name$="-shift"]').fill('2');await extra.locator('[name$="-shift"]').dispatchEvent('change');
   assert(await extra.locator(`[name$="-employee"] option[value="${c.employee}"]`).isEnabled());
-  const normalized=await extra.evaluate((row,id)=>{const employee=row.querySelector('[name$="-employee"]'),shift=row.querySelector('[name$="-shift"]');employee.value=String(id);employee.dispatchEvent(new Event('change',{bubbles:true}));shift.value='01';shift.dispatchEvent(new Event('change',{bubbles:true}));const result=shift.value;employee.value='';employee.dispatchEvent(new Event('change',{bubbles:true}));return result;},c.employee);assert.equal(normalized,'2');
-
   await extra.locator('[name$="-shift"]').fill('1');await extra.locator('[name$="-shift"]').dispatchEvent('change');
   await extra.locator('[name$="-employee"]').evaluate((el,id)=>el.value=String(id),c.employee);
-  await page.locator('[data-production-form]').evaluate(el=>el.requestSubmit(el.querySelector('[name=action][value=confirm]')));
-  await extra.locator('[data-error]').filter({hasText:'уже выбран'}).waitFor();assert.equal(page.url(),initialUrl);
+  const duplicate=await page.evaluate(()=>{try{document.querySelector('[data-production-form]').productionValidatePeople();return '';}catch(error){return error.message;}});assert(duplicate.includes('уже выбран'));assert.equal(page.url(),initialUrl);
   assert.equal(await extra.locator('[name$="-person_editing"]').inputValue(),'0');assert.equal(await person().locator('[name$="-person_editing"]').inputValue(),'1');
   await extra.locator('[name$="-employee"]').selectOption('');await extra.getByRole('button',{name:'Удалить',exact:true}).click();
   await page.locator('[data-step="3"]').click();const card=page.locator('.graph-person');

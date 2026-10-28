@@ -117,7 +117,7 @@ class StaffingCardTests(TestCase):
             'position_catalog':{'position_rows':200,'position_named':195}})
         employee = Employee.objects.get(company=self.company,zup_ref='1'*32)
         self.assertEqual(employee.zup_position_name,'')
-        self.assertEqual(str(employee.position),'Аналитик')
+        self.assertIsNone(employee.position)  # Employee import never creates a new catalogue job.
         self.assertTrue(employee.position_from_staffing)
         self.assertEqual(employee.display_position,'Аналитик')
         self.assertEqual(employee.display_department,'Управление цифровизации')

@@ -69,7 +69,8 @@ class EstimateReviewTests(TestCase):
     def test_ui_and_estimator_cannot_change_planning_or_assign_self(self):
         self.prepare();self.client.force_login(self.estimator)
         self.assertContains(self.client.get(reverse('planning:estimate_review_detail',args=[self.task.pk])),'Название, цена и состав проверены')
-        self.assertEqual(self.client.get(reverse('planning:workspace_edit',args=[self.version.pk])).status_code,403)
+        self.assertEqual(self.client.get(reverse('planning:workspace_edit',args=[self.version.pk])).status_code,200)
+        self.assertEqual(self.client.post(reverse('planning:workspace_edit',args=[self.version.pk]),{}).status_code,403)
         self.assertEqual(self.client.post(reverse('planning:estimate_review_assign',args=['gpr',self.version.pk]),{'estimator':self.estimator.pk}).status_code,403)
 
     def test_replace_duplicate_preserves_monthly_quantities(self):

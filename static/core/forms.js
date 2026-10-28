@@ -179,6 +179,9 @@
         item.disabled = option.disabled || Boolean(group?.disabled);
         const mark = document.createElement('span'); mark.className = 'search-select-mark'; mark.textContent = option.selected ? '✓' : ''; mark.setAttribute('aria-hidden', 'true');
         const text = document.createElement('span'); text.textContent = option.dataset.objectLabel || (!option.value && /^[-–—]+$/.test(option.textContent.trim()) ? 'Не выбрано' : (option.textContent || 'Не выбрано'));
+        if(this.select.closest('[data-production-form]')&&/-((project_work)|(work_item))$/.test(this.select.name)&&option.value){
+          const parts=(option.textContent||'').split(' → ');if(parts.length>1){text.replaceChildren(document.createTextNode(parts.slice(0,-1).join(' → ')+' → '));const title=document.createElement('strong');title.textContent=parts.at(-1);text.append(title);}
+        }
         item.append(mark);
         if (option.dataset.objectId) {
           item.classList.add('search-select-tree-node'); item.title = option.dataset.objectPath;

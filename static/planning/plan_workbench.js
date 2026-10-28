@@ -218,6 +218,7 @@
  // Resource subtotals use the same visible rows as the table, including crews once.
  function refreshResourceTotals(){
   const format=value=>new Intl.NumberFormat('ru-RU',{maximumFractionDigits:6}).format(value);
+  const ceiling=value=>Math.ceil(value-Number.EPSILON*Math.max(1,Math.abs(value))*8);
   const numeric=value=>{const n=Number(value);return Number.isFinite(n)?n:0;};
   const filtered=Boolean(search.value.trim()||deviations.checked||Object.values(filters).some(f=>f.values().length));
   function sum(entries){
@@ -239,7 +240,7 @@
   }
   function write(target,value){
    const set=(selector,n)=>target.querySelectorAll(selector).forEach(cell=>{cell.textContent=format(n);cell.dataset.value=String(n);});
-   set('[data-plan-total-before]',value.before);set('[data-plan-total-after]',value.after);set('[data-plan-total-delta]',value.after-value.before);
+   set('[data-plan-total-before]',ceiling(value.before));set('[data-plan-total-after]',ceiling(value.after));set('[data-plan-total-delta]',value.after-value.before);
    target.querySelectorAll('[data-plan-total-delta]').forEach(cell=>{cell.classList.toggle('text-success',value.after>value.before);cell.classList.toggle('text-danger',value.after<value.before);});
    target.querySelectorAll('[data-plan-total-date]').forEach(cell=>{const day=value.days.get(cell.dataset.planTotalDate)||{before:0,after:0};cell.textContent=format(day.after);cell.dataset.value=String(day.after);cell.dataset.before=String(day.before);const differs=target.dataset.totalReference==='true'&&Math.abs(day.after-day.before)>1e-9;cell.classList.toggle('table-warning',differs);if(differs){const hint=document.createElement('small');hint.textContent='ГПР: '+format(day.before);cell.append(hint);}});
    target.querySelectorAll('[data-plan-total-caption]').forEach(caption=>{caption.dataset.fullCaption??=caption.textContent;caption.textContent=filtered?'Итого по фильтру'+(target.dataset.totalUnit?' · '+target.dataset.totalUnit:''):caption.dataset.fullCaption;});
@@ -248,7 +249,7 @@
    section.querySelectorAll('[data-smg-group]').forEach(group=>{
     const target=group.querySelector('[data-plan-group-totals]');if(!target)return;
     const value=sum(group.querySelectorAll('[data-plan-entry]'));write(target,value);
-    const number=group.querySelector('[data-plan-group-total-number]');if(number)number.textContent=format(value.after);
+    const number=group.querySelector('[data-plan-group-total-number]');if(number)number.textContent=format(ceiling(value.after));
     const caption=group.querySelector('[data-plan-group-total-caption]');if(caption&&!daily){caption.dataset.fullCaption??=caption.textContent;caption.textContent=filtered?'По фильтру':caption.dataset.fullCaption;}
    });
    const overall=section.querySelector('[data-plan-section-totals]');if(overall)write(overall,sum(section.querySelectorAll('[data-plan-entry]')));
@@ -264,7 +265,7 @@
   fill.min=String(Math.max(0,...inputs.map(input=>Number(input.min)||0)));
   const cells=[...row.querySelectorAll('[data-smg-day-cell]')];
   const average=cells.reduce((sum,cell)=>sum+Number(cell.querySelector('input')?.value||cell.dataset.value||0),0)/Math.max(1,cells.length);
-  row.querySelector('[data-smg-month-average]').textContent=new Intl.NumberFormat('ru-RU',{maximumFractionDigits:6}).format(average);
+  row.querySelector('[data-smg-month-average]').textContent=new Intl.NumberFormat('ru-RU',{maximumFractionDigits:6}).format(Math.ceil(average-Number.EPSILON*Math.max(1,Math.abs(average))*8));
  }
  if(daily){
   matrix.addEventListener('input',event=>{
@@ -322,3 +323,9 @@
  requestAnimationFrame(()=>{syncTableCrew();if(daily)matrix.querySelectorAll('[data-smg-fill-month]').forEach(fill=>refreshMonthFill(fill.closest('tr')));refreshResourceTotals();});
  filter();
 })();
+
+// Keep the common monthly editor heading aligned while the tree changes depth.
+(()=>{const grid=document.querySelector('[data-gpr-editor-grid]');if(!grid)return;
+ const matrix=grid.querySelector('[data-plan-matrix]'),action=document.querySelector('.plan-action-header'),add=document.querySelector('.plan-workbench-add');
+ let queued=false;function layout(){queued=false;grid.style.setProperty('--gpr-grid-width',grid.clientWidth+'px');let top=60;if(action)top=(parseFloat(getComputedStyle(action).top)||0)+action.getBoundingClientRect().height+6;if(add)top+=add.getBoundingClientRect().height+6;grid.style.setProperty('--gpr-header-top',top+'px');const origin=grid.getBoundingClientRect().left;matrix.querySelectorAll('.matrix-scroll').forEach(el=>{if(!el.getClientRects().length)return;const inset=Math.max(0,el.getBoundingClientRect().left-origin+(parseFloat(el.style.getPropertyValue('--gpr-inset'))||0));el.style.setProperty('--gpr-inset',inset+'px');});}
+ function schedule(){if(!queued){queued=true;requestAnimationFrame(layout);}}window.addEventListener('resize',schedule);matrix.addEventListener('toggle',schedule,true);new MutationObserver(schedule).observe(matrix,{subtree:true,attributes:true,attributeFilter:['hidden','open']});if(window.ResizeObserver){const o=new ResizeObserver(schedule);[grid,action,add].filter(Boolean).forEach(el=>o.observe(el));}layout();})();

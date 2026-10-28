@@ -174,3 +174,5 @@ class HousingEvent(ActualHistoryMixin, PersonnelModel):
             if obj and obj.company_id!=self.company_id:raise ValidationError('Событие другой компании.')
 
 from .lodging_models import LodgingBuilding,LodgingBed,LodgingStay,LodgingEvent,LodgingControl,LodgingResolution
+
+from .lodging_import_models import LodgingImportBatch,LodgingImportRow

@@ -55,27 +55,8 @@ def sync_names(company_id,names):
 @transaction.atomic
 def from_employees(request):
     require_roles(request.user,{'ADMIN'})
-    connection=OneCConnection.objects.filter(company_id=request.user.company_id).first()
-    if not connection:
-        messages.error(request,'Сначала настройте подключение и загрузите сотрудников из ЗУП.')
-        return redirect('resources:brigade_list')
-    Company.objects.select_for_update().get(pk=request.user.company_id)
-    employees=list(Employee.objects.filter(company_id=request.user.company_id,zup_server=connection.server.casefold(),
-        zup_database=connection.database.casefold(),zup_synced_at__isnull=False).exclude(zup_ref=''))
-    if not employees:
-        messages.error(request,'В этом подключении ещё нет загруженных сотрудников. Выполните загрузку из ЗУП.')
-        return redirect('resources:brigade_list')
-    values=[{'zup_position_name':e.zup_position_name,'zup_card':e.zup_card} for e in employees]
-    result,positions=sync_names(request.user.company_id,[employee_job(v) for v in values])
-    linked=0
-    for e,v in zip(employees,values):
-        position=positions.get(position_key(employee_job(v)))
-        if position and e.position_id!=position.pk:
-            e.position=position;e.save(update_fields=['position']);linked+=1
-    from apps.audit.models import AuditLog
-    AuditLog.objects.create(user=request.user,action='CREATE',entity_type='resources.Brigade',entity_id=str(connection.pk),new_value={**result,'employees_linked':linked},comment='Должности из загруженных карточек ЗУП; без денежных данных')
-    messages.success(request,f"Должности ЗУП: добавлено {result['created']}, уже в справочнике {result['existing']}, неоднозначных {result['ambiguous']}, пропущено длинных названий {result['skipped']}. Связаны карточки сотрудников: {linked}.")
-    return redirect('resources:brigade_list')
+    messages.info(request,'Должности загружаются только из штатного расписания ЗУП. Запустите обновление справочника должностей.')
+    return redirect('accounts:one_c_jobs')
 
 
 @transaction.atomic

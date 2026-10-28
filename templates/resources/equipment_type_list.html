@@ -10,7 +10,6 @@
   <div class="equipment-catalogue-actions">
     {% include 'resources/_equipment_add_menu.html' %}
     <details class="equipment-catalogue-menu"><summary class="btn btn-outline-secondary">Импорт и обслуживание</summary><div class="equipment-catalogue-menu-body">
-      {% if request.user|may:'resources:fleet_import' %}<a href="{% url 'resources:fleet_import' %}">Загрузить технику и должности · лист «Сводка»</a>{% endif %}
       {% if request.user|may:'resources:equipment_type_import' %}<a href="{% url 'resources:equipment_type_import' %}">Загрузить технику из Excel</a>{% endif %}
       {% if request.user|may:'resources:equipment_category_list' %}<a href="{% url 'resources:equipment_category_list' %}">Группы техники</a>{% endif %}
       {% if request.user|may:'resources:equipment_type_merge' %}<a href="{% url 'resources:equipment_type_merge' %}">Объединить технику</a>{% endif %}

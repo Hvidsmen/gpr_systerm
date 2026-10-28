@@ -1,107 +1,25 @@
-{% extends 'base.html' %}
-{% load access static %}
-{% load i18n %}
-
-{% block title %}Должность - ЯДС ОС{% endblock %}
-
-{% block extra_css %}<link rel="stylesheet" href="{% static 'resources/brigade_bulk_group.css' %}">{% endblock %}
-{% block content %}<p><a class="btn btn-outline-primary" href="{% url 'resources:fleet_import' %}">Загрузить технику и должности · лист «Сводка»</a></p>
-{% if request.user|may:'resources:catalogue_purge' %}<p><a class="btn btn-outline-danger" href="{% url 'resources:catalogue_purge' 'brigades' %}">Удалить все должности компании</a></p>{% endif %}
-{% with bulk_route='resources:bulk_delete' bulk_kind='brigades' %}
-{% include 'bulk/toolbar.html' %}
-{% include 'resources/_brigade_bulk_group.html' %}
-{% if request.user|may:'resources:brigade_merge' %}<a class="btn btn-outline-primary mb-3" href="{% url 'resources:brigade_merge' %}">Объединить должности</a>{% endif %}
-{% if brigade_duplicates %}<section class="alert alert-warning"><div class="d-flex flex-wrap gap-2 align-items-center"><strong>Групп одинаковых должностей: {{ brigade_duplicates|length }}</strong>{% if request.user|may:'resources:brigade_batch_merge' %}<a class="btn btn-primary btn-sm" href="{% url 'resources:brigade_batch_merge' %}">Объединить все дубли по первой записи</a>{% endif %}</div><details class="mt-2"><summary>Показать дубли</summary>{% for duplicates in brigade_duplicates %}<div class="small mt-1">Должность «{{ duplicates.0.name }}» имеет {{ duplicates|length }} записей. Остаётся первая: ID {{ duplicates.0.pk }}.</div>{% endfor %}</details></section>{% endif %}
-{% if request.user|may:'resources:brigade_link_employees' %}<form method="post" action="{% url 'resources:brigade_link_employees' %}" class="mb-3">{% csrf_token %}<button class="btn btn-outline-primary">Связать должности сотрудников</button><span class="small text-muted ms-2">По данным ЗУП, только при единственном совпадении в справочнике.</span></form>{% endif %}
-{% if request.user|may:'resources:brigade_import' %}<a class="btn btn-outline-primary mb-3" href="{% url 'resources:brigade_import' %}">Загрузить из Excel</a>{% endif %}
-{% if request.user|may:'resources:brigade_group_list' %}<a class="btn btn-outline-secondary mb-3" href="{% url 'resources:brigade_group_list' %}">Группы</a><a class="btn btn-outline-secondary mb-3" href="{% url 'resources:brigade_macro_group_list' %}">Макрогруппы</a>{% endif %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <div>
-        <h2 class="mb-1">
-            <i class="bi bi-people-fill"></i> Должность
-        </h2>
-        <nav aria-label="breadcrumb">
-            <ol class="breadcrumb mb-0">
-                <li class="breadcrumb-item">{% if request.user|may:'dashboard:index' %}<a href="{% url 'dashboard:index' %}">Главная</a>{% endif %}</li>
-                <li class="breadcrumb-item active">Должность</li>
-            </ol>
-        </nav>
-    </div>
-    {% if request.user|may:'resources:brigade_create' %}<a href="{% url 'resources:brigade_create' %}" class="btn btn-primary">
-        <i class="bi bi-plus-circle"></i> Создать должность
-    </a>{% endif %}
-</div>
-
-{% if request.user|may:'resources:brigade_zup_employees' %}<form method="post" action="{% url 'resources:brigade_zup_employees' %}" class="mb-3">{% csrf_token %}<button class="btn btn-outline-primary">Заполнить из сотрудников ЗУП</button><span class="small text-muted ms-2">Из уже загруженных карточек, включая архивные. Только названия должностей, без подразделений и ставок.</span></form>{% endif %}
-{% include 'resources/catalog_filters.html' %}
+{% extends 'base.html' %}{% load access static %}
+{% block title %}Должности — ЯДС ОС{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'resources/brigade_bulk_group.css' %}"><link rel="stylesheet" href="{% static 'resources/position_catalogue.css' %}?v=20261029-1">{% endblock %}
+{% block content %}<div class="position-catalog">
+<header class="position-catalog-heading"><div><nav class="small mb-2" aria-label="Навигация">Справочники / Должности</nav><h1 class="h3 mb-1">Должности</h1><p class="text-muted mb-0">Группы должностей для планирования и учёта сотрудников. Источник обновления — штатное расписание ЗУП.</p></div>
+<div class="position-catalog-actions"><div class="btn-group" aria-label="Excel">{% if request.user|may:'resources:brigade_export' %}<a class="btn btn-outline-success" href="{% url 'resources:brigade_export' %}?{{ filter_query }}">Экспорт в Excel</a>{% endif %}{% if request.user|may:'resources:brigade_import' %}<a class="btn btn-outline-primary" href="{% url 'resources:brigade_import' %}">Импорт групп из Excel</a>{% endif %}</div>
+{% if request.user|may:'resources:brigade_group_list' %}<a class="btn btn-outline-secondary" href="{% url 'resources:brigade_group_list' %}">Группы</a>{% endif %}
+<details class="position-catalog-menu"><summary class="btn btn-outline-secondary" aria-label="Другие действия">⋯</summary><div>
+{% if request.user|may:'accounts:one_c_jobs' %}<a href="{% url 'accounts:one_c_jobs' %}">Обновление из штатного расписания</a>{% endif %}
+{% if request.user|may:'resources:brigade_create' %}<a href="{% url 'resources:brigade_create' %}">Создать должность вручную</a>{% endif %}
+{% if request.user|may:'resources:brigade_merge' %}<a href="{% url 'resources:brigade_merge' %}">Объединить должности</a>{% endif %}
+{% if request.user|may:'resources:brigade_link_employees' %}<form method="post" action="{% url 'resources:brigade_link_employees' %}">{% csrf_token %}<button>Связать должности сотрудников</button></form>{% endif %}
+{% if request.user|may:'resources:catalogue_purge' %}<a class="text-danger" href="{% url 'resources:catalogue_purge' 'brigades' %}">Удалить все должности компании…</a>{% endif %}
+</div></details></div></header>
+<div class="position-catalog-stats" aria-label="Итоги справочника"><span>Найдено <strong>{{ catalogue_count }}</strong></span><span>Групп <strong>{{ position_group_count }}</strong></span><span>Без группы <strong>{{ position_ungrouped_count }}</strong></span><span>Актуальных в ЗУП <strong>{{ position_current_count }}</strong></span></div>
+{% include 'resources/catalog_filters.html' with hide_export=True %}
+<div class="position-catalog-views"><nav class="btn-group" aria-label="Представление должностей"><a class="btn btn-sm {% if catalogue_view == 'groups' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="?{{ view_query }}&amp;view=groups" {% if catalogue_view == 'groups' %}aria-current="page"{% endif %}>По группам</a><a class="btn btn-sm {% if catalogue_view == 'table' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="?{{ view_query }}&amp;view=table" {% if catalogue_view == 'table' %}aria-current="page"{% endif %}>Таблица</a></nav>{% if catalogue_view == 'groups' %}<div><button class="btn btn-sm btn-link" type="button" data-position-expand>Развернуть все</button><button class="btn btn-sm btn-link" type="button" data-position-collapse>Свернуть все</button></div>{% endif %}</div>
+{% if brigade_duplicates %}<div class="alert alert-warning py-2 small">Групп одинаковых названий: {{ brigade_duplicates|length }}. {% if request.user|may:'resources:brigade_batch_merge' %}<a href="{% url 'resources:brigade_batch_merge' %}">Проверить дубли и объединить</a>{% endif %}</div>{% endif %}
+{% with bulk_route='resources:bulk_delete' bulk_kind='brigades' bulk_contextual=True %}{% include 'bulk/toolbar.html' %}{% include 'resources/_brigade_bulk_group.html' %}
 {% if brigades %}
-<div class="card">
-    <div class="card-body p-0">
-        <div class="table-responsive">
-            <table class="table table-hover mb-0">
-                <thead class="table-light">
-                    <tr>{% if request.user|may:bulk_route or request.user|may:'resources:brigade_bulk_group' %}<th style="width:36px" aria-label="Выбор строк"></th>{% endif %}
-                        <th>Название</th><th>Сотрудники</th><th>Группа</th><th>Макрогруппа</th>
-                        <th>Ед. изм.</th><th>Описание</th><th>Штатное расписание ЗУП</th>
-                        <th style="width: 100px;">Статус</th>
-                        <th style="width: 150px;">Действия</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for brigade in brigades %}
-                    <tr class="{% if not brigade.is_active %}table-secondary text-muted{% endif %}">{% if request.user|may:bulk_route or request.user|may:'resources:brigade_bulk_group' %}<td>{% include 'bulk/checkbox.html' with record=brigade %}</td>{% endif %}
-                        <td>
-                            <strong>{{ brigade.name }}</strong>
-                            {% if brigade.members.exists %}
-                            <br><small class="text-muted">
-                                <i class="bi bi-people"></i> {{ brigade.members.count }} чел.
-                            </small>
-                            {% endif %}
-                        </td>
-                        <td>{% if brigade.employee_count %}<a href="{% url 'resources:employee_list' %}?catalogue_position={{ brigade.position_mapping.position_id }}&amp;include_archived=1" title="Все сотрудники, включая архивных">{{ brigade.employee_count }}</a>{% else %}0{% endif %}<br><small class="text-muted">Активных: {% if brigade.active_employee_count %}<a href="{% url 'resources:employee_list' %}?catalogue_position={{ brigade.position_mapping.position_id }}">{{ brigade.active_employee_count }}</a>{% else %}0{% endif %}</small></td>
-                        <td>{{ brigade.group|default:"—" }}</td><td>{{ brigade.macro_group|default:"—" }}</td>
-                        <td>{{ brigade.unit }}</td>
-                        <td>
-                            {{ brigade.description|default:"—" }}
-                        </td>
-                        <td><span class="badge {% if brigade.staffing_current == True %}bg-success{% elif brigade.staffing_current == False %}bg-secondary{% else %}bg-light text-muted{% endif %}">{{ brigade.staffing_status_label }}</span>{% if brigade.staffing_synced_at %}<br><small class="text-muted">{{ brigade.staffing_synced_at|date:'d.m.Y H:i' }}</small>{% endif %}</td>
-                        <td>
-                            {% if brigade.is_active %}
-                            <span class="badge bg-success">Активна</span>
-                            {% else %}
-                            <span class="badge bg-secondary">Неактивна</span>
-                            {% endif %}
-                        </td>
-                        <td>
-                            <div class="btn-group btn-group-sm">
-                                {% if request.user|may:'resources:brigade_update' %}<a href="{% url 'resources:brigade_update' brigade.pk %}"
-                                   class="btn btn-outline-secondary"
-                                   title="Редактировать">
-                                    <i class="bi bi-pencil"></i>
-                                </a>{% endif %}
-                                {% if request.user|may:'resources:brigade_delete' %}<a href="{% url 'resources:brigade_delete' brigade.pk %}"
-                                   class="btn btn-outline-danger"
-                                   title="Удалить"
-                                   onclick="return confirm('Удалить должность «{{ brigade.name }}»? Это действие нельзя отменить.');">
-                                    <i class="bi bi-trash"></i>
-                                </a>{% endif %}
-                            </div>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
-
-{% include 'resources/catalog_pagination.html' %}
-
-{% else %}
-<div class="alert alert-info">
-    <i class="bi bi-info-circle"></i> {% if filters_active %}По выбранным фильтрам должности не найдены.{% else %}Должности не найдены.{% endif %}
-    {% if request.user|may:'resources:brigade_create' %}<a href="{% url 'resources:brigade_create' %}" class="alert-link">Создать первую должность</a>{% endif %}
-</div>
-{% endif %}
-{% endwith %}
-{% endblock %}
+{% if catalogue_view == 'groups' %}{% for group in position_groups %}<details class="position-tree-group" open data-position-tree-group><summary><strong>{{ group.name }}</strong><span>{{ group.rows|length }} должн. · Активных сотрудников: {{ group.active_employees }}</span></summary><div class="table-responsive"><table class="table table-hover mb-0 position-catalog-table"><thead><tr><th class="position-selection">{% if request.user|may:bulk_route or request.user|may:'resources:brigade_bulk_group' %}<input type="checkbox" class="form-check-input" data-position-select-group aria-label="Выбрать должности группы {{ group.name }}">{% endif %}</th><th>Должность</th><th>Сотрудники</th><th>Штатное расписание</th><th>Действия</th></tr></thead><tbody>{% for brigade in group.rows %}{% include 'resources/_position_catalogue_row.html' with tree=True %}{% endfor %}</tbody></table></div></details>{% endfor %}
+{% else %}<div class="card"><div class="table-responsive"><table class="table table-hover mb-0 position-catalog-table"><thead><tr><th class="position-selection">{% if request.user|may:bulk_route or request.user|may:'resources:brigade_bulk_group' %}<input type="checkbox" class="form-check-input" data-position-select-all aria-label="Выбрать все должности на странице">{% endif %}</th><th>Должность</th><th>Группа</th><th>Сотрудники</th><th>Штатное расписание</th><th>Действия</th></tr></thead><tbody>{% for brigade in brigades %}{% include 'resources/_position_catalogue_row.html' %}{% endfor %}</tbody></table></div></div>{% include 'resources/catalog_pagination.html' %}{% endif %}
+{% else %}<div class="card p-4"><h2 class="h5">Должности не найдены</h2><p class="text-muted mb-0">{% if filters_active %}Измените фильтры или сбросьте их.{% else %}Запустите обновление из штатного расписания ЗУП.{% endif %}</p></div>{% endif %}{% endwith %}
+</div>{% endblock %}
+{% block extra_js %}<script src="{% static 'resources/position_catalogue.js' %}?v=20261029-1"></script>{% endblock %}

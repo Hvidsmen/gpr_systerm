@@ -15,3 +15,30 @@
 .matrix-section-filter > summary { cursor:pointer; font-size:.85rem; }
 [hidden] { display:none !important; }
 @media(max-width:576px) { .matrix-table .matrix-label { min-width:180px; max-width:200px; } }
+
+/* One date axis and one horizontal viewport for the complete report tree. */
+.report-calendar{--report-name:380px;--report-value:88px;--report-columns:2;--report-width:calc(var(--report-name) + var(--report-value)*var(--report-columns));min-width:0}
+.report-calendar-heading{position:sticky;top:60px;z-index:1008;background:#edf4fa;border:1px solid #cfdeeb;box-shadow:0 3px 8px #183b5614;border-radius:6px;margin-bottom:10px}
+.report-calendar-head-scroll,.report-calendar-body{overflow-x:auto;max-width:100%;scrollbar-width:thin;overscroll-behavior-x:contain}
+.report-calendar-canvas,.report-calendar .matrix-table{width:var(--report-width);min-width:100%}.report-calendar .matrix-table{table-layout:fixed}
+.report-calendar .report-name-column{width:var(--report-name)}
+.report-calendar .matrix-table th,.report-calendar .matrix-table td{min-width:0;max-width:none;white-space:normal;overflow-wrap:anywhere}
+.report-calendar .matrix-table .matrix-label{width:var(--report-name);min-width:0;max-width:none;padding-left:calc(10px + var(--report-inset,0px))}
+.report-calendar-body .matrix-table thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+.report-calendar-body .matrix-scroll{max-height:none;overflow:visible;border-radius:0;width:var(--report-width);margin-left:calc(-1 * var(--report-inset,0px))}
+.report-calendar-summary{display:block;padding:0!important;list-style:none;width:var(--report-width);margin-left:calc(-1 * var(--report-inset,0px));background:#edf4fa;border-radius:0!important;cursor:pointer}
+.report-calendar-summary::-webkit-details-marker{display:none}
+.report-summary-row{background:inherit;display:grid;grid-template-columns:var(--report-name) repeat(var(--report-columns),var(--report-value));min-height:38px}
+.report-summary-label{position:sticky;left:0;z-index:3;background:inherit;min-width:0;padding:8px 8px 8px calc(10px + var(--report-inset,0px));box-shadow:1px 0 #dce6ef;overflow-wrap:anywhere}
+.report-summary-row:first-child .report-summary-label::before{content:'▸';display:inline-block;width:14px}details[open]>.report-calendar-summary>.report-summary-row:first-child .report-summary-label::before{content:'▾'}
+.report-summary-label small{display:block;font-size:11px;color:#526c83;font-weight:400}.report-summary-value{padding:8px;border-left:1px solid #dce6ef;text-align:right;font-variant-numeric:tabular-nums;font-size:12px;font-weight:600;background:inherit}
+.report-calendar .matrix-section[data-matrix-section=labor]>.report-calendar-summary{background:#f0eef8}.report-calendar .matrix-section[data-matrix-section=equipment]>.report-calendar-summary{background:#eaf5f2}
+.report-calendar .matrix-group>summary{background:#f4f7fa}
+@media(max-width:700px){.report-calendar{--report-name:250px;--report-value:84px}.report-summary-label{font-size:12px}}
+
+/* Distinct sections help reviewers keep works and three resource types apart. */
+.report-calendar #plan-fact-matrix .matrix-section[data-matrix-section]{--review-section:#087fa0;margin:20px 0 24px;padding:0 0 12px 12px;border:1px solid #dce6ef;border-left:4px solid var(--review-section);border-radius:7px;background:#fff}
+.report-calendar #plan-fact-matrix .matrix-section[data-matrix-section=labor]{--review-section:#7968a6}.report-calendar #plan-fact-matrix .matrix-section[data-matrix-section=equipment]{--review-section:#33856d}.report-calendar #plan-fact-matrix .matrix-section[data-matrix-section=fuel]{--review-section:#b37a26}
+.report-calendar #plan-fact-matrix .matrix-section>.report-calendar-summary{border-top:3px solid var(--review-section);background:#eaf4f9;color:#173f5d;font-size:15px;margin-bottom:12px}
+.report-calendar #plan-fact-matrix .matrix-section[data-matrix-section=labor]>.report-calendar-summary{background:#f0eef8}.report-calendar #plan-fact-matrix .matrix-section[data-matrix-section=equipment]>.report-calendar-summary{background:#eaf5f2}.report-calendar #plan-fact-matrix .matrix-section[data-matrix-section=fuel]>.report-calendar-summary{background:#fcf4e8}
+.report-calendar .matrix-section>.report-calendar-summary .report-summary-row:first-child .report-summary-label{font-size:15px;padding-top:11px;padding-bottom:11px}

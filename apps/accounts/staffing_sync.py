@@ -1,4 +1,4 @@
-"""Sync the verified ZUP job exclusion flag independently of employee occupancy."""
+"""Sync the verified ZUP staffing schedule independently of employee occupancy."""
 import re
 from django.core.exceptions import ValidationError
 from django.utils import timezone
@@ -9,7 +9,8 @@ def snapshot_states(report):
     if 'position_records' not in report:
         return None
     rows = report['position_records']; summary = report.get('position_source', {})
-    if report.get('positions_snapshot_version') != 1 or not isinstance(rows, list) or not 0 < len(rows) <= 100000:
+    version=report.get('positions_snapshot_version')
+    if version not in {1,2} or not isinstance(rows, list) or not 0 < len(rows) <= 100000:
         raise ValidationError('Некорректный полный снимок штатных должностей ЗУП.')
     states = {}; seen = set(); counts = dict(total=len(rows), not_marked=0, excluded=0, eligible=0)
     for row in rows:
@@ -18,14 +19,17 @@ def snapshot_states(report):
         ref = row['ref'].lower()
         if ref in seen: raise ValidationError('В снимке должностей повторяется идентификатор ЗУП.')
         seen.add(ref)
-        if row.get('marked') not in ('0x00', '0x01') or row.get('excluded') not in ('0x00', '0x01'):
+        if row.get('marked') not in ('0x00', '0x01') or (version==1 and row.get('excluded') not in ('0x00','0x01')) or (version==2 and (row.get('approved') not in ('0x00','0x01') or row.get('closed') not in ('0x00','0x01'))):
             raise ValidationError('Неизвестный признак удаления или исключения из штатного расписания.')
         name = row.get('name')
         if not isinstance(name, str) or len(name.strip()) > 150:
             raise ValidationError('Некорректное наименование штатной должности.')
-        active = row['marked'] == '0x00' and row['excluded'] == '0x00'
+        if version==2:
+            from apps.resources.employee_staffing import staffing_parts
+            name=staffing_parts(name)[0]
+        active = row['marked']=='0x00' and (row['excluded']=='0x00' if version==1 else row['approved']=='0x01' and row['closed']=='0x00')
         counts['not_marked'] += row['marked'] == '0x00'
-        counts['excluded'] += row['marked'] == '0x00' and row['excluded'] == '0x01'
+        counts['excluded'] += row['marked']=='0x00' and row['excluded' if version==1 else 'closed']=='0x01'
         counts['eligible'] += active
         if name.strip():
             key = name.strip().casefold()
@@ -35,7 +39,7 @@ def snapshot_states(report):
     names = report.get('position_names')
     if not isinstance(names, list) or any(not isinstance(row, dict) or not isinstance(row.get('name'), str) for row in names):
         raise ValidationError('Некорректный список актуальных должностей.')
-    expected = {row['name'].strip().casefold() for row in names if row['name'].strip()}
+    expected = {(staffing_parts(row['name'])[0] if version==2 else row['name']).strip().casefold() for row in names if row['name'].strip()}
     if expected != {key for key, active in states.items() if active}:
         raise ValidationError('Список актуальных должностей не соответствует полному снимку ЗУП.')
     return states

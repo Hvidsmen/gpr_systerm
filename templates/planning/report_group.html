@@ -1,3 +1,3 @@
-<details class="matrix-group ms-2 mb-2" open><summary>{{ node.label }}{% for volume in node.work_volumes %}<strong class="ms-3">{{ volume.quantity|floatformat:"-6g" }} {{ volume.unit }}</strong>{% endfor %}{% include 'planning/money_totals_summary.html' with money=node %}{% include 'planning/resource_totals_summary.html' with totals=node.subtotals %}</summary>
+<details class="matrix-group ms-2 mb-2" open>{% if not overview %}{% include 'planning/_report_calendar_summary.html' with caption=node.label totals=node.calendar_totals %}{% else %}<summary>{{ node.label }}{% include 'planning/money_totals_summary.html' with money=node %}{% include 'planning/resource_totals_summary.html' with totals=node.subtotals %}</summary>{% endif %}
 {% for child in node.children %}{% include 'planning/report_group.html' with node=child %}{% endfor %}
 {% include 'planning/_report_group_table.html' %}</details>

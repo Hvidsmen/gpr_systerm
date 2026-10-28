@@ -366,17 +366,14 @@ WHERE e.[_Marked]=0x00
             return
         }
         if($PositionsImport){
-            $summary=@(Query $connection @'
-SELECT COUNT_BIG(*) AS total,
- COALESCE(SUM(CAST(CASE WHEN [_Marked]=0x00 THEN 1 ELSE 0 END AS bigint)),0) AS not_marked,
- COALESCE(SUM(CAST(CASE WHEN [_Marked]=0x00 AND [_Fld25711]=0x01 THEN 1 ELSE 0 END AS bigint)),0) AS excluded,
- COALESCE(SUM(CAST(CASE WHEN [_Marked]=0x00 AND [_Fld25711]=0x00 THEN 1 ELSE 0 END AS bigint)),0) AS eligible
-FROM [dbo].[_Reference92]
-'@)[0]
-            $flags=@(Query $connection 'SELECT TOP (32) CONVERT(varchar(20),[_Marked],1) AS marked, CONVERT(varchar(20),[_Fld25711],1) AS excluded, COUNT_BIG(*) AS records FROM [dbo].[_Reference92] GROUP BY [_Marked],[_Fld25711] ORDER BY COUNT_BIG(*) DESC')
-            $names=@(Query $connection 'SELECT [_Description] AS name FROM [dbo].[_Reference92] WHERE [_Marked]=0x00 AND [_Fld25711]=0x00')
-            $records=@(Query $connection 'SELECT CONVERT(varchar(32),[_IDRRef],2) AS ref, [_Description] AS name, CONVERT(varchar(20),[_Marked],1) AS marked, CONVERT(varchar(20),[_Fld25711],1) AS excluded FROM [dbo].[_Reference92]')
-            Write-Json $reportPath @{positions_import=$true;position_names=@($names);position_source=$summary;position_flags=@($flags);position_records=@($records);positions_snapshot_version=1}
+            # Only staffing positions are a source of portal catalogue names.
+            # Do not join the possibly empty general job catalogue _Reference92.
+            $records=@(Query $connection 'SELECT CONVERT(varchar(32),[_IDRRef],2) AS ref, [_Description] AS name, CONVERT(varchar(20),[_Marked],1) AS marked, CONVERT(varchar(20),[_Fld31544],1) AS approved, CONVERT(varchar(20),[_Fld31546],1) AS closed FROM [dbo].[_Reference394]')
+            $notMarked=@($records | Where-Object { $_.marked -eq '0x00' })
+            $eligible=@($notMarked | Where-Object { $_.approved -eq '0x01' -and $_.closed -eq '0x00' })
+            $names=@($eligible | ForEach-Object { @{name=$_.name} })
+            $summary=@{table='dbo._Reference394';total=$records.Count;not_marked=$notMarked.Count;excluded=@($notMarked | Where-Object { $_.closed -eq '0x01' }).Count;eligible=$eligible.Count}
+            Write-Json $reportPath @{positions_import=$true;position_names=@($names);position_source=$summary;position_flags=@();position_records=@($records);positions_snapshot_version=2}
             Write-Json $statusPath @{ok=$true;report=$reportPath}
             return
         }

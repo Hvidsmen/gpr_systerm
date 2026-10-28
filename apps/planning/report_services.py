@@ -639,6 +639,7 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
                 all_rows = list(node['rows'])
                 for child in node['children']: all_rows.extend(work_totals(child))
                 attach_money_totals(node, all_rows)
+                node['calendar_totals']=calendar_work_totals(all_rows)
                 volumes = {}
                 for row in all_rows:
                     value = row['total'].get('plan')
@@ -651,6 +652,7 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
                 work_totals(node)
             work_section = {"kind": "works", "label": "Работы", "groups": work_groups}
             attach_money_totals(work_section, [row for _, row in rows])
+            work_section['calendar_totals']=calendar_work_totals([row for _,row in rows])
             sections.append(work_section)
         for kind, label in [
             ("labor", "Должность"),
@@ -788,6 +790,7 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
         for section in sections:
             if section["kind"] != "works" and not filters.get("dashboard_compact"):
                 section["subtotals"] = add_resource_subtotals(section["groups"])
+                section["calendar_totals"]=section["subtotals"]
                 section["total_node"] = {
                     "label": "Итого: " + section["label"], "children": [],
                     "rows": section["subtotals"],
@@ -846,6 +849,7 @@ def add_resource_subtotals(nodes):
     for node in nodes:
         child_rows = add_resource_subtotals(node["children"])
         node["subtotals"] = resource_subtotal_rows(node["rows"] + child_rows)
+        node["calendar_totals"]=node["subtotals"]
         rows.extend(node["rows"] + child_rows)
     return resource_subtotal_rows(rows)
 
@@ -881,3 +885,19 @@ def attach_money_totals(target, rows):
         values = [row["total"].get(key) for row in priced_rows if row["total"].get(key) is not None]
         target[key] = sum(values, ZERO) if values else None
     target["delta_amount"] = target["fact_amount"] - target["amount"] if all(target[key] is not None for key in ("amount", "fact_amount")) else None
+
+
+def calendar_work_totals(rows):
+    """Work-group headers contain money only; physical units stay in work rows."""
+    if not rows:return []
+    priced=[row for row in rows if row.get('has_amount')]
+    def money(cells):
+        values={}
+        for target,source in [('plan','amount'),('fact','fact_amount')]:
+            known=[cell[source] for cell in cells if cell.get(source) is not None]
+            values[target]=sum(known,ZERO) if known else None
+        values['delta']=values['fact']-values['plan'] if all(values[key] is not None for key in ['plan','fact']) else None
+        return values
+    return [{'label':'Стоимость','unit':'₽','operation':'sum','children':[],
+        'cells':[money([row['cells'][index] for row in priced]) for index in range(len(rows[0]['cells']))],
+        'total':money([row['total'] for row in priced])}]

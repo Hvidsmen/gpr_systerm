@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 {% load access static %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'planning/plan_actions.css' %}"><link rel="stylesheet" href="{% static 'planning/report_matrix.css' %}"><link rel="stylesheet" href="{% static 'planning/plan_workbench.css' %}?v=20261027-6">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'planning/plan_actions.css' %}?v=20261029-stages"><link rel="stylesheet" href="{% static 'planning/report_matrix.css' %}"><link rel="stylesheet" href="{% static 'planning/plan_workbench.css' %}?v=20261029-header">{% endblock %}
 {% block content %}
 <div class="plan-workbench" data-plan-workbench="gpr">
 {% include 'planning/planning_tabs.html' %}
@@ -190,8 +190,8 @@ document.getElementById('allocation-editor').addEventListener('input',event=>{if
 function revealAllocationRow(row) {
   for (let node=row.parentElement;node;node=node.parentElement) if (node.tagName==='DETAILS') {node.hidden=false;node.open=true;}
 }
-document.querySelector('[data-expand-allocations]').addEventListener('click',()=>document.querySelectorAll('#allocation-editor details').forEach(node=>node.open=true));
-document.querySelector('[data-collapse-allocations]').addEventListener('click',()=>document.querySelectorAll('#allocation-editor details').forEach(node=>node.open=false));
+document.querySelector('[data-expand-allocations]')?.addEventListener('click',()=>document.querySelectorAll('#allocation-editor details').forEach(node=>node.open=true));
+document.querySelector('[data-collapse-allocations]')?.addEventListener('click',()=>document.querySelectorAll('#allocation-editor details').forEach(node=>node.open=false));
 document.querySelectorAll('[data-fold-level-action]').forEach(button=>button.addEventListener('click',()=>{
   const level=document.querySelector('[data-fold-level]').value;
   if(level==='objects'){

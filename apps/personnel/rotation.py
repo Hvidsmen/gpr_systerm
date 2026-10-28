@@ -119,20 +119,24 @@ def rotation_rows(company,camps,day,*,query='',position=None,state='',include_un
         last.setdefault(stay.person_id,stay)
         if stay.camp_id in camp_ids and stay.departed_on==day:departures.setdefault(stay.person_id,stay)
         if (stay.departed_on is None or stay.departed_on>day) and stay.arrived_on!=stay.departed_on:current.setdefault(stay.person_id,stay)
+    from .models import HousingEvent
+    initial={row.person_id:row for row in HousingEvent.objects.filter(company=company,kind='DEPARTURE',stay=None,date__lte=day).select_related('person__employee__position','from_camp').order_by('date','pk')}
     people={slot.person_id:slot.person for slot in relevant if slot.person_id}
+    for person_id,event in initial.items():
+        if event.from_camp_id in camp_ids:people[person_id]=event.person
     for person_id,stay in {**last,**current}.items():
         if stay.camp_id in camp_ids:people[person_id]=stay.person
     if state=='DEPARTING':
         for person_id,stay in departures.items():people[person_id]=stay.person
     days=[day.replace(day=n) for n in range(1,monthrange(day.year,day.month)[1]+1)];rows=[]
     for person_id,person in people.items():
-        active=current.get(person_id);previous=last.get(person_id);assigned=by_person[person_id]
+        active=current.get(person_id);previous=last.get(person_id);initial_exit=initial.get(person_id);assigned=by_person[person_id]
         if active and active.camp_id not in camp_ids and not (state=='DEPARTING' and person_id in departures):continue
         if not active and previous and previous.camp_id not in camp_ids and not assigned:continue
         slot=housing.schedule_slot(person,all_assignments.get(person_id,[]))
         display_slot=slot or (assigned[0] if assigned else None)
-        status='MV' if active else 'MO' if previous and previous.departed_on and previous.departed_on<=day else 'MV' if any(s.status=='МВ' for s in assigned) else 'MO' if any(s.status=='МО' for s in assigned) else 'UNKNOWN'
-        camp=active.camp if active else slot_camp(display_slot) if display_slot else previous.camp if previous else None
+        status='MV' if active else 'MO' if previous and previous.departed_on and previous.departed_on<=day else 'MO' if initial_exit else 'MV' if any(s.status=='МВ' for s in assigned) else 'MO' if any(s.status=='МО' for s in assigned) else 'UNKNOWN'
+        camp=active.camp if active else initial_exit.from_camp if initial_exit and not previous else slot_camp(display_slot) if display_slot else previous.camp if previous else None
         calendar=calendar_for(slot,start=day.replace(day=1),end=day+timedelta(days=730),stays=schedule_stays.get(person_id,[])) if slot else {};start=active.arrived_on if active else slot.arrival_date if slot and slot.arrival_date else day
         origin=anchor_for(schedule_stays.get(person_id,[]),day)
         if active and origin and origin[1]=='ARRIVAL':start=origin[0]
@@ -151,7 +155,7 @@ def rotation_rows(company,camps,day,*,query='',position=None,state='',include_un
             state_since=origin[0] if active and origin and origin[1]=='ARRIVAL' else active.arrived_on if active else slot.arrival_date if slot else None
             state_source='Факт' if active else 'Начальные данные'
         elif status=='MO':
-            state_since=origin[0] if origin and origin[1]=='DEPARTURE' else rest_started
+            state_since=origin[0] if origin and origin[1]=='DEPARTURE' else initial_exit.date if initial_exit else rest_started
             state_source='Факт' if origin and origin[1]=='DEPARTURE' else 'Начальные данные'
         state_days=(day-state_since).days+1 if state_since and state_since<=day else None
         trip=_trip_direction(calendar,day)
@@ -165,9 +169,9 @@ def rotation_rows(company,camps,day,*,query='',position=None,state='',include_un
             'schedule_info':description(slot,day,schedule_stays.get(person_id,[])),
             'cycle_missing':not known_cycle,
             'state_since':state_since,'state_days':state_days,'state_days_source':state_source,
-            'schedule_label':str(slot.pattern) if slot and slot.pattern_id else 'Не назначен',
+            'schedule_label':employee_schedule_label(employee),
             'arrival_overdue':bool(not active and status!='MV' and upcoming and upcoming<str(day)),
-            'arrived_on':active.arrived_on if active else slot.arrival_date if slot else None,'last_departure':previous.departed_on if previous else None,
+            'arrived_on':active.arrived_on if active else slot.arrival_date if slot else None,'last_departure':previous.departed_on if previous else initial_exit.date if initial_exit else None,
             'planned_departure_display':departure,'planned_departure':outgoing,'departure_days':delta,
             'departure_warning':('overdue' if delta<0 else 'soon' if delta<=14 else '') if delta is not None else '',
             'planned_return':date.fromisoformat(upcoming) if upcoming else None,'codes':[calendar.get(str(d),'') for d in days],'today_code':calendar.get(str(day),'')})
@@ -187,3 +191,31 @@ def rotation_rows(company,camps,day,*,query='',position=None,state='',include_un
     elif state=='ARRIVAL_OVERDUE':rows=[row for row in rows if row.get('person') and row.get('arrival_overdue')]
     elif state:rows=[row for row in rows if row['state']==state]
     return sorted(rows,key=lambda row:(row['position_label'].casefold(),row['state']=='VACANCY',row['person'].display_name.casefold() if row['person'] else '',row['slot'].pk if row['slot'] else 0)),days,rotation_stats(rows)
+
+
+def positions_in_rows(company,rows):
+    ids={row['position'].pk for row in rows if row.get('position')}
+    labels={row.get('position_label','').strip().casefold() for row in rows}
+    ids.update(pk for pk,name in Position.objects.filter(company=company).values_list('pk','name') if name.strip().casefold() in labels)
+    return Position.objects.filter(company=company,pk__in=ids).order_by('name','pk')
+
+
+def filter_position(rows,position):
+    if position is None:return rows
+    return [row for row in rows if row.get('position') and row['position'].pk==position.pk or row.get('position_label','').strip().casefold()==position.name.strip().casefold()]
+
+
+def status_indicator(row):
+    if row.get('departure_warning')=='overdue':return 'red','Выезд просрочен',STATUS_HELP['DEPARTURE_OVERDUE']
+    if row.get('arrival_overdue'):return 'red','Заезд просрочен',STATUS_HELP['ARRIVAL_OVERDUE']
+    if row.get('departure_warning')=='soon':return 'yellow','Ожидает выезда',STATUS_HELP['DEPARTURE_PENDING']
+    if row.get('legacy_only'):return 'yellow','Заезд не оформлен','На вахте по начальным данным. Оформите фактический заезд, проверив дату и ВЖГ.'
+    if row.get('today_code')=='ДП':return 'blue','В пути',STATUS_HELP['TRAVEL']
+    if row.get('state')=='MV':return 'green','На вахте',STATUS_HELP['MV']
+    if row.get('state')=='MO':return 'muted','Межвахтовый отдых',STATUS_HELP['MO']
+    if row.get('state')=='VACANCY':return 'muted','Вакансия',STATUS_HELP['VACANCY']
+    return 'yellow','Уточнить статус',STATUS_HELP['UNKNOWN']
+
+
+def employee_schedule_label(employee):
+    return ((employee.zup_card or {}).get('schedule') or '').strip() or 'Не указан' if employee else 'Не указан'

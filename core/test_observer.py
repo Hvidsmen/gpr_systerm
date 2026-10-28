@@ -12,11 +12,11 @@ class ObserverPermissionTests(TestCase):
         self.user = User.objects.create_user(username='observer', company=Company.objects.create(name='Observer company'), role=self.role)
 
     def test_can_view_business_sections_and_exports(self):
-        for namespace, name in [('dashboard','index'), ('dashboard','revenue'), ('planning','workspace_list'), ('planning','global_detail'), ('planning','journal_plan_list'), ('planning','report_matrix'), ('rotation','plan_detail'), ('production','fact_day_workspace'), ('projects','project_list'), ('works','work_list'), ('resources','brigade_list'), ('planning','workspace_excel_export')]:
+        for namespace, name in [('dashboard','index'), ('dashboard','revenue'), ('planning','workspace_list'),('planning','workspace_edit'), ('planning','global_detail'), ('planning','journal_plan_list'), ('planning','report_matrix'), ('rotation','plan_detail'), ('production','fact_day_workspace'), ('projects','project_list'), ('works','work_list'), ('resources','brigade_list'), ('planning','workspace_excel_export')]:
             check_route(self.user, SimpleNamespace(namespace=namespace, url_name=name, kwargs={}), 'GET')
 
     def test_all_write_methods_and_mutation_pages_are_denied(self):
-        for namespace, name, method in [('planning','global_action','POST'), ('production','fact_day_workspace','POST'), ('works','work_list','POST'), ('resources','brigade_update','GET'), ('projects','project_create','GET'), ('planning','workspace_edit','GET'), ('accounts','user_access','POST'), ('accounts','settings','POST')]:
+        for namespace, name, method in [('planning','global_action','POST'), ('production','fact_day_workspace','POST'), ('works','work_list','POST'), ('resources','brigade_update','GET'), ('projects','project_create','GET'), ('accounts','user_access','POST'), ('accounts','settings','POST')]:
             with self.assertRaises(PermissionDenied):
                 check_route(self.user, SimpleNamespace(namespace=namespace, url_name=name, kwargs={}), method)
 

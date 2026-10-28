@@ -25,43 +25,30 @@ class BrigadeImportTests(TestCase):
         workbook.close()
         return SimpleUploadedFile('brigades.xlsx', output.getvalue())
 
-    def test_import_catalogs_defaults_duplicates_and_company_scope(self):
-        other = Company.objects.create(name='Other brigade Excel')
-        foreign = BrigadeGroup.objects.create(company=other,name='Монтаж')
-        response = self.client.post(self.url, {'file':self.file([
-            ['Бригада А','Монтаж','Строительство','Описание',''],
-            ['Бригада Б','монтаж','строительство','','Нет'],
-            ['бригада а','Unused','Unused','','Да'],
-        ])})
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context['result'], {'created':2,'skipped':1,'groups':1,'macros':1})
-        first = Brigade.objects.get(company=self.company,name='Бригада А')
-        second = Brigade.objects.get(company=self.company,name='Бригада Б')
-        self.assertEqual(first.code,'BR-000001')
-        self.assertEqual(first.unit, 'чел.')
-        self.assertTrue(first.is_active)
-        self.assertFalse(second.is_active)
-        self.assertEqual(first.description,'Описание')
-        self.assertEqual(first.group_id,second.group_id)
-        self.assertEqual(first.macro_group_id,second.macro_group_id)
-        self.assertNotEqual(first.group_id,foreign.pk)
-        self.assertEqual(self.client.post(self.url,{'file':self.file([['Бригада А','','','Changed','Нет']])}).context['result']['created'],0)
-        first.refresh_from_db()
-        self.assertEqual(first.description,'Описание')
-        self.assertTrue(first.is_active)
+    def test_only_groups_of_existing_positions_change(self):
+        group=BrigadeGroup.objects.create(company=self.company,name='Монтаж')
+        item=Brigade.objects.create(company=self.company,name='Бригада А',description='Сохранить',is_active=False)
+        response=self.client.post(self.url,{'file':self.file([[item.pk,item.name,group.name],['','Новая должность','Новая группа']])})
+        self.assertEqual(response.status_code,200);item.refresh_from_db()
+        self.assertEqual(item.group_id,group.pk);self.assertEqual(item.description,'Сохранить');self.assertFalse(item.is_active)
+        self.assertEqual(Brigade.objects.count(),1);self.assertEqual(BrigadeGroup.objects.count(),1)
+        self.assertEqual(response.context['result']['updated'],1);self.assertEqual(response.context['result']['unknown'],1)
+
+    def test_unknown_groups_are_warned_and_other_columns_ignored(self):
+        item=Brigade.objects.create(company=self.company,name='Бригада А',description='Сохранить',is_active=False)
+        file=self.file([[item.pk,item.name,'Неизвестная','Изменить','Да']],headers=['ID','Название','Группа','Описание','Активна'])
+        response=self.client.post(self.url,{'file':file});self.assertEqual(response.status_code,200);item.refresh_from_db()
+        self.assertIsNone(item.group_id);self.assertFalse(item.is_active);self.assertEqual(item.description,'Сохранить')
+        self.assertTrue(response.context['result']['warnings']);self.assertFalse(BrigadeGroup.objects.exists())
 
     def test_errors_cancel_import_and_template(self):
-        for rows in ([['Valid','New'],['','Other']], [['=1+1']], [['Bad','','','','Wrong']]):
-            self.assertEqual(self.client.post(self.url,{'file':self.file(rows)}).status_code,400)
-            self.assertFalse(Brigade.objects.exists())
-            self.assertFalse(BrigadeGroup.objects.exists())
-            self.assertFalse(BrigadeMacroGroup.objects.exists())
-        response = self.client.get(reverse('resources:brigade_import_template'))
-        workbook = load_workbook(BytesIO(response.content))
-        self.assertEqual(list(next(workbook.worksheets[0].values)),HEADERS)
-        workbook.close()
-        self.assertEqual(self.client.post(self.url,{'file':self.file([['Only name']],headers=['Название'])}).status_code,200)
-        self.assertIsNone(Brigade.objects.get().group)
+        item=Brigade.objects.create(company=self.company,name='Бригада А')
+        group=BrigadeGroup.objects.create(company=self.company,name='Монтаж')
+        response=self.client.post(self.url,{'file':self.file([[item.pk,item.name,group.name],[item.pk,'Чужое название',group.name]])})
+        self.assertEqual(response.status_code,400);item.refresh_from_db();self.assertIsNone(item.group_id)
+        response=self.client.get(reverse('resources:brigade_import_template'));book=load_workbook(BytesIO(response.content))
+        self.assertEqual(list(next(book.worksheets[0].values)),HEADERS);book.close()
+        self.assertEqual(self.client.post(self.url,{'file':self.file([[item.name,'']],headers=['Название','Группа'])}).status_code,200)
 
     def test_bad_files_and_roles(self):
         for file in (SimpleUploadedFile('broken.xlsx',b'broken'),SimpleUploadedFile('old.xls',b'broken'),self.file([])):

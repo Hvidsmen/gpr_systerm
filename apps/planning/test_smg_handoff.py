@@ -105,3 +105,16 @@ class SmgHandoffTests(TestCase):
         with self.assertRaises(ValidationError):transition(self.manager,self.schedule,'submit')
         estimator_check(self.schedule,self.planner)
         self.assertEqual(WorkTask.objects.filter(schedule=self.schedule,kind='SUBMISSION',status='OPEN').count(),1)
+
+    def test_admin_can_handoff_and_confirm_resources_in_the_main_header(self):
+        from apps.accounts.models import User,Role
+        self.prepare()
+        admin=User.objects.create_user(username='smg-stage-admin',company=self.company,role=Role.objects.get(code='ADMIN'))
+        from . import preparation
+        estimator=User.objects.create_user(username='smg-stage-estimator',company=self.company,role=Role.objects.get(code='ESTIMATOR'))
+        preparation.handoff(self.planner,self.schedule,self.manager,estimator)
+        self.client.force_login(admin)
+        response=self.client.get(reverse('planning:daily_schedule_detail',args=[self.schedule.pk]))
+        html=response.content.decode();header=html.split('aria-label="Действия СМГ"',1)[1].split('</nav>',1)[0]
+        self.assertIn('data-smg-open-handoff',header);self.assertIn('Ресурсы определены',header)
+        self.assertNotIn('data-smg-open-handoff',html.split('id="smg-more-actions"',1)[1].split('</div>',1)[0])

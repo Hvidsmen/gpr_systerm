@@ -127,6 +127,7 @@ class CampForm(StyledModelForm):
 
 
 class MovementForm(forms.Form):
+    personal_scope=forms.CharField(required=False,widget=forms.HiddenInput)
     kind=forms.ChoiceField(label='Действие',choices=[('ARRIVAL','Заезд'),('DEPARTURE','Выезд'),('TRANSFER','Перевод в другой ВЖГ'),('DISMISSAL','Выезд по увольнению')])
     date=forms.DateField(label='Фактическая дата',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
     camp=forms.ModelChoiceField(label='ВЖГ заезда / исходный ВЖГ',queryset=None)
@@ -135,7 +136,7 @@ class MovementForm(forms.Form):
     target=forms.ModelChoiceField(label='ВЖГ назначения',queryset=None,required=False)
     comment=forms.CharField(label='Комментарий',required=False,widget=forms.Textarea(attrs={'rows':2}),max_length=4000)
     snapshot=forms.CharField(widget=forms.HiddenInput)
-    def __init__(self,*args,company,camp,day,**kwargs):
+    def __init__(self,*args,company,camp,day,fixed_employee=None,**kwargs):
         from .models import Camp
         from .housing import present_stays
         from apps.resources.models import Employee
@@ -156,6 +157,12 @@ class MovementForm(forms.Form):
         self.fields['employees'].widget.attrs['data-present-by-camp']=json.dumps(by_camp)
         self.fields['employees'].widget.attrs['data-active-employees']=','.join(str(pk) for pk in employees.filter(is_active=True).values_list('pk',flat=True))
         self.fields['employees'].label_from_instance=lambda e:e.display_name+(' · '+str(e.position) if e.position_id else '')+(' · № '+e.employee_number if e.employee_number else '')+(' · архивный, находится в ВЖГ' if not e.is_active else '')
+        self.personal=bool(fixed_employee)
+        if fixed_employee:
+            self.initial['employees']=[fixed_employee]
+            self.fields['employees'].queryset=self.fields['employees'].queryset.filter(pk=fixed_employee)
+            self.fields['employees'].disabled=True
+            self.fields['employees'].label='Сотрудник'
         self.camp=camp;self.company=company
         self.fields['target'].queryset=Camp.objects.filter(company=company,is_active=True)
         for field in self.fields.values():field.widget.attrs.setdefault('class','form-select' if isinstance(field.widget,forms.Select) else 'form-control')

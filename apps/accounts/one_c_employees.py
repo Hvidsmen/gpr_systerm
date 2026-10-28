@@ -210,12 +210,15 @@ def apply_employees(run, report):
         if references or any('probe_' + probe in item for probe in PROBES) or 'position_state' in item:
             values['zup_card']['position_diagnostics'] = {'probes': row_probes, 'references': references}
         normalized.append((ref, values))
-    from apps.resources.zup_positions import sync_names,employee_job
-    position_result,_ = sync_names(connection.company_id,[employee_job(values) for _,values in normalized])
+    from apps.resources.zup_positions import employee_job
+    # Employee cards may only link to existing positions. Catalogue creation is
+    # exclusively the staffing-schedule job, never employee occupancy/history.
+    position_result={'created':0,'existing':0,'ambiguous':0,'skipped':0}
     source = {'company_id': connection.company_id, 'zup_server': run.server.casefold(), 'zup_database': run.database.casefold()}
     existing = {e.zup_ref: e for e in Employee.objects.select_for_update().filter(**source).exclude(zup_ref='')}
     from apps.resources.position_catalog import position_index,position_key
     positions=position_index(connection.company_id)
+    position_result['existing']=len({position_key(employee_job(values)) for _,values in normalized if len(positions.get(position_key(employee_job(values)),[]))==1})
     counts = {'created': 0, 'updated': 0, 'unchanged': 0, 'archived': sum(not values['is_active'] for _, values in normalized),
               'without_position':sum(not (values['zup_position_name'] or values['zup_card'].get('staffing_position')) for _,values in normalized),
               'positions_result':position_result,

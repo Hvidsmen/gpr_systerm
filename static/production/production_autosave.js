@@ -6,8 +6,8 @@
  const field=(row,name)=>row.querySelector(`[name$="-${name}"]`),isPerson=row=>row.hasAttribute('data-production-person');
  const suffix=input=>input.name.replace(/^(works|labor)-\d+-/,'');
  const capture=row=>[...row.querySelectorAll('input,select,textarea')].filter(input=>input.name).map(input=>({name:input.name,value:input.value,checked:input.checked,type:input.type}));
- const fingerprint=row=>JSON.stringify(capture(row).filter(input=>!['id','person_claim_token','person_editing','work_claim_token','work_editing'].includes(input.name.replace(/^(works|labor)-\d+-/,''))).map(input=>[input.name.replace(/^(works|labor)-\d+-/,''),input.value,input.checked]));
- let timer=null,pending=false,running=null,failed=false,confirming=false,retryAttempt=0;
+ const fingerprint=row=>JSON.stringify(capture(row).filter(input=>!['id','person_claim_token','person_editing','work_claim_token','work_editing',...(isPerson(row)?['work_mode','work_targets','general','work','work_item']:[])].includes(input.name.replace(/^(works|labor)-\d+-/,''))).map(input=>[input.name.replace(/^(works|labor)-\d+-/,''),input.value,input.checked]));
+ let timer=null,pending=false,running=null,failed=false,retryAttempt=0;
  const dirty=()=>rows().filter(row=>row.dataset.entryDirty||row.dataset.personDirty||row.dataset.autoPending);
  function message(text,error=false){state.textContent=text;state.classList.toggle('text-danger',error);retry.hidden=!error;}
  function rowMessage(row,text,error=false){const target=row.querySelector('[data-autosave-row-state]');if(target){target.textContent=text;target.title=text;target.classList.toggle('text-danger',error);}row.classList.toggle('production-person-auto-failed',error);}
@@ -34,7 +34,7 @@
   const changed=dirty();
   for(const row of changed){
    if(isPerson(row)&&field(row,'employee').value){try{await form.productionClaimRow(row);}catch(error){if(field(row,'id').value||error.status!==409)throw error;row.dataset.autoRejected=error.message;field(row,'employee').value='';delete row.dataset.entryDirty;delete row.dataset.personDirty;delete row.dataset.autoPending;row.dispatchEvent(new Event('change',{bubbles:true}));row.querySelector('[data-error]').textContent=error.message;rowMessage(row,error.message,true);}}
-   else if(!isPerson(row)&&field(row,'work_editing')?.value!=='1')throw new Error('Возьмите изменённую работу в работу. Введённые значения сохранены на странице.');
+   else if(!isPerson(row)&&field(row,'project_work')?.value)await form.productionClaimRow(row);
   }
   const sent=new Map(rows().map(row=>[prefix(row),{row,stamp:fingerprint(row),capture:capture(row)}]));
   const body=new FormData(form);body.set('autosave','1');body.set('action','save');
@@ -74,10 +74,11 @@
   })();
   try{return await running;}finally{running=null;}
  }
- window.productionAutoSave={flush,get pending(){return pending||Boolean(running)||dirty().length>0;}};
+ window.productionAutoSave={flush,reindex,fingerprint,capture,get running(){return Boolean(running);},get pending(){return pending||Boolean(running)||dirty().length>0;}};
  const relevant=event=>{
+  if(form.productionApplying)return;
   const row=event.target.closest('[data-production-person],[data-work-fact-row]');
-  if(row){if(row.dataset.autoSavedStamp===fingerprint(row)&&!row.dataset.autoPending){delete row.dataset.entryDirty;delete row.dataset.personDirty;return;}if(isPerson(row)&&!field(row,'employee').value&&!field(row,'id').value)return;if(!isPerson(row)&&field(row,'work_editing')?.value!=='1')return;schedule(row);}
+  if(row){if(row.dataset.autoSavedStamp===fingerprint(row)&&!row.dataset.autoPending){delete row.dataset.entryDirty;delete row.dataset.personDirty;return;}if(isPerson(row)&&!field(row,'employee').value&&!field(row,'id').value)return;if(!isPerson(row)&&!field(row,'project_work')?.value)return;schedule(row);}
   else if(event.target.matches('[name=actuated],[name=actuation_type],[name=reason]'))schedule();
  };
  form.addEventListener('production-claims-change',()=>{if(!running&&!pending&&dirty().some(row=>field(row,isPerson(row)?'person_editing':'work_editing')?.value==='1'))schedule();});
@@ -86,17 +87,13 @@
  rows().forEach(row=>{row.dataset.autoSavedStamp=fingerprint(row);if(field(row,'id').value)rowMessage(row,'Сохранено');});
  retry.addEventListener('click',()=>{retryAttempt=0;pending=true;flush();});
  form.addEventListener('click',async event=>{
-  const button=event.target.closest('[data-person-remove]');if(!button)return;
-  const row=button.closest('[data-production-person]');button.disabled=true;
+  const button=event.target.closest('[data-person-remove],[data-work-remove]');if(!button)return;
+  const row=button.closest('[data-production-person],[data-work-fact-row]');button.disabled=true;
   try{
    if(!field(row,'id').value&&!running){await form.productionReleaseRow(row);row.remove();reindex();form.dispatchEvent(new Event('change',{bubbles:true}));return;}
    await form.productionClaimRow(row);field(row,'DELETE').checked=true;row.classList.add('production-person-auto-deleting');row.dataset.entryDirty='1';row.dispatchEvent(new Event('change',{bubbles:true}));schedule(row);await flush();
   }catch(error){rowMessage(row,error.message,true);message(error.message,true);}finally{button.disabled=false;}
  });
- form.addEventListener('submit',async event=>{
-  if(confirming){event.productionAutosaveFinal=true;return;}event.preventDefault();const submitter=event.submitter;
-  if(await flush()){confirming=true;setTimeout(()=>{if(form.isConnected)form.requestSubmit(submitter);},0);}
- },true);
- form.addEventListener('submit',event=>{if(event.productionAutosaveFinal&&event.defaultPrevented)confirming=false;});
- window.addEventListener('beforeunload',event=>{if(!confirming&&(running||pending||dirty().length)){event.preventDefault();event.returnValue='';}});
+ form.addEventListener('submit',event=>{event.preventDefault();flush();},true);
+ window.addEventListener('beforeunload',event=>{if(running||pending||dirty().length){event.preventDefault();event.returnValue='';}});
 })();

@@ -88,7 +88,9 @@ class ResourceHeaderTotalTests(TestCase):
             response=self.client.get(url,params);self.assertEqual(response.status_code,200)
             html=response.content.decode()
             for kind in ['labor','equipment']:
-                self.assertIn('data-resource-section-total="'+kind+'"',html)
+                self.assertIn('data-matrix-section="'+kind+'"',html)
+                self.assertIn('class="report-calendar-summary"',html)
+                self.assertNotIn('data-resource-section-total="'+kind+'"',html)
                 self.assertNotIn('<summary>Итого: '+('Должность' if kind=='labor' else 'Техника'),html)
                 section=next(s for s in response.context['objects'][0]['sections'] if s['kind']==kind)
                 self.assertEqual(section['total_node']['rows'],section['subtotals'])

@@ -5,7 +5,7 @@ from django.shortcuts import render, redirect
 from django.contrib import messages
 from django.views import View
 from core.permissions import PLAN_ROLES, require_roles
-from .models import EquipmentCategory, EquipmentType
+from .models import EquipmentCategory, EquipmentType,Equipment
 
 
 class EquipmentCategoryMerge(View):
@@ -33,6 +33,7 @@ class EquipmentCategoryMerge(View):
                 target = next(group for group in groups if group.pk == target_id)
                 sources = ids - {target_id}
                 moved = EquipmentType.objects.filter(company=request.user.company, category_id__in=sources).update(category_id=target_id)
+                Equipment.objects.filter(company=request.user.company,catalogue_group_id__in=sources).update(catalogue_group_id=target_id)
                 EquipmentCategory.objects.filter(company=request.user.company, pk__in=sources).delete()
                 messages.success(request, f'Группы техники объединены в «{target.name}». Перенесено позиций техники: {moved}.')
                 return redirect('resources:equipment_category_list')

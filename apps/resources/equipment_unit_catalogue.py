@@ -62,14 +62,14 @@ def with_unit_state(queryset, company, day=None):
         unit_state_date=Coalesce('_transport_disposal_date','_transport_condition_date',Subquery(history.values('effective_date')[:1])),
         unit_state_shift=Case(When(_transport_condition__isnull=False,then=Value(None)),When(_transport_disposal_date__isnull=False,then=Value(None)),default=Subquery(history.values('shift')[:1])),
         planning_type_name=Coalesce('type__parent__name', 'type__name'),
-        group_name=Coalesce('type__category__name', 'type__parent__category__name', Value('Без группы')),
+        group_name=Coalesce('catalogue_group__name','type__category__name', 'type__parent__category__name', Value('Без группы')),
     ).annotate(unit_state_label=Case(*[When(unit_state=code, then=Value(label)) for code, label in STATES],
         default=Value('Нет сведений'), output_field=CharField()))
 
 
 def unit_queryset(company, day=None):
     return with_unit_state(Equipment.objects.filter(company=company).select_related(
-        'type__parent__category', 'type__category', 'operator_position'), company, day)
+        'type__parent__category', 'type__category', 'catalogue_group','operator_position'), company, day)
 
 
 def filter_units(queryset, form):
@@ -81,7 +81,7 @@ def filter_units(queryset, form):
     if data['model']:
         queryset = queryset.filter(type=data['model'])
     if data['category']:
-        queryset = queryset.filter(Q(type__category=data['category']) | Q(type__category__isnull=True, type__parent__category=data['category']))
+        queryset = queryset.filter(Q(catalogue_group=data['category'])|Q(catalogue_group__isnull=True)&(Q(type__category=data['category'])|Q(type__category__isnull=True,type__parent__category=data['category'])))
     if data['state']:
         queryset = queryset.filter(unit_state=data['state'])
     if data['is_active']:

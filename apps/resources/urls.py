@@ -111,3 +111,9 @@ path('equipment/summary-import/<int:pk>/',transport_import_views.review,name='tr
 path('equipment/import-errors/',transport_import_views.errors,name='transport_import_errors'),
 path('equipment/import-errors/<int:pk>/',transport_import_views.correction,name='transport_import_correction'),
 ]
+
+from .equipment_group_import import import_groups as equipment_group_import
+urlpatterns += [path("equipment-units/import-groups/",equipment_group_import,name="equipment_group_import")]
+
+from .equipment_inline import create_planning_type
+urlpatterns += [path("equipment-types/quick-create/",create_planning_type,name="equipment_type_quick_create")]

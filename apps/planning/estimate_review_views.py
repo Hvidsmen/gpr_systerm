@@ -100,9 +100,11 @@ class ReviewDetail(View):
         works.sort(key=lambda w:(bool(w.review_valid),w.section.name.casefold(),w.name.casefold(),w.pk))
         start,end=service.review_period(obj)
         for w in works:
+            from apps.works.prices import price_on
+            w.review_price=price_on(w,start)
             w.review_status='checked' if w.review_valid else 'rejected' if w.review_decision.get('approved') is False else 'pending'
             w.review_quantity=sum((r.quantity for r in service.review_allocations(obj).filter(work=w)),Decimal(0)) if isinstance(obj,GlobalPlanVersion) else None
-        extra={'review_start':start,'review_end':end,'sections':sorted({w.section.name for w in works}),'checked_count':sum(bool(w.review_valid) for w in works),'total_count':len(works)}
+        extra={'review_start':start,'review_end':end,'sections':sorted({w.section.name for w in works}),'checked_count':sum(bool(w.review_valid) for w in works),'total_count':len(works),'pending_count':sum(not bool(w.review_valid) for w in works)}
         active_ids={w.pk for w in works};pairs={}
         for w in works:
             for option in w.replacement_options:

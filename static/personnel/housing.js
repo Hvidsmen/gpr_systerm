@@ -31,11 +31,17 @@
  form.querySelectorAll('[data-personnel-searchable]').forEach(select=>{const count=document.createElement('div');count.className='housing-count';count.setAttribute('aria-live','polite');select.after(count);const update=()=>{count.textContent='Выбрано: '+select.selectedOptions.length;};select.addEventListener('change',update);update();});
  const kind=form.querySelector('[name=kind]'),target=form.querySelector('[name=target]'),employees=form.querySelector('[name=employees]'),destination=form.querySelector('[name=destination]'),camp=form.querySelector('[name=camp]');
  const presentByCamp=JSON.parse(employees.dataset.presentByCamp||'{}');
+ const selectedHost=form.querySelector('[data-movement-selected]');
+ function selectedPeople(){
+  selectedHost.replaceChildren();const selected=[...employees.selectedOptions];const title=document.createElement('strong');title.textContent=selected.length?'Сотрудники в действии: '+selected.length:'Добавьте сотрудников через список выше';selectedHost.append(title);
+  const list=document.createElement('ul');list.className='movement-selected-list';for(const option of selected){const item=document.createElement('li');const name=document.createElement('span');name.textContent=option.textContent;item.append(name);if(form.dataset.personalMovement!=='1'){const remove=document.createElement('button');remove.type='button';remove.className='btn btn-sm btn-outline-secondary';remove.textContent='Убрать';remove.addEventListener('click',()=>{option.selected=false;employees.dispatchEvent(new Event('change',{bubbles:true}));});item.append(remove);}list.append(item);}selectedHost.append(list);
+ }
+ employees.addEventListener('change',selectedPeople);selectedPeople();
  function fields(){
   destination.closest('.app-form-field').hidden=kind.value!=='DEPARTURE';
   target.closest('.app-form-field').hidden=!(kind.value==='TRANSFER'||kind.value==='DEPARTURE'&&destination.value==='CAMP');
   const eligible=new Set((kind.value==='ARRIVAL'?employees.dataset.activeEmployees:(presentByCamp[camp.value]||[]).join(',')).split(','));
-  for(const option of employees.options){option.disabled=!eligible.has(option.value);option.hidden=option.disabled;if(option.disabled)option.selected=false;}
+  for(const option of employees.options){option.disabled=!eligible.has(option.value);option.hidden=option.disabled;if(option.disabled&&form.dataset.personalMovement!=='1')option.selected=false;}
   for(const option of target.options){option.disabled=!!option.value&&option.value===camp.value;if(option.disabled)option.selected=false;}
   employees.dispatchEvent(new Event('change',{bubbles:true}));
  }

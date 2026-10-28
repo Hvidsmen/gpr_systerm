@@ -19,14 +19,14 @@ class CatalogFilterTests(TestCase):
         EquipmentType.objects.create(company=self.company,name='Экскаватор Юг')
 
     def test_combined_filters_and_cyrillic_case(self):
-        response = self.client.get(reverse('resources:brigade_list'), {'name':'монтаж','group':self.group.pk,'macro_group':self.macro.pk})
+        response = self.client.get(reverse('resources:brigade_list'), {'name':'север','group':self.group.pk})
         self.assertEqual(response.status_code,200)
         self.assertEqual(list(response.context['brigades']),[self.brigade])
-        self.assertEqual(response.context['filter_form']['name'].value(),'монтаж')
+        self.assertEqual(response.context['filter_form']['name'].value(),'север')
         response = self.client.get(reverse('resources:equipment_type_list'), {'name':'экскаватор','category':self.category.pk})
         self.assertEqual(list(response.context['equipment_types']),[self.equipment])
         response = self.client.get(reverse('resources:brigade_list'), {'name':'Nothing'})
-        self.assertContains(response,'По выбранным фильтрам должности не найдены')
+        self.assertContains(response,'Должности не найдены')
         self.assertEqual(response.context['paginator'].count if response.context['paginator'] else len(response.context['object_list']),0)
 
     def test_foreign_catalogs_and_invalid_ids(self):
@@ -36,21 +36,21 @@ class CatalogFilterTests(TestCase):
         Brigade.objects.create(company=other,name='Foreign brigade')
         self.assertNotContains(self.client.get(reverse('resources:brigade_list')),group.name)
         self.assertNotContains(self.client.get(reverse('resources:equipment_type_list')),category.name)
-        for route, param, value in [('brigade_list','group',group.pk),('brigade_list','macro_group','bad'),('equipment_type_list','category',category.pk)]:
+        for route, param, value in [('brigade_list','group',group.pk),('brigade_list','group','bad'),('equipment_type_list','category',category.pk)]:
             response = self.client.get(reverse('resources:'+route),{param:value})
             self.assertEqual(response.status_code,200)
             self.assertIn(param,response.context['filter_form'].errors)
             self.assertEqual(response.context['paginator'].count if response.context['paginator'] else len(response.context['object_list']),0)
 
     def test_pagination_keeps_filters(self):
-        for i in range(24):
+        for i in range(54):
             Brigade.objects.create(company=self.company,name='Монтаж '+str(i),group=self.group,macro_group=self.macro)
             EquipmentType.objects.create(company=self.company,name='Экскаватор '+str(i),category=self.category)
-        for route, values, key in [('brigade_list',{'name':'Монтаж','group':self.group.pk,'macro_group':self.macro.pk},'brigades'),('equipment_type_list',{'name':'Экскаватор','category':self.category.pk},'equipment_types')]:
+        for route, values, key in [('brigade_list',{'name':'Монтаж','group':self.group.pk,'view':'table'},'brigades'),('equipment_type_list',{'name':'Экскаватор','category':self.category.pk},'equipment_types')]:
             if route=='equipment_type_list':values={**values,'view':'table'}
             response = self.client.get(reverse('resources:'+route),values)
             self.assertTrue(response.context['is_paginated'])
             self.assertContains(response,response.context['filter_query'].replace('&','&amp;')+'&amp;page=2')
             response = self.client.get(reverse('resources:'+route),dict(values,page=2))
             self.assertEqual(response.status_code,200)
-            self.assertEqual(len(response.context[key]),5)
+            self.assertEqual(len(response.context[key]),6 if route=='brigade_list' else 20)

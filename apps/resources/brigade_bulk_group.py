@@ -14,25 +14,24 @@ from .models import Brigade, BrigadeGroup, BrigadeMacroGroup
 
 class GroupAssignmentForm(forms.Form):
     group = forms.ChoiceField(label='Группа', required=False)
-    macro_group = forms.ChoiceField(label='Макрогруппа', required=False)
 
     def __init__(self, *args, company, **kwargs):
         super().__init__(*args, **kwargs)
-        for name, model in [('group', BrigadeGroup), ('macro_group', BrigadeMacroGroup)]:
+        for name, model in [('group', BrigadeGroup)]:
             self.fields[name].choices = [('', 'Не менять'), ('clear', 'Без группы' if name == 'group' else 'Без макрогруппы')] + [
                 (str(row.pk), row.name) for row in model.objects.filter(company=company).order_by('name', 'pk')]
 
     def clean(self):
         data = super().clean()
         if not self.errors and not any(data.values()):
-            raise forms.ValidationError('Выберите группу или макрогруппу для изменения.')
+            raise forms.ValidationError('Выберите группу для изменения.')
         return data
 
 
 def list_url(query):
     params = QueryDict(query)
     safe = QueryDict(mutable=True)
-    for key in ('name', 'group', 'macro_group', 'page'):
+    for key in ('name','group','staffing_current','active_employees','view','page'):
         if params.get(key):
             safe[key] = params[key]
     return reverse('resources:brigade_list') + ('?' + safe.urlencode() if safe else '')
@@ -56,7 +55,7 @@ def assign_groups(request):
         valid = form.is_valid()
         # Lock group targets before positions, following the group merge lock order.
         if valid:
-            for name, model in [('group', BrigadeGroup), ('macro_group', BrigadeMacroGroup)]:
+            for name, model in [('group', BrigadeGroup)]:
                 value = form.cleaned_data[name]
                 if value and value != 'clear' and not model.objects.select_for_update().filter(company=request.user.company, pk=value).exists():
                     form.add_error(name, 'Группа уже удалена. Выберите другую.')

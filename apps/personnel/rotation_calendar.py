@@ -1,6 +1,7 @@
 """Project a personal cycle from actual residence without rewriting source calendars."""
 from collections import Counter,defaultdict
 from datetime import date,timedelta
+from types import SimpleNamespace
 import re
 
 
@@ -67,17 +68,22 @@ def stays_by_person(company):
     grouped=defaultdict(list)
     for stay in CampStay.objects.filter(company=company,cancelled_at=None).order_by('arrived_on','pk'):
         grouped[stay.person_id].append(stay)
+    from .models import HousingEvent
+    for event in HousingEvent.objects.filter(company=company,kind='DEPARTURE',stay=None):
+        grouped[event.person_id].append(SimpleNamespace(initial_departure_date=event.date,arrived_on=event.date,departed_on=event.date,cancelled_at=None,pk=event.pk))
     return grouped
 
 
 def anchors(stays):
     """A continuous camp-to-camp transfer keeps the original shift start."""
+    stays=list(stays)
+    initial=[(s.initial_departure_date,'DEPARTURE') for s in stays if hasattr(s,'initial_departure_date')]
     intervals=[]
-    for stay in sorted((s for s in stays if not s.cancelled_at),key=lambda s:(s.arrived_on,s.pk)):
+    for stay in sorted((s for s in stays if not s.cancelled_at and not hasattr(s,'initial_departure_date')),key=lambda s:(s.arrived_on,s.pk)):
         if intervals and intervals[-1][1]==stay.arrived_on:
             intervals[-1][1]=stay.departed_on
         else:intervals.append([stay.arrived_on,stay.departed_on])
-    result=[]
+    result=list(initial)
     for arrival,departure in intervals:
         result.append((arrival,'ARRIVAL'))
         if departure:result.append((departure,'DEPARTURE'))
@@ -94,7 +100,7 @@ def description(slot,day,stays=None):
     if not cycle:return 'Цикл не задан: укажите дни вахты и отдыха в графике сотрудника.'
     if stays is None:
         from .models import CampStay
-        stays=CampStay.objects.filter(company_id=slot.company_id,person_id=slot.person_id,cancelled_at=None)
+        stays=stays_by_person(slot.company).get(slot.person_id,[])
     anchor=anchor_for(stays,day)
     label=f"{cycle['on_days']}/{cycle['off_days']}"
     if not anchor:return label+' · календарь из таблицы; фактический заезд или выезд не оформлен.'
@@ -102,18 +108,30 @@ def description(slot,day,stays=None):
 
 
 def project(slot,base,*,start=None,end=None,stays=None):
-    if not slot.person_id or not slot.pattern_id:return base,None
+    if not slot.pattern_id:return base,None
     cycle=cycle_definition(slot.pattern)
     if not cycle:return base,None
     if stays is None:
         from .models import CampStay
-        stays=list(CampStay.objects.filter(company_id=slot.company_id,person_id=slot.person_id,cancelled_at=None))
+        stays=stays_by_person(slot.company).get(slot.person_id,[]) if slot.person_id else []
     timeline=anchors(stays)
-    if not timeline:return base,None
     from django.utils import timezone
     start=start or timezone.localdate().replace(day=1)
     end=end or start+timedelta(days=730)
     result=dict(base)
+    if not timeline:
+        # Extend the source plan without turning an initial balance into a fact.
+        anchor=slot.departure_date if slot.status=='МО' else slot.arrival_date
+        offset=cycle['on_days'] if slot.status=='МО' else 0
+        if not anchor:
+            candidates=[date.fromisoformat(key) for key,value in base.items() if work(value) and base.get(str(date.fromisoformat(key)-timedelta(days=1))) in {'МО','ДП'}]
+            anchor=max(candidates) if candidates else None;offset=0
+        if anchor:
+            current=max(start,anchor)
+            while current<=end:
+                result.setdefault(str(current),cycle['codes'][((current-anchor).days+offset)%len(cycle['codes'])]);current+=timedelta(days=1)
+        result.update(slot.calendar)
+        return result,None
     for index,(anchor,kind) in enumerate(timeline):
         stop=min(end,timeline[index+1][0]-timedelta(days=1)) if index+1<len(timeline) else end
         offset=0 if kind=='ARRIVAL' else cycle['on_days']

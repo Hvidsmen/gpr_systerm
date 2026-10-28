@@ -1,14 +1,7 @@
 {% extends 'base.html' %}
-{% block content %}
-<h1>Загрузка должностей из Excel</h1>
-<div class="card mb-3"><div class="card-body">
-<p>Загрузите файл .xlsx до 5 МБ и 5000 строк. Первая строка — заголовки: <strong>Название, Группа, Макрогруппа, Описание, Активна, Единица измерения</strong>.</p>
-<p>Обязательно только название. Новые группы и макрогруппы создаются в справочниках. Единица измерения по умолчанию — «чел.», активность — «Да». Для отключения укажите «Нет».</p>
-<p>Существующие названия и повторы пропускаются без изменения данных. Если есть ошибки, весь импорт отменяется.</p>
-<a class="btn btn-outline-primary mb-3" href="{% url 'resources:brigade_import_template' %}">Скачать шаблон Excel</a>
-<form method="post" enctype="multipart/form-data">{% csrf_token %}{% include 'forms/fields.html' with form=form %}<button class="btn btn-primary">Загрузить должности</button></form>
-</div></div>
-{% if result %}<div class="alert alert-success" role="status">Добавлено должностей: {{ result.created }}. Пропущено повторов: {{ result.skipped }}. Создано групп: {{ result.groups }}. Макрогрупп: {{ result.macros }}.</div>{% endif %}
-{% if errors %}<div class="alert alert-danger" role="alert"><strong>Импорт отменён. Ошибок: {{ error_count }}.</strong><ul>{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul><p>Исправьте файл и загрузите его снова. Показаны первые 100 ошибок.</p></div>{% endif %}
-<a class="btn btn-secondary" href="{% url 'resources:brigade_list' %}">Назад к должностям</a>
-{% endblock %}
+{% block content %}<nav class="small mb-3"><a href="{% url 'resources:brigade_list' %}">Должности</a> / Импорт групп</nav><h1 class="h3">Импорт групп должностей из Excel</h1>
+<div class="card card-body"><p>Файл .xlsx до 5 МБ и 5000 строк. Используйте <a href="{% url 'resources:brigade_export' %}">экспорт справочника</a>, изменив колонку <strong>Группа</strong>, или <a href="{% url 'resources:brigade_import_template' %}">скачайте шаблон</a>.</p>
+<p class="small text-muted">Нужны «Название» и «Группа»; ID из экспорта помогает различить одинаковые названия. Меняется только группа существующей должности. Новые должности не добавляются. Остальные колонки игнорируются. Пустая группа снимает назначение; неизвестные должности и группы остаются без изменений и перечисляются в результате.</p>
+<form method="post" enctype="multipart/form-data">{% csrf_token %}{% include 'forms/fields.html' with form=form %}<button class="btn btn-primary">Обновить группы</button></form></div>
+{% if result %}<div class="alert alert-success" role="status">Обновлено групп у должностей: {{ result.updated }}. Без изменений: {{ result.unchanged }}. Не найдены должности: {{ result.unknown }}.</div>{% if result.warnings %}<div class="alert alert-warning"><strong>Предупреждения</strong><ul>{% for warning in result.warnings %}<li>{{ warning }}</li>{% endfor %}</ul></div>{% endif %}{% endif %}
+{% if errors %}<div class="alert alert-danger" role="alert"><strong>Импорт отменён. Ошибок: {{ error_count }}.</strong><ul>{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul></div>{% endif %}<a class="btn btn-outline-secondary" href="{% url 'resources:brigade_list' %}">К справочнику</a>{% endblock %}

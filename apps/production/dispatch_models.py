@@ -70,6 +70,7 @@ class EquipmentActivity(ShiftActivity):
 
 
 class EmployeeActivity(ShiftActivity):
+    links_revision=models.PositiveIntegerField(default=0,editable=False)
     entry_direction=models.CharField('Направление ввода',max_length=5,choices=[('works','Производство'),('labor','Персонал')],blank=True,default='',editable=False)
     assignment_reviewed=models.BooleanField(default=True,editable=False)
     employee=models.ForeignKey('resources.Employee',on_delete=models.PROTECT,verbose_name='Сотрудник (ФИО)')
@@ -166,3 +167,15 @@ class FactSectionDay(BaseCompanyModel):
     confirmed_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,blank=True)
     class Meta:
         constraints=[models.UniqueConstraint(fields=['construction_object','date','section'],name='one_section_day_confirmation')]
+
+
+class ProductionPresence(BaseCompanyModel):
+    construction_object=models.ForeignKey('projects.ConstructionObject',on_delete=models.CASCADE)
+    date=models.DateField()
+    user=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.CASCADE)
+    session_key=models.UUIDField()
+    step=models.PositiveSmallIntegerField(default=1)
+    last_seen=models.DateTimeField(db_index=True)
+    closing_at=models.DateTimeField(null=True,blank=True)
+    class Meta:
+        constraints=[models.UniqueConstraint(fields=['construction_object','date','session_key'],name='unique_production_presence')]

@@ -21,7 +21,6 @@ class BrigadeFilterForm(CatalogFilterForm):
     staffing_current = forms.ChoiceField(label='Штатное расписание ЗУП', required=False,
         choices=[('', 'Все должности'), ('yes', 'Актуальные'), ('no', 'Неактуальные'), ('unknown', 'Не получено из ЗУП')])
     group = forms.ModelChoiceField(label='Группа', queryset=BrigadeGroup.objects.all(), required=False, empty_label='Все группы')
-    macro_group = forms.ModelChoiceField(label='Макрогруппа', queryset=BrigadeMacroGroup.objects.all(), required=False, empty_label='Все макрогруппы')
     active_employees = forms.ChoiceField(label='Активные сотрудники', required=False,
         choices=[('', 'Все должности'), ('yes', 'Есть активные'), ('no', 'Нет активных')])
 

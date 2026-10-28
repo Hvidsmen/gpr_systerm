@@ -48,7 +48,12 @@ def prepare(user,obj,day,groups,signed):
             if pk and original is None:raise ValidationError('В форме появилась чужая строка. Обновите день.')
             posted={name:normalized(field,form[name].value()) for name,field in form.fields.items() if name not in {'work_claim_token','work_editing','person_claim_token','person_editing'}}
             inactive=form.data.get(form.add_prefix('work_editing' if group['prefix']=='works' else 'person_editing'))=='0'
-            untouched=inactive or original and posted==original['values'] and not getattr(form,'prepared_from_previous',False)
+            original_values=original['values'] if original else None
+            if group['prefix']=='labor' and form.data.get('collaborative')=='1':
+                relation_names={'work','work_item','general','work_mode','work_targets'}
+                posted={k:v for k,v in posted.items() if k not in relation_names}
+                original_values={k:v for k,v in original_values.items() if k not in relation_names} if original_values else None
+            untouched=inactive or original and posted==original_values and not getattr(form,'prepared_from_previous',False)
             if untouched:
                 form.empty_permitted=True
                 form.has_changed=lambda:False
@@ -99,3 +104,22 @@ def check_locked(groups,obj=None,day=None,baseline=None):
             stamp=current.get(form.instance.pk)
             if stamp is None or stamp.isoformat()!=form.expected_entry_version:
                 raise ValidationError('Эту строку уже изменили в другой вкладке или другой диспетчер. Обновите день перед повторным изменением; данные не перезаписаны.')
+
+
+# SQLite cannot lock a row and its shared-cache test database fails immediately
+# when another connection reads a table being written. PostgreSQL keeps its
+# ordinary object/employee row locks; the single-process SQLite host serializes
+# production requests, including their baseline reads, before starting a write.
+from functools import wraps
+from threading import RLock
+from django.db import connection
+_sqlite_mutex=RLock()
+
+
+def sqlite_serialized(function):
+    @wraps(function)
+    def wrapped(*args,**kwargs):
+        if connection.vendor=='sqlite':
+            with _sqlite_mutex:return function(*args,**kwargs)
+        return function(*args,**kwargs)
+    return wrapped

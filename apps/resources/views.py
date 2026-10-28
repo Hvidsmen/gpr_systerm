@@ -3,7 +3,7 @@ from .crew_views import EquipmentCrewEditorMixin
 from .filters import CatalogFilterMixin, BrigadeFilterForm, EquipmentFilterForm
 from django.views.generic import ListView, CreateView
 from django.urls import reverse_lazy
-from django.db.models import Count,Q
+from django.db.models import Count,Q,F
 from django.contrib import messages
 from django.utils.translation import gettext_lazy as _
 
@@ -53,7 +53,10 @@ class BrigadeListView(CatalogFilterMixin, CompanyRequiredMixin, ListView):
     model = Brigade
     template_name = 'resources/brigade_list.html'
     context_object_name = 'brigades'
-    paginate_by = 20
+    paginate_by = 50
+
+    def get_paginate_by(self,queryset):
+        return 50 if self.request.GET.get('view')=='table' else None
 
     def get_queryset(self):
         company = self.get_company()
@@ -62,11 +65,11 @@ class BrigadeListView(CatalogFilterMixin, CompanyRequiredMixin, ListView):
             position_mapping__position__employees__company=company)
         return self.filter_queryset(Brigade.objects.filter(
             company=company, merge_source__isnull=True
-        ).select_related('group', 'macro_group', 'position_mapping__position').annotate(
+        ).select_related('group', 'position_mapping__position').annotate(
             employee_count=Count('position_mapping__position__employees', filter=employee_scope, distinct=True),
             active_employee_count=Count('position_mapping__position__employees',
                 filter=employee_scope & Q(position_mapping__position__employees__is_active=True), distinct=True),
-        ).order_by('code', 'pk'))
+        ).order_by(F('group__name').asc(nulls_last=True),'name','pk'))
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -77,6 +80,19 @@ class BrigadeListView(CatalogFilterMixin, CompanyRequiredMixin, ListView):
         context['brigade_duplicates'] = [items for items in groups.values() if len(items) > 1]
         from .brigade_bulk_group import GroupAssignmentForm
         context['group_assignment_form'] = GroupAssignmentForm(company=self.get_company(), prefix='assignment')
+        context['catalogue_view']='table' if self.request.GET.get('view')=='table' else 'groups'
+        params=self.request.GET.copy();params.pop('page',None);params.pop('view',None);context['view_query']=params.urlencode()
+        queryset=self.object_list
+        context['position_ungrouped_count']=queryset.filter(group=None).count()
+        context['position_current_count']=queryset.filter(staffing_current=True).count()
+        context['position_group_count']=queryset.exclude(group=None).values('group_id').distinct().count()
+        grouped={}
+        if context['catalogue_view']=='groups':
+            for row in context['brigades']:
+                group=grouped.setdefault(row.group_id,{'name':row.group.name if row.group_id else 'Без группы','rows':[],'active_employees':0})
+                group['rows'].append(row);group['active_employees']+=row.active_employee_count
+        context['position_groups']=list(grouped.values())
+
         return context
 
 
@@ -102,7 +118,7 @@ class BrigadeCreateView(CompanyRequiredMixin, CreateView):
 
 from django.views.generic import ListView, CreateView, UpdateView, DeleteView
 from django.urls import reverse_lazy
-from django.db.models import Count,Q
+from django.db.models import Count,Q,F
 from django.contrib import messages
 from core.mixins import CompanyRequiredMixin
 from .models import Brigade

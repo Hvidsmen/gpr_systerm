@@ -3,7 +3,7 @@ const {chromium}=require('playwright'),fs=require('fs'),assert=require('node:ass
  try{
  async function pageFor(cookie){const context=await browser.newContext({viewport:{width:1440,height:1000}});await context.addCookies([{name:'sessionid',value:cookie,url:c.base}]);await context.route('**/*',route=>{const url=route.request().url();if(url.startsWith(c.base))return route.continue();if(url.includes('bootstrap')&&url.includes('.css'))return route.fulfill({body:fs.readFileSync('/tmp/catalogue-bootstrap.css'),contentType:'text/css'});return route.abort();});const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));return page;}
  const admin=await pageFor(c.cookie),other=await pageFor(c.second_cookie),query=`?camp=${c.camp}&date=${c.day}`;
- await admin.goto(c.base+c.upload);await admin.locator('[name=date]').fill(c.day);await admin.locator('[name=first]').setInputFiles(c.first);await admin.locator('[name=second]').setInputFiles(c.second);await Promise.all([admin.waitForNavigation(),admin.getByRole('button',{name:'Проверить файлы'}).click()]);
+ await admin.goto(c.base+c.upload);await admin.locator('[name=date]').fill(c.day);await admin.locator('[name=files]').setInputFiles([c.first,c.second]);await Promise.all([admin.waitForNavigation(),admin.getByRole('button',{name:'Проверить файлы'}).click()]);
  assert((await admin.locator('main').textContent()).includes('Требуют исправления: 2'));
  await Promise.all([admin.waitForNavigation(),admin.getByRole('button',{name:'Загрузить корректные записи и сохранить ошибки'}).click()]);
  await admin.goto(c.base+c.errors);assert.equal(await admin.getByRole('link',{name:'Исправить',exact:true}).count(),2);

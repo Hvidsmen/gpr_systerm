@@ -115,8 +115,21 @@ def workspace(request):
     selected_employee=request.GET.get('employee','')
     if not selected_employee.isdigit() and request.GET.get('person','').isdigit():
         selected_employee=str(Person.objects.filter(company=request.user.company,pk=request.GET['person']).values_list('employee_id',flat=True).first() or '')
-    form=MovementForm(request.POST if request.method=='POST' else None,company=request.user.company,camp=camp,day=day,
-        initial={'kind':kind,'date':day,'camp':None if request.GET.get('choose_camp')=='1' and kind=='ARRIVAL' else camp.pk,'snapshot':housing.movement_snapshot(request.user),'employees':[selected_employee] if selected_employee.isdigit() else []})
+    from django.core import signing
+    from apps.resources.models import Employee
+    personal_token=request.POST.get('personal_scope','') if request.method=='POST' else ''
+    if personal_token:
+        try:
+            personal=signing.loads(personal_token,salt='personnel-single-movement',max_age=12*3600)
+            if personal.get('user')!=request.user.pk or personal.get('company')!=request.user.company_id:raise signing.BadSignature
+            selected_employee=str(personal['employee'])
+        except (signing.BadSignature,KeyError,TypeError):raise Http404('Персональная форма перемещения устарела.')
+    fixed_employee=int(selected_employee) if selected_employee.isdigit() else None
+    if fixed_employee:
+        get_object_or_404(Employee,company=request.user.company,pk=fixed_employee)
+        personal_token=signing.dumps({'user':request.user.pk,'company':request.user.company_id,'employee':fixed_employee},salt='personnel-single-movement')
+    form=MovementForm(request.POST if request.method=='POST' else None,company=request.user.company,camp=camp,day=day,fixed_employee=fixed_employee,
+        initial={'personal_scope':personal_token,'kind':kind,'date':day,'camp':None if request.GET.get('choose_camp')=='1' and kind=='ARRIVAL' else camp.pk,'snapshot':housing.movement_snapshot(request.user),'employees':[selected_employee] if selected_employee.isdigit() else []})
     if request.method=='POST' and form.is_valid():
         try:
             selected=form.cleaned_data['employees'];arrival=form.cleaned_data['kind']=='ARRIVAL'
@@ -134,7 +147,29 @@ def workspace(request):
             if missing:messages.warning(request,f'У {missing} сотрудников цикл вахта/отдых не задан. Укажите его через «Изменить график»; прогноз для них пока не пересчитан.')
             return redirect(camp_url(camp,form.cleaned_data['date'])+'#roster')
     values=selector.cleaned_data
-    rows,days,rotation_stats=rotation_rows(request.user.company,list(selected_camps),day,query=values.get('q',''),position=values.get('position'),state=values.get('state',''),include_unassigned=not values.get('construction_object') and not values.get('camps'))
+    rows,days,rotation_stats=rotation_rows(request.user.company,list(selected_camps),day,query=values.get('q',''),state=values.get('state',''),include_unassigned=not values.get('construction_object') and not values.get('camps'))
+    from .rotation import positions_in_rows,filter_position,rotation_stats as count_rotation
+    available=positions_in_rows(request.user.company,rows)
+    selector.fields['position'].queryset=available
+    if values.get('position') and not available.filter(pk=values['position'].pk).exists():
+        values['position']=None;selector.data=selector.data.copy();selector.data['position']=''
+        messages.info(request,'Фильтр должности сброшен: её нет в текущей выборке.')
+    rows=filter_position(rows,values.get('position'));rotation_stats=count_rotation(rows)
+    from .rotation import status_indicator
+    for row in rows:row['status_tone'],row['status_caption'],row['status_help']=status_indicator(row)
+    # The calendar is a forecast through the end of the following year.
+    calendar_start=day.replace(day=1);calendar_end=date(day.year+1,12,31)
+    calendar_dates=[calendar_start+timedelta(days=n) for n in range((calendar_end-calendar_start).days+1)]
+    calendar_months=[]
+    for current in calendar_dates:
+        if not calendar_months or calendar_months[-1]['start'].month!=current.month:
+            calendar_months.append({'start':current,'span':0})
+        calendar_months[-1]['span']+=1
+    from .rotation_calendar import stays_by_person
+    history=stays_by_person(request.user.company)
+    for row in rows:
+        values_calendar=calendar_for(row['slot'],start=calendar_start,end=calendar_end,stays=history.get(row['person'].pk,[]) if row.get('person') else []) if row.get('slot') else {}
+        row['calendar_codes']=[values_calendar.get(str(current),'') for current in calendar_dates]
     events=HousingEvent.objects.filter(company=request.user.company).filter(Q(from_camp__in=selected_camps)|Q(to_camp__in=selected_camps)).select_related('person','from_camp','to_camp','recorded_by')[:50]
     from .housing_plan import monthly_plan,position_headers
     plan_context=monthly_plan(request.user,camp,day,camps=selected_camps)
@@ -145,7 +180,7 @@ def workspace(request):
     plan_context.update(summary_context(request.user,camp,day,camps=selected_camps))
     return render(request,'personnel/housing.html',{**plan_context,'rotation_filter':selector,'rotation_stats':rotation_stats,'position_groups':position_groups,'selected_camps':selected_camps,
         'camp':camp,'camps':camps,'day':day,'rows':rows,'dates':days,'form':form,'query':values.get('q',''),
-        'events':events,'total':rotation_stats['people'],'objects':objects,
+        'calendar_dates':calendar_dates,'calendar_months':calendar_months,'calendar_start':calendar_start,'calendar_end':calendar_end,'events':events,'total':rotation_stats['people'],'objects':objects,
         'unknown_count':Person.objects.filter(company=request.user.company,stays__isnull=True).count(),
         'unlinked_count':Person.objects.filter(company=request.user.company,employee=None).count(),**window_context(request.user,day)})
 
@@ -290,9 +325,10 @@ def individual_calendar(request,pk):
     days=[month.replace(day=n) for n in range(1,last+1)]
     previous=(month-timedelta(days=1)).replace(day=1);following=(month+timedelta(days=32)).replace(day=1)
     from .rotation_calendar import description
+    from .rotation import employee_schedule_label
     return JsonResponse({'name':person.display_name,'number':person.display_employee_number,'month':month.strftime('%Y-%m'),
         'schedule_info':description(slot,min(max(timezone.localdate(),month),days[-1])),
-        'pattern':str(slot.pattern) if slot and slot.pattern_id else 'Индивидуальный график не назначен',
+        'pattern':employee_schedule_label(person.employee if person.employee_id else None),
         'offset':month.weekday(),'previous':previous.strftime('%Y-%m'),'next':following.strftime('%Y-%m'),
         'edit_url':reverse('personnel:person_schedule',args=[person.pk]),
         'days':[{'day':d.day,'date':str(d),'code':calendar.get(str(d),''),'work':is_work(calendar.get(str(d),'')),'today':d==timezone.localdate()} for d in days]})

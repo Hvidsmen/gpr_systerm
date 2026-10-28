@@ -47,7 +47,7 @@ class StaffingStatusSyncTests(TestCase):
         report=self.report([('Монтажник',False,False)]);report['position_source']['total']=2
         with self.assertRaises(ValidationError):apply_names(self.run_record(),report)
         self.assertFalse(Brigade.objects.filter(name='Монтажник').exists())
-        report=self.report([('Монтажник',False,False)]);report['position_records'][0]['excluded']='unknown'
+        report=self.report([('Монтажник',False,False)]);report['position_records'][0]['closed' if report.get('positions_snapshot_version')==2 else 'excluded']='unknown'
         with self.assertRaises(ValidationError):apply_names(self.run_record(),report)
         apply_names(self.run_record(),{'position_names':[{'name':'Вакансия'}]})
         row.refresh_from_db();self.assertTrue(row.staffing_current)
@@ -72,3 +72,32 @@ class StaffingStatusSyncTests(TestCase):
         from io import BytesIO
         sheet=load_workbook(BytesIO(response.content)).active
         self.assertIn('Штатное расписание ЗУП',list(next(sheet.values)))
+
+
+class StaffingScheduleSourceTests(StaffingStatusSyncTests):
+    def report(self,specs):
+        rows=[dict(ref=f'{i+1:032x}',name=name,marked='0x01' if deleted else '0x00',approved='0x01',closed='0x01' if closed else '0x00') for i,(name,closed,deleted) in enumerate(specs)]
+        return {'positions_snapshot_version':2,'position_records':rows,
+            'position_names':[{'name':r['name']} for r in rows if r['marked']=='0x00' and r['approved']=='0x01' and r['closed']=='0x00'],
+            'position_source':{'table':'dbo._Reference394','total':len(rows),'not_marked':sum(r['marked']=='0x00' for r in rows),
+                'excluded':sum(r['marked']=='0x00' and r['closed']=='0x01' for r in rows),
+                'eligible':sum(r['marked']=='0x00' and r['approved']=='0x01' and r['closed']=='0x00' for r in rows)}}
+
+    def test_staffing_labels_split_and_deduplicate_departments(self):
+        result=apply_names(self.run_record(),self.report([('Инженер /Участок 1/',False,False),('Инженер /Участок 2/',False,False),('Повар /Столовая/',True,False)]))
+        self.assertEqual(result['created'],1);self.assertTrue(Brigade.objects.get(name='Инженер').staffing_current)
+        self.assertFalse(Brigade.objects.filter(name__contains='/').exists());self.assertFalse(Brigade.objects.filter(name='Повар').exists())
+
+    def test_source_confirmation_requires_staffing_not_empty_job_dictionary(self):
+        from .one_c_positions import source_confirmed,supported
+        from .test_one_c_positions import staffing_diagnostic
+        run=self.run_record();run.status='DONE';run.report=staffing_diagnostic();run.save()
+        self.assertTrue(source_confirmed(self.connection))
+        self.assertFalse(supported({'schema':'dbo','table':'_Reference92','name':'Справочник.Должности','columns':[{'column':'_Description'},{'column':'_Marked'},{'column':'_Fld25711','name':'ИсключенаИзШтатногоРасписания'}]}))
+
+    def test_position_sql_reads_staffing_without_job_catalogue_join(self):
+        from pathlib import Path
+        script=(Path(__file__).resolve().parents[2]/'ops/diagnose-1c.ps1').read_text()
+        fragment=script.split('if($PositionsImport){\n            # Only staffing positions',1)[1].split('# All diagnostic statements',1)[0]
+        self.assertIn('FROM [dbo].[_Reference394]',fragment);self.assertNotIn('FROM [dbo].[_Reference92]',fragment)
+        self.assertIn("$_.approved -eq '0x01'",fragment);self.assertIn("$_.closed -eq '0x00'",fragment)

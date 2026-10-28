@@ -90,8 +90,12 @@ class GlobalMatrixTests(TestCase):
         expected = sum((row["total"].get("amount") or Decimal(0) for row in self.rows(response, "works")), Decimal(0))
         self.assertTrue(section["has_amount"])
         self.assertEqual(section["amount"], expected)
+        summary=section['calendar_totals'][0]
+        self.assertEqual(summary['unit'],'₽');self.assertEqual(summary['total']['plan'],expected)
+        self.assertEqual(len(summary['cells']),len(response.context['columns']))
+        self.assertEqual(summary['cells'][0]['plan'],sum((row['cells'][0].get('amount') or Decimal(0) for row in self.rows(response,'works')),Decimal(0)))
         self.assertEqual(sum(node["amount"] for node in section["groups"]), expected)
-        self.assertContains(response, "Итого:")
+        self.assertContains(response, "Стоимость · ₽")
 
     def test_draft_matrix_uses_current_counts_and_does_not_save_preview(self):
         original = deepcopy(self.version.snapshot)
@@ -281,7 +285,7 @@ class GlobalMatrixTests(TestCase):
         response=self.client.get(self.url,{'sections_set':'1','sections':['labor']})
         self.assertNotContains(response,'data-work-summary')
 
-    def test_collapsed_work_headers_show_volume_even_without_prices(self):
+    def test_collapsed_work_headers_show_only_money_even_without_prices(self):
         response=self.client.get(self.url,{'work_order':'work_section'})
         section=next(s for s in response.context['objects'][0]['sections'] if s['kind']=='works')
         for node in section['groups']:
@@ -293,4 +297,6 @@ class GlobalMatrixTests(TestCase):
                     expected[unit]=expected.get(unit,Decimal(0))+row['total']['plan']
             self.assertEqual({v['unit']:v['quantity'] for v in node['work_volumes']},expected)
             self.assertTrue(node['work_volumes'])
-        self.assertContains(response,'class="ms-3"')
+            self.assertEqual([row['unit'] for row in node['calendar_totals']],['₽'])
+            self.assertEqual(len(node['calendar_totals'][0]['cells']),len(response.context['columns']))
+        self.assertContains(response,'class="report-summary-value')

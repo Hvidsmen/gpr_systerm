@@ -97,11 +97,20 @@ class WorkForm(ScopeFormMixin,DailyFactForm):
         super().__init__(*args,**kwargs)
         self.fields['project_work'].queryset=self.fields['project_work'].queryset.filter(section__construction_object=self.obj)
         self.fields['work_item'].queryset=self.fields['work_item'].queryset.filter(project_work__section__construction_object=self.obj)
+        def work_label(work):
+            return ' → '.join(part for part in [work.complex_object.name if work.complex_object_id else work.section.name,work.name] if part)
+        self.fields['project_work'].queryset=self.fields['project_work'].queryset.select_related('complex_object','section')
+        self.fields['project_work'].label_from_instance=work_label
+        self.fields['work_item'].queryset=self.fields['work_item'].queryset.select_related('project_work__complex_object','project_work__section')
+        self.fields['work_item'].label_from_instance=lambda item:work_label(item.project_work)+' → '+item.name
         if not self.instance.pk:self.initial['actual_quantity']=None
     def clean(self):
         data=super().clean();work=data.get('project_work');item=data.get('work_item')
         if work:
             key=(work.pk,item.pk if item else None);plan=self.work_plan.get(key,Decimal(0))
+            if self.instance.pk:
+                original=(int(self.initial.get('project_work') or work.pk),int(self.initial['work_item']) if self.initial.get('work_item') else None)
+                if original in self.work_plan and original!=key:self.add_error('project_work','Работу из плана СМГ нельзя заменить другой работой.')
             self.instance.outside_smg=key not in self.work_plan;self.instance.smg_plan_quantity=plan
             if (self.instance.outside_smg or data.get('actual_quantity')!=plan) and not data.get('deviation_reason') and not self.actuated:
                 self.add_error('deviation_reason','Выберите причину отклонения или выполнения вне СМГ.')
@@ -287,6 +296,8 @@ class DispatcherDayView(CompanyRequiredMixin,View):
             return FactDayWorkspaceView.as_view()(request)
         try:return self.display(request,bound=True)
         except ValidationError as exc:raise PermissionDenied("; ".join(exc.messages))
+    from .entry_concurrency import sqlite_serialized
+    @sqlite_serialized
     def display(self,request,bound=False):
         selector=ObjectDateForm(request.POST if bound else request.GET or None,user=request.user,initial={'date':timezone.localdate()})
         allowed=sections_for(request.user)
@@ -493,13 +504,22 @@ class DispatcherDayView(CompanyRequiredMixin,View):
                             for row in [*fs.deleted_objects,*rows]:
                                 if isinstance(row,EquipmentActivity) and row.pk and hasattr(row,'transport_record'):
                                     raise ValidationError('Эта техника учтена в журнале ВЖГ. Измените её через «Техника на ВЖГ».')
-                            for row in fs.deleted_objects:row.delete()
+                            for row in fs.deleted_objects:
+                                if isinstance(row,DailyFact):
+                                    original=DailyFact.objects.get(pk=row.pk,company=obj.company)
+                                    if (original.project_work_id,original.work_item_id) in work_plan:raise ValidationError('Работу из плана СМГ удалить нельзя. Введите фактический объём, включая ноль, и причину отклонения.')
+                                    from .collaboration import detach_work
+                                    detach_work(original)
+                                row.delete()
                             for row in rows:
                                 if isinstance(row,(DailyFact,EmployeeActivity)) and not row.pk and not row.reported_by_id:row.reported_by=request.user
                                 if isinstance(row,EquipmentActivity) and not row.pk:
                                     baseline=equipment_baselines.get((row.equipment_id,row.shift))
                                     if baseline:
                                         row.standing_assignment=baseline['assignment'];row.source_state=baseline['state_record']
+                                if section=='works' and request.POST.get('collaborative')=='1' and isinstance(row,EmployeeActivity):
+                                    from .collaboration import preserve_relations
+                                    preserve_relations(row)
                                 row.full_clean();row.save()
                             from .production_entry import sync_links
                             for form in fs:
@@ -555,6 +575,9 @@ class DispatcherDayView(CompanyRequiredMixin,View):
                             if request.POST.get('action')=='confirm' and not own_entry:contributions.update(confirmed_at=timezone.now())
                             if contributions.filter(confirmed_at=None).exists():current.confirmed_at=None;current.confirmed_by=None
                         current.save()
+                        if section=='works' and request.POST.get('collaborative')=='1':
+                            from .collaboration import automatic_readiness
+                            automatic_readiness(obj,day,request.user)
                         if section=='works' and request.POST.get('claim_session') and request.POST.get('autosave')!='1':
                             from .work_claims import release_session
                             release_session(request.user,obj,day,request.POST.get('claim_session'))

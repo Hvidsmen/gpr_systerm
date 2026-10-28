@@ -1,5 +1,5 @@
 {% extends 'base.html' %}{% load static %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'planning/report_matrix.css' %}"><link rel="stylesheet" href="{% static 'planning/plan_actions.css' %}">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'planning/report_matrix.css' %}?v=20261029-calendar"><link rel="stylesheet" href="{% static 'planning/plan_actions.css' %}?v=20261029-stages">{% endblock %}
 {% block content %}
 {% include 'planning/_global_actions.html' %}
 {% if object.approval_round %}<div data-plan-approval-stages>
@@ -10,11 +10,11 @@
 </div>{% endif %}
 {% if daily_schedules %}<details class="mb-3" id="gpr-related-smg"><summary>Связанные СМГ · {{ daily_schedules|length }}</summary><div class="d-flex flex-wrap gap-2 mt-2">{% for s in daily_schedules %}<a class="btn btn-sm btn-outline-primary" href="{% url 'planning:daily_schedule_detail' s.pk %}">СМГ {{ s.month|date:'m.Y' }} · ред. {{ s.revision }} · {{ s.get_status_display }}</a>{% endfor %}</div></details>{% endif %}
 <div id="work-resources">
-{% include 'planning/_resource_panel.html' %}
+
 <h2 class="h5">{% if daily %}План по дням · {{ start|date:'m.Y' }}{% else %}План работ и ресурсов по месяцам{% endif %}</h2>
 {% include 'planning/global_matrix.html' %}
 </div>
-{% include 'planning/_resource_editor.html' %}
+
 {% include 'planning/_gpr_handoff.html' %}
 
 {% include 'planning/project_assignment.html' %}

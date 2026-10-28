@@ -1,7 +1,7 @@
 (() => {
  const source=document.getElementById('production-work-choices'),dialog=document.querySelector('[data-person-work-dialog]');if(!source||!dialog)return;
  const employeeLocations=JSON.parse(document.getElementById('production-employee-locations')?.textContent||'{}');
- const choices=JSON.parse(source.textContent),labels=new Map(choices.map(row=>[row.token,row.label]));let owner=null;
+ const choices=JSON.parse(source.textContent),labels=new Map(choices.map(row=>[row.token,row.label]));let owner=null,original=[];
  const token=(work,item)=>item?'item:'+work+':'+item:'work:'+work;
  function refresh(row){
   const employee=row.querySelector('[name$="-employee"]'),hint=row.querySelector('[data-employee-location]'),location=employeeLocations[employee?.value];if(hint){hint.textContent=location?location.text+(location.group===2?' · Факт доступен. После сохранения работы сведения попадут в сверку.':''):'';hint.classList.toggle('text-warning-emphasis',Boolean(location&&location.group===2));hint.classList.toggle('text-muted',!location||location.group!==2);}
@@ -17,7 +17,7 @@
   });return result;}
  document.addEventListener('click',event=>{
   const button=event.target.closest('[data-person-pick]');if(!button)return;owner=button.closest('[data-production-person]');
-  const selected=new Set([...owner.querySelectorAll('[name$="-work_targets"]')].map(input=>input.value)),allowed=available(),host=dialog.querySelector('[data-person-work-options]');host.replaceChildren();
+  const selected=new Set([...owner.querySelectorAll('[name$="-work_targets"]')].map(input=>input.value));original=[...selected];const allowed=available(),host=dialog.querySelector('[data-person-work-options]');host.replaceChildren();
   for(const choice of choices){if(!allowed.has(choice.token)&&!selected.has(choice.token))continue;
    const label=document.createElement('label');label.className='production-work-option';label.dataset.search=choice.label.toLocaleLowerCase('ru');
    const input=document.createElement('input');input.type='checkbox';input.value=choice.token;input.checked=selected.has(choice.token);label.append(input,document.createTextNode(choice.label));host.append(label);
@@ -27,12 +27,15 @@
  });
  dialog.querySelector('[data-person-work-search]').addEventListener('input',event=>{const terms=event.target.value.toLocaleLowerCase('ru').split(/\s+/).filter(Boolean);dialog.querySelectorAll('[data-search]').forEach(row=>{row.hidden=!terms.every(term=>row.dataset.search.includes(term));});});
  dialog.querySelector('[data-person-work-close]').addEventListener('click',()=>dialog.close());
- dialog.querySelector('[data-person-work-apply]').addEventListener('click',()=>{
-  const mode=owner.querySelector('[name$="-work_mode"]'),prefix=mode.name.slice(0,-'work_mode'.length);
-  owner.querySelectorAll('[name$="-work_targets"]').forEach(input=>input.remove());
-  dialog.querySelectorAll('input[type=checkbox]:checked').forEach(check=>{const input=document.createElement('input');input.type='hidden';input.name=prefix+'work_targets';input.value=check.value;owner.append(input);});
-  mode.value=dialog.querySelector('input[type=checkbox]:checked')?'works':'pending';owner.dataset.personDirty='1';
-  refresh(owner);dialog.close();owner.dispatchEvent(new Event('change',{bubbles:true}));
+ dialog.querySelector('[data-person-work-apply]').addEventListener('click',async()=>{
+  const selected=[...dialog.querySelectorAll('input[type=checkbox]:checked')].map(input=>input.value),saved=JSON.parse(document.getElementById('production-graph-saved').textContent);
+  const edges=[];for(const target of new Set([...original,...selected])){
+   if(original.includes(target)===selected.includes(target))continue;
+   const fact=saved.find(w=>token(w.project_work_id,w.work_item_id)===target);if(!fact)continue;
+   edges.push({action:selected.includes(target)?'add':'remove',fact:fact.id});
+  }
+  try{await owner.closest('form').productionChangeLinks(owner,{action:'delta',edges});refresh(owner);dialog.close();}
+  catch(error){dialog.querySelector('[data-person-work-options]').prepend(document.createTextNode(error.message+' '));}
  });
  document.addEventListener('change',event=>{const row=event.target.closest('[data-production-person]');if(row)refresh(row);});
  new MutationObserver(()=>document.querySelectorAll('[data-production-person]').forEach(refresh)).observe(document.querySelector('[data-rows="labor"]')||document.body,{childList:true});

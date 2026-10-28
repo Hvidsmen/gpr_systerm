@@ -1,5 +1,6 @@
 from core.excel_mapping import validate_excel_aliases
 from django.db import models
+from django.core.exceptions import ValidationError
 from django.utils.translation import gettext_lazy as _
 
 from core.models import BaseCompanyModel
@@ -216,6 +217,7 @@ class EquipmentType(BaseCompanyModel):
         return self.name
 
 class Equipment(BaseCompanyModel):
+    catalogue_group=models.ForeignKey('EquipmentCategory',on_delete=models.PROTECT,null=True,blank=True,related_name='machines',verbose_name='Группа техники машины')
     manufacture_year = models.PositiveSmallIntegerField('Год выпуска',null=True,blank=True)
     brand_model = models.CharField('Марка / модель',max_length=150,blank=True)
     inventory_number = models.CharField('Инвентарный номер',max_length=50,blank=True)
@@ -236,6 +238,10 @@ class Equipment(BaseCompanyModel):
         verbose_name_plural = _('техника')
         ordering = ['plate_number']
         constraints = [models.UniqueConstraint(fields=['company','plate_number'],condition=~models.Q(plate_number=''),name='unique_nonempty_equipment_plate'),models.UniqueConstraint(fields=['company','import_key'],condition=~models.Q(import_key=''),name='unique_equipment_import_key')]
+
+    def clean(self):
+        super().clean()
+        if self.catalogue_group_id and self.catalogue_group.company_id!=self.company_id:raise ValidationError({'catalogue_group':'Группа другой компании.'})
 
     def __str__(self):
         return f"{self.plate_number or self.inventory_number or self.vin or 'Без номера'} - {self.name}"

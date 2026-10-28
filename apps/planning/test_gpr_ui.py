@@ -92,3 +92,16 @@ class SingleGPRTests(TestCase):
         self.assertContains(response,'Текущий этап')
         self.assertContains(response,'Создать ГПР')
         self.assertNotContains(self.client.get(reverse('planning:workspace_list'),{'q':'no matching plan'}),self.version.workspace.name)
+
+    def test_admin_stage_handoff_remains_visible_outside_more_menu(self):
+        from apps.accounts.models import User,Role
+        self.handoff()
+        admin=User.objects.create_user(username='stage-action-admin',company=self.company,role=Role.objects.get(code='ADMIN'))
+        self.client.force_login(admin)
+        response=self.client.get(reverse('planning:workspace_edit',args=[self.version.pk]))
+        html=response.content.decode();header=html.split('aria-label="Действия ГПР"',1)[1].split('</nav>',1)[0]
+        self.assertIn('data-open-handoff',header);self.assertIn('data-gpr-ready-form',header)
+        self.assertContains(response,'plan-preparation-compact')
+        menu=html.split('id="gpr-more-actions"',1)[1].split('</div>',1)[0]
+        for text in ['Задания сметчика','Развернуть всё','Свернуть всё','Добавить списком','Календари']:
+            self.assertNotIn(text,menu)

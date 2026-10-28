@@ -2,7 +2,7 @@
 {% load access %}
 {% load i18n %}
 {% load static %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'resources/equipment_catalogue.css' %}?v=20261027-machines">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'resources/equipment_catalogue.css' %}?v=20261027-machines"><link rel="stylesheet" href="{% static 'resources/equipment_inline.css' %}">{% endblock %}
 
 {% block title %}
     {% if equipmenttype %}Редактировать технику{% else %}Добавить технику{% endif %}
@@ -75,14 +75,14 @@
                         {% endif %}
                     </div>
 
-                    <div class="mb-3"><label class="form-label" for="{{ form.parent.id_for_label }}">Техника для планирования</label>{{ form.parent }}<div class="form-text">{{ form.parent.help_text }}</div>{{ form.parent.errors }}</div>
+                    <div class="mb-3"><label class="form-label" for="{{ form.parent.id_for_label }}">Техника для планирования</label><div class="equipment-inline-field">{{ form.parent }}<button type="button" class="btn btn-outline-primary" data-equipment-inline="type" data-target="{{ form.parent.id_for_label }}" aria-label="Добавить технику для планирования">+</button></div><div class="form-text">{{ form.parent.help_text }}</div>{{ form.parent.errors }}</div>
                     <div class="mb-3">{{ form.brand_model.label_tag }}{{ form.brand_model }}<div class="form-text">Короткое обозначение модели, например «CAT 320». Госномер, инвентарный номер и VIN заполняются в карточке конкретной машины.</div>{{ form.brand_model.errors }}</div>
                     <div class="mb-3">
                         <label for="{{ form.category.id_for_label }}" class="form-label">
                             {{ form.category.label }}
                         </label>
                         <div class="input-group">{{ form.category }}
-                        {% if request.user|may:'resources:equipment_category_create' %}<button type="button" class="btn btn-outline-primary" data-catalog-open="category" aria-label="Добавить группу техники">+</button>{% endif %}</div>
+                        {% if request.user|may:'resources:equipment_category_create' %}<button type="button" class="btn btn-outline-primary" data-equipment-inline="group" data-target="{{ form.category.id_for_label }}" aria-label="Добавить группу техники">+</button>{% endif %}</div>
                         <div class="form-text">Группа нужна для разделов и итогов в ГПР и СМГ, например «Специализированная техника» или «Вспомогательная техника». Модель без своей группы использует группу выбранной техники для планирования. Кнопка «+» создаёт новую группу.</div>
                         {% if form.category.errors %}
                             <div class="text-danger small mt-1">{{ form.category.errors }}</div>
@@ -152,5 +152,7 @@
         </div>
     </div>
 </div>
-{% include 'resources/equipment_category_quick.html' %}
+{% include 'resources/_equipment_inline_catalog.html' %}
 {% endblock %}
+
+{% block extra_js %}<script src="{% static 'resources/equipment_inline.js' %}" defer></script>{% endblock %}

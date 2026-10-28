@@ -3,10 +3,15 @@ from . import views
 from .meeting_import import FactMeetingImportView
 from .dispatch import DispatcherDayView
 from .work_claims import claims
+from .collaboration import live, links
+from .report_export import download as production_report_download
 from .equipment_operations_views import assignments as equipment_assignments, history as equipment_history
 
 app_name = "production"
 urlpatterns = [
+    path('report.xlsx', production_report_download, name='production_report_download'),
+    path('collaboration/', live, name='production_live'),
+    path('links/', links, name='production_links'),
     path('work-claims/', claims, name='work_claims'),
     path(
         "meeting-import/", FactMeetingImportView.as_view(), name="fact_meeting_import"

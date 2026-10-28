@@ -67,14 +67,9 @@ class FleetImportTests(TestCase):
         self.assertEqual(Equipment.objects.count(),2)
         self.assertFalse(EquipmentCrewPosition.objects.exists())
 
-    def test_preview_confirmation_and_rollback(self):
+    def test_retired_fleet_import_cannot_create_positions_or_machines(self):
         response=self.client.post(self.url,{'file':SimpleUploadedFile('Техника.xlsm',workbook([ROW]).read())})
-        self.assertEqual(response.status_code,200)
-        self.assertFalse(Equipment.objects.exists())
-        with patch('apps.resources.fleet_import.AuditLog.objects.create',side_effect=ValidationError('Audit failed')):
-            response=self.client.post(self.url,{'action':'confirm','token':response.context['token']})
-        self.assertContains(response,'Audit failed')
-        self.assertFalse(Equipment.objects.exists());self.assertFalse(Brigade.objects.exists())
+        self.assertEqual(response.status_code,410);self.assertFalse(Equipment.objects.exists());self.assertFalse(Brigade.objects.exists())
 
     def test_duplicate_identifiers_are_blocked_and_other_company_stays_separate(self):
         with self.assertRaises(ValidationError):read_rows(workbook([ROW,ROW]))
@@ -122,6 +117,6 @@ class EquipmentPlanningLevelsTests(TestCase):
         self.assertNotIn(variant,form.fields['equipment_type'].queryset)
         schedule=DailySchedule.objects.create(company=self.company,construction_object=self.obj,month=date(2026,1,1),revision=1,created_by=self.planner)
         field=AddEntryForm(schedule=schedule).fields['equipment']
-        self.assertIn(variant,field.queryset)
-        self.assertNotIn(self.equipment,field.queryset)
+        self.assertNotIn(variant,field.queryset)
+        self.assertIn(self.equipment,field.queryset)
 

@@ -10,13 +10,6 @@
 <div class="text-danger small my-2" data-errors role="alert"></div>
 <div class="d-flex justify-content-end gap-2 mt-3"><button type="button" class="btn btn-outline-secondary" data-close>Отмена</button><button class="btn btn-primary">Создать</button></div>
 </form></dialog>
-<dialog id="catalog-brigade-macro" class="catalog-dialog" aria-labelledby="catalog-brigade-macro-title">
-<form method="post" action="{% url 'resources:brigade_macro_group_create' %}" data-catalog="brigade-macro">{% csrf_token %}
-<h2 id="catalog-brigade-macro-title" class="h5">Новая макрогруппа должностей</h2>
-<label class="form-label" for="new-brigade-macro-name">Название</label><input class="form-control" id="new-brigade-macro-name" name="name" maxlength="150" required>
-<div class="text-danger small my-2" data-errors role="alert"></div>
-<div class="d-flex justify-content-end gap-2 mt-3"><button type="button" class="btn btn-outline-secondary" data-close>Отмена</button><button class="btn btn-primary">Создать</button></div>
-</form></dialog>
 <script>
 (() => {
     document.querySelectorAll('[data-catalog-open]').forEach(button => button.addEventListener('click', () => document.getElementById('catalog-'+button.dataset.catalogOpen).showModal()));
@@ -32,7 +25,7 @@
             if (response.status === 403) throw new Error('Недостаточно прав или сессия истекла.');
             const result = await response.json();
             if (!response.ok) { errors.textContent = Object.values(result.errors || {}).flat().join(' '); return; }
-            const select = document.getElementById(form.dataset.catalog === 'brigade-group' ? 'id_group' : 'id_macro_group');
+            const select = document.getElementById('id_group');
             if (select) {
                 select.add(new Option(result.label, result.value)); select.value = result.value;
                 select.dispatchEvent(new Event('change', {bubbles:true}));

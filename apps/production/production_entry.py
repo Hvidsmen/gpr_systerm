@@ -33,11 +33,11 @@ def work_catalogue(obj):
     for work in works:
         label = f'{work.section.name} → ' + (f'{work.complex_object.name} → ' if work.complex_object_id else '') + work.name
         if work.kind == 'SIMPLE':
-            choices.append({'token':token(work.pk),'work':work.pk,'item':None,'label':label,'unit':work.unit})
+            choices.append({'token':token(work.pk),'work':work.pk,'item':None,'label':label,'unit':work.unit,'title':work.name,'kind':'SIMPLE','object':work.complex_object.name if work.complex_object_id else work.section.name,'package':''})
         else:
             for item in work.items.all():
                 if item.company_id == obj.company_id:
-                    choices.append({'token':token(work.pk,item.pk),'work':work.pk,'item':item.pk,'label':f'{label} → {item.name}','unit':item.unit})
+                    choices.append({'token':token(work.pk,item.pk),'work':work.pk,'item':item.pk,'label':f'{label} → {item.name}','unit':item.unit,'title':item.name,'kind':'COMPOSITE','object':work.complex_object.name if work.complex_object_id else work.section.name,'package':work.name})
     return choices
 
 
@@ -109,6 +109,12 @@ class ProductionPersonForm(PersonForm):
         if self.instance.pk:
             self.initial['work_targets']=[token(w,i) for w,i in targets(self.instance)]
             self.initial['work_mode']=('general' if self.instance.general else 'works') if self.instance.assignment_reviewed else 'pending'
+        self.independent_links=self.is_bound and self.data.get('collaborative')=='1'
+        if self.independent_links:
+            self.data=self.data.copy()
+            selected=targets(self.instance) if self.instance.pk else []
+            self.data.setlist(self.add_prefix('work_targets'),[token(w,i) for w,i in selected])
+            self.data[self.add_prefix('work_mode')]=('general' if self.instance.general else 'works' if self.instance.assignment_reviewed and selected else 'pending') if self.instance.pk else 'pending'
         for name in ['work','work_item','general','equipment']:
             self.fields[name].widget=forms.HiddenInput()
         self.fields['activity'].label='Комментарий о работе'
@@ -145,6 +151,7 @@ class ProductionPersonForm(PersonForm):
 
 def sync_links(form):
     row=form.instance
+    if getattr(form,'independent_links',False):return
     if not isinstance(row,EmployeeActivity) or not row.pk:return
     if hasattr(form,'resolved_targets'):
         selected=form.resolved_targets
@@ -165,12 +172,17 @@ def sync_links(form):
 
 def report_data(obj,day):
     works=list(DailyFact.objects.filter(company=obj.company,project_work__section__construction_object=obj,date=day)
-        .values('project_work_id','work_item_id','actual_quantity','reported_by__username'))
+        .values('id','project_work_id','work_item_id','actual_quantity','deviation_reason_id','comment','reported_by__username'))
+    authors={row.pk:(row.reported_by.get_full_name() or row.reported_by.username) if row.reported_by_id else 'Общий ввод' for row in DailyFact.objects.filter(company=obj.company,project_work__section__construction_object=obj,date=day).select_related('reported_by')}
+    for work in works:work['owner']=authors[work['id']]
     people=[]
     for row in EmployeeActivity.objects.filter(company=obj.company,construction_object=obj,date=day).select_related(
-            'employee__position__planning_mapping__brigade__group','position','planning_position','reported_by').prefetch_related('work_links'):
-        people.append({'id':row.pk,'employee':row.employee_id,'name':row.employee.display_name,'position':str(row.planning_position or row.position or ''),'staff_position':str(row.position or ''),
+            'employee__position__planning_mapping__brigade__group','position__planning_mapping__brigade__group','planning_position__planning_mapping__brigade__group','reported_by').prefetch_related('work_links'):
+        role=row.planning_position or row.position
+        mapping=getattr(role,'planning_mapping',None) if role else None
+        group=mapping.brigade.group if mapping and mapping.brigade.group_id else None
+        people.append({'group':group.name if group else 'Без группы плана','id':row.pk,'employee':row.employee_id,'name':row.employee.display_name,'position':str(row.planning_position or row.position or ''),'staff_position':str(row.position or ''),
             'role':row.planning_position_id or row.position_id,'shift':row.shift,'general':row.general,'reviewed':row.assignment_reviewed,'constant':is_general_employee(row.employee),
-            'targets':[token(w,i) for w,i in targets(row)],
+            'links_revision':row.links_revision,'direction':row.entry_direction,'targets':[token(w,i) for w,i in targets(row)],
             'owner':(row.reported_by.get_full_name() or row.reported_by.username) if row.reported_by_id else 'Общий ввод'})
     return {'works':works,'people':people}

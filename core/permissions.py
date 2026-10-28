@@ -100,6 +100,8 @@ def scope_queryset(queryset, user, include_archived=False):
 def check_route(user, match, method):
     namespace, name = match.namespace, match.url_name
     role = role_code(user)
+    if namespace=='personnel' and name in {'lodging_import','lodging_import_review'}:
+        require_roles(user,{'ADMIN'});return
     if namespace=='personnel' and name.startswith('lodging'):
         from apps.personnel.lodging import OPERATORS,READERS
         from apps.personnel.lodging_sync import HR_OPERATORS
@@ -172,6 +174,12 @@ def check_route(user, match, method):
         require_roles(user, READ_ROLES)
         return
     if namespace == 'production':
+        if name=='production_report_download':
+            require_roles(user,READ_ROLES|{'DISPATCHER','ALL_FACT_DISPATCHER'})
+            return
+        if name in {'production_live','production_links'}:
+            require_roles(user,{'ADMIN','DISPATCHER','ALL_FACT_DISPATCHER'})
+            return
         if name in {'fact_day_workspace','work_claims'}:
             require_roles(user, ROLES if method in {'GET','HEAD'} else FACT_ROLES)
             return
