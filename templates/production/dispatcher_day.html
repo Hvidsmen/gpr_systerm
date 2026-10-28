@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% load static %}
 {% block title %}Факт за день{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'production/production_entry.css' %}?v=20261028-roles">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'production/production_entry.css' %}?v=20261029-person-line">{% endblock %}
 {% block content %}
 <h1>Факт за день</h1>
 <form method="get" class="card card-body mb-3">{% include 'forms/fields.html' with form=selector %}<input type="hidden" name="section" value="{{ section }}"><button class="btn btn-primary">Открыть день</button></form>
@@ -36,4 +36,4 @@
 {% endblock %}
 {% block extra_js %}<script src="{% static 'production/production_positions.js' %}?v=20261028-inline-people" defer></script><script src="{% static 'production/deviation_quick_add.js' %}?v=20261028-1" defer></script><script>
 document.querySelectorAll('[data-add]').forEach(button=>button.addEventListener('click',()=>{const prefix=button.dataset.add;const total=document.getElementById('id_'+prefix+'-TOTAL_FORMS');const n=Number(total.value);if(n>=2000)return;const html=document.getElementById('empty-'+prefix).innerHTML.replaceAll('__prefix__',n);const target=document.querySelector('[data-rows="'+prefix+'"]');target.insertAdjacentHTML('beforeend',html);if(prefix==='equipment')target.lastElementChild.setAttribute('data-machine-fact','');if(prefix==='works')target.lastElementChild.setAttribute('data-work-fact-row','');total.value=n+1;target.dispatchEvent(new Event('change',{bubbles:true}));}));
-</script><script src="{% static 'production/equipment_day.js' %}"></script><script src="{% static 'production/production_entry.js' %}?v=20261028-pool"></script><script src="{% static 'production/work_entry.js' %}?v=20261028"></script>{% if section == 'works' %}<script src="{% static 'planning/resource_graph_layout.js' %}"></script><script src="{% static 'production/employee_graph.js' %}?v=20261028-positions"></script><script src="{% static 'production/production_report.js' %}?v=20261028-pool"></script>{% endif %}{% if section == 'works' and editable %}<script src="{% static 'production/work_claims.js' %}?v=20261028-add-person"></script>{% endif %}{% endblock %}
+</script><script src="{% static 'production/equipment_day.js' %}"></script><script src="{% static 'production/production_entry.js' %}?v=20261028-pool"></script><script src="{% static 'production/work_entry.js' %}?v=20261028"></script>{% if section == 'works' %}<script src="{% static 'planning/resource_graph_layout.js' %}"></script><script src="{% static 'production/employee_graph.js' %}?v=20261028-positions"></script><script src="{% static 'production/production_report.js' %}?v=20261028-pool"></script>{% endif %}{% if section == 'works' and editable %}<script src="{% static 'production/work_claims.js' %}?v=20261029-person-line"></script>{% endif %}{% endblock %}

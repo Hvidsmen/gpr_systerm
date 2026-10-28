@@ -10,6 +10,9 @@ const {chromium}=require('playwright'),fs=require('fs'),assert=require('node:ass
   await role().getByRole('button',{name:'Назначить сотрудника'}).click();
   const person=()=>role().locator('[data-production-person]').first();
   assert.equal(await person().locator('[name$="-planning_position"]').inputValue(),String(c.role));
+  const compact=async()=>assert(await person().evaluate(el=>{const line=el.querySelector('.production-person-line'),nodes=[...line.children].map(node=>node.getBoundingClientRect()),centers=nodes.map(rect=>rect.top+rect.height/2);return el.getBoundingClientRect().height<65&&Math.max(...centers)-Math.min(...centers)<3;}));
+  await compact();
+
   await person().locator('[name$="-employee"]').selectOption(String(c.employee));
   assert.equal(await role().locator('[data-position-assigned]').textContent(),'1');
   assert.equal(await page.locator('[data-position-total=assigned]').textContent(),'1');
@@ -20,6 +23,7 @@ const {chromium}=require('playwright'),fs=require('fs'),assert=require('node:ass
   assert.equal(await role().locator('[data-position-assigned]').textContent(),'1');
   assert.equal(await role().locator('[data-position-remaining]').textContent(),'1');
   assert((await page.locator('body').textContent()).includes('Черновик факта сохранён'));
+  await compact();await person().evaluate(el=>el.scrollIntoView({block:'center'}));await person().screenshot({path:'/tmp/production-person-single-line.png'});
   await page.screenshot({path:'/tmp/production-position-inline-wide.png',fullPage:true});
   await page.locator('[data-step="3"]').click();
   const card=page.locator('.graph-person').filter({hasText:c.role_name});
@@ -28,9 +32,14 @@ const {chromium}=require('playwright'),fs=require('fs'),assert=require('node:ass
   await page.screenshot({path:'/tmp/production-graph-person-position.png',fullPage:true});
   await page.locator('[data-step="2"]').click();await person().locator('[data-take]').click();
   await person().locator('[data-label]').filter({hasText:'Вы заполняете'}).waitFor();
+  await person().locator('.production-person-details > summary').click();
+  assert(await person().locator('[name$="-planning_position"]').isVisible());
+  await person().locator('[name$="-activity"]').fill('Комментарий в раскрытых сведениях');
   await person().locator('[name$="-DELETE"]').check();assert.equal(await page.locator('[data-position-total=assigned]').textContent(),'0');
   await person().locator('[name$="-DELETE"]').uncheck();assert.equal(await page.locator('[data-position-total=assigned]').textContent(),'1');
+  await person().locator('.production-person-details > summary').click();await compact();
   await page.setViewportSize({width:390,height:844});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2));
+  assert(await person().locator('.production-person-main-scroll').evaluate(el=>el.scrollWidth>el.clientWidth));
   await page.screenshot({path:'/tmp/production-position-inline-mobile.png',fullPage:true});
   assert.deepEqual(errors,[]);console.log('PASS: employee form under selected role, one-click audited draft save, role totals, graph positions and mobile layout');
  }finally{await browser.close();}
