@@ -1,6 +1,6 @@
 {% extends 'base.html' %}{% load static %}
 {% block title %}{{ title|default:'План/Факт' }}{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'planning/report_matrix.css' %}?v=20261029-calendar">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'planning/report_matrix.css' %}?v=20261030-review-gutter">{% endblock %}
 {% block content %}
 <h1>{{ title|default:"План / факт" }}{% if daily and not overview %} · {{ start|date:'m.Y' }} по дням{% endif %}</h1>
 <p class="text-muted">{% if overview %}Последние 7 дней, включая сегодня.{% else %}Месяцы → дни.{% endif %} Работы и расход — объём за период; должности и техника — среднее за заполненные дни; остаток ГСМ — последнее значение периода.</p>
@@ -42,6 +42,6 @@
 </div>{% if not overview %}</div></div></section>{% endif %}
 {% if not journal_kind %}<p class="small text-muted">Отклонение = факт − план. Прочерк означает отсутствие данных, введённый ноль отображается как 0. Для среднего факта показано количество заполненных дней. Цвет отклонений нейтральный: превышение ресурса не считается улучшением.</p>{% endif %}
 {% endif %}
-<script src="{% static 'planning/report_matrix.js' %}?v=20261029-calendar" defer></script>
+<script src="{% static 'planning/report_matrix.js' %}?v=20261030-review-gutter" defer></script>
 {% if overview %}<script src="{% static 'planning/overview_tables.js' %}" defer></script>{% endif %}
 {% endblock %}

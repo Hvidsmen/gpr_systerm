@@ -260,3 +260,6 @@ urlpatterns += [
     path('object-plans/import/', schedule_value_import, {'metric':'plan'}, name='object_plan_import'),
     path('object-plans/<int:pk>/import/', schedule_value_import, {'metric':'plan'}, name='object_plan_import_into'),
 ]
+
+from .smg_variant_views import SMGRename
+urlpatterns += [path('daily-schedule/<int:pk>/rename/',SMGRename.as_view(),name='smg_rename')]

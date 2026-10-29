@@ -62,10 +62,11 @@ def total(entries,kind):
             'before':before,'after':after,'delta':after-before,'cells':cells,'field':''}
 
 
-def attach_resource_totals(sections):
+def attach_resource_totals(sections,company=None):
     for section in sections:
         if section['kind'] not in {'labor','equipment'}:continue
-        order=labor_group_order if section['kind']=='labor' else equipment_group_order
+        from apps.resources.group_order import order_key
+        order=order_key(company,section['kind']) if company else labor_group_order if section['kind']=='labor' else equipment_group_order
         section['groups'].sort(key=lambda group:order(group['label']))
         entries=[]
         for group in section['groups']:

@@ -1,4 +1,6 @@
-import json, os, shutil, subprocess
+import json, os, shutil, subprocess,base64
+from io import BytesIO
+from openpyxl import Workbook
 from pathlib import Path
 from unittest import skipUnless
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
@@ -12,7 +14,8 @@ class CatalogueAliasBrowserTests(StaticLiveServerTestCase):
     def test_association_edit_filters_and_searchable_resource_choices(self):
         fixtures.CatalogueAssociationSearchTests.setUpTestData.__func__(type(self))
         self.client.force_login(self.user)
-        config={'base':self.live_server_url,'cookie':self.client.cookies['sessionid'].value,
+        book=Workbook();book.active.append(['ID','Название','Ассоциация']);book.active.append([self.root.pk,self.root.name,'Импортированное название']);stream=BytesIO();book.save(stream);book.close()
+        config={'xlsx':base64.b64encode(stream.getvalue()).decode(),'base':self.live_server_url,'cookie':self.client.cookies['sessionid'].value,
             'chromium':shutil.which('chromium'),'root':self.root.pk,'job':self.job.pk,
             'position':self.job.position_mapping.position_id,
             'equipment':reverse('resources:equipment_type_list'),'jobs':reverse('resources:brigade_list'),

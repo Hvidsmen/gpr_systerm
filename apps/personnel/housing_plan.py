@@ -83,7 +83,7 @@ def monthly_plan(user,camp,day,*,camps=None):
     for group in sorted(groups.values(),key=lambda g:(g['object'].name.casefold(),g['kind'])):
         keys={pk for bucket in group['months'] for pk in bucket['values']}
         rows=[]
-        for pk in sorted(keys,key=lambda pk:(labor_group_order(brigades[pk].group.name if pk in brigades and brigades[pk].group_id else 'Без группы'),labels.get(pk,'Должность').casefold())):
+        for pk in sorted(keys,key=lambda pk:(labor_group_order(brigades[pk].group if pk in brigades and brigades[pk].group_id else None),labels.get(pk,'Должность').casefold())):
             values=[sum(bucket['values'][pk].values(),Decimal(0))/len(bucket['days']) if bucket['days'] else None for bucket in group['months']]
             rows.append({'id':pk,'name':labels.get(pk,'Должность'),'actual':len(actual[pk]),'values':values})
         output.append({'object':group['object'],'kind':group['kind'],'rows':rows,'used_for':sorted(group['used_for']),'used_for_ids':sorted(group['used_for_ids']),
@@ -159,7 +159,8 @@ def position_headers(company,rows,plan_context,*,query='',position=None,state=''
             plan['on_shift']=rotation_stats(scoped)['on_shift']
             plan['shortage']=max(plan['peak']-plan['on_shift'],Decimal(0)) if plan['peak'] is not None else None
         output.append(group)
-    from apps.resources.group_order import labor_group_order
+    from apps.resources.group_order import order_key
+    labor_group_order=order_key(company)
     catalogue={b.pk:b for b in Brigade.objects.filter(company=company).select_related('group')}
     names={normalized(b.name):b for b in catalogue.values()}
     from apps.resources.group_order import position_group
@@ -172,7 +173,7 @@ def position_headers(company,rows,plan_context,*,query='',position=None,state=''
     return output
 
 
-def roster_sections(position_groups,grouped=False):
+def roster_sections(position_groups,grouped=False,company=None):
     """Regroup the same filtered positions without duplicating people or plans."""
     from .rotation import rotation_stats
     from apps.resources.group_order import labor_group_order
@@ -181,7 +182,9 @@ def roster_sections(position_groups,grouped=False):
     for group in position_groups:
         label=group['labor_group']
         buckets.setdefault(label,{'name':label,'positions':[]})['positions'].append(group)
-    sections=sorted(buckets.values(),key=lambda section:labor_group_order(section['name']))
+    from apps.resources.group_order import order_key
+    sort=order_key(company) if company else labor_group_order
+    sections=sorted(buckets.values(),key=lambda section:sort(section['name']))
     for section in sections:
         section.update(rotation_stats([row for group in section['positions'] for row in group['rows']]))
     return sections

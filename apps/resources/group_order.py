@@ -1,20 +1,41 @@
-"""One presentation order for people and equipment throughout the portal."""
+"""Company-owned presentation order, shared by catalogues, plans, fact and people."""
+NONE=2147483647
 
 
 def normalized(label):return ''.join(c for c in str(label or '').casefold() if c.isalnum())
 
 
-def labor_group_order(label):
+def default_priority(label,kind='labor'):
     name=normalized(label)
-    priorities={'итрсостав':0,'итр':0,'водительспецтехники':1,'водителиспецтехники':1,
-        'водителиспециальнойтехники':1,'водителивспомогательнойтехники':2,'водительвспомогательнойтехники':2,
-        'основнойрабочийсостав':3,'вспомогательныйперсонал':4}
-    return (priorities.get(name,6 if name in {'','безгруппы','безгруппыплана'} else 5),str(label or '').casefold())
+    if kind=='equipment':
+        return {'специализированнаятехника':1,'вспомогательнаятехника':2}.get(name,1000)
+    return {'итрсостав':1,'итр':1,'основнойитр':2,'основнойперсонал':3,
+        'водительскийсостав':4,'основнойрабочийсостав':5,'вспомогательныйитр':6,
+        'водительспецтехники':2,'водителиспецтехники':2,'водителиспециальнойтехники':2,
+        'водителивспомогательнойтехники':3,'водительвспомогательнойтехники':3,
+        'вспомогательныйперсонал':6}.get(name,1000)
 
 
-def equipment_group_order(label):
+def key(group,kind='labor'):
+    label=getattr(group,'name',group) or ''
     name=normalized(label)
-    return ({'специализированнаятехника':0,'вспомогательнаятехника':1}.get(name,3 if name in {'','безкатегории','безгруппы'} else 2),str(label or '').casefold())
+    if name in {'','безгруппы','безгруппыплана','безкатегории'}:return NONE,str(label).casefold()
+    return getattr(group,'sort_order',default_priority(label,kind)),str(label).casefold()
+
+
+def labor_group_order(group):return key(group)
+def equipment_group_order(group):return key(group,'equipment')
+
+
+def order_key(company,kind='labor'):
+    """Capture configuration once, then sort strings without queries per key."""
+    from .models import BrigadeGroup,EquipmentCategory
+    model=EquipmentCategory if kind=='equipment' else BrigadeGroup
+    ranks={normalized(name):priority for name,priority in model.objects.filter(company=company).values_list('name','sort_order')}
+    def sort(label):
+        rank,name=key(label,kind)
+        return (NONE if rank==NONE else ranks.get(normalized(label),rank)),name
+    return sort
 
 
 def position_group(position):
@@ -24,7 +45,10 @@ def position_group(position):
 
 
 def position_order(position,label=''):
-    return labor_group_order(position_group(position)),str(label or getattr(position,'name','')).casefold()
+    mapping=getattr(position,'planning_mapping',None) if position else None
+    brigade=getattr(mapping,'brigade',None)
+    group=brigade.group if brigade and brigade.group_id else None
+    return labor_group_order(group),str(label or getattr(position,'name','')).casefold()
 
 
 def employee_order(employee):
@@ -32,18 +56,12 @@ def employee_order(employee):
 
 
 def ordered(queryset,*,kind='labor',group_path=None,within=('name','pk')):
-    """Sort before pagination, resolving real company group names only once."""
-    from django.db.models import Case,When,Value,IntegerField
-    order=equipment_group_order if kind=='equipment' else labor_group_order
-    id_field=group_path+'_id' if group_path else 'pk'
-    name_field=group_path+'__name' if group_path else 'name'
-    names=list(queryset.order_by().values_list(id_field,name_field).distinct())
-    names.sort(key=lambda row:(order(row[1]),row[0] or 0))
-    expression=Case(*[When(**{id_field:pk},then=Value(index)) for index,(pk,_) in enumerate(names) if pk is not None],default=Value(len(names)),output_field=IntegerField())
-    return queryset.order_by(expression,*within)
+    from django.db.models import F
+    if group_path:
+        return queryset.order_by(F(group_path+'__sort_order').asc(nulls_last=True),F(group_path+'__name').asc(nulls_last=True),*within)
+    return queryset.order_by('sort_order',*within)
 
 
 def machine_order(machine):
     root=machine.type.parent or machine.type
-    category=root.category
-    return equipment_group_order(category.name if category else 'Без группы'),root.name.casefold(),machine.type.name.casefold(),machine.plate_number,machine.pk
+    return equipment_group_order(root.category),root.name.casefold(),machine.type.name.casefold(),machine.plate_number,machine.pk

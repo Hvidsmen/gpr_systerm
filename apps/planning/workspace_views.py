@@ -288,12 +288,12 @@ class WorkspaceEdit(View):
         }
         works = WorkAllocationSet(
             prefix="works",
-            queryset=version.work_allocations.filter(month=selected),
+            queryset=version.work_allocations.filter(month=selected).select_related('work__section','work__complex_object','load_profile').prefetch_related('work__items'),
             **kwargs,
         )
         resources = ResourceAllocationSet(
             prefix="resources",
-            queryset=version.resource_allocations.filter(month=selected),
+            queryset=version.resource_allocations.filter(month=selected).select_related('brigade__group','equipment_type__category','equipment_type__parent__category'),
             **kwargs,
         )
         from core.permissions import role_code

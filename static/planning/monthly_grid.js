@@ -5,7 +5,16 @@
  const rowVisible=row=>{if(row.hidden||row.closest('tbody').hidden)return false;for(let node=row.parentElement;node&&node!==root;node=node.parentElement)if(node.hidden||node.tagName==='DETAILS'&&!node.open)return false;return true;};
  const dirty=()=>inputs.filter(input=>input.value!==input.dataset.initial),numeric=value=>Number(String(value).replace(/\s/g,'').replace(',','.'));
  function say(text,error=false){status.textContent=text;status.classList.toggle('text-danger',error);const header=document.querySelector('[data-plan-save-status]');if(header){header.textContent=text;header.dataset.state=error?'error':'saved';}}
- function changed(input){input.toggleAttribute('data-dirty',input.value!==input.dataset.initial);if(dirty().length)window.gprSaveUI?.markPlanDirty();else form.dataset.dirty='false';status.textContent=dirty().length?'Есть изменения по месяцам':'Сохранено';recalculate(input.closest('[data-grid-entry]'));}
+ function changed(input){input.toggleAttribute('data-dirty',input.value!==input.dataset.initial);if(dirty().length)window.gprSaveUI?.markPlanDirty();else form.dataset.dirty='false';status.textContent=dirty().length?'Есть изменения по месяцам':'Сохранено';recalculate(input.closest('[data-grid-entry]'));resourceTotals();}
+ function resourceTotals(){
+  root.querySelectorAll('[data-grid-resource-group]').forEach(group=>{
+   const rows=[...group.querySelectorAll('[data-grid-entry]')].filter(entry=>!entry.hidden);
+   group.querySelectorAll('[data-grid-total-month]').forEach(target=>{
+    let total=0;for(const entry of rows){const cell=entry.querySelector('[data-field="count"] [data-month="'+target.dataset.gridTotalMonth+'"]');if(cell){const value=numeric(cell.querySelector('input')?.value??cell.dataset.value);if(Number.isFinite(value))total+=value;}}
+    target.dataset.value=String(total);target.querySelector('[data-grid-total-number]').textContent=new Intl.NumberFormat('ru-RU').format(Math.max(0,Math.ceil(total-Number.EPSILON*Math.max(1,Math.abs(total))*8)));
+   });
+  });
+ }
  function recalculate(entry){const norms=JSON.parse(entry.dataset.norms||'{}');if(!Object.keys(norms).length)return;const total=entry.querySelector('[data-field=ready]');if(!total)return;
   total.querySelectorAll('[data-column]').forEach(cell=>{const index=cell.dataset.column;let minimum=Infinity;
    for(const [id,norm] of Object.entries(norms)){const source=entry.querySelector(`[data-field="item:${id}"] [data-column="${index}"]`),value=source?numeric(source.querySelector('input')?.value??source.dataset.value):0;minimum=Math.min(minimum,(Number.isFinite(value)?value:0)/Number(norm));}
@@ -37,6 +46,7 @@
   if(active)root.querySelectorAll('[data-grid-fold]').forEach(node=>{if(!node.hidden)node.open=true;});
   root.querySelectorAll('[data-grid-empty-section]').forEach(section=>section.hidden=Boolean(q)||Boolean(kind&&kind!==section.dataset.gridEmptySection));
   root.querySelector('[data-grid-no-matches]').hidden=!entries.length||entries.some(entry=>!entry.hidden);
+  resourceTotals();
  }
  root.querySelector('[data-grid-search]').addEventListener('input',filter);root.querySelector('[data-grid-filter]').addEventListener('change',filter);
  root.querySelector('[data-grid-copy]').addEventListener('click',async()=>{const rows=[['Работа / ресурс','Показатель',...[...root.querySelectorAll('[data-grid-month]')].map(cell=>cell.innerText)]];
@@ -45,7 +55,7 @@
  });
  function canLeave(){if(dirty().length){say('Сначала сохраните изменения месяцев.',true);return false;}return true;}window.planWorkbench={canLeave,filter};
  const resource=root.querySelector('[data-plan-add-dialog]');
- function resourceKind(value){const kind=resource.querySelector('[name=kind]');kind.value=value;const fields={labor:['brigade','rate'],equipment:['equipment','add_crew','rate'],fuel:['fuel','rate']}[value]||[];resource.querySelectorAll('[data-add-field]').forEach(field=>field.hidden=!fields.includes(field.dataset.addField));resource.querySelector('#plan-add-title').textContent='Добавить '+{labor:'должность',equipment:'технику',fuel:'ГСМ'}[value];}
+ function resourceKind(value){const kind=resource.querySelector('[name=kind]');kind.value=value;const fields={labor:['brigade','rate'],equipment:['equipment','shifts_per_day','add_crew','rate'],fuel:['fuel','rate']}[value]||[];resource.querySelectorAll('[data-add-field]').forEach(field=>field.hidden=!fields.includes(field.dataset.addField));resource.querySelector('#plan-add-title').textContent='Добавить '+{labor:'должность',equipment:'технику',fuel:'ГСМ'}[value];}
  root.querySelectorAll('[data-plan-add-resource]').forEach(button=>button.addEventListener('click',()=>{if(canLeave()){resourceKind(button.dataset.planAddResource);resource.showModal();}}));
  root.querySelectorAll('[data-plan-close-dialog]').forEach(button=>button.addEventListener('click',()=>button.closest('dialog').close()));
  root.querySelector('[data-plan-excel-help]').addEventListener('click',()=>root.querySelector('[data-plan-excel-dialog]').showModal());
@@ -58,7 +68,7 @@
  const top=root.querySelector('[data-grid-top-scroll]'),view=root.querySelector('[data-grid-header-scroll]'),views=[view,...root.querySelectorAll('[data-grid-scroll]')],action=document.querySelector('[data-plan-action-header]');let left=0,queued=false;
  function sync(source){left=source.scrollLeft;for(const target of [top,...views])if(target!==source&&target.getClientRects().length&&Math.abs(target.scrollLeft-left)>.5)target.scrollLeft=left;}
  [top,...views].forEach(el=>el.addEventListener('scroll',()=>sync(el),{passive:true}));
- function size(){queued=false;root.style.setProperty('--month-grid-viewport',view.clientWidth+'px');top.hidden=view.scrollWidth<=view.clientWidth+1;top.firstElementChild.style.width=view.scrollWidth+'px';let offset=60;if(action)offset=(parseFloat(getComputedStyle(action).top)||0)+action.getBoundingClientRect().height+6;root.style.setProperty('--plan-workbench-add-top',offset+'px');const add=root.querySelector('.plan-workbench-add');if(add)offset+=add.getBoundingClientRect().height+6;root.style.setProperty('--month-grid-header-top',offset+'px');for(const viewport of views.slice(1))viewport.querySelectorAll('.month-grid-table,[data-grid-summary]').forEach(table=>{if(!table.getClientRects().length)return;const prior=parseFloat(table.style.getPropertyValue('--grid-inset'))||0,inset=Math.max(0,table.getBoundingClientRect().left-viewport.getBoundingClientRect().left+viewport.scrollLeft+prior);table.style.setProperty('--grid-inset',inset+'px');});for(const target of [top,...views])if(target.getClientRects().length&&Math.abs(target.scrollLeft-left)>.5)target.scrollLeft=left;}
+ function size(){queued=false;root.style.setProperty('--month-grid-viewport',view.clientWidth+'px');const columns=view.querySelectorAll('thead th');if(columns.length>2){root.style.setProperty('--month-grid-label-width',(columns[0].getBoundingClientRect().width+columns[1].getBoundingClientRect().width)+'px');root.style.setProperty('--month-grid-cell-width',columns[2].getBoundingClientRect().width+'px');}top.hidden=view.scrollWidth<=view.clientWidth+1;top.firstElementChild.style.width=view.scrollWidth+'px';let offset=60;if(action)offset=(parseFloat(getComputedStyle(action).top)||0)+action.getBoundingClientRect().height+6;root.style.setProperty('--plan-workbench-add-top',offset+'px');const add=root.querySelector('.plan-workbench-add');if(add)offset+=add.getBoundingClientRect().height+6;root.style.setProperty('--month-grid-header-top',offset+'px');for(const viewport of views.slice(1))viewport.querySelectorAll('.month-grid-table,[data-grid-summary]').forEach(table=>{if(!table.getClientRects().length)return;const prior=parseFloat(table.style.getPropertyValue('--grid-inset'))||0,inset=Math.max(0,table.getBoundingClientRect().left-viewport.getBoundingClientRect().left+viewport.scrollLeft+prior);table.style.setProperty('--grid-inset',inset+'px');});for(const target of [top,...views])if(target.getClientRects().length&&Math.abs(target.scrollLeft-left)>.5)target.scrollLeft=left;}
  function layout(){if(!queued){queued=true;requestAnimationFrame(size);}}
  root.addEventListener('toggle',layout,true);window.addEventListener('resize',layout);
  if(window.ResizeObserver){const observer=new ResizeObserver(layout);[root,view,action,root.querySelector('.plan-workbench-add')].filter(Boolean).forEach(el=>observer.observe(el));}size();

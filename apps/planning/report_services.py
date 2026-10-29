@@ -795,10 +795,9 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
                         )
                     )
             groups=grouped(rows)
-            if plan_only:
-                from .resource_group_totals import labor_group_order,equipment_group_order
-                order=labor_group_order if kind=='labor' else equipment_group_order if kind=='equipment' else None
-                if order:groups.sort(key=lambda node:order(node['label']))
+            from apps.resources.group_order import order_key
+            order=order_key(user.company,kind) if kind in {'labor','equipment'} else None
+            if order:groups.sort(key=lambda node:order(node['label']))
             sections.append({"kind": kind, "label": label, "groups": groups})
         for section in sections:
             if section["kind"] != "works" and not filters.get("dashboard_compact"):

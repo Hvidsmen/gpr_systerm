@@ -237,7 +237,7 @@
       input.classList.add(check ? 'form-check-input' : 'form-control');
     });
     root.querySelectorAll('form button:not([class])').forEach(button => button.classList.add('btn', 'btn-primary'));
-    root.querySelectorAll('select:not([data-search-enhanced]):not([data-native-select])').forEach(select => new SearchSelect(select));
+    root.querySelectorAll('select:not([data-search-enhanced]):not([data-native-select])').forEach(select => {if(!select.closest('[data-plan-native]'))new SearchSelect(select);});
     root.querySelectorAll('.app-form-fields').forEach(fields => {
       const form = fields.closest('form');
       if (form?.parentElement.classList.contains('main-content') && !form.classList.contains('card')) form.classList.add('app-form-card');
@@ -257,7 +257,7 @@
         if (mutation.target.nodeType === 1 && mutation.target.closest('.search-select-popup')) return;
         if (mutation.type === 'attributes') {syncAll(); return;}
         mutation.addedNodes.forEach(node => {
-          if (node.nodeType !== 1 || node.closest('.search-select-popup')) return;
+          if (node.nodeType !== 1 || node.closest('.search-select-popup,[data-plan-native]')) return;
           if (node.tagName === 'SELECT' && !node.dataset.searchEnhanced && !node.hasAttribute('data-native-select')) new SearchSelect(node);
           styleControls(node);
         });

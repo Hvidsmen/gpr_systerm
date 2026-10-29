@@ -82,7 +82,9 @@ def month_matrix(version,month,work_forms,resource_forms):
     catalogue=catalogue_links(version.company)
     from apps.resources.models import EquipmentType
     from .resource_group_totals import equipment_groups,labor_groups,group_label,attach_resource_totals
-    equipment={e.pk:e for e in EquipmentType.objects.filter(company=version.company).select_related('category','parent__category')}
+    equipment={e.pk:e for e in EquipmentType.objects.filter(company=version.company).select_related('category','parent__category').prefetch_related('crew_positions')}
+    from apps.resources.models import PositionPlanningBrigade
+    crew_mappings=dict(PositionPlanningBrigade.objects.filter(company=version.company,brigade__company=version.company).values_list('position_id','brigade_id'))
     equipment_categories=equipment_groups(equipment,version.company)
     brigades={b.pk:b for b in Brigade.objects.filter(company=version.company).select_related('group')}
     position_groups=labor_groups(brigades,version.company)
@@ -130,9 +132,10 @@ def month_matrix(version,month,work_forms,resource_forms):
         for label,field,digits in fields:entry.comparison.append(measure(label,form[field].value(),field,digits=digits))
         entry.brigade_id=row.brigade_id or ''
         vars(entry).update(catalogue(kind,row.brigade_id if kind=='labor' else row.equipment_type_id))
-        entry.crew_recipe_json=json.dumps(display_recipe(version.company,row.equipment_type,row.crew_data)) if kind=='equipment' else '[]'
+        entry.crew_recipe_json=json.dumps([{**m,'count':m['count']*int(row.crew_data.get('shifts_per_day',1))} for m in display_recipe(version.company,equipment[row.equipment_type_id],row.crew_data,mappings=crew_mappings)]) if kind=='equipment' else '[]'
+        if kind=='equipment':entry.crew_note='Смен в день: '+str(row.crew_data.get('shifts_per_day',1))
         entry.crew_counts_json=json.dumps({'month':row.crew_data.get('count',0)}) if kind=='labor' else '{}'
-        entry.crew_note='Численность включает экипаж техники. Можно добавить людей сверх экипажа.' if kind=='labor' and row.crew_data.get('count') else ''
+        entry.crew_note='Численность включает экипаж техники. Можно добавить людей сверх экипажа.' if kind=='labor' and row.crew_data.get('count') else getattr(entry,'crew_note','')
         grouped[kind][labor_group(row.brigade_id) if kind=='labor' else equipment_categories.get(row.equipment_type_id,('Без категории','none')) if kind=='equipment' else 'Общие ресурсы объекта'].append(entry)
     # Captured assignments are shown once in the same summary as manual inputs.
     # Their dates, crew and quantities keep being edited by the existing service.
@@ -155,7 +158,7 @@ def month_matrix(version,month,work_forms,resource_forms):
     sections=[{'kind':kind,'label':LABELS[kind],'groups':[{'label':group_label(name),'entries':entries} for name,entries in sorted(groups.items())],
         'totals':[],'count':sum(len(entries) for entries in groups.values())} for kind,groups in grouped.items()]
 
-    attach_resource_totals(sections)
+    attach_resource_totals(sections,version.company)
     attach_work_hierarchy(sections)
     return {'sections':sections,'days':[]}
 
@@ -170,7 +173,11 @@ def add_month_resource(user,version,month,data):
     kind=data.get('kind')
     if kind not in {'labor','equipment','fuel'}:raise ValidationError('Выберите вид ресурса.')
     fields={'labor':{'brigade':data.get('brigade')},'equipment':{'equipment_type':data.get('equipment'),'equipment_number':''},'fuel':{'fuel_type':data.get('fuel'),'equipment_ref':''}}[kind]
-    row,created=ResourceMonthAllocation.objects.get_or_create(company=user.company,version=version,month=month,kind=kind,defaults={'rate':data.get('rate') or 0, 'crew_data':{'members':[]} if kind=='equipment' and not data.get('add_crew',True) else {}},**fields)
+    from .table_resource_crew import shifts
+    crew_data={'members':[]} if kind=='equipment' and not data.get('add_crew',True) else {}
+    if kind=='equipment' and shifts(data.get('shifts_per_day',1))!=1:
+        crew_data['shifts_per_day']=shifts(data['shifts_per_day'])
+    row,created=ResourceMonthAllocation.objects.get_or_create(company=user.company,version=version,month=month,kind=kind,defaults={'rate':data.get('rate') or 0, 'crew_data':crew_data},**fields)
     if created:
         version.snapshot={};version.save(update_fields=['snapshot'])
         from apps.audit.models import AuditLog

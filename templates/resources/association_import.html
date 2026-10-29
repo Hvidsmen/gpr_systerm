@@ -1,0 +1,8 @@
+{% extends 'base.html' %}{% block content %}
+<h1>Массовая загрузка ассоциаций из Excel</h1><p>{% if kind == 'labor' %}Должности{% else %}Техника для планирования{% endif %} · дополнительные названия для импорта и поиска.</p>
+<p>Скачайте шаблон, заполните колонку «Ассоциация»: один вариант названия в строке. Для нескольких ассоциаций повторите строку с тем же ID или названием. Новые варианты добавляются к существующим. Записи справочника не создаются.</p>
+<p><a class="btn btn-outline-primary" href="?template=1">Скачать шаблон с текущими записями</a> <a class="btn btn-outline-secondary" href="{% url back_url %}">Вернуться в справочник</a></p>
+{% if errors %}<div class="alert alert-warning" role="alert">{% for error in errors %}<p class="mb-0">{{ error }}</p>{% endfor %}</div>{% endif %}
+<form method="post" enctype="multipart/form-data" class="card p-3 mb-3">{% csrf_token %}{{ form.as_p }}<button class="btn btn-primary" type="submit">Проверить файл</button></form>
+{% if preview %}<section class="card p-3" data-association-import-preview><h2 class="h5">Предпросмотр · записей: {{ preview|length }}</h2><div class="table-responsive"><table class="table"><thead><tr><th>Название</th><th>Есть сейчас</th><th>Будет добавлено</th></tr></thead><tbody>{% for row in preview %}<tr><td>{{ row.name }}<small class="d-block text-muted">ID {{ row.id }}</small></td><td>{{ row.before|join:'; '|default:'—' }}</td><td>{{ row.added|join:'; ' }}</td></tr>{% endfor %}</tbody></table></div><form method="post">{% csrf_token %}<input type="hidden" name="action" value="apply"><input type="hidden" name="token" value="{{ token }}"><button class="btn btn-success" type="submit">Загрузить ассоциации</button></form></section>{% endif %}
+{% endblock %}

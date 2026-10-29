@@ -121,9 +121,20 @@ from .models import EquipmentCategory
 
 
 class EquipmentCategoryForm(forms.ModelForm):
+    sort_order = forms.IntegerField(label='Порядок',min_value=0,max_value=1000000,required=False,
+        help_text='Меньшее число — выше в списке. Используется во всех разделах портала.',widget=forms.NumberInput(attrs={'class':'form-control'}))
+
+    def clean_sort_order(self):
+        if self.cleaned_data.get('sort_order') is not None:
+            return self.cleaned_data['sort_order']
+        if self.instance._state.adding:
+            from .group_order import default_priority
+            return default_priority(self.cleaned_data.get('name'),'equipment' if isinstance(self.instance,EquipmentCategory) else 'labor')
+        return self.instance.sort_order
+
     class Meta:
         model = EquipmentCategory
-        fields = ['name']
+        fields = ['name', 'sort_order']
         widgets = {'name': forms.TextInput(attrs={'class': 'form-control'})}
 
     def __init__(self, *args, company, **kwargs):
@@ -157,10 +168,11 @@ class BrigadeGroupForm(BrigadeCatalogForm):
 
     class Meta:
         model = BrigadeGroup
-        fields = ['name', 'is_general_staff']
+        fields = ['name', 'sort_order', 'is_general_staff']
 
 
 class BrigadeMacroGroupForm(BrigadeCatalogForm):
+    sort_order = None
     class Meta:
         model = BrigadeMacroGroup
         fields = ['name']

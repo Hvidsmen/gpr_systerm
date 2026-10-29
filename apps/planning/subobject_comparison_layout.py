@@ -20,6 +20,9 @@ def resource_total(rows):
 
 
 def hierarchy(rows,specs,company,width):
+    from apps.resources.group_order import order_key
+    labor_group_order=order_key(company)
+    equipment_group_order=order_key(company,'equipment')
     work_rows=defaultdict(list)
     for row in rows:
         if row['kind']=='work':work_rows[row['work_id']].append(row)

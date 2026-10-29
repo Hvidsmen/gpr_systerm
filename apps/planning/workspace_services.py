@@ -338,6 +338,8 @@ def resource_rows(workspace, source, month, total=None, days=None, rate=None):
         if source.get('work_targets'):
             row['work_targets']=deepcopy(source['work_targets'])
             row['work_id']=source['work_targets'][0]['work_id'];row['work_item_id']=source['work_targets'][0].get('work_item_id')
+        if kind=='equipment' and source.get('crew_data',{}).get('shifts_per_day'):
+            row['shifts_per_day']=source['crew_data']['shifts_per_day']
         if kind=='equipment' and 'members' in source.get('crew_data',{}):row['table_crew']=deepcopy(source['crew_data']['members'])
         if kind=='labor' and 'count' in source.get('crew_data',{}):row['table_crew_count']=source['crew_data']['count']
         result.append(row)

@@ -6,6 +6,8 @@ from apps.resources.group_order import equipment_group_order
 
 
 def day_types(company,rows,resource_plans,*,query=''):
+    from apps.resources.group_order import order_key
+    equipment_group_order=order_key(company,'equipment')
     quantities=defaultdict(Decimal)
     for resources in resource_plans.values():
         for pk,value in resources['equipment'].items():

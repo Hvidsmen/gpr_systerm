@@ -73,10 +73,11 @@ def local_work(user,schedule,source):
     require_planning_object(user,schedule.construction_object_id)
     if source.company_id!=schedule.company_id:raise ValidationError('Работа другой компании.')
     if source.section.construction_object_id==schedule.construction_object_id:return source
-    if not parent_reference(schedule) or source.section.construction_object_id!=schedule.source.construction_object_id:
-        raise ValidationError('Выберите работу субобъекта или его общего ГПР.')
+    if source.section.construction_object_id not in ancestors(schedule.construction_object):
+        raise ValidationError('Выберите работу субобъекта или его родительского объекта.')
     ConstructionObject.objects.select_for_update().get(pk=schedule.construction_object_id,company=user.company)
-    spec=frozen_specs(schedule).get(source.pk) or work_specification(source)
+    captured=frozen_specs(schedule).get(source.pk) if parent_reference(schedule) and source.section.construction_object_id==schedule.source.construction_object_id else None
+    spec=captured or work_specification(source)
     expected=spec.get('valuation_items',spec['items'])
     candidates=[(row.local_work_id,row.item_mapping) for row in SubobjectWorkOrigin.objects.filter(company=user.company,source_work=source,local_work__section__construction_object_id=schedule.construction_object_id).order_by('-pk')]
     candidates += [(entry.metadata.get('id'),entry.metadata.get('gpr_item_mapping',{})) for entry in DailyScheduleEntry.objects.filter(schedule__company_id=schedule.company_id,schedule__construction_object_id=schedule.construction_object_id,gpr_work=source).order_by('-pk')]
@@ -140,7 +141,8 @@ def map_entry(user,schedule,entry_id,source_id):
         raise ValidationError('У работы есть закрытые дни. Их связь с общим ГПР сохраняется в истории.')
     source=ProjectWork.objects.get(pk=source_id,company=user.company,section__construction_object_id=schedule.source.construction_object_id,merged_source__isnull=True)
     work=ProjectWork.objects.get(pk=entry.metadata['id'],company=user.company,section__construction_object_id=schedule.construction_object_id)
-    spec=frozen_specs(schedule).get(source.pk) or work_specification(source)
+    captured=frozen_specs(schedule).get(source.pk) if parent_reference(schedule) and source.section.construction_object_id==schedule.source.construction_object_id else None
+    spec=captured or work_specification(source)
     from apps.works.unit_aliases import canonical
     if work.kind!=spec['kind'] or canonical(user.company,work.unit)!=canonical(user.company,spec['unit']):raise ValidationError('Вид работы и единица измерения должны совпадать с выбранной работой общего ГПР.')
     mapping={};claimed=set()

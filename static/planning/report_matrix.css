@@ -42,3 +42,7 @@
 .report-calendar #plan-fact-matrix .matrix-section>.report-calendar-summary{border-top:3px solid var(--review-section);background:#eaf4f9;color:#173f5d;font-size:15px;margin-bottom:12px}
 .report-calendar #plan-fact-matrix .matrix-section[data-matrix-section=labor]>.report-calendar-summary{background:#f0eef8}.report-calendar #plan-fact-matrix .matrix-section[data-matrix-section=equipment]>.report-calendar-summary{background:#eaf5f2}.report-calendar #plan-fact-matrix .matrix-section[data-matrix-section=fuel]>.report-calendar-summary{background:#fcf4e8}
 .report-calendar .matrix-section>.report-calendar-summary .report-summary-row:first-child .report-summary-label{font-size:15px;padding-top:11px;padding-bottom:11px}
+
+/* Leave hierarchy borders visible while numeric columns stay on the common axis. */
+.report-calendar-body .matrix-scroll,.report-calendar-summary{clip-path:inset(0 0 0 var(--report-inset,0px))}
+.report-calendar .matrix-group{border-left:1px solid #b2c8d7;padding-left:10px}

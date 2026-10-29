@@ -19,7 +19,7 @@
  const message=text=>{notice.textContent=text;};
  function source(entry,field,item=''){
   if(!entry.dataset.nativePrefix)return null;
-  const named=document.querySelector('[name="'+CSS.escape(entry.dataset.nativePrefix+'-'+field)+'"]');
+  const named=native?.elements.namedItem(entry.dataset.nativePrefix+'-'+field);
   return item?named?.closest('.allocation-row')?.querySelector('[data-item-id="'+CSS.escape(item)+'"]'):named;
  }
  function filter(){
@@ -84,7 +84,7 @@
  window.planWorkbench={canLeave,filter};
  const addDialog=root.querySelector('[data-plan-add-dialog]');
  function resourceKind(value){
-  const form=addDialog.querySelector('form'),fields={labor:['brigade','rate'],equipment:['equipment','add_crew','rate'],fuel:['fuel','rate']};
+  const form=addDialog.querySelector('form'),fields={labor:['brigade','rate'],equipment:['equipment','shifts_per_day','add_crew','rate'],fuel:['fuel','rate']};
   form.querySelector('[name=kind]').value=value;
   form.querySelectorAll('[data-add-field]').forEach(wrapper=>{wrapper.hidden=!(fields[value]||[]).includes(wrapper.dataset.addField);});
   addDialog.querySelector('#plan-add-title').textContent='Добавить '+{labor:'должность',equipment:'технику',fuel:'ГСМ'}[value];
@@ -192,7 +192,7 @@
    const title=entry.querySelector('.matrix-label');if(title)title.rowSpan=Math.max(1,title.rowSpan-1);
    syncComputed();filter();message('Работа исключена из состава плана. Нажмите «Сохранить».');
   }));
-  function syncComputed(){matrix.querySelectorAll('[data-computed-source],[data-hidden-computed-source]').forEach(td=>{const field=document.querySelector('[name="'+CSS.escape(td.dataset.computedSource||td.dataset.hiddenComputedSource)+'"]');if(field){td.dataset.value=field.value;td.querySelector('[data-plan-number]').textContent=new Intl.NumberFormat('ru-RU',{maximumFractionDigits:6}).format(Number(field.value));}});}
+  function syncComputed(){matrix.querySelectorAll('[data-computed-source],[data-hidden-computed-source]').forEach(td=>{const field=native?.elements.namedItem(td.dataset.computedSource||td.dataset.hiddenComputedSource);if(field&&td.dataset.value!==field.value){td.dataset.value=field.value;td.querySelector('[data-plan-number]').textContent=new Intl.NumberFormat('ru-RU',{maximumFractionDigits:6}).format(Number(field.value));}});}
   matrix.addEventListener('input',event=>{
    const input=event.target.closest('[data-plan-month-input]');if(!input)return;
    const field=source(input.closest('[data-plan-entry]'),input.dataset.field,input.dataset.item);

@@ -63,13 +63,14 @@ class BrigadeListView(CatalogFilterMixin, CompanyRequiredMixin, ListView):
         employee_scope = Q(position_mapping__company=company,
             position_mapping__position__company=company,
             position_mapping__position__employees__company=company)
-        return self.filter_queryset(Brigade.objects.filter(
+        from .group_order import ordered
+        return self.filter_queryset(ordered(Brigade.objects.filter(
             company=company, merge_source__isnull=True
         ).select_related('group', 'position_mapping__position', 'catalogue_review').annotate(
             employee_count=Count('position_mapping__position__employees', filter=employee_scope, distinct=True),
             active_employee_count=Count('position_mapping__position__employees',
                 filter=employee_scope & Q(position_mapping__position__employees__is_active=True), distinct=True),
-        ).order_by(F('group__name').asc(nulls_last=True),'name','pk'))
+        ),group_path='group'))
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -100,7 +101,8 @@ class BrigadeListView(CatalogFilterMixin, CompanyRequiredMixin, ListView):
             for row in context['brigades']:
                 group=grouped.setdefault(row.group_id,{'name':row.group.name if row.group_id else 'Без группы','rows':[],'active_employees':0})
                 group['rows'].append(row);group['active_employees']+=row.active_employee_count
-        from .group_order import labor_group_order
+        from .group_order import order_key
+        labor_group_order=order_key(self.get_company())
         context['position_groups']=sorted(grouped.values(),key=lambda group:labor_group_order(group['name']))
 
         return context
@@ -310,6 +312,16 @@ from core.permissions import require_roles, EQUIPMENT_CATALOG_EDIT_ROLES
 
 
 class EquipmentCategoryListView(CatalogueExcelMixin, CompanyScopedMixin, ListView):
+    def get_context_data(self,**kwargs):
+        result=super().get_context_data(**kwargs)
+        from .group_order_views import context
+        result.update(context(self.request.user.company,'equipment'),group_order_kind='equipment')
+        return result
+
+    def post(self,request,*args,**kwargs):
+        from .group_order_views import save
+        return save(request,'equipment')
+
     model = EquipmentCategory
     template_name = 'resources/equipment_category_list.html'
     context_object_name = 'categories'

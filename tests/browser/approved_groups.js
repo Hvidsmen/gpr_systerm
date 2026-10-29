@@ -25,6 +25,8 @@ const c=JSON.parse(process.env.APPROVED_GROUPS_CONFIG);
    assert((await works.locator('details.matrix-group > summary').allTextContents()).some(name=>name.includes('УЗА 33')));
    await page.locator('[data-work-toggle]').first().click();
    assert(await page.locator('.matrix-child:visible').count()>0);
+   await page.locator('.plan-report-settings').evaluate(el=>el.open=true);
+   await page.locator('[data-filter-section=equipment]').evaluate(el=>el.open=true);
    const select=page.locator('#id_equipment_category');
    const id=await select.locator('option').filter({hasText:'Специализированная техника'}).getAttribute('value');
    await select.selectOption(id,{force:true});
@@ -32,6 +34,7 @@ const c=JSON.parse(process.env.APPROVED_GROUPS_CONFIG);
    const filtered=await page.locator('[data-matrix-section=equipment] > details.matrix-group > summary').allTextContents();
    assert.equal(filtered.length,1);assert(filtered[0].trim().startsWith('Специализированная техника'));
   }
+  if(!draft){assert.notEqual(await equipment.locator('.report-calendar-summary').first().evaluate(el=>getComputedStyle(el).clipPath),'none');}
   await equipment.scrollIntoViewIfNeeded();await page.screenshot({path:'/tmp/gpr-categories-'+c.stage+'.png'});
   assert.deepEqual(errors,[]);console.log('Current catalogue groups and equipment categories verified in '+c.stage+' GPR, including legacy assignments.');
  }finally{await browser.close();}

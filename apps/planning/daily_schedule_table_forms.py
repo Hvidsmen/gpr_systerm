@@ -12,6 +12,7 @@ class AddEntryForm(forms.Form):
     equipment=forms.ModelChoiceField(label='Техника для планирования',queryset=EquipmentType.objects.none(),required=False)
     reference=forms.CharField(max_length=50,required=False,widget=forms.HiddenInput())
     fuel=forms.ChoiceField(label='Вид ГСМ',choices=[('','Выберите значение'),*ResourceMonthAllocation._meta.get_field('fuel_type').choices],required=False)
+    shifts_per_day=forms.IntegerField(label='Количество смен',min_value=1,max_value=24,initial=1,required=False,widget=forms.NumberInput(attrs={'class':'form-control'}))
     add_crew=forms.BooleanField(label='Добавить экипаж из справочника',required=False,initial=True,widget=forms.CheckboxInput(attrs={'class':'form-check-input'}))
     rate=forms.DecimalField(label='Ставка за час / цена за литр',max_digits=12,decimal_places=2,min_value=0,initial=0,required=False)
 
@@ -43,5 +44,6 @@ class AddEntryForm(forms.Form):
         data=super().clean();field={'work':'work','labor':'brigade','equipment':'equipment','fuel':'fuel'}.get(data.get('kind'))
         if field and not data.get(field) and not (field=='work' and data.get('selection')):self.add_error(field,'Выберите позицию для добавления.')
         if data.get('rate') is None:data['rate']=0
+        data['shifts_per_day']=data.get('shifts_per_day') or 1
         data['reference']=''
         return data

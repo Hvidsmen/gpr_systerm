@@ -40,6 +40,14 @@ const {chromium}=require('playwright'),fs=require('node:fs'),assert=require('nod
   }
   await chooseAlias(c.equipment_create,'id_parent','эо-422','Экскаватор гусеничный',c.root);
   await chooseAlias(c.employee_create,'id_position','РУКОВОДИТЕЛЬ смр','Мастер участка',c.position);
+  await page.goto(c.base+c.equipment);
+  await Promise.all([page.waitForNavigation(),page.getByRole('link',{name:'Загрузить ассоциации из Excel',exact:true}).click()]);
+  await page.locator('[name=file]').setInputFiles({name:'associations.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:Buffer.from(c.xlsx,'base64')});
+  await Promise.all([page.waitForNavigation(),page.getByRole('button',{name:'Проверить файл',exact:true}).click()]);
+  assert(await page.locator('[data-association-import-preview]').isVisible());
+  await Promise.all([page.waitForNavigation(),page.getByRole('button',{name:'Загрузить ассоциации',exact:true}).click()]);
+  await page.goto(c.base+c.equipment+'?name='+encodeURIComponent('Импортированное название'));
+  assert((await page.locator('.equipment-catalogue').innerText()).includes('Экскаватор гусеничный'));
   assert.deepEqual(errors,[]);
   console.log('PASS: visible associations edit/save, equipment and job alias filters, preserved queries in all views, equipment/position dropdown alias search with original labels and IDs');
  }finally{await browser.close();}

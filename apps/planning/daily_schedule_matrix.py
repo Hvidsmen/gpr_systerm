@@ -27,17 +27,18 @@ def matrix(schedule,entries):
         if not entry.comparison:continue
         first=next(iter(entry.rows or entry.original),{})
         entry.reference=first.get('equipment_number','')
-        from .table_resource_crew import daily_recipe,display_recipe,daily_crew_counts,canonical_members
+        from .table_resource_crew import daily_recipe,display_recipe,daily_crew_counts,canonical_members,daily_shifts
         entry.brigade_id=first.get('brigade_id','')
         vars(entry).update(catalogue(entry.kind,first.get('brigade_id') if entry.kind=='labor' else first.get('equipment_type_id')))
         captured=daily_recipe(entry) if entry.kind=='equipment' else []
         machine=equipment.get(first.get('equipment_type_id'))
         members=captured if captured is not None else display_recipe(schedule.company,machine,{}) if machine else []
         if entry.metadata.get('resource_assignment_id'):members=[]
-        entry.crew_recipe_json=json.dumps([{'brigade_id':m['brigade_id'],'count':m['count']} for m in canonical_members(schedule.company,members)])
+        entry.crew_recipe_json=json.dumps([{'brigade_id':m['brigade_id'],'count':m['count']*daily_shifts(entry)} for m in canonical_members(schedule.company,members)])
         entry.crew_counts_json=json.dumps(daily_crew_counts(entry)) if entry.kind=='labor' else '{}'
         entry.crew_values_json=json.dumps({r['date']:str(r.get('planned_count',0)) for r in entry.rows}) if entry.kind=='equipment' else '{}'
         entry.crew_note='Численность включает экипаж техники. Можно добавить людей сверх экипажа.' if entry.kind=='labor' and any(daily_crew_counts(entry).values()) else ''
+        if entry.kind=='equipment':entry.crew_note='Смен в день: '+str(daily_shifts(entry))
         group='Без группы'
         if entry.kind=='work':
             work=works.get(entry.metadata.get('id'))
@@ -83,6 +84,6 @@ def matrix(schedule,entries):
     labels={'work':'Работы','labor':'Должность','equipment':'Техника','fuel':'ГСМ'}
     sections=[{'kind':kind,'label':labels[kind],'groups':[{'label':group_label(name),'entries':sorted(rows,key=lambda e:(e.label.casefold(),e.pk))} for name,rows in sorted(groups.items())],'totals':list(totals[kind].values()),'count':sum(len(rows) for rows in groups.values())} for kind,groups in grouped.items()]
     from .plan_workbench import attach_work_hierarchy
-    attach_resource_totals(sections)
+    attach_resource_totals(sections,schedule.company)
     attach_work_hierarchy(sections)
     return {'sections':sections,'days':days}

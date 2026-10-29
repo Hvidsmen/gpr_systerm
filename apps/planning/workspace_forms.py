@@ -162,6 +162,12 @@ class ResourceAllocationForm(AllocationMixin, forms.ModelForm):
 class AllocationFormset(BaseModelFormSet):
     def __init__(self, *args, **kwargs):
         self._choice_cache = {}
+        query=kwargs.get('queryset')
+        if query is not None:
+            if query.model is WorkMonthAllocation:
+                kwargs['queryset']=query.select_related('work__section','work__complex_object','load_profile').prefetch_related('work__items')
+            else:
+                kwargs['queryset']=query.select_related('brigade__group','equipment_type__category','equipment_type__parent__category')
         super().__init__(*args, **kwargs)
 
     def add_fields(self, form, index):
@@ -170,6 +176,17 @@ class AllocationFormset(BaseModelFormSet):
         # once per request, while keeping each field's queryset for POST validation.
         for name, field in form.fields.items():
             if isinstance(field, forms.ModelChoiceField) and not field.widget.is_hidden:
+                field.widget.attrs['data-native-select']='true'
+                if name in {'work','brigade','equipment_type'} and form.instance.pk and not form.is_bound:
+                    # The visible editor changes quantities; identity changes use
+                    # its add/remove actions. Keep only this saved identity in the
+                    # hidden select, retaining the full queryset for POST validation.
+                    from django.forms.models import ModelChoiceIteratorValue
+                    item=getattr(form.instance,name)
+                    field.choices=[('',field.empty_label)] if field.empty_label is not None else []
+                    if item is not None:
+                        field.choices=[*field.choices,(ModelChoiceIteratorValue(item.pk,item),field.label_from_instance(item))]
+                    continue
                 # A saved row may retain a position without current employees.
                 identity={'brigade':getattr(form.instance,'brigade_id',None),'work':getattr(form.instance,'work_id',None),'equipment_type':getattr(form.instance,'equipment_type_id',None)}
                 key=(name,identity[name] if form.instance.pk else None) if name in identity else name

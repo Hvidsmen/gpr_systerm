@@ -1,0 +1,7 @@
+{% load access %}
+{% if kind == 'group' and request.user|may:'resources:brigade_group_update' or group_order_kind == 'equipment' and request.user|may:'resources:equipment_category_update' %}
+<details class="card p-3 my-3" data-group-order-editor {% if order_formset.is_bound %}open{% endif %}><summary>Порядок групп во всех разделах</summary>
+<p class="small text-muted mt-2">Меньшее число — выше в списке. При одинаковом числе группы идут по названию. «Без группы» всегда в конце.</p>
+<form method="post" class="mt-2">{% csrf_token %}{{ order_formset.management_form }}{{ order_formset.non_form_errors }}
+<div class="table-responsive"><table class="table table-sm align-middle"><thead><tr><th>Группа</th><th>Порядок</th></tr></thead><tbody>{% for form in order_formset %}<tr data-group-order-row><td>{{ form.id }}{{ form.group_label }}</td><td>{{ form.sort_order }}{{ form.sort_order.errors }}{{ form.id.errors }}</td></tr>{% endfor %}</tbody></table></div>
+<button class="btn btn-primary" type="submit">Сохранить порядок</button></form></details>{% endif %}

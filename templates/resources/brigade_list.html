@@ -4,6 +4,7 @@
 {% block content %}<div class="position-catalog">
 <header class="position-catalog-heading"><div><nav class="small mb-2" aria-label="Навигация">Справочники / Должности</nav><h1 class="h3 mb-1">Должности</h1><p class="text-muted mb-0">Группы должностей для планирования и учёта сотрудников. Штатное расписание обновляется из ЗУП. Новые должности подтверждает ответственный за справочник.</p></div>
 <div class="position-catalog-actions"><div class="btn-group" aria-label="Excel">{% if request.user|may:'resources:brigade_export' %}<a class="btn btn-outline-success" href="{% url 'resources:brigade_export' %}?{{ filter_query }}">Экспорт в Excel</a>{% endif %}{% if request.user|may:'resources:brigade_import' %}<a class="btn btn-outline-primary" href="{% url 'resources:brigade_import' %}">Импорт групп из Excel</a>{% endif %}</div>
+{% if request.user|may:'resources:brigade_update' %}<a class="btn btn-outline-primary" href="{% url 'resources:catalogue_association_import' 'labor' %}">Загрузить ассоциации из Excel</a>{% endif %}
 {% if request.user|may:'resources:brigade_group_list' %}<a class="btn btn-outline-secondary" href="{% url 'resources:brigade_group_list' %}">Группы</a>{% endif %}
 <details class="position-catalog-menu"><summary class="btn btn-outline-secondary" aria-label="Другие действия">⋯</summary><div>
 {% if request.user|may:'accounts:one_c_jobs' %}<a href="{% url 'accounts:one_c_jobs' %}">Обновление из штатного расписания</a>{% endif %}

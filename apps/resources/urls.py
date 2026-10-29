@@ -123,3 +123,6 @@ urlpatterns += [
     path('catalogue-reviews/', review_list, name='catalogue_review_list'),
     path('catalogue-reviews/<int:pk>/', review_detail, name='catalogue_review_detail'),
 ]
+
+from .association_import import import_associations
+urlpatterns += [path('associations/<str:kind>/import/',import_associations,name='catalogue_association_import')]

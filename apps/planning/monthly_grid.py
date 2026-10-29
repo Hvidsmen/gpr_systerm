@@ -41,7 +41,9 @@ def item_values(row):
 
 
 def matrix(user,version):
-    from apps.resources.group_order import labor_group_order,equipment_group_order
+    from apps.resources.group_order import order_key
+    labor_group_order=order_key(version.company)
+    equipment_group_order=order_key(version.company,'equipment')
     from .resource_group_totals import equipment_group
     months=editable_months(version);can_work,can_resource=permissions(user,version)
     works,resources=allocations(version);buckets={};sections=[]
@@ -88,17 +90,23 @@ def matrix(user,version):
     # Shared assignments retain their own dates and appear once, as read-only rows.
     from .work_resources import owner_rows,expand
     from calendar import monthrange
+    from apps.resources.models import Brigade,EquipmentType
+    from .resource_group_totals import labor_groups,equipment_groups
+    labor_labels=labor_groups({b.pk:b for b in Brigade.objects.filter(company=version.company).select_related('group')},version.company)
+    machine_labels=equipment_groups({e.pk:e for e in EquipmentType.objects.filter(company=version.company).select_related('category','parent__category')},version.company)
     for assignment in owner_rows(version):
         for token,(kind,label,rows) in expand(assignment).items():
             field='planned_liters' if kind=='fuel' else 'planned_count';values=[]
             for month in months:
                 value=sum((Decimal(str(r.get(field,0))) for r in rows if r['date'].startswith(month.strftime('%Y-%m'))),ZERO)
-                if kind!='fuel':value=(value/Decimal(monthrange(month.year,month.month)[1])).to_integral_value(rounding='ROUND_CEILING')
+                if kind!='fuel':value=value/Decimal(monthrange(month.year,month.month)[1])
                 values.append({'month':month,'value':value,'editable':False})
             section=next(s for s in sections if s['kind']==kind)
-            group=next((g for g in section['groups'] if g.get('assignments')),None)
-            if not group:group={'label':'Связи работ и ресурсов','assignments':True,'entries':[]};section['groups'].append(group)
-            group['entries'].append({'label':label,'assignment':True,'measures':[{'caption':'Расход · л' if kind=='fuel' else 'Среднее количество','cells':values}]})
+            first=next(iter(rows),{})
+            label_group=labor_labels.get(first.get('brigade_id'),'Без группы') if kind=='labor' else machine_labels.get(first.get('equipment_type_id'),('Без группы','none'))[0] if kind=='equipment' else 'Связи работ и ресурсов'
+            group=next((g for g in section['groups'] if g['label']==label_group),None)
+            if not group:group={'label':label_group,'entries':[]};section['groups'].append(group)
+            group['entries'].append({'label':label,'assignment':True,'measures':[{'field':'liters' if kind=='fuel' else 'count','caption':'Расход · л' if kind=='fuel' else 'Среднее количество','cells':values}]})
     from types import SimpleNamespace
     from .plan_workbench import attach_work_hierarchy
     for section in sections:
@@ -106,6 +114,12 @@ def matrix(user,version):
             adapted={'kind':'work','groups':[{'entries':[SimpleNamespace(**entry,pk=entry['source'],comparison=[{'item_id_value':m['item_id']} for m in entry['measures']]) for entry in group['entries']]} for group in section['groups']]}
             attach_work_hierarchy([adapted])
             section['hierarchy']=adapted.get('hierarchy',[])
+        if section['kind'] in {'labor','equipment'}:
+            order=labor_group_order if section['kind']=='labor' else equipment_group_order
+            section['groups'].sort(key=lambda group:order(group['label']))
+            for group in section['groups']:
+                group['unit']='чел.' if section['kind']=='labor' else 'ед.'
+                group['totals']=[{'month':month,'value':sum((Decimal(str(measure['cells'][index]['value'] or 0)) for entry in group['entries'] for measure in entry['measures'] if measure.get('field')=='count'),ZERO)} for index,month in enumerate(months)]
         section['count']=sum(len(group['entries']) for group in section['groups'])
     return {'months':months,'sections':sections,'can_work':can_work,'can_resource':can_resource}
 

@@ -11,6 +11,19 @@ from apps.resources.position_catalog import brigade_for
 from .models import ResourceMonthAllocation, DailyScheduleEntry
 
 
+def shifts(value=1):
+    try:
+        count=int(value)
+        if Decimal(str(value))!=count or not 1<=count<=24:raise ValueError
+    except (ValueError,TypeError):raise ValidationError('Количество смен должно быть целым числом от 1 до 24.')
+    return count
+
+
+def daily_shifts(entry):
+    first=next(iter(entry.rows or entry.original),{})
+    return shifts(entry.metadata.get('shifts_per_day',first.get('shifts_per_day',1)))
+
+
 def crew_positions(company, equipment):
     rows=equipment.crew_positions.filter(company=company,position__company=company).select_related('position').order_by('position_id')
     for row in rows:
@@ -64,10 +77,10 @@ def sync_monthly(user,version,month,*,edited_counts=None,removed_brigades=(),rem
         if source.kind!='equipment':continue
         captured=recipe(user.company,source.equipment_type,source.crew_data)
         if source.crew_data.get('members')!=captured:
-            source.crew_data={'members':captured};source.save(update_fields=['crew_data','updated_at'])
+            source.crew_data={**source.crew_data,'members':captured};source.save(update_fields=['crew_data','updated_at'])
         for member in captured:
             members[member['brigade_id']]=member
-            wanted[member['brigade_id']]+=source.count*member['count']
+            wanted[member['brigade_id']]+=source.count*shifts(source.crew_data.get('shifts_per_day',1))*member['count']
     valid=set(Brigade.objects.filter(company=user.company,pk__in=members).values_list('pk',flat=True))
     if valid!=set(members):raise ValidationError('Должность экипажа недоступна в компании. Проверьте состав техники.')
     for brigade_id,member in members.items():
@@ -116,7 +129,7 @@ def sync_daily(user,schedule,*,edited_counts=None):
         for member in captured:
             members[member['brigade_id']]=member
             for row in entry.rows:
-                wanted[member['brigade_id']][row['date']]+=int(Decimal(str(row.get('planned_count',0))))*member['count']
+                wanted[member['brigade_id']][row['date']]+=int(Decimal(str(row.get('planned_count',0))))*daily_shifts(entry)*member['count']
     brigades={b.pk:b for b in Brigade.objects.filter(company=user.company,pk__in=members)}
     if set(brigades)!=set(members):raise ValidationError('Должность экипажа недоступна в компании. Проверьте состав техники.')
     for brigade_id,member in members.items():
@@ -145,9 +158,10 @@ def add_daily_crew(user,schedule,equipment):
     return sync_daily(user,schedule)
 
 
-def display_recipe(company,equipment,captured):
+def display_recipe(company,equipment,captured,*,mappings=None):
     """Read legacy defaults without creating catalogue bridges during a GET."""
     if 'members' in captured:return [{'brigade_id':m['brigade_id'],'count':m['count']} for m in canonical_members(company,captured['members'])]
     from apps.resources.models import PositionPlanningBrigade
-    mappings=dict(PositionPlanningBrigade.objects.filter(company=company,brigade__company=company).values_list('position_id','brigade_id'))
-    return [{'brigade_id':mappings[row.position_id],'count':row.count} for row in equipment.crew_positions.filter(company=company) if row.position_id in mappings]
+    if mappings is None:
+        mappings=dict(PositionPlanningBrigade.objects.filter(company=company,brigade__company=company).values_list('position_id','brigade_id'))
+    return [{'brigade_id':mappings[row.position_id],'count':row.count} for row in equipment.crew_positions.all() if row.company_id==company.pk and row.position_id in mappings]

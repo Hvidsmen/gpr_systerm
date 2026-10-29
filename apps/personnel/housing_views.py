@@ -186,7 +186,7 @@ def workspace(request):
     from .lodging_views import summary_context
     plan_context.update(summary_context(request.user,camp,day,camps=selected_camps))
     return render(request,'personnel/housing.html',{**plan_context,'rotation_filter':selector,'rotation_stats':rotation_stats,'position_groups':position_groups,'selected_camps':selected_camps,
-        'roster_view':roster_view,'roster_view_links':view_links,'roster_sections':roster_sections(position_groups,roster_view=='groups'),
+        'roster_view':roster_view,'roster_view_links':view_links,'roster_sections':roster_sections(position_groups,roster_view=='groups',request.user.company),
         'camp':camp,'camps':camps,'day':day,'rows':rows,'dates':days,'form':form,'query':values.get('q',''),
         'calendar_dates':calendar_dates,'calendar_months':calendar_months,'calendar_start':calendar_start,'calendar_end':calendar_end,'events':events,'total':rotation_stats['people'],'objects':objects,
         'unknown_count':Person.objects.filter(company=request.user.company,stays__isnull=True).count(),

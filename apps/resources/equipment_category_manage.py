@@ -20,7 +20,7 @@ class EquipmentCategoryMerge(View):
             return redirect('resources:equipment_category_list')
         with transaction.atomic():
             groups = list(EquipmentCategory.objects.select_for_update().filter(
-                company=request.user.company, pk__in=ids).order_by('name', 'pk'))
+                company=request.user.company, pk__in=ids).order_by('sort_order','name', 'pk'))
             if len(groups) != len(ids):
                 raise Http404('Группа техники не найдена.')
             if request.POST.get('merge_stage') == 'confirm':

@@ -23,7 +23,16 @@ class BrigadeCatalogList(View):
         if request.GET.get('export') == 'xlsx':
             from core.catalogue_excel import catalogue_response
             return catalogue_response(request, records)
-        return render(request, 'resources/brigade_catalog_list.html', {'kind':self.kind, 'bulk_catalog_kind':'brigade_groups' if self.kind == 'group' else 'brigade_macros', 'title':title, 'records':records})
+        from .group_order_views import context
+        order_context=context(request.user.company,'labor') if self.kind=='group' else {}
+        return render(request, 'resources/brigade_catalog_list.html', {**order_context,'kind':self.kind, 'bulk_catalog_kind':'brigade_groups' if self.kind == 'group' else 'brigade_macros', 'title':title, 'records':records})
+
+    def post(self,request):
+        if self.kind!='group':
+            from django.core.exceptions import PermissionDenied
+            raise PermissionDenied
+        from .group_order_views import save
+        return save(request,'labor')
 
 
 def quick_create(kind):

@@ -87,6 +87,7 @@ class Employee(BaseCompanyModel):
 
 
 class BrigadeGroup(BaseCompanyModel):
+    sort_order = models.PositiveIntegerField('Порядок', default=1000)
     name = models.CharField(_('название'), max_length=150)
     is_general_staff = models.BooleanField('Постоянный персонал', default=False,
         help_text='Сотрудники этой группы учитываются без обязательной привязки к производственным работам, например повара.')
@@ -94,8 +95,14 @@ class BrigadeGroup(BaseCompanyModel):
     class Meta:
         verbose_name = _('группа бригад')
         verbose_name_plural = _('группы бригад')
-        ordering = ['name']
+        ordering = ['sort_order', 'name', 'pk']
         unique_together = [['company', 'name']]
+
+    def __init__(self, *args, **kwargs):
+        if not args and 'sort_order' not in kwargs and 'name' in kwargs:
+            from .group_order import default_priority
+            kwargs['sort_order'] = default_priority(kwargs['name'], 'labor')
+        super().__init__(*args, **kwargs)
 
     def __str__(self):
         return self.name
@@ -180,13 +187,20 @@ class BrigadeMember(BaseCompanyModel):
 
 
 class EquipmentCategory(BaseCompanyModel):
+    sort_order = models.PositiveIntegerField('Порядок', default=1000)
     name = models.CharField(_('название'), max_length=100)
 
     class Meta:
         verbose_name = _('категория техники')
         verbose_name_plural = _('категории техники')
-        ordering = ['name']
+        ordering = ['sort_order', 'name', 'pk']
         constraints = [models.UniqueConstraint(fields=['company', 'name'], name='unique_equipment_category_name')]
+
+    def __init__(self, *args, **kwargs):
+        if not args and 'sort_order' not in kwargs and 'name' in kwargs:
+            from .group_order import default_priority
+            kwargs['sort_order'] = default_priority(kwargs['name'], 'equipment')
+        super().__init__(*args, **kwargs)
 
     def __str__(self):
         return self.name

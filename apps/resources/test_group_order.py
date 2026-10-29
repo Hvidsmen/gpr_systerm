@@ -14,7 +14,7 @@ class CommonGroupOrderTests(TestCase):
         self.client.force_login(self.user)
     def test_normalized_order_is_shared_by_querysets_and_catalogue_hierarchy(self):
         self.assertEqual(sorted(reversed(self.names),key=labor_group_order),self.names)
-        self.assertEqual(labor_group_order('Водители спец. техники')[0],1)
+        self.assertEqual(labor_group_order('Водители спец. техники')[0],2)
         result=ordered(Brigade.objects.filter(company=self.company),group_path='group')
         self.assertEqual([row.group.name if row.group_id else 'Без группы' for row in result],self.names)
         page=self.client.get(reverse('resources:brigade_list'));self.assertEqual([row['name'] for row in page.context['position_groups']],self.names)

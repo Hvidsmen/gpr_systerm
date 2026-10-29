@@ -21,7 +21,7 @@
 {% include 'planning/_gpr_path.html' %}
 </header>
 <div id="smg-more-actions" class="plan-more-menu" popover>
-<a href="{% url 'planning:daily_schedule_list' %}">Все СМГ</a><a href="{% url 'planning:smg_compare' schedule.pk %}">Сравнить варианты СМГ</a>{% if schedule.status == 'APPROVED' or schedule.status == 'APPLIED' %}{% if request.user|may:'planning:smg_cancel_approval' %}<a class="text-danger" href="{% url 'planning:smg_cancel_approval' schedule.pk %}">Отменить утверждение</a>{% endif %}{% endif %}{% if request.user|may:'planning:smg_copy_variant' %}<form method="post" action="{% url 'planning:smg_copy_variant' schedule.pk %}">{% csrf_token %}<button type="submit" class="btn btn-outline-secondary btn-sm">Копировать вариант</button></form>{% endif %}
+<a href="{% url 'planning:daily_schedule_list' %}">Все СМГ</a><a href="{% url 'planning:smg_compare' schedule.pk %}">Сравнить варианты СМГ</a>{% if schedule.status == 'APPROVED' or schedule.status == 'APPLIED' %}{% if request.user|may:'planning:smg_cancel_approval' %}<a class="text-danger" href="{% url 'planning:smg_cancel_approval' schedule.pk %}">Отменить утверждение</a>{% endif %}{% endif %}{% if request.user|may:'planning:smg_copy_variant' %}<a href="{% url 'planning:smg_copy_variant' schedule.pk %}">Копировать вариант</a>{% if schedule.status == 'DRAFT' or schedule.status == 'REJECTED' %}<a href="{% url 'planning:smg_rename' schedule.pk %}">Изменить название</a>{% endif %}{% endif %}
 <a href="{% url 'planning:work_resources_smg' schedule.pk %}">Ресурсы и экипажи</a>
 <a href="{% url 'planning:pivot_smg_detail' schedule.pk %}">Сводная таблица</a>
 <a href="{% url 'planning:preparation_smg' schedule.pk %}">Подготовка и задания</a>

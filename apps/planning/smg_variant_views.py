@@ -39,17 +39,53 @@ class SMGCompare(View):
         return render(request, 'planning/smg_compare.html', {'schedule': schedule, 'form': form, 'other': other, 'sections': sections, 'error': error})
 
 
+class CopyVariantForm(forms.Form):
+    month=forms.DateField(label='Месяц копии',widget=forms.DateInput(attrs={'type':'month'},format='%Y-%m'),input_formats=['%Y-%m','%Y-%m-%d'])
+    name=forms.CharField(label='Название копии',max_length=150,required=False)
+
+    def clean_month(self):
+        month=self.cleaned_data['month']
+        if month.day!=1:raise ValidationError('Выберите первый день месяца.')
+        return month
+
+
 class SMGCopyVariant(View):
-    def post(self, request, pk):
-        require_roles(request.user, PLAN_ROLES)
-        schedule = get_object_or_404(scope_queryset(DailySchedule.objects.all(), request.user), pk=pk)
-        try:
-            new = independent_smg.revise(request.user, schedule, independent=True)
-            messages.success(request, 'Создан независимый черновик. Исходный вариант и его согласование сохранены.')
-            return redirect('planning:daily_schedule_detail', pk=new.pk)
-        except ValidationError as exc:
-            messages.error(request, '; '.join(exc.messages))
-            return redirect('planning:daily_schedule_detail', pk=pk)
+    def display(self,request,pk,bound=False):
+        require_roles(request.user,PLAN_ROLES)
+        schedule=get_object_or_404(scope_queryset(DailySchedule.objects.all(),request.user),pk=pk)
+        form=CopyVariantForm(request.POST if bound else None,initial={'month':schedule.month,'name':((schedule.name+' — копия')[:150] if schedule.name else '')})
+        if bound and form.is_valid():
+            try:
+                from .smg_custom_copy import copy_variant
+                new=copy_variant(request.user,schedule,form.cleaned_data['month'],form.cleaned_data['name'])
+                messages.success(request,'Создан независимый черновик на выбранный месяц. Исходный вариант сохранён.')
+                return redirect('planning:daily_schedule_detail',pk=new.pk)
+            except ValidationError as exc:form.add_error(None,exc)
+        return render(request,'planning/smg_copy_variant.html',{'form':form,'schedule':schedule})
+    def get(self,request,pk):return self.display(request,pk)
+    def post(self,request,pk):return self.display(request,pk,True)
+
+
+class RenameForm(forms.Form):
+    name=forms.CharField(label='Название СМГ',max_length=150,required=False)
+    version=forms.CharField(widget=forms.HiddenInput)
+
+
+class SMGRename(View):
+    def display(self,request,pk,bound=False):
+        require_roles(request.user,PLAN_ROLES)
+        schedule=get_object_or_404(scope_queryset(DailySchedule.objects.all(),request.user),pk=pk)
+        form=RenameForm(request.POST if bound else None,initial={'name':schedule.name,'version':schedule.updated_at.isoformat()})
+        if bound and form.is_valid():
+            try:
+                from .smg_custom_copy import rename
+                rename(request.user,schedule,form.cleaned_data['name'],form.cleaned_data['version'])
+                messages.success(request,'Название СМГ сохранено.')
+                return redirect('planning:daily_schedule_list')
+            except ValidationError as exc:form.add_error(None,exc)
+        return render(request,'planning/smg_rename.html',{'form':form,'schedule':schedule})
+    def get(self,request,pk):return self.display(request,pk)
+    def post(self,request,pk):return self.display(request,pk,True)
 
 
 class CancelForm(forms.Form):

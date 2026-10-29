@@ -65,7 +65,7 @@ def add_entry(user,schedule,data):
         work=data['work']
         from apps.works.planning_access import planning_works
         if not planning_works(alternatives(schedule),user,whole=True).filter(pk=work.pk).exists():raise ValidationError('Работа не принадлежит объекту или подключенной истории.')
-        work=local_work(user,schedule,work) if schedule.source_id else work
+        work=local_work(user,schedule,work)
         metadata=specification(work);metadata['history']=[];metadata['original_daily']=[]
         label=work.name;key='work:'+str(work.pk)
     else:
@@ -96,6 +96,10 @@ def add_entry(user,schedule,data):
             from .table_resource_crew import add_daily_crew
             if add_daily_crew(user,schedule,data['equipment']):return existing
         raise ValidationError('Эта позиция уже есть в СМГ. Измените ее дневные значения.')
+    if kind=='equipment':
+        from .table_resource_crew import shifts
+        count=shifts(data.get('shifts_per_day',1))
+        if count!=1:metadata={**metadata,'shifts_per_day':count}
     if kind=='equipment' and not data.get('add_crew',True):metadata={**metadata,'table_crew':[]}
     entry=DailyScheduleEntry.objects.create(schedule=schedule,key=key,kind=kind,label=label,metadata=metadata,original=original,rows=original)
     if kind=='work':
@@ -127,7 +131,7 @@ def add_work_branch(user,schedule,selection,*,selected_items=None):
             permitted=planning_selection(work,selected,user)
             if permitted!=selected:raise ValidationError('Выберите доступные работы комплекса по отдельности.')
         original_work=work
-        work=local_work(user,schedule,work) if schedule.source_id else work
+        work=local_work(user,schedule,work)
         if selected and work.pk!=original_work.pk:
             explicit=getattr(work,'_smg_gpr_origin',None)
             mapped=[]

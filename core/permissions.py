@@ -139,8 +139,8 @@ def check_route(user, match, method):
             'equipment_category_merge', 'equipment_unit_list', 'equipment_unit_detail',
             'equipment_unit_create', 'equipment_unit_update', 'equipment_group_import',
         }
-        personnel_routes |= {'catalogue_review_list', 'catalogue_review_detail'}
-        equipment_routes |= {'catalogue_review_list', 'catalogue_review_detail'}
+        personnel_routes |= {'catalogue_review_list', 'catalogue_review_detail','catalogue_association_import'}
+        equipment_routes |= {'catalogue_review_list', 'catalogue_review_detail','catalogue_association_import'}
         routes = personnel_routes if role == PERSONNEL_CATALOG_MANAGER else equipment_routes
         own_tasks = namespace == 'planning' and name in {'task_list','task_detail'} and (name == 'task_detail' or method in {'GET','HEAD'})
         if own_account or own_tasks or namespace == 'resources' and name in routes:
