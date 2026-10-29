@@ -130,7 +130,7 @@ def check_route(user, match, method):
         require_roles(user, {'ADMIN', 'HR_HEAD', 'PLANNER'});return
     if namespace == 'accounts' and name in {'password_change','access_pending','impersonation_stop'}:
         return
-    if namespace == 'planning' and name=='workspace_edit':
+    if namespace == 'planning' and name in {'workspace_edit','workspace_months'}:
         require_roles(user, READ_ROLES if method in {'GET','HEAD'} else PLAN_ROLES|{'MANAGER'});return
     if namespace == 'planning' and name=='smg_copy_gpr':
         require_roles(user,PLAN_ROLES|{'MANAGER'});return

@@ -239,3 +239,6 @@ urlpatterns += [
     path('daily-schedule/<int:pk>/resource-crew/',graph_crew.crew,{'kind':'smg'},name='work_resources_crew_smg'),
     path('daily-schedule/<int:pk>/resource-assignment/',add_assignment,{'kind':'smg'},name='work_resources_save_smg'),
 ]
+
+from .monthly_grid_views import WorkspaceMonths
+urlpatterns += [path('workspace-versions/<int:pk>/months/',WorkspaceMonths.as_view(),name='workspace_months')]
