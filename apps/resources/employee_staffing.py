@@ -2,7 +2,10 @@
 import re
 
 
-STAFFING_LABEL = re.compile(r'\s*([^/]+?)\s*/\s*([^/]+?)\s*/\s*')
+# A slash inside an abbreviation (п/п, м/к) belongs to the job name.
+# A spaced slash inside the job prefix would be another department boundary,
+# so ambiguous multi-segment labels are left untouched.
+STAFFING_LABEL = re.compile(r'\s*((?:[^/]|(?<=\S)/(?=\S))+?)\s*/\s*([^/]+?)\s*/\s*')
 
 
 def staffing_parts(label):

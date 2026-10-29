@@ -49,6 +49,10 @@ def apply_names(run, report):
     # Serialize imports for this company, including other worker processes.
     from .models import Company
     Company.objects.select_for_update().get(pk=run.connection.company_id)
+    repair = None
+    if report.get('positions_snapshot_version') == 2:
+        from apps.resources.staffing_name_repair import repair_staffing_names
+        repair = repair_staffing_names(run, normalized.values())
     existing = {name.strip().casefold() for name in Brigade.objects.filter(company_id=run.connection.company_id).values_list('name', flat=True)}
     created = 0
     for key, name in normalized.items():
@@ -60,6 +64,7 @@ def apply_names(run, report):
               'duplicates': len(names) - empty - len(normalized), 'empty': empty}
     staffing = sync_states(run, states if states is not None else {key:True for key in normalized}, complete=states is not None)
     if states is not None:result['staffing'] = staffing
+    if repair is not None:result['staffing_name_repair'] = repair
     AuditLog.objects.create(user=run.created_by, action='CREATE', entity_type='resources.Brigade',
                             entity_id=str(run.pk), new_value={**result, 'staffing':staffing},
                             comment='Загрузка актуальных наименований должностей из 1С')

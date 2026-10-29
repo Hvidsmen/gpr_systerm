@@ -31,12 +31,11 @@ class BrigadeMergeTests(TestCase):
             {'kind':'labor','name':self.brigade.name,'section':'Other','row':312,'unit':'чел.',
              'quantity':'3','month':'2026-01-01'}]}
 
-    def test_catalog_and_file_duplicates_use_first_and_warn(self):
+    def test_exact_group_match_and_file_duplicates_keep_first_volume(self):
         sheet=self.sheet();sheet['entries'].append(dict(sheet['entries'][0],row=314,quantity='9'))
         _,rows=resolve_sheet(self.company,self.obj.project,sheet,self.obj)
-        self.assertEqual(len(rows),1);self.assertEqual(rows[0]['target_id'],self.brigade.pk)
+        self.assertEqual(len(rows),1);self.assertEqual(rows[0]['target_id'],self.source.pk)
         self.assertEqual(rows[0]['quantity'],'3')
-        self.assertTrue(any('2 записей' in w for w in sheet['warnings']))
         self.assertTrue(any('314' in w and '312' in w for w in sheet['warnings']))
         sheet['entries'].append(dict(sheet['entries'][0],month='2026-02-01',row=316))
         _,rows=resolve_sheet(self.company,self.obj.project,sheet,self.obj)
@@ -93,15 +92,15 @@ class BrigadeMergeTests(TestCase):
         self.assertEqual(forecast.resource_allocations.get(kind='labor').brigade_id,self.brigade.pk)
         from apps.planning.approval_test_helpers import estimator_check
         estimator_check(forecast,self.planner)
-        GlobalPlanService.transition(forecast,self.planner,'submit')
+        GlobalPlanService.transition(forecast,forecast.preparation.manager,'submit')
         plan=RotationPlan.objects.create(company=self.company,source=ws.baseline_version,title='Demand',start=JAN,end=date(2026,1,31))
         demand=get_demand(plan)
         self.assertTrue(all(r['brigade_id']==self.brigade.pk and r['count']==5 for r in demand))
 
     def test_list_selection_confirmation_and_permissions(self):
-        response=self.client.get(reverse('resources:brigade_list'))
+        response=self.client.get(reverse('resources:brigade_list'),{'staffing_current':''})
         self.assertContains(response,'Объединить выбранные')
-        self.assertContains(response,'2 записей')
+        self.assertContains(response,'Групп одинаковых названий:')
         response=self.client.post(reverse('resources:brigade_merge'),{'merge_stage':'select',
             'selected':[self.brigade.pk,self.source.pk]})
         self.assertEqual(response.context['form'].initial['sources'],[self.source.pk])

@@ -19,10 +19,12 @@ from .brigade_merge_refs import remap_crew
 SALT='resources.brigade-first-merge.v1'
 
 
-def preview(company):
+def preview(company, *, record_ids=None, target_id=None):
     from apps.production.models import LaborPlan,LaborFact
     from apps.planning.models import ResourceMonthAllocation,WorkResourceAssignment
-    records=list(Brigade.objects.filter(company=company,merge_source__isnull=True).select_related('group','macro_group','position_mapping__position').order_by('pk'))
+    queryset=Brigade.objects.filter(company=company,merge_source__isnull=True)
+    if record_ids is not None:queryset=queryset.filter(pk__in=record_ids)
+    records=list(queryset.select_related('group','macro_group','position_mapping__position').order_by('pk'))
     grouped=defaultdict(list)
     for b in records:grouped[position_key(b.name)].append(b)
     assignments=list(WorkResourceAssignment.objects.filter(company=company).values('pk','position_id','crew_snapshot','updated_at','version__status','schedule__status'))
@@ -38,6 +40,7 @@ def preview(company):
     groups=[]
     for items in grouped.values():
         if len(items)<2:continue
+        if target_id is not None:items.sort(key=lambda row:(row.pk!=target_id,row.pk))
         target=items[0];sources=items[1:];ids={b.pk for b in items};errors=[]
         if not target.is_active:errors.append('Первая запись неактивна. Выберите оставляемую должность вручную.')
         if len({b.unit.strip().casefold() for b in items})>1:errors.append('Разные единицы измерения.')
