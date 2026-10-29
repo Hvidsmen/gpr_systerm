@@ -162,7 +162,26 @@ def position_headers(company,rows,plan_context,*,query='',position=None,state=''
     from apps.resources.group_order import labor_group_order
     catalogue={b.pk:b for b in Brigade.objects.filter(company=company).select_related('group')}
     names={normalized(b.name):b for b in catalogue.values()}
-    def order(group):
+    from apps.resources.group_order import position_group
+    for group in output:
         brigade=next((catalogue[pk] for pk in sorted(group['plan_ids']) if pk in catalogue),None) or names.get(normalized(group['name']))
-        return labor_group_order(brigade.group.name if brigade and brigade.group_id else 'Без группы'),normalized(group['name'])
-    return sorted(output,key=order)
+        actual=next((row.get('sort_position') or row.get('position') for row in group['rows'] if row.get('sort_position') or row.get('position')),None)
+        group['labor_group']=position_group(actual) if actual else brigade.group.name if brigade and brigade.group_id else 'Без группы'
+    output.sort(key=lambda group:(labor_group_order(group['labor_group']),normalized(group['name'])))
+    for index,group in enumerate(output):group['uid']=index+1
+    return output
+
+
+def roster_sections(position_groups,grouped=False):
+    """Regroup the same filtered positions without duplicating people or plans."""
+    from .rotation import rotation_stats
+    from apps.resources.group_order import labor_group_order
+    if not grouped:return [{'positions':position_groups}]
+    buckets={}
+    for group in position_groups:
+        label=group['labor_group']
+        buckets.setdefault(label,{'name':label,'positions':[]})['positions'].append(group)
+    sections=sorted(buckets.values(),key=lambda section:labor_group_order(section['name']))
+    for section in sections:
+        section.update(rotation_stats([row for group in section['positions'] for row in group['rows']]))
+    return sections

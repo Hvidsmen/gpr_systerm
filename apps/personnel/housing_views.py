@@ -175,11 +175,18 @@ def workspace(request):
     from .housing_plan import monthly_plan,position_headers
     plan_context=monthly_plan(request.user,camp,day,camps=selected_camps)
     position_groups=position_headers(request.user.company,rows,plan_context,query=values.get('q',''),position=values.get('position'),state=values.get('state',''))
+    from .housing_plan import roster_sections
+    roster_view='groups' if raw.get('roster_view')=='groups' else 'positions'
+    view_links=[]
+    for value,label in [('positions','По должностям'),('groups','По группам должностей')]:
+        params=request.GET.copy();params['roster_view']=value
+        view_links.append({'value':value,'label':label,'url':'?'+params.urlencode()+'#roster'})
     from apps.projects.models import ConstructionObject
     objects=ConstructionObject.objects.filter(company=request.user.company,housing_camps__in=selected_camps).distinct()
     from .lodging_views import summary_context
     plan_context.update(summary_context(request.user,camp,day,camps=selected_camps))
     return render(request,'personnel/housing.html',{**plan_context,'rotation_filter':selector,'rotation_stats':rotation_stats,'position_groups':position_groups,'selected_camps':selected_camps,
+        'roster_view':roster_view,'roster_view_links':view_links,'roster_sections':roster_sections(position_groups,roster_view=='groups'),
         'camp':camp,'camps':camps,'day':day,'rows':rows,'dates':days,'form':form,'query':values.get('q',''),
         'calendar_dates':calendar_dates,'calendar_months':calendar_months,'calendar_start':calendar_start,'calendar_end':calendar_end,'events':events,'total':rotation_stats['people'],'objects':objects,
         'unknown_count':Person.objects.filter(company=request.user.company,stays__isnull=True).count(),

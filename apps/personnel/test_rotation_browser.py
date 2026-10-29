@@ -25,6 +25,9 @@ class RotationBrowserTests(StaticLiveServerTestCase):
         from apps.resources.models import Brigade
         from apps.resources.position_catalog import brigade_for
         month=self.day.replace(day=1);brigade=brigade_for(self.position);future_role=Brigade.objects.create(company=self.company,name='Инженер ПТО')
+        from apps.resources.models import BrigadeGroup
+        Brigade.objects.filter(pk=brigade).update(group=BrigadeGroup.objects.create(company=self.company,name='Основной рабочий состав'))
+        future_role.group=BrigadeGroup.objects.create(company=self.company,name='ИТР Состав');future_role.save()
         smg=DailySchedule.objects.create(company=self.company,construction_object=self.obj,month=month,status='APPLIED',revision=1,created_by=self.hr)
         for role,count in [(brigade,3),(future_role.pk,2)]:
             DailyScheduleEntry.objects.create(schedule=smg,key='labor:'+str(role),kind='labor',label='Монтажник' if role==brigade else 'Инженер ПТО',rows=[{'date':str(month+timedelta(days=n)),'brigade_id':role,'planned_count':str(count)} for n in range(monthrange(month.year,month.month)[1])])

@@ -107,7 +107,9 @@ def update(request):
         machine=get_object_or_404(Equipment,company=request.user.company,pk=data.get('equipment'))
         signed=save_cell(request.user,camp,date.fromisoformat(data.get('date','')),machine,data.get('field'),data.get('value'),data.get('signed'),data.get('session'))
         record=machine.transport_days.filter(company=request.user.company,date=date.fromisoformat(data['date'])).first()
-        return JsonResponse({'saved':True,'signed':signed,'condition':transport.condition_on(machine,date.fromisoformat(data['date'])),
+        condition=transport.condition_on(machine,date.fromisoformat(data['date']))
+        from .transport_models import CONDITIONS
+        return JsonResponse({'saved':True,'signed':signed,'condition':condition,'condition_label':dict(CONDITIONS).get(condition,'Не указано'),
             'status':record.status if record else '', 'target':f'work:{record.work_id}:{record.work_item_id or 0}' if record and record.work_id else f'object:{record.construction_object_id}' if record and record.construction_object_id else ''})
     except (ValidationError,ValueError,TypeError) as exc:return JsonResponse({'error':'; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Неверные данные.'},status=409)
 
@@ -115,14 +117,17 @@ def update(request):
 def prepare_rows(user,camp,day,rows,editable):
     from .transport_detail_values import SOURCE_DETAIL_FIELDS
     ensure_statuses(user.company)
+    from django.db.models import OuterRef,Subquery
     ids=[row['machine'].pk for row in rows];details={}
-    for detail in EquipmentDayDetails.objects.filter(company=user.company,equipment_id__in=ids,date__lte=day).select_related('shift_one_employee__position','shift_two_employee__position','request_stage','parts_stage','maintenance_stage').order_by('equipment_id','-date','-pk'):
+    status_catalogue=list(EquipmentServiceStatus.objects.filter(company=user.company))
+    latest=EquipmentDayDetails.objects.filter(company=user.company,equipment_id=OuterRef('equipment_id'),date__lte=day).order_by('-date','-pk').values('pk')[:1]
+    for detail in EquipmentDayDetails.objects.filter(company=user.company,equipment_id__in=ids,pk=Subquery(latest)).select_related('shift_one_employee__position','shift_two_employee__position','request_stage','parts_stage','maintenance_stage').order_by('equipment_id','-date','-pk'):
         details.setdefault(detail.equipment_id,detail)
     source_names={'shift_one_employee':'shift_one','shift_two_employee':'shift_two','repair_started_on':'repair_date','parts_expected_on':'expected_parts_date','request_stage':'request_status','parts_stage':'parts_status','maintenance_stage':'maintenance','repair_stage':'repair_status'}
     for row in rows:
         detail=details.get(row['machine'].pk)
         initial={name:None for name in EMPLOYEE_FIELDS} if detail and detail.date<day else {}
-        form=DetailsForm(instance=detail,initial=initial,company=user.company,lazy=True,prefix='machine-'+str(row['machine'].pk))
+        form=DetailsForm(instance=detail,initial=initial,company=user.company,lazy=True,status_catalogue=status_catalogue,prefix='machine-'+str(row['machine'].pk))
         for name,field in form.fields.items():
             field.disabled=not editable or name in EMPLOYEE_FIELDS and row['status']!='WORKED';field.widget.attrs['aria-label']=str(field.label)+' · '+str(row['machine'])
         row['details_form']=form

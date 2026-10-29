@@ -87,3 +87,38 @@ class LodgingImportTests(TestCase):
         response=self.client.post(reverse('personnel:lodging_import'),{'camp':self.a.pk,'file':SimpleUploadedFile('Проверка.xlsx',out.getvalue())})
         self.assertEqual(response.status_code,302);self.assertEqual(LodgingStay.objects.count(),1)
         self.assertEqual(LodgingImportRow.objects.filter(state='PENDING').count(),2)
+
+
+    def test_wagon_description_is_in_header_and_not_bed_notes(self):
+        from openpyxl import load_workbook
+        description='Вагон-дом жилой на 8 чел на санях 1218120 БП-002666'
+        book=load_workbook(BytesIO(workbook(self.day,[None,None])))
+        book.active.cell(4,3,description);book.active.cell(4,4,'РАБ М');book.active.cell(5,4,'РАБ М')
+        out=BytesIO();book.save(out);self.raw=out.getvalue()
+        parsed=service.parse(self.raw)
+        self.assertTrue(all(row['description']==description and row['note']=='РАБ М' for row in parsed['rows']))
+        self.send();building=LodgingBuilding.objects.get()
+        self.assertEqual(building.name,'Вагон 1');self.assertEqual(building.description,description)
+        self.assertEqual(list(LodgingBed.objects.values_list('note',flat=True)),['РАБ М','РАБ М'])
+        page=self.client.get(reverse('personnel:lodging'),{'camp':self.a.pk,'date':str(self.day)})
+        self.assertContains(page,'data-building-description>'+description+'</span>',html=False)
+        self.assertEqual(service.bed_note({'note':description+' · РАБ М'},description),'РАБ М')
+        book.active.cell(4,3,'Вагон-дом заказчика');out=BytesIO();book.save(out)
+        self.assertEqual(service.parse(out.getvalue())['rows'][0]['bed_state'],'RESERVED')
+
+    def test_legacy_wagon_notes_are_promoted_without_overwriting_manual_description(self):
+        from importlib import import_module
+        from types import SimpleNamespace
+        from django.apps import apps
+        from django.db import connection
+        migrate=import_module('apps.personnel.migrations.0011_move_wagon_description_from_bed_notes').forwards
+        description='Вагон-дом жилой на 8 чел на санях 1218120 БП-002666'
+        wagon=LodgingBuilding.objects.create(company=self.company,camp=self.a,name='1')
+        beds=[LodgingBed.objects.create(company=self.company,building=wagon,number=str(i),note=note) for i,note in enumerate([description+' · РАБ М',description,'Сломан замок'],1)]
+        manual=LodgingBuilding.objects.create(company=self.company,camp=self.a,name='2',description='Уточнено комендантом')
+        keep=LodgingBed.objects.create(company=self.company,building=manual,number='1',note=description+' · ИТР')
+        migrate(apps,SimpleNamespace(connection=connection));migrate(apps,SimpleNamespace(connection=connection))
+        wagon.refresh_from_db();manual.refresh_from_db();keep.refresh_from_db()
+        self.assertEqual(wagon.description,description);self.assertEqual(manual.description,'Уточнено комендантом')
+        self.assertEqual(list(wagon.beds.order_by('number').values_list('note',flat=True)),['РАБ М','','Сломан замок'])
+        self.assertEqual(keep.note,description+' · ИТР')

@@ -45,7 +45,7 @@ class TransportInlineTests(TestCase):
     def test_inline_api_quick_status_and_board_do_not_navigate(self):
         url=reverse('production:transport_cell');data={'camp':self.camp.pk,'date':str(self.day),'equipment':self.machine.pk,'field':'defects','value':'Поломка','signed':transport.snapshot(self.operator,self.camp,self.day),'session':self.session}
         response=self.client.post(url,data,content_type='application/json');self.assertEqual(response.status_code,200)
-        self.assertTrue(response.json()['saved'])
+        self.assertTrue(response.json()['saved']);self.assertEqual(response.json()['condition_label'],'Исправна')
         response=self.client.post(reverse('production:transport_status_create'),{'kind':'PARTS','name':'На складе участка'},content_type='application/json')
         self.assertEqual(response.status_code,200)
         self.save('parts_stage',response.json()['id'])
@@ -64,10 +64,15 @@ class TransportInlineTests(TestCase):
         self.assertContains(state,'Заявки и запчасти');self.assertContains(state,'ТО и примечания')
         self.assertNotContains(state,'name="use"');self.assertContains(state,'data-transport-count="READY"')
         self.assertNotContains(state,'data-transport-count="WORKED"')
+        self.assertContains(state,'data-detail-field="condition"',count=1)
+        self.assertNotContains(state,'data-transport-action="CONDITION"')
+        self.assertNotContains(state,'data-edit-machine=')
+        self.assertNotContains(page,'data-detail-field="condition"')
         from unittest.mock import patch
         with patch('core.fact_edit_window.timezone.localdate',return_value=self.day+timedelta(days=3)):
             readonly=self.client.get(reverse('production:transport_board'),{**scope,'tab':'state'})
         self.assertContains(readonly,'data-repair-dialog');self.assertFalse(readonly.context['editable'])
+        self.assertNotContains(readonly,'data-detail-field="condition"')
         self.assertTrue(all(field.disabled for field in readonly.context['rows'][0]['details_form'].fields.values()))
 
     def test_drivers_are_daily_and_technical_details_carry_forward_without_marking_work(self):
@@ -114,3 +119,17 @@ class TransportInlineTests(TestCase):
         self.assertEqual(row.parts_stage.name,'Доставлены')
         self.assertEqual(row.source_details['expected_parts_date'],'31.02.26')
         self.assertEqual(row.repair_date,'21.10.26 г.')
+
+
+    def test_lazy_roster_keeps_inactive_saved_status_and_current_driver(self):
+        from .transport_inline import prepare_rows
+        from .transport_views import _rows
+        driver=Employee.objects.create(company=self.company,last_name='Водитель',first_name='Смены')
+        self.save('status','WORKED');self.save('shift_one_employee',driver.pk)
+        status=EquipmentServiceStatus.objects.create(company=self.company,kind='REQUEST',name='Прежний статус')
+        self.save('request_stage',status.pk);status.is_active=False;status.save()
+        rows=_rows(self.operator,self.camp,self.day);prepare_rows(self.operator,self.camp,self.day,rows,True)
+        form=rows[0]['details_form']
+        self.assertIn((status.pk,status.name),list(form.fields['request_stage'].choices))
+        self.assertEqual(list(form.fields['shift_one_employee'].choices)[1][0],driver.pk)
+        self.assertEqual(str(form['shift_one_employee'].value()),str(driver.pk))

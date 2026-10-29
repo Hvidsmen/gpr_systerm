@@ -64,6 +64,8 @@ class BuildingForm(forms.ModelForm):
         super().__init__(*args,**kwargs)
         if self.instance.pk:self.fields.pop('places',None)
         self.fields['description'].widget.attrs['rows']=2
+        self.fields['description'].label='Описание в заголовке вагона'
+        self.fields['description'].help_text='Например: Вагон-дом жилой на 8 чел на санях 1218120 БП-002666. Номер вагона укажите отдельно.'
         for f in self.fields.values():f.widget.attrs['class']='form-check-input' if isinstance(f.widget,forms.CheckboxInput) else 'form-control'
 
 

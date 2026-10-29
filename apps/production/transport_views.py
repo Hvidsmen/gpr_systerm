@@ -82,12 +82,12 @@ class ActionForm(forms.Form):
     comment = forms.CharField(label='Примечание / причина (необязательно)',required=False,max_length=4000,widget=forms.Textarea(attrs={'rows':2}))
     signed = forms.CharField(widget=forms.HiddenInput)
     session = forms.UUIDField(widget=forms.HiddenInput,required=False)
-    def __init__(self,*args,user,camp,day,current=(),**kwargs):
+    def __init__(self,*args,user,camp,day,current=(),load_targets=True,**kwargs):
         super().__init__(*args,**kwargs)
         self.fields['equipment'].queryset=Equipment.objects.filter(company=user.company).select_related('type__parent').order_by('type__name','plate_number','inventory_number','pk')
         self.fields['equipment'].label_from_instance=lambda e:f'{e.plate_number or e.inventory_number or e.vin} · {e.type.parent.name if e.type.parent_id else e.type.name} · {e.name}'
         self.fields['target_camp'].queryset=service.camps_for(user).filter(is_active=True).exclude(pk=camp.pk)
-        options,self.targets=target_choices(user,camp,day,current)
+        options,self.targets=target_choices(user,camp,day,current) if load_targets else ([('','Без привязки к объекту и работе')],{'':(None,None,None)})
         self.fields['target'].choices=options
         for field in self.fields.values():
             field.widget.attrs['class']='form-check-input' if isinstance(field.widget,forms.CheckboxInput) else 'form-select' if isinstance(field.widget,forms.Select) else 'form-control'
@@ -111,10 +111,9 @@ def _rows(user, camp, day):
     for stay in stays:
         machine=stay.equipment;record=records.get(machine.pk);control=controls.get(machine.pk)
         condition=conditions[machine.pk,day];status=record.status if record else ''
-        previous=machine.transport_days.filter(date__lt=day,status='WORKED').select_related('work','work_item','construction_object').order_by('-date').first()
         owner=control.locked_by if control and control.expires_at and control.expires_at>timezone.now() else None
         rows.append({'machine':machine,'stay':stay,'record':record,'condition':condition,'condition_label':dict(CONDITIONS).get(condition,'Не указано'),
-            'status':status,'status_label':dict(USES).get(status,'Не заполнено'),'previous':previous,'owner':owner,
+            'status':status,'status_label':dict(USES).get(status,'Не заполнено'),'owner':owner,
             'planning_type':machine.type.parent if machine.type.parent_id else machine.type,
             'target':f'work:{record.work_id}:{record.work_item_id or 0}' if record and record.work_id else f'object:{record.construction_object_id}' if record and record.construction_object_id else '',
             'details_url':reverse('production:transport_details',args=[machine.pk])+'?'+urlencode({'camp':camp.pk,'date':str(day)}),
@@ -185,7 +184,7 @@ def board(request):
         try:require_fact_day(request.user,day)
         except ValidationError as exc:raise PermissionDenied('; '.join(exc.messages))
     rows=_rows(request.user,camp,day);current=[r['record'] for r in rows if r['record']]
-    form=ActionForm(request.POST if request.method=='POST' else None,user=request.user,camp=camp,day=day,current=current,initial={'signed':service.snapshot(request.user,camp,day),'session':uuid4()})
+    form=ActionForm(request.POST if request.method=='POST' else None,user=request.user,camp=camp,day=day,current=current,load_targets=tab=='day' or request.method=='POST' and request.POST.get('action')=='DAY',initial={'signed':service.snapshot(request.user,camp,day),'session':uuid4()})
     if request.method=='POST' and form.is_valid():
         values=form.cleaned_data;common={'signed':values['signed'],'session':values['session'],'comment':values['comment']};ids=list(values['equipment'].values_list('pk',flat=True))
         try:
@@ -210,7 +209,7 @@ def board(request):
     if context['tab'] in {'day','state'}:
         prepare_rows(request.user,camp,day,display_rows,context['editable'])
         for row in display_rows:
-            row['target_widget']=forms.Select(choices=form.fields['target'].choices,attrs={'class':'form-select form-select-sm','data-detail-field':'target','aria-label':'Объект / работа: '+str(row['machine']),'disabled':not context['editable']}).render('target-'+str(row['machine'].pk),row['target'])
+            if tab=='day':row['target_widget']=forms.Select(choices=form.fields['target'].choices,attrs={'class':'form-select form-select-sm','data-detail-field':'target','aria-label':'Объект / работа: '+str(row['machine']),'disabled':not context['editable']}).render('target-'+str(row['machine'].pk),row['target'])
             details=row['details_form']
             details['comment'].label='Примечание по ремонту'
             row['visible_details']=[details[name] for name in (('in_gpr',) if tab=='state' else ROSTER_DETAIL_FIELDS)]

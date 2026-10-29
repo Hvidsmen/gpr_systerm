@@ -23,11 +23,11 @@
    await (row.reservation||acquire(row));
    const result=await request(root.dataset.inlineUrl,{camp:root.dataset.camp,date:root.dataset.date,equipment:row.dataset.transportRow,field:field.dataset.detailField,value,signed:row.signed,session});
    updateCounts(row,result);row.signed=result.signed;field.dataset.saved=value;row.dataset.condition=result.condition;row.dataset.status=result.status;if(active===row){active=null;activeReservation=null;}row.reservation=null;
-   const condition=row.querySelector('[data-detail-field=condition]'),status=row.querySelector('[data-detail-field=status]'),target=row.querySelector('[data-detail-field=target]'),comment=row.querySelector('[data-detail-field=day_comment]');condition.value=result.condition;condition.dataset.saved=condition.value;
+   const condition=row.querySelector('[data-detail-field=condition]'),status=row.querySelector('[data-detail-field=status]'),target=row.querySelector('[data-detail-field=target]'),comment=row.querySelector('[data-detail-field=day_comment]');if(condition){condition.value=result.condition;condition.dataset.saved=condition.value;}
    if(status){status.value=result.status;status.disabled=false;status.dataset.saved=status.value;}
    if(target){target.disabled=false;target.value=result.target;target.dataset.saved=target.value;}
    if(comment)comment.disabled=false;
-   const badge=row.querySelector('[data-condition-label]');if(badge){badge.textContent=condition.selectedOptions[0]?.textContent||'Не указано';badge.className='transport-condition condition-'+result.condition;}
+   row.querySelectorAll('[data-condition-label]').forEach(badge=>{badge.textContent=result.condition_label;badge.className='transport-condition condition-'+result.condition;});
    row.querySelectorAll('[data-transport-employees]').forEach(select=>select.disabled=result.status!=='WORKED');
    if(field.dataset.detailField==='repair_stage'){const label=row.querySelector('[data-repair-summary]');if(label)label.textContent=field.value?field.selectedOptions[0].textContent:'Этап не указан';}
    if(field.dataset.detailField==='request_stage'){const label=row.querySelector('[data-request-summary]');if(label)label.textContent='Заявка: '+(field.value?field.selectedOptions[0].textContent:'не указана');}

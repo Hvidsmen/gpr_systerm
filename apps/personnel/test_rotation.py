@@ -74,7 +74,7 @@ class RotationTests(TestCase):
         StaffingSlot.objects.create(company=self.company,group=self.group,person=self.second_person,housing_camp=self.a,status='МО',calendar={str(self.day):'ДП'})
         StaffingSlot.objects.create(company=self.company,group=self.group,housing_camp=self.a,pattern=self.pattern)
         page=self.client.get(reverse('personnel:housing'),{'camp':self.a.pk,'date':str(self.day)})
-        self.assertContains(page,'План и факт');self.assertContains(page,'В работе по графику');self.assertContains(page,'В пути по графику')
+        self.assertContains(page,'План и факт');self.assertContains(page,'В работе');self.assertContains(page,'В пути')
         for key in ['working','travelling','people','on_shift','rest','vacancies','no_schedule']:
             self.assertEqual(sum(g[key] for g in page.context['position_groups']),page.context['rotation_stats'][key])
         self.assertContains(page,'data-position-fact-value="working">1</dd>',html=False)
@@ -136,3 +136,42 @@ class RotationTests(TestCase):
         from io import BytesIO
         exported=self.client.get(reverse('personnel:housing_export'),data)
         self.assertEqual(load_workbook(BytesIO(exported.content)).active.max_row,1)
+
+
+    def test_group_view_preserves_people_vacancies_scope_and_plan_order(self):
+        from apps.resources.models import Brigade,BrigadeGroup
+        from apps.resources.position_catalog import position_for
+        workers=BrigadeGroup.objects.create(company=self.company,name='Основной рабочий состав')
+        mapping=self.position.planning_mapping;mapping.brigade.group=workers;mapping.brigade.save()
+        engineers=BrigadeGroup.objects.create(company=self.company,name='ИТР Состав')
+        engineer=position_for(Brigade.objects.create(company=self.company,name='Инженер',group=engineers))
+        self.second_employee.position=engineer;self.second_employee.save()
+        StaffingSlot.objects.create(company=self.company,group=self.group,person=self.second_person,housing_camp=self.a,status='МО')
+        StaffingSlot.objects.create(company=self.company,group=self.group,housing_camp=self.a)
+        data={'camp':self.a.pk,'date':str(self.day)}
+        original=self.client.get(reverse('personnel:housing'),data)
+        grouped=self.client.get(reverse('personnel:housing'),{**data,'roster_view':'groups'})
+        sections=grouped.context['roster_sections']
+        self.assertEqual([g['name'] for g in sections],['ИТР Состав','Основной рабочий состав'])
+        self.assertEqual([(g['people'],g['on_shift'],g['vacancies']) for g in sections],[(1,0,0),(1,1,1)])
+        self.assertEqual(grouped.context['rotation_stats'],original.context['rotation_stats'])
+        self.assertEqual([g['uid'] for g in grouped.context['position_groups']],[1,2])
+        self.assertContains(grouped,'data-roster-labor-group="ИТР Состав"')
+        self.assertContains(grouped,'name="roster_view" value="groups"')
+        self.assertContains(grouped,'data-housing-person=',count=2)
+        self.assertContains(grouped,'data-housing-vacancy=',count=1)
+        self.assertTrue(all('camp='+str(self.a.pk) in view['url'] for view in grouped.context['roster_view_links']))
+        filtered=self.client.get(reverse('personnel:housing'),{**data,'roster_view':'groups','state':'MO'})
+        self.assertEqual([g['name'] for g in filtered.context['roster_sections']],['ИТР Состав'])
+        self.assertEqual(filtered.context['rotation_stats']['people'],1)
+
+    def test_group_view_handles_unmapped_and_empty_selection_and_invalid_view(self):
+        data={'camp':self.a.pk,'date':str(self.day),'roster_view':'groups'}
+        page=self.client.get(reverse('personnel:housing'),data)
+        self.assertEqual([g['name'] for g in page.context['roster_sections']],['Без группы'])
+        empty=self.client.get(reverse('personnel:housing'),{**data,'q':'нет совпадений'})
+        self.assertEqual(empty.context['roster_sections'],[])
+        self.assertContains(empty,'По выбранным объектам, ВЖГ и фильтрам сотрудников и вакансий нет.')
+        invalid=self.client.get(reverse('personnel:housing'),{**data,'roster_view':'invalid'})
+        self.assertEqual(invalid.context['roster_view'],'positions')
+        self.assertNotContains(invalid,'data-roster-labor-group=')

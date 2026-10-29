@@ -70,9 +70,9 @@ def parse(raw):
             if departed and (not arrived or departed<arrived):warning='Дата выбытия раньше прибытия.'
             if departed and snapshot and departed>snapshot:warning='Выбытие позже даты среза.'
             inventory=re.search(r'(?:инв\.?\s*№?\s*)([А-ЯA-Z]{1,4}[- ]?\d+)',description,re.I)
-            note=' · '.join(v for v in [description,text(values[3]),text(values[11])] if v)
+            note=' · '.join(v for v in [text(values[3]),text(values[11])] if v)
             key_source=text(values[7]);named_key=numbered_key(key_source)
-            state='UNAVAILABLE' if 'опечатан' in key(building) else 'RESERVED' if not name and 'заказчик' in key(note) else 'AVAILABLE'
+            state='UNAVAILABLE' if 'опечатан' in key(building) else 'RESERVED' if not name and 'заказчик' in key(description+' · '+note) else 'AVAILABLE'
             rows.append({'source_row':number,'building':building,'description':description,'bed':bed,'inventory':inventory.group(1) if inventory else '',
                 'kind':text(values[3]),'note':note,'bed_state':state,'name':name,'organization':text(values[5]),'position':text(values[6]),
                 'keys':key(values[7]) in {'да','выданы','+','1'} or bool(named_key),'key_number':named_key,'keys_source':key_source,'arrived':str(arrived) if arrived else '',
@@ -95,6 +95,14 @@ class UploadForm(forms.Form):
         if len(file.name)>250:raise forms.ValidationError('Имя файла должно быть не длиннее 250 символов.')
         if file.size>5*1024*1024 or not file.name.lower().endswith('.xlsx'):raise forms.ValidationError('Нужен .xlsx до 5 МБ.')
         return file
+
+
+def bed_note(data,description=''):
+    # Earlier import batches put the wagon description in every bed note.
+    note=data.get('note','');description=data.get('description') or description
+    if description and note==description:return ''
+    if description and note.startswith(description+' · '):return note[len(description)+3:]
+    return note
 
 
 def refresh_metadata(user,batch,parsed):
@@ -137,7 +145,7 @@ def apply(user,batch):
                     building.description=data['description'];building.save(update_fields=['description','updated_at'])
                 buildings[key(building.name)]=[building]
                 if not data['bed']:raise ValidationError('Не указан номер места. Уточните исходный файл.')
-                bed,_=LodgingBed.objects.get_or_create(company=user.company,building=building,room='',number=data['bed'],defaults={'state':data['bed_state'],'note':data['note'][:500]})
+                bed,_=LodgingBed.objects.get_or_create(company=user.company,building=building,room='',number=data['bed'],defaults={'state':data['bed_state'],'note':bed_note(data,building.description)[:500]})
                 if data['warning']:raise ValidationError(data['warning'])
                 if data['name']:
                     matches=employees.get(key(data['name']),[])

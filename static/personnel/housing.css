@@ -52,3 +52,10 @@
 .housing-roster-body .table-responsive{overflow:visible}.housing-roster-body .housing-roster-table thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}.housing-roster-body .housing-position-header{position:sticky;left:0;max-width:var(--roster-viewport,100%)}
 }
 @media(max-width:700px){.housing-roster-heading{display:none}.housing-roster-body{min-width:0}}
+
+.housing-roster-views{display:flex;flex-wrap:wrap;gap:8px}.housing-labor-group{margin-bottom:20px}.housing-labor-group-heading{position:sticky;left:0;max-width:var(--roster-viewport,100%);box-sizing:border-box;background:#e2eff7;border:1px solid #c8dfed;border-left:4px solid #0783a0;border-radius:6px;padding:11px 12px;margin-bottom:10px;color:#244d68;cursor:pointer}.housing-labor-group-heading strong{font-size:14px}.housing-labor-group-heading>span{font-size:12px;font-weight:400;margin-left:18px;color:#506a7e}.housing-labor-group .housing-position-group{margin-left:0}
+@media(max-width:700px){.housing-labor-group-heading>span{display:block;margin:5px 0 0}.housing-labor-group-heading{position:static}}
+
+.housing-calendar tr.housing-calendar-person-highlight>th,.housing-calendar tr.housing-calendar-person-highlight>td{box-shadow:inset 0 3px #0087a4,inset 0 -3px #0087a4;background-color:#d9f1f6!important;color:#174a60!important}.housing-calendar tr.housing-calendar-person-highlight>th{border-left:3px solid #0087a4}
+
+.housing-calendar-focused-view{padding-bottom:50vh}
