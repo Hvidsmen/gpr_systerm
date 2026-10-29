@@ -12,7 +12,7 @@ def editor_context(user,schedule,approval):
     role=role_code(user);draft=schedule.status=='DRAFT'
     resources=bool(record and record.resources_ready_at and record.resources_fingerprint==preparation.resource_signature(schedule))
     manager=role=='ADMIN' or role=='MANAGER' and record and record.manager_id==user.pk
-    status={'APPLIED':'APPROVED','ARCHIVED':'COMPLETED'}.get(schedule.status,schedule.status)
+    status={'APPLIED':'APPROVED','ARCHIVED':'COMPLETED','CANCELLED':'COMPLETED'}.get(schedule.status,schedule.status)
     returned=draft and any(decision.action=='REJECT' for decision in approval['smg_decisions'])
     if returned:status='REJECTED'
     path=path_context(SimpleNamespace(status=status,approval_round=schedule.approval_round),{'resource_preparation':record,'resources_ready':resources,'estimator_approved':approval['smg_checked'],'approval_ready':all(item['done'] for item in approval['smg_actions'])},user)

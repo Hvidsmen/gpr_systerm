@@ -68,7 +68,7 @@ class SMGRebaseTests(TestCase):
         activate(self.planner,new)
         task.refresh_from_db();self.assertEqual(task.status,'DONE')
         self.source.refresh_from_db();self.assertEqual(self.source.snapshot,self.original)
-        self.schedule.refresh_from_db();self.assertEqual(self.schedule.status,'ARCHIVED')
+        self.schedule.refresh_from_db();self.assertEqual(self.schedule.status,'CANCELLED')
         later=create(self.planner,self.correction,date(2026,2,1));self.assertEqual(later.locked_before,new.locked_before)
 
     @patch('apps.planning.smg_rebase.timezone.localdate',return_value=date(2026,2,10))

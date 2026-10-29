@@ -248,3 +248,9 @@ urlpatterns += [
     path('catalogue/<str:owner_kind>/<int:pk>/new/<str:kind>/', catalogue_propose, name='catalogue_propose'),
     path('catalogue/<str:owner_kind>/<int:pk>/fix/<int:request_pk>/', catalogue_fix, name='catalogue_fix'),
 ]
+
+from .smg_variant_views import SMGCompare, SMGCopyVariant
+urlpatterns += [path('daily-schedule/<int:pk>/compare/',SMGCompare.as_view(),name='smg_compare'),path('daily-schedule/<int:pk>/copy-variant/',SMGCopyVariant.as_view(),name='smg_copy_variant')]
+
+from .smg_variant_views import SMGCancelApproval
+urlpatterns += [path('daily-schedule/<int:pk>/cancel-approval/',SMGCancelApproval.as_view(),name='smg_cancel_approval')]

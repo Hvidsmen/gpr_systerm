@@ -93,7 +93,7 @@ class IndependentSMGTests(TestCase):
         new=service.revise(self.planner,schedule)
         self.assertEqual(new.revision,2);self.assertEqual(new.entries.get().rows,entry.rows)
         approve_and_activate(self.planner,new)
-        schedule.refresh_from_db();self.assertEqual(schedule.status,'ARCHIVED')
+        schedule.refresh_from_db();self.assertEqual(schedule.status,'CANCELLED')
 
     def test_scope_and_invalid_reference(self):
         schedule=self.schedule()

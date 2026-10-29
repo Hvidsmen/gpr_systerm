@@ -21,16 +21,15 @@ def check(user, schedule):
 
 
 @transaction.atomic
-def create(user, obj, month, source=None, copy_from_gpr=False):
+def create(user, obj, month, source=None, copy_from_gpr=False, *, name=''):
     require_roles(user, PLAN_ROLES)
     require_planning_object(user, obj.pk)
     obj = ConstructionObject.objects.select_for_update().get(pk=obj.pk, company=user.company)
     if month.day != 1: raise ValidationError('Выберите первый день месяца.')
     if copy_from_gpr and not source: raise ValidationError('Для копирования выберите утвержденный ГПР.')
-    existing = DailySchedule.objects.filter(company=user.company, construction_object=obj, month=month, status__in=['DRAFT','SUBMITTED','APPROVED']).first()
-    if existing: raise ValidationError('На этот месяц уже есть незавершенная редакция СМГ. Откройте ее в списке.')
     revision = (DailySchedule.objects.filter(construction_object=obj, month=month).aggregate(n=Max('revision'))['n'] or 0) + 1
-    schedule = DailySchedule.objects.create(company=user.company, construction_object=obj, month=month, revision=revision, created_by=user)
+    if len(name.strip())>150:raise ValidationError('Название варианта должно быть не длиннее 150 символов.')
+    schedule = DailySchedule.objects.create(company=user.company, construction_object=obj, month=month, revision=revision, created_by=user,name=name.strip())
     if source:
         schedule = reference(user, schedule, source)
         if copy_from_gpr:
@@ -128,14 +127,15 @@ def reference(user, schedule, source):
 
 
 @transaction.atomic
-def revise(user, schedule):
+def revise(user, schedule, *, independent=False):
     schedule = DailySchedule.objects.get(pk=schedule.pk, company=user.company)
     check(user, schedule)
-    if schedule.status not in {'APPLIED','ARCHIVED'}: raise ValidationError('Сначала завершите текущую редакцию СМГ.')
+    if not independent and schedule.status not in {'APPLIED','ARCHIVED'}: raise ValidationError('Сначала завершите текущую редакцию СМГ.')
     obj = ConstructionObject.objects.select_for_update().get(pk=schedule.construction_object_id)
-    if DailySchedule.objects.filter(construction_object=obj,month=schedule.month,status__in=['DRAFT','SUBMITTED','APPROVED']).exists():raise ValidationError('Незавершенная редакция уже существует.')
+    schedule = DailySchedule.objects.select_for_update().select_related('source').defer('source__snapshot').get(pk=schedule.pk,company=user.company)
+    list(schedule.entries.select_for_update().order_by('pk'))
     revision = DailySchedule.objects.filter(construction_object=obj,month=schedule.month).aggregate(n=Max('revision'))['n']+1
-    new = DailySchedule.objects.create(company=user.company,construction_object=obj,source=schedule.source,month=schedule.month,revision=revision,created_by=user,replaces=schedule,locked_before=schedule.locked_before)
+    new = DailySchedule.objects.create(company=user.company,construction_object=obj,source=schedule.source,month=schedule.month,revision=revision,created_by=user,replaces=schedule,locked_before=schedule.locked_before,name=((schedule.name+' — копия')[:150] if schedule.name and independent else schedule.name))
     DailyScheduleEntry.objects.bulk_create([DailyScheduleEntry(schedule=new,gpr_work_id=e.gpr_work_id,key=e.key,kind=e.kind,label=e.label,metadata=deepcopy(e.metadata),original=deepcopy(e.original),rows=deepcopy(e.rows)) for e in schedule.entries.all()])
     from .work_resources import copy_assignments
     copy_assignments(schedule,new)

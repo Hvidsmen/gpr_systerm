@@ -13,6 +13,12 @@ from .daily_schedule import create,save_entry,activate as apply_schedule,overlay
 from .approval_test_helpers import estimator_check
 
 def activate(user,schedule):
+    # Replacement scenarios must explicitly cancel the former approval first.
+    prior=DailySchedule.objects.filter(construction_object_id=schedule.construction_object_id,month=schedule.month,status__in=['APPROVED','APPLIED']).exclude(pk=schedule.pk).first()
+    if prior:
+        from .smg_variants import cancel_approval
+        actor=User.objects.filter(company=user.company,role__code='CEO',is_active=True).first()
+        cancel_approval(actor,prior,'Явная смена варианта в сценарии проверки',prior.updated_at.isoformat())
     estimator_check(schedule,user)
     manager=schedule.preparation.manager
     from .daily_schedule_approval import requires_approval,transition
@@ -121,7 +127,7 @@ class DailyScheduleTests(TestCase):
         entry=new.entries.get(kind='work')
         self.assertTrue(differences(entry,entry.rows))
         activate(self.planner,new)
-        self.schedule.refresh_from_db();self.assertEqual(self.schedule.status,'ARCHIVED')
+        self.schedule.refresh_from_db();self.assertEqual(self.schedule.status,'CANCELLED')
         self.assertEqual(DailySchedule.objects.filter(status='APPLIED').count(),1)
 
     def test_composite_and_resource_differences(self):

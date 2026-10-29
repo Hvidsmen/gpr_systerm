@@ -1,6 +1,6 @@
 {% load access %}
 <header class="plan-action-header" data-smg-action-header>
-<div class="plan-header-top"><div class="plan-header-main"><div class="plan-action-title"><h1>СМГ {{ schedule.construction_object }} · {{ schedule.month|date:'m.Y' }} · ред. {{ schedule.revision }}</h1><span class="badge bg-primary">{% if gpr_returned %}На доработке{% else %}{{ schedule.get_status_display }}{% endif %}</span></div>
+<div class="plan-header-top"><div class="plan-header-main"><div class="plan-action-title"><h1>{% if schedule.name %}{{ schedule.name }} · {% endif %}СМГ {{ schedule.construction_object }} · {{ schedule.month|date:'m.Y' }} · ред. {{ schedule.revision }}</h1><span class="badge bg-primary">{% if gpr_returned %}На доработке{% else %}{{ schedule.get_status_display }}{% endif %}</span></div>
 <p class="plan-action-meta">{% if schedule.construction_object.parent_id %}{{ schedule.construction_object.parent }} → {% endif %}{{ schedule.construction_object }} · дневной план · техника по плановым позициям{% if schedule.source_id %} · {% if is_subobject_smg %}общий {% endif %}ГПР {{ schedule.source.construction_object }} v{{ schedule.source.version_number }}{% endif %}</p>
 </div>{% include 'planning/_preparation_compact.html' %}</div>
 <nav class="plan-action-row" aria-label="Действия СМГ">
@@ -21,7 +21,7 @@
 {% include 'planning/_gpr_path.html' %}
 </header>
 <div id="smg-more-actions" class="plan-more-menu" popover>
-<a href="{% url 'planning:daily_schedule_list' %}">Все СМГ</a>
+<a href="{% url 'planning:daily_schedule_list' %}">Все СМГ</a><a href="{% url 'planning:smg_compare' schedule.pk %}">Сравнить варианты СМГ</a>{% if schedule.status == 'APPROVED' or schedule.status == 'APPLIED' %}{% if request.user|may:'planning:smg_cancel_approval' %}<a class="text-danger" href="{% url 'planning:smg_cancel_approval' schedule.pk %}">Отменить утверждение</a>{% endif %}{% endif %}{% if request.user|may:'planning:smg_copy_variant' %}<form method="post" action="{% url 'planning:smg_copy_variant' schedule.pk %}">{% csrf_token %}<button type="submit" class="btn btn-outline-secondary btn-sm">Копировать вариант</button></form>{% endif %}
 <a href="{% url 'planning:work_resources_smg' schedule.pk %}">Ресурсы и экипажи</a>
 <a href="{% url 'planning:pivot_smg_detail' schedule.pk %}">Сводная таблица</a>
 <a href="{% url 'planning:preparation_smg' schedule.pk %}">Подготовка и задания</a>

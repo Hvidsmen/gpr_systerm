@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+{% block title %}Сравнение вариантов СМГ{% endblock %}
+{% block content %}
+<a href="{% url 'planning:daily_schedule_list' %}?object={{ schedule.construction_object_id }}&amp;month={{ schedule.month|date:'Y-m' }}">← Варианты СМГ</a>
+<h1 class="h3 mt-3">Сравнение СМГ · {{ schedule.construction_object }} · {{ schedule.month|date:'m.Y' }}</h1>
+<p>Исходный: <a href="{% url 'planning:daily_schedule_detail' schedule.pk %}">{{ schedule.name|default:'Вариант' }} №{{ schedule.revision }}</a> · {{ schedule.get_status_display }}.</p>
+{% if form.fields.other.queryset.exists %}<form method="get" class="card card-body mb-3">{% include 'forms/fields.html' %}<div><button class="btn btn-primary">Сравнить</button></div></form>{% else %}<p class="alert alert-info">Для сравнения создайте ещё один вариант этого объекта на тот же месяц.</p>{% endif %}
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+{% if other %}<p>Сравниваем с <a href="{% url 'planning:daily_schedule_detail' other.pk %}">{{ other.name|default:'вариантом' }} №{{ other.revision }}</a>. Отклонение = сравниваемый вариант − исходный. Должности и техника — среднее количество за календарный месяц; часы и расход ГСМ — сумма.</p>
+{% for section in sections %}<section class="card card-body mb-3"><h2 class="h5">{{ section.label }}</h2><div class="table-responsive"><table class="table table-sm align-middle"><thead><tr><th>Работа / ресурс</th><th>Показатель / ед.</th><th>{{ schedule.name|default:'Вариант' }} №{{ schedule.revision }}</th><th>{{ other.name|default:'Вариант' }} №{{ other.revision }}</th><th>Отклонение</th><th>По дням</th></tr></thead><tbody>
+{% for row in section.rows %}<tr><th>{{ row.label }}{% if row.missing_left %}<small class="d-block text-muted">Отсутствует в исходном варианте</small>{% elif row.missing_right %}<small class="d-block text-muted">Отсутствует в сравниваемом варианте</small>{% endif %}</th><td>{{ row.metric }} · {{ row.unit }}</td><td>{{ row.left|floatformat:'3g' }}</td><td>{{ row.right|floatformat:'3g' }}</td><td class="{% if row.delta > 0 %}text-success{% elif row.delta < 0 %}text-danger{% endif %}">{{ row.delta|floatformat:'3g' }}</td><td><details><summary>Дни</summary><table class="table table-sm"><thead><tr><th>Дата</th><th>Исходный</th><th>Сравниваемый</th><th>Δ</th></tr></thead><tbody>{% for day in row.days %}<tr><td>{{ day.date|date:'d.m' }}</td><td>{{ day.left|floatformat:'3g' }}</td><td>{{ day.right|floatformat:'3g' }}</td><td>{{ day.delta|floatformat:'3g' }}</td></tr>{% endfor %}</tbody></table></details></td></tr>{% endfor %}
+</tbody></table></div></section>{% empty %}<p class="alert alert-success">Отличий в работах и ресурсах нет.</p>{% endfor %}{% endif %}
+{% endblock %}

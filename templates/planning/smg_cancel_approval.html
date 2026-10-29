@@ -1,0 +1,6 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1 class="h3">Отменить утверждение СМГ</h1><p>{{ schedule }} · {{ schedule.get_status_display }}</p>
+<p>План и история согласования сохранятся. После отмены этот вариант перестанет использоваться как действующий СМГ в оперативных отчётах. Можно будет утвердить другой вариант этого объекта на тот же месяц.</p>
+<form method="post" class="card card-body">{% csrf_token %}{% include 'forms/fields.html' %}<div class="d-flex gap-2"><button class="btn btn-danger">Отменить утверждение</button><a class="btn btn-outline-secondary" href="{% url 'planning:daily_schedule_detail' schedule.pk %}">Назад</a></div></form>
+{% endblock %}

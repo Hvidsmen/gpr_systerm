@@ -93,6 +93,9 @@ def sync(schedule):
 
 @transaction.atomic
 def transition(user,schedule,action,comment=''):
+    from apps.projects.models import ConstructionObject
+    scope=DailySchedule.objects.filter(pk=schedule.pk,company=user.company).values_list('construction_object_id',flat=True).get()
+    ConstructionObject.objects.select_for_update().get(pk=scope,company=user.company)
     schedule=DailySchedule.objects.select_for_update().select_related('source').defer('source__snapshot').get(pk=schedule.pk,company=user.company)
     from core.permissions import require_planning_object
     require_planning_object(user,schedule.construction_object_id)
@@ -124,7 +127,10 @@ def transition(user,schedule,action,comment=''):
             if section in approved:raise ValidationError('Раздел уже согласован.')
             if action=='approve':
                 if not REQUIRED_SECTIONS<=approved:raise ValidationError('Дождитесь согласования всех служб, включая Службу СБО.')
-                estimate_review.require_approved(schedule);schedule.status='APPROVED'
+                estimate_review.require_approved(schedule)
+                from .smg_variants import require_available
+                require_available(schedule)
+                schedule.status='APPROVED'
         DailyScheduleDecision.objects.create(company=user.company,review=review,section=section,action='REJECT' if action=='reject' else 'APPROVE',actor=user,actor_name=user.get_full_name() or user.username,actor_role=role,comment=comment)
     schedule.save(update_fields=['status','approval_round','updated_at'])
     sync(schedule)

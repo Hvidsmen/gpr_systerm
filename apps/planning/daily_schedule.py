@@ -226,6 +226,7 @@ def activate(user,schedule):
     from core.permissions import require_planning_object
     require_planning_object(user,schedule.construction_object_id)
     from .daily_schedule_approval import current,requires_approval
+    if schedule.status=='APPLIED':return schedule
     if schedule.status not in {'DRAFT','APPROVED'}:raise ValidationError('СМГ зафиксирован или находится на согласовании.')
     needs_approval=requires_approval(schedule)
     if needs_approval and schedule.status!='APPROVED':raise ValidationError('Для этого СМГ сначала получите согласование служб и генерального директора.')
@@ -236,7 +237,8 @@ def activate(user,schedule):
     from .estimate_review import require_approved
     require_approved(schedule)
     if not ALLOW_MONTH_CHANGES and any(differences(e,e.rows) for e in schedule.entries.select_related('schedule')):raise ValidationError('Месячные итоги СМГ должны совпадать с ГПР.')
-    DailySchedule.objects.filter(construction_object_id=schedule.construction_object_id,month=schedule.month,status='APPLIED').update(status='ARCHIVED')
+    from .smg_variants import require_available
+    require_available(schedule)
     schedule.status='APPLIED';schedule.save(update_fields=['status','updated_at'])
     from .daily_schedule_approval import sync
     sync(schedule)

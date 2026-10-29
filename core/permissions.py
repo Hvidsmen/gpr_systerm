@@ -183,6 +183,10 @@ def check_route(user, match, method):
         return
     if namespace == 'planning' and name in {'workspace_edit','workspace_months'}:
         require_roles(user, READ_ROLES if method in {'GET','HEAD'} else PLAN_ROLES|{'MANAGER'});return
+    if namespace == 'planning' and name=='smg_cancel_approval':
+        require_roles(user,{'ADMIN','CEO'});return
+    if namespace == 'planning' and name=='smg_compare':
+        require_roles(user,READ_ROLES);return
     if namespace == 'planning' and name=='smg_copy_gpr':
         require_roles(user,PLAN_ROLES|{'MANAGER'});return
     if namespace == 'planning' and name.startswith('object_plan_'):

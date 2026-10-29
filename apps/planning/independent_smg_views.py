@@ -13,6 +13,7 @@ from . import independent_smg as service
 class SMGForm(forms.Form):
     construction_object = forms.ModelChoiceField(label='Объект',queryset=ConstructionObject.objects.none())
     month = forms.DateField(label='Месяц',widget=forms.DateInput(attrs={'type':'month'},format='%Y-%m'),input_formats=['%Y-%m','%Y-%m-%d'])
+    name = forms.CharField(label='Название варианта (необязательно)',max_length=150,required=False)
     source = forms.ModelChoiceField(label='ГПР для сравнения (необязательно)',queryset=GlobalPlanVersion.objects.none(),required=False)
     copy_from_gpr = forms.BooleanField(label='Добавить данные из ГПР (для субобъекта — только состав работ)',required=False)
 
@@ -34,7 +35,7 @@ class SMGForm(forms.Form):
 class ReferenceForm(SMGForm):
     def __init__(self,*args,schedule,user,**kwargs):
         super().__init__(*args,user=user,**kwargs)
-        self.fields.pop('construction_object');self.fields.pop('month');self.fields.pop('copy_from_gpr')
+        self.fields.pop('construction_object');self.fields.pop('month');self.fields.pop('copy_from_gpr');self.fields.pop('name')
         from .subobject_smg import reference_choices
         self.fields['source'].queryset = reference_choices(user,schedule.construction_object).filter(start_date__lte=schedule.month,end_date__gte=schedule.month)
         self.fields['source'].initial = schedule.source_id
@@ -61,7 +62,7 @@ class SMGCreate(View):
         form=SMGForm(request.POST if bound else None,user=request.user,initial={'month':timezone.localdate().replace(day=1)})
         if bound and form.is_valid():
             try:
-                schedule=service.create(request.user,form.cleaned_data['construction_object'],form.cleaned_data['month'],form.cleaned_data['source'],form.cleaned_data['copy_from_gpr'])
+                schedule=service.create(request.user,form.cleaned_data['construction_object'],form.cleaned_data['month'],form.cleaned_data['source'],form.cleaned_data['copy_from_gpr'],name=form.cleaned_data['name'])
                 return redirect('planning:daily_schedule_detail',pk=schedule.pk)
             except ValidationError as exc:form.add_error(None,exc)
         return render(request,'planning/independent_smg_create.html',{'form':form})
