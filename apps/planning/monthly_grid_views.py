@@ -2,7 +2,8 @@ import json
 from datetime import date
 from django.contrib import messages
 from django.core.exceptions import ValidationError,PermissionDenied
-from django.db import transaction
+from django.db import transaction, OperationalError
+from core.sqlite_busy import retry_sqlite_busy, is_sqlite_busy, BUSY_MESSAGE
 from django.http import JsonResponse,Http404
 from django.shortcuts import render,redirect
 from django.urls import reverse
@@ -49,6 +50,43 @@ class WorkspaceMonths(View):
             'add_kind':add_kind,'grid_colspan':len(months)+2,'resource_month_options':[{'month':month,'checked':add_kind!='resource' or month.isoformat() in request.POST.getlist('months')} for month in months],
         },status=status)
 
+    def add_form(self,request,version,action):
+        can_work,can_resource=monthly_grid.permissions(request.user,version)
+        if action=='add_work':
+            if not can_work:raise PermissionDenied
+            from .work_selection_views import BranchForm
+            return BranchForm(request.POST,version=version,user=request.user,auto_id='months-work-%s')
+        if action=='add_resource':
+            if not can_resource:raise PermissionDenied
+            from .daily_schedule_table_forms import AddEntryForm
+            return AddEntryForm(request.POST,schedule=version,user=request.user)
+        raise PermissionDenied('Неизвестное действие.')
+
+    @retry_sqlite_busy
+    @transaction.atomic
+    def add_rows(self,request,version,action):
+        locked=GlobalPlanVersion.objects.select_for_update().select_related('workspace').get(pk=version.pk,company=request.user.company)
+        require_planning_object(request.user,locked.construction_object_id)
+        # Rebuild choices on every attempt. A rolled-back attempt must not reuse
+        # catalogue objects or permissions captured before another user's commit.
+        form=self.add_form(request,locked,action)
+        if not form.is_valid():
+            raise ValidationError([str(error) for errors in form.errors.values() for error in errors])
+        if action=='add_work':
+            from .work_selection import resolve,extend_allocation
+            for work,selected in resolve(form.works,form.cleaned_data['selection'],user=request.user):
+                for month in form.cleaned_data['months']:
+                    row,created=WorkMonthAllocation.objects.get_or_create(company=locked.company,version=locked,work=work,month=date.fromisoformat(month),defaults={'selected_item_ids':selected})
+                    if not created:extend_allocation(row,selected)
+        else:
+            from .plan_workbench import add_month_resource
+            months={m.isoformat():m for m in monthly_grid.editable_months(locked)}
+            selected=request.POST.getlist('months')
+            if not selected or any(m not in months for m in selected):raise ValidationError('Выберите доступные месяцы.')
+            if form.cleaned_data['kind']=='work':raise ValidationError('Для работы используйте кнопку «Добавить работы».')
+            for month in sorted(set(selected)):add_month_resource(request.user,locked,months[month],form.cleaned_data)
+        locked.snapshot={};locked.save(update_fields=['snapshot'])
+
     def post(self,request,pk):
         version=self.version(request,pk)
         if request.content_type=='application/json':
@@ -58,37 +96,21 @@ class WorkspaceMonths(View):
                 count=monthly_grid.save(request.user,version,payload.get('changes'))
                 return JsonResponse({'saved':True,'rows':count})
             except (json.JSONDecodeError,UnicodeDecodeError,ValidationError) as exc:return JsonResponse({'error':'; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Некорректные изменения.'},status=400)
-        action=request.POST.get('action');can_work,can_resource=monthly_grid.permissions(request.user,version)
-        if action=='add_work':
-            if not can_work:raise PermissionDenied
-            from .work_selection_views import BranchForm
-            from .work_selection import resolve,extend_allocation
-            form=BranchForm(request.POST,version=version,user=request.user,auto_id='months-work-%s')
-        elif action=='add_resource':
-            if not can_resource:raise PermissionDenied
-            from .daily_schedule_table_forms import AddEntryForm
-            form=AddEntryForm(request.POST,schedule=version,user=request.user)
-        else:raise PermissionDenied('Неизвестное действие.')
+            except OperationalError as exc:
+                if not is_sqlite_busy(exc):raise
+                return JsonResponse({'error':BUSY_MESSAGE,'retryable':True},status=503,headers={'Retry-After':'3'})
+        action=request.POST.get('action')
+        form=self.add_form(request,version,action)
+        status=400
         if form.is_valid():
             try:
-                with transaction.atomic():
-                    locked=GlobalPlanVersion.objects.select_for_update().select_related('workspace').get(pk=version.pk,company=request.user.company)
-                    allowed=monthly_grid.permissions(request.user,locked)
-                    if not allowed[0 if action=='add_work' else 1]:raise PermissionDenied('Версия недоступна для изменения.')
-                    if action=='add_work':
-                        for work,selected in resolve(form.works,form.cleaned_data['selection'],user=request.user):
-                            for month in form.cleaned_data['months']:
-                                row,created=WorkMonthAllocation.objects.get_or_create(company=locked.company,version=locked,work=work,month=date.fromisoformat(month),defaults={'selected_item_ids':selected})
-                                if not created:extend_allocation(row,selected)
-                    else:
-                        from .plan_workbench import add_month_resource
-                        months={m.isoformat():m for m in monthly_grid.editable_months(locked)}
-                        selected=request.POST.getlist('months')
-                        if not selected or any(m not in months for m in selected):raise ValidationError('Выберите доступные месяцы.')
-                        if form.cleaned_data['kind']=='work':raise ValidationError('Для работы используйте кнопку «Добавить работы».')
-                        for month in sorted(set(selected)):add_month_resource(request.user,locked,months[month],form.cleaned_data)
-                    locked.snapshot={};locked.save(update_fields=['snapshot'])
+                self.add_rows(request,version,action)
                 messages.success(request,'Строки добавлены в выбранные месяцы. Существующие значения сохранены.')
                 return redirect('planning:workspace_months',pk=version.pk)
             except ValidationError as exc:form.add_error(None,exc)
-        return self.display(request,version,form,'work' if action=='add_work' else 'resource',400)
+            except OperationalError as exc:
+                if not is_sqlite_busy(exc):raise
+                form.add_error(None,BUSY_MESSAGE);status=503
+        response=self.display(request,version,form,'work' if action=='add_work' else 'resource',status)
+        if status==503:response['Retry-After']='3'
+        return response

@@ -29,6 +29,12 @@ const {chromium}=require('playwright'),fs=require('fs'),assert=require('node:ass
   await cell(complex,'item:'+c.item_a,'2027-02-01').fill('30');await cell(complex,'item:'+c.item_b,'2027-02-01').fill('45');assert.equal(await root.locator('[data-grid-ready-source="'+c.composite+'"] [data-month="2027-02-01"] [data-grid-number]').innerText(),'15');
   await cell(equipment,'count','2026-11-01').fill('2');await cell(equipment,'count','2026-12-01').fill('3');
   await root.locator('[data-grid-section-heading=equipment]>summary').click();
+  const busyRoute=async route=>route.request().method()==='POST'?route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'База занята другим сохранением. Введённые значения остались в форме.',retryable:true})}):route.continue();
+  await page.route('**/planning/workspace-versions/*/months/',busyRoute);
+  await page.locator('button[form=allocation-editor][value=save]').click();await page.waitForFunction(()=>document.querySelector('[data-grid-status]').textContent.includes('База занята'));
+  assert.equal(await cell(simple,'quantity','2026-12-01').inputValue(),'12.5');assert(await cell(simple,'quantity','2026-12-01').isEnabled());
+  assert.equal(await page.locator('#allocation-editor').getAttribute('data-dirty'),'true');
+  await page.unroute('**/planning/workspace-versions/*/months/',busyRoute);
   await Promise.all([page.waitForNavigation(),page.locator('button[form=allocation-editor][value=save]').click()]);
   assert.equal(await root.locator('[data-grid-section-heading=equipment]').evaluate(el=>el.open),false);await root.locator('[data-grid-section-heading=equipment]>summary').click();
   assert.equal(await cell(simple,'quantity','2026-12-01').inputValue(),'12.500');assert.equal(await root.locator('[data-grid-ready-source="'+c.composite+'"] [data-month="2027-02-01"] [data-grid-number]').innerText(),'15');

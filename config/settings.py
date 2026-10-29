@@ -89,11 +89,14 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'config.wsgi.application'
 
+from config.sqlite import connection_options
+
 database_path = Path(os.environ.get('DJANGO_DB_PATH', str(BASE_DIR / 'db.sqlite3')))
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': database_path if database_path.is_absolute() else BASE_DIR / database_path,
+        'OPTIONS': connection_options(),
     }
 }
 

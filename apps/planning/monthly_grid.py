@@ -6,6 +6,7 @@ from decimal import Decimal
 from hashlib import sha256
 from django.core.exceptions import ValidationError,PermissionDenied
 from django.db import transaction
+from core.sqlite_busy import retry_sqlite_busy
 from core.permissions import role_code,require_planning_object
 from .models import GlobalPlanVersion,WorkMonthAllocation,ResourceMonthAllocation
 from .workspace_forms import WorkAllocationForm,ResourceAllocationForm
@@ -117,6 +118,7 @@ def form_data(row):
     return cls,values
 
 
+@retry_sqlite_busy
 @transaction.atomic
 def save(user,version,changes):
     version=GlobalPlanVersion.objects.select_for_update().select_related('workspace').get(pk=version.pk,company=user.company)
