@@ -54,6 +54,7 @@
                         {{ form.description }}
                     </div>
 
+                    <div class="mb-3" data-excel-associations>{{ form.excel_aliases.label_tag }}{{ form.excel_aliases }}<div class="form-text">{{ form.excel_aliases.help_text }}</div>{{ form.excel_aliases.errors }}</div>
                     <div class="mb-3 form-check">
                         {{ form.is_active }}
                         <label class="form-check-label" for="{{ form.is_active.id_for_label }}">
@@ -69,7 +70,7 @@
                             <i class="bi bi-x-circle"></i> Отмена
                         </a>{% endif %}
                     </div>
-                <div class="mb-3">{{ form.excel_aliases.label_tag }}{{ form.excel_aliases }}<div class="form-text">{{ form.excel_aliases.help_text }}</div>{{ form.excel_aliases.errors }}</div></form>
+                </form>
             </div>
         </div>
     </div>

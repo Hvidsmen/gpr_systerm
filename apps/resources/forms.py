@@ -26,7 +26,8 @@ class EmployeeForm(forms.ModelForm):
         }
 
 class BrigadeForm(forms.ModelForm):
-    excel_aliases = ExcelAliasesField()
+    excel_aliases = ExcelAliasesField(label='Ассоциации из Excel',
+        help_text='По одному названию в строке. Эти варианты используются при импорте Excel и в поиске. Основное название также находится автоматически.')
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['unit'].required = False
@@ -62,7 +63,8 @@ from .driver_categories import DRIVER_CATEGORY_CHOICES, DRIVER_CLASS_CHOICES
 
 
 class EquipmentTypeForm(forms.ModelForm):
-    excel_aliases = ExcelAliasesField()
+    excel_aliases = ExcelAliasesField(label='Ассоциации из Excel',
+        help_text='По одному названию в строке. Эти варианты используются при импорте Excel и в поиске. Основное название также находится автоматически.')
     driver_classes = forms.MultipleChoiceField(label="Допустимые классы водителя", choices=DRIVER_CLASS_CHOICES, required=False, widget=forms.SelectMultiple(attrs={"class":"form-select"}), help_text="Квалификационный класс: 1-й, 2-й или 3-й. Можно выбрать несколько допустимых вариантов.")
     driver_categories = forms.MultipleChoiceField(label="Допустимые категории водителя", choices=DRIVER_CATEGORY_CHOICES, required=False, widget=forms.SelectMultiple(attrs={"class":"form-select"}), help_text="Можно выбрать несколько вариантов. Категории ВУ и удостоверения тракториста-машиниста указаны отдельно.")
     def __init__(self, *args, **kwargs):

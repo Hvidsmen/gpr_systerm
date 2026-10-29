@@ -89,7 +89,8 @@
                         {% endif %}
                     </div>
 
-                    <details class="border rounded p-3 mb-3" {% if form.driver_categories.errors or form.driver_classes.errors or form.excel_aliases.errors %}open{% endif %}><summary>Требования к водителю и названия для импорта</summary>
+                    <div class="mb-3" data-excel-associations>{{ form.excel_aliases.label_tag }}{{ form.excel_aliases }}<div class="form-text">{{ form.excel_aliases.help_text }}</div>{{ form.excel_aliases.errors }}</div>
+                    <details class="border rounded p-3 mb-3" {% if form.driver_categories.errors or form.driver_classes.errors %}open{% endif %}><summary>Требования к водителю</summary>
                     <div class="mb-3 mt-3">
                         <label for="{{ form.driver_categories.id_for_label }}" class="form-label">{{ form.driver_categories.label }}</label>
                         {{ form.driver_categories }}
@@ -104,7 +105,7 @@
                         {% if form.driver_classes.errors %}<div class="text-danger small">{{ form.driver_classes.errors }}</div>{% endif %}
                     </div>
 
-                    <div class="mb-3">{{ form.excel_aliases.label_tag }}{{ form.excel_aliases }}<div class="form-text">{{ form.excel_aliases.help_text }}</div>{{ form.excel_aliases.errors }}</div></details>
+                    </details>
                     <div class="mb-3">
                         <label for="{{ form.unit.id_for_label }}" class="form-label">{{ form.unit.label }}</label>
                         {{ form.unit }}

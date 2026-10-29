@@ -18,9 +18,11 @@ def validate_excel_aliases(value):
 
 class ExcelAliasesField(forms.CharField):
     def __init__(self, **kwargs):
-        super().__init__(label='Названия в Excel', required=False,
-            help_text='По одному названию в строке. Несколько названий могут соответствовать этой записи. Основное название также распознаётся автоматически.',
-            widget=forms.Textarea(attrs={'class':'form-control','rows':4}), **kwargs)
+        kwargs.setdefault('label','Названия в Excel')
+        kwargs.setdefault('required',False)
+        kwargs.setdefault('help_text','По одному названию в строке. Несколько названий могут соответствовать этой записи. Основное название также распознаётся автоматически.')
+        kwargs.setdefault('widget',forms.Textarea(attrs={'class':'form-control','rows':4}))
+        super().__init__(**kwargs)
 
     def prepare_value(self,value):
         return '\n'.join(value) if isinstance(value,list) else value

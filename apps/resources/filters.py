@@ -1,11 +1,10 @@
 from django import forms
-from django.db import connections
 from .models import BrigadeGroup, BrigadeMacroGroup, EquipmentCategory, EquipmentType
 
 
 class CatalogFilterForm(forms.Form):
     name = forms.CharField(label='Название', required=False, max_length=150,
-        widget=forms.TextInput(attrs={'type':'search','placeholder':'Часть названия'}))
+        widget=forms.TextInput(attrs={'type':'search','placeholder':'Название или ассоциация из Excel'}))
 
     def __init__(self, *args, company, **kwargs):
         super().__init__(*args, **kwargs)
@@ -42,7 +41,7 @@ class EquipmentFilterForm(CatalogFilterForm):
 
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
-        self.fields['name'].widget.attrs['placeholder']='Название техники или модели'
+        self.fields['name'].widget.attrs['placeholder']='Название техники, модели или ассоциация из Excel'
         self.fields['is_active'].widget.attrs['class']='form-select form-select-sm'
 
 
@@ -57,12 +56,8 @@ class CatalogFilterMixin:
             if not value:
                 continue
             if key == 'name':
-                if connections[queryset.db].vendor == 'sqlite':
-                    # SQLite's LIKE does not fold Cyrillic characters.
-                    ids = [pk for pk, name in queryset.values_list('pk','name') if value.casefold() in name.casefold()]
-                    queryset = queryset.filter(pk__in=ids)
-                else:
-                    queryset = queryset.filter(name__icontains=value)
+                from .catalogue_search import filter_name
+                queryset = filter_name(queryset,value)
             elif key == 'parent':
                 from django.db.models import Q
                 queryset = queryset.filter(Q(pk=value.pk)|Q(parent=value))

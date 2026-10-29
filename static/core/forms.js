@@ -154,7 +154,7 @@
     }
     render() {
       const all = [...this.select.options].filter(option => !option.hidden);
-      let options = all.filter(option => matches((option.dataset.objectPath || option.textContent) + ' ' + (option.parentElement.tagName === 'OPTGROUP' ? option.parentElement.label : ''), this.search.value));
+      let options = all.filter(option => matches((option.dataset.objectPath || option.textContent) + ' ' + (option.dataset.searchAliases || '') + ' ' + (option.parentElement.tagName === 'OPTGROUP' ? option.parentElement.label : ''), this.search.value));
       const ancestors = new Set(options.flatMap(option => JSON.parse(option.dataset.objectAncestors || '[]')).map(String));
       const matched = new Set(options);
       options = all.filter(option => matched.has(option) || ancestors.has(option.dataset.objectId));

@@ -7,6 +7,8 @@ class ObjectTreeFormRenderer(DjangoTemplates):
             from .object_tree import tree_options
             widget = context.get('widget', {})
             groups = widget.get('optgroups', [])
+            from apps.resources.catalogue_search import alias_options
+            alias_options([option for _, choices, _ in groups for option in choices])
             # Ungrouped Select emits one optgroup per option. Build one tree
             # across them so siblings share ancestors and catalogue lookup.
             if groups and all(label is None for label, _, _ in groups):
