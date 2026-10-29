@@ -7,7 +7,7 @@ from django.http import HttpResponse
 from django.shortcuts import render
 from django.views import View
 from openpyxl import Workbook, load_workbook
-from core.permissions import require_roles, PLAN_ROLES
+from core.permissions import require_roles, EQUIPMENT_CATALOG_EDIT_ROLES
 from .models import EquipmentType, EquipmentCategory
 
 HEADERS = ['Название', 'Группа техники', 'Единица измерения', 'Активна']
@@ -114,11 +114,11 @@ def import_rows(company, rows):
 
 class EquipmentTypeImport(View):
     def get(self, request):
-        require_roles(request.user, PLAN_ROLES)
+        require_roles(request.user, EQUIPMENT_CATALOG_EDIT_ROLES)
         return render(request, 'resources/equipment_type_import.html', {'form':EquipmentImportForm()})
 
     def post(self, request):
-        require_roles(request.user, PLAN_ROLES)
+        require_roles(request.user, EQUIPMENT_CATALOG_EDIT_ROLES)
         form = EquipmentImportForm(request.POST, request.FILES)
         errors, result = [], None
         if form.is_valid():
@@ -129,7 +129,7 @@ class EquipmentTypeImport(View):
 
 
 def equipment_import_template(request):
-    require_roles(request.user, PLAN_ROLES)
+    require_roles(request.user, EQUIPMENT_CATALOG_EDIT_ROLES)
     workbook = Workbook()
     sheet = workbook.active
     sheet.title = 'Техника для планирования'

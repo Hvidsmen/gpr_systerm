@@ -4,13 +4,13 @@ from django.http import Http404
 from django.shortcuts import render, redirect
 from django.contrib import messages
 from django.views import View
-from core.permissions import PLAN_ROLES, require_roles
+from core.permissions import EQUIPMENT_CATALOG_EDIT_ROLES, require_roles
 from .models import EquipmentCategory, EquipmentType,Equipment
 
 
 class EquipmentCategoryMerge(View):
     def post(self, request):
-        require_roles(request.user, PLAN_ROLES)
+        require_roles(request.user, EQUIPMENT_CATALOG_EDIT_ROLES)
         try:
             ids = {int(value) for value in request.POST.getlist('selected')}
         except (TypeError, ValueError):
@@ -44,7 +44,7 @@ from django.db import IntegrityError
 
 class EquipmentCategoryUpdate(View):
     def dispatch(self, request, *args, **kwargs):
-        require_roles(request.user, PLAN_ROLES)
+        require_roles(request.user, EQUIPMENT_CATALOG_EDIT_ROLES)
         return super().dispatch(request, *args, **kwargs)
 
     def get(self, request, pk):

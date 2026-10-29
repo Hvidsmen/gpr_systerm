@@ -3,7 +3,7 @@ from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
-from core.permissions import require_roles,PLAN_ROLES
+from core.permissions import require_roles,EQUIPMENT_CATALOG_EDIT_ROLES
 from .models import EquipmentType,EquipmentCategory
 
 
@@ -24,7 +24,7 @@ class PlanningTypeForm(forms.ModelForm):
 @login_required
 @require_POST
 def create_planning_type(request):
-    require_roles(request.user,PLAN_ROLES)
+    require_roles(request.user,EQUIPMENT_CATALOG_EDIT_ROLES)
     with transaction.atomic():
         from apps.accounts.models import Company
         Company.objects.select_for_update().get(pk=request.user.company_id)

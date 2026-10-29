@@ -8,7 +8,7 @@ from django.http import HttpResponse
 from django.shortcuts import render
 from django.views import View
 from openpyxl import Workbook,load_workbook
-from core.permissions import require_roles,PLAN_ROLES
+from core.permissions import require_roles,PERSONNEL_CATALOG_EDIT_ROLES
 from .models import Brigade,BrigadeGroup
 
 HEADERS=['ID','Название','Группа']
@@ -89,10 +89,10 @@ def import_rows(company,rows,user=None):
 
 class BrigadeImport(View):
     def get(self,request):
-        require_roles(request.user,PLAN_ROLES)
+        require_roles(request.user,PERSONNEL_CATALOG_EDIT_ROLES)
         return render(request,'resources/brigade_import.html',{'form':BrigadeImportForm()})
     def post(self,request):
-        require_roles(request.user,PLAN_ROLES);form=BrigadeImportForm(request.POST,request.FILES);errors=[];result=None
+        require_roles(request.user,PERSONNEL_CATALOG_EDIT_ROLES);form=BrigadeImportForm(request.POST,request.FILES);errors=[];result=None
         if form.is_valid():
             rows,errors=read_rows(form.cleaned_data['file'])
             if not errors:
@@ -102,7 +102,7 @@ class BrigadeImport(View):
 
 
 def brigade_import_template(request):
-    require_roles(request.user,PLAN_ROLES)
+    require_roles(request.user,PERSONNEL_CATALOG_EDIT_ROLES)
     book=Workbook();sheet=book.active;sheet.title='Группы должностей';sheet.append(HEADERS);sheet.freeze_panes='A2'
     for column,width in [('A',15),('B',65),('C',40)]:sheet.column_dimensions[column].width=width
     guide=book.create_sheet('Инструкция')

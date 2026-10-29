@@ -9,7 +9,7 @@ from django.views.decorators.http import require_GET
 from django.views.generic import DetailView, UpdateView
 
 from core.mixins import CompanyScopedMixin, CompanyRequiredMixin
-from core.permissions import role_code
+from core.permissions import role_code, PERSONNEL_CATALOG_EDIT_ROLES
 from .forms import EmployeeForm
 from .models import Employee
 
@@ -58,7 +58,7 @@ class EmployeeDetail(CompanyScopedMixin, DetailView):
             'empty_job_name': 'Запись должности найдена, но её наименование пустое.',
         }.get(data.get('position_state'), '')
         context['can_view_private'] = role_code(self.request.user) in {'ADMIN', 'HR_HEAD'}
-        context['can_edit'] = not employee.zup_ref and role_code(self.request.user) in {'ADMIN', 'HR_HEAD', 'PLANNER'}
+        context['can_edit'] = not employee.zup_ref and role_code(self.request.user) in PERSONNEL_CATALOG_EDIT_ROLES | {'HR_HEAD'}
         if context['can_view_private']:
             context['personal_rows'] = [
                 ('Полное имя', employee.display_name),

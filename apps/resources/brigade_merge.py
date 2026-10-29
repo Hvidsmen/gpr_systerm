@@ -8,7 +8,7 @@ from django.forms.models import model_to_dict
 from django.contrib import messages
 from django.shortcuts import render, redirect
 from django.views import View
-from core.permissions import require_roles, PLAN_ROLES
+from core.permissions import require_roles, PERSONNEL_CATALOG_EDIT_ROLES
 from .models import Brigade, BrigadeMerge, BrigadeMember
 from .equipment_merge import transfer_rows
 
@@ -94,7 +94,7 @@ class BrigadeMergeForm(forms.Form):
 
 @transaction.atomic
 def merge_brigades(user, target_id, source_ids):
-    require_roles(user, PLAN_ROLES)
+    require_roles(user, PERSONNEL_CATALOG_EDIT_ROLES)
     from apps.accounts.models import Company
     Company.objects.select_for_update().get(pk=user.company_id)
     ids = sorted(set(source_ids) | {target_id})
@@ -158,11 +158,11 @@ def merge_brigades(user, target_id, source_ids):
 
 class BrigadeMergeView(View):
     def get(self, request):
-        require_roles(request.user, PLAN_ROLES)
+        require_roles(request.user, PERSONNEL_CATALOG_EDIT_ROLES)
         return render(request,'resources/brigade_merge.html',{'form':BrigadeMergeForm(user=request.user)})
 
     def post(self, request):
-        require_roles(request.user, PLAN_ROLES)
+        require_roles(request.user, PERSONNEL_CATALOG_EDIT_ROLES)
         if request.POST.get('merge_stage') == 'select':
             try: ids = sorted({int(v) for v in request.POST.getlist('selected')})
             except (ValueError,TypeError): ids = []

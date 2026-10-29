@@ -32,7 +32,12 @@ class CompanyAccessMiddleware:
             return redirect('accounts:access_pending')
         if match.view_name not in self.account_views and not request.user.company_id:
             raise PermissionDenied('Для доступа к данным администратор должен назначить вам компанию.')
-        from core.permissions import check_route, role_code, DISPATCHER_ROLES
+        from core.permissions import check_route, role_code, DISPATCHER_ROLES, PERSONNEL_CATALOG_MANAGER, EQUIPMENT_CATALOG_MANAGER
+        catalogue_home = {PERSONNEL_CATALOG_MANAGER: 'resources:employee_list',
+                          EQUIPMENT_CATALOG_MANAGER: 'resources:equipment_type_list'}
+        if match.namespace == 'dashboard' and match.url_name == 'index' and role_code(request.user) in catalogue_home:
+            from django.shortcuts import redirect
+            return redirect(catalogue_home[role_code(request.user)])
         if match.namespace=='dashboard' and role_code(request.user)=='COMMANDANT':
             from django.shortcuts import redirect
             return redirect('personnel:lodging')

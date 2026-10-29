@@ -4,7 +4,7 @@ from django.http import HttpResponse
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
-from core.permissions import require_roles, READ_ROLES
+from core.permissions import require_roles, catalogue_read_roles
 from .views import BrigadeListView, EquipmentTypeListView
 
 
@@ -14,7 +14,7 @@ class CatalogExcelExport:
     sheet_title = ''
 
     def get(self, request, *args, **kwargs):
-        require_roles(request.user, READ_ROLES)
+        require_roles(request.user, catalogue_read_roles(self.model._meta.label))
         queryset = self.get_queryset()
         if self.filter_form.errors:
             return HttpResponse('Некорректные фильтры. Исправьте значения в списке и повторите экспорт.', status=400, content_type='text/plain; charset=utf-8')

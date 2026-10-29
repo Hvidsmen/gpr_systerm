@@ -297,7 +297,7 @@ from .forms import EquipmentCategoryForm
 from django.http import JsonResponse
 from django.db import IntegrityError, transaction
 from django.views.decorators.http import require_POST
-from core.permissions import require_roles, PLAN_ROLES
+from core.permissions import require_roles, EQUIPMENT_CATALOG_EDIT_ROLES
 
 
 class EquipmentCategoryListView(CatalogueExcelMixin, CompanyScopedMixin, ListView):
@@ -312,7 +312,7 @@ class EquipmentCategoryListView(CatalogueExcelMixin, CompanyScopedMixin, ListVie
 
 @require_POST
 def equipment_category_create(request):
-    require_roles(request.user, PLAN_ROLES)
+    require_roles(request.user, EQUIPMENT_CATALOG_EDIT_ROLES)
     form = EquipmentCategoryForm(request.POST, company=request.user.company)
     if form.is_valid():
         try:

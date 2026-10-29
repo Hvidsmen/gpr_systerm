@@ -9,7 +9,7 @@ from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 
-from .permissions import READ_ROLES, require_roles
+from .permissions import require_roles
 
 
 def xlsx_response(filename, sheets):
@@ -120,7 +120,8 @@ SCHEMAS = {
 
 
 def catalogue_response(request, queryset):
-    require_roles(request.user,READ_ROLES|({'HR_HEAD','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER','ALL_FACT_DISPATCHER','DISPATCHER','COMMANDANT'} if queryset.model._meta.label=='resources.Employee' else set()))
+    from core.permissions import catalogue_read_roles
+    require_roles(request.user,catalogue_read_roles(queryset.model._meta.label)|({'HR_HEAD','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER','ALL_FACT_DISPATCHER','DISPATCHER','COMMANDANT'} if queryset.model._meta.label=='resources.Employee' else set()))
     if queryset.model._meta.label == 'resources.Equipment' and 'unit_state' not in queryset.query.annotations:
         from apps.resources.equipment_unit_catalogue import with_unit_state
         queryset=with_unit_state(queryset, request.user.company)

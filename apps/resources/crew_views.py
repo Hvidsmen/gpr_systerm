@@ -4,7 +4,8 @@ from django.db import transaction, IntegrityError
 from django.forms import BaseModelFormSet, modelformset_factory
 from django.shortcuts import get_object_or_404, render, redirect
 from django.views import View
-from core.permissions import READ_ROLES, PLAN_ROLES, require_roles
+from core.permissions import (PERSONNEL_CATALOG_READ_ROLES, PERSONNEL_CATALOG_EDIT_ROLES,
+                              EQUIPMENT_CATALOG_READ_ROLES, EQUIPMENT_CATALOG_EDIT_ROLES, require_roles)
 from .models import Position, EquipmentType, EquipmentCrewPosition
 
 
@@ -26,7 +27,7 @@ class PositionForm(forms.ModelForm):
 
 class PositionCatalogue(View):
     def display(self,request,pk=None,bound=False):
-        require_roles(request.user,PLAN_ROLES if bound or pk else READ_ROLES)
+        require_roles(request.user,PERSONNEL_CATALOG_EDIT_ROLES if bound or pk else PERSONNEL_CATALOG_READ_ROLES)
         if pk:
             position=get_object_or_404(Position,company=request.user.company,pk=pk)
             from .position_catalog import brigade_for
@@ -68,7 +69,7 @@ class CrewSet(BaseModelFormSet):
 
 class EquipmentCrew(View):
     def display(self,request,pk,bound=False):
-        require_roles(request.user,PLAN_ROLES if bound else READ_ROLES)
+        require_roles(request.user,EQUIPMENT_CATALOG_EDIT_ROLES if bound else EQUIPMENT_CATALOG_READ_ROLES)
         equipment=get_object_or_404(EquipmentType,pk=pk,company=request.user.company,merge_source__isnull=True)
         Factory=modelformset_factory(EquipmentCrewPosition,form=CrewForm,formset=CrewSet,extra=2,can_delete=True,max_num=100,validate_max=True)
         formset=Factory(request.POST if bound else None,queryset=equipment.crew_positions.filter(company=request.user.company),form_kwargs={'equipment':equipment})

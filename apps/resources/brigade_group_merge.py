@@ -4,13 +4,13 @@ from django.http import Http404
 from django.shortcuts import render, redirect
 from django.contrib import messages
 from django.views import View
-from core.permissions import PLAN_ROLES, require_roles
+from core.permissions import PERSONNEL_CATALOG_EDIT_ROLES, require_roles
 from .models import BrigadeGroup, Brigade
 
 
 class BrigadeGroupMerge(View):
     def post(self, request):
-        require_roles(request.user, PLAN_ROLES)
+        require_roles(request.user, PERSONNEL_CATALOG_EDIT_ROLES)
         try:
             ids = {int(value) for value in request.POST.getlist('selected')}
         except (TypeError, ValueError):

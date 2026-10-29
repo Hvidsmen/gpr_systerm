@@ -3,7 +3,7 @@ from django.http import JsonResponse
 from django.shortcuts import render
 from django.views import View
 from django.views.decorators.http import require_POST
-from core.permissions import require_roles, PLAN_ROLES
+from core.permissions import require_roles, PERSONNEL_CATALOG_EDIT_ROLES
 from .models import BrigadeGroup, BrigadeMacroGroup
 from .forms import BrigadeGroupForm, BrigadeMacroGroupForm
 
@@ -29,7 +29,7 @@ class BrigadeCatalogList(View):
 def quick_create(kind):
     @require_POST
     def view(request):
-        require_roles(request.user, PLAN_ROLES)
+        require_roles(request.user, PERSONNEL_CATALOG_EDIT_ROLES)
         model, form_class, title = CONFIG[kind]
         form = form_class(request.POST, company=request.user.company)
         if form.is_valid():
@@ -45,7 +45,7 @@ def quick_create(kind):
 
 class BrigadeGroupUpdate(View):
     def dispatch(self, request, *args, **kwargs):
-        require_roles(request.user, PLAN_ROLES)
+        require_roles(request.user, PERSONNEL_CATALOG_EDIT_ROLES)
         return super().dispatch(request, *args, **kwargs)
 
     def get(self, request, pk):

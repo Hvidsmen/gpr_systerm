@@ -6,7 +6,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.shortcuts import render
 from django.views.decorators.http import require_http_methods
-from core.permissions import PLAN_ROLES,require_roles
+from core.permissions import EQUIPMENT_CATALOG_EDIT_ROLES,require_roles
 from .models import Equipment,EquipmentType,EquipmentCategory
 from .brigade_import import BrigadeImportForm,text
 
@@ -103,7 +103,7 @@ def apply(user,rows):
 @login_required
 @require_http_methods(['GET','POST'])
 def import_groups(request):
-    require_roles(request.user,PLAN_ROLES);form=ImportForm(request.POST or None,request.FILES or None);errors=[];result=None
+    require_roles(request.user,EQUIPMENT_CATALOG_EDIT_ROLES);form=ImportForm(request.POST or None,request.FILES or None);errors=[];result=None
     if request.method=='POST' and form.is_valid():
         rows,errors=read_rows(form.cleaned_data['file'])
         if not errors:

@@ -9,7 +9,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.shortcuts import render,redirect
 from django.views.decorators.http import require_http_methods
-from core.permissions import require_roles,PLAN_ROLES
+from core.permissions import require_roles,PERSONNEL_CATALOG_EDIT_ROLES
 from apps.accounts.models import Company
 from .models import Brigade,Employee,EquipmentCrewPosition
 from .position_catalog import position_key
@@ -75,7 +75,7 @@ def preview(company):
 @login_required
 @require_http_methods(['GET','POST'])
 def batch_merge(request):
-    require_roles(request.user,PLAN_ROLES)
+    require_roles(request.user,PERSONNEL_CATALOG_EDIT_ROLES)
     error=None
     if request.method=='POST':
         try:

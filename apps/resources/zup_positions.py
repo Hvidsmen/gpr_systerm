@@ -81,8 +81,8 @@ def link_existing_employees(company_id):
 @login_required
 @require_POST
 def link_employees(request):
-    from core.permissions import PLAN_ROLES
-    require_roles(request.user,PLAN_ROLES)
+    from core.permissions import PERSONNEL_CATALOG_EDIT_ROLES
+    require_roles(request.user,PERSONNEL_CATALOG_EDIT_ROLES)
     with transaction.atomic():
         count=link_existing_employees(request.user.company_id)
         from apps.audit.models import AuditLog

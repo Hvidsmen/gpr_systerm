@@ -8,7 +8,7 @@ from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
-from core.permissions import PLAN_ROLES, require_roles
+from core.permissions import PERSONNEL_CATALOG_EDIT_ROLES, require_roles
 from .models import Brigade, BrigadeGroup, BrigadeMacroGroup
 
 
@@ -40,7 +40,7 @@ def list_url(query):
 @login_required
 @require_POST
 def assign_groups(request):
-    require_roles(request.user, PLAN_ROLES)
+    require_roles(request.user, PERSONNEL_CATALOG_EDIT_ROLES)
     try:
         ids = {int(value) for value in request.POST.getlist('selected')}
     except (TypeError, ValueError):

@@ -8,7 +8,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_GET
 from urllib.parse import parse_qsl, urlencode
-from core.permissions import READ_ROLES,PLAN_ROLES,require_roles,role_code
+from core.permissions import EQUIPMENT_CATALOG_READ_ROLES,EQUIPMENT_CATALOG_EDIT_ROLES,require_roles,role_code
 from .models import Equipment,EquipmentType,EquipmentCategory
 from .equipment_unit_catalogue import UnitFilterForm, filter_units, present_unit, unit_queryset
 
@@ -84,7 +84,7 @@ def list_url(query=''):
 
 
 def units(request,pk=None,create=False):
-    require_roles(request.user,READ_ROLES if request.method=='GET' and not (pk or create) else PLAN_ROLES)
+    require_roles(request.user,EQUIPMENT_CATALOG_READ_ROLES if request.method=='GET' and not (pk or create) else EQUIPMENT_CATALOG_EDIT_ROLES)
     instance=get_object_or_404(Equipment,pk=pk,company=request.user.company) if pk else None
     if pk or create or request.method == 'POST':
         query = return_query(request)
@@ -129,12 +129,12 @@ def units(request,pk=None,create=False):
         'filter_model_options':list(EquipmentType.objects.filter(company=request.user.company,parent__company=request.user.company,
             parent__isnull=False,merge_source__isnull=True).values('id','parent_id','name','brand_model','parent__name')),
         'unit_parent':filters.cleaned_data.get('parent') if valid else None,'unit_model':filters.cleaned_data.get('model') if valid else None,
-        'editable':role_code(request.user) in PLAN_ROLES})
+        'editable':role_code(request.user) in EQUIPMENT_CATALOG_EDIT_ROLES})
 
 
 @require_GET
 def unit_detail(request, pk):
-    require_roles(request.user, READ_ROLES)
+    require_roles(request.user, EQUIPMENT_CATALOG_READ_ROLES)
     unit = present_unit(get_object_or_404(unit_queryset(request.user.company), pk=pk))
     query = return_query(request)
     from apps.production.equipment_operations_models import EquipmentAssignment
@@ -148,4 +148,4 @@ def unit_detail(request, pk):
     details_edit_url=(reverse('production:transport_details',args=[unit.pk])+'?'+urlencode({'camp':current_stay.camp_id,'date':str(timezone.localdate())})) if current_stay and role_code(request.user) in OPERATORS else ''
     return render(request, 'resources/equipment_unit_detail.html', {'details_edit_url':details_edit_url,'unit':unit,'as_of':timezone.localdate(),
         'details':unit.daily_details.filter(company=request.user.company,date__lte=timezone.localdate()).first(),
-        'return_query':query,'unit_list_url':list_url(query),'history_visible':history_visible,'transport_history_visible':transport_history_visible,'editable':role_code(request.user) in PLAN_ROLES})
+        'return_query':query,'unit_list_url':list_url(query),'history_visible':history_visible,'transport_history_visible':transport_history_visible,'editable':role_code(request.user) in EQUIPMENT_CATALOG_EDIT_ROLES})

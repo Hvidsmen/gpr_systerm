@@ -8,7 +8,7 @@ from django.forms.models import model_to_dict
 from django.contrib import messages
 from django.shortcuts import render, redirect
 from django.views import View
-from core.permissions import require_roles, PLAN_ROLES
+from core.permissions import require_roles, EQUIPMENT_CATALOG_EDIT_ROLES
 from .models import EquipmentType, EquipmentTypeMerge, Equipment
 
 
@@ -130,7 +130,7 @@ def transfer_rows(model, company, source, target, identity, fields, rate, audit,
 
 @transaction.atomic
 def merge_equipment(user, target_id, source_ids):
-    require_roles(user, PLAN_ROLES)
+    require_roles(user, EQUIPMENT_CATALOG_EDIT_ROLES)
     ids = sorted(set(source_ids) | {target_id})
     records = {item.pk: item for item in EquipmentType.objects.select_for_update().filter(company=user.company, pk__in=ids, merge_source__isnull=True).order_by("pk")}
     if len(records) != len(ids) or not source_ids or target_id in source_ids:
@@ -161,11 +161,11 @@ def merge_equipment(user, target_id, source_ids):
 
 class EquipmentMergeView(View):
     def get(self, request):
-        require_roles(request.user, PLAN_ROLES)
+        require_roles(request.user, EQUIPMENT_CATALOG_EDIT_ROLES)
         return render(request, 'resources/equipment_merge.html', {'form': EquipmentMergeForm(user=request.user)})
 
     def post(self, request):
-        require_roles(request.user, PLAN_ROLES)
+        require_roles(request.user, EQUIPMENT_CATALOG_EDIT_ROLES)
         if request.POST.get('merge_stage') == 'select':
             raw_ids = request.POST.getlist('selected')
             try:

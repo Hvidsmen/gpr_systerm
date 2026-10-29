@@ -8,8 +8,25 @@ DISPATCHER_ROLES = {'DISPATCHER','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHE
 ROLES = DISPATCHER_ROLES | {'ADMIN', 'PLANNER', 'MANAGER', 'FOREMAN', 'DISPATCHER', 'OBSERVER', 'ESTIMATOR'} | GLOBAL_APPROVAL_ROLES
 READ_ROLES = {'ADMIN', 'PLANNER', 'MANAGER', 'OBSERVER', 'ESTIMATOR'} | GLOBAL_APPROVAL_ROLES
 PLAN_ROLES = {'ADMIN', 'PLANNER'}
+PERSONNEL_CATALOG_MANAGER = 'PERSONNEL_CATALOG_MANAGER'
+EQUIPMENT_CATALOG_MANAGER = 'EQUIPMENT_CATALOG_MANAGER'
+CATALOG_MANAGER_ROLES = {PERSONNEL_CATALOG_MANAGER, EQUIPMENT_CATALOG_MANAGER}
+ROLES |= CATALOG_MANAGER_ROLES
+PERSONNEL_CATALOG_EDIT_ROLES = PLAN_ROLES | {PERSONNEL_CATALOG_MANAGER}
+PERSONNEL_CATALOG_READ_ROLES = READ_ROLES | {PERSONNEL_CATALOG_MANAGER}
+EQUIPMENT_CATALOG_EDIT_ROLES = PLAN_ROLES | {EQUIPMENT_CATALOG_MANAGER}
+EQUIPMENT_CATALOG_READ_ROLES = READ_ROLES | {EQUIPMENT_CATALOG_MANAGER}
 FACT_ROLES = {'ADMIN', 'FOREMAN'} | DISPATCHER_ROLES
 APPROVAL_ROLES = {'ADMIN', 'MANAGER'}
+
+
+def catalogue_read_roles(model_label):
+    if model_label in {'resources.Employee', 'resources.Brigade', 'resources.Position',
+                       'resources.BrigadeGroup', 'resources.BrigadeMacroGroup'}:
+        return PERSONNEL_CATALOG_READ_ROLES
+    if model_label in {'resources.Equipment', 'resources.EquipmentType', 'resources.EquipmentCategory'}:
+        return EQUIPMENT_CATALOG_READ_ROLES
+    return READ_ROLES
 
 
 def role_code(user):
@@ -100,6 +117,32 @@ def scope_queryset(queryset, user, include_archived=False):
 def check_route(user, match, method):
     namespace, name = match.namespace, match.url_name
     role = role_code(user)
+    if role in CATALOG_MANAGER_ROLES:
+        # Catalogue custodians have no implicit access to plans, facts or admin.
+        require_roles(user, CATALOG_MANAGER_ROLES)
+        own_account = namespace == 'accounts' and (
+            name in {'settings', 'logout', 'password_change', 'access_pending', 'impersonation_stop'}
+            or name == 'user_detail' and match.kwargs.get('pk') == user.pk)
+        personnel_routes = {
+            'employee_list', 'employee_detail', 'employee_create', 'employee_update',
+            'brigade_list', 'brigade_create', 'brigade_update', 'brigade_export',
+            'brigade_import', 'brigade_import_template', 'brigade_merge', 'brigade_batch_merge',
+            'brigade_link_employees', 'brigade_bulk_group', 'brigade_group_list',
+            'brigade_group_create', 'brigade_group_update', 'brigade_group_merge',
+            'brigade_macro_group_list', 'brigade_macro_group_create', 'position_list', 'position_update',
+        }
+        equipment_routes = {
+            'equipment_type_list', 'equipment_type_create', 'equipment_type_update',
+            'equipment_type_export', 'equipment_type_import', 'equipment_import_template',
+            'equipment_type_merge', 'equipment_type_quick_create', 'equipment_crew',
+            'equipment_category_list', 'equipment_category_create', 'equipment_category_update',
+            'equipment_category_merge', 'equipment_unit_list', 'equipment_unit_detail',
+            'equipment_unit_create', 'equipment_unit_update', 'equipment_group_import',
+        }
+        routes = personnel_routes if role == PERSONNEL_CATALOG_MANAGER else equipment_routes
+        if own_account or namespace == 'resources' and name in routes:
+            return
+        raise PermissionDenied('Доступ разрешён только к справочникам вашего направления.')
     if namespace=='personnel' and name in {'lodging_import','lodging_import_review'}:
         require_roles(user,{'ADMIN'});return
     if namespace=='personnel' and name.startswith('lodging'):
