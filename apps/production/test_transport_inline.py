@@ -25,8 +25,8 @@ class TransportInlineTests(TestCase):
         row=EquipmentDayDetails.objects.get(equipment=self.machine)
         self.assertEqual(str(row.repair_started_on),'2026-10-20')
         self.assertTrue(FactRevision.objects.filter(entity_type='production.equipmentdaydetails',actor=self.operator).exists())
-        self.save('condition','REPAIR');self.assertFalse(self.machine.transport_days.exists())
-        with self.assertRaises(ValidationError):self.save('status','WORKED')
+        self.save('condition','REPAIR');self.assertEqual(self.machine.transport_days.get(date=self.day).status,'WORKED')
+        self.save('status','WORKED');self.assertEqual(transport.condition_on(self.machine,self.day),'REPAIR')
     def test_stale_version_foreign_options_invalid_dates_and_leases_reject(self):
         stale=transport.snapshot(self.operator,self.camp,self.day);self.save('defects','Уточнение')
         with self.assertRaises(ValidationError):self.save('comment','Потеря',signed=stale)
@@ -51,6 +51,44 @@ class TransportInlineTests(TestCase):
         self.save('parts_stage',response.json()['id'])
         page=self.client.get(reverse('production:transport_board'),{'camp':self.camp.pk,'date':str(self.day)})
         self.assertContains(page,'data-detail-field="parts_stage"');self.assertContains(page,'data-detail-field="repair_started_on"');self.assertNotContains(page,'>Сведения</a>')
+
+    def test_work_and_maintenance_have_separate_fields_and_repair_dialog(self):
+        scope={'camp':self.camp.pk,'date':str(self.day)}
+        page=self.client.get(reverse('production:transport_board'),scope)
+        self.assertEqual([field.name for field in page.context['rows'][0]['visible_details']],['shift_one_employee','shift_two_employee','in_gpr'])
+        self.assertContains(page,'data-open-repair');self.assertContains(page,'data-repair-dialog')
+        self.assertNotContains(page,'<th>Неисправности и поломки</th>')
+        state=self.client.get(reverse('production:transport_board'),{**scope,'tab':'state'})
+        self.assertEqual([field.name for field in state.context['rows'][0]['visible_details']],['in_gpr'])
+        self.assertNotContains(state,'data-detail-field="status"');self.assertNotContains(state,'data-detail-field="shift_one_employee"')
+        self.assertContains(state,'Заявки и запчасти');self.assertContains(state,'ТО и примечания')
+        self.assertNotContains(state,'name="use"');self.assertContains(state,'data-transport-count="READY"')
+        self.assertNotContains(state,'data-transport-count="WORKED"')
+        from unittest.mock import patch
+        with patch('core.fact_edit_window.timezone.localdate',return_value=self.day+timedelta(days=3)):
+            readonly=self.client.get(reverse('production:transport_board'),{**scope,'tab':'state'})
+        self.assertContains(readonly,'data-repair-dialog');self.assertFalse(readonly.context['editable'])
+        self.assertTrue(all(field.disabled for field in readonly.context['rows'][0]['details_form'].fields.values()))
+
+    def test_drivers_are_daily_and_technical_details_carry_forward_without_marking_work(self):
+        from apps.resources.models import Employee
+        driver=Employee.objects.create(company=self.company,last_name='Водитель',first_name='Тест')
+        with self.assertRaises(ValidationError):self.save('shift_one_employee',driver.pk)
+        self.save('status','WORKED');self.save('shift_one_employee',driver.pk)
+        self.save('defects','Контроль датчика');self.save('request_details','Заявка № 12');self.save('condition','REPAIR')
+        self.assertEqual(self.machine.transport_days.get(date=self.day).status,'WORKED')
+        detail=EquipmentDayDetails.objects.get(equipment=self.machine,date=self.day);self.assertEqual(detail.shift_one_employee,driver)
+        yesterday=self.day-timedelta(days=1)
+        # Move this detail to yesterday to exercise a new day's carry-forward.
+        EquipmentDayDetails.objects.filter(pk=detail.pk).update(date=yesterday,source_details={'shift_one':driver.display_name,'repair_status':'Контроль'})
+        self.machine.transport_days.all().delete()
+        page=self.client.get(reverse('production:transport_board'),{'camp':self.camp.pk,'date':str(self.day)})
+        self.assertIsNone(page.context['rows'][0]['details_form']['shift_one_employee'].value())
+        self.assertEqual(page.context['rows'][0]['details_form']['defects'].value(),'Контроль датчика')
+        self.save('comment','Проверка механика')
+        today=EquipmentDayDetails.objects.get(equipment=self.machine,date=self.day)
+        self.assertIsNone(today.shift_one_employee);self.assertEqual(today.request_details,'Заявка № 12')
+        self.assertNotIn('shift_one',today.source_details);self.assertFalse(self.machine.transport_days.exists())
 
     def test_legacy_details_data_migration_preserves_sources_and_types_dates(self):
         from importlib import import_module

@@ -47,7 +47,7 @@
     try{if(ids.length)await reserve(ids);showFields();dialog.showModal();}catch(e){error(e.message);}
   }
   root.querySelectorAll('[data-transport-action]').forEach(b=>b.addEventListener('click',()=>open(b.dataset.transportAction,b.dataset.transportAction==='ARRIVAL'?[]:selected())));
-  root.querySelectorAll('[data-edit-machine]').forEach(b=>b.addEventListener('click',()=>{const row=rows.find(r=>r.dataset.transportRow===b.dataset.editMachine);open(row.dataset.condition==='READY'?'DAY':'CONDITION',[b.dataset.editMachine]);}));
+  root.querySelectorAll('[data-edit-machine]').forEach(b=>b.addEventListener('click',()=>{const row=rows.find(r=>r.dataset.transportRow===b.dataset.editMachine);open(root.dataset.process==='state'?'CONDITION':'DAY',[b.dataset.editMachine]);}));
   root.querySelectorAll('[data-close-dialog]').forEach(b=>b.addEventListener('click',()=>dialog.close()));
   dialog.addEventListener('close',()=>{if(!submitting){claim('release',reserved).catch(()=>{});reserved=[];}});
   field('equipment').addEventListener('change',()=>reserve([...field('equipment').selectedOptions].map(o=>o.value)).catch(()=>{}));

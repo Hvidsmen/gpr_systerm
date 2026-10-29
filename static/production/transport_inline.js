@@ -1,21 +1,36 @@
 (()=>{
  'use strict';const root=document.querySelector('[data-transport-board]');if(!root||root.dataset.editable!=='1')return;
  const token=root.querySelector('[name=csrfmiddlewaretoken]').value,locks=window.transportBoardLocks,session=locks?.session;
- const rows=[...root.querySelectorAll('[data-transport-row]')];let people=null,active=null;
- const countKey=(condition,status)=>condition==='READY'?(status||'EMPTY'):condition;
- function updateCounts(row,result){const previous=countKey(row.dataset.condition,row.dataset.status),next=countKey(result.condition,result.status);if(previous===next)return;for(const [key,delta] of [[previous,-1],[next,1]]){const counter=document.querySelector('[data-transport-count="'+key+'"]');if(counter)counter.textContent=String(Number(counter.textContent)+delta);}}
+ const rows=[...root.querySelectorAll('[data-transport-row]')];let people=null,active=null,activeReservation=null;
+ function updateCounts(row,result){
+  const changes=new Map();function add(key,value){changes.set(key,(changes.get(key)||0)+value);}
+  add(row.dataset.status||'EMPTY',-1);add(result.status||'EMPTY',1);add(row.dataset.condition||'UNKNOWN',-1);add(result.condition||'UNKNOWN',1);
+  for(const [key,delta] of changes){const counter=document.querySelector('[data-transport-count="'+key+'"]');if(counter&&delta)counter.textContent=String(Number(counter.textContent)+delta);}
+ }
  const request=async(url,data)=>{const response=await fetch(url,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRFToken':token},body:JSON.stringify(data)});const result=await response.json();if(!response.ok)throw new Error(result.error||'Не удалось сохранить.');return result;};
- function say(row,text,failed=false){const status=row.querySelector('[data-cell-save-status]');status.textContent=text;status.classList.toggle('text-danger',failed);}
- async function acquire(row){if(active===row)return;const previous=active;active=row;if(previous)await locks.claim('release',[previous.dataset.transportRow]);await locks.claim('acquire',[row.dataset.transportRow]);}
- root.addEventListener('focusin',e=>{const row=e.target.closest('[data-transport-row]');if(row){row.reservation=acquire(row).catch(error=>{active=null;say(row,error.message,true);throw error;});row.reservation.catch(()=>{});}});
- rows.forEach(row=>{row.signed=root.dataset.inlineSigned;row.queue=Promise.resolve();for(const field of row.querySelectorAll('[data-detail-field]'))field.dataset.saved=field.value;});
+ function say(row,text,failed=false){row.querySelectorAll('[data-cell-save-status]').forEach(status=>{status.textContent=text;status.classList.toggle('text-danger',failed);});}
+ async function acquire(row){
+  if(active===row)return activeReservation;
+  const previous=active,prior=activeReservation;active=row;
+  const reservation=(async()=>{if(previous){await prior?.catch(()=>{});await locks.claim('release',[previous.dataset.transportRow]);}await locks.claim('acquire',[row.dataset.transportRow]);})();
+  activeReservation=reservation;try{await reservation;}catch(error){if(active===row){active=null;activeReservation=null;}throw error;}
+ }
+ root.addEventListener('focusin',e=>{if(!e.target.closest('[data-detail-field],.search-select-shell'))return;const row=e.target.closest('[data-transport-row]');if(row){row.reservation=acquire(row).catch(error=>{active=null;say(row,error.message,true);throw error;});row.reservation.catch(()=>{});}});
+ rows.forEach(row=>{row.signed=root.dataset.inlineSigned;row.queue=Promise.resolve();row.releaseTransport=async()=>{await row.queue;await row.reservation?.catch(()=>{});if(active===row){await locks.claim('release',[row.dataset.transportRow]);active=null;activeReservation=null;row.reservation=null;}};for(const field of row.querySelectorAll('[data-detail-field]'))field.dataset.saved=field.value;});
  root.addEventListener('change',e=>{const field=e.target.closest('[data-detail-field]'),row=field?.closest('[data-transport-row]');if(!row)return;
   const value=field.value;if(value===field.dataset.saved)return;
   row.queue=row.queue.catch(()=>{}).then(async()=>{row.classList.add('transport-cell-saving');say(row,'Сохранение…');try{
    await (row.reservation||acquire(row));
    const result=await request(root.dataset.inlineUrl,{camp:root.dataset.camp,date:root.dataset.date,equipment:row.dataset.transportRow,field:field.dataset.detailField,value,signed:row.signed,session});
-   updateCounts(row,result);row.signed=result.signed;field.dataset.saved=value;row.dataset.condition=result.condition;row.dataset.status=result.status;active=null;row.reservation=null;
-   const condition=row.querySelector('[data-detail-field=condition]'),status=row.querySelector('[data-detail-field=status]'),target=row.querySelector('[data-detail-field=target]'),comment=row.querySelector('[data-detail-field=day_comment]');condition.value=result.condition;status.value=result.status;status.disabled=result.condition!=='READY';target.disabled=result.condition!=='READY';target.value=result.target;target.dataset.saved=target.value;comment.disabled=result.condition!=='READY';condition.dataset.saved=condition.value;status.dataset.saved=status.value;
+   updateCounts(row,result);row.signed=result.signed;field.dataset.saved=value;row.dataset.condition=result.condition;row.dataset.status=result.status;if(active===row){active=null;activeReservation=null;}row.reservation=null;
+   const condition=row.querySelector('[data-detail-field=condition]'),status=row.querySelector('[data-detail-field=status]'),target=row.querySelector('[data-detail-field=target]'),comment=row.querySelector('[data-detail-field=day_comment]');condition.value=result.condition;condition.dataset.saved=condition.value;
+   if(status){status.value=result.status;status.disabled=false;status.dataset.saved=status.value;}
+   if(target){target.disabled=false;target.value=result.target;target.dataset.saved=target.value;}
+   if(comment)comment.disabled=false;
+   const badge=row.querySelector('[data-condition-label]');if(badge){badge.textContent=condition.selectedOptions[0]?.textContent||'Не указано';badge.className='transport-condition condition-'+result.condition;}
+   row.querySelectorAll('[data-transport-employees]').forEach(select=>select.disabled=result.status!=='WORKED');
+   if(field.dataset.detailField==='repair_stage'){const label=row.querySelector('[data-repair-summary]');if(label)label.textContent=field.value?field.selectedOptions[0].textContent:'Этап не указан';}
+   if(field.dataset.detailField==='request_stage'){const label=row.querySelector('[data-request-summary]');if(label)label.textContent='Заявка: '+(field.value?field.selectedOptions[0].textContent:'не указана');}
    row.classList.remove('transport-cell-failed');say(row,'Сохранено');
   }catch(error){field.value=field.dataset.saved;field.dispatchEvent(new Event('input',{bubbles:true}));row.classList.add('transport-cell-failed');say(row,error.message,true);}finally{row.classList.remove('transport-cell-saving');}});
  });

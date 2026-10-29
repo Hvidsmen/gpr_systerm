@@ -29,7 +29,8 @@ def ensure_statuses(company):
 @require_GET
 def choices(request):
     require_roles(request.user,transport.OPERATORS)
-    employees=Employee.objects.filter(company=request.user.company,is_active=True).select_related('position').order_by('last_name','first_name','pk')
+    from apps.resources.group_order import ordered
+    employees=ordered(Employee.objects.filter(company=request.user.company,is_active=True).select_related('position__planning_mapping__brigade__group'),group_path='position__planning_mapping__brigade__group',within=('position__name','last_name','first_name','pk'))
     return JsonResponse({'options':[{'id':e.pk,'name':e.display_name+(' · № '+e.employee_number if e.employee_number else '')+(' · '+str(e.position) if e.position_id else '')} for e in employees]})
 
 
@@ -61,9 +62,6 @@ def save_cell(user,camp,day,machine,field,value,signed,session):
     transport._check(user,machine,controls[machine.pk],versions,transport._session(session))
     if not transport.present(user.company,day).filter(equipment=machine,camp=camp).exists():raise ValidationError('Размещение машины изменилось. Обновите страницу.')
     if field=='condition':
-        if value!='READY' and machine.transport_days.filter(company=user.company,date=day).exists():
-            transport.save_day(user,camp,day,[machine.pk],'CLEAR',signed=signed,session=session)
-            signed=transport.snapshot(user,camp,day)
         transport.set_condition(user,camp,day,[machine.pk],str(value),signed=signed,session=session)
     elif field=='status':
         current=machine.transport_days.filter(date=day).first()
@@ -83,12 +81,15 @@ def save_cell(user,camp,day,machine,field,value,signed,session):
         previous=EquipmentDayDetails.objects.filter(company=user.company,equipment=machine,date__lt=day).first()
         source=current or previous
         values=model_to_dict(source,fields=[name for name,_ in DETAIL_FIELDS]) if source else {}
+        if source and source.date<day:
+            for name in EMPLOYEE_FIELDS:values[name]=None
+        if field in EMPLOYEE_FIELDS and value and not machine.transport_days.filter(company=user.company,date=day,status='WORKED').exists():raise ValidationError('Сначала отметьте, что техника работала за выбранный день.')
         values[field]=value
         if field=='in_gpr':values[field]={'true':True,'false':False,'':None,'unknown':None}.get(str(value).lower(),value)
         form=DetailsForm(values,instance=current,company=user.company)
         if not form.is_valid():raise ValidationError(['; '.join(errors) for errors in form.errors.values()])
         row=form.save(commit=False);row.company=user.company;row.equipment=machine;row.camp=camp;row.date=day
-        if not row.pk:row.recorded_by=user;row.source_details=previous.source_details if previous else {}
+        if not row.pk:row.recorded_by=user;row.source_details={name:value for name,value in previous.source_details.items() if name not in {'shift_one','shift_two'}} if previous else {}
         row.full_clean();row.save();transport._bump(controls[machine.pk])
     else:raise ValidationError('Это поле нельзя изменить в таблице.')
     require_fact_day(user,day)
@@ -120,9 +121,10 @@ def prepare_rows(user,camp,day,rows,editable):
     source_names={'shift_one_employee':'shift_one','shift_two_employee':'shift_two','repair_started_on':'repair_date','parts_expected_on':'expected_parts_date','request_stage':'request_status','parts_stage':'parts_status','maintenance_stage':'maintenance','repair_stage':'repair_status'}
     for row in rows:
         detail=details.get(row['machine'].pk)
-        form=DetailsForm(instance=detail,company=user.company,lazy=True,prefix='machine-'+str(row['machine'].pk))
+        initial={name:None for name in EMPLOYEE_FIELDS} if detail and detail.date<day else {}
+        form=DetailsForm(instance=detail,initial=initial,company=user.company,lazy=True,prefix='machine-'+str(row['machine'].pk))
         for name,field in form.fields.items():
-            field.disabled=not editable;field.widget.attrs['aria-label']=str(field.label)+' · '+str(row['machine'])
+            field.disabled=not editable or name in EMPLOYEE_FIELDS and row['status']!='WORKED';field.widget.attrs['aria-label']=str(field.label)+' · '+str(row['machine'])
         row['details_form']=form
-        for bound in form.visible_fields():bound.source_value=(detail.source_details.get(source_names.get(bound.name,''),'') if detail else '')
+        for bound in form.visible_fields():bound.source_value=(detail.source_details.get(source_names.get(bound.name,''),'') if detail and not (bound.name in EMPLOYEE_FIELDS and detail.date<day) else '')
         row['details']=detail

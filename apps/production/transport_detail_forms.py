@@ -17,7 +17,8 @@ class DetailsForm(forms.ModelForm):
         super().__init__(*args,**kwargs)
         for name in EMPLOYEE_FIELDS:
             retained=getattr(self.instance,name+'_id',None)
-            self.fields[name].queryset=Employee.objects.filter(company=company).filter(Q(is_active=True)|Q(pk=retained)).select_related('position')
+            from apps.resources.group_order import ordered
+            self.fields[name].queryset=ordered(Employee.objects.filter(company=company).filter(Q(is_active=True)|Q(pk=retained)).select_related('position__planning_mapping__brigade__group'),group_path='position__planning_mapping__brigade__group',within=('position__name','last_name','first_name','pk'))
             self.fields[name].label_from_instance=lambda e:e.display_name+(' · № '+e.employee_number if e.employee_number else '')+(' · '+str(e.position) if e.position_id else '')
             if lazy:
                 field=self.fields[name];field.choices=[('','Не выбран'),*[(e.pk,field.label_from_instance(e)) for e in field.queryset.filter(pk=retained)]]

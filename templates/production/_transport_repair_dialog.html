@@ -1,0 +1,20 @@
+<dialog class="transport-dialog transport-repair-dialog" data-repair-dialog aria-labelledby="repair-title-{{ row.machine.pk }}">
+  <form data-repair-form>
+    <header><div><h2 class="h4 mb-1" id="repair-title-{{ row.machine.pk }}">Данные ремонта</h2><p class="small text-muted mb-0">{{ row.machine }} · {{ camp }} · {{ day|date:'d.m.Y' }}</p></div><button class="btn-close" type="button" data-close-repair aria-label="Закрыть данные ремонта"></button></header>
+    <section class="transport-repair-condition">
+      <label class="form-label" for="repair-condition-{{ row.machine.pk }}">Техническое состояние</label>
+      <select id="repair-condition-{{ row.machine.pk }}" class="form-select" data-detail-field="condition"{% if not editable %} disabled{% endif %}>
+        {% for value,label in conditions %}<option value="{{ value }}"{% if row.condition == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+        {% if not row.condition %}<option value="" selected>Не указано</option>{% endif %}
+      </select>
+      <p class="small text-muted mb-0">Сохраняется до следующего изменения. Изменение состояния не меняет факт работы за день.</p>
+    </section>
+    {% for group in row.repair_groups %}<fieldset class="transport-repair-section"><legend>{{ group.title }}</legend><div class="transport-repair-fields">
+      {% for field in group.fields %}<div class="transport-repair-field{% if field.name == 'defects' or field.name == 'request_details' or field.name == 'comment' %} transport-repair-wide{% endif %}">
+        {{ field.label_tag }}<div class="transport-detail-control">{{ field }}</div>
+        {% if field.source_value %}<small class="transport-source-value">Из сводки: {{ field.source_value }}</small>{% endif %}
+      </div>{% endfor %}
+    </div></fieldset>{% endfor %}
+    <footer><div class="transport-repair-feedback"><span data-cell-save-status role="status">{% if editable %}Изменения сохраняются автоматически{% else %}Просмотр сведений{% endif %}</span></div><button type="submit" class="btn btn-primary">Готово</button></footer>
+  </form>
+</dialog>

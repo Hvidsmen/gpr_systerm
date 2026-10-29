@@ -15,7 +15,7 @@ from .transport_details_models import EquipmentDayDetails,DETAIL_FIELDS
 from apps.resources.models import Equipment
 
 
-from .transport_detail_forms import DetailsForm
+from .transport_detail_forms import DetailsForm,EMPLOYEE_FIELDS
 
 
 @login_required
@@ -33,7 +33,7 @@ def details(request,pk):
         raise Http404('Машина не находится в выбранном ВЖГ на эту дату.')
     current=EquipmentDayDetails.objects.filter(company=request.user.company,equipment=machine,date=day).first()
     previous=EquipmentDayDetails.objects.filter(company=request.user.company,equipment=machine,date__lt=day).first()
-    initial={name:getattr(previous,name) for name,_ in DETAIL_FIELDS} if previous and not current else {}
+    initial={name:getattr(previous,name) for name,_ in DETAIL_FIELDS if name not in EMPLOYEE_FIELDS} if previous and not current else {}
     initial['signed']=transport.snapshot(request.user,camp,day)
     form=DetailsForm(request.POST if request.method=='POST' else None,instance=current,initial=initial,company=request.user.company)
     if request.method=='POST':
@@ -47,6 +47,7 @@ def details(request,pk):
                     machines,controls=transport._lock(request.user,[machine.pk])
                     transport._check(request.user,machines[0],controls[machine.pk],versions,None)
                     if not transport.present(request.user.company,day).filter(equipment=machine,camp=camp).exists():raise ValidationError('Размещение машины изменилось. Обновите страницу.')
+                    if any(form.cleaned_data.get(name) for name in EMPLOYEE_FIELDS) and not machine.transport_days.filter(company=request.user.company,date=day,status='WORKED').exists():raise ValidationError('Сотрудники смен относятся к работе за день. Сначала отметьте, что техника работала за выбранную дату.')
                     row=form.save(commit=False);row.company=request.user.company;row.equipment=machine;row.camp=camp;row.date=day
                     if not row.pk:row.recorded_by=request.user
                     row.full_clean();row.save();transport._bump(controls[machine.pk]);require_fact_day(request.user,day)

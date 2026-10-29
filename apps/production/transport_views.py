@@ -114,7 +114,7 @@ def _rows(user, camp, day):
         previous=machine.transport_days.filter(date__lt=day,status='WORKED').select_related('work','work_item','construction_object').order_by('-date').first()
         owner=control.locked_by if control and control.expires_at and control.expires_at>timezone.now() else None
         rows.append({'machine':machine,'stay':stay,'record':record,'condition':condition,'condition_label':dict(CONDITIONS).get(condition,'Не указано'),
-            'status':status,'status_label':dict(USES).get(status,'Не заполнено') if condition=='READY' else '—','previous':previous,'owner':owner,
+            'status':status,'status_label':dict(USES).get(status,'Не заполнено'),'previous':previous,'owner':owner,
             'planning_type':machine.type.parent if machine.type.parent_id else machine.type,
             'target':f'work:{record.work_id}:{record.work_item_id or 0}' if record and record.work_id else f'object:{record.construction_object_id}' if record and record.construction_object_id else '',
             'details_url':reverse('production:transport_details',args=[machine.pk])+'?'+urlencode({'camp':camp.pk,'date':str(day)}),
@@ -128,8 +128,8 @@ def _summary(rows):
     for row in rows:
         group=groups.setdefault(row['planning_type'].pk,{'type':row['planning_type'].name,'total':0,'WORKED':0,'IDLE':0,'EMPTY':0,'REPAIR':0,'SCRAP':0,'UNKNOWN':0})
         group['total']+=1
-        key=row['status'] or 'EMPTY' if row['condition']=='READY' else row['condition'] or 'UNKNOWN'
-        group[key]+=1
+        group[row['status'] or 'EMPTY']+=1
+        if row['condition']!='READY':group[row['condition'] or 'UNKNOWN']+=1
     return list(groups.values())
 
 
@@ -174,7 +174,9 @@ def board(request):
     default_camp=service.camps_for(request.user).filter(is_active=True).first() or service.camps_for(request.user).first()
     selector_data={**{'camp':str(default_camp.pk) if default_camp else '', 'date':timezone.localdate().isoformat()},**raw.dict()}
     selector=Selector(selector_data,user=request.user)
-    context={'selector':selector,'editable':role_code(request.user) in service.OPERATORS,'tab':request.GET.get('tab','day'),'can_create':role_code(request.user) in service.OPERATORS}
+    tab=request.GET.get('tab','day')
+    if tab not in {'day','state','calendar','events','report'}:tab='day'
+    context={'selector':selector,'editable':role_code(request.user) in service.OPERATORS,'tab':tab,'can_create':role_code(request.user) in service.OPERATORS}
     if not selector.is_valid():return render(request,'production/transport_board.html',context,status=400 if raw else 200)
     camp,day=selector.cleaned_data['camp'],selector.cleaned_data['date'];service.authorize(request.user,camp,False)
     context.update(window_context(request.user,day))
@@ -194,27 +196,32 @@ def board(request):
             elif action=='CONDITION':count=service.set_condition(request.user,camp,day,ids,values['condition'],**common)
             else:count=service.move(request.user,camp,day,ids,action,target=values['target_camp'],condition=values['condition'] or 'READY',**common)
             messages.success(request,f'Сохранено машин: {count}.')
-            return redirect(reverse('production:transport_board')+'?'+urlencode({'camp':camp.pk,'date':str(day)}))
+            return redirect(reverse('production:transport_board')+'?'+urlencode({'camp':camp.pk,'date':str(day),'tab':tab}))
         except ValidationError as exc:form.add_error(None,ValidationError('; '.join(exc.messages)))
     data=selector.cleaned_data
-    filtered=[r for r in rows if (not data['condition'] or r['condition']==data['condition']) and (not data['use'] or (r['condition']=='READY' and (r['status'] or 'EMPTY')==data['use'])) and all(term.casefold() in ' '.join(str(value or '') for value in [r['machine'],r['machine'].vin,r['machine'].inventory_number,r['machine'].brand_model,r['planning_type'].name]).casefold() for term in data['q'].split())]
+    filtered=[r for r in rows if (not data['condition'] or r['condition']==data['condition']) and (tab=='state' or not data['use'] or ((r['status'] or 'EMPTY')==data['use'])) and all(term.casefold() in ' '.join(str(value or '') for value in [r['machine'],r['machine'].vin,r['machine'].inventory_number,r['machine'].brand_model,r['planning_type'].name]).casefold() for term in data['q'].split())]
     if request.GET.get('export')=='xlsx':return _excel(camp,day,filtered)
     from .transport_inline import prepare_rows
     from .transport_details_models import DETAIL_FIELDS
+    from .transport_detail_values import ROSTER_DETAIL_FIELDS,REPAIR_FIELD_GROUPS
     from django.core.paginator import Paginator
     page=Paginator(filtered,50).get_page(request.GET.get('page'))
     display_rows=list(page.object_list)
-    if context['tab']=='day':
+    if context['tab'] in {'day','state'}:
         prepare_rows(request.user,camp,day,display_rows,context['editable'])
         for row in display_rows:
-            row['target_widget']=forms.Select(choices=form.fields['target'].choices,attrs={'class':'form-select form-select-sm','data-detail-field':'target','aria-label':'Объект / работа: '+str(row['machine']),'disabled':not context['editable'] or row['condition']!='READY'}).render('target-'+str(row['machine'].pk),row['target'])
-    context.update(detail_columns=[label for name,label in DETAIL_FIELDS],page_obj=page,filtered_count=len(filtered))
+            row['target_widget']=forms.Select(choices=form.fields['target'].choices,attrs={'class':'form-select form-select-sm','data-detail-field':'target','aria-label':'Объект / работа: '+str(row['machine']),'disabled':not context['editable']}).render('target-'+str(row['machine'].pk),row['target'])
+            details=row['details_form']
+            details['comment'].label='Примечание по ремонту'
+            row['visible_details']=[details[name] for name in (('in_gpr',) if tab=='state' else ROSTER_DETAIL_FIELDS)]
+            row['repair_groups']=[{'title':title,'fields':[details[name] for name in names]} for title,names in REPAIR_FIELD_GROUPS]
+    context.update(detail_columns=[label for name,label in DETAIL_FIELDS if name in (('in_gpr',) if tab=='state' else ROSTER_DETAIL_FIELDS)],page_obj=page,filtered_count=len(filtered))
     new_form=NewMachineForm(company=request.user.company,prefix='new-machine')
     new_form.fields.pop('site_name');new_form.fields.pop('is_active')
     context['new_machine_form']=new_form
     context.update(camp=camp,day=day,rows=display_rows,summary=_summary(rows),action_form=form,conditions=CONDITIONS,uses=USES,
-        total=len(rows),ready=sum(r['condition']=='READY' for r in rows),worked=sum(r['status']=='WORKED' for r in rows),idle=sum(r['status']=='IDLE' for r in rows),
-        missing=sum(r['condition']=='READY' and not r['status'] for r in rows),repair=sum(r['condition']=='REPAIR' for r in rows),scrap=sum(r['condition']=='SCRAP' for r in rows),
+        total=len(rows),unknown=sum(r['condition'] not in {'READY','REPAIR','SCRAP'} for r in rows),ready=sum(r['condition']=='READY' for r in rows),worked=sum(r['status']=='WORKED' for r in rows),idle=sum(r['status']=='IDLE' for r in rows),
+        missing=sum(not r['status'] for r in rows),repair=sum(r['condition']=='REPAIR' for r in rows),scrap=sum(r['condition']=='SCRAP' for r in rows),
         query=urlencode({'camp':camp.pk,'date':str(day)}),export_query=urlencode({'camp':camp.pk,'date':str(day),'q':data['q'],'condition':data['condition'],'use':data['use']}),error_open=request.method=='POST',can_create=role_code(request.user) in service.OPERATORS)
     occupied=service.present(request.user.company,day).values('equipment_id')
     disposed=EquipmentTransportEvent.objects.filter(company=request.user.company,kind='WRITEOFF',cancelled_at=None).values('equipment_id')

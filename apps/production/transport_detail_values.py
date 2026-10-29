@@ -10,6 +10,12 @@ STATUS_SEEDS={'REQUEST':['На согласовании','Согласована
  'MAINTENANCE':['ТО запланировано','ТО проведено · готова','ТО проведено · не готова','ТО не проведено · не готова']}
 SOURCE_DETAIL_FIELDS=[('shift_one','1-я смена'),('shift_two','2-я смена'),('in_gpr','В ГПР'),('repair_status','Состояние'),('defects','Неисправности'),('repair_date','Дата постановки на ремонт'),('request_details','Номер и дата заявки'),('request_status','Статус заявки'),('parts_status','Поставка запчастей'),('expected_parts_date','Дата поставки запчастей'),('maintenance','ТО и готовность'),('comment','Примечание')]
 DETAIL_FIELDS=[('shift_one_employee','1-я смена · водитель / машинист'),('shift_two_employee','2-я смена · водитель / машинист'),('in_gpr','Участвует в ГПР'),('repair_stage','Этап ремонта'),('defects','Неисправности и поломки'),('repair_started_on','Дата постановки на ремонт'),('request_details','Номер заявки / ссылки'),('request_date','Дата заявки'),('request_stage','Статус заявки'),('parts_stage','Поставка запчастей'),('parts_expected_on','Плановая дата поставки запчастей'),('maintenance_stage','ТО и готовность'),('comment','Примечание')]
+ROSTER_DETAIL_FIELDS=('shift_one_employee','shift_two_employee','in_gpr')
+REPAIR_FIELD_GROUPS=(
+    ('Ремонт',('repair_stage','repair_started_on','defects')),
+    ('Заявки и запчасти',('request_details','request_date','request_stage','parts_stage','parts_expected_on')),
+    ('ТО и примечания',('maintenance_stage','comment')),
+)
 
 
 def parse_date(value):

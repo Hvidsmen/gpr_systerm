@@ -60,7 +60,7 @@ class TransportTests(TestCase):
 
     def test_technical_state_and_actual_writeoff_are_separate_and_reversible(self):
         self.receive(condition='SCRAP');self.machine.refresh_from_db();self.assertTrue(self.machine.is_active)
-        with self.assertRaises(ValidationError):self.save()
+        self.save();self.save('CLEAR')
         service.move(self.operator,self.camp,self.day,[self.machine.pk],'WRITEOFF',signed=self.sign())
         self.machine.refresh_from_db();self.assertFalse(self.machine.is_active)
         event=self.machine.transport_events.get(kind='WRITEOFF')
@@ -70,14 +70,14 @@ class TransportTests(TestCase):
         self.assertEqual(service.condition_on(self.machine,self.day),'SCRAP')
         event.refresh_from_db();self.assertTrue(event.cancelled_at)
 
-    def test_repair_carries_forward_and_day_use_requires_ready(self):
+    def test_repair_carries_forward_and_day_use_is_independent(self):
         self.receive(condition='REPAIR')
-        with self.assertRaises(ValidationError):self.save('IDLE')
+        self.save('IDLE')
         day=self.day+timedelta(days=1)
         self.assertEqual(service.condition_on(self.machine,day),'REPAIR')
+        self.save('WORKED',day=day,construction_object=self.obj,work=self.work)
         service.set_condition(self.operator,self.camp,day,[self.machine.pk],'READY',signed=self.sign(day=day))
-        self.save('IDLE',day=day)
-        self.assertEqual(list(self.machine.transport_days.values_list('status',flat=True)),['IDLE'])
+        self.assertEqual(list(self.machine.transport_days.values_list('status',flat=True)),['IDLE','WORKED'])
 
     def test_project_attribution_uses_existing_fact_totals_and_clearing_removes_projection(self):
         self.receive();self.save(construction_object=self.obj,work=self.work)
@@ -97,11 +97,15 @@ class TransportTests(TestCase):
         record=EquipmentDayRecord.objects.get(date=day)
         self.assertEqual(record.work_id,self.work.pk);self.assertEqual(record.status,'WORKED');self.assertEqual(record.comment,'')
 
-    def test_saved_daily_record_blocks_inconsistent_retroactive_movement_or_repair(self):
-        self.receive();self.save()
-        for operation in [lambda:service.move(self.operator,self.camp,self.day,[self.machine.pk],'DEPARTURE',signed=self.sign()),lambda:service.set_condition(self.operator,self.camp,self.day,[self.machine.pk],'REPAIR',signed=self.sign())]:
-            with self.assertRaises(ValidationError):operation()
-        self.assertEqual(service.condition_on(self.machine,self.day),'READY')
+    def test_repair_keeps_daily_fact_and_projection_but_inconsistent_movement_is_blocked(self):
+        self.receive();self.save(construction_object=self.obj,work=self.work,comment='Работала утром')
+        record=EquipmentDayRecord.objects.get(equipment=self.machine,date=self.day);activity_id=record.activity_id
+        with self.assertRaises(ValidationError):service.move(self.operator,self.camp,self.day,[self.machine.pk],'DEPARTURE',signed=self.sign())
+        service.set_condition(self.operator,self.camp,self.day,[self.machine.pk],'REPAIR',signed=self.sign())
+        record.refresh_from_db();self.assertEqual(record.status,'WORKED');self.assertEqual(record.work_id,self.work.pk);self.assertEqual(record.activity_id,activity_id)
+        self.assertEqual(service.condition_on(self.machine,self.day),'REPAIR')
+        self.save(construction_object=self.obj,work=self.work,comment='Уточнена работа до поломки')
+        record.refresh_from_db();self.assertEqual(record.activity_id,activity_id);self.assertEqual(record.activity.state,'WORKING')
         self.assertTrue(service.present(self.company,self.day).filter(equipment=self.machine).exists())
 
     def test_concurrent_disjoint_saves_merge_and_same_machine_stale_save_rejects(self):
@@ -143,7 +147,7 @@ class TransportTests(TestCase):
         for tab in ['day','calendar','events','report']:
             response=self.client.get(self.board,{'camp':self.camp.pk,'date':self.day,'tab':tab});self.assertEqual(response.status_code,200)
             self.assertNotContains(response,'data-legacy-structure')
-        response=self.client.get(self.board,{'camp':self.camp.pk,'date':self.day,'use':'EMPTY'});self.assertEqual(len(response.context['rows']),0)
+        response=self.client.get(self.board,{'camp':self.camp.pk,'date':self.day,'use':'EMPTY'});self.assertEqual(len(response.context['rows']),1)
         response=self.client.get(self.board,{'camp':self.camp.pk,'date':self.day,'q':'INV-2'});self.assertEqual(len(response.context['rows']),1)
         response=self.client.get(self.board,{'camp':self.camp.pk,'date':self.day,'export':'xlsx'})
         from openpyxl import load_workbook

@@ -141,8 +141,8 @@ def _valid_timeline(machine, since):
     for row in machine.transport_days.filter(date__gte=since).select_related('camp'):
         if not present(machine.company, row.date).filter(equipment=machine, camp=row.camp).exists():
             raise ValidationError(f'{machine}: за {row.date:%d.%m.%Y} уже есть дневная запись в {row.camp}. Сначала исправьте её.')
-        if condition_on(machine, row.date) != 'READY' or written_off(machine, row.date):
-            raise ValidationError(f'{machine}: за {row.date:%d.%m.%Y} уже отмечена работа или простой исправной машины. Сначала исправьте дневную запись.')
+        if written_off(machine, row.date):
+            raise ValidationError(f'{machine}: за {row.date:%d.%m.%Y} уже есть дневная запись. Сначала исправьте её перед списанием.')
 
 
 @transaction.atomic
@@ -246,6 +246,7 @@ def _project(user, record, previous_activity):
         row.construction_object = obj; row.state = 'WORKING' if record.status == 'WORKED' else 'IDLE'
         row.work = record.work; row.work_item = record.work_item; row.general = not record.work_id
         row.activity = record.comment or ('Работала без привязки к работе · учёт ВЖГ' if record.status == 'WORKED' else 'Простой · учёт ВЖГ')
+        row._transport_day_id=record.pk
         row.full_clean(); row.save(); record.activity = row; record.save(update_fields=['activity', 'updated_at'])
     for obj in ConstructionObject.objects.filter(company=user.company, pk__in=affected).order_by('pk'):
         FactSectionDay.objects.get_or_create(company=user.company, construction_object=obj, date=record.date, section='mechanization')
@@ -284,8 +285,8 @@ def save_day(user, camp, day, ids, status, *, construction_object=None, work=Non
                 # Remove its projection through the same service and invalidate totals.
                 record.construction_object = None; _project(user, record, old_activity); record.delete()
             _bump(controls[machine.pk]); continue
-        if condition_on(machine, day) != 'READY' or written_off(machine, day):
-            raise ValidationError(f'{machine}: «Работала / Простой» отмечается только для исправной техники.')
+        if written_off(machine, day):
+            raise ValidationError(f'{machine}: техника списана на выбранную дату.')
         obj, selected_work, selected_item = construction_object, work, work_item
         if repeat:
             previous = machine.transport_days.filter(date__lt=day, status='WORKED').select_related('construction_object', 'work', 'work_item').order_by('-date').first()
