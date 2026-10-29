@@ -21,8 +21,9 @@ class MonthlyGridBrowserTests(StaticLiveServerTestCase):
         position=position_for(self.brigade);Employee.objects.create(company=self.company,first_name='Тест',last_name='Сотрудник',position=position)
         EquipmentCrewPosition.objects.create(company=self.company,equipment_type=self.equipment,position=position,count=2)
         equipment=ResourceMonthAllocation.objects.create(company=self.company,version=version,month=date(2026,11,1),kind='equipment',equipment_type=self.equipment,count=0)
+        empty=WorkspaceService.create(self.planner,self.obj,'ГПР · пустые разделы',date(2026,11,1),date(2027,12,31)).baseline_version
         self.client.force_login(self.planner)
-        config={'base':self.live_server_url,'url':reverse('planning:workspace_edit',args=[version.pk]),'cookie':self.client.cookies['sessionid'].value,'chromium':shutil.which('chromium'),'source':row.pk,'equipment':equipment.pk,'composite':self.composite.pk,'item_a':self.a.pk,'item_b':self.b.pk}
+        config={'base':self.live_server_url,'url':reverse('planning:workspace_edit',args=[version.pk]),'cookie':self.client.cookies['sessionid'].value,'chromium':shutil.which('chromium'),'empty_single':reverse('planning:workspace_edit',args=[empty.pk]),'empty_months':reverse('planning:workspace_months',args=[empty.pk]),'source':row.pk,'equipment':equipment.pk,'composite':self.composite.pk,'item_a':self.a.pk,'item_b':self.b.pk}
         script=Path(__file__).resolve().parents[2]/'tests/browser/monthly_grid.js'
         result=subprocess.run(['node',str(script)],capture_output=True,text=True,env=dict(os.environ,MONTHLY_GRID_CONFIG=json.dumps(config)),timeout=120)
         self.assertEqual(result.returncode,0,result.stdout+'\n'+result.stderr)

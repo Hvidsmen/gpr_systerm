@@ -35,11 +35,14 @@ class WorkspaceMonths(View):
         from .daily_schedule_table_forms import AddEntryForm
         months=data['months'];initial={'months':[m.isoformat() for m in months]}
         branch=BranchForm(version=version,user=request.user,initial=initial,auto_id='months-work-%s')
-        branch.fields['selection'].widget.attrs.pop('data-native-select',None)
         resource=AddEntryForm(schedule=version,user=request.user)
         for field in resource.fields.values():field.widget.attrs.setdefault('class','form-select' if hasattr(field,'queryset') or hasattr(field,'choices') else 'form-control')
         return render(request,'planning/workspace_months.html',{
             **info,**path_context(version,info,request.user),**data,'version':version,'object':version,'workspace':version.workspace,
+            'plan_sections':data['sections'],'plan_can_add_resources':data['can_resource'],
+            'plan_add_url':reverse('planning:workspace_months',args=[version.pk]),
+            'branch_action':reverse('planning:workspace_months',args=[version.pk]),'branch_post_action':'add_work',
+            'branch_open_level':request.POST.get('branch_level','object') if add_kind=='work' else '',
             'gpr_single_page':True,'gpr_period_grid':True,'table_editable':data['can_work'] or data['can_resource'],'plan_can_add_work':data['can_work'],
             'selected_month':months[0] if months else version.start_date.replace(day=1),
             'add_work_form':add_form if add_kind=='work' else branch,'add_resource_form':add_form if add_kind=='resource' else resource,

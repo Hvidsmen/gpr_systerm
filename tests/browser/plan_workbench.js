@@ -127,7 +127,7 @@ const c=JSON.parse(process.env.PLAN_WORKBENCH_CONFIG);
   assert((await page.locator('[data-plan-save-status]').innerText()).includes('изменения'),JSON.stringify({errors,state:await page.locator('[data-plan-save-status]').innerText(),form:await field(c.a).evaluate(el=>({nativePrefix:el.closest('[data-plan-entry]').dataset.nativePrefix,native:document.getElementById('allocation-editor')?.dataset.dirty,api:!!window.gprSaveUI}))}));
   async function save(){await Promise.all([page.waitForNavigation({waitUntil:'networkidle'}),page.locator('[data-plan-action-header] button[form=allocation-editor][value=save]').click()]);}
   await save();assert.equal(await field(c.a).inputValue(),'42');assert.equal(await page.locator('[data-plan-save-status]').innerText(),'Сохранено');
-  await page.locator('[data-plan-settings]').first().click();assert(await page.locator('[data-plan-settings-dialog]').isVisible());await page.locator('[data-plan-apply-settings]').click();assert.equal(await page.locator('[data-plan-save-status]').innerText(),'Сохранено');
+  await page.getByRole('button',{name:'Параметры',exact:true}).first().click();assert(await page.locator('[data-plan-settings-dialog]').isVisible());await page.locator('[data-plan-apply-settings]').click();assert.equal(await page.locator('[data-plan-save-status]').innerText(),'Сохранено');
   await page.locator('[data-open-branch=work]:visible').click();
   const branch=page.locator('#planning-branch-picker');await branch.locator('[data-branch-search]').fill('Оборудование');await branch.locator('select[name=selection]').selectOption('item:'+c.b);
   await Promise.all([page.waitForNavigation({waitUntil:'networkidle'}),branch.locator('[data-submit-branch]').click()]);

@@ -40,6 +40,7 @@
   document.querySelectorAll('[data-open-branch]').forEach(button => button.addEventListener('click', () => {
     if(window.planWorkbench&&!window.planWorkbench.canLeave())return;
     currentLevel = button.dataset.openBranch;
+    const levelField=dialog.querySelector('[name=branch_level]');if(levelField)levelField.value=currentLevel;
     dialog.querySelector('#branch-picker-title').textContent = copy[currentLevel][0];
     dialog.querySelector('[data-branch-label]').textContent = copy[currentLevel][1];
     dialog.querySelector('[data-branch-description]').textContent = copy[currentLevel][2];
@@ -58,5 +59,6 @@
     dialog.showModal();
     search.focus();
   }));
+  if(dialog.dataset.openLevel)requestAnimationFrame(()=>document.querySelector('[data-open-branch="'+dialog.dataset.openLevel+'"]')?.click());
   dialog.querySelectorAll('[data-close-branch]').forEach(button => button.addEventListener('click', () => dialog.close()));
 })();

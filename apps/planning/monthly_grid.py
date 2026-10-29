@@ -65,8 +65,14 @@ def matrix(user,version):
             if source.equipment_number:label+=' · '+source.equipment_number
             fields=[('count','Средняя численность · чел.' if kind=='labor' else 'Среднее количество · ед.',None)] if kind!='fuel' else [('liters','Расход · л',None),('balance','Остаток · л',None)]
         entry={'norms':json.dumps({str(i.pk):str(i.quantity_per_unit) for i in items}) if iswork and work.kind=='COMPOSITE' else '{}','fractional':bool(iswork and work.allow_fractional),'key':key,'source':source.pk,'kind':'work' if iswork else 'resource','label':label,'measures':[]}
+        if iswork:
+            from types import SimpleNamespace
+            from .plan_workbench import locate_work
+            located=SimpleNamespace(metadata={'id':work.pk,'kind':work.kind},label=label)
+            locate_work(located,work)
+            entry.update(vars(located))
         for field,caption,item in fields:
-            measure={'field':field,'caption':caption,'cells':[],'step':'0.000001' if item else '1' if field=='count' else '0.001' if iswork else '0.01'}
+            measure={'field':field,'caption':caption,'item_id':item.pk if item else '', 'norm':item.quantity_per_unit if item else '', 'cells':[],'step':'0.000001' if item else '1' if field=='count' else '0.001' if iswork else '0.01'}
             for month in months:
                 row=cells_by_month.get(month);allowed=(can_work if iswork else can_resource) and field!='ready'
                 if item and row and row.selected_item_ids and item.pk not in row.selected_item_ids:allowed=False;value=None
@@ -75,7 +81,7 @@ def matrix(user,version):
                 measure['cells'].append({'month':month,'value':value,'id':row.pk if row else '', 'revision':row.updated_at.isoformat() if row else 'missing','editable':allowed})
             entry['measures'].append(measure)
         groups[kind][group].append(entry)
-    for kind,title in [('work','Работы'),('labor','Люди / должности'),('equipment','Техника'),('fuel','ГСМ')]:
+    for kind,title in [('work','Работы'),('labor','Должности'),('equipment','Техника'),('fuel','ГСМ')]:
         order=labor_group_order if kind=='labor' else equipment_group_order if kind=='equipment' else lambda name:(name.casefold(),)
         sections.append({'kind':kind,'label':title,'groups':[{'label':name,'entries':sorted(entries,key=lambda e:(e['label'].casefold(),e['key']))} for name,entries in sorted(groups[kind].items(),key=lambda x:order(x[0]))]})
     # Shared assignments retain their own dates and appear once, as read-only rows.
@@ -92,6 +98,14 @@ def matrix(user,version):
             group=next((g for g in section['groups'] if g.get('assignments')),None)
             if not group:group={'label':'Связи работ и ресурсов','assignments':True,'entries':[]};section['groups'].append(group)
             group['entries'].append({'label':label,'assignment':True,'measures':[{'caption':'Расход · л' if kind=='fuel' else 'Среднее количество','cells':values}]})
+    from types import SimpleNamespace
+    from .plan_workbench import attach_work_hierarchy
+    for section in sections:
+        if section['kind']=='work':
+            adapted={'kind':'work','groups':[{'entries':[SimpleNamespace(**entry,pk=entry['source'],comparison=[{'item_id_value':m['item_id']} for m in entry['measures']]) for entry in group['entries']]} for group in section['groups']]}
+            attach_work_hierarchy([adapted])
+            section['hierarchy']=adapted.get('hierarchy',[])
+        section['count']=sum(len(group['entries']) for group in section['groups'])
     return {'months':months,'sections':sections,'can_work':can_work,'can_resource':can_resource}
 
 
