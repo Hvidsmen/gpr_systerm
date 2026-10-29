@@ -205,7 +205,7 @@ def generate_daily(user,*,today=None):
         while day<=yesterday:
             key=f'fact:{user.pk}:{obj.pk}:{day.isoformat()}'
             from apps.production.dispatch import required_fact_sections,fact_sections_confirmed
-            description='Внесите работы, персонал, технику и ГСМ и подтвердите все три раздела на странице «Факт за день».' if len(required_fact_sections(user))>1 else 'Внесите факт своего направления и подтвердите его полноту на странице «Факт за день». Другие направления заполняют соответствующие диспетчеры.'
+            description='Внесите работы, персонал, технику и ГСМ и подтвердите все направления на странице «Факт за день».' if len(required_fact_sections(user))>1 else 'Внесите факт своего направления и подтвердите его полноту на странице «Факт за день». Другие направления заполняют соответствующие диспетчеры.'
             task=ensure(user.company,key,kind='FACT',title=f'Внести факт · {user.role.name} за {day:%d.%m.%Y} · {obj.name}'[:255],assigned_to=user,construction_object=obj,fact_date=day,due_date=day+timedelta(days=1),description=description)
             if fact_sections_confirmed(user,user.company_id,obj.pk,day):state(task,'DONE',text='Направление факта уже подтверждено.')
             count+=1;day+=timedelta(days=1)

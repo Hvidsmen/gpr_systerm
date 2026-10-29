@@ -5,7 +5,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from core.fact_edit_window import require_fact_day
 from core.fact_history import history_actor,with_history_actor
-from . import transport
+from . import transport, fuel_access
 from .camp_fuel_models import CampFuelDay,FUEL_CHOICES
 
 SALT='camp-fuel-v1'
@@ -43,7 +43,7 @@ def quantity(value):
 @with_history_actor
 @transaction.atomic
 def save_day(user,camp,day,fuel_type,*,received,consumed,opening=None,comment='',signed):
-    transport.authorize(user,camp)
+    fuel_access.authorize(user,camp)
     require_fact_day(user,day)
     if fuel_type not in dict(FUEL_CHOICES):raise ValidationError('Выберите ГСМ.')
     transport._company_mutex(user)

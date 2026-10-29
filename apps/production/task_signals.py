@@ -36,7 +36,7 @@ def invalidate_confirmation(sender,instance,raw=False,**kwargs):
     if raw:return
     from apps.planning.task_services import invalidate_fact
     obj_id=instance.project_work.section.construction_object_id if sender==DailyFact else instance.construction_object_id
-    section='works' if sender in {DailyFact,DayActuation} else 'labor' if sender in {EmployeeActivity,LaborFact} else 'mechanization'
+    section='works' if sender in {DailyFact,DayActuation} else 'labor' if sender in {EmployeeActivity,LaborFact} else 'fuel' if sender==FuelFact else 'mechanization'
     invalidate_fact(instance.company_id,obj_id,instance.date,section)
     old=getattr(instance,'_task_previous_location',None)
     if old and old!=(instance.company_id,obj_id,instance.date):invalidate_fact(*old,section)

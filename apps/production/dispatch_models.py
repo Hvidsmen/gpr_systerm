@@ -161,7 +161,7 @@ class EmployeeFactClaim(BaseCompanyModel):
 
 
 class FactSectionDay(BaseCompanyModel):
-    SECTIONS=[('works','Работы'),('labor','Персонал'),('mechanization','Механизация и ГСМ')]
+    SECTIONS=[('works','Работы'),('labor','Персонал'),('mechanization','Механизация'),('fuel','ГСМ')]
     construction_object=models.ForeignKey('projects.ConstructionObject',on_delete=models.CASCADE)
     date=models.DateField()
     section=models.CharField(max_length=16,choices=SECTIONS)

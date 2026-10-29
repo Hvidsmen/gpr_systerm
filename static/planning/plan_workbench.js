@@ -330,5 +330,18 @@
  let queued=false;function layout(){queued=false;grid.style.setProperty('--gpr-grid-width',grid.clientWidth+'px');let top=60;if(action)top=(parseFloat(getComputedStyle(action).top)||0)+action.getBoundingClientRect().height+6;if(add)top+=add.getBoundingClientRect().height+6;grid.style.setProperty('--gpr-header-top',top+'px');const origin=grid.getBoundingClientRect().left;matrix.querySelectorAll('.matrix-scroll').forEach(el=>{if(!el.getClientRects().length)return;const inset=Math.max(0,el.getBoundingClientRect().left-origin+(parseFloat(el.style.getPropertyValue('--gpr-inset'))||0));el.style.setProperty('--gpr-inset',inset+'px');});}
  function schedule(){if(!queued){queued=true;requestAnimationFrame(layout);}}window.addEventListener('resize',schedule);matrix.addEventListener('toggle',schedule,true);new MutationObserver(schedule).observe(matrix,{subtree:true,attributes:true,attributeFilter:['hidden','open']});if(window.ResizeObserver){const o=new ResizeObserver(schedule);[grid,action,add].filter(Boolean).forEach(el=>o.observe(el));}layout();})();
 
-// Package actions remain beside its title when completion moves into the heading.
-(()=>{const root=document.querySelector('[data-plan-workbench="gpr"]');if(!root)return;root.querySelectorAll('[data-plan-completion-row]').forEach(row=>{const summary=row.closest('[data-plan-level="package"]')?.querySelector(':scope > summary');if(!summary)return;const tools=document.createElement('span');tools.className='plan-package-actions';row.querySelectorAll('.plan-row-actions button').forEach(original=>{const proxy=document.createElement('button');proxy.type='button';proxy.className=original.className;proxy.textContent=original.textContent;proxy.dataset.packageAction='';proxy.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();original.click();});tools.append(proxy);});summary.append(tools);});})();
+// Keep package controls beside its title when the computed total is in the heading.
+(()=>{
+ const root=document.querySelector('[data-plan-workbench]');if(!root)return;
+ root.querySelectorAll('[data-plan-completion-row]').forEach(row=>{
+  const summary=row.closest('[data-plan-level="package"]')?.querySelector(':scope > summary');if(!summary)return;
+  const tools=document.createElement('span');tools.className='plan-package-actions';
+  row.querySelectorAll('.plan-row-actions button,.plan-row-actions a,[data-plan-copy-row]').forEach(original=>{
+   const proxy=document.createElement('button');proxy.type='button';
+   proxy.className=original.className;proxy.textContent=original.textContent;proxy.dataset.packageAction='';
+   if(original.title)proxy.title=original.title;
+   proxy.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();original.click();});tools.append(proxy);
+  });
+  (summary.querySelector('.smg-summary-label')||summary).append(tools);
+ });
+})();

@@ -1,0 +1,7 @@
+<aside class="admin-access-summary" aria-labelledby="access-summary-title">
+<div class="admin-summary-icon"><i class="bi bi-shield-check" aria-hidden="true"></i></div><h2 id="access-summary-title">Доступ после сохранения</h2>
+<dl><dt>Компания</dt><dd>{{ request.user.company }}</dd><dt>Группа доступа</dt><dd data-summary-group>Индивидуальные права</dd><dt>Роль</dt><dd data-summary-role>Пока не выбрана</dd></dl>
+<div class="admin-summary-scope" data-summary-scope>Укажите роль или выберите группу.</div>
+<div class="admin-object-chips" data-summary-objects></div>
+<p class="small text-muted mt-3 mb-0">{% if chosen or object.auth_source == 'LDAP' %}Вход — с корпоративной учётной записью AD. Пароль Windows не меняется.{% else %}Вход — по логину и паролю, заданным в портале.{% endif %}</p>
+</aside>

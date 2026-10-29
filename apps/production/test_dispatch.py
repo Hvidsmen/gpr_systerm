@@ -105,13 +105,17 @@ class DispatcherTests(TestCase):
 
     def test_repair_and_object_fuel_balance(self):
         data=self.payload('MECHANIZATION_DISPATCHER','mechanization')
-        data.update({'equipment-0-equipment':self.machine.pk,'equipment-0-state':'REPAIR','equipment-0-activity':'Замена насоса','fuel-0-opening_balance':'100','fuel-0-received_liters':'20','fuel-0-actual_liters':'30','fuel-0-actual_balance':'90'})
+        data.update({'equipment-0-equipment':self.machine.pk,'equipment-0-state':'REPAIR','equipment-0-activity':'Замена насоса'})
         self.assertEqual(self.client.post(self.url,data).status_code,302)
         self.assertEqual(EquipmentActivity.objects.get().state,'REPAIR')
         self.assertEqual(EquipmentFact.objects.get().actual_count,0)
         self.assertIsNone(EquipmentFact.objects.get().machine_hours)
+        self.assertFalse(FuelFact.objects.exists())
+        data=self.payload('ADMIN','fuel')
+        data.update({'fuel-0-opening_balance':'100','fuel-0-received_liters':'20','fuel-0-actual_liters':'30','fuel-0-actual_balance':'90'})
+        self.assertEqual(self.client.post(self.url,data).status_code,302)
         self.assertEqual(FuelFact.objects.get().equipment_ref,'')
-        data=self.payload('MECHANIZATION_DISPATCHER','mechanization');data['fuel-0-actual_balance']='91'
+        data=self.payload('ADMIN','fuel');data['fuel-0-actual_balance']='91'
         self.assertEqual(self.client.post(self.url,data).status_code,400)
         self.assertEqual(FuelFact.objects.get().actual_balance,90)
 

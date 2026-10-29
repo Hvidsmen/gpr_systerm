@@ -97,6 +97,9 @@ class CompanyUserAccessForm(forms.ModelForm):
         for field in self.fields.values():
             if not isinstance(field.widget, forms.CheckboxInput):
                 field.widget.attrs['class'] = 'form-control'
+        from .access_presentation import configure_access
+        configure_access(self, company, 'assigned_objects')
+        self.fields['is_active'].label = 'Разрешить вход в портал'
 
     def clean(self):
         data = super().clean()

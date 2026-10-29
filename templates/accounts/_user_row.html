@@ -1,18 +1,6 @@
-<tr>
-                        <td>{% if user.pk != request.user.pk and not user.is_superuser and not user.is_staff and user.role.code != 'ADMIN' %}<input type="checkbox" name="selected" value="{{ user.pk }}" form="user-bulk" class="user-selection" aria-label="Выбрать {{ user.username }}">{% endif %}</td><td>{{ user.username }}{% if user.archived_at %} <span class="badge bg-secondary">В архиве</span>{% endif %}{% if user.auth_source == 'LDAP' %} <span class="badge bg-secondary">AD</span>{% endif %}</td>
-                        <td>{{ user.full_name }}</td>
-                        <td>{{ user.email }}</td>
-                        <td>{{ user.company|default:"-" }}</td>
-                        <td>
-                            {% if user.role %}
-                                <span class="badge bg-info">{{ user.role.name }}{% if user.access_group_id %} · {{ user.access_group.name }}{% endif %}</span>
-                            {% else %}
-                                <span class="badge bg-secondary">Не назначена</span>
-                            {% endif %}
-                        </td>
-                        <td>{% if user.is_active and not user.is_superuser and not user.is_staff and user.role.code != 'ADMIN' %}<form method="post" action="{% url 'accounts:impersonation_start' user.pk %}" class="d-inline">{% csrf_token %}<button class="btn btn-sm btn-outline-warning">Войти как пользователь</button></form>{% endif %}{% if not user.is_superuser %}<a class="btn btn-sm btn-outline-primary" href="{% url 'accounts:user_access' user.pk %}">Роль и объекты</a>{% endif %}
-                            <a href="{% url 'accounts:user_detail' user.pk %}" class="btn btn-sm btn-outline-primary">
-                                <i class="bi bi-eye"></i>
-                            </a>
-                        </td>
-                    </tr>
+<tr><td>{% if user.pk != request.user.pk and not user.is_superuser and not user.is_staff and user.role.code != 'ADMIN' %}<input type="checkbox" name="selected" value="{{ user.pk }}" form="user-bulk" class="user-selection" aria-label="Выбрать {{ user.username }}">{% endif %}</td>
+<td><a class="admin-name" href="{% url 'accounts:user_detail' user.pk %}">{{ user.full_name }}</a><div class="admin-user-meta">{{ user.username }} {% if user.auth_source == 'LDAP' %}<span class="admin-pill">AD</span>{% else %}<span class="admin-pill">Локальный</span>{% endif %}</div></td>
+<td>{{ user.email|default:'—' }}{% if user.phone %}<div class="admin-user-meta">{{ user.phone }}</div>{% endif %}</td>
+<td>{% if user.role %}{{ user.role.name }}{% else %}<span class="text-warning">Роль не назначена</span>{% endif %}<div class="admin-user-meta">{% if user.access_group_id %}<i class="bi bi-link-45deg" aria-hidden="true"></i> {{ user.access_group.name }}{% else %}Индивидуальные права{% endif %}</div></td>
+<td>{% if user.archived_at %}<span class="admin-status is-muted">В архиве</span>{% elif user.is_active %}<span class="admin-status">Вход разрешён</span>{% else %}<span class="admin-status is-muted">Вход отключён</span>{% endif %}</td>
+<td><div class="admin-table-actions">{% if not user.is_superuser %}<a class="btn btn-sm btn-outline-primary" href="{% url 'accounts:user_access' user.pk %}">Настроить доступ</a>{% endif %}{% if user.is_active and not user.is_superuser and not user.is_staff and user.role.code != 'ADMIN' %}<form method="post" action="{% url 'accounts:impersonation_start' user.pk %}">{% csrf_token %}<button class="btn btn-sm btn-outline-secondary" title="Войти как {{ user.full_name }}" aria-label="Войти как пользователь {{ user.full_name }}"><i class="bi bi-box-arrow-in-right" aria-hidden="true"></i><span class="visually-hidden">Войти как пользователь</span></button></form>{% endif %}</div></td></tr>

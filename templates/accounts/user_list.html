@@ -1,39 +1,28 @@
 {% extends 'base.html' %}
-{% load i18n %}
+{% load i18n static %}
 
 {% block title %}Пользователи - ЯДС ОС{% endblock %}
 
-{% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h2><i class="bi bi-people"></i> Пользователи</h2><a class="btn btn-primary" href="{% url 'accounts:user_create' %}">Добавить пользователя</a><a class="btn btn-outline-primary ms-2" href="{% url 'accounts:add_from_ad' %}">Добавить из AD</a>
-</div>
-
-<p><a class="btn btn-outline-primary" href="{% url 'accounts:user_list' %}">Пользователи</a> <a class="btn btn-outline-secondary" href="{% url 'accounts:user_list' %}?archive=yes">Архив пользователей</a></p>
-<p><a class="btn btn-outline-primary" href="{% url 'accounts:access_groups' %}">Группы доступа и соответствия AD</a></p>
-<p><a href="{% url 'accounts:impersonation_history' %}">История действий под пользователями</a></p>
-<nav class="d-flex gap-2 mb-3"><a class="btn btn-outline-primary {% if view_mode == 'table' %}active{% endif %}" href="?{{ table_view_query }}">Таблица</a><a class="btn btn-outline-primary {% if view_mode == 'tree' %}active{% endif %}" href="?{{ tree_view_query }}">По группам</a></nav>
-<form method="get" class="card card-body mb-3"><input type="hidden" name="view" value="{{ view_mode }}">{% if archive_mode %}<input type="hidden" name="archive" value="yes">{% endif %}
-<div class="row g-3">{% for field in filter_form %}<div class="col-md-4">{{ field.label_tag }} {{ field }} {{ field.errors }}</div>{% endfor %}</div>
-<div class="mt-3"><button class="btn btn-primary" type="submit">Найти</button> <a class="btn btn-outline-secondary" href="{% url 'accounts:user_list' %}{% if archive_mode %}?archive=yes{% endif %}">Сбросить</a></div>
-</form>
-<p>Найдено: {{ matched_count }} из {{ total_count }}.</p>
+{% block extra_css %}<link rel="stylesheet" href="{% static 'accounts/user_admin.css' %}?v=20261030-1">{% endblock %}
+{% block content %}<div class="user-admin">
+<header class="admin-page-heading"><div><p class="admin-eyebrow">Администрирование · {{ request.user.company }}</p><h1>Пользователи и доступ</h1><p>Добавляйте сотрудников, назначайте группы и проверяйте их права в портале.</p></div><div class="admin-header-actions"><a class="btn btn-primary" href="{% url 'accounts:add_from_ad' %}"><i class="bi bi-person-plus" aria-hidden="true"></i> Добавить из AD</a><a class="btn btn-outline-primary" href="{% url 'accounts:user_create' %}">Локальный пользователь</a></div></header>
+<nav class="admin-navigation" aria-label="Управление доступом"><a class="{% if not archive_mode %}is-active{% endif %}" href="{% url 'accounts:user_list' %}">Пользователи</a><a class="{% if archive_mode %}is-active{% endif %}" href="{% url 'accounts:user_list' %}?archive=yes">Архив пользователей</a><a href="{% url 'accounts:access_groups' %}">Группы доступа и AD</a><a class="admin-history-link" href="{% url 'accounts:impersonation_history' %}">История входов под пользователями</a></nav>
+<form method="get" class="admin-section"><input type="hidden" name="view" value="{{ view_mode }}">{% if archive_mode %}<input type="hidden" name="archive" value="yes">{% endif %}
+<div class="admin-filter-row">{% include 'accounts/_admin_field.html' with field=filter_form.q %}{% include 'accounts/_admin_field.html' with field=filter_form.access_group %}{% include 'accounts/_admin_field.html' with field=filter_form.role %}<div class="d-flex gap-2"><button class="btn btn-primary" type="submit">Найти</button><a class="btn btn-outline-secondary" href="{% url 'accounts:user_list' %}{% if archive_mode %}?archive=yes{% endif %}">Сбросить</a></div></div>
+<details class="admin-filter-extra" {% if filter_form.auth_source.value or filter_form.active.value or filter_form.unassigned.value %}open{% endif %}><summary>Дополнительные фильтры</summary><div class="admin-filter-grid">{% include 'accounts/_admin_field.html' with field=filter_form.auth_source %}{% include 'accounts/_admin_field.html' with field=filter_form.active %}{% include 'accounts/_admin_field.html' with field=filter_form.unassigned %}</div></details></form>
+<div class="admin-list-toolbar"><span aria-label="Найдено: {{ matched_count }} из {{ total_count }}">Найдено: <strong>{{ matched_count }}</strong> <span class="text-muted">из {{ total_count }}</span></span><nav class="btn-group" aria-label="Вид списка"><a class="btn btn-sm btn-outline-primary {% if view_mode == 'table' %}active{% endif %}" href="?{{ table_view_query }}">Таблица</a><a class="btn btn-sm btn-outline-primary {% if view_mode == 'tree' %}active{% endif %}" href="?{{ tree_view_query }}">По группам</a></nav></div>
 {% if archive_mode %}<p>Архивные учётные записи отключены. Права, назначения и история сохраняются. При восстановлении возвращается прежнее состояние активности.</p>{% endif %}
 {% if users %}
-<form method="post" id="user-bulk" action="{% url 'accounts:user_bulk_archive' %}?{{ request.GET.urlencode }}" class="card card-body mb-3">{% csrf_token %}
+<form method="post" id="user-bulk" action="{% url 'accounts:user_bulk_archive' %}?{{ request.GET.urlencode }}" class="card card-body mb-3 admin-bulk">{% csrf_token %}
 <input type="hidden" name="action" value="{% if archive_mode %}restore{% else %}archive{% endif %}">
-<div class="d-flex flex-wrap gap-3 align-items-center"><label><input type="checkbox" id="select-user-page"> Выбрать всех на странице</label><label><input type="checkbox" name="all_filtered" value="yes" id="all-filtered-users"> Все найденные по фильтру, на всех страницах (кроме администраторов)</label><span id="user-selected-count">Выбрано: 0</span><button type="button" class="btn btn-outline-secondary" id="clear-user-selection">Снять выбор</button><button class="btn btn-outline-primary" type="submit">{% if archive_mode %}Восстановить выбранных{% else %}В архив{% endif %}</button></div><small>Свою учётную запись, администраторов и служебные учётные записи выбрать нельзя.</small>
+<div class="admin-selection-tools"><label><input type="checkbox" id="select-user-page"> Выбрать всех на странице</label><label><input type="checkbox" name="all_filtered" value="yes" id="all-filtered-users"> Все найденные по фильтру, на всех страницах (кроме администраторов)</label><span id="user-selected-count">Выбрано: 0</span><button type="button" class="btn btn-outline-secondary" id="clear-user-selection">Снять выбор</button><button class="btn btn-outline-primary" type="submit">{% if archive_mode %}Восстановить выбранных{% else %}В архив{% endif %}</button></div><small>Свою учётную запись, администраторов и служебные учётные записи выбрать нельзя.</small>
 </form>
     {% if view_mode == 'tree' %}{% include 'accounts/_user_groups.html' %}{% else %}
-    <div class="table-responsive">
-        <table class="table table-hover">
+    <div class="table-responsive admin-table-wrap">
+        <table class="table table-hover admin-users-table">
             <thead class="table-light">
                 <tr>
-                    <th></th><th>Имя пользователя</th>
-                    <th>ФИО</th>
-                    <th>Email</th>
-                    <th>Компания</th>
-                    <th>Роль</th>
-                    <th>Действия</th>
+                    <th><span class="visually-hidden">Выбрать</span></th><th>Сотрудник</th><th>Контакты</th><th>Роль и группа доступа</th><th>Статус</th><th class="text-end">Действия</th>
                 </tr>
             </thead>
             <tbody>
@@ -65,9 +54,9 @@
         </nav>
     {% endif %}
 {% else %}
-    <div class="alert alert-info">Пользователи не найдены.</div>
+    <div class="admin-empty"><i class="bi bi-people" aria-hidden="true"></i><h2>Пользователи не найдены</h2><p>Измените фильтры или добавьте сотрудника через Active Directory.</p></div>
 {% endif %}
-{% endblock %}
+</div>{% endblock %}
 {% block extra_js %}<script>
 (()=>{const items=Array.from(document.querySelectorAll('.user-selection'));const page=document.getElementById('select-user-page');const all=document.getElementById('all-filtered-users');const count=document.getElementById('user-selected-count');if(!page)return;
 function update(){const n=items.filter(x=>x.checked).length;count.textContent=all.checked?'Выбраны все найденные по фильтру':'Выбрано: '+n;page.checked=items.length>0&&n===items.length;page.indeterminate=n>0&&n<items.length;}

@@ -12,7 +12,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 from core.permissions import require_roles,role_code
 from core.fact_edit_window import window_context,require_fact_day
-from . import transport,camp_fuel
+from . import transport,camp_fuel,fuel_access
 from .camp_fuel_models import CampFuelDay,FUEL_CHOICES
 
 
@@ -60,18 +60,18 @@ def excel(camp,fuel_type,rows):
 @login_required
 @require_http_methods(['GET','POST'])
 def board(request):
-    require_roles(request.user,transport.OPERATORS if request.method=='POST' else transport.READERS)
+    require_roles(request.user,fuel_access.OPERATORS if request.method=='POST' else fuel_access.READERS)
     source=request.POST if request.method=='POST' else request.GET
     first=transport.camps_for(request.user).first()
     defaults={'camp':str(first.pk) if first else '', 'date':str(timezone.localdate()),'fuel_type':'DIESEL'}
     selector=Selector({**defaults,**source.dict()},user=request.user)
     context={'selector':selector}
-    if not first:return render(request,'production/camp_fuel.html',context)
+    if not first:return render(request,'production/camp_fuel.html',context,status=400 if request.method=='POST' else 200)
     if not selector.is_valid():return render(request,'production/camp_fuel.html',context,status=400)
     camp,day,fuel_type=(selector.cleaned_data[k] for k in ('camp','date','fuel_type'))
-    transport.authorize(request.user,camp,False)
+    fuel_access.authorize(request.user,camp,False)
     context.update(window_context(request.user,day))
-    editable=context['fact_day_editable'] and role_code(request.user) in transport.OPERATORS
+    editable=context['fact_day_editable'] and role_code(request.user) in fuel_access.OPERATORS
     if request.method=='POST':
         try:require_fact_day(request.user,day)
         except ValidationError as exc:raise PermissionDenied('; '.join(exc.messages))

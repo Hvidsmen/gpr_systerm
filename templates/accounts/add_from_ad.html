@@ -1,8 +1,22 @@
-{% extends 'base.html' %}{% load static %}{% block title %}Добавить пользователя из AD{% endblock %}{% block content %}
-<a href="{% url 'accounts:user_list' %}">Пользователи</a><h1>Добавить пользователя из AD</h1>
-<p>Найдите сотрудника в Active Directory и назначьте доступ к компании {{ request.user.company }}. Пароль сотрудника не требуется.</p>
-{% if chosen %}<div class="card p-3"><h2 class="h5">{{ chosen.name|default:chosen.login }}</h2><p>{{ chosen.login }} · {{ chosen.email }}</p><form method="post">{% csrf_token %}<input type="hidden" name="selected" value="{{ selected }}">{{ form.as_p }}<p class="small text-muted" data-access-scope role="status"></p>{{ form.group_options|json_script:"access-group-options" }}<button class="btn btn-primary">Добавить в ГПР</button></form></div>{% else %}
-<form class="d-flex gap-2 my-3"><input class="form-control" name="q" value="{{ query }}" minlength="2" maxlength="100" placeholder="ФИО, доменный логин или почта" required><button class="btn btn-primary">Найти в AD</button></form>
-{% if rows %}<p class="text-muted">Показано до 50 записей. Для уточнения списка дополните запрос.</p><table class="table"><thead><tr><th>ФИО</th><th>Логин AD</th><th>Почта</th><th></th></tr></thead><tbody>{% for row in rows %}<tr><td>{{ row.name }}</td><td>{{ row.login }}</td><td>{{ row.email }}</td><td><a href="?selected={{ row.selected|urlencode }}" class="btn btn-outline-primary btn-sm">Выбрать</a></td></tr>{% endfor %}</tbody></table>{% elif query %}<p>Пользователи не найдены или поиск недоступен. Сообщение об ошибке показано выше, если она возникла.</p>{% endif %}{% endif %}{% endblock %}
-
-{% block extra_js %}<script src="{% static 'accounts/access_inheritance.js' %}?v=20261030" defer></script>{% endblock %}
+{% extends 'base.html' %}{% load static %}
+{% block title %}Добавить пользователя из AD{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'accounts/user_admin.css' %}?v=20261030-1">{% endblock %}
+{% block content %}<div class="user-admin">
+<a class="admin-back" href="{% url 'accounts:user_list' %}">← Пользователи</a>
+<header class="admin-page-heading"><div><p class="admin-eyebrow">Администрирование · {{ request.user.company }}</p><h1>Добавить пользователя из AD</h1><p>Найдите сотрудника и назначьте доступ к порталу. Пароль сотрудника не требуется.</p></div></header>
+<ol class="admin-progress" aria-label="Этапы добавления"><li class="{% if chosen %}is-complete{% else %}is-current{% endif %}"><span>1</span> Найти сотрудника</li><li class="{% if chosen %}is-current{% endif %}"><span>2</span> Назначить доступ</li></ol>
+{% if chosen %}
+<form method="post" class="admin-access-layout" data-access-form>{% csrf_token %}<input type="hidden" name="selected" value="{{ selected }}">
+<div class="admin-form-main"><section class="admin-section admin-identity"><div class="admin-avatar" aria-hidden="true"><i class="bi bi-person"></i></div><div><h2>{{ chosen.name|default:chosen.login }}</h2><p>{{ chosen.login }}{% if chosen.email %} · {{ chosen.email }}{% endif %}</p><span class="admin-pill">Active Directory</span></div><a class="admin-change-person" href="{% url 'accounts:add_from_ad' %}?q={{ chosen.login|urlencode }}">Выбрать другого</a></section>
+{% if form.errors %}<div class="alert alert-danger" role="alert">Проверьте отмеченные поля. Пользователь ещё не добавлен.{{ form.non_field_errors }}</div>{% endif %}
+{% include 'accounts/_access_fields.html' %}
+<div class="admin-form-actions"><button class="btn btn-primary" type="submit">Добавить в ГПР</button><a class="btn btn-outline-secondary" href="{% url 'accounts:user_list' %}">Отмена</a></div></div>
+{% include 'accounts/_access_summary.html' %}
+{{ form.group_options|json_script:"access-group-options" }}</form>
+{% else %}
+<section class="admin-section"><h2>Поиск в Active Directory</h2><form method="get" class="admin-directory-search"><div><label class="form-label" for="directory-query">ФИО, доменный логин или почта</label><input id="directory-query" class="form-control" type="search" name="q" value="{{ query }}" minlength="2" maxlength="100" placeholder="Например, Иванов или ivanov" required autofocus></div><button class="btn btn-primary" type="submit">Найти в AD</button></form><p class="form-text mb-0">Введите минимум 2 символа. Поиск выполняется среди активных сотрудников.</p></section>
+{% if rows %}<section class="admin-section mt-3"><div class="admin-results-heading"><h2>Результаты поиска</h2><span class="text-muted small">До 50 сотрудников · выберите одного</span></div><div class="table-responsive"><table class="table admin-users-table"><thead><tr><th>Сотрудник</th><th>Логин AD</th><th>Почта</th><th><span class="visually-hidden">Действие</span></th></tr></thead><tbody>{% for row in rows %}<tr><td class="fw-semibold">{{ row.name|default:row.login }}</td><td>{{ row.login }}</td><td>{{ row.email|default:'—' }}</td><td class="text-end"><a class="btn btn-sm btn-outline-primary" href="?selected={{ row.selected|urlencode }}" aria-label="Выбрать {{ row.name|default:row.login }}">Выбрать</a></td></tr>{% endfor %}</tbody></table></div></section>
+{% elif query %}<div class="admin-empty"><i class="bi bi-search" aria-hidden="true"></i><h2>Сотрудник не найден</h2><p>Проверьте ФИО или попробуйте доменный логин. Если поиск AD недоступен, на странице появится сообщение об ошибке.</p></div>
+{% else %}<p class="admin-secondary-path">Нужен отдельный вход без AD? <a href="{% url 'accounts:user_create' %}">Создать локального пользователя</a></p>{% endif %}
+{% endif %}</div>{% endblock %}
+{% block extra_js %}<script src="{% static 'accounts/access_inheritance.js' %}?v=20261030-2" defer></script>{% endblock %}

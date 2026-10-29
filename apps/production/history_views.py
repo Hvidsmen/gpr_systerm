@@ -20,7 +20,7 @@ TITLES={
  'personnel.campstay':'Пребывание сотрудника в ВЖГ','personnel.housingevent':'Событие персонала',
 }
 TITLES.update({'personnel.lodgingstay':'Проживание','personnel.lodgingevent':'Событие коменданта','personnel.lodgingbuilding':'Вагон / корпус','personnel.lodgingbed':'Жилое место','personnel.lodgingresolution':'Объяснение сверки'})
-DIRECTIONS=[('lodging','Комендант'),('works','Производство'),('labor','Персонал'),('mechanization','Транспорт и ГСМ')]
+DIRECTIONS=[('lodging','Комендант'),('works','Производство'),('labor','Персонал'),('mechanization','Транспорт и ГСМ (прежний учёт)'),('fuel','ГСМ')]
 FIELD_LABELS={
  'quantity':'Входящий выполненный объём',
  'actual_quantity':'Фактический объём','actual_value':'Стоимость','reported_by_id':'Первоначальный автор',
@@ -51,10 +51,14 @@ def visible_revisions(user):
     records=FactRevision.objects.filter(company=user.company)
     role=role_code(user)
     direction={'DISPATCHER':'works','PERSONNEL_DISPATCHER':'labor','MECHANIZATION_DISPATCHER':'mechanization'}.get(role)
+    if role=='FUEL_WAREHOUSE':
+        records=records.filter(entity_type__in=['production.campfuelday','production.fuelfact']);direction=None
     if role=='COMMANDANT':direction='lodging'
     if role=='PERSONNEL_DISPATCHER':records=records.filter(direction__in=['labor','lodging']);direction=None
+    if direction=='mechanization':
+        records=records.filter(Q(direction=direction)|Q(entity_type__in=['production.campfuelday','production.fuelfact']));direction=None
     if direction:records=records.filter(direction=direction)
-    if role in {'DISPATCHER','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER','ALL_FACT_DISPATCHER','PLANNER','FOREMAN'}:
+    if role in {'DISPATCHER','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER','ALL_FACT_DISPATCHER','PLANNER','FOREMAN','FUEL_WAREHOUSE'}:
         objects=scope_queryset(ConstructionObject.objects.all(),user).values('pk')
         from .transport import camps_for
         camps=camps_for(user).values('pk')

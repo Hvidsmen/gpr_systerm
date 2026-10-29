@@ -36,3 +36,13 @@ details[open]>.smg-calendar-summary>.smg-summary-label::before{content:'▾'}
 
 /* The monthly SMG value remains distinct across headings and expanded rows. */
 .smg-calendar-grid [data-smg-calendar-month],.smg-calendar-grid [data-plan-total-after],.smg-calendar-grid [data-smg-month-cell]{background:#e3f3f7!important;color:#075d73;font-weight:700;box-shadow:inset 2px 0 #58adbe,inset -2px 0 #58adbe}
+
+/* Rows align to one date axis by extending left through their ancestors.
+   Clip that extension for both table rows and group headers so the tree guides
+   remain visible at every depth, including read-only approval pages. */
+.smg-calendar-grid .matrix-scroll,.smg-calendar-grid .smg-calendar-summary{clip-path:inset(0 0 0 var(--smg-inset,0px))}
+
+.smg-package-summary .plan-package-actions{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0 0}
+.smg-package-summary .plan-copy-row{margin:0;padding:2px 6px;font-size:11px}
+.smg-calendar-grid [data-smg-package-totals] .smg-summary-value{align-content:center;font-weight:600}
+.smg-calendar-grid [data-smg-package-totals] .smg-summary-measure{align-content:center;line-height:1.5}

@@ -1,5 +1,15 @@
-{% extends 'base.html' %}
-{% block content %}
-<h1>{% if object %}Доступ пользователя {{ object.username }}{% else %}Новый пользователь{% endif %}</h1>
-<form method="post" class="card card-body">{% csrf_token %}{% include 'forms/fields.html' with form=form %}<button class="btn btn-primary">Сохранить</button></form>
-{% endblock %}
+{% extends 'base.html' %}{% load static %}
+{% block title %}{% if object %}Доступ пользователя{% else %}Новый локальный пользователь{% endif %}{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'accounts/user_admin.css' %}?v=20261030-1">{% endblock %}
+{% block content %}<div class="user-admin"><a class="admin-back" href="{% url 'accounts:user_list' %}">← Пользователи</a>
+<header class="admin-page-heading"><div><p class="admin-eyebrow">Администрирование · {{ request.user.company }}</p><h1>{% if object %}{{ object.full_name }}{% else %}Новый локальный пользователь{% endif %}</h1><p>{% if object %}{{ object.username }} · {% if object.auth_source == 'LDAP' %}Корпоративный вход AD{% else %}Локальная учётная запись{% endif %}{% else %}Для сотрудников с корпоративной учётной записью используйте <a href="{% url 'accounts:add_from_ad' %}">добавление из AD</a>.{% endif %}</p></div></header>
+<form method="post" class="admin-access-layout" data-access-form>{% csrf_token %}<div class="admin-form-main">
+{% if form.errors %}<div class="alert alert-danger" role="alert">Не удалось сохранить. Проверьте отмеченные поля.{{ form.non_field_errors }}</div>{% endif %}
+<section class="admin-section"><div class="admin-section-heading"><span class="admin-step-number">1</span><div><h2>Данные пользователя</h2><p>Контакты и сведения для отображения в портале.</p></div></div>
+{% if form.username %}{% include 'accounts/_admin_field.html' with field=form.username %}{% endif %}
+<div class="admin-field-grid">{% include 'accounts/_admin_field.html' with field=form.last_name %}{% include 'accounts/_admin_field.html' with field=form.first_name %}{% include 'accounts/_admin_field.html' with field=form.email %}{% include 'accounts/_admin_field.html' with field=form.phone %}</div>{% include 'accounts/_admin_field.html' with field=form.position %}</section>
+{% include 'accounts/_access_fields.html' %}
+<section class="admin-section"><h2>{% if form.password1 %}Пароль и вход{% else %}Вход в портал{% endif %}</h2>{% if object.archived_at %}<p class="alert alert-warning">Пользователь в архиве. Восстановите его в списке пользователей, чтобы разрешить вход.</p>{% endif %}{% if form.password1 %}<div class="admin-field-grid">{% include 'accounts/_admin_field.html' with field=form.password1 %}{% include 'accounts/_admin_field.html' with field=form.password2 %}</div>{% endif %}{% include 'accounts/_admin_field.html' with field=form.is_active %}</section>
+<div class="admin-form-actions"><button class="btn btn-primary" type="submit">{% if object %}Сохранить изменения{% else %}Создать пользователя{% endif %}</button><a class="btn btn-outline-secondary" href="{% url 'accounts:user_list' %}">Отмена</a></div></div>
+{% include 'accounts/_access_summary.html' %}{{ form.group_options|json_script:"access-group-options" }}</form></div>{% endblock %}
+{% block extra_js %}<script src="{% static 'accounts/access_inheritance.js' %}?v=20261030-2" defer></script>{% endblock %}

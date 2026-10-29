@@ -1,11 +1,11 @@
-{% extends 'base.html' %}{% load static l10n %}
+{% extends 'base.html' %}{% load static l10n access %}
 {% block title %}ГСМ на ВЖГ{% endblock %}
 {% block content %}
-<h1>ГСМ на ВЖГ</h1>
+<p class="small text-muted">Внесение факта / ГСМ</p><h1>Склад ГСМ · факт за день</h1>
 <p class="text-muted">Общий запас городка. Дизель, бензин и другие ГСМ учитываются отдельно. Все количества — в литрах.</p>
 <form method="get" class="card card-body mb-3">{% include 'forms/fields.html' with form=selector %}<div class="mt-3"><button class="btn btn-primary">Показать</button></div></form>
 {% if camp %}
-<nav class="d-flex flex-wrap gap-2 mb-3"><a class="btn btn-outline-primary" href="{% url 'production:transport_board' %}?{{ camp_query }}">Техника</a><span class="btn btn-primary" aria-current="page">ГСМ</span><a class="btn btn-outline-success" href="?{{ query }}&amp;export=xlsx">Выгрузить Excel</a></nav>
+<nav class="d-flex flex-wrap gap-2 mb-3">{% if request.user|may:'production:transport_board' %}<a class="btn btn-outline-primary" href="{% url 'production:transport_board' %}?{{ camp_query }}">Техника</a>{% endif %}<span class="btn btn-primary" aria-current="page">Складской баланс ВЖГ</span>{% if request.user|may:'production:fact_day_workspace' %}<a class="btn btn-outline-primary" href="{% url 'production:fact_day_workspace' %}?section=fuel&amp;date={{ day|date:'Y-m-d' }}">ГСМ по объекту</a>{% endif %}<a class="btn btn-outline-success" href="?{{ query }}&amp;export=xlsx">Выгрузить Excel</a></nav>
 <h2 class="h4">{{ camp.name }} · {{ fuel_label }} · {{ day|date:'d.m.Y' }}</h2>
 {% if fact_window_message %}<p class="alert alert-secondary" data-fact-window>{{ fact_window_message }}</p>{% endif %}
 <div class="card card-body mb-3"><div class="d-flex flex-wrap justify-content-between gap-3"><div>На начало дня<strong class="d-block fs-4">{{ opening }} л</strong></div><div>Приход<strong class="d-block fs-4">{{ current.received_liters|default:'0' }} л</strong></div><div>Расход<strong class="d-block fs-4">{{ current.actual_liters|default:'0' }} л</strong></div><div>На конец дня<strong class="d-block fs-4" data-fuel-balance>{{ closing }} л</strong></div></div>{% if not current %}<p class="small text-muted mt-2 mb-0">День ещё не заполнен. Показан перенесённый остаток.</p>{% endif %}</div>

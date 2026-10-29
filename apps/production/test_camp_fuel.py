@@ -41,7 +41,7 @@ class CampFuelTests(TestCase):
         row=self.save(user=self.colleague,received=20,consumed=10,comment='Уточнение')
         self.assertEqual(row.recorded_by_id,self.operator.pk)
         change=FactRevision.objects.filter(entity_type='production.campfuelday',operation='UPDATE').get()
-        self.assertEqual(change.actor_id,self.colleague.pk);self.assertEqual(change.direction,'mechanization')
+        self.assertEqual(change.actor_id,self.colleague.pk);self.assertEqual(change.direction,'fuel')
         self.assertEqual(change.before['fields']['received_liters'],'0.00')
         self.assertEqual(change.after['fields']['received_liters'],'20.00')
         with self.assertRaises(ValidationError):self.save(signed=stale,received=200)

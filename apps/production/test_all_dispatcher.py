@@ -23,17 +23,18 @@ class AllFactDispatcherTests(TestCase):
         data=self.payload(ROLE,section);data['action']='confirm'
         if section=='works':data['works-0-actual_quantity']='5'
         elif section=='labor':data.update({'labor-0-employee':self.employee.pk,'labor-0-general':'on'})
-        else:data.update({'equipment-0-equipment':self.machine.pk,'equipment-0-state':'REPAIR','equipment-0-activity':'Ремонт насоса','fuel-0-opening_balance':'100','fuel-0-received_liters':'0','fuel-0-actual_liters':'5','fuel-0-actual_balance':'95'})
+        elif section=='mechanization':data.update({'equipment-0-equipment':self.machine.pk,'equipment-0-state':'REPAIR','equipment-0-activity':'Ремонт насоса'})
+        else:data.update({'fuel-0-opening_balance':'100','fuel-0-received_liters':'0','fuel-0-actual_liters':'5','fuel-0-actual_balance':'95'})
         response=self.client.post(self.url,data)
         self.assertEqual(response.status_code,302)
 
-    def test_all_three_directions_can_be_written(self):
-        for section in ['works','labor','mechanization']:self.confirm(section)
+    def test_all_four_directions_can_be_written(self):
+        for section in ['works','labor','mechanization','fuel']:self.confirm(section)
         self.assertEqual(DailyFact.objects.get().actual_quantity,5)
         self.assertEqual(EmployeeActivity.objects.get().employee,self.employee)
         self.assertEqual(EquipmentActivity.objects.get().state,'REPAIR')
         self.assertEqual(FuelFact.objects.get().actual_liters,5)
-        self.assertEqual(FactSectionDay.objects.filter(confirmed_at__isnull=False).count(),3)
+        self.assertEqual(FactSectionDay.objects.filter(confirmed_at__isnull=False).count(),4)
 
     def test_assignment_scope_and_planning_permissions_remain_restricted(self):
         self.client.force_login(self.users[ROLE])
@@ -56,14 +57,15 @@ class AllFactDispatcherTests(TestCase):
         for section in ['works','labor']:
             self.confirm(section);task.refresh_from_db();self.assertEqual(task.status,'OPEN')
             with self.assertRaises(ValidationError):validate_fact(task)
-        self.confirm('mechanization');task.refresh_from_db();self.assertEqual(task.status,'DONE')
+        self.confirm('mechanization');task.refresh_from_db();self.assertNotEqual(task.status,'DONE')
+        self.confirm('fuel');task.refresh_from_db();self.assertEqual(task.status,'DONE')
         validate_fact(task)
         invalidate_fact(self.company.pk,self.obj.pk,self.day,'labor')
         task.refresh_from_db();self.assertEqual(task.status,'OPEN')
         with self.assertRaises(ValidationError):validate_fact(task)
 
     def test_late_generated_task_uses_all_confirmations(self):
-        for section in ['works','labor','mechanization']:self.confirm(section)
+        for section in ['works','labor','mechanization','fuel']:self.confirm(section)
         # Login middleware may already have moved the cursor past the fixed fixture date.
         from apps.planning.models import DailyTaskCursor
         DailyTaskCursor.objects.filter(user=self.users[ROLE],construction_object=self.obj).update(last_date=self.day-timedelta(days=1))
@@ -80,7 +82,7 @@ class AllFactDispatcherTests(TestCase):
         self.client.force_login(self.users[ROLE])
         response=self.client.get(reverse('planning:task_detail',args=[task.pk]))
         self.assertEqual(response.status_code,200)
-        self.assertEqual({key for key,label in response.context['fact_sections']},{'works','labor','mechanization'})
+        self.assertEqual({key for key,label in response.context['fact_sections']},{'works','labor','mechanization','fuel'})
 
     def test_admin_task_generation_includes_the_new_role(self):
         self.client.force_login(self.users['ADMIN'])

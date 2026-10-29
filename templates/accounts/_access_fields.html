@@ -1,0 +1,8 @@
+<section class="admin-section" aria-labelledby="access-title">
+<div class="admin-section-heading"><span class="admin-step-number">2</span><div><h2 id="access-title">Права доступа</h2><p>Начните с группы. Роль и объекты заполнятся автоматически.</p></div></div>
+{% include 'accounts/_admin_field.html' with field=form.access_group %}
+<div class="admin-inheritance" data-inheritance-note hidden><i class="bi bi-link-45deg" aria-hidden="true"></i> Роль и объекты наследуются от группы. При изменении группы доступ обновится у всех её участников.</div>
+{% include 'accounts/_admin_field.html' with field=form.role %}
+{% if form.objects %}{% include 'accounts/_admin_field.html' with field=form.objects %}{% else %}{% include 'accounts/_admin_field.html' with field=form.assigned_objects %}{% endif %}
+<p class="admin-scope-hint" data-access-scope role="status">Выберите группу или роль, чтобы увидеть область доступа.</p>
+</section>

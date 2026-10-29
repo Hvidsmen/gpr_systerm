@@ -4,7 +4,8 @@ from django.core.exceptions import PermissionDenied
 from .plan_approval import DEPARTMENT_ROLES, ACTION_ROLES
 GLOBAL_APPROVAL_ROLES = DEPARTMENT_ROLES | {'CEO'}
 ALL_FACT_DISPATCHER = 'ALL_FACT_DISPATCHER'
-DISPATCHER_ROLES = {'DISPATCHER','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER',ALL_FACT_DISPATCHER}
+FUEL_WAREHOUSE = 'FUEL_WAREHOUSE'
+DISPATCHER_ROLES = {FUEL_WAREHOUSE,'DISPATCHER','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER',ALL_FACT_DISPATCHER}
 ROLES = DISPATCHER_ROLES | {'ADMIN', 'PLANNER', 'MANAGER', 'FOREMAN', 'DISPATCHER', 'OBSERVER', 'ESTIMATOR'} | GLOBAL_APPROVAL_ROLES
 READ_ROLES = {'ADMIN', 'PLANNER', 'MANAGER', 'OBSERVER', 'ESTIMATOR'} | GLOBAL_APPROVAL_ROLES
 PLAN_ROLES = {'ADMIN', 'PLANNER'}
@@ -117,6 +118,14 @@ def scope_queryset(queryset, user, include_archived=False):
 def check_route(user, match, method):
     namespace, name = match.namespace, match.url_name
     role = role_code(user)
+    if role == FUEL_WAREHOUSE:
+        require_roles(user, {FUEL_WAREHOUSE})
+        own_account = namespace == 'accounts' and (name in {'settings', 'logout', 'password_change', 'access_pending', 'impersonation_stop'} or name == 'user_detail' and match.kwargs.get('pk') == user.pk)
+        fuel_routes = namespace == 'production' and name in {'camp_fuel', 'fact_day_workspace', 'fact_history'}
+        own_tasks = namespace == 'planning' and name in {'task_list', 'task_detail'}
+        if own_account or fuel_routes or own_tasks:
+            return
+        raise PermissionDenied('Роль «Склад ГСМ» разрешает только учёт топлива за день.')
     if role in CATALOG_MANAGER_ROLES:
         # Catalogue custodians have no implicit access to plans, facts or admin.
         require_roles(user, CATALOG_MANAGER_ROLES)
@@ -168,9 +177,12 @@ def check_route(user, match, method):
     if namespace == 'production' and name=='fact_history':
         require_roles(user,READ_ROLES|FACT_ROLES|{'COMMANDANT'})
         return
-    if namespace == 'production' and name in {'transport_board','transport_claims','transport_create','transport_history','camp_fuel','transport_details','transport_cell','transport_employee_choices','transport_status_create','transport_copy_previous'}:
+    if namespace == 'production' and name == 'camp_fuel':
+        from apps.production.fuel_access import OPERATORS, READERS
+        require_roles(user, READERS if method in {'GET', 'HEAD'} else OPERATORS); return
+    if namespace == 'production' and name in {'transport_board','transport_claims','transport_create','transport_history','transport_details','transport_cell','transport_employee_choices','transport_status_create','transport_copy_previous'}:
         from apps.production.transport import OPERATORS,READERS
-        require_roles(user,READERS if method in {'GET','HEAD'} and name in {'transport_board','transport_history','camp_fuel','transport_details'} else OPERATORS)
+        require_roles(user,READERS if method in {'GET','HEAD'} and name in {'transport_board','transport_history','transport_details'} else OPERATORS)
         return
     if namespace == 'production' and name in {'equipment_assignment_list', 'equipment_history_detail'}:
         require_roles(user, READ_ROLES | {'MECHANIZATION_DISPATCHER', 'ALL_FACT_DISPATCHER'} if method in {'GET', 'HEAD'} else {'ADMIN', 'MECHANIZATION_DISPATCHER', 'ALL_FACT_DISPATCHER'});return

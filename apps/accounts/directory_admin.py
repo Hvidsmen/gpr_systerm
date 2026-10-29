@@ -58,14 +58,8 @@ class AccessForm(forms.Form):
         self.fields['role'].queryset=Role.objects.filter(code__in=ROLES)
         self.fields['objects'].queryset=ConstructionObject.objects.filter(company=company)
         self.fields['access_group'].queryset=AccessGroup.objects.filter(company=company).select_related('role').prefetch_related('assigned_objects')
-        groups=list(self.fields['access_group'].queryset)
-        self.group_options={'groups':[{'id':g.pk,'role':g.role_id,'objects':[obj.pk for obj in g.assigned_objects.all()]} for g in groups],
-            'roles':{str(r.pk):r.code for r in self.fields['role'].queryset}}
-        selected=self.data.get(self.add_prefix('access_group')) if self.is_bound else self.initial.get('access_group')
-        group=next((g for g in groups if str(g.pk)==str(selected)),None)
-        if group:
-            for name,value in [('role',group.role_id),('objects',[obj.pk for obj in group.assigned_objects.all()])]:
-                self.fields[name].disabled=True;self.initial[name]=value
+        from .access_presentation import configure_access
+        configure_access(self, company, 'objects')
 
     def clean(self):
         data=super().clean();group=data.get('access_group')

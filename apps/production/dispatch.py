@@ -21,7 +21,7 @@ from apps.planning.models import DailySchedule
 from .models import DailyFact, EmployeeActivity, EquipmentActivity, FactSectionDay, FuelFact,LaborFact,EquipmentFact,DayActuation
 from .forms import ObjectDateForm,DailyFactForm,DayActuationForm
 
-DIRECTIONS={'DISPATCHER':'works','PERSONNEL_DISPATCHER':'labor','MECHANIZATION_DISPATCHER':'mechanization'}
+DIRECTIONS={'DISPATCHER':'works','PERSONNEL_DISPATCHER':'labor','MECHANIZATION_DISPATCHER':'mechanization','FUEL_WAREHOUSE':'fuel'}
 LABELS=dict(FactSectionDay.SECTIONS)
 
 def sections_for(user):
@@ -304,6 +304,8 @@ class DispatcherDayView(CompanyRequiredMixin,View):
         allowed=sections_for(request.user)
         section=(request.POST if bound else request.GET).get('section',allowed[0])
         if section not in allowed:raise PermissionDenied('Другое направление факта.')
+        if bound and section=='mechanization' and any(key.startswith('fuel-') for key in request.POST):
+            raise ValidationError('Форма устарела: ГСМ вынесены в отдельное направление. Обновите страницу; техника и ГСМ теперь сохраняются отдельно.')
         context={'selector':selector,'section':section,'tabs':[(s,LABELS[s]) for s in allowed],'editable':role_code(request.user) in FACT_ROLES}
         if not selector.is_bound or not selector.is_valid():return dispatcher_response(request,context,status=400 if bound else 200)
         obj=selector.cleaned_data['construction_object'];day=selector.cleaned_data['date']
@@ -347,7 +349,7 @@ class DispatcherDayView(CompanyRequiredMixin,View):
         from .employee_pool import prepare as prepare_employee_pool,labor_direction
         employee_pool=prepare_employee_pool(obj,day) if section=='works' else None
         if employee_pool:context['production_employee_locations']=employee_pool['locations']
-        definitions=[('works',DailyFact,WorkForm),('labor',EmployeeActivity,ProductionPersonForm)] if section=='works' else [('labor',EmployeeActivity,PersonForm)] if section=='labor' else [('equipment',EquipmentActivity,MachineForm),('fuel',FuelFact,FuelForm)]
+        definitions=[('works',DailyFact,WorkForm),('labor',EmployeeActivity,ProductionPersonForm)] if section=='works' else [('labor',EmployeeActivity,PersonForm)] if section=='labor' else [('fuel',FuelFact,FuelForm)] if section=='fuel' else [('equipment',EquipmentActivity,MachineForm)]
         groups=[]
         for prefix,model,form in definitions:
             qs=model.objects.filter(company=obj.company,date=day)
@@ -436,7 +438,7 @@ class DispatcherDayView(CompanyRequiredMixin,View):
         detail_model=EmployeeActivity if section in {'works','labor'} else EquipmentActivity
         legacy_model=LaborFact if section in {'works','labor'} else EquipmentFact
         legacy_revision=(people_status.revision if people_status else 0) if section=='works' else status.revision
-        legacy_exists=legacy_revision==0 and not detail_model.objects.filter(company=obj.company,construction_object=obj,date=day).exists() and legacy_model.objects.filter(company=obj.company,construction_object=obj,date=day).exists()
+        legacy_exists=section!='fuel' and legacy_revision==0 and not detail_model.objects.filter(company=obj.company,construction_object=obj,date=day).exists() and legacy_model.objects.filter(company=obj.company,construction_object=obj,date=day).exists()
         context['legacy_exists']=legacy_exists
         context['crew']=EmployeeActivity.objects.filter(company=obj.company,construction_object=obj,date=day,equipment__isnull=False).select_related('employee','equipment','position') if section=='mechanization' else []
         context['machine_states']=[(label,EquipmentActivity.objects.filter(company=obj.company,construction_object=obj,date=day,state=state).values('equipment_id').distinct().count()) for state,label in EquipmentActivity.STATES]
@@ -567,7 +569,7 @@ class DispatcherDayView(CompanyRequiredMixin,View):
                                     expected=resource_plan['equipment']
                                 if expected and any(Decimal(actual.get(key,0))!=expected.get(key,Decimal(0)) for key in set(actual)|set(expected)) and not current.deviation_comment:raise ValidationError('Укажите причину отклонения численности или работающей техники от СМГ.')
 
-                            if section=='mechanization':
+                            if section=='fuel':
                                 present_fuels=set(FuelFact.objects.filter(company=obj.company,construction_object=obj,date=day,equipment_ref='').values_list('fuel_type',flat=True))
                                 if set(resource_plan['fuel'])-present_fuels:raise ValidationError('Заполните ГСМ объекта по всем видам топлива СМГ, включая явные нули.')
                             if section=='works':

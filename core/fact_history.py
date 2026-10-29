@@ -81,6 +81,7 @@ def append_revision(instance, before, after, using):
     metadata = after or before
     model = instance._meta.label_lower
     direction = 'mechanization' if model in {'production.equipmentactivity','production.equipmentfact','production.fuelfact','production.campfuelday','resources.transportimportrow','production.equipmentdaydetails','production.equipmentdayrecord','production.equipmenttransportevent','production.equipmentcampstay','production.equipmentassignment','production.equipmentstatechange'} else 'labor' if model.startswith('personnel.') or model == 'production.laborfact' else 'works'
+    if model in {'production.fuelfact','production.campfuelday'}:direction='fuel'
     if model.startswith('personnel.lodging'):direction='lodging'
     if model=='production.employeeactivity':
         from apps.production.employee_pool import activity_direction
