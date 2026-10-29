@@ -27,10 +27,11 @@ def day_types(company,rows,resource_plans,*,query=''):
             item['rows'].append(row);item['worked']+=int(row['status']=='WORKED');item['idle']+=int(row['status']=='IDLE')
         else:
             m=row['machine'];numbers=' · '.join(filter(None,[m.plate_number,m.inventory_number,m.vin]))
-            item['choices'].append({'id':m.pk,'label':f'{m.name} · {numbers} · {row["condition_label"]}'})
+            item['choices'].append({'id':m.pk,'label':f'{item["name"]} · {m.name} · {numbers} · {row["condition_label"]}'})
     output=[]
     for item in types.values():
         if query and not item['available'] and not all(word.casefold() in item['name'].casefold() for word in query.split()):continue
+        item['in_plan']=item['has_plan'] and item['quantity']>0
         item['plan']=int(item['quantity'].to_integral_value(rounding=ROUND_CEILING)) if item['has_plan'] else None
         item['remaining']=max(0,item['plan']-item['worked']) if item['has_plan'] else None
         output.append(item)

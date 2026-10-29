@@ -211,9 +211,18 @@ def board(request):
     if tab=='day' and day_view=='plan':
         from .transport_planning import day_types
         type_rows=day_types(request.user.company,filtered,form.resource_plans,query=data['q'])
-        page=Paginator(type_rows,25).get_page(request.GET.get('page'))
-        context['planning_types']=list(page.object_list)
-        display_rows=[row for item in context['planning_types'] for row in item['rows']]
+        planned=[item for item in type_rows if item['in_plan']]
+        outside=[item for item in type_rows if not item['in_plan']]
+        outside_facts=[item for item in outside if item['rows']]
+        page=Paginator(planned,25).get_page(request.GET.get('page'))
+        outside_page=Paginator(outside_facts,25).get_page(request.GET.get('outside_page'))
+        context.update(planning_types=list(page.object_list),outside_fact_types=list(outside_page.object_list),outside_page=outside_page,
+            outside_fact_count=sum(len(item['rows']) for item in outside_facts),
+            outside_choices=[{'id':item['id'],'name':item['name'],'machines':item['choices']} for item in outside if item['choices']])
+        outside_params=request.GET.copy();outside_params.pop('outside_page',None)
+        context['outside_query']=outside_params.urlencode()
+        display_rows=[row for item in [*context['planning_types'],*context['outside_fact_types']] for row in item['rows']]
+
     else:
         page=Paginator(filtered,50).get_page(request.GET.get('page'))
         display_rows=list(page.object_list)
@@ -230,7 +239,7 @@ def board(request):
         params=request.GET.copy();params['view']=value;params['tab']='day';params.pop('page',None)
         view_links.append({'value':value,'label':label,'url':'?'+params.urlencode()})
     context['day_view_links']=view_links
-    context.update(detail_columns=[label for name,label in DETAIL_FIELDS if name in (('in_gpr',) if tab=='state' else ROSTER_DETAIL_FIELDS)],page_obj=page,filtered_count=len(filtered))
+    context.update(detail_columns=[label for name,label in DETAIL_FIELDS if name in (('in_gpr',) if tab=='state' else ROSTER_DETAIL_FIELDS)],page_obj=page,filtered_count=len(planned) if tab=='day' and day_view=='plan' else len(filtered))
     new_form=NewMachineForm(company=request.user.company,prefix='new-machine')
     new_form.fields.pop('site_name');new_form.fields.pop('is_active')
     context['new_machine_form']=new_form

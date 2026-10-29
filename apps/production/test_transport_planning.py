@@ -38,10 +38,12 @@ class TransportPlanningTests(TestCase):
     def test_default_hierarchy_includes_plan_only_and_available_without_creating_facts(self):
         response=self.page();self.assertEqual(response.status_code,200)
         items={row['id']:row for row in response.context['planning_types']}
-        self.assertEqual([row['group'] for row in response.context['planning_types']],['Специализированная техника','Специализированная техника','Вспомогательная техника'])
+        self.assertEqual([row['group'] for row in response.context['planning_types']],['Специализированная техника','Специализированная техника'])
         self.assertEqual(items[self.type.pk]['plan'],3);self.assertEqual(items[self.type.pk]['remaining'],3)
         self.assertEqual(len(items[self.type.pk]['choices']),2);self.assertEqual(items[self.type.pk]['rows'],[])
-        self.assertEqual(items[self.planned_only.pk]['available'],0);self.assertIsNone(items[self.bus_type.pk]['plan'])
+        self.assertEqual(items[self.planned_only.pk]['available'],0);self.assertNotIn(self.bus_type.pk,items)
+        self.assertEqual([item['id'] for item in response.context['outside_choices']],[self.bus_type.pk])
+        self.assertTrue(items[self.type.pk]['choices'][0]['label'].startswith(self.type.name+' · '))
         self.assertEqual(EquipmentDayRecord.objects.count(),0)
         self.assertContains(response,'data-type-add');self.assertNotContains(response,'data-transport-row=')
         self.assertContains(self.page(view='list'),'data-transport-row=',count=3)
@@ -92,3 +94,30 @@ class TransportPlanningTests(TestCase):
         row=next(row for row in self.page().context['planning_types'] if row['id']==self.type.pk)
         self.assertEqual(row['plan'],3);self.assertEqual(len(row['choices']),2)
         self.assertEqual(self.assign().status_code,200)
+
+    def test_zero_and_missing_plan_are_hidden_until_explicit_outside_action_and_saved_fact_is_retained(self):
+        DailyScheduleEntry.objects.create(schedule=self.schedule,key='equipment:zero',kind='equipment',label=self.bus_type.name,rows=[{'date':str(self.day),'equipment_type_id':self.bus_type.pk,'planned_count':'0'}])
+        page=self.page();self.assertNotIn(self.bus_type.pk,{item['id'] for item in page.context['planning_types']})
+        self.assertNotContains(page,'data-transport-type="'+str(self.bus_type.pk)+'"')
+        self.assertContains(page,'data-add-outside')
+        self.assertEqual(self.assign(self.bus,self.bus_type).status_code,200)
+        page=self.page();self.assertEqual([item['id'] for item in page.context['outside_fact_types']],[self.bus_type.pk])
+        self.assertEqual(page.context['outside_fact_count'],1)
+        self.assertContains(page,'data-outside-facts>')
+        self.assertEqual(self.bus.transport_days.get(date=self.day).status,'WORKED')
+        self.schedule.entries.filter(kind='equipment').delete()
+        page=self.page();self.assertEqual(page.context['planning_types'],[])
+        self.assertContains(page,'В СМГ на выбранный день техника не запланирована')
+        self.assertEqual(page.context['outside_fact_count'],1)
+
+    def test_outside_facts_remain_accessible_when_planned_types_are_paginated(self):
+        for i in range(26):
+            kind=EquipmentType.objects.create(company=self.company,name='Плановый тип '+str(i),category=self.category)
+            DailyScheduleEntry.objects.create(schedule=self.schedule,key='equipment:paged:'+str(i),kind='equipment',label=kind.name,rows=[{'date':str(self.day),'equipment_type_id':kind.pk,'planned_count':'1'}])
+        self.assertEqual(self.assign(self.bus,self.bus_type).status_code,200)
+        for number in [1,2]:
+            page=self.page(page=number)
+            self.assertEqual(page.context['page_obj'].paginator.count,28)
+            self.assertEqual(page.context['outside_fact_count'],1)
+            self.assertEqual([item['id'] for item in page.context['outside_fact_types']],[self.bus_type.pk])
+            self.assertNotIn(self.bus_type.pk,{item['id'] for item in page.context['planning_types']})

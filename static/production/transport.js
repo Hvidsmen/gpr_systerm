@@ -15,7 +15,7 @@
   const selected=()=>checks.filter(c=>c.checked).map(c=>c.value);
   const error=(message,inside=false)=>{const box=root.querySelector(inside?'[data-dialog-error]':'[data-transport-error]');box.textContent=message;box.hidden=!message;};
   function counts(){const ids=selected();root.querySelector('[data-selection-count]').textContent=`Выбрано: ${ids.length}`;root.querySelectorAll('[data-needs-selection]').forEach(b=>b.disabled=!ids.length);}
-  checks.forEach(c=>c.addEventListener('change',counts));root.querySelector('[data-select-all]')?.addEventListener('change',e=>{checks.forEach(c=>c.checked=e.target.checked);counts();});if(checks.length||root.querySelector('[data-selection-count]'))counts();
+  checks.forEach(c=>c.addEventListener('change',counts));root.querySelector('[data-select-all]')?.addEventListener('change',e=>{checks.forEach(c=>{if(c.getClientRects().length&&!c.closest('details:not([open])'))c.checked=e.target.checked;});counts();});if(checks.length||root.querySelector('[data-selection-count]'))counts();
   async function claim(action,ids){
     if(!ids.length)return {};
     const data=new URLSearchParams({camp:root.dataset.camp,date:root.dataset.date,session,action});ids.forEach(id=>data.append('equipment',id));
