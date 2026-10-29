@@ -1,7 +1,8 @@
 {% extends 'base.html' %}
 {% block title %}Входящие остатки работ{% endblock %}
 {% block content %}
-<h1 class="h3">Входящие остатки работ</h1>
+{% include 'production/_work_opening_tabs.html' with opening_tab=True %}
+<div class="d-flex flex-wrap justify-content-between gap-2 mb-3"><h1 class="h3">Входящие остатки работ (ВНО)</h1><a class="btn btn-primary" href="{% url 'production:work_opening_import' %}{% if request.GET.construction_object %}?construction_object={{ request.GET.construction_object|urlencode }}{% endif %}">Загрузить из Excel</a></div>
 <p class="text-muted">Выполненные объёмы до начала учёта в системе. Ввод и исправление доступны только администратору.</p>
 <form method="get" class="card card-body mb-3">{% include 'forms/fields.html' with form=selector %}<div><button class="btn btn-primary">Открыть работы</button></div></form>
 {% if selector.is_valid %}

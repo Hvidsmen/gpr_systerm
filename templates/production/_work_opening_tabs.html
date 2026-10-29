@@ -1,0 +1,4 @@
+{% load access %}<nav class="nav nav-tabs mb-3" aria-label="Производственный факт">
+<a class="nav-link{% if not opening_tab %} active{% endif %}" href="{% url 'production:fact_day_workspace' %}">Факт за день</a>
+{% if request.user|may:'production:work_opening_list' %}<a class="nav-link{% if opening_tab %} active{% endif %}" href="{% url 'production:work_opening_list' %}">Входящие остатки (ВНО)</a>{% endif %}
+</nav>

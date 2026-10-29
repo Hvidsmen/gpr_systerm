@@ -272,6 +272,7 @@ class ProjectPlanTests(TestCase):
         other = ConstructionObject.objects.create(
             company=self.company, project=self.project, name="zzz second object"
         )
+        self.planner.assigned_objects.add(other)
         workspace = WorkspaceService.create(
             self.planner, other, "Second", JAN, date(2026, 3, 31)
         )

@@ -1,6 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}Входящий остаток — {{ work.name }}{% endblock %}
 {% block content %}
+{% include 'production/_work_opening_tabs.html' with opening_tab=True %}
 <a href="{% url 'production:work_opening_list' %}?construction_object={{ work.section.construction_object_id }}">← Входящие остатки работ</a>
 <h1 class="h3 mt-3">{{ work.name }}</h1>
 <p>{{ work.section.construction_object }} → {{ work.section }}{% if work.complex_object_id %} → {{ work.complex_object }}{% endif %}</p>

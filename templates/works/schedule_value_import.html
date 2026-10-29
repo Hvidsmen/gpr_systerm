@@ -1,0 +1,20 @@
+{% extends 'base.html' %}{% load static %}
+{% block title %}{% if metric == 'opening' %}Загрузка ВНО из Excel{% else %}Загрузка плана на весь объект{% endif %}{% endblock %}
+{% block content %}
+{% if metric == 'opening' %}{% include 'production/_work_opening_tabs.html' %}<p><a href="{% url 'production:work_opening_list' %}">← Входящие остатки</a></p>{% else %}{% include 'planning/planning_tabs.html' %}<p><a href="{% if plan %}{% url 'planning:object_plan_detail' plan.pk %}{% else %}{% url 'planning:object_plan_list' %}{% endif %}">← План на весь объект</a></p>{% endif %}
+<h1 class="h3">{% if metric == 'opening' %}Загрузка входящих остатков (ВНО){% else %}Загрузка плана на весь объект{% if plan %}: {{ plan.name }}{% endif %}{% endif %}</h1>
+<p>{% if metric == 'opening' %}Источник — H «Факт с начала строительства» в строках «Факт». В формуле «начальный факт + SUM(дни)» берётся только начальный факт. Дневные значения остаются отдельно.{% else %}Источник — H «Факт с начала строительства» в строках «План»: это общий объём плана по проекту. G используется для сверки норматива, а не как плановый объём.{% endif %}</p>
+<p class="text-muted">Работы сопоставляются со справочником по объекту, участку, комплексу, названию работы и реквизитам РД. Сначала загрузите состав в <a href="{% url 'works:schedule_import' %}">справочник работ</a>. Загрузка меняет только строки из файла; остальные строки сохраняются.</p>
+{% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+{% if rows %}
+<div class="card card-body mb-3"><h2 class="h5">Предпросмотр · {{ object.project.name }} / {{ object.name }}</h2><p class="mb-0">Работ: <strong>{{ rows|length }}</strong> · Ненулевых объёмов: <strong>{{ nonzero }}</strong> · Ошибок сопоставления: <strong>{{ issues }}</strong>{% if metric == 'opening' %}<br>ВНО на начало <strong>{{ opening_date|date:'d.m.Y' }}</strong>. Дневных ячеек исключено из ВНО: {{ daily_ignored }}.{% endif %}</p></div>
+{% if issues %}<div class="alert alert-warning">Загрузка недоступна, пока не устранены все ошибки. Справочник, план и факт не изменены.</div>{% else %}<p class="text-muted">Проверьте предыдущие и новые объёмы. Ноль в файле явно заменит существующий объём нулём.</p>{% endif %}
+<div class="table-responsive"><table class="table table-bordered align-middle"><thead><tr><th>Источник</th><th>Участок / комплекс</th><th>Работа</th><th>Ед.</th><th>Норматив G</th><th>Было</th><th>{% if metric == 'opening' %}ВНО{% else %}План по проекту{% endif %}</th><th>Результат проверки</th></tr></thead><tbody>
+{% for row in rows %}<tr{% if row.issue %} class="table-warning"{% endif %}><td>{{ row.value_source }}</td><td>{{ row.object }}<small class="d-block text-muted">{{ row.package }}<br>{{ row.rd_section }} · {{ row.rdc_point }}</small></td><td>{{ row.work }}</td><td>{{ row.unit }}</td><td>{{ row.quantity }}</td><td>{{ row.before|default_if_none:'Не задано' }}{% if row.before_date %}<small class="d-block">на {{ row.before_date|date:'d.m.Y' }}</small>{% endif %}</td><td><strong>{{ row.volume }}</strong></td><td>{% if row.issue %}{{ row.issue }}{% elif row.before == None %}Добавить{% else %}Сохранить объём из файла{% endif %}</td></tr>{% endfor %}
+</tbody></table></div>
+{% if token %}<form method="post" class="card card-body mt-3">{% csrf_token %}<input type="hidden" name="action" value="confirm"><input type="hidden" name="token" value="{{ token }}"><div class="d-flex gap-2 flex-wrap"><button class="btn btn-primary">{% if metric == 'opening' %}Загрузить входящие остатки{% else %}Загрузить плановые объёмы{% endif %}</button><a class="btn btn-outline-secondary" href="{{ request.path }}">Выбрать другой файл</a></div></form>{% else %}<a class="btn btn-outline-primary" href="{{ request.path }}">Повторить проверку</a>{% endif %}
+{% else %}
+<form method="post" enctype="multipart/form-data" class="card card-body">{% csrf_token %}{% include 'forms/fields.html' %}<div><button class="btn btn-primary">Проверить файл</button></div></form>
+{% include 'works/_schedule_section_picker.html' %}
+{% endif %}
+{% endblock %}

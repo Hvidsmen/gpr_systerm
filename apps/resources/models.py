@@ -214,6 +214,39 @@ class EquipmentType(BaseCompanyModel):
         verbose_name_plural = _('виды техники')
         ordering = ['name']
 
+    def clean(self):
+        super().clean()
+        if self.category_id and self.category.company_id != self.company_id:
+            raise ValidationError({'category': 'Группа другой компании.'})
+        if self.parent_id:
+            parent = EquipmentType.objects.filter(pk=self.parent_id, company_id=self.company_id).first()
+            if not parent or parent.parent_id or parent.pk == self.pk:
+                raise ValidationError({'parent': 'Выберите технику для планирования своей компании, без родительской модели.'})
+            self.category_id = parent.category_id
+
+    def save(self, *args, **kwargs):
+        from django.db import transaction, router
+        from django.utils import timezone
+        using = kwargs.get('using') or router.db_for_write(type(self), instance=self)
+        with transaction.atomic(using=using):
+            old = EquipmentType.objects.using(using).filter(pk=self.pk).values('parent_id', 'category_id').first() if self.pk else None
+            if self.parent_id:
+                parent = EquipmentType.objects.using(using).select_for_update().filter(pk=self.parent_id, company_id=self.company_id).first()
+                if not parent or parent.parent_id or parent.pk == self.pk:
+                    raise ValidationError({'parent': 'Выберите технику для планирования своей компании.'})
+                self.category_id = parent.category_id
+                if kwargs.get('update_fields') is not None:
+                    kwargs['update_fields'] = set(kwargs['update_fields']) | {'category'}
+            result = super().save(*args, **kwargs)
+            persisted = EquipmentType.objects.using(using).values('parent_id', 'category_id').get(pk=self.pk)
+            if old is None or old != persisted:
+                descendants = list(EquipmentType.objects.using(using).filter(company_id=self.company_id, parent_id=self.pk).values_list('pk', flat=True))
+                now = timezone.now()
+                if descendants:
+                    EquipmentType.objects.using(using).filter(pk__in=descendants, company_id=self.company_id).update(category_id=persisted['category_id'], updated_at=now)
+                Equipment.objects.using(using).filter(company_id=self.company_id, type_id__in=[self.pk, *descendants]).update(catalogue_group_id=persisted['category_id'], updated_at=now)
+            return result
+
     def __str__(self):
         return self.name
 
@@ -243,6 +276,23 @@ class Equipment(BaseCompanyModel):
     def clean(self):
         super().clean()
         if self.catalogue_group_id and self.catalogue_group.company_id!=self.company_id:raise ValidationError({'catalogue_group':'Группа другой компании.'})
+
+    def save(self, *args, **kwargs):
+        from django.db import transaction, router
+        using = kwargs.get('using') or router.db_for_write(type(self), instance=self)
+        with transaction.atomic(using=using):
+            equipment_type = EquipmentType.objects.using(using).select_related('parent').filter(pk=self.type_id, company_id=self.company_id).first()
+            if not equipment_type:
+                raise ValidationError({'type': 'Техника другой компании или недоступна.'})
+            root = equipment_type.parent if equipment_type.parent_id else equipment_type
+            if root.company_id != self.company_id:
+                raise ValidationError({'type': 'Техника другой компании.'})
+            # Serialize against changes to the inherited classification.
+            root = EquipmentType.objects.using(using).select_for_update().get(pk=root.pk, company_id=self.company_id)
+            self.catalogue_group_id = root.category_id
+            if kwargs.get('update_fields') is not None:
+                kwargs['update_fields'] = set(kwargs['update_fields']) | {'catalogue_group'}
+            return super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.plate_number or self.inventory_number or self.vin or 'Без номера'} - {self.name}"

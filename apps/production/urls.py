@@ -407,3 +407,6 @@ urlpatterns += [path('copy-previous/',copy_previous.production,name='production_
 
 from . import work_opening_views
 urlpatterns += [path('work-opening/', work_opening_views.index, name='work_opening_list'), path('work-opening/<int:pk>/', work_opening_views.edit, name='work_opening_edit')]
+
+from apps.works.schedule_value_views import schedule_value_import
+urlpatterns += [path('work-opening/import/', schedule_value_import, {'metric':'opening'}, name='work_opening_import')]

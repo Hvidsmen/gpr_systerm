@@ -1,6 +1,6 @@
 {% load access %}<details><summary class="text-primary fw-semibold">{% if et.parent_id %}{{ et.brand_model|default:et.name }}{% else %}{{ et.name }}{% endif %}</summary><div class="border rounded p-3 mt-2 bg-light">
 <p class="small text-muted">{% if et.parent_id %}Это модель в справочнике. Конкретные машины хранятся в отдельных карточках с номерами.{% else %}Эта позиция используется для количества техники в ГПР и СМГ.{% endif %}</p>
-<div><strong>Группа техники:</strong> {% firstof et.category et.parent.category 'Без группы' %}</div>
+<div><strong>Группа техники:</strong> {% if et.parent_id %}{{ et.parent.category|default:'Без группы' }}{% else %}{{ et.category|default:'Без группы' }}{% endif %}</div>
 {% if et.brand_model %}<div><strong>Марка / модель:</strong> {{ et.brand_model }}</div>{% endif %}
 <div><strong>Единица измерения:</strong> {{ et.unit }}</div>
 <div><strong>Категории водителя:</strong> {{ et.driver_category_labels|join:', '|default:'—' }}</div>

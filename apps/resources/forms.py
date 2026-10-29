@@ -73,6 +73,13 @@ class EquipmentTypeForm(forms.ModelForm):
         self.fields['category'].widget.attrs['data-equipment-group-select']=''
         self.inline_groups=self.fields['category'].queryset
         self.fields['parent'].queryset = EquipmentType.objects.filter(company_id=self.instance.company_id,parent__isnull=True,merge_source__isnull=True).exclude(pk=self.instance.pk)
+        self.parent_group_options=list(self.fields['parent'].queryset.values('id','category_id'))
+        parent_id=self.data.get(self.add_prefix('parent')) if self.is_bound else self.initial.get('parent',self.instance.parent_id)
+        inherited=self.fields['parent'].queryset.filter(pk=parent_id).first() if str(parent_id or '').isdigit() else None
+        if inherited:
+            self.initial['category']=inherited.category_id
+            self.fields['category'].disabled=True
+        self.fields['category'].help_text='У моделей группа наследуется от техники для планирования. Изменение группы родителя применяется ко всем моделям и машинам.'
         self.fields['parent'].empty_label = 'Отдельная позиция в ГПР и СМГ'
         self.fields['parent'].help_text = 'Для модели, например «CAT 320», выберите плановую позицию «Экскаватор». Если добавляете саму технику для ГПР и СМГ, оставьте поле пустым.'
         self.fields['unit'].required = False
@@ -85,6 +92,11 @@ class EquipmentTypeForm(forms.ModelForm):
         if parent and self.instance.pk and self.instance.model_variants.exists():
             raise forms.ValidationError('К этой плановой позиции уже привязаны модели. Сначала перенесите их к другой технике для планирования.')
         return parent
+
+    def clean(self):
+        data=super().clean()
+        if data.get('parent'):data['category']=data['parent'].category
+        return data
 
     class Meta:
         model = EquipmentType

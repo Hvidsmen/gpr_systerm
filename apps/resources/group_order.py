@@ -44,6 +44,6 @@ def ordered(queryset,*,kind='labor',group_path=None,within=('name','pk')):
 
 
 def machine_order(machine):
-    category=machine.catalogue_group or machine.type.category or (machine.type.parent.category if machine.type.parent_id else None)
     root=machine.type.parent or machine.type
+    category=root.category
     return equipment_group_order(category.name if category else 'Без группы'),root.name.casefold(),machine.type.name.casefold(),machine.plate_number,machine.pk

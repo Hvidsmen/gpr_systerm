@@ -1,0 +1,4 @@
+{{ form.section_options|json_script:'import-section-options' }}
+<script>
+(()=>{const object=document.getElementById('id_construction_object'),section=document.getElementById('id_section');if(!object||!section)return;const rows=JSON.parse(document.getElementById('import-section-options').textContent);function filter(){const previous=section.value;section.replaceChildren(new Option(object.value?(section.required?'Выберите раздел':'Все разделы объекта'):'Сначала выберите объект',''));rows.filter(row=>String(row.construction_object_id)===object.value).forEach(row=>section.add(new Option(row.name,String(row.id))));if([...section.options].some(option=>option.value===previous))section.value=previous;section.dispatchEvent(new Event('change',{bubbles:true}));}object.addEventListener('change',filter);filter();})();
+</script>

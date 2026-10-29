@@ -45,7 +45,7 @@
  });
  function canLeave(){if(dirty().length){say('Сначала сохраните изменения месяцев.',true);return false;}return true;}window.planWorkbench={canLeave,filter};
  const resource=root.querySelector('[data-plan-add-dialog]');
- function resourceKind(value){const kind=resource.querySelector('[name=kind]');kind.value=value;const fields={labor:['brigade','rate'],equipment:['equipment','rate'],fuel:['fuel','rate']}[value]||[];resource.querySelectorAll('[data-add-field]').forEach(field=>field.hidden=!fields.includes(field.dataset.addField));resource.querySelector('#plan-add-title').textContent='Добавить '+{labor:'должность',equipment:'технику',fuel:'ГСМ'}[value];}
+ function resourceKind(value){const kind=resource.querySelector('[name=kind]');kind.value=value;const fields={labor:['brigade','rate'],equipment:['equipment','add_crew','rate'],fuel:['fuel','rate']}[value]||[];resource.querySelectorAll('[data-add-field]').forEach(field=>field.hidden=!fields.includes(field.dataset.addField));resource.querySelector('#plan-add-title').textContent='Добавить '+{labor:'должность',equipment:'технику',fuel:'ГСМ'}[value];}
  root.querySelectorAll('[data-plan-add-resource]').forEach(button=>button.addEventListener('click',()=>{if(canLeave()){resourceKind(button.dataset.planAddResource);resource.showModal();}}));
  root.querySelectorAll('[data-plan-close-dialog]').forEach(button=>button.addEventListener('click',()=>button.closest('dialog').close()));
  root.querySelector('[data-plan-excel-help]').addEventListener('click',()=>root.querySelector('[data-plan-excel-dialog]').showModal());

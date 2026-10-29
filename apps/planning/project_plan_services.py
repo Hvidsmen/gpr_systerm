@@ -73,12 +73,14 @@ def snapshot_with_catalogs(version):
         }
     for row in EquipmentType.objects.filter(
         company=version.company, pk__in=equipment_ids
-    ).select_related("category"):
+    ).select_related("category", "parent__category"):
+        from apps.resources.equipment_catalogue import category_for
+        group=category_for(row,version.company)
         catalogs["equipment"][str(row.pk)] = {
             "name": row.name,
             "unit": row.unit,
-            "category_id": row.category_id,
-            "category_name": row.category.name if row.category_id else "Без категории",
+            "category_id": group.pk if group else None,
+            "category_name": group.name if group else "Без категории",
         }
     snapshot["catalogs"] = catalogs
     return snapshot

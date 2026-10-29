@@ -25,7 +25,7 @@ class UnitForm(forms.ModelForm):
         from .group_order import ordered
         self.fields['catalogue_group'].queryset=ordered(EquipmentCategory.objects.filter(company=company),kind='equipment')
         self.fields['catalogue_group'].label='Группа техники'
-        self.fields['catalogue_group'].empty_label='По группе техники для планирования'
+        self.fields['catalogue_group'].empty_label='Без группы'
         self.fields['catalogue_group'].widget.attrs['data-equipment-group-select']=''
         self.inline_groups=self.fields['catalogue_group'].queryset
         self._original_type = self.instance.type if self.instance.pk else None
@@ -38,6 +38,11 @@ class UnitForm(forms.ModelForm):
         self.model_options = list(models.values('id', 'parent_id', 'name', 'brand_model'))
         self.fields['model'].queryset = models.filter(parent_id=parent) if str(parent or '').isdigit() else models.none()
         self.fields['model'].label_from_instance = lambda row: row.brand_model or row.name
+        self.parent_group_options=list(self.fields['type'].queryset.values('id','category_id'))
+        self.fields['catalogue_group'].disabled=True
+        inherited=self.fields['type'].queryset.filter(pk=parent).first() if str(parent or '').isdigit() else None
+        self.initial['catalogue_group']=inherited.category_id if inherited else None
+        self.fields['catalogue_group'].help_text='Наследуется от техники для планирования. Для изменения группы откройте её карточку.'
         from .position_catalog import available_positions
         self.fields['operator_position'].queryset=available_positions(company)
         for field in self.fields.values():
@@ -61,6 +66,9 @@ class UnitForm(forms.ModelForm):
                 self.add_error('model','Выберите модель выбранной техники для планирования.')
             else:
                 data['type'] = data['model']
+        if data.get('type'):
+            root=data['type'].parent if data['type'].parent_id else data['type']
+            data['catalogue_group']=root.category
         if self.instance.pk:
             from apps.production.models import EquipmentActivity,EmployeeActivity
             used=EquipmentActivity.objects.filter(equipment=self.instance).exists() or EmployeeActivity.objects.filter(equipment=self.instance).exists() or self.instance.standing_assignments.exists() or self.instance.transport_events.exists() or self.instance.transport_days.exists()

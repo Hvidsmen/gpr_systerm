@@ -9,6 +9,7 @@
   try{const response=await fetch(form.action,{method:'POST',body:new FormData(form),headers:{Accept:'application/json'}});if(response.redirected||!response.headers.get('content-type')?.includes('json'))throw new Error('Сессия истекла. Сохраните введённые данные и войдите снова.');const result=await response.json();if(!response.ok)throw new Error(Object.values(result.errors||{}).flat().join(' ')||'Не удалось добавить запись.');
    const selects=form.dataset.equipmentInlineForm==='group'?document.querySelectorAll('[data-equipment-group-select]'):[target];
    for(const select of selects){if(![...select.options].some(o=>o.value===result.value))select.add(new Option(result.label,result.value));}
+   if(form.dataset.equipmentInlineForm==='type')target.querySelector('option[value="'+result.value+'"]').dataset.category=String(result.category||'');
    target.value=result.value;target.dispatchEvent(new Event('change',{bubbles:true}));dialog.close();form.reset();
   }catch(failure){error.textContent=failure.message;}finally{button.disabled=false;}
  }));

@@ -16,14 +16,14 @@ class EquipmentCategoryTests(TestCase):
     def test_choice_and_quick_create_preserve_main_form(self):
         page = self.client.get(reverse('resources:equipment_type_create'))
         self.assertContains(page, '<select')
-        self.assertContains(page, 'data-catalog-open="category"')
+        self.assertContains(page, 'data-equipment-inline="group"')
         self.assertContains(page, self.category.name)
         self.assertNotContains(page, self.foreign.name)
         response = self.client.post(reverse('resources:equipment_category_create'), {'name':'Подъёмная', 'company':self.other.pk})
         self.assertEqual(response.status_code, 201)
         category = EquipmentCategory.objects.get(pk=response.json()['value'])
         self.assertEqual(category.company, self.company)
-        response = self.client.post(reverse('resources:equipment_type_create'), {'name':'Кран', 'category':category.pk, 'is_active':'on'})
+        response = self.client.post(reverse('resources:equipment_type_create'), {'name':'Кран', 'category':category.pk, 'is_active':'on','crew-TOTAL_FORMS':'0','crew-INITIAL_FORMS':'0'})
         self.assertEqual(response.status_code, 302)
         row = EquipmentType.objects.get(name='Кран')
         self.assertEqual(row.category, category)
@@ -37,7 +37,7 @@ class EquipmentCategoryTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn('category', response.context['form'].errors)
         self.assertFalse(EquipmentType.objects.exists())
-        self.assertEqual(self.client.post(url, {'name':'Без категории'}).status_code, 302)
+        self.assertEqual(self.client.post(url, {'name':'Без категории','crew-TOTAL_FORMS':'0','crew-INITIAL_FORMS':'0'}).status_code, 302)
         self.assertIsNone(EquipmentType.objects.get().category)
 
     def test_duplicate_blank_and_permissions(self):

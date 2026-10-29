@@ -66,7 +66,8 @@ def normalize_equipment_snapshot(snapshot, aliases, *, in_place=False):
 
 class EquipmentChoice(forms.ModelChoiceField):
     def label_from_instance(self, item):
-        return f'{item.name} · {item.category or "Без группы"} · {item.unit} · ID {item.pk}'
+        group=item.parent.category if item.parent_id else item.category
+        return f'{item.name} · {group or "Без группы"} · {item.unit} · ID {item.pk}'
 
 
 class EquipmentMergeForm(forms.Form):
@@ -76,7 +77,7 @@ class EquipmentMergeForm(forms.Form):
 
     def __init__(self, *args, user, **kwargs):
         super().__init__(*args, **kwargs)
-        qs = EquipmentType.objects.filter(company=user.company, merge_source__isnull=True).select_related('category').order_by('name', 'pk')
+        qs = EquipmentType.objects.filter(company=user.company, merge_source__isnull=True).select_related('category','parent__category').order_by('name', 'pk')
         self.fields['target'].queryset = qs.filter(is_active=True)
         self.fields['sources'].queryset = qs
         self.fields['sources'].label_from_instance = self.fields['target'].label_from_instance

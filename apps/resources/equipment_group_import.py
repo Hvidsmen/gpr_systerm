@@ -89,11 +89,15 @@ def apply(user,rows):
             matches=[v for v in variants if v.parent_id==root.pk and model_label and (v.brand_model.strip().casefold()==model_label or v.name.strip().casefold()==model_label)]
             if len(matches)==1:target=matches[0]
             else:warnings.append(label+': для выбранной плановой позиции нет подходящей существующей модели; изменений нет.');continue
-        group=machine.catalogue_group
+        group=root.category
         if group_name and group_name!='Без группы':
             matches=categories.get(group_name.casefold(),[])
             if len(matches)!=1:warnings.append(label+f': группа «{group_name}» не найдена однозначно; изменений нет.');continue
+            if matches[0].pk!=root.category_id:
+                warnings.append(label+': группа наследуется от техники для планирования. Измените группу в карточке «'+root.name+'»; изменений строки нет.');continue
             group=matches[0]
+        elif group_name=='Без группы' and root.category_id:
+            warnings.append(label+': у техники для планирования задана группа. Очистите её в карточке плановой позиции; изменений строки нет.');continue
         if target.pk==machine.type_id and (group.pk if group else None)==machine.catalogue_group_id:unchanged+=1;continue
         before={'type_id':machine.type_id,'catalogue_group_id':machine.catalogue_group_id};machine.type=target;machine.catalogue_group=group;machine.full_clean();machine.save(update_fields=['type','catalogue_group','updated_at']);updated+=1
         AuditLog.objects.create(user=user,action='UPDATE',entity_type='resources.Equipment',entity_id=str(machine.pk),old_value=before,new_value={'type_id':target.pk,'catalogue_group_id':machine.catalogue_group_id},comment='Изменение классификации существующей машины из Excel')

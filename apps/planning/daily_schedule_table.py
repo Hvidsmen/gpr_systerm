@@ -96,6 +96,7 @@ def add_entry(user,schedule,data):
             from .table_resource_crew import add_daily_crew
             if add_daily_crew(user,schedule,data['equipment']):return existing
         raise ValidationError('Эта позиция уже есть в СМГ. Измените ее дневные значения.')
+    if kind=='equipment' and not data.get('add_crew',True):metadata={**metadata,'table_crew':[]}
     entry=DailyScheduleEntry.objects.create(schedule=schedule,key=key,kind=kind,label=label,metadata=metadata,original=original,rows=original)
     if kind=='work':
         from .subobject_smg import annotate_entry

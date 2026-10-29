@@ -170,7 +170,7 @@ def add_month_resource(user,version,month,data):
     kind=data.get('kind')
     if kind not in {'labor','equipment','fuel'}:raise ValidationError('Выберите вид ресурса.')
     fields={'labor':{'brigade':data.get('brigade')},'equipment':{'equipment_type':data.get('equipment'),'equipment_number':''},'fuel':{'fuel_type':data.get('fuel'),'equipment_ref':''}}[kind]
-    row,created=ResourceMonthAllocation.objects.get_or_create(company=user.company,version=version,month=month,kind=kind,defaults={'rate':data.get('rate') or 0},**fields)
+    row,created=ResourceMonthAllocation.objects.get_or_create(company=user.company,version=version,month=month,kind=kind,defaults={'rate':data.get('rate') or 0, 'crew_data':{'members':[]} if kind=='equipment' and not data.get('add_crew',True) else {}},**fields)
     if created:
         version.snapshot={};version.save(update_fields=['snapshot'])
         from apps.audit.models import AuditLog

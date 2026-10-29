@@ -81,15 +81,16 @@ class EquipmentHierarchyTests(TestCase):
         self.assertContains(response,'name="view" value="table"')
         self.assertNotContains(response,'onclick="return confirm(')
 
-    def test_model_with_own_category_keeps_category_and_has_one_bulk_checkbox(self):
+    def test_model_inherits_parent_category_and_has_one_bulk_checkbox(self):
         parent_category=EquipmentCategory.objects.create(company=self.company,name='Первая категория')
         own=EquipmentCategory.objects.create(company=self.company,name='Вторая категория')
         self.root.category=parent_category;self.root.save()
         self.child.category=own;self.child.save()
         response=self.client.get(reverse('resources:equipment_type_list'))
         groups={g['label']:g for g in response.context['equipment_category_groups']}
-        self.assertEqual(groups[own.name]['nodes'][0]['children'],[self.child])
-        self.assertFalse(groups[own.name]['nodes'][0]['root_matches'])
+        self.assertNotIn(own.name,groups)
+        self.assertEqual(groups[parent_category.name]['nodes'][0]['children'],[self.child])
+        self.assertTrue(groups[parent_category.name]['nodes'][0]['root_matches'])
         self.assertEqual(response.content.decode().count(f'name="selected" value="{self.root.pk}"'),1)
         self.assertEqual(response.content.decode().count(f'name="selected" value="{self.child.pk}"'),1)
 
@@ -119,7 +120,8 @@ class EquipmentHierarchyTests(TestCase):
     def test_planning_view_keeps_filtered_children_and_company_scope(self):
         foreign_company = Company.objects.create(name='Foreign planning hierarchy')
         EquipmentType.objects.create(company=foreign_company, name='Foreign root')
-        EquipmentType.objects.create(company=foreign_company, name='Foreign model', parent=self.root)
+        # Simulate a malformed legacy link; ordinary writes now reject it.
+        EquipmentType.objects.bulk_create([EquipmentType(company=foreign_company, name='Foreign model', parent=self.root)])
         url = reverse('resources:equipment_type_list')
         response = self.client.get(url, {'view': 'planning', 'name': 'JCB', 'page': '2'})
         nodes = response.context['equipment_hierarchy']

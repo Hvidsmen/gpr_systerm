@@ -25,7 +25,8 @@ SALT='works.schedule-catalogue.v1'
 def text(value):
     return ' '.join(str(value).split()) if value is not None else ''
 
-def parse_schedule(upload):
+def parse_schedule(upload, *, metric="catalogue"):
+    if metric not in {"catalogue", "plan", "opening"}:raise ValueError("Unknown schedule metric")
     raw=upload.read(5*1024*1024+1)
     if len(raw)>5*1024*1024:raise ValidationError('Размер файла не должен превышать 5 МБ.')
     try:
@@ -67,8 +68,11 @@ def parse_schedule(upload):
                 if not quantity.is_finite() or quantity<=0 or quantity>=Decimal('10000000') or quantity!=quantity.quantize(Decimal('.001')):
                     raise ValidationError(f'{sheet.title}, строка {n}: норматив должен быть положительным, до 7 целых и 3 дробных знаков.')
                 row=dict(zip(['object','package','rd_section','rdc_point','work','unit'],values[:6]),quantity=str(quantity.quantize(Decimal('.001'))),source=f'{sheet.title}:{n}')
+                if metric != 'catalogue':
+                    from .schedule_values import read_measure
+                    row.update(read_measure(sheet,n,header,metric,row['quantity']))
                 key=(row['object'].casefold(),row['package'].casefold(),row['work'].casefold())
-                if key in rows and any(rows[key][field]!=row[field] for field in ('rd_section','rdc_point','unit','quantity')):
+                if key in rows and any(rows[key][field]!=row[field] for field in (('rd_section','rdc_point','unit','quantity') if metric == 'catalogue' else ('rd_section','rdc_point','unit','quantity','volume','file_month'))):
                     raise ValidationError(f'{row["source"]}: повтор работы с различающимися реквизитами или нормативом.')
                 rows.setdefault(key,row)
                 if len(rows)>2000:raise ValidationError('Можно импортировать до 2000 работ за раз.')
@@ -152,7 +156,7 @@ def apply_rows(user,section,profile,rows):
 @login_required
 def schedule_import(request):
     require_roles(request.user,PLAN_ROLES)
-    form=ImportForm(request.POST or None,request.FILES or None,user=request.user)
+    form=ImportForm(request.POST or None,request.FILES or None,user=request.user,initial={'construction_object':request.GET.get('construction_object'),'section':request.GET.get('section')})
     context={'form':form}
     if request.method=='POST':
         try:

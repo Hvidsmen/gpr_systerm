@@ -30,14 +30,14 @@ class EquipmentMergeTests(TestCase):
             {'kind':'equipment', 'name':self.equipment.name, 'section':self.source.category.name,
              'row':33, 'unit':'ед.', 'quantity':'2', 'month':'2026-01-01', 'equipment_number':''}]}
 
-    def test_import_uses_first_id_across_categories_and_warns(self):
+    def test_import_uses_exact_group_and_rejects_ambiguous_name(self):
         sheet = self.sheet()
         _, rows = resolve_sheet(self.company, self.obj.project, sheet, self.obj)
-        self.assertEqual(rows[0]['target_id'], self.equipment.pk)
-        self.assertIn('2 записей', sheet['warnings'][0])
-        self.assertIn(f'ID {self.equipment.pk}', sheet['warnings'][0])
-        resolve_sheet(self.company, self.obj.project, sheet, self.obj)
-        self.assertEqual(len(sheet['warnings']), 1)
+        self.assertEqual(rows[0]['target_id'], self.source.pk)
+        self.assertFalse(sheet['warnings'])
+        sheet['entries'][0]['section']=''
+        with self.assertRaisesMessage(ValidationError,'неоднозначное соответствие'):
+            resolve_sheet(self.company, self.obj.project, sheet, self.obj)
 
     def test_transfer_merges_colliding_records_and_keeps_machine_numbers(self):
         machine = Equipment.objects.create(company=self.company, type=self.source, name='PRM', plate_number='01')
@@ -94,7 +94,7 @@ class EquipmentMergeTests(TestCase):
         self.assertEqual(forecast.resource_allocations.get(kind='equipment').equipment_type_id,self.equipment.pk)
         from apps.planning.approval_test_helpers import estimator_check
         estimator_check(forecast,self.planner)
-        GlobalPlanService.transition(forecast,self.planner,'submit')
+        GlobalPlanService.transition(forecast,forecast.preparation.manager,'submit')
 
     def test_authorization_company_and_confirmation(self):
         self.client.force_login(self.manager)

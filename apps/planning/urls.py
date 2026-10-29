@@ -254,3 +254,9 @@ urlpatterns += [path('daily-schedule/<int:pk>/compare/',SMGCompare.as_view(),nam
 
 from .smg_variant_views import SMGCancelApproval
 urlpatterns += [path('daily-schedule/<int:pk>/cancel-approval/',SMGCancelApproval.as_view(),name='smg_cancel_approval')]
+
+from apps.works.schedule_value_views import schedule_value_import
+urlpatterns += [
+    path('object-plans/import/', schedule_value_import, {'metric':'plan'}, name='object_plan_import'),
+    path('object-plans/<int:pk>/import/', schedule_value_import, {'metric':'plan'}, name='object_plan_import_into'),
+]

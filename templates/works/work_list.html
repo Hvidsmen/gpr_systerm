@@ -20,10 +20,10 @@
     <a href="{% url 'works:work_create' %}?kind=SIMPLE&amp;return_to={{ request.get_full_path|urlencode }}">Самостоятельную работу</a>
   </div>
 </details>{% endif %}
+  {% if request.user|may:'works:schedule_import' %}<a class="btn btn-outline-primary" href="{% url 'works:schedule_import' %}">Загрузить состав из Excel</a>{% endif %}
   {% if request.user|may:'works:work_create' %}<details class="catalogue-menu">
 <summary class="btn btn-outline-secondary">Ещё</summary>
 <div class="catalogue-menu-panel">
-    <a href="{% url 'works:schedule_import' %}">Импорт состава работ из Excel</a>
 <a href="{% url 'works:batch_prepare' %}">Подготовка работ и цен</a>
     <a href="{% url 'works:group_list' %}">Группы работ</a>
 <a href="{% url 'works:unit_list' %}">Единицы измерения</a>

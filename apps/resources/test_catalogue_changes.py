@@ -68,14 +68,14 @@ class EquipmentGroupImportTests(TestCase):
         from .equipment_group_import import apply
         self.other_model.delete()
         result=apply(self.user,[self.row()]);self.assertTrue(result['warnings']);self.unit.refresh_from_db();self.assertEqual(self.unit.type_id,self.model.pk)
-        result=apply(self.user,[self.row(**{'техника для планирования':'АПС','группа техники':'Неизвестная'})]);self.assertTrue(result['warnings']);self.unit.refresh_from_db();self.assertIsNone(self.unit.catalogue_group_id)
-    def test_group_override_does_not_change_other_machines_or_shared_types(self):
+        result=apply(self.user,[self.row(**{'техника для планирования':'АПС','группа техники':'Неизвестная'})]);self.assertTrue(result['warnings']);self.unit.refresh_from_db();self.assertEqual(self.unit.catalogue_group_id,self.a.pk)
+    def test_group_override_is_rejected_below_planning_type(self):
         from .equipment_group_import import apply
-        apply(self.user,[self.row(**{'техника для планирования':'АПС'})]);self.root.refresh_from_db();self.second.refresh_from_db();self.unit.refresh_from_db()
-        self.assertEqual(self.root.category_id,self.a.pk);self.assertIsNone(self.second.catalogue_group_id);self.assertEqual(self.unit.catalogue_group_id,self.b.pk)
+        result=apply(self.user,[self.row(**{'техника для планирования':'АПС'})]);self.assertTrue(result['warnings']);self.root.refresh_from_db();self.second.refresh_from_db();self.unit.refresh_from_db()
+        self.assertEqual(self.root.category_id,self.a.pk);self.assertEqual(self.second.catalogue_group_id,self.a.pk);self.assertEqual(self.unit.catalogue_group_id,self.a.pk)
         from .equipment_unit_catalogue import unit_queryset,UnitFilterForm,filter_units
         form=UnitFilterForm({'category':self.b.pk},company=self.company);self.assertTrue(form.is_valid())
-        self.assertEqual(list(filter_units(unit_queryset(self.company),form).values_list('pk',flat=True)),[self.unit.pk])
+        self.assertEqual(list(filter_units(unit_queryset(self.company),form).values_list('pk',flat=True)),[])
     def test_identifiers_must_agree_and_foreign_id_cannot_fall_back(self):
         from .equipment_group_import import apply
         result=apply(self.user,[self.row(vin='wrong')]);self.assertEqual(result['updated'],0);self.assertTrue(result['warnings'])

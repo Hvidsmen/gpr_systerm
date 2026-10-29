@@ -56,4 +56,6 @@ class EquipmentTypeExport(CatalogExcelExport, EquipmentTypeListView):
     sheet_title = 'Техника для планирования'
 
     def values(self, row):
-        return [row.name, row.parent.name if row.parent_id else row.name, row.category.name if row.category_id else '', row.unit, 'Да' if row.is_active else 'Нет', ', '.join(row.driver_category_labels), ', '.join(row.driver_class_labels)]
+        from .equipment_catalogue import category_for
+        group=category_for(row,self.get_company())
+        return [row.name, row.parent.name if row.parent_id else row.name, group.name if group else '', row.unit, 'Да' if row.is_active else 'Нет', ', '.join(row.driver_category_labels), ', '.join(row.driver_class_labels)]

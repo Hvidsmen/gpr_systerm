@@ -13,9 +13,9 @@ def with_machine_counts(queryset, company):
 def category_for(equipment, company):
     if equipment is None:
         return None
-    category = equipment.category
-    if category is None and equipment.parent_id and equipment.parent.company_id == company.pk:
-        category = equipment.parent.category
+    root = equipment.parent if equipment.parent_id else equipment
+    if root.company_id != company.pk:return None
+    category = root.category
     return category if category and category.company_id == company.pk else None
 
 
@@ -42,7 +42,7 @@ def hierarchy(rows, roots, company):
 
 
 def planning_hierarchy(rows, roots):
-    """Keep each planning type together, including models with their own category."""
+    """Keep each planning type together with the group inherited by its models."""
     nodes = {}
     for row in rows:
         root = roots.get(row.parent_id or row.pk)

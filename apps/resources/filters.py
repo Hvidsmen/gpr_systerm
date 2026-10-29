@@ -68,7 +68,7 @@ class CatalogFilterMixin:
                 queryset = queryset.filter(Q(pk=value.pk)|Q(parent=value))
             elif key == 'category' and queryset.model is EquipmentType:
                 from django.db.models import Q
-                queryset = queryset.filter(Q(category=value)|Q(category__isnull=True,parent__category=value))
+                queryset = queryset.filter(Q(parent__isnull=True,category=value)|Q(parent__category=value))
             elif key == 'active_employees':
                 queryset = queryset.filter(active_employee_count__gt=0) if value == 'yes' else queryset.filter(active_employee_count=0)
             elif key == 'staffing_current':

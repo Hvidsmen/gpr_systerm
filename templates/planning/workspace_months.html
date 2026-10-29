@@ -35,4 +35,4 @@
 </section>
 <details class="card card-body mt-3" id="gpr-excel-tools"><summary>Excel: импорт, экспорт и шаблон</summary><div class="d-flex flex-wrap gap-2 mt-2"><a class="btn btn-sm btn-outline-primary" href="{% url 'planning:workspace_excel_export' version.pk %}?scope=period">Экспорт всего периода</a><a class="btn btn-sm btn-outline-secondary" href="{% url 'planning:workspace_excel_export' version.pk %}?scope=period&amp;template=1">Шаблон всего периода</a>{% if request.user|may:'planning:workspace_excel_import' %}<a class="btn btn-sm btn-outline-primary" href="{% url 'planning:workspace_excel_import' version.pk %}?scope=period">Импорт всего периода</a>{% endif %}</div></details>
 {% endblock %}
-{% block extra_js %}<script src="{% static 'planning/graph_multiselect.js' %}" defer></script><script src="{% static 'planning/monthly_grid.js' %}?v=20261029-shared" defer></script>{% endblock %}
+{% block extra_js %}<script src="{% static 'planning/graph_multiselect.js' %}" defer></script><script src="{% static 'planning/monthly_grid.js' %}?v=20261029-optional-crew" defer></script>{% endblock %}

@@ -155,7 +155,7 @@ def make_workbook(version, months, template=False):
         identities = {(key[0],key[1]) for key in input_map} | {(key[0],key[1]) for key in snapshot_map}
         if template:
             identities = {(item.pk,'') for item in catalog.objects.filter(company=version.company,is_active=True)}
-        catalog_rows = {row.pk:row for row in catalog.objects.filter(company=version.company).select_related(*(['group','macro_group'] if kind=='labor' else ['category']))}
+        catalog_rows = {row.pk:row for row in catalog.objects.filter(company=version.company).select_related(*(['group','macro_group'] if kind=='labor' else ['category','parent__category']))}
         for pk, number in sorted(identities, key=lambda key:(catalog_rows[key[0]].name,key[1])):
             item = catalog_rows[pk]
             values=[]
@@ -173,7 +173,9 @@ def make_workbook(version, months, template=False):
                         values.append(counts.pop())
                 else:
                     values.append(row.count if row else None)
-            info = [pk,item.name,item.macro_group.name if item.macro_group_id else '',item.group.name if item.group_id else '',item.unit] if kind=='labor' else [pk,item.name,item.category.name if item.category_id else '',number,item.unit]
+            from apps.resources.equipment_catalogue import category_for
+            group=category_for(item,version.company) if kind!='labor' else None
+            info = [pk,item.name,item.macro_group.name if item.macro_group_id else '',item.group.name if item.group_id else '',item.unit] if kind=='labor' else [pk,item.name,group.name if group else '',number,item.unit]
             worksheets[sheet].append(info+values)
     fuel_names = dict(ResourceMonthAllocation._meta.get_field('fuel_type').choices)
     fuel_inputs = {(row.fuel_type,row.equipment_ref,row.month):row for row in resource_inputs if row.kind=='fuel'}

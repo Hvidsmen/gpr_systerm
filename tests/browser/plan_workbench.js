@@ -13,6 +13,7 @@ const c=JSON.parse(process.env.PLAN_WORKBENCH_CONFIG);
   async function addEquipmentCrew(){
    await page.locator('[data-plan-add-resource=equipment]').click();
    const dialog=page.locator('[data-plan-add-dialog]');
+   assert(await dialog.getByRole('checkbox',{name:'Добавить экипаж из справочника',exact:true}).isChecked());
    await dialog.locator('[data-add-field=equipment] .search-select-button').click();
    const popup=dialog.locator('.search-select-popup:not([hidden])');
    await popup.locator('input').fill('Экскаватор с машинистом');

@@ -77,6 +77,23 @@ class TableEquipmentCrewTests(TestCase):
         self.assertFalse(self.version.resource_allocations.exists())
         self.assertFalse(self.schedule.entries.exists())
 
+    def test_explicit_opt_out_persists_through_monthly_and_daily_sync(self):
+        from .table_resource_crew import sync_monthly, sync_daily
+        data={**self.data,'add_crew':False}
+        add_month_resource(self.planner,self.version,fixtures.JAN,data)
+        entry=add_entry(self.planner,self.schedule,data)
+        machine=self.version.resource_allocations.get(kind='equipment')
+        self.assertEqual(machine.crew_data,{'members':[]})
+        self.assertEqual(entry.metadata['table_crew'],[])
+        machine.count=3;machine.save();sync_monthly(self.planner,self.version,fixtures.JAN)
+        save_table(self.planner,self.schedule,[{'id':entry.pk,'revision':entry.revision,'changes':[{'date':fixtures.JAN.isoformat(),'item_id':None,'field':'planned_count','value':'3'}]}])
+        sync_daily(self.planner,self.schedule)
+        self.assertFalse(self.version.resource_allocations.filter(kind='labor').exists())
+        self.assertFalse(self.schedule.entries.filter(kind='labor').exists())
+        self.assertEqual(AddEntryForm(schedule=self.version).fields['add_crew'].initial,True)
+        form=AddEntryForm({'kind':'equipment','equipment':self.equipment.pk},schedule=self.version)
+        self.assertTrue(form.is_valid(),form.errors);self.assertFalse(form.cleaned_data['add_crew'])
+
     def test_search_excludes_merged_and_inactive_positions_in_both_editors(self):
         target=Brigade.objects.create(company=self.company,name='Старший производитель работ')
         from apps.resources.models import Employee

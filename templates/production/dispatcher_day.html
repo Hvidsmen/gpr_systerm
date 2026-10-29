@@ -3,7 +3,8 @@
 {% block title %}Факт за день{% endblock %}
 {% block extra_css %}<link rel="stylesheet" href="{% static 'production/production_entry.css' %}?v=20261029-compact-work">{% endblock %}
 {% block content %}
-<div class="d-flex flex-wrap justify-content-between align-items-center gap-2"><h1>Факт за день</h1>{% if request.user|may:'production:work_opening_list' %}<a class="btn btn-sm btn-outline-primary" href="{% url 'production:work_opening_list' %}{% if object %}?construction_object={{ object.pk }}{% endif %}">Входящие остатки работ</a>{% endif %}{% if object and request.user|may:'production:production_day_reset' %}<a class="btn btn-sm btn-outline-danger" href="{% url 'production:production_day_reset' %}?construction_object={{ object.pk }}&amp;date={{ day|date:'Y-m-d' }}">Сбросить изменения производства</a>{% endif %}</div>
+{% include 'production/_work_opening_tabs.html' %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2"><h1>Факт за день</h1>{% if object and request.user|may:'production:production_day_reset' %}<a class="btn btn-sm btn-outline-danger" href="{% url 'production:production_day_reset' %}?construction_object={{ object.pk }}&amp;date={{ day|date:'Y-m-d' }}">Сбросить изменения производства</a>{% endif %}</div>
 <form method="get" class="card card-body mb-3">{% include 'forms/fields.html' with form=selector %}<input type="hidden" name="section" value="{{ section }}"><button class="btn btn-primary">Открыть день</button></form>
 {% if object %}
 {% if fact_window_message %}<div class="alert {% if fact_day_editable %}alert-info{% else %}alert-secondary{% endif %}" data-fact-window>{{ fact_window_message }}</div>{% endif %}

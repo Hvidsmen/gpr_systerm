@@ -12,6 +12,7 @@ class AddEntryForm(forms.Form):
     equipment=forms.ModelChoiceField(label='Техника для планирования',queryset=EquipmentType.objects.none(),required=False)
     reference=forms.CharField(max_length=50,required=False,widget=forms.HiddenInput())
     fuel=forms.ChoiceField(label='Вид ГСМ',choices=[('','Выберите значение'),*ResourceMonthAllocation._meta.get_field('fuel_type').choices],required=False)
+    add_crew=forms.BooleanField(label='Добавить экипаж из справочника',required=False,initial=True,widget=forms.CheckboxInput(attrs={'class':'form-check-input'}))
     rate=forms.DecimalField(label='Ставка за час / цена за литр',max_digits=12,decimal_places=2,min_value=0,initial=0,required=False)
 
     def __init__(self,*args,schedule,user=None,**kwargs):

@@ -84,7 +84,7 @@
  window.planWorkbench={canLeave,filter};
  const addDialog=root.querySelector('[data-plan-add-dialog]');
  function resourceKind(value){
-  const form=addDialog.querySelector('form'),fields={labor:['brigade','rate'],equipment:['equipment','rate'],fuel:['fuel','rate']};
+  const form=addDialog.querySelector('form'),fields={labor:['brigade','rate'],equipment:['equipment','add_crew','rate'],fuel:['fuel','rate']};
   form.querySelector('[name=kind]').value=value;
   form.querySelectorAll('[data-add-field]').forEach(wrapper=>{wrapper.hidden=!(fields[value]||[]).includes(wrapper.dataset.addField);});
   addDialog.querySelector('#plan-add-title').textContent='Добавить '+{labor:'должность',equipment:'технику',fuel:'ГСМ'}[value];

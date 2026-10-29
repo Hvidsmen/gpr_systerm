@@ -15,7 +15,7 @@
                         {% for et in group_items %}
                             <tr>{% if request.user|may:bulk_route %}<td>{% include 'bulk/checkbox.html' with record=et %}</td>{% endif %}
                                 <td>{% include 'resources/_equipment_preview.html' %}<div class="small text-muted">{% if et.parent_id %}Модель в справочнике{% else %}Техника для планирования{% endif %} · {{ et.unit }}</div></td>
-                                <td>{{ et.parent|default:"Отдельная плановая позиция" }}</td><td>{% firstof et.category et.parent.category 'Без группы' %}</td><td>{% with crew=et.crew_positions.all %}{% if crew %}Должностей: {{ crew|length }}{% else %}<span class="text-muted">Не задан</span>{% endif %}{% endwith %}</td>
+                                <td>{{ et.parent|default:"Отдельная плановая позиция" }}</td><td>{% if et.parent_id %}{{ et.parent.category|default:'Без группы' }}{% else %}{{ et.category|default:'Без группы' }}{% endif %}</td><td>{% with crew=et.crew_positions.all %}{% if crew %}Должностей: {{ crew|length }}{% else %}<span class="text-muted">Не задан</span>{% endif %}{% endwith %}</td>
                                 <td><a href="{% url 'resources:equipment_unit_list' %}?{% if et.parent_id %}model{% else %}parent{% endif %}={{ et.pk }}">{{ et.machine_count|default:0 }} машин</a>{% if request.user|may:'resources:equipment_unit_create' %}<br><a class="small" href="{% url 'resources:equipment_unit_create' %}?{% if et.parent_id %}model{% else %}type{% endif %}={{ et.pk }}">+ Добавить машину</a>{% endif %}</td><td>
                                     {% if et.is_active %}
                                         <span class="badge bg-success">Активна</span>

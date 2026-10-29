@@ -83,7 +83,7 @@
                         </label>
                         <div class="input-group">{{ form.category }}
                         {% if request.user|may:'resources:equipment_category_create' %}<button type="button" class="btn btn-outline-primary" data-equipment-inline="group" data-target="{{ form.category.id_for_label }}" aria-label="Добавить группу техники">+</button>{% endif %}</div>
-                        <div class="form-text">Группа нужна для разделов и итогов в ГПР и СМГ, например «Специализированная техника» или «Вспомогательная техника». Модель без своей группы использует группу выбранной техники для планирования. Кнопка «+» создаёт новую группу.</div>
+                        <div class="form-text">Группа нужна для разделов и итогов в ГПР и СМГ, например «Специализированная техника» или «Вспомогательная техника». Все модели и машины наследуют группу техники для планирования. Меняйте группу в карточке плановой позиции. Кнопка «+» создаёт новую группу.</div>
                         {% if form.category.errors %}
                             <div class="text-danger small mt-1">{{ form.category.errors }}</div>
                         {% endif %}
@@ -152,7 +152,7 @@
         </div>
     </div>
 </div>
-{% include 'resources/_equipment_inline_catalog.html' %}
+{% include 'resources/_equipment_inline_catalog.html' %}{{ form.parent_group_options|json_script:'equipment-parent-groups' }}
 {% endblock %}
 
-{% block extra_js %}<script src="{% static 'resources/equipment_inline.js' %}" defer></script>{% endblock %}
+{% block extra_js %}<script src="{% static 'resources/equipment_inheritance.js' %}" defer></script><script src="{% static 'resources/equipment_inline.js' %}?v=20261029-inheritance" defer></script>{% endblock %}
