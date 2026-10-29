@@ -61,7 +61,11 @@ def save_cell(user,camp,day,machine,field,value,signed,session):
     machines,controls=transport._lock(user,[machine.pk]);machine=machines[0]
     transport._check(user,machine,controls[machine.pk],versions,transport._session(session))
     if not transport.present(user.company,day).filter(equipment=machine,camp=camp).exists():raise ValidationError('Размещение машины изменилось. Обновите страницу.')
-    if field=='condition':
+    if field=='assign':
+        if int(value)!=(machine.type.parent_id or machine.type_id):raise ValidationError('Выберите машину этого типа техники для планирования.')
+        if machine.transport_days.filter(company=user.company,date=day).exists():raise ValidationError('Машина уже добавлена в факт за этот день. Обновите страницу.')
+        transport.save_day(user,camp,day,[machine.pk],'WORKED',signed=signed,session=session)
+    elif field=='condition':
         transport.set_condition(user,camp,day,[machine.pk],str(value),signed=signed,session=session)
     elif field=='status':
         current=machine.transport_days.filter(date=day).first()

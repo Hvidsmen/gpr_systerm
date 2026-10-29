@@ -147,8 +147,8 @@ class TransportTests(TestCase):
         for tab in ['day','calendar','events','report']:
             response=self.client.get(self.board,{'camp':self.camp.pk,'date':self.day,'tab':tab});self.assertEqual(response.status_code,200)
             self.assertNotContains(response,'data-legacy-structure')
-        response=self.client.get(self.board,{'camp':self.camp.pk,'date':self.day,'use':'EMPTY'});self.assertEqual(len(response.context['rows']),1)
-        response=self.client.get(self.board,{'camp':self.camp.pk,'date':self.day,'q':'INV-2'});self.assertEqual(len(response.context['rows']),1)
+        response=self.client.get(self.board,{'camp':self.camp.pk,'date':self.day,'use':'EMPTY','view':'list'});self.assertEqual(len(response.context['rows']),1)
+        response=self.client.get(self.board,{'camp':self.camp.pk,'date':self.day,'q':'INV-2','view':'list'});self.assertEqual(len(response.context['rows']),1)
         response=self.client.get(self.board,{'camp':self.camp.pk,'date':self.day,'export':'xlsx'})
         from openpyxl import load_workbook
         ws=load_workbook(BytesIO(response.content)).active

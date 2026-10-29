@@ -27,3 +27,10 @@ class TransportPerformanceTests(TestCase):
             print('TRANSPORT PROFILE',tab,len(queries),'queries',round(perf_counter()-start,3),'seconds',len(response.content),'bytes',flush=True)
             counts=Counter(query['sql'].split(' FROM ')[1].split(' ')[0] for query in queries if ' FROM ' in query['sql'])
             print(counts.most_common(8),flush=True)
+
+        from .transport_models import EquipmentDayRecord
+        EquipmentDayRecord.objects.bulk_create([EquipmentDayRecord(company=self.company,camp=self.camp,equipment=machine,date=self.day,status='WORKED') for machine in machines])
+        with CaptureQueriesContext(connection) as queries:response=self.client.get(self.board,{'camp':self.camp.pk,'date':str(self.day)})
+        self.assertEqual(len(response.context['rows']),50)
+        self.assertLessEqual(len(queries),55,'Filled grouped facts must not add per-machine SQL queries')
+        print('TRANSPORT PROFILE filled day',len(queries),'queries',flush=True)

@@ -39,20 +39,22 @@ class Selector(forms.Form):
         for field in self.fields.values(): field.widget.attrs['class'] = 'form-select' if isinstance(field.widget, forms.Select) else 'form-control'
 
 
-def target_choices(user, camp, day, current=()):
+def target_choices(user, camp, day, current=(), resource_plans=None):
     """Plans and previously recorded actual work, with a retained saved selection."""
     from .dispatch import plans
     from .models import DailyFact
     objects = scope_queryset(ConstructionObject.objects.filter(pk__in=camp.object_links.filter(company=user.company).values('construction_object_id')), user)
     objects = list(objects.order_by('name', 'pk'))
     retained = [r for r in current if r.construction_object_id]
-    known = {o.pk for o in objects}
+    known = {o.pk for o in objects};linked_ids=set(known)
     for row in retained:
         if row.construction_object_id not in known and scope_queryset(ConstructionObject.objects.all(),user).filter(pk=row.construction_object_id).exists():
             objects.append(row.construction_object); known.add(row.construction_object_id)
     result = [('', 'Без привязки к объекту и работе')]; mapping = {'': (None, None, None)}
     for obj in objects:
-        planned, _ = plans(obj, day)
+        planned, resources = plans(obj, day)
+        if resource_plans is not None and obj.pk in linked_ids:
+            resource_plans[obj.pk]=resources
         keys = set(planned)
         keys.update(DailyFact.objects.filter(company=user.company, project_work__section__construction_object=obj, date__lte=day).values_list('project_work_id','work_item_id'))
         keys.update(EquipmentDayRecord.objects.filter(company=user.company, construction_object=obj, date__lte=day).exclude(work=None).values_list('work_id','work_item_id'))
@@ -87,7 +89,8 @@ class ActionForm(forms.Form):
         self.fields['equipment'].queryset=Equipment.objects.filter(company=user.company).select_related('type__parent').order_by('type__name','plate_number','inventory_number','pk')
         self.fields['equipment'].label_from_instance=lambda e:f'{e.plate_number or e.inventory_number or e.vin} · {e.type.parent.name if e.type.parent_id else e.type.name} · {e.name}'
         self.fields['target_camp'].queryset=service.camps_for(user).filter(is_active=True).exclude(pk=camp.pk)
-        options,self.targets=target_choices(user,camp,day,current) if load_targets else ([('','Без привязки к объекту и работе')],{'':(None,None,None)})
+        self.resource_plans={}
+        options,self.targets=target_choices(user,camp,day,current,resource_plans=self.resource_plans) if load_targets else ([('','Без привязки к объекту и работе')],{'':(None,None,None)})
         self.fields['target'].choices=options
         for field in self.fields.values():
             field.widget.attrs['class']='form-check-input' if isinstance(field.widget,forms.CheckboxInput) else 'form-select' if isinstance(field.widget,forms.Select) else 'form-control'
@@ -175,7 +178,8 @@ def board(request):
     selector=Selector(selector_data,user=request.user)
     tab=request.GET.get('tab','day')
     if tab not in {'day','state','calendar','events','report'}:tab='day'
-    context={'selector':selector,'editable':role_code(request.user) in service.OPERATORS,'tab':tab,'can_create':role_code(request.user) in service.OPERATORS}
+    day_view='list' if request.GET.get('view')=='list' else 'plan'
+    context={'day_view':day_view,'selector':selector,'editable':role_code(request.user) in service.OPERATORS,'tab':tab,'can_create':role_code(request.user) in service.OPERATORS}
     if not selector.is_valid():return render(request,'production/transport_board.html',context,status=400 if raw else 200)
     camp,day=selector.cleaned_data['camp'],selector.cleaned_data['date'];service.authorize(request.user,camp,False)
     context.update(window_context(request.user,day))
@@ -195,7 +199,7 @@ def board(request):
             elif action=='CONDITION':count=service.set_condition(request.user,camp,day,ids,values['condition'],**common)
             else:count=service.move(request.user,camp,day,ids,action,target=values['target_camp'],condition=values['condition'] or 'READY',**common)
             messages.success(request,f'Сохранено машин: {count}.')
-            return redirect(reverse('production:transport_board')+'?'+urlencode({'camp':camp.pk,'date':str(day),'tab':tab}))
+            return redirect(reverse('production:transport_board')+'?'+urlencode({'camp':camp.pk,'date':str(day),'tab':tab,'view':day_view}))
         except ValidationError as exc:form.add_error(None,ValidationError('; '.join(exc.messages)))
     data=selector.cleaned_data
     filtered=[r for r in rows if (not data['condition'] or r['condition']==data['condition']) and (tab=='state' or not data['use'] or ((r['status'] or 'EMPTY')==data['use'])) and all(term.casefold() in ' '.join(str(value or '') for value in [r['machine'],r['machine'].vin,r['machine'].inventory_number,r['machine'].brand_model,r['planning_type'].name]).casefold() for term in data['q'].split())]
@@ -204,8 +208,15 @@ def board(request):
     from .transport_details_models import DETAIL_FIELDS
     from .transport_detail_values import ROSTER_DETAIL_FIELDS,REPAIR_FIELD_GROUPS
     from django.core.paginator import Paginator
-    page=Paginator(filtered,50).get_page(request.GET.get('page'))
-    display_rows=list(page.object_list)
+    if tab=='day' and day_view=='plan':
+        from .transport_planning import day_types
+        type_rows=day_types(request.user.company,filtered,form.resource_plans,query=data['q'])
+        page=Paginator(type_rows,25).get_page(request.GET.get('page'))
+        context['planning_types']=list(page.object_list)
+        display_rows=[row for item in context['planning_types'] for row in item['rows']]
+    else:
+        page=Paginator(filtered,50).get_page(request.GET.get('page'))
+        display_rows=list(page.object_list)
     if context['tab'] in {'day','state'}:
         prepare_rows(request.user,camp,day,display_rows,context['editable'])
         for row in display_rows:
@@ -214,6 +225,11 @@ def board(request):
             details['comment'].label='Примечание по ремонту'
             row['visible_details']=[details[name] for name in (('in_gpr',) if tab=='state' else ROSTER_DETAIL_FIELDS)]
             row['repair_groups']=[{'title':title,'fields':[details[name] for name in names]} for title,names in REPAIR_FIELD_GROUPS]
+    view_links=[]
+    for value,label in [('plan','По технике для планирования'),('list','Список техники')]:
+        params=request.GET.copy();params['view']=value;params['tab']='day';params.pop('page',None)
+        view_links.append({'value':value,'label':label,'url':'?'+params.urlencode()})
+    context['day_view_links']=view_links
     context.update(detail_columns=[label for name,label in DETAIL_FIELDS if name in (('in_gpr',) if tab=='state' else ROSTER_DETAIL_FIELDS)],page_obj=page,filtered_count=len(filtered))
     new_form=NewMachineForm(company=request.user.company,prefix='new-machine')
     new_form.fields.pop('site_name');new_form.fields.pop('is_active')
@@ -221,7 +237,7 @@ def board(request):
     context.update(camp=camp,day=day,rows=display_rows,summary=_summary(rows),action_form=form,conditions=CONDITIONS,uses=USES,
         total=len(rows),unknown=sum(r['condition'] not in {'READY','REPAIR','SCRAP'} for r in rows),ready=sum(r['condition']=='READY' for r in rows),worked=sum(r['status']=='WORKED' for r in rows),idle=sum(r['status']=='IDLE' for r in rows),
         missing=sum(not r['status'] for r in rows),repair=sum(r['condition']=='REPAIR' for r in rows),scrap=sum(r['condition']=='SCRAP' for r in rows),
-        query=urlencode({'camp':camp.pk,'date':str(day)}),export_query=urlencode({'camp':camp.pk,'date':str(day),'q':data['q'],'condition':data['condition'],'use':data['use']}),error_open=request.method=='POST',can_create=role_code(request.user) in service.OPERATORS)
+        query=urlencode({'camp':camp.pk,'date':str(day),'view':day_view}),export_query=urlencode({'camp':camp.pk,'date':str(day),'q':data['q'],'condition':data['condition'],'use':data['use'],'tab':tab,'view':day_view}),error_open=request.method=='POST',can_create=role_code(request.user) in service.OPERATORS)
     occupied=service.present(request.user.company,day).values('equipment_id')
     disposed=EquipmentTransportEvent.objects.filter(company=request.user.company,kind='WRITEOFF',cancelled_at=None).values('equipment_id')
     context['arrival_ids']=list(Equipment.objects.filter(company=request.user.company,is_active=True).exclude(pk__in=occupied).exclude(pk__in=disposed).values_list('pk',flat=True))

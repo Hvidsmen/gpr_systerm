@@ -49,11 +49,11 @@ class TransportInlineTests(TestCase):
         response=self.client.post(reverse('production:transport_status_create'),{'kind':'PARTS','name':'На складе участка'},content_type='application/json')
         self.assertEqual(response.status_code,200)
         self.save('parts_stage',response.json()['id'])
-        page=self.client.get(reverse('production:transport_board'),{'camp':self.camp.pk,'date':str(self.day)})
+        page=self.client.get(reverse('production:transport_board'),{'camp':self.camp.pk,'date':str(self.day),'view':'list'})
         self.assertContains(page,'data-detail-field="parts_stage"');self.assertContains(page,'data-detail-field="repair_started_on"');self.assertNotContains(page,'>Сведения</a>')
 
     def test_work_and_maintenance_have_separate_fields_and_repair_dialog(self):
-        scope={'camp':self.camp.pk,'date':str(self.day)}
+        scope={'camp':self.camp.pk,'date':str(self.day),'view':'list'}
         page=self.client.get(reverse('production:transport_board'),scope)
         self.assertEqual([field.name for field in page.context['rows'][0]['visible_details']],['shift_one_employee','shift_two_employee','in_gpr'])
         self.assertContains(page,'data-open-repair');self.assertContains(page,'data-repair-dialog')
@@ -87,7 +87,7 @@ class TransportInlineTests(TestCase):
         # Move this detail to yesterday to exercise a new day's carry-forward.
         EquipmentDayDetails.objects.filter(pk=detail.pk).update(date=yesterday,source_details={'shift_one':driver.display_name,'repair_status':'Контроль'})
         self.machine.transport_days.all().delete()
-        page=self.client.get(reverse('production:transport_board'),{'camp':self.camp.pk,'date':str(self.day)})
+        page=self.client.get(reverse('production:transport_board'),{'camp':self.camp.pk,'date':str(self.day),'view':'list'})
         self.assertIsNone(page.context['rows'][0]['details_form']['shift_one_employee'].value())
         self.assertEqual(page.context['rows'][0]['details_form']['defects'].value(),'Контроль датчика')
         self.save('comment','Проверка механика')

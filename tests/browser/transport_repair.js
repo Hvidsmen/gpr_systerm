@@ -5,7 +5,7 @@ const {chromium}=require('playwright'),fs=require('fs'),assert=require('node:ass
   const context=await browser.newContext({viewport:{width:1530,height:1040}});await context.addCookies([{name:'sessionid',value:c.cookie,url:c.base}]);
   await context.route('**/*',route=>{const url=route.request().url();if(url.startsWith(c.base))return route.continue();if(url.includes('bootstrap')&&url.includes('.css'))return route.fulfill({body:fs.readFileSync('/tmp/catalogue-bootstrap.css'),contentType:'text/css'});return route.abort();});
   const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
-  await page.goto(c.base+c.url+`?camp=${c.camp}&date=${c.day}`);
+  await page.goto(c.base+c.url+`?view=list&camp=${c.camp}&date=${c.day}`);
   const row=page.locator(`[data-transport-row="${c.machine}"]`),dialog=row.locator('[data-repair-dialog]');
   const field=name=>row.locator(`[data-detail-field="${name}"]`);
   async function saved(){try{await row.locator('[data-cell-save-status]').first().filter({hasText:'Сохранено'}).waitFor({timeout:10000});}catch(e){console.error(await row.locator('[data-cell-save-status]').allTextContents(),errors);throw e;}}

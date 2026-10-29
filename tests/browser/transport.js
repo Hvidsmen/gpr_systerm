@@ -10,7 +10,7 @@ const c=JSON.parse(process.env.TRANSPORT_CONFIG);
  for(const ctx of [context,other])await ctx.route('**/*',route=>{const url=route.request().url();if(url.startsWith(c.base))return route.continue();if(/bootstrap.*\.css/.test(url))return route.fulfill({contentType:'text/css',body:fs.readFileSync('/tmp/catalogue-bootstrap.css','utf8')});return route.abort();});
  const page=await context.newPage(),colleague=await other.newPage();page.on('pageerror',e=>errors.push(e.message));colleague.on('pageerror',e=>errors.push(e.message));
  const plus=n=>new Date(Date.parse(c.day)+n*86400000).toISOString().slice(0,10);
- const url=(day=c.day,camp=c.camp,tab='day')=>c.base+c.board+`?camp=${camp}&date=${day}&tab=${tab}`;
+ const url=(day=c.day,camp=c.camp,tab='day')=>c.base+c.board+`?view=list&camp=${camp}&date=${day}&tab=${tab}`;
  const dialog=page.locator('[data-action-dialog]');
  async function save(){await Promise.all([page.waitForNavigation(),dialog.getByRole('button',{name:'Сохранить',exact:true}).click()]);assert(!await page.locator('.errorlist').count(),(await page.locator('body').textContent()).slice(-2000));}
  await page.goto(url());await page.getByRole('button',{name:'Приезд техники',exact:true}).click();await dialog.locator('[name=equipment]').selectOption([String(c.machine),String(c.second)]);await dialog.locator('[name=comment]').fill('Заезд по факту');await save();

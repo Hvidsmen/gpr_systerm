@@ -31,7 +31,7 @@
    row.querySelectorAll('[data-transport-employees]').forEach(select=>select.disabled=result.status!=='WORKED');
    if(field.dataset.detailField==='repair_stage'){const label=row.querySelector('[data-repair-summary]');if(label)label.textContent=field.value?field.selectedOptions[0].textContent:'Этап не указан';}
    if(field.dataset.detailField==='request_stage'){const label=row.querySelector('[data-request-summary]');if(label)label.textContent='Заявка: '+(field.value?field.selectedOptions[0].textContent:'не указана');}
-   row.classList.remove('transport-cell-failed');say(row,'Сохранено');
+   row.classList.remove('transport-cell-failed');say(row,'Сохранено');queueMicrotask(()=>root.dispatchEvent(new CustomEvent('transport:row-saved',{detail:{row,field:field.dataset.detailField,...result}})));
   }catch(error){field.value=field.dataset.saved;field.dispatchEvent(new Event('input',{bubbles:true}));row.classList.add('transport-cell-failed');say(row,error.message,true);}finally{row.classList.remove('transport-cell-saving');}});
  });
  // Employee choices are loaded once, when a picker is first opened, rather than

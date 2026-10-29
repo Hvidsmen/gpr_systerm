@@ -5,7 +5,7 @@ const {chromium}=require('playwright'),fs=require('fs'),assert=require('node:ass
   const context=await browser.newContext({viewport:{width:1530,height:1040}});await context.addCookies([{name:'sessionid',value:c.cookie,url:c.base}]);
   await context.route('**/*',route=>{const url=route.request().url();if(url.startsWith(c.base))return route.continue();if(url.includes('bootstrap')&&url.includes('.css'))return route.fulfill({body:fs.readFileSync('/tmp/catalogue-bootstrap.css'),contentType:'text/css'});return route.abort();});
   const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
-  await page.goto(c.base+c.url+`?camp=${c.camp}&date=${c.day}`);
+  await page.goto(c.base+c.url+`?view=list&camp=${c.camp}&date=${c.day}`);
   const top=page.locator('[data-transport-top-scroll]');assert(await top.isVisible());
   const offset=await top.evaluate(el=>Math.min(600,el.scrollWidth-el.clientWidth));await top.evaluate((el,value)=>el.scrollLeft=value,offset);
   await page.waitForFunction(value=>Math.abs(document.querySelector('[data-transport-table-scroll]').scrollLeft-value)<2,offset);
