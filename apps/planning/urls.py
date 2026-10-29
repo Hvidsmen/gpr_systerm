@@ -263,3 +263,9 @@ urlpatterns += [
 
 from .smg_variant_views import SMGRename
 urlpatterns += [path('daily-schedule/<int:pk>/rename/',SMGRename.as_view(),name='smg_rename')]
+
+from .resource_replacement_views import replace as replace_table_resource
+urlpatterns += [
+    path('workspace-versions/<int:pk>/resources/<int:source_id>/replace/',replace_table_resource,name='resource_replace_gpr'),
+    path('daily-schedule/<int:pk>/resources/<int:source_id>/replace/',replace_table_resource,{'kind':'smg'},name='resource_replace_smg'),
+]

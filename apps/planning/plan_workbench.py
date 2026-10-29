@@ -130,6 +130,7 @@ def month_matrix(version,month,work_forms,resource_forms):
             comparison=[],errors=[str(error) for errors in form.errors.values() for error in errors])
         fields=[('Средняя численность, чел.' if kind=='labor' else 'Среднее количество, ед.','count',0)] if kind!='fuel' else [('Расход, л','liters',2),('Остаток, л','balance',2)]
         for label,field,digits in fields:entry.comparison.append(measure(label,form[field].value(),field,digits=digits))
+        entry.resource_id=row.pk
         entry.brigade_id=row.brigade_id or ''
         vars(entry).update(catalogue(kind,row.brigade_id if kind=='labor' else row.equipment_type_id))
         entry.crew_recipe_json=json.dumps([{**m,'count':m['count']*int(row.crew_data.get('shifts_per_day',1))} for m in display_recipe(version.company,equipment[row.equipment_type_id],row.crew_data,mappings=crew_mappings)]) if kind=='equipment' else '[]'
