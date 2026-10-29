@@ -30,6 +30,7 @@ class CreateForm(forms.Form):
 
 
 def link(task):
+    if task.catalogue_request_id:return reverse('resources:catalogue_review_detail',args=[task.catalogue_request_id])
     if task.key.startswith('prepare-resources:'):return reverse('planning:preparation_smg',args=[task.schedule_id]) if task.schedule_id else reverse('planning:global_detail',args=[task.version_id])+'#work-resources'
     if task.key.startswith('smg-update:'):
         return reverse('planning:daily_schedule_detail',args=[task.schedule_id]) if task.schedule_id else reverse('planning:global_detail',args=[task.version_id])
@@ -45,10 +46,15 @@ def link(task):
 class TaskList(View):
     def get(self,request):
         require_roles(request.user,ROLES)
-        service.generate_daily(request.user)
+        from core.permissions import CATALOG_MANAGER_ROLES
+        catalogue_role=role_code(request.user) in CATALOG_MANAGER_ROLES
+        if not catalogue_role:service.generate_daily(request.user)
         if role_code(request.user)=='ADMIN':
             for dispatcher in User.objects.filter(company=request.user.company,is_active=True,role__code__in=DISPATCHER_ROLES).select_related('role','company'):service.generate_daily(dispatcher)
-        service.sync_company(request.user.company)
+        if catalogue_role:
+            from apps.resources.catalogue_tasks import sync_company
+            sync_company(request.user.company)
+        else:service.sync_company(request.user.company)
         tasks=service.visible(request.user)
         mode=request.GET.get('status','not_taken')
         valid_statuses={'not_taken','in_progress','history','active','overdue','all'} | set(dict(WorkTask._meta.get_field('status').choices))
@@ -63,7 +69,7 @@ class TaskList(View):
         tasks=service.filter_status(tasks,mode)
         from django.core.paginator import Paginator
         page=Paginator(tasks.select_related('assigned_to','created_by','construction_object').order_by('due_date','-created_at','-pk'),50).get_page(request.GET.get('page'))
-        return render(request,'planning/task_list.html',{'page':page,'stages':stages,'kind':kind,'can_view_all':role_code(request.user) in {'ADMIN','OBSERVER'},'status_options':[('active','Все активные'),('overdue','Просроченные'),('IN_REVIEW','На проверке автора'),('all','Все статусы'),('DONE','Выполненные'),('CLOSED_ADMIN','Принудительно закрытые'),('SUPERSEDED','Заменённые / отменённые')],'status':mode,'scope':scope,'kinds':WorkTask._meta.get_field('kind').choices,'can_create':role_code(request.user)!='OBSERVER','needs_objects':role_code(request.user) in {'DISPATCHER','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER'} and not request.user.assigned_objects.exists()})
+        return render(request,'planning/task_list.html',{'page':page,'stages':stages,'kind':kind,'can_view_all':role_code(request.user) in {'ADMIN','OBSERVER'},'status_options':[('active','Все активные'),('overdue','Просроченные'),('IN_REVIEW','На проверке автора'),('all','Все статусы'),('DONE','Выполненные'),('CLOSED_ADMIN','Принудительно закрытые'),('SUPERSEDED','Заменённые / отменённые')],'status':mode,'scope':scope,'kinds':[choice for choice in WorkTask._meta.get_field('kind').choices if not catalogue_role or choice[0]=='CATALOGUE'],'can_create':role_code(request.user)!='OBSERVER' and not catalogue_role,'needs_objects':role_code(request.user) in {'DISPATCHER','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER'} and not request.user.assigned_objects.exists()})
 
 
 class TaskCreate(View):

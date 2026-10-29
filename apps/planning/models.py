@@ -1340,10 +1340,11 @@ class MacroHistorySource(BaseCompanyModel):
 
 
 class WorkTask(BaseCompanyModel):
+    catalogue_request = models.OneToOneField('resources.CatalogueReviewRequest',null=True,blank=True,on_delete=models.CASCADE,related_name='work_task')
     started_at = models.DateTimeField(null=True, blank=True)
     schedule_review = models.ForeignKey('DailyScheduleReview',null=True,blank=True,on_delete=models.CASCADE,related_name='work_tasks')
     key = models.CharField(max_length=180)
-    kind = models.CharField(max_length=20,choices=[('RESOURCES','Подготовка ресурсов'),('SUBMISSION','Следующий этап плана'),('ESTIMATE','Проверка сметчика'),('REMARK','Замечание'),('APPROVAL','Согласование'),('FACT','Факт за день'),('CARRYOVER','Уточнение остатков'),('MANUAL','Задание')])
+    kind = models.CharField(max_length=20,choices=[('CATALOGUE','Проверка справочника'),('RESOURCES','Подготовка ресурсов'),('SUBMISSION','Следующий этап плана'),('ESTIMATE','Проверка сметчика'),('REMARK','Замечание'),('APPROVAL','Согласование'),('FACT','Факт за день'),('CARRYOVER','Уточнение остатков'),('MANUAL','Задание')])
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
     status = models.CharField(max_length=20,default='OPEN',choices=[('OPEN','Открыто'),('IN_REVIEW','На проверке автора'),('DONE','Выполнено'),('SUPERSEDED','Заменено / отменено'),('CLOSED_ADMIN','Принудительно закрыто')])
@@ -1374,7 +1375,7 @@ class WorkTask(BaseCompanyModel):
 
     @property
     def role_label(self):
-        return {'ESTIMATOR':'Сметчик','PRODUCTION_HEAD':'Руководитель производства','HR_HEAD':'Руководитель кадровой службы','TECH_HEAD':'Руководитель технической службы','SECURITY_HEAD':'Служба безопасности','SBO_HEAD':'Служба СБО','CEO':'Генеральный директор'}.get(self.target_role,'Не назначен')
+        return {'PERSONNEL_CATALOG_MANAGER':'Ответственный за справочник сотрудников','EQUIPMENT_CATALOG_MANAGER':'Ответственный за справочник техники','ESTIMATOR':'Сметчик','PRODUCTION_HEAD':'Руководитель производства','HR_HEAD':'Руководитель кадровой службы','TECH_HEAD':'Руководитель технической службы','SECURITY_HEAD':'Служба безопасности','SBO_HEAD':'Служба СБО','CEO':'Генеральный директор'}.get(self.target_role,'Не назначен')
 
     @property
     def overdue(self):

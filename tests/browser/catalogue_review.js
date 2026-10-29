@@ -19,6 +19,7 @@ const {chromium}=require('playwright'),fs=require('node:fs'),assert=require('nod
    await submit(page,page.getByRole('button',{name:'Создать и добавить в план'}));
    assert((await page.locator('[data-catalogue-plan-review]').innerText()).includes(name));
    assert((await page.locator('[data-catalogue-plan-review]').innerText()).includes('На проверке'));
+   assert(await page.locator('[data-catalogue-plan-review]').getByRole('link',{name:'Задание на проверку',exact:true}).last().isVisible());
   }
   async function setCount(page,label,value){
    const target=page.locator(`[data-plan-month-input][aria-label^="${label} ·"]`).first();
@@ -32,7 +33,12 @@ const {chromium}=require('playwright'),fs=require('node:fs'),assert=require('nod
   await setCount(manager,'Новая техника браузера','2');
   await submit(manager,manager.getByRole('button',{name:'Ресурсы определены',exact:true}));
   assert(await manager.getByRole('button',{name:'Отправить на согласование',exact:true}).isDisabled());
-  await hr.goto(c.base+c.queue);await hr.getByRole('link',{name:'Новая должность браузера',exact:true}).click();await hr.waitForLoadState('load');
+  await hr.goto(c.base+c.tasks);
+  assert.equal(await hr.getByRole('link',{name:/Проверить новую технику/}).count(),0);
+  await hr.getByRole('link',{name:/Проверить новую должность: Новая должность браузера/}).click();await hr.waitForLoadState('load');
+  const laborTaskUrl=hr.url();
+  await submit(hr,hr.getByRole('button',{name:'Взять в работу',exact:true}));
+  await hr.getByRole('link',{name:'Открыть заявку справочника',exact:true}).click();await hr.waitForLoadState('load');
   await hr.locator('[name=action]').selectOption('replace');await hr.locator('[name=target]').selectOption(String(c.target));
   await submit(hr,hr.getByRole('button',{name:'Продолжить',exact:true}));
   assert(await hr.locator('[data-catalogue-preview]').isVisible());
@@ -40,8 +46,11 @@ const {chromium}=require('playwright'),fs=require('node:fs'),assert=require('nod
   await hr.screenshot({path:'/tmp/catalogue-review-replacement.png',fullPage:true});
   await submit(hr,hr.getByRole('button',{name:'Подтвердить замену в планах'}));
   assert((await hr.locator('body').innerText()).includes('Заменено существующей'));
-  await tech.goto(c.base+c.queue);assert.equal(await tech.getByRole('link',{name:'Новая должность браузера',exact:true}).count(),0);
-  await tech.getByRole('link',{name:'Новая техника браузера',exact:true}).click();await tech.waitForLoadState('load');
+  await hr.goto(laborTaskUrl);assert((await hr.locator('body').innerText()).includes('Выполнено'));
+  await hr.screenshot({path:'/tmp/catalogue-review-task-completed.png',fullPage:true});
+  await tech.goto(c.base+c.tasks);assert.equal(await tech.getByRole('link',{name:/Проверить новую должность/}).count(),0);
+  await tech.getByRole('link',{name:/Проверить новую технику для планирования: Новая техника браузера/}).click();await tech.waitForLoadState('load');
+  await tech.getByRole('link',{name:'Открыть заявку справочника',exact:true}).click();await tech.waitForLoadState('load');
   await submit(tech,tech.getByRole('button',{name:'Продолжить',exact:true}));
   assert((await tech.locator('body').innerText()).includes('Подтверждено'));
   await manager.goto(c.base+c.gpr);assert(!(await manager.locator('[data-catalogue-plan-review]').innerText()).includes('заблокирована'));

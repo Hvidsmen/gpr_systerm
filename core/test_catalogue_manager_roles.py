@@ -55,7 +55,8 @@ class CatalogueManagerRoleTests(TestCase):
                 page = self.client.get(reverse(route))
             self.assertContains(page, reverse(visible))
             self.assertNotContains(page, 'href="' + reverse(hidden) + '"')
-            self.assertFalse(page.context.get('task_inbox_access', False))
+            self.assertTrue(page.context.get('task_inbox_access', False))
+            self.assertContains(page, reverse('planning:task_list'))
             self.assertNotContains(page, 'href="' + reverse('accounts:user_list') + '"')
 
     def test_cross_domain_admin_planning_and_fact_routes_reject_get_and_post(self):

@@ -87,6 +87,9 @@ def visible(user):
     require_roles(user,ROLES)
     from core.permissions import scope_queryset
     q=scope_queryset(WorkTask.objects.all(),user)
+    from core.permissions import CATALOG_MANAGER_ROLES
+    if role_code(user) in CATALOG_MANAGER_ROLES:
+        return q.filter(kind='CATALOGUE',target_role=role_code(user)).filter(Q(assigned_to=user)|Q(assigned_to__isnull=True))
     if role_code(user)=='PLANNER':
         q=q.filter(Q(construction_object__in=user.assigned_objects.filter(company=user.company))|Q(construction_object__isnull=True))
     if role_code(user) not in {'ADMIN','OBSERVER'}:
@@ -172,6 +175,8 @@ def create_repair(version,actor,comment):
 
 
 def sync_company(company):
+    from apps.resources.catalogue_tasks import sync_company as sync_catalogue_tasks
+    sync_catalogue_tasks(company)
     for estimate in EstimateReviewTask.objects.filter(company=company).select_related('version','schedule__source').defer('version__snapshot','schedule__source__snapshot').iterator():estimate_task(estimate)
     from .daily_schedule_approval import sync as sync_daily
     from .models import DailySchedule

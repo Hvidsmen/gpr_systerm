@@ -29,7 +29,7 @@ class CatalogueReviewBrowserTests(StaticLiveServerTestCase):
             return client.cookies['sessionid'].value
         config={'base':self.live_server_url,'gpr':reverse('planning:workspace_edit',args=[self.version.pk]),
                 'smg':reverse('planning:daily_schedule_detail',args=[schedule.pk]),
-                'queue':reverse('resources:catalogue_review_list'),'target':self.brigade.pk,
+                'queue':reverse('resources:catalogue_review_list'),'tasks':reverse('planning:task_list'),'target':self.brigade.pk,
                 'cookies':{'planner':cookie(self.planner),'manager':cookie(self.manager),'hr':cookie(hr),'tech':cookie(tech)},
                 'chromium':shutil.which('chromium')}
         script=Path(__file__).resolve().parents[2]/'tests/browser/catalogue_review.js'

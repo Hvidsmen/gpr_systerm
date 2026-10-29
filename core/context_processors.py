@@ -10,6 +10,9 @@ def planning_tasks(request):
         from apps.resources.catalogue_review_views import queue_for
         result['catalogue_review_access'] = True
         result['catalogue_review_count'] = queue_for(user).filter(status='PENDING').count()
+    if role in CATALOG_MANAGER_ROLES:
+        from apps.planning.task_services import visible
+        result.update(task_inbox_access=True,task_inbox_count=visible(user).filter(status__in=['OPEN','IN_REVIEW']).count())
     if role in ROLES - CATALOG_MANAGER_ROLES:
         from apps.planning.task_services import generate_daily,visible
         generate_daily(user)

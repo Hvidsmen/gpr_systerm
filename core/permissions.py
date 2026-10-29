@@ -142,7 +142,8 @@ def check_route(user, match, method):
         personnel_routes |= {'catalogue_review_list', 'catalogue_review_detail'}
         equipment_routes |= {'catalogue_review_list', 'catalogue_review_detail'}
         routes = personnel_routes if role == PERSONNEL_CATALOG_MANAGER else equipment_routes
-        if own_account or namespace == 'resources' and name in routes:
+        own_tasks = namespace == 'planning' and name in {'task_list','task_detail'} and (name == 'task_detail' or method in {'GET','HEAD'})
+        if own_account or own_tasks or namespace == 'resources' and name in routes:
             return
         raise PermissionDenied('Доступ разрешён только к справочникам вашего направления.')
     if namespace == 'resources' and name in {'catalogue_review_list', 'catalogue_review_detail'}:

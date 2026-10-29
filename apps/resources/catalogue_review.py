@@ -85,7 +85,10 @@ def context(user, owner):
     kind, pk = owner_key(owner)
     editable = editable and (isinstance(owner,DailySchedule) or bool(owner.workspace_id))
     rows = list(requests_for(owner))
+    from apps.planning.task_services import visible
+    tasks=dict(visible(user).filter(catalogue_request_id__in=[row.pk for row in rows]).values_list('catalogue_request_id','pk'))
     for row in rows:
+        row.task_url=reverse('planning:task_detail',args=[tasks[row.pk]]) if row.pk in tasks else ''
         row.fix_url = reverse('planning:catalogue_fix', args=[kind, pk, row.pk])
     return {'catalogue_month': owner.month if isinstance(owner,DailySchedule) else owner.planning_month or owner.start_date.replace(day=1), 'catalogue_requests': rows, 'catalogue_ready': not any(r.status in BLOCKING for r in rows),
             'catalogue_create_labor_url': reverse('planning:catalogue_propose', args=[kind, pk, 'labor']) if editable else '',
@@ -138,6 +141,8 @@ def propose(user, owner, kind, name, group=None, months=None):
                 **({'brigade': resource} if kind == 'labor' else {'equipment_type': resource}))
     invalidate(owner)
     audit(user, proposal, 'CREATE', {'name': name, 'status': 'PENDING'})
+    from .catalogue_tasks import sync_task
+    sync_task(proposal)
     return proposal
 
 
@@ -391,6 +396,8 @@ def decide(user, proposal, action, revision, comment='', target=None, token=None
         'at':proposal.reviewed_at.isoformat(),'comment':proposal.comment,'target':target.pk if target else None,
         'plans':[list(owner_key(o)) for o in owners]}]
     proposal.save()
+    from .catalogue_tasks import sync_task
+    sync_task(proposal)
     audit(user, proposal, 'UPDATE', {'status':proposal.status,'comment':proposal.comment,'target':target.pk if target else None})
     return proposal
 

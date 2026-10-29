@@ -41,6 +41,8 @@ def close_tasks(user,ids,reason,signature):
     if not 3<=len(reason)<=2000:raise ValidationError('Укажите причину закрытия от 3 до 2000 символов.')
     tasks=selected(user,ids,lock=True)
     if fingerprint(tasks)!=signature:raise ValidationError('Задания изменились. Проверьте обновлённый список и подтвердите закрытие повторно.')
+    if any(task.kind=='CATALOGUE' and task.status in service.ACTIVE for task in tasks):
+        raise ValidationError('Заявку справочника нужно подтвердить, заменить или отклонить в её карточке. Закрытие задания не заменяет проверку.')
     count=0
     for task in tasks:
         if task.status not in service.ACTIVE:continue
