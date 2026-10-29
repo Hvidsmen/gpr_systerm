@@ -34,7 +34,8 @@ def hierarchy(rows, roots, company):
             node['children'].append(row)
         else:
             node['root_matches'] = True
-    groups = sorted(categories.values(), key=lambda group: (group['category'] is None, group['label'].casefold()))
+    from .group_order import equipment_group_order
+    groups = sorted(categories.values(), key=lambda group: equipment_group_order(group['label']))
     for group in groups:
         group['nodes'] = sorted(group['nodes'].values(), key=lambda node: (node['root'].name.casefold(), node['root'].pk))
     return groups

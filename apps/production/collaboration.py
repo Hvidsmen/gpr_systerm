@@ -178,6 +178,8 @@ def live(request):
         with transaction.atomic():
             type(obj).objects.filter(pk=obj.pk,company=obj.company).update(name=F('name'))
             expire_presence(obj,day)
+            from .day_reset import epoch
+            if int(data.get('reset_epoch',0))!=epoch(obj,day):return JsonResponse({'error':'Производственная часть сброшена администратором. Обновите форму.','reset_required':True},status=409)
             now=timezone.now()
             existing=ProductionPresence.objects.filter(company=obj.company,construction_object=obj,date=day,session_key=session).first()
             if existing and existing.user_id!=request.user.pk:return JsonResponse({'error':'Сеанс принадлежит другому пользователю.'},status=403)

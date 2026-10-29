@@ -102,7 +102,7 @@ class ActionForm(forms.Form):
 
 
 def _rows(user, camp, day):
-    stays=list(service.present(user.company,day).filter(camp=camp).select_related('equipment__type__parent','equipment__type__category','equipment__type__parent__category'))
+    stays=list(service.present(user.company,day).filter(camp=camp).select_related('equipment__type__parent','equipment__type__category','equipment__type__parent__category','equipment__catalogue_group'))
     ids=[s.equipment_id for s in stays]
     records={r.equipment_id:r for r in EquipmentDayRecord.objects.filter(company=user.company,equipment_id__in=ids,date=day).select_related('construction_object','work','work_item','recorded_by')}
     controls={c.equipment_id:c for c in EquipmentTransportControl.objects.filter(company=user.company,equipment_id__in=ids).select_related('locked_by')}
@@ -119,7 +119,8 @@ def _rows(user, camp, day):
             'target':f'work:{record.work_id}:{record.work_item_id or 0}' if record and record.work_id else f'object:{record.construction_object_id}' if record and record.construction_object_id else '',
             'details_url':reverse('production:transport_details',args=[machine.pk])+'?'+urlencode({'camp':camp.pk,'date':str(day)}),
             'history_url':reverse('production:transport_history',args=[machine.pk])})
-    return sorted(rows,key=lambda r:(r['planning_type'].name.casefold(),r['machine'].plate_number,r['machine'].inventory_number,r['machine'].pk))
+    from apps.resources.group_order import machine_order
+    return sorted(rows,key=lambda row:machine_order(row['machine']))
 
 
 def _summary(rows):

@@ -33,6 +33,7 @@ class Employee(BaseCompanyModel):
     )
     is_active = models.BooleanField(_('активен'), default=True)
 
+    gender = models.CharField('Пол', max_length=1, blank=True, choices=[('', 'Не указан'), ('M', 'Мужской'), ('F', 'Женский')])
     employee_number = models.CharField('Табельный номер ЗУП', max_length=60, blank=True)
     zup_full_name = models.CharField('Полное ФИО ЗУП', max_length=250, blank=True, editable=False)
     zup_ref = models.CharField(max_length=32, blank=True, editable=False)

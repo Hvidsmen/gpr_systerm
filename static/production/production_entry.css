@@ -6,19 +6,26 @@
 .production-work-level,.production-work-count,.production-work-section{font-size:12px;color:#526b80;margin-right:8px;font-weight:400}
 .production-work-count,.production-work-section{margin-left:10px}
 .production-work-children{padding:12px 0 0 12px;border-left:1px solid #cfdee8;margin-left:6px;min-width:0}
-.production-work-card{padding:16px;margin:0 0 12px;border:1px solid #d4e2ec;border-radius:7px;background:#fff;min-width:0}
+.production-work-card{padding:10px 12px;margin:0 0 8px;border:1px solid #d4e2ec;border-radius:7px;background:#fff;min-width:0}
 .production-work-card:focus-within{border-color:#4f98b3;box-shadow:0 0 0 1px #4f98b3}
-.production-work-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;margin-bottom:16px}
+.production-work-heading{margin-bottom:8px}
 .production-work-heading[hidden],.production-work-card [data-work-unplanned][hidden]{display:none!important}
-.production-work-name{min-width:0;flex:1;overflow-wrap:anywhere}
-.production-work-name p{font-size:12px;color:#526b80;margin:0 0 5px}
-.production-work-name h3{font-size:15px;font-weight:650;line-height:1.45;color:#193c55;margin:0 0 6px}
-.production-work-metrics{flex:0 0 220px}
-.production-work-plan{background:#edf7fb;border-radius:6px;padding:10px 12px}
-.production-work-plan span,.production-work-previous span{display:block;font-size:12px;color:#456279}
-.production-work-plan strong{display:block;font-size:20px;color:#086781;line-height:1.4;overflow-wrap:anywhere}
-.production-work-previous{display:flex;justify-content:space-between;gap:12px;padding:8px 12px 0;font-size:12px}
-@media(max-width:700px){.production-work-heading{flex-direction:column;gap:10px}.production-work-metrics{flex:1 1 auto;width:100%}.production-work-card{padding:12px}.production-work-children{padding-left:8px;margin-left:2px}.production-work-section{display:block;margin:4px 0 0}}
+.production-work-name{min-width:0;overflow-wrap:anywhere}
+.production-work-name p{font-size:10px;color:#526b80;margin:0 0 2px}
+.production-work-name h3{font-size:14px;font-weight:650;line-height:1.35;color:#193c55;margin:0}
+.production-work-name .badge{font-size:10px;margin-top:3px}
+.production-work-inputs{display:grid;grid-template-columns:minmax(90px,.65fr) minmax(145px,1fr) minmax(150px,1.3fr) minmax(150px,1fr);gap:8px;align-items:start}
+.production-work-field{min-width:0}.production-work-field-project_work,.production-work-field-work_item{grid-column:span 2}
+.production-work-field label{display:block;margin-bottom:3px;font-size:11px;line-height:1.35}
+.production-work-field .form-control,.production-work-field .form-select,.production-work-field .search-select-button{min-height:32px;padding:4px 7px;font-size:12px;line-height:1.5}
+.production-work-field textarea.form-control{height:32px;min-height:32px;resize:vertical}
+.production-work-field .errorlist,.production-work-errors .errorlist{margin:4px 0 0;padding-left:16px;font-size:11px}
+.production-work-metrics{min-width:0;margin-top:17px;font-variant-numeric:tabular-nums;font-size:10px;line-height:1.5}
+.production-work-plan,.production-work-previous{display:flex;justify-content:space-between;align-items:baseline;gap:6px;padding:3px 7px}
+.production-work-plan{background:#edf7fb;border-radius:5px;color:#456279}
+.production-work-plan strong{font-size:13px;font-weight:700;color:#086781}
+.production-work-previous{color:#526b80}.production-work-previous strong{font-size:11px;color:#193c55}
+@media(max-width:700px){.production-work-inputs{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.production-work-field-project_work,.production-work-field-work_item,.production-work-field-comment{grid-column:1/-1}.production-work-metrics{display:flex;flex-wrap:wrap;gap:3px 10px;grid-column:1/-1;margin-top:0}.production-work-plan,.production-work-previous{flex:1 1 150px}.production-work-card{padding:10px}.production-work-children{padding-left:8px;margin-left:2px}.production-work-section{display:block;margin:4px 0 0}}
 .work-claim-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 10px;margin-bottom:10px;background:#eef6fb;border-radius:5px}.work-claim-bar [data-claim-label]{flex:1;min-width:160px}.work-claim-bar [hidden]{display:none!important}
 .production-work-dialog{width:min(740px,calc(100% - 32px));max-height:85vh;border:1px solid #cadde8;border-radius:12px;padding:24px;box-shadow:0 12px 48px #1234}.production-work-dialog::backdrop{background:#17344b77}.production-work-options{max-height:45vh;overflow:auto}.production-work-option{display:flex;align-items:flex-start;gap:10px;padding:10px;border-bottom:1px solid #e6eef3;cursor:pointer;font-size:13px}.production-work-option input{margin-top:3px}.production-work-option[hidden]{display:none!important}.production-work-option:focus-within{background:#edf7fb}
 @media(max-width:700px){.production-person-fields{grid-template-columns:minmax(0,1fr)}.production-work-dialog{padding:16px}}
@@ -54,3 +61,12 @@ form[data-production-form] .production-steps{top:var(--navbar-height,48px)}
 .production-person-claim [data-label]{width:90px;max-width:90px}.production-person-line{min-width:540px;grid-template-columns:minmax(200px,1fr) 48px auto auto}
 [data-production-form] [hidden]{display:none!important}
 @media(max-width:600px){.production-filters .rg-multi{flex-basis:calc(50% - 8px)}.production-filters .rg-multi-panel{width:min(280px,calc(100vw - 65px))}.employee-graph-columns{gap:26px}.graph-person{padding:8px}.graph-person .d-flex{gap:4px!important}.production-position-group{padding-left:7px}}
+
+.production-work-card .production-work-status{gap:4px 9px;padding:5px 0 0;margin:5px 0 0;background:transparent;border-radius:0;min-width:0}
+.production-work-status [data-label],.production-work-status [data-autosave-row-state],.production-work-status [data-error]{font-size:10px;line-height:1.4;overflow-wrap:anywhere}
+.production-work-status [data-label]{color:#617789}.production-work-status [data-error]:empty,.production-work-status [data-autosave-row-state]:empty{display:none}
+.production-work-status:has([data-error]:not(:empty)) [data-autosave-row-state].text-danger{display:none}
+.production-work-status [data-work-remove]{margin-left:auto}.production-work-status .btn{font-size:10px;padding:2px 6px}
+.production-work-field [data-quick-reason=control]{font-size:10px;line-height:1.4;padding:2px 6px;margin-top:3px!important}
+
+.production-work-card:has([data-work-heading][hidden]) .production-work-metrics{display:none}.production-work-field textarea.form-control:focus{min-height:56px}

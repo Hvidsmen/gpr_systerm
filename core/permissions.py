@@ -109,6 +109,8 @@ def check_route(user, match, method):
     if namespace == 'resources' and name in {'transport_import','transport_import_review','transport_import_errors','transport_import_correction'}:
         from apps.production.transport import OPERATORS
         require_roles(user,OPERATORS);return
+    if namespace=='production' and name=='production_day_reset':
+        require_roles(user,{'ADMIN'});return
     if namespace=='production' and name=='deviation_quick_add':
         require_roles(user,FACT_ROLES);return
     if namespace == 'production' and name=='fact_history':

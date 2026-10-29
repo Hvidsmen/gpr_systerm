@@ -169,7 +169,8 @@ class PersonForm(ActivityForm):
         return self.prepared_from_previous or super().has_changed()
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
-        self.fields['employee'].queryset=self.fields['employee'].queryset.select_related('position__planning_mapping__brigade__group')
+        from apps.resources.group_order import ordered
+        self.fields['employee'].queryset=ordered(self.fields['employee'].queryset.select_related('position__planning_mapping__brigade__group'),group_path='position__planning_mapping__brigade__group',within=('position__name','last_name','first_name','pk'))
         self.fields['employee'].label_from_instance=lambda e: f"{e.display_name} · {e.position or 'Должность не указана'}"
         self.fields['general'].label='Работал без привязки к работе'
     def clean(self):
@@ -316,6 +317,8 @@ class DispatcherDayView(CompanyRequiredMixin,View):
             context['equipment_assignment_version']=request.POST.get('equipment_assignment_version','') if bound else equipment_version
             context['prepared_equipment_count']=len(equipment_baselines)
             context['equipment_assignments_url']=reverse('production:equipment_assignment_list')+'?'+urlencode({'construction_object':obj.pk,'date':day.isoformat()})
+        from .day_reset import epoch as reset_epoch
+        context['production_reset_epoch']=reset_epoch(obj,day)
         status,_=FactSectionDay.objects.get_or_create(company=obj.company,construction_object=obj,date=day,section=section)
         work_plan,resource_plan=plans(obj,day)
         from .production_entry import ProductionPersonForm, candidate_keys, previous_people, work_catalogue, GENERAL_PATH
@@ -350,6 +353,7 @@ class DispatcherDayView(CompanyRequiredMixin,View):
             qs=model.objects.filter(company=obj.company,date=day)
             qs=qs.filter(project_work__section__construction_object=obj) if prefix=='works' else qs.filter(construction_object=obj)
             if prefix=='fuel':qs=qs.filter(equipment_ref='')
+            if prefix=='equipment':qs=qs.select_related('equipment__type__parent__category','equipment__type__category','equipment__catalogue_group')
             if prefix=='labor':
                 qs=qs.select_related('employee__position__planning_mapping__brigade__group','position').prefetch_related('work_links')
                 if section=='works':qs=qs.exclude(labor_direction())
@@ -359,7 +363,7 @@ class DispatcherDayView(CompanyRequiredMixin,View):
                 available=set(ProjectWork.objects.filter(company=obj.company,section__construction_object=obj,merged_source__isnull=True).values_list('pk',flat=True))
                 initial=[{'project_work':row['work'],'work_item':row['item'],'actual_quantity':None} for row in catalogue if (row['work'],row['item']) in activity_keys and (row['work'],row['item']) not in existing and row['work'] in available]
             carried_day=None
-            if prefix=='labor' and context['editable'] and not qs.exists() and (status.revision==0 or own_entry and (not context.get('my_production_entry') or not context['my_production_entry'].roster_started)):
+            if prefix=='labor' and context['editable'] and not qs.exists() and not (section=='works' and context['production_reset_epoch']) and (status.revision==0 or own_entry and (not context.get('my_production_entry') or not context['my_production_entry'].roster_started)):
                 carried_day,initial=previous_people(obj,day,production=section=='works',user=request.user if own_entry else None)
             if prefix=='fuel':
                 existing_types=set(qs.values_list('fuel_type',flat=True))
@@ -395,7 +399,20 @@ class DispatcherDayView(CompanyRequiredMixin,View):
                         row.prepared_from_previous=True
                         row.hint=f'Подставлено из факта за {carried_day:%d.%m.%Y}. Проверьте сотрудника, смену и работы.'
                     if row.instance.pk:row.hint=f'Должность на дату факта: {row.instance.position or "не указана"}'
-            groups.append({'prefix':prefix,'formset':formset,'carried_day':carried_day,
+            ordered_rows=list(formset)
+            if prefix=='labor' and section!='works':
+                from apps.resources.group_order import employee_order
+                from apps.resources.models import Employee
+                employees={e.pk:e for e in Employee.objects.filter(company=obj.company).select_related('position__planning_mapping__brigade__group')}
+                def person_order(row):
+                    try:employee=employees.get(int(row['employee'].value() or 0))
+                    except (TypeError,ValueError):employee=None
+                    return (employee is None,employee_order(employee) if employee else (),str(row['shift'].value() or 1))
+                ordered_rows.sort(key=person_order)
+            if prefix=='equipment':
+                from apps.resources.group_order import machine_order
+                ordered_rows.sort(key=lambda row:(not bool(row.baseline or row.instance.pk),machine_order(row.baseline['assignment'].equipment if row.baseline else row.instance.equipment) if row.baseline or row.instance.pk else ()))
+            groups.append({'prefix':prefix,'formset':formset,'ordered_rows':ordered_rows,'carried_day':carried_day,
                 **({'work_groups':work_groups,'work_extra':work_extra} if prefix=='works' else {})})
         records={r.section:r for r in FactSectionDay.objects.filter(company=obj.company,construction_object=obj,date=day)}
         context['revision']=request.POST.get('revision','') if bound else status.revision

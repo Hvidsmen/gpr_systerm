@@ -12,6 +12,9 @@ class CatalogFilterForm(forms.Form):
         for field in self.fields.values():
             if isinstance(field, forms.ModelChoiceField):
                 field.queryset = field.queryset.filter(company=company)
+                if field.queryset.model in {BrigadeGroup,EquipmentCategory}:
+                    from .group_order import ordered
+                    field.queryset=ordered(field.queryset,kind='equipment' if field.queryset.model is EquipmentCategory else 'labor')
                 field.widget.attrs['class'] = 'form-select form-select-sm'
             else:
                 field.widget.attrs['class'] = 'form-control form-control-sm'

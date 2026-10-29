@@ -22,7 +22,8 @@ class UnitForm(forms.ModelForm):
     def __init__(self,*args,company,**kwargs):
         super().__init__(*args,**kwargs)
         self.instance.company=company
-        self.fields['catalogue_group'].queryset=EquipmentCategory.objects.filter(company=company)
+        from .group_order import ordered
+        self.fields['catalogue_group'].queryset=ordered(EquipmentCategory.objects.filter(company=company),kind='equipment')
         self.fields['catalogue_group'].label='Группа техники'
         self.fields['catalogue_group'].empty_label='По группе техники для планирования'
         self.fields['catalogue_group'].widget.attrs['data-equipment-group-select']=''

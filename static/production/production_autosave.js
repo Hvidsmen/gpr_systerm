@@ -29,16 +29,27 @@
   if(row){delete row.dataset.autoRejected;row.dataset.autoPending='1';rowMessage(row,'Не сохранено');}
   pending=true;failed=false;retryAttempt=0;message('Есть изменения…');clearTimeout(timer);timer=setTimeout(()=>flush(),700);
  }
- async function save(){
-  form.productionValidatePeople();
-  const changed=dirty();
+ const actuationInputs=()=>['actuated','actuation_type','reason'].map(name=>form.elements.namedItem(name)).filter(Boolean);
+ let savedActuation=actuationInputs().map(input=>({name:input.name,value:input.value,type:input.type,checked:input.checked}));
+ async function save(selected){
+  const changed=selected||dirty(),deleting=changed.length>0&&changed.every(row=>field(row,'DELETE')?.checked);
+  if(changed.some(row=>isPerson(row)&&!field(row,'DELETE')?.checked))form.productionValidatePeople();
+  for(const row of changed){
+   if(!isPerson(row)&&!field(row,'DELETE')?.checked&&field(row,'actual_quantity')?.value===''){
+    const error=new Error('Введите фактический объём работы или 0. Пустое поле не сохраняется.');
+    row.querySelector('[data-error]').textContent=error.message;throw error;
+   }
+  }
   for(const row of changed){
    if(isPerson(row)&&field(row,'employee').value){try{await form.productionClaimRow(row);}catch(error){if(field(row,'id').value||error.status!==409)throw error;row.dataset.autoRejected=error.message;field(row,'employee').value='';delete row.dataset.entryDirty;delete row.dataset.personDirty;delete row.dataset.autoPending;row.dispatchEvent(new Event('change',{bubbles:true}));row.querySelector('[data-error]').textContent=error.message;rowMessage(row,error.message,true);}}
    else if(!isPerson(row)&&field(row,'project_work')?.value)await form.productionClaimRow(row);
   }
-  const sent=new Map(rows().map(row=>[prefix(row),{row,stamp:fingerprint(row),capture:capture(row)}]));
+  const sent=new Map(changed.map(row=>[prefix(row),{row,stamp:fingerprint(row),capture:capture(row)}]));
   const body=new FormData(form);body.set('autosave','1');body.set('action','save');
+  const actuationSent=deleting?savedActuation:actuationInputs().map(input=>({name:input.name,value:input.value,type:input.type,checked:input.checked}));
+  if(deleting)for(const input of savedActuation){if(input.type==='checkbox'&&!input.checked)body.delete(input.name);else body.set(input.name,input.value);}
   for(const row of rows()){
+   if(!sent.has(prefix(row))){body.set(field(row,isPerson(row)?'person_editing':'work_editing').name,'0');body.delete(field(row,'DELETE').name);continue;}
    const editing=field(row,isPerson(row)?'person_editing':'work_editing')?.value==='1';
    if(editing)for(const name of isPerson(row)?['employee','shift']:['project_work','work_item']){const input=field(row,name);if(input)body.set(input.name,input.value);}
   }
@@ -50,6 +61,7 @@
    for(const issue of result.errors||[]){const item=sent.get(issue.prefix);if(!item)continue;const text=issue.message||Object.values(issue.fields||{}).flat().join(' ');const target=item.row.querySelector('[data-error]');if(target)target.textContent=text;rowMessage(item.row,text,true);}
    const error=new Error(result.error||'Изменения не сохранены.');error.retryable=response.status>=500||response.status===429;throw error;
   }
+  savedActuation=actuationSent;
   for(const name of ['production_snapshot','revision','labor_revision'])form.elements.namedItem(name).value=result[name];
   for(const entry of result.rows){
    const item=sent.get(entry.prefix);if(!item)continue;
@@ -67,9 +79,13 @@
   message(pending?'Есть изменения…':'Все изменения сохранены');
  }
  async function flush(){
+  if(form.dataset.resetRequired==='1'){clearTimeout(timer);message('Производственная часть сброшена администратором. Обновите форму.',true);return false;}
   clearTimeout(timer);if(running)return running;
   running=(async()=>{
-   while(pending||dirty().length){pending=false;try{await save();failed=false;retryAttempt=0;}catch(error){failed=true;dirty().forEach(row=>rowMessage(row,'Не сохранено',true));message(error.message,true);if((error.retryable||error instanceof TypeError)&&retryAttempt<3){retryAttempt++;clearTimeout(timer);timer=setTimeout(()=>{pending=true;flush();},1000*Math.pow(2,retryAttempt));}break;}}
+   while(pending||dirty().length){
+    pending=false;const changed=dirty(),deletions=changed.filter(row=>field(row,'DELETE')?.checked),people=changed.filter(isPerson);
+    const selected=deletions.length?deletions:people.length?people:changed;
+    try{await save(selected);failed=false;retryAttempt=0;}catch(error){failed=true;selected.forEach(row=>rowMessage(row,row.querySelector('[data-error]')?.textContent||error.message,true));message(error.message,true);if((error.retryable||error instanceof TypeError)&&retryAttempt<3){retryAttempt++;clearTimeout(timer);timer=setTimeout(()=>{pending=true;flush();},1000*Math.pow(2,retryAttempt));}break;}}
    return !failed;
   })();
   try{return await running;}finally{running=null;}
@@ -90,9 +106,9 @@
   const button=event.target.closest('[data-person-remove],[data-work-remove]');if(!button)return;
   const row=button.closest('[data-production-person],[data-work-fact-row]');button.disabled=true;
   try{
-   if(!field(row,'id').value&&!running){await form.productionReleaseRow(row);row.remove();reindex();form.dispatchEvent(new Event('change',{bubbles:true}));return;}
+   if(!field(row,'id').value&&!running){try{await form.productionReleaseRow(row);}catch{}row.remove();reindex();form.dispatchEvent(new Event('change',{bubbles:true}));return;}
    await form.productionClaimRow(row);field(row,'DELETE').checked=true;row.classList.add('production-person-auto-deleting');row.dataset.entryDirty='1';row.dispatchEvent(new Event('change',{bubbles:true}));schedule(row);await flush();
-  }catch(error){rowMessage(row,error.message,true);message(error.message,true);}finally{button.disabled=false;}
+  }catch(error){rowMessage(row,error.message,true);message(error.message,true);}finally{if(row.isConnected)row.classList.remove('production-person-auto-deleting');button.disabled=false;}
  });
  form.addEventListener('submit',event=>{event.preventDefault();flush();},true);
  window.addEventListener('beforeunload',event=>{if(running||pending||dirty().length){event.preventDefault();event.returnValue='';}});

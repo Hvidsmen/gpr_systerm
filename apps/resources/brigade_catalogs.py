@@ -17,6 +17,9 @@ class BrigadeCatalogList(View):
     def get(self, request):
         model, form, title = CONFIG[self.kind]
         records = model.objects.filter(company=request.user.company)
+        if self.kind=='group':
+            from .group_order import ordered
+            records=ordered(records)
         if request.GET.get('export') == 'xlsx':
             from core.catalogue_excel import catalogue_response
             return catalogue_response(request, records)

@@ -21,7 +21,7 @@ def labor_direction():
 
 
 def prepare(obj,day):
-    employees=list(Employee.objects.filter(company=obj.company,is_active=True).select_related('position').order_by('last_name','first_name','middle_name','employee_number','pk'))
+    employees=list(Employee.objects.filter(company=obj.company,is_active=True).select_related('position__planning_mapping__brigade__group').order_by('last_name','first_name','middle_name','employee_number','pk'))
     stays={s.person.employee_id:s for s in present_stays(obj.company,day).filter(person__employee__company=obj.company).exclude(person__employee=None).select_related('camp','person__employee')}
     linked=set(obj.camp_links.filter(company=obj.company).values_list('camp_id',flat=True))
     # Closed actual stays take precedence over an undated legacy table status.
@@ -31,7 +31,8 @@ def prepare(obj,day):
     legacy={}
     for slot in StaffingSlot.objects.filter(company=obj.company,person__employee__isnull=False).values('person__employee_id','status'):
         legacy.setdefault(slot['person__employee_id'],set()).add(slot['status'])
-    employees.sort(key=lambda e:(e.display_name.casefold(),e.employee_number.casefold(),e.pk))
+    from apps.resources.group_order import employee_order
+    employees.sort(key=employee_order)
     locations={};groups=[[],[],[]]
     for employee in employees:
         stay=stays.get(employee.pk);previous=last.get(employee.pk)

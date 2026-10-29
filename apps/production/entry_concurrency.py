@@ -22,6 +22,8 @@ def normalized(field, value):
 def snapshot(user,obj,day,groups):
     data={'user':user.pk,'company':obj.company_id,'object':obj.pk,'day':day.isoformat(),'rows':{}}
     data['actuation']=actuation_version(obj,day)
+    from .day_reset import epoch
+    data['reset_epoch']=epoch(obj,day)
     for group in groups:
         if group['prefix'] not in {'works','labor'}:continue
         entries={}
@@ -38,6 +40,8 @@ def prepare(user,obj,day,groups,signed):
     except (signing.BadSignature,TypeError):raise ValidationError('Версия формы устарела. Обновите день; сохранённый факт останется на месте.')
     if any(data.get(key)!=value for key,value in {'user':user.pk,'company':obj.company_id,'object':obj.pk,'day':day.isoformat()}.items()):
         raise ValidationError('Эта форма относится к другому пользователю, объекту или дню.')
+    from .day_reset import epoch
+    if data.get('reset_epoch',0)!=epoch(obj,day):raise ValidationError('Производственная часть сброшена администратором. Обновите страницу перед новым вводом.')
     for group in groups:
         if group['prefix'] not in {'works','labor'}:continue
         originals=data['rows'].get(group['prefix'],{})
@@ -94,6 +98,9 @@ def saved_state(user,obj,day,groups,baseline):
 
 
 def check_locked(groups,obj=None,day=None,baseline=None):
+    if obj and baseline is not None:
+        from .day_reset import epoch
+        if baseline.get('reset_epoch',0)!=epoch(obj,day):raise ValidationError('Производственная часть сброшена администратором. Обновите страницу перед новым вводом.')
     if obj and baseline is not None and baseline.get('actuation')!=actuation_version(obj,day):
         raise ValidationError('Актировка объекта изменилась. Обновите день перед сохранением.')
     for group in groups:

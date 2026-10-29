@@ -51,7 +51,7 @@
   if(polling||closed)return;polling=true;const original=snapshot(),saving=window.productionAutoSave.running;
   const keep=rows().filter(r=>r.dataset.entryDirty||r.dataset.personDirty||r.dataset.autoPending||field(r,r.matches('[data-production-person]')?'person_editing':'work_editing')?.value==='1').map(form.productionKeyOf);
   try{
-   const response=await fetch(form.dataset.liveUrl,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRFToken':csrf},body:JSON.stringify({...scope,step,digest,keep,production_snapshot:original})});if(!response.ok)return;
+   const response=await fetch(form.dataset.liveUrl,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRFToken':csrf},body:JSON.stringify({...scope,step,digest,keep,production_snapshot:original})});if(response.status===409){const result=await response.json();if(result.reset_required){closed=true;form.dataset.resetRequired='1';const warning=document.createElement('div');warning.className='alert alert-warning';warning.role='alert';warning.append(document.createTextNode(result.error+' '));const link=document.createElement('a');link.href=location.href;link.textContent='Обновить форму';warning.append(link);form.before(warning);window.productionAutoSave?.flush();}return;}if(!response.ok)return;
    const data=await response.json();presence(data.users);
    const currentKeep=rows().filter(r=>r.dataset.entryDirty||r.dataset.personDirty||r.dataset.autoPending||field(r,r.matches('[data-production-person]')?'person_editing':'work_editing')?.value==='1').map(form.productionKeyOf);
    if(saving||window.productionAutoSave.running||original!==snapshot()||JSON.stringify(keep)!==JSON.stringify(currentKeep))return;

@@ -43,26 +43,7 @@ def group_label(key):
     return key[0] if isinstance(key,tuple) else key
 
 
-def labor_group_order(label):
-    name=''.join(character for character in label.casefold() if character.isalnum())
-    priorities={
-        'итрсостав':0,
-        'итр':0,
-        'водительспецтехники':1,
-        'водителиспецтехники':1,
-        'водителиспециальнойтехники':1,
-        'водителивспомогательнойтехники':2,
-        'водительвспомогательнойтехники':2,
-        'основнойрабочийсостав':3,
-        'вспомогательныйперсонал':4,
-    }
-    return (priorities.get(name,6 if name=='безгруппы' else 5),label.casefold())
-
-
-def equipment_group_order(label):
-    name=''.join(character for character in label.casefold() if character.isalnum())
-    priorities={'специализированнаятехника':0,'вспомогательнаятехника':1}
-    return (priorities.get(name,3 if name in {'безкатегории','безгруппы'} else 2),label.casefold())
+from apps.resources.group_order import labor_group_order,equipment_group_order
 
 
 def total(entries,kind):

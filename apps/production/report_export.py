@@ -79,7 +79,8 @@ def workbook(obj,day,report):
     row+=1;heading('Сотрудники')
     for start,end,text in [(1,3,'Сотрудник'),(4,4,'Смена'),(5,8,'Выполненные работы / занятость'),(9,9,'Ввод')]:write(row,start,end,text,fill=PALE,bold=True)
     row+=1;last_group=last_role=None
-    for person in sorted(people,key=lambda p:(p.get('group',''),p.get('position',''),p['name'])):
+    from apps.resources.group_order import labor_group_order
+    for person in sorted(people,key=lambda p:(labor_group_order(p.get('group','')),p.get('position',''),p['name'])):
         group=person.get('group') or 'Без группы плана';role=person.get('position') or 'Должность не указана'
         if group!=last_group:heading(group);last_group=group;last_role=None
         if role!=last_role:heading(role,2);last_role=role

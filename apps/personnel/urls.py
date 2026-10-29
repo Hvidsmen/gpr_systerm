@@ -34,7 +34,9 @@ urlpatterns += [path('housing/reconcile/',reconcile,name='housing_reconcile')]
 from . import lodging_views
 urlpatterns += [
     path('lodging/',lodging_views.board,name='lodging'),
+    path('lodging/employees/<int:pk>/gender/',lodging_views.employee_gender,name='lodging_employee_gender'),
     path('lodging/claims/',lodging_views.claims,name='lodging_claims'),
+    path('lodging/available-beds/',lodging_views.available_beds,name='lodging_available_beds'),
     path('lodging/beds/quick-create/',lodging_views.quick_bed,name='lodging_quick_bed'),
     path('lodging/sync/',lodging_views.sync,name='lodging_sync'),
     path('lodging/sync/status/',lodging_views.sync_status,name='lodging_sync_status'),

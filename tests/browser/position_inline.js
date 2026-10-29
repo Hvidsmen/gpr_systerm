@@ -32,7 +32,26 @@ const {chromium}=require('playwright'),fs=require('fs'),assert=require('node:ass
   assert.equal(await person().locator('[name$="-activity"]').inputValue(),'Значение после сбоя');assert((await page.locator('[data-autosave-state]').textContent()).includes('Временная ошибка'));
   await page.locator('[data-autosave-retry]').click();await page.waitForFunction(()=>document.querySelector('[data-autosave-state]').textContent.includes('Все изменения сохранены'));
 
-  await person().locator('.production-person-details>summary').click();
+  // A cleared saved work quantity must not block deletion on the People tab.
+  await page.locator('[data-step="1"]').click();
+  const work=page.locator('[data-work-fact-row][data-planned="1"]').first(),quantity=work.locator('[name$="-actual_quantity"]');
+  const planned=(await work.locator('[data-work-plan]').textContent()).trim().split(/\s+/)[0].replace(',','.');
+  await quantity.fill(planned);await saved();await quantity.fill('');
+  assert.equal(await page.evaluate(()=>window.productionAutoSave.flush()),false);
+  assert((await work.locator('[data-error]').textContent()).includes('или 0'));
+  await work.scrollIntoViewIfNeeded();await page.screenshot({path:'/tmp/production-work-compact-error.png'});
+  await page.locator('[data-step="2"]').click();const removedId=await person().locator('[name$="-id"]').inputValue();
+  await person().getByRole('button',{name:'Удалить',exact:true}).click();
+  await page.waitForFunction(id=>![...document.querySelectorAll('[data-production-person] input[name$="-id"]')].some(el=>el.value===id),removedId);
+  assert.equal(await role().locator('[data-production-person]').count(),0);
+  await page.locator('[data-step="1"]').click();assert.equal(await quantity.inputValue(),'');
+  await quantity.fill(planned);await saved();
+  await work.scrollIntoViewIfNeeded();await page.screenshot({path:'/tmp/production-work-compact.png'});
+  await page.setViewportSize({width:390,height:844});await page.waitForFunction(()=>document.getElementById('sidebar').getBoundingClientRect().right<=1);await work.scrollIntoViewIfNeeded();
+  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2));await page.screenshot({path:'/tmp/production-work-compact-mobile.png'});
+  await page.setViewportSize({width:1530,height:1040});await page.locator('[data-step="2"]').click();
+  await role().getByRole('button',{name:'Назначить сотрудника'}).click();await person().locator('[name$="-employee"]').selectOption(String(c.employee));await saved();
+
   await role().getByRole('button',{name:'Назначить сотрудника'}).click();const extra=role().locator('[data-production-person]').last();
   assert(await extra.locator(`[name$="-employee"] option[value="${c.employee}"]`).isDisabled());
   await extra.locator('[name$="-employee"]').evaluate((el,id)=>{el.value=String(id);el.dispatchEvent(new Event('change',{bubbles:true}));},c.employee);

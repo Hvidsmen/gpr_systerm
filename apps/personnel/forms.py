@@ -148,7 +148,8 @@ class MovementForm(forms.Form):
         present=present_stays(company,day).filter(camp=camp).values('person__employee_id')
         # Keep present archived employees selectable for departure/transfer.
         # The browser switches the visible choices without clearing the form.
-        self.fields['employees'].queryset=employees.filter(Q(is_active=True)|Q(pk__in=present)).order_by('last_name','first_name','pk')
+        from apps.resources.group_order import ordered
+        self.fields['employees'].queryset=ordered(employees.filter(Q(is_active=True)|Q(pk__in=present)).select_related('position__planning_mapping__brigade__group'),group_path='position__planning_mapping__brigade__group',within=('position__name','last_name','first_name','pk'))
         self.fields['employees'].widget.attrs['data-present-employees']=','.join(str(pk) for pk in present.values_list('person__employee_id',flat=True) if pk)
         import json
         by_camp={}

@@ -32,18 +32,52 @@ def parameters(request):
 def board_url(camp,day):return reverse('personnel:lodging')+'?'+urlencode({'camp':camp.pk,'date':str(day)})
 
 
+@login_required
+@require_POST
+def employee_gender(request,pk):
+    require_roles(request.user,lodging.OPERATORS)
+    camp,day=parameters(request)
+    value=request.POST.get('gender','')
+    if value not in dict(Employee._meta.get_field('gender').choices):return JsonResponse({'error':'Выберите пол из списка.'},status=400)
+    with transaction.atomic():
+        employee=get_object_or_404(Employee.objects.select_for_update(),company=request.user.company,pk=pk)
+        if not lodging.present(request.user.company,day).filter(camp=camp,employee=employee).exists():raise Http404('Сотрудник не проживает в выбранном ВЖГ.')
+        if employee.gender!=value:
+            from apps.audit.models import AuditLog
+            previous=employee.gender;employee.gender=value;employee.save(update_fields=['gender','updated_at'])
+            AuditLog.objects.create(user=request.user,action='UPDATE',entity_type='resources.Employee',entity_id=str(employee.pk),old_value={'gender':previous},new_value={'gender':value},comment='Уточнение пола сотрудника в учёте коменданта')
+    messages.success(request,'Пол сотрудника сохранён в карточке.')
+    return redirect(board_url(camp,day)+'#places')
+
+
 def employee_company(employee):return employee.zup_organisation or str(employee.company)
 
 
+@login_required
+@require_GET
+def available_beds(request):
+    require_roles(request.user,lodging.OPERATORS)
+    camp,day=parameters(request)
+    try:day=date.fromisoformat(request.GET.get('date',''))
+    except ValueError:return JsonResponse({'error':'Укажите корректную дату.'},status=400)
+    try:session=lodging.session_id(request.GET.get('session')) if request.GET.get('session') else None
+    except ValidationError:return JsonResponse({'error':'Обновите форму оформления.'},status=400)
+    beds=lodging.available_beds(request.user.company,camp,day,user=request.user,session=session)
+    return JsonResponse({'beds':[{'id':bed.pk,'label':str(bed)+' — Свободно'} for bed in beds]})
+
+
 def place_rows(company,camp,day):
-    occupied={stay.bed_id:stay for stay in lodging.present(company,day).filter(camp=camp).select_related('employee__position','employee__company','bed__building','recorded_by')}
+    occupied={stay.bed_id:stay for stay in lodging.present(company,day).filter(camp=camp).select_related('employee__position__planning_mapping__brigade__group','employee__company','bed__building','recorded_by')}
     leases={row.resource_id:row for row in LodgingControl.objects.filter(company=company,resource='bed',expires_at__gt=timezone.now()).select_related('locked_by')}
+    from apps.resources.group_order import position_group
     rows=[]
     for bed in LodgingBed.objects.filter(company=company,building__camp=camp).select_related('building'):
         stay=occupied.get(bed.pk);status='OCCUPIED' if stay else 'UNAVAILABLE' if not bed.building.is_active else 'FREE' if bed.state=='AVAILABLE' else bed.state
         rows.append({'bed':bed,'stay':stay,'status':status,'status_label':{'OCCUPIED':'Занято','FREE':'Свободно','RESERVED':'Зарезервировано','UNAVAILABLE':'Недоступно'}[status],
             'organization':(stay.organization_snapshot or employee_company(stay.employee)) if stay else '', 'lease':leases.get(bed.pk),
             'position':(stay.position_snapshot if stay.organization_snapshot else stay.employee.display_position) if stay else '',
+            'gender':stay.employee.get_gender_display() if stay else '',
+            'position_group':position_group(stay.employee.position) if stay else '',
             'department':(stay.department_snapshot if stay.organization_snapshot else stay.employee.display_department) if stay else '',
             'overdue':bool(stay and stay.planned_departure and stay.planned_departure<day)})
     return rows
@@ -75,14 +109,14 @@ def board(request):
     initial={'date':day,'session':uuid4(),'kind':'CHECKIN'}
     if request.GET.get('employee','').isdigit():initial['employee']=int(request.GET['employee'])
     if request.GET.get('kind') in {'CHECKIN','MOVE','CHECKOUT','UPDATE'}:initial['kind']=request.GET['kind']
-    form=LodgingMovementForm(request.POST if request.method=='POST' else None,company=request.user.company,camp=camp,day=day,initial=initial)
+    form=LodgingMovementForm(request.POST if request.method=='POST' else None,company=request.user.company,camp=camp,day=day,user=request.user,initial=initial)
     if request.method=='POST':
         require_roles(request.user,lodging.OPERATORS)
         if form.is_valid():
             data=form.cleaned_data
             try:
                 lodging.move(request.user,data['kind'],camp,data['date'],data['employee'],bed=data.get('bed') if data['kind'] in {'CHECKIN','MOVE'} else None,
-                    session=data['session'],signed=data['signed'],planned_departure=data.get('planned_departure'),keys_issued=data['keys_issued'],pass_number=data['pass_number'],comment=data['comment'])
+                    session=data['session'],signed=data['signed'],planned_departure=data.get('planned_departure'),keys_issued=data['keys_issued'],key_number=data['key_number'],pass_number=data['pass_number'],comment=data['comment'])
             except ValidationError as exc:form.add_error(None,exc)
             else:messages.success(request,'Проживание сохранено. Сверка с перевахтой обновлена.');return redirect(board_url(camp,data['date']))
     all_rows=place_rows(request.user.company,camp,day);stats=Counter(row['status'] for row in all_rows)
@@ -91,10 +125,10 @@ def board(request):
     rows=[r for r in all_rows if (not state or r['status']==state) and all(term in ' '.join([str(r['bed']),r['stay'].employee.display_name if r['stay'] else '',r['stay'].employee.employee_number if r['stay'] else '',r['organization']]).casefold() for term in q)]
     from .housing_views import workbook_response
     if request.GET.get('export')=='xlsx':
-        values=[['ВЖГ','Вагон / корпус','Инвентарный номер','Тип','Комната','Место','Состояние','ФИО','Табельный номер','Организация','Должность','Подразделение','Ключи','Заселение','Плановое освобождение','Выселение','Пропуск','Примечание']]
+        values=[['ВЖГ','Вагон / корпус','Инвентарный номер','Сведения о вагоне','Тип','Комната','Место','Состояние','ФИО','Табельный номер','Пол','Группа должностей','Должность','Подразделение','Ключи','Номер ключа','Заселение','Плановая дата выселения','Выселение','Пропуск','Примечание']]
         for row in rows:
             b=row['bed'];s=row['stay'];e=s.employee if s else None
-            values.append([camp.name,b.building.name,b.building.inventory_number,b.building.kind,b.room,b.number,row['status_label'],e.display_name if e else '',e.employee_number if e else '',row['organization'],row['position'],row['department'],('Да' if s.keys_issued else 'Нет') if s else '',s.arrived_on if s else '',s.planned_departure if s else '',s.departed_on if s else '',s.pass_number if s else '',s.comment if s else b.note])
+            values.append([camp.name,b.building.name,b.building.inventory_number,b.building.description,b.building.kind,b.room,b.number,row['status_label'],e.display_name if e else '',e.employee_number if e else '',row['gender'],row['position_group'],row['position'],row['department'],('Да' if s.keys_issued else 'Нет') if s else '',s.key_number if s else '',s.arrived_on if s else '',s.planned_departure if s else '',s.departed_on if s else '',s.pass_number if s else '',s.comment if s else b.note])
         return workbook_response('lodging.xlsx','Проживание',values)
     events=LodgingEvent.objects.filter(company=request.user.company,camp=camp,date__lte=day).select_related('employee','from_bed__building','to_bed__building','recorded_by','stay')[:100]
     groups=[{'building':b,'places':[r for r in rows if r['bed'].building_id==b.pk]} for b in LodgingBuilding.objects.filter(company=request.user.company,camp=camp)]
@@ -102,7 +136,7 @@ def board(request):
     context={'groups':groups,'selector':selector,'has_camps':camps.exists(),'camp':camp,'day':day,'form':form,'rows':rows,'stats':dict(stats),'organizations':sorted(organizations.items()),'editable':editable,'catalogue_editable':role_code(request.user) in lodging.OPERATORS,'events':events,
         'quick_bed_form':QuickBedForm(company=request.user.company,camp=camp),
         'movement_open':request.method=='POST' or bool(request.GET.get('employee')),
-        'roster_data':[{'employee':s.employee_id,'bed':s.bed_id,'planned_departure':str(s.planned_departure or ''),'keys_issued':s.keys_issued,'pass_number':s.pass_number,'comment':s.comment} for s in lodging.present(request.user.company,day).filter(camp=camp)],
+        'roster_data':[{'employee':s.employee_id,'bed':s.bed_id,'planned_departure':str(s.planned_departure or ''),'keys_issued':s.keys_issued,'key_number':s.key_number,'pass_number':s.pass_number,'comment':s.comment} for s in lodging.present(request.user.company,day).filter(camp=camp)],
         **summary_context(request.user,camp,day),**window_context(request.user,day)}
     return render(request,'personnel/lodging.html',context)
 

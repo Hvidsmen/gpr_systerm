@@ -34,6 +34,8 @@ class LodgingImportTests(TestCase):
         self.assertEqual(self.send().status_code,302)
         batch=LodgingImportBatch.objects.get();self.assertEqual(batch.rows.count(),3)
         self.assertEqual(LodgingBed.objects.count(),3);self.assertEqual(LodgingStay.objects.count(),1)
+        self.assertEqual(LodgingBuilding.objects.get().name,'Вагон 1');self.assertEqual(LodgingBuilding.objects.get().description,'Инв. АБ-001')
+        self.assertEqual(LodgingBuilding.objects.get().inventory_number,'АБ-001')
         stay=LodgingStay.objects.get();self.assertEqual(stay.arrived_on,self.day-timedelta(days=5));self.assertEqual(stay.recorded_by,self.admin)
         self.assertEqual(stay.organization_snapshot,'Организация');self.assertTrue(stay.keys_issued)
         self.assertEqual(LodgingEvent.objects.count(),1);self.assertEqual(CampStay.objects.count(),before);self.assertEqual(HousingEvent.objects.count(),events)
@@ -48,6 +50,18 @@ class LodgingImportTests(TestCase):
         self.assertEqual(self.client.get(reverse('personnel:lodging_import')).status_code,403)
         self.assertEqual(self.client.post(reverse('personnel:lodging_import_review',args=[batch.pk])).status_code,403)
         self.client.force_login(self.admin);self.assertContains(self.send(camp=self.foreign_camp),'Выберите корректный вариант')
+    def test_reupload_enriches_legacy_key_metadata_without_reentering_stay(self):
+        from openpyxl import load_workbook
+        book=load_workbook(BytesIO(workbook(self.day,[self.employee.display_name])))
+        book.active.cell(4,8,'КЛЮЧ 2/19');book.active.cell(4,12,'P-19');out=BytesIO();book.save(out);self.raw=out.getvalue()
+        with patch.object(service,'numbered_key',return_value=''):self.send()
+        stay=LodgingStay.objects.get();self.assertFalse(stay.keys_issued)
+        before=LodgingEvent.objects.count();self.send();stay.refresh_from_db()
+        self.assertEqual(stay.key_number,'КЛЮЧ 2/19');self.assertTrue(stay.keys_issued);self.assertEqual(stay.pass_number,'P-19')
+        self.assertEqual(LodgingStay.objects.count(),1);self.assertEqual(LodgingEvent.objects.count(),before)
+        # A later operator correction remains authoritative on another re-upload.
+        stay.key_number='';stay.keys_issued=False;stay.save();self.send();stay.refresh_from_db()
+        self.assertEqual(stay.key_number,'КЛЮЧ 2/19');self.assertFalse(stay.keys_issued)
     def test_conflicting_occupancy_does_not_change_existing_stay(self):
         self.send([self.employee.display_name]);stay=LodgingStay.objects.get();original=stay.updated_at
         raw=workbook(self.day,[None,self.employee.display_name])

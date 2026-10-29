@@ -28,8 +28,8 @@ def issues(company,camps,day,*,include_resolved=False):
     for object_id,camp_id in CampObjectLink.objects.filter(company=company).values_list('construction_object_id','camp_id'):object_camps.setdefault(object_id,set()).add(camp_id)
     for fact in EmployeeActivity.objects.filter(company=company,date=day,assignment_reviewed=True).select_related('employee__position__planning_mapping__brigade__group','reported_by__role','construction_object'):
         if activity_direction(fact)=='works':facts.setdefault(fact.employee_id,[]).append(fact)
-    hr_all=list(CampStay.objects.filter(company=company,cancelled_at=None,arrived_on__lte=day,person__employee__isnull=False).select_related('person__employee','camp').order_by('-arrived_on','-pk'))
-    living=list(LodgingStay.objects.filter(company=company,cancelled_at=None,arrived_on__lte=day).select_related('employee','camp','bed__building').order_by('-arrived_on','-pk'))
+    hr_all=list(CampStay.objects.filter(company=company,cancelled_at=None,arrived_on__lte=day,person__employee__isnull=False).select_related('person__employee__position__planning_mapping__brigade__group','camp').order_by('-arrived_on','-pk'))
+    living=list(LodgingStay.objects.filter(company=company,cancelled_at=None,arrived_on__lte=day).select_related('employee__position__planning_mapping__brigade__group','camp','bed__building').order_by('-arrived_on','-pk'))
     hr={};last_hr={};rooms={};last_room={};chains={}
     for row in hr_all:
         pk=row.person.employee_id;last_hr.setdefault(pk,row)
@@ -72,7 +72,8 @@ def issues(company,camps,day,*,include_resolved=False):
         camp=resident.camp if resident else personnel.camp if personnel else selected[0]
         suggestion=day if code=='PRODUCTION' else arrival if code in {'ARRIVAL','CAMP'} else old_hr.departed_on if code=='DEPARTED_OPEN' else old_room.departed_on if code=='AFTER_CHECKOUT' else personnel.arrived_on
         result.append({'employee':employee,'code':code,'title':TITLES[code],'camp':camp,'living':resident,'personnel':personnel,'last_hr':old_hr,'last_room':old_room,'arrival':arrival,'suggested_date':suggestion,'fingerprint':fingerprint,'resolved':resolved,'production':production})
-    return result
+    from apps.resources.group_order import employee_order
+    return sorted(result,key=lambda row:employee_order(row['employee']))
 
 
 def signed_issue(user,row):return signing.dumps({'user':user.pk,'company':user.company_id,'employee':row['employee'].pk,'fingerprint':row['fingerprint']},salt='lodging-sync',compress=True)

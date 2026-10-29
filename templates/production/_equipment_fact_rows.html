@@ -1,4 +1,4 @@
-{% for row in group.formset %}
+{% for row in group.ordered_rows|default:group.formset %}
 <details class="border rounded mb-2 p-3" data-machine-fact {% if row.baseline %}data-assigned-work="{{ row.baseline.assignment.work_id|default:'' }}" data-assigned-item="{{ row.baseline.assignment.work_item_id|default:'' }}" data-assigned-general="{{ row.baseline.assignment.general|yesno:'1,0' }}" data-assigned-activity="{{ row.baseline.assignment.activity }}"{% endif %} {% if row.errors or not row.baseline and not row.instance.pk %}open{% endif %}>
   <summary class="d-flex flex-wrap align-items-center gap-2">
     <strong>{{ row.machine_label }}</strong><span>Смена {{ row.shift_label }} · {{ row.state_label }}</span>

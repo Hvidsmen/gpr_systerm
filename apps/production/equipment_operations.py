@@ -210,7 +210,7 @@ def prepare(obj, day):
         Q(effective_date__lt=day) | Q(effective_date=day, shift__lte=OuterRef('shift'))).order_by('-effective_date', '-shift', '-pk')
     assignments = list(EquipmentAssignment.objects.filter(company=obj.company, construction_object=obj, cancelled_at__isnull=True,
         start_date__lte=day).filter(Q(end_date__isnull=True) | Q(end_date__gte=day)).annotate(
-        effective_state_id=Subquery(last_state.values('pk')[:1])).select_related('equipment__type', 'work', 'work_item'))
+        effective_state_id=Subquery(last_state.values('pk')[:1])).select_related('equipment__type__parent__category','equipment__type__category','equipment__catalogue_group', 'work', 'work_item'))
     states = EquipmentStateChange.objects.in_bulk([row.effective_state_id for row in assignments if row.effective_state_id])
     baselines = {}
     versions = []

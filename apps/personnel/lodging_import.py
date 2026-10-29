@@ -24,6 +24,9 @@ SHEET='Шахматка КТП 1'
 
 def text(value):return ' '.join(str(value or '').split())
 def key(value):return text(value).casefold().replace('ё','е')
+def numbered_key(value):
+    value=text(value)
+    return value if re.match(r'^ключ(?:и|ик)?\s*(?:№\s*)?\S*\d',value,re.I) else ''
 def day(value):
     if isinstance(value,datetime):return value.date()
     if isinstance(value,date):return value
@@ -68,10 +71,11 @@ def parse(raw):
             if departed and snapshot and departed>snapshot:warning='Выбытие позже даты среза.'
             inventory=re.search(r'(?:инв\.?\s*№?\s*)([А-ЯA-Z]{1,4}[- ]?\d+)',description,re.I)
             note=' · '.join(v for v in [description,text(values[3]),text(values[11])] if v)
+            key_source=text(values[7]);named_key=numbered_key(key_source)
             state='UNAVAILABLE' if 'опечатан' in key(building) else 'RESERVED' if not name and 'заказчик' in key(note) else 'AVAILABLE'
-            rows.append({'source_row':number,'building':building,'bed':bed,'inventory':inventory.group(1) if inventory else '',
+            rows.append({'source_row':number,'building':building,'description':description,'bed':bed,'inventory':inventory.group(1) if inventory else '',
                 'kind':text(values[3]),'note':note,'bed_state':state,'name':name,'organization':text(values[5]),'position':text(values[6]),
-                'keys':key(values[7]) in {'да','выданы','+','1'},'keys_source':text(values[7]),'arrived':str(arrived) if arrived else '',
+                'keys':key(values[7]) in {'да','выданы','+','1'} or bool(named_key),'key_number':named_key,'keys_source':key_source,'arrived':str(arrived) if arrived else '',
                 'departed':str(departed) if departed else '','department':text(values[10]),'pass_number':text(values[11]),'warning':warning})
         if not header or not snapshot or not rows:raise ValidationError('Не найдены заголовок шахматки, дата среза или места.')
         if snapshot>timezone.localdate():raise ValidationError('Дата среза находится в будущем.')
@@ -93,6 +97,26 @@ class UploadForm(forms.Form):
         return file
 
 
+def refresh_metadata(user,batch,parsed):
+    """Re-upload fills missing metadata without re-entering or replacing stays."""
+    from apps.production.history_models import FactRevision
+    source={data['source_row']:data for data in parsed['rows']}
+    with history_actor(user,'Дополнение сведений из шахматки коменданта'):
+        for row in batch.rows.select_for_update().select_related('stay__bed__building'):
+            data=source.get(row.source_row)
+            if not data:continue
+            row.data.update({name:data[name] for name in ('description','key_number','keys')});row.save(update_fields=['data','updated_at'])
+            stay=row.stay
+            if not stay:continue
+            building=stay.bed.building
+            if not building.description and data['description']:building.description=data['description'];building.save(update_fields=['description','updated_at'])
+            if not stay.key_number and data['key_number']:
+                stay.key_number=data['key_number']
+                # Preserve a commandant's subsequent correction of the issued flag.
+                if not FactRevision.objects.filter(company=user.company,entity_type='personnel.lodgingstay',entity_id=str(stay.pk),operation='UPDATE').exists():stay.keys_issued=data['keys']
+                stay.save(update_fields=['key_number','keys_issued','updated_at'])
+
+
 @transaction.atomic
 def apply(user,batch):
     require_roles(user,{'ADMIN'});lodging.mutex(user)
@@ -108,7 +132,9 @@ def apply(user,batch):
             try:
                 matches=buildings.get(key(data['building']),[])
                 if len(matches)>1:raise ValidationError('Несколько вагон-домов с одинаковым названием.')
-                building=matches[0] if matches else LodgingBuilding.objects.create(company=user.company,camp=batch.camp,name=data['building'],inventory_number=data['inventory'],kind=data['kind'])
+                building=matches[0] if matches else LodgingBuilding.objects.create(company=user.company,camp=batch.camp,name=data['building'],description=data.get('description',''),inventory_number=data['inventory'],kind=data['kind'])
+                if matches and not building.description and data.get('description'):
+                    building.description=data['description'];building.save(update_fields=['description','updated_at'])
                 buildings[key(building.name)]=[building]
                 if not data['bed']:raise ValidationError('Не указан номер места. Уточните исходный файл.')
                 bed,_=LodgingBed.objects.get_or_create(company=user.company,building=building,room='',number=data['bed'],defaults={'state':data['bed_state'],'note':data['note'][:500]})
@@ -129,7 +155,7 @@ def apply(user,batch):
                             if not building.is_active or bed.state!='AVAILABLE':raise ValidationError('Место недоступно для заселения. Проверьте его состояние.')
                             controls=lodging.controls(user,[('bed',bed.pk),('employee',employee.pk)])
                             for control in controls:lodging.locked_elsewhere(control,user,None)
-                            stay=LodgingStay(company=user.company,employee=employee,camp=batch.camp,bed=bed,arrived_on=arrived,departed_on=departed,keys_issued=data['keys'],pass_number=data['pass_number'],organization_snapshot=data['organization'],position_snapshot=data['position'],department_snapshot=data['department'],recorded_by=user,comment=f"{batch.filename} · {SHEET} · строка {row.source_row} · срез {batch.snapshot_date}. Ключи: {data['keys_source']}")
+                            stay=LodgingStay(company=user.company,employee=employee,camp=batch.camp,bed=bed,arrived_on=arrived,departed_on=departed,keys_issued=data['keys'],key_number=data.get('key_number',''),pass_number=data['pass_number'],organization_snapshot=data['organization'],position_snapshot=data['position'],department_snapshot=data['department'],recorded_by=user,comment=f"{batch.filename} · {SHEET} · строка {row.source_row} · срез {batch.snapshot_date}. Ключи: {data['keys_source']}")
                             stay.full_clean();stay.save();row.stay=stay
                             LodgingEvent.objects.create(company=user.company,employee=employee,camp=batch.camp,date=arrived,kind='CHECKIN',to_bed=bed,stay=stay,comment=stay.comment,recorded_by=user)
                             if departed:LodgingEvent.objects.create(company=user.company,employee=employee,camp=batch.camp,date=departed,kind='CHECKOUT',from_bed=bed,stay=stay,comment=stay.comment,recorded_by=user)
@@ -156,6 +182,7 @@ def upload(request):
                 batch,created=LodgingImportBatch.objects.get_or_create(company=request.user.company,camp=camp,digest=sha256(raw).hexdigest(),defaults={'filename':file.name,'snapshot_date':date.fromisoformat(parsed['snapshot']),'created_by':request.user})
                 if created:
                     for data in parsed['rows']:LodgingImportRow.objects.create(company=request.user.company,batch=batch,source_row=data['source_row'],data=data)
+                else:refresh_metadata(request.user,batch,parsed)
                 apply(request.user,batch)
             messages.success(request,'Шахматка обработана. Непроверенные строки сохранены отдельно; история перевахты не изменялась.')
             return redirect('personnel:lodging_import_review',pk=batch.pk)

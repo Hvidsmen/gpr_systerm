@@ -76,12 +76,14 @@ def monthly_plan(user,camp,day,*,camps=None):
                 bucket['versions'].add(getattr(chosen.version,'revision',getattr(chosen.version,'version_number','')))
                 for pk,values in index[id(chosen)].items():bucket['values'][pk][when]+=values.get(when,Decimal(0))
     keys={pk for group in groups.values() for bucket in group['months'] for pk in bucket['values']}
-    labels.update(Brigade.objects.filter(company=user.company,pk__in=keys).values_list('pk','name'))
+    brigades={b.pk:b for b in Brigade.objects.filter(company=user.company,pk__in=keys).select_related('group')}
+    labels.update((pk,b.name) for pk,b in brigades.items())
+    from apps.resources.group_order import labor_group_order
     output=[]
     for group in sorted(groups.values(),key=lambda g:(g['object'].name.casefold(),g['kind'])):
         keys={pk for bucket in group['months'] for pk in bucket['values']}
         rows=[]
-        for pk in sorted(keys,key=lambda pk:labels.get(pk,'Должность').casefold()):
+        for pk in sorted(keys,key=lambda pk:(labor_group_order(brigades[pk].group.name if pk in brigades and brigades[pk].group_id else 'Без группы'),labels.get(pk,'Должность').casefold())):
             values=[sum(bucket['values'][pk].values(),Decimal(0))/len(bucket['days']) if bucket['days'] else None for bucket in group['months']]
             rows.append({'id':pk,'name':labels.get(pk,'Должность'),'actual':len(actual[pk]),'values':values})
         output.append({'object':group['object'],'kind':group['kind'],'rows':rows,'used_for':sorted(group['used_for']),'used_for_ids':sorted(group['used_for_ids']),
@@ -157,4 +159,10 @@ def position_headers(company,rows,plan_context,*,query='',position=None,state=''
             plan['on_shift']=rotation_stats(scoped)['on_shift']
             plan['shortage']=max(plan['peak']-plan['on_shift'],Decimal(0)) if plan['peak'] is not None else None
         output.append(group)
-    return sorted(output,key=lambda group:normalized(group['name']))
+    from apps.resources.group_order import labor_group_order
+    catalogue={b.pk:b for b in Brigade.objects.filter(company=company).select_related('group')}
+    names={normalized(b.name):b for b in catalogue.values()}
+    def order(group):
+        brigade=next((catalogue[pk] for pk in sorted(group['plan_ids']) if pk in catalogue),None) or names.get(normalized(group['name']))
+        return labor_group_order(brigade.group.name if brigade and brigade.group_id else 'Без группы'),normalized(group['name'])
+    return sorted(output,key=order)

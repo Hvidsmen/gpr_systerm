@@ -72,7 +72,7 @@ def camp_edit(request,pk=None):
 
 
 def roster_rows(company,camp,day,query='',position=''):
-    stays=housing.present_stays(company,day).filter(camp=camp).select_related('person__employee__position','person__schedule_slot__pattern','person__schedule_slot__group__board','recorded_by')
+    stays=housing.present_stays(company,day).filter(camp=camp).select_related('person__employee__position__planning_mapping__brigade__group','person__schedule_slot__pattern','person__schedule_slot__group__board','recorded_by')
     if query:stays=stays.filter(Q(person__full_name__icontains=query)|Q(person__employee_number__icontains=query)|Q(person__employee__employee_number__icontains=query)|Q(person__employee__zup_full_name__icontains=query)|Q(person__employee__position__name__icontains=query))
     if position:stays=stays.filter(person__employee__position_id=position)
     days=[day.replace(day=n) for n in range(1,monthrange(day.year,day.month)[1]+1)]
@@ -87,7 +87,8 @@ def roster_rows(company,camp,day,query='',position=''):
             'planned_departure':planned_departure,'planned_departure_display':departure_date,'departure_days':until_departure,
             'departure_warning':('overdue' if until_departure<0 else 'soon' if until_departure<=14 else '') if until_departure is not None else '',
             'position_label':str(person.employee.position) if person.employee_id and person.employee.position_id else slot.group.position if slot else 'Должность не указана'})
-    rows.sort(key=lambda row:(row['position_label'].casefold(),row['person'].full_name.casefold()))
+    from apps.resources.group_order import position_order
+    rows.sort(key=lambda row:(position_order(row['position'],row['position_label']),row['person'].full_name.casefold()))
     return rows,days
 
 

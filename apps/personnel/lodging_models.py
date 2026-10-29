@@ -11,6 +11,7 @@ class LodgingBuilding(ActualHistoryMixin,PersonnelModel):
     camp=models.ForeignKey('personnel.Camp',on_delete=models.PROTECT,related_name='lodging_buildings')
     name=models.CharField('Вагон-дом / корпус',max_length=200)
     inventory_number=models.CharField('Инвентарный номер',max_length=80,blank=True)
+    description=models.TextField('Сведения о вагоне',max_length=4000,blank=True)
     kind=models.CharField('Тип / назначение',max_length=100,blank=True)
     is_active=models.BooleanField('Используется',default=True)
     class Meta:
@@ -42,8 +43,9 @@ class LodgingStay(ActualHistoryMixin,PersonnelModel):
     bed=models.ForeignKey(LodgingBed,on_delete=models.PROTECT,related_name='stays')
     arrived_on=models.DateField('Дата заселения')
     departed_on=models.DateField('Дата выселения',null=True,blank=True)
-    planned_departure=models.DateField('Плановое освобождение',null=True,blank=True)
+    planned_departure=models.DateField('Плановая дата выселения',null=True,blank=True)
     keys_issued=models.BooleanField('Ключи выданы',default=False)
+    key_number=models.CharField('Номер ключа',max_length=80,blank=True)
     pass_number=models.CharField('Номер пропуска',max_length=80,blank=True)
     organization_snapshot=models.CharField('Организация при заселении',max_length=300,blank=True,editable=False)
     position_snapshot=models.CharField('Должность при заселении',max_length=300,blank=True,editable=False)

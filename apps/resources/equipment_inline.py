@@ -13,7 +13,8 @@ class PlanningTypeForm(forms.ModelForm):
         fields=['name','category','unit']
     def __init__(self,*args,company,**kwargs):
         super().__init__(*args,**kwargs);self.instance.company=company
-        self.fields['category'].queryset=EquipmentCategory.objects.filter(company=company)
+        from .group_order import ordered
+        self.fields['category'].queryset=ordered(EquipmentCategory.objects.filter(company=company),kind='equipment')
     def clean_name(self):
         name=self.cleaned_data['name'].strip()
         if EquipmentType.objects.filter(company=self.instance.company,parent=None,merge_source__isnull=True,name__iexact=name).exists():raise forms.ValidationError('Такая техника для планирования уже есть. Выберите её в списке.')

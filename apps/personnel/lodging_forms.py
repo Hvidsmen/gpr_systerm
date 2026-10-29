@@ -25,20 +25,29 @@ class LodgingMovementForm(StyledForm):
     employee=forms.ModelChoiceField(label='Сотрудник',queryset=Employee.objects.none())
     bed=forms.ModelChoiceField(label='Новое место',queryset=LodgingBed.objects.none(),required=False)
     date=forms.DateField(label='Фактическая дата',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
-    planned_departure=forms.DateField(label='Плановое освобождение',required=False,widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
+    planned_departure=forms.DateField(label='Плановая дата выселения',required=False,help_text='Необязательно. Ожидаемая дата; место освобождается только после оформления выселения.',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
     keys_issued=forms.BooleanField(label='Ключи выданы',required=False)
+    key_number=forms.CharField(label='Номер ключа',max_length=80,required=False)
     pass_number=forms.CharField(label='Номер пропуска',max_length=80,required=False)
     comment=forms.CharField(label='Примечание',max_length=4000,required=False,widget=forms.Textarea(attrs={'rows':2}))
     session=forms.UUIDField(widget=forms.HiddenInput)
     signed=forms.CharField(widget=forms.HiddenInput,required=False)
-    def __init__(self,*args,company,camp,day,**kwargs):
+    def __init__(self,*args,company,camp,day,user=None,**kwargs):
         super().__init__(*args,**kwargs)
         current=lodging.present(company,day).filter(camp=camp).values('employee_id')
-        self.fields['employee'].queryset=Employee.objects.filter(company=company).filter(Q(is_active=True)|Q(pk__in=current)).select_related('position').order_by('last_name','first_name','pk')
+        from apps.resources.group_order import ordered
+        self.fields['employee'].queryset=ordered(Employee.objects.filter(company=company).filter(Q(is_active=True)|Q(pk__in=current)).select_related('position__planning_mapping__brigade__group'),group_path='position__planning_mapping__brigade__group',within=('position__name','last_name','first_name','pk'))
         self.fields['employee'].label_from_instance=lambda e:e.display_name+(' · № '+e.employee_number if e.employee_number else '')+(' · '+str(e.position) if e.position_id else '')
-        self.fields['bed'].queryset=LodgingBed.objects.filter(company=company,building__camp=camp,building__is_active=True).select_related('building')
-        occupied={row.bed_id:row.employee.display_name for row in lodging.present(company,day).filter(camp=camp).select_related('employee')}
-        self.fields['bed'].label_from_instance=lambda b:str(b)+' — '+('Занято: '+occupied[b.pk] if b.pk in occupied else b.get_state_display() if b.state!='AVAILABLE' else 'Свободно')
+        selected_day=day
+        if self.is_bound:
+            try:selected_day=self.fields['date'].clean(self.data.get('date'))
+            except forms.ValidationError:pass
+        session=None
+        if user and self.is_bound:
+            try:session=lodging.session_id(self.data.get('session'))
+            except forms.ValidationError:pass
+        self.fields['bed'].queryset=lodging.available_beds(company,camp,selected_day,user=user,session=session)
+        self.fields['bed'].label_from_instance=lambda b:str(b)+' — Свободно'
         self.style()
     def clean(self):
         data=super().clean()
@@ -50,10 +59,11 @@ class LodgingMovementForm(StyledForm):
 class BuildingForm(forms.ModelForm):
     places=forms.IntegerField(label='Создать мест',min_value=0,max_value=200,initial=4,required=False,help_text='Создадим места с номерами 1, 2 и далее. Комнаты можно задать в справочнике мест.')
     class Meta:
-        model=LodgingBuilding;fields=['name','inventory_number','kind','is_active']
+        model=LodgingBuilding;fields=['name','inventory_number','description','kind','is_active']
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
         if self.instance.pk:self.fields.pop('places',None)
+        self.fields['description'].widget.attrs['rows']=2
         for f in self.fields.values():f.widget.attrs['class']='form-check-input' if isinstance(f.widget,forms.CheckboxInput) else 'form-control'
 
 
@@ -89,7 +99,7 @@ class CorrectionForm(forms.ModelForm):
     version=forms.CharField(widget=forms.HiddenInput)
     reason=forms.CharField(label='Причина исправления',max_length=500,widget=forms.Textarea(attrs={'rows':2}))
     class Meta:
-        model=LodgingStay;fields=['arrived_on','departed_on','planned_departure','keys_issued','pass_number','comment']
+        model=LodgingStay;fields=['arrived_on','departed_on','planned_departure','keys_issued','key_number','pass_number','comment']
         widgets={name:forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}) for name in ('arrived_on','departed_on','planned_departure')}
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)

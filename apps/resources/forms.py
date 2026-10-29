@@ -15,11 +15,12 @@ class EmployeeForm(forms.ModelForm):
 
     class Meta:
         model = Employee
-        fields = ['first_name', 'last_name', 'middle_name', 'employee_number', 'position', 'is_active']
+        fields = ['first_name', 'last_name', 'middle_name', 'employee_number', 'gender', 'position', 'is_active']
         widgets = {
             'first_name': forms.TextInput(attrs={'class': 'form-control'}),
             'last_name': forms.TextInput(attrs={'class': 'form-control'}),
             'middle_name': forms.TextInput(attrs={'class': 'form-control'}),
+            'gender': forms.Select(attrs={'class': 'form-select'}),
             'position': forms.Select(attrs={'class': 'form-control'}),
             'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
@@ -30,7 +31,8 @@ class BrigadeForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields['unit'].required = False
         for name in ('group',):
-            self.fields[name].queryset = self.fields[name].queryset.filter(company_id=self.instance.company_id)
+            from .group_order import ordered
+            self.fields[name].queryset = ordered(self.fields[name].queryset.filter(company_id=self.instance.company_id))
             self.fields[name].widget.attrs['class'] = 'form-select'
             self.fields[name].empty_label = 'Не выбрана'
 
@@ -65,7 +67,8 @@ class EquipmentTypeForm(forms.ModelForm):
     driver_categories = forms.MultipleChoiceField(label="Допустимые категории водителя", choices=DRIVER_CATEGORY_CHOICES, required=False, widget=forms.SelectMultiple(attrs={"class":"form-select"}), help_text="Можно выбрать несколько вариантов. Категории ВУ и удостоверения тракториста-машиниста указаны отдельно.")
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['category'].queryset = EquipmentCategory.objects.filter(company_id=self.instance.company_id)
+        from .group_order import ordered
+        self.fields['category'].queryset =ordered(EquipmentCategory.objects.filter(company_id=self.instance.company_id),kind='equipment')
         self.fields['category'].empty_label = 'Выберите группу техники'
         self.fields['category'].widget.attrs['data-equipment-group-select']=''
         self.inline_groups=self.fields['category'].queryset

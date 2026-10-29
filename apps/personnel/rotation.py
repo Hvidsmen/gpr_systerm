@@ -102,7 +102,7 @@ def rotation_rows(company,camps,day,*,query='',position=None,state='',include_un
     from .rotation_calendar import stays_by_person,anchor_for,description,cycle_definition
     schedule_stays=stays_by_person(company)
     camp_ids={camp.pk for camp in camps};camp_names={camp.name.strip().casefold():camp for camp in camps}
-    slots=list(StaffingSlot.objects.filter(company=company).select_related('group__board','housing_camp','pattern','person__employee__position','person__schedule_slot__pattern'))
+    slots=list(StaffingSlot.objects.filter(company=company).select_related('group__board','housing_camp','pattern','person__employee__position__planning_mapping__brigade__group','person__schedule_slot__pattern'))
     all_assignments=defaultdict(list)
     for slot in slots:
         if slot.person_id:all_assignments[slot.person_id].append(slot)
@@ -113,14 +113,14 @@ def rotation_rows(company,camps,day,*,query='',position=None,state='',include_un
     by_person=defaultdict(list)
     for slot in relevant:
         if slot.person_id:by_person[slot.person_id].append(slot)
-    all_stays=list(CampStay.objects.filter(company=company,cancelled_at=None,arrived_on__lte=day).select_related('camp','person__employee__position','person__schedule_slot__pattern','person__schedule_slot__group__board').order_by('-arrived_on','-pk'))
+    all_stays=list(CampStay.objects.filter(company=company,cancelled_at=None,arrived_on__lte=day).select_related('camp','person__employee__position__planning_mapping__brigade__group','person__schedule_slot__pattern','person__schedule_slot__group__board').order_by('-arrived_on','-pk'))
     current={};last={};departures={}
     for stay in all_stays:
         last.setdefault(stay.person_id,stay)
         if stay.camp_id in camp_ids and stay.departed_on==day:departures.setdefault(stay.person_id,stay)
         if (stay.departed_on is None or stay.departed_on>day) and stay.arrived_on!=stay.departed_on:current.setdefault(stay.person_id,stay)
     from .models import HousingEvent
-    initial={row.person_id:row for row in HousingEvent.objects.filter(company=company,kind='DEPARTURE',stay=None,date__lte=day).select_related('person__employee__position','from_camp').order_by('date','pk')}
+    initial={row.person_id:row for row in HousingEvent.objects.filter(company=company,kind='DEPARTURE',stay=None,date__lte=day).select_related('person__employee__position__planning_mapping__brigade__group','from_camp').order_by('date','pk')}
     people={slot.person_id:slot.person for slot in relevant if slot.person_id}
     for person_id,event in initial.items():
         if event.from_camp_id in camp_ids:people[person_id]=event.person
@@ -190,14 +190,19 @@ def rotation_rows(company,camps,day,*,query='',position=None,state='',include_un
     elif state=='DEPARTURE_PENDING':rows=[row for row in rows if row.get('person') and row.get('departure_warning')=='soon']
     elif state=='ARRIVAL_OVERDUE':rows=[row for row in rows if row.get('person') and row.get('arrival_overdue')]
     elif state:rows=[row for row in rows if row['state']==state]
-    return sorted(rows,key=lambda row:(row['position_label'].casefold(),row['state']=='VACANCY',row['person'].display_name.casefold() if row['person'] else '',row['slot'].pk if row['slot'] else 0)),days,rotation_stats(rows)
+    from apps.resources.group_order import position_order
+    from apps.resources.models import Position
+    vacant_positions={p.name.casefold():p for p in Position.objects.filter(company=company).select_related('planning_mapping__brigade__group')}
+    for row in rows:row['sort_position']=row.get('position') or vacant_positions.get(row['position_label'].casefold())
+    return sorted(rows,key=lambda row:(position_order(row.get('sort_position'),row['position_label']),row['state']=='VACANCY',row['person'].display_name.casefold() if row['person'] else '',row['slot'].pk if row['slot'] else 0)),days,rotation_stats(rows)
 
 
 def positions_in_rows(company,rows):
     ids={row['position'].pk for row in rows if row.get('position')}
     labels={row.get('position_label','').strip().casefold() for row in rows}
     ids.update(pk for pk,name in Position.objects.filter(company=company).values_list('pk','name') if name.strip().casefold() in labels)
-    return Position.objects.filter(company=company,pk__in=ids).order_by('name','pk')
+    from apps.resources.group_order import ordered
+    return ordered(Position.objects.filter(company=company,pk__in=ids),group_path='planning_mapping__brigade__group')
 
 
 def filter_position(rows,position):

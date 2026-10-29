@@ -9,7 +9,8 @@ def plan_positions(obj,day):
     from .dispatch import plans
     expected=plans(obj,day)[1]['labor']
     roles={}
-    for brigade in Brigade.objects.filter(company=obj.company,pk__in=expected).select_related('group').order_by('group__name','name','pk'):
+    from apps.resources.group_order import ordered
+    for brigade in ordered(Brigade.objects.filter(company=obj.company,pk__in=expected).select_related('group'),group_path='group'):
         roles[position_for(brigade).pk]=(brigade,expected[brigade.pk])
     return roles
 
@@ -24,5 +25,6 @@ def context(obj,day):
     from django.db.models import Q
     employees=Employee.objects.filter(company=obj.company).filter(Q(is_active=True)|Q(pk__in=[row['employee'] for row in saved])).values_list('pk','position_id')
     totals={'plan':sum(count for _,count in roles.values()),'assigned':len({row['employee'] for row in saved}),'remaining':sum(max(0,count-len(counts[pk])) for pk,(_,count) in roles.items()),'unplanned':len({row['employee'] for row in saved if row['role'] not in roles})}
-    return {'position_totals':totals,'position_plan':[{'id':pk,'name':brigade.name,'group':brigade.group.name if brigade.group_id else 'Без группы плана','group_id':brigade.group_id or 0,'plan':count,'actual':len(counts[pk]),'remaining':max(0,count-len(counts[pk]))} for pk,(brigade,count) in roles.items()],
+    from apps.resources.group_order import labor_group_order
+    return {'position_totals':totals,'position_plan':[{'id':pk,'name':brigade.name,'group':brigade.group.name if brigade.group_id else 'Без группы плана','group_id':brigade.group_id or 0,'group_order':labor_group_order(brigade.group.name if brigade.group_id else 'Без группы плана')[0],'plan':count,'actual':len(counts[pk]),'remaining':max(0,count-len(counts[pk]))} for pk,(brigade,count) in roles.items()],
         'position_plan_saved':saved,'position_employee_roles':dict(employees)}

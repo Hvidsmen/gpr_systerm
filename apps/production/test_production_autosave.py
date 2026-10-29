@@ -72,3 +72,20 @@ class ProductionAutosaveTests(TestCase):
         record=EmployeeActivity.objects.get(employee=self.employee)
         self.assertEqual(record.activity,'Исправление коллеги')
         self.assertEqual(record.reported_by,self.users['DISPATCHER'])
+
+    def test_blank_work_quantity_does_not_block_isolated_person_deletion(self):
+        data=self.setup_person();session=data['claim_session']
+        prefix=next(name[:-len('project_work')] for name,value in data.items() if name.startswith('works-') and name.endswith('-project_work') and str(value)==str(self.work.pk))
+        self.client.post(reverse('production:work_claims'),{'construction_object':self.obj.pk,'date':str(self.day),'session':session,'key':f'work:{self.work.pk}','action':'take'},content_type='application/json')
+        data.update({prefix+'actual_quantity':'5',prefix+'work_editing':'1',prefix+'work_claim_token':session})
+        response=self.client.post(self.url,data);self.assertEqual(response.status_code,200,response.content)
+        self.apply_state(data,response.json());data['works-INITIAL_FORMS']='1'
+        person=EmployeeActivity.objects.get(employee=self.employee);fact=DailyFact.objects.get(project_work=self.work)
+        data[prefix+'actual_quantity']=''
+        response=self.client.post(self.url,data);self.assertEqual(response.status_code,400)
+        self.assertTrue(EmployeeActivity.objects.filter(pk=person.pk).exists())
+        data.update({'labor-0-DELETE':'on',prefix+'work_editing':'0'})
+        response=self.client.post(self.url,data);self.assertEqual(response.status_code,200,response.content)
+        self.assertFalse(EmployeeActivity.objects.filter(pk=person.pk).exists())
+        fact.refresh_from_db();self.assertEqual(fact.actual_quantity,5)
+        self.assertTrue(FactRevision.objects.filter(entity_type='production.employeeactivity',entity_id=str(person.pk),operation='DELETE').exists())

@@ -9,7 +9,7 @@
  const url=form.dataset.claimUrl,csrf=form.querySelector('[name=csrfmiddlewaretoken]').value,session=storedSession||`${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
  sessionStorage.setItem(sessionStorageKey,session);
  const hidden=document.createElement('input');hidden.type='hidden';hidden.name='claim_session';hidden.value=session;form.append(hidden);
- const scope={construction_object:form.elements.construction_object.value,date:form.elements.date.value,session};
+ const scope={construction_object:form.elements.construction_object.value,date:form.elements.date.value,session,reset_epoch:Number(form.dataset.resetEpoch||0)};
  let claims=new Map(),generation=0,busy=false,lastActivity=Date.now(),lastRenew=0,submitting=false;
  const rows=()=>[...form.querySelectorAll('[data-work-fact-row],[data-production-person]')],person=row=>row.matches('[data-production-person]'),field=(row,name)=>row.querySelector(`[name$="-${name}"]`),editing=row=>field(row,person(row)?'person_editing':'work_editing'),token=row=>field(row,person(row)?'person_claim_token':'work_claim_token');
  const keyOf=row=>person(row)?(field(row,'employee')?.value?`employee:${field(row,'employee').value}:${Number(field(row,'shift').value)}`:''):(field(row,'project_work')?.value?(field(row,'work_item')?.value?`item:${field(row,'project_work').value}:${field(row,'work_item').value}`:`work:${field(row,'project_work').value}`):'');
@@ -83,7 +83,7 @@
  form.productionSession={scope,csrf};
  form.productionReleaseRow=async row=>{const key=keyOf(row);if(claims.get(key)?.mine){await request('release',key);claims.delete(key);}render(row);changed();};
  const reserve=event=>{
-  if(form.productionApplying)return;
+  if(form.productionApplying||form.dataset.resetRequired==='1')return;
   const row=event.target.closest('[data-work-fact-row],[data-production-person]');if(!row||!keyOf(row)||!event.target.name)return;
   if(controls(row).includes(event.target)||['employee','shift'].some(name=>event.target===field(row,name))){
    row.dataset.entryDirty='1';form.productionClaimRow(row).catch(error=>{row.querySelector('[data-error]').textContent=error.message;render(row);});

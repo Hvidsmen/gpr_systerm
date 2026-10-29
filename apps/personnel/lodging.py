@@ -23,6 +23,13 @@ def present(company,day):
     return LodgingStay.objects.filter(company=company,cancelled_at=None,arrived_on__lte=day).filter(Q(departed_on=None)|Q(departed_on__gt=day)).exclude(departed_on=F('arrived_on'))
 
 
+def available_beds(company,camp,day,*,user=None,session=None):
+    occupied=present(company,day).filter(camp=camp).values('bed_id')
+    leases=LodgingControl.objects.filter(company=company,resource='bed',expires_at__gt=timezone.now())
+    if user and session:leases=leases.exclude(locked_by=user,session=session)
+    return LodgingBed.objects.filter(company=company,building__camp=camp,building__camp__is_active=True,building__is_active=True,state='AVAILABLE').exclude(pk__in=occupied).exclude(pk__in=leases.values('resource_id')).select_related('building')
+
+
 def session_id(value):
     try:return UUID(str(value))
     except (ValueError,TypeError,AttributeError):raise ValidationError('Обновите страницу: неверный сеанс оформления.')
@@ -104,7 +111,7 @@ def bump(rows):
 
 @with_history_actor
 @transaction.atomic
-def move(user,kind,camp,day,employee,*,bed=None,session=None,signed=None,planned_departure=None,keys_issued=False,pass_number='',comment=''):
+def move(user,kind,camp,day,employee,*,bed=None,session=None,signed=None,planned_departure=None,keys_issued=False,key_number='',pass_number='',comment=''):
     require_roles(user,OPERATORS);require_fact_day(user,day)
     if kind not in {'CHECKIN','MOVE','CHECKOUT','UPDATE'}:raise ValidationError('Выберите действие с проживанием.')
     if camp.company_id!=user.company_id:raise ValidationError('ВЖГ другой компании.')
@@ -123,13 +130,13 @@ def move(user,kind,camp,day,employee,*,bed=None,session=None,signed=None,planned
     if kind in {'MOVE','CHECKOUT'}:
         current.departed_on=day;current.save(update_fields=['departed_on','updated_at'])
     if kind in {'CHECKIN','MOVE'}:
-        stay=LodgingStay(company=user.company,camp=camp,employee=employee,bed=bed,arrived_on=day,planned_departure=planned_departure,keys_issued=keys_issued,pass_number=pass_number,comment=comment,recorded_by=user)
+        stay=LodgingStay(company=user.company,camp=camp,employee=employee,bed=bed,arrived_on=day,planned_departure=planned_departure,keys_issued=keys_issued,key_number=key_number,pass_number=pass_number,comment=comment,recorded_by=user)
         stay.organization_snapshot=employee.zup_organisation or str(employee.company)
         stay.position_snapshot=employee.display_position
         stay.department_snapshot=employee.display_department
         stay.save()
     elif kind=='UPDATE':
-        current.planned_departure=planned_departure;current.keys_issued=keys_issued;current.pass_number=pass_number;current.comment=comment;current.save();stay=current
+        current.planned_departure=planned_departure;current.keys_issued=keys_issued;current.key_number=key_number;current.pass_number=pass_number;current.comment=comment;current.save();stay=current
     else:stay=current
     LodgingEvent.objects.create(company=user.company,camp=camp,employee=employee,date=day,kind=kind,from_bed=old_bed,to_bed=bed if kind in {'CHECKIN','MOVE'} else None,stay=stay,comment=comment,recorded_by=user)
     require_fact_day(user,day);bump(rows)
@@ -164,6 +171,7 @@ def correct(user,stay,values,updated,reason):
         rows=controls(user,[('bed',stay.bed_id),('employee',stay.employee_id)])
         for row in rows:locked_elsewhere(row,user,None)
         for name in ('arrived_on','departed_on','planned_departure','keys_issued','pass_number','comment'):setattr(stay,name,values.get(name))
+        if 'key_number' in values:stay.key_number=values['key_number']
         stay.save()
         LodgingEvent.objects.create(company=user.company,camp=stay.camp,employee=stay.employee,date=values.get('departed_on') or values['arrived_on'],kind='UPDATE',from_bed=stay.bed,to_bed=stay.bed,stay=stay,comment=reason,recorded_by=user)
         bump(rows)

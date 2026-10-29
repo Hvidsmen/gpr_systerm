@@ -91,7 +91,8 @@ class BrigadeListView(CatalogFilterMixin, CompanyRequiredMixin, ListView):
             for row in context['brigades']:
                 group=grouped.setdefault(row.group_id,{'name':row.group.name if row.group_id else 'Без группы','rows':[],'active_employees':0})
                 group['rows'].append(row);group['active_employees']+=row.active_employee_count
-        context['position_groups']=list(grouped.values())
+        from .group_order import labor_group_order
+        context['position_groups']=sorted(grouped.values(),key=lambda group:labor_group_order(group['name']))
 
         return context
 
@@ -294,6 +295,10 @@ class EquipmentCategoryListView(CatalogueExcelMixin, CompanyScopedMixin, ListVie
     model = EquipmentCategory
     template_name = 'resources/equipment_category_list.html'
     context_object_name = 'categories'
+
+    def get_queryset(self):
+        from .group_order import ordered
+        return ordered(super().get_queryset(),kind='equipment')
 
 
 @require_POST

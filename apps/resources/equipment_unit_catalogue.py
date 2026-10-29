@@ -33,7 +33,8 @@ class UnitFilterForm(forms.Form):
             models = models.filter(parent_id=parent) if str(parent).isdigit() else models.none()
         self.fields['model'].queryset = models
         self.fields['model'].label_from_instance = lambda model: f'{model.parent.name} · {model.brand_model or model.name}'
-        self.fields['category'].queryset = EquipmentCategory.objects.filter(company=company)
+        from .group_order import ordered
+        self.fields['category'].queryset = ordered(EquipmentCategory.objects.filter(company=company),kind='equipment')
         self.fields['as_of'].initial = timezone.localdate()
         for field in self.fields.values():
             field.widget.attrs['class'] = 'form-select form-select-sm' if isinstance(field.widget, forms.Select) else 'form-control form-control-sm'

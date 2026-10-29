@@ -1,0 +1,15 @@
+{% if row.stay %}
+  {% if catalogue_editable %}
+  <details class="lodging-gender"><summary>{{ row.gender }}</summary>
+    <form method="post" action="{% url 'personnel:lodging_employee_gender' row.stay.employee_id %}">{% csrf_token %}
+      <input type="hidden" name="camp" value="{{ camp.pk }}"><input type="hidden" name="date" value="{{ day|date:'Y-m-d' }}">
+      <label class="small" for="gender-{{ row.bed.pk }}">Пол сотрудника</label>
+      <select class="form-select form-select-sm" id="gender-{{ row.bed.pk }}" name="gender">
+        <option value=""{% if not row.stay.employee.gender %} selected{% endif %}>Не указан</option>
+        <option value="M"{% if row.stay.employee.gender == 'M' %} selected{% endif %}>Мужской</option>
+        <option value="F"{% if row.stay.employee.gender == 'F' %} selected{% endif %}>Женский</option>
+      </select><button class="btn btn-sm btn-outline-primary mt-1">Сохранить</button>
+    </form>
+  </details>
+  {% else %}{{ row.gender }}{% endif %}
+{% else %}—{% endif %}

@@ -32,6 +32,7 @@ class EmployeeDetail(CompanyScopedMixin, DetailView):
         data = employee.zup_card
         context['employment_rows'] = [
             ('Табельный номер', employee.employee_number or '—'),
+            ('Пол', employee.get_gender_display()),
             ('Организация', employee.zup_organisation or '—'),
             ('Подразделение', employee.display_department or '—'),
             ('Должность (штатная позиция)' if employee.position_from_staffing else 'Должность', employee.display_position or ('Не получена из ЗУП' if employee.zup_ref else '—')),

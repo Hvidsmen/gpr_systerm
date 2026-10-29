@@ -132,6 +132,8 @@ def claims(request):
         expire_presence(obj,day)
         action=data.get('action')
         if action not in {'release','release_session'}:
+            from .day_reset import epoch
+            if int(data.get('reset_epoch',0))!=epoch(obj,day):return JsonResponse({'error':'Производственная часть сброшена администратором. Обновите форму.','reset_required':True},status=409)
             from core.fact_edit_window import require_fact_day
             try:require_fact_day(request.user,day)
             except ValidationError as exc:return JsonResponse({'error':'; '.join(exc.messages)},status=403)

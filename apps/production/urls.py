@@ -398,3 +398,6 @@ from . import transport_inline
 urlpatterns += [path('transport/cell/',transport_inline.update,name='transport_cell'),path('transport/employee-options/',transport_inline.choices,name='transport_employee_choices'),path('transport/status-options/create/',transport_inline.add_status,name='transport_status_create')]
 from . import deviation_quick_add
 urlpatterns += [path('deviation-reasons/quick-add/',deviation_quick_add.create,name='deviation_quick_add')]
+
+from .day_reset import reset as production_day_reset
+urlpatterns += [path('day-reset/',production_day_reset,name='production_day_reset')]
