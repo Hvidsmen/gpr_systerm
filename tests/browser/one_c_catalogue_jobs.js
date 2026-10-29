@@ -12,12 +12,30 @@ const {chromium}=require('playwright'),fs=require('fs'),assert=require('node:ass
   assert(await card('employees').getByRole('button',{name:'Запустить сейчас'}).isEnabled());
   assert(await card('positions').getByRole('button',{name:'Запустить сейчас'}).isEnabled());
   const boxes=await page.locator('[data-import-job]').evaluateAll(nodes=>nodes.map(n=>n.getBoundingClientRect().top));assert(Math.abs(boxes[0]-boxes[1])<3);
-  for(const [kind,value] of [['employees','60'],['positions','1440']]){
-   await card(kind).locator('[name=interval]').fill(value);
-   await Promise.all([page.waitForNavigation(),card(kind).getByRole('button',{name:'Сохранить расписание'}).click()]);
-  }
+  await card('employees').locator('[name=frequency]').selectOption('daily');
+  await card('employees').locator('[name=time]').fill('06:45');
+  assert.equal(await card('employees').locator('[name=interval]').isVisible(),false);
+  await Promise.all([page.waitForNavigation(),card('employees').getByRole('button',{name:'Сохранить расписание'}).click()]);
+  await card('positions').locator('[name=frequency]').selectOption('weekly');
+  await card('positions').locator('[name=time]').fill('08:20');
+  await card('positions').locator('[name=weekday]').selectOption('1');
+  await Promise.all([page.waitForNavigation(),card('positions').getByRole('button',{name:'Сохранить расписание'}).click()]);
+  assert.equal(await card('employees').locator('[name=frequency]').inputValue(),'daily');
+  assert.equal(await card('employees').locator('[name=time]').inputValue(),'06:45');
+  assert.equal(await card('positions').locator('[name=weekday]').inputValue(),'1');
+  assert((await card('employees').innerText()).includes('Ежедневно в 06:45'));
+  assert((await card('positions').innerText()).includes('вторник · 08:20'));
+  assert((await card('positions').innerText()).includes('Europe/Moscow'));
+  await card('employees').locator('[name=frequency]').selectOption('manual');
+  assert.equal(await card('employees').locator('[name=time]').isVisible(),false);
+  await Promise.all([page.waitForNavigation(),card('employees').getByRole('button',{name:'Сохранить расписание'}).click()]);
+  assert((await card('employees').innerText()).includes('Расписание отключено'));
+  await card('employees').locator('[name=frequency]').selectOption('interval');
+  await card('employees').locator('[name=time]').fill('05:00');
+  await card('employees').locator('[name=interval]').fill('60');
+  await Promise.all([page.waitForNavigation(),card('employees').getByRole('button',{name:'Сохранить расписание'}).click()]);
   assert.equal(await card('employees').locator('[name=interval]').inputValue(),'60');
-  assert.equal(await card('positions').locator('[name=interval]').inputValue(),'1440');
+  assert.equal(await card('positions').locator('[name=frequency]').inputValue(),'weekly');
   await page.screenshot({path:'/tmp/one-c-catalogue-jobs-wide.png',fullPage:true});
   await page.setViewportSize({width:390,height:844});
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2));
@@ -29,6 +47,6 @@ const {chromium}=require('playwright'),fs=require('fs'),assert=require('node:ass
   assert(await card('employees').getByRole('button',{name:'Запустить сейчас'}).isDisabled());
   assert(await card('positions').getByRole('button',{name:'Запустить сейчас'}).isDisabled());
   assert((await page.locator('tbody').textContent()).includes('Загрузка сотрудников'));
-  assert.deepEqual(errors,[]);console.log('PASS: two 1C catalogue jobs, independent schedules, shared queue and mobile layout');
+  assert.deepEqual(errors,[]);console.log('PASS: two 1C catalogue jobs, daily/weekly/interval schedules and launch times, disabling, shared queue and mobile layout');
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exit(1)});

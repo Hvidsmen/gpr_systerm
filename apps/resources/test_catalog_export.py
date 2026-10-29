@@ -15,12 +15,12 @@ class CatalogExportTests(TestCase):
         self.macro = BrigadeMacroGroup.objects.create(company=self.company,name='Macro')
         self.category = EquipmentCategory.objects.create(company=self.company,name='Category')
         for i in range(25):
-            Brigade.objects.create(company=self.company,name='Монтаж '+str(i),group=self.group,macro_group=self.macro,description='=1+1')
+            Brigade.objects.create(staffing_current=True,company=self.company,name='Монтаж '+str(i),group=self.group,macro_group=self.macro,description='=1+1')
             EquipmentType.objects.create(company=self.company,name='Кран '+str(i),category=self.category)
-        Brigade.objects.create(company=self.company,name='Other')
+        Brigade.objects.create(staffing_current=True,company=self.company,name='Other')
         EquipmentType.objects.create(company=self.company,name='Other')
         other = Company.objects.create(name='Foreign export')
-        Brigade.objects.create(company=other,name='Монтаж Foreign')
+        Brigade.objects.create(staffing_current=True,company=other,name='Монтаж Foreign')
         EquipmentType.objects.create(company=other,name='Кран Foreign')
 
     def test_all_filtered_rows_exported_not_just_current_page(self):

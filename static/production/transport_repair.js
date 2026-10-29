@@ -9,6 +9,11 @@
    dialog.close();
   }
   row.querySelector('[data-open-repair]').addEventListener('click',()=>dialog.showModal());
+  root.addEventListener('transport:row-saved',event=>{
+   if(root.dataset.process==='state'&&event.detail.row===row&&event.detail.field==='condition'&&event.detail.condition==='REPAIR'&&!dialog.open){
+    dialog.showModal();
+   }
+  });
   dialog.querySelectorAll('[data-close-repair]').forEach(button=>button.addEventListener('click',close));
   dialog.addEventListener('cancel',event=>{event.preventDefault();close();});
   form.addEventListener('submit',event=>{event.preventDefault();close();});

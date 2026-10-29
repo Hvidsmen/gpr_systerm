@@ -4,7 +4,7 @@
     <section class="transport-repair-condition">
       <strong>Техническое состояние</strong>
       <span class="transport-condition condition-{{ row.condition }}" data-condition-label>{{ row.condition_label }}</span>
-      <p class="small text-muted mb-0">Состояние меняется в таблице на вкладке «Состояние и ремонт». Факт работы за день сохраняется независимо.</p>
+      <p class="small text-muted mb-0">Состояние меняется в таблице «Список техники» или на вкладке «Состояние и ремонт». Факт работы за день сохраняется независимо.</p>
     </section>
     {% for group in row.repair_groups %}<fieldset class="transport-repair-section"><legend>{{ group.title }}</legend><div class="transport-repair-fields">
       {% for field in group.fields %}<div class="transport-repair-field{% if field.name == 'defects' or field.name == 'request_details' or field.name == 'comment' %} transport-repair-wide{% endif %}">

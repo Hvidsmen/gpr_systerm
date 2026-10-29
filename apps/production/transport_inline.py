@@ -66,7 +66,13 @@ def save_cell(user,camp,day,machine,field,value,signed,session):
         if machine.transport_days.filter(company=user.company,date=day).exists():raise ValidationError('Машина уже добавлена в факт за этот день. Обновите страницу.')
         transport.save_day(user,camp,day,[machine.pk],'WORKED',signed=signed,session=session)
     elif field=='condition':
+        previous_condition = transport.condition_on(machine, day)
         transport.set_condition(user,camp,day,[machine.pk],str(value),signed=signed,session=session)
+        if value == 'REPAIR' and previous_condition != 'REPAIR':
+            # Save the default date in the same transaction using the typed detail
+            # writer, retaining repair information and today's shift assignments.
+            return save_cell(user, camp, day, machine, 'repair_started_on', str(day),
+                             transport.snapshot(user, camp, day), session)
     elif field=='status':
         current=machine.transport_days.filter(date=day).first()
         target={'construction_object':current.construction_object,'work':current.work,'work_item':current.work_item} if current and value=='WORKED' else {}
@@ -112,8 +118,13 @@ def update(request):
         signed=save_cell(request.user,camp,date.fromisoformat(data.get('date','')),machine,data.get('field'),data.get('value'),data.get('signed'),data.get('session'))
         record=machine.transport_days.filter(company=request.user.company,date=date.fromisoformat(data['date'])).first()
         condition=transport.condition_on(machine,date.fromisoformat(data['date']))
+        repair_date = None
+        if data.get('field') == 'condition' and condition == 'REPAIR':
+            repair_date = EquipmentDayDetails.objects.filter(company=request.user.company,
+                equipment=machine, date=date.fromisoformat(data['date'])).values_list('repair_started_on', flat=True).first()
         from .transport_models import CONDITIONS
         return JsonResponse({'saved':True,'signed':signed,'condition':condition,'condition_label':dict(CONDITIONS).get(condition,'Не указано'),
+            'repair_started_on': repair_date.isoformat() if repair_date else None,
             'status':record.status if record else '', 'target':f'work:{record.work_id}:{record.work_item_id or 0}' if record and record.work_id else f'object:{record.construction_object_id}' if record and record.construction_object_id else ''})
     except (ValidationError,ValueError,TypeError) as exc:return JsonResponse({'error':'; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Неверные данные.'},status=409)
 

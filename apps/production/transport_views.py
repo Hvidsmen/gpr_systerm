@@ -226,13 +226,27 @@ def board(request):
     else:
         page=Paginator(filtered,50).get_page(request.GET.get('page'))
         display_rows=list(page.object_list)
+    context['edit_day'] = context['editable'] and tab == 'day' and day_view == 'plan'
+    context['edit_condition'] = context['editable'] and (tab == 'state' or day_view == 'list')
+    context['roster_readonly'] = tab == 'day' and day_view == 'list'
     if context['tab'] in {'day','state'}:
         prepare_rows(request.user,camp,day,display_rows,context['editable'])
         for row in display_rows:
-            if tab=='day':row['target_widget']=forms.Select(choices=form.fields['target'].choices,attrs={'class':'form-select form-select-sm','data-detail-field':'target','aria-label':'Объект / работа: '+str(row['machine']),'disabled':not context['editable']}).render('target-'+str(row['machine'].pk),row['target'])
+            if context['edit_day']:row['target_widget']=forms.Select(choices=form.fields['target'].choices,attrs={'class':'form-select form-select-sm','data-detail-field':'target','aria-label':'Объект / работа: '+str(row['machine'])}).render('target-'+str(row['machine'].pk),row['target'])
             details=row['details_form']
             details['comment'].label='Примечание по ремонту'
             row['visible_details']=[details[name] for name in (('in_gpr',) if tab=='state' else ROSTER_DETAIL_FIELDS)]
+            if context['roster_readonly']:
+                row['roster_reference'] = []
+                for field in row['visible_details']:
+                    value = getattr(details.instance, field.name, None)
+                    if field.name == 'in_gpr':
+                        value = 'Да' if value is True else 'Нет' if value is False else 'Неизвестно'
+                    elif details.instance.date != day:
+                        value = None
+                    elif value:
+                        value = field.field.label_from_instance(value)
+                    row['roster_reference'].append({'label': field.label, 'value': value or '—', 'source': field.source_value})
             row['repair_groups']=[{'title':title,'fields':[details[name] for name in names]} for title,names in REPAIR_FIELD_GROUPS]
     view_links=[]
     for value,label in [('plan','По технике для планирования'),('list','Список техники')]:

@@ -17,3 +17,5 @@
 @media(max-width:700px){.transport-table [data-label="Техника"],.transport-table [data-label="Где работала"],.transport-table [data-label="Примечание"],.transport-table [data-label="Действия"],.transport-table .transport-detail-cell{min-width:0;max-width:none;width:auto}.transport-repair-fields,.transport-repair-condition{grid-template-columns:1fr}.transport-repair-dialog{padding:16px}.transport-repair-dialog header{margin-bottom:16px}.transport-repair-dialog footer{bottom:-16px}.transport-table [data-label="Техника"]{position:static}}
 
 @media(min-width:1101px){.transport-state-selector .transport-selector-fields{grid-template-columns:minmax(180px,1fr) 160px minmax(190px,1.3fr) minmax(140px,.8fr) auto}}
+
+.transport-table [data-detail-field="condition"]{min-width:130px}

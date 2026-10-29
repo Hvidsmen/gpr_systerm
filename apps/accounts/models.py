@@ -158,6 +158,8 @@ class OneCConnection(models.Model):
     diagnostic_interval_minutes = models.PositiveIntegerField(default=0)
     positions_interval_minutes = models.PositiveIntegerField(default=0)
     employees_interval_minutes = models.PositiveIntegerField(default=0)
+    positions_schedule = models.JSONField(default=dict, blank=True)
+    employees_schedule = models.JSONField(default=dict, blank=True)
     active_until = models.DateTimeField(null=True, blank=True)
 
 

@@ -10,8 +10,8 @@ class PositionCatalogueViewsTests(TestCase):
         cls.company=Company.objects.create(name='Updated catalogues')
         cls.user=User.objects.create_user(username='catalogue-editor',company=cls.company,role=Role.objects.get(code='PLANNER'))
         cls.group=BrigadeGroup.objects.create(company=cls.company,name='Рабочие')
-        for n in range(53):Brigade.objects.create(company=cls.company,name=f'Должность {n:03}',group=cls.group)
-        cls.orphan=Brigade.objects.create(company=cls.company,name='Без назначения')
+        for n in range(53):Brigade.objects.create(staffing_current=True,company=cls.company,name=f'Должность {n:03}',group=cls.group)
+        cls.orphan=Brigade.objects.create(staffing_current=True,company=cls.company,name='Без назначения')
     def setUp(self):self.client.force_login(self.user)
     def test_tree_does_not_split_a_group_and_table_is_paginated(self):
         url=reverse('resources:brigade_list');tree=self.client.get(url)
@@ -99,8 +99,8 @@ class CatalogueChangesBrowserTests(StaticLiveServerTestCase):
     def test_tree_table_and_inline_creation_preserve_form(self):
         EquipmentGroupImportTests.setUpTestData.__func__(type(self))
         group=BrigadeGroup.objects.create(company=self.company,name='ИТР')
-        Brigade.objects.create(company=self.company,name='Инженер',group=group)
-        Brigade.objects.create(company=self.company,name='Рабочий')
+        Brigade.objects.create(staffing_current=True,company=self.company,name='Инженер',group=group)
+        Brigade.objects.create(staffing_current=True,company=self.company,name='Рабочий')
         self.client.force_login(self.user)
         config={'base':self.live_server_url,'cookie':self.client.cookies['sessionid'].value,'chromium':shutil.which('chromium'),
             'positions':reverse('resources:brigade_list'),'unit_create':reverse('resources:equipment_unit_create'),

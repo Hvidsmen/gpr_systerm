@@ -13,8 +13,15 @@ class TransportRepairBrowserTests(StaticLiveServerTestCase):
         fixtures.TransportTests.setUpTestData.__func__(type(self))
         transport.move(self.operator,self.camp,self.day,[self.machine.pk],'ARRIVAL',condition='READY',signed=transport.snapshot(self.operator,self.camp,self.day))
         driver=Employee.objects.create(company=self.company,last_name='Тестов',first_name='Водитель')
+        from uuid import uuid4
+        from .transport_inline import save_cell
+        for field,value in [('status','WORKED'),('shift_one_employee',driver.pk)]:
+            save_cell(self.operator,self.camp,self.day,self.machine,field,value,
+                      transport.snapshot(self.operator,self.camp,self.day),str(uuid4()))
         self.client.force_login(self.operator)
-        config={'base':self.live_server_url,'url':self.board,'cookie':self.client.cookies['sessionid'].value,'chromium':shutil.which('chromium'),'camp':self.camp.pk,'day':str(self.day),'machine':self.machine.pk,'employee':driver.pk}
+        from datetime import timedelta
+        corrected_date=self.day-timedelta(days=1)
+        config={'base':self.live_server_url,'url':self.board,'cookie':self.client.cookies['sessionid'].value,'chromium':shutil.which('chromium'),'camp':self.camp.pk,'day':str(self.day),'machine':self.machine.pk,'employee':driver.pk,'corrected_date':str(corrected_date)}
         script=Path(__file__).resolve().parents[2]/'tests/browser/transport_repair.js'
         result=subprocess.run(['node',str(script)],capture_output=True,text=True,env=dict(os.environ,TRANSPORT_REPAIR_CONFIG=json.dumps(config)),timeout=120)
         self.assertEqual(result.returncode,0,result.stdout+'\n'+result.stderr)
@@ -23,6 +30,7 @@ class TransportRepairBrowserTests(StaticLiveServerTestCase):
         detail=EquipmentDayDetails.objects.get(equipment=self.machine,date=self.day)
         self.assertEqual(detail.shift_one_employee_id,driver.pk);self.assertEqual(detail.defects,'Проверить датчик давления')
         self.assertEqual(detail.request_details,'№ 123 · запчасти');self.assertEqual(detail.request_stage.name,'Проверено механиком')
+        self.assertEqual(detail.repair_started_on,corrected_date)
         self.assertEqual(self.machine.transport_days.get(date=self.day).status,'WORKED')
         self.machine.transport_control.refresh_from_db();self.assertIsNone(self.machine.transport_control.locked_by_id)
         self.assertTrue(FactRevision.objects.filter(entity_type='production.equipmentdaydetails',entity_id=str(detail.pk),actor=self.operator,operation='UPDATE').exists())

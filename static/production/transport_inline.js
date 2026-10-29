@@ -27,6 +27,7 @@
    if(status){status.value=result.status;status.disabled=false;status.dataset.saved=status.value;}
    if(target){target.disabled=false;target.value=result.target;target.dataset.saved=target.value;}
    if(comment)comment.disabled=false;
+   if(field.dataset.detailField==='condition'&&result.repair_started_on){const date=row.querySelector('[data-detail-field=repair_started_on]');if(date){date.value=result.repair_started_on;date.dataset.saved=date.value;}}
    row.querySelectorAll('[data-condition-label]').forEach(badge=>{badge.textContent=result.condition_label;badge.className='transport-condition condition-'+result.condition;});
    row.querySelectorAll('[data-transport-employees]').forEach(select=>select.disabled=result.status!=='WORKED');
    if(field.dataset.detailField==='repair_stage'){const label=row.querySelector('[data-repair-summary]');if(label)label.textContent=field.value?field.selectedOptions[0].textContent:'Этап не указан';}

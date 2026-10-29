@@ -27,8 +27,11 @@ class BrigadeFilterForm(CatalogFilterForm):
     active_employees = forms.ChoiceField(label='Активные сотрудники', required=False,
         choices=[('', 'Все должности'), ('yes', 'Есть активные'), ('no', 'Нет активных')])
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, data=None, *args, **kwargs):
+        if data is not None:
+            data = data.copy()
+            data.setdefault('staffing_current', 'yes')
+        super().__init__(data, *args, **kwargs)
         self.fields['active_employees'].widget.attrs['class'] = 'form-select form-select-sm'
 
 
@@ -77,7 +80,7 @@ class CatalogFilterMixin:
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context['catalogue_count']=context['paginator'].count if context['paginator'] else self.object_list.count()
-        params = self.request.GET.copy()
+        params = self.filter_form.data.copy()
         params.pop('page', None)
         context.update(filter_form=self.filter_form, filter_query=params.urlencode(), export_route=self.export_route,
             filters_active=any(self.request.GET.get(key) for key in self.filter_form.fields))

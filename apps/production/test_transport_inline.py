@@ -67,13 +67,52 @@ class TransportInlineTests(TestCase):
         self.assertContains(state,'data-detail-field="condition"',count=1)
         self.assertNotContains(state,'data-transport-action="CONDITION"')
         self.assertNotContains(state,'data-edit-machine=')
-        self.assertNotContains(page,'data-detail-field="condition"')
+        self.assertContains(page,'data-detail-field="condition"',count=1)
+        for name in ['status', 'target', 'day_comment', 'shift_one_employee', 'shift_two_employee', 'in_gpr']:
+            self.assertNotContains(page, f'data-detail-field="{name}"')
+        self.assertNotContains(page, 'data-edit-machine=')
+        self.assertNotContains(page, 'data-transport-action="DAY"')
+        self.assertNotContains(page, 'data-copy-previous="equipment"')
         from unittest.mock import patch
         with patch('core.fact_edit_window.timezone.localdate',return_value=self.day+timedelta(days=3)):
             readonly=self.client.get(reverse('production:transport_board'),{**scope,'tab':'state'})
         self.assertContains(readonly,'data-repair-dialog');self.assertFalse(readonly.context['editable'])
         self.assertNotContains(readonly,'data-detail-field="condition"')
         self.assertTrue(all(field.disabled for field in readonly.context['rows'][0]['details_form'].fields.values()))
+
+    def test_list_shows_daily_facts_as_reference_and_condition_change_preserves_them(self):
+        driver = Employee.objects.create(company=self.company, last_name='Справочный', first_name='Водитель')
+        self.save('status', 'WORKED')
+        self.save('shift_one_employee', driver.pk)
+        self.save('day_comment', 'Работала утром')
+        self.save('in_gpr', 'true')
+        self.save('condition', 'REPAIR')
+        scope = {'camp': self.camp.pk, 'date': str(self.day), 'view': 'list'}
+        page = self.client.get(reverse('production:transport_board'), scope)
+        self.assertContains(page, 'Справочный Водитель')
+        self.assertContains(page, 'Работала утром')
+        self.assertContains(page, '<span data-transport-reference>Да</span>', html=True)
+        self.assertContains(page, 'data-detail-field="condition"', count=1)
+        self.assertNotContains(page, 'data-detail-field="status"')
+        self.assertEqual(self.machine.transport_days.get(date=self.day).status, 'WORKED')
+        self.assertEqual(EquipmentDayDetails.objects.get(equipment=self.machine, date=self.day).shift_one_employee, driver)
+
+    def test_entering_repair_sets_editable_date_and_repeated_state_preserves_correction(self):
+        self.save('defects', 'Проверить двигатель')
+        self.save('condition', 'REPAIR')
+        detail = EquipmentDayDetails.objects.get(equipment=self.machine, date=self.day)
+        self.assertEqual(detail.repair_started_on, self.day)
+        self.assertEqual(detail.defects, 'Проверить двигатель')
+        corrected = self.day - timedelta(days=1)
+        self.save('repair_started_on', str(corrected))
+        self.save('condition', 'REPAIR')
+        detail.refresh_from_db()
+        self.assertEqual(detail.repair_started_on, corrected)
+        self.save('condition', 'READY')
+        self.save('condition', 'REPAIR')
+        detail.refresh_from_db()
+        self.assertEqual(detail.repair_started_on, self.day)
+        self.assertFalse(self.machine.transport_days.exists())
 
     def test_drivers_are_daily_and_technical_details_carry_forward_without_marking_work(self):
         from apps.resources.models import Employee

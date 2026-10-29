@@ -10,7 +10,7 @@ class CommonGroupOrderTests(TestCase):
         self.company=Company.objects.create(name='Порядок групп');self.user=User.objects.create_user(username='group-order-planner',company=self.company,role=Role.objects.get(code='PLANNER'))
         self.names=['ИТР Состав','Водители спец.техники','Водители вспомогательной техники','Основной рабочий состав','Вспомогательный персонал','Другая группа','Без группы']
         self.groups={name:BrigadeGroup.objects.create(company=self.company,name=name) for name in reversed(self.names[:-1])}
-        for index,name in enumerate(self.names):Brigade.objects.create(company=self.company,name=f'Должность {index}',group=self.groups.get(name))
+        for index,name in enumerate(self.names):Brigade.objects.create(staffing_current=True,company=self.company,name=f'Должность {index}',group=self.groups.get(name))
         self.client.force_login(self.user)
     def test_normalized_order_is_shared_by_querysets_and_catalogue_hierarchy(self):
         self.assertEqual(sorted(reversed(self.names),key=labor_group_order),self.names)

@@ -12,9 +12,9 @@ class CatalogFilterTests(TestCase):
         self.group = BrigadeGroup.objects.create(company=self.company,name='Group')
         self.macro = BrigadeMacroGroup.objects.create(company=self.company,name='Macro')
         self.category = EquipmentCategory.objects.create(company=self.company,name='Category')
-        self.brigade = Brigade.objects.create(company=self.company,name='Монтаж Север',group=self.group,macro_group=self.macro)
-        Brigade.objects.create(company=self.company,name='Монтаж Юг',group=self.group)
-        Brigade.objects.create(company=self.company,name='Другие',macro_group=self.macro)
+        self.brigade = Brigade.objects.create(staffing_current=True,company=self.company,name='Монтаж Север',group=self.group,macro_group=self.macro)
+        Brigade.objects.create(staffing_current=True,company=self.company,name='Монтаж Юг',group=self.group)
+        Brigade.objects.create(staffing_current=True,company=self.company,name='Другие',macro_group=self.macro)
         self.equipment = EquipmentType.objects.create(company=self.company,name='Экскаватор Север',category=self.category)
         EquipmentType.objects.create(company=self.company,name='Экскаватор Юг')
 
@@ -33,7 +33,7 @@ class CatalogFilterTests(TestCase):
         other = Company.objects.create(name='Foreign filters')
         group = BrigadeGroup.objects.create(company=other,name='Foreign group')
         category = EquipmentCategory.objects.create(company=other,name='Foreign category')
-        Brigade.objects.create(company=other,name='Foreign brigade')
+        Brigade.objects.create(staffing_current=True,company=other,name='Foreign brigade')
         self.assertNotContains(self.client.get(reverse('resources:brigade_list')),group.name)
         self.assertNotContains(self.client.get(reverse('resources:equipment_type_list')),category.name)
         for route, param, value in [('brigade_list','group',group.pk),('brigade_list','group','bad'),('equipment_type_list','category',category.pk)]:
@@ -44,7 +44,7 @@ class CatalogFilterTests(TestCase):
 
     def test_pagination_keeps_filters(self):
         for i in range(54):
-            Brigade.objects.create(company=self.company,name='Монтаж '+str(i),group=self.group,macro_group=self.macro)
+            Brigade.objects.create(staffing_current=True,company=self.company,name='Монтаж '+str(i),group=self.group,macro_group=self.macro)
             EquipmentType.objects.create(company=self.company,name='Экскаватор '+str(i),category=self.category)
         for route, values, key in [('brigade_list',{'name':'Монтаж','group':self.group.pk,'view':'table'},'brigades'),('equipment_type_list',{'name':'Экскаватор','category':self.category.pk},'equipment_types')]:
             if route=='equipment_type_list':values={**values,'view':'table'}
