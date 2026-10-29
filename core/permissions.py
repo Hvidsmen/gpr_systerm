@@ -116,7 +116,7 @@ def check_route(user, match, method):
     if namespace == 'production' and name=='fact_history':
         require_roles(user,READ_ROLES|FACT_ROLES|{'COMMANDANT'})
         return
-    if namespace == 'production' and name in {'transport_board','transport_claims','transport_create','transport_history','camp_fuel','transport_details','transport_cell','transport_employee_choices','transport_status_create'}:
+    if namespace == 'production' and name in {'transport_board','transport_claims','transport_create','transport_history','camp_fuel','transport_details','transport_cell','transport_employee_choices','transport_status_create','transport_copy_previous'}:
         from apps.production.transport import OPERATORS,READERS
         require_roles(user,READERS if method in {'GET','HEAD'} and name in {'transport_board','transport_history','camp_fuel','transport_details'} else OPERATORS)
         return
@@ -179,7 +179,7 @@ def check_route(user, match, method):
         if name=='production_report_download':
             require_roles(user,READ_ROLES|{'DISPATCHER','ALL_FACT_DISPATCHER'})
             return
-        if name in {'production_live','production_links'}:
+        if name in {'production_live','production_links','production_copy_previous'}:
             require_roles(user,{'ADMIN','DISPATCHER','ALL_FACT_DISPATCHER'})
             return
         if name in {'fact_day_workspace','work_claims'}:

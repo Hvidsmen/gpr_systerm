@@ -401,3 +401,6 @@ urlpatterns += [path('deviation-reasons/quick-add/',deviation_quick_add.create,n
 
 from .day_reset import reset as production_day_reset
 urlpatterns += [path('day-reset/',production_day_reset,name='production_day_reset')]
+
+from . import copy_previous
+urlpatterns += [path('copy-previous/',copy_previous.production,name='production_copy_previous'),path('transport/copy-previous/',copy_previous.equipment,name='transport_copy_previous')]

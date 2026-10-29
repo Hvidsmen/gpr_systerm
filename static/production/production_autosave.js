@@ -90,7 +90,13 @@
   })();
   try{return await running;}finally{running=null;}
  }
- window.productionAutoSave={flush,reindex,fingerprint,capture,get running(){return Boolean(running);},get pending(){return pending||Boolean(running)||dirty().length>0;}};
+ async function flushPeople(){
+  clearTimeout(timer);if(running)await running;
+  const selected=dirty().filter(isPerson);if(!selected.length){if(dirty().length)timer=setTimeout(()=>flush(),700);return true;}
+  running=(async()=>{try{await save(selected);return true;}catch(error){selected.forEach(row=>rowMessage(row,error.message,true));message(error.message,true);return false;}})();
+  try{return await running;}finally{running=null;if(dirty().length){message('Сотрудники обработаны. Есть несохранённые изменения.',true);timer=setTimeout(()=>flush(),700);}}
+ }
+ window.productionAutoSave={flush,flushPeople,reindex,fingerprint,capture,get running(){return Boolean(running);},get pending(){return pending||Boolean(running)||dirty().length>0;}};
  const relevant=event=>{
   if(form.productionApplying)return;
   const row=event.target.closest('[data-production-person],[data-work-fact-row]');

@@ -66,7 +66,7 @@ class ProductionEntryTests(TestCase):
         response,details=self.post('DISPATCHER',data);self.assertEqual(response.status_code,302,details)
         self.assertEqual(EmployeeActivity.objects.get(employee=self.cook).entry_direction,'works')
 
-    def test_previous_jobs_and_people_prefill_only_for_this_dispatcher_without_copying_quantities(self):
+    def test_previous_work_candidates_stay_but_people_require_explicit_copy(self):
         previous=self.day-timedelta(days=1)
         third=ProjectWork.objects.create(company=self.company,section=self.work.section,name='Вчерашняя работа',unit='шт')
         DailyFact.objects.create(company=self.company,date=previous,project_work=third,actual_quantity=9,reported_by=self.users['DISPATCHER'])
@@ -76,13 +76,11 @@ class ProductionEntryTests(TestCase):
             general=True,reported_by=self.users['PERSONNEL_DISPATCHER'])
         data=self.payload('DISPATCHER','works')
         self.assertEqual(data[self.row(data,third)+'actual_quantity'],'')
-        self.assertEqual(str(data['labor-0-employee']),str(self.employee.pk))
-        self.assertEqual(str(data['labor-0-shift']),'2')
-        self.assertEqual(data['labor-0-work_targets'],[f'work:{third.pk}'])
+        self.assertEqual(data['labor-0-employee'],'')
         self.assertFalse(EmployeeActivity.objects.filter(date=self.day).exists())
         data[self.row(data,third)+'actual_quantity']='1';data[self.row(data,third)+'deviation_reason']=self.reason.pk
         response,details=self.post('DISPATCHER',data);self.assertEqual(response.status_code,302,details)
-        self.assertEqual(EmployeeActivity.objects.filter(employee=self.employee,date=self.day).count(),1)
+        self.assertFalse(EmployeeActivity.objects.filter(employee=self.employee,date=self.day).exists())
         self.assertEqual(DailyFact.objects.get(project_work=third,date=previous).actual_quantity,9)
         other=self.payload('SECOND','works')
         self.assertTrue(any(str(value)==str(third.pk) for name,value in other.items() if name.endswith('-project_work')))
@@ -226,13 +224,12 @@ class ProductionEntryTests(TestCase):
         response,details=self.post('DISPATCHER',stale);self.assertEqual(response.status_code,400)
         self.assertEqual(EmployeeActivity.objects.get(employee=self.employee).activity,'Новое описание')
 
-    def test_other_dispatcher_save_does_not_prevent_my_previous_roster_prefill(self):
+    def test_other_dispatcher_save_does_not_implicitly_copy_previous_roster(self):
         EmployeeActivity.objects.create(company=self.company,construction_object=self.obj,date=self.day-timedelta(days=1),employee=self.employee,
             position=self.employee.position,general=True,reported_by=self.second)
         self.save_work('DISPATCHER',self.work,5)
         data=self.payload('SECOND','works')
-        self.assertEqual(str(data['labor-0-employee']),str(self.employee.pk))
-        self.assertEqual(data['labor-0-work_mode'],'general')
+        self.assertEqual(data['labor-0-employee'],'')
         self.assertFalse(EmployeeActivity.objects.filter(date=self.day).exists())
 
     def test_claim_rejects_wrong_object_company_and_browser_session_cannot_release_another(self):
@@ -246,17 +243,13 @@ class ProductionEntryTests(TestCase):
         self.assertEqual(response.status_code,400)
         self.assertEqual(self.claim('DISPATCHER',one,action='release').json()['released'],True)
 
-    def test_work_only_draft_retains_carried_people_until_roster_is_taken(self):
+    def test_work_only_draft_keeps_people_empty_until_copy_is_requested(self):
         EmployeeActivity.objects.create(company=self.company,construction_object=self.obj,date=self.day-timedelta(days=1),employee=self.employee,
             position=self.employee.position,general=True,reported_by=self.users['DISPATCHER'])
-        data=self.payload('DISPATCHER','works');data[self.row(data,self.work)+'actual_quantity']='5'
-        data['labor-0-person_editing']='0'
+        data=self.payload('DISPATCHER','works');data[self.row(data,self.work)+'actual_quantity']='5';data['labor-0-person_editing']='0'
         response,details=self.post('DISPATCHER',data);self.assertEqual(response.status_code,302,details)
         self.assertFalse(ProductionEntryDay.objects.get(dispatcher=self.users['DISPATCHER']).roster_started)
-        data=self.payload('DISPATCHER','works')
-        self.assertEqual(str(data['labor-0-employee']),str(self.employee.pk))
-        data.update({'labor-0-person_editing':'0','action':'confirm'})
-        response,details=self.post('DISPATCHER',data);self.assertEqual(response.status_code,400)
-        data['labor-0-DELETE']='on'
-        response,details=self.post('DISPATCHER',data);self.assertEqual(response.status_code,302,details)
         data=self.payload('DISPATCHER','works');self.assertEqual(data['labor-0-employee'],'')
+        response=self.client.post(reverse('production:production_copy_previous'),{'construction_object':self.obj.pk,'date':str(self.day),'kind':'people','session':str(uuid4()),'reset_epoch':0},content_type='application/json')
+        self.assertEqual(response.status_code,200,response.content)
+        self.assertEqual(EmployeeActivity.objects.filter(date=self.day).count(),1)

@@ -363,7 +363,7 @@ class DispatcherDayView(CompanyRequiredMixin,View):
                 available=set(ProjectWork.objects.filter(company=obj.company,section__construction_object=obj,merged_source__isnull=True).values_list('pk',flat=True))
                 initial=[{'project_work':row['work'],'work_item':row['item'],'actual_quantity':None} for row in catalogue if (row['work'],row['item']) in activity_keys and (row['work'],row['item']) not in existing and row['work'] in available]
             carried_day=None
-            if prefix=='labor' and context['editable'] and not qs.exists() and not (section=='works' and context['production_reset_epoch']) and (status.revision==0 or own_entry and (not context.get('my_production_entry') or not context['my_production_entry'].roster_started)):
+            if prefix=='labor' and section!='works' and context['editable'] and not qs.exists() and not (section=='works' and context['production_reset_epoch']) and (status.revision==0 or own_entry and (not context.get('my_production_entry') or not context['my_production_entry'].roster_started)):
                 carried_day,initial=previous_people(obj,day,production=section=='works',user=request.user if own_entry else None)
             if prefix=='fuel':
                 existing_types=set(qs.values_list('fuel_type',flat=True))

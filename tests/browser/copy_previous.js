@@ -1,0 +1,22 @@
+const {chromium}=require('playwright'),fs=require('fs'),assert=require('node:assert/strict');
+(async()=>{const c=JSON.parse(process.env.COPY_PREVIOUS_CONFIG),browser=await chromium.launch({executablePath:c.chromium,headless:true,args:['--no-sandbox']});try{
+ const context=await browser.newContext({viewport:{width:1530,height:1040}});await context.addCookies([{name:'sessionid',value:c.cookie,url:c.base}]);
+ await context.route('**/*',route=>{const url=route.request().url();if(url.startsWith(c.base))return route.continue();if(url.includes('bootstrap')&&url.includes('.css'))return route.fulfill({body:fs.readFileSync('/tmp/catalogue-bootstrap.css'),contentType:'text/css'});return route.abort();});
+ const page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));
+ await page.goto(c.base+c.production+`?construction_object=${c.object}&date=${c.day}&section=works`);await page.waitForFunction(()=>Boolean(document.querySelector('[data-production-form]')?.productionRefresh));
+ const workName=await page.locator('[data-work-fact-row]').evaluateAll((rows,id)=>rows.find(row=>row.querySelector('[name$="-project_work"]')?.value===String(id)).querySelector('[name$="-actual_quantity"]').name,c.work);
+ const quantity=page.locator('[name="'+workName+'"]');await quantity.fill('');await quantity.press('Tab');
+ await page.locator('[data-step="2"]').click();assert.equal(await page.locator('[data-production-person] [name$="-employee"]').evaluateAll(nodes=>nodes.filter(n=>n.value).length),0);
+ await page.locator('[data-copy-previous=people]').click();await page.locator('[data-copy-result=people]').filter({hasText:'скопировано 1'}).waitFor();
+ await page.waitForFunction(id=>[...document.querySelectorAll('[data-production-person]')].some(row=>row.querySelector('[name$="-employee"]').value===String(id)&&row.querySelector('[name$="-id"]').value),c.employee);
+ await page.locator('[data-copy-previous=people]').click();await page.locator('[data-copy-result=people]').filter({hasText:'скопировано 0'}).waitFor();
+ await page.locator('[data-step="3"]').click();await page.locator('[data-copy-previous=links]').click();await page.locator('[data-copy-result=links]').filter({hasText:'скопировано 1'}).waitFor();
+ assert.equal(await quantity.inputValue(),'');await page.locator('[data-step="1"]').click();await quantity.fill('5');await quantity.press('Tab');await page.locator('[data-autosave-state]').filter({hasText:'Все изменения сохранены'}).waitFor();
+ await page.locator('[data-step="3"]').click();await page.screenshot({path:'/tmp/copy-previous-links.png',fullPage:true});
+ await context.addCookies([{name:'sessionid',value:c.operator_cookie,url:c.base}]);await page.goto(c.base+c.transport+`?camp=${c.camp}&date=${c.day}`);
+ await page.waitForFunction(()=>document.querySelector('[data-transport-board]')?.dataset.planningReady==='1');await Promise.all([page.waitForNavigation(),page.locator('[data-copy-previous=equipment]').click()]);
+ await page.locator('[data-copy-result=equipment]').filter({hasText:'скопировано 1'}).waitFor();assert.equal(await page.locator('[data-transport-row]').count(),1);
+ const row=page.locator(`[data-transport-row="${c.machine}"]`);assert.equal(await row.locator('[data-detail-field=status]').inputValue(),'WORKED');assert.equal(await row.locator('[data-detail-field=shift_one_employee]').inputValue(),String(c.employee));
+ await page.locator('[data-copy-previous=equipment]').click();await page.locator('[data-copy-result=equipment]').filter({hasText:'скопировано 0'}).waitFor();
+ assert.deepEqual(errors,[]);console.log('PASS: explicit people copy, live form merge, idempotence, separate links copy, daily vehicle and driver copy, preserved technical state and current work volumes');
+}finally{await browser.close();}})().catch(error=>{console.error(error);process.exit(1)});

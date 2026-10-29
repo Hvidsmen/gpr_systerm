@@ -59,6 +59,7 @@
    digest=data.digest;
   }catch{/* Keep local input; the next heartbeat retries. */}finally{polling=false;}
  }
+ form.productionRefresh=()=>{digest='';return poll();};
  form.productionChangeLinks=async(row,operation)=>{
   if(!field(row,'id')?.value){if(!await window.productionAutoSave.flush())throw new Error('Сначала исправьте ошибки сохранения сотрудника.');}
   const response=await fetch(form.dataset.linksUrl,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRFToken':csrf},body:JSON.stringify({...scope,activity:field(row,'id').value,revision:Number(row.dataset.linksRevision||0),...operation})});
