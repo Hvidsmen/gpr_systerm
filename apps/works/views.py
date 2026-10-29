@@ -247,7 +247,7 @@ class WorkCreateView(WorkLocationMixin, CompanyRequiredMixin, CreateView):
         elif self.object.kind == "COMPOSITE":
             messages.info(
                 self.request,
-                "Комплекс работ создана. Добавьте работы в составе комплекса и нормативы.",
+                "Комплекс работ создан. Добавьте работы в составе комплекса и нормативы.",
             )
         else:
             messages.success(
@@ -262,6 +262,8 @@ class WorkCreateView(WorkLocationMixin, CompanyRequiredMixin, CreateView):
             from .navigation import return_path
             from urllib.parse import urlencode
             url += '?' + urlencode({'return_to': return_path(self.request)})
+        if self.object.kind == ProjectWork.Kind.COMPOSITE:
+            url += '#work-structure'
         return url
 
 

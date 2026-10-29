@@ -1,228 +1,36 @@
-{% extends 'base.html' %}
-{% load access static %}
-{% load i18n %}
-
-{% block title %}
-{% if work %}Редактировать работу{% else %}{{ creation_title|default:'Создать работу' }}{% endif %}
-{% endblock %}
-
+{% extends 'base.html' %}{% load access static %}
+{% block title %}{% if work %}Редактировать работу{% else %}{{ creation_title|default:'Новая работа' }}{% endif %}{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'works/catalogue.css' %}?v=20261026-ux"><link rel="stylesheet" href="{% static 'works/work_form.css' %}?v=20261029-form">{% endblock %}
 {% block content %}
-<div class="card work-catalogue" data-catalogue-page>
-    <div class="card-header bg-primary text-white">
-        <h4 class="mb-0">
-            <i class="bi bi-hammer"></i>
-            {% if work %}
-            Редактировать работу "{{ work.name }}"
-            {% else %}
-            {{ creation_title|default:'Создать новую работу' }}
-            {% endif %}
-        </h4>
-    </div>
-    <div class="card-body">
-        <form method="post" data-catalogue-edit {% if not form.instance.pk %}data-new-record{% endif %}><input type="hidden" name="return_to" value="{{ catalogue_return }}">
-            {% csrf_token %}{% include 'works/_legacy_structure_field.html' %}
-            <div class="work-location mb-4 p-3 rounded-3 border bg-light">
-                <h2 class="h6 mb-3">Где выполняется работа</h2>
-                <div class="row g-3">
-                    <div class="col-md-4"><label for="{{ form.project.id_for_label }}" class="form-label"><span class="badge rounded-pill bg-primary me-2">1</span>Проект <span class="text-danger">*</span></label>{{ form.project }}<div class="text-danger small">{{ form.project.errors }}</div></div>
-                    <div class="col-md-4"><label for="{{ form.construction_object.id_for_label }}" class="form-label"><span class="badge rounded-pill bg-primary me-2">2</span>Строительный объект <span class="text-danger">*</span></label>{{ form.construction_object }}<div class="text-danger small">{{ form.construction_object.errors }}</div></div>
-                    <div class="col-md-4"><label for="{{ form.section.id_for_label }}" class="form-label"><span class="badge rounded-pill bg-primary me-2">3</span>Раздел <span class="text-danger">*</span></label>{{ form.section }}<div class="text-danger small">{{ form.section.errors }}</div></div>
-                </div>
-                <div class="form-text mt-2">Выберите проект, затем объект и раздел. В списках указаны названия.</div>
-                <div class="form-text" id="location-status" aria-live="polite"></div>
-            </div>
-            <div class="row g-3 mb-3">
-                <div class="col-md-4">{{ form.kind.label_tag }}{{ form.kind }}{{ form.kind.errors }}</div>
-                <div class="col-md-4">{{ form.load_profile.label_tag }} <span class="text-danger" id="profile-required">*</span>{{ form.load_profile }}{{ form.load_profile.errors }}<div class="form-text">{{ form.load_profile.help_text }}</div></div>
-                <div class="col-md-4 pt-4">{{ form.allow_fractional }} {{ form.allow_fractional.label_tag }}{{ form.allow_fractional.errors }}</div>
-            </div>
-            {% if form.errors %}
-            <div class="alert alert-danger">
-                <h5><i class="bi bi-exclamation-triangle"></i> Ошибки в форме:</h5>
-                <ul class="mb-0">
-                    {% for field in form %}
-                        {% if field.errors %}
-                        <li><strong>{{ field.label }}:</strong>
-                            <ul>
-                                {% for error in field.errors %}
-                                <li>{{ error }}</li>
-                                {% endfor %}
-                            </ul>
-                        </li>
-                        {% endif %}
-                    {% endfor %}
-                    {% for error in form.non_field_errors %}
-                    <li class="text-danger fw-bold"><i class="bi bi-ban"></i> {{ error }}</li>
-                    {% endfor %}
-                </ul>
-            </div>
-            {% endif %}
-
-            <div class="mb-3">
-                <p>{{ form.complex_object.label_tag }} {{ form.complex_object }}{{ form.complex_object.errors }} <a href="{% url 'works:complex_object_list' %}" target="_blank" rel="noopener">Комплексные объекты</a></p><label class="form-label" for="{{ form.work_group.id_for_label }}">Группа работ <span class="text-muted small">(необязательно)</span></label>
-                <div class="input-group">{{ form.work_group }}{% if request.user|may:'works:group_create' %}<button type="button" class="btn btn-outline-primary" data-catalog-open="group" aria-label="Создать группу работ">+</button>{% endif %}</div>
-                <div class="text-danger small">{{ form.work_group.errors }}</div>
-            </div>
-            <div class="row g-3 mb-3"><div class="col-md-6">{{ form.rd_section.label_tag }}{{ form.rd_section }}{{ form.rd_section.errors }}</div><div class="col-md-6">{{ form.rdc_point.label_tag }}{{ form.rdc_point }}{{ form.rdc_point.errors }}</div></div>
-            <!-- Название -->
-            <div class="row">
-                <div class="col-md-9 mb-3">
-                    <label for="{{ form.name.id_for_label }}" class="form-label">
-                        {{ form.name.label }} <span class="text-danger">*</span>
-                    </label>
-                    {{ form.name }}
-                    {% if form.name.errors %}
-                    <div class="text-danger small mt-1">{{ form.name.errors }}</div>
-                    {% endif %}
-                </div>
-            </div>
-
-            <!-- Раздел, Шаблон, Единица, Цена -->
-            <div class="row">
-                <div class="col-md-4 mb-3">
-                    <label for="{{ form.template.id_for_label }}" class="form-label">
-                        {{ form.template.label }}
-                    </label>
-                    {{ form.template }}
-                    {% if form.template.help_text %}
-                    <div class="form-text">{{ form.template.help_text }}</div>
-                    {% endif %}
-                    {% if form.template.errors %}
-                    <div class="text-danger small mt-1">{{ form.template.errors }}</div>
-                    {% endif %}
-                </div>
-                <div class="col-md-2 mb-3">
-                    <label for="{{ form.unit.id_for_label }}" class="form-label">
-                        {{ form.unit.label }} <span class="text-danger" id="unit-required">*</span><span class="text-muted small"> Для комплекса можно задать позже.</span>
-                    </label>
-                    <div class="input-group">{{ form.unit }}{% if request.user|may:'works:unit_create' %}<button type="button" class="btn btn-outline-primary" data-catalog-open="unit" aria-label="Создать единицу измерения">+</button>{% endif %}</div>
-                    {% if form.unit.errors %}
-                    <div class="text-danger small mt-1">{{ form.unit.errors }}</div>
-                    {% endif %}
-                </div>
-                <div class="col-md-2 mb-3">
-                    <label for="{{ form.unit_price.id_for_label }}" class="form-label">
-                        {{ form.unit_price.label }}
-                    </label>
-                    {{ form.unit_price }}
-                    {% if form.unit_price.errors %}
-                    <div class="text-danger small mt-1">{{ form.unit_price.errors }}</div>
-                    {% endif %}
-                </div>
-            </div>
-
-            {% if form.price_source %}
-            <div class="card bg-light p-3 mb-3">
-                <label class="form-label" for="{{ form.price_source.id_for_label }}">{{ form.price_source.label }}</label>
-                {{ form.price_source }}
-                <div class="form-text mb-2">{{ form.price_source.help_text }}</div>
-                {% if form.price_source.errors %}<div class="text-danger">{{ form.price_source.errors }}</div>{% endif %}
-                {% include 'works/price_source_actions.html' %}
-            </div>
-            {% endif %}
-
-            <!-- Статус -->
-            <div class="row">
-                <div class="col-md-4 mb-3">
-                    <label for="{{ form.status.id_for_label }}" class="form-label">
-                        {{ form.status.label }}
-                    </label>
-                    {{ form.status }}
-                    {% if form.status.errors %}
-                    <div class="text-danger small mt-1">{{ form.status.errors }}</div>
-                    {% endif %}
-                </div>
-            </div>
-
-            <details class="catalogue-secondary"><summary>Названия для импорта из Excel</summary><div class="catalogue-secondary-body"><div class="mb-3">{{ form.excel_aliases.label_tag }}{{ form.excel_aliases }}<div class="form-text">{{ form.excel_aliases.help_text }}</div>{{ form.excel_aliases.errors }}</div></div></details>
-            <!-- Кнопки -->
-            <div class="d-flex gap-2 mt-4 pt-3 border-top catalogue-form-actions">
-                <button type="submit" class="btn btn-primary">
-                    <i class="bi bi-save"></i> Сохранить
-                </button>
-                {% if request.user|may:'works:work_list' %}<a href="{{ catalogue_return }}" class="btn btn-secondary">
-                    <i class="bi bi-x-circle"></i> Отмена
-                </a>{% endif %}
-                <span data-save-state role="status">Сохранено</span>
-            </div>
-        </form>
-    </div>
-</div>
-
+<section class="work-editor work-catalogue" data-catalogue-page data-work-editor>
+<header class="work-editor-header"><a href="{{ catalogue_return }}">← К справочнику работ</a><h1 data-work-editor-title>{% if work %}Редактировать работу{% else %}{{ creation_title|default:'Новая работа' }}{% endif %}</h1><p data-composite-only>Задайте название и расположение комплекса. Затем добавьте работы, нормативы и доли стоимости.</p><p data-simple-only hidden>Задайте название, расположение, единицу измерения и профиль распределения работы.</p></header>
+{% if not work %}<ol class="work-editor-steps" aria-label="Создание комплекса" data-composite-only><li aria-current="step"><span>1</span> Основные данные</li><li><span>2</span> Состав и нормативы <small>после создания</small></li></ol>{% endif %}
+<form method="post" data-catalogue-edit {% if not form.instance.pk %}data-new-record{% endif %}>
+{% csrf_token %}<input type="hidden" name="return_to" value="{{ catalogue_return }}">
+{% if form.errors %}<div class="alert alert-danger" role="alert" tabindex="-1" data-work-errors><strong>Проверьте поля перед сохранением</strong><ul class="mb-0">{% for field in form %}{% for error in field.errors %}<li><a href="#{{ field.id_for_label }}" data-work-error-link>{{ field.label }}</a>: {{ error }}</li>{% endfor %}{% endfor %}{% for error in form.non_field_errors %}<li>{{ error }}</li>{% endfor %}</ul></div>{% endif %}
+<section class="card work-editor-section"><div class="work-editor-section-heading"><h2>Основные данные</h2><span class="text-muted small">* Обязательные поля</span></div>
+<div class="work-editor-primary"><div><label for="{{ form.name.id_for_label }}" data-work-name-label>Название работы <span class="text-danger">*</span></label>{{ form.name }}{{ form.name.errors }}</div><div>{{ form.kind.label_tag }}{{ form.kind }}{{ form.kind.errors }}</div></div>
+<div class="work-editor-basics"><div><label for="{{ form.unit.id_for_label }}"><span data-work-unit-label>Единица измерения</span> <span class="text-danger" id="unit-required">*</span></label><div class="input-group">{{ form.unit }}{% if request.user|may:'works:unit_create' %}<button type="button" class="btn btn-outline-primary" data-catalog-open="unit" aria-label="Создать единицу измерения">+</button>{% endif %}</div>{{ form.unit.errors }}<p class="form-text mb-0" data-composite-only>Можно указать при настройке состава.</p></div>
+<div>{{ form.unit_price.label_tag }}{{ form.unit_price }}{{ form.unit_price.errors }}{% if form.unit_price.help_text %}<p class="form-text mb-0">{{ form.unit_price.help_text }}</p>{% else %}<p class="form-text mb-0">Цена одной единицы. Можно уточнить позже.</p>{% endif %}</div>
+<div data-composite-only class="work-editor-fractional"><label>{{ form.allow_fractional }} {{ form.allow_fractional.label }}</label>{{ form.allow_fractional.errors }}<p class="form-text mb-0">Например, 0,5 комплекса. Без отметки готовность считается целыми единицами.</p></div></div>
+<div data-simple-only {% if form.kind.value != 'SIMPLE' %}hidden{% endif %} class="mt-3"><label for="{{ form.load_profile.id_for_label }}">Профиль распределения работы <span class="text-danger" id="profile-required">*</span></label>{{ form.load_profile }}{{ form.load_profile.errors }}<p class="form-text mb-0">Определяет, как месячный объём распределяется по рабочим дням.</p></div>
+{% if form.price_source %}<details class="work-editor-extra mt-3" {% if form.price_source.errors %}open{% endif %}><summary>Взять цену из другой работы</summary><div class="pt-3">{{ form.price_source.label_tag }}{{ form.price_source }}{{ form.price_source.errors }}<p class="form-text">{{ form.price_source.help_text }}</p>{% include 'works/price_source_actions.html' %}</div></details>{% endif %}
+</section>
+<section class="card work-editor-section work-location"><div class="work-editor-section-heading"><h2>Где выполняется работа</h2></div>
+<div class="work-editor-location-grid"><div><label for="{{ form.project.id_for_label }}">Проект <span class="text-danger">*</span></label>{{ form.project }}{{ form.project.errors }}</div><div><label for="{{ form.construction_object.id_for_label }}">Строительный объект <span class="text-danger">*</span></label>{{ form.construction_object }}{{ form.construction_object.errors }}</div><div><label for="{{ form.section.id_for_label }}">Раздел <span class="text-danger">*</span></label>{{ form.section }}{{ form.section.errors }}</div></div>
+<div class="mt-3"><label for="{{ form.complex_object.id_for_label }}">Комплексный объект <span class="text-muted small">(необязательно)</span></label>{{ form.complex_object }}{{ form.complex_object.errors }}<div class="d-flex flex-wrap justify-content-between gap-2 mt-1"><p class="form-text mb-0">Выберите проект, затем объект и раздел. Комплексный объект можно оставить пустым.</p><a class="small" href="{% url 'works:complex_object_list' %}" target="_blank" rel="noopener">Справочник комплексных объектов ↗</a></div></div>
+<p class="work-editor-location-path mb-0 mt-3" data-work-location-path></p><p class="form-text mb-0" id="location-status" role="status" aria-live="polite"></p>
+</section>
+<section class="card work-editor-section" data-composite-only><div class="work-editor-section-heading"><h2>Состав комплекса</h2></div><p class="text-muted">После сохранения откроется состав: добавьте работы, укажите норматив на единицу комплекса, профиль нагрузки и долю стоимости.</p><label for="{{ form.template.id_for_label }}">Заполнить состав из шаблона <span class="text-muted small">(необязательно)</span></label>{{ form.template }}{{ form.template.errors }}<p class="form-text mb-0">Без шаблона вы добавите работы вручную на следующем шаге.</p></section>
+<details class="card work-editor-section work-editor-extra" {% if form.work_group.errors or form.rd_section.errors or form.rdc_point.errors or form.status.errors or form.excel_aliases.errors or form.is_legacy_structure.errors %}open{% endif %}><summary>Дополнительные настройки <small>Группа, документация, статус и импорт</small></summary><div class="pt-3">
+<label for="{{ form.work_group.id_for_label }}">Группа работ <span class="text-muted small">(необязательно)</span></label><div class="input-group">{{ form.work_group }}{% if request.user|may:'works:group_create' %}<button type="button" class="btn btn-outline-primary" data-catalog-open="group" aria-label="Создать группу работ">+</button>{% endif %}</div>{{ form.work_group.errors }}
+<div class="work-editor-secondary-grid mt-3"><div>{{ form.rd_section.label_tag }}{{ form.rd_section }}{{ form.rd_section.errors }}</div><div>{{ form.rdc_point.label_tag }}{{ form.rdc_point }}{{ form.rdc_point.errors }}</div><div>{{ form.status.label_tag }}{{ form.status }}{{ form.status.errors }}</div></div>
+<div class="mt-3">{{ form.excel_aliases.label_tag }}{{ form.excel_aliases }}{{ form.excel_aliases.errors }}<p class="form-text">{{ form.excel_aliases.help_text }}</p></div>
+{% include 'works/_legacy_structure_field.html' %}
+</div></details>
+<footer class="work-editor-actions catalogue-form-actions"><div><span data-work-next-step>{% if work %}Изменения сохранятся в карточке работы.{% else %}Следующий шаг — состав и нормативы комплекса.{% endif %}</span><small data-save-state role="status">{% if work %}Сохранено{% else %}Не сохранено{% endif %}</small></div><div class="work-editor-action-buttons"><a href="{{ catalogue_return }}" class="btn btn-outline-secondary">Отмена</a><button type="submit" class="btn btn-primary" data-work-submit>{% if work %}Сохранить изменения{% else %}Создать и перейти к составу{% endif %}</button></div></footer>
+</form></section>
 {% include 'works/catalog_quick.html' %}
-{% include 'works/profile_requirement.html' %}
-<!-- Справка -->
-<div class="card mt-4">
-    <div class="card-header">
-        <h6 class="mb-0"><i class="bi bi-info-circle"></i> Справка по полям</h6>
-    </div>
-    <div class="card-body">
-        <ul class="mb-0 small">
-            <li><strong>Название</strong> — полное наименование работы</li>
-            <li><strong>Раздел</strong> — раздел объекта, к которому относится работа</li>
-            <li><strong>Шаблон</strong> — если выбран, работы в составе комплекса будут созданы автоматически из шаблона</li>
-            <li><strong>Единица измерения</strong> — шт, м, м², м³, т и т.д.</li>
-            <li><strong>Цена за единицу</strong> — стоимость одной единицы работы в рублях</li>
-            <li><strong>Статус</strong> — текущий статус работы (Запланировано / В работе / Выполнено / Отменено)</li>
-        </ul>
-    </div>
-</div>
-{% endblock %}
-{% block extra_css %}
-<link rel="stylesheet" href="{% static 'works/catalogue.css' %}?v=20261026-ux">
-<style>
-.work-location .form-select { min-height: 46px; border-radius: 10px; border-color: #ced8e4; }
-.work-location .form-select:focus { border-color: #86b7fe; box-shadow: 0 0 0 .2rem rgba(13,110,253,.12); }
-.work-location .form-select:disabled { background-color: #edf0f4; color: #6c757d; }
-</style>
-{% endblock %}
-{% block extra_js %}<script src="{% static 'works/catalogue.js' %}?v=20261026-ux" defer></script>
 {{ work_hierarchy|json_script:'work-hierarchy' }}
-<script>
-(() => {
-    const data = JSON.parse(document.getElementById('work-hierarchy').textContent);
-    const project = document.getElementById('id_project');
-    const object = document.getElementById('id_construction_object');
-    const section = document.getElementById('id_section');
-    const complex = document.getElementById('id_complex_object');
-    const initialComplex = complex.value;
-    const status = document.getElementById('location-status');
-    function options(select, rows, placeholder, enabled, selected = '') {
-        select.replaceChildren(new Option(placeholder, ''));
-        rows.forEach(row => select.add(new Option(`${row.name}`, String(row.id))));
-        select.value = selected;
-        select.disabled = !enabled;
-    }
-    function updateSections(selected = '') {
-        const rows = data.sections.filter(row => String(row.construction_object_id) === object.value);
-        options(section, rows, object.value ? (rows.length ? 'Выберите раздел' : 'На объекте пока нет разделов') : 'Сначала выберите объект', Boolean(object.value), selected);
-        updateComplexObjects();
-        status.textContent = object.value && !rows.length ? 'Создайте раздел в карточке строительного объекта, затем вернитесь к созданию работы.' : '';
-    }
-    function updateComplexObjects() {
-        const previous=complex.value;
-        options(complex,(data.complex_objects||[]).filter(row=>String(row.section_id)===section.value),'Без комплексного объекта',Boolean(section.value),previous);
-    }
-    section.addEventListener('change', updateComplexObjects);
-    function updateObjects(selected = '', selectedSection = '') {
-        const rows = data.objects.filter(row => String(row.project_id) === project.value);
-        options(object, rows, project.value ? (rows.length ? 'Выберите объект' : 'В проекте пока нет объектов') : 'Сначала выберите проект', Boolean(project.value), selected);
-        updateSections(selectedSection);
-        if (project.value && !rows.length) status.textContent = 'В выбранном проекте пока нет строительных объектов.';
-    }
-    const initialObject = object.value, initialSection = section.value;
-    updateObjects(initialObject, initialSection);
-    complex.value=initialComplex;
-    project.addEventListener('change', () => updateObjects());
-    object.addEventListener('change', () => updateSections());
-})();
-</script>
-<script>
-(() => {
- const kind=document.getElementById('id_kind'), unit=document.getElementById('id_unit'), marker=document.getElementById('unit-required');
- if(!kind||!unit)return;
- const update=()=>{unit.required=kind.value==='SIMPLE';if(marker)marker.hidden=!unit.required;};
- kind.addEventListener('change',update);update();
-})();
-</script>
 {% endblock %}
+{% block extra_js %}<script src="{% static 'works/work_form.js' %}?v=20261029-form" defer></script><script src="{% static 'works/catalogue.js' %}?v=20261026-ux" defer></script>{% endblock %}

@@ -10,7 +10,7 @@ from django.urls import reverse
 from apps.accounts.models import User, Role
 from apps.planning import test_workspace as fixtures
 from apps.planning.models import LoadProfile, LoadProfileItem
-from .models import ComplexObject, ProjectWorkItem
+from .models import ComplexObject, ProjectWorkItem, MeasurementUnit
 
 
 @skipUnless(os.environ.get('CATALOGUE_BROWSER_TESTS') == '1', 'Optional Playwright/Chromium check')
@@ -23,6 +23,7 @@ class CatalogueUXBrowserTests(StaticLiveServerTestCase):
         facility = ComplexObject.objects.create(company=self.company,construction_object=self.obj,
             section=self.composite.section,name='УЗА 26')
         self.composite.complex_object = facility;self.composite.save()
+        MeasurementUnit.objects.get_or_create(company=self.company,symbol='компл',defaults={'name':'Комплекс'})
         profile = LoadProfile.objects.create(company=self.company,name='Равномерный профиль')
         LoadProfileItem.objects.create(company=self.company,profile=profile,workday_number=1,percentage=100)
         self.a.name = 'Укладка кабельной продукции';self.a.load_profile = profile;self.a.save()
@@ -37,7 +38,7 @@ class CatalogueUXBrowserTests(StaticLiveServerTestCase):
         readonly = Client();readonly.force_login(observer)
         config = dict(base=self.live_server_url,list=reverse('works:work_list'),
             detail=reverse('works:work_detail',args=[self.composite.pk]),a=self.a.pk,b=self.b.pk,last=last.pk,
-            facility=facility.pk,work=self.composite.pk,cookie=client.cookies['sessionid'].value,
+            create=reverse('works:work_create')+f'?kind=COMPOSITE&project={self.obj.project_id}&construction_object={self.obj.pk}&section={self.composite.section_id}&complex_object={facility.pk}',facility=facility.pk,work=self.composite.pk,cookie=client.cookies['sessionid'].value,
             observerCookie=readonly.cookies['sessionid'].value,chromium=shutil.which('chromium'))
         script = Path(__file__).resolve().parents[2]/'tests/browser/catalogue_ux.js'
         result = subprocess.run(['node',str(script)],cwd=script.parents[2],text=True,capture_output=True,
