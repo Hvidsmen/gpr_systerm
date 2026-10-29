@@ -40,7 +40,7 @@ def source_works(user, ids, lock=False, minimum=2):
 
 
 def fingerprint(works):
-    from apps.production.models import DailyFact
+    from apps.production.models import DailyFact, WorkOpeningBalance
     from apps.planning.models import WorkMonthAllocation, GlobalPlanVersion, DailyPlan
 
     ids = [w.pk for w in works]
@@ -49,6 +49,7 @@ def fingerprint(works):
         "facts": list(
             DailyFact.objects.filter(project_work_id__in=ids).order_by("pk").values()
         ),
+        "openings": list(WorkOpeningBalance.objects.filter(project_work_id__in=ids).order_by("pk").values()),
         "allocations": list(
             WorkMonthAllocation.objects.filter(work_id__in=ids).order_by("pk").values()
         ),
@@ -87,6 +88,8 @@ def preview(user, works, values):
             company=user.company, project_work__in=works
         ).order_by("date", "pk")
     ]
+    from apps.production.work_opening import opening_rows
+    rows += [(day, wid, qty) for wid, day, _, qty in opening_rows(user.company, [w.pk for w in works])]
     series = cumulative_series(spec, rows)
     months = defaultdict(dict)
     for row in WorkMonthAllocation.objects.filter(
@@ -245,7 +248,7 @@ def merge_lower_plans(user, parent, items):
 @transaction.atomic
 def apply_merge(user, ids, values, expected, minimum=2, target=None):
     from apps.projects.models import ConstructionObject
-    from apps.production.models import DailyFact
+    from apps.production.models import DailyFact, WorkOpeningBalance
     from apps.planning.models import GlobalPlanVersion
     from apps.planning.global_services import build_snapshot
     from apps.planning.workspace_services import WorkspaceService
@@ -347,6 +350,9 @@ def apply_merge(user, ids, values, expected, minimum=2, target=None):
     # Move the original records, preserving IDs, dates, comments, reporters and values.
     for source, item in items.items():
         DailyFact.objects.filter(company=user.company, project_work_id=source).update(
+            project_work=parent, work_item=item
+        )
+        WorkOpeningBalance.objects.filter(company=user.company, project_work_id=source).update(
             project_work=parent, work_item=item
         )
     latest = {}

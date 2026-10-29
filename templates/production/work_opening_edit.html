@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+{% block title %}Входящий остаток — {{ work.name }}{% endblock %}
+{% block content %}
+<a href="{% url 'production:work_opening_list' %}?construction_object={{ work.section.construction_object_id }}">← Входящие остатки работ</a>
+<h1 class="h3 mt-3">{{ work.name }}</h1>
+<p>{{ work.section.construction_object }} → {{ work.section }}{% if work.complex_object_id %} → {{ work.complex_object }}{% endif %}</p>
+<p class="text-muted">Укажите объём, выполненный <strong>до начала выбранного дня</strong>. Дальше к нему добавляется дневной факт. Уже внесённый дневной факт повторно включать в остаток нельзя. Ноль очищает входящий объём.</p>
+{% if work.kind == 'COMPOSITE' %}<p>Остатки вводятся в единицах работ в составе комплекса. Готовность комплекса рассчитывается по нормативам.</p>{% endif %}
+<form method="post" class="card card-body">{% csrf_token %}{{ form.revision }}{{ form.revision.errors }}<div class="text-danger" role="alert">{{ form.non_field_errors }}</div>
+<div class="table-responsive"><table class="table align-middle"><thead><tr><th>Работа</th><th>Ед. изм.</th><th>На начало дня</th><th>Входящий выполненный объём</th></tr></thead><tbody>
+{% for row in form.rows %}<tr><td>{{ row.name }}</td><td>{{ row.unit }}</td><td><label class="visually-hidden" for="{{ row.day.id_for_label }}">На начало дня: {{ row.name }}</label>{{ row.day }}{{ row.day.errors }}</td><td><label class="visually-hidden" for="{{ row.quantity.id_for_label }}">Входящий объём: {{ row.name }}</label>{{ row.quantity }}{{ row.quantity.errors }}</td></tr>{% empty %}<tr><td colspan="4">Сначала добавьте работы в состав комплекса.</td></tr>{% endfor %}
+</tbody></table></div>
+<div class="mb-3">{{ form.reason.label_tag }}{{ form.reason }}{{ form.reason.errors }}</div>
+<div><button class="btn btn-primary" {% if not form.rows %}disabled{% endif %}>Сохранить входящие остатки</button></div></form>
+<p class="mt-3">Выполнено накопительно с учётом остатка и дневного факта: <strong>{{ completed|floatformat:'3g' }} {{ work.unit }}</strong>.</p>
+{% if history %}<details class="card card-body mt-3"><summary>История изменений</summary><ul class="mt-2 mb-0">{% for entry in history %}<li>{{ entry.created_at|date:'d.m.Y H:i' }} · {{ entry.actor_name }} · {{ entry.get_operation_display }} · {{ entry.reason }}</li>{% endfor %}</ul><a href="{% url 'production:fact_history' %}?construction_object={{ work.section.construction_object_id }}&amp;entity=production.workopeningbalance">Подробная история факта</a></details>{% endif %}
+{% endblock %}

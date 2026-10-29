@@ -63,7 +63,35 @@ def cumulative_series(spec, rows):
     return result
 
 
-def historical_fact_rows(company, work_id, until=None):
+def cumulative_fact_series(spec, rows, openings=()):
+    """Opening stock changes cumulative completion, never daily output/revenue."""
+    ordinary = defaultdict(lambda: defaultdict(lambda: ZERO))
+    initial = defaultdict(lambda: defaultdict(lambda: ZERO))
+    for target, source in ((ordinary, rows), (initial, openings)):
+        for day, item_id, quantity in source:
+            target[day][item_id] += Decimal(quantity)
+    totals = defaultdict(lambda: ZERO)
+    result = {}
+    for day in sorted(ordinary.keys() | initial.keys()):
+        for key, value in initial[day].items():
+            totals[key] += value
+        before = quantity_from_totals(spec, totals)
+        for key, value in ordinary[day].items():
+            totals[key] += value
+        completed = quantity_from_totals(spec, totals)
+        result[day] = {'daily': completed - before, 'cumulative': completed}
+    return result
+
+
+def historical_opening_rows(company, work_id, until=None):
+    from apps.production.work_opening import opening_rows
+    from .models import WorkMergeSource
+    link = WorkMergeSource.objects.filter(company=company, source_work_id=work_id).first()
+    rows = opening_rows(company, [link.item.project_work_id if link else work_id], until)
+    return [(day, None if link else item, quantity) for _, day, item, quantity in rows if not link or item == link.item_id]
+
+
+def historical_fact_rows(company, work_id, until=None, *, include_opening=True):
     from apps.production.models import DailyFact
     from .models import WorkMergeSource
     link = WorkMergeSource.objects.filter(company=company,source_work_id=work_id).first()
@@ -71,15 +99,19 @@ def historical_fact_rows(company, work_id, until=None):
     qs = qs.filter(work_item_id=link.item_id) if link else qs.filter(project_work_id=work_id)
     if until:
         qs=qs.filter(date__lte=until)
-    return [(day,None if link else item,quantity) for day,item,quantity in qs.values_list('date','work_item_id','actual_quantity')]
+    rows = [(day,None if link else item,quantity) for day,item,quantity in qs.values_list('date','work_item_id','actual_quantity')]
+    if include_opening:
+        rows += historical_opening_rows(company, work_id, until)
+    return rows
 
 
 class WorkProgressService:
     @staticmethod
     def facts(work, until=None, specification=None):
-        return cumulative_series(
+        return cumulative_fact_series(
             specification or work_specification(work),
-            historical_fact_rows(work.company, work.pk, until),
+            historical_fact_rows(work.company, work.pk, until, include_opening=False),
+            historical_opening_rows(work.company, work.pk, until),
         )
 
     @staticmethod

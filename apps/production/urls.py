@@ -404,3 +404,6 @@ urlpatterns += [path('day-reset/',production_day_reset,name='production_day_rese
 
 from . import copy_previous
 urlpatterns += [path('copy-previous/',copy_previous.production,name='production_copy_previous'),path('transport/copy-previous/',copy_previous.equipment,name='transport_copy_previous')]
+
+from . import work_opening_views
+urlpatterns += [path('work-opening/', work_opening_views.index, name='work_opening_list'), path('work-opening/<int:pk>/', work_opening_views.edit, name='work_opening_edit')]

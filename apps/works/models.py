@@ -207,7 +207,7 @@ class ProjectWork(BaseCompanyModel):
             workspace_locked = workspace_locked or WorkMergePlanRevision.objects.filter(parent_work=self,target_version__status__in=['SUBMITTED','APPROVED','COMPLETED']).exists()
             previous = type(self).objects.get(pk=self.pk)
             if previous.template_id != self.template_id and (
-                self.daily_facts.exists()
+                (self.daily_facts.exists() or self.opening_balances.filter(quantity__gt=0).exists())
                 or workspace_locked
                 or self.monthly_plans.filter(
                     versions__daily_plans__isnull=False
@@ -220,7 +220,7 @@ class ProjectWork(BaseCompanyModel):
                 self.kind,
                 self.allow_fractional,
             ) and (
-                self.daily_facts.exists()
+                (self.daily_facts.exists() or self.opening_balances.filter(quantity__gt=0).exists())
                 or workspace_locked
                 or self.monthly_plans.filter(
                     versions__status__in=["APPROVED", "COMPLETED"]
@@ -395,7 +395,7 @@ class ProjectWorkItem(BaseCompanyModel):
             and self.project_work_id
             and (
                 workspace_locked
-                or self.project_work.daily_facts.exists()
+                or (self.project_work.daily_facts.exists() or self.project_work.opening_balances.filter(quantity__gt=0).exists())
                 or self.project_work.monthly_plans.filter(
                     versions__daily_plans__isnull=False
                 ).exists()
@@ -407,7 +407,7 @@ class ProjectWorkItem(BaseCompanyModel):
         if self.pk:
             old = type(self).objects.get(pk=self.pk)
             if old.quantity_per_unit != self.quantity_per_unit and (
-                self.daily_facts.exists()
+                (self.daily_facts.exists() or self.opening_balances.filter(quantity__gt=0).exists())
                 or workspace_locked
                 or self.daily_plans.filter(
                     plan_version__status__in=["APPROVED", "COMPLETED"]

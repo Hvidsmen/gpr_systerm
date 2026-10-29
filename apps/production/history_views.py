@@ -10,6 +10,7 @@ from apps.projects.models import ConstructionObject
 from .history_models import FactRevision
 
 TITLES={
+ 'production.workopeningbalance':'Входящий остаток работы',
  'production.dailyfact':'Работа', 'production.employeeactivity':'Сотрудник за смену',
  'production.employeeworklink':'Связь сотрудника и работы', 'production.equipmentactivity':'Техника на объекте',
  'production.equipmentdayrecord':'Техника на ВЖГ за день','production.equipmentcampstay':'Пребывание машины в ВЖГ',
@@ -21,6 +22,7 @@ TITLES={
 TITLES.update({'personnel.lodgingstay':'Проживание','personnel.lodgingevent':'Событие коменданта','personnel.lodgingbuilding':'Вагон / корпус','personnel.lodgingbed':'Жилое место','personnel.lodgingresolution':'Объяснение сверки'})
 DIRECTIONS=[('lodging','Комендант'),('works','Производство'),('labor','Персонал'),('mechanization','Транспорт и ГСМ')]
 FIELD_LABELS={
+ 'quantity':'Входящий выполненный объём',
  'actual_quantity':'Фактический объём','actual_value':'Стоимость','reported_by_id':'Первоначальный автор',
  'recorded_by_id':'Первоначальный автор','actual_workers':'Численность','actual_count':'Количество техники',
  'planned_count':'Плановое количество','actual_hours':'Человеко-часы','actual_machine_hours':'Машино-часы',

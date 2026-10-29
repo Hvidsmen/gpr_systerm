@@ -163,7 +163,7 @@ class WorkDetailView(CompanyScopedMixin, DetailView):
             item.structure_share = shares_form[f'share_{item.pk}'] if getattr(self, 'cost_shares_form', None) is not None else structure_form[f'share_{item.pk}']
             item.cost_share_input = shares_form[f'share_{item.pk}']
             item.children_count = item.children.count()
-            qty = item.daily_facts.aggregate(total=Sum("actual_quantity"))["total"] or 0
+            qty = (item.daily_facts.aggregate(total=Sum("actual_quantity"))["total"] or 0) + (item.opening_balances.aggregate(total=Sum("quantity"))["total"] or 0)
             item.planned_quantity = total * item.quantity_per_unit
             item.completion = (
                 int(qty / (total * item.quantity_per_unit) * 100) if total and item.quantity_per_unit else 0
@@ -175,6 +175,7 @@ class WorkDetailView(CompanyScopedMixin, DetailView):
             total_value=total * work.unit_price,
             total_weight=sum(i.weight for i in items),
             completed_quantity=fact,
+            opening_balances=work.opening_balances.select_related("work_item").order_by("date", "pk"),
             cost_shares_form=shares_form,
             structure_form=structure_form,
             catalogue_return=return_path(self.request),

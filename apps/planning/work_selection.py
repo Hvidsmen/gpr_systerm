@@ -93,8 +93,8 @@ def partial_remainder_rows(version,spec,current_rows,inputs,future):
     from .workspace_services import work_fact_rows,allocate,work_rows
     target=version.planning_month;workspace=version.workspace
     facts=work_fact_rows(version,spec,target)
-    context=[r for r in facts if date.fromisoformat(r['date'])<workspace.start_date]
-    past=[r for r in facts if date.fromisoformat(r['date'])>=workspace.start_date]
+    context=[r for r in facts if r.get('origin')=='OPENING' or date.fromisoformat(r['date'])<workspace.start_date]
+    past=[r for r in facts if r.get('origin')!='OPENING' and date.fromisoformat(r['date'])>=workspace.start_date]
     manual={row.month:row for row in inputs if row.work_id==spec['id'] and row.month>target}
     quantities={month:{} for month in future}
     for item in spec['items']:

@@ -122,6 +122,10 @@ class DailyFact(ActualHistoryMixin, BaseCompanyModel):
             raise ValidationError({"deviation_reason": "Причина другой компании."})
         if self.project_work_id and self.date and self.actual_quantity and DayActuation.objects.filter(company_id=self.company_id, construction_object_id=self.project_work.section.construction_object_id, date=self.date).exists():
             raise ValidationError({'actual_quantity': 'В день актировки факт работ должен быть нулевым.'})
+        if self.actual_quantity and self.project_work_id and self.date and WorkOpeningBalance.objects.filter(
+            company_id=self.company_id, project_work_id=self.project_work_id, work_item_id=self.work_item_id,
+            date__gt=self.date, quantity__gt=0).exists():
+            raise ValidationError({'date': 'Дата раньше начала учёта входящего остатка. Исправьте остаток у администратора, чтобы не задвоить объём.'})
         if self.actual_quantity is not None and self.actual_quantity < 0:
             raise ValidationError(
                 {"actual_quantity": "Объём не может быть отрицательным."}
@@ -465,3 +469,5 @@ from .camp_fuel_models import CampFuelDay
 from .transport_details_models import EquipmentDayDetails,EquipmentServiceStatus
 
 from .dispatch_models import ProductionPresence
+
+from .work_opening_models import WorkOpeningBalance  # noqa: F401,E402

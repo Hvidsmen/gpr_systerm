@@ -16,6 +16,7 @@
 {% if work.rdc_point %} · РДЦ {{ work.rdc_point }}{% endif %}</p>
 </div>
 <div class="catalogue-header-actions">
+{% if not work.merged_source %}{% if request.user|may:'production:work_opening_edit' %}<a class="btn btn-outline-primary" href="{% url 'production:work_opening_edit' work.pk %}">Входящий остаток</a>{% endif %}{% endif %}
 {% if work.kind == 'COMPOSITE' and items %}{% if request.user|may:'works:work_structure_update' %}<span class="catalogue-save-state" data-save-state role="status">{% if structure_form.errors %}Есть ошибки{% else %}Сохранено{% endif %}</span>
 <button class="btn btn-primary" type="submit" form="work-structure-form">Сохранить состав</button>{% endif %}
 {% endif %}
@@ -111,6 +112,7 @@
 <details class="catalogue-secondary">
 <summary>Использование и выполнение · {{ work.completion_percentage|default:0 }}%</summary>
 <div class="catalogue-secondary-body">
+{% for balance in opening_balances %}<p class="text-muted">Входящий остаток{% if balance.work_item_id %}: {{ balance.work_item.name }}{% endif %} на начало {{ balance.date|date:'d.m.Y' }}: {{ balance.quantity|floatformat:'3g' }} {% if balance.work_item_id %}{{ balance.work_item.unit }}{% else %}{{ work.unit }}{% endif %}.</p>{% endfor %}
 <p>План: {{ total_quantity }} {{ work.unit }}. Выполнено накопительно: {{ completed_quantity }} {{ work.unit }}.</p>{% if work.kind == 'COMPOSITE' %}<p>Дробные единицы: {{ work.allow_fractional|yesno:'да,нет' }}.</p>
 <p>Готовность комплекса определяется минимальным выполнением нормативов его работ. Выручка равна объёму выполненного комплекса × цене на дату выполнения.</p>{% else %}<p>План и факт вводятся непосредственно по самостоятельной работе.</p>{% endif %}</div>
 </details>

@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% block title %}Входящие остатки работ{% endblock %}
+{% block content %}
+<h1 class="h3">Входящие остатки работ</h1>
+<p class="text-muted">Выполненные объёмы до начала учёта в системе. Ввод и исправление доступны только администратору.</p>
+<form method="get" class="card card-body mb-3">{% include 'forms/fields.html' with form=selector %}<div><button class="btn btn-primary">Открыть работы</button></div></form>
+{% if selector.is_valid %}
+<div class="table-responsive"><table class="table align-middle"><thead><tr><th>Работа</th><th>Входящий объём</th><th></th></tr></thead><tbody>
+{% for work in works %}<tr><td><strong>{{ work.name }}</strong><small class="text-muted d-block">{{ work.section }}{% if work.complex_object_id %} → {{ work.complex_object }}{% endif %}</small></td>
+<td>{% for row in work.opening_balances.all %}<div>{% if row.work_item_id %}{{ row.work_item.name }}: {% endif %}{{ row.quantity|floatformat:'3g' }} {% if row.work_item_id %}{{ row.work_item.unit }}{% else %}{{ work.unit }}{% endif %} · на начало {{ row.date|date:'d.m.Y' }}</div>{% empty %}Не задан{% endfor %}</td>
+<td><a class="btn btn-sm btn-outline-primary" href="{% url 'production:work_opening_edit' work.pk %}">Ввести остаток</a></td></tr>
+{% empty %}<tr><td colspan="3">Работы не найдены.</td></tr>{% endfor %}</tbody></table></div>
+{% if page_obj.has_other_pages %}<nav aria-label="Страницы работ">{% if page_obj.has_previous %}<a href="?{{ filter_query }}&amp;page={{ page_obj.previous_page_number }}">← Назад</a>{% endif %} {{ page_obj.number }} / {{ page_obj.paginator.num_pages }} {% if page_obj.has_next %}<a href="?{{ filter_query }}&amp;page={{ page_obj.next_page_number }}">Далее →</a>{% endif %}</nav>{% endif %}
+{% endif %}
+{% endblock %}

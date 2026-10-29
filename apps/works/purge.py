@@ -13,7 +13,7 @@ from django.shortcuts import render,redirect
 from core.permissions import require_roles
 from apps.planning.deletion_graph import DeletionGraph,ROOT_MODELS
 from apps.planning.models import ObjectWorkPlanRow,GlobalPlanVersion,GlobalPlanReview,ProjectPlanMember,DailyScheduleEntry,WorkMonthAllocation,MonthlyPlan,PlanVersion,SmgWorkMapping,MacroCarryoverWork,WorkCarryover,WorkResourceAssignment
-from apps.production.models import DailyFact,EmployeeActivity,EquipmentActivity,LaborFact,EquipmentFact
+from apps.production.models import WorkOpeningBalance,DailyFact,EmployeeActivity,EquipmentActivity,LaborFact,EquipmentFact
 from .models import ProjectWork,ProjectWorkItem,WorkMergeSource,WorkMergePlanRevision
 
 SALT='works.purge-catalogue.v1'
@@ -79,7 +79,7 @@ class WorkPurge:
         self.people_days=set(self.people.values_list('construction_object_id','date'))
         self.machine_days=set(self.machines.values_list('construction_object_id','date'))
         self.facts=DailyFact.objects.filter(company=user.company).filter(Q(project_work_id__in=self.ids)|Q(work_item_id__in=self.item_ids))
-        self.summaries={'Работы в планах на весь объект':ObjectWorkPlanRow.objects.filter(company=user.company).filter(self.activity_query),'Факт работ':self.facts,'Занятость сотрудников':self.people,'Занятость техники':self.machines,'Сводный факт персонала для пересчёта':at_days(LaborFact,user.company,self.people_days),'Сводный факт техники для пересчёта':at_days(EquipmentFact,user.company,self.machine_days)}
+        self.summaries={'Входящие остатки работ':WorkOpeningBalance.objects.filter(company=user.company,project_work_id__in=self.ids),'Работы в планах на весь объект':ObjectWorkPlanRow.objects.filter(company=user.company).filter(self.activity_query),'Факт работ':self.facts,'Занятость сотрудников':self.people,'Занятость техники':self.machines,'Сводный факт персонала для пересчёта':at_days(LaborFact,user.company,self.people_days),'Сводный факт техники для пересчёта':at_days(EquipmentFact,user.company,self.machine_days)}
         self.counts=[{'label':name,'count':qs.count()} for name,qs in self.summaries.items() if qs.exists()]
 
     def references(self,data):

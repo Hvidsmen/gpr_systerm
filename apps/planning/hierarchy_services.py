@@ -155,7 +155,7 @@ def create_smg(user, version, child, month, quantities):
     return workspace
 
 
-def rollup_subobject_facts(user, objects, sources, start, end, work_facts, resource_facts):
+def rollup_subobject_facts(user, objects, sources, start, end, work_facts, resource_facts, work_openings=None):
     """Count actuals at macro level only through the selected GPR's SMG links."""
     from collections import defaultdict
     from apps.production.models import DailyFact, LaborFact, EquipmentFact, FuelFact
@@ -181,6 +181,19 @@ def rollup_subobject_facts(user, objects, sources, start, end, work_facts, resou
                 if fact['work_item_id'] and item is None:
                     continue
                 work_facts[link.gpr_work_id].append((fact['date'], item, fact['actual_quantity']))
+    if work_openings is not None:
+        from apps.production.work_opening import opening_rows
+        counted_openings = set()
+        for wid, day, item_id, qty in opening_rows(user.company, by_work, end):
+            for link in by_work[wid]:
+                identity = wid, item_id, link.gpr_work_id
+                reference_day = max(start, link.workspace.start_date, day)
+                if reference_day <= end and active(link.workspace, reference_day) and identity not in counted_openings:
+                    counted_openings.add(identity)
+                    item = link.item_mapping.get(str(item_id)) if item_id else None
+                    if item_id and item is None:
+                        continue
+                    work_openings[link.gpr_work_id].append((day, item, qty))
     by_object = defaultdict(list)
     for workspace in workspaces:
         by_object[workspace.construction_object_id].append(workspace)

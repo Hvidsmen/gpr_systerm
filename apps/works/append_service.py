@@ -51,9 +51,12 @@ def append_preview(user,works,values):
     spec['items'] += [{'id':-w.pk,'name':w.name,'unit':w.unit,'norm':str(values[f'norm_{w.pk}']),'weight':'0'} for w in works]
     facts=list(DailyFact.objects.filter(company=user.company,project_work_id__in=[target.pk,*[w.pk for w in works]]).order_by('date','pk'))
     rows=[(r.date,r.work_item_id if r.project_work_id==target.pk else -r.project_work_id,r.actual_quantity) for r in facts]
+    from apps.production.work_opening import opening_rows
+    incoming=opening_rows(user.company,[target.pk,*[w.pk for w in works]])
+    rows += [(day,item if wid==target.pk else -wid,qty) for wid,day,item,qty in incoming]
     series=cumulative_series(spec,rows)
     after=next(reversed(series.values()))['cumulative'] if series else Decimal(0)
-    sources=[{'work':w,'actual':sum((r.actual_quantity for r in facts if r.project_work_id==w.pk),Decimal(0)), 'norm':values[f'norm_{w.pk}']} for w in works]
+    sources=[{'work':w,'actual':sum((r.actual_quantity for r in facts if r.project_work_id==w.pk),Decimal(0)) + sum((qty for wid,_,_,qty in incoming if wid==w.pk),Decimal(0)), 'norm':values[f'norm_{w.pk}']} for w in works]
     plans=[]
     ids={target.pk,*[w.pk for w in works]}
     for version in GlobalPlanVersion.objects.exclude(workspace__is_archived=True).filter(company=user.company,construction_object_id=target.section.construction_object_id).order_by('pk'):

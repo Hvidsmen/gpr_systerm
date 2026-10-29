@@ -20,6 +20,12 @@ def prepare_rows(formset, obj, day, work_plan, catalogue):
         DailyFact.objects.filter(company=obj.company, project_work__section__construction_object=obj, date__lt=day)
         .values('project_work_id', 'work_item_id').annotate(quantity=Sum('actual_quantity'))}
 
+    from .work_opening import opening_rows
+    from datetime import timedelta
+    for wid, _, item_id, quantity in opening_rows(obj.company, works, day - timedelta(days=1)):
+        key = (wid, item_id)
+        previous[key] = previous.get(key, Decimal(0)) + quantity
+
     def display(key):
         work = works.get(key[0]); item = items.get(key[1]) if key[1] else None
         if work is None or key[1] and (item is None or item.project_work_id != work.pk):

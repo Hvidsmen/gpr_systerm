@@ -198,7 +198,7 @@ def work_fact_rows(version, spec, before):
     rows = DailyFact.objects.filter(
         company=version.company, project_work_id=spec["id"], date__lt=before
     ).order_by("date", "pk")
-    return [
+    return work_opening_rows(version, spec, before - timedelta(days=1)) + [
         {
             "date": r.date.isoformat(),
             "item_id": r.work_item_id,
@@ -211,19 +211,25 @@ def work_fact_rows(version, spec, before):
     ]
 
 
+def work_opening_rows(version, spec, until):
+    from apps.production.work_opening import opening_rows
+    return [{"date": day.isoformat(), "item_id": item, "quantity": str(qty), "value": "0", "origin": "OPENING"}
+        for _, day, item, qty in opening_rows(version.company, [spec["id"]], until)]
+
+
 def finalize_work(spec, rows, workspace, context=None):
     spec = deepcopy(spec)
     rows = sorted(rows, key=lambda r: (r["date"], r["item_id"] or 0))
     context = context or []
-    series = cumulative_series(
-        spec,
-        [
-            (date.fromisoformat(r["date"]), r["item_id"], Decimal(r["quantity"]))
-            for r in context + rows
-        ],
-    )
-    spec["plans"] = rows
-    spec["context_plans"] = context
+    from apps.works.progress import cumulative_fact_series
+    def tuples(records):
+        return [(date.fromisoformat(r['date']), r['item_id'], Decimal(r['quantity'])) for r in records]
+    incoming = [r for r in context + rows if r.get('origin') == 'OPENING']
+    ordinary = [r for r in context + rows if r.get('origin') != 'OPENING']
+    series = cumulative_fact_series(spec, tuples(ordinary), tuples(incoming))
+    ordinary_days = {r["date"] for r in ordinary}
+    spec["plans"] = [r for r in rows if r.get("origin") != "OPENING"]
+    spec["context_plans"] = context + [r for r in rows if r.get("origin") == "OPENING"]
     spec["daily"] = [
         {
             "date": day.isoformat(),
@@ -231,7 +237,7 @@ def finalize_work(spec, rows, workspace, context=None):
             "cumulative": str(values["cumulative"]),
         }
         for day, values in series.items()
-        if workspace.start_date <= day <= workspace.end_date
+        if workspace.start_date <= day <= workspace.end_date and day.isoformat() in ordinary_days
     ]
     return spec
 
@@ -471,7 +477,7 @@ def _build_workspace_snapshot(version, *, validate_inputs=True):
                         allocation.item_quantities,
                         day_cache=day_cache, selected_item_ids=allocation.selected_item_ids,
                     )
-            works.append(finalize_work(spec, rows, workspace))
+            works.append(finalize_work(spec, rows, workspace, work_opening_rows(version, spec, workspace.end_date)))
         resource_plans = {kind: [] for kind in RESOURCE_CONFIG}
         for source in resources:
             resource_plans[source["kind"]] += resource_rows(
@@ -585,6 +591,7 @@ def build_forecast(version, inputs, resources, base):
         )
         context = []
         if version.scenario == "BASELINE":
+            context = work_opening_rows(version, spec, workspace.end_date)
             rows += [
                 deepcopy(r)
                 for r in spec["plans"]
@@ -592,8 +599,8 @@ def build_forecast(version, inputs, resources, base):
             ]
         elif version.scenario == 'ENTERED':
             facts = work_fact_rows(version, spec, target)
-            context = [r for r in facts if date.fromisoformat(r['date']) < workspace.start_date]
-            rows += [r for r in facts if date.fromisoformat(r['date']) >= workspace.start_date]
+            context = [r for r in facts if r.get('origin') == 'OPENING' or date.fromisoformat(r['date']) < workspace.start_date]
+            rows += [r for r in facts if r.get('origin') != 'OPENING' and date.fromisoformat(r['date']) >= workspace.start_date]
             for allocation in inputs:
                 if allocation.work_id == work_id and allocation.month > target:
                     rows += deepcopy(allocation.daily_override) if allocation.daily_override is not None else work_rows(workspace,spec,allocation.month,allocation.quantity,allocation.load_profile,allocation.item_quantities,selected_item_ids=allocation.selected_item_ids)
@@ -607,27 +614,21 @@ def build_forecast(version, inputs, resources, base):
             past = [
                 r
                 for r in facts
-                if date.fromisoformat(r["date"]) >= workspace.start_date
+                if r.get("origin") != "OPENING" and date.fromisoformat(r["date"]) >= workspace.start_date
             ]
             context = [
-                r for r in facts if date.fromisoformat(r["date"]) < workspace.start_date
+                r for r in facts if r.get("origin") == "OPENING" or date.fromisoformat(r["date"]) < workspace.start_date
             ]
-            series = cumulative_series(
-                spec,
-                [
-                    (
-                        date.fromisoformat(r["date"]),
-                        r["item_id"],
-                        Decimal(r["quantity"]),
-                    )
-                    for r in facts
-                ],
-            )
+            from apps.works.progress import cumulative_fact_series
+            def fact_tuples(records, opening):
+                return [(date.fromisoformat(r['date']), r['item_id'], Decimal(r['quantity']))
+                    for r in records if (r.get('origin') == 'OPENING') == opening]
+            series = cumulative_fact_series(spec, fact_tuples(facts, False), fact_tuples(facts, True))
             past_total = sum(
                 v["daily"] for d, v in series.items() if d >= workspace.start_date
             )
             goal = sum(Decimal(r["quantity"]) for r in spec["daily"]) + merge_adjustments.get(work_id,ZERO)
-            current_series = cumulative_series(spec, [(date.fromisoformat(r["date"]), r["item_id"], Decimal(r["quantity"])) for r in facts + rows])
+            current_series = cumulative_fact_series(spec, fact_tuples(facts + rows, False), fact_tuples(facts + rows, True))
             current_total = sum(v["daily"] for day, v in current_series.items() if day >= target)
             rest = goal - past_total - current_total
             if rest < 0:
@@ -721,10 +722,10 @@ def build_forecast(version, inputs, resources, base):
             past = [
                 r
                 for r in facts
-                if date.fromisoformat(r["date"]) >= workspace.start_date
+                if r.get("origin") != "OPENING" and date.fromisoformat(r["date"]) >= workspace.start_date
             ]
             context = [
-                r for r in facts if date.fromisoformat(r["date"]) < workspace.start_date
+                r for r in facts if r.get("origin") == "OPENING" or date.fromisoformat(r["date"]) < workspace.start_date
             ]
             works.append(finalize_work(spec, past, workspace, context))
             warnings.append(

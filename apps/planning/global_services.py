@@ -319,8 +319,8 @@ def comparison(version):
     start, end = version.start_date, version.end_date
     works = []
     for spec in version.snapshot.get("works", []):
-        from apps.works.progress import historical_fact_rows
-        series = cumulative_series(spec, historical_fact_rows(version.company, spec["id"], end))
+        from apps.works.progress import historical_fact_rows, historical_opening_rows, cumulative_fact_series
+        series = cumulative_fact_series(spec, historical_fact_rows(version.company, spec["id"], end, include_opening=False), historical_opening_rows(version.company, spec["id"], end))
         planned = {row["date"]: Decimal(row["quantity"]) for row in spec["daily"]}
         actual = {
             day.isoformat(): values["daily"]

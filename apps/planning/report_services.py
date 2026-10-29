@@ -7,7 +7,7 @@ from decimal import Decimal
 from calendar import monthrange
 from apps.projects.models import ConstructionObject
 from apps.works.models import ProjectWork, WorkPrice
-from apps.works.progress import work_specification, cumulative_series
+from apps.works.progress import work_specification, cumulative_fact_series, quantity_from_totals
 from apps.works.prices import rate_on
 from apps.resources.models import Brigade, EquipmentType
 from apps.production.models import DailyFact, LaborFact, EquipmentFact, FuelFact
@@ -339,6 +339,12 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
         )
         if row['work_item_id'] in item_sources:
             work_facts[item_sources[row['work_item_id']]].append((row['date'], None, row['actual_quantity']))
+    from apps.production.work_opening import opening_rows
+    work_openings = defaultdict(list)
+    for wid, day, item, qty in ([] if plan_only else opening_rows(user.company, work_catalog, end)):
+        work_openings[wid].append((day, item, qty))
+        if item in item_sources:
+            work_openings[item_sources[item]].append((day, None, qty))
     resource_facts = {
         kind: defaultdict(lambda: defaultdict(lambda: ZERO))
         for kind in ["labor", "equipment", "fuel", "balance"]
@@ -376,7 +382,7 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
         resource_facts["balance"][key][row["date"]] += row["actual_balance"]
     if not plan_only:
         from .hierarchy_services import rollup_subobject_facts
-        rollup_subobject_facts(user, objects, sources, start, end, work_facts, resource_facts)
+        rollup_subobject_facts(user, objects, sources, start, end, work_facts, resource_facts, work_openings)
     if not plan_only:
         from .macro_history import rollup_history_resources
         rollup_history_resources(user,sources,start,end,resource_facts)
@@ -557,8 +563,8 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
                         tuple((i["id"], i["norm"]) for i in day_spec.get("items", [])),
                     )
                     if fingerprint not in series_cache:
-                        series_cache[fingerprint] = cumulative_series(
-                            day_spec, actual_rows
+                        series_cache[fingerprint] = cumulative_fact_series(
+                            day_spec, actual_rows, work_openings[work_id]
                         )
                     if day in actual_days:
                         fact[day] = (
@@ -604,6 +610,13 @@ def build_matrix(user, filters, *, source_overrides=None, plan_only=False):
                     f"o{obj.pk}-w{work_id}", spec["name"], spec["unit"],
                     plan, fact, buckets, children=children,
                 )
+                if work_openings[work_id] and not plan_only:
+                    initial_totals = defaultdict(lambda: ZERO)
+                    for _, item_id, qty in work_openings[work_id]:
+                        initial_totals[item_id] += qty
+                    row['incoming_quantity'] = quantity_from_totals(spec, initial_totals)
+                    accumulated = cumulative_fact_series(spec, actual_rows, work_openings[work_id])
+                    row['completed_quantity'] = next(reversed(accumulated.values()))['cumulative'] if accumulated else ZERO
                 row["has_amount"] = priced
                 if priced:
                     for cell, bucket in zip(row["cells"], buckets):
