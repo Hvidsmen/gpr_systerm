@@ -27,6 +27,10 @@
 .equipment-type>summary { background:#f6f8fa;border-radius:4px; }
 .equipment-type>summary strong { margin-left:8px; }
 .equipment-type-body { padding:12px 0 4px 12px; }
+[data-equipment-planning-view]>.equipment-type { margin:0 0 14px;border:1px solid #cddde8;border-radius:8px; }
+[data-equipment-planning-view]>.equipment-type>summary { background:#edf5fb;border-radius:8px; }
+[data-equipment-planning-view]>.equipment-type>.equipment-type-body { padding:12px; }
+.equipment-catalogue-viewbar>.btn-group { flex-wrap:wrap; }
 .equipment-type-actions { gap:8px;margin-bottom:10px; }
 .equipment-crew-preview { display:flex;flex-wrap:wrap;gap:4px 12px;margin-bottom:12px; }
 .equipment-catalogue .table { font-size:.8125rem; }

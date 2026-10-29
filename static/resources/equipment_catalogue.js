@@ -5,7 +5,8 @@
  const key='equipment-folds:'+root.dataset.company;let saved={};
  try{saved=JSON.parse(localStorage.getItem(key)||'{}');}catch{}
  for(const node of [...categories,...types]){
-  const id=node.hasAttribute('data-equipment-category')?'category:'+node.dataset.equipmentCategory:'category:'+node.closest('[data-equipment-category]').dataset.equipmentCategory+':type:'+node.dataset.equipmentType;
+  const category=node.closest('[data-equipment-category]');
+  const id=node.hasAttribute('data-equipment-category')?'category:'+node.dataset.equipmentCategory:category?'category:'+category.dataset.equipmentCategory+':type:'+node.dataset.equipmentType:'planning:type:'+node.dataset.equipmentType;
   if(root.dataset.filtered!=='true'&&Object.hasOwn(saved,id))node.open=Boolean(saved[id]);
   node.addEventListener('toggle',()=>{saved[id]=node.open;try{localStorage.setItem(key,JSON.stringify(saved));}catch{}});
  }

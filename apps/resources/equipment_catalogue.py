@@ -39,3 +39,20 @@ def hierarchy(rows, roots, company):
     for group in groups:
         group['nodes'] = sorted(group['nodes'].values(), key=lambda node: (node['root'].name.casefold(), node['root'].pk))
     return groups
+
+
+def planning_hierarchy(rows, roots):
+    """Keep each planning type together, including models with their own category."""
+    nodes = {}
+    for row in rows:
+        root = roots.get(row.parent_id or row.pk)
+        if root is None:
+            continue
+        node = nodes.setdefault(root.pk, {'root': root, 'children': [], 'root_matches': False})
+        if row.parent_id:
+            node['children'].append(row)
+        else:
+            node['root_matches'] = True
+    for node in nodes.values():
+        node['children'].sort(key=lambda row: (row.name.casefold(), row.pk))
+    return sorted(nodes.values(), key=lambda node: (node['root'].name.casefold(), node['root'].pk))

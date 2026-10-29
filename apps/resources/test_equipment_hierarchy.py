@@ -92,3 +92,66 @@ class EquipmentHierarchyTests(TestCase):
         self.assertFalse(groups[own.name]['nodes'][0]['root_matches'])
         self.assertEqual(response.content.decode().count(f'name="selected" value="{self.root.pk}"'),1)
         self.assertEqual(response.content.decode().count(f'name="selected" value="{self.child.pk}"'),1)
+
+    def test_planning_view_merges_categories_without_duplicating_types_or_selection(self):
+        first = EquipmentCategory.objects.create(company=self.company, name='Первая категория')
+        second = EquipmentCategory.objects.create(company=self.company, name='Вторая категория')
+        self.root.category = first
+        self.root.save()
+        self.child.category = second
+        self.child.save()
+        from .models import Equipment
+        Equipment.objects.create(company=self.company, type=self.child, plate_number='TEST-001')
+        response = self.client.get(reverse('resources:equipment_type_list'), {'view': 'planning'})
+        nodes = response.context['equipment_hierarchy']
+        self.assertEqual([node['root'].pk for node in nodes], [self.other.pk, self.root.pk])
+        node = nodes[1]
+        self.assertEqual(node['children'], [self.child])
+        self.assertTrue(node['root_matches'])
+        self.assertEqual(node['root'].machine_count, 1)
+        self.assertNotContains(response, 'data-equipment-category=')
+        self.assertContains(response, 'data-equipment-planning-view')
+        for row in [self.root, self.child, self.other]:
+            self.assertContains(response, f'name="selected" value="{row.pk}"', count=1)
+        self.assertContains(response, reverse('resources:equipment_type_update', args=[self.root.pk]))
+        self.assertContains(response, f'?kind=model&amp;parent={self.root.pk}')
+
+    def test_planning_view_keeps_filtered_children_and_company_scope(self):
+        foreign_company = Company.objects.create(name='Foreign planning hierarchy')
+        EquipmentType.objects.create(company=foreign_company, name='Foreign root')
+        EquipmentType.objects.create(company=foreign_company, name='Foreign model', parent=self.root)
+        url = reverse('resources:equipment_type_list')
+        response = self.client.get(url, {'view': 'planning', 'name': 'JCB', 'page': '2'})
+        nodes = response.context['equipment_hierarchy']
+        self.assertEqual(len(nodes), 1)
+        self.assertEqual(nodes[0]['root'], self.root)
+        self.assertEqual(nodes[0]['children'], [self.child])
+        self.assertFalse(nodes[0]['root_matches'])
+        self.assertNotContains(response, f'name="selected" value="{self.root.pk}"')
+        self.assertContains(response, f'name="selected" value="{self.child.pk}"', count=1)
+        self.assertNotContains(response, 'Foreign')
+        self.assertContains(response, 'name="view" value="planning"')
+        self.assertContains(response, f'href="{url}?view=planning"')
+        from urllib.parse import parse_qs, urlsplit
+        for mode in ['groups', 'planning', 'table']:
+            self.assertEqual(parse_qs(urlsplit(response.context[f'equipment_{mode}_url']).query),
+                             {'view': [mode], 'name': ['JCB']})
+        self.child.is_active = False
+        self.child.save()
+        inactive = self.client.get(url, {'view': 'planning', 'is_active': 'False'})
+        self.assertEqual(inactive.context['equipment_hierarchy'][0]['children'], [self.child])
+        empty = self.client.get(url, {'view': 'planning', 'name': 'Missing'})
+        self.assertContains(empty, f'href="{url}?view=planning"')
+
+    def test_planning_view_keeps_large_type_together_and_table_remains_paginated(self):
+        EquipmentType.objects.bulk_create([
+            EquipmentType(company=self.company, name=f'Model {i:02}', parent=self.root) for i in range(25)
+        ])
+        url = reverse('resources:equipment_type_list')
+        response = self.client.get(url, {'view': 'planning'})
+        self.assertFalse(response.context['is_paginated'])
+        self.assertEqual(len(response.context['equipment_hierarchy'][1]['children']), 26)
+        table = self.client.get(url, {'view': 'table'})
+        self.assertTrue(table.context['is_paginated'])
+        self.assertEqual(len(table.context['equipment_types']), 20)
+        self.assertEqual(self.client.get(url, {'view': 'unknown'}).context['equipment_view'], 'groups')

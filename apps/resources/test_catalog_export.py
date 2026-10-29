@@ -53,3 +53,18 @@ class CatalogExportTests(TestCase):
         self.client.force_login(foreman)
         for route in ('brigade_export','equipment_type_export'):
             self.assertEqual(self.client.get(reverse('resources:'+route)).status_code,403)
+
+    def test_planning_type_column_uses_root_name_for_root_and_parent_name_for_model(self):
+        root=EquipmentType.objects.create(company=self.company,name='АТЗ',category=self.category)
+        EquipmentType.objects.create(company=self.company,name='АТЗ / Камаз 4671М2-11',parent=root,brand_model='Камаз 4671М2-11')
+        no_category=EquipmentType.objects.create(company=self.company,name='АТЗ без группы')
+        response=self.client.get(reverse('resources:equipment_type_export'),{'name':'АТЗ'})
+        self.assertEqual(response.status_code,200)
+        workbook=load_workbook(BytesIO(response.content));sheet=workbook.active
+        headers=[cell.value for cell in sheet[1]];column=headers.index('Техника для планирования')
+        rows={row[0]:row for row in list(sheet.values)[1:]}
+        self.assertEqual(rows['АТЗ'][column],'АТЗ')
+        self.assertEqual(rows['АТЗ / Камаз 4671М2-11'][column],'АТЗ')
+        self.assertEqual(rows['АТЗ без группы'][column],no_category.name)
+        self.assertNotEqual(rows['АТЗ'][column],self.category.name)
+        workbook.close();root.refresh_from_db();self.assertIsNone(root.parent_id)

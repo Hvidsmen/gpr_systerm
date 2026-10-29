@@ -179,29 +179,38 @@ class EquipmentTypeListView(CatalogFilterMixin, CompanyRequiredMixin, ListView):
     context_object_name = 'equipment_types'
     paginate_by = 20
 
+    def get_view_mode(self):
+        mode = self.request.GET.get('view', 'groups')
+        return mode if mode in {'groups', 'planning', 'table'} else 'groups'
+
     def get_queryset(self):
         from .equipment_catalogue import with_machine_counts
         return self.filter_queryset(with_machine_counts(EquipmentType.objects.filter(
             company=self.get_company(), merge_source__isnull=True
-        ).select_related('category','parent__category').prefetch_related('crew_positions__position','model_variants'),self.get_company()).order_by(*(['category__name','category_id','name','pk'] if self.request.GET.get('view','groups') == 'groups' else ['name','pk'])))
+        ).select_related('category','parent__category').prefetch_related('crew_positions__position','model_variants'),self.get_company()).order_by(*(['category__name','category_id','name','pk'] if self.get_view_mode() == 'groups' else ['name','pk'])))
 
     def get_paginate_by(self, queryset):
-        return None if self.request.GET.get('view','groups') == 'groups' else 20
+        return 20 if self.get_view_mode() == 'table' else None
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context['equipment_grouped'] = self.request.GET.get('view','groups') == 'groups'
-        if context['equipment_grouped']:
+        context['equipment_view'] = self.get_view_mode()
+        context['equipment_grouped'] = context['equipment_view'] == 'groups'
+        context['equipment_hierarchical'] = context['equipment_view'] != 'table'
+        if context['equipment_hierarchical']:
             rows=list(context['equipment_types'])
             root_ids={row.parent_id or row.pk for row in rows}
-            from .equipment_catalogue import hierarchy, with_machine_counts
+            from .equipment_catalogue import hierarchy, planning_hierarchy, with_machine_counts
             roots={row.pk:row for row in with_machine_counts(EquipmentType.objects.filter(company=self.get_company(),pk__in=root_ids,merge_source__isnull=True).select_related('category').prefetch_related('crew_positions__position'),self.get_company()).order_by('name','pk')}
-            context['equipment_category_groups']=hierarchy(rows,roots,self.get_company())
-            context['equipment_hierarchy']=[node for group in context['equipment_category_groups'] for node in group['nodes']]
+            if context['equipment_grouped']:
+                context['equipment_category_groups']=hierarchy(rows,roots,self.get_company())
+                context['equipment_hierarchy']=[node for group in context['equipment_category_groups'] for node in group['nodes']]
+            else:
+                context['equipment_hierarchy'] = planning_hierarchy(rows, roots)
         filtered=self.object_list
         context['equipment_type_count']=filtered.filter(parent__isnull=True).count()
         context['equipment_model_count']=filtered.filter(parent__isnull=False).count()
-        for mode in ['groups','table']:
+        for mode in ['groups','table','planning']:
             params = self.request.GET.copy()
             params.pop('page',None)
             params['view'] = mode
