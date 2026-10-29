@@ -65,7 +65,7 @@ class BrigadeListView(CatalogFilterMixin, CompanyRequiredMixin, ListView):
             position_mapping__position__employees__company=company)
         return self.filter_queryset(Brigade.objects.filter(
             company=company, merge_source__isnull=True
-        ).select_related('group', 'position_mapping__position').annotate(
+        ).select_related('group', 'position_mapping__position', 'catalogue_review').annotate(
             employee_count=Count('position_mapping__position__employees', filter=employee_scope, distinct=True),
             active_employee_count=Count('position_mapping__position__employees',
                 filter=employee_scope & Q(position_mapping__position__employees__is_active=True), distinct=True),
@@ -85,6 +85,15 @@ class BrigadeListView(CatalogFilterMixin, CompanyRequiredMixin, ListView):
         queryset=self.object_list
         context['position_ungrouped_count']=queryset.filter(group=None).count()
         context['position_current_count']=queryset.filter(staffing_current=True).count()
+        context['position_confirmed_outside_count']=Brigade.objects.filter(
+            company=self.get_company(), merge_source__isnull=True, catalogue_review__status='CONFIRMED'
+        ).exclude(staffing_current=True).count()
+        confirmed_params=self.request.GET.copy()
+        confirmed_params.pop('page',None)
+        for field in self.filter_form.fields:
+            confirmed_params.pop(field,None)
+        confirmed_params['staffing_current']='confirmed'
+        context['position_confirmed_query']=confirmed_params.urlencode()
         context['position_group_count']=queryset.exclude(group=None).values('group_id').distinct().count()
         grouped={}
         if context['catalogue_view']=='groups':

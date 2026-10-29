@@ -120,7 +120,17 @@ class Brigade(BaseCompanyModel):
     staffing_source = models.CharField(max_length=400, blank=True, editable=False)
 
     @property
+    def confirmed_outside_staffing(self):
+        if self.staffing_current is True:
+            return False
+        review = getattr(self, 'catalogue_review', None)
+        return review is not None and review.status == 'CONFIRMED'
+
+    @property
     def staffing_status_label(self):
+        if self.confirmed_outside_staffing:
+            source = 'неактуальна в ЗУП' if self.staffing_current is False else 'отсутствует в ЗУП'
+            return 'Подтверждена ответственным · ' + source
         return 'Актуальна' if self.staffing_current is True else 'Неактуальна' if self.staffing_current is False else 'Не получено из ЗУП'
 
     excel_aliases = models.JSONField('Названия в Excel', default=list, blank=True, validators=[validate_excel_aliases])

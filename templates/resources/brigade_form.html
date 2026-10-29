@@ -17,7 +17,7 @@
                 </h4>
             </div>
             <div class="card-body">
-                {% if brigade %}<p class="small">Штатное расписание ЗУП: <strong>{{ brigade.staffing_status_label }}</strong>{% if brigade.staffing_synced_at %} · {{ brigade.staffing_synced_at|date:'d.m.Y H:i' }}{% endif %}. Признак обновляется автоматически из ЗУП и не зависит от наличия сотрудников.</p>{% endif %}
+                {% if brigade %}<p class="small">Штатное расписание ЗУП: <strong>{{ brigade.staffing_status_label }}</strong>{% if brigade.staffing_synced_at %} · {{ brigade.staffing_synced_at|date:'d.m.Y H:i' }}{% endif %}. {% if brigade.confirmed_outside_staffing %}Должность доступна для планирования по решению ответственного. Загрузка из ЗУП сохраняет её и связанные планы.{% else %}Признак обновляется автоматически из ЗУП и не зависит от наличия сотрудников.{% endif %}</p>{% endif %}
                 <form method="post">
                     {% csrf_token %}
 
