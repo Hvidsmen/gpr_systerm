@@ -27,6 +27,8 @@ class AssignmentForm(forms.ModelForm):
     def __init__(self,*args,owner,**kwargs):
         super().__init__(*args,**kwargs)
         self.owner = owner
+        from apps.resources.catalogue_review import resource_ids
+        pending_ids = resource_ids(owner)
         self.instance.company=owner.company
         self.instance.version=owner if isinstance(owner,GlobalPlanVersion) else None
         self.instance.schedule=owner if isinstance(owner,DailySchedule) else None
@@ -34,19 +36,19 @@ class AssignmentForm(forms.ModelForm):
         self.fields['work'].empty_label='Общие ресурсы строительного объекта'
         self.fields['work_item'].queryset=ProjectWorkItem.objects.filter(company=owner.company,project_work__in=self.fields['work'].queryset)
         self.fields['work_item'].label_from_instance=lambda i:f'{i.project_work.name} → {i.name}'
-        self.fields['equipment_type'].queryset=EquipmentType.objects.filter(company=owner.company).filter(Q(merge_source__isnull=True,is_active=True)|Q(pk=self.instance.equipment_type_id))
+        self.fields['equipment_type'].queryset=EquipmentType.objects.filter(company=owner.company).filter(Q(merge_source__isnull=True,is_active=True)|Q(pk=self.instance.equipment_type_id)|Q(pk__in=pending_ids['equipment']))
         from apps.resources.equipment_levels import gpr_types
         field=self.fields['equipment_type'];allowed=gpr_types(field.queryset)
         field.label='Техника для планирования'
-        field.queryset=field.queryset.filter(Q(pk__in=allowed.values('pk'))|Q(pk=self.instance.equipment_type_id))
+        field.queryset=field.queryset.filter(Q(pk__in=allowed.values('pk'))|Q(pk=self.instance.equipment_type_id)|Q(pk__in=pending_ids['equipment']))
         from apps.resources.position_catalog import planning_positions
         allowed_positions = planning_positions(owner.company)
         current_position_id = self.instance.position_id if self.instance.pk else None
         self.fields['position'].queryset=Position.objects.filter(company=owner.company).filter(
-            Q(pk__in=allowed_positions.values('pk')) | Q(pk=current_position_id)).select_related('planning_mapping__brigade')
+            Q(pk__in=allowed_positions.values('pk')) | Q(pk=current_position_id) | Q(planning_mapping__brigade_id__in=pending_ids['labor'])).select_related('planning_mapping__brigade')
         self.fields['position'].label_from_instance=lambda position: position.planning_mapping.brigade.name if getattr(position,'planning_mapping',None) else position.name
         self.fields['work_item'].help_text='Необязательно. Должна принадлежать выбранному комплексу работ.'
-        self.fields['position'].help_text='Только должности с активными сотрудниками. При выборе техники должности берутся из её экипажа.'
+        self.fields['position'].help_text='Актуальные и подтверждённые новые должности. При выборе техники должности берутся из её экипажа.'
         for name in ['count','shifts_per_day','hours_per_shift']:self.fields[name].widget.attrs['min']='1' if name!='hours_per_shift' else '0.01'
         for name in ['work','work_item']:self.fields[name].widget = forms.HiddenInput()
         from .resource_targets import identities

@@ -95,7 +95,8 @@ class WorkResourceTests(TestCase):
     def test_catalogue_crew_and_position_pages(self):
         response=self.client.get(reverse('resources:equipment_crew',args=[self.equipment.pk]))
         self.assertContains(response,'замещение');self.assertContains(response,'Сохранить экипаж')
-        response=self.client.get(reverse('resources:position_list'),follow=True);self.assertContains(response,'Машинист')
+        self.assertRedirects(self.client.get(reverse('resources:position_list')),reverse('resources:brigade_list'))
+        response=self.client.get(reverse('resources:brigade_list'),{'staffing_current':''});self.assertContains(response,'Машинист')
 
     def test_forecast_keeps_assignment_dates_and_counts_once(self):
         self.assignment(self.version)

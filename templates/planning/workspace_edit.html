@@ -53,6 +53,7 @@
 @media(max-width:575px) { .allocation-row .allocation-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .allocation-grid > [data-field] { grid-column:span 1 !important; } .allocation-grid > [data-field="work"], .allocation-grid > [data-field="brigade"], .allocation-grid > [data-field="equipment_type"], .allocation-grid > [data-field="fuel_type"], .allocation-grid > [data-field="load_profile"] { grid-column:1/-1 !important; } }
 
 </style>
+{% include 'planning/_catalogue_review_panel.html' %}
 {% include 'planning/_plan_workbench_toolbar.html' %}
 {% if future_manual %}<div class="alert alert-info">{% if version.scenario == 'ENTERED' %}Будущее содержит только явно введенные объемы. Невведенные остатки не переносятся автоматически.{% else %}Будущее рассчитывается автоматически по пропорциям базового плана. Если остался один будущий месяц, весь остаток работ автоматически попадает в него. Для нескольких будущих месяцев с нулевыми пропорциями заполните распределение вручную. Сумма ручных объемов должна совпадать с остатком.{% endif %}</div>{% endif %}
 {% if work_forms.non_form_errors or resource_forms.non_form_errors %}<div class="alert alert-danger" role="alert">{{ work_forms.non_form_errors }}{{ resource_forms.non_form_errors }}</div>{% endif %}

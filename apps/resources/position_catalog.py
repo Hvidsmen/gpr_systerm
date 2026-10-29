@@ -44,7 +44,7 @@ def available_positions(company):
     return Position.objects.filter(company=company, planning_mapping__company=company,
         planning_mapping__brigade__company=company,
         planning_mapping__brigade__is_active=True,
-        planning_mapping__brigade__merge_source__isnull=True).select_related('planning_mapping__brigade')
+        planning_mapping__brigade__merge_source__isnull=True).exclude(planning_mapping__brigade__catalogue_review__status__in=['PENDING','REJECTED','REPLACED']).select_related('planning_mapping__brigade')
 
 
 def planning_positions(company):
@@ -52,8 +52,9 @@ def planning_positions(company):
     from django.db.models import Exists, OuterRef, Q
     from .models import Employee
     employees = Employee.objects.filter(company=company, is_active=True, position_id=OuterRef('pk'))
-    return available_positions(company).annotate(has_active_employee=Exists(employees)).filter(
+    return available_positions(company).exclude(planning_mapping__brigade__catalogue_review__status__in=['PENDING','REJECTED','REPLACED']).annotate(has_active_employee=Exists(employees)).filter(
         Q(planning_mapping__brigade__staffing_current=True) |
+        Q(planning_mapping__brigade__catalogue_review__status='CONFIRMED') |
         Q(planning_mapping__brigade__staffing_current__isnull=True, has_active_employee=True))
 
 

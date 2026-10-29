@@ -171,7 +171,7 @@ class AllocationFormset(BaseModelFormSet):
         for name, field in form.fields.items():
             if isinstance(field, forms.ModelChoiceField) and not field.widget.is_hidden:
                 # A saved row may retain a position without current employees.
-                identity={'brigade':getattr(form.instance,'brigade_id',None),'work':getattr(form.instance,'work_id',None)}
+                identity={'brigade':getattr(form.instance,'brigade_id',None),'work':getattr(form.instance,'work_id',None),'equipment_type':getattr(form.instance,'equipment_type_id',None)}
                 key=(name,identity[name] if form.instance.pk else None) if name in identity else name
                 if key not in self._choice_cache:
                     self._choice_cache[key] = list(field.choices)

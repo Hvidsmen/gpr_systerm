@@ -28,9 +28,14 @@ class AddEntryForm(forms.Form):
         self.fields['work'].label_from_instance=lambda work:f'{work.section.construction_object} · {work.section.name} · {work.name} · {work.unit} · ID {work.pk}'
         from apps.resources.position_catalog import planning_brigades
         self.fields['brigade'].queryset=planning_brigades(schedule.company)
-        self.fields['brigade'].help_text='Только должности с активными сотрудниками компании.'
+        self.fields['brigade'].help_text='Актуальные должности и подтверждённые новые позиции справочника.'
         from apps.resources.equipment_levels import gpr_types
         self.fields['equipment'].queryset=gpr_types(EquipmentType.objects.filter(company_id=schedule.company_id,merge_source__isnull=True,is_active=True))
+        from django.db.models import Q
+        from apps.resources.catalogue_review import resource_ids
+        pending_ids = resource_ids(schedule)
+        self.fields['brigade'].queryset = Brigade.objects.filter(company_id=schedule.company_id).filter(Q(pk__in=self.fields['brigade'].queryset.values('pk')) | Q(pk__in=pending_ids['labor']))
+        self.fields['equipment'].queryset = EquipmentType.objects.filter(company_id=schedule.company_id,parent__isnull=True).filter(Q(pk__in=self.fields['equipment'].queryset.values('pk')) | Q(pk__in=pending_ids['equipment']))
         self.auto_id='plan-add-%s'
 
     def clean(self):

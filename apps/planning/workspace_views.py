@@ -299,7 +299,9 @@ class WorkspaceEdit(View):
         from core.permissions import role_code
         if role_code(request.user)=='MANAGER':
             for form in works:
-                for field in form.fields.values():field.disabled=True
+                # Keep the hidden identity enabled: Django needs the posted id to
+                # bind a read-only work row when the manager saves resources.
+                for name,field in form.fields.items():field.disabled=name!='id'
             from .preparation import require_resource_input
             try:require_resource_input(request.user,version)
             except (PermissionDenied,ValidationError):

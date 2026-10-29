@@ -6,6 +6,10 @@ def planning_tasks(request):
     if not user.is_authenticated or not user.company_id:return {}
     role=role_code(user);result={}
     from .permissions import ROLES, CATALOG_MANAGER_ROLES
+    if role in CATALOG_MANAGER_ROLES | {'ADMIN','PLANNER','MANAGER'}:
+        from apps.resources.catalogue_review_views import queue_for
+        result['catalogue_review_access'] = True
+        result['catalogue_review_count'] = queue_for(user).filter(status='PENDING').count()
     if role in ROLES - CATALOG_MANAGER_ROLES:
         from apps.planning.task_services import generate_daily,visible
         generate_daily(user)

@@ -34,7 +34,7 @@
  function updateWorkflow(workflow){
    if(!workflow)return;
    header.querySelectorAll('[data-gpr-ready-form]').forEach(form=>form.hidden=workflow.resources_ready);
-   header.querySelectorAll('[data-gpr-submit-form]').forEach(form=>{form.hidden=!workflow.resources_ready;form.querySelector('button').disabled=!workflow.estimator_approved;});
+   header.querySelectorAll('[data-gpr-submit-form]').forEach(form=>{form.hidden=!workflow.resources_ready;form.querySelector('button').disabled=!workflow.estimator_approved||workflow.catalogue_ready===false;});
    const phase=header.querySelector('[data-stage=preparation]');
    if(phase){phase.dataset.state=workflow.handed?'current':'pending';const note=phase.querySelector('[data-stage-note]');if(note)note.hidden=!(workflow.resources_ready&&workflow.estimator_approved);
      [['resources','Ресурсы',workflow.resources_ready],['prices','Цены',workflow.estimator_approved]].forEach(([key,label,ready])=>{const branch=phase.querySelector('[data-branch='+key+']');if(branch){branch.dataset.state=ready?'done':workflow.handed?'current':'pending';branch.textContent=label+': '+(ready?'Завершено':workflow.handed?'Сейчас':'Предстоит');}});

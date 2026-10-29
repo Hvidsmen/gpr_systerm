@@ -6,7 +6,7 @@
 <nav class="plan-action-row" aria-label="Действия ГПР">
 {% if object.workspace_id and object.status == 'DRAFT' or object.workspace_id and object.status == 'REJECTED' %}{% if can_edit_work_plan and not gpr_single_page %}<a class="btn btn-primary btn-sm" href="{% url 'planning:workspace_edit' object.pk %}">Редактировать</a>{% endif %}{% endif %}
 {% if can_confirm_resources and resource_preparation %}<form data-gpr-ready-form {% if resources_ready %}hidden{% endif %} method="post" action="{% url 'planning:preparation_gpr' object.pk %}">{% csrf_token %}<button class="btn btn-outline-primary btn-sm" name="action" value="ready">Ресурсы определены</button></form>{% endif %}
-{% if can_confirm_resources %}<form data-gpr-submit-form {% if not resources_ready %}hidden{% endif %} method="post" action="{% url 'planning:global_action' object.pk 'submit' %}">{% csrf_token %}<button class="btn btn-primary btn-sm" {% if not resources_ready or not estimator_approved %}disabled title="Сначала подтвердите ресурсы и завершите проверку сметчиком"{% endif %}>Отправить на согласование</button></form>{% endif %}
+{% if can_confirm_resources %}<form data-gpr-submit-form {% if not resources_ready %}hidden{% endif %} method="post" action="{% url 'planning:global_action' object.pk 'submit' %}">{% csrf_token %}<button class="btn btn-primary btn-sm" {% if not catalogue_ready %}disabled title="Дождитесь проверки новых должностей и техники"{% elif not resources_ready or not estimator_approved %}disabled title="Сначала подтвердите ресурсы и завершите проверку сметчиком"{% endif %}>Отправить на согласование</button></form>{% endif %}
 {% if can_edit_work_plan %}{% if object.status == 'DRAFT' or object.status == 'REJECTED' %}<a class="btn btn-outline-primary btn-sm" href="{% url 'planning:preparation_gpr' object.pk %}?handoff=1">Передать руководителю и сметчику</a>{% endif %}{% endif %}
 {% if object.status == 'DRAFT' or object.status == 'REJECTED' or object.status == 'SUBMITTED' %}{% if request.user|may:'planning:estimate_review_assign' %}<a class="btn btn-outline-primary btn-sm" href="{% url 'planning:estimate_review_assign' 'gpr' object.pk %}">Проверка сметчиком</a>{% endif %}{% endif %}
 {% for section in approval_sections %}{% if section.can_approve %}<form method="post" action="{% url 'planning:global_action' object.pk section.action %}">{% csrf_token %}<button class="btn btn-success btn-sm">Согласовать: {{ section.label }}</button></form>{% endif %}{% endfor %}
@@ -33,4 +33,4 @@
 {% if request.user|may:'planning:global_delete' and object.can_delete %}<a class="btn btn-outline-danger btn-sm" href="{% url 'planning:global_delete' object.pk %}">Удалить версию</a>{% endif %}
 </div>
 
-<script src="{% static 'planning/plan_actions.js' %}" defer></script>
+<script src="{% static 'planning/plan_actions.js' %}?v=20261029-catalogue-review" defer></script>

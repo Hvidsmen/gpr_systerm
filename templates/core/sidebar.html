@@ -37,6 +37,7 @@
         {% if request.user|may:'works:work_list' %}<a class="nav-link" href="{% url 'works:work_list' %}" data-paths="/works/"><i class="bi bi-list-task" aria-hidden="true"></i> Работы</a>{% endif %}
         {% if request.user|may:'works:group_list' %}<a class="nav-link" href="{% url 'works:group_list' %}"><i class="bi bi-collection" aria-hidden="true"></i> Группы работ</a>{% endif %}
         {% if request.user|may:'works:unit_list' %}<a class="nav-link" href="{% url 'works:unit_list' %}"><i class="bi bi-rulers" aria-hidden="true"></i> Единицы измерения</a>{% endif %}
+        {% if catalogue_review_access %}<a class="nav-link" href="{% url 'resources:catalogue_review_list' %}">Проверка справочников {% if catalogue_review_count %}<span class="badge bg-warning text-dark">{{ catalogue_review_count }}</span>{% endif %}</a>{% endif %}
         {% if request.user|may:'resources:employee_list' %}<a class="nav-link" href="{% url 'resources:employee_list' %}" ><i class="bi bi-person-badge" aria-hidden="true"></i> Сотрудники</a>{% endif %}
         {% if request.user|may:'resources:brigade_list' %}<a class="nav-link" href="{% url 'resources:brigade_list' %}" ><i class="bi bi-people" aria-hidden="true"></i> Должности</a>{% endif %}
         {% if request.user|may:'resources:equipment_type_list' %}<a class="nav-link" href="{% url 'resources:equipment_type_list' %}" ><i class="bi bi-truck" aria-hidden="true"></i> Техника</a>{% endif %}

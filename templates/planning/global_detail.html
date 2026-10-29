@@ -1,6 +1,7 @@
 {% extends 'base.html' %}{% load static %}
 {% block extra_css %}<link rel="stylesheet" href="{% static 'planning/report_matrix.css' %}?v=20261029-calendar"><link rel="stylesheet" href="{% static 'planning/plan_actions.css' %}?v=20261029-stages">{% endblock %}
 {% block content %}
+{% include 'planning/_catalogue_review_panel.html' %}
 {% include 'planning/_global_actions.html' %}
 {% if object.approval_round %}<div data-plan-approval-stages>
 <p class="small text-muted">Период проверки и согласования: <strong>{{ review_start|date:'d.m.Y' }} — {{ review_end|date:'d.m.Y' }}</strong>. Ранее утверждённая история сохраняется.</p>

@@ -1,0 +1,5 @@
+{% extends 'base.html' %}{% block content %}
+<a href="{{ return_url }}">← Вернуться в план</a><h1 class="h3 mt-3">{{ title }}</h1>
+<p>{{ owner.construction_object }}. Позиция сразу появится в плане с отметкой «На проверке». Количества можно заполнять, пока ответственный проверяет справочник. Отправка на согласование будет доступна после проверки.</p>
+<form method="post" class="card card-body" data-catalogue-proposal>{% csrf_token %}{% include 'forms/fields.html' %}<div><button class="btn btn-primary">Создать и добавить в план</button></div></form>
+{% endblock %}

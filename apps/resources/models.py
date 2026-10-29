@@ -333,3 +333,5 @@ class PositionPlanningBrigade(BaseCompanyModel):
     position = models.OneToOneField(Position,on_delete=models.PROTECT,related_name='planning_mapping')
     brigade = models.OneToOneField(Brigade,on_delete=models.PROTECT,related_name='position_mapping')
 from .transport_import_models import TransportImportBatch,TransportImportRow
+
+from .catalogue_review_models import CatalogueReviewRequest

@@ -10,7 +10,7 @@ class EmployeeForm(forms.ModelForm):
         super().__init__(*args,**kwargs)
         for name in ['first_name','last_name']:self.fields[name].required=True
         from django.db.models import Q
-        self.fields['position'].queryset=self.fields['position'].queryset.filter(Q(planning_mapping__isnull=False,planning_mapping__brigade__merge_source__isnull=True)|Q(pk=self.instance.position_id)).select_related('planning_mapping__brigade')
+        self.fields['position'].queryset=self.fields['position'].queryset.filter(Q(planning_mapping__isnull=False,planning_mapping__brigade__merge_source__isnull=True)|Q(pk=self.instance.position_id)).exclude(Q(planning_mapping__brigade__catalogue_review__status__in=['PENDING','REJECTED','REPLACED']) & ~Q(pk=self.instance.position_id)).select_related('planning_mapping__brigade')
         self.fields['position'].label_from_instance=lambda p:p.planning_mapping.brigade.name if getattr(p,'planning_mapping',None) else p.name
 
     class Meta:

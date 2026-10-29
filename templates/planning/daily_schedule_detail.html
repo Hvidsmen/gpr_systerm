@@ -8,6 +8,7 @@
 {% if is_subobject_smg %}<p class="small text-muted">Это вклад {{ schedule.construction_object }} в общий ГПР {{ schedule.source.construction_object }}. <a href="#smg-parent-comparison">Сравнить ГПР с суммой СМГ субобъектов</a>.</p>{% elif not schedule.source_id %}<p class="small text-muted">ГПР для сравнения не выбран. СМГ планируется самостоятельно; ГПР можно выбрать внизу страницы.</p>{% elif has_deviations %}<p class="small text-warning">Месячные итоги отличаются от ГПР. Проверьте отклонения перед согласованием.</p>{% endif %}
 {% if table_editable %}<section class="smg-paste-help"><strong>Вставка строки из Excel</strong><span>Скопируйте строку, выберите первый день нужного показателя и нажмите Ctrl+V. Чистые числа вставятся по дням вправо; для строки с названием и итогами откроется предпросмотр.</span><button class="btn btn-sm btn-outline-secondary" type="button" data-smg-paste-undo hidden>Отменить вставку</button></section>
 {% endif %}
+{% include 'planning/_catalogue_review_panel.html' %}
 {% include 'planning/_plan_workbench_toolbar.html' %}
 {% include 'planning/_plan_workbench_matrix.html' %}
 {% if branch_form %}{% include 'planning/_branch_picker.html' %}{% endif %}

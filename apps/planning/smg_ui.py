@@ -35,7 +35,8 @@ def editor_context(user,schedule,approval):
     for row in DailySchedule.objects.filter(company=user.company,construction_object_id=schedule.construction_object_id).order_by('month','-revision'):
         months.setdefault(row.month,row)
     rejections=[d for d in approval['smg_decisions'] if d.action=='REJECT']
-    return {**path,**preparation.task_context(user,schedule),'smg_can_return_applied':role=='ADMIN' and schedule.status=='APPLIED',
+    from apps.resources.catalogue_review import context as catalogue_context
+    return {**catalogue_context(user,schedule),**path,**preparation.task_context(user,schedule),'smg_can_return_applied':role=='ADMIN' and schedule.status=='APPLIED',
         'smg_return_comment':max(rejections,key=lambda d:d.pk).comment if returned and rejections else '',
         'smg_resource_ready':resources,'smg_can_confirm':draft and bool(manager and record),'smg_can_handoff':draft and role in PLAN_ROLES,
         'smg_handoff_form':HandoffForm(company=user.company,initial={'manager':record.manager_id if record else None,'estimator':latest.assigned_to_id if latest else None}) if draft and role in PLAN_ROLES else None,

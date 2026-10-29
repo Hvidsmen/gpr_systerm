@@ -242,3 +242,9 @@ urlpatterns += [
 
 from .monthly_grid_views import WorkspaceMonths
 urlpatterns += [path('workspace-versions/<int:pk>/months/',WorkspaceMonths.as_view(),name='workspace_months')]
+
+from apps.resources.catalogue_review_views import propose as catalogue_propose, fix as catalogue_fix
+urlpatterns += [
+    path('catalogue/<str:owner_kind>/<int:pk>/new/<str:kind>/', catalogue_propose, name='catalogue_propose'),
+    path('catalogue/<str:owner_kind>/<int:pk>/fix/<int:request_pk>/', catalogue_fix, name='catalogue_fix'),
+]

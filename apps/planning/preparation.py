@@ -95,6 +95,8 @@ def require_submission(user,owner):
     preparation=record(owner)
     if not preparation:raise ValidationError('Сначала передайте работы руководителю проекта и сметчику.')
     if role_code(user)!='ADMIN' and preparation.manager_id!=user.pk:raise PermissionDenied('Согласование запускает назначенный руководитель проекта.')
+    from apps.resources.catalogue_review import require_reviewed
+    require_reviewed(owner)
     if not preparation.resources_ready_at or preparation.resources_fingerprint!=resource_signature(owner):raise ValidationError('Руководитель проекта должен завершить определение ресурсов. После изменений подтвердите ресурсы заново.')
     estimate_review.require_approved(owner)
 

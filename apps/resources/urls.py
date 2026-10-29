@@ -117,3 +117,9 @@ urlpatterns += [path("equipment-units/import-groups/",equipment_group_import,nam
 
 from .equipment_inline import create_planning_type
 urlpatterns += [path("equipment-types/quick-create/",create_planning_type,name="equipment_type_quick_create")]
+
+from .catalogue_review_views import review_list, review_detail
+urlpatterns += [
+    path('catalogue-reviews/', review_list, name='catalogue_review_list'),
+    path('catalogue-reviews/<int:pk>/', review_detail, name='catalogue_review_detail'),
+]

@@ -139,10 +139,16 @@ def check_route(user, match, method):
             'equipment_category_merge', 'equipment_unit_list', 'equipment_unit_detail',
             'equipment_unit_create', 'equipment_unit_update', 'equipment_group_import',
         }
+        personnel_routes |= {'catalogue_review_list', 'catalogue_review_detail'}
+        equipment_routes |= {'catalogue_review_list', 'catalogue_review_detail'}
         routes = personnel_routes if role == PERSONNEL_CATALOG_MANAGER else equipment_routes
         if own_account or namespace == 'resources' and name in routes:
             return
         raise PermissionDenied('Доступ разрешён только к справочникам вашего направления.')
+    if namespace == 'resources' and name in {'catalogue_review_list', 'catalogue_review_detail'}:
+        require_roles(user, {'ADMIN','PLANNER','MANAGER'} | CATALOG_MANAGER_ROLES); return
+    if namespace == 'planning' and name in {'catalogue_propose','catalogue_fix'}:
+        require_roles(user, {'ADMIN','PLANNER','MANAGER'}); return
     if namespace=='personnel' and name in {'lodging_import','lodging_import_review'}:
         require_roles(user,{'ADMIN'});return
     if namespace=='personnel' and name.startswith('lodging'):

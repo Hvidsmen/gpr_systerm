@@ -138,7 +138,8 @@ def work_plan_volumes(owner,targets,snapshot=None):
 def workflow_state(owner):
     record=preparation.record(owner)
     latest=owner.estimate_reviews.order_by('-pk').first()
-    return {'handed':bool(record),
+    from apps.resources.catalogue_review import requests_for
+    return {'catalogue_ready':not requests_for(owner,blocking=True).exists(),'handed':bool(record),
         'resources_ready':bool(record and record.resources_ready_at and record.resources_fingerprint==preparation.resource_signature(owner)),
         'estimator_approved':estimate_review.check_valid(owner,latest)}
 
@@ -160,7 +161,8 @@ def context(user,owner,month=None,snapshot=None):
     from .preparation_views import HandoffForm
     handoff_form=HandoffForm(company=owner.company,initial={'manager':record.manager_id if record else None,'estimator':latest.assigned_to_id if latest else None}) if isinstance(owner,GlobalPlanVersion) and owner.workspace_id and owner.status in {'DRAFT','REJECTED'} and role_code(user) in {'ADMIN','PLANNER'} else None
     from django.urls import reverse
-    return {'resource_assignment_url':reverse('planning:work_resources_save_smg' if isinstance(owner,DailySchedule) else 'planning:preparation_add_assignment',args=[owner.pk]),'gpr_handoff_form':handoff_form,'resources_ready':bool(record and record.resources_ready_at and record.resources_fingerprint==preparation.resource_signature(owner)),
+    from apps.resources.catalogue_review import context as catalogue_context
+    return {**catalogue_context(user,owner),'resource_assignment_url':reverse('planning:work_resources_save_smg' if isinstance(owner,DailySchedule) else 'planning:preparation_add_assignment',args=[owner.pk]),'gpr_handoff_form':handoff_form,'resources_ready':bool(record and record.resources_ready_at and record.resources_fingerprint==preparation.resource_signature(owner)),
         'estimator_approved':estimate_review.check_valid(owner,latest),'can_prepare_resources':allowed,'can_confirm_resources':confirm_allowed,'resource_owner':owner,
         'inline_resource_form':InlineAssignmentForm(owner=owner,initial={'start_date':start,'end_date':end,'count':1,'shifts_per_day':1,'hours_per_shift':8,'include_crew':True}),
         'resource_editor_data':{'table_mode':True,'targets':targets,'assignments':[serialize(a) for a in work_resources.owner_rows(owner)],
