@@ -33,3 +33,6 @@
 .gpr-editor-grid .matrix-scroll{width:var(--gpr-grid-width,100%)}.gpr-editor-grid [data-plan-measure]>th:not(.matrix-label){min-width:0}
 
 .plan-package-completion{display:inline-flex;gap:5px;align-items:baseline;margin-left:14px;color:#355c7c;font-size:12px;font-weight:400}.plan-package-actions{display:inline-flex;gap:5px;margin-left:12px;vertical-align:middle}.plan-package-actions .btn{font-size:11px;padding:2px 6px}.plan-workbench [data-plan-completion-row][hidden]{display:none!important}
+
+/* Aligned tables extend to the common axis; keep their paint out of the tree gutter. */
+.gpr-editor-grid .matrix-scroll{clip-path:inset(0 0 0 var(--gpr-inset,0px));border-radius:0}

@@ -1,6 +1,6 @@
 {% extends 'base.html' %}{% load static access l10n revenue_tags %}
 {% block title %}ГПР · планирование по месяцам{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'planning/plan_actions.css' %}"><link rel="stylesheet" href="{% static 'planning/plan_workbench.css' %}?v=20261029-completion"><link rel="stylesheet" href="{% static 'planning/monthly_grid.css' %}?v=20261029-shared">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'planning/plan_actions.css' %}"><link rel="stylesheet" href="{% static 'planning/plan_workbench.css' %}?v=20261029-tree-gutter"><link rel="stylesheet" href="{% static 'planning/monthly_grid.css' %}?v=20261029-tree-gutter">{% endblock %}
 {% block content %}
 {% include 'planning/planning_tabs.html' %}{% include 'planning/_workspace_actions.html' %}{% include 'planning/_gpr_handoff.html' %}
 <nav class="d-flex flex-wrap gap-2 my-3" aria-label="Вид планирования ГПР"><a class="btn btn-sm btn-outline-primary" href="{% url 'planning:workspace_edit' version.pk %}?month={{ selected_month|date:'Y-m-d' }}">Один месяц</a><span class="btn btn-sm btn-primary" aria-current="page">По месяцам · весь период</span></nav>

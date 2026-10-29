@@ -28,3 +28,6 @@
 .month-grid-completion{display:flex;flex-wrap:wrap;gap:4px 12px;margin:6px 0 0;font-size:11px}.month-grid-completion-value{white-space:nowrap}.month-grid [data-grid-completion-row][hidden]{display:none!important}
 
 .month-grid-scroll .month-grid-package-summary{display:grid;grid-template-columns:calc(var(--name-width) + var(--measure-width)) repeat(var(--month-count),var(--value-width));width:var(--grid-width);max-width:none!important;margin-left:calc(-1 * var(--grid-inset,0px));padding:0!important;position:static;list-style:none}.month-grid-package-summary::-webkit-details-marker{display:none}.month-grid-package-label{position:sticky;left:0;padding:8px 10px 8px calc(10px + var(--grid-inset,0px));background:#f6f8fa}.month-grid-package-label::before{content:'▸';margin-right:6px}details[open]>.month-grid-package-summary>.month-grid-package-label::before{content:'▾'}.month-grid-ready-value{padding:8px 10px;text-align:right;font-size:12px;border-left:1px solid #e0e8f0;font-variant-numeric:tabular-nums}
+
+/* Preserve continuous ancestor guides beside aligned work rows and package totals. */
+.month-grid-scroll .month-grid-table,.month-grid-scroll .month-grid-package-summary{clip-path:inset(0 0 0 var(--grid-inset,0px))}
