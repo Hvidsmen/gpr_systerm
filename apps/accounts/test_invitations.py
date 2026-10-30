@@ -168,3 +168,28 @@ class InvitationTests(TestCase):
         with override_settings(LDAP_BIND_PASSWORD='synthetic-bind-secret'):
             user=DirectoryBackend().authenticate(request,username='verified.windows',password='synthetic-windows-secret')
         self.assertEqual(user.ldap_login,'verified.windows');self.assertFalse(user.has_usable_password())
+
+    @override_settings(EMAIL_HOST='',EMAIL_PORT=465,EMAIL_USE_SSL=True,EMAIL_USE_TLS=False,EMAIL_HOST_USER='',EMAIL_HOST_PASSWORD='',DEFAULT_FROM_EMAIL='site@yamaldorstroy.ru')
+    def test_unconfigured_form_proposes_verified_lancloud_without_saving_or_sending(self):
+        response=self.client.get(reverse('accounts:invitation_settings'))
+        form=response.context['form']
+        self.assertEqual(form.initial['host'],'smtp.lancloud.ru')
+        self.assertEqual(form.initial['port'],587)
+        self.assertEqual(form.initial['security'],'STARTTLS')
+        self.assertEqual(form.initial['username'],'site@yamaldorstroy.ru')
+        self.assertContains(response,'SMTP Submit Allowed')
+        self.assertFalse(CompanyMailSettings.objects.exists())
+        self.assertFalse(getattr(mail,'outbox',[]))
+        self.assertNotIn('password',form.initial)
+    def test_lancloud_defaults_preserve_server_environment_and_saved_company_settings(self):
+        url=reverse('accounts:invitation_settings')
+        with override_settings(EMAIL_HOST='custom.example.org',EMAIL_PORT=465,EMAIL_USE_SSL=True):
+            form=self.client.get(url).context['form']
+            self.assertEqual(form.initial['host'],'custom.example.org')
+            self.assertEqual(form.initial['port'],465)
+            self.assertEqual(form.initial['security'],'SSL')
+        CompanyMailSettings.objects.create(company=self.company,host='company.example.org',port=2525,security='STARTTLS',username='company@example.org',from_email='company@example.org')
+        form=self.client.get(url).context['form']
+        self.assertEqual(form.initial['host'],'company.example.org')
+        self.assertEqual(form.initial['port'],2525)
+        self.assertEqual(form.initial['username'],'company@example.org')

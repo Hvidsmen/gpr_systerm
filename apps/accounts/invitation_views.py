@@ -82,7 +82,13 @@ def settings_view(request):
     admin(request)
     row=CompanyMailSettings.objects.filter(company=request.user.company).first()
     if row is None:
-        row=CompanyMailSettings(company=request.user.company,host=settings.EMAIL_HOST,port=settings.EMAIL_PORT,security='SSL' if settings.EMAIL_USE_SSL else 'STARTTLS' if settings.EMAIL_USE_TLS else 'NONE',username=settings.EMAIL_HOST_USER or settings.DEFAULT_FROM_EMAIL,from_email=settings.DEFAULT_FROM_EMAIL,portal_url=settings.PORTAL_PUBLIC_URL)
+        security='SSL' if settings.EMAIL_USE_SSL else 'STARTTLS' if settings.EMAIL_USE_TLS else 'NONE'
+        # Provider-confirmed defaults apply only to an unconfigured form.
+        # Existing company settings and configured server environment take priority.
+        host=settings.EMAIL_HOST or 'smtp.lancloud.ru'
+        port=settings.EMAIL_PORT if settings.EMAIL_HOST else 587
+        if not settings.EMAIL_HOST:security='STARTTLS'
+        row=CompanyMailSettings(company=request.user.company,host=host,port=port,security=security,username=settings.EMAIL_HOST_USER or settings.DEFAULT_FROM_EMAIL,from_email=settings.DEFAULT_FROM_EMAIL,portal_url=settings.PORTAL_PUBLIC_URL)
         if settings.EMAIL_HOST_PASSWORD:row.password_encrypted=invitation_mail.encrypt_password(request.user.company_id,settings.EMAIL_HOST_PASSWORD)
     form=invitation_mail.MailSettingsForm(request.POST if request.method=='POST' else None,instance=row,company=request.user.company)
     if request.method=='POST' and form.is_valid():
