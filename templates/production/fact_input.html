@@ -110,7 +110,6 @@
                                     <th style="min-width: 200px;">Работа в составе комплекса</th>
                                     <th class="text-center" style="width: 100px;">План</th>
                                     <th class="text-center" style="width: 120px;">Факт <span class="text-danger">*</span></th>
-                                    <th style="width: 180px;">Причина отклонения</th>
                                     <th style="min-width: 150px;">Комментарий</th>
                                     <th class="text-center" style="width: 80px;">Статус</th>
                                 </tr>
@@ -136,17 +135,6 @@
                                                class="form-control form-control-sm text-center"
                                                placeholder="0.000"
                                                min="0">
-                                    </td>
-                                    <td>
-                                        <select name="reason_{{ item_data.plan.pk }}" class="form-select form-select-sm">
-                                            <option value="">—</option>
-                                            {% for reason in deviation_reasons %}
-                                            <option value="{{ reason.pk }}"
-                                                {% if item_data.fact and item_data.fact.deviation_reason_id == reason.pk %}selected{% endif %}>
-                                                {{ reason.name }}
-                                            </option>
-                                            {% endfor %}
-                                        </select>
                                     </td>
                                     <td>
                                         <input type="text"

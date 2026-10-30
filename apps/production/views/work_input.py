@@ -5,7 +5,7 @@ from django.shortcuts import render, redirect
 from django.utils import timezone
 from apps.works.models import ProjectWork
 from apps.production.forms import DailyFactForm, FactInputFilterForm
-from apps.production.models import DailyFact, DeviationReason
+from apps.production.models import DailyFact
 from apps.works.progress import WorkProgressService
 
 
@@ -42,9 +42,6 @@ class FactInputView(View):
                 ),
                 "works_data": data,
                 "works_with_plan": data,
-                "deviation_reasons": DeviationReason.objects.filter(
-                    company=request.user.company
-                ),
             },
         )
 

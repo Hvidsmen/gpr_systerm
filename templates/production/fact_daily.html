@@ -62,7 +62,6 @@
                             <th>Работа в составе комплекса</th>
                             <th class="text-end" style="width: 120px;">План на день</th>
                             <th class="text-end" style="width: 120px;">Факт</th>
-                            <th style="width: 200px;">Причина отклонения</th>
                             <th>Комментарий</th>
                         </tr>
                     </thead>
@@ -75,17 +74,6 @@
                                 <input type="number" name="fact_{{ item_data.item.pk }}"
                                        value="{{ item_data.fact.actual_quantity|default:'' }}"
                                        step="0.001" class="form-control form-control-sm text-end" placeholder="0.000">
-                            </td>
-                            <td>
-                                <select name="reason_{{ item_data.item.pk }}" class="form-select form-select-sm">
-                                    <option value="">—</option>
-                                    {% for reason in deviation_reasons %}
-                                    <option value="{{ reason.pk }}"
-                                        {% if item_data.fact.deviation_reason_id == reason.pk %}selected{% endif %}>
-                                        {{ reason.name }}
-                                    </option>
-                                    {% endfor %}
-                                </select>
                             </td>
                             <td>
                                 <input type="text" name="comment_{{ item_data.item.pk }}"
@@ -283,7 +271,6 @@
     <div class="card-body">
         <ul class="mb-0 small">
             <li><strong>Факт</strong> — фактический объём выполненных работ за день</li>
-            <li><strong>Причина отклонения</strong> — выберите из списка, если факт отличается от плана</li>
             <li><strong>Комментарий</strong> — дополнительная информация о выполнении работ</li>
             <li><strong>Должность/Техника/ГСМ</strong> — подтягиваются из планов по проекту. Оставьте поле пустым, если ресурс не использовался</li>
             <li><strong>Зелёная строка</strong> — факт уже был введён ранее и будет обновлён</li>

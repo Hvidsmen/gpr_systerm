@@ -60,10 +60,11 @@ class ProductionCollaborationTests(TestCase):
         response=self.edge('delta',revision=0,edges=[{'action':'add','fact':self.fact.pk},{'action':'add','fact':999999}])
         self.assertEqual(response.status_code,409);self.assertFalse(self.person.work_links.exists())
 
-    def test_zero_does_not_remove_links_or_reason(self):
+    def test_zero_does_not_remove_links_or_historical_reason(self):
+        self.fact.deviation_reason=self.reason;self.fact.save()
         self.edge();data=self.payload('DISPATCHER','works');data.update(collaborative='1',autosave='1')
         prefix=next(k[:-len('project_work')] for k,v in data.items() if k.endswith('-project_work') and str(v)==str(self.work.pk))
-        data[prefix+'actual_quantity']='0';data[prefix+'deviation_reason']=self.reason.pk
+        data[prefix+'actual_quantity']='0'
         response=self.client.post(self.url,data);self.assertEqual(response.status_code,200,response.content)
         self.fact.refresh_from_db();self.assertEqual(self.fact.actual_quantity,0);self.assertEqual(self.fact.deviation_reason_id,self.reason.pk);self.assertTrue(self.person.work_links.exists())
 

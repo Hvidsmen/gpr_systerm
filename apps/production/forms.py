@@ -47,7 +47,6 @@ class DailyFactForm(CompanyFormMixin, forms.ModelForm):
             "work_item",
             "date",
             "actual_quantity",
-            "deviation_reason",
             "comment",
         ]
         widgets = {"date": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"})}

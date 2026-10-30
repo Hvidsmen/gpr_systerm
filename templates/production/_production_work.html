@@ -1,5 +1,5 @@
 {% load revenue_tags %}
-<article class="production-work-card" data-work-fact-row data-planned="{% if row.work_display.has_plan %}1{% else %}0{% endif %}" data-initial-quantity="{{ row.initial.actual_quantity|default_if_none:'' }}" data-initial-reason="{{ row.initial.deviation_reason|default_if_none:'' }}" data-initial-comment="{{ row.initial.comment|default:'' }}">
+<article class="production-work-card" data-work-fact-row data-planned="{% if row.work_display.has_plan %}1{% else %}0{% endif %}" data-initial-quantity="{{ row.initial.actual_quantity|default_if_none:'' }}" data-initial-comment="{{ row.initial.comment|default:'' }}">
 <header class="production-work-heading" data-work-heading {% if not row.work_display %}hidden{% endif %}>
 <div class="production-work-name"><p data-work-path>{{ row.work_display.path }}</p><h3 data-work-title>{{ row.work_display.title }}</h3><span class="badge bg-warning text-dark" data-work-unplanned {% if row.work_display.has_plan %}hidden{% endif %}>Вне СМГ</span></div>
 </header>

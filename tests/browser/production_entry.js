@@ -4,6 +4,7 @@ const {chromium}=require('playwright');const fs=require('fs');const assert=requi
  async function open(cookie){const context=await browser.newContext({viewport:{width:1440,height:1000},acceptDownloads:true});await context.addCookies([{name:'sessionid',value:cookie,url:c.base}]);await context.route('**/*',route=>{const url=route.request().url();if(url.startsWith(c.base))return route.continue();if(url.includes('bootstrap')&&url.includes('.css'))return route.fulfill({body:fs.readFileSync('/tmp/catalogue-bootstrap.css'),contentType:'text/css'});return route.abort();});const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));page.on('dialog',dialog=>dialog.dismiss());await page.goto(c.base+c.path);return page;}
  async function save(page){assert(await page.evaluate(()=>window.productionAutoSave.flush()),await page.locator('[data-autosave-state]').textContent());}
  const a=await open(c.cookie),b=await open(c.second_cookie),work=(page,id)=>page.locator('[data-work-fact-row]').filter({has:page.locator(`[name$="-project_work"][value="${id}"]`)}),person=page=>page.locator(`[data-position-plan="${c.planned_position}"] [data-production-person]`).first();
+ assert.equal(await a.locator('[name$="-deviation_reason"]').count(),0);assert.equal(await a.locator('[data-deviation-dialog]').count(),0);
  await a.waitForFunction(()=>document.querySelectorAll('.production-presence-user').length===2);
  assert.equal(await a.locator('[data-take]:visible').count(),0);assert.equal(await a.locator('[data-confirm-production]').count(),0);
  await work(a,c.work).locator('[name$="-actual_quantity"]').fill('5');await save(a);
@@ -25,12 +26,12 @@ const {chromium}=require('playwright');const fs=require('fs');const assert=requi
  await a.locator('[data-step="4"]').click();assert((await a.locator('[data-report-people]').innerText()).includes('Иванов'));assert(await a.locator('.production-report-group-role').count());
  const download=await Promise.all([a.waitForEvent('download'),a.locator('[data-report-download]').click()]);assert(download[0].suggestedFilename().endsWith('.xlsx'));await download[0].saveAs('/tmp/production-browser-report.xlsx');assert.equal(fs.readFileSync('/tmp/production-browser-report.xlsx').subarray(0,2).toString(),'PK');
  // Zero retains the two links; the second dispatcher sees the warning online.
- await a.locator('[data-step="1"]').click();await work(a,c.work).locator('[name$="-actual_quantity"]').fill('0');await work(a,c.work).locator('[name$="-deviation_reason"]').selectOption(String(c.reason));await save(a);
+ await a.locator('[data-step="1"]').click();await work(a,c.work).locator('[name$="-actual_quantity"]').fill('0');await save(a);
  await b.waitForFunction(()=>[...document.querySelectorAll('.graph-work')].some(el=>el.textContent.includes('Объём работы — 0')));assert.equal(await b.locator('[data-graph-lines] path').count(),2);
  // Return to 5 so a colleague edit later leaves a meaningful 5 -> 4 audit.
  await work(a,c.work).locator('[name$="-actual_quantity"]').fill('5');await save(a);
  await a.close();await b.locator('[data-step="1"]').click();await b.waitForFunction(id=>[...document.querySelectorAll('[data-work-fact-row]')].find(r=>r.querySelector('[name$="-project_work"]')?.value===String(id))?.querySelector('[name$="-actual_quantity"]')?.disabled===false,c.work,{timeout:15000});
- await work(b,c.work).locator('[name$="-actual_quantity"]').fill('4');await work(b,c.work).locator('[name$="-deviation_reason"]').selectOption(String(c.reason));await save(b);
+ await work(b,c.work).locator('[name$="-actual_quantity"]').fill('4');await save(b);
  assert.equal(await work(b,c.work).locator('[data-work-remove]').isHidden(),true);
  assert.deepStrictEqual(errors,[]);await browser.close();console.log('PASS: automatic leases, live presence/data, independent live links, grouping, multi-select filters, compact graph, zero keeps edges, XLSX download, close releases leases, colleague edit, mobile');
 })().catch(e=>{console.error(e);process.exit(1)});

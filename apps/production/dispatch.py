@@ -112,10 +112,6 @@ class WorkForm(ScopeFormMixin,DailyFactForm):
                 original=(int(self.initial.get('project_work') or work.pk),int(self.initial['work_item']) if self.initial.get('work_item') else None)
                 if original in self.work_plan and original!=key:self.add_error('project_work','Работу из плана СМГ нельзя заменить другой работой.')
             self.instance.outside_smg=key not in self.work_plan;self.instance.smg_plan_quantity=plan
-            if (self.instance.outside_smg or data.get('actual_quantity')!=plan) and not data.get('deviation_reason') and not self.actuated:
-                self.add_error('deviation_reason','Выберите причину отклонения или выполнения вне СМГ.')
-            reason=data.get('deviation_reason')
-            if reason and reason.name.strip().lower() in {'другое','прочее'} and not data.get('comment','').strip():self.add_error('comment','Для причины «Другое» нужен комментарий.')
         return data
 
 class ActivityForm(ScopeFormMixin,forms.ModelForm):
@@ -532,7 +528,7 @@ class DispatcherDayView(CompanyRequiredMixin,View):
                             for row in fs.deleted_objects:
                                 if isinstance(row,DailyFact):
                                     original=DailyFact.objects.get(pk=row.pk,company=obj.company)
-                                    if (original.project_work_id,original.work_item_id) in work_plan:raise ValidationError('Работу из плана СМГ удалить нельзя. Введите фактический объём, включая ноль, и причину отклонения.')
+                                    if (original.project_work_id,original.work_item_id) in work_plan:raise ValidationError('Работу из плана СМГ удалить нельзя. Введите фактический объём, включая ноль.')
                                     from .collaboration import detach_work
                                     detach_work(original)
                                 row.delete()
@@ -580,7 +576,7 @@ class DispatcherDayView(CompanyRequiredMixin,View):
                                 if set(resource_plan['fuel'])-present_fuels:raise ValidationError('Заполните ГСМ объекта по всем видам топлива СМГ, включая явные нули.')
                             if section=='works':
                                 present=set(DailyFact.objects.filter(company=obj.company,date=day,project_work__section__construction_object=obj).values_list('project_work_id','work_item_id'))
-                                if not own_entry and set(work_plan)-present:raise ValidationError('Заполните все работы СМГ, включая нулевой факт и причины отклонения.')
+                                if not own_entry and set(work_plan)-present:raise ValidationError('Заполните все работы СМГ, включая нулевой факт.')
                                 from .dispatch_models import EmployeeWorkLink
                                 people=EmployeeActivity.objects.filter(company=obj.company,construction_object=obj,date=day)
                                 if own_entry:people=people.filter(reported_by=request.user)

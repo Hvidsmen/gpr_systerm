@@ -60,20 +60,17 @@ class DispatcherTests(TestCase):
 
     def test_work_deviation_confirmation_and_revision(self):
         data=self.payload('DISPATCHER','works');data['works-0-actual_quantity']='3'
-        self.assertEqual(self.client.post(self.url,data).status_code,400)
-        self.assertFalse(DailyFact.objects.exists())
-        data['works-0-deviation_reason']=self.reason.pk;data['action']='confirm'
+        data['action']='confirm'
         self.assertEqual(self.client.post(self.url,data).status_code,302)
         fact=DailyFact.objects.get();self.assertFalse(fact.outside_smg);self.assertEqual(fact.smg_plan_quantity,5)
         self.assertTrue(FactSectionDay.objects.get(section='works').confirmed_at)
         self.assertEqual(self.client.post(self.url,data).status_code,400)
 
-    def test_outside_smg_requires_reason(self):
+    def test_outside_smg_saves_without_reason(self):
         self.schedule.entries.all().delete()
         data=self.payload('DISPATCHER','works');data.update({'works-0-project_work':self.work.pk,'works-0-actual_quantity':'2'})
-        self.assertEqual(self.client.post(self.url,data).status_code,400)
-        data['works-0-deviation_reason']=self.reason.pk
         self.assertEqual(self.client.post(self.url,data).status_code,302)
+        self.assertIsNone(DailyFact.objects.get().deviation_reason_id)
         self.assertTrue(DailyFact.objects.get().outside_smg)
         self.assertContains(self.client.get(reverse('production:fact_list'),{'construction_object':self.obj.pk,'start':str(self.day),'end':str(self.day)}),'Вне СМГ')
 
@@ -223,3 +220,13 @@ class DispatcherTests(TestCase):
         self.assertEqual(LaborFact.objects.get().actual_workers,0)
         response=self.client.get(self.url,{'construction_object':self.obj.pk,'date':str(self.day),'section':'labor'})
         self.assertFalse(response.context['legacy_exists'])
+
+    def test_work_reason_is_absent_and_obsolete_posted_value_is_ignored(self):
+        data=self.payload('DISPATCHER','works')
+        page=self.client.get(self.url,{'construction_object':self.obj.pk,'date':str(self.day),'section':'works'})
+        self.assertNotContains(page,'name="works-0-deviation_reason"')
+        self.assertNotContains(page,'data-deviation-dialog')
+        data['works-0-actual_quantity']='8';data['works-0-deviation_reason']='invalid-obsolete-field'
+        self.assertEqual(self.client.post(self.url,data).status_code,302)
+        fact=DailyFact.objects.get();self.assertEqual(fact.actual_quantity,8)
+        self.assertIsNone(fact.deviation_reason_id);self.assertEqual(fact.comment,'')
