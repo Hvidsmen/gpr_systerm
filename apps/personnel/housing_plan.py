@@ -2,7 +2,7 @@
 from calendar import monthrange
 from collections import defaultdict
 from datetime import date,timedelta
-from decimal import Decimal
+from decimal import Decimal,InvalidOperation
 from apps.planning.report_services import select_sources,empty_plan_value
 from apps.resources.models import Brigade
 from apps.resources.brigade_merge import brigade_aliases
@@ -35,17 +35,20 @@ def monthly_plan(user,camp,day,*,camps=None):
         seen=set()
         while pk in aliases and pk not in seen:seen.add(pk);pk=aliases[pk]
         return pk
-    index={};labels={}
+    index={};coverage={};labels={}
     for available in sources.values():
         for source in available:
             values=defaultdict(lambda:defaultdict(Decimal))
             for row in source.snapshot.get('resources',{}).get('labor',[]):
                 pk=canonical(row.get('brigade_id'))
                 if pk is None:continue
-                try:when=date.fromisoformat(row['date']);quantity=Decimal(str(row.get('planned_workers',row.get('planned_count',0)) or 0))
-                except (KeyError,ValueError):continue
+                quantity=row.get('planned_workers',row.get('planned_count'))
+                if quantity is None:continue
+                try:when=date.fromisoformat(row['date']);quantity=Decimal(str(quantity))
+                except (KeyError,ValueError,InvalidOperation):continue
                 values[pk][when]+=quantity;labels[pk]=row.get('label','Должность')
             index[id(source)]=values
+            coverage[id(source)]={when for dates in values.values() for when in dates}
     actual=defaultdict(set)
     for stay in present_stays(user.company,day).filter(camp__in=selected).select_related('person__employee__position__planning_mapping'):
         employee=stay.person.employee if stay.person.employee_id else None
@@ -60,7 +63,11 @@ def monthly_plan(user,camp,day,*,camps=None):
                 for object_id in paths[obj.pk]:
                     chosen=next((source for source in sources.get(object_id,[]) if source.start<=when<=source.end),None)
                     if chosen is not None:origin=objects[object_id];break
-                if chosen is None or empty_plan_value(chosen,when) is None:continue
+                if chosen is None:continue
+                default=empty_plan_value(chosen,when)
+                # Historical forecast dates default to unknown, but their explicit
+                # frozen rows still take precedence, just as in the GPR report.
+                if default is None and when not in coverage[id(chosen)]:continue
                 marker=(origin.pk,id(chosen),when)
                 if marker in used:
                     kind='СМГ' if chosen.snapshot.get('daily_schedule_applied') else 'ГПР'
@@ -74,7 +81,9 @@ def monthly_plan(user,camp,day,*,camps=None):
                 group['used_for_ids'].add(obj.pk)
                 bucket=group['months'][month_index];bucket['days'].add(when)
                 bucket['versions'].add(getattr(chosen.version,'revision',getattr(chosen.version,'version_number','')))
-                for pk,values in index[id(chosen)].items():bucket['values'][pk][when]+=values.get(when,Decimal(0))
+                for pk,values in index[id(chosen)].items():
+                    quantity=values.get(when,default)
+                    if quantity is not None:bucket['values'][pk][when]+=quantity
     keys={pk for group in groups.values() for bucket in group['months'] for pk in bucket['values']}
     brigades={b.pk:b for b in Brigade.objects.filter(company=user.company,pk__in=keys).select_related('group')}
     labels.update((pk,b.name) for pk,b in brigades.items())
@@ -84,7 +93,10 @@ def monthly_plan(user,camp,day,*,camps=None):
         keys={pk for bucket in group['months'] for pk in bucket['values']}
         rows=[]
         for pk in sorted(keys,key=lambda pk:(labor_group_order(brigades[pk].group if pk in brigades and brigades[pk].group_id else None),labels.get(pk,'Должность').casefold())):
-            values=[sum(bucket['values'][pk].values(),Decimal(0))/len(bucket['days']) if bucket['days'] else None for bucket in group['months']]
+            values=[]
+            for bucket in group['months']:
+                daily=bucket['values'].get(pk,{})
+                values.append(sum(daily.values(),Decimal(0))/len(daily) if daily else None)
             rows.append({'id':pk,'name':labels.get(pk,'Должность'),'actual':len(actual[pk]),'values':values})
         output.append({'object':group['object'],'kind':group['kind'],'rows':rows,'used_for':sorted(group['used_for']),'used_for_ids':sorted(group['used_for_ids']),
             'columns':[{'month':month,'versions':', '.join(str(v) for v in sorted(bucket['versions'])),'available':bool(bucket['days'])} for month,bucket in zip(months,group['months'])]})

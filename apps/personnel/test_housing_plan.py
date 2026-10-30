@@ -118,3 +118,63 @@ class HousingPlanTests(TestCase):
         plans={plan['kind']:plan for plan in groups[0]['plans']}
         self.assertEqual(plans['СМГ']['on_shift'],1);self.assertEqual(plans['СМГ']['shortage'],2)
         self.assertEqual(plans['ГПР']['on_shift'],2);self.assertEqual(plans['ГПР']['shortage'],8)
+
+    def forecast_with_history(self, history):
+        from apps.planning.models import PlanningWorkspace
+        from django.utils import timezone
+        target=add_month(self.month,2)
+        workspace=PlanningWorkspace.objects.create(company=self.company,construction_object=self.parent,name='ГПР КТП',start_date=self.month,end_date=self.gpr.end_date)
+        future=[{'date':str(add_month(self.month,n)+timedelta(days=d)),'brigade_id':self.brigade,'label':'Монтажник','planned_workers':str(count)} for n,count in [(2,69),(3,143),(4,125)] for d in range(monthrange(add_month(self.month,n).year,add_month(self.month,n).month)[1])]
+        return GlobalPlanVersion.objects.create(company=self.company,construction_object=self.parent,workspace=workspace,version_kind='FORECAST',planning_month=target,scenario='ENTERED',start_date=self.month,end_date=self.gpr.end_date,version_number=6,status='COMPLETED',approved_at=timezone.now(),snapshot={'version_kind':'FORECAST','planning_month':str(target),'scenario':'ENTERED','works':[],'resources':{'labor':history+future}})
+
+    def test_completed_forecast_keeps_explicit_november_35_equal_to_gpr_report(self):
+        from .housing_plan import position_headers
+        from apps.accounts.models import User,Role
+        from apps.planning.report_services import build_matrix
+        from apps.planning.pivot_sources import sources
+        november=add_month(self.month,1)
+        version=self.forecast_with_history([{'date':str(november+timedelta(days=n)),'brigade_id':self.brigade,'label':'Монтажник','planned_workers':'35'} for n in range(monthrange(november.year,november.month)[1])])
+        actor=User.objects.create_user(username='roster-report-admin',company=self.company,role=Role.objects.get(code='ADMIN'))
+        filters={'start':november,'end':add_month(november,1)-timedelta(days=1),'mode':'current','sections':['labor'],'objects':ConstructionObject.objects.filter(pk=self.parent.pk),'plan_type':'gpr','selected_plan':version}
+        report=build_matrix(actor,filters,source_overrides=sources(actor,filters),plan_only=True)
+        def leaves(nodes):
+            return [row for node in nodes for row in node['rows']+leaves(node['children'])]
+        report_value=leaves(report['objects'][0]['sections'][0]['groups'])[0]['cells'][0]['plan']
+        self.assertEqual(report_value,35)
+        context=monthly_plan(self.hr,self.a,self.day)
+        source=context['housing_plan_groups'][0]
+        self.assertEqual(source['rows'][0]['values'],[None,report_value,Decimal(69),Decimal(143),Decimal(125)])
+        groups=position_headers(self.company,[],context)
+        self.assertEqual(source['totals'][1]['value'],report_value)
+        self.assertEqual(groups[0]['plans'][0]['months'][1]['value'],report_value)
+        self.assertEqual(source['totals'][1]['versions'],'6')
+        self.assertIsNone(source['totals'][0]['value'])
+        from django.urls import reverse
+        self.client.force_login(self.hr)
+        page=self.client.get(reverse('personnel:housing'),{'date':str(self.day),'camps':[self.a.pk]})
+        self.assertEqual(page.status_code,200)
+        self.assertEqual(page.context['housing_plan_groups'][0]['totals'][1]['value'],35)
+        self.assertContains(page,'data-plan-month-value="35"')
+
+    def test_historical_partial_days_average_known_values_per_position(self):
+        from apps.resources.models import Brigade
+        other=Brigade.objects.create(company=self.company,name='Инженер с частичной историей')
+        month=add_month(self.month,1)
+        self.forecast_with_history([
+            {'date':str(month),'brigade_id':self.brigade,'planned_workers':None},
+            {'date':str(month+timedelta(days=1)),'brigade_id':self.brigade,'planned_workers':'35'},
+            {'date':str(month+timedelta(days=1)),'brigade_id':other.pk,'planned_workers':'10'},
+            {'date':str(month+timedelta(days=2)),'brigade_id':other.pk,'planned_workers':'20'},
+        ])
+        group=monthly_plan(self.hr,self.a,self.day)['housing_plan_groups'][0]
+        rows={row['id']:row for row in group['rows']}
+        self.assertEqual(rows[self.brigade]['values'][1],35)
+        self.assertEqual(rows[other.pk]['values'][1],15)
+        self.assertFalse(group['columns'][0]['available'])
+
+    def test_explicit_zero_in_history_is_zero_and_absent_history_stays_missing(self):
+        month=add_month(self.month,1)
+        self.forecast_with_history([{'date':str(month),'brigade_id':self.brigade,'planned_count':'0'}])
+        group=monthly_plan(self.hr,self.a,self.day)['housing_plan_groups'][0]
+        self.assertIsNone(group['rows'][0]['values'][0]);self.assertFalse(group['columns'][0]['available'])
+        self.assertEqual(group['rows'][0]['values'][1],0);self.assertTrue(group['columns'][1]['available'])
