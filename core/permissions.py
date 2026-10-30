@@ -156,7 +156,7 @@ def check_route(user, match, method):
             return
         raise PermissionDenied('Доступ разрешён только к справочникам вашего направления.')
     if namespace == 'resources' and name in {'catalogue_review_list', 'catalogue_review_detail'}:
-        require_roles(user, {'ADMIN','PLANNER','MANAGER'} | CATALOG_MANAGER_ROLES); return
+        require_roles(user, {'ADMIN','PLANNER','MANAGER','MECHANIZATION_DISPATCHER','ALL_FACT_DISPATCHER'} | CATALOG_MANAGER_ROLES); return
     if namespace == 'planning' and name in {'catalogue_propose','catalogue_fix'}:
         require_roles(user, {'ADMIN','PLANNER','MANAGER'}); return
     if namespace=='personnel' and name in {'lodging_import','lodging_import_review'}:
@@ -180,7 +180,7 @@ def check_route(user, match, method):
     if namespace == 'production' and name == 'camp_fuel':
         from apps.production.fuel_access import OPERATORS, READERS
         require_roles(user, READERS if method in {'GET', 'HEAD'} else OPERATORS); return
-    if namespace == 'production' and name in {'transport_board','transport_claims','transport_create','transport_history','transport_details','transport_cell','transport_employee_choices','transport_status_create','transport_copy_previous'}:
+    if namespace == 'production' and name in {'transport_board','transport_claims','transport_create','transport_history','transport_details','transport_cell','transport_employee_choices','transport_status_create','transport_copy_previous','transport_type_propose'}:
         from apps.production.transport import OPERATORS,READERS
         require_roles(user,READERS if method in {'GET','HEAD'} and name in {'transport_board','transport_history','transport_details'} else OPERATORS)
         return

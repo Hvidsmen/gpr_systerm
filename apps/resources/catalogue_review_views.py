@@ -47,7 +47,7 @@ class ProposalForm(forms.Form):
 def propose(request, owner_kind, pk, kind):
     require_roles(request.user, {'ADMIN','PLANNER','MANAGER'})
     owner = plan_owner(request, owner_kind, pk)
-    if kind not in service.REVIEW_ROLES: raise PermissionDenied
+    if kind not in {'labor','equipment'}: raise PermissionDenied
     initial = {}
     if isinstance(owner, GlobalPlanVersion):
         from apps.planning.bulk_add import editable_months
@@ -70,11 +70,11 @@ def propose(request, owner_kind, pk, kind):
 
 def queue_for(user):
     role = role_code(user)
-    require_roles(user, {'ADMIN','PLANNER','MANAGER'} | CATALOG_MANAGER_ROLES)
+    require_roles(user, {'ADMIN','PLANNER','MANAGER','MECHANIZATION_DISPATCHER','ALL_FACT_DISPATCHER'} | CATALOG_MANAGER_ROLES)
     query = CatalogueReviewRequest.objects.filter(company=user.company).select_related(
-        'brigade','equipment_type','created_by','reviewed_by','target_brigade','target_equipment')
+        'brigade','equipment_type','machine__type__parent','machine__catalogue_group','created_by','reviewed_by','target_brigade','target_equipment')
     if role in CATALOG_MANAGER_ROLES:
-        query = query.filter(kind='labor' if role == service.REVIEW_ROLES['labor'] else 'equipment')
+        query = query.filter(kind__in=['labor'] if role == service.REVIEW_ROLES['labor'] else ['equipment','machine'])
     elif role != 'ADMIN': query = query.filter(created_by=user)
     return query
 
@@ -100,7 +100,11 @@ class DecisionForm(forms.Form):
         super().__init__(*args,**kwargs)
         self.fields['target'].queryset = service.confirmed_choices(proposal.company, proposal.kind)
         self.fields['target'].help_text = 'Заполняется только при замене новой позиции существующей.'
-        self.fields['comment'].help_text = 'При отказе причина обязательна. Строка и введённые значения остаются в плане.'
+        if proposal.kind=='machine':
+            self.fields['action'].choices=[('confirm','Подтвердить машину'),('reject','Отклонить')]
+            self.fields.pop('target')
+            self.fields['comment'].help_text='При отказе причина обязательна. История машины сохраняется, новые назначения будут отключены.'
+        if proposal.kind!='machine':self.fields['comment'].help_text = 'При отказе причина обязательна. Строка и введённые значения остаются в плане.'
         for field in self.fields.values():
             if not field.widget.is_hidden: field.widget.attrs['class'] = 'form-select' if isinstance(field.widget, forms.Select) else 'form-control'
     def clean(self):
@@ -140,8 +144,8 @@ def review_detail(request, pk):
         except ValidationError as exc: form.add_error(None, exc)
     return render(request, 'resources/catalogue_review_detail.html', {'proposal':proposal,'form':form,
                   'history_events':history_events(proposal),'can_decide':can_decide,'preview':preview,'usage':service.affected_owners(proposal),
-                  'source_edit_route':'resources:brigade_update' if proposal.kind=='labor' else 'resources:equipment_type_update',
-                  'source_edit_url':reverse('resources:brigade_update' if proposal.kind=='labor' else 'resources:equipment_type_update',args=[proposal.resource.pk])})
+                  'source_edit_route':'resources:equipment_unit_update' if proposal.kind=='machine' else 'resources:brigade_update' if proposal.kind=='labor' else 'resources:equipment_type_update',
+                  'source_edit_url':reverse('resources:equipment_unit_update' if proposal.kind=='machine' else 'resources:brigade_update' if proposal.kind=='labor' else 'resources:equipment_type_update',args=[proposal.resource.pk])})
 
 
 @login_required

@@ -46,7 +46,18 @@
  const machineDialog=root.querySelector('[data-new-machine-dialog]'),machineForm=machineDialog.querySelector('form');
  root.querySelector('[data-new-machine]')?.addEventListener('click',()=>machineDialog.showModal());
  const type=machineForm.elements['new-machine-type'],model=machineForm.elements['new-machine-model'],models=JSON.parse(document.getElementById('transport-new-models').textContent);
- type.addEventListener('change',()=>{model.replaceChildren(new Option('Без отдельной модели',''));for(const option of models)if(String(option.parent_id)===type.value)model.add(new Option(option.brand_model||option.name,String(option.id)));});
+ const proposalDialog=root.querySelector('[data-propose-type-dialog]'),proposalForm=proposalDialog.querySelector('form');
+ const addType=document.createElement('button');addType.type='button';addType.className='btn btn-sm btn-outline-primary mt-2';addType.textContent='Создать технику для планирования';addType.dataset.proposePlanningType='';type.closest('.app-form-field').append(addType);
+ addType.addEventListener('click',()=>{proposalForm.reset();proposalForm.querySelector('[data-propose-type-error]').textContent='';proposalDialog.showModal();});
+ proposalForm.addEventListener('submit',async event=>{event.preventDefault();const button=event.submitter;button.disabled=true;try{
+  const result=await request(proposalDialog.dataset.url,{camp:root.dataset.camp,name:proposalForm.elements.name.value,group:proposalForm.elements.group.value});
+  type.add(new Option(result.label,String(result.id)));type.value=String(result.id);proposalDialog.close();type.dispatchEvent(new Event('change',{bubbles:true}));
+  const group=machineForm.elements['new-machine-catalogue_group'];group.value=result.category?String(result.category):'';group.dispatchEvent(new Event('change',{bubbles:true}));
+ }catch(error){proposalForm.querySelector('[data-propose-type-error]').textContent=error.message;}finally{button.disabled=false;}});
+ const brand=machineForm.elements['new-machine-brand_model'];let manualBrand=brand.value;
+ function modelBrand(){if(model.value){if(!brand.disabled)manualBrand=brand.value;brand.value=model.selectedOptions[0].textContent;brand.disabled=true;}else{brand.disabled=false;brand.value=manualBrand;}brand.dispatchEvent(new Event('input',{bubbles:true}));}
+ model.addEventListener('change',modelBrand);
+ type.addEventListener('change',()=>{model.replaceChildren(new Option('Без отдельной модели',''));for(const option of models)if(String(option.parent_id)===type.value)model.add(new Option(option.brand_model||option.name,String(option.id)));modelBrand();});
  machineForm.addEventListener('submit',async e=>{e.preventDefault();const button=e.submitter;button.disabled=true;try{await Promise.all(rows.map(row=>row.queue));const response=await fetch(machineForm.action,{method:'POST',credentials:'same-origin',headers:{'Accept':'application/json','X-CSRFToken':token},body:new FormData(machineForm)});const result=await response.json();if(!response.ok)throw new Error(Object.values(result.errors||{}).flat().join(' ')||'Не удалось добавить машину.');machineDialog.close();location.reload();}catch(error){machineForm.querySelector('[data-new-machine-error]').textContent=error.message;}finally{button.disabled=false;}});
  setInterval(()=>{if(active&&!document.hidden)locks.claim('renew',[active.dataset.transportRow]).catch(error=>say(active,error.message,true));},60000);
  window.addEventListener('pagehide',()=>{if(!active)return;const data=new URLSearchParams({camp:root.dataset.camp,date:root.dataset.date,session,action:'release',csrfmiddlewaretoken:token});data.append('equipment',active.dataset.transportRow);navigator.sendBeacon(root.dataset.claimUrl,data);});

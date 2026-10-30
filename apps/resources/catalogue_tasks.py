@@ -9,14 +9,14 @@ from apps.planning.models import WorkTask
 from apps.planning.task_services import ensure, state
 from .models import CatalogueReviewRequest
 
-REVIEWERS = {'labor': 'PERSONNEL_CATALOG_MANAGER', 'equipment': 'EQUIPMENT_CATALOG_MANAGER'}
-LABELS = {'labor': 'должность', 'equipment': 'технику для планирования'}
+REVIEWERS = {'labor': 'PERSONNEL_CATALOG_MANAGER', 'equipment': 'EQUIPMENT_CATALOG_MANAGER','machine':'EQUIPMENT_CATALOG_MANAGER'}
+LABELS = {'labor': 'должность', 'equipment': 'технику для планирования','machine':'машину'}
 
 
 @transaction.atomic
 def sync_task(proposal):
     proposal=CatalogueReviewRequest.objects.select_for_update().select_related(
-        'brigade','equipment_type','version','schedule','reviewed_by','created_by__role').defer('version__snapshot').get(pk=proposal.pk,company_id=proposal.company_id)
+        'brigade','equipment_type','machine','version','schedule','reviewed_by','created_by__role').defer('version__snapshot').get(pk=proposal.pk,company_id=proposal.company_id)
     role=REVIEWERS[proposal.kind]
     reviewers=list(User.objects.filter(company_id=proposal.company_id,is_active=True,role__code=role).order_by('pk')[:2])
     fallback=None
@@ -26,6 +26,7 @@ def sync_task(proposal):
     title=('Проверить новую '+LABELS[proposal.kind]+': '+str(proposal.resource))[:255]
     owner=proposal.version if proposal.version_id else proposal.schedule if proposal.schedule_id else None
     description='Подтвердите создание, выберите существующую позицию либо отклоните с причиной. Решение принимается в карточке заявки.\n'+proposal.origin_label
+    if proposal.kind=='machine':description='Проверьте номера, модель, классификацию и остальные данные машины. Подтвердите создание либо отклоните с причиной.\n'+proposal.origin_label
     if not reviewers and proposal.status=='PENDING':
         description+='\nОтветственный этого направления не назначен. Проверку может выполнить администратор.'
     task=ensure(proposal.company,f'catalogue-review:{proposal.pk}',kind='CATALOGUE',title=title,description=description,

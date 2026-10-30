@@ -71,6 +71,8 @@ class EquipmentDayRecord(ActualHistoryMixin, BaseCompanyModel):
     camp = models.ForeignKey('personnel.Camp', on_delete=models.PROTECT, related_name='equipment_days')
     date = models.DateField()
     status = models.CharField(max_length=12, choices=USES)
+    planning_type = models.ForeignKey('resources.EquipmentType',on_delete=models.PROTECT,null=True,blank=True,related_name='+',verbose_name='Плановая потребность')
+    presence_required = models.BooleanField(default=True,editable=False)
     construction_object = models.ForeignKey('projects.ConstructionObject', on_delete=models.PROTECT, null=True, blank=True)
     work = models.ForeignKey('works.ProjectWork', on_delete=models.PROTECT, null=True, blank=True)
     work_item = models.ForeignKey('works.ProjectWorkItem', on_delete=models.PROTECT, null=True, blank=True)
@@ -84,10 +86,11 @@ class EquipmentDayRecord(ActualHistoryMixin, BaseCompanyModel):
 
     def clean(self):
         super().clean()
-        for field in ('equipment', 'camp', 'construction_object', 'work', 'work_item'):
+        for field in ('equipment', 'camp', 'construction_object', 'work', 'work_item', 'planning_type'):
             value = getattr(self, field, None)
             if value and value.company_id != self.company_id:
                 raise ValidationError('Дневная запись другой компании.')
+        if self.planning_type_id and self.planning_type.parent_id:raise ValidationError('Выберите технику для планирования, а не модель.')
         if self.work_id and (not self.construction_object_id or self.work.section.construction_object_id != self.construction_object_id):
             raise ValidationError('Работа другого объекта.')
         if self.work_item_id and (not self.work_id or self.work_item.project_work_id != self.work_id):

@@ -24,7 +24,10 @@ def day_types(company,rows,resource_plans,*,query=''):
     for row in rows:
         t=catalogue.get(row['planning_type'].pk)
         if t is None:continue
-        item=bucket(t);item['available']+=1
+        item=bucket(t)
+        actual=row.get('actual_planning_type',row['planning_type'])
+        if row.get('at_camp',True):
+            physical=bucket(actual);physical['available']+=1
         if row['status']:
             item['rows'].append(row);item['worked']+=int(row['status']=='WORKED');item['idle']+=int(row['status']=='IDLE')
         else:

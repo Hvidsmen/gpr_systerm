@@ -4,11 +4,12 @@ from core.models import BaseCompanyModel
 
 
 class CatalogueReviewRequest(BaseCompanyModel):
-    kind = models.CharField(max_length=12, choices=[('labor', 'Должность'), ('equipment', 'Техника для планирования')])
+    kind = models.CharField(max_length=12, choices=[('labor', 'Должность'), ('equipment', 'Техника для планирования'), ('machine','Машина')])
     status = models.CharField(max_length=12, default='PENDING', choices=[('PENDING', 'На проверке'),
         ('CONFIRMED', 'Подтверждено'), ('REPLACED', 'Заменено существующей'), ('REJECTED', 'Отклонено')])
     brigade = models.OneToOneField('resources.Brigade', null=True, blank=True, on_delete=models.PROTECT, related_name='catalogue_review')
     equipment_type = models.OneToOneField('resources.EquipmentType', null=True, blank=True, on_delete=models.PROTECT, related_name='catalogue_review')
+    machine = models.OneToOneField('resources.Equipment',null=True,blank=True,on_delete=models.PROTECT,related_name='catalogue_review')
     target_brigade = models.ForeignKey('resources.Brigade', null=True, blank=True, on_delete=models.PROTECT, related_name='resolved_catalogue_requests')
     target_equipment = models.ForeignKey('resources.EquipmentType', null=True, blank=True, on_delete=models.PROTECT, related_name='resolved_catalogue_requests')
     version = models.ForeignKey('planning.GlobalPlanVersion', null=True, blank=True, on_delete=models.SET_NULL, related_name='catalogue_requests')
@@ -23,7 +24,7 @@ class CatalogueReviewRequest(BaseCompanyModel):
 
     @property
     def resource(self):
-        return self.brigade if self.kind == 'labor' else self.equipment_type
+        return self.machine if self.kind=='machine' else self.brigade if self.kind == 'labor' else self.equipment_type
 
     @property
     def target(self):
@@ -33,6 +34,7 @@ class CatalogueReviewRequest(BaseCompanyModel):
         ordering = ['-created_at', '-pk']
         indexes = [models.Index(fields=['company', 'kind', 'status'], name='catalogue_review_queue')]
         constraints = [models.CheckConstraint(condition=(
-            models.Q(kind='labor', brigade__isnull=False, equipment_type__isnull=True) |
-            models.Q(kind='equipment', brigade__isnull=True, equipment_type__isnull=False)),
+            models.Q(kind='labor', brigade__isnull=False, equipment_type__isnull=True,machine__isnull=True) |
+            models.Q(kind='equipment', brigade__isnull=True, equipment_type__isnull=False,machine__isnull=True) |
+            models.Q(kind='machine',brigade__isnull=True,equipment_type__isnull=True,machine__isnull=False)),
             name='one_proposed_catalogue_resource')]

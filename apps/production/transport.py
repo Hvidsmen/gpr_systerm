@@ -139,7 +139,7 @@ def audit(user, record, action, values):
 def _valid_timeline(machine, since):
     """Retroactive changes must not invalidate saved daily facts."""
     for row in machine.transport_days.filter(date__gte=since).select_related('camp'):
-        if not present(machine.company, row.date).filter(equipment=machine, camp=row.camp).exists():
+        if row.presence_required and not present(machine.company, row.date).filter(equipment=machine, camp=row.camp).exists():
             raise ValidationError(f'{machine}: за {row.date:%d.%m.%Y} уже есть дневная запись в {row.camp}. Сначала исправьте её.')
         if written_off(machine, row.date):
             raise ValidationError(f'{machine}: за {row.date:%d.%m.%Y} уже есть дневная запись. Сначала исправьте её перед списанием.')
@@ -256,7 +256,7 @@ def _project(user, record, previous_activity):
 
 @transaction.atomic
 @with_history_actor
-def save_day(user, camp, day, ids, status, *, construction_object=None, work=None, work_item=None, comment='', repeat=False, signed, session=None):
+def save_day(user, camp, day, ids, status, *, construction_object=None, work=None, work_item=None, comment='', repeat=False, signed, session=None, planning_type=None, allow_external=False):
     authorize(user, camp); require_fact_day(user,day)
     if status not in {'WORKED', 'IDLE', 'CLEAR'}:
         raise ValidationError('Выберите «Работала», «Простой» или очистку дня.')
@@ -273,9 +273,11 @@ def save_day(user, camp, day, ids, status, *, construction_object=None, work=Non
     for machine in machines:
         require_fact_day(user,day)
         _check(user, machine, controls[machine.pk], versions, session)
-        if not present(user.company, day).filter(equipment=machine, camp=camp).exists():
-            raise ValidationError(f'{machine}: нет в выбранном ВЖГ на эту дату.')
         record = EquipmentDayRecord.objects.filter(company=user.company, equipment=machine, date=day).first()
+        inside=present(user.company, day).filter(equipment=machine, camp=camp).exists()
+        if not inside and not allow_external and not (record and not record.presence_required):
+            raise ValidationError(f'{machine}: нет в выбранном ВЖГ на эту дату.')
+        if not record and not machine.is_active:raise ValidationError(f'{machine}: отключена в справочнике.')
         if record and record.camp_id != camp.pk:
             raise ValidationError('Сохранённая запись относится к другому ВЖГ.')
         old_activity = record.activity if record else None
@@ -299,6 +301,8 @@ def save_day(user, camp, day, ids, status, *, construction_object=None, work=Non
                 raise ValidationError('Объект не связан с выбранным ВЖГ.')
         existed = record is not None
         record = record or EquipmentDayRecord(company=user.company, equipment=machine, camp=camp, date=day)
+        if not existed:record.presence_required=inside
+        if planning_type is not None:record.planning_type=planning_type
         record.status = status; record.construction_object = obj
         record.work = selected_work if status == 'WORKED' else None; record.work_item = selected_item if status == 'WORKED' else None
         record.comment = comment.strip()
@@ -338,8 +342,9 @@ def cancel_event(user, event, reason, *, signed, session=None):
 
 
 @transaction.atomic
-def claim(user, camp, day, ids, action, session):
+def claim(user, camp, day, ids, action, session, *, purpose='movement'):
     authorize(user, camp); session = _session(session)
+    if purpose not in {'movement','day'}:raise ValidationError('Неизвестная цель редактирования.')
     if not session: raise ValidationError('Не указан сеанс редактирования.')
     if action not in {'acquire', 'renew', 'release', 'status'}: raise ValidationError('Неизвестное действие.')
     ids = sorted(set(ids))
@@ -358,7 +363,7 @@ def claim(user, camp, day, ids, action, session):
             if action in {'acquire', 'renew'} and (mine or not active):
                 # Only present machines, or an unplaced machine being received, can be reserved here.
                 stays = present(user.company, day).filter(equipment_id=control.equipment_id)
-                if stays.exists() and not stays.filter(camp=camp).exists(): raise ValidationError('Техника находится в другом ВЖГ.')
+                if purpose!='day' and stays.exists() and not stays.filter(camp=camp).exists(): raise ValidationError('Техника находится в другом ВЖГ.')
                 control.locked_by = user; control.session_key = session; control.expires_at = timezone.now() + TTL; control.save()
             elif action == 'release' and mine:
                 control.locked_by = None; control.session_key = None; control.expires_at = None; control.save()

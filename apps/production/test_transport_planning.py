@@ -60,15 +60,17 @@ class TransportPlanningTests(TestCase):
         save_cell(self.operator,self.camp,self.day,self.machine,'status','CLEAR',transport.snapshot(self.operator,self.camp,self.day),str(uuid4()))
         row=next(row for row in self.page().context['planning_types'] if row['id']==self.type.pk)
         self.assertEqual(len(row['choices']),2);self.assertEqual(row['rows'],[])
-    def test_wrong_type_duplicate_stale_and_foreign_camp_assignment_are_rejected(self):
-        self.assertEqual(self.assign(self.bus,self.type).status_code,409)
+    def test_other_type_and_other_camp_are_allowed_but_duplicate_and_stale_are_rejected(self):
+        self.assertEqual(self.assign(self.bus,self.type).status_code,200)
+        record=self.bus.transport_days.get(date=self.day);self.assertEqual(record.planning_type,self.type)
+        row=next(row for row in self.page().context['planning_types'] if row['id']==self.type.pk)
+        self.assertEqual(row['worked'],1)
         stale=transport.snapshot(self.operator,self.camp,self.day)
         self.assertEqual(self.assign().status_code,200);self.assertEqual(self.assign().status_code,409)
         save_cell(self.operator,self.camp,self.day,self.second,'comment','Уточнение',transport.snapshot(self.operator,self.camp,self.day),str(uuid4()))
         self.assertEqual(self.assign(self.second,signed=stale).status_code,409)
-        transport.move(self.operator,self.camp,self.day,[self.bus.pk],'TRANSFER',target=self.target,signed=transport.snapshot(self.operator,self.camp,self.day))
-        self.assertEqual(self.assign(self.bus,self.bus_type).status_code,409)
-        self.assertEqual(EquipmentDayRecord.objects.count(),1)
+        self.assertEqual(EquipmentDayRecord.objects.count(),2)
+
     def test_type_pagination_does_not_drop_available_machines_and_search_scope_is_preserved(self):
         from .transport_models import EquipmentCampStay
         machines=Equipment.objects.bulk_create([Equipment(company=self.company,type=self.type,name='Crane extra '+str(i),inventory_number='EXTRA-'+str(i)) for i in range(60)])

@@ -1,5 +1,5 @@
 {% load l10n %}
-<p class="small text-muted mt-3">Группа техники → техника для планирования → конкретные машины. Добавьте фактически работавшие машины и заполните их данные. План — из применённых СМГ связанных объектов на выбранную дату. В основном списке — только положительная потребность СМГ на выбранный день. Простой учитывается отдельно.</p>
+<p class="small text-muted mt-3">Группа техники → техника для планирования → конкретные машины. Добавьте фактически работавшие машины и заполните их данные. План — из применённых СМГ связанных объектов на выбранную дату. В основном списке — только положительная потребность СМГ на выбранный день. Простой учитывается отдельно. Можно выбрать любую действующую машину: сначала нужного типа в этом ВЖГ, затем нужного типа в остальных местах, далее остальную технику. Факт не оформляет приезд или перевод.</p>
 {% if editable %}<label class="small d-flex align-items-center gap-2 mb-2"><input type="checkbox" data-select-all> Выбрать видимые машины</label>{% endif %}
 <div class="transport-top-scroll" data-transport-top-scroll tabindex="0" role="region" aria-label="Горизонтальная прокрутка техники" hidden><div></div></div>
 <div class="transport-table-wrap transport-planning-scroll" data-transport-table-scroll>
@@ -9,7 +9,8 @@
 
 </div>
 
+{% if editable %}{{ machine_pool|json_script:'transport-machine-pool' }}{% endif %}
 {% if editable and outside_choices %}<button class="btn btn-sm btn-outline-primary mt-2" type="button" data-add-outside>Добавить вне плана</button>
-{{ outside_choices|json_script:'transport-outside-choices' }}
+
 <dialog class="transport-dialog" data-outside-dialog><header><h2 class="h5">Добавить технику вне плана</h2><button class="btn-close" type="button" data-close-outside aria-label="Закрыть"></button></header><p class="small text-muted">Машина будет учтена в факте вне плана СМГ за {{ day|date:'d.m.Y' }}.</p>
-<form data-type-picker data-outside-picker><div class="mb-3"><label for="outside-planning-type">Техника для планирования</label><select class="form-select" id="outside-planning-type" data-outside-type required><option value="">Выберите тип техники</option>{% for type in outside_choices %}<option value="{{ type.id }}">{{ type.name }}</option>{% endfor %}</select></div><div class="mb-3"><label for="outside-machine">Машина на ВЖГ</label><select class="form-select" id="outside-machine" name="equipment" required><option value="">Сначала выберите тип техники</option></select></div><p class="small" data-type-save role="status"></p><button class="btn btn-primary" type="submit">Добавить в факт</button></form></dialog>{% endif %}
+<form data-type-picker data-outside-picker><div class="mb-3"><label for="outside-planning-type">Техника для планирования</label><select class="form-select" id="outside-planning-type" data-outside-type required><option value="">Выберите тип техники</option>{% for type in outside_choices %}<option value="{{ type.id }}">{{ type.name }}</option>{% endfor %}</select></div><div class="mb-3"><label for="outside-machine">Машина</label><select class="form-select" id="outside-machine" name="equipment" required><option value="">Сначала выберите тип техники</option></select></div><p class="small text-muted" data-choice-location></p><p class="small" data-type-save role="status"></p><button class="btn btn-primary" type="submit">Добавить в факт</button></form></dialog>{% endif %}

@@ -60,11 +60,15 @@ def save_cell(user,camp,day,machine,field,value,signed,session):
     versions=transport._payload(user,camp,day,signed)
     machines,controls=transport._lock(user,[machine.pk]);machine=machines[0]
     transport._check(user,machine,controls[machine.pk],versions,transport._session(session))
-    if not transport.present(user.company,day).filter(equipment=machine,camp=camp).exists():raise ValidationError('Размещение машины изменилось. Обновите страницу.')
+    physical=transport.present(user.company,day).filter(equipment=machine,camp=camp).exists()
+    own_fact=machine.transport_days.filter(company=user.company,camp=camp,date=day,presence_required=False).exists()
+    if field!='assign' and not physical and not own_fact:raise ValidationError('Размещение машины изменилось. Обновите страницу.')
     if field=='assign':
-        if int(value)!=(machine.type.parent_id or machine.type_id):raise ValidationError('Выберите машину этого типа техники для планирования.')
+        from apps.resources.models import EquipmentType
+        planning_type=EquipmentType.objects.filter(company=user.company,parent=None,pk=int(value)).first()
+        if not planning_type:raise ValidationError('Техника для планирования недоступна.')
         if machine.transport_days.filter(company=user.company,date=day).exists():raise ValidationError('Машина уже добавлена в факт за этот день. Обновите страницу.')
-        transport.save_day(user,camp,day,[machine.pk],'WORKED',signed=signed,session=session)
+        transport.save_day(user,camp,day,[machine.pk],'WORKED',signed=signed,session=session,planning_type=planning_type,allow_external=True)
     elif field=='condition':
         previous_condition = transport.condition_on(machine, day)
         transport.set_condition(user,camp,day,[machine.pk],str(value),signed=signed,session=session)
@@ -93,7 +97,7 @@ def save_cell(user,camp,day,machine,field,value,signed,session):
         values=model_to_dict(source,fields=[name for name,_ in DETAIL_FIELDS]) if source else {}
         if source and source.date<day:
             for name in EMPLOYEE_FIELDS:values[name]=None
-        if field in EMPLOYEE_FIELDS and value and not machine.transport_days.filter(company=user.company,date=day,status='WORKED').exists():raise ValidationError('Сначала отметьте, что техника работала за выбранный день.')
+        if field in EMPLOYEE_FIELDS and value and not machine.transport_days.filter(company=user.company,camp=camp,date=day,status='WORKED').exists():raise ValidationError('Сначала отметьте, что техника работала за выбранный день.')
         values[field]=value
         if field=='in_gpr':values[field]={'true':True,'false':False,'':None,'unknown':None}.get(str(value).lower(),value)
         form=DetailsForm(values,instance=current,company=user.company)

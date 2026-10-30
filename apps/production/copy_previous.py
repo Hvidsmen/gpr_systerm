@@ -135,7 +135,7 @@ def equipment(request):
                         state=FactSectionDay.objects.filter(company=request.user.company,construction_object_id=old.construction_object_id,date=day,section='mechanization').first()
                         if (not state or state.revision==0) and not EquipmentActivity.objects.filter(company=request.user.company,construction_object_id=old.construction_object_id,date=day).exists() and EquipmentFact.objects.filter(company=request.user.company,construction_object_id=old.construction_object_id,date=day).exists():
                             raise ValidationError('На объекте уже есть сводный факт техники. Сначала проверьте его замену детализацией.')
-                    transport.save_day(request.user,camp,day,[old.equipment_id],old.status,construction_object=old.construction_object,work=old.work,work_item=old.work_item,comment=old.comment,signed=signed,session=session)
+                    transport.save_day(request.user,camp,day,[old.equipment_id],old.status,construction_object=old.construction_object,work=old.work,work_item=old.work_item,comment=old.comment,signed=signed,session=session,planning_type=old.planning_type,allow_external=not old.presence_required)
                     prior=details.get(old.equipment_id)
                     current=EquipmentDayDetails.objects.filter(company=request.user.company,equipment_id=old.equipment_id,date=day).first()
                     for field in ['shift_one_employee','shift_two_employee']:

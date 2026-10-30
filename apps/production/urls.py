@@ -410,3 +410,6 @@ urlpatterns += [path('work-opening/', work_opening_views.index, name='work_openi
 
 from apps.works.schedule_value_views import schedule_value_import
 urlpatterns += [path('work-opening/import/', schedule_value_import, {'metric':'opening'}, name='work_opening_import')]
+
+from . import transport_catalogue
+urlpatterns += [path('transport/planning-type/propose/',transport_catalogue.propose_type,name='transport_type_propose')]

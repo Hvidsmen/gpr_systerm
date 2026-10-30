@@ -17,7 +17,7 @@ from .models import Brigade, EquipmentType, CatalogueReviewRequest
 from apps.planning.models import GlobalPlanVersion, DailySchedule
 
 BLOCKING = {'PENDING', 'REJECTED', 'REPLACED'}
-REVIEW_ROLES = {'labor': PERSONNEL_CATALOG_MANAGER, 'equipment': EQUIPMENT_CATALOG_MANAGER}
+REVIEW_ROLES = {'labor': PERSONNEL_CATALOG_MANAGER, 'equipment': EQUIPMENT_CATALOG_MANAGER,'machine':EQUIPMENT_CATALOG_MANAGER}
 SALT = 'plan-catalogue-replacement-v1'
 
 
@@ -97,6 +97,9 @@ def context(user, owner):
 
 
 def confirmed_choices(company, kind):
+    if kind=='machine':
+        from .models import Equipment
+        return Equipment.objects.none()
     model = Brigade if kind == 'labor' else EquipmentType
     query = model.objects.filter(company=company, is_active=True, merge_source__isnull=True)
     if kind == 'equipment': query = query.filter(parent__isnull=True)
@@ -111,7 +114,7 @@ def propose(user, owner, kind, name, group=None, months=None):
     from apps.planning.work_resources import editable
     editable(user, owner)
     if isinstance(owner,GlobalPlanVersion) and not owner.workspace_id: raise ValidationError('Создание новой позиции доступно в рабочем ГПР с помесячным планированием.')
-    if kind not in REVIEW_ROLES: raise ValidationError('Неизвестный вид ресурса.')
+    if kind not in {'labor','equipment'}: raise ValidationError('Неизвестный вид ресурса.')
     name = ' '.join(str(name).split())
     if not name or len(name) > 150: raise ValidationError('Укажите название до 150 символов.')
     if group and group.company_id != user.company_id: raise PermissionDenied
@@ -164,6 +167,7 @@ def audit(user, proposal, action, data):
 
 
 def affected_owners(proposal, lock=False):
+    if proposal.kind=='machine':return []
     # Find references in batches. Only lock the plans that actually use this item.
     from apps.planning.models import ResourceMonthAllocation, DailyScheduleEntry, WorkResourceAssignment
     identity = proposal.brigade_id if proposal.kind == 'labor' else proposal.equipment_type_id
@@ -219,10 +223,15 @@ def preview(user, proposal, target):
 def catalogue_stamp(proposal, target):
     model = type(target)
     current = model.objects.filter(company=proposal.company,pk__in=[proposal.resource.pk,target.pk]).order_by('pk').values('pk','name','unit','is_active','updated_at')
-    return hashlib.sha256(json.dumps(list(current),sort_keys=True,default=str).encode()).hexdigest()
+    extra=[]
+    if proposal.kind=='equipment':
+        from .models import Equipment
+        extra=list(Equipment.objects.filter(company=proposal.company,type=proposal.equipment_type).order_by('pk').values('pk','type_id','catalogue_group_id','updated_at'))
+    return hashlib.sha256(json.dumps([list(current),extra],sort_keys=True,default=str).encode()).hexdigest()
 
 
 def validate_target(proposal, target):
+    if proposal.kind=='machine':raise ValidationError('Для машины выберите подтверждение или отклонение.')
     if target is None or not confirmed_choices(proposal.company, proposal.kind).filter(pk=target.pk).exists():
         raise ValidationError('Выберите подтверждённую позицию своего справочника.')
     if proposal.resource.unit.strip().casefold() != target.unit.strip().casefold():
@@ -380,6 +389,12 @@ def decide(user, proposal, action, revision, comment='', target=None, token=None
                     'target':target.pk,'fingerprint':fingerprint(proposal, owners),'catalogue_stamp':catalogue_stamp(proposal,target)}
         if payload != expected: raise ValidationError('План изменился после предпросмотра. Проверьте замену заново.')
         for owner in owners: replace_owner(owner, proposal, target)
+        if proposal.kind=='equipment':
+            from .models import Equipment
+            machines=list(Equipment.objects.select_for_update().filter(company=proposal.company,type=proposal.equipment_type).order_by('pk'))
+            for machine in machines:
+                machine.type=target;machine.save(update_fields=['type','updated_at'])
+            if machines:audit(user,proposal,'UPDATE',{'physical_equipment':[m.pk for m in machines],'target':target.pk})
         proposal.status = 'REPLACED'
         if proposal.kind == 'labor': proposal.target_brigade = target
         else: proposal.target_equipment = target
@@ -388,6 +403,8 @@ def decide(user, proposal, action, revision, comment='', target=None, token=None
         proposal.status = 'CONFIRMED'
     elif action == 'reject':
         if not comment.strip(): raise ValidationError('Укажите причину отказа.')
+        if proposal.kind=='machine':
+            resource=proposal.resource;resource.is_active=False;resource.save(update_fields=['is_active','updated_at'])
         proposal.status = 'REJECTED'
     else: raise ValidationError('Неизвестное решение.')
     proposal.comment = comment.strip(); proposal.reviewed_by = user; proposal.reviewed_at = timezone.now(); proposal.revision += 1

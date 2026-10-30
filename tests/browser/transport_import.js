@@ -24,7 +24,7 @@ const {chromium}=require('playwright'),fs=require('fs'),assert=require('node:ass
  await row.locator('[data-cell-save-status]').filter({hasText:'Сохранено'}).waitFor();
  await admin.screenshot({path:'/tmp/transport-inline-fields.png',fullPage:false,animations:'disabled'});
  await admin.getByRole('button',{name:'Добавить машину',exact:true}).first().click();
- const machine=admin.locator('[data-new-machine-form]');await machine.locator('[name=new-machine-type]').selectOption(String(c.planning_type));await machine.locator('[name=new-machine-name]').fill('Добавлена на странице');await machine.locator('[name=new-machine-inventory_number]').fill('INLINE-NEW-1');
+ const machine=admin.locator('[data-new-machine-form]');await machine.locator('[name=new-machine-type]').selectOption(String(c.planning_type));await machine.locator('[name=new-machine-inventory_number]').fill('INLINE-NEW-1');
  await Promise.all([admin.waitForNavigation(),machine.getByRole('button',{name:'Добавить машину',exact:true}).click()]);assert.equal(await admin.locator('[data-transport-row]').count(),3);
  const fuelUrl=c.base+c.fuel+query+'&fuel_type=DIESEL';await admin.goto(fuelUrl);await other.goto(fuelUrl);
  await admin.locator('[name=opening]').fill('100');await admin.locator('[name=received]').fill('50');await admin.locator('[name=consumed]').fill('20');assert((await admin.locator('[data-fuel-preview]').textContent()).includes('130'));

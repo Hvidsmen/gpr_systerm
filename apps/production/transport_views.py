@@ -104,20 +104,25 @@ class ActionForm(forms.Form):
         return data
 
 
-def _rows(user, camp, day):
-    stays=list(service.present(user.company,day).filter(camp=camp).select_related('equipment__type__parent','equipment__type__category','equipment__type__parent__category','equipment__catalogue_group'))
-    ids=[s.equipment_id for s in stays]
-    records={r.equipment_id:r for r in EquipmentDayRecord.objects.filter(company=user.company,equipment_id__in=ids,date=day).select_related('construction_object','work','work_item','recorded_by')}
-    controls={c.equipment_id:c for c in EquipmentTransportControl.objects.filter(company=user.company,equipment_id__in=ids).select_related('locked_by')}
-    rows=[]
-    conditions=service.conditions_for(user.company,ids,[day])
-    for stay in stays:
-        machine=stay.equipment;record=records.get(machine.pk);control=controls.get(machine.pk)
+def _rows(user, camp, day, *, include_external=False):
+    stays=list(service.present(user.company,day).filter(camp=camp).select_related('camp','equipment__type__parent__category','equipment__type__category','equipment__catalogue_group'))
+    records={r.equipment_id:r for r in EquipmentDayRecord.objects.filter(company=user.company,camp=camp,date=day).select_related('equipment__type__parent__category','equipment__type__category','equipment__catalogue_group','planning_type__category','construction_object','work','work_item','recorded_by')}
+    machines={stay.equipment_id:stay.equipment for stay in stays}
+    if include_external:machines.update({pk:r.equipment for pk,r in records.items()})
+    locations={stay.equipment_id:stay for stay in stays}
+    if include_external:
+        locations.update({stay.equipment_id:stay for stay in service.present(user.company,day).filter(equipment_id__in=machines).select_related('camp')})
+    controls={c.equipment_id:c for c in EquipmentTransportControl.objects.filter(company=user.company,equipment_id__in=machines).select_related('locked_by')}
+    rows=[];conditions=service.conditions_for(user.company,machines,[day])
+    for machine in machines.values():
+        record=records.get(machine.pk);control=controls.get(machine.pk);stay=locations.get(machine.pk)
         condition=conditions[machine.pk,day];status=record.status if record else ''
         owner=control.locked_by if control and control.expires_at and control.expires_at>timezone.now() else None
+        actual=machine.type.parent if machine.type.parent_id else machine.type
         rows.append({'machine':machine,'stay':stay,'record':record,'condition':condition,'condition_label':dict(CONDITIONS).get(condition,'Не указано'),
+            'at_camp':bool(stay and stay.camp_id==camp.pk),'whereabouts':'ВЖГ: '+stay.camp.name if stay else 'Нахождение в ВЖГ не оформлено',
             'status':status,'status_label':dict(USES).get(status,'Не заполнено'),'owner':owner,
-            'planning_type':machine.type.parent if machine.type.parent_id else machine.type,
+            'planning_type':record.planning_type if include_external and record and record.planning_type_id else actual,'actual_planning_type':actual,
             'target':f'work:{record.work_id}:{record.work_item_id or 0}' if record and record.work_id else f'object:{record.construction_object_id}' if record and record.construction_object_id else '',
             'details_url':reverse('production:transport_details',args=[machine.pk])+'?'+urlencode({'camp':camp.pk,'date':str(day)}),
             'history_url':reverse('production:transport_history',args=[machine.pk])})
@@ -140,10 +145,10 @@ def _excel(camp,day,rows):
     from openpyxl import Workbook
     from openpyxl.styles import Font,PatternFill
     workbook=Workbook();ws=workbook.active;ws.title='Техника за день'
-    ws.append(['Дата','ВЖГ','Техника для планирования','Название','Госномер','Инвентарный номер','VIN','Состояние','За день','Объект','Работа','Работа в комплексе','Комментарий','Кто внёс'])
+    ws.append(['Дата','ВЖГ','Техника для планирования','Название','Госномер','Инвентарный номер','VIN','Состояние','За день','Объект','Работа','Работа в комплексе','Комментарий','Кто внёс','Фактический тип','Нахождение'])
     for row in rows:
         m=row['machine'];r=row['record']
-        values=[day.isoformat(),camp.name,row['planning_type'].name,m.name,m.plate_number,m.inventory_number,m.vin,row['condition_label'],row['status_label'],r.construction_object.name if r and r.construction_object_id else '',r.work.name if r and r.work_id else '',r.work_item.name if r and r.work_item_id else '',r.comment if r else '',(r.recorded_by.get_full_name() or r.recorded_by.username) if r and r.recorded_by_id else '']
+        values=[day.isoformat(),camp.name,row['planning_type'].name,m.name,m.plate_number,m.inventory_number,m.vin,row['condition_label'],row['status_label'],r.construction_object.name if r and r.construction_object_id else '',r.work.name if r and r.work_id else '',r.work_item.name if r and r.work_item_id else '',r.comment if r else '',(r.recorded_by.get_full_name() or r.recorded_by.username) if r and r.recorded_by_id else '',row['actual_planning_type'].name,row['whereabouts']]
         ws.append(values)
         for cell in ws[ws.max_row]:
             if isinstance(cell.value,str):cell.data_type='s'
@@ -187,7 +192,7 @@ def board(request):
     if request.method=='POST':
         try:require_fact_day(request.user,day)
         except ValidationError as exc:raise PermissionDenied('; '.join(exc.messages))
-    rows=_rows(request.user,camp,day);current=[r['record'] for r in rows if r['record']]
+    rows=_rows(request.user,camp,day,include_external=tab=='day' and day_view=='plan');current=[r['record'] for r in rows if r['record']]
     form=ActionForm(request.POST if request.method=='POST' else None,user=request.user,camp=camp,day=day,current=current,load_targets=tab=='day' or request.method=='POST' and request.POST.get('action')=='DAY',initial={'signed':service.snapshot(request.user,camp,day),'session':uuid4()})
     if request.method=='POST' and form.is_valid():
         values=form.cleaned_data;common={'signed':values['signed'],'session':values['session'],'comment':values['comment']};ids=list(values['equipment'].values_list('pk',flat=True))
@@ -210,15 +215,19 @@ def board(request):
     from django.core.paginator import Paginator
     if tab=='day' and day_view=='plan':
         from .transport_planning import day_types
+        from .equipment_pool import prepare as equipment_pool
+        pool=equipment_pool(request.user.company,camp,day) if context['editable'] else []
+        context['machine_pool']=pool
         type_rows=day_types(request.user.company,filtered,form.resource_plans,query=data['q'])
         planned=[item for item in type_rows if item['in_plan']]
         outside=[item for item in type_rows if not item['in_plan']]
         outside_facts=[item for item in outside if item['rows']]
+        outside_options={item['type']:{'id':item['type'],'name':item['type_name']} for item in pool if item['type'] not in {t['id'] for t in type_rows if t['in_plan']}}
         page=Paginator(planned,25).get_page(request.GET.get('page'))
         outside_page=Paginator(outside_facts,25).get_page(request.GET.get('outside_page'))
         context.update(planning_types=list(page.object_list),outside_fact_types=list(outside_page.object_list),outside_page=outside_page,
             outside_fact_count=sum(len(item['rows']) for item in outside_facts),
-            outside_choices=[{'id':item['id'],'name':item['name'],'machines':item['choices']} for item in outside if item['choices']])
+            outside_choices=sorted(outside_options.values(),key=lambda item:item['name'].casefold()))
         outside_params=request.GET.copy();outside_params.pop('outside_page',None)
         context['outside_query']=outside_params.urlencode()
         display_rows=[row for item in [*context['planning_types'],*context['outside_fact_types']] for row in item['rows']]
@@ -257,7 +266,7 @@ def board(request):
     new_form=NewMachineForm(company=request.user.company,prefix='new-machine')
     new_form.fields.pop('site_name');new_form.fields.pop('is_active')
     context['new_machine_form']=new_form
-    context.update(camp=camp,day=day,rows=display_rows,summary=_summary(rows),action_form=form,conditions=CONDITIONS,uses=USES,
+    context.update(camp=camp,day=day,rows=display_rows,summary=_summary([r for r in rows if r['at_camp']]),action_form=form,conditions=CONDITIONS,uses=USES,
         total=len(rows),unknown=sum(r['condition'] not in {'READY','REPAIR','SCRAP'} for r in rows),ready=sum(r['condition']=='READY' for r in rows),worked=sum(r['status']=='WORKED' for r in rows),idle=sum(r['status']=='IDLE' for r in rows),
         missing=sum(not r['status'] for r in rows),repair=sum(r['condition']=='REPAIR' for r in rows),scrap=sum(r['condition']=='SCRAP' for r in rows),
         query=urlencode({'camp':camp.pk,'date':str(day),'view':day_view}),export_query=urlencode({'camp':camp.pk,'date':str(day),'q':data['q'],'condition':data['condition'],'use':data['use'],'tab':tab,'view':day_view}),error_open=request.method=='POST',can_create=role_code(request.user) in service.OPERATORS)
@@ -293,7 +302,7 @@ def claims(request):
     camp=get_object_or_404(service.camps_for(request.user),pk=request.POST.get('camp'))
     try:
         day=date.fromisoformat(request.POST.get('date',''));ids=[int(value) for value in request.POST.getlist('equipment')]
-        owners=service.claim(request.user,camp,day,ids,request.POST.get('action'),request.POST.get('session'))
+        owners=service.claim(request.user,camp,day,ids,request.POST.get('action'),request.POST.get('session'),purpose=request.POST.get('purpose','movement'))
         return JsonResponse({'owners':owners})
     except (ValueError,TypeError,ValidationError) as exc:return JsonResponse({'error':'; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Неверная дата или техника.'},status=409)
 
@@ -305,7 +314,7 @@ def history(request,pk):
     machine=get_object_or_404(Equipment.objects.filter(company=request.user.company),pk=pk)
     visible=service.camps_for(request.user)
     events=machine.transport_events.filter(Q(from_camp__in=visible)|Q(to_camp__in=visible)).select_related('from_camp','to_camp','recorded_by','cancelled_by')
-    if not events.exists() and role_code(request.user)!='ADMIN':
+    if role_code(request.user)!='ADMIN' and not events.exists() and not machine.transport_days.filter(company=request.user.company,camp__in=visible).exists():
         from django.http import Http404
         raise Http404('История техники недоступна.')
     error=''
@@ -324,6 +333,21 @@ def history(request,pk):
 
 
 class NewMachineForm(UnitForm):
+    def __init__(self,*args,**kwargs):
+        super().__init__(*args,**kwargs)
+        self.fields.pop('name')
+        model_id=self.data.get(self.add_prefix('model')) if self.is_bound else self.initial.get('model')
+        if model_id and str(model_id).isdigit():
+            selected=self.fields['model'].queryset.filter(pk=model_id).first()
+            if selected:self.fields['brand_model'].disabled=True;self.initial['brand_model']=selected.brand_model or selected.name
+        self.fields['type'].queryset=self.fields['type'].queryset.filter(Q(is_active=True)|Q(catalogue_review__status='PENDING')).exclude(catalogue_review__status__in=['REJECTED','REPLACED'])
+        self.fields['type'].label_from_instance=lambda row:row.name+(' · На проверке' if not row.is_active else '')
+    def clean(self):
+        data=super().clean()
+        selected=data.get('model') or data.get('type')
+        if data.get('model'):data['brand_model']=data['model'].brand_model or data['model'].name
+        if selected:self.instance.name=(selected.brand_model if selected.parent_id else '') or data.get('brand_model') or selected.name
+        return data
     receive=forms.BooleanField(label='Сразу оформить приезд в выбранный ВЖГ',required=False,initial=True)
     condition=forms.ChoiceField(label='Техническое состояние при приезде',choices=CONDITIONS,initial='READY')
 
@@ -347,7 +371,11 @@ def create_machine(request):
                 if form.cleaned_data['receive']:
                     service.move(request.user,camp,day,[machine.pk],'ARRIVAL',condition=form.cleaned_data['condition'],signed=service.snapshot(request.user,camp,day))
                 service.audit(request.user,machine,'CREATE',{'equipment':machine.pk,'received':form.cleaned_data['receive']})
-            if ajax:return JsonResponse({'saved':True,'id':machine.pk,'received':form.cleaned_data['receive']})
+                from apps.resources.models import CatalogueReviewRequest
+                from apps.resources.catalogue_tasks import sync_task
+                proposal=CatalogueReviewRequest.objects.create(company=request.user.company,kind='machine',machine=machine,created_by=request.user,origin_label='Транспорт · '+camp.name)
+                sync_task(proposal)
+            if ajax:return JsonResponse({'saved':True,'id':machine.pk,'received':form.cleaned_data['receive'],'review':'PENDING','request':proposal.pk})
             messages.success(request,'Машина добавлена в справочник'+(' и принята в ВЖГ.' if form.cleaned_data['receive'] else '. Приезд можно оформить позднее.'))
             return redirect(reverse('production:transport_board')+'?'+urlencode({'camp':camp.pk,'date':str(day)}))
         except ValidationError as exc:form.add_error(None,ValidationError('; '.join(exc.messages)))

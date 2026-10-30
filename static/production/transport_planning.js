@@ -5,14 +5,24 @@
  function remember(){try{sessionStorage.setItem(key,JSON.stringify({url:location.href,y:scrollY,x:root.querySelector('[data-transport-table-scroll]').scrollLeft,at:Date.now(),outside:Boolean(root.querySelector('[data-outside-facts]')?.open||root.querySelector('[data-outside-dialog]')?.open),outsideType:root.querySelector('[data-outside-dialog][open] [data-type-picker]')?.dataset.planningType,closed:[...root.querySelectorAll('[data-transport-group]:not([open])')].map(groupKey)}));}catch{}}
  function reload(){remember();location.reload();}
  try{const saved=JSON.parse(sessionStorage.getItem(key)||'null');sessionStorage.removeItem(key);if(saved&&saved.url===location.href&&Date.now()-saved.at<60000)requestAnimationFrame(()=>{root.querySelectorAll('[data-transport-group]').forEach(el=>el.open=!saved.closed.includes(groupKey(el)));const outside=root.querySelector('[data-outside-facts]');if(outside)outside.open=Boolean(saved.outside);root.querySelector('[data-transport-table-scroll]').scrollLeft=saved.x;scrollTo(0,saved.y);if(saved.outsideType)root.querySelector('[data-transport-type="'+saved.outsideType+'"]')?.scrollIntoView({block:'center'});});}catch{}
+ const pool=JSON.parse(document.getElementById('transport-machine-pool')?.textContent||'[]');
+ const labels=['Нужный тип · этот ВЖГ','Нужный тип · другие ВЖГ','Нужный тип · без оформленного ВЖГ','Остальная техника · этот ВЖГ','Остальная техника · другие ВЖГ','Остальная техника · без оформленного ВЖГ'];
+ function fillMachines(form,typeId){
+  const select=form.elements.equipment;select.replaceChildren(new Option('Выберите фактически работавшую машину',''));
+  const groups=Array.from({length:6},()=>[]);
+  for(const item of pool)groups[(String(item.type)===String(typeId)?0:3)+item.location].push(item);
+  groups.forEach((items,index)=>{if(!items.length)return;const group=document.createElement('optgroup');group.label=labels[index];for(const item of items)group.append(new Option(item.label,String(item.id)));select.append(group);});
+  form.querySelector('[data-choice-location]').textContent='';
+ }
+ root.addEventListener('change',event=>{const select=event.target;if(select.name!=='equipment'||!select.closest('[data-type-picker]'))return;const form=select.closest('form'),item=pool.find(item=>String(item.id)===select.value);form.querySelector('[data-choice-location]').textContent=item?item.whereabouts+' · '+(String(item.type)===String(form.dataset.planningType||form.closest('[data-transport-type]')?.dataset.transportType)?'Соответствует плановому типу':'Фактический тип: '+item.type_name):'';});
  const outsideDialog=root.querySelector('[data-outside-dialog]');
  if(outsideDialog){
-  const form=outsideDialog.querySelector('form'),type=outsideDialog.querySelector('[data-outside-type]'),choices=JSON.parse(document.getElementById('transport-outside-choices').textContent);
+  const form=outsideDialog.querySelector('form'),type=outsideDialog.querySelector('[data-outside-type]');
   root.querySelector('[data-add-outside]').addEventListener('click',()=>outsideDialog.showModal());
   outsideDialog.querySelector('[data-close-outside]').addEventListener('click',()=>{if(!pending)outsideDialog.close();});outsideDialog.addEventListener('cancel',event=>{if(pending)event.preventDefault();});
-  type.addEventListener('change',()=>{form.dataset.planningType=type.value;form.elements.equipment.replaceChildren(new Option('Выберите фактически работавшую машину',''));for(const item of choices.find(item=>String(item.id)===type.value)?.machines||[])form.elements.equipment.add(new Option(item.label,String(item.id)));});
+  type.addEventListener('change',()=>{form.dataset.planningType=type.value;fillMachines(form,type.value);});
  }
- root.querySelectorAll('[data-type-add]').forEach(button=>button.addEventListener('click',()=>{const form=button.parentElement.querySelector('[data-type-picker]');form.hidden=!form.hidden;button.setAttribute('aria-expanded',String(!form.hidden));if(!form.hidden)(form.querySelector('.search-select-button')||form.elements.equipment).focus();}));
+ root.querySelectorAll('[data-type-add]').forEach(button=>button.addEventListener('click',()=>{const form=button.parentElement.querySelector('[data-type-picker]');form.hidden=!form.hidden;if(!form.hidden)fillMachines(form,form.closest('[data-transport-type]').dataset.transportType);button.setAttribute('aria-expanded',String(!form.hidden));if(!form.hidden)(form.querySelector('.search-select-button')||form.elements.equipment).focus();}));
  root.querySelectorAll('[data-type-picker]').forEach(form=>form.addEventListener('submit',async event=>{
   event.preventDefault();if(pending||!form.reportValidity())return;
   const equipment=form.elements.equipment.value,typeId=form.dataset.planningType||form.closest('[data-transport-type]')?.dataset.transportType,status=form.querySelector('[data-type-save]'),button=form.querySelector('[type=submit]');

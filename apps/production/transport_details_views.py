@@ -28,7 +28,7 @@ def details(request,pk):
         from django.http import HttpResponseBadRequest
         return HttpResponseBadRequest('Укажите ВЖГ и дату.')
     camp,day=selector.cleaned_data['camp'],selector.cleaned_data['date'];transport.authorize(request.user,camp,False)
-    if not transport.present(request.user.company,day).filter(equipment=machine,camp=camp).exists():
+    if not (transport.present(request.user.company,day).filter(equipment=machine,camp=camp).exists() or machine.transport_days.filter(company=request.user.company,camp=camp,date=day,presence_required=False).exists()):
         from django.http import Http404
         raise Http404('Машина не находится в выбранном ВЖГ на эту дату.')
     current=EquipmentDayDetails.objects.filter(company=request.user.company,equipment=machine,date=day).first()
@@ -46,8 +46,8 @@ def details(request,pk):
                     versions=transport._payload(request.user,camp,day,form.cleaned_data['signed'])
                     machines,controls=transport._lock(request.user,[machine.pk])
                     transport._check(request.user,machines[0],controls[machine.pk],versions,None)
-                    if not transport.present(request.user.company,day).filter(equipment=machine,camp=camp).exists():raise ValidationError('Размещение машины изменилось. Обновите страницу.')
-                    if any(form.cleaned_data.get(name) for name in EMPLOYEE_FIELDS) and not machine.transport_days.filter(company=request.user.company,date=day,status='WORKED').exists():raise ValidationError('Сотрудники смен относятся к работе за день. Сначала отметьте, что техника работала за выбранную дату.')
+                    if not (transport.present(request.user.company,day).filter(equipment=machine,camp=camp).exists() or machine.transport_days.filter(company=request.user.company,camp=camp,date=day,presence_required=False).exists()):raise ValidationError('Размещение машины изменилось. Обновите страницу.')
+                    if any(form.cleaned_data.get(name) for name in EMPLOYEE_FIELDS) and not machine.transport_days.filter(company=request.user.company,camp=camp,date=day,status='WORKED').exists():raise ValidationError('Сотрудники смен относятся к работе за день. Сначала отметьте, что техника работала за выбранную дату.')
                     row=form.save(commit=False);row.company=request.user.company;row.equipment=machine;row.camp=camp;row.date=day
                     if not row.pk:row.recorded_by=request.user
                     row.full_clean();row.save();transport._bump(controls[machine.pk]);require_fact_day(request.user,day)

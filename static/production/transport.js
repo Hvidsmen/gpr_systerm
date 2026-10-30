@@ -8,6 +8,7 @@
   const token=form.querySelector('[name=csrfmiddlewaretoken]').value;
   const sessionField=form.elements.session,session=sessionField.value||([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g,c=>(c^crypto.getRandomValues(new Uint8Array(1))[0]&15>>c/4).toString(16));sessionField.value=session;
   const field=name=>form.elements[name], wrapper=name=>form.querySelector(`[data-transport-field="${name}"]`);
+  const machineOptions=[...field('equipment').options].map(option=>({value:option.value,label:option.textContent}));
   const rows=[...root.querySelectorAll('[data-transport-row]')],checks=[...root.querySelectorAll('[data-select-machine]')];
   let reserved=[],submitting=false,pending=false;
   const arrivalIds=JSON.parse(document.getElementById('transport-arrival-ids').textContent).map(String);
@@ -18,7 +19,7 @@
   checks.forEach(c=>c.addEventListener('change',counts));root.querySelector('[data-select-all]')?.addEventListener('change',e=>{checks.forEach(c=>{if(c.getClientRects().length&&!c.closest('details:not([open])'))c.checked=e.target.checked;});counts();});if(checks.length||root.querySelector('[data-selection-count]'))counts();
   async function claim(action,ids){
     if(!ids.length)return {};
-    const data=new URLSearchParams({camp:root.dataset.camp,date:root.dataset.date,session,action});ids.forEach(id=>data.append('equipment',id));
+    const data=new URLSearchParams({camp:root.dataset.camp,date:root.dataset.date,session,action,purpose:root.dataset.process==='day'&&root.dataset.dayView==='plan'?'day':'movement'});ids.forEach(id=>data.append('equipment',id));
     const response=await fetch(root.dataset.claimUrl,{method:'POST',credentials:'same-origin',headers:{'X-CSRFToken':token},body:data});
     const result=await response.json();if(!response.ok)throw new Error(result.error||'Не удалось проверить редактирование техники.');return result.owners;
   }
@@ -39,13 +40,14 @@
   }
   async function open(action,ids=[]){
     error('');error('',true);field('action').value=action;field('repeat').checked=false;field('target').value='';field('comment').value='';field('condition').value='READY';field('status').value='WORKED';
-    for(const o of field('equipment').options){o.disabled=action==='ARRIVAL'?!arrivalIds.includes(o.value):!rows.some(r=>r.dataset.transportRow===o.value);o.hidden=o.disabled;o.selected=ids.includes(o.value);}
+    field('equipment').replaceChildren(...machineOptions.filter(option=>action==='ARRIVAL'?arrivalIds.includes(option.value):ids.includes(option.value)).map(option=>new Option(option.label,option.value,false,ids.includes(option.value))));
     form.querySelector('[data-machine-search]').value='';
     if(ids.length===1&&action==='DAY'){
       const row=rows.find(r=>r.dataset.transportRow===ids[0]);field('status').value=row.dataset.status||'WORKED';field('target').value=row.dataset.target;field('comment').value=row.dataset.comment||'';
     }
     try{if(ids.length)await reserve(ids);showFields();dialog.showModal();}catch(e){error(e.message);}
   }
+  root.querySelectorAll('[data-machine-action]').forEach(button=>button.addEventListener('click',()=>open(button.dataset.machineAction,[button.dataset.machineId])));
   root.querySelectorAll('[data-transport-action]').forEach(b=>b.addEventListener('click',()=>open(b.dataset.transportAction,b.dataset.transportAction==='ARRIVAL'?[]:selected())));
   root.querySelectorAll('[data-edit-machine]').forEach(b=>b.addEventListener('click',()=>{const row=rows.find(r=>r.dataset.transportRow===b.dataset.editMachine);open(root.dataset.process==='state'?'CONDITION':'DAY',[b.dataset.editMachine]);}));
   root.querySelectorAll('[data-close-dialog]').forEach(b=>b.addEventListener('click',()=>dialog.close()));
