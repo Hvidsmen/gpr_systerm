@@ -81,7 +81,7 @@ const fs = require('node:fs');
   await page.getByRole('link',{name:'Техника для планирования',exact:true}).first().click();await page.waitForLoadState('load');
   await page.getByRole('link',{name:'Обновить группы из Excel',exact:true}).click();await page.waitForLoadState('load');
   await page.locator('[name=file]').setInputFiles(c.workbook);await Promise.all([page.waitForNavigation(),page.getByRole('button',{name:'Загрузить файл',exact:true}).click()]);
-  assert.equal(await page.locator('[data-catalogue-group-preview]').count(),1);assert((await page.locator('[data-catalogue-group-preview]').textContent()).includes('Учебная группа из Excel'));
+  assert.equal(await page.locator('[data-catalogue-group-preview]').count(),1);assert.equal(await page.locator('[data-catalogue-binding-notices]').count(),1);assert((await page.locator('[data-catalogue-binding-notices]').textContent()).includes('Используется текущая связь'));assert((await page.locator('[data-catalogue-group-preview]').textContent()).includes('Учебная группа из Excel'));
   await page.screenshot({path:'/tmp/equipment-group-preview.png',fullPage:true});
   await Promise.all([page.waitForNavigation(),page.getByRole('button',{name:'Подтвердить обновление групп',exact:true}).click()]);assert((await page.locator('.alert-success').textContent()).includes('Группы обновлены'));
   assert.deepEqual(errors,[]);

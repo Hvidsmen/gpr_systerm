@@ -82,11 +82,12 @@ class CatalogueGroupUpdateTests(TestCase):
         foreign=Company.objects.create(name='Другой справочник');EquipmentType.objects.create(company=foreign,name='Чужой тип')
         rows,errors=read_rows(self.file([['Чужой тип','Чужой тип',self.b.name],[self.root.name,self.root.name,self.b.name]]));self.assertFalse(errors)
         report=service.preview(self.user,rows);self.assertEqual(len(report['warnings']),1);self.assertIn('Чужой тип',report['warnings'][0]);self.assertEqual(report['positions'],1)
-    def test_ambiguous_group_and_incorrect_model_parent_cancel_preview(self):
+    def test_ambiguous_group_is_rejected_but_unique_model_keeps_current_parent(self):
         EquipmentCategory.objects.create(company=self.company,name='Вспомогательная  техника')
         with self.assertRaisesMessage(ValidationError,'несколько групп'):service.preview(self.user,self.parsed())
         rows,errors=read_rows(self.file([[self.model.name,self.other.name,self.a.name]]));self.assertFalse(errors)
-        with self.assertRaisesMessage(ValidationError,'не относится'):service.preview(self.user,rows)
+        report=service.preview(self.user,rows);self.assertEqual(report['positions'],1);self.assertEqual(len(report['notices']),1);self.assertEqual(report['skipped'],0)
+        self.assertIn(self.root.name,report['notices'][0]);self.assertIn(self.other.name,report['notices'][0]);self.assertFalse(report['entries'])
     def test_formulas_and_duplicate_headers_rejected_while_ignored_columns_stay_untouched(self):
         for upload in [self.file([[self.root.name,self.root.name,'=1+1']]),self.file([[self.root.name,self.a.name,self.b.name]],['Название','Группа техники','Группа техники'])]:
             rows,errors=read_rows(upload);self.assertTrue(errors)
@@ -97,3 +98,35 @@ class CatalogueGroupUpdateTests(TestCase):
         self.assertFalse(errors);self.assertEqual(service.preview(self.user,rows)['positions'],1)
         actor=User.objects.create_user(username='read-only-mechanization',company=self.company,role=Role.objects.get(code='MECHANIZATION_DISPATCHER'))
         self.client.force_login(actor);self.assertEqual(self.client.get(self.url).status_code,403);self.assertEqual(self.client.post(self.url,{'file':self.file([[self.root.name,self.root.name,self.b.name]])}).status_code,403)
+
+    def test_unique_model_parent_mismatch_is_previewed_and_group_updates_actual_family(self):
+        # The export refers to an older parent; the current parent must be kept.
+        original_model_parent=self.model.parent_id
+        upload=self.file([[self.model.name,self.other.name,self.b.name]])
+        response=self.client.post(self.url,{'file':upload});self.assertEqual(response.status_code,200)
+        self.assertEqual(response.context['preview']['skipped'],0)
+        self.assertEqual(response.context['preview']['entries'][0]['id'],self.root.pk)
+        self.assertContains(response,'data-catalogue-binding-notices');self.assertContains(response,'Строки приняты')
+        self.root.refresh_from_db();self.assertEqual(self.root.category_id,self.a.pk)
+        signed=response.context['token'];self.assertTrue(signed)
+        response=self.client.post(self.url,{'action':'confirm_catalogue','token':signed});self.assertEqual(response.status_code,200)
+        self.root.refresh_from_db();self.model.refresh_from_db();self.machine.refresh_from_db();self.other.refresh_from_db()
+        self.assertEqual(self.model.parent_id,original_model_parent);self.assertEqual(self.root.category_id,self.b.pk)
+        self.assertEqual(self.machine.catalogue_group_id,self.b.pk);self.assertEqual(self.other.category_id,self.a.pk)
+        self.assertEqual(response.context['result']['skipped'],0)
+
+    def test_duplicate_model_name_requires_unambiguous_parent_from_file(self):
+        duplicate=EquipmentType.objects.create(company=self.company,name=self.model.name,parent=self.other)
+        rows,errors=read_rows(self.file([[self.model.name,self.other.name,self.b.name]]));self.assertFalse(errors)
+        report=service.preview(self.user,rows);self.assertEqual(report['entries'][0]['id'],self.other.pk)
+        self.assertFalse(report['notices'])
+        rows,errors=read_rows(self.file([[self.model.name,'Старая отсутствующая позиция',self.b.name]]));self.assertFalse(errors)
+        with self.assertRaisesMessage(ValidationError,'неоднозначно'):service.preview(self.user,rows)
+        self.root.refresh_from_db();self.other.refresh_from_db();self.assertEqual(self.root.category_id,self.a.pk);self.assertEqual(self.other.category_id,self.a.pk)
+
+    def test_unique_model_with_missing_exported_parent_is_supported_and_actual_parent_change_invalidates_token(self):
+        rows,errors=read_rows(self.file([[self.model.name,'Удалённая позиция из старой выгрузки',self.b.name]]));self.assertFalse(errors)
+        report=service.preview(self.user,rows);self.assertEqual(len(report['notices']),1);signed=service.token(self.user,rows,report)
+        self.model.parent=self.other;self.model.save(update_fields=['parent'])
+        with self.assertRaisesMessage(ValidationError,'изменился после предпросмотра'):service.confirm(self.user,signed)
+        self.root.refresh_from_db();self.other.refresh_from_db();self.assertEqual(self.root.category_id,self.a.pk);self.assertEqual(self.other.category_id,self.a.pk)

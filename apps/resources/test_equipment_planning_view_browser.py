@@ -32,7 +32,7 @@ class EquipmentPlanningViewBrowserTests(StaticLiveServerTestCase):
         workbook_path=Path(temporary.name)/'group-update.xlsx'
         book=Workbook();sheet=book.active;sheet.append(['Название','Техника для планирования','Группа техники','Единица измерения','Активна','Категории водителя','Классы водителя'])
         sheet.append([root.name,root.name,'Учебная группа из Excel','ед.','Да','',''])
-        sheet.append(['АТЗ / Камаз',root.name,'Учебная  группа из Excel','ед.','Да','',''])
+        sheet.append(['АТЗ / Камаз','Экскаватор','Учебная  группа из Excel','ед.','Да','',''])
         book.save(workbook_path);book.close()
         config = {'base': self.live_server_url, 'cookie': self.client.cookies['sessionid'].value,
                   'chromium': shutil.which('chromium'), 'catalogue': reverse('resources:equipment_type_list'),

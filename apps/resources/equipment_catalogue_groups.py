@@ -33,24 +33,27 @@ def preview(user,rows,*,lock=False):
         by_name[key(t.name)].append(t)
         if t.parent_id is None:roots[key(t.name)].append(t)
     for g in groups:group_names[key(g.name)].append(g)
-    selected={};warnings=[];errors=[];blank=0
+    selected={};warnings=[];notices=[];errors=[];blank=0
     for row in rows:
         line=f"Строка {row['line']}";name=label(row.get('name'));planning=label(row.get('planning'));group=label(row.get('group'))
         if not group:blank+=1;continue
         candidates=by_name.get(key(name),[])
-        root=None
-        if planning:
+        # The exported parent is a disambiguation hint, not an instruction to
+        # reparent a uniquely identified model or reject an otherwise valid file.
+        if len(candidates)>1 and planning:
             found=roots.get(key(planning),[])
-            if not found:warnings.append(line+f': техника для планирования «{planning}» не найдена; строка пропущена.');continue
-            if len(found)>1:errors.append(line+f': несколько плановых позиций «{planning}». Уточните названия в справочнике.');continue
-            root=found[0]
-            eligible=[t for t in candidates if (t.parent_id or t.pk)==root.pk]
-            if candidates and not eligible:errors.append(line+f': «{name}» не относится к «{planning}». Перенос моделей этой загрузкой не выполняется.');continue
+            if len(found)!=1:
+                errors.append(line+f': название «{name}» неоднозначно, а плановая позиция «{planning}» не определена однозначно. Уточните названия.');continue
+            eligible=[t for t in candidates if (t.parent_id or t.pk)==found[0].pk]
+            if not eligible:
+                errors.append(line+f': несколько записей «{name}», ни одна не относится к «{planning}». Уточните плановую позицию для выбора записи.');continue
             candidates=eligible
         if not candidates:warnings.append(line+f': запись «{name}» не найдена; строка пропущена.');continue
         if len(candidates)>1:errors.append(line+f': название «{name}» неоднозначно. Уточните колонку «Техника для планирования».');continue
-        item=candidates[0];root=root or by_id.get(item.parent_id or item.pk)
+        item=candidates[0];root=by_id.get(item.parent_id or item.pk)
         if root is None or root.parent_id:errors.append(line+': нарушена связь с техникой для планирования.');continue
+        if planning and key(planning)!=key(root.name):
+            notices.append(line+f': «{name}». В файле плановая позиция «{planning}», сейчас в справочнике — «{root.name}». Используется текущая связь: группа «{group}» будет применена к «{root.name}», её моделям и машинам. Перенос модели не выполняется.')
         group_key=key(group);clear=group_key=='без группы'
         found=[] if clear else group_names.get(group_key,[])
         if len(found)>1:errors.append(line+f': несколько групп «{group}» отличаются только пробелами или регистром. Уточните группы.');continue
@@ -83,7 +86,7 @@ def preview(user,rows,*,lock=False):
             entry['after']=created_labels.setdefault(entry['group_key'],entry['after'])
     new_groups=sorted(created_labels.values())
     stamp=hashlib.sha256(json.dumps(snapshots,ensure_ascii=False,sort_keys=True).encode()).hexdigest()
-    return {'entries':changed,'unchanged':unchanged,'warnings':warnings,'skipped':len(warnings)+blank,'blank':blank,'new_groups':new_groups,'stamp':stamp,'source_rows':len(rows),'positions':len(selected),'models':sum(e['changed_models'] for e in changed),'machines':sum(e['changed_machines'] for e in changed)}
+    return {'entries':changed,'unchanged':unchanged,'warnings':warnings,'notices':notices,'skipped':len(warnings)+blank,'blank':blank,'new_groups':new_groups,'stamp':stamp,'source_rows':len(rows),'positions':len(selected),'models':sum(e['changed_models'] for e in changed),'machines':sum(e['changed_machines'] for e in changed)}
 
 
 def token(user,rows,report):
