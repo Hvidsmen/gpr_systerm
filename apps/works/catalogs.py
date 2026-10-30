@@ -40,7 +40,7 @@ class UnitForm(CatalogForm):
         symbol=self.cleaned_data['symbol']
         from .models import MeasurementUnitAlias
         alias=MeasurementUnitAlias.objects.filter(company=self.instance.company,symbol=symbol).select_related('target').first()
-        if alias:raise forms.ValidationError(f'Это обозначение объединено с «{alias.target.symbol}». Используйте основную единицу.')
+        if alias and alias.target_id!=self.instance.pk:raise forms.ValidationError(f'Это обозначение объединено с «{alias.target.symbol}». Используйте основную единицу.')
         return symbol
 
 

@@ -55,16 +55,9 @@ class CostSharesUpdate(WorkDetailView):
                 elif self.object.kind != 'COMPOSITE':
                     form.add_error(None, 'Доли задаются для работ в составе комплекса.')
                 else:
-                    old = {str(i.pk): str(i.weight) for i in items}
-                    new = {str(i.pk): str(form.cleaned_data[f'share_{i.pk}']) for i in items}
-                    for item in items:
-                        ProjectWorkItem.objects.filter(pk=item.pk, company=request.user.company).update(
-                            weight=form.cleaned_data[f'share_{item.pk}'], updated_at=timezone.now())
-                    from apps.audit.models import AuditLog
-                    AuditLog.objects.create(user=request.user, action='UPDATE', entity_type='works.ProjectWork',
-                        entity_id=str(self.object.pk), old_value={'cost_shares':old}, new_value={'cost_shares':new},
-                        comment='Сохранены доли стоимости работ комплекса')
-                    messages.success(request, 'Доли стоимости сохранены. Сумма — 100%.')
-                    return redirect('works:work_detail', pk=self.object.pk)
+                    from .propagation import preview
+                    changes={'items':{str(item.pk):{'weight':str(form.cleaned_data[f'share_{item.pk}'])} for item in items}}
+                    try:return preview(request,self.object,changes)
+                    except ValidationError as exc:form.add_error(None,exc)
         self.cost_shares_form = form
         return self.render_to_response(self.get_context_data(), status=400)

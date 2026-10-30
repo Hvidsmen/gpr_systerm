@@ -42,7 +42,7 @@ class UnitActionTests(TestCase):
         self.assertRedirects(self.client.post(self.delete), reverse("works:unit_list"))
         self.assertFalse(MeasurementUnit.objects.filter(pk=self.unit.pk).exists())
 
-    def test_used_unit_cannot_be_deleted_or_relabelled_but_name_can_change(self):
+    def test_used_unit_requires_rename_preview_and_name_can_change_directly(self):
         work = ProjectWork.objects.create(
             company=self.company,
             section=self.section,
@@ -52,7 +52,7 @@ class UnitActionTests(TestCase):
         )
         self.assertEqual(self.client.post(self.delete).status_code, 400)
         response = self.client.post(self.edit, {"symbol": "рейс", "name": "Рейс"})
-        self.assertIn("symbol", response.context["form"].errors)
+        self.assertContains(response,"data-unit-rename-preview")
         self.unit.refresh_from_db()
         self.assertEqual(self.unit.symbol, "рейс.")
         self.assertRedirects(
@@ -89,3 +89,28 @@ class UnitActionTests(TestCase):
             self.assertEqual(
                 self.client.post(url, {"symbol": "x", "name": "X"}).status_code, 403
             )
+
+    def test_self_alias_does_not_block_name_edit_and_confirmed_rename_updates_refs(self):
+        from .models import MeasurementUnitAlias,ProjectWorkItem
+        work=ProjectWork.objects.create(company=self.company,section=self.section,name='Комплекс',unit=self.unit.symbol,kind='COMPOSITE')
+        item=ProjectWorkItem.objects.create(company=self.company,project_work=work,name='Состав',unit=self.unit.symbol,quantity_per_unit=3,weight=100)
+        MeasurementUnitAlias.objects.create(company=self.company,symbol=self.unit.symbol,target=self.unit)
+        self.assertEqual(self.client.post(self.edit,{'symbol':self.unit.symbol,'name':'Название исправлено'}).status_code,302)
+        preview=self.client.post(self.edit,{'symbol':'рейс','name':'Рейс'})
+        self.assertContains(preview,'Подтвердить изменение');token=preview.context['preview']['token']
+        self.unit.refresh_from_db();self.assertEqual(self.unit.symbol,'рейс.')
+        self.assertEqual(self.client.post(self.edit,{'action':'confirm_rename','token':token}).status_code,400)
+        self.assertEqual(self.client.post(self.edit,{'action':'confirm_rename','token':token,'equivalent':'on'}).status_code,302)
+        work.refresh_from_db();item.refresh_from_db();self.unit.refresh_from_db()
+        self.assertEqual((work.unit,item.unit,self.unit.symbol),('рейс','рейс','рейс'));self.assertEqual(item.quantity_per_unit,3)
+        self.assertEqual(MeasurementUnitAlias.objects.get(company=self.company,symbol='рейс.').target,self.unit)
+        self.assertFalse(MeasurementUnitAlias.objects.filter(company=self.company,symbol=self.unit.symbol).exists())
+
+    def test_rename_stale_usage_or_tampered_token_is_nonmutating(self):
+        ProjectWork.objects.create(company=self.company,section=self.section,name='Работа',unit=self.unit.symbol,load_profile=self.profile)
+        preview=self.client.post(self.edit,{'symbol':'рейс','name':'Рейс'})
+        token=preview.context['preview']['token']
+        ProjectWork.objects.create(company=self.company,section=self.section,name='Поздняя работа',unit=self.unit.symbol,load_profile=self.profile)
+        for value in [token,'tampered']:
+            self.assertEqual(self.client.post(self.edit,{'action':'confirm_rename','token':value,'equivalent':'on'}).status_code,400)
+        self.unit.refresh_from_db();self.assertEqual(self.unit.symbol,'рейс.')

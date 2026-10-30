@@ -102,7 +102,7 @@ def rotation_rows(company,camps,day,*,query='',position=None,state='',include_un
     from .rotation_calendar import stays_by_person,anchor_for,description,cycle_definition
     schedule_stays=stays_by_person(company)
     camp_ids={camp.pk for camp in camps};camp_names={camp.name.strip().casefold():camp for camp in camps}
-    slots=list(StaffingSlot.objects.filter(company=company).select_related('group__board','housing_camp','pattern','person__employee__position__planning_mapping__brigade__group','person__schedule_slot__pattern'))
+    slots=list(StaffingSlot.objects.filter(company=company).select_related('group__board','housing_camp','person__employee__position__planning_mapping__brigade__group','person__schedule_slot').prefetch_related('pattern','person__schedule_slot__pattern'))
     all_assignments=defaultdict(list)
     for slot in slots:
         if slot.person_id:all_assignments[slot.person_id].append(slot)
@@ -113,7 +113,7 @@ def rotation_rows(company,camps,day,*,query='',position=None,state='',include_un
     by_person=defaultdict(list)
     for slot in relevant:
         if slot.person_id:by_person[slot.person_id].append(slot)
-    all_stays=list(CampStay.objects.filter(company=company,cancelled_at=None,arrived_on__lte=day).select_related('camp','person__employee__position__planning_mapping__brigade__group','person__schedule_slot__pattern','person__schedule_slot__group__board').order_by('-arrived_on','-pk'))
+    all_stays=list(CampStay.objects.filter(company=company,cancelled_at=None,arrived_on__lte=day).select_related('camp','person__employee__position__planning_mapping__brigade__group','person__schedule_slot__group__board').prefetch_related('person__schedule_slot__pattern').order_by('-arrived_on','-pk'))
     current={};last={};departures={}
     for stay in all_stays:
         last.setdefault(stay.person_id,stay)

@@ -160,17 +160,31 @@ def workspace(request):
     for row in rows:row['status_tone'],row['status_caption'],row['status_help']=status_indicator(row)
     # The calendar is a forecast through the end of the following year.
     calendar_start=day.replace(day=1);calendar_end=date(day.year+1,12,31)
-    calendar_dates=[calendar_start+timedelta(days=n) for n in range((calendar_end-calendar_start).days+1)]
-    calendar_months=[]
-    for current in calendar_dates:
-        if not calendar_months or calendar_months[-1]['start'].month!=current.month:
-            calendar_months.append({'start':current,'span':0})
-        calendar_months[-1]['span']+=1
-    from .rotation_calendar import stays_by_person
-    history=stays_by_person(request.user.company)
-    for row in rows:
-        values_calendar=calendar_for(row['slot'],start=calendar_start,end=calendar_end,stays=history.get(row['person'].pk,[]) if row.get('person') else []) if row.get('slot') else {}
-        row['calendar_codes']=[values_calendar.get(str(current),'') for current in calendar_dates]
+    fragment=request.GET.get('calendar_fragment')=='1'
+    calendar_dates=[];calendar_months=[]
+    calendar_params=request.GET.copy();calendar_params['calendar_fragment']='1';calendar_params.pop('calendar_page',None);calendar_params.pop('calendar_person',None)
+    rotation_calendar_url=request.path+'?'+calendar_params.urlencode()
+    if fragment:
+        from django.core.paginator import Paginator
+        paginator=Paginator(rows,50);page_number=request.GET.get('calendar_page')
+        wanted=request.GET.get('calendar_person','')
+        if wanted.isdigit():
+            index=next((i for i,row in enumerate(rows) if row.get('person') and row['person'].pk==int(wanted)),None)
+            if index is not None:page_number=index//50+1
+        calendar_page=paginator.get_page(page_number)
+        calendar_dates=[calendar_start+timedelta(days=n) for n in range((calendar_end-calendar_start).days+1)]
+        for current in calendar_dates:
+            if not calendar_months or calendar_months[-1]['start'].month!=current.month:calendar_months.append({'start':current,'span':0})
+            calendar_months[-1]['span']+=1
+        from .rotation_calendar import stays_by_person
+        history=None
+        for row in calendar_page:
+            values_calendar=None
+            if values_calendar is None:
+                if history is None:history=stays_by_person(request.user.company)
+                values_calendar=calendar_for(row['slot'],start=calendar_start,end=calendar_end,stays=history.get(row['person'].pk,[]) if row.get('person') else []) if row.get('slot') else {}
+            row['calendar_codes']=[values_calendar.get(str(current),'') for current in calendar_dates]
+        return render(request,'personnel/_rotation_calendar.html',{'rows':calendar_page.object_list,'day':day,'calendar_start':calendar_start,'calendar_end':calendar_end,'calendar_dates':calendar_dates,'calendar_months':calendar_months,'calendar_page':calendar_page,'calendar_query':calendar_params.urlencode()})
     events=HousingEvent.objects.filter(company=request.user.company).filter(Q(from_camp__in=selected_camps)|Q(to_camp__in=selected_camps)).select_related('person','from_camp','to_camp','recorded_by')[:50]
     from .housing_plan import monthly_plan,position_headers
     plan_context=monthly_plan(request.user,camp,day,camps=selected_camps)
@@ -188,7 +202,7 @@ def workspace(request):
     return render(request,'personnel/housing.html',{**plan_context,'rotation_filter':selector,'rotation_stats':rotation_stats,'position_groups':position_groups,'selected_camps':selected_camps,
         'roster_view':roster_view,'roster_view_links':view_links,'roster_sections':roster_sections(position_groups,roster_view=='groups',request.user.company),
         'camp':camp,'camps':camps,'day':day,'rows':rows,'dates':days,'form':form,'query':values.get('q',''),
-        'calendar_dates':calendar_dates,'calendar_months':calendar_months,'calendar_start':calendar_start,'calendar_end':calendar_end,'events':events,'total':rotation_stats['people'],'objects':objects,
+        'rotation_calendar_url':rotation_calendar_url,'calendar_dates':calendar_dates,'calendar_months':calendar_months,'calendar_start':calendar_start,'calendar_end':calendar_end,'events':events,'total':rotation_stats['people'],'objects':objects,
         'unknown_count':Person.objects.filter(company=request.user.company,stays__isnull=True).count(),
         'unlinked_count':Person.objects.filter(company=request.user.company,employee=None).count(),**window_context(request.user,day)})
 

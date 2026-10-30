@@ -56,6 +56,7 @@ class WorkStructureForm(CostSharesForm):
             item.quantity_per_unit = data[f'norm_{item.pk}']
             item.load_profile = data[f'profile_{item.pk}']
             item.weight = data[f'share_{item.pk}']
+            item._catalogue_preview=True
             try:
                 item.full_clean()
             except ValidationError as exc:
@@ -88,23 +89,9 @@ class WorkStructureUpdate(WorkDetailView):
                 if form.cleaned_data['revision'] != structure_revision(items):
                     form.add_error(None, 'Состав изменился в другой вкладке. Обновите страницу перед сохранением.')
                 else:
-                    fields = ['unit', 'quantity_per_unit', 'load_profile_id', 'weight']
-                    old, new = {}, {}
-                    for before, after in zip(items, form.validated_items):
-                        if any(getattr(before, key) != getattr(after, key) for key in fields):
-                            old[str(before.pk)] = {key:str(getattr(before, key)) for key in fields}
-                            new[str(after.pk)] = {key:str(getattr(after, key)) for key in fields}
-                            after.save(update_fields=['unit', 'quantity_per_unit', 'load_profile', 'weight', 'updated_at'])
-                    if new:
-                        from apps.audit.models import AuditLog
-                        AuditLog.objects.create(user=request.user, action='UPDATE', entity_type='works.ProjectWork',
-                            entity_id=str(self.object.pk), old_value={'structure':old}, new_value={'structure':new},
-                            comment='Сохранён состав комплекса: нормативы, единицы, профили и доли стоимости')
-                    messages.success(request, 'Состав работ сохранён. Доли стоимости — 100%.')
-                    from .navigation import return_path
-                    from django.urls import reverse
-                    from urllib.parse import urlencode
-                    origin = return_path(request)
-                    return redirect(reverse('works:work_detail', args=[self.object.pk]) + '?' + urlencode({'return_to':origin}) + '#work-structure')
+                    from .propagation import preview
+                    changes={'items':{str(before.pk):{key:str(getattr(after,key)) if key in {'quantity_per_unit','weight'} else getattr(after,key) for key in ['unit','quantity_per_unit','load_profile_id','weight'] if getattr(before,key)!=getattr(after,key)} for before,after in zip(items,form.validated_items)}}
+                    try:return preview(request,self.object,changes)
+                    except ValidationError as exc:form.add_error(None,exc)
         self.structure_form = form
         return self.render_to_response(self.get_context_data(), status=400)

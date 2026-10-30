@@ -111,13 +111,9 @@ class DispatcherTests(TestCase):
         self.assertEqual(EquipmentFact.objects.get().actual_count,0)
         self.assertIsNone(EquipmentFact.objects.get().machine_hours)
         self.assertFalse(FuelFact.objects.exists())
-        data=self.payload('ADMIN','fuel')
-        data.update({'fuel-0-opening_balance':'100','fuel-0-received_liters':'20','fuel-0-actual_liters':'30','fuel-0-actual_balance':'90'})
-        self.assertEqual(self.client.post(self.url,data).status_code,302)
-        self.assertEqual(FuelFact.objects.get().equipment_ref,'')
-        data=self.payload('ADMIN','fuel');data['fuel-0-actual_balance']='91'
-        self.assertEqual(self.client.post(self.url,data).status_code,400)
-        self.assertEqual(FuelFact.objects.get().actual_balance,90)
+        self.client.force_login(self.users['ADMIN'])
+        self.assertEqual(self.client.post(self.url,{'section':'fuel'}).status_code,403)
+        self.assertFalse(FuelFact.objects.exists())
 
     def test_independent_confirmations_and_reports_do_not_double_count(self):
         data=self.payload('PERSONNEL_DISPATCHER','labor');data.update({'labor-0-employee':self.employee.pk,'labor-0-general':'on','action':'confirm'})

@@ -47,6 +47,16 @@ class UnitUpdate(View):
 
     def post(self, request, pk):
         require_roles(request.user, PLAN_ROLES)
+        if request.POST.get('action')=='confirm_rename':
+            from .unit_rename import apply
+            from django.core.exceptions import ValidationError
+            try:
+                apply(request.user,pk,request.POST.get('token',''),request.POST.get('equivalent')=='on')
+                messages.success(request,'Обозначение обновлено в справочнике и связанных записях. Объёмы и цены сохранены.')
+                return redirect('works:unit_list')
+            except ValidationError as exc:
+                unit=get_object_or_404(MeasurementUnit,company=request.user.company,pk=pk)
+                return render(request,'works/unit_form.html',{'object':unit,'form':UnitForm(instance=unit,company=request.user.company),'usage':unit_usage(unit),'error':'; '.join(exc.messages)},status=400)
         with transaction.atomic():
             unit = get_object_or_404(
                 MeasurementUnit.objects.select_for_update(),
@@ -58,10 +68,10 @@ class UnitUpdate(View):
             form = UnitForm(request.POST, instance=unit, company=request.user.company)
             if form.is_valid():
                 if form.cleaned_data["symbol"] != old_symbol and usage:
-                    form.add_error(
-                        "symbol",
-                        "Обозначение используется в работах, шаблонах или ресурсах. Можно изменить название единицы.",
-                    )
+                    from .unit_rename import preview
+                    unit.symbol=old_symbol
+                    original=MeasurementUnit.objects.get(pk=pk,company=request.user.company)
+                    return render(request,'works/unit_form.html',{'object':original,'form':form,'usage':usage,'preview':preview(request.user,original,form.cleaned_data)})
                 else:
                     try:
                         with transaction.atomic():

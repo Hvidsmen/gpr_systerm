@@ -406,7 +406,7 @@ class ProjectWorkItem(BaseCompanyModel):
             )
         if self.pk:
             old = type(self).objects.get(pk=self.pk)
-            if old.quantity_per_unit != self.quantity_per_unit and (
+            if not getattr(self,"_catalogue_preview",False) and old.quantity_per_unit != self.quantity_per_unit and (
                 (self.daily_facts.exists() or self.opening_balances.filter(quantity__gt=0).exists())
                 or workspace_locked
                 or self.daily_plans.filter(

@@ -20,7 +20,7 @@ class TransportImportRow(ActualHistoryMixin,BaseCompanyModel):
     date=models.DateField()
     original=models.JSONField(default=dict,editable=False)
     data=models.JSONField(default=dict)
-    status=models.CharField(max_length=12,choices=[('PENDING','Нужно исправить'),('READY','К загрузке'),('APPLIED','Загружена'),('DUPLICATE','Повтор закрыт')],default='PENDING')
+    status=models.CharField(max_length=12,choices=[('PENDING','Нужно исправить'),('READY','К загрузке'),('APPLIED','Загружена'),('DUPLICATE','Повтор закрыт'),('CLEARED','История сброшена'),('SUPERSEDED','Заменена новой загрузкой')],default='PENDING')
     error=models.TextField(blank=True)
     equipment=models.ForeignKey('resources.Equipment',on_delete=models.PROTECT,null=True,related_name='import_rows')
     duplicate_of=models.ForeignKey('resources.Equipment',on_delete=models.PROTECT,null=True,related_name='+')

@@ -6,7 +6,7 @@ GLOBAL_APPROVAL_ROLES = DEPARTMENT_ROLES | {'CEO'}
 ALL_FACT_DISPATCHER = 'ALL_FACT_DISPATCHER'
 FUEL_WAREHOUSE = 'FUEL_WAREHOUSE'
 DISPATCHER_ROLES = {FUEL_WAREHOUSE,'DISPATCHER','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER',ALL_FACT_DISPATCHER}
-ROLES = DISPATCHER_ROLES | {'ADMIN', 'PLANNER', 'MANAGER', 'FOREMAN', 'DISPATCHER', 'OBSERVER', 'ESTIMATOR'} | GLOBAL_APPROVAL_ROLES
+ROLES = DISPATCHER_ROLES | {'ADMIN', 'PLANNER', 'MANAGER', 'FOREMAN', 'DISPATCHER', 'OBSERVER', 'ESTIMATOR','COMMANDANT'} | GLOBAL_APPROVAL_ROLES
 READ_ROLES = {'ADMIN', 'PLANNER', 'MANAGER', 'OBSERVER', 'ESTIMATOR'} | GLOBAL_APPROVAL_ROLES
 PLAN_ROLES = {'ADMIN', 'PLANNER'}
 PERSONNEL_CATALOG_MANAGER = 'PERSONNEL_CATALOG_MANAGER'
@@ -121,7 +121,7 @@ def check_route(user, match, method):
     if role == FUEL_WAREHOUSE:
         require_roles(user, {FUEL_WAREHOUSE})
         own_account = namespace == 'accounts' and (name in {'settings', 'logout', 'password_change', 'access_pending', 'impersonation_stop'} or name == 'user_detail' and match.kwargs.get('pk') == user.pk)
-        fuel_routes = namespace == 'production' and name in {'camp_fuel', 'fact_day_workspace', 'fact_history'}
+        fuel_routes = namespace == 'production' and name in {'camp_fuel', 'fact_history'}
         own_tasks = namespace == 'planning' and name in {'task_list', 'task_detail'}
         if own_account or fuel_routes or own_tasks:
             return

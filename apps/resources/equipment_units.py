@@ -17,11 +17,17 @@ class UnitForm(forms.ModelForm):
         empty_label='Без отдельной модели')
     class Meta:
         model=Equipment
-        fields=['type','catalogue_group','plate_number','name','brand_model','manufacture_year','inventory_number','vin','site_name','operator_position','is_active']
+        fields=['type','catalogue_group','plate_number','name','brand_model','manufacture_year','inventory_number','vin','site_name','operator_positions','is_active']
         labels={'type':'Техника для планирования','plate_number':'Госномер / регистрационный знак','name':'Название машины','is_active':'Доступна для назначения'}
     def __init__(self,*args,company,**kwargs):
         super().__init__(*args,**kwargs)
         self.instance.company=company
+        legacy=self.add_prefix('operator_position');multiple=self.add_prefix('operator_positions')
+        if self.is_bound and legacy in self.data and multiple not in self.data:
+            self.data=self.data.copy()
+            values=[self.data[legacy]] if self.data.get(legacy) else []
+            if hasattr(self.data,'setlist'):self.data.setlist(multiple,values)
+            else:self.data[multiple]=values
         from .group_order import ordered
         self.fields['catalogue_group'].queryset=ordered(EquipmentCategory.objects.filter(company=company),kind='equipment')
         self.fields['catalogue_group'].label='Группа техники'
@@ -44,14 +50,17 @@ class UnitForm(forms.ModelForm):
         self.initial['catalogue_group']=inherited.category_id if inherited else None
         self.fields['catalogue_group'].help_text='Наследуется от техники для планирования. Для изменения группы откройте её карточку.'
         from .position_catalog import available_positions
-        self.fields['operator_position'].queryset=available_positions(company)
+        self.fields['operator_positions'].queryset=available_positions(company)
+        self.fields['operator_positions'].label='Должности экипажа'
+        self.fields['operator_positions'].help_text='Можно выбрать несколько должностей водителя, машиниста и других членов экипажа.'
+        if self.instance.pk and self.instance.operator_position_id and not self.instance.operator_positions.exists():self.initial['operator_positions']=[self.instance.operator_position_id]
         for field in self.fields.values():
             field.widget.attrs.setdefault('class','form-check-input' if isinstance(field.widget, forms.CheckboxInput) else 'form-select' if isinstance(field.widget, forms.Select) else 'form-control')
         self.fields['plate_number'].help_text = 'Инвентарный номер и VIN указываются отдельно ниже.'
         self.fields['type'].help_text = 'Например, «Экскаватор». По этой позиции считается потребность в ГПР и СМГ.'
         self.fields['model'].help_text = 'Например, «CAT 320». Модель должна относиться к выбранной технике для планирования.'
         self.fields['is_active'].help_text = 'Отключённая машина сохраняет историю и не предлагается для новых назначений.'
-        self.order_fields(['type','catalogue_group','model','name','brand_model','manufacture_year','plate_number','inventory_number','vin','site_name','operator_position','is_active'])
+        self.order_fields(['type','catalogue_group','model','name','brand_model','manufacture_year','plate_number','inventory_number','vin','site_name','operator_positions','is_active'])
     def clean_type(self):
         category = self.cleaned_data['type']
         # Keep the existing model link and its history when the category is unchanged.
@@ -73,6 +82,8 @@ class UnitForm(forms.ModelForm):
             from apps.production.models import EquipmentActivity,EmployeeActivity
             used=EquipmentActivity.objects.filter(equipment=self.instance).exists() or EmployeeActivity.objects.filter(equipment=self.instance).exists() or self.instance.standing_assignments.exists() or self.instance.transport_events.exists() or self.instance.transport_days.exists()
             if used and (data.get('type') != self._original_type or 'plate_number' in self.changed_data):raise forms.ValidationError('Для машины с историей назначений или фактом техника для планирования и номер сохраняются в истории. Создайте отдельную единицу для другой идентичности.')
+        selected=data.get('operator_positions')
+        if selected is not None:self.instance.operator_position=next(iter(selected),None)
         if not any(data.get(key) for key in ['plate_number','inventory_number','vin']):raise forms.ValidationError('Укажите госномер, инвентарный или заводской номер.')
         return data
     def validate_unique(self):

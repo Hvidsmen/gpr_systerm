@@ -56,7 +56,7 @@ def filtered(user,params):
     query=service.filter_status(query,params.get('status','active'))
     query=service.filter_scope(query,user,params.get('scope','all'))
     if params.get('kind') in dict(WorkTask._meta.get_field('kind').choices):query=query.filter(kind=params['kind'])
-    return query
+    return service.filter_role(query,params.get('role',''))
 
 
 @login_required

@@ -41,6 +41,9 @@ class CompanyAccessMiddleware:
         if match.namespace=='dashboard' and role_code(request.user)=='COMMANDANT':
             from django.shortcuts import redirect
             return redirect('personnel:lodging')
+        if match.namespace=='production' and match.url_name=='fact_day_workspace' and role_code(request.user)=='FUEL_WAREHOUSE' and request.method in {'GET','HEAD'}:
+            from django.shortcuts import redirect
+            return redirect('production:camp_fuel')
         if match.namespace == 'dashboard' and role_code(request.user) == 'FUEL_WAREHOUSE':
             from django.shortcuts import redirect
             return redirect('production:camp_fuel')

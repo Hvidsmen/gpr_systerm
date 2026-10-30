@@ -24,6 +24,8 @@ class BackdatedPricesTests(TestCase):
     def test_admin_can_record_past_price_in_history_and_card(self):
         self.administrator()
         response=self.client.post(reverse('works:price_change',args=[self.simple.pk]),{'price':'77','effective_from':self.past.isoformat(),'reason':'Историческая цена'})
+        self.assertContains(response,'Подтвердить')
+        response=self.client.post(reverse('works:work_change_confirm'),{'token':response.context['token']})
         self.assertEqual(response.status_code,302)
         entry=self.simple.price_history.filter(effective_from=self.past).get()
         self.assertEqual((entry.price,entry.created_by_id),(Decimal(77),self.planner.pk))

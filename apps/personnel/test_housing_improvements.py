@@ -85,6 +85,8 @@ class HousingImprovementsTests(TestCase):
         row=next(r for r in response.context['rows'] if r.get('person') and r['person'].employee_id==self.employee.pk)
         self.assertEqual(row['schedule_label'],'Вахта 1.2М (60х30)')
         self.assertEqual(response.context['calendar_end'].year,self.day.year+1)
+        self.assertEqual(response.context['calendar_dates'],[])
+        response=self.client.get(reverse('personnel:housing'),{'camp':self.a.pk,'date':str(self.day),'calendar_fragment':'1'})
         self.assertGreater(len(response.context['calendar_dates']),365)
 
     def test_status_indicator_is_critical_before_presence(self):

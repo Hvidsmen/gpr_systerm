@@ -25,24 +25,18 @@ class FuelWarehouseTests(TestCase):
         cls.fuel_user = user
     payload = DispatcherTests.payload
 
-    def test_fuel_direction_is_independent_and_object_scoped(self):
-        data = self.payload('FUEL_WAREHOUSE', 'fuel')
-        data.update({'fuel-0-opening_balance':'100','fuel-0-received_liters':'20','fuel-0-actual_liters':'30','fuel-0-actual_balance':'90','action':'confirm'})
-        generate_daily(self.fuel_user)
-        self.assertEqual(self.client.post(self.url, data).status_code, 302)
-        self.assertEqual(FuelFact.objects.get().actual_balance, 90)
-        self.assertTrue(FactSectionDay.objects.get(section='fuel').confirmed_at)
-        self.assertFalse(EquipmentActivity.objects.exists())
-        task = WorkTask.objects.get(assigned_to=self.fuel_user, kind='FACT')
-        self.assertEqual(task.status, 'DONE')
-        for section in ['works','labor','mechanization']:
-            self.assertEqual(self.client.get(self.url, {'construction_object':self.obj.pk,'date':str(self.day),'section':section}).status_code,403)
-            self.assertEqual(self.client.post(self.url, data | {'section':section}).status_code,403)
-        self.assertEqual(self.client.post(self.url, data | {'construction_object':self.other.pk}).status_code,400)
-        page = self.client.get(self.url, {'construction_object':self.obj.pk,'date':str(self.day),'section':'fuel'})
-        self.assertEqual([group['prefix'] for group in page.context['groups']], ['fuel'])
-        self.assertContains(page, 'ГСМ · склад')
-        self.assertNotContains(page, 'Ежедневный учёт техники по ВЖГ')
+    def test_object_fuel_is_removed_and_old_bookmarks_open_camp_ledger(self):
+        self.client.force_login(self.fuel_user)
+        self.assertRedirects(self.client.get(self.url),reverse('production:camp_fuel'),fetch_redirect_response=False)
+        self.assertEqual(self.client.post(self.url,{'section':'fuel'}).status_code,403)
+        self.assertEqual(generate_daily(self.fuel_user),0)
+        self.assertFalse(WorkTask.objects.filter(assigned_to=self.fuel_user,kind='FACT').exists())
+        page=self.client.get(reverse('production:camp_fuel'))
+        self.assertNotContains(page,'ГСМ по объекту');self.assertNotContains(page,'Назначения и состояния техники')
+        self.client.force_login(self.users['ADMIN'])
+        self.assertRedirects(self.client.get(self.url,{'section':'fuel'}),reverse('production:camp_fuel'),fetch_redirect_response=False)
+        self.assertEqual(self.client.post(self.url,{'section':'fuel'}).status_code,403)
+        self.assertFalse(FuelFact.objects.exists())
 
     def test_camp_balance_and_export_without_transport_access(self):
         self.client.force_login(self.fuel_user)

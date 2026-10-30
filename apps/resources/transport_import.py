@@ -227,6 +227,9 @@ def apply(user,batch):
     batch=TransportImportBatch.objects.select_for_update().get(pk=batch.pk,company=user.company)
     if batch.applied_at:raise ValidationError('Этот импорт уже применён.')
     if fingerprint(user.company)!=batch.fingerprint:raise ValidationError('Справочники или ведение техники изменились. Создайте новый предпросмотр.')
+    names={key(name) for name in batch.files}
+    newer=TransportImportBatch.objects.filter(company=user.company,applied_at__isnull=False,pk__gt=batch.pk)
+    if any(names & {key(name) for name in record.files} for record in newer):raise ValidationError('Уже применена более новая загрузка этого файла. Создайте новый предпросмотр.')
     lookups=lookup_context(user.company)
     for row in batch.rows.select_for_update().order_by('pk'):
         issues=collisions(user.company,[{'data':row.data,'source_file':row.source_file,'source_row':row.source_row,'error':''}])[0]
@@ -237,6 +240,13 @@ def apply(user,batch):
             with transaction.atomic():_apply_row(user,row,lookups)
         except (ValidationError,PermissionDenied) as exc:
             row.refresh_from_db();row.status='PENDING';row.error='; '.join(exc.messages) if isinstance(exc,ValidationError) else str(exc);row.save()
+    # Replace only errors of these source filenames, after processing succeeds.
+    # Keep original rows and their audit trail, never touch machines or facts.
+    names={key(name) for name in batch.files}
+    previous=TransportImportRow.objects.filter(company=user.company,status='PENDING',batch__applied_at__isnull=False,batch_id__lt=batch.pk)
+    for row in previous.select_for_update():
+        if key(row.source_file) in names:
+            row.status='SUPERSEDED';row.resolved_by=user;row.resolved_at=timezone.now();row.save()
     batch.applied_at=timezone.now();batch.save();require_fact_day(user,batch.date)
     return batch
 
@@ -302,3 +312,14 @@ def retry_pending(user,*,existing_only=False):
 
 def retry_existing(user):
     return retry_pending(user,existing_only=True)
+
+
+@with_history_actor
+@transaction.atomic
+def clear_errors(user):
+    require_roles(user,transport.OPERATORS)
+    transport._company_mutex(user)
+    count=0
+    for row in TransportImportRow.objects.select_for_update().filter(company=user.company,status='PENDING',batch__applied_at__isnull=False):
+        row.status='CLEARED';row.resolved_by=user;row.resolved_at=timezone.now();row.save();count+=1
+    return count

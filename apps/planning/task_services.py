@@ -21,6 +21,11 @@ def filter_scope(query, user, scope):
     return query.filter(Q(assigned_to=user) | Q(assigned_to__isnull=True, target_role=role_code(user)))
 
 
+def filter_role(query, code):
+    if not code:return query
+    return query.filter(Q(assigned_to__role__code=code) | Q(assigned_to__isnull=True,target_role=code))
+
+
 def filter_status(query, status):
     if status == 'not_taken':
         return query.filter(status='OPEN', started_at__isnull=True)
@@ -195,6 +200,9 @@ def sync_company(company):
 @transaction.atomic
 def generate_daily(user,*,today=None):
     if not user.is_active or not user.company_id or role_code(user) not in DISPATCHER_ROLES:return 0
+    if role_code(user)=='FUEL_WAREHOUSE':
+        for task in WorkTask.objects.filter(company=user.company,assigned_to=user,kind='FACT',status__in=ACTIVE):state(task,'SUPERSEDED',text='ГСМ ведётся по ВЖГ. Учёт по объектам отключён.')
+        return 0
     today=today or timezone.localdate();yesterday=today-timedelta(days=1);count=0
     User.objects.select_for_update().only('pk').get(pk=user.pk)
     objects=list(user.assigned_objects.filter(company_id=user.company_id))

@@ -67,7 +67,8 @@ const c = JSON.parse(process.env.CATALOGUE_BROWSER_CONFIG);
   await page.locator('[name=share_'+c.b+']').fill('75');
   assert.equal(await page.locator('[data-share-status]').getAttribute('data-valid'),'true');
   await page.getByRole('button',{name:'Сохранить состав',exact:true}).click();
-  await page.getByText('Состав работ сохранён. Доли стоимости — 100%.',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'Подтвердить',exact:true}).click();
+  await page.getByText('Изменения сохранены. Обновлено работ: 1.',{exact:true}).waitFor();
   assert.equal(await page.locator('[data-save-state]').textContent(),'Сохранено');
   await page.screenshot({path:'/tmp/catalogue-ux-detail.png',fullPage:false});
   // Unsaved navigation uses the browser's native warning and can be cancelled.

@@ -17,7 +17,8 @@ const c=JSON.parse(process.env.SHARES_BROWSER_CONFIG);
   assert.equal(await form.locator('[name=share_'+c.a+']').inputValue(),'10');
   await form.locator('[name=share_'+c.a+']').fill('25');await form.locator('[name=share_'+c.b+']').fill('75');
   await page.getByRole('button',{name:'Сохранить состав',exact:true}).click();
-  await page.getByText('Состав работ сохранён. Доли стоимости — 100%.',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'Подтвердить',exact:true}).click();
+  await page.getByText('Изменения сохранены. Обновлено работ: 1.',{exact:true}).waitFor();
   assert.equal(Number((await page.locator('[name=share_'+c.a+']').inputValue()).replace(',','.')),25);
   console.log('PASS: edit cost shares inline; live total; reject incomplete distribution; preserve input; save 100%');
  }finally{await browser.close();}

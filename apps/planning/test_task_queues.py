@@ -120,8 +120,8 @@ class TaskQueueTests(TestCase):
         self.assertFalse(filtered(self.admin, params).exists())
         params['status'] = 'invalid'
         self.assertFalse(filtered(self.admin, params).exists())
-        self.assertFalse(self.ids(self.page(self.admin)))
-        self.assertContains(self.page(self.admin, scope='all'), 'Все доступные')
+        self.assertEqual(len(self.ids(self.page(self.admin))), 3)
+        self.assertContains(self.page(self.admin, scope='all'), 'Все задания компании')
 
     def test_pagination_links_keep_direction_kind_and_stage(self):
         for number in range(51): self.task(f'page-{number}', status='DONE')

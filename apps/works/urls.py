@@ -93,3 +93,6 @@ urlpatterns += [path('<int:pk>/cost-shares/', CostSharesUpdate.as_view(), name='
 
 from .structure import WorkStructureUpdate
 urlpatterns += [path('<int:pk>/structure/', WorkStructureUpdate.as_view(), name='work_structure_update')]
+
+from .propagation import confirm
+urlpatterns += [path('confirm-changes/',confirm,name='work_change_confirm')]

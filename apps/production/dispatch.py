@@ -26,7 +26,7 @@ LABELS=dict(FactSectionDay.SECTIONS)
 
 def sections_for(user):
     code=role_code(user)
-    return [DIRECTIONS[code]] if code in DIRECTIONS else list(LABELS)
+    return [DIRECTIONS[code]] if code in DIRECTIONS else [s for s in LABELS if s!='fuel']
 
 def required_fact_sections(user):
     return set(sections_for(user)) if user and role_code(user) in DISPATCHER_ROLES else None
@@ -300,6 +300,9 @@ class DispatcherDayView(CompanyRequiredMixin,View):
     from .entry_concurrency import sqlite_serialized
     @sqlite_serialized
     def display(self,request,bound=False):
+        if role_code(request.user)=='FUEL_WAREHOUSE' or (request.POST if bound else request.GET).get('section')=='fuel':
+            if bound:raise PermissionDenied('Учёт ГСМ ведётся по ВЖГ.')
+            return redirect('production:camp_fuel')
         selector=ObjectDateForm(request.POST if bound else request.GET or None,user=request.user,initial={'date':timezone.localdate()})
         allowed=sections_for(request.user)
         section=(request.POST if bound else request.GET).get('section',allowed[0])
@@ -349,6 +352,9 @@ class DispatcherDayView(CompanyRequiredMixin,View):
         from .employee_pool import prepare as prepare_employee_pool,labor_direction
         employee_pool=prepare_employee_pool(obj,day) if section=='works' else None
         if employee_pool:context['production_employee_locations']=employee_pool['locations']
+        if section=='fuel':
+            if bound:raise PermissionDenied('Учёт ГСМ ведётся по ВЖГ.')
+            return redirect('production:camp_fuel')
         definitions=[('works',DailyFact,WorkForm),('labor',EmployeeActivity,ProductionPersonForm)] if section=='works' else [('labor',EmployeeActivity,PersonForm)] if section=='labor' else [('fuel',FuelFact,FuelForm)] if section=='fuel' else [('equipment',EquipmentActivity,MachineForm)]
         groups=[]
         for prefix,model,form in definitions:

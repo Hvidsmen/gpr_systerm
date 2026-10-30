@@ -73,8 +73,15 @@ class GroupForm(forms.ModelForm):
         self.fields['members'].queryset = User.objects.filter(company=company, is_superuser=False, is_staff=False).exclude(role__code='ADMIN')
         if self.instance.pk:
             self.initial['members'] = self.instance.members.values_list('pk', flat=True)
+        self.fields['role'].label='Роль участников'
+        self.fields['assigned_objects'].label='Объекты и субобъекты'
+        self.fields['assigned_objects'].queryset=self.fields['assigned_objects'].queryset.select_related('project','parent').order_by('project__name','parent_id','name','pk')
+        self.fields['assigned_objects'].label_from_instance=lambda obj:obj.project.name+' / '+(obj.parent.name+' → ' if obj.parent_id else '')+obj.name
+        self.fields['members'].label_from_instance=lambda user:user.full_name+' · '+user.username
+        self.fields['ad_group_dn'].label='Полный DN группы AD'
+        self.fields['ad_group_dn'].help_text='Необязательно. Можно найти группу через поиск ниже или указать DN вручную.'
         for field in self.fields.values():
-            field.widget.attrs['class'] = 'form-control'
+            field.widget.attrs['class'] = 'form-select' if isinstance(field.widget,forms.Select) else 'form-control'
 
     def clean_name(self):
         name = self.cleaned_data['name'].strip()
@@ -114,7 +121,29 @@ def groups(request, pk=None):
                 user.save(update_fields=['access_group', 'access_group_from_ad', 'role'])
         messages.success(request, 'Группа и права участников обновлены.')
         return redirect('accounts:access_groups')
-    return render(request, 'accounts/access_groups.html', {'form': form, 'editing': bool(pk), 'groups': AccessGroup.objects.filter(company=request.user.company).select_related('role').prefetch_related('assigned_objects', 'members')})
+    from django.db.models import Count,Q
+    from django.db import connection
+    from django.core.paginator import Paginator
+    from .models import Role
+    import re
+    query=AccessGroup.objects.filter(company=request.user.company)
+    stats={'total':query.count(),'ad':query.exclude(ad_group_dn='').count(),'members':User.objects.filter(company=request.user.company,access_group__isnull=False).count()}
+    search=request.GET.get('q','').strip()[:150];role=request.GET.get('role','');ad=request.GET.get('ad','')
+    if search:
+        lookup='iregex' if connection.vendor=='sqlite' else 'icontains';value=re.escape(search) if lookup=='iregex' else search
+        query=query.filter(Q(**{'name__'+lookup:value})|Q(**{'role__name__'+lookup:value})|Q(ad_group_dn__icontains=search))
+    if role.isdigit():query=query.filter(role_id=role)
+    if ad=='linked':query=query.exclude(ad_group_dn='')
+    if ad=='manual':query=query.filter(ad_group_dn='')
+    query=query.select_related('role').prefetch_related('assigned_objects').annotate(member_count=Count('members',distinct=True)).order_by('name','pk')
+    page=Paginator(query,30).get_page(request.GET.get('page'))
+    limited={'PLANNER','FOREMAN','DISPATCHER','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER','ALL_FACT_DISPATCHER','FUEL_WAREHOUSE'}
+    for row in page:
+        row.scope_limited=row.role.code in limited
+        row.scope_empty=row.scope_limited and not row.assigned_objects.all()
+        row.ad_label=row.ad_group_dn.split(',')[0].removeprefix('CN=').removeprefix('cn=')
+    params=request.GET.copy();params.pop('page',None)
+    return render(request,'accounts/access_groups.html',{'form':form,'editing':bool(pk),'edited_group':group,'groups':page.object_list,'page':page,'stats':stats,'q':search,'role_filter':role,'ad_filter':ad,'filter_query':params.urlencode(),'roles':Role.objects.filter(code__in=ROLES-{'ADMIN'}),'editor_open':bool(pk or request.method=='POST' or request.GET.get('create')=='1')})
 
 
 def map_directory_group(user, identity):

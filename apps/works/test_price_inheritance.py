@@ -27,6 +27,12 @@ class PriceInheritanceTests(TestCase):
         values.update(overrides)
         return values
 
+    def post_confirmed(self,url,data):
+        response=self.client.post(url,data)
+        if response.status_code==200 and response.context and response.context.get('token'):
+            return self.client.post(reverse('works:work_change_confirm'),{'token':response.context['token']})
+        return response
+
     def test_auto_search_matches_name_and_unit_across_sections_and_scopes_company(self):
         duplicate = self.make_work(self.sections[0], ' ИСПЫТАНИЕ   СВАЙ ', 'm', 150)
         self.make_work(self.sections[1], 'Испытание свай', 'km', 777)
@@ -38,7 +44,7 @@ class PriceInheritanceTests(TestCase):
         self.assertIn(self.sections[1].name, row['label'])
 
     def test_copy_uses_server_price_and_records_source_without_later_link(self):
-        response = self.client.post(self.url, self.data(price='9999'))
+        response = self.post_confirmed(self.url, self.data(price='9999'))
         self.assertRedirects(response, reverse('works:work_detail', args=[self.target.pk]))
         self.target.refresh_from_db()
         self.assertEqual(self.target.unit_price, Decimal(125))
@@ -49,7 +55,7 @@ class PriceInheritanceTests(TestCase):
     def test_scheduled_price_is_copied_for_chosen_effective_date(self):
         tomorrow = timezone.localdate() + timedelta(days=1)
         change_price(self.user, self.source.pk, Decimal(250), tomorrow, 'Следующая цена')
-        response = self.client.post(self.url, self.data(effective_from=tomorrow.isoformat()))
+        response = self.post_confirmed(self.url, self.data(effective_from=tomorrow.isoformat()))
         self.assertEqual(response.status_code, 302)
         self.assertEqual(self.target.price_history.last().price, Decimal(250))
         self.assertEqual(price_on(self.target), Decimal(10))
@@ -60,7 +66,7 @@ class PriceInheritanceTests(TestCase):
         wrong = self.make_work(self.sections[1], 'Испытание свай', 'km', 777)
         before = self.target.price_history.count()
         for source in [self.foreign_work, self.target, wrong]:
-            response = self.client.post(self.url, self.data(price_source=source.pk))
+            response = self.post_confirmed(self.url, self.data(price_source=source.pk))
             self.assertEqual(response.status_code, 200)
             self.assertIn('price_source', response.context['form'].errors)
         self.assertEqual(self.target.price_history.count(), before)
@@ -76,10 +82,10 @@ class PriceInheritanceTests(TestCase):
         self.assertIn(f'№{self.source.pk}', work.price_history.get().reason)
 
     def test_manual_price_and_existing_history_correction_remain_available(self):
-        response = self.client.post(self.url, self.data(price_source='', price='35'))
+        response = self.post_confirmed(self.url, self.data(price_source='', price='35'))
         self.assertEqual(response.status_code, 302)
         initial = self.target.price_history.first()
-        response = self.client.post(self.url, self.data(corrects=initial.pk, effective_from='', reason='Исправлена исходная цена'))
+        response = self.post_confirmed(self.url, self.data(corrects=initial.pk, effective_from='', reason='Исправлена исходная цена'))
         self.assertEqual(response.status_code, 302)
         # A correction retains the old effective date; chronological last may be the later manual price.
         correction = self.target.price_history.get(corrects=initial)
@@ -95,4 +101,4 @@ class PriceInheritanceTests(TestCase):
         self.user.role = Role.objects.get(code='FOREMAN')
         self.user.save(update_fields=['role'])
         self.assertEqual(self.client.get(url, dict(unit='m', name='test')).status_code, 403)
-        self.assertEqual(self.client.post(self.url, self.data()).status_code, 403)
+        self.assertEqual(self.post_confirmed(self.url, self.data()).status_code, 403)

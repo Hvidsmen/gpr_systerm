@@ -283,6 +283,7 @@ class Equipment(BaseCompanyModel):
     site_name = models.CharField('Участок',max_length=150,blank=True)
     operator_position = models.ForeignKey('Position',null=True,blank=True,on_delete=models.SET_NULL,related_name='equipment_units',verbose_name='Должность водителя / машиниста')
     import_key = models.CharField(max_length=80,blank=True,editable=False)
+    operator_positions = models.ManyToManyField('resources.Position',blank=True,related_name='crewed_equipment',verbose_name='Должности экипажа')
     type = models.ForeignKey(
         EquipmentType, on_delete=models.CASCADE,
         related_name='equipment', verbose_name=_('тип')

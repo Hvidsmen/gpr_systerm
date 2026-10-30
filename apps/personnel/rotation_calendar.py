@@ -12,6 +12,16 @@ def work(code):
 
 def cycle_definition(pattern):
     if not pattern:return None
+    key=(pattern.updated_at,pattern.name,pattern.on_days,pattern.off_days,id(pattern.calendar),id(pattern.cycle_codes))
+    cached=getattr(pattern,'_rotation_cycle_cache',None)
+    if cached and cached[0]==key:return cached[1]
+    result=_cycle_definition(pattern)
+    pattern._rotation_cycle_cache=(key,result)
+    return result
+
+
+def _cycle_definition(pattern):
+    if not pattern:return None
     on,off=pattern.on_days,pattern.off_days
     if not on or not off:
         found=re.search(r'(?<!\d)(\d{1,3})\s*[/\\]\s*(\d{1,3})(?!\d)',pattern.name)

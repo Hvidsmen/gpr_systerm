@@ -99,12 +99,9 @@ class WorkPriceChange(View):
         form = PriceForm(request.POST, work=self.work, user=request.user)
         if form.is_valid():
             try:
-                change_price(request.user, self.work.pk, **{key: value for key, value in form.cleaned_data.items() if key != "price_source"})
-                messages.success(
-                    request,
-                    "Цена сохранена в истории. Согласованные планы не изменены.",
-                )
-                return redirect("works:work_detail", pk=pk)
+                from .propagation import preview
+                d=form.cleaned_data
+                return preview(request,self.work,{'price':{'price':str(d['price']),'effective_from':d['effective_from'].isoformat(),'reason':d['reason'],'corrects':d['corrects'].pk if d.get('corrects') else None}})
             except ValidationError as error:
                 form.add_error(None, error)
         return render(

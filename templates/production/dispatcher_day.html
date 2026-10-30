@@ -4,7 +4,7 @@
 {% block extra_css %}<link rel="stylesheet" href="{% static 'production/production_entry.css' %}?v=20261029-compact-work">{% endblock %}
 {% block content %}
 {% include 'production/_work_opening_tabs.html' %}
-{% if section == 'fuel' %}<p class="small text-muted">ГСМ по объекту — самостоятельный факт за день. Складской баланс по ВЖГ ведётся отдельно: <a href="{% url 'production:camp_fuel' %}">приход, расход и остаток</a>.</p>{% endif %}
+
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2"><h1>Факт за день</h1>{% if object and request.user|may:'production:production_day_reset' %}<a class="btn btn-sm btn-outline-danger" href="{% url 'production:production_day_reset' %}?construction_object={{ object.pk }}&amp;date={{ day|date:'Y-m-d' }}">Сбросить изменения производства</a>{% endif %}</div>
 <form method="get" class="card card-body mb-3">{% include 'forms/fields.html' with form=selector %}<input type="hidden" name="section" value="{{ section }}"><button class="btn btn-primary">Открыть день</button></form>
 {% if object %}

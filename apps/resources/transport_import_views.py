@@ -80,11 +80,19 @@ def review(request,pk):
 def errors(request):
     require_roles(request.user,OPERATORS)
     if request.method=='POST':
+        if request.POST.get('action')=='clear_history':
+            count=service.clear_errors(request.user)
+            messages.success(request,f'История ошибок сброшена. Убрано записей: {count}.')
+            return redirect('resources:transport_import_errors')
         count=service.retry_pending(request.user)
         messages.success(request,f'В ведение загружено записей: {count}. Исправлена обработка формул; противоречия, повторы и ячейки без результата остались для проверки.')
         return redirect('resources:transport_import_errors')
     rows=TransportImportRow.objects.filter(company=request.user.company,status='PENDING',batch__applied_at__isnull=False).select_related('batch','duplicate_of').order_by('pk')
-    if request.GET.get('q'):rows=rows.filter(error__icontains=request.GET['q'])
+    clear_total=rows.count()
+    if request.GET.get('q'):
+        from django.db.models import Q
+        query=request.GET['q']
+        rows=rows.filter(Q(error__icontains=query)|Q(data__vin__icontains=query)|Q(data__inventory__icontains=query)|Q(data__plate__icontains=query))
     if request.GET.get('export')=='xlsx':
         from io import BytesIO
         from openpyxl import Workbook
@@ -96,7 +104,7 @@ def errors(request):
                 if isinstance(cell.value,str):cell.data_type='s'
         sheet.freeze_panes='F2';sheet.auto_filter.ref=sheet.dimensions;out=BytesIO();book.save(out)
         response=HttpResponse(out.getvalue(),content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');response['Content-Disposition']='attachment; filename="transport-import-errors.xlsx"';return response
-    return render(request,'resources/transport_import_errors.html',{'page_obj':Paginator(rows,30).get_page(request.GET.get('page')),'total':rows.count(),'query':request.GET.get('q','')})
+    return render(request,'resources/transport_import_errors.html',{'page_obj':Paginator(rows,30).get_page(request.GET.get('page')),'total':rows.count(),'clear_total':clear_total,'query':request.GET.get('q','')})
 
 
 @login_required

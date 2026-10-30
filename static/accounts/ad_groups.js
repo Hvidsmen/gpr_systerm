@@ -8,6 +8,7 @@
   const target = document.getElementById('id_ad_group_dn');
   let currentRequest = null;
   async function load() {
+    if(!query.value.trim()){status.textContent='Введите название или описание группы для поиска.';return;}
     if (currentRequest) currentRequest.abort();
     const controller = new AbortController();
     currentRequest = controller;
@@ -40,5 +41,4 @@
   query.addEventListener('keydown', event => {
     if (event.key === 'Enter') {event.preventDefault(); load();}
   });
-  load();
 })();

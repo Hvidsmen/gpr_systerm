@@ -39,6 +39,13 @@ class CatalogueUXTests(TestCase):
                 f'profile_{item.pk}':str(self.profile.pk), f'share_{item.pk}':str(item.weight)})
         return {**data, **extra}
 
+    def post_confirmed(self,url,data):
+        response=self.client.post(url,data)
+        if response.status_code==200 and response.context and response.context.get('token'):
+            self.assertContains(response,'Подтвердить')
+            return self.client.post(reverse('works:work_change_confirm'),{'token':response.context['token']})
+        return response
+
     def test_global_search_finds_children_preserves_full_path_and_highlights_safely(self):
         facility = ComplexObject.objects.create(company=self.company, construction_object=self.obj,
             section=self.composite.section, name='УЗА 26')
@@ -63,9 +70,9 @@ class CatalogueUXTests(TestCase):
         self.assertContains(response, 'data-bulk-contextual hidden')
         self.planner.assigned_objects.clear()
         self.assertFalse(self.client.get(reverse('works:work_list'), {'q':'A'}).context['works'])
-        self.assertEqual(self.client.post(self.url, self.data()).status_code, 404)
+        self.assertEqual(self.post_confirmed(self.url, self.data()).status_code, 404)
         self.planner.role = Role.objects.get(code='OBSERVER'); self.planner.save()
-        self.assertEqual(self.client.post(self.url, self.data()).status_code, 403)
+        self.assertEqual(self.post_confirmed(self.url, self.data()).status_code, 403)
         response = self.client.get(reverse('works:work_detail', args=[self.composite.pk]))
         self.assertNotContains(response, 'data-catalogue-edit')
         self.assertNotContains(response, 'Сохранить состав')
@@ -73,13 +80,13 @@ class CatalogueUXTests(TestCase):
     def test_atomic_update_all_fields_and_audit_and_reject_stale_tab(self):
         data = self.data(**{f'norm_{self.a.pk}':'2,500', f'unit_{self.a.pk}':'м',
             f'share_{self.a.pk}':'25', f'share_{self.b.pk}':'75'})
-        self.assertEqual(self.client.post(self.url, data).status_code, 302)
+        self.assertEqual(self.post_confirmed(self.url, data).status_code, 302)
         self.a.refresh_from_db(); self.b.refresh_from_db()
         self.assertEqual((self.a.quantity_per_unit,self.a.unit,self.a.weight,self.b.weight),
             (Decimal('2.5'),'м',25,75))
         from apps.audit.models import AuditLog
-        self.assertTrue(AuditLog.objects.filter(entity_type='works.ProjectWork', new_value__has_key='structure').exists())
-        response = self.client.post(self.url, data)
+        self.assertTrue(AuditLog.objects.filter(entity_type='works.descendant_update').exists())
+        response = self.post_confirmed(self.url, data)
         self.assertEqual(response.status_code, 400)
         self.assertContains(response, 'Состав изменился в другой вкладке', status_code=400)
 
@@ -91,7 +98,7 @@ class CatalogueUXTests(TestCase):
             {f'unit_{self.a.pk}':'foreign-only'}, {f'profile_{self.a.pk}':other_profile.pk},
             {f'share_{self.a.pk}':'5'}, {f'profile_{self.a.pk}':''}]:
             with self.subTest(invalid=invalid):
-                response = self.client.post(self.url, self.data(**{f'norm_{self.b.pk}':'8', **invalid}))
+                response = self.post_confirmed(self.url, self.data(**{f'norm_{self.b.pk}':'8', **invalid}))
                 self.assertEqual(response.status_code, 400)
                 self.a.refresh_from_db(); self.b.refresh_from_db()
                 self.assertEqual((self.a.quantity_per_unit,self.b.quantity_per_unit,self.a.weight),(2,3,40))
@@ -100,16 +107,16 @@ class CatalogueUXTests(TestCase):
     def test_norm_with_fact_is_locked_and_other_rows_are_rolled_back(self):
         DailyFact.objects.create(company=self.company, project_work=self.composite, work_item=self.a,
             date=date(2026,1,5), actual_quantity=1, reported_by=self.planner)
-        response = self.client.post(self.url, self.data(**{f'norm_{self.a.pk}':'4',f'norm_{self.b.pk}':'8'}))
-        self.assertEqual(response.status_code, 400)
-        self.assertContains(response, 'Норматив с фактом или утверждённым планом менять нельзя.', status_code=400)
+        response = self.post_confirmed(self.url, self.data(**{f'norm_{self.a.pk}':'4',f'norm_{self.b.pk}':'8'}))
+        self.assertEqual(response.status_code, 302)
+        self.composite.refresh_from_db();self.assertTrue(self.composite.is_legacy_structure)
         self.a.refresh_from_db();self.b.refresh_from_db()
         self.assertEqual((self.a.quantity_per_unit,self.b.quantity_per_unit),(2,3))
 
     def test_audit_failure_rolls_back_whole_structure(self):
         with patch('apps.audit.models.AuditLog.objects.create', side_effect=RuntimeError('audit')):
             with self.assertRaises(RuntimeError):
-                self.client.post(self.url, self.data(**{f'norm_{self.a.pk}':'8'}))
+                self.post_confirmed(self.url, self.data(**{f'norm_{self.a.pk}':'8'}))
         self.a.refresh_from_db();self.assertEqual(self.a.quantity_per_unit, 2)
 
     def test_existing_plan_snapshot_keeps_its_norms_units_profiles_and_shares(self):
@@ -117,10 +124,10 @@ class CatalogueUXTests(TestCase):
         WorkMonthAllocation.objects.create(company=self.company,version=version,work=self.composite,month=fixtures.JAN,quantity=1)
         version = fixtures.WorkspaceTests.approve(self, version)
         before = version.snapshot
-        response = self.client.post(self.url,self.data(**{f'share_{self.a.pk}':'25',f'share_{self.b.pk}':'75'}))
+        response = self.post_confirmed(self.url,self.data(**{f'share_{self.a.pk}':'25',f'share_{self.b.pk}':'75'}))
         self.assertEqual(response.status_code,302)
         version.refresh_from_db();self.assertEqual(version.snapshot,before)
-        self.assertEqual(self.client.post(self.url,self.data(**{f'norm_{self.a.pk}':'8'})).status_code,400)
+        self.assertEqual(self.post_confirmed(self.url,self.data(**{f'norm_{self.a.pk}':'8'})).status_code,400)
 
     def test_return_links_are_local_and_preserve_catalogue_query(self):
         target = reverse('works:work_list') + '?q=A&view=tree'
@@ -133,6 +140,8 @@ class CatalogueUXTests(TestCase):
         response = self.client.post(reverse('works:work_item_update', args=[self.a.pk]), {
             'name':self.a.name,'unit':'м','load_profile':self.profile.pk,
             'quantity_per_unit':2,'weight':40,'return_to':target})
+        self.assertContains(response,'Подтвердить')
+        response=self.client.post(reverse('works:work_change_confirm'),{'token':response.context['token']})
         self.assertRedirects(response,target)
 
     def test_create_in_complex_preselects_the_location(self):

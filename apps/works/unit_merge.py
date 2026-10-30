@@ -70,6 +70,7 @@ def merge(user,token):
     for model in MODELS:model.objects.filter(company=user.company,unit__in=symbols).update(unit=target.symbol)
     MeasurementUnitAlias.objects.filter(company=user.company,target__in=sources).update(target=target)
     for source in sources:MeasurementUnitAlias.objects.update_or_create(company=user.company,symbol=source.symbol,defaults={'target':target})
+    MeasurementUnitAlias.objects.filter(company=user.company,symbol=target.symbol,target=target).delete()
     from apps.audit.models import AuditLog
     AuditLog.objects.create(user=user,action='UPDATE',entity_type='works.MeasurementUnit',entity_id=str(target.pk),old_value={'sources':[{'id':u.pk,'symbol':u.symbol,'name':u.name} for u in sources]},new_value={'target':target.symbol,'updated':summary},comment='Объединены равнозначные единицы измерения, объёмы и цены сохранены')
     MeasurementUnit.objects.filter(company=user.company,pk__in=[u.pk for u in sources]).delete()

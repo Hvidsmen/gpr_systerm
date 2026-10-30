@@ -21,7 +21,8 @@ from .models import ProjectWork, ProjectWorkItem
 from ..projects.models import Section
 from .forms import ProjectWorkForm, ProjectWorkItemForm, WorkSectionForm
 from core.mixins import CompanyRequiredMixin, CompanyScopedMixin
-from core.permissions import scope_queryset
+from core.permissions import scope_queryset,require_roles,PLAN_ROLES
+from django.core.exceptions import ValidationError
 
 
 class WorkListView(CatalogueExcelMixin, CompanyScopedMixin, ListView):
@@ -442,6 +443,7 @@ from django.views.generic import UpdateView
 # Добавьте этот класс после WorkItemCreateView
 class WorkItemUpdateView(CompanyScopedMixin, UpdateView):
     def get_form_kwargs(self):
+        self.object._catalogue_preview=True
         return {**super().get_form_kwargs(),'user':self.request.user}
 
     model = ProjectWorkItem
@@ -458,8 +460,17 @@ class WorkItemUpdateView(CompanyScopedMixin, UpdateView):
         return context
 
     def form_valid(self, form):
-        messages.success(self.request, f'Работа в составе комплекса "{self.object.name}" обновлена!')
-        return super().form_valid(form)
+        from .propagation import preview
+        require_roles(self.request.user,PLAN_ROLES)
+        before=ProjectWorkItem.objects.get(pk=self.object.pk)
+        fields=['name','unit','load_profile_id','quantity_per_unit','weight','excel_aliases','is_legacy_structure']
+        values={key:str(getattr(form.instance,key)) if key in {'quantity_per_unit','weight'} else getattr(form.instance,key) for key in fields if getattr(before,key)!=getattr(form.instance,key)}
+        if not set(values)&{'quantity_per_unit','weight','unit'}:
+            messages.success(self.request,'Работа в составе комплекса обновлена.')
+            return super().form_valid(form)
+        try:return preview(self.request,before.project_work,{'items':{str(before.pk):values}})
+        except ValidationError as exc:
+            form.add_error(None,exc);return self.form_invalid(form)
 
     def get_success_url(self):
         from .navigation import return_path

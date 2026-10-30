@@ -56,20 +56,25 @@ class TaskList(View):
             sync_company(request.user.company)
         else:service.sync_company(request.user.company)
         tasks=service.visible(request.user)
-        mode=request.GET.get('status','not_taken')
+        mode=request.GET.get('status','active' if role_code(request.user)=='ADMIN' else 'not_taken')
         valid_statuses={'not_taken','in_progress','history','active','overdue','all'} | set(dict(WorkTask._meta.get_field('status').choices))
         if mode not in valid_statuses:mode='not_taken'
-        scope=request.GET.get('scope','incoming')
+        scope=request.GET.get('scope','all' if role_code(request.user)=='ADMIN' else 'incoming')
         if scope not in {'incoming','outgoing','all'} or scope=='all' and role_code(request.user) not in {'ADMIN','OBSERVER'}:scope='incoming'
         tasks=service.filter_scope(tasks,request.user,scope)
+        from apps.accounts.models import Role
+        roles=Role.objects.filter(code__in=ROLES).order_by('name') if role_code(request.user)=='ADMIN' else Role.objects.none()
+        selected_role=request.GET.get('role','') if role_code(request.user)=='ADMIN' else ''
+        if selected_role and not roles.filter(code=selected_role).exists():selected_role=''
+        tasks=service.filter_role(tasks,selected_role)
         kind=request.GET.get('kind','')
         if kind in dict(WorkTask._meta.get_field('kind').choices):tasks=tasks.filter(kind=kind)
         else:kind=''
         stages=[{'value':value,'label':label,'count':service.filter_status(tasks,value).count()} for value,label in [('not_taken','Ещё не взяты'),('in_progress','В работе'),('history','История')]]
         tasks=service.filter_status(tasks,mode)
         from django.core.paginator import Paginator
-        page=Paginator(tasks.select_related('assigned_to','created_by','construction_object').order_by('due_date','-created_at','-pk'),50).get_page(request.GET.get('page'))
-        return render(request,'planning/task_list.html',{'page':page,'stages':stages,'kind':kind,'can_view_all':role_code(request.user) in {'ADMIN','OBSERVER'},'status_options':[('active','Все активные'),('overdue','Просроченные'),('IN_REVIEW','На проверке автора'),('all','Все статусы'),('DONE','Выполненные'),('CLOSED_ADMIN','Принудительно закрытые'),('SUPERSEDED','Заменённые / отменённые')],'status':mode,'scope':scope,'kinds':[choice for choice in WorkTask._meta.get_field('kind').choices if not catalogue_role or choice[0]=='CATALOGUE'],'can_create':role_code(request.user)!='OBSERVER' and not catalogue_role,'needs_objects':role_code(request.user) in {'DISPATCHER','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER'} and not request.user.assigned_objects.exists()})
+        page=Paginator(tasks.select_related('assigned_to__role','created_by','construction_object').order_by('due_date','-created_at','-pk'),50).get_page(request.GET.get('page'))
+        return render(request,'planning/task_list.html',{'roles':roles,'selected_role':selected_role,'page':page,'stages':stages,'kind':kind,'can_view_all':role_code(request.user) in {'ADMIN','OBSERVER'},'status_options':[('active','Все активные'),('overdue','Просроченные'),('IN_REVIEW','На проверке автора'),('all','Все статусы'),('DONE','Выполненные'),('CLOSED_ADMIN','Принудительно закрытые'),('SUPERSEDED','Заменённые / отменённые')],'status':mode,'scope':scope,'kinds':[choice for choice in WorkTask._meta.get_field('kind').choices if not catalogue_role or choice[0]=='CATALOGUE'],'can_create':role_code(request.user)!='OBSERVER' and not catalogue_role,'needs_objects':role_code(request.user) in {'DISPATCHER','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER'} and not request.user.assigned_objects.exists()})
 
 
 class TaskCreate(View):
