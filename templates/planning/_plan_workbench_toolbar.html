@@ -1,4 +1,5 @@
 {% load static %}
+{% include 'planning/_plan_finance.html' %}
 {% if plan_add_form.errors and plan_add_form.kind.value == 'work' %}<div class="alert alert-danger" role="alert">{{ plan_add_form.errors }}</div>{% endif %}
 {% include 'planning/_plan_workbench_add.html' %}
 {% include 'planning/_plan_workbench_filters.html' %}

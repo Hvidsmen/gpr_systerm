@@ -430,6 +430,11 @@ def build_workspace_snapshot(version, *, validate_inputs=True):
     from .work_resources import apply_snapshot
     snapshot = apply_snapshot(version,snapshot)
     snapshot = freeze_prices(normalize_resource_snapshot(snapshot, version.company, in_place=True), version.company, in_place=True)
+    from apps.works.prices import reprice_plan_rows
+    from .estimate_review import review_period
+    start,end=review_period(version)
+    for spec in snapshot.get('works',[]):
+        reprice_plan_rows(spec,spec.get('plans',[]),start=start,end=end)
     if version.workspace.continued_from_review_id:
         from .continuation import merge_history
         snapshot = merge_history(version, snapshot)

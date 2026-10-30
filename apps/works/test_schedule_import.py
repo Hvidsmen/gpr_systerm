@@ -60,11 +60,11 @@ class ScheduleImportTests(TestCase):
         self.assertEqual(apply_rows(self.user,self.section,self.profile,self.rows),0)
         self.assertEqual(ProjectWork.objects.count(),1);self.assertEqual(ProjectWorkItem.objects.count(),2)
 
-    def test_conflict_never_overwrites_existing_norm(self):
+    def test_authoritative_import_updates_existing_norm(self):
         apply_rows(self.user,self.section,self.profile,self.rows)
         self.rows[0]['quantity']='500'
-        with self.assertRaises(ValidationError):apply_rows(self.user,self.section,self.profile,self.rows)
-        self.assertEqual(ProjectWorkItem.objects.get(name='Кабель').quantity_per_unit,Decimal(290))
+        apply_rows(self.user,self.section,self.profile,self.rows)
+        self.assertEqual(ProjectWorkItem.objects.get(name='Кабель').quantity_per_unit,Decimal(500))
 
     def test_item_failure_rolls_back_entire_import(self):
         with patch.object(ProjectWorkItem,'full_clean',side_effect=ValidationError('Ошибка')):

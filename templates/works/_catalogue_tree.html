@@ -103,7 +103,7 @@
 <div class="ct-item-head">
 <span>Работа в составе комплекса</span>
 <span>Норматив на единицу комплекса</span>
-</div>{% for item in work.catalogue_items|default:work.items.all %}<div class="ct-item">
+</div>{% for item in work.catalogue_items %}<div class="ct-item">
 <span class="ct-item-name">
 <a href="{% url 'works:work_detail' work.pk %}?return_to={{ request.get_full_path|urlencode }}#work-item-{{ item.pk }}" {% if item.catalogue_match %}data-search-hit{% endif %}>{{ item.name|highlight:search_query }}</a>{% include 'works/_legacy_structure_badge.html' with record=item %}
 </span>

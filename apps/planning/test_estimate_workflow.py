@@ -39,34 +39,25 @@ class EstimateWorkflowTests(TestCase):
         self.task.refresh_from_db();self.assertEqual(len(self.task.decisions),2)
         service.finish(self.estimator,self.task,True)
 
-    def test_replacement_excludes_itself_and_identifies_same_named_records(self):
-        self.prepare();other=self.add_work()
-        other.name=self.simple.name;other.save()
-        incompatible=ProjectWork.objects.create(company=self.company,section=self.simple.section,name='Wrong unit',unit='шт')
+    def test_duplicate_names_have_no_replacement_controls(self):
+        self.prepare();other=self.add_work();other.name=self.simple.name;other.save()
         self.client.force_login(self.estimator)
         response=self.client.get(reverse('planning:estimate_review_detail',args=[self.task.pk]))
-        work=next(w for w in response.context['works'] if w.pk==self.simple.pk)
-        self.assertIn(other.pk,{r.pk for r in work.replacements})
-        self.assertNotIn(self.simple.pk,{r.pk for r in work.replacements})
-        self.assertNotIn(incompatible.pk,{r.pk for r in work.replacements})
-        self.assertContains(response,f'ID {other.pk}')
+        self.assertEqual({work.pk for work in response.context['works']},{self.simple.pk,other.pk})
+        self.assertNotContains(response,'Заменить дубль');self.assertNotContains(response,'composite_setup')
 
-    def test_replacement_remark_is_ranked_and_sent_to_planner(self):
+    def test_price_remark_is_sent_without_work_replacement(self):
         from .models import WorkTask
-        self.prepare();other=self.add_work();other.name=self.simple.name+' 1';other.save()
-        ProjectWork.objects.create(company=self.company,section=self.simple.section,name='Completely unrelated',unit=self.simple.unit)
+        self.prepare();other=self.add_work()
         self.client.force_login(self.estimator)
         url=reverse('planning:estimate_review_detail',args=[self.task.pk])
-        response=self.client.get(url)
-        work=next(w for w in response.context['works'] if w.pk==self.simple.pk)
-        self.assertEqual(work.replacement_options[0]['work'].pk,other.pk)
-        response=self.client.post(url,{'action':'work_reject','work_id':self.simple.pk,'recommended_work':other.pk,'comment':'Используйте существующую позицию'})
+        response=self.client.post(url,{'action':'work_reject','work_id':self.simple.pk,'comment':'Уточните цену по смете'})
         self.assertEqual(response.status_code,302)
         remark=WorkTask.objects.get(kind='REMARK')
-        self.assertIn(f'ID {other.pk}',remark.description)
-        self.assertIn('Используйте существующую позицию',remark.description)
+        self.assertIn('Уточните цену по смете',remark.description)
         self.assertEqual(remark.assigned_to_id,self.planner.pk)
         self.assertTrue(self.version.work_allocations.filter(work=self.simple).exists())
+        self.assertEqual(self.client.post(url,{'action':'work_reject','work_id':self.simple.pk,'recommended_work':other.pk,'comment':'Подмена'}).status_code,403)
 
     def test_replacement_remark_rejects_self(self):
         self.prepare()
@@ -101,7 +92,7 @@ class EstimateWorkflowTests(TestCase):
     def test_duplicate_merge_preserves_facts_and_sums_months(self):
         self.prepare();other=self.add_work()
         fact=DailyFact.objects.create(company=self.company,project_work=other,date=test_workspace.JAN,actual_quantity=2)
-        service.replace_work(self.estimator,self.task,other.pk,self.simple.pk)
+        service.replace_work(self.catalogue_admin,self.task,other.pk,self.simple.pk)
         self.assertEqual(self.version.work_allocations.get(work=self.simple,month=test_workspace.JAN).quantity,310)
         self.assertEqual(service.work_ids(self.version),{self.simple.pk})
         fact.refresh_from_db();self.assertEqual(fact.project_work_id,other.pk)
@@ -111,7 +102,7 @@ class EstimateWorkflowTests(TestCase):
         MeasurementUnit.objects.get_or_create(company=self.company,symbol='шт',defaults={'name':'Штука'})
         values={'name':'Составная','section':self.simple.section,'unit':'шт','allow_fractional':True,'work_group':None}
         for work in [self.simple,other]:values[f'norm_{work.pk}']=Decimal(1);values[f'profile_{work.pk}']=self.simple.load_profile
-        parent=service.merge_composite(self.estimator,self.task,[self.simple.pk,other.pk],values)
+        parent=service.merge_composite(self.catalogue_admin,self.task,[self.simple.pk,other.pk],values)
         self.assertEqual(service.work_ids(self.version),{parent.pk})
         allocation=self.version.work_allocations.get(work=parent,month=test_workspace.JAN)
         self.assertEqual(allocation.quantity,10)
@@ -119,19 +110,13 @@ class EstimateWorkflowTests(TestCase):
         self.assertEqual(parent.items.count(),2)
         self.assertTrue(build_workspace_snapshot(self.version)['works'])
 
-    def test_composite_setup_and_confirmation_in_estimator_interface(self):
-        self.prepare();other=self.add_work()
-        MeasurementUnit.objects.get_or_create(company=self.company,symbol='шт',defaults={'name':'Штука'})
-        self.client.force_login(self.estimator)
+    def test_estimator_cannot_create_composites_through_review(self):
+        self.prepare();other=self.add_work();self.client.force_login(self.estimator)
         url=reverse('planning:estimate_review_detail',args=[self.task.pk])
-        ids=[self.simple.pk,other.pk]
-        response=self.client.post(url,{'action':'composite_setup','selected':ids})
-        self.assertContains(response,'Норматив на единицу комплекса работ')
-        data={'action':'composite_confirm','selected':ids,'name':'Общая работа','section':self.simple.section_id,'unit':'шт','allow_fractional':'on'}
-        for wid in ids:data[f'norm_{wid}']='1';data[f'profile_{wid}']=self.simple.load_profile_id
-        response=self.client.post(url,data)
-        self.assertEqual(response.status_code,302)
-        self.assertEqual(ProjectWork.objects.get(pk=next(iter(service.work_ids(self.version)))).name,'Общая работа')
+        before=list(self.version.work_allocations.values())
+        for action in ['composite_setup','composite_confirm','bulk_merge']:
+            self.assertEqual(self.client.post(url,{'action':action,'selected':[self.simple.pk,other.pk],'name':'Подмена'}).status_code,403)
+        self.assertEqual(list(self.version.work_allocations.values()),before)
 
     def test_forecast_merge_preserves_future_volumes(self):
         self.prepare();other=self.add_work()
@@ -143,7 +128,7 @@ class EstimateWorkflowTests(TestCase):
         task=service.assign(self.planner,target,self.estimator)
         values={'name':'Составная','section':self.simple.section,'unit':'шт','allow_fractional':True,'work_group':None}
         for work in [self.simple,other]:values[f'norm_{work.pk}']=Decimal(1);values[f'profile_{work.pk}']=self.simple.load_profile
-        parent=service.merge_composite(self.estimator,task,[self.simple.pk,other.pk],values)
+        parent=service.merge_composite(self.catalogue_admin,task,[self.simple.pk,other.pk],values)
         after=build_workspace_snapshot(target)
         def future(snapshot,wid):return sum(Decimal(r['quantity']) for w in snapshot['works'] if w['id']==wid for r in w['daily'] if r['date']>='2026-03-01')
         for work in [self.simple,other]:self.assertEqual(future(before,work.pk),future(after,work.pk))

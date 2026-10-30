@@ -126,7 +126,7 @@ def panel(version, user):
     submitted = version.status == 'SUBMITTED'
     sections = []
     estimator_decision = review.decisions.filter(section='ESTIMATE', action='APPROVE').first() if review else None
-    sections.append({'label':'Сметчик — цены и состав работ','decision':estimator_decision,'approved':bool(estimator_decision) and version.status not in {'DRAFT','REJECTED'},'can_approve':False})
+    sections.append({'label':'Сметчик — цены работ','decision':estimator_decision,'approved':bool(estimator_decision) and version.status not in {'DRAFT','REJECTED'},'can_approve':False})
     for section, label, assigned, action in SECTIONS:
         if section in {'SECURITY','SBO'} and version.status in {'APPROVED','COMPLETED'} and section not in approved:continue
         decision = review.decisions.filter(section=section, action='APPROVE').first() if review else None

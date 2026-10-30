@@ -17,6 +17,7 @@ class EstimateReviewTests(TestCase):
         fixtures.WorkspaceTests.setUpTestData.__func__(cls)
         cls.estimator=User.objects.create_user(username='estimate-reviewer',company=cls.company,role=Role.objects.get(code='ESTIMATOR'))
         cls.other=User.objects.create_user(username='other-estimate-reviewer',company=cls.company,role=Role.objects.get(code='ESTIMATOR'))
+        cls.catalogue_admin=User.objects.create_user(username='estimate-catalogue-admin',company=cls.company,role=Role.objects.get(code='ADMIN'))
     create=fixtures.WorkspaceTests.create
 
     def prepare(self):
@@ -50,7 +51,7 @@ class EstimateReviewTests(TestCase):
         self.prepare();self.checked();self.version=GlobalPlanService.transition(self.version,self.manager,'submit')
         self.task=service.assign(self.planner,self.version,self.estimator)
         frozen=self.version.review_rounds.get().snapshot
-        service.change(self.estimator,self.task,self.simple.pk,name='Проверенное название',price=Decimal('12.50'),effective_from=date(2027,1,1),reason='Проверка сметы')
+        service.change(self.estimator,self.task,self.simple.pk,price=Decimal('12.50'),effective_from=date(2027,1,1),reason='Проверка сметы')
         self.version.refresh_from_db();self.assertEqual(self.version.status,'REJECTED')
         self.assertEqual(self.version.review_rounds.get().snapshot,frozen)
         self.assertEqual(self.simple.price_history.order_by('-pk').first().price,Decimal('12.50'))
@@ -68,7 +69,7 @@ class EstimateReviewTests(TestCase):
 
     def test_ui_and_estimator_cannot_change_planning_or_assign_self(self):
         self.prepare();self.client.force_login(self.estimator)
-        self.assertContains(self.client.get(reverse('planning:estimate_review_detail',args=[self.task.pk])),'Название, цена и состав проверены')
+        self.assertContains(self.client.get(reverse('planning:estimate_review_detail',args=[self.task.pk])),'Цена проверена')
         self.assertEqual(self.client.get(reverse('planning:workspace_edit',args=[self.version.pk])).status_code,200)
         self.assertEqual(self.client.post(reverse('planning:workspace_edit',args=[self.version.pk]),{}).status_code,403)
         self.assertEqual(self.client.post(reverse('planning:estimate_review_assign',args=['gpr',self.version.pk]),{'estimator':self.estimator.pk}).status_code,403)
@@ -79,7 +80,7 @@ class EstimateReviewTests(TestCase):
         self.prepare()
         duplicate=ProjectWork.objects.create(company=self.company,section=self.simple.section,name='Existing catalog work',unit=self.simple.unit,unit_price=10,load_profile=self.simple.load_profile)
         WorkMonthAllocation.objects.create(company=self.company,version=self.version,work=duplicate,month=fixtures.JAN,quantity=50)
-        service.replace_work(self.estimator,self.task,self.simple.pk,duplicate.pk)
+        service.replace_work(self.catalogue_admin,self.task,self.simple.pk,duplicate.pk)
         self.assertFalse(self.version.work_allocations.filter(work=self.simple).exists())
         self.assertEqual(self.version.work_allocations.get(work=duplicate,month=fixtures.JAN).quantity,350)
         self.assertEqual(sum(self.version.work_allocations.values_list('quantity',flat=True)),1050)

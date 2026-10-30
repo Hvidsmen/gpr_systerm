@@ -35,6 +35,7 @@ def match_rows(user, obj, rows, section=None):
     works = planning_works(scope_queryset(ProjectWork.objects.filter(section__construction_object=obj, merged_source__isnull=True), user), user, whole=True)
     if section:
         works = works.filter(section=section)
+    works = works.filter(is_legacy_structure=False)
     works = list(works.select_related('complex_object', 'section').prefetch_related('items'))
     index = defaultdict(list)
     versions = {}
@@ -43,13 +44,14 @@ def match_rows(user, obj, rows, section=None):
             continue
         versions[work.pk] = catalogue_revision(work)
         for item in work.items.all():
-            if item.company_id == user.company_id and item.parent_id is None:
+            if item.company_id == user.company_id and item.parent_id is None and not item.is_legacy_structure:
                 index[(key(work.complex_object.name), key(work.name), key(item.name))].append((work, item))
     unit_aliases = aliases(user.company)
     result = []
     for source in rows:
         row = dict(source, issue='')
         found = index[(key(row['object']), key(row['package']), key(row['work']))]
+        if row.get('section'):found=[pair for pair in found if key(pair[0].section.name)==key(row['section'])]
         if not found:
             row['issue'] = 'Не найдена в справочнике выбранного объекта. Сначала загрузите состав работ.'
         elif len(found) != 1:

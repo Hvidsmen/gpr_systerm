@@ -6,7 +6,7 @@ from .models import ComplexObject, ProjectWork, ProjectWorkItem
 
 
 class WorkListFilterForm(forms.Form):
-    legacy_only=forms.BooleanField(required=False,label='Есть пометка «Старая структура»',widget=forms.CheckboxInput(attrs={'class':'form-check-input'}))
+    legacy_only=forms.BooleanField(required=False,label='Только старая структура',widget=forms.CheckboxInput(attrs={'class':'form-check-input'}))
     q = forms.CharField(required=False, max_length=255, label='Поиск',
         widget=forms.TextInput(attrs={'type': 'search', 'placeholder': 'Найти комплекс или работу в его составе'}))
 
@@ -95,6 +95,10 @@ class WorkListFilterForm(forms.Form):
             lambda section: f"{section.construction_object.name} / {section.name}"
         )
         works=ProjectWork.objects.filter(company=company,section__in=sections,merged_source__isnull=True)
+        legacy=bool(user and role_code(user)=='ADMIN' and self.data.get('legacy_only'))
+        from django.db.models import Q
+        if legacy:works=works.filter(Q(is_legacy_structure=True)|Q(items__is_legacy_structure=True)).distinct()
+        else:works=works.filter(is_legacy_structure=False)
         complex_objects=ComplexObject.objects.filter(company=company,construction_object__in=objects)
         section_id=self.data.get('section','')
         if section_id:
@@ -111,6 +115,7 @@ class WorkListFilterForm(forms.Form):
             works=works.filter(pk=package_id,kind=ProjectWork.Kind.COMPOSITE) if str(package_id).isdigit() else works.none()
         simple=works.filter(kind=ProjectWork.Kind.SIMPLE).order_by('name','pk')
         items=ProjectWorkItem.objects.filter(company=company,project_work__in=works).select_related('project_work').order_by('name','pk')
+        items=items.filter(Q(is_legacy_structure=True)|Q(project_work__is_legacy_structure=True)) if legacy else items.filter(is_legacy_structure=False)
         self.fields['selected_work'].choices=[('', 'Все работы'), *[(f'w:{row.pk}', f'{row.name} · самостоятельная') for row in simple], *[(f'i:{row.pk}', f'{row.name} · {row.project_work.name}') for row in items]]
         self.fields['work'].label='Поиск по названию комплекса / работы'
         self.fields['subwork'].label='Поиск по работе в составе комплекса'

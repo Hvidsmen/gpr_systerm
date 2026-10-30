@@ -16,6 +16,9 @@ def matrix(schedule,entries):
     brigades={b.pk:b for b in Brigade.objects.filter(company_id=schedule.company_id).select_related('group','macro_group')}
     equipment={e.pk:e for e in EquipmentType.objects.filter(company_id=schedule.company_id).select_related('category','parent__category')}
     grouped={kind:defaultdict(list) for kind in service.FIELDS};totals={kind:{} for kind in service.FIELDS}
+    from .plan_finance import prices_for,smg_finance,total as sum_finances
+    prices=prices_for(schedule.company,works) if schedule.status in {'DRAFT','REJECTED'} else {}
+    finances=[]
     from .resource_catalogue_links import catalogue_links
     catalogue=catalogue_links(schedule.company)
     from .resource_group_totals import equipment_groups,labor_groups,group_label,attach_resource_totals
@@ -81,9 +84,11 @@ def matrix(schedule,entries):
                 for key in ['before','after','delta']:total[key]+=comparison[key]
                 for cell,source in zip(total['cells'],comparison['cells']):
                     for key in ['before','after','delta']:cell[key]+=source[key]
+        if entry.kind=='work':
+            entry.finance=smg_finance(schedule,entry,prices);finances.append(entry.finance)
     labels={'work':'Работы','labor':'Должность','equipment':'Техника','fuel':'ГСМ'}
     sections=[{'kind':kind,'label':labels[kind],'groups':[{'label':group_label(name),'entries':sorted(rows,key=lambda e:(e.label.casefold(),e.pk))} for name,rows in sorted(groups.items())],'totals':list(totals[kind].values()),'count':sum(len(rows) for rows in groups.values())} for kind,groups in grouped.items()]
     from .plan_workbench import attach_work_hierarchy
     attach_resource_totals(sections,schedule.company)
     attach_work_hierarchy(sections)
-    return {'sections':sections,'days':days}
+    return {'sections':sections,'days':days,'finance_summary':sum_finances(finances)}

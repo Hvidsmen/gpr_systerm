@@ -13,7 +13,7 @@ from django.views.generic import (
 )
 from django.urls import reverse_lazy
 from django.utils.translation import gettext_lazy as _
-from django.db.models import Count, Sum, DecimalField, Exists, OuterRef, Q
+from django.db.models import Count, Sum, DecimalField, Exists, OuterRef, Q, Prefetch
 from .list_filters import WorkListFilterForm
 from .services import WorkItemGeneratorService
 from apps.accounts.models import Company
@@ -41,6 +41,13 @@ class WorkListView(CatalogueExcelMixin, CompanyScopedMixin, ListView):
         self.filter_form = WorkListFilterForm(self.request.GET, company=self.request.user.company, user=self.request.user)
         from core.permissions import scope_queryset
         queryset = scope_queryset(ProjectWork.objects.filter(merged_source__isnull=True), self.request.user)
+        legacy_only=self.filter_form.is_valid() and self.filter_form.cleaned_data.get('legacy_only',False)
+        visible_items=ProjectWorkItem.objects.filter(company=self.request.user.company)
+        if legacy_only:
+            visible_items=visible_items.filter(Q(is_legacy_structure=True)|Q(project_work__is_legacy_structure=True))
+        else:
+            queryset=queryset.filter(is_legacy_structure=False)
+            visible_items=visible_items.filter(is_legacy_structure=False)
         if self.filter_form.is_valid():
             values = self.filter_form.cleaned_data
             for field, path in [('project', 'section__construction_object__project'), ('construction_object', 'section__construction_object'), ('section', 'section')]:
@@ -61,7 +68,7 @@ class WorkListView(CatalogueExcelMixin, CompanyScopedMixin, ListView):
             lookup = 'iregex' if connection.vendor == 'sqlite' else 'icontains'
             if values['q']:
                 value = re.escape(values['q']) if lookup == 'iregex' else values['q']
-                matching = ProjectWorkItem.objects.filter(company=self.request.user.company,
+                matching = visible_items.filter(company=self.request.user.company,
                     project_work_id=OuterRef('pk'), **{'name__' + lookup: value})
                 queryset = queryset.annotate(catalogue_child_match=Exists(matching)).filter(
                     Q(**{'name__' + lookup: value}) | Q(catalogue_child_match=True))
@@ -70,16 +77,16 @@ class WorkListView(CatalogueExcelMixin, CompanyScopedMixin, ListView):
                 queryset = queryset.filter(**{'name__' + lookup: value})
             if values['subwork']:
                 value = re.escape(values['subwork']) if lookup == 'iregex' else values['subwork']
-                matching_items = ProjectWorkItem.objects.filter(
+                matching_items = visible_items.filter(
                     company=self.request.user.company, project_work_id=OuterRef('pk'),
                     **{'name__' + lookup: value},
                 )
                 queryset = queryset.filter(Exists(matching_items))
         else:
             queryset = queryset.none()
-        return queryset.annotate(items_count=Count('items')).select_related(
+        return queryset.annotate(items_count=Count('items',filter=Q(items__in=visible_items))).select_related(
             'section', 'complex_object', 'section__construction_object', 'section__construction_object__project'
-        ).prefetch_related('items').order_by('code', 'pk')
+        ).prefetch_related(Prefetch('items',queryset=visible_items)).order_by('code', 'pk')
 
     def get_context_data(self, **kwargs):
         from apps.works.progress import WorkProgressService

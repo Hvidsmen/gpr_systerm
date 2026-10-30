@@ -342,7 +342,7 @@ class WorkspaceEdit(View):
             for group in visible['sections'][0]['groups']:
                 for entry in group['entries']:entry.can_edit=False;entry.profile=False
         return {
-            'plan_sections':visible['sections'],'plan_is_daily':False,'plan_kind_label':'ГПР','plan_month':selected,'days':[],
+            'finance_summary':visible['finance_summary'],'plan_sections':visible['sections'],'plan_is_daily':False,'plan_kind_label':'ГПР','plan_month':selected,'days':[],
             'plan_years':sorted({m.year for m in allowed_months}),'plan_month_options':[{'month':m,'url':reverse('planning:workspace_edit',args=[version.pk])+'?month='+m.isoformat()} for m in allowed_months],
             'plan_can_add_work':can_work,'plan_can_add_resources':resource_data['can_prepare_resources'],'table_editable':can_work or resource_data['can_prepare_resources'],
             'plan_add_form':AddEntryForm(schedule=version,user=request.user) if resource_data['can_prepare_resources'] else None,

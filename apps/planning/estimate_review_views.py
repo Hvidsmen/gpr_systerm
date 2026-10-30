@@ -1,8 +1,10 @@
 from decimal import Decimal
+import json
 from django import forms
 from django.db.models import Q
 from django.contrib import messages
-from django.core.exceptions import ValidationError
+from django.core.exceptions import ValidationError, PermissionDenied
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views import View
 from core.permissions import require_roles,role_code
@@ -22,29 +24,20 @@ class AssignForm(forms.Form):
 
 
 class WorkChangeForm(forms.Form):
-    name=forms.CharField(label='Название работы',max_length=255)
-    price=forms.DecimalField(label='Новая цена, ₽ (необязательно)',max_digits=12,decimal_places=2,min_value=0,required=False)
-    effective_from=forms.DateField(label='Действует с',widget=forms.DateInput(attrs={'type':'date'}),required=False)
-    reason=forms.CharField(label='Основание изменения цены',max_length=500,required=False)
-    def clean(self):
-        d=super().clean()
-        if d.get('price') is not None and (not d.get('effective_from') or not d.get('reason')):raise forms.ValidationError('Для цены укажите дату действия и основание.')
-        return d
+    price=forms.DecimalField(label='Цена за единицу, ₽',max_digits=12,decimal_places=2,min_value=0)
+    effective_from=forms.DateField(label='Действует с',widget=forms.DateInput(attrs={'type':'date'}))
+    reason=forms.CharField(label='Основание изменения цены',max_length=500)
 
 
-class ItemForm(forms.ModelForm):
-    class Meta:
-        from apps.works.models import ProjectWorkItem
-        model=ProjectWorkItem
-        fields=['name','unit','quantity_per_unit','weight','load_profile','sequence','labor_hourly_rate','equipment_hourly_rate','fuel_price']
-    def __init__(self,*args,company,**kwargs):
-        super().__init__(*args,**kwargs)
-        self.fields['load_profile'].queryset=self.fields['load_profile'].queryset.filter(company=company)
+class PriceBatchForm(forms.Form):
+    effective_from=forms.DateField(label='Дата действия новых цен',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date','class':'form-control'}))
+    reason=forms.CharField(label='Основание для изменённых цен',max_length=500,widget=forms.TextInput(attrs={'class':'form-control','placeholder':'Например, согласованная расценка по смете'}))
+    snapshot=forms.CharField(widget=forms.HiddenInput)
 
 
 def tasks(user):
     require_roles(user,{'ADMIN','PLANNER','ESTIMATOR'})
-    q=EstimateReviewTask.objects.filter(company=user.company).select_related('assigned_to','version__construction_object','schedule__source__construction_object').defer('version__snapshot','schedule__source__snapshot')
+    q=EstimateReviewTask.objects.filter(company=user.company).select_related('assigned_to','version__construction_object__parent','schedule__construction_object__parent','schedule__source__construction_object').defer('version__snapshot','schedule__source__snapshot')
     from core.permissions import scope_queryset
     q=scope_queryset(q,user)
     return q.filter(assigned_to=user) if role_code(user)=='ESTIMATOR' else q
@@ -77,86 +70,87 @@ class ReviewAssign(View):
         return self.show(request,form)
 
 
+def can_review(user,task,obj):
+    return (role_code(user)=='ADMIN' or role_code(user)=='ESTIMATOR' and task.assigned_to_id==user.pk) and task.status=='OPEN' and obj.status in {'DRAFT','REJECTED','SUBMITTED'}
+
+
+def review_rows(task,obj):
+    works=list(ProjectWork.objects.filter(company_id=task.company_id,pk__in=service.work_ids(obj)).select_related('section__construction_object','complex_object').prefetch_related('items','price_history'))
+    start,end=service.review_period(obj)
+    from django.db.models import Sum
+    quantities=dict(service.review_allocations(obj).values('work_id').annotate(total=Sum('quantity')).values_list('work_id','total')) if isinstance(obj,GlobalPlanVersion) else {}
+    from apps.works.prices import rate_on
+    completed_valid=service.check_valid(obj,task)
+    for work in works:
+        work.review_decision=task.decisions.get(str(work.pk),{})
+        work.review_valid=work.review_decision.get('approved') and (completed_valid or work.review_decision.get('signature')==service.decision_signature(work,obj))
+        work.review_status='checked' if work.review_valid else 'rejected' if work.review_decision.get('approved') is False else 'pending'
+        work.review_price=rate_on(sorted(work.price_history.all(),key=lambda row:(row.effective_from,row.pk)),start,work.unit_price)
+        work.review_quantity=quantities.get(work.pk,Decimal(0)) if isinstance(obj,GlobalPlanVersion) else None
+    works.sort(key=lambda work:(bool(work.review_valid),work.section.name.casefold(),work.name.casefold(),work.pk))
+    return works,start,end
+
+
+def live_state(user,task):
+    task=get_object_or_404(tasks(user),pk=task.pk);obj=service.target(task)
+    works,start,end=review_rows(task,obj);editable=can_review(user,task,obj)
+    return {'task_status':task.status,'task_label':task.get_status_display(),'can_review':editable,
+        'snapshot':service.price_edit_token(user,task) if editable else '',
+        'checked':sum(bool(work.review_valid) for work in works),'total':len(works),
+        'rows':[{'id':work.pk,'price':str(work.review_price),'status':work.review_status,'comment':work.review_decision.get('comment',''),'history':[{'date':row.effective_from.strftime('%d.%m.%Y'),'price':str(row.price),'reason':row.reason} for row in work.price_history.all()]} for work in works]}
+
+
 class ReviewDetail(View):
     def get(self,request,pk):return self.show(request,get_object_or_404(tasks(request.user),pk=pk))
-    def show(self,request,task,change_form=None,item_form=None,work_id=None):
-        obj=service.target(task)
-        works=list(ProjectWork.objects.filter(company=request.user.company,pk__in=service.work_ids(obj)).select_related('section__construction_object','complex_object').prefetch_related('items','price_history'))
-        from apps.works.planning_access import planning_works
-        from .estimate_catalog import alternatives
-        replacements=list(planning_works(alternatives(obj),request.user,whole=True))
-        from .models import MacroCarryoverWork
-        version=obj.source if isinstance(obj,DailySchedule) else obj
-        aliases=dict(MacroCarryoverWork.objects.filter(company=request.user.company,workspace_id=version.workspace_id if version else None).values_list('source_work_id','target_work_id'))
-        for w in works:
-            from .estimate_similarity import ranked_replacements
-            w.replacement_options=ranked_replacements(w,[r for r in replacements if aliases.get(r.pk)!=w.pk])
-            w.replacements=[row['work'] for row in w.replacement_options]
-            w.change_form=WorkChangeForm(initial={'name':w.name})
-            w.item_form=ItemForm(company=request.user.company)
-            for item in w.items.all():item.edit_form=ItemForm(instance=item,company=request.user.company)
-            w.review_decision=task.decisions.get(str(w.pk),{})
-            w.review_valid=w.review_decision.get('approved') and w.review_decision.get('signature')==service.decision_signature(w,obj)
-        works.sort(key=lambda w:(bool(w.review_valid),w.section.name.casefold(),w.name.casefold(),w.pk))
-        start,end=service.review_period(obj)
-        from django.db.models import Sum
-        quantities=dict(service.review_allocations(obj).values('work_id').annotate(total=Sum('quantity')).values_list('work_id','total')) if isinstance(obj,GlobalPlanVersion) else {}
-        for w in works:
-            from apps.works.prices import price_on
-            w.review_price=price_on(w,start)
-            w.review_status='checked' if w.review_valid else 'rejected' if w.review_decision.get('approved') is False else 'pending'
-            w.review_quantity=quantities.get(w.pk,Decimal(0)) if isinstance(obj,GlobalPlanVersion) else None
-        extra={'review_start':start,'review_end':end,'sections':sorted({w.section.name for w in works}),'checked_count':sum(bool(w.review_valid) for w in works),'total_count':len(works),'pending_count':sum(not bool(w.review_valid) for w in works)}
-        active_ids={w.pk for w in works};pairs={}
-        for w in works:
-            for option in w.replacement_options:
-                if option['score']<64:continue
-                candidate=option['work'];key=tuple(sorted((w.pk,candidate.pk)))
-                if key not in pairs:pairs[key]={'first':w,'second':candidate,'score':option['score'],'catalog':candidate.pk not in active_ids}
-        extra['similar_works']=sorted(pairs.values(),key=lambda row:(-row['score'],row['first'].pk,row['second'].pk))[:20]
+
+    def show(self,request,task):
+        obj=service.target(task);works,start,end=review_rows(task,obj)
         from .estimate_review_tree import hierarchy
-        extra['review_tree']=hierarchy(works,work_id)
-        return render(request,'planning/estimate_review_detail.html',{**extra,'task':task,'works':works,'can_review':(role_code(request.user)=='ADMIN' or role_code(request.user)=='ESTIMATOR' and task.assigned_to_id==request.user.pk) and task.status=='OPEN' and obj.status in {'DRAFT','REJECTED','SUBMITTED'},'change_form':change_form,'item_form':item_form,'editing_work_id':work_id,'events':task.events.select_related('actor').order_by('-pk'),'replacements':ProjectWork.objects.filter(company=request.user.company,section__construction_object_id=(obj.construction_object_id))})
+        editable=can_review(request.user,task,obj)
+        form=PriceBatchForm(initial={'effective_from':start,'snapshot':service.price_edit_token(request.user,task) if editable else ''})
+        return render(request,'planning/estimate_review_detail.html',{
+            'task':task,'works':works,'review_tree':hierarchy(works),'review_object':obj.construction_object,
+            'review_start':start,'review_end':end,'sections':sorted({work.section.name for work in works}),
+            'checked_count':sum(bool(work.review_valid) for work in works),'total_count':len(works),
+            'pending_count':sum(not bool(work.review_valid) for work in works),'can_review':editable,
+            'price_batch_form':form,'events':task.events.select_related('actor').order_by('-pk')})
+
     def post(self,request,pk):
         task=get_object_or_404(tasks(request.user),pk=pk);action=request.POST.get('action');work_id=request.POST.get('work_id')
+        ajax=request.headers.get('X-Requested-With')=='XMLHttpRequest'
+        if action not in {'save_prices','bulk_approve','approve','reject','work_approve','work_reject','change'}:
+            raise PermissionDenied('В проверке сметчика можно изменять и подтверждать только цены.')
+        if request.POST.get('name') or request.POST.get('item_id') or request.POST.get('recommended_work'):
+            raise PermissionDenied('Название, состав и замены работ недоступны в проверке цен.')
         try:
-            if action in {'composite_setup','composite_confirm'}:
-                from apps.works.merge_views import MergeForm
-                from apps.works.merge_service import source_works
-                service.lock_task(request.user,task)
-                works=source_works(request.user,request.POST.getlist('selected'))
-                if not {w.pk for w in works}<=service.work_ids(service.target(task)):
-                    from django.core.exceptions import PermissionDenied
-                    raise PermissionDenied
-                form=MergeForm(request.POST if action=='composite_confirm' else None,company=request.user.company,works=works,initial={'name':(works[0].name+' — составная')[:255],'section':works[0].section_id,'unit':'шт','allow_fractional':True})
-                if action=='composite_confirm' and form.is_valid():
-                    service.merge_composite(request.user,task,[w.pk for w in works],form.cleaned_data)
-                    messages.success(request,'Комплекс работ создана в проверяемом периоде. Проверьте ее название, цену и работы в составе комплекса.')
-                    return redirect('planning:estimate_review_detail',pk=task.pk)
-                return render(request,'planning/estimate_review_merge.html',{'task':task,'form':form,'sources':works,'norm_rows':form.norm_rows})
-            elif action=='bulk_merge':service.merge_duplicates(request.user,task,request.POST.getlist('selected'),request.POST.get('replacement'))
-            elif action=='bulk_approve':service.review_selected(request.user,task,request.POST.getlist('selected'))
-            elif action in {'approve','reject'}:service.finish(request.user,task,action=='approve',request.POST.get('comment',''))
-            elif action=='work_approve':service.review_work(request.user,task,work_id,True,request.POST.get('comment',''))
+            if action=='save_prices':
+                form=PriceBatchForm(request.POST)
+                if not form.is_valid():return JsonResponse({'ok':False,'message':'Заполните дату и основание для изменённых цен.','errors':form.errors.get_json_data()},status=400)
+                try:changes=json.loads(request.POST.get('changes','[]'))
+                except (ValueError,TypeError):raise ValidationError('Не удалось прочитать изменённые цены.')
+                count=service.change_prices(request.user,task,changes,**form.cleaned_data)
+                message=f'Цены сохранены: {count}.'
+            elif action=='bulk_approve':
+                count=service.review_selected(request.user,task,request.POST.getlist('selected'));message=f'Цены подтверждены: {count}.'
+            elif action in {'approve','reject'}:
+                service.finish(request.user,task,action=='approve',request.POST.get('comment',''));message='Проверка цен завершена.' if action=='approve' else 'Проверка возвращена на доработку.'
+            elif action=='work_approve':
+                service.review_work(request.user,task,work_id,True,request.POST.get('comment',''));message='Цена подтверждена.'
             elif action=='work_reject':
                 from .task_services import create_remark
                 planner=task.created_by
-                if not planner or role_code(planner) not in {'PLANNER','ADMIN'}:raise ValidationError('Назначьте замечание планировщику через кнопку создания задания.')
-                comment=service.replacement_comment(request.user,task,work_id,request.POST.get('recommended_work'),request.POST.get('comment',''))
-                create_remark(request.user,task,planner,'Исправить замечание по работе',comment,work_id=work_id)
-
-            elif action=='replace':service.replace_work(request.user,task,work_id,request.POST.get('replacement'))
-            elif action=='change':
+                if not planner or role_code(planner) not in {'PLANNER','ADMIN'}:raise ValidationError('Назначьте замечание планировщику через создание задания.')
+                create_remark(request.user,task,planner,'Уточнить цену работы',request.POST.get('comment',''),work_id=work_id);message='Замечание по цене направлено планировщику.'
+            else:
                 form=WorkChangeForm(request.POST)
-                if not form.is_valid():return self.show(request,task,change_form=form,work_id=int(work_id))
-                service.change(request.user,task,work_id,**form.cleaned_data)
-            elif action=='item':
-                from apps.works.models import ProjectWorkItem
-                instance=get_object_or_404(ProjectWorkItem,pk=request.POST['item_id'],project_work_id=work_id,company=request.user.company) if request.POST.get('item_id') else ProjectWorkItem(company=request.user.company,project_work_id=work_id)
-                form=ItemForm(request.POST,instance=instance,company=request.user.company)
-                if not form.is_valid():return self.show(request,task,item_form=form,work_id=int(work_id))
-                service.change(request.user,task,work_id,item_data={'id':instance.pk,**form.cleaned_data})
-            else:raise ValidationError('Неизвестное действие.')
-            messages.success(request,'Изменения сохранены.')
-        except ValidationError as e:messages.error(request,'; '.join(e.messages))
+                if not form.is_valid():return JsonResponse({'ok':False,'message':'Проверьте цену, дату и основание.','errors':form.errors.get_json_data()},status=400)
+                service.change(request.user,task,work_id,**form.cleaned_data);message='Цена сохранена.'
+        except ValidationError as exc:
+            if ajax or action=='save_prices':
+                errors={key:[{'message':str(text)} for text in value] for key,value in exc.message_dict.items()} if hasattr(exc,'message_dict') else {}
+                return JsonResponse({'ok':False,'message':'; '.join(exc.messages),'errors':errors},status=400)
+            messages.error(request,'; '.join(exc.messages))
+        else:
+            if ajax or action=='save_prices':return JsonResponse({'ok':True,'message':message,'review':live_state(request.user,task)})
+            messages.success(request,message)
         return redirect('planning:estimate_review_detail',pk=task.pk)

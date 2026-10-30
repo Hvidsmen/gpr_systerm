@@ -107,8 +107,10 @@ def estimate_task(estimate,*,restart_closed=False):
     active=estimate.work_tasks.filter(kind='ESTIMATE',status__in=ACTIVE).order_by('-pk').first()
     previous=estimate.work_tasks.filter(kind='ESTIMATE').order_by('-pk').first()
     key=active.key if active else previous.key if previous and estimate.status!='OPEN' else f'estimate:{estimate.pk}:phase:{obj.approval_round if estimate.version_id else obj.revision}:{obj.status}'
-    defaults=dict(kind='ESTIMATE',title='Проверить цены, названия и состав работ',assigned_to=estimate.assigned_to,created_by=estimate.created_by,version_id=estimate.version_id,schedule_id=estimate.schedule_id,estimate=estimate,construction_object_id=object_id,due_date=timezone.localdate()+timedelta(days=1))
+    defaults=dict(kind='ESTIMATE',title='Проверить цены работ',assigned_to=estimate.assigned_to,created_by=estimate.created_by,version_id=estimate.version_id,schedule_id=estimate.schedule_id,estimate=estimate,construction_object_id=object_id,due_date=timezone.localdate()+timedelta(days=1))
     task=ensure(estimate.company,key,**defaults)
+    if task.status in ACTIVE and task.title!=defaults['title']:
+        task.title=defaults['title'];task.save(update_fields=['title'])
     if task.status=='CLOSED_ADMIN':
         if not restart_closed:return task
         task=ensure(estimate.company,f'{key}:retry:{uuid4()}',**defaults)

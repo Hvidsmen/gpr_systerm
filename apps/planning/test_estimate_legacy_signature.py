@@ -11,7 +11,10 @@ class LegacyEstimatorSignatureTests(TestCase):
 
     def submitted_before_scoping_update(self):
         self.prepare()
-        self.version=GlobalPlanService.transition(self.version,self.planner,'submit')
+        service.review_selected(self.estimator,self.task,service.work_ids(self.version))
+        service.finish(self.estimator,self.task,True)
+        self.version=GlobalPlanService.transition(self.version,self.manager,'submit')
+        self.task=service.assign(self.planner,self.version,self.estimator)
         review=self.version.review_rounds.get()
         old_signature=service.signature(self.version,legacy=True)
         self.assertNotEqual(old_signature,service.signature(self.version))

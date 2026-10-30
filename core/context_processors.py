@@ -11,12 +11,12 @@ def planning_tasks(request):
         result['catalogue_review_access'] = True
         result['catalogue_review_count'] = queue_for(user).filter(status='PENDING').count()
     if role in CATALOG_MANAGER_ROLES:
-        from apps.planning.task_services import visible
-        result.update(task_inbox_access=True,task_inbox_count=visible(user).filter(status__in=['OPEN','IN_REVIEW']).count())
+        from apps.planning.task_services import visible,filter_scope
+        result.update(task_inbox_access=True,task_inbox_count=filter_scope(visible(user),user,'incoming').filter(status__in=['OPEN','IN_REVIEW']).count())
     if role in ROLES - CATALOG_MANAGER_ROLES:
-        from apps.planning.task_services import generate_daily,visible
+        from apps.planning.task_services import generate_daily,visible,filter_scope
         generate_daily(user)
-        result.update(task_inbox_access=True,task_inbox_count=visible(user).filter(status__in=['OPEN','IN_REVIEW']).count())
+        result.update(task_inbox_access=True,task_inbox_count=filter_scope(visible(user),user,'incoming').filter(status__in=['OPEN','IN_REVIEW']).count())
     if role in {'ADMIN','PLANNER','ESTIMATOR'}:
         from apps.planning.models import EstimateReviewTask
         reviews=EstimateReviewTask.objects.filter(company_id=user.company_id,status='OPEN')

@@ -96,3 +96,30 @@ def change_price(user, work_id, price, effective_from, reason="", corrects=None,
     entry.save()
     ProjectWork.objects.filter(pk=work.pk).update(unit_price=price_on(work))
     return entry
+
+
+def reprice_plan_rows(spec, rows, *, start=None, end=None):
+    """Value only mutable plan rows at their dated rate, rounded per item/rate.
+
+    Group rounding avoids multiplying a cent error by the number of days.
+    Captured composition is used even when the live catalogue has changed.
+    """
+    from collections import defaultdict
+    from decimal import ROUND_HALF_UP
+    from apps.planning.workspace_services import allocate
+    items={str(item['id']):item for item in spec.get('items',[])}
+    groups=defaultdict(list)
+    for row in rows:
+        day=date.fromisoformat(row['date'])
+        if row.get('origin','PLAN')!='PLAN' or (start and day<start) or (end and day>end):continue
+        rate=rate_on(spec.get('revenue_prices',[]),day,spec.get('unit_price',0))
+        groups[(str(row.get('item_id')),rate)].append(row)
+    for (item_id,rate),selected in groups.items():
+        item=items.get(item_id)
+        norm=Decimal(str(item['norm'])) if item else Decimal(1)
+        weight=Decimal(str(item['weight']))/100 if item else Decimal(1)
+        if norm<=0:raise ValidationError('Для расчёта стоимости нужен положительный норматив.')
+        quantities=[Decimal(str(row['quantity'])) for row in selected]
+        total=(sum(quantities,Decimal(0))/norm*weight*rate).quantize(Decimal('.01'),rounding=ROUND_HALF_UP)
+        for row,value in zip(selected,allocate(total,quantities,Decimal('.01'))):row['value']=str(value)
+    return rows

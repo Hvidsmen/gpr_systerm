@@ -83,16 +83,16 @@ class LegacyStructureTests(TestCase):
             self.client.force_login(user)
             for name,args in [('work_list',[]),('work_detail',[self.simple.pk]),('work_detail',[self.package.pk])]:
                 response=self.client.get(reverse('works:'+name,args=args));self.assertEqual(response.status_code,200)
-                (self.assertContains if visible else self.assertNotContains)(response,'data-legacy-structure')
+                (self.assertContains if visible and name!='work_list' else self.assertNotContains)(response,'data-legacy-structure')
             if user!=self.observer:
                 for name,args in [('work_update',[self.simple.pk]),('work_item_update',[self.item.pk])]:
                     response=self.client.get(reverse('works:'+name,args=args));self.assertEqual(response.status_code,200)
                     self.assertEqual('is_legacy_structure' in response.context['form'].fields,visible)
             response=self.client.get(reverse('works:work_list'),{'legacy_only':'on'})
             self.assertEqual('legacy_only' in response.context['filter_form'].fields,visible)
-            self.assertEqual(set(w.pk for w in response.context['works']),{self.simple.pk,self.package.pk})
+            self.assertEqual(set(w.pk for w in response.context['works']),{self.simple.pk,self.package.pk} if visible else {self.package.pk})
 
-    def test_admin_filter_finds_marked_components_without_hiding_default_catalogue(self):
+    def test_admin_filter_selects_only_old_components_default_selects_current(self):
         ProjectWorkItem.objects.filter(pk=self.item.pk).update(is_legacy_structure=True)
         self.client.force_login(self.admin)
         response=self.client.get(reverse('works:work_list'),{'legacy_only':'on'})

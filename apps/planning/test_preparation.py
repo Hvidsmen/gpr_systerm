@@ -145,6 +145,17 @@ class PreparationTests(TestCase):
         self.assertTrue(self.version.work_allocations.exists())
         self.assertFalse(self.version.resource_allocations.exists())
 
+    def test_resource_task_and_preparation_bookmark_open_actual_smg_plan(self):
+        from .task_views import link
+        schedule=create_smg(self.planner,self.obj,JAN)
+        self.handoff(schedule)
+        task=WorkTask.objects.get(schedule=schedule,key__startswith='prepare-resources:')
+        target=reverse('planning:daily_schedule_detail',args=[schedule.pk])+'#smg-matrix'
+        self.assertEqual(link(task),target)
+        self.client.force_login(self.manager)
+        self.assertRedirects(self.client.get(reverse('planning:preparation_smg',args=[schedule.pk])),target,fetch_redirect_response=False)
+        self.assertEqual(self.client.get(reverse('planning:preparation_smg',args=[schedule.pk])+'?legacy=1').status_code,200)
+
     def test_smg_interface_allows_only_each_actors_own_section(self):
         schedule=create_smg(self.planner,self.obj,JAN)
         work=add_entry(self.planner,schedule,{'kind':'work','work':self.simple})

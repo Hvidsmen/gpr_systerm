@@ -93,6 +93,8 @@ def month_matrix(version,month,work_forms,resource_forms):
     def measure(label,value,field='',item=None,digits=6,norm=''):
         return {'label':label,'after':value,'before':ZERO,'delta':ZERO,'field':field,'item_id_value':item or '',
             'step':str(Decimal(1).scaleb(-digits)),'cells':[],'month_input':bool(field),'norm':norm}
+    from .plan_finance import gpr_finances,total
+    finance=gpr_finances(version,[form.instance for form in work_forms if form.instance.pk])
     for form in work_forms:
         row=form.instance
         if not row.work_id:continue
@@ -119,6 +121,7 @@ def month_matrix(version,month,work_forms,resource_forms):
                 value=values.get(str(item.pk),'0') if values else decimal(quantity)*item.quantity_per_unit
                 entry.comparison.append(measure(item.name+' · '+item.unit,value,'quantity',item.pk,norm=item.quantity_per_unit))
         else:entry.comparison.append(measure('Объём · '+work.unit,quantity,'quantity',digits=3))
+        entry.finance=finance.get(row.pk)
         locate_work(entry,work)
         group=work.complex_object.name if work.complex_object_id else 'Самостоятельные работы'
         grouped['work'][group].append(entry)
@@ -161,7 +164,7 @@ def month_matrix(version,month,work_forms,resource_forms):
 
     attach_resource_totals(sections,version.company)
     attach_work_hierarchy(sections)
-    return {'sections':sections,'days':[]}
+    return {'sections':sections,'days':[],'finance_summary':total(finance.values())}
 
 
 @transaction.atomic

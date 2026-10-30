@@ -162,15 +162,8 @@ def value_rows(entry,values):
         if entry.kind=='labor':row['planned_workers']=row['planned_count']
         rows.append(row)
     if entry.kind=='work':
-        for item in {r['item_id'] for r in rows}:
-            selected=[r for r in rows if r['item_id']==item];old=[r for r in entry.original if r.get('item_id')==item]
-            oldq=sum((Decimal(str(r['quantity'])) for r in old),ZERO);newq=sum((Decimal(r['quantity']) for r in selected),ZERO)
-            oldvalue=sum((Decimal(str(r.get('value') or 0)) for r in old),ZERO)
-            if oldq:amount=oldvalue*newq/oldq
-            else:
-                spec=entry.metadata;i=next((i for i in spec.get('items',[]) if i['id']==item),None)
-                amount=newq*Decimal(str(spec.get('unit_price',0)))*(Decimal(str(i['weight']))/100/Decimal(str(i['norm'])) if i else 1)
-            for row,value in zip(selected,allocate(amount.quantize(Decimal('.01'),rounding=ROUND_HALF_UP),[Decimal(r['quantity']) for r in selected],Decimal('.01'))):row['value']=str(value)
+        from apps.works.prices import reprice_plan_rows
+        reprice_plan_rows(entry.metadata,rows,start=entry.schedule.locked_before)
     return rows
 
 

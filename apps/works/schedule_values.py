@@ -23,49 +23,50 @@ def amount(value, *, opening=False):
         raise ValidationError('Нужен неотрицательный объём: до 3 дробных знаков для ВНО, до 6 для плана. Пустая ячейка не считается нулём.')
 
 
-def period(sheet, header):
+def period(sheet, header, offset=0):
     for r in range(header - 1, max(0, header - 5), -1):
-        value = sheet.cell(r, 11).value
+        value = sheet.cell(r, 11+offset).value
         if isinstance(value, (date, datetime)):
             return value.replace(day=1).date().isoformat() if isinstance(value, datetime) else value.replace(day=1).isoformat()
     return None
 
 
-def read_measure(sheet, n, header, metric, norm):
-    month = period(sheet, header)
+def read_measure(sheet, n, header, metric, norm, *, offset=0):
+    month = period(sheet, header, offset)
     fact_row = n + 1
-    if str(sheet.cell(fact_row, 10).value or '').strip().casefold() != 'факт':
+    if str(sheet.cell(fact_row, 10+offset).value or '').strip().casefold() != 'факт':
         raise ValidationError(f'{sheet.title}, строка {n}: после «План» ожидается связанная строка «Факт».')
-    for col in (1, 2):
+    for col in (1+offset, 2+offset):
         top = ' '.join(str(sheet.cell(n, col).value or '').split()).casefold()
         bottom = ' '.join(str(sheet.cell(fact_row, col).value or '').split()).casefold()
         if bottom and bottom != top:
             raise ValidationError(f'{sheet.title}, строка {fact_row}: участок или комплекс не совпадает со строкой «План».')
     target = n if metric == 'plan' else fact_row
-    cell = sheet.cell(target, 8)
+    cell = sheet.cell(target, 8+offset)
     value = cell.value
     daily_columns = []
-    for col in range(11, sheet.max_column + 1):
+    for col in range(11+offset, sheet.max_column + 1):
         if sheet.cell(header, col).value != len(daily_columns) + 1:
             break
         daily_columns.append(col)
     filled = sum(sheet.cell(fact_row, col).value is not None for col in daily_columns)
+    norm_column=get_column_letter(7+offset);value_column=get_column_letter(8+offset);day_column=get_column_letter(11+offset)
     if cell.data_type == 'f':
         expression = re.sub(r'\s+', '', value).upper().replace('$', '')
-        if metric == 'plan' and expression == f'=G{n}':
+        if metric == 'plan' and expression == f'={norm_column}{n}':
             value = norm
         elif metric == 'opening':
             prefix = r'([+]?(?:\d+(?:\.\d*)?|\.\d+))'
-            match = re.fullmatch(r'=' + prefix + r'\+SUM\(K' + str(target) + r':([A-Z]+)' + str(target) + r'\)', expression)
+            match = re.fullmatch(r'=' + prefix + r'\+SUM\(' + day_column + str(target) + r':([A-Z]+)' + str(target) + r'\)', expression)
             if not match or not daily_columns or match.group(2) != get_column_letter(daily_columns[-1]):
-                raise ValidationError(f'{sheet.title}, H{target}: ожидается начальный факт числом либо формула «число + SUM(дни этой строки)».')
+                raise ValidationError(f'{sheet.title}, {value_column}{target}: ожидается начальный факт числом либо формула «число + SUM(дни этой строки)».')
             value = match.group(1)
         else:
-            raise ValidationError(f'{sheet.title}, H{target}: для плана разрешена ссылка «=G{n}» или число. Сохраните иной расчёт значением.')
+            raise ValidationError(f'{sheet.title}, {value_column}{target}: для плана разрешена ссылка «={norm_column}{n}» или число. Сохраните иной расчёт значением.')
     elif metric == 'opening' and filled:
-        raise ValidationError(f'{sheet.title}, H{target}: есть дневной факт и числовой итог. Нельзя определить входящий остаток без задвоения; укажите его формулой «начальный факт + SUM(дни)».')
+        raise ValidationError(f'{sheet.title}, {value_column}{target}: есть дневной факт и числовой итог. Нельзя определить входящий остаток без задвоения; укажите его формулой «начальный факт + SUM(дни)».')
     try:
         volume = amount(value, opening=metric == 'opening')
     except ValidationError as exc:
-        raise ValidationError(f'{sheet.title}, H{target}: ' + '; '.join(exc.messages))
-    return {'volume': volume, 'value_source': f'{sheet.title}:H{target}', 'file_month': month, 'daily_values_ignored': filled if metric == 'opening' else 0}
+        raise ValidationError(f'{sheet.title}, {value_column}{target}: ' + '; '.join(exc.messages))
+    return {'volume': volume, 'value_source': f'{sheet.title}:{value_column}{target}', 'file_month': month, 'daily_values_ignored': filled if metric == 'opening' else 0}

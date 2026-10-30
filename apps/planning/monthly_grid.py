@@ -47,6 +47,8 @@ def matrix(user,version):
     from .resource_group_totals import equipment_group
     months=editable_months(version);can_work,can_resource=permissions(user,version)
     works,resources=allocations(version);buckets={};sections=[]
+    from .plan_finance import gpr_finances,total
+    finance=gpr_finances(version,works)
     for row in works+resources:
         key=identity(row);bucket=buckets.setdefault(key,{'source':row,'months':{}});bucket['months'][row.month]=row
     groups=defaultdict(lambda:defaultdict(list))
@@ -74,6 +76,7 @@ def matrix(user,version):
             located=SimpleNamespace(metadata={'id':work.pk,'kind':work.kind},label=label)
             locate_work(located,work)
             entry.update(vars(located))
+            entry['finance']=total(finance[r.pk] for r in cells_by_month.values())
         for field,caption,item in fields:
             measure={'field':field,'caption':caption,'item_id':item.pk if item else '', 'norm':item.quantity_per_unit if item else '', 'cells':[],'step':'0.000001' if item else '1' if field=='count' else '0.001' if iswork else '0.01'}
             for month in months:
@@ -121,7 +124,7 @@ def matrix(user,version):
                 group['unit']='чел.' if section['kind']=='labor' else 'ед.'
                 group['totals']=[{'month':month,'value':sum((Decimal(str(measure['cells'][index]['value'] or 0)) for entry in group['entries'] for measure in entry['measures'] if measure.get('field')=='count'),ZERO)} for index,month in enumerate(months)]
         section['count']=sum(len(group['entries']) for group in section['groups'])
-    return {'months':months,'sections':sections,'can_work':can_work,'can_resource':can_resource}
+    return {'months':months,'sections':sections,'can_work':can_work,'can_resource':can_resource,'finance_summary':total(finance.values())}
 
 
 def form_data(row):

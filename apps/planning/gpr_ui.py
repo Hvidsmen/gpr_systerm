@@ -33,7 +33,7 @@ def path_context(version, context, user=None):
     elif role=='MANAGER' and context.get('can_confirm_resources') and resources and prices:instruction='Ресурсы подтверждены, цены проверены. Отправьте план на согласование.'
     elif role=='MANAGER' and context.get('can_confirm_resources') and resources:instruction='Ресурсы подтверждены. Дождитесь проверки цен сметчиком, затем отправьте план на согласование.'
     elif role=='MANAGER' and context.get('can_confirm_resources'):instruction='Проверьте работы и предварительные ресурсы планировщика, дополните ресурсы и подтвердите их. После проверки цен сметчиком отправьте план на согласование.'
-    elif role=='ESTIMATOR':instruction='Проверьте названия, состав работ и цены в назначенном задании сметчика. Завершите проверку; ресурсы подтверждает руководитель.'
+    elif role=='ESTIMATOR':instruction='Проверьте цены работ в назначенном задании сметчика. Названия, состав и объёмы доступны для просмотра. Завершите проверку; ресурсы подтверждает руководитель.'
     elif role=='ADMIN':instruction='Составьте работы и предварительные ресурсы, передайте план руководителю и сметчику. Для запуска согласования нужны подтверждённые руководителем ресурсы и проверенные сметчиком цены.'
     else:instruction='Просмотрите работы и ресурсы. Дождитесь назначения задания или передачи плана на ваш этап согласования.'
     return {'gpr_instruction':instruction,'gpr_path':steps,'gpr_returned':version.status=='REJECTED' and bool(version.approval_round)}

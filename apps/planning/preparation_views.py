@@ -40,6 +40,8 @@ class PreparationView(View):
         can_resources=owner.status in {'DRAFT','REJECTED'} and (role_code(request.user)=='ADMIN' or role_code(request.user)=='MANAGER' and record and record.manager_id==request.user.pk)
         if not bound and self.kind=='gpr' and can_resources and record and request.GET.get('legacy')!='1' and not (can_handoff and request.GET.get('handoff')=='1'):
             return redirect(reverse('planning:workspace_edit' if owner.workspace_id else 'planning:global_detail',args=[owner.pk])+'#work-resources')
+        if not bound and self.kind=='smg' and can_resources and record and request.GET.get('legacy')!='1' and not (can_handoff and request.GET.get('handoff')=='1'):
+            return redirect(reverse('planning:daily_schedule_detail',args=[owner.pk])+'#smg-matrix')
         latest_review=owner.estimate_reviews.order_by('-pk').first()
         form=HandoffForm(request.POST if action=='handoff' else None,company=request.user.company,initial={'manager':record.manager_id if record else None,'estimator':latest_review.assigned_to_id if latest_review else None})
         resource_forms=None;months=[];month=None

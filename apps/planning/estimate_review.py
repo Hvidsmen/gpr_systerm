@@ -4,7 +4,9 @@ import json
 from datetime import date
 from calendar import monthrange
 from decimal import Decimal
-from django.core.exceptions import PermissionDenied, ValidationError
+from django.core.exceptions import ValidationError, PermissionDenied
+from django.core import signing
+from decimal import InvalidOperation
 from django.db import transaction
 from django.utils import timezone
 from core.permissions import require_roles, PLAN_ROLES, role_code
@@ -79,7 +81,7 @@ def signature(obj,*,legacy=False,works_only=False):
 def require_approved(obj):
     task=obj.estimate_reviews.order_by('-pk').first()
     if not check_valid(obj,task):
-        raise ValidationError('Сначала передайте план сметчику и получите подтверждение цен, названий и состава работ. После изменений нужна повторная проверка.')
+        raise ValidationError('Сначала передайте план сметчику и получите подтверждение цен работ. После изменений нужна повторная проверка.')
     return task
 
 
@@ -165,6 +167,9 @@ def decision_signature(work,obj=None):
 
 @transaction.atomic
 def change(user,task,work_id,*,name=None,price=None,effective_from=None,reason='',item_data=None):
+    if role_code(user)=='ESTIMATOR':
+        if name is not None or item_data is not None:raise PermissionDenied('Сметчик изменяет только цену. Название и состав доступны только для просмотра.')
+        if price is None:raise ValidationError('Укажите новую цену.')
     task=lock_task(user,task,editing=True);work=scoped_work(task,work_id)
     changes={}
     if name is not None and name.strip()!=work.name:
@@ -190,7 +195,7 @@ def change(user,task,work_id,*,name=None,price=None,effective_from=None,reason='
 @transaction.atomic
 def review_work(user,task,work_id,approved,comment=''):
     task=lock_task(user,task);work=scoped_work(task,work_id)
-    if not approved and not comment.strip():raise ValidationError('Укажите причину отклонения и какую работу из справочника использовать.')
+    if not approved and not comment.strip():raise ValidationError('Укажите, что необходимо уточнить в цене работы.')
     if not approved:return_to_draft(task,user,comment.strip())
     task.decisions[str(work.pk)]={'approved':approved,'comment':comment.strip(),'signature':decision_signature(work,target(task))}
     task.save(update_fields=['decisions','updated_at']);event(task,user,'WORK_APPROVE' if approved else 'WORK_REJECT',{'work':work.pk,'comment':comment})
@@ -220,6 +225,7 @@ def replacement_comment(user,task,work_id,replacement_id,comment):
 
 @transaction.atomic
 def replace_work(user,task,work_id,replacement_id):
+    require_roles(user,{'ADMIN'})
     """Merge duplicates in this draft only; facts and approved versions stay intact."""
     task=lock_task(user,task,editing=True);work=scoped_work(task,work_id);obj=target(task)
     from apps.works.planning_access import planning_works
@@ -282,6 +288,7 @@ def review_selected(user,task,selected):
 
 @transaction.atomic
 def merge_duplicates(user,task,selected,replacement):
+    require_roles(user,{'ADMIN'})
     task=lock_task(user,task)
     try:ids={int(value) for value in selected};destination=int(replacement)
     except (ValueError,TypeError):raise ValidationError('Выберите работы и итоговую работу.')
@@ -293,6 +300,7 @@ def merge_duplicates(user,task,selected,replacement):
 
 @transaction.atomic
 def merge_composite(user,task,selected,values):
+    require_roles(user,{'ADMIN'})
     from collections import defaultdict
     from apps.works.merge_service import source_works
     from apps.works.prices import history_prices,rate_on
@@ -351,23 +359,27 @@ def merge_volume_adjustments(version):
 
 
 def reprice_schedule(schedule):
-    from apps.works.prices import history_prices,rate_on
+    from apps.works.prices import history_prices,rate_on,reprice_plan_rows
+    from copy import deepcopy
     for entry in schedule.entries.filter(kind='work'):
         work=ProjectWork.objects.get(pk=entry.metadata['id'],company_id=schedule.company_id)
-        prices=history_prices(work)
-        from .workspace_services import specification
-        entry.metadata.update(specification(work))
-        entry.metadata['name']=work.name;entry.metadata['unit_price']=str(work.unit_price)
-        entry.metadata['revenue_prices']=[{'effective_from':p.effective_from.isoformat(),'price':str(p.price),'id':p.pk} for p in prices]
-        if work.kind=='SIMPLE':
-            for row in entry.rows:row['value']=str((Decimal(row['quantity'])*rate_on(prices,date.fromisoformat(row['date']),work.unit_price)).quantize(Decimal('.01')))
-        entry.label=work.name;entry.save(update_fields=['metadata','rows','label'])
+        prices=[{'effective_from':p.effective_from.isoformat(),'price':str(p.price),'id':p.pk} for p in history_prices(work)]
+        cutoff=schedule.locked_before
+        if cutoff:
+            old=deepcopy(entry.metadata.get('revenue_prices',[]))
+            # Retain every historical rate and install an explicit boundary for
+            # the mutable days. Closed rows and their prices stay captured.
+            prices=[p for p in old if date.fromisoformat(p['effective_from'])<cutoff]+[{'effective_from':cutoff.isoformat(),'price':str(rate_on(prices,cutoff,work.unit_price))}]+[p for p in prices if date.fromisoformat(p['effective_from'])>cutoff]
+        else:entry.metadata['unit_price']=str(work.unit_price)
+        entry.metadata['revenue_prices']=prices
+        reprice_plan_rows(entry.metadata,entry.rows,start=cutoff)
+        entry.save(update_fields=['metadata','rows'])
 
 
 @transaction.atomic
 def finish(user,task,approve,comment=''):
     task=lock_task(user,task);obj=target(task)
-    works=ProjectWork.objects.filter(company=user.company,pk__in=work_ids(obj))
+    works=list(ProjectWork.objects.select_for_update().filter(company=user.company,pk__in=work_ids(obj)).order_by('pk'))
     if approve:
         from .task_services import require_no_remarks
         require_no_remarks(task)
@@ -377,18 +389,18 @@ def finish(user,task,approve,comment=''):
             if review.input_fingerprint and review.input_fingerprint!=signature(obj) and review.input_fingerprint!=signature(obj,legacy=True):
                 raise ValidationError('Справочник или план изменился после отправки. Верните план на доработку и отправьте обновленный расчет на повторное согласование.')
         for work in works:
-            if work.kind=='COMPOSITE' and work.unit_price>0 and sum(work.items.values_list('weight',flat=True),Decimal(0))!=100:
-                raise ValidationError(f'Для расчёта оценочной стоимости сумма весов работ в составе «{work.name}» должна быть 100%.')
             d=task.decisions.get(str(work.pk),{})
-            if not d.get('approved') or d.get('signature')!=decision_signature(work,obj):raise ValidationError(f'Проверьте название, цену и подработы: {work.name}.')
-        if isinstance(obj,DailySchedule):reprice_schedule(obj)
+            if not d.get('approved') or d.get('signature')!=decision_signature(work,obj):raise ValidationError(f'Подтвердите цену работы: {work.name}.')
+        if isinstance(obj,DailySchedule):
+            reprice_schedule(obj)
+            for work in works:task.decisions[str(work.pk)]['signature']=decision_signature(work,obj)
         task.status='APPROVED';task.fingerprint='works-v1:'+signature(obj,works_only=True);task.approved_at=timezone.now()
         if not isinstance(obj,DailySchedule) and obj.status=='SUBMITTED':
             from .approval_workflow import current_review
             from .models import GlobalPlanDecision
             review=current_review(obj)
             if not review.decisions.filter(section='ESTIMATE',action='APPROVE').exists():
-                GlobalPlanDecision.objects.create(company=user.company,review=review,section='ESTIMATE',action='APPROVE',actor=user,actor_name=user.get_full_name() or user.username,actor_role=role_code(user),comment=comment or 'Названия, цены и состав работ проверены.')
+                GlobalPlanDecision.objects.create(company=user.company,review=review,section='ESTIMATE',action='APPROVE',actor=user,actor_name=user.get_full_name() or user.username,actor_role=role_code(user),comment=comment or 'Цены работ проверены.')
     else:
         if not comment.strip():raise ValidationError('Укажите, что необходимо исправить.')
         return_to_draft(task,user,comment.strip())
@@ -403,3 +415,41 @@ def finish(user,task,approve,comment=''):
         sync_version(obj)
         if not approve:create_repair(obj,user,comment)
     return task
+
+
+PRICE_BATCH_SALT='estimator-price-batch-v1'
+
+
+def price_edit_token(user,task):
+    return signing.dumps({'actor':user.pk,'company':user.company_id,'task':task.pk,'state':signature(target(task),works_only=True)},salt=PRICE_BATCH_SALT,compress=True)
+
+
+@transaction.atomic
+def change_prices(user,task,changes,*,effective_from,reason,snapshot):
+    """Validate the entire batch first; any failure rolls back all price changes."""
+    task=lock_task(user,task);obj=target(task)
+    try:token=signing.loads(snapshot,salt=PRICE_BATCH_SALT,max_age=8*3600)
+    except (signing.BadSignature,TypeError):raise ValidationError('Форма устарела. Обновите страницу после сохранения введённых цен у себя.')
+    if (token.get('actor'),token.get('company'),token.get('task'))!=(user.pk,user.company_id,task.pk):raise PermissionDenied('Форма другого пользователя или задания.')
+    if token.get('state')!=signature(obj,works_only=True):raise ValidationError('Работы или цены изменились в другой вкладке. Изменения не сохранены; обновите данные перед повторной отправкой.')
+    if not isinstance(changes,list) or not changes or len(changes)>2000:raise ValidationError('Нет изменённых цен для сохранения либо превышен размер пачки.')
+    if not isinstance(effective_from,date) or not isinstance(reason,str) or not reason.strip() or len(reason)>500:raise ValidationError('Укажите дату действия и основание изменения цен.')
+    values={};errors={}
+    for row in changes:
+        if not isinstance(row,dict) or set(row)!={'work_id','price'} or type(row['work_id']) is not int or row['work_id'] in values:raise ValidationError('Неверный или повторный идентификатор работы.')
+        key=row['work_id']
+        try:
+            amount=Decimal(str(row['price']).replace(',','.'))
+            if not amount.is_finite() or amount<0 or amount>Decimal('9999999999.99') or amount!=amount.quantize(Decimal('.01')):raise ValueError
+            values[key]=amount
+        except (ValueError,InvalidOperation):errors[str(key)]=['Введите неотрицательную цену с точностью до копеек.'];values[key]=None
+    if not set(values)<=work_ids(obj):raise PermissionDenied('Работа не входит в назначенную проверку.')
+    if errors:raise ValidationError(errors)
+    # Lock catalogue rows in deterministic order to serialize concurrent price edits.
+    works={work.pk:work for work in ProjectWork.objects.select_for_update().filter(company=user.company,pk__in=values).order_by('pk')}
+    if set(works)!=set(values):raise PermissionDenied('Работы недоступны в компании.')
+    for key,amount in values.items():
+        try:change(user,task,key,price=amount,effective_from=effective_from,reason=reason.strip())
+        except ValidationError as exc:raise ValidationError({str(key):exc.messages})
+    event(task,user,'PRICES_BATCH',{'work_ids':list(values),'count':len(values),'effective_from':effective_from.isoformat(),'reason':reason.strip()})
+    return len(values)

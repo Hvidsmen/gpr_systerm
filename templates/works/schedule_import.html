@@ -1,17 +1,19 @@
 {% extends 'base.html' %}
 {% block content %}
 <p><a href="{% url 'works:work_list' %}">← Справочник работ</a></p>
-<h1>Загрузка справочника работ из графика</h1>
-<p>Участок → комплексный объект; группа работ → комплексная работа; вид работ → вложенная работа. Раздел РД и пункт РДЦ сохраняются у комплекса. Единица и G «Проектное количество» становятся единицей и нормативом вложенной работы на один комплекс.</p>
-<p class="text-muted">Единицу самого комплекса зададите позже. Факт, остатки, дневной график, цены и цветовые отметки не импортируются. Совпадающие работы пропускаются; отличающиеся нормативы и реквизиты показываются как ошибки без перезаписи справочника.</p>
+<h1>Загрузка структуры работ из Excel</h1>
+<p>Выберите строительный объект. Его справочник и справочники всех субобъектов будут приведены к структуре файла: раздел → комплексный объект → комплексная работа → работа.</p>
+<p class="text-muted">Единицы и нормативы обновляются. Работы, отсутствующие в файле, получают отметку «Старая структура». Работы из файла снова становятся актуальными. Зафиксированные планы и факт сохраняются: при изменении их единиц или нормативов создаётся новая редакция справочника. Цены, плановые объёмы и ВНО этой загрузкой не вводятся.</p>
 {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
 {% if rows %}
-<h2>Предпросмотр: {{ section.construction_object }} / {{ section.name }}</h2>
-<p>Работ: {{ rows|length }}. Новых: {{ new_count }}. Пропущено строк «Факт»: {{ ignored }}.</p>
-<div class="table-responsive"><table class="table"><thead><tr><th>Строка</th><th>Комплексный объект</th><th>Комплексная работа</th><th>Раздел РД</th><th>Пункт в РДЦ</th><th>Работа</th><th>Ед. изм.</th><th>Норматив</th><th>Действие</th></tr></thead><tbody>
-{% for row in rows %}<tr><td>{{ row.source }}</td><td>{{ row.object }}</td><td>{{ row.package }}</td><td>{{ row.rd_section }}</td><td>{{ row.rdc_point }}</td><td>{{ row.work }}</td><td>{{ row.unit }}</td><td>{{ row.quantity }}</td><td>{% if row.existing %}Уже существует{% else %}Добавить{% endif %}</td></tr>{% endfor %}
+<h2>Предпросмотр: {{ object.name }}</h2>
+<p>Объектов: {{ targets|length }}. Добавить работ: {{ new_count }}. Обновить: {{ updated_count }}. Старая структура: {{ archived_count }}. Пропущено строк «Факт»: {{ ignored }}.</p>
+<p><strong>Загрузка применяется к:</strong> {% for target in targets %}{{ target.name }}{% if not forloop.last %}, {% endif %}{% endfor %}.</p>
+<div class="table-responsive"><table class="table"><thead><tr><th>Строка</th><th>Раздел</th><th>Комплексный объект</th><th>Комплексная работа</th><th>Работа</th><th>Ед. изм.</th><th>Норматив</th><th>Действие на выбранном объекте</th></tr></thead><tbody>
+{% for row in rows %}<tr><td>{{ row.source }}</td><td>{{ row.section }}</td><td>{{ row.object }}</td><td>{{ row.package }}<small class="d-block text-muted">{{ row.rd_section }} · {{ row.rdc_point }}</small></td><td>{{ row.work }}</td><td>{{ row.unit }}</td><td>{{ row.quantity }}</td><td>{{ row.action }}</td></tr>{% endfor %}
 </tbody></table></div>
-<form method="post">{% csrf_token %}<input type="hidden" name="action" value="confirm"><input type="hidden" name="token" value="{{ token }}"><button class="btn btn-primary">Загрузить в справочник</button> <a class="btn btn-outline-secondary" href="{% url 'works:schedule_import' %}">Выбрать другой файл</a></form>
+{% if archived_rows %}<details class="mb-3"><summary>Старая структура выбранного объекта: {{ archived_rows|length }}</summary><ul>{% for row in archived_rows %}<li>{{ row.kind }}: {{ row.name }}</li>{% endfor %}</ul></details>{% endif %}
+<form method="post">{% csrf_token %}<input type="hidden" name="action" value="confirm"><input type="hidden" name="token" value="{{ token }}"><button class="btn btn-primary">Применить структуру к {{ targets|length }} объектам</button> <a class="btn btn-outline-secondary" href="{% url 'works:schedule_import' %}">Выбрать другой файл</a></form>
 {% else %}
 <form method="post" enctype="multipart/form-data" class="card p-3">{% csrf_token %}{{ form.as_p }}<button class="btn btn-primary">Проверить файл</button></form>
 {{ form.section_options|json_script:'import-section-options' }}
@@ -22,10 +24,8 @@
     const rows = JSON.parse(document.getElementById('import-section-options').textContent);
     function filterSections() {
         const previous = section.value;
-        section.replaceChildren(new Option(object.value ? 'Выберите раздел' : 'Сначала выберите объект', ''));
-        rows.filter(row => String(row.construction_object_id) === object.value).forEach(row => {
-            section.add(new Option(row.name, String(row.id)));
-        });
+        section.replaceChildren(new Option('Разделы из файла', ''));
+        rows.filter(row => String(row.construction_object_id) === object.value).forEach(row => section.add(new Option(row.name, String(row.id))));
         if (Array.from(section.options).some(option => option.value === previous)) section.value = previous;
         section.dispatchEvent(new Event('change', {bubbles: true}));
     }
