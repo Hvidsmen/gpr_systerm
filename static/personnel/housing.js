@@ -12,7 +12,7 @@
   detail.hidden=!detail.hidden;button.setAttribute('aria-expanded',String(!detail.hidden));
  }));
  const filter=document.querySelector('[data-rotation-filter]');
- filter?.querySelectorAll('input[name=state]').forEach(input=>input.addEventListener('change',()=>filter.requestSubmit()));
+ filter?.querySelector('[name=state]')?.addEventListener('change',()=>filter.requestSubmit());
  if(filter){
   const scrollKey='personnel:rotation-filter-position';
   filter.addEventListener('submit',()=>{
@@ -22,8 +22,12 @@
    try{sessionStorage.setItem(scrollKey,JSON.stringify({url:target.href,top:scrollY,at:Date.now()}));}catch{}
   });
   try{const saved=JSON.parse(sessionStorage.getItem(scrollKey)||'null');sessionStorage.removeItem(scrollKey);if(saved&&saved.url===location.href&&Date.now()-saved.at<60000)requestAnimationFrame(()=>requestAnimationFrame(()=>scrollTo(0,saved.top)));}catch{}
-  const anchor=document.querySelector('[data-rotation-filter-anchor]'),expand=filter.querySelector('[data-rotation-filter-expand]');
-  expand?.addEventListener('click',()=>{const opened=filter.classList.toggle('is-expanded');expand.setAttribute('aria-expanded',String(opened));});
+  const anchor=document.querySelector('[data-rotation-filter-anchor]'),expand=filter.querySelector('[data-rotation-filter-expand]'),disclosure=filter.querySelector('[data-rotation-filter-disclosure]');
+  if(disclosure){
+   try{if(disclosure.dataset.hasErrors!=='1'&&localStorage.getItem(disclosure.dataset.storageKey)==='closed')disclosure.open=false;}catch{}
+   const syncDisclosure=()=>{expand?.setAttribute('aria-expanded',String(disclosure.open));try{localStorage.setItem(disclosure.dataset.storageKey,disclosure.open?'open':'closed');}catch{}};
+   disclosure.addEventListener('toggle',syncDisclosure);syncDisclosure();
+  }
   const offset=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--navbar-height'))||48;
   if(anchor&&'IntersectionObserver' in window)new IntersectionObserver(entries=>{const entry=entries[0];filter.classList.toggle('is-pinned',!entry.isIntersecting&&entry.boundingClientRect.top<offset);},{rootMargin:`-${offset}px 0px 0px 0px`}).observe(anchor);
  }
