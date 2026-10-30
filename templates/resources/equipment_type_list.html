@@ -1,23 +1,22 @@
 {% extends 'base.html' %}
 {% load access static %}
 {% block title %}Справочник техники{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'resources/equipment_catalogue.css' %}?v=20261029-1">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'resources/equipment_catalogue.css' %}?v=20261030-unified-nav">{% endblock %}
 {% block content %}
 <div class="equipment-catalogue" data-equipment-catalogue data-company="{{ request.user.company_id }}" data-filtered="{{ filters_active|yesno:'true,false' }}">
-{% include 'resources/_equipment_nav.html' %}
 <header class="equipment-catalogue-heading">
-  <div><nav aria-label="Навигация" class="small mb-2"><a href="{% url 'dashboard:index' %}">Главная</a> / Справочники / Техника</nav><h2 class="mb-1"><i class="bi bi-truck" aria-hidden="true"></i> Справочник техники</h2><p class="text-muted mb-0">{% if equipment_view == 'planning' %}Техника для планирования → модели. Например: «Экскаватор» → «CAT 320».{% else %}Группа техники → техника для планирования → модели. Например: «Специализированная техника» → «Экскаватор» → «CAT 320».{% endif %}</p></div>
-  <div class="equipment-catalogue-actions">{% if request.user|may:'resources:equipment_group_import' %}<a class="btn btn-outline-primary" href="{% url 'resources:equipment_group_import' %}" title="Обновление классификации существующих машин из экспорта Excel">Обновить группы из Excel</a>{% endif %}{% if request.user|may:'resources:equipment_type_update' %}<a class="btn btn-outline-primary" href="{% url 'resources:catalogue_association_import' 'equipment' %}">Загрузить ассоциации из Excel</a>{% endif %}
+  <div><nav aria-label="Навигация" class="small mb-2"><a href="{% url 'dashboard:index' %}">Главная</a> / Справочники / Техника</nav><h1 class="h3 mb-1"><i class="bi bi-truck" aria-hidden="true"></i> Справочник техники</h1><p class="text-muted mb-0">{% if equipment_view == 'planning' %}Техника для планирования → модели. Например: «Экскаватор» → «CAT 320».{% else %}Группа техники → техника для планирования → модели. Например: «Специализированная техника» → «Экскаватор» → «CAT 320».{% endif %}</p></div>
+  <div class="equipment-catalogue-actions">{% if request.user|may:'resources:equipment_group_import' %}<a class="btn btn-outline-primary" href="{% url 'resources:equipment_group_import' %}" title="Загрузить выгрузку справочника и обновить группы плановых позиций, моделей и машин">Обновить группы из Excel</a>{% endif %}{% if request.user|may:'resources:equipment_type_update' %}<a class="btn btn-outline-primary" href="{% url 'resources:catalogue_association_import' 'equipment' %}">Загрузить ассоциации из Excel</a>{% endif %}
     {% include 'resources/_equipment_add_menu.html' %}
     <details class="equipment-catalogue-menu"><summary class="btn btn-outline-secondary">Импорт и обслуживание</summary><div class="equipment-catalogue-menu-body">
       {% if request.user|may:'resources:equipment_type_import' %}<a href="{% url 'resources:equipment_type_import' %}">Загрузить технику из Excel</a>{% endif %}
-      {% if request.user|may:'resources:equipment_category_list' %}<a href="{% url 'resources:equipment_category_list' %}">Группы техники</a>{% endif %}
       {% if request.user|may:'resources:equipment_type_merge' %}<a href="{% url 'resources:equipment_type_merge' %}">Объединить технику</a>{% endif %}
       {% if request.user|may:'resources:catalogue_purge' %}<a class="text-danger border-top" href="{% url 'resources:catalogue_purge' 'equipment' %}">Удалить всю технику компании…</a>{% endif %}
     </div></details>
   </div>
 </header>
-<div class="equipment-catalogue-overview"><span>Найдено записей: <strong>{{ catalogue_count }}</strong></span><span>Плановых позиций: <strong>{{ equipment_type_count }}</strong></span><span>Моделей: <strong>{{ equipment_model_count }}</strong></span><a class="ms-auto" href="{% url 'resources:equipment_unit_list' %}">Конкретные машины · госномера и инвентарные номера <i class="bi bi-arrow-right" aria-hidden="true"></i></a></div>
+{% include 'resources/_equipment_nav.html' with active_tab='planning' show_views=True %}
+<div class="equipment-catalogue-overview"><span>Найдено записей: <strong>{{ catalogue_count }}</strong></span><span>Плановых позиций: <strong>{{ equipment_type_count }}</strong></span><span>Моделей: <strong>{{ equipment_model_count }}</strong></span></div>
 <form method="get" class="card mb-3" aria-label="Поиск и фильтры техники"><div class="card-body equipment-catalogue-filters">
   <input type="hidden" name="view" value="{{ equipment_view }}">
   {% for field in filter_form %}<div><label class="form-label small mb-1" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}<div class="text-danger small">{{ field.errors }}</div></div>{% endfor %}
@@ -25,7 +24,8 @@
 </div></form>
 {% if equipment_duplicates %}<details class="equipment-catalogue-duplicates mb-3"><summary>Совпадающие названия: {{ equipment_duplicates|length }} групп — проверить</summary><p class="small mt-2 mb-1">Одинаковые названия могут относиться к разным группам техники. Проверьте соответствия в предпросмотре импорта. Объединяйте записи, только если они обозначают один ресурс.</p><ul class="small mb-1">{% for duplicates in equipment_duplicates %}<li>«{{ duplicates.0.name }}» — {{ duplicates|length }} записей.</li>{% endfor %}</ul>{% if request.user|may:'resources:equipment_type_merge' %}<a href="{% url 'resources:equipment_type_merge' %}" class="small">Перейти к объединению</a>{% endif %}</details>{% endif %}
 {% with bulk_route='resources:bulk_delete' bulk_kind='equipment' %}
-<div class="equipment-catalogue-viewbar"><div class="btn-group btn-group-sm" role="group" aria-label="Вид списка"><a class="btn {% if equipment_grouped %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{{ equipment_groups_url }}" {% if equipment_grouped %}aria-current="page"{% endif %}>По группам</a><a class="btn {% if equipment_view == 'table' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{{ equipment_table_url }}" {% if equipment_view == 'table' %}aria-current="page"{% endif %}>Таблица</a><a class="btn {% if equipment_view == 'planning' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{{ equipment_planning_url }}" {% if equipment_view == 'planning' %}aria-current="page"{% endif %}>По технике для планирования</a></div>
+<div class="equipment-list-tools"><strong class="small">Результаты</strong>
+
 {% if equipment_types %}{% if equipment_hierarchical %}<button type="button" class="btn btn-sm btn-outline-secondary" data-equipment-fold="open">Развернуть все</button><button type="button" class="btn btn-sm btn-outline-secondary" data-equipment-fold="close">Свернуть все</button>{% endif %}{% if request.user|may:bulk_route %}<button type="button" class="btn btn-sm btn-outline-secondary ms-auto" data-equipment-select-page>{% if equipment_hierarchical %}Выбрать все найденные{% else %}Выбрать на странице{% endif %}</button>{% endif %}{% endif %}
 </div>
 {% include 'bulk/toolbar.html' with bulk_contextual=True %}

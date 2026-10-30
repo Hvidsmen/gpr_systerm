@@ -2,14 +2,14 @@
 {% load access %}
 {% load i18n %}
 {% load static %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'resources/equipment_catalogue.css' %}?v=20261027-machines"><link rel="stylesheet" href="{% static 'resources/equipment_inline.css' %}">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'resources/equipment_catalogue.css' %}?v=20261030-unified-nav"><link rel="stylesheet" href="{% static 'resources/equipment_inline.css' %}">{% endblock %}
 
 {% block title %}
     {% if equipmenttype %}Редактировать технику{% else %}Добавить технику{% endif %}
 {% endblock %}
 
 {% block content %}
-{% include 'resources/_equipment_nav.html' %}
+{% include 'resources/_equipment_nav.html' with active_tab='planning' %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
         <h2 class="mb-1">

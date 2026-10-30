@@ -1,4 +1,9 @@
-{% load access %}<nav class="equipment-hub-nav" aria-label="Справочники техники">
-{% if request.user|may:'resources:equipment_unit_list' %}<a class="btn btn-sm {% if machines_tab %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{% url 'resources:equipment_unit_list' %}">Машины с номерами</a>{% endif %}
-{% if request.user|may:'resources:equipment_type_list' %}<a class="btn btn-sm {% if not machines_tab and request.resolver_match.url_name != 'equipment_category_list' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{% url 'resources:equipment_type_list' %}">Техника для планирования</a>{% endif %}
-{% if request.user|may:'resources:equipment_category_list' %}<a class="btn btn-sm {% if request.resolver_match.url_name == 'equipment_category_list' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{% url 'resources:equipment_category_list' %}">Группы техники</a>{% endif %}</nav>
+{% load access %}
+<section class="equipment-navigation" data-equipment-navigation aria-label="Разделы справочника техники">
+<nav class="equipment-hub-nav" aria-label="Справочники техники">
+{% if request.user|may:'resources:equipment_unit_list' %}<a class="equipment-hub-tab"{% if active_tab == 'machines' %} aria-current="page"{% endif %} href="{% url 'resources:equipment_unit_list' %}">Машины с номерами</a>{% endif %}
+{% if request.user|may:'resources:equipment_type_list' %}<a class="equipment-hub-tab"{% if active_tab == 'planning' %} aria-current="page"{% endif %} href="{% url 'resources:equipment_type_list' %}">Техника для планирования</a>{% endif %}
+{% if request.user|may:'resources:equipment_category_list' %}<a class="equipment-hub-tab"{% if active_tab == 'groups' %} aria-current="page"{% endif %} href="{% url 'resources:equipment_category_list' %}">Группы техники</a>{% endif %}
+</nav>
+{% if show_views %}<div class="equipment-catalogue-viewbar equipment-display-controls"><span>Представление:</span><nav class="equipment-display-options" aria-label="Вид списка"><a href="{{ equipment_groups_url }}"{% if equipment_grouped %} aria-current="page"{% endif %}>По группам</a><a href="{{ equipment_planning_url }}"{% if equipment_view == 'planning' %} aria-current="page"{% endif %}>По технике для планирования</a><a href="{{ equipment_table_url }}"{% if equipment_view == 'table' %} aria-current="page"{% endif %}>Таблица</a></nav></div>{% endif %}
+</section>

@@ -1,11 +1,10 @@
-{% extends 'base.html' %}{% load access %}
-{% block content %}
-{% include 'resources/_equipment_nav.html' %}
+{% extends 'base.html' %}{% load access static %}{% block title %}Группы техники{% endblock %}{% block extra_css %}<link rel="stylesheet" href="{% static 'resources/equipment_catalogue.css' %}?v=20261030-unified-nav">{% endblock %}
+{% block content %}<header class="equipment-catalogue-heading"><div><h1 class="h3">Справочник техники</h1><p class="text-muted mb-0">Группы техники: названия, порядок отображения и объединение.</p></div></header>{% include 'resources/_equipment_nav.html' with active_tab='groups' %}
 {% include 'catalogue/excel_button.html' %}{% with bulk_route='resources:bulk_delete' bulk_kind='equipment_categories' %}{% include 'bulk/toolbar.html' %}
-<h1>Группы техники</h1>
+
 {% if request.user|may:'resources:equipment_category_create' %}<button class="btn btn-primary mb-3" type="button" data-catalog-open="category">+ Добавить группу техники</button>{% endif %}
 {% include 'resources/_group_order_editor.html' %}
 <ul class="list-group">{% for category in categories %}<li class="list-group-item">{% include 'bulk/checkbox.html' with record=category %} {{ category.name }} <span class="small text-muted">Порядок: {{ category.sort_order }}</span>{% if request.user|may:'resources:equipment_category_update' %}<a class="btn btn-sm btn-outline-secondary float-end" href="{% url 'resources:equipment_category_update' category.pk %}">Изменить название</a>{% endif %}</li>{% empty %}<li class="list-group-item text-muted">Справочник пока пуст.</li>{% endfor %}</ul>
-<a class="btn btn-secondary mt-3" href="{% url 'resources:equipment_type_list' %}">Техника для планирования</a>
+
 {% include 'resources/equipment_category_quick.html' %}
 {% endwith %}{% endblock %}

@@ -26,11 +26,21 @@ class EquipmentPlanningViewBrowserTests(StaticLiveServerTestCase):
         EquipmentType.objects.create(company=company, name='АТЗ / Камаз', parent=root, category=other)
         EquipmentType.objects.create(company=company, name='Экскаватор')
         self.client.force_login(user)
+        import tempfile
+        from openpyxl import Workbook
+        temporary=tempfile.TemporaryDirectory(prefix='equipment-group-preview-');self.addCleanup(temporary.cleanup)
+        workbook_path=Path(temporary.name)/'group-update.xlsx'
+        book=Workbook();sheet=book.active;sheet.append(['Название','Техника для планирования','Группа техники','Единица измерения','Активна','Категории водителя','Классы водителя'])
+        sheet.append([root.name,root.name,'Учебная группа из Excel','ед.','Да','',''])
+        sheet.append(['АТЗ / Камаз',root.name,'Учебная  группа из Excel','ед.','Да','',''])
+        book.save(workbook_path);book.close()
         config = {'base': self.live_server_url, 'cookie': self.client.cookies['sessionid'].value,
                   'chromium': shutil.which('chromium'), 'catalogue': reverse('resources:equipment_type_list'),
-                  'root': root.pk}
+                  'root': root.pk,'workbook':str(workbook_path)}
         script = Path(__file__).resolve().parents[2] / 'tests/browser/equipment_planning_view.js'
         result = subprocess.run(['node', str(script)], capture_output=True, text=True,
                                 env=dict(os.environ, EQUIPMENT_PLANNING_VIEW_CONFIG=json.dumps(config)), timeout=100)
         self.assertEqual(result.returncode, 0, result.stdout + '\n' + result.stderr)
+        root.refresh_from_db();self.assertEqual(root.category.name,'Учебная группа из Excel')
+        self.assertEqual(EquipmentType.objects.get(parent=root).category_id,root.category_id)
         print(result.stdout.strip())

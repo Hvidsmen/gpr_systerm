@@ -12,7 +12,7 @@ from .brigade_import import BrigadeImportForm,text
 
 
 class ImportForm(BrigadeImportForm):
-    file=forms.FileField(label='Excel с группами техники (.xlsx)',widget=forms.FileInput(attrs={'class':'form-control','accept':'.xlsx'}))
+    file=forms.FileField(label='Excel со справочником техники или машинами (.xlsx)',widget=forms.FileInput(attrs={'class':'form-control','accept':'.xlsx'}))
 
 
 def read_rows(file):
@@ -26,11 +26,13 @@ def read_rows(file):
     rows=[];errors=[]
     try:
         sheet=book.worksheets[0];sheet.reset_dimensions();iterator=sheet.iter_rows();header=next(iterator,())
-        columns={text(c.value).casefold():i for i,c in enumerate(header)}
-        recognized={'id','госномер','инвентарный номер','vin / заводской номер','vin','техника для планирования','группа техники','группа'}
-        if not({'техника для планирования','группа техники','группа'}&columns.keys()):return [],['Нужна колонка «Техника для планирования» или «Группа техники». Используйте экспорт машин.']
-        if not({'id','госномер','инвентарный номер','vin / заводской номер','vin'}&columns.keys()):return [],['Нужен ID, VIN, инвентарный номер или госномер для поиска существующей машины.']
-        present=[text(c.value).casefold() for c in header if text(c.value).casefold() in recognized]
+        columns={('группа техники' if text(c.value).casefold() in {'группа','категория'} else text(c.value).casefold()):i for i,c in enumerate(header)}
+        recognized={'название','категория','id','госномер','инвентарный номер','vin / заводской номер','vin','техника для планирования','группа техники','группа'}
+        catalogue=not({'id','госномер','инвентарный номер','vin / заводской номер','vin'}&columns.keys()) and 'название' in columns
+        if catalogue and not({'группа техники','группа','категория'}&columns.keys()):return [],['В выгрузке справочника нужна колонка «Группа техники».']
+        if not({'техника для планирования','группа техники','группа','категория'}&columns.keys()):return [],['Нужна колонка «Техника для планирования» или «Группа техники». Используйте экспорт машин.']
+        if not catalogue and not({'id','госномер','инвентарный номер','vin / заводской номер','vin'}&columns.keys()):return [],['Нужен ID, VIN, инвентарный номер или госномер для поиска существующей машины.']
+        present=[('группа техники' if text(c.value).casefold() in {'группа','категория'} else text(c.value).casefold()) for c in header if text(c.value).casefold() in recognized]
         if len(present)!=len(set(present)):return [],['Заголовки изменяемых колонок и идентификаторов не должны повторяться.']
         for number,cells in enumerate(iterator,2):
             if number>5001:errors.append('Допускается не более 5000 строк.');break
@@ -40,7 +42,13 @@ def read_rows(file):
                 if cell and cell.data_type in {'f','e'}:errors.append(f'Строка {number}: замените формулу или ошибку в «{name}» значением.')
                 values[name]=text(cell.value) if cell else ''
             if not any(values.values()):continue
-            values['line']=number;rows.append(values)
+            values['line']=number
+            if catalogue:
+                name=values['название'];planning=values['техника для планирования'];group=values['группа техники'] or values['группа'] or values['категория']
+                if not name or len(name)>150:errors.append(f'Строка {number}: укажите название до 150 символов.')
+                if len(planning)>150 or len(' '.join(group.split()))>100:errors.append(f'Строка {number}: слишком длинное название плановой позиции или группы.')
+                rows.append({'line':number,'kind':'catalogue','name':name,'planning':planning,'group':group})
+            else:rows.append(values)
         if not rows and not errors:errors.append('В файле нет данных.')
         return rows,errors
     finally:book.close()
@@ -107,10 +115,21 @@ def apply(user,rows):
 @login_required
 @require_http_methods(['GET','POST'])
 def import_groups(request):
-    require_roles(request.user,EQUIPMENT_CATALOG_EDIT_ROLES);form=ImportForm(request.POST or None,request.FILES or None);errors=[];result=None
-    if request.method=='POST' and form.is_valid():
-        rows,errors=read_rows(form.cleaned_data['file'])
-        if not errors:
-            try:result=apply(request.user,rows)
+    require_roles(request.user,EQUIPMENT_CATALOG_EDIT_ROLES)
+    from . import equipment_catalogue_groups as catalogue
+    form=ImportForm(request.POST or None,request.FILES or None);errors=[];result=None;preview=None;signed=''
+    if request.method=='POST':
+        if request.POST.get('action')=='confirm_catalogue':
+            try:result=catalogue.confirm(request.user,request.POST.get('token',''))
             except ValidationError as exc:errors=exc.messages
-    return render(request,'resources/equipment_group_import.html',{'form':form,'errors':errors,'result':result},status=400 if errors or form.errors else 200)
+            form=ImportForm()
+        elif form.is_valid():
+            rows,errors=read_rows(form.cleaned_data['file'])
+            if not errors:
+                try:
+                    if rows and rows[0].get('kind')=='catalogue':
+                        preview=catalogue.preview(request.user,rows)
+                        if preview['entries']:signed=catalogue.token(request.user,rows,preview)
+                    else:result=apply(request.user,rows)
+                except ValidationError as exc:errors=exc.messages
+    return render(request,'resources/equipment_group_import.html',{'form':form,'errors':errors,'result':result,'preview':preview,'token':signed},status=400 if errors or form.errors else 200)
