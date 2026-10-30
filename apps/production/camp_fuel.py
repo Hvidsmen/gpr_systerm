@@ -9,6 +9,7 @@ from . import transport, fuel_access
 from .camp_fuel_models import CampFuelDay,FUEL_CHOICES
 
 SALT='camp-fuel-v1'
+UNSET=object()
 
 
 def ledger(camp,fuel_type):return CampFuelDay.objects.filter(company=camp.company,camp=camp,fuel_type=fuel_type).order_by('date','pk')
@@ -17,7 +18,7 @@ def ledger(camp,fuel_type):return CampFuelDay.objects.filter(company=camp.compan
 def _version(camp,fuel_type,rows=None):
     from hashlib import sha256
     import json
-    fields=('pk','date','opening_balance','received_liters','actual_liters','actual_balance','comment','updated_at')
+    fields=('pk','date','opening_balance','received_liters','actual_liters','actual_balance','opening_density','closing_density','comment','updated_at')
     values=list(ledger(camp,fuel_type).values_list(*fields)) if rows is None else [tuple(getattr(row,f) for f in fields) for row in rows]
     return sha256(json.dumps(values,default=str).encode()).hexdigest()
 
@@ -40,9 +41,18 @@ def quantity(value):
     except (ValueError,InvalidOperation):raise ValidationError('Количество должно быть неотрицательным числом с точностью до 0,001 м³.')
 
 
+def density_value(value):
+    if value is None or value=='':return None
+    try:
+        value=Decimal(str(value))
+        if not value.is_finite() or value<=0 or value>Decimal('999.999999') or value!=value.quantize(Decimal('.000001')):raise ValueError
+        return value
+    except (ValueError,InvalidOperation):raise ValidationError('Плотность должна быть положительным числом в т/м³, например 0,840, с точностью до 6 знаков после запятой.')
+
+
 @with_history_actor
 @transaction.atomic
-def save_day(user,camp,day,fuel_type,*,received,consumed,opening=None,comment='',signed):
+def save_day(user,camp,day,fuel_type,*,received,consumed,opening=None,comment='',signed,opening_density=UNSET,closing_density=UNSET):
     fuel_access.authorize(user,camp)
     require_fact_day(user,day)
     if fuel_type not in dict(FUEL_CHOICES):raise ValidationError('Выберите ГСМ.')
@@ -65,6 +75,9 @@ def save_day(user,camp,day,fuel_type,*,received,consumed,opening=None,comment=''
     if len(comment)>4000:raise ValidationError('Комментарий слишком длинный.')
     current=current or CampFuelDay(company=user.company,camp=camp,date=day,fuel_type=fuel_type,recorded_by=user)
     current.opening_balance=start;current.received_liters=received;current.actual_liters=consumed;current.actual_balance=end;current.comment=comment.strip()
+    if opening_density is UNSET:opening_density=current.opening_density if current.pk else previous.closing_density if previous else None
+    if closing_density is UNSET:closing_density=current.closing_density if current.pk else None
+    current.opening_density=density_value(opening_density);current.closing_density=density_value(closing_density)
     current.full_clean();current.save()
     with history_actor(user,f'Перенос остатка после исправления ГСМ за {day:%d.%m.%Y}'):
         for row in rows:

@@ -1,4 +1,6 @@
 """Daily fuel stocks are shared by everyone working in a physical camp."""
+from decimal import Decimal,ROUND_HALF_UP
+from django.core.validators import MinValueValidator
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -11,6 +13,10 @@ FUEL_CHOICES=[('TOTAL','ГСМ ВЖГ'),('DIESEL','Дизельное топли
     ('PETROL_98','Бензин АИ-98'),('GAS','Газ'),('OIL','Моторное масло'),('OTHER','Другое')]
 
 
+def mass_tonnes(volume,density):
+    return None if density is None else (Decimal(volume)*Decimal(density)).quantize(Decimal('.001'),rounding=ROUND_HALF_UP)
+
+
 class CampFuelDay(ActualHistoryMixin,BaseCompanyModel):
     camp=models.ForeignKey('personnel.Camp',on_delete=models.PROTECT,related_name='fuel_days',verbose_name='ВЖГ')
     date=models.DateField('Дата')
@@ -19,6 +25,8 @@ class CampFuelDay(ActualHistoryMixin,BaseCompanyModel):
     received_liters=models.DecimalField('Приход, м³',max_digits=15,decimal_places=3,default=0)
     actual_liters=models.DecimalField('Расход, м³',max_digits=15,decimal_places=3,default=0)
     actual_balance=models.DecimalField('Остаток на конец, м³',max_digits=15,decimal_places=3,default=0,editable=False)
+    opening_density=models.DecimalField('Плотность на начало дня, т/м³',max_digits=9,decimal_places=6,null=True,blank=True,validators=[MinValueValidator(Decimal('.000001'))])
+    closing_density=models.DecimalField('Плотность на конец дня, т/м³',max_digits=9,decimal_places=6,null=True,blank=True,validators=[MinValueValidator(Decimal('.000001'))])
     comment=models.TextField('Комментарий',blank=True,max_length=4000)
     recorded_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,editable=False,related_name='+')
 
@@ -26,7 +34,14 @@ class CampFuelDay(ActualHistoryMixin,BaseCompanyModel):
         ordering=['date','fuel_type','pk']
         constraints=[models.UniqueConstraint(fields=['camp','fuel_type','date'],name='one_camp_fuel_type_day'),
             models.CheckConstraint(condition=models.Q(opening_balance__gte=0,received_liters__gte=0,actual_liters__gte=0,actual_balance__gte=0),name='camp_fuel_nonnegative'),
-            models.CheckConstraint(condition=models.Q(actual_balance=Round(models.F('opening_balance')+models.F('received_liters')-models.F('actual_liters'),precision=3)),name='camp_fuel_balanced')]
+            models.CheckConstraint(condition=models.Q(actual_balance=Round(models.F('opening_balance')+models.F('received_liters')-models.F('actual_liters'),precision=3)),name='camp_fuel_balanced'),
+            models.CheckConstraint(condition=(models.Q(opening_density__isnull=True)|models.Q(opening_density__gt=0)) & (models.Q(closing_density__isnull=True)|models.Q(closing_density__gt=0)),name='camp_fuel_positive_density')]
+
+    @property
+    def opening_tonnes(self):return mass_tonnes(self.opening_balance,self.opening_density)
+
+    @property
+    def closing_tonnes(self):return mass_tonnes(self.actual_balance,self.closing_density)
 
     def clean(self):
         super().clean()
