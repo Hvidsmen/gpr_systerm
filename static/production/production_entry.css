@@ -72,3 +72,5 @@ form[data-production-form] .production-steps{top:var(--navbar-height,48px)}
 .production-work-card:has([data-work-heading][hidden]) .production-work-metrics{display:none}.production-work-field textarea.form-control:focus{min-height:56px}
 
 .production-work-metrics .progress-behind{color:#bd2437}.production-work-metrics .progress-ahead{color:#168251}.production-work-period{display:block;color:#6d8191;white-space:normal;font-size:10px;padding-top:5px;line-height:1.5}.production-work-metrics{min-width:190px}.production-work-metrics>div{gap:9px}
+
+form[data-production-form]{max-width:1200px}.production-save-footer{border-top:1px solid #d4e2ec}.production-save-footer .fact-footer-context{display:block}.production-steps button:focus-visible,.fact-date-shortcuts button:focus-visible{outline:2px solid #087f9c;outline-offset:3px}

@@ -1,5 +1,5 @@
 <div data-rotation-filter-anchor aria-hidden="true"></div>
-<form method="get" action="{% url 'personnel:housing' %}#roster" class="card housing-rotation-filter mb-3" aria-label="Фильтры перевахты" data-rotation-filter>
+<form method="get" action="{% url 'personnel:housing' %}#roster" class="card housing-rotation-filter mb-3" aria-label="Фильтры перевахты" data-rotation-filter data-fact-selector>
 <input type="hidden" name="roster_view" value="{{ roster_view|default:'positions' }}">
 <button class="housing-filter-expand btn btn-sm btn-outline-primary" type="button" data-rotation-filter-expand aria-expanded="false">Изменить фильтры · {{ day|date:'d.m.Y' }}</button>
 {% if rotation_filter.non_field_errors %}<div class="app-form-errors" role="alert">{{ rotation_filter.non_field_errors }}</div>{% endif %}

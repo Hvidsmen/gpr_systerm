@@ -9,7 +9,7 @@
  const fingerprint=row=>JSON.stringify(capture(row).filter(input=>!['id','person_claim_token','person_editing','work_claim_token','work_editing',...(isPerson(row)?['work_mode','work_targets','general','work','work_item']:[])].includes(input.name.replace(/^(works|labor)-\d+-/,''))).map(input=>[input.name.replace(/^(works|labor)-\d+-/,''),input.value,input.checked]));
  let timer=null,pending=false,running=null,failed=false,retryAttempt=0;
  const dirty=()=>rows().filter(row=>row.dataset.entryDirty||row.dataset.personDirty||row.dataset.autoPending);
- function message(text,error=false){state.textContent=text;state.classList.toggle('text-danger',error);retry.hidden=!error;}
+ function message(text,error=false){state.textContent=text;state.classList.toggle('text-danger',error);state.classList.toggle('fact-state-saving',!error&&text==='Сохранение…');state.classList.toggle('fact-state-saved',!error&&text==='Все изменения сохранены');state.classList.toggle('fact-state-pending',!error&&text.includes('изменения')&&text!=='Все изменения сохранены');retry.hidden=!error;}
  function rowMessage(row,text,error=false){const target=row.querySelector('[data-autosave-row-state]');if(target){target.textContent=text;target.title=text;target.classList.toggle('text-danger',error);}row.classList.toggle('production-person-auto-failed',error);}
  function prefix(row){return field(row,'id').name.replace(/-id$/,'');}
  function reindex(){
