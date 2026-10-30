@@ -10,3 +10,5 @@ ldap3>=2.9,<3
 
 waitress>=3.0,<4
 whitenoise>=6.8,<7
+
+cryptography>=44,<51

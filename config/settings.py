@@ -139,3 +139,17 @@ LDAP_TIMEOUT = int(os.getenv('LDAP_TIMEOUT', '5'))
 
 # Groups may live outside the OU used for user lookup.
 LDAP_GROUP_BASE_DN = os.getenv("LDAP_GROUP_BASE_DN", "")
+
+# Outgoing invitations. Server secrets stay outside the source tree; a company
+# administrator can configure its own SMTP account in the portal instead.
+PORTAL_PUBLIC_URL=os.getenv('PORTAL_PUBLIC_URL','http://192.168.70.9:8001/').rstrip('/')+'/'
+EMAIL_BACKEND=os.getenv('EMAIL_BACKEND','django.core.mail.backends.smtp.EmailBackend')
+EMAIL_HOST=os.getenv('EMAIL_HOST','')
+EMAIL_PORT=int(os.getenv('EMAIL_PORT','587'))
+EMAIL_HOST_USER=os.getenv('EMAIL_HOST_USER','')
+EMAIL_HOST_PASSWORD=os.getenv('EMAIL_HOST_PASSWORD','')
+DEFAULT_FROM_EMAIL=os.getenv('DEFAULT_FROM_EMAIL','site@yamaldorstroy.ru')
+EMAIL_USE_TLS=env_bool('EMAIL_USE_TLS',True)
+EMAIL_USE_SSL=env_bool('EMAIL_USE_SSL',False)
+EMAIL_TIMEOUT=10
+INVITATION_ASYNC_ENABLED=env_bool('INVITATION_ASYNC_ENABLED',True)

@@ -160,3 +160,6 @@ HSTS-поддомены и preload требуют решения с учётом
 
 Импорт плана из файлов совещаний с отдельным листом на объект:
 [инструкция](docs/meeting-plan-import.md).
+
+Приглашения пользователей по почте, SMTP и фоновая очередь:
+[docs/user-invitations.md](docs/user-invitations.md).

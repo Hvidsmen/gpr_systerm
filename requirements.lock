@@ -6,3 +6,9 @@ python-dotenv==1.2.4
 sqlparse==0.6.0
 
 xlrd==2.0.2
+
+cryptography==50.0.0
+
+cffi==2.1.1
+
+pycparser==3.0

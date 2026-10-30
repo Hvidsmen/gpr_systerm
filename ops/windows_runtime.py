@@ -444,6 +444,8 @@ def supervise(root):
         atomic_json(runtime/'status.json',{'state':'running','sha':current['sha'],'pid':process.pid})
         integration_worker=None
         integration_tick=0
+        invitation_worker=None
+        invitation_tick=0
         try:
             while not (runtime/'supervisor.stop').exists():
                 request=read_json(runtime/'update.request')
@@ -454,6 +456,8 @@ def supervise(root):
                     atomic_json(runtime/'status.json',{'state':'updating','request_id':request['id'],'sha':current['sha']})
                     if integration_worker is not None and integration_worker.poll() is None:
                         integration_worker.terminate();integration_worker.wait(timeout=15)
+                    if invitation_worker is not None and invitation_worker.poll() is None:
+                        invitation_worker.terminate();invitation_worker.wait(timeout=15)
                     try:
                         process,current,message=update(root,process,current)
                         update_stage(root,'verifying')
@@ -478,8 +482,17 @@ def supervise(root):
                         with open(runtime/'1c-worker.log','ab') as output:
                             integration_worker=subprocess.Popen([current['python'],str(Path(current['code'])/'manage.py'),'process_1c'],cwd=current['code'],env=environment(root,read_json(runtime/'installed.json')),stdout=output,stderr=subprocess.STDOUT)
                     except OSError:logging.exception('Could not start 1C worker.')
+                if time.monotonic()>=invitation_tick and (invitation_worker is None or invitation_worker.poll() is not None):
+                    invitation_tick=time.monotonic()+30
+                    try:
+                        rotate_output(runtime/'invitations-worker.log')
+                        with open(runtime/'invitations-worker.log','ab') as output:
+                            invitation_worker=subprocess.Popen([current['python'],str(Path(current['code'])/'manage.py'),'process_invitations'],cwd=current['code'],env=environment(root,read_json(runtime/'installed.json')),stdout=output,stderr=subprocess.STDOUT)
+                    except OSError:logging.exception('Could not start invitations worker.')
                 time.sleep(1)
         finally:
+            if invitation_worker is not None and invitation_worker.poll() is None:
+                invitation_worker.terminate();invitation_worker.wait(timeout=15)
             if integration_worker is not None and integration_worker.poll() is None:
                 integration_worker.terminate();integration_worker.wait(timeout=15)
             stop_process(root,process)

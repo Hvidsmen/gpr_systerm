@@ -52,6 +52,8 @@ class User(AbstractUser):
     access_group = models.ForeignKey(AccessGroup, null=True, blank=True, on_delete=models.PROTECT, related_name='members', verbose_name='Группа доступа')
     access_group_from_ad = models.BooleanField(default=False, editable=False)
 
+    ldap_login = models.CharField('Логин Windows',max_length=150,blank=True,editable=False)
+
     auth_source = models.CharField('Источник входа', max_length=5, default='LOCAL', choices=[('LOCAL','Локальный'),('LDAP','Active Directory')], editable=False)
     ldap_guid = models.UUIDField('Идентификатор AD', unique=True, null=True, blank=True, editable=False)
     company = models.ForeignKey(
@@ -97,6 +99,10 @@ class User(AbstractUser):
     @property
     def full_name(self):
         return f"{self.last_name} {self.first_name}".strip() or self.username
+
+    @property
+    def login_display(self):
+        return (self.ldap_login or 'Логин Windows уточняется') if self.auth_source=='LDAP' else self.username
 
     def has_role(self, role_code):
         return (role_code == 'ADMIN' and self.is_superuser) or (self.role and self.role.code == role_code)
@@ -176,3 +182,5 @@ class OneCDiagnosticRun(models.Model):
     trust_certificate = models.BooleanField(default=False)
     report = models.JSONField(default=dict)
     error = models.TextField(blank=True)
+
+from .invitation_models import CompanyMailSettings,InvitationBatch,UserInvitation

@@ -79,7 +79,7 @@ class UserListView(CompanyScopedMixin, ListView):
             return queryset.none()
         data = self.filter_form.cleaned_data
         for token in data['q'].split():
-            queryset = queryset.filter(Q(username__icontains=token) | Q(first_name__icontains=token) | Q(last_name__icontains=token) | Q(email__icontains=token) | Q(position__icontains=token))
+            queryset = queryset.filter(Q(username__icontains=token) | Q(ldap_login__icontains=token) | Q(first_name__icontains=token) | Q(last_name__icontains=token) | Q(email__icontains=token) | Q(position__icontains=token))
         for field in ['role', 'access_group', 'auth_source']:
             if data.get(field):
                 queryset = queryset.filter(**{field: data[field]})
@@ -87,6 +87,10 @@ class UserListView(CompanyScopedMixin, ListView):
             queryset = queryset.filter(is_active=data['active'] == 'yes')
         if data['unassigned']:
             queryset = queryset.filter(role__isnull=True, is_superuser=False)
+        from django.db.models import OuterRef,Subquery,UUIDField
+        from .invitation_models import UserInvitation
+        invitations=UserInvitation.objects.filter(recipient_id=OuterRef('pk')).order_by('-created_at','-pk')
+        queryset=queryset.annotate(latest_invitation_batch=Subquery(invitations.values('batch_id')[:1],output_field=UUIDField()),latest_invitation_status=Subquery(invitations.values('status')[:1]))
         return queryset.order_by('last_name', 'first_name', 'username', 'pk')
 
     def get_context_data(self, **kwargs):

@@ -58,7 +58,7 @@ def directory_identity(login,password):
                 if service.entries:
                     group_dns.append(dn)
             def value(key):return str(entry[key].value or '')
-            return dict(group_dns=group_dns,guid=guid,first_name=value('givenName')[:150],last_name=value('sn')[:150],email=value('mail')[:254])
+            return dict(login=value('sAMAccountName'),group_dns=group_dns,guid=guid,first_name=value('givenName')[:150],last_name=value('sn')[:150],email=value('mail')[:254])
         except (LDAPException,OSError,ValueError,KeyError,TypeError):
             # Do not log LDAP exception text: providers may include bind information.
             logger.warning('LDAP server unavailable or returned invalid directory data: %s',host)
@@ -90,7 +90,8 @@ class DirectoryBackend(ModelBackend):
             if user.auth_source!='LDAP' or not self.user_can_authenticate(user):raise PermissionDenied
             # Company, role, objects, staff and superuser rights are assigned only locally.
             for field in ['first_name','last_name','email']:setattr(user,field,identity[field])
-            user.save(update_fields=['first_name','last_name','email'])
+            user.ldap_login=normalize_login(identity.get('login') or login) or ''
+            user.save(update_fields=['first_name','last_name','email','ldap_login'])
             from .access_groups import map_directory_group
             map_directory_group(user, identity)
             return user

@@ -9,10 +9,17 @@ from .one_c_jobs import jobs
 from .one_c_report import download_report
 from .portal_updates import updates, update_status
 from .user_archive import bulk_archive
+from . import invitation_views
 
 app_name = 'accounts'
 
 urlpatterns = [
+    path('users/invitations/',invitation_views.history,name='invitation_list'),
+    path('users/invitations/prepare/',invitation_views.prepare,name='user_invite_bulk'),
+    path('users/invitations/settings/',invitation_views.settings_view,name='invitation_settings'),
+    path('users/invitations/<uuid:pk>/',invitation_views.detail,name='invitation_detail'),
+    path('users/invitations/<uuid:pk>/status/',invitation_views.status,name='invitation_status'),
+    path('users/<int:pk>/invite/',invitation_views.prepare,name='user_invite'),
     path('admin/update/',updates,name='portal_updates'),
     path('admin/update/status/',update_status,name='portal_update_status'),
     path('users/archive/', bulk_archive, name='user_bulk_archive'),

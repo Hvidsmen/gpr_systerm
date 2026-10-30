@@ -49,6 +49,37 @@ def search_directory(query='',guid=None):
     raise ValidationError('AD недоступен или служебная учетная запись не имеет доступа к поиску. Выполните check_ldap на сервере.')
 
 
+def invitation_identities(guids):
+    """Resolve old AD accounts in bounded queries; passwords never come from AD."""
+    if not guids:return {}
+    if not settings.LDAP_ENABLED or not settings.LDAP_BIND_PASSWORD:raise ValidationError('Не удалось уточнить логины Windows: настройте подключение к AD.')
+    try:
+        from ldap3 import Server,Connection,SIMPLE,NONE,SUBTREE
+        from ldap3.core.exceptions import LDAPException
+        from ldap3.utils.conv import escape_bytes
+    except ImportError:raise ValidationError('Для подключения к AD не установлены зависимости сервера.')
+    ids=sorted({UUID(str(value)) for value in guids},key=str)
+    for host in settings.LDAP_SERVERS:
+        connection=None;result={}
+        try:
+            server=Server(host,port=settings.LDAP_PORT,use_ssl=False,connect_timeout=settings.LDAP_TIMEOUT,get_info=NONE)
+            connection=Connection(server,user=settings.LDAP_BIND_USER,password=settings.LDAP_BIND_PASSWORD,authentication=SIMPLE,auto_bind=True,auto_referrals=False,raise_exceptions=True,receive_timeout=settings.LDAP_TIMEOUT)
+            for offset in range(0,len(ids),200):
+                parts=['(objectGUID='+escape_bytes(guid.bytes_le)+')' for guid in ids[offset:offset+200]]
+                expression='(&(objectCategory=person)(objectClass=user)(|' + ''.join(parts)+')(!(userAccountControl:1.2.840.113556.1.4.803:=2)))'
+                connection.search(settings.LDAP_BASE_DN,expression,search_scope=SUBTREE,attributes=['objectGUID','sAMAccountName','mail'],paged_size=200)
+                for entry in connection.entries:
+                    guid=UUID(bytes_le=entry['objectGUID'].raw_values[0])
+                    if guid in ids:result[str(guid)]={'login':str(entry['sAMAccountName'].value or ''),'email':str(entry['mail'].value or '')}
+            return result
+        except (LDAPException,OSError,ValueError,KeyError,TypeError):pass
+        finally:
+            if connection:
+                try:connection.unbind()
+                except LDAPException:pass
+    raise ValidationError('AD недоступен. Не удалось уточнить логины Windows для старых учётных записей.')
+
+
 class AccessForm(forms.Form):
     access_group=forms.ModelChoiceField(label='Группа доступа',queryset=AccessGroup.objects.none(),required=False,empty_label='Индивидуальные права',widget=forms.Select(attrs={'class':'form-select'}),help_text='Сначала выберите группу: её роль и объекты будут унаследованы.')
     role=forms.ModelChoiceField(label='Роль в ГПР',queryset=Role.objects.none(),required=False,widget=forms.Select(attrs={'class':'form-select'}))
@@ -96,7 +127,9 @@ def provision(actor,identity,role,objects,group=None):
     if not user.is_active:raise ValidationError('Учетная запись отключена. Обратитесь к суперпользователю.')
     user.company_id=actor.company_id;user.role=role;user.access_group=group;user.access_group_from_ad=False
     for field in ['first_name','last_name','email']:setattr(user,field,identity[field])
-    user.save(update_fields=['company','role','access_group','access_group_from_ad','first_name','last_name','email'])
+    from .backends import normalize_login
+    user.ldap_login=normalize_login(identity.get('login')) or ''
+    user.save(update_fields=['company','role','access_group','access_group_from_ad','first_name','last_name','email','ldap_login'])
     user.assigned_objects.set(objects)
     return user
 

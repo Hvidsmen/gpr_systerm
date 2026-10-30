@@ -15,7 +15,7 @@
                 <div class="row mb-3">
                     <div class="col-md-6">
                         <h6 class="text-muted">Имя пользователя</h6>
-                        <p>{{ profile_user.username }}</p>
+                        <p>{{ profile_user.login_display }}</p>
                     </div>
                     <div class="col-md-6">
                         <h6 class="text-muted">ФИО</h6>
@@ -75,7 +75,7 @@
                     </div>
                 </div>
             </div>
-            <div class="card-footer">
+            <div class="card-footer">{% if request.user|may:'accounts:user_invite' and profile_user.auth_source == 'LDAP' and profile_user.is_active and not profile_user.archived_at and not profile_user.is_superuser and not profile_user.is_staff %}<form method="post" action="{% url 'accounts:user_invite' profile_user.pk %}" class="d-inline">{% csrf_token %}<button class="btn btn-primary">Отправить приглашение</button></form>{% endif %}
                 {% if request.user|may:'accounts:user_list' %}<a href="{% url 'accounts:user_list' %}" class="btn btn-secondary">
                     <i class="bi bi-arrow-left"></i> Назад к списку
                 </a>{% endif %}
