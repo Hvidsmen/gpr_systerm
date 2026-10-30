@@ -20,7 +20,7 @@ from apps.production.transport_models import EquipmentCampStay,EquipmentTranspor
 from apps.production.transport_details_models import EquipmentDayDetails
 from apps.production.transport_detail_values import SOURCE_DETAIL_FIELDS as DETAIL_FIELDS,from_source,lookup_context
 from .models import Equipment,EquipmentType
-from .transport_import_models import TransportImportBatch,TransportImportRow
+from .transport_import_models import TransportImportBatch,TransportImportRow,TransportImportFile
 from .fleet_import import index,key
 
 HEADERS=['№','Год выпуска','Марка/модель','Инвентарный номер','Гос.рег.знак','VIN№(заводской номер)','Участок','Категория',
@@ -157,10 +157,19 @@ def collisions(company,rows):
 def preview(user,files,day):
     require_roles(user,transport.OPERATORS);require_fact_day(user,day)
     transport._company_mutex(user)
+    names=[f.name[:255] for f in files]
+    if len(names)!=len(set(names)):raise ValidationError('В одной загрузке не должно быть файлов с одинаковым именем.')
     rows=collisions(user.company,read_files(files))
+    sources={}
+    for upload in files:
+        upload.seek(0);raw=upload.read(5*1024*1024+1)
+        if len(raw)>5*1024*1024:raise ValidationError('Нужны файлы до 5 МБ каждый.')
+        digest=hashlib.sha256(raw).hexdigest()
+        source,_=TransportImportFile.objects.get_or_create(company=user.company,sha256=digest,defaults={'data':raw,'size':len(raw)})
+        sources[upload.name[:255]]=source.pk
     batch=TransportImportBatch.objects.create(company=user.company,date=day,files=[f.name for f in files],fingerprint=fingerprint(user.company),created_by=user)
     for row in rows:
-        TransportImportRow.objects.create(company=user.company,batch=batch,date=day,status='PENDING' if row['error'] else 'READY',**row)
+        TransportImportRow.objects.create(company=user.company,batch=batch,date=day,status='PENDING' if row['error'] else 'READY',source_id=sources[row['source_file']],**row)
     return batch
 
 

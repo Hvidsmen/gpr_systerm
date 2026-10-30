@@ -128,3 +128,21 @@ def correction(request,pk):
     revisions=FactRevision.objects.filter(company=request.user.company,entity_type='resources.transportimportrow',entity_id=str(row.pk))[:30]
     for revision in revisions:revision.changes=changes(revision)
     return render(request,'resources/transport_import_correction.html',{'row':row,'form':form,'revisions':revisions})
+
+
+@login_required
+@require_http_methods(['GET','HEAD'])
+def source_file(request,pk):
+    require_roles(request.user,OPERATORS)
+    row=get_object_or_404(TransportImportRow.objects.only('pk','company_id','source_id','source_file'),pk=pk,company=request.user.company)
+    if not row.source_id:
+        from django.http import Http404
+        raise Http404('Оригинал для этой старой загрузки не сохранялся. Загрузите файл заново.')
+    from .transport_import_models import TransportImportFile
+    source=get_object_or_404(TransportImportFile,pk=row.source_id,company=request.user.company)
+    from io import BytesIO
+    from django.http import FileResponse
+    data=bytes(source.data)
+    response=FileResponse(BytesIO(data),as_attachment=True,filename=row.source_file,content_type='application/vnd.ms-excel.sheet.macroEnabled.12' if row.source_file.lower().endswith('.xlsm') else 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    response['Cache-Control']='private, no-store';response['X-Content-Type-Options']='nosniff'
+    return response

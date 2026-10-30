@@ -24,7 +24,7 @@ TTL = timedelta(minutes=5)
 
 def camps_for(user):
     camps = Camp.objects.filter(company=user.company)
-    if role_code(user) in {'MECHANIZATION_DISPATCHER', 'ALL_FACT_DISPATCHER', 'PLANNER', 'FUEL_WAREHOUSE'}:
+    if role_code(user) in {'ALL_FACT_DISPATCHER', 'PLANNER', 'FUEL_WAREHOUSE'}:
         camps = camps.filter(object_links__construction_object__in=user.assigned_objects.filter(company=user.company))
     return camps.distinct().order_by('name', 'pk')
 

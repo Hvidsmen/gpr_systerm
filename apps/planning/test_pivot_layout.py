@@ -78,3 +78,16 @@ class PivotLayoutTests(SimpleTestCase):
         self.assertEqual(grid['rows'][0]['values'],[None,None])
         self.assertEqual(grid['rows'][1]['values'],[D(1),D(2)])
         self.assertFalse(any(r.get('inline_total') or r['kind']=='grand' for r in grid['rows']))
+
+    def test_work_before_complex_objects_has_correct_totals_in_both_views(self):
+        rows=[self.record('Одинаковая работа',[10,20],[5,10]),self.record('Одинаковая работа',[90,80],[90,80]),self.record('Одинаковая работа',[5,6],[1,2],unit='м')]
+        rows[1]['complex_object']='УЗБ';rows[2]['complex_object']='УЗБ'
+        for view in ['hierarchy','table']:
+            with self.subTest(view=view):
+                config=self.config(rows=['work','complex_object'],view=view,totals={'row_levels':['work'],'column_levels':[],'row_grand':True,'column_grand':True,'position':'after'})
+                grid=build_layout(rows,self.report,config)
+                groups=[r for r in grid['rows'] if r.get('inline_total') or r['kind']=='subtotal']
+                plans={r['unit']:r['values'] for r in groups if r['measure']=='plan'}
+                self.assertEqual(plans,{'шт':[D(100),D(100),D(200)],'м':[D(5),D(6),D(11)]})
+                ratio=next(r for r in groups if r['measure']=='completion' and r['indicator']=='Работы · шт')
+                self.assertEqual(ratio['values'],[D(95),D(90),D('92.5')])

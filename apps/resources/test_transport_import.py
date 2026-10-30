@@ -77,8 +77,8 @@ class TransportImportTests(TestCase):
         with self.assertRaises(ValidationError):service.apply(self.admin,batch)
         batch=self.preview([self.row(site=self.unrelated.name)],user=self.operator)
         service.apply(self.operator,batch);row=batch.rows.get()
-        self.assertEqual(row.status,'PENDING')
-        self.assertFalse(Equipment.objects.filter(inventory_number='INV-100').exists())
+        self.assertEqual(row.status,'APPLIED')
+        self.assertTrue(Equipment.objects.filter(inventory_number='INV-100').exists())
 
     def test_ui_queue_export_correction_and_readonly_roles(self):
         batch=self.preview([self.row(),self.row(inventory='INV-200',plate='A200')]);service.apply(self.admin,batch)

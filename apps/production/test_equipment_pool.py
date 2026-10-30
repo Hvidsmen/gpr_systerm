@@ -47,7 +47,7 @@ class EquipmentPoolTests(TestCase):
         self.second.is_active=False;self.second.save()
         self.assertNotIn(self.second.pk,{r['id'] for r in prepare(self.company,self.camp,self.day)})
         self.assertEqual(self.assign(self.second).status_code,409)
-        self.assertEqual(self.assign(self.machine,camp=self.unrelated).status_code,404)
+        self.assertEqual(self.assign(self.machine,camp=self.unrelated).status_code,200)
         self.assertEqual(self.assign(self.machine,value=999999).status_code,409)
         other=Company.objects.create(name='Другие машины');foreign=Equipment(company=other,type=self.type,name='Чужая',plate_number='foreign');Equipment.objects.bulk_create([foreign])
         self.assertEqual(self.assign(foreign).status_code,404)

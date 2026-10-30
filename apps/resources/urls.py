@@ -126,3 +126,5 @@ urlpatterns += [
 
 from .association_import import import_associations
 urlpatterns += [path('associations/<str:kind>/import/',import_associations,name='catalogue_association_import')]
+
+urlpatterns += [path('equipment/import-source/<int:pk>/',transport_import_views.source_file,name='transport_import_source')]

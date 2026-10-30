@@ -73,7 +73,7 @@ function Invoke-MetadataReader([string]$mode,[string]$metadataDirectory,[string]
         throw ('Metadata reader exit '+$process.ExitCode+': '+$log)
     }
 }
-function Read-MetadataNames($connection,$columns){
+function Read-MetadataNames($connection,$columns,$GenderOnly=$false){
     $metadataDirectory=Join-Path $script:directory 'metadata'
     New-Item -ItemType Directory -Path $metadataDirectory -Force | Out-Null
     $params=@($columns | Where-Object {$_.table -eq 'Params' -and $_.column -eq 'BinaryData'})
@@ -87,7 +87,7 @@ function Read-MetadataNames($connection,$columns){
     if(-not $PythonPath){$command=Get-Command python -ErrorAction SilentlyContinue;if($command){$PythonPath=$command.Source}}
     if(-not $PythonPath){throw 'Python executable for the metadata reader is unavailable.'}
     $parser=Join-Path $PSScriptRoot 'parse_1c_metadata.py'
-    Invoke-MetadataReader 'index' $metadataDirectory $PythonPath $parser
+    if($GenderOnly){Invoke-MetadataReader 'gender-index' $metadataDirectory $PythonPath $parser}else{Invoke-MetadataReader 'index' $metadataDirectory $PythonPath $parser}
     # A named root object avoids Windows PowerShell 5.1 wrapping a JSON array as one item.
     $manifest=ConvertFrom-Json -InputObject (Get-Content -LiteralPath (Join-Path $metadataDirectory 'requests.json') -Raw -Encoding UTF8)
     $read=0;$totalBytes=0;$metadataWarnings=@();$timer=[Diagnostics.Stopwatch]::StartNew()
@@ -100,7 +100,7 @@ function Read-MetadataNames($connection,$columns){
         if(Save-MetadataFile $connection $configs[0] $uuid $metadataPath $parts){$read++;$totalBytes+=(Get-Item -LiteralPath $metadataPath).Length;if($totalBytes -gt 134217728){$metadataWarnings+=[pscustomobject]@{error='Metadata snapshot limit reached; names are partial.'};break}}
     }
     Write-Json (Join-Path $metadataDirectory 'schema.json') $columns
-    Invoke-MetadataReader 'decode' $metadataDirectory $PythonPath $parser
+    if($GenderOnly){Invoke-MetadataReader 'gender' $metadataDirectory $PythonPath $parser}else{Invoke-MetadataReader 'decode' $metadataDirectory $PythonPath $parser}
     $result=Get-Content -LiteralPath (Join-Path $metadataDirectory 'names.json') -Raw -Encoding UTF8 | ConvertFrom-Json
     if($read -eq 0){$metadataWarnings+=[pscustomobject]@{error='No object files found in Config by DBNames UUID. This metadata layout needs an additional reader.'}}
     $result.errors=@($result.errors)+$metadataWarnings
@@ -181,6 +181,7 @@ SELECT TOP (200001) CONVERT(varchar(32), e.[_IDRRef], 2) AS source_id,
  e.[_Code] AS employee_number,
  COALESCE(NULLIF(LTRIM(RTRIM(p.[_Fld31265])),N''),NULLIF(LTRIM(RTRIM(p.[_Description])),N''),NULLIF(LTRIM(RTRIM(e.[_Description])),N''),N'') AS full_name,
  p.[_Fld31276] AS last_name, p.[_Fld31277] AS first_name, p.[_Fld31278] AS middle_name,
+ CONVERT(varchar(32),p.[_Fld31258RRef],2) AS gender_ref,
  CASE WHEN e.[_Fld30280]=0x01 THEN 1 ELSE 0 END AS archived,
  CASE WHEN COALESCE(NULLIF(j.[_Description],N''),NULLIF(jp.[_Description],N''),NULLIF(jps.[_Description],N''),NULLIF(ji.[_Description],N''),NULLIF(jh.[_Description],N''),NULLIF(js.[_Description],N''),NULLIF(jo.[_Description],N'')) IS NULL AND sf.staffing_position IS NOT NULL THEN COALESCE(NULLIF(sf.organisation,N''),ho.[_Description],N'') WHEN COALESCE(NULLIF(j.[_Description],N''),NULLIF(jp.[_Description],N''),NULLIF(jps.[_Description],N''),NULLIF(ji.[_Description],N''),NULLIF(jh.[_Description],N''),NULLIF(js.[_Description],N'')) IS NULL AND NULLIF(jo.[_Description],N'') IS NOT NULL THEN COALESCE(NULLIF(oo.[_Description],N''),ho.[_Description],N'') WHEN NULLIF(j.[_Description],N'') IS NULL AND COALESCE(NULLIF(jp.[_Description],N''),NULLIF(jps.[_Description],N'')) IS NOT NULL THEN COALESCE(NULLIF(op.[_Description],N''),NULLIF(o.[_Description],N''),ho.[_Description],N'') ELSE COALESCE(NULLIF(o.[_Description],N''),NULLIF(oi.[_Description],N''),NULLIF(oh.[_Description],N''),ho.[_Description],N'') END AS organisation,
  CASE WHEN COALESCE(NULLIF(j.[_Description],N''),NULLIF(jp.[_Description],N''),NULLIF(jps.[_Description],N''),NULLIF(ji.[_Description],N''),NULLIF(jh.[_Description],N''),NULLIF(js.[_Description],N''),NULLIF(jo.[_Description],N'')) IS NULL AND sf.staffing_position IS NOT NULL THEN COALESCE(sf.department,N'') WHEN COALESCE(NULLIF(j.[_Description],N''),NULLIF(jp.[_Description],N''),NULLIF(jps.[_Description],N''),NULLIF(ji.[_Description],N''),NULLIF(jh.[_Description],N''),NULLIF(js.[_Description],N'')) IS NULL AND NULLIF(jo.[_Description],N'') IS NOT NULL THEN COALESCE(doo.[_Description],N'') WHEN NULLIF(j.[_Description],N'') IS NULL AND COALESCE(NULLIF(jp.[_Description],N''),NULLIF(jps.[_Description],N'')) IS NOT NULL THEN COALESCE(NULLIF(dp.[_Description],N''),dps.[_Description],N'') ELSE COALESCE(NULLIF(d.[_Description],N''),NULLIF(di.[_Description],N''),NULLIF(dh.[_Description],N''),ds.[_Description],N'') END AS department,
@@ -361,7 +362,33 @@ OUTER APPLY (
 ) pay
 WHERE e.[_Marked]=0x00
 '@ @{'@dateOffset'=$dateOffset;'@storedNow'=$storedNow} 180)
-            Write-Json $reportPath @{employees_import=$true;employees_card_version=5;position_catalog=$positionCatalogue[0];employees=@($employees)}
+            # Read only the named sex enumeration metadata. Never infer from
+            # employee names, patronymics or _EnumOrder.
+            $genderMap=@{};$genderResolved=$false
+            try {
+                $genderColumns=@(Query $connection @'
+SELECT s.name AS [schema],t.name AS [table],c.name AS [column],ty.name AS [type],c.max_length,c.is_nullable
+FROM sys.tables t JOIN sys.schemas s ON s.schema_id=t.schema_id
+JOIN sys.columns c ON c.object_id=t.object_id JOIN sys.types ty ON ty.user_type_id=c.user_type_id
+WHERE s.name='dbo' AND t.name IN ('Params','Config','_Enum817')
+'@)
+                $genderMeta=Read-MetadataNames $connection $genderColumns $true
+                $enumRefs=@(Query $connection 'SELECT CONVERT(varchar(32),[_IDRRef],2) AS ref FROM [dbo].[_Enum817]')
+                foreach($code in @('M','F')){
+                    $candidates=@($genderMeta.gender_members.$code)
+                    $genderMatches=@($enumRefs | Where-Object {$_.ref -in $candidates})
+                    if($genderMatches.Count -ne 1){throw 'Sex enum SQL reference is missing or ambiguous.'}
+                    if($genderMap.ContainsKey($genderMatches[0].ref)){throw 'Sex enum references overlap.'}
+                    $genderMap[$genderMatches[0].ref]=$code
+                }
+                $genderResolved=$true
+            } catch {$genderMap=@{}}
+            foreach($employee in $employees){
+                $gender='';if($genderResolved -and $employee.gender_ref -and $genderMap.ContainsKey($employee.gender_ref)){$gender=$genderMap[$employee.gender_ref]}
+                $employee | Add-Member -NotePropertyName gender -NotePropertyValue $gender
+                $employee.PSObject.Properties.Remove('gender_ref')
+            }
+            Write-Json $reportPath @{employees_import=$true;employees_card_version=6;gender_source='ФизическоеЛицо.Пол';gender_resolved=$genderResolved;position_catalog=$positionCatalogue[0];employees=@($employees)}
             Write-Json $statusPath @{ok=$true;report=$reportPath}
             return
         }

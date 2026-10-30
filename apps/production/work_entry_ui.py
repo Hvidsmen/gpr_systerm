@@ -6,6 +6,31 @@ from apps.works.models import ProjectWork, ProjectWorkItem
 from .models import DailyFact
 
 
+def plan_before(obj,day):
+    """Latest applied revision per month, strictly before the selected fact day."""
+    from apps.planning.models import DailySchedule
+    from datetime import date
+    totals={};seen=set()
+    schedules=DailySchedule.objects.filter(company=obj.company,construction_object=obj,status='APPLIED',month__lte=day.replace(day=1)).prefetch_related('entries').order_by('month','-revision','-pk')
+    for schedule in schedules:
+        if schedule.month in seen:continue
+        seen.add(schedule.month)
+        for entry in schedule.entries.all():
+            if entry.kind!='work':continue
+            work_id=entry.metadata.get('id')
+            if work_id is None and entry.key.startswith('work:'):
+                try:work_id=int(entry.key.split(':',1)[1])
+                except ValueError:continue
+            if work_id is None:continue
+            for row in entry.rows:
+                try:current=date.fromisoformat(row.get('date',''))
+                except (TypeError,ValueError):continue
+                if current>=day:continue
+                key=(int(work_id),int(row['item_id']) if row.get('item_id') else None)
+                totals[key]=totals.get(key,Decimal(0))+Decimal(str(row.get('quantity') or 0))
+    return totals
+
+
 def prepare_rows(formset, obj, day, work_plan, catalogue):
     keys = {}
     for row in formset:
@@ -26,6 +51,8 @@ def prepare_rows(formset, obj, day, work_plan, catalogue):
         key = (wid, item_id)
         previous[key] = previous.get(key, Decimal(0)) + quantity
 
+    accumulated_plan=plan_before(obj,day)
+
     def display(key):
         work = works.get(key[0]); item = items.get(key[1]) if key[1] else None
         if work is None or key[1] and (item is None or item.project_work_id != work.pk):
@@ -34,7 +61,10 @@ def prepare_rows(formset, obj, day, work_plan, catalogue):
         path = [work.section.name]
         if work.complex_object_id: path.append(work.complex_object.name)
         if item and work.name != title: path.append(work.name)
-        return {'title': title, 'path': ' → '.join(path), 'unit': item.unit if item else work.unit,
+        planned_before=accumulated_plan.get(key)
+        actual_before=previous.get(key,Decimal(0))
+        deviation=((actual_before/planned_before-1)*100).quantize(Decimal('.01')) if planned_before is not None and planned_before>0 else None
+        return {'plan_before':planned_before,'deviation':deviation,'title': title, 'path': ' → '.join(path), 'unit': item.unit if item else work.unit,
             'has_plan': key in work_plan, 'plan': work_plan.get(key), 'previous': previous.get(key, Decimal(0))}
 
     for choice in catalogue:

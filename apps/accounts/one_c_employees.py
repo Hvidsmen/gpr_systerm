@@ -34,6 +34,7 @@ EXPECTED = {
         '_Fld20195': 'ФОТ', '_Fld20197': 'Используется'}),
 }
 EXPECTED['_Reference394'][1]['_OwnerIDRRef'] = 'Владелец'
+EXPECTED['_Reference383'][1]['_Fld31258RRef']='Пол'
 EXPECTED['_Reference383'][1].update({'_Fld31257': 'ДатаРождения', '_Fld31259': 'ИНН', '_Fld31260': 'СтраховойНомерПФР', '_Fld31261': 'МестоРождения'})
 EXPECTED['_InfoRg21744'][1].update({'_Fld21751': 'ДатаУвольнения', '_Fld21754': 'ДатаПриема', '_Fld45771': 'КоличествоСтавок'})
 EXPECTED['_InfoRg18183'][1]['_Fld18203_RRRef'] = 'РегистраторЗаписи'
@@ -189,6 +190,9 @@ def apply_employees(run, report):
             values[target] = value.strip()
         if item.get('archived') not in (0, 1, False, True):
             raise ValidationError('Некорректный признак архива сотрудника.')
+        from .one_c_gender import import_gender
+        gender=import_gender(item,report)
+        if gender is not None:values['gender']=gender
         values['is_active'] = not bool(item['archived'])
         values['zup_card'] = card_values(item)
         row_probes = {}
@@ -225,6 +229,7 @@ def apply_employees(run, report):
               'staffing_fallback':sum(not values['zup_position_name'] and bool(values['zup_card'].get('staffing_position')) for _,values in normalized),
               'incomplete_names':sum(not values['first_name'] or not values['last_name'] for _,values in normalized),
               'unnamed':sum(not any(values[name] for name in ['zup_full_name','first_name','last_name','middle_name']) for _,values in normalized)}
+    counts['gender']={'male':sum(v.get('gender')=='M' for _,v in normalized),'female':sum(v.get('gender')=='F' for _,v in normalized),'unresolved':sum('gender' not in v for _,v in normalized),'source':'ФизическоеЛицо.Пол'}
     counts['position_diagnostics'] = {'version': 1, 'employees': len(normalized),
         'active_employees': sum(values['is_active'] for _, values in normalized), 'coverage': coverage}
     if catalogue is not None:counts['position_diagnostics']['catalogue'] = catalogue

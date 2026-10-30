@@ -36,8 +36,8 @@ class LodgingMovementForm(StyledForm):
         super().__init__(*args,**kwargs)
         current=lodging.present(company,day).filter(camp=camp).values('employee_id')
         from apps.resources.group_order import ordered
-        self.fields['employee'].queryset=ordered(Employee.objects.filter(company=company).filter(Q(is_active=True)|Q(pk__in=current)).select_related('position__planning_mapping__brigade__group'),group_path='position__planning_mapping__brigade__group',within=('position__name','last_name','first_name','pk'))
-        self.fields['employee'].label_from_instance=lambda e:e.display_name+(' · № '+e.employee_number if e.employee_number else '')+(' · '+str(e.position) if e.position_id else '')
+        self.fields['employee'].queryset=ordered(Employee.objects.filter(company=company).select_related('position__planning_mapping__brigade__group'),group_path='position__planning_mapping__brigade__group',within=('position__name','last_name','first_name','pk'))
+        self.fields['employee'].label_from_instance=lambda e:e.display_name+(' · архивный' if not e.is_active else '')+(' · № '+e.employee_number if e.employee_number else '')+(' · '+str(e.position) if e.position_id else '')
         selected_day=day
         if self.is_bound:
             try:selected_day=self.fields['date'].clean(self.data.get('date'))

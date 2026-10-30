@@ -40,7 +40,7 @@ class FuelWarehouseTests(TestCase):
 
     def test_camp_balance_and_export_without_transport_access(self):
         self.client.force_login(self.fuel_user)
-        params = {'camp':self.housing_camp.pk,'date':str(self.day),'fuel_type':'DIESEL'}
+        params = {'camp':self.housing_camp.pk,'date':str(self.day),'fuel_type':'TOTAL'}
         url = reverse('production:camp_fuel')
         page = self.client.get(url, params)
         self.assertEqual(page.status_code,200)
@@ -60,13 +60,13 @@ class FuelWarehouseTests(TestCase):
 
     def test_service_scope_closed_day_and_history_are_enforced(self):
         with self.assertRaises(ValidationError):
-            camp_fuel.save_day(self.fuel_user,self.housing_camp,self.day-timedelta(days=10),'DIESEL',opening=100,received=0,consumed=0,signed=camp_fuel.token(self.fuel_user,self.housing_camp,self.day-timedelta(days=10),'DIESEL'))
-        camp_fuel.save_day(self.fuel_user,self.housing_camp,self.day,'DIESEL',opening=100,received=0,consumed=0,signed=camp_fuel.token(self.fuel_user,self.housing_camp,self.day,'DIESEL'))
+            camp_fuel.save_day(self.fuel_user,self.housing_camp,self.day-timedelta(days=10),'TOTAL',opening=100,received=0,consumed=0,signed=camp_fuel.token(self.fuel_user,self.housing_camp,self.day-timedelta(days=10),'TOTAL'))
+        camp_fuel.save_day(self.fuel_user,self.housing_camp,self.day,'TOTAL',opening=100,received=0,consumed=0,signed=camp_fuel.token(self.fuel_user,self.housing_camp,self.day,'TOTAL'))
         self.assertEqual(set(visible_revisions(self.fuel_user).values_list('entity_type',flat=True)),{'production.campfuelday'})
         self.fuel_user.assigned_objects.clear()
         self.assertFalse(visible_revisions(self.fuel_user).exists())
         with self.assertRaises(PermissionDenied):
-            camp_fuel.save_day(self.fuel_user,self.housing_camp,self.day,'DIESEL',opening=100,received=0,consumed=0,signed='forged')
+            camp_fuel.save_day(self.fuel_user,self.housing_camp,self.day,'TOTAL',opening=100,received=0,consumed=0,signed='forged')
 
     def test_mechanics_form_has_no_fuel_and_stale_combined_form_is_rejected(self):
         data = self.payload('MECHANIZATION_DISPATCHER','mechanization')

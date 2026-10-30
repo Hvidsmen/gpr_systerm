@@ -35,9 +35,9 @@ def balance_before(camp,day,fuel_type):
 def quantity(value):
     try:
         value=Decimal(str(value))
-        if not value.is_finite() or value<0 or value>Decimal('9999999999999.99') or value!=value.quantize(Decimal('.01')):raise ValueError
+        if not value.is_finite() or value<0 or value>Decimal('999999999999.999') or value!=value.quantize(Decimal('.001')):raise ValueError
         return value
-    except (ValueError,InvalidOperation):raise ValidationError('Количество должно быть неотрицательным числом с точностью до 0,01 л.')
+    except (ValueError,InvalidOperation):raise ValidationError('Количество должно быть неотрицательным числом с точностью до 0,001 м³.')
 
 
 @with_history_actor

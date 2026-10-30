@@ -184,7 +184,8 @@ def board(request):
     tab=request.GET.get('tab','day')
     if tab not in {'day','state','calendar','events','report'}:tab='day'
     day_view='list' if request.GET.get('view')=='list' else 'plan'
-    context={'day_view':day_view,'selector':selector,'editable':role_code(request.user) in service.OPERATORS,'tab':tab,'can_create':role_code(request.user) in service.OPERATORS}
+    from core.permissions import EQUIPMENT_CATALOG_READ_ROLES
+    context={'can_view_catalogue':role_code(request.user) in EQUIPMENT_CATALOG_READ_ROLES,'day_view':day_view,'selector':selector,'editable':role_code(request.user) in service.OPERATORS,'tab':tab,'can_create':role_code(request.user) in service.OPERATORS}
     if not selector.is_valid():return render(request,'production/transport_board.html',context,status=400 if raw else 200)
     camp,day=selector.cleaned_data['camp'],selector.cleaned_data['date'];service.authorize(request.user,camp,False)
     context.update(window_context(request.user,day))

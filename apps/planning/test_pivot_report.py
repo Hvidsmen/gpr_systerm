@@ -117,4 +117,17 @@ class PivotReportTests(TestCase):
         self.assertTrue(any(dim.outlineLevel>0 for dim in sheet.row_dimensions.values()))
         self.assertTrue(any(str(row[0].value).startswith('Общий итог') for row in sheet))
         self.assertFalse(any(str(row[0].value).startswith('Итого:') for row in sheet))
-        self.assertTrue(any(row[0].value==inline['label']+' · '+inline['measure_label'] and row[-1].value==1000 for row in sheet))
+        self.assertTrue(any(row[0].value==inline['label'] and row[1].value==inline['measure_label'] and row[-1].value==1000 for row in sheet))
+
+    def test_work_then_complex_object_totals_match_the_export(self):
+        config={'rows':['work','complex_object'],'columns':['month'],'measures':['real_plan'],'formulas':[], 'view':'hierarchy',
+                'totals':{'row_levels':['work'],'column_levels':[],'row_grand':True,'column_grand':True,'position':'after'}}
+        params={'start':'2026-01-01','end':'2026-01-31','config':json.dumps(config)}
+        response=self.client.get(self.url('gpr',self.version.pk),params)
+        parents=[r for r in response.context['grid']['rows'] if r.get('inline_total')]
+        self.assertTrue(parents)
+        self.assertEqual(sum(r['values'][-1] or D(0) for r in parents),D(1050))
+        exported=self.client.get(self.url('gpr',self.version.pk),{**params,'export':'xlsx'})
+        sheet=load_workbook(BytesIO(exported.content)).active
+        for parent in parents:
+            self.assertTrue(any(row[0].value==parent['label'] and row[1].value==parent['measure_label'] and row[-1].value==float(parent['values'][-1]) for row in sheet))

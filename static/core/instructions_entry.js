@@ -1,0 +1,1 @@
+document.addEventListener('click',event=>{const link=event.target.closest('[data-instructions-link]');if(!link)return;const url=new URL(link.href,location.origin);url.searchParams.set('return_to',location.pathname+location.search+location.hash);link.href=url;});

@@ -19,15 +19,14 @@ from .camp_fuel_models import CampFuelDay,FUEL_CHOICES
 class Selector(forms.Form):
     camp=forms.ModelChoiceField(label='ВЖГ',queryset=None)
     date=forms.DateField(label='Дата',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
-    fuel_type=forms.ChoiceField(label='ГСМ',choices=FUEL_CHOICES)
     def __init__(self,*args,user,**kwargs):
-        super().__init__(*args,**kwargs);self.fields['camp'].queryset=transport.camps_for(user)
+        super().__init__(*args,**kwargs);self.fields['camp'].queryset=fuel_access.camps_for(user)
 
 
 class DayForm(forms.Form):
-    opening=forms.DecimalField(label='Остаток на начало, л',min_value=0,max_digits=15,decimal_places=2)
-    received=forms.DecimalField(label='Приход за день, л',min_value=0,max_digits=15,decimal_places=2)
-    consumed=forms.DecimalField(label='Расход за день, л',min_value=0,max_digits=15,decimal_places=2)
+    opening=forms.DecimalField(label='Остаток на начало, м³',min_value=0,max_digits=15,decimal_places=3)
+    received=forms.DecimalField(label='Приход за день, м³',min_value=0,max_digits=15,decimal_places=3)
+    consumed=forms.DecimalField(label='Расход за день, м³',min_value=0,max_digits=15,decimal_places=3)
     comment=forms.CharField(label='Комментарий',max_length=4000,required=False,widget=forms.Textarea(attrs={'rows':2}))
     signed=forms.CharField(widget=forms.HiddenInput)
     def __init__(self,*args,previous=None,**kwargs):
@@ -43,14 +42,14 @@ def excel(camp,fuel_type,rows):
     from openpyxl import Workbook
     from openpyxl.styles import Font
     book=Workbook();sheet=book.active;sheet.title='ГСМ ВЖГ'
-    sheet.append(['Дата','ВЖГ','ГСМ','Начальный остаток, л','Приход, л','Расход, л','Конечный остаток, л','Комментарий','Первоначальный автор'])
+    sheet.append(['Дата','ВЖГ','Начальный остаток, м³','Приход, м³','Расход, м³','Конечный остаток, м³','Комментарий','Первоначальный автор'])
     for row in rows:
-        sheet.append([row.date,camp.name,dict(FUEL_CHOICES)[fuel_type],row.opening_balance,row.received_liters,row.actual_liters,row.actual_balance,row.comment,str(row.recorded_by or '')])
+        sheet.append([row.date,camp.name,row.opening_balance,row.received_liters,row.actual_liters,row.actual_balance,row.comment,str(row.recorded_by or '')])
         sheet.cell(sheet.max_row,1).number_format='DD.MM.YYYY'
         for cell in sheet[sheet.max_row]:
             if isinstance(cell.value,str):cell.data_type='s'
     for cell in sheet[1]:cell.font=Font(bold=True)
-    sheet.freeze_panes='D2';sheet.auto_filter.ref=sheet.dimensions
+    sheet.freeze_panes='C2';sheet.auto_filter.ref=sheet.dimensions
     for col in sheet.columns:sheet.column_dimensions[col[0].column_letter].width=min(55,max(18,max(len(str(c.value or '')) for c in col)+2))
     stream=BytesIO();book.save(stream)
     response=HttpResponse(stream.getvalue(),content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
@@ -62,13 +61,14 @@ def excel(camp,fuel_type,rows):
 def board(request):
     require_roles(request.user,fuel_access.OPERATORS if request.method=='POST' else fuel_access.READERS)
     source=request.POST if request.method=='POST' else request.GET
-    first=transport.camps_for(request.user).first()
-    defaults={'camp':str(first.pk) if first else '', 'date':str(timezone.localdate()),'fuel_type':'DIESEL'}
+    first=fuel_access.camps_for(request.user).first()
+    defaults={'camp':str(first.pk) if first else '', 'date':str(timezone.localdate())}
     selector=Selector({**defaults,**source.dict()},user=request.user)
     context={'selector':selector}
     if not first:return render(request,'production/camp_fuel.html',context,status=400 if request.method=='POST' else 200)
     if not selector.is_valid():return render(request,'production/camp_fuel.html',context,status=400)
-    camp,day,fuel_type=(selector.cleaned_data[k] for k in ('camp','date','fuel_type'))
+    camp,day=(selector.cleaned_data[k] for k in ('camp','date'))
+    fuel_type='TOTAL'
     fuel_access.authorize(request.user,camp,False)
     context.update(window_context(request.user,day))
     editable=context['fact_day_editable'] and role_code(request.user) in fuel_access.OPERATORS
@@ -94,5 +94,5 @@ def board(request):
     for revision in revisions:revision.changes=changes(revision)
     context.update(camp=camp,day=day,fuel_type=fuel_type,fuel_label=dict(FUEL_CHOICES)[fuel_type],form=form,editable=editable,current=current,
         opening=opening,closing=closing,rows=rows.order_by('-date')[:60],revisions=revisions,
-        query=urlencode({'camp':camp.pk,'date':str(day),'fuel_type':fuel_type}),camp_query=urlencode({'camp':camp.pk,'date':str(day)}))
+        query=urlencode({'camp':camp.pk,'date':str(day)}),camp_query=urlencode({'camp':camp.pk,'date':str(day)}))
     return render(request,'production/camp_fuel.html',context,status=400 if request.method=='POST' else 200)

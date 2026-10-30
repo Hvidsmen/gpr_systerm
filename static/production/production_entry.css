@@ -70,3 +70,5 @@ form[data-production-form] .production-steps{top:var(--navbar-height,48px)}
 .production-work-field [data-quick-reason=control]{font-size:10px;line-height:1.4;padding:2px 6px;margin-top:3px!important}
 
 .production-work-card:has([data-work-heading][hidden]) .production-work-metrics{display:none}.production-work-field textarea.form-control:focus{min-height:56px}
+
+.production-work-metrics .progress-behind{color:#bd2437}.production-work-metrics .progress-ahead{color:#168251}.production-work-period{display:block;color:#6d8191;white-space:normal;font-size:10px;padding-top:5px;line-height:1.5}.production-work-metrics{min-width:190px}.production-work-metrics>div{gap:9px}

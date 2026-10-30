@@ -21,7 +21,7 @@ TITLES={
 }
 TITLES.update({'personnel.lodgingstay':'Проживание','personnel.lodgingevent':'Событие коменданта','personnel.lodgingbuilding':'Вагон / корпус','personnel.lodgingbed':'Жилое место','personnel.lodgingresolution':'Объяснение сверки'})
 DIRECTIONS=[('lodging','Комендант'),('works','Производство'),('labor','Персонал'),('mechanization','Транспорт и ГСМ (прежний учёт)'),('fuel','ГСМ')]
-FIELD_LABELS={
+FIELD_LABELS={'source_id':'Исходный файл',
  'quantity':'Входящий выполненный объём',
  'actual_quantity':'Фактический объём','actual_value':'Стоимость','reported_by_id':'Первоначальный автор',
  'recorded_by_id':'Первоначальный автор','actual_workers':'Численность','actual_count':'Количество техники',
@@ -94,7 +94,9 @@ def changes(record):
         old=before['fields'].get(field);new=after['fields'].get(field)
         if old in (None,'') and new in (None,''):continue
         if record.operation=='UPDATE' and old==new:continue
-        rows.append({'label':FIELD_LABELS.get(field,field),'before':display(old,field,before),'after':display(new,field,after)})
+        label=FIELD_LABELS.get(field,field)
+        if record.entity_type=='production.campfuelday' and field in {'actual_liters','actual_balance','opening_balance','received_liters'}:label=label.replace(', л',', м³')
+        rows.append({'label':label,'before':display(old,field,before),'after':display(new,field,after)})
     return rows
 
 

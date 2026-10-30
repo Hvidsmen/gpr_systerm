@@ -1,0 +1,1 @@
+<a class="help-card" href="{% url 'instructions:article' guide.slug %}"><span class="help-card-type">{% if guide.kind == 'role' %}Ваша работа по шагам{% else %}Руководство по разделу{% endif %}</span><h3>{{ guide.title }}</h3><p>{{ guide.summary }}</p><span class="help-card-action">Открыть инструкцию <span aria-hidden="true">→</span></span></a>

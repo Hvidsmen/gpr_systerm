@@ -3,7 +3,7 @@ import ast
 from decimal import Decimal, InvalidOperation, localcontext
 from django.core.exceptions import ValidationError
 
-FIELDS={'building':'Объект','complex_object':'Комплексный объект','package':'Комплекс работ','work':'Работа / ресурс','kind':'Раздел','month':'Месяц','date':'День'}
+FIELDS={'building':'Объект','complex_object':'Комплексный объект','package':'Комплекс работ','work':'Работа / ресурс','kind':'Вид ресурса','section':'Раздел работ','month':'Месяц','date':'День'}
 BASE={'plan':'План','fact':'Факт','delta':'Отклонение','completion':'Выполнение, %','real_plan':'Реальная · план, ₽','real_fact':'Реальная · факт, ₽','estimated_plan':'Оценочная · план, ₽','estimated_fact':'Оценочная · факт, ₽'}
 DEFAULT={'rows':['building','complex_object','package','work'],'columns':['month'],'measures':['plan','fact','delta'],'formulas':[],'view':'hierarchy','totals':{'row_levels':['building','complex_object','package'],'column_levels':[],'row_grand':True,'column_grand':True,'position':'after'}}
 VARS={'plan':(1,0),'fact':(1,0),'real_plan':(0,1),'real_fact':(0,1),'estimated_plan':(0,1),'estimated_fact':(0,1)}

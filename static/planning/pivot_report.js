@@ -3,8 +3,11 @@
  const $=id=>document.getElementById(id), read=id=>JSON.parse($(id).textContent);
  let config=read('pivot-initial'); const fields=read('pivot-fields'),base=read('pivot-base-measures');
  const defaults={rows:['building','complex_object','package','work'],columns:['month'],measures:['plan','fact','delta'],formulas:[],view:'hierarchy',totals:{row_levels:['building','complex_object','package'],column_levels:[],row_grand:true,column_grand:true,position:'after'}};
+ if($('pivot-form').elements.plan_type){defaults.rows=['building','section','complex_object','package','work'];defaults.totals.row_levels=['building','section','complex_object','package'];if($('pivot-form').elements.plan_type.value==='object')defaults.columns=[];}
  const button=(text,fn,label)=>{const b=document.createElement('button');b.type='button';b.textContent=text;if(label)b.setAttribute('aria-label',label);b.addEventListener('click',fn);return b;};
  let dragging=null;
+ // Remember explicit choices even while a field is the leaf (no subtotal there).
+ const totalChoices={rows:new Map(),columns:new Map()};
  function clearDropHints(){document.querySelectorAll('.pivot-drop-before,.pivot-drop-after,.pivot-drop-target,.pivot-dragging').forEach(el=>el.classList.remove('pivot-drop-before','pivot-drop-after','pivot-drop-target','pivot-dragging'));}
  function endDrag(){dragging=null;clearDropHints();}
  function insertionTarget(list,y){
@@ -37,9 +40,13 @@
   if($('pivot-total-position'))$('pivot-total-position').value=config.totals.position;
   for(const axis of ['rows','columns']){
    const key=axis==='rows'?'row_levels':'column_levels',available=config[axis].slice(0,-1),box=$(axis==='rows'?'pivot-row-subtotals':'pivot-column-subtotals');
-   config.totals[key]=config.totals[key].filter(field=>available.includes(field));
+   const choices=totalChoices[axis];
+   if(!choices.size)for(const [index,field] of config[axis].entries())choices.set(field,index===config[axis].length-1||config.totals[key].includes(field));
+   for(const field of available)if(!choices.has(field))choices.set(field,true);
+   config.totals[key]=available.filter(field=>choices.get(field));
    if(!box)continue;box.replaceChildren();
-   for(const field of available){const label=document.createElement('label'),input=document.createElement('input');input.type='checkbox';input.checked=config.totals[key].includes(field);input.addEventListener('change',()=>{config.totals[key]=input.checked?[...config.totals[key],field]:config.totals[key].filter(k=>k!==field);});label.append(input,document.createTextNode(' '+fields[field]));box.append(label);}
+   for(const field of available){const label=document.createElement('label'),input=document.createElement('input');input.type='checkbox';input.checked=config.totals[key].includes(field);input.addEventListener('change',()=>{choices.set(field,input.checked);config.totals[key]=available.filter(k=>choices.get(k));});label.append(input,document.createTextNode(' '+fields[field]));box.append(label);}
+   if(available.length)box.append(button('Включить все',()=>{for(const field of available)choices.set(field,true);renderTotals();},'Включить все подытоги '+(axis==='rows'?'строк':'столбцов')));
    if(!available.length){const note=document.createElement('small');note.textContent='Добавьте второй уровень на эту ось, чтобы включить подытоги.';box.append(note);}
   }
   if($('pivot-row-grand'))$('pivot-row-grand').checked=config.totals.row_grand;
@@ -88,5 +95,5 @@
  treeButtons.forEach(b=>b.addEventListener('click',()=>{const id=b.dataset.pivotNode;collapsed.has(id)?collapsed.delete(id):collapsed.add(id);updateTree();}));
  $('pivot-expand-all')?.addEventListener('click',()=>{collapsed.clear();updateTree();});
  $('pivot-collapse-all')?.addEventListener('click',()=>{treeButtons.forEach(b=>collapsed.add(b.dataset.pivotNode));updateTree();});
- $('pivot-reset').addEventListener('click',()=>{config=structuredClone(defaults);render();});render();
+ $('pivot-reset').addEventListener('click',()=>{config=structuredClone(defaults);totalChoices.rows.clear();totalChoices.columns.clear();render();});render();
 })();

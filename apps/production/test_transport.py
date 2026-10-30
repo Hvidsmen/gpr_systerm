@@ -128,7 +128,8 @@ class TransportTests(TestCase):
         self.save(session=other_session)
 
     def test_scope_future_dates_foreign_ids_and_signed_form_tampering(self):
-        with self.assertRaises(PermissionDenied):service.move(self.operator,self.unrelated,self.day,[self.machine.pk],'ARRIVAL',signed=self.sign(camp=self.unrelated))
+        self.assertTrue(service.camps_for(self.operator).filter(pk=self.unrelated.pk).exists())
+        service.authorize(self.operator,self.unrelated)
         foreign_company=Company.objects.create(name='Other transport company')
         # Simulate a legacy cross-company link; current catalogue writes reject it.
         foreign=Equipment(company=foreign_company,type=self.type,name='Foreign',plate_number='FOREIGN')

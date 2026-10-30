@@ -15,7 +15,7 @@ class CampFuelTests(TestCase):
     @classmethod
     def setUpTestData(cls):TransportTests.setUpTestData.__func__(cls)
 
-    def save(self,day=None,user=None,camp=None,fuel='DIESEL',**kwargs):
+    def save(self,day=None,user=None,camp=None,fuel='TOTAL',**kwargs):
         user=user or self.operator;camp=camp or self.camp;day=day or self.day
         return service.save_day(user,camp,day,fuel,signed=kwargs.pop('signed',service.token(user,camp,day,fuel)),received=kwargs.pop('received',0),consumed=kwargs.pop('consumed',0),**kwargs)
 
@@ -27,7 +27,7 @@ class CampFuelTests(TestCase):
         self.save(fuel='PETROL_92',opening=20,consumed=1)
         self.save(camp=self.target,opening=50)
         self.assertEqual(CampFuelDay.objects.count(),4)
-        self.assertEqual(service.balance_before(self.camp,self.day+timedelta(days=5),'DIESEL')[0].actual_balance,100)
+        self.assertEqual(service.balance_before(self.camp,self.day+timedelta(days=5),'TOTAL')[0].actual_balance,100)
 
     def test_fractional_liters_remain_balanced_in_database(self):
         row=self.save(opening='0.10',received='0.20',consumed='0.05')
@@ -37,13 +37,13 @@ class CampFuelTests(TestCase):
 
     def test_colleagues_edit_same_entry_with_audit_and_stale_form_rejected(self):
         self.save(opening=100)
-        stale=service.token(self.operator,self.camp,self.day,'DIESEL')
+        stale=service.token(self.operator,self.camp,self.day,'TOTAL')
         row=self.save(user=self.colleague,received=20,consumed=10,comment='Уточнение')
         self.assertEqual(row.recorded_by_id,self.operator.pk)
         change=FactRevision.objects.filter(entity_type='production.campfuelday',operation='UPDATE').get()
         self.assertEqual(change.actor_id,self.colleague.pk);self.assertEqual(change.direction,'fuel')
-        self.assertEqual(change.before['fields']['received_liters'],'0.00')
-        self.assertEqual(change.after['fields']['received_liters'],'20.00')
+        self.assertEqual(change.before['fields']['received_liters'],'0.000')
+        self.assertEqual(change.after['fields']['received_liters'],'20.000')
         with self.assertRaises(ValidationError):self.save(signed=stale,received=200)
         self.assertEqual(CampFuelDay.objects.get().received_liters,20)
 
@@ -58,7 +58,7 @@ class CampFuelTests(TestCase):
         self.assertTrue(FactRevision.objects.filter(reason__startswith='Перенос остатка').exists())
 
     def test_negative_precision_invalid_fuel_and_closed_days_rejected(self):
-        for data in [{'consumed':1},{'received':-1},{'received':'NaN'},{'received':'0.001'}]:
+        for data in [{'consumed':1},{'received':-1},{'received':'NaN'},{'received':'0.0001'}]:
             with self.assertRaises(ValidationError):self.save(**data)
         with self.assertRaises(ValidationError):self.save(day=self.day-timedelta(days=2))
         with self.assertRaises(ValidationError):self.save(day=self.day+timedelta(days=2))
@@ -67,12 +67,12 @@ class CampFuelTests(TestCase):
         with self.assertRaises(PermissionDenied):self.save(camp=self.unrelated)
 
     def test_ui_export_and_view_only_day(self):
-        self.client.force_login(self.operator);url=reverse('production:camp_fuel');params={'camp':self.camp.pk,'date':str(self.day),'fuel_type':'DIESEL'}
+        self.client.force_login(self.operator);url=reverse('production:camp_fuel');params={'camp':self.camp.pk,'date':str(self.day),'fuel_type':'TOTAL'}
         response=self.client.get(url,params);self.assertEqual(response.status_code,200)
         data=params|{'opening':'100','received':'50','consumed':'20','signed':response.context['form'].initial['signed']}
         self.assertEqual(self.client.post(url,data).status_code,302)
         response=self.client.get(url,params|{'export':'xlsx'});self.assertEqual(response.status_code,200)
-        book=load_workbook(BytesIO(response.content),data_only=True);self.assertEqual(book.active.cell(2,7).value,130)
+        book=load_workbook(BytesIO(response.content),data_only=True);self.assertEqual(book.active.cell(2,6).value,130)
         self.assertContains(self.client.get(url,params),'130')
         closed=params|{'date':str(self.day-timedelta(days=2))}
         self.assertNotContains(self.client.get(url,closed),'data-camp-fuel-form')

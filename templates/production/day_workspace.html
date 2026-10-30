@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}Факт объекта за день{% endblock %}
 {% block content %}{% for task in fact_tasks %}<p><a class="btn btn-outline-success" href="{% url 'planning:task_detail' task.pk %}">Задание №{{ task.pk }}: проверить полноту и подтвердить факт</a></p>{% endfor %}
-<div class="d-flex flex-wrap align-items-center justify-content-between gap-2"><h1>Факт объекта за день</h1>{% if request.user.is_admin or request.user.is_foreman %}<a href="{% url 'production:fact_meeting_import' %}" class="btn btn-outline-primary">Импорт факта из Excel</a>{% endif %}</div>
+<div class="d-flex flex-wrap align-items-center justify-content-between gap-2"><h1>Факт объекта за день</h1>{% include 'core/_fact_help.html' with guide_slug='production' guide_label='Производство' %}{% if request.user.is_admin or request.user.is_foreman %}<a href="{% url 'production:fact_meeting_import' %}" class="btn btn-outline-primary">Импорт факта из Excel</a>{% endif %}</div>
 <p class="text-muted">Введите объёмы за выбранный день. Выполнение комплексов работ рассчитывается по работам в составе комплекса накопительно.</p>
 <form method="get" class="card card-body mb-3">
   {% include 'forms/fields.html' with form=selector %}

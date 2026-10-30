@@ -8,6 +8,14 @@ from apps.accounts.one_c_metadata import dbnames,headers,ROOTS,resolve,reference
 def main():
     mode,directory=sys.argv[1:3];root=Path(directory)
     index=dbnames((root/'dbnames.bin').read_bytes())
+    if mode in {'gender-index','gender'}:
+        from apps.accounts.one_c_gender import enum_members
+        owners=[entry for entry in index.values() if any(v['prefix']=='Enum' and v['code']==817 for v in entry.get('variants',[entry]))]
+        if len(owners)!=1:raise ValueError('Sex enum is not uniquely mapped in DBNames.')
+        if mode=='gender-index':
+            (root/'requests.json').write_text(json.dumps({'objects':owners}),encoding='utf-8');return
+        owner=owners[0]['uuid'];members=enum_members((root/(owner+'.bin')).read_bytes(),owner)
+        (root/'names.json').write_text(json.dumps({'gender_members':members,'errors':[]}),encoding='utf-8');return
     if mode=='index':
         requests=[entry for entry in index.values() if entry['prefix'] in ROOTS]
         if len(requests)>5000:raise ValueError('More than 5000 metadata objects; reader limit exceeded.')

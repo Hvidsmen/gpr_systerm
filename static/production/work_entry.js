@@ -20,6 +20,10 @@
     row.querySelector('[data-work-unplanned]').hidden = display.has_plan;
     row.querySelector('[data-work-plan]').textContent = display.has_plan ? `${number.format(display.plan)} ${display.unit}` : '—';
     row.querySelector('[data-work-previous]').textContent = `${number.format(display.previous)} ${display.unit}`;
+    const planned=row.querySelector('[data-work-plan-before]'),deviation=row.querySelector('[data-work-deviation]');
+    if(planned)planned.textContent=display.plan_before==null?'—':`${number.format(display.plan_before)} ${display.unit}`;
+    if(deviation){const value=display.deviation==null?null:Number(display.deviation);deviation.textContent=value==null?'—':`${value>0?'+':''}${number.format(value)}%`;deviation.classList.toggle('progress-behind',value!=null&&value<0);deviation.classList.toggle('progress-ahead',value!=null&&value>0);}
+
   }
   function refreshAll(){host.querySelectorAll('[data-work-fact-row]').forEach(refresh);}
   refreshAll();host.closest('form').addEventListener('production-live-applied',refreshAll);

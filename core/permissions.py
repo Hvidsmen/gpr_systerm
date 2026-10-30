@@ -16,7 +16,7 @@ ROLES |= CATALOG_MANAGER_ROLES
 PERSONNEL_CATALOG_EDIT_ROLES = PLAN_ROLES | {PERSONNEL_CATALOG_MANAGER}
 PERSONNEL_CATALOG_READ_ROLES = READ_ROLES | {PERSONNEL_CATALOG_MANAGER}
 EQUIPMENT_CATALOG_EDIT_ROLES = PLAN_ROLES | {EQUIPMENT_CATALOG_MANAGER}
-EQUIPMENT_CATALOG_READ_ROLES = READ_ROLES | {EQUIPMENT_CATALOG_MANAGER}
+EQUIPMENT_CATALOG_READ_ROLES = READ_ROLES | {EQUIPMENT_CATALOG_MANAGER,'MECHANIZATION_DISPATCHER'}
 FACT_ROLES = {'ADMIN', 'FOREMAN'} | DISPATCHER_ROLES
 APPROVAL_ROLES = {'ADMIN', 'MANAGER'}
 
@@ -118,6 +118,10 @@ def scope_queryset(queryset, user, include_archived=False):
 def check_route(user, match, method):
     namespace, name = match.namespace, match.url_name
     role = role_code(user)
+    if namespace=='instructions' and name in {'index','article'}:
+        require_roles(user,ROLES)
+        if method not in {'GET','HEAD'}:raise PermissionDenied
+        return
     if role == FUEL_WAREHOUSE:
         require_roles(user, {FUEL_WAREHOUSE})
         own_account = namespace == 'accounts' and (name in {'settings', 'logout', 'password_change', 'access_pending', 'impersonation_stop'} or name == 'user_detail' and match.kwargs.get('pk') == user.pk)
@@ -155,6 +159,8 @@ def check_route(user, match, method):
         if own_account or own_tasks or namespace == 'resources' and name in routes:
             return
         raise PermissionDenied('Доступ разрешён только к справочникам вашего направления.')
+    if namespace=='resources' and name in {'equipment_unit_list','equipment_unit_detail','equipment_type_list'} and method in {'GET','HEAD'}:
+        require_roles(user,EQUIPMENT_CATALOG_READ_ROLES);return
     if namespace == 'resources' and name in {'catalogue_review_list', 'catalogue_review_detail'}:
         require_roles(user, {'ADMIN','PLANNER','MANAGER','MECHANIZATION_DISPATCHER','ALL_FACT_DISPATCHER'} | CATALOG_MANAGER_ROLES); return
     if namespace == 'planning' and name in {'catalogue_propose','catalogue_fix'}:
@@ -165,7 +171,7 @@ def check_route(user, match, method):
         from apps.personnel.lodging import OPERATORS,READERS
         from apps.personnel.lodging_sync import HR_OPERATORS
         require_roles(user,READERS if method in {'GET','HEAD'} and name in {'lodging','lodging_sync','lodging_sync_status'} else OPERATORS|HR_OPERATORS if name=='lodging_sync' else OPERATORS);return
-    if namespace == 'resources' and name in {'transport_import','transport_import_review','transport_import_errors','transport_import_correction'}:
+    if namespace == 'resources' and name in {'transport_import','transport_import_review','transport_import_errors','transport_import_correction','transport_import_source'}:
         from apps.production.transport import OPERATORS
         require_roles(user,OPERATORS);return
     if namespace=='production' and name.startswith('work_opening_'):

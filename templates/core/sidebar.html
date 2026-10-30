@@ -16,7 +16,6 @@
         </details>{% endif %}
         {% if request.user|may:'production:camp_fuel' or request.user|may:'personnel:lodging' or request.user|may:'production:fact_day_workspace' or request.user|may:'planning:journal_fact_list' or request.user|may:'production:fact_history' or request.user|may:'production:transport_board' or request.user|may:'personnel:housing' or request.user|may:'planning:pivot_fact_list' %}<details class="nav-group"><summary><i class="bi bi-clipboard-data" aria-hidden="true"></i><span>Внесение факта</span></summary>
         {% if request.user.role.code != 'FUEL_WAREHOUSE' and request.user|may:'production:fact_day_workspace' %}<a class="nav-link" href="{% url 'production:fact_day_workspace' %}" ><i class="bi bi-clipboard-data" aria-hidden="true"></i> Производство</a>{% endif %}
-        {% if request.user|may:'production:work_opening_list' %}<a class="nav-link" href="{% url 'production:work_opening_list' %}" data-paths="/production/work-opening/"><i class="bi bi-box-arrow-in-down" aria-hidden="true"></i> Входящие остатки (ВНО)</a>{% endif %}
         {% if request.user|may:'personnel:housing' %}<a class="nav-link" href="{% url 'personnel:housing' %}#roster" data-paths="/personnel/housing/"><i class="bi bi-person-vcard" aria-hidden="true"></i> Перевахта</a>{% endif %}
         {% if request.user|may:'personnel:lodging' %}<a class="nav-link" href="{% url 'personnel:lodging' %}" data-paths="/personnel/lodging/"><i class="bi bi-house-door" aria-hidden="true"></i> Комендант · проживание</a>{% endif %}
         {% if request.user|may:'production:camp_fuel' %}<a class="nav-link" href="{% url 'production:camp_fuel' %}"><i class="bi bi-fuel-pump" aria-hidden="true"></i> ГСМ · склад</a>{% endif %}
@@ -45,9 +44,11 @@
         {% if request.user|may:'planning:profile_list' %}<a class="nav-link" href="{% url 'planning:profile_list' %}" data-paths="/planning/profiles/ /planning/profile-items/"><i class="bi bi-graph-up" aria-hidden="true"></i> Профили нагрузки</a>{% endif %}
         {% if request.user|may:'planning:calendar_list' %}<a class="nav-link" href="{% url 'planning:calendar_list' %}" data-paths="/planning/calendars/ /planning/calendar-days/"><i class="bi bi-calendar" aria-hidden="true"></i> Календари</a>{% endif %}
         </details>{% endif %}
+        {% if request.user|may:'instructions:index' %}<a class="nav-link" href="{% url 'instructions:index' %}" data-paths="/instructions/"><i class="bi bi-question-circle" aria-hidden="true"></i> Инструкции</a>{% endif %}
         {% if request.user|may:'accounts:user_list' or request.user|may:'accounts:portal_updates' %}
         <details class="nav-group sidebar-admin">
             <summary><i class="bi bi-gear" aria-hidden="true"></i><span>Администрирование</span></summary>
+        {% if request.user|may:'production:work_opening_list' %}<a class="nav-link" href="{% url 'production:work_opening_list' %}" data-paths="/production/work-opening/"><i class="bi bi-box-arrow-in-down" aria-hidden="true"></i> Входящие остатки (ВНО)</a>{% endif %}
             {% if request.user|may:'accounts:user_list' %}
             <a class="nav-link" href="{% url 'accounts:one_c' %}" data-paths="/accounts/integrations/1c/"><i class="bi bi-database-gear" aria-hidden="true"></i> Интеграция с 1С</a>
             <a class="nav-link" href="{% url 'accounts:one_c_jobs' %}"><i class="bi bi-list-task" aria-hidden="true"></i> Задания обмена с 1С</a>
