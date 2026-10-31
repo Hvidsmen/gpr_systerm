@@ -29,10 +29,8 @@
   if(row){delete row.dataset.autoRejected;row.dataset.autoPending='1';rowMessage(row,'Не сохранено');}
   pending=true;failed=false;retryAttempt=0;message('Есть изменения…');clearTimeout(timer);timer=setTimeout(()=>flush(),700);
  }
- const actuationInputs=()=>['actuated','actuation_type','reason'].map(name=>form.elements.namedItem(name)).filter(Boolean);
- let savedActuation=actuationInputs().map(input=>({name:input.name,value:input.value,type:input.type,checked:input.checked}));
  async function save(selected){
-  const changed=selected||dirty(),deleting=changed.length>0&&changed.every(row=>field(row,'DELETE')?.checked);
+  const changed=selected||dirty();
   if(changed.some(row=>isPerson(row)&&!field(row,'DELETE')?.checked))form.productionValidatePeople();
   for(const row of changed){
    if(!isPerson(row)&&!field(row,'DELETE')?.checked&&field(row,'actual_quantity')?.value===''){
@@ -46,8 +44,6 @@
   }
   const sent=new Map(changed.map(row=>[prefix(row),{row,stamp:fingerprint(row),capture:capture(row)}]));
   const body=new FormData(form);body.set('autosave','1');body.set('action','save');
-  const actuationSent=deleting?savedActuation:actuationInputs().map(input=>({name:input.name,value:input.value,type:input.type,checked:input.checked}));
-  if(deleting)for(const input of savedActuation){if(input.type==='checkbox'&&!input.checked)body.delete(input.name);else body.set(input.name,input.value);}
   for(const row of rows()){
    if(!sent.has(prefix(row))){body.set(field(row,isPerson(row)?'person_editing':'work_editing').name,'0');body.delete(field(row,'DELETE').name);continue;}
    const editing=field(row,isPerson(row)?'person_editing':'work_editing')?.value==='1';
@@ -61,7 +57,6 @@
    for(const issue of result.errors||[]){const item=sent.get(issue.prefix);if(!item)continue;const text=issue.message||Object.values(issue.fields||{}).flat().join(' ');const target=item.row.querySelector('[data-error]');if(target)target.textContent=text;rowMessage(item.row,text,true);}
    const error=new Error(result.error||'Изменения не сохранены.');error.retryable=response.status>=500||response.status===429;throw error;
   }
-  savedActuation=actuationSent;
   for(const name of ['production_snapshot','revision','labor_revision'])form.elements.namedItem(name).value=result[name];
   for(const entry of result.rows){
    const item=sent.get(entry.prefix);if(!item)continue;
@@ -101,9 +96,8 @@
   if(form.productionApplying)return;
   const row=event.target.closest('[data-production-person],[data-work-fact-row]');
   if(row){if(row.dataset.autoSavedStamp===fingerprint(row)&&!row.dataset.autoPending){delete row.dataset.entryDirty;delete row.dataset.personDirty;return;}if(isPerson(row)&&!field(row,'employee').value&&!field(row,'id').value)return;if(!isPerson(row)&&!field(row,'project_work')?.value)return;schedule(row);}
-  else if(event.target.matches('[name=actuated],[name=actuation_type],[name=reason]'))schedule();
  };
- form.addEventListener('production-claims-change',()=>{if(!running&&!pending&&dirty().some(row=>field(row,isPerson(row)?'person_editing':'work_editing')?.value==='1'))schedule();});
+ form.addEventListener('production-claims-change',()=>{if(!form.productionApplying&&!running&&!pending&&dirty().some(row=>field(row,isPerson(row)?'person_editing':'work_editing')?.value==='1'))schedule();});
  form.addEventListener('input',relevant);form.addEventListener('change',relevant);
  form.addEventListener('production-autosave-all',()=>{for(const row of rows())if(isPerson(row)&&field(row,'employee').value&&!field(row,'id').value&&field(row,'person_editing').value==='1'){row.dataset.entryDirty='1';schedule(row);}});
  rows().forEach(row=>{row.dataset.autoSavedStamp=fingerprint(row);if(field(row,'id').value)rowMessage(row,'Сохранено');});

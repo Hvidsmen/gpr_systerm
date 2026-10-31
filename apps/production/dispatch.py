@@ -18,8 +18,8 @@ from core.permissions import role_code, FACT_ROLES, require_roles, scope_queryse
 from apps.resources.models import Employee, Equipment,Brigade,EquipmentType
 from apps.works.models import ProjectWork,ProjectWorkItem
 from apps.planning.models import DailySchedule
-from .models import DailyFact, EmployeeActivity, EquipmentActivity, FactSectionDay, FuelFact,LaborFact,EquipmentFact,DayActuation
-from .forms import ObjectDateForm,DailyFactForm,DayActuationForm
+from .models import DailyFact, EmployeeActivity, EquipmentActivity, FactSectionDay, FuelFact,LaborFact,EquipmentFact
+from .forms import ObjectDateForm,DailyFactForm
 
 DIRECTIONS={'DISPATCHER':'works','PERSONNEL_DISPATCHER':'labor','MECHANIZATION_DISPATCHER':'mechanization','FUEL_WAREHOUSE':'fuel'}
 LABELS=dict(FactSectionDay.SECTIONS)
@@ -67,9 +67,9 @@ def plans(obj,day):
     return works,resources
 
 class ScopeFormMixin:
-    def __init__(self,*args,user,obj,day,work_plan=None,actuated=False,equipment_baselines=None,day_resource_plan=None,activity_work_keys=None,activity_choices=None,employee_pool=None,**kwargs):
+    def __init__(self,*args,user,obj,day,work_plan=None,equipment_baselines=None,day_resource_plan=None,activity_work_keys=None,activity_choices=None,employee_pool=None,**kwargs):
         super().__init__(*args,**({'user':user,**kwargs} if isinstance(self,DailyFactForm) else kwargs))
-        self.obj=obj;self.day=day;self.work_plan=work_plan or {};self.actuated=actuated
+        self.obj=obj;self.day=day;self.work_plan=work_plan or {}
         self.equipment_baselines=equipment_baselines or {}
         self.day_resource_plan=day_resource_plan
         self.activity_work_keys=set(activity_work_keys or [])
@@ -272,8 +272,6 @@ def dispatcher_response(request,context,status=200):
             for form in group['formset']:
                 if form.errors:errors.append({'prefix':form.prefix,'fields':{name:list(messages) for name,messages in form.errors.items()}})
             errors.extend({'prefix':group['prefix'],'message':str(error)} for error in group['formset'].non_form_errors())
-        actuation=context.get('actuation')
-        if actuation and actuation.errors:errors.append({'prefix':'actuation','fields':{key:list(values) for key,values in actuation.errors.items()}})
         return JsonResponse({'error':context.get('error') or 'Изменения не сохранены. Проверьте заполнение выделенных записей.','errors':errors},status=max(status,400))
     return render(request,'production/dispatcher_day.html',context,status=status)
 
@@ -334,16 +332,7 @@ class DispatcherDayView(CompanyRequiredMixin,View):
             from .dispatch_models import ProductionEntryDay
             context['my_production_entry']=ProductionEntryDay.objects.filter(company=obj.company,construction_object=obj,date=day,dispatcher=request.user).first()
             context['other_production_entries']=ProductionEntryDay.objects.filter(company=obj.company,construction_object=obj,date=day).exclude(dispatcher=request.user).select_related('dispatcher')
-        existing_actuation=DayActuation.objects.filter(company=obj.company,construction_object=obj,date=day).first()
-        initial_actuation={'actuated':bool(existing_actuation),'actuation_type':existing_actuation.actuation_type if existing_actuation else 'FULL_DAY','reason':existing_actuation.reason if existing_actuation else ''}
-        actuation=DayActuationForm(request.POST if bound and section=='works' else None,initial=initial_actuation)
-        actuated=bound and section=='works' and actuation.is_valid() and actuation.cleaned_data.get('actuated')
         data=request.POST.copy() if bound else None
-        if actuated:
-            for key in list(data):
-                if key.startswith('works-') and key.endswith('-project_work') and data[key]:
-                    prefix=key[:-len('project_work')];data[prefix+'actual_quantity']='0';data[prefix+'DELETE']=''
-        context['actuation']=actuation if section=='works' else None
 
         from .employee_pool import prepare as prepare_employee_pool,labor_direction
         employee_pool=prepare_employee_pool(obj,day) if section=='works' else None
@@ -378,7 +367,7 @@ class DispatcherDayView(CompanyRequiredMixin,View):
             extra=len(initial)+1
             if prefix=='equipment' and (equipment_baselines or existing):extra=len(initial)
             factory=modelformset_factory(model,form=form,formset=ScopedSet,extra=extra,can_delete=True,max_num=2000,absolute_max=2000)
-            formset=factory(data,prefix=prefix,queryset=qs.order_by('pk'),initial=initial,form_kwargs={'user':request.user,'obj':obj,'day':day,'work_plan':work_plan,'actuated':bool(actuated),'equipment_baselines':equipment_baselines,'day_resource_plan':resource_plan,'activity_work_keys':activity_keys,'activity_choices':catalogue,'employee_pool':employee_pool})
+            formset=factory(data,prefix=prefix,queryset=qs.order_by('pk'),initial=initial,form_kwargs={'user':request.user,'obj':obj,'day':day,'work_plan':work_plan,'equipment_baselines':equipment_baselines,'day_resource_plan':resource_plan,'activity_work_keys':activity_keys,'activity_choices':catalogue,'employee_pool':employee_pool})
             if prefix=='equipment':
                 for row in formset:
                     try:key=(int(row.initial.get('equipment') or row['equipment'].value()),int(row.initial.get('shift') or row['shift'].value() or 1))
@@ -465,7 +454,7 @@ class DispatcherDayView(CompanyRequiredMixin,View):
                     return dispatcher_response(request,context,status=400)
         if bound:
             valid=[g['formset'].is_valid() for g in groups]
-            if all(valid) and (section!='works' or actuation.is_valid()):
+            if all(valid):
                 people_changed=any(form.has_changed() for group in groups if group['prefix']=='labor' for form in group['formset'] if form.cleaned_data)
                 try:
                     with transaction.atomic():
@@ -503,19 +492,6 @@ class DispatcherDayView(CompanyRequiredMixin,View):
                         require_fact_day(request.user,day)
                         latest_works,latest_resources=plans(obj,day)
                         if latest_works!=work_plan or latest_resources!=resource_plan:raise ValidationError('План СМГ изменился. Обновите страницу перед сохранением факта.')
-                        if section=='works':
-                            other_authors=DailyFact.objects.filter(company=obj.company,project_work__section__construction_object=obj,date=day).exclude(Q(reported_by=request.user)|Q(reported_by=None)).exists()
-                            actuation_changed=bool(actuated)!=bool(existing_actuation) or bool(actuated and existing_actuation and any(actuation.cleaned_data.get(key)!=getattr(existing_actuation,key) for key in ('actuation_type','reason')))
-                            if own_entry and other_authors and actuation_changed:
-                                raise ValidationError('Актировка меняет весь объект. Когда факт вводят несколько диспетчеров, её должен оформить ответственный за общий день.')
-                            if actuated:
-                                if actuation_changed or not existing_actuation:
-                                    record,_=DayActuation.objects.update_or_create(company=obj.company,construction_object=obj,date=day,defaults={'actuation_type':actuation.cleaned_data['actuation_type'],'reason':actuation.cleaned_data['reason'],'reported_by':request.user})
-                                    record.full_clean()
-                                zeroes=DailyFact.objects.filter(company=obj.company,project_work__section__construction_object=obj,date=day)
-                                if own_entry:zeroes=zeroes.filter(Q(reported_by=request.user)|Q(reported_by=None))
-                                zeroes.update(actual_quantity=0,actual_value=0)
-                            elif actuation_changed:DayActuation.objects.filter(company=obj.company,construction_object=obj,date=day).delete()
                         if legacy_exists and not request.POST.get('replace_legacy') and (section!='works' or people_changed):raise ValidationError('На эту дату уже есть сводный факт. Подтвердите его замену детализацией по ФИО или машинам.')
                         if section=='works':
                             changed_authors={form.instance.reported_by_id for group in groups if group['prefix'] in {'works','labor'} for form in group['formset'] if form.instance.pk and form.has_changed() and form.instance.reported_by_id}

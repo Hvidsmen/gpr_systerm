@@ -68,12 +68,15 @@ def workbook(obj,day,report):
         if group!=last:heading(group,2);last=group
         title=meta.get('title',meta.get('label',key));path=meta.get('label',key)
         prefix=path[:-len(title)].rstrip(' →') if path.endswith(title) else ''
+        if work.get('actuation_type'):
+            from .models import DayActuation
+            title += '\nАктировка: '+dict(DayActuation.TYPES).get(work['actuation_type'],work['actuation_type'])+' · '+work['actuation_reason']
         rich=CellRichText(prefix+'\n' if prefix else '',TextBlock(InlineFont(b=True,rFont='Calibri',color=BLUE),title))
         write(row,1,4,rich);write(row,5,5,work['actual_quantity']);sheet.cell(row,5).number_format='#,##0.###'
         write(row,6,6,meta.get('unit',''))
         linked='\n'.join(p['name']+f" · смена {p['shift']}" for p in people if key in p['targets']) or 'Сотрудники не привязаны'
         write(row,7,8,linked);write(row,9,9,work.get('owner') or 'Общий ввод')
-        sheet.row_dimensions[row].height=max(38,15*max(math.ceil(len(path)/55)+1,math.ceil(len(linked)/39)))
+        sheet.row_dimensions[row].height=max(38,15*max(math.ceil(len(path)/55)+1+math.ceil(len(work.get('actuation_reason',''))/55)+bool(work.get('actuation_type')),math.ceil(len(linked)/39)))
         row+=1
     if not works:write(row,1,9,'Объёмы работ пока не внесены.');row+=1
     row+=1;heading('Сотрудники')

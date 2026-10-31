@@ -137,14 +137,17 @@ class DispatcherTests(TestCase):
         task=WorkTask.objects.filter(assigned_to=self.users['PERSONNEL_DISPATCHER']).get()
         with self.assertRaises(ValidationError):validate_fact(task)
 
-    def test_actuation_preserved_and_smg_work_zeroed(self):
+    def test_actuation_is_saved_on_the_selected_work(self):
         from .models import DayActuation
         data=self.payload('DISPATCHER','works')
-        data.update({'actuated':'on','actuation_type':'FULL_DAY','reason':'Погодные условия','works-0-actual_quantity':'5','action':'confirm'})
+        data.update({'works-0-actuation_type':'FULL_DAY','works-0-actuation_reason':'Погодные условия','works-0-actual_quantity':'5','action':'confirm'})
         response=self.client.post(self.url,data)
         self.assertEqual(response.status_code,302)
-        self.assertEqual(DailyFact.objects.get().actual_quantity,0)
-        self.assertTrue(DayActuation.objects.filter(construction_object=self.obj).exists())
+        fact=DailyFact.objects.get()
+        self.assertEqual(fact.actual_quantity,0)
+        self.assertEqual(fact.actuation_type,'FULL_DAY')
+        self.assertEqual(fact.actuation_reason,'Погодные условия')
+        self.assertFalse(DayActuation.objects.exists())
 
     def test_legacy_totals_need_explicit_replacement(self):
         LaborFact.objects.create(company=self.company,construction_object=self.obj,date=self.day,brigade=self.brigade,actual_workers=7)

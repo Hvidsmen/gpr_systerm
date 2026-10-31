@@ -1,0 +1,10 @@
+<dialog class="production-actuation-dialog" data-work-actuation-dialog aria-labelledby="work-actuation-title">
+<div class="d-flex justify-content-between align-items-center gap-3"><h2 class="h4" id="work-actuation-title">Актировка выбранных работ</h2><button type="button" class="btn btn-sm btn-outline-secondary" data-actuation-close aria-label="Закрыть">Закрыть</button></div>
+<p class="small text-muted">В списке — работы текущей вкладки за {{ day|date:'d.m.Y' }}. Для актировки работы вне СМГ сначала добавьте её на вкладке «Работы».</p>
+<label for="actuation-work-search">Найти работу</label><input type="search" id="actuation-work-search" class="form-control" data-actuation-search placeholder="Название работы или комплекса">
+<div class="d-flex flex-wrap gap-2 my-2"><button type="button" class="btn btn-sm btn-outline-primary" data-actuation-select>Выбрать найденные</button><button type="button" class="btn btn-sm btn-outline-secondary" data-actuation-clear>Снять выбор</button><span data-actuation-count role="status">Выбрано: 0</span></div>
+<div class="production-actuation-list" data-actuation-list></div>
+<div class="production-actuation-fields mt-3"><div><label for="bulk-actuation-type">Действие / вид актировки</label><select id="bulk-actuation-type" class="form-select" data-actuation-type><option value="FULL_DAY">Суточная</option><option value="DAY">Дневная</option><option value="NIGHT">Ночная</option><option value="">Снять актировку</option></select></div><div><label for="bulk-actuation-reason">Причина актировки</label><textarea id="bulk-actuation-reason" class="form-control" rows="2" data-actuation-reason></textarea></div></div>
+<p class="alert alert-warning my-3" data-actuation-warning>У выбранных работ факт станет нулевым. Остальные работы не изменятся.</p>
+<p class="text-danger" data-actuation-error role="alert"></p><div class="d-flex justify-content-end gap-2"><button type="button" class="btn btn-outline-secondary" data-actuation-close>Отмена</button><button type="button" class="btn btn-primary" data-actuation-apply disabled>Применить к выбранным</button></div>
+</dialog>

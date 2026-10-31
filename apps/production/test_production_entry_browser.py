@@ -39,7 +39,7 @@ class ProductionEntryBrowserTests(StaticLiveServerTestCase):
         self.assertEqual(row.planning_position_id,planned_position.pk)
         self.assertEqual(row.position_id,self.employee.position_id)
         from .dispatch_models import ProductionEntryDay
-        self.assertIsNone(ProductionEntryDay.objects.get(dispatcher=self.users['DISPATCHER']).confirmed_at, 'A colleague correction invalidates the earlier confirmation')
+        self.assertIsNotNone(ProductionEntryDay.objects.get(dispatcher=self.users['DISPATCHER']).confirmed_at, 'Explicit zero actuation rows complete all planned works and restore readiness')
         from .history_models import FactRevision
         from .models import DailyFact
         fact=DailyFact.objects.get(project_work=self.work,date=self.day)
@@ -48,4 +48,9 @@ class ProductionEntryBrowserTests(StaticLiveServerTestCase):
         from decimal import Decimal
         revisions=FactRevision.objects.filter(entity_type='production.dailyfact',entity_id=str(fact.pk),operation='UPDATE',actor=self.second)
         self.assertTrue(any(Decimal(row.before['fields']['actual_quantity'])==5 and Decimal(row.after['fields']['actual_quantity'])==4 for row in revisions))
+        self.assertEqual(DailyFact.objects.get(project_work=package,work_item=camera).actuation_type,'DAY')
+        self.assertEqual(DailyFact.objects.get(project_work=package,work_item=cable).actuation_reason,'Сильный ветер')
+        from openpyxl import load_workbook
+        workbook=load_workbook('/tmp/production-actuation-report.xlsx')
+        self.assertTrue(any('Сильный ветер' in str(cell.value) for sheet in workbook for row in sheet for cell in row))
         print(result.stdout.strip())

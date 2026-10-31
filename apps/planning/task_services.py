@@ -300,7 +300,7 @@ def invalidate_fact(company_id,object_id,day,section=None):
 
 def validate_fact(task):
     from .report_services import select_sources
-    from apps.production.models import DailyFact,LaborFact,EquipmentFact,FuelFact,DayActuation
+    from apps.production.models import DailyFact,LaborFact,EquipmentFact,FuelFact
     user=task.assigned_to;obj=task.construction_object;day=task.fact_date
     from apps.production.dispatch import required_fact_sections,fact_sections_confirmed
     if required_fact_sections(user):
@@ -311,14 +311,9 @@ def validate_fact(task):
     sources=select_sources(user,{'start':day,'end':day,'mode':'latest'},[obj]).get(obj.pk,[])
     snapshot=sources[0].snapshot if sources else {}
     actual=set(DailyFact.objects.filter(company_id=task.company_id,date=day,project_work__section__construction_object=obj).values_list('project_work_id','work_item_id'))
-    actuated=DayActuation.objects.filter(company_id=task.company_id,construction_object=obj,date=day).first()
-    if actuated:
-        actuated.full_clean()
-        if DailyFact.objects.filter(company_id=task.company_id,date=day,project_work__section__construction_object=obj).exclude(actual_quantity=0).exists():raise ValidationError('При актировке факт работ должен быть нулевым.')
-    else:
-        for spec in snapshot.get('works',[]):
-            for row in spec.get('plans',[]):
-                if row['date']==day.isoformat() and (spec['id'],row.get('item_id')) not in actual:raise ValidationError(f'Не заполнен факт работы «{spec["name"]}». Ноль необходимо внести явно.')
+    for spec in snapshot.get('works',[]):
+        for row in spec.get('plans',[]):
+            if row['date']==day.isoformat() and (spec['id'],row.get('item_id')) not in actual:raise ValidationError(f'Не заполнен факт работы «{spec["name"]}». Ноль необходимо внести явно.')
     configs=[('labor',LaborFact,('brigade_id',)),('equipment',EquipmentFact,('equipment_type_id','equipment_number')),('fuel',FuelFact,('fuel_type',))]
     for kind,model,fields in configs:
         actual=set(model.objects.filter(company_id=task.company_id,construction_object=obj,date=day).values_list(*fields))

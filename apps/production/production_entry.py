@@ -172,7 +172,7 @@ def sync_links(form):
 
 def report_data(obj,day):
     works=list(DailyFact.objects.filter(company=obj.company,project_work__section__construction_object=obj,date=day)
-        .values('id','project_work_id','work_item_id','actual_quantity','deviation_reason_id','comment','reported_by__username'))
+        .values('id','project_work_id','work_item_id','actual_quantity','actuation_type','actuation_reason','comment','reported_by__username'))
     authors={row.pk:(row.reported_by.get_full_name() or row.reported_by.username) if row.reported_by_id else 'Общий ввод' for row in DailyFact.objects.filter(company=obj.company,project_work__section__construction_object=obj,date=day).select_related('reported_by')}
     for work in works:work['owner']=authors[work['id']]
     people=[]

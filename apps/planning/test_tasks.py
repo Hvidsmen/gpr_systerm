@@ -181,7 +181,6 @@ class TaskTests(TestCase):
         task.refresh_from_db();self.assertEqual(task.status,'DONE')
 
     def test_moving_fact_reopens_previous_day_and_actuation_allows_zero_works(self):
-        from apps.production.models import DayActuation
         self.approve(self.create().baseline_version)
         tasks.generate_daily(self.dispatcher,today=TODAY)
         task=WorkTask.objects.get(kind='FACT')
@@ -190,9 +189,9 @@ class TaskTests(TestCase):
         tasks.complete_fact(self.dispatcher,task,['works'])
         fact.date=task.fact_date+timedelta(days=1);fact.save()
         task.refresh_from_db();self.assertEqual(task.status,'OPEN')
-        # Missing planned work may be confirmed only with a valid actuation record.
+        # Actuation requires its own explicit work fact, never a global exemption.
         with self.assertRaises(ValidationError):tasks.complete_fact(self.dispatcher,task,['works'])
-        DayActuation.objects.create(company=self.company,construction_object=self.obj,date=task.fact_date,actuation_type='FULL_DAY',reason='Погодные условия',reported_by=self.dispatcher)
+        DailyFact.objects.create(company=self.company,project_work=self.simple,date=task.fact_date,actual_quantity=0,actuation_type='FULL_DAY',actuation_reason='Погодные условия',reported_by=self.dispatcher)
         self.confirm_section(task)
         tasks.complete_fact(self.dispatcher,task,['works'])
         task.refresh_from_db();self.assertEqual(task.status,'DONE')

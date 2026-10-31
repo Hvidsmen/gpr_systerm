@@ -140,7 +140,7 @@ def canonical_rows(obj,day,report):
     for fact in DailyFact.objects.filter(company=obj.company,date=day,project_work__section__construction_object=obj):
         values={name:str(value) if value is not None else '' for name,value in {
             'id':fact.pk,'project_work':fact.project_work_id,'work_item':fact.work_item_id,'actual_quantity':fact.actual_quantity.normalize(),
-            'deviation_reason':fact.deviation_reason_id,'comment':fact.comment}.items()}
+            'actuation_type':fact.actuation_type,'actuation_reason':fact.actuation_reason,'comment':fact.comment}.items()}
         values['DELETE']=False
         rows['works'].append({'id':fact.pk,'key':token(fact.project_work_id,fact.work_item_id),'version':fact.updated_at.isoformat(),'values':values})
     people={p['id']:p for p in report['people']}

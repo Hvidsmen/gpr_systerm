@@ -6,6 +6,7 @@ from apps.projects.models import ConstructionObject, Project, Section
 from apps.works.models import ProjectWork, ProjectWorkItem
 from .models import (
     DailyFact,
+    DayActuation,
     LaborPlan,
     LaborFact,
     EquipmentPlan,
@@ -48,11 +49,23 @@ class DailyFactForm(CompanyFormMixin, forms.ModelForm):
             "date",
             "actual_quantity",
             "comment",
+            "actuation_type",
+            "actuation_reason",
         ]
         widgets = {"date": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"})}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # Old clients may omit the new fields; never silently remove an existing actuation.
+        if self.is_bound:
+            self.data = self.data.copy()
+            for name in ('actuation_type', 'actuation_reason'):
+                if self.add_prefix(name) not in self.data and self.instance.pk:
+                    self.data[self.add_prefix(name)] = getattr(self.instance, name)
+            if self.data.get(self.add_prefix('actuation_type')) in dict(DayActuation.TYPES):
+                self.data[self.add_prefix('actual_quantity')] = '0'
+        self.fields['actuation_type'].choices = [('', 'Без актировки'), *DayActuation.TYPES]
+        self.fields['actuation_reason'].widget = forms.Textarea(attrs={'rows': 2, 'class': 'form-control'})
         self.fields['project_work'].queryset=self.fields['project_work'].queryset.filter(merged_source__isnull=True)
         self.fields["work_item"].label_from_instance = (
             lambda item: f"{item.project_work}: {item.name}"
@@ -68,6 +81,11 @@ class DailyFactForm(CompanyFormMixin, forms.ModelForm):
                 self.add_error("work_item", "Для комплекса работ выберите работу в составе комплекса.")
             if item and item.project_work_id != work.pk:
                 self.add_error("work_item", "Работа в составе комплекса принадлежит другой работе.")
+        if data.get('actuation_type'):
+            if not data.get('actuation_reason', '').strip():
+                self.add_error('actuation_reason', 'Укажите причину актировки этой работы.')
+        else:
+            data['actuation_reason'] = ''
         if data.get("actual_quantity") is not None and data["actual_quantity"] < 0:
             self.add_error("actual_quantity", "Факт не может быть отрицательным.")
         return data

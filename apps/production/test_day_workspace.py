@@ -66,37 +66,32 @@ class FactDayWorkspaceTests(TestCase):
                      'fuel-0-fuel_type': 'DIESEL', 'fuel-0-actual_balance': '500', 'fuel-0-actual_liters': '30'})
         return data
 
-    def test_actuation_zeros_all_work_but_preserves_resources(self):
-        from apps.production.models import DayActuation
+    def test_actuation_zeros_only_one_work_and_preserves_resources(self):
         for kind in ('DAY', 'NIGHT', 'FULL_DAY'):
             data = self.fill(self.payload())
-            data.update({'actuated': 'on', 'actuation_type': kind, 'reason': 'Сильный ветер'})
-            response = self.client.post(self.url, data)
-            self.assertEqual(response.status_code, 302)
-            self.assertTrue(DailyFact.objects.exists())
-            self.assertFalse(DailyFact.objects.exclude(actual_quantity=0, actual_value=0).exists())
+            prefix = self.work_row(data, self.work)
+            data[prefix+'actuation_type'] = kind
+            data[prefix+'actuation_reason'] = 'Сильный ветер'
+            self.assertEqual(self.client.post(self.url, data).status_code, 302)
+            fact = DailyFact.objects.get(project_work=self.work)
+            self.assertEqual(fact.actual_quantity, 0)
+            self.assertEqual(fact.actuation_type, kind)
+            self.assertEqual(DailyFact.objects.get(project_work=self.composite).actual_quantity, 4)
             self.assertEqual(LaborFact.objects.get().actual_workers, 5)
-            record = DayActuation.objects.get()
-            self.assertEqual(record.actuation_type, kind)
-            self.assertEqual(record.reason, 'Сильный ветер')
-            self.assertTrue(self.screen().context['actuation'].initial['actuated'])
-            DayActuation.objects.all().delete()
 
-    def test_actuation_requires_reason_and_type_without_partial_save(self):
-        from apps.production.models import DayActuation
+    def test_actuation_requires_reason_without_partial_save(self):
         data = self.fill(self.payload())
-        data['actuated'] = 'on'
-        self.assertEqual(self.client.post(self.url, data).status_code, 400)
-        self.assertFalse(DayActuation.objects.exists())
+        data[self.work_row(data,self.work)+'actuation_type'] = 'DAY'
+        self.assertEqual(self.client.post(self.url,data).status_code,400)
         self.assertFalse(DailyFact.objects.exists())
         self.assertFalse(LaborFact.objects.exists())
 
-    def test_other_entry_cannot_write_nonzero_during_actuation(self):
+    def test_old_day_record_does_not_block_unselected_work(self):
         from apps.production.models import DayActuation
-        from django.core.exceptions import ValidationError
-        DayActuation.objects.create(company=self.company, construction_object=self.obj, date=self.day, actuation_type='DAY', reason='Мороз')
-        with self.assertRaises(ValidationError):
-            DailyFact(company=self.company, project_work=self.work, date=self.day, actual_quantity=1).save()
+        DayActuation.objects.create(company=self.company, construction_object=self.obj,
+            date=self.day, actuation_type='DAY', reason='Мороз')
+        fact=DailyFact.objects.create(company=self.company,project_work=self.work,date=self.day,actual_quantity=1)
+        self.assertEqual(fact.actual_quantity,1)
 
     def test_yesterday_is_default_and_foreman_can_save_it(self):
         from unittest.mock import patch

@@ -74,6 +74,9 @@ class DailyFact(ActualHistoryMixin, BaseCompanyModel):
         verbose_name=_("причина отклонения"),
     )
     comment = models.TextField(_("комментарий"), blank=True)
+    actuation_type = models.CharField('Актировка работы', max_length=16, blank=True, default='',
+        choices=[('DAY', 'Дневная'), ('NIGHT', 'Ночная'), ('FULL_DAY', 'Суточная')])
+    actuation_reason = models.TextField('Причина актировки работы', blank=True, default='')
 
     class Meta:
         verbose_name = _("дневной факт")
@@ -120,8 +123,13 @@ class DailyFact(ActualHistoryMixin, BaseCompanyModel):
             and self.deviation_reason.company_id != self.company_id
         ):
             raise ValidationError({"deviation_reason": "Причина другой компании."})
-        if self.project_work_id and self.date and self.actual_quantity and DayActuation.objects.filter(company_id=self.company_id, construction_object_id=self.project_work.section.construction_object_id, date=self.date).exists():
-            raise ValidationError({'actual_quantity': 'В день актировки факт работ должен быть нулевым.'})
+        if self.actuation_type:
+            if not self.actuation_reason.strip():
+                raise ValidationError({'actuation_reason': 'Укажите причину актировки этой работы.'})
+            if self.actual_quantity:
+                raise ValidationError({'actual_quantity': 'При актировке этой работы её факт должен быть нулевым.'})
+        elif self.actuation_reason:
+            raise ValidationError({'actuation_type': 'Выберите вид актировки или очистите причину.'})
         if self.actual_quantity and self.project_work_id and self.date and WorkOpeningBalance.objects.filter(
             company_id=self.company_id, project_work_id=self.project_work_id, work_item_id=self.work_item_id,
             date__gt=self.date, quantity__gt=0).exists():

@@ -33,5 +33,35 @@ const {chromium}=require('playwright');const fs=require('fs');const assert=requi
  await a.close();await b.locator('[data-step="1"]').click();await b.waitForFunction(id=>[...document.querySelectorAll('[data-work-fact-row]')].find(r=>r.querySelector('[name$="-project_work"]')?.value===String(id))?.querySelector('[name$="-actual_quantity"]')?.disabled===false,c.work,{timeout:15000});
  await work(b,c.work).locator('[name$="-actual_quantity"]').fill('4');await save(b);
  assert.equal(await work(b,c.work).locator('[data-work-remove]').isHidden(),true);
+ // Per-work actuation: two leaves selected together, a third work stays untouched.
+ await b.locator('[data-work-actuation-open]').click();const act=b.locator('[data-work-actuation-dialog]');
+ await act.locator('[data-actuation-search]').fill('кабеля');await act.locator('[data-actuation-select]').click();
+ assert.equal(await act.locator('input[type=checkbox]:checked').count(),1);
+ await act.locator('[data-actuation-search]').fill('');
+ await act.locator(`[data-work-token="item:${c.package}:${c.camera}"] input`).check();
+ assert((await act.locator('[data-actuation-count]').textContent()).includes('2'));
+ await act.locator('[data-actuation-apply]').click();assert((await act.locator('[data-actuation-error]').textContent()).includes('причину'));
+ await act.locator('[data-actuation-reason]').fill('Сильный ветер');
+ await b.setViewportSize({width:390,height:844});await b.waitForTimeout(400);
+ assert(await b.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2));await b.screenshot({path:'/tmp/work-actuation-mobile.png',animations:'disabled'});
+ await b.setViewportSize({width:1440,height:1000});await b.screenshot({path:'/tmp/work-actuation-desktop.png',animations:'disabled'});
+ await act.locator('[data-actuation-apply]').click();await act.waitFor({state:'hidden'});
+ assert.equal(await work(b,c.work).locator('[name$="-actual_quantity"]').inputValue(),'4');
+ for(const item of [c.camera,c.cable]){const leaf=b.locator('[data-work-fact-row]').filter({has:b.locator(`[name$="-work_item"][value="${item}"]`)});assert.equal(await leaf.locator('[name$="-actual_quantity"]').inputValue(),'0');assert.equal(await leaf.locator('[name$="-actuation_type"]').inputValue(),'FULL_DAY');}
+ await b.locator('[data-step="4"]').click();assert((await b.locator('[data-report-works]').textContent()).includes('Сильный ветер'));
+ const actExport=await Promise.all([b.waitForEvent('download'),b.locator('[data-report-download]').click()]);await actExport[0].saveAs('/tmp/production-actuation-report.xlsx');
+ // Clear only one leaf from the same picker, then restore its quantity individually.
+ await b.locator('[data-step="1"]').click();await b.locator('[data-work-actuation-open]').click();
+ await act.locator(`[data-work-token="item:${c.package}:${c.camera}"] input`).check();await act.locator('[data-actuation-type]').selectOption('');
+ await act.locator('[data-actuation-apply]').click();await act.waitFor({state:'hidden'});
+ const camera=b.locator('[data-work-fact-row]').filter({has:b.locator(`[name$="-work_item"][value="${c.camera}"]`)});
+ assert.equal(await camera.locator('[name$="-actuation_type"]').inputValue(),'');assert.equal(await camera.locator('[name$="-actual_quantity"]').inputValue(),'0');
+ await camera.locator('[name$="-actual_quantity"]').fill('2');await save(b);
+ const cable=b.locator('[data-work-fact-row]').filter({has:b.locator(`[name$="-work_item"][value="${c.cable}"]`)});
+ assert.equal(await cable.locator('[name$="-actuation_type"]').inputValue(),'FULL_DAY');
+ // Individual actuation also clears only this row.
+ await camera.locator('[name$="-actuation_reason"]').fill('Дождь');await camera.locator('[name$="-actuation_type"]').selectOption('DAY');await save(b);
+ assert.equal(await camera.locator('[name$="-actual_quantity"]').inputValue(),'0');
+ assert.equal(await work(b,c.work).locator('[name$="-actual_quantity"]').inputValue(),'4');
  assert.deepStrictEqual(errors,[]);await browser.close();console.log('PASS: automatic leases, live presence/data, independent live links, grouping, multi-select filters, compact graph, zero keeps edges, XLSX download, close releases leases, colleague edit, mobile');
 })().catch(e=>{console.error(e);process.exit(1)});

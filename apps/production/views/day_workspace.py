@@ -18,7 +18,7 @@ from apps.works.models import ProjectWork
 from apps.planning.workspace_services import virtual_resource_plan
 from apps.planning.report_services import select_sources
 from apps.production import forms as production_forms
-from apps.production.models import DailyFact, DayActuation
+from apps.production.models import DailyFact
 from .resources import CONFIG
 
 
@@ -132,49 +132,26 @@ class FactDayWorkspaceView(CompanyRequiredMixin, View):
             groups.append({'prefix': prefix, 'title': title, 'formset': formset})
         return groups
 
-    def display(self, request, selector, groups=None, error=None, status=200, actuation=None):
+    def display(self, request, selector, groups=None, error=None, status=200):
         if groups is None and selector.is_bound and selector.is_valid():
             groups = self.groups(request, selector.cleaned_data['construction_object'], selector.cleaned_data['date'])
-        if actuation is None:
-            initial = {}
-            if selector.is_bound and selector.is_valid():
-                record = DayActuation.objects.filter(company=self.get_company(), construction_object=selector.cleaned_data['construction_object'], date=selector.cleaned_data['date']).first()
-                if record:
-                    initial = {'actuated': True, 'actuation_type': record.actuation_type, 'reason': record.reason}
-            actuation = production_forms.DayActuationForm(initial=initial)
         from apps.planning.task_services import visible
         tasks=visible(request.user).filter(kind='FACT',construction_object=selector.cleaned_data['construction_object'],fact_date=selector.cleaned_data['date']) if selector.is_bound and selector.is_valid() else []
-        return render(request, self.template_name, {'selector': selector, 'groups': groups, 'error': error, 'actuation': actuation,'fact_tasks':tasks}, status=status)
+        return render(request, self.template_name, {'selector': selector, 'groups': groups, 'error': error, 'fact_tasks':tasks}, status=status)
 
     def post(self, request):
         selector = production_forms.ObjectDateForm(request.POST, user=request.user)
         if not selector.is_valid():
             return self.display(request, selector, status=400)
         obj, day = selector.cleaned_data['construction_object'], selector.cleaned_data['date']
-        actuation = production_forms.DayActuationForm(request.POST)
-        actuation_valid = actuation.is_valid()
         data = request.POST.copy()
-        if actuation_valid and actuation.cleaned_data.get('actuated'):
-            for key in list(data):
-                if key.startswith('works-') and key.endswith('-project_work') and data[key]:
-                    prefix = key[:-len('project_work')]
-                    data[prefix + 'actual_quantity'] = '0'
-                    data[prefix + 'DELETE'] = ''
         groups = self.groups(request, obj, day, data)
         # Evaluate every category so errors are shown together.
         valid = [group['formset'].is_valid() for group in groups]
-        if not all(valid) or not actuation_valid:
-            return self.display(request, selector, groups, status=400, actuation=actuation)
+        if not all(valid):
+            return self.display(request, selector, groups, status=400)
         try:
             with transaction.atomic():
-                marked = actuation.cleaned_data.get('actuated')
-                if marked:
-                    record, _ = DayActuation.objects.update_or_create(company=self.get_company(), construction_object=obj, date=day,
-                        defaults={'actuation_type': actuation.cleaned_data['actuation_type'], 'reason': actuation.cleaned_data['reason'], 'reported_by': request.user})
-                    record.full_clean()
-                    DailyFact.objects.filter(company=self.get_company(), project_work__section__construction_object=obj, date=day).update(actual_quantity=0, actual_value=0)
-                else:
-                    DayActuation.objects.filter(company=self.get_company(), construction_object=obj, date=day).delete()
                 for group in groups:
                     formset = group['formset']
                     rows = formset.save(commit=False)
@@ -186,9 +163,9 @@ class FactDayWorkspaceView(CompanyRequiredMixin, View):
                         row.full_clean()
                         row.save()
         except ValidationError as exc:
-            return self.display(request, selector, groups, error='; '.join(exc.messages), status=400, actuation=actuation)
+            return self.display(request, selector, groups, error='; '.join(exc.messages), status=400)
         except IntegrityError:
             return self.display(request, selector, groups,
-                                error='Запись за этот день уже существует. Проверьте повторяющиеся строки или обновите экран.', status=400, actuation=actuation)
+                                error='Запись за этот день уже существует. Проверьте повторяющиеся строки или обновите экран.', status=400)
         messages.success(request, 'Все изменения факта объекта за день сохранены.')
         return redirect(reverse('production:fact_day_workspace') + '?' + urlencode({'construction_object': obj.pk, 'date': day.isoformat()}))
