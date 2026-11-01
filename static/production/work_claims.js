@@ -58,10 +58,6 @@
    if(form.dataset.productionBound==='1'&&editing(row)?.value==='1'&&(person(row)?field(row,'employee')?.value:field(row,'actual_quantity')?.value))row.dataset.entryDirty='1';render(row);
   }}
  function changed(){refreshPeople();rows().forEach(render);form.dispatchEvent(new Event('production-claims-change'));}
- form.querySelector('[data-person-take-list]')?.addEventListener('click',async event=>{
-  const button=event.currentTarget,result=form.querySelector('[data-person-take-result]');button.disabled=true;busy=true;generation++;let taken=0,blocked=0;
-  try{for(const row of rows().filter(person)){if(!keyOf(row)||field(row,'DELETE')?.checked)continue;if(duplicate(row)){blocked++;render(row);continue;}if(claims.get(keyOf(row))?.mine){taken++;continue;}try{const data=await request('take',keyOf(row));claims.set(keyOf(row),data.claim);taken++;}catch(error){blocked++;row.querySelector('[data-error]').textContent=error.message;}render(row);}form.dispatchEvent(new Event('production-autosave-all'));result.textContent=`Взято: ${taken}`+(blocked?` · Недоступно: ${blocked}. Проверьте сообщения у сотрудников.`:'');changed();lastActivity=Date.now();}finally{button.disabled=false;busy=false;}
- });
  form.addEventListener('click',async event=>{const take=event.target.closest('[data-take]'),release=event.target.closest('[data-release]');if(!take&&!release)return;const row=event.target.closest('[data-work-fact-row],[data-production-person]'),key=keyOf(row),error=row.querySelector('[data-error]');if(duplicate(row))return;error.textContent='';busy=true;generation++;
   try{if(take){const data=await request('take',key);claims.set(key,data.claim);if(person(row)&&!field(row,'id').value)row.dataset.entryDirty='1';}else{if(claims.get(key)?.mine)await request('release',key);reset(row);if(person(row)){row.dataset.acceptedEmployee=field(row,'employee').value;row.dataset.acceptedShift=field(row,'shift').value;}delete row.dataset.entryDirty;delete row.dataset.personDirty;delete row.dataset.autoPending;claims.delete(key);}render(row);changed();lastActivity=Date.now();}catch(failure){error.textContent=failure.message;render(row);}finally{busy=false;}
  });
@@ -79,6 +75,11 @@
   render(row);row.dataset.entryDirty='1';changed();lastActivity=Date.now();
  };
  form.productionSetClaims=values=>{claims=new Map(values.map(c=>[c.key,c]));wire();changed();};
+ form.productionEmployeeAvailability=(employee,shift)=>{
+  const claim=claims.get(`employee:${employee}:${Number(shift)}`);
+  if(!claim||claim.state==='editing'&&claim.mine)return {available:true,label:''};
+  return {available:false,label:claim.state==='editing'?'Сейчас заполняет: '+claim.owner:claim.other_object?'Уже учтён на другом объекте в этой смене':'Уже учтён в этой смене'};
+ };
  form.productionKeyOf=keyOf;
  form.productionSession={scope,csrf};
  form.productionReleaseRow=async row=>{const key=keyOf(row);if(claims.get(key)?.mine){await request('release',key);claims.delete(key);}render(row);changed();};

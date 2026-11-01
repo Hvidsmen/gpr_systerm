@@ -38,7 +38,7 @@ class PositionAccountingTests(TestCase):
         row=EmployeeActivity.objects.get(employee=self.employee);self.assertEqual(row.position_id,original);self.assertEqual(row.planning_position_id,position.pk)
         self.employee.refresh_from_db();self.assertEqual(self.employee.position_id,original)
         self.assertEqual(LaborFact.objects.get(brigade=brigade).actual_workers,1)
-        page=self.client.get(self.url,{'construction_object':self.obj.pk,'date':str(self.day),'section':'works'});self.assertContains(page,'План по должностям');self.assertNotContains(page,'class="nav nav-tabs mb-3"')
+        page=self.client.get(self.url,{'construction_object':self.obj.pk,'date':str(self.day),'section':'works'});self.assertContains(page,'План по должностям');self.assertContains(page,brigade.name)
     def test_unplanned_position_cannot_be_forged_and_reason_can_be_created_inline(self):
         position=position_for(Brigade.objects.create(company=self.company,name='Не запланирована'))
         self.client.force_login(self.users['DISPATCHER']);data=self.payload('DISPATCHER','works')

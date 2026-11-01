@@ -74,6 +74,7 @@
   message(pending?'Есть изменения…':'Все изменения сохранены');
  }
  async function flush(){
+  if(form.dataset.peopleBulkBusy==='1'){clearTimeout(timer);timer=setTimeout(()=>flush(),700);return false;}
   if(form.dataset.resetRequired==='1'){clearTimeout(timer);message('Производственная часть сброшена администратором. Обновите форму.',true);return false;}
   clearTimeout(timer);if(running)return running;
   running=(async()=>{
@@ -93,11 +94,11 @@
  }
  window.productionAutoSave={flush,flushPeople,reindex,fingerprint,capture,get running(){return Boolean(running);},get pending(){return pending||Boolean(running)||dirty().length>0;}};
  const relevant=event=>{
-  if(form.productionApplying||event.target.closest('[data-actuation-ui]'))return;
+  if(form.productionApplying||form.dataset.peopleBulkBusy==='1'||event.target.closest('[data-actuation-ui]'))return;
   const row=event.target.closest('[data-production-person],[data-work-fact-row]');
   if(row){if(row.dataset.autoSavedStamp===fingerprint(row)&&!row.dataset.autoPending){delete row.dataset.entryDirty;delete row.dataset.personDirty;return;}if(isPerson(row)&&!field(row,'employee').value&&!field(row,'id').value)return;if(!isPerson(row)&&!field(row,'project_work')?.value)return;schedule(row);}
  };
- form.addEventListener('production-claims-change',()=>{if(!form.productionApplying&&!running&&!pending&&dirty().some(row=>field(row,isPerson(row)?'person_editing':'work_editing')?.value==='1'))schedule();});
+ form.addEventListener('production-claims-change',()=>{if(!form.productionApplying&&form.dataset.peopleBulkBusy!=='1'&&!running&&!pending&&dirty().some(row=>field(row,isPerson(row)?'person_editing':'work_editing')?.value==='1'))schedule();});
  form.addEventListener('input',relevant);form.addEventListener('change',relevant);
  form.addEventListener('production-autosave-all',()=>{for(const row of rows())if(isPerson(row)&&field(row,'employee').value&&!field(row,'id').value&&field(row,'person_editing').value==='1'){row.dataset.entryDirty='1';schedule(row);}});
  rows().forEach(row=>{row.dataset.autoSavedStamp=fingerprint(row);if(field(row,'id').value)rowMessage(row,'Сохранено');});
