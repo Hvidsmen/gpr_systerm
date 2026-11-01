@@ -1,0 +1,26 @@
+<div class="smg-period-context">
+  <div><strong>{{ object.name }}</strong><p>{{ start|date:'d.m.Y' }} — {{ end|date:'d.m.Y' }} · весь период СМГ</p>
+    {% if schedule %}<p>СМГ{% if schedule.name %} «{{ schedule.name }}»{% endif %} · версия {{ schedule.revision }} · {{ schedule.get_status_display }}</p>{% endif %}
+  </div>
+  <a href="{{ export_url }}" class="btn btn-sm btn-outline-primary" data-period-export>Скачать Excel</a>
+</div>
+{% if not schedule %}<div class="alert alert-warning">Для этого объекта и месяца нет действующего СМГ. Показан сохранённый факт за месяц, план обозначен прочерком.</div>{% endif %}
+<p class="small text-muted">Факт собран за весь период, включая дни после выбранной даты. «—» означает отсутствие записи, 0 — явно сохранённый ноль. Отклонение = факт − план. Объёмы с разными единицами не складываются.</p>
+<nav class="smg-period-sections" aria-label="Разделы отчёта"><a href="#smg-period-works">Работы · {{ works|length }}</a><a href="#smg-period-labor">Люди · {{ labor|length }}</a><a href="#smg-period-equipment">Техника · {{ equipment|length }}</a><a href="#smg-period-fuel">ГСМ</a></nav>
+{% include 'production/_smg_period_table.html' with rows=works heading='Работы' section_id='smg-period-works' %}
+{% include 'production/_smg_period_table.html' with rows=labor heading='Люди' section_id='smg-period-labor' explanation='План — сумма потребности за каждый день. Факт — уникальные сотрудники за каждый день; две смены одного человека в одной должности считаются один раз.' %}
+{% include 'production/_smg_period_table.html' with rows=equipment heading='Техника' section_id='smg-period-equipment' explanation='План — сумма количества машин по дням. Факт — работавшие машины по дням. Одна машина за два дня = 2 машино-дня. Простой не считается работой. Детальные записи и их сводные копии не дублируются.' %}
+<section id="smg-period-fuel" class="smg-period-section">
+  <h3>ГСМ</h3>
+  <p class="alert alert-info">План относится к выбранному объекту. Факт склада учитывается по ВЖГ и может включать несколько объектов. Поэтому отклонение и процент выполнения по ГСМ не рассчитываются.</p>
+  <h4 class="h6">План ГСМ объекта за период</h4>
+  <p class="small text-muted">Единица в СМГ — литры. Складской факт ниже показан в м³. Автоматическое преобразование плановых чисел не выполняется.</p>
+  <div class="table-responsive"><table class="table table-sm smg-period-table"><thead><tr><th scope="col">ГСМ</th><th scope="col">Ед.</th><th scope="col">План СМГ</th></tr></thead><tbody>
+    {% for row in fuel %}<tr><th scope="row">{{ row.label }}</th><td>{{ row.unit }}</td><td class="smg-period-number">{% if row.plan != None %}{{ row.plan|floatformat:'-3' }}{% else %}—{% endif %}</td></tr>{% empty %}<tr><td colspan="3">В СМГ нет плановых строк ГСМ за этот период.</td></tr>{% endfor %}
+  </tbody></table></div>
+  <h4 class="h6">Складской факт связанных ВЖГ за период · м³</h4>
+  <div class="table-responsive"><table class="table table-sm smg-period-table"><thead><tr><th scope="col">ВЖГ</th><th scope="col">Приход, м³</th><th scope="col">Расход, м³</th><th scope="col">Дней с записью</th></tr></thead><tbody>
+    {% for row in warehouse %}<tr><th scope="row">{{ row.label }}</th><td class="smg-period-number">{% if row.received != None %}{{ row.received|floatformat:'-3' }}{% else %}—{% endif %}</td><td class="smg-period-number">{% if row.actual != None %}{{ row.actual|floatformat:'-3' }}{% else %}—{% endif %}</td><td>{{ row.recorded_days }} из {{ period_days }}</td></tr>{% empty %}<tr><td colspan="4">С этим объектом не связаны ВЖГ. Складской факт не определён.</td></tr>{% endfor %}
+  </tbody></table></div>
+  <p class="small text-muted">Суммируются только сохранённые приход и расход общего склада. Дни без записей не считаются нулевым расходом. Остатки разных дней не складываются.</p>
+</section>

@@ -189,7 +189,7 @@ def live(request):
                 if existing:existing.closing_at=now;existing.save(update_fields=['closing_at'])
                 return JsonResponse({'closed':True})
             step=int(data.get('step',1))
-            if step not in {1,2,3,4}:raise ValueError
+            if step not in {1,2,3,4,5}:raise ValueError
             if existing is None:existing=ProductionPresence(company=obj.company,construction_object=obj,date=day,user=request.user,session_key=session)
             existing.step=step;existing.last_seen=now;existing.closing_at=None;existing.save()
             for model in (WorkFactClaim,EmployeeFactClaim):

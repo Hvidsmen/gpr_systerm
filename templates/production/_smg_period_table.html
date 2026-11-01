@@ -1,0 +1,14 @@
+<section id="{{ section_id }}" class="smg-period-section">
+  <h3>{{ heading }}</h3>{% if explanation %}<p class="small text-muted">{{ explanation }}</p>{% endif %}
+  <div class="table-responsive"><table class="table table-sm smg-period-table">
+    <thead><tr><th scope="col">Наименование</th><th scope="col">Ед.</th><th scope="col">План за период</th><th scope="col">Факт за период</th><th scope="col">Факт − план</th><th scope="col">Выполнение, %</th></tr></thead>
+    <tbody>{% for row in rows %}<tr>
+      <th scope="row">{% if row.context %}<span class="smg-period-path">{{ row.context }}</span>{% endif %}{{ row.label }}{% if row.plan == None and row.actual != None %}<span class="badge text-bg-light">{% if schedule %}Нет строки в СМГ{% else %}План не определён{% endif %}</span>{% endif %}</th>
+      <td>{{ row.unit }}</td>
+      <td class="smg-period-number">{% if row.plan != None %}{{ row.plan|floatformat:'-3' }}{% else %}—{% endif %}</td>
+      <td class="smg-period-number">{% if row.actual != None %}{{ row.actual|floatformat:'-3' }}<small class="smg-period-coverage">{{ row.recorded_days }} дн. с фактом</small>{% else %}—{% endif %}</td>
+      <td class="smg-period-number {% if row.deviation < 0 %}text-danger{% elif row.deviation > 0 %}text-success{% endif %}">{% if row.deviation != None %}{% if row.deviation > 0 %}+{% endif %}{{ row.deviation|floatformat:'-3' }}{% else %}—{% endif %}</td>
+      <td class="smg-period-number">{% if row.percent != None %}{{ row.percent|floatformat:'-1' }}%{% else %}—{% endif %}</td>
+    </tr>{% empty %}<tr><td colspan="6">За этот период нет строк плана и сохранённого факта.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>

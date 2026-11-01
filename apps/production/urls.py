@@ -8,9 +8,11 @@ from .report_export import download as production_report_download
 from .equipment_operations_views import assignments as equipment_assignments, history as equipment_history
 
 app_name = "production"
-from . import actuation_views
+from . import actuation_views, smg_period_views
 
 urlpatterns = [
+    path('smg-period/', smg_period_views.detail, name='smg_period_detail'),
+    path('smg-period.xlsx', smg_period_views.export, name='smg_period_export'),
     path('actuation/reasons/propose/',actuation_views.propose,name='actuation_reason_propose'),
     path('actuation/reasons/',actuation_views.reviews,name='actuation_reason_reviews'),
     path('actuation/reasons/<int:pk>/',actuation_views.review,name='actuation_reason_review'),
