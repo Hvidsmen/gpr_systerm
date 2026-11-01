@@ -269,7 +269,7 @@ def check_route(user, match, method):
             require_roles(user,READ_ROLES|{'DISPATCHER','ALL_FACT_DISPATCHER','MECHANIZATION_DISPATCHER'})
             return
         if name=='equipment_report':
-            require_roles(user,READ_ROLES|{'ALL_FACT_DISPATCHER','MECHANIZATION_DISPATCHER'})
+            require_roles(user,READ_ROLES|{'DISPATCHER','ALL_FACT_DISPATCHER','MECHANIZATION_DISPATCHER'})
             return
         if name in {'production_live','production_links','production_copy_previous'}:
             require_roles(user,{'ADMIN','DISPATCHER','ALL_FACT_DISPATCHER'})

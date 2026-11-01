@@ -15,7 +15,7 @@ from core.permissions import READ_ROLES, require_roles, role_code
 from .forms import ObjectDateForm
 from .entry_concurrency import sqlite_serialized
 from .smg_period_report import build
-from .report_grouping import work_display_rows, resource_display_rows
+from .report_grouping import work_display_rows, resource_display_rows, day_matrix
 
 
 def day_people(obj,day):
@@ -40,6 +40,7 @@ def report_for(request):
         return None
     report = build(selector.cleaned_data['construction_object'], selector.cleaned_data['date'], request.GET.get('schedule'), day_only=request.GET.get('scope')=='day', equipment_only=request.GET.get('equipment_only')=='1',include_fuel=role_code(request.user)!='MECHANIZATION_DISPATCHER' and request.GET.get('include_fuel')!='0')
     report['show_days'] = request.GET.get('by_day') == '1'
+    if report['show_days']:report['day_matrix']=day_matrix(report)
     if report['day_only'] and not report['equipment_only']:report['people_details_groups']=day_people(report['object'],report['day'])
     return report
 
@@ -111,19 +112,38 @@ def workbook(report):
             report['warehouse'], ['label', 'unit', 'received', 'actual', 'recorded_days'],
             'Общий складской факт связанных ВЖГ в м³. Включает расход на все обслуживаемые ими объекты. Нет записи — нет значения.')
     if report.get('show_days'):
+        from datetime import timedelta
+        from openpyxl.utils import get_column_letter
+        dates=[report['start']+timedelta(days=n) for n in range((report['end']-report['start']).days+1)]
+        date_fields=['day_'+str(n) for n in range(len(dates))]
+
+        def matrix(title, identity_headers, identities, records):
+            lines=[]
+            for record in records:
+                values={row['date']:row for row in record['daily_rows']}
+                for field, label in [('plan','План'),('actual','Факт'),('deviation','Факт − план'),('percent','Выполнение, %')]:
+                    line={name:record.get(name) for name in identities};line['metric']=label
+                    for n,day in enumerate(dates):line[date_fields[n]]=values.get(day,{}).get(field)
+                    lines.append(line)
+            page=sheet(title,[*identity_headers,'Показатель',*dates],lines,[*identities,'metric',*date_fields],
+                'Даты расположены по столбцам. План, факт, отклонение и выполнение — отдельными строками. Пустая ячейка означает отсутствие значения.')
+            first_date=len(identities)+2
+            page.freeze_panes=get_column_letter(first_date)+'5'
+            for column in range(first_date,first_date+len(dates)):
+                page.column_dimensions[get_column_letter(column)].width=12
+                page.cell(4,column).number_format='DD.MM.YYYY'
+
         if not report.get('equipment_only'):
-            works_by_day=[]
+            works=[]
             for section in report['work_groups']:
                 for work in section['works']:
                     for obj in work['objects']:
-                        works_by_day.extend(dict(day,label=work['label'],section=section['label'],complex=obj['label']) for day in obj['total']['daily_rows'])
-            sheet('Работы · дни',['Раздел','Работа','Комплексный объект','Дата','Ед.','План','Факт','Факт − план','Выполнение, %'],works_by_day,
-                ['section','label','complex','date','unit','plan','actual','deviation','percent'],'Подневные значения по комплексным объектам. Прочерк в интерфейсе соответствует пустой ячейке.')
+                        works.append(dict(label=work['label'],section=section['label'],complex=obj['label'],unit=work['unit'],daily_rows=obj['total']['daily_rows']))
+            matrix('Работы · дни',['Раздел','Работа','Комплексный объект','Ед.'],['section','label','complex','unit'],works)
         daily_sections=[('equipment_groups','Техника · дни')] if report.get('equipment_only') else [('labor_groups','Люди · дни'),('equipment_groups','Техника · дни')]
         for key,title in daily_sections:
-            records=[dict(day,group=group['label'],label=row['label']) for group in report[key] for row in group['rows'] for day in row['daily_rows']]
-            sheet(title,['Группа','Наименование','Дата','Ед.','План','Факт','Факт − план','Выполнение, %'],records,
-                ['group','label','date','unit','plan','actual','deviation','percent'],'План и факт по дням. Не суммируйте эти строки повторно с итогами за период.')
+            records=[dict(row,group=group['label']) for group in report[key] for row in group['rows']]
+            matrix(title,['Группа','Наименование','Ед.'],['group','label','unit'],records)
     if 'people_details_groups' in report:
         people=[dict(person,group=group['label']) for group in report['people_details_groups'] for person in group['people']]
         sheet('Сотрудники',['Группа','Сотрудник','Должность','Смена','Выполненные работы / занятость'],people,['group','name','position','shift','assignment'],'Сохранённый состав сотрудников и связи с работами за выбранный день.')
@@ -152,15 +172,16 @@ def export(request):
 @never_cache
 @sqlite_serialized
 def equipment_page(request):
-    require_roles(request.user, READ_ROLES | {'MECHANIZATION_DISPATCHER','ALL_FACT_DISPATCHER'})
-    day_only=request.GET.get('scope','day')!='period'
+    require_roles(request.user, READ_ROLES | {'DISPATCHER','MECHANIZATION_DISPATCHER','ALL_FACT_DISPATCHER'})
+    day_only=request.GET.get('scope','period')=='day'
     initial_day=request.GET.get('date') or timezone.localdate().isoformat()
     selector=ObjectDateForm(request.GET if 'construction_object' in request.GET else None,user=request.user,initial={'date':initial_day})
     context={'selector':selector,'day_only':day_only}
     if selector.is_bound and selector.is_valid():
-        report=build(selector.cleaned_data['construction_object'],selector.cleaned_data['date'],request.GET.get('schedule'),day_only=day_only,include_fuel=False)
+        report=build(selector.cleaned_data['construction_object'],selector.cleaned_data['date'],request.GET.get('schedule'),day_only=day_only,include_fuel=role_code(request.user)!='MECHANIZATION_DISPATCHER')
         report['show_days']=not day_only and request.GET.get('by_day')=='1'
-        query={'construction_object':report['object'].pk,'date':report['day'].isoformat(),'include_fuel':'0','scope':'day' if day_only else 'period'}
+        if report['show_days']:report['day_matrix']=day_matrix(report)
+        query={'construction_object':report['object'].pk,'date':report['day'].isoformat(),'include_fuel':'1' if report['include_fuel'] else '0','scope':'day' if day_only else 'period'}
         if report['schedule']:query['schedule']=report['schedule'].pk
         if report['show_days']:query['by_day']='1'
         report['export_url']=reverse('production:smg_period_export')+'?'+urlencode(query)

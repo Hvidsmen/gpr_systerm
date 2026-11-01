@@ -1,6 +1,6 @@
 import uuid
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urljoin
 from django import forms
 from django.conf import settings
 from django.contrib import messages
@@ -71,6 +71,7 @@ def groups(request, pk=None):
     for group in copies:
         group.member_count = group.members.count()
         group.may_enter = training.permitted(request.user, group)
+        group.participant_url = urljoin(settings.PORTAL_PUBLIC_URL or request.build_absolute_uri('/'), reverse('accounts:training_enter',args=[group.pk]))
     runs = [] if copy is None else copy.runs.order_by('-started_at')[:10]
     return render(request, 'accounts/training_list.html', {'copies':copies,'form':form,'editing':copy,'runs':runs,'next_reset':training.next_reset(timezone.now())})
 

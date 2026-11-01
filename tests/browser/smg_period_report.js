@@ -24,7 +24,24 @@ const {chromium}=require('playwright'),fs=require('fs'),assert=require('assert')
  await camera.locator('[data-report-toggle]').click();assert(await branch.isHidden());await camera.locator('[data-report-toggle]').click();assert(await branch.isVisible());
  await panel.locator('[data-period-days-toggle]').click();await page.waitForFunction(()=>document.querySelector('[data-period-days-toggle]')?.getAttribute('aria-pressed')==='true');
  await panel.locator('[data-period-days-toggle]').hover();assert(await panel.locator('[data-period-days-toggle]').evaluate(el=>getComputedStyle(el).color!==getComputedStyle(el).backgroundColor));
- await panel.scrollIntoViewIfNeeded();await page.screenshot({path:'/tmp/smg-period-by-day-desktop.png',animations:'disabled'});
+ const grid=panel.locator('[data-report-day-grid]');assert.equal(await grid.count(),1);assert.equal(await grid.locator('thead').count(),1);
+ const columns=await grid.locator('thead th').count();assert(columns>=31&&columns<=34);
+ const geometry=()=>grid.evaluate(el=>{const rect=node=>{const r=node.getBoundingClientRect();return{x:r.x,y:r.y}};return{header:rect(el.querySelector('thead')),label:rect(el.querySelector('[data-day-label]')),metric:rect(el.querySelector('tbody .report-day-metric')),left:el.scrollLeft,top:el.scrollTop}});
+ await grid.scrollIntoViewIfNeeded();const before=await geometry();
+ const labelBox=await grid.locator('thead .report-day-label').boundingBox(),metricBox=await grid.locator('thead .report-day-metric').boundingBox();assert(Math.abs(labelBox.x+labelBox.width-metricBox.x)<2);
+ await grid.evaluate(el=>{el.scrollLeft=600;el.scrollTop=100});await page.waitForTimeout(150);const after=await geometry();
+ assert(after.left>before.left);assert(after.top>before.top);assert(Math.abs(after.label.x-before.label.x)<2);assert(Math.abs(after.metric.x-before.metric.x)<2);
+ // Individual header cells stick; the table's thead box itself scrolls.
+ assert.equal(await grid.locator('thead th').first().evaluate(el=>getComputedStyle(el).position),'sticky');
+ const sticky=await grid.locator('thead th').first().boundingBox(),bounds=await grid.boundingBox();assert(Math.abs(sticky.y-bounds.y)<3);
+ await grid.evaluate(el=>{el.scrollLeft=0;el.scrollTop=0});
+ const toggle=grid.locator('[data-report-toggle]').first(),key=await toggle.getAttribute('data-report-toggle'),children=grid.locator(`[data-report-branch="${key}"]`);
+ await toggle.click();assert(await children.first().isHidden());await toggle.click();assert(await children.first().isVisible());
+ await page.screenshot({path:'/tmp/smg-period-by-day-desktop.png',animations:'disabled'});
+ await page.setViewportSize({width:390,height:844});await page.waitForTimeout(200);assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2));
+ await grid.scrollIntoViewIfNeeded();await page.screenshot({path:'/tmp/smg-period-by-day-mobile.png',animations:'disabled'});
+ await page.setViewportSize({width:1440,height:1000});
+
  assert(await panel.locator('.production-report-days').count()>0);assert((await panel.locator('.production-report-days').first().innerText()).includes('План'));
  await panel.locator('[data-period-days-toggle]').click();await page.waitForFunction(()=>document.querySelector('[data-period-days-toggle]')?.getAttribute('aria-pressed')==='false');
  assert.equal(await panel.locator('.production-report-days').count(),0);

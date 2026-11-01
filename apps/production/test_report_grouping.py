@@ -114,6 +114,18 @@ class ReportGroupingTests(TestCase):
         total=next(row for row in values if row[0]=='Установка камеры')
         self.assertEqual((total[3],total[4]),(8,3))
         self.assertTrue(any(row[2]=='ПК-2' for row in book['Работы · дни'].values))
+        page=book['Работы · дни']
+        self.assertEqual(page.freeze_panes,'F5')
+        headers=list(page.values)[3]
+        self.assertEqual([value.date() for value in headers[5:]],[self.start+timedelta(days=n) for n in range((build(self.obj,self.selected)['end']-self.start).days+1)])
+        camera=[row for row in list(page.values)[4:] if row[1]=='Установка камеры' and row[2]=='ПК-1']
+        self.assertEqual([row[4] for row in camera],['План','Факт','Факт − план','Выполнение, %'])
+        self.assertEqual([row[5] for row in camera],[2,1,-1,50])
+        self.assertIsNone(camera[1][6])
+        self.assertContains(detailed,'data-report-day-grid',count=1)
+        self.assertContains(detailed,'class="report-day-metric"')
+        self.assertContains(detailed,'<thead>',count=3)  # One shared dates header plus two separate fuel tables.
+
 
     def test_day_excel_work_totals_and_grouped_equipment(self):
         book=load_workbook(workbook(self.obj,self.start,report_data(self.obj,self.start)))

@@ -107,5 +107,21 @@ form[data-production-form]{max-width:1200px}.production-save-footer{border-top:1
 [data-period-days-toggle]{color:#087f9c;background:#fff;border-color:#afd2df}
 [data-period-days-toggle]:hover,[data-period-days-toggle]:focus-visible{color:#174b65;background:#e3f2f7;border-color:#087f9c}
 .production-report-days>.table{table-layout:fixed;min-width:0;width:100%}
-.production-report-days th:first-child,.production-report-days tbody th{width:20%;min-width:0;font-weight:400}
+.production-report-days:not(.report-day-grid) th:first-child,.production-report-days:not(.report-day-grid) tbody th{width:20%;min-width:0;font-weight:400}
 .production-report-days .smg-period-number{white-space:normal;overflow-wrap:anywhere}
+
+.report-day-grid-scroll{--report-label-width:240px;--report-metric-width:112px;max-height:72vh;overflow:auto;contain:inline-size;position:relative;border:1px solid #cfdee8;border-radius:6px;overscroll-behavior:contain}
+.report-day-grid-scroll:focus-visible{outline:2px solid #087f9c;outline-offset:2px}
+.report-day-grid-table{table-layout:fixed;min-width:100%;margin:0;font-size:12px;font-variant-numeric:tabular-nums;border-collapse:separate;border-spacing:0}
+.report-day-grid-table th,.report-day-grid-table td{min-width:88px;padding:8px 10px!important;white-space:nowrap;text-align:right;border-right:1px solid #e4edf3;background:#fff}
+.report-day-grid-table thead th{position:sticky;top:0;z-index:3;background:#edf5fa;text-align:center;box-shadow:0 1px #bdcfdb}
+.report-day-grid-table .report-day-label{position:sticky;left:0;z-index:2;min-width:var(--report-label-width);width:var(--report-label-width);max-width:var(--report-label-width);text-align:left;white-space:normal;background:#f6f9fc;vertical-align:top}
+.report-day-label small{display:block;font-weight:400;color:#597184;font-size:11px;margin-top:4px;overflow-wrap:anywhere}
+.report-day-grid-table .report-day-metric{position:sticky;left:var(--report-label-width);z-index:1;min-width:var(--report-metric-width);width:var(--report-metric-width);max-width:var(--report-metric-width);white-space:normal;text-align:left;background:#f7fafc;font-weight:400}
+.report-day-grid-table thead .report-day-label{z-index:6;background:#edf5fa}.report-day-grid-table thead .report-day-metric{z-index:5;background:#edf5fa}
+.report-day-grid-table .report-day-heading th{position:static;background:#e7f1f7;text-align:left;font-weight:650}.report-day-heading span{position:sticky;left:10px}
+.report-day-grid-table .report-day-subtotal th,.report-day-grid-table .report-day-subtotal td{background:#edf7f9;font-weight:600}
+.report-day-grid-table .report-day-child{padding-left:24px!important;font-weight:500}.report-day-grid-table .report-day-period{background:#f2f6f9;font-weight:600}
+@media(max-width:700px){.report-day-grid-scroll{--report-label-width:150px;--report-metric-width:94px;max-height:68vh}.report-day-grid-table th,.report-day-grid-table td{padding:7px!important;font-size:11px}.report-day-grid-table .report-day-child{padding-left:16px!important}}
+
+.report-day-label-column{width:var(--report-label-width)}.report-day-metric-column{width:var(--report-metric-width)}

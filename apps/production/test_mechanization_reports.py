@@ -24,7 +24,9 @@ class MechanizationReportTests(TestCase):
 
     def test_own_report_has_day_and_period_without_changing_production_direction(self):
         self.assertContains(self.client.get(reverse('production:equipment_report')),'Показать отчёт')
-        day=self.client.get(reverse('production:equipment_report'),self.query)
+        default=self.client.get(reverse('production:equipment_report'),self.query)
+        self.assertFalse(default.context['day_only'])
+        day=self.client.get(reverse('production:equipment_report'),{**self.query,'scope':'day'})
         self.assertEqual(day.status_code,200)
         self.assertFalse(day.context['equipment_only']);self.assertTrue(day.context['day_only'])
         self.assertContains(day,'Установка камеры')
@@ -80,14 +82,18 @@ class MechanizationReportTests(TestCase):
         response=self.client.get(reverse('production:equipment_report'),{**self.query,'construction_object':obj.pk})
         self.assertFalse(response.context['selector'].is_valid());self.assertNotIn('equipment',response.context)
 
-    def test_production_dispatcher_keeps_full_report_and_no_new_entry_link(self):
+    def test_production_dispatcher_keeps_full_report_and_has_period_entry_link(self):
         self.client.force_login(self.users['DISPATCHER'])
         response=self.client.get(reverse('production:smg_period_detail'),self.query)
         self.assertContains(response,'Установка камеры')
         self.assertContains(response,'smg-period-fuel')
-        self.assertEqual(self.client.get(reverse('production:equipment_report')).status_code,403)
+        page=self.client.get(reverse('production:equipment_report'),self.query)
+        self.assertEqual(page.status_code,200)
+        self.assertContains(page,'План-факт СМГ')
+        self.assertContains(page,'smg-period-fuel')
+        self.assertFalse(page.context['day_only'])
 
     def test_menu_has_read_only_summary_without_production_entry(self):
         response=self.client.get(reverse('production:equipment_report'),self.query)
-        self.assertContains(response,'Сводный отчёт')
+        self.assertContains(response,'План-факт СМГ')
         self.assertNotContains(response,'> Производство</a>')
