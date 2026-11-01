@@ -122,9 +122,16 @@ class ReportGroupingTests(TestCase):
         self.assertEqual([row[4] for row in camera],['План','Факт','Факт − план','Выполнение, %'])
         self.assertEqual([row[5] for row in camera],[2,1,-1,50])
         self.assertIsNone(camera[1][6])
-        self.assertContains(detailed,'data-report-day-grid',count=1)
+        self.assertContains(detailed,'data-report-day-grid',count=3)
+        self.assertContains(detailed,'data-report-top-scroll',count=3)
         self.assertContains(detailed,'class="report-day-metric"')
-        self.assertContains(detailed,'<thead>',count=3)  # One shared dates header plus two separate fuel tables.
+        self.assertContains(detailed,'<thead>',count=5)  # Three separate directions plus two fuel tables.
+        self.assertContains(detailed,'role="tab"',count=4)
+        self.assertContains(detailed,'data-period-panel="fuel"')
+        from .report_grouping import day_matrix
+        blocks=day_matrix(build(self.obj,self.selected))['blocks']
+        self.assertEqual({row['direction'] for row in blocks},{'works','equipment','labor'})
+        self.assertTrue(all(row['direction']=='works' for row in blocks if row.get('label')=='Установка камеры'))
 
 
     def test_day_excel_work_totals_and_grouped_equipment(self):

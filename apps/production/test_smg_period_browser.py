@@ -31,7 +31,7 @@ class SmgPeriodBrowserTests(StaticLiveServerTestCase):
             DailyScheduleEntry.objects.create(schedule=self.schedule,kind='work',key=f'browser:item:{n}',metadata={'id':package.pk,'kind':'COMPOSITE'},
                 rows=[{'date':str(self.day),'item_id':item.pk,'quantity':str(n+1)}])
             DailyFact.objects.create(company=self.company,project_work=package,work_item=item,date=self.day,actual_quantity=n)
-        DailyFact.objects.create(company=self.company, project_work=self.work, date=self.start, actual_quantity=2)
+        DailyFact.objects.create(company=self.company, project_work=self.work, date=self.start if self.day!=self.start else self.later, actual_quantity=2)
         CampFuelDay.objects.create(company=self.company, camp=self.housing_camp, date=self.start,
             fuel_type='TOTAL', received_liters=2, actual_liters=1, actual_balance=1)
         for kind, value in [('equipment', {'equipment_type_id': self.type.pk, 'planned_count': '2'}),

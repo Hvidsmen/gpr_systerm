@@ -14,22 +14,31 @@ const {chromium}=require('playwright'),fs=require('fs'),assert=require('assert')
  const row=panel.locator('#smg-period-works tbody tr').first();
  assert.equal((await row.locator('td').nth(1).innerText()).trim(),'12');
  assert((await row.locator('td').nth(2).innerText()).startsWith('6'));
- assert((await panel.innerText()).includes('Расход, м³'));
+ const selectTab=async key=>{await panel.locator(`[data-period-tab="${key}"]`).click();assert.equal(await panel.locator('[data-period-panel]:visible').count(),1);assert(await panel.locator(`[data-period-panel="${key}"]`).isVisible());};
+ assert.deepEqual(await panel.locator('[data-period-tab]').evaluateAll(nodes=>nodes.map(n=>n.dataset.periodTab)),['works','equipment','labor','fuel']);
+ await selectTab('equipment');
  assert((await panel.locator('#smg-period-equipment').innerText()).includes('маш.·дн.'));
  assert((await panel.locator('#smg-period-equipment summary').first().innerText()).includes(c.category));
- assert((await panel.locator('#smg-period-labor summary').first().innerText()).includes(c.group));
+ await selectTab('labor');assert((await panel.locator('#smg-period-labor summary').first().innerText()).includes(c.group));
+ await selectTab('fuel');assert((await panel.innerText()).includes('Расход, м³'));assert(await panel.locator('[data-period-days-toggle]').isHidden());
+ await selectTab('works');
+ await panel.locator('[data-period-tab="works"]').focus();await page.keyboard.press('ArrowRight');assert(await panel.locator('[data-period-panel="equipment"]').isVisible());
+ await page.keyboard.press('End');assert(await panel.locator('[data-period-panel="fuel"]').isVisible());await page.keyboard.press('Home');assert(await panel.locator('[data-period-panel="works"]').isVisible());
  const camera=panel.locator('[data-work-total]').filter({hasText:'Установка камеры'});
  assert.equal((await camera.locator('td').nth(1).innerText()).trim(),'5');assert((await camera.locator('td').nth(2).innerText()).startsWith('3'));
  const branch=camera.locator('..').locator('xpath=following-sibling::tbody[1]');assert((await branch.innerText()).includes('ПК-1'));assert((await branch.innerText()).includes('ПК-2'));
  await camera.locator('[data-report-toggle]').click();assert(await branch.isHidden());await camera.locator('[data-report-toggle]').click();assert(await branch.isVisible());
  await panel.locator('[data-period-days-toggle]').click();await page.waitForFunction(()=>document.querySelector('[data-period-days-toggle]')?.getAttribute('aria-pressed')==='true');
  await panel.locator('[data-period-days-toggle]').hover();assert(await panel.locator('[data-period-days-toggle]').evaluate(el=>getComputedStyle(el).color!==getComputedStyle(el).backgroundColor));
- const grid=panel.locator('[data-report-day-grid]');assert.equal(await grid.count(),1);assert.equal(await grid.locator('thead').count(),1);
+ const grid=panel.locator('[data-period-panel="works"] [data-report-day-grid]');assert.equal(await panel.locator('[data-report-day-grid]:visible').count(),1);assert.equal(await grid.locator('thead').count(),1);
  const columns=await grid.locator('thead th').count();assert(columns>=31&&columns<=34);
  const geometry=()=>grid.evaluate(el=>{const rect=node=>{const r=node.getBoundingClientRect();return{x:r.x,y:r.y}};return{header:rect(el.querySelector('thead')),label:rect(el.querySelector('[data-day-label]')),metric:rect(el.querySelector('tbody .report-day-metric')),left:el.scrollLeft,top:el.scrollTop}});
  await grid.scrollIntoViewIfNeeded();const before=await geometry();
  const labelBox=await grid.locator('thead .report-day-label').boundingBox(),metricBox=await grid.locator('thead .report-day-metric').boundingBox();assert(Math.abs(labelBox.x+labelBox.width-metricBox.x)<2);
- await grid.evaluate(el=>{el.scrollLeft=600;el.scrollTop=100});await page.waitForTimeout(150);const after=await geometry();
+ const top=panel.locator('[data-period-panel="works"] [data-report-top-scroll]');assert(await top.isVisible());
+ await top.evaluate(el=>el.scrollLeft=600);await page.waitForTimeout(150);assert.equal(await grid.evaluate(el=>el.scrollLeft),await top.evaluate(el=>el.scrollLeft));
+ await grid.evaluate(el=>{el.scrollLeft=800;el.scrollTop=100});await page.waitForTimeout(150);const after=await geometry();
+ assert.equal(await grid.evaluate(el=>el.scrollLeft),await top.evaluate(el=>el.scrollLeft));
  assert(after.left>before.left);assert(after.top>before.top);assert(Math.abs(after.label.x-before.label.x)<2);assert(Math.abs(after.metric.x-before.metric.x)<2);
  // Individual header cells stick; the table's thead box itself scrolls.
  assert.equal(await grid.locator('thead th').first().evaluate(el=>getComputedStyle(el).position),'sticky');
@@ -43,7 +52,11 @@ const {chromium}=require('playwright'),fs=require('fs'),assert=require('assert')
  await page.setViewportSize({width:1440,height:1000});
 
  assert(await panel.locator('.production-report-days').count()>0);assert((await panel.locator('.production-report-days').first().innerText()).includes('План'));
+ await selectTab('equipment');assert(await panel.locator('[data-period-panel="equipment"] [data-report-day-grid]').isVisible());
+ await panel.locator('[data-period-refresh]').click();await page.waitForFunction(()=>document.querySelector('[data-period-state]').textContent.includes('Обновлено'));
+ assert(await panel.locator('[data-period-panel="equipment"]').isVisible());
  await panel.locator('[data-period-days-toggle]').click();await page.waitForFunction(()=>document.querySelector('[data-period-days-toggle]')?.getAttribute('aria-pressed')==='false');
+ assert(await panel.locator('[data-period-panel="equipment"]').isVisible());await selectTab('works');
  assert.equal(await panel.locator('.production-report-days').count(),0);
  await panel.scrollIntoViewIfNeeded();
  await page.screenshot({path:'/tmp/smg-period-desktop.png',animations:'disabled'});
@@ -67,8 +80,8 @@ const {chromium}=require('playwright'),fs=require('fs'),assert=require('assert')
  await panel.scrollIntoViewIfNeeded();
  await page.screenshot({path:'/tmp/smg-period-mobile.png',animations:'disabled'});
  await page.locator('[data-step-previous]').click();assert(await page.locator('[data-entry-step="4"]').isVisible());
- await page.goto(c.base+c.path+'&entry_step=5');await page.waitForFunction(()=>document.querySelector('[data-period-state]').textContent.includes('Обновлено'));
- assert(await page.locator('[data-smg-period]').isVisible());
+ await page.goto(c.base+c.path+'&entry_step=5&report_section=labor');await page.waitForFunction(()=>document.querySelector('[data-period-state]').textContent.includes('Обновлено'));
+ assert(await page.locator('[data-smg-period]').isVisible());assert(await panel.locator('[data-period-panel="labor"]').isVisible());
  await page.goto(c.base+c.readonly_path);await page.waitForFunction(()=>document.querySelector('[data-period-state]').textContent.includes('Обновлено'));
  assert(await page.locator('[data-period-refresh]').isEnabled());
  assert.deepEqual(errors,[]);await browser.close();console.log('PASS: fifth tab, save before report, period totals, Excel, failed refresh, mobile, direct link');

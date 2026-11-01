@@ -1,6 +1,6 @@
 {% extends 'base.html' %}{% load static %}
 {% block title %}План-факт СМГ{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'production/production_entry.css' %}?v=20261101-day-matrix">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'production/production_entry.css' %}?v=20261102-period-tabs">{% endblock %}
 {% block content %}
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2"><h1>План-факт СМГ</h1><a class="btn btn-outline-primary" href="{% url 'production:transport_board' %}{% if day %}?date={{ day|date:'Y-m-d' }}{% endif %}">Транспорт · ВЖГ</a></div>
 <p class="text-muted">Работы, сотрудники и техника выбранного объекта: сводка за день и план / факт за период СМГ. Ввод данных доступен по вашей роли.</p>
@@ -11,4 +11,4 @@
 {% if day_only %}{% include 'production/_mechanization_day_people.html' %}{% endif %}
 </section>{% else %}<p>Выберите объект и дату, затем нажмите «Показать отчёт».</p>{% endif %}
 {% endblock %}
-{% block extra_js %}<script src="{% static 'production/report_grouping.js' %}?v=20261101-1"></script><script>document.addEventListener('click',event=>{const button=event.target.closest('[data-period-days-toggle]');if(!button)return;const query=new URLSearchParams(location.search);query.set('scope','period');query.set('by_day',button.getAttribute('aria-pressed')==='true'?'0':'1');location.search=query.toString();});</script>{% endblock %}
+{% block extra_js %}<script src="{% static 'production/period_tabs.js' %}?v=20261102-1"></script><script src="{% static 'production/report_grouping.js' %}?v=20261101-1"></script><script>document.addEventListener('click',event=>{const button=event.target.closest('[data-period-days-toggle]');if(!button)return;const query=new URLSearchParams(location.search);query.set('scope','period');query.set('by_day',button.getAttribute('aria-pressed')==='true'?'0':'1');location.search=query.toString();});</script>{% endblock %}

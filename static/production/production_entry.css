@@ -125,3 +125,16 @@ form[data-production-form]{max-width:1200px}.production-save-footer{border-top:1
 @media(max-width:700px){.report-day-grid-scroll{--report-label-width:150px;--report-metric-width:94px;max-height:68vh}.report-day-grid-table th,.report-day-grid-table td{padding:7px!important;font-size:11px}.report-day-grid-table .report-day-child{padding-left:16px!important}}
 
 .report-day-label-column{width:var(--report-label-width)}.report-day-metric-column{width:var(--report-metric-width)}
+
+.smg-period-tabs{display:flex;flex-wrap:wrap;gap:4px;border-bottom:1px solid #cddfea;margin:16px 0}
+.smg-period-tabs [role=tab]{display:inline-flex;align-items:center;gap:7px;padding:10px 15px;border:0;border-bottom:3px solid transparent;background:transparent;color:#456279;font:inherit;cursor:pointer}
+.smg-period-tabs [role=tab][aria-selected=true]{border-bottom-color:#087f9c;background:#edf7fb;color:#096680;font-weight:600}
+.smg-period-tabs [role=tab]:hover{background:#f1f7fa}.smg-period-tabs [role=tab]:focus-visible{outline:2px solid #087f9c;outline-offset:-2px}
+.smg-period-tabs span{padding:1px 6px;border-radius:12px;background:#e6eef4;font-size:11px;color:#506c80}
+[data-period-panel][hidden]{display:none!important}[data-period-panel]{min-width:0}[data-period-panel]:focus-visible{outline:2px solid #087f9c;outline-offset:3px}
+[data-period-panel]>.smg-period-section{margin-top:16px}
+@media(max-width:600px){.smg-period-tabs{gap:0}.smg-period-tabs [role=tab]{padding:9px 10px;font-size:12px}}
+
+.report-day-top-scroll{height:18px;overflow-x:scroll;overflow-y:hidden;max-width:100%;scrollbar-gutter:stable}.report-day-top-scroll>div{height:1px}.report-day-top-scroll:focus-visible{outline:2px solid #087f9c;outline-offset:1px}
+
+.report-day-top-scroll{scrollbar-color:#839fb3 #edf3f7}.report-day-top-scroll::-webkit-scrollbar{height:12px}.report-day-top-scroll::-webkit-scrollbar-track{background:#edf3f7;border-radius:6px}.report-day-top-scroll::-webkit-scrollbar-thumb{background:#839fb3;border-radius:6px;border:2px solid #edf3f7}

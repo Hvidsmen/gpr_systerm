@@ -6,9 +6,15 @@ const {chromium}=require('playwright'),fs=require('fs'),assert=require('assert')
  const report=page.locator('[data-equipment-report]');assert((await report.innerText()).includes(c.category));assert((await report.innerText()).includes('План за день'));
  for(const text of ['Установка камеры','Люди',c.person])assert((await report.innerText()).includes(text));assert(!(await report.innerText()).includes('ГСМ'));
  assert((await page.locator('.sidebar').innerText()).includes('План-факт СМГ'));
- await report.getByRole('link',{name:'План / факт за период СМГ',exact:true}).click();assert((await report.innerText()).includes('маш.·дн.'));
+ await report.getByRole('link',{name:'План / факт за период СМГ',exact:true}).click();
+ assert.equal(await report.locator('[data-period-tab]').count(),3);assert.equal(await report.locator('[data-period-tab="fuel"]').count(),0);
+ await report.locator('[data-period-tab="equipment"]').click();assert((await report.innerText()).includes('маш.·дн.'));
  await page.locator('[data-period-days-toggle]').click();await page.waitForURL(/by_day=1/);assert(await report.locator('.production-report-days').count()>0);
- assert((await report.innerText()).includes(c.type));assert((await report.innerText()).includes('Установка камеры'));
+ assert(await report.locator('[data-period-panel="equipment"]').isVisible());assert((await report.innerText()).includes(c.type));
+ assert.equal(await report.locator('[data-report-day-grid]:visible').count(),1);
+ const top=report.locator('[data-period-panel="equipment"] [data-report-top-scroll]'),grid=report.locator('[data-period-panel="equipment"] [data-report-day-grid]');
+ await top.evaluate(el=>el.scrollLeft=500);await page.waitForTimeout(100);assert.equal(await grid.evaluate(el=>el.scrollLeft),await top.evaluate(el=>el.scrollLeft));
+ await report.locator('[data-period-tab="works"]').click();assert((await report.innerText()).includes('Установка камеры'));
  const downloaded=page.waitForEvent('download');await report.getByRole('link',{name:'Скачать Excel'}).click();const file=await downloaded;assert(file.suggestedFilename().endsWith('.xlsx'));assert(fs.statSync(await file.path()).size>1000);
  await page.screenshot({path:'/tmp/mechanization-report-desktop.png',animations:'disabled'});
  await page.setViewportSize({width:390,height:844});await page.waitForTimeout(400);assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2));await page.screenshot({path:'/tmp/mechanization-report-mobile.png',animations:'disabled'});

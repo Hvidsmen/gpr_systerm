@@ -91,20 +91,21 @@ def resource_display_rows(groups):
 
 
 def day_matrix(report):
-    """One date header for all directions; no totals across incompatible units."""
+    """Shared dates and section-tagged rows; no totals across incompatible units."""
     from datetime import timedelta
     dates=[report['start']+timedelta(days=n) for n in range((report['end']-report['start']).days+1)]
     blocks=[]
+    direction='works'
 
     def heading(label, section_id=None):
-        blocks.append({'heading':True,'label':label,'section_id':section_id})
+        blocks.append({'heading':True,'label':label,'section_id':section_id,'direction':direction})
 
     def block(label, total, *, level=0, toggle=None, parent=None, context=''):
         metrics=[]
         for field,caption in [('plan','План'),('actual','Факт'),('deviation','Факт − план'),('percent','Выполнение, %')]:
             cells=[{'value':day.get(field),'partial':field=='actual' and day.get('actual') is not None and day.get('actual_count',0)<day.get('row_count',0)} for day in total['daily_rows']]
             metrics.append({'label':caption,'field':field,'total':total.get(field),'cells':cells})
-        blocks.append({'label':label,'unit':total['unit'],'metrics':metrics,'level':level,'toggle':toggle,'parent':parent,'context':context})
+        blocks.append({'label':label,'unit':total['unit'],'metrics':metrics,'level':level,'toggle':toggle,'parent':parent,'context':context,'direction':direction})
 
     if not report.get('equipment_only'):
         heading('Работы','smg-period-works')
@@ -115,11 +116,13 @@ def day_matrix(report):
                 block(work['label'],work['total'],toggle=key)
                 for obj in work['objects']:
                     block(obj['label'],obj['total'],level=1,parent=key,context=obj['packages'])
+        direction='labor'
         heading('Люди','smg-period-labor')
         for index,group in enumerate(report['labor_groups']):
             key=f'labor-{index}'
             block(group['label'],group['total'],toggle=key)
             for row in group['rows']:block(row['label'],row,level=1,parent=key)
+    direction='equipment'
     heading('Техника','smg-period-equipment')
     for index,group in enumerate(report['equipment_groups']):
         key=f'equipment-{index}'
