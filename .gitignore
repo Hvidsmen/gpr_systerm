@@ -21,3 +21,6 @@ gpr_export.txt
 .venv.broken-*/
 
 private_uploads/
+
+# Optional custom training copy storage.
+training-data/

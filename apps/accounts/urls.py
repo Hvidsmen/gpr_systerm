@@ -9,11 +9,17 @@ from .one_c_jobs import jobs
 from .one_c_report import download_report
 from .portal_updates import updates, update_status
 from .user_archive import bulk_archive
-from . import invitation_views
+from . import invitation_views, training_views
 
 app_name = 'accounts'
 
 urlpatterns = [
+    path('training/',training_views.groups,name='training_list'),
+    path('training/health/',training_views.health,name='training_health'),
+    path('training/consume/',training_views.consume,name='training_consume'),
+    path('training/<uuid:pk>/',training_views.groups,name='training_edit'),
+    path('training/<uuid:pk>/reset/',training_views.reset,name='training_reset'),
+    path('training/<uuid:pk>/enter/',training_views.enter,name='training_enter'),
     path('users/invitations/',invitation_views.history,name='invitation_list'),
     path('users/invitations/prepare/',invitation_views.prepare,name='user_invite_bulk'),
     path('users/invitations/settings/',invitation_views.settings_view,name='invitation_settings'),

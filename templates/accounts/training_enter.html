@@ -1,0 +1,5 @@
+{% extends 'base.html' %}{% load tz %}{% block title %}Вход в учебную копию{% endblock %}{% block content %}{% timezone 'Europe/Moscow' %}
+<h1>Учебная копия · {{ copy.name }}</h1><p>Все участники этой группы работают в общей учебной базе как администраторы. Ваши права и данные в основном портале не меняются.</p>
+<div class="alert alert-warning">В 07:00 по Москве учебная база и файлы будут заменены данными основного портала. Учебные изменения удалятся. Письма и обмен с 1С в копии отключены.</div>
+{% if ready %}<p>Последний снимок: {{ copy.last_reset_at|date:'d.m.Y H:i' }}.</p><form method="post">{% csrf_token %}<button class="btn btn-primary">Войти в учебную копию</button></form>{% else %}<div class="alert alert-info">{{ copy.get_state_display }}. Копия ещё не готова ко входу. Обновите страницу через некоторое время; если состояние не меняется, обратитесь к администратору.</div>{% if copy.error %}<p>{{ copy.error }}</p>{% endif %}<a class="btn btn-outline-primary" href="">Обновить состояние</a>{% endif %}
+<p class="mt-3"><a href="{% url 'planning:task_list' %}">Вернуться к заданиям</a></p>{% endtimezone %}{% endblock %}

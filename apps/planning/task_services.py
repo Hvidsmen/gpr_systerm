@@ -94,7 +94,7 @@ def visible(user):
     q=scope_queryset(WorkTask.objects.all(),user)
     from core.permissions import CATALOG_MANAGER_ROLES
     if role_code(user) in CATALOG_MANAGER_ROLES:
-        return q.filter(kind='CATALOGUE',target_role=role_code(user)).filter(Q(assigned_to=user)|Q(assigned_to__isnull=True))
+        return q.filter(Q(kind='TRAINING',assigned_to=user)|Q(kind='CATALOGUE',target_role=role_code(user))).filter(Q(assigned_to=user)|Q(assigned_to__isnull=True))
     if role_code(user)=='PLANNER':
         q=q.filter(Q(construction_object__in=user.assigned_objects.filter(company=user.company))|Q(construction_object__isnull=True))
     if role_code(user) not in {'ADMIN','OBSERVER'}:

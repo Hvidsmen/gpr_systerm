@@ -154,4 +154,7 @@ DEFAULT_FROM_EMAIL=os.getenv('DEFAULT_FROM_EMAIL','site@yamaldorstroy.ru')
 EMAIL_USE_TLS=env_bool('EMAIL_USE_TLS',True)
 EMAIL_USE_SSL=env_bool('EMAIL_USE_SSL',False)
 EMAIL_TIMEOUT=10
+TRAINING_ROOT=Path(os.getenv('GPR_TRAINING_ROOT',str(CONFIG_DIR / '.runtime' / 'training')))
+TRAINING_MODE=False
+
 INVITATION_ASYNC_ENABLED=env_bool('INVITATION_ASYNC_ENABLED',True)

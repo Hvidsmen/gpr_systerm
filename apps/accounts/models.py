@@ -184,3 +184,4 @@ class OneCDiagnosticRun(models.Model):
     error = models.TextField(blank=True)
 
 from .invitation_models import CompanyMailSettings,InvitationBatch,UserInvitation
+from .training_models import TrainingCopy, TrainingResetRun, TrainingTicketUse

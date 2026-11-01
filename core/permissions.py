@@ -118,6 +118,12 @@ def scope_queryset(queryset, user, include_archived=False):
 def check_route(user, match, method):
     namespace, name = match.namespace, match.url_name
     role = role_code(user)
+    from django.conf import settings
+    if getattr(settings,'TRAINING_MODE',False) and namespace=='accounts':
+        from apps.accounts.training_middleware import TrainingGuard
+        if name in TrainingGuard.blocked:raise PermissionDenied('Действие доступно только в основном портале.')
+    if namespace=='accounts' and name in {'training_enter','training_consume','training_health'}:
+        require_roles(user,ROLES);return
     if namespace=='instructions' and name in {'index','article'}:
         require_roles(user,ROLES)
         if method not in {'GET','HEAD'}:raise PermissionDenied

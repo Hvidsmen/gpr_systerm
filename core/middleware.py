@@ -5,7 +5,7 @@ from django.core.exceptions import PermissionDenied
 class CompanyAccessMiddleware:
     """Require authentication and company membership before application views run."""
 
-    public_views = {'accounts:login', 'accounts:register'}
+    public_views = {'accounts:login', 'accounts:register', 'accounts:training_consume', 'accounts:training_health'}
     account_views = {'accounts:logout', 'accounts:settings', 'accounts:password_change', 'accounts:access_pending', 'accounts:impersonation_stop'}
 
     def __init__(self, get_response):

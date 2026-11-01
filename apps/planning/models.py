@@ -1344,7 +1344,7 @@ class WorkTask(BaseCompanyModel):
     started_at = models.DateTimeField(null=True, blank=True)
     schedule_review = models.ForeignKey('DailyScheduleReview',null=True,blank=True,on_delete=models.CASCADE,related_name='work_tasks')
     key = models.CharField(max_length=180)
-    kind = models.CharField(max_length=20,choices=[('CATALOGUE','Проверка справочника'),('RESOURCES','Подготовка ресурсов'),('SUBMISSION','Следующий этап плана'),('ESTIMATE','Проверка сметчика'),('REMARK','Замечание'),('APPROVAL','Согласование'),('FACT','Факт за день'),('CARRYOVER','Уточнение остатков'),('MANUAL','Задание')])
+    kind = models.CharField(max_length=20,choices=[('TRAINING','Учебная копия'),('CATALOGUE','Проверка справочника'),('RESOURCES','Подготовка ресурсов'),('SUBMISSION','Следующий этап плана'),('ESTIMATE','Проверка сметчика'),('REMARK','Замечание'),('APPROVAL','Согласование'),('FACT','Факт за день'),('CARRYOVER','Уточнение остатков'),('MANUAL','Задание')])
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
     status = models.CharField(max_length=20,default='OPEN',choices=[('OPEN','Открыто'),('IN_REVIEW','На проверке автора'),('DONE','Выполнено'),('SUPERSEDED','Заменено / отменено'),('CLOSED_ADMIN','Принудительно закрыто')])

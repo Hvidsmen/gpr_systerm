@@ -279,9 +279,17 @@ def serve(root,code,port,probe=False):
     server=create_server(application,listen=('127.0.0.1' if probe else '0.0.0.0')+':'+str(port),threads=8,
                          max_request_body_size=128*1024*1024,channel_timeout=120)
     thread=threading.Thread(target=server.run,daemon=True);thread.start()
+    training_stop=threading.Event()
+    training_thread=None
+    if not probe:
+        from apps.accounts.training_runtime import supervise as training_supervise
+        training_thread=threading.Thread(target=training_supervise,args=(training_stop,),daemon=True)
+        training_thread.start()
     stop=root/'.runtime'/('probe.stop' if probe else 'server.stop')
     while thread.is_alive() and not stop.exists():time.sleep(.5)
+    training_stop.set()
     server.close();server.task_dispatcher.shutdown(timeout=90);thread.join(timeout=10)
+    if training_thread:training_thread.join(timeout=100)
     if not stop.exists():raise RuntimeError('HTTP server exited unexpectedly.')
 
 
