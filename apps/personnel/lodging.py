@@ -30,10 +30,20 @@ def available_beds(company,camp,day,*,user=None,session=None):
     return LodgingBed.objects.filter(company=company,building__camp=camp,building__camp__is_active=True,building__is_active=True,state='AVAILABLE').exclude(pk__in=occupied).exclude(pk__in=leases.values('resource_id')).select_related('building')
 
 
-def building_label(building):return f'{building.name} · Пол: {building.get_gender_display()}'
+def building_title(building):
+    number=' '.join(building.name.split())
+    if number.isdecimal():number='Вагон '+number
+    title=' '.join(building.description.split())
+    return number+' · '+title if title and title.casefold()!=number.casefold() else number
 
 
-def bed_label(bed):return f'{bed} · Пол вагона: {bed.building.get_gender_display()} — Свободно'
+def building_label(building):return f'{building_title(building)} · Пол: {building.get_gender_display()}'
+
+
+def bed_label(bed):
+    place=(f'комн. {bed.room} · ' if bed.room else '')+f'место {bed.number}'
+    return f'{building_title(bed.building)} · {place} · Пол вагона: {bed.building.get_gender_display()} — Свободно'
+
 
 
 def session_id(value):

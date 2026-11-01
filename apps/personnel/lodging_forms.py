@@ -68,8 +68,9 @@ class BuildingForm(forms.ModelForm):
                 self.data=self.data.copy();self.data['gender']=self.instance.gender
         self.fields['gender'].help_text='Укажите назначение вагона: мужской, женский или смешанный. Пол сотрудников ведётся отдельно.'
         self.fields['description'].widget.attrs['rows']=2
-        self.fields['description'].label='Описание в заголовке вагона'
-        self.fields['description'].help_text='Например: Вагон-дом жилой на 8 чел на санях 1218120 БП-002666. Номер вагона укажите отдельно.'
+        self.fields['name'].label='Номер / обозначение вагона или корпуса'
+        self.fields['description'].label='Название / описание вагона'
+        self.fields['description'].help_text='Название показывается в заголовке вагона и при выборе места. Например: Вагон-дом жилой на 8 чел на санях 1218120 БП-002666. Номер укажите отдельно.'
         for f in self.fields.values():f.widget.attrs['class']='form-check-input' if isinstance(f.widget,forms.CheckboxInput) else 'form-select' if isinstance(f.widget,forms.Select) else 'form-control'
 
 
@@ -82,7 +83,8 @@ class BedForm(forms.ModelForm):
 
 class QuickBedForm(StyledForm):
     building=forms.ModelChoiceField(label='Вагон / корпус',queryset=LodgingBuilding.objects.none(),required=False)
-    new_building_name=forms.CharField(label='Или новый вагон / корпус',max_length=200,required=False)
+    new_building_name=forms.CharField(label='Или новый вагон / корпус: номер или обозначение',max_length=200,required=False)
+    new_building_description=forms.CharField(label='Название / описание нового вагона',max_length=4000,required=False,widget=forms.Textarea(attrs={'rows':2}),help_text='Покажем вместе с номером вагона при выборе места.')
     new_building_inventory_number=forms.CharField(label='Инвентарный номер нового вагона',max_length=80,required=False)
     new_building_gender=forms.ChoiceField(label='Пол проживающих в новом вагоне',choices=LodgingBuilding.GENDERS,required=False,help_text='Для существующего вагона пол меняется в его карточке.')
     room=forms.CharField(label='Комната',max_length=60,required=False)
@@ -100,6 +102,7 @@ class QuickBedForm(StyledForm):
         if data.get('building') and data.get('new_building_name'):self.add_error('new_building_name','Выберите существующий вагон или введите новый.')
         if not data.get('building') and not data.get('new_building_name'):self.add_error('building','Выберите вагон или укажите название нового.')
         if data.get('new_building_inventory_number') and not data.get('new_building_name'):self.add_error('new_building_name','Укажите название нового вагона.')
+        if data.get('new_building_description') and not data.get('new_building_name'):self.add_error('new_building_description','Для существующего вагона название / описание меняется через «Изменить вагон».')
         if data.get('new_building_gender') and not data.get('new_building_name'):self.add_error('new_building_gender','Это поле относится к новому вагону. Пол существующего вагона изменяется в его карточке.')
         return data
 

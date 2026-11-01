@@ -12,14 +12,14 @@ const {chromium}=require('playwright'),fs=require('fs'),assert=require('node:ass
   await form.locator('[data-lodging-take]').click();await form.locator('[data-lodging-lock-label]').filter({hasText:'Вы оформляете'}).waitFor();
   await form.locator('[name=pass_number]').fill('PASS-KEEP');await form.locator('[name=comment]').fill('Сохранить введённое');
   const quick=page.locator('[data-lodging-quick-bed]');await quick.locator('summary').click();
-  await quick.locator('[name=new_building_name]').fill('Вагон новый');await quick.locator('[name=new_building_gender]').selectOption('F');await quick.locator('[name=room]').fill('3');
+  await quick.locator('[name=new_building_name]').fill('Вагон новый');await quick.locator('[name=new_building_description]').fill('Жилой вагон на 8 мест');await quick.locator('[name=new_building_gender]').selectOption('F');await quick.locator('[name=room]').fill('3');
   await quick.getByRole('button',{name:'Создать и выбрать место'}).click();
   // HTML validation catches a missing number without navigating or losing data.
   assert.equal(page.url(),originalUrl);assert(await quick.locator('[name=number]').evaluate(el=>!el.validity.valid));
   await quick.locator('[name=number]').fill('7');await page.screenshot({path:'/tmp/lodging-quick-place-wide.png',fullPage:true});
   await quick.getByRole('button',{name:'Создать и выбрать место'}).click();
   await page.waitForFunction(()=>document.querySelector('[data-lodging-quick-bed]').open===false);
-  assert.equal(page.url(),originalUrl);assert((await form.locator('[name=bed] option:checked').textContent()).includes('Вагон новый · комн. 3 · место 7'));
+  assert.equal(page.url(),originalUrl);assert((await form.locator('[name=bed] option:checked').textContent()).includes('Вагон новый · Жилой вагон на 8 мест · комн. 3 · место 7'));
   assert((await form.locator('[name=bed] option:checked').textContent()).includes('Пол вагона: Женский'));
   assert.equal(await form.locator('[name=employee]').inputValue(),String(c.employee));
   assert.equal(await form.locator('[name=pass_number]').inputValue(),'PASS-KEEP');assert.equal(await form.locator('[name=comment]').inputValue(),'Сохранить введённое');
@@ -30,6 +30,6 @@ const {chromium}=require('playwright'),fs=require('fs'),assert=require('node:ass
   assert((await page.locator('.lodging-building').filter({hasText:'Вагон новый'}).locator('[data-building-gender]').textContent()).includes('Женский'));await page.screenshot({path:'/tmp/lodging-building-gender-desktop.png',fullPage:true});
   await page.setViewportSize({width:390,height:844});await page.locator('#movement').evaluate(el=>el.open=true);await quick.locator('summary').click();
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2));await page.screenshot({path:'/tmp/lodging-quick-place-mobile.png',fullPage:true});
-  assert.deepEqual(errors,[]);console.log('PASS: building gender, inline building/place creation, retained inputs, claim renewal, save and mobile layout');
+  assert.deepEqual(errors,[]);console.log('PASS: wagon number/name/place label, building gender, inline building/place creation, retained inputs, claim renewal, save and mobile layout');
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exit(1)});

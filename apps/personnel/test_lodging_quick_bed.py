@@ -60,5 +60,6 @@ class QuickBedBrowserTests(StaticLiveServerTestCase):
         script=Path(__file__).resolve().parents[2]/'tests/browser/lodging_quick_bed.js'
         result=subprocess.run(['node',str(script)],capture_output=True,text=True,env=dict(os.environ,QUICK_BED_CONFIG=json.dumps(config)),timeout=90)
         self.assertEqual(result.returncode,0,result.stdout+'\n'+result.stderr)
-        self.assertEqual(LodgingBuilding.objects.get(name='Вагон новый',company=self.company).gender,'F')
+        building=LodgingBuilding.objects.get(name='Вагон новый',company=self.company)
+        self.assertEqual(building.gender,'F');self.assertEqual(building.description,'Жилой вагон на 8 мест')
         print(result.stdout.strip())

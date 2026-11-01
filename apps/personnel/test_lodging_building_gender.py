@@ -15,7 +15,8 @@ class LodgingBuildingGenderTests(TestCase):
         self.scope={'camp':self.a.pk,'date':str(self.day)}
     def building_payload(self,**extra):
         self.building.refresh_from_db()
-        return dict(self.scope,name=self.building.name,inventory_number=self.building.inventory_number,description=self.building.description,kind=self.building.kind,is_active='on',version=self.building.updated_at.isoformat(),**extra)
+        data=dict(self.scope,name=self.building.name,inventory_number=self.building.inventory_number,description=self.building.description,kind=self.building.kind,is_active='on',version=self.building.updated_at.isoformat())
+        data.update(extra);return data
 
     def test_new_building_gender_and_beds_are_saved(self):
         url=reverse('personnel:lodging_building_create')
@@ -27,13 +28,13 @@ class LodgingBuildingGenderTests(TestCase):
 
     def test_edit_is_visible_in_header_choices_and_history(self):
         url=reverse('personnel:lodging_building_edit',args=[self.building.pk])
-        self.assertEqual(self.client.post(url,self.building_payload(gender='F')).status_code,302)
+        self.assertEqual(self.client.post(url,self.building_payload(gender='F',description='Жилой вагон на 8 мест')).status_code,302)
         page=self.client.get(reverse('personnel:lodging'),self.scope)
         self.assertContains(page,'data-building-gender="F"');self.assertContains(page,'Пол: Женский')
         form=LodgingMovementForm(company=self.company,camp=self.a,day=self.day)
         self.assertIn('Пол вагона: Женский',form.fields['bed'].label_from_instance(form.fields['bed'].queryset.get(pk=self.bed.pk)))
         choice=next(b for b in self.client.get(reverse('personnel:lodging_available_beds'),self.scope).json()['beds'] if b['id']==self.bed.pk)
-        self.assertEqual(choice['building_gender'],'F');self.assertIn('Женский',choice['label'])
+        self.assertEqual(choice['building_gender'],'F');self.assertIn('Женский',choice['label']);self.assertIn('Вагон 1 · Жилой вагон на 8 мест · место 1',choice['label'])
         revision=FactRevision.objects.filter(entity_type='personnel.lodgingbuilding',entity_id=str(self.building.pk),actor=self.commandant).latest('pk')
         self.assertEqual(revision.before['fields']['gender'],'');self.assertEqual(revision.after['fields']['gender'],'F')
 
@@ -62,10 +63,10 @@ class LodgingBuildingGenderTests(TestCase):
 
     def test_quick_creation_saves_gender_and_existing_building_is_unchanged(self):
         url=reverse('personnel:lodging_quick_bed')
-        response=self.client.post(url,dict(self.scope,new_building_name='Женский вагон',new_building_gender='F',number='9'))
+        response=self.client.post(url,dict(self.scope,new_building_name='12',new_building_description='Жилой вагон на 8 мест',new_building_gender='F',number='9'))
         self.assertEqual(response.status_code,201)
         data=response.json();bed=LodgingBed.objects.get(pk=data['id'])
-        self.assertEqual(bed.building.gender,'F');self.assertIn('Женский',data['label']);self.assertIn('Женский',data['building']['label'])
+        self.assertEqual(bed.building.gender,'F');self.assertEqual(bed.building.description,'Жилой вагон на 8 мест');self.assertIn('Вагон 12 · Жилой вагон на 8 мест · место 9',data['label']);self.assertIn('Женский',data['label']);self.assertIn('Женский',data['building']['label'])
         bad=self.client.post(url,dict(self.scope,building=self.building.pk,new_building_gender='M',number='9'))
         self.assertEqual(bad.status_code,400);self.building.refresh_from_db();self.assertEqual(self.building.gender,'')
 

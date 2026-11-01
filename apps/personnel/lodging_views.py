@@ -122,7 +122,7 @@ def board(request):
     all_rows=place_rows(request.user.company,camp,day);stats=Counter(row['status'] for row in all_rows)
     organizations=Counter(row['organization'] for row in all_rows if row['stay'])
     q=selector.cleaned_data['q'].casefold().split();state=selector.cleaned_data['state']
-    rows=[r for r in all_rows if (not state or r['status']==state) and all(term in ' '.join([str(r['bed']),r['stay'].employee.display_name if r['stay'] else '',r['stay'].employee.employee_number if r['stay'] else '',r['organization']]).casefold() for term in q)]
+    rows=[r for r in all_rows if (not state or r['status']==state) and all(term in ' '.join([str(r['bed']),lodging.building_title(r['bed'].building),r['stay'].employee.display_name if r['stay'] else '',r['stay'].employee.employee_number if r['stay'] else '',r['organization']]).casefold() for term in q)]
     from .housing_views import workbook_response
     if request.GET.get('export')=='xlsx':
         values=[['ВЖГ','Вагон / корпус','Инвентарный номер','Сведения о вагоне','Тип','Комната','Место','Состояние','ФИО','Табельный номер','Пол','Группа должностей','Должность','Подразделение','Ключи','Номер ключа','Заселение','Плановая дата выселения','Выселение','Пропуск','Примечание','Пол вагона']]
@@ -156,7 +156,7 @@ def quick_bed(request):
             if data.get('building'):
                 building=get_object_or_404(LodgingBuilding.objects.select_for_update(),pk=data['building'].pk,company=request.user.company,camp=camp,is_active=True)
             else:
-                building=LodgingBuilding(company=request.user.company,camp=camp,name=data['new_building_name'],inventory_number=data['new_building_inventory_number'],gender=data['new_building_gender'])
+                building=LodgingBuilding(company=request.user.company,camp=camp,name=data['new_building_name'],description=data['new_building_description'],inventory_number=data['new_building_inventory_number'],gender=data['new_building_gender'])
                 building.save()
             bed=LodgingBed(company=request.user.company,building=building,room=data['room'],number=data['number'],note=data['note'])
             bed.save()
