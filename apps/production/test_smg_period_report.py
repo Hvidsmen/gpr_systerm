@@ -184,10 +184,10 @@ class SmgPeriodReportTests(TestCase):
         self.assertEqual(response.status_code, 200)
         book = load_workbook(BytesIO(b''.join(response.streaming_content)))
         self.assertEqual(len(book.sheetnames), 5)
-        self.assertEqual(book['Работы']['A5'].value, '=1+2')
-        self.assertEqual(book['Работы']['A5'].data_type, 's')
-        self.assertEqual(book['Работы']['D5'].value, 12)
-        self.assertEqual(book['Работы']['E5'].value, 0)
+        cell=next(cell for row in book['Работы'] for cell in row if cell.column==1 and cell.value=='=1+2')
+        self.assertEqual(cell.data_type,'s')
+        self.assertEqual(book['Работы'].cell(cell.row,4).value,12)
+        self.assertEqual(book['Работы'].cell(cell.row,5).value,0)
 
     def test_fifth_tab_and_presence_are_available(self):
         self.client.force_login(self.users['DISPATCHER'])

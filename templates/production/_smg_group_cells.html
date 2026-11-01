@@ -1,0 +1,5 @@
+<td>{{ row.unit }}</td>
+<td class="smg-period-number">{% if row.plan != None %}{{ row.plan|floatformat:'-3' }}{% else %}—{% endif %}</td>
+<td class="smg-period-number">{% if row.actual != None %}{{ row.actual|floatformat:'-3' }}{% else %}—{% endif %}{% if row.row_count and row.actual_count < row.row_count %}<small class="smg-period-coverage">Факт: {{ row.actual_count }} из {{ row.row_count }} позиций</small>{% endif %}</td>
+<td class="smg-period-number {% if row.deviation < 0 %}text-danger{% elif row.deviation > 0 %}text-success{% endif %}">{% if row.deviation != None %}{% if row.deviation > 0 %}+{% endif %}{{ row.deviation|floatformat:'-3' }}{% else %}—{% endif %}</td>
+<td class="smg-period-number">{% if row.percent != None %}{{ row.percent|floatformat:'-1' }}%{% else %}—{% endif %}</td>

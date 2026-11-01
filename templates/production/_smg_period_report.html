@@ -2,14 +2,14 @@
   <div><strong>{{ object.name }}</strong><p>{{ start|date:'d.m.Y' }} — {{ end|date:'d.m.Y' }} · весь период СМГ</p>
     {% if schedule %}<p>СМГ{% if schedule.name %} «{{ schedule.name }}»{% endif %} · версия {{ schedule.revision }} · {{ schedule.get_status_display }}</p>{% endif %}
   </div>
-  <a href="{{ export_url }}" class="btn btn-sm btn-outline-primary" data-period-export>Скачать Excel</a>
+  <div class="d-flex flex-wrap gap-2"><button type="button" class="btn btn-sm btn-outline-primary" data-period-days-toggle aria-pressed="{% if show_days %}true{% else %}false{% endif %}">{% if show_days %}Скрыть план / факт по дням{% else %}Раскрыть по дням{% endif %}</button><a href="{{ export_url }}" class="btn btn-sm btn-outline-primary" data-period-export>Скачать Excel</a></div>
 </div>
 {% if not schedule %}<div class="alert alert-warning">Для этого объекта и месяца нет действующего СМГ. Показан сохранённый факт за месяц, план обозначен прочерком.</div>{% endif %}
 <p class="small text-muted">Факт собран за весь период, включая дни после выбранной даты. «—» означает отсутствие записи, 0 — явно сохранённый ноль. Отклонение = факт − план. Объёмы с разными единицами не складываются.</p>
 <nav class="smg-period-sections" aria-label="Разделы отчёта"><a href="#smg-period-works">Работы · {{ works|length }}</a><a href="#smg-period-labor">Люди · {{ labor|length }}</a><a href="#smg-period-equipment">Техника · {{ equipment|length }}</a><a href="#smg-period-fuel">ГСМ</a></nav>
-{% include 'production/_smg_period_table.html' with rows=works heading='Работы' section_id='smg-period-works' %}
-{% include 'production/_smg_period_table.html' with rows=labor heading='Люди' section_id='smg-period-labor' explanation='План — сумма потребности за каждый день. Факт — уникальные сотрудники за каждый день; две смены одного человека в одной должности считаются один раз.' %}
-{% include 'production/_smg_period_table.html' with rows=equipment heading='Техника' section_id='smg-period-equipment' explanation='План — сумма количества машин по дням. Факт — работавшие машины по дням. Одна машина за два дня = 2 машино-дня. Простой не считается работой. Детальные записи и их сводные копии не дублируются.' %}
+{% include 'production/_smg_work_groups.html' %}
+{% include 'production/_smg_resource_groups.html' with groups=labor_groups heading='Люди' section_id='smg-period-labor' explanation='План — сумма потребности за каждый день. Факт — уникальные сотрудники за каждый день; две смены одного человека в одной должности считаются один раз.' %}
+{% include 'production/_smg_resource_groups.html' with groups=equipment_groups heading='Техника' section_id='smg-period-equipment' explanation='План — сумма количества машин по дням. Факт — работавшие машины по дням. Одна машина за два дня = 2 машино-дня. Простой не считается работой. Детальные записи и их сводные копии не дублируются.' %}
 <section id="smg-period-fuel" class="smg-period-section">
   <h3>ГСМ</h3>
   <p class="alert alert-info">План относится к выбранному объекту. Факт склада учитывается по ВЖГ и может включать несколько объектов. Поэтому отклонение и процент выполнения по ГСМ не рассчитываются.</p>

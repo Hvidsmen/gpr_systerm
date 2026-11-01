@@ -59,6 +59,15 @@ form[data-production-form] .production-steps{top:var(--navbar-height,48px)}
 .smg-period-number{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}.smg-period-path,.smg-period-coverage{display:block;font-size:11px;color:#597184;font-weight:400;white-space:normal}.smg-period-table .badge{display:block;width:fit-content;margin-top:4px}
 [data-smg-period] [data-period-state]{font-size:12px;color:#526b80;overflow-wrap:anywhere}[data-period-content][aria-busy=true]{opacity:.65}
 body:has([data-production-form]) .scroll-to-top{bottom:calc(var(--production-footer-height,160px) + 16px)}
+.production-report-section{border:1px solid #d4e2ec;border-radius:7px;margin:12px 0;min-width:0;overflow:hidden}
+.production-report-section>summary{padding:11px 12px;background:#edf5fa;font-weight:600;cursor:pointer;overflow-wrap:anywhere}
+.production-report-section>.table-responsive{margin:0}.production-report-section>h4{padding:10px 12px;margin:0;background:#f6f9fc}
+.production-report-section .table{margin-bottom:0}.production-report-total>th,.production-report-total>td{background:#edf7f9;font-weight:650}
+.production-report-toggle{appearance:none;border:0;background:none;text-align:left;font:inherit;color:inherit;padding:0;cursor:pointer;overflow-wrap:anywhere}
+.production-report-toggle::before{content:'▾';display:inline-block;width:18px}.production-report-toggle[aria-expanded=false]::before{content:'▸'}
+.production-report-toggle:focus-visible{outline:2px solid #0087a4;outline-offset:3px}.production-report-leaf{padding-left:28px!important}
+.production-report-day-row>td{padding:8px 12px!important;background:#fafcfd}.production-report-days>summary{cursor:pointer;font-size:12px;color:#086781;padding:5px}.production-report-days>.table{min-width:560px}
+[data-report-branch][hidden]{display:none!important}.production-report-section .production-report-table{min-width:650px}
 @media(max-width:700px){.smg-period-context{flex-wrap:wrap}.production-steps{gap:5px}.production-steps button{flex:1 1 30%;font-size:12px}}
 
 .production-person-save-actions{display:flex;align-items:center;gap:6px;white-space:nowrap}.production-person-save-actions [data-autosave-row-state]{max-width:85px;overflow:hidden;text-overflow:ellipsis;font-size:10px}.production-person-auto-deleting{opacity:.65}.production-person-auto-failed{border-color:#dc3545!important}
@@ -94,3 +103,9 @@ form[data-production-form]{max-width:1200px}.production-save-footer{border-top:1
 .production-people-picker{width:min(820px,calc(100% - 24px));max-height:90vh;overflow:auto;border:1px solid #d7e2eb;border-radius:12px;padding:1.25rem}.production-people-picker::backdrop{background:rgba(20,40,55,.4)}.people-picker-controls{display:grid;grid-template-columns:1.3fr 1fr;gap:.75rem}.people-picker-list{max-height:38vh;overflow:auto;border:1px solid #d7e2eb;border-radius:6px}.people-picker-list label{display:flex;align-items:flex-start;gap:.75rem;padding:.65rem;border-bottom:1px solid #e6edf2;cursor:pointer}.people-picker-list label[hidden]{display:none}.people-picker-list input{flex:none;margin-top:.3rem}.people-picker-list label>span{min-width:0;overflow-wrap:anywhere}.people-picker-list strong,.people-picker-list small{display:block}.people-picker-list small{color:#587084}.people-picker-list .people-picker-status{color:#8b4a13}.people-picker-list label:has(input:checked){background:#edf7fc}.people-picker-unavailable{background:#f6f8fa}.people-picker-footer{display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-top:.75rem}@media(max-width:600px){.production-people-picker{padding:.85rem}.people-picker-controls{grid-template-columns:1fr}.people-picker-footer{align-items:stretch;flex-direction:column}.people-picker-footer>div{justify-content:flex-end}}
 
 .production-people-picker[open]{display:flex;flex-direction:column;overflow:hidden}.production-people-picker>header,.production-people-picker>.people-picker-controls,.people-picker-footer{flex-shrink:0}.people-picker-list{min-height:120px;flex:1 1 auto}@media(max-height:650px){.production-people-picker[open]{display:block;overflow:auto}.people-picker-list{max-height:35vh}}
+
+[data-period-days-toggle]{color:#087f9c;background:#fff;border-color:#afd2df}
+[data-period-days-toggle]:hover,[data-period-days-toggle]:focus-visible{color:#174b65;background:#e3f2f7;border-color:#087f9c}
+.production-report-days>.table{table-layout:fixed;min-width:0;width:100%}
+.production-report-days th:first-child,.production-report-days tbody th{width:20%;min-width:0;font-weight:400}
+.production-report-days .smg-period-number{white-space:normal;overflow-wrap:anywhere}

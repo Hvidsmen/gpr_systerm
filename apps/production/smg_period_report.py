@@ -1,6 +1,6 @@
 """Read-only comparison against one applied monthly SMG, without GPR fallback."""
 from collections import defaultdict
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 
 from django.http import Http404
@@ -14,6 +14,8 @@ from apps.personnel.models import Camp
 from .models import DailyFact, EmployeeActivity, EquipmentActivity, LaborFact, EquipmentFact
 from .transport_models import EquipmentDayRecord
 from .camp_fuel_models import CampFuelDay
+from .report_grouping import resource_groups, work_groups, daily_rows
+from apps.resources.group_order import labor_group_order, equipment_group_order
 
 
 def number(value):
@@ -44,13 +46,16 @@ def canonical(value, aliases):
 
 def bucket(rows, key, label, unit, context=''):
     return rows.setdefault(key, dict(label=str(label), unit=str(unit), context=str(context),
-        plan=None, actual=None, days=set()))
+        plan=None, actual=None, days=set(), daily={}))
 
 
 def add(row, field, value, day=None):
     value = number(value)
     if value is not None:
         row[field] = (row[field] or Decimal(0)) + value
+        if day:
+            daily = row['daily'].setdefault(day.isoformat(), {'plan':None,'actual':None,'unit':row['unit']})
+            daily[field] = (daily[field] or Decimal(0)) + value
         if field == 'actual' and day:
             row['days'].add(day)
 
@@ -66,9 +71,13 @@ def finish(rows):
     return sorted(result, key=lambda r: (r['context'].casefold(), r['label'].casefold(), r['unit']))
 
 
-def build(obj, day, schedule_id=None):
+def build(obj, day, schedule_id=None, *, day_only=False):
     start, end = bounds(day.replace(day=1))
-    schedules = DailySchedule.objects.filter(company=obj.company, construction_object=obj, month=start)
+    schedules = DailySchedule.objects.filter(company=obj.company, construction_object=obj, month=day.replace(day=1))
+    if day_only:
+        start = end = day
+    labor_unit = 'чел.' if day_only else 'чел.·дн.'
+    equipment_unit = 'ед.' if day_only else 'маш.·дн.'
     if schedule_id:
         schedule = schedules.filter(pk=identity(schedule_id), status__in=['APPLIED', 'ARCHIVED']).first()
         if schedule is None:
@@ -82,8 +91,9 @@ def build(obj, day, schedule_id=None):
     work_rows, labor_rows, equipment_rows, fuel_rows = {}, {}, {}, {}
     labor_alias = brigade_aliases(obj.company)
     equipment_alias = equipment_aliases(obj.company)
-    brigades = {b.pk: b.name for b in Brigade.objects.filter(company=obj.company)}
-    types = {t.pk: t for t in EquipmentType.objects.filter(company=obj.company)}
+    brigade_models = {b.pk: b for b in Brigade.objects.filter(company=obj.company).select_related('group')}
+    brigades = {pk:b.name for pk,b in brigade_models.items()}
+    types = {t.pk: t for t in EquipmentType.objects.filter(company=obj.company).select_related('category')}
 
     def equipment_key(pk):
         pk = canonical(pk, equipment_alias)
@@ -91,7 +101,13 @@ def build(obj, day, schedule_id=None):
         return canonical(item.parent_id, equipment_alias) if item and item.parent_id else pk
 
     def resource(rows, pk, label, unit):
-        return bucket(rows, pk, label, unit)
+        target = bucket(rows, pk, label, unit)
+        item = brigade_models.get(pk) if rows is labor_rows else types.get(pk) if rows is equipment_rows else None
+        group = (item.group if item and item.group_id else None) if rows is labor_rows else (item.category if item and item.category_id else None) if rows is equipment_rows else None
+        if group and group.company_id != obj.company_id:group = None
+        rank = labor_group_order(group) if rows is labor_rows else equipment_group_order(group)
+        target.update(group=group.name if group else 'Без группы',group_id=group.pk if group else None,group_order=rank[0])
+        return target
 
     def work_row(work_id, item_id, metadata=None):
         work = works.get(work_id)
@@ -109,7 +125,11 @@ def build(obj, day, schedule_id=None):
         unit = frozen.get('unit') or (item.unit if item else work.unit)
         context = ' → '.join(p for p in [work.section.name,
             work.complex_object.name if work.complex_object_id else '', work.name if item else ''] if p)
-        return bucket(work_rows, (work_id, item_id, unit), label, unit, context)
+        target = bucket(work_rows, (work_id, item_id, unit), label, unit, context)
+        target.update(section_id=work.section_id,section=work.section.name,kind=work.kind,
+            complex_id=work.complex_object_id,complex=work.complex_object.name if work.complex_object_id else '',
+            package=work.name if item else '')
+        return target
 
     entries = list(schedule.entries.order_by('pk')) if schedule else []
     for entry in entries:
@@ -127,24 +147,24 @@ def build(obj, day, schedule_id=None):
             if entry.kind == 'work':
                 target = work_row(work_id, identity(value.get('item_id')), metadata)
                 if target is not None:
-                    add(target, 'plan', value.get('quantity'))
+                    add(target, 'plan', value.get('quantity'), row_day)
             elif entry.kind == 'labor':
                 pk = canonical(value.get('brigade_id'), labor_alias)
                 if pk in brigades:
-                    target = resource(labor_rows, pk, brigades[pk], 'чел.·дн.')
-                    add(target, 'plan', value.get('planned_workers', value.get('planned_count')))
+                    target = resource(labor_rows, pk, brigades[pk], labor_unit)
+                    add(target, 'plan', value.get('planned_workers', value.get('planned_count')), row_day)
             elif entry.kind == 'equipment':
                 pk = equipment_key(value.get('equipment_type_id'))
                 if pk in types:
-                    target = resource(equipment_rows, pk, types[pk].name, 'маш.·дн.')
-                    add(target, 'plan', value.get('planned_count'))
+                    target = resource(equipment_rows, pk, types[pk].name, equipment_unit)
+                    add(target, 'plan', value.get('planned_count'), row_day)
             elif entry.kind == 'fuel':
                 # Planning still stores/labels liters. Warehouse numbers are m³;
                 # scopes and units intentionally remain separate, never silently converted.
                 pk = value.get('fuel_type') or 'DIESEL'
                 from .models import FuelFact
                 label = dict(FuelFact.FUEL_TYPE_CHOICES).get(pk, entry.label or str(pk))
-                add(resource(fuel_rows, pk, label, 'л'), 'plan', value.get('planned_liters'))
+                add(resource(fuel_rows, pk, label, 'л'), 'plan', value.get('planned_liters'), row_day)
 
     for fact in DailyFact.objects.filter(company=obj.company, project_work__section__construction_object=obj,
             date__range=(start, end)).order_by('pk'):
@@ -161,14 +181,14 @@ def build(obj, day, schedule_id=None):
         pk = canonical(mapping.get(position.pk) if position else None, labor_alias)
         key = pk if pk in brigades else f'position:{position.pk if position else "unknown"}'
         label = brigades.get(pk) or (position.name if position else 'Должность не указана')
-        resource(labor_rows, key, label, 'чел.·дн.')
+        resource(labor_rows, key, label, labor_unit)
         named_labor[(activity.date, key)].add(activity.employee_id)
     for (actual_day, key), employees in named_labor.items():
         add(labor_rows[key], 'actual', len(employees), actual_day)
     for fact in LaborFact.objects.filter(**scope):
         pk = canonical(fact.brigade_id, labor_alias)
         if (fact.date, pk) not in named_labor and pk in brigades:
-            add(resource(labor_rows, pk, brigades[pk], 'чел.·дн.'), 'actual', fact.actual_workers, fact.date)
+            add(resource(labor_rows, pk, brigades[pk], labor_unit), 'actual', fact.actual_workers, fact.date)
 
     named_equipment = defaultdict(set)
     projected_equipment_days = set()
@@ -181,7 +201,7 @@ def build(obj, day, schedule_id=None):
         # The legacy transport projection may still carry the machine's model/root
         # instead of its explicit planning override. Suppress both projections.
         projected_equipment_days.add((record.date, equipment_key(record.equipment.type_id)))
-        resource(equipment_rows, pk, types[pk].name, 'маш.·дн.')
+        resource(equipment_rows, pk, types[pk].name, equipment_unit)
         named_equipment[(record.date, pk)]  # An explicitly idle day is an actual zero.
         if record.status == 'WORKED':
             named_equipment[(record.date, pk)].add(record.equipment_id)
@@ -191,7 +211,7 @@ def build(obj, day, schedule_id=None):
         pk = equipment_key(activity.equipment.type_id)
         if pk not in types:
             continue
-        resource(equipment_rows, pk, types[pk].name, 'маш.·дн.')
+        resource(equipment_rows, pk, types[pk].name, equipment_unit)
         named_equipment[(activity.date, pk)]
         if activity.state == 'WORKING':
             named_equipment[(activity.date, pk)].add(activity.equipment_id)
@@ -201,7 +221,7 @@ def build(obj, day, schedule_id=None):
     for fact in EquipmentFact.objects.filter(**scope):
         pk = equipment_key(fact.equipment_type_id)
         if (fact.date, pk) not in named_equipment and (fact.date, pk) not in projected_equipment_days and pk in types:
-            add(resource(equipment_rows, pk, types[pk].name, 'маш.·дн.'), 'actual', fact.actual_count, fact.date)
+            add(resource(equipment_rows, pk, types[pk].name, equipment_unit), 'actual', fact.actual_count, fact.date)
 
     camps = list(Camp.objects.filter(company=obj.company, object_links__company=obj.company,
         object_links__construction_object=obj).distinct().order_by('name', 'pk'))
@@ -216,6 +236,10 @@ def build(obj, day, schedule_id=None):
             received=sum((r.received_liters for r in records), Decimal(0)) if records else None,
             actual=sum((r.actual_liters for r in records), Decimal(0)) if records else None))
 
-    return dict(object=obj, start=start, end=end, day=day, schedule=schedule,
-        period_days=(end-start).days+1, works=finish(work_rows), labor=finish(labor_rows),
-        equipment=finish(equipment_rows), fuel=finish(fuel_rows), warehouse=warehouse)
+    works_finished, labor_finished, equipment_finished = finish(work_rows), finish(labor_rows), finish(equipment_rows)
+    dates=[start+timedelta(days=i) for i in range((end-start).days+1)]
+    for row in works_finished+labor_finished+equipment_finished:daily_rows(row,dates)
+    return dict(work_groups=work_groups(works_finished,dates),labor_groups=resource_groups(labor_finished,dates),equipment_groups=resource_groups(equipment_finished,dates),
+        object=obj, start=start, end=end, day=day, schedule=schedule,
+        period_days=(end-start).days+1, works=works_finished, labor=labor_finished,
+        equipment=equipment_finished, fuel=finish(fuel_rows), warehouse=warehouse)

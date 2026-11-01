@@ -18,6 +18,19 @@ class SmgPeriodBrowserTests(StaticLiveServerTestCase):
         from .camp_fuel_models import CampFuelDay
         from apps.planning.models import DailyScheduleEntry
         from .models import EquipmentActivity, EmployeeActivity
+        from apps.resources.models import EquipmentCategory,EquipmentType,BrigadeGroup,Brigade
+        from apps.works.models import ComplexObject,ProjectWork,ProjectWorkItem
+        category=EquipmentCategory.objects.create(company=self.company,name='Специализированная техника',sort_order=1)
+        EquipmentType.objects.filter(pk=self.type.pk).update(category=category)
+        staff=BrigadeGroup.objects.create(company=self.company,name='Водительский состав',sort_order=1)
+        Brigade.objects.filter(pk=self.brigade.pk).update(group=staff)
+        for n in [1,2]:
+            obj=ComplexObject.objects.create(company=self.company,section=self.work.section,construction_object=self.obj,name=f'ПК-{n}')
+            package=ProjectWork.objects.create(company=self.company,section=self.work.section,complex_object=obj,name=f'Комплекс {n}',kind='COMPOSITE')
+            item=ProjectWorkItem.objects.create(company=self.company,project_work=package,name='Установка камеры',unit='шт')
+            DailyScheduleEntry.objects.create(schedule=self.schedule,kind='work',key=f'browser:item:{n}',metadata={'id':package.pk,'kind':'COMPOSITE'},
+                rows=[{'date':str(self.day),'item_id':item.pk,'quantity':str(n+1)}])
+            DailyFact.objects.create(company=self.company,project_work=package,work_item=item,date=self.day,actual_quantity=n)
         DailyFact.objects.create(company=self.company, project_work=self.work, date=self.start, actual_quantity=2)
         CampFuelDay.objects.create(company=self.company, camp=self.housing_camp, date=self.start,
             fuel_type='TOTAL', received_liters=2, actual_liters=1, actual_balance=1)
@@ -30,9 +43,11 @@ class SmgPeriodBrowserTests(StaticLiveServerTestCase):
             equipment=self.machine, date=self.start, state='WORKING', shift=1)
         EmployeeActivity.objects.create(company=self.company, construction_object=self.obj,
             employee=self.employee, position=self.employee.position, date=self.start, shift=1)
+        if self.day!=self.start:
+            EmployeeActivity.objects.create(company=self.company,construction_object=self.obj,employee=self.employee,position=self.employee.position,date=self.day,shift=1)
         self.client.force_login(self.users['DISPATCHER'])
         config = dict(base=self.live_server_url, cookie=self.client.cookies['sessionid'].value,
-            chromium=shutil.which('chromium'), work=self.work.pk,
+            chromium=shutil.which('chromium'), work=self.work.pk,group=staff.name,category=category.name,
             path=f'{self.url}?construction_object={self.obj.pk}&date={self.day}&section=works',
             readonly_path=f'{self.url}?construction_object={self.obj.pk}&date={self.start}&section=works&entry_step=5')
         script = Path(__file__).resolve().parents[2] / 'tests/browser/smg_period_report.js'

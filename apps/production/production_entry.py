@@ -38,6 +38,11 @@ def work_catalogue(obj):
             for item in work.items.all():
                 if item.company_id == obj.company_id:
                     choices.append({'token':token(work.pk,item.pk),'work':work.pk,'item':item.pk,'label':f'{label} → {item.name}','unit':item.unit,'title':item.name,'kind':'COMPOSITE','object':work.complex_object.name if work.complex_object_id else work.section.name,'package':work.name})
+    by_id = {work.pk:work for work in works}
+    for choice in choices:
+        work = by_id[choice['work']]
+        choice.update(section_id=work.section_id,section=work.section.name,complex_id=work.complex_object_id,
+            complex=work.complex_object.name if work.complex_object_id else '')
     return choices
 
 
