@@ -1,0 +1,14 @@
+{% extends 'base.html' %}{% load static %}
+{% block title %}Сводный отчёт{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'production/production_entry.css' %}?v=20261101-mechanization-report">{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2"><h1>Сводный отчёт</h1><a class="btn btn-outline-primary" href="{% url 'production:transport_board' %}{% if day %}?date={{ day|date:'Y-m-d' }}{% endif %}">Транспорт · ВЖГ</a></div>
+<p class="text-muted">Работы, сотрудники и техника выбранного объекта: сводка за день и план / факт за период СМГ. Ввод данных доступен по вашей роли.</p>
+<form method="get" class="card card-body mb-3">{% include 'forms/fields.html' with form=selector %}<input type="hidden" name="scope" value="{% if day_only %}day{% else %}period{% endif %}"><button class="btn btn-primary">Показать отчёт</button></form>
+{% if object %}<section data-equipment-report>
+<nav class="nav nav-tabs mb-3" aria-label="Период сводного отчёта"><a class="nav-link{% if day_only %} active{% endif %}" href="{{ day_url }}">Сводка за день</a><a class="nav-link{% if not day_only %} active{% endif %}" href="{{ period_url }}">План / факт за период СМГ</a></nav>
+{% include 'production/_smg_period_report.html' %}
+{% if day_only %}{% include 'production/_mechanization_day_people.html' %}{% endif %}
+</section>{% else %}<p>Выберите объект и дату, затем нажмите «Показать отчёт».</p>{% endif %}
+{% endblock %}
+{% block extra_js %}<script src="{% static 'production/report_grouping.js' %}?v=20261101-1"></script><script>document.addEventListener('click',event=>{const button=event.target.closest('[data-period-days-toggle]');if(!button)return;const query=new URLSearchParams(location.search);query.set('scope','period');query.set('by_day',button.getAttribute('aria-pressed')==='true'?'0':'1');location.search=query.toString();});</script>{% endblock %}

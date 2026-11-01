@@ -11,6 +11,7 @@ app_name = "production"
 from . import actuation_views, smg_period_views
 
 urlpatterns = [
+    path('equipment-report/', smg_period_views.equipment_page, name='equipment_report'),
     path('smg-period/', smg_period_views.detail, name='smg_period_detail'),
     path('smg-period.xlsx', smg_period_views.export, name='smg_period_export'),
     path('actuation/reasons/propose/',actuation_views.propose,name='actuation_reason_propose'),

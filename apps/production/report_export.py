@@ -124,7 +124,7 @@ def workbook(obj,day,report):
 @require_GET
 @sqlite_serialized
 def download(request):
-    require_roles(request.user,READ_ROLES|{'DISPATCHER','ALL_FACT_DISPATCHER'})
+    require_roles(request.user,READ_ROLES|{'DISPATCHER','ALL_FACT_DISPATCHER','MECHANIZATION_DISPATCHER'})
     selector=ObjectDateForm(request.GET,user=request.user)
     if not selector.is_valid():return JsonResponse({'error':'Выберите доступный объект и дату.'},status=400)
     obj=selector.cleaned_data['construction_object'];day=selector.cleaned_data['date']

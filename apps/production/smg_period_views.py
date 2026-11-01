@@ -5,25 +5,42 @@ from urllib.parse import urlencode
 from django.contrib.auth.decorators import login_required
 from django.http import FileResponse, JsonResponse
 from django.shortcuts import render
+from django.utils import timezone
 from django.urls import reverse
 from django.views.decorators.http import require_GET
 from django.views.decorators.cache import never_cache
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
-from core.permissions import READ_ROLES, require_roles
+from core.permissions import READ_ROLES, require_roles, role_code
 from .forms import ObjectDateForm
 from .entry_concurrency import sqlite_serialized
 from .smg_period_report import build
 from .report_grouping import work_display_rows, resource_display_rows
 
 
+def day_people(obj,day):
+    from .production_entry import report_data,work_catalogue
+    catalogue={row['token']:row['label'] for row in work_catalogue(obj)}
+    groups={}
+    for person in report_data(obj,day)['people']:
+        person['assignment']='Связи не проверены' if not person['reviewed'] else 'Работал без привязки к работе' if person['general'] else '; '.join(catalogue.get(target,target) for target in person['targets'])
+        key=person['group']
+        group=groups.setdefault(key,{'label':key,'order':person['group_order'],'people':[]})
+        group['people'].append(person)
+    for group in groups.values():
+        group['people'].sort(key=lambda person:(person['position'],person['name'],person['shift']))
+        group['count']=len({person['employee'] for person in group['people']})
+    return sorted(groups.values(),key=lambda group:(group['order'],group['label']))
+
+
 def report_for(request):
-    require_roles(request.user, READ_ROLES | {'DISPATCHER', 'ALL_FACT_DISPATCHER'})
+    require_roles(request.user, READ_ROLES | {'DISPATCHER', 'ALL_FACT_DISPATCHER','MECHANIZATION_DISPATCHER'})
     selector = ObjectDateForm(request.GET, user=request.user)
     if not selector.is_valid():
         return None
-    report = build(selector.cleaned_data['construction_object'], selector.cleaned_data['date'], request.GET.get('schedule'), day_only=request.GET.get('scope')=='day')
+    report = build(selector.cleaned_data['construction_object'], selector.cleaned_data['date'], request.GET.get('schedule'), day_only=request.GET.get('scope')=='day', equipment_only=request.GET.get('equipment_only')=='1',include_fuel=role_code(request.user)!='MECHANIZATION_DISPATCHER' and request.GET.get('include_fuel')!='0')
     report['show_days'] = request.GET.get('by_day') == '1'
+    if report['day_only'] and not report['equipment_only']:report['people_details_groups']=day_people(report['object'],report['day'])
     return report
 
 
@@ -42,6 +59,8 @@ def detail(request):
         query['schedule'] = report['schedule'].pk
     report['show_days'] = request.GET.get('by_day') == '1'
     if report['show_days']:query['by_day'] = '1'
+    if report['equipment_only']:query['equipment_only']='1'
+    if not report['include_fuel']:query['include_fuel']='0'
     report['export_url'] = reverse('production:smg_period_export') + '?' + urlencode(query)
     return render(request, 'production/_smg_period_report.html', report)
 
@@ -54,7 +73,7 @@ def workbook(report):
 
     def sheet(title, headers, records, fields, note):
         page = book.create_sheet(title)
-        page.append([f'План / факт за период СМГ · {report["object"].name}'])
+        page.append([f'{"Сводка за день" if report.get("day_only") else "План / факт за период СМГ"} · {report["object"].name}'])
         page.append([f'{report["start"]:%d.%m.%Y} — {report["end"]:%d.%m.%Y} · {source}'])
         page.append([note])
         page.append(headers)
@@ -80,27 +99,34 @@ def workbook(report):
         page.auto_filter.ref = f'A4:{page.cell(max(4,page.max_row),len(headers)).coordinate}'
         return page
 
-    for key, title in [('works', 'Работы'), ('labor', 'Люди'), ('equipment', 'Техника')]:
+    sections=[('equipment','Техника')] if report.get('equipment_only') else [('works','Работы'),('labor','Люди'),('equipment','Техника')]
+    for key, title in sections:
         sheet(title, ['Наименование', 'Контекст', 'Ед.', 'План СМГ', 'Сохранённый факт', 'Факт − план', 'Выполнение, %', 'Дней с фактом'],
             work_display_rows(report['work_groups']) if key=='works' else resource_display_rows(report['labor_groups' if key=='labor' else 'equipment_groups']), ['label', 'context', 'unit', 'plan', 'actual', 'deviation', 'percent', 'recorded_days'],
             'Пустая ячейка — нет значения; 0 — сохранённый ноль. Факт за весь период, включая дни после выбранной даты.')
-    sheet('ГСМ · план объекта', ['ГСМ', 'Ед.', 'План СМГ'], report['fuel'], ['label', 'unit', 'plan'],
-        'План объекта в единицах СМГ (л). Складской расход ВЖГ не распределён по объектам; сравнение не рассчитывается.')
-    sheet('ГСМ · факт ВЖГ', ['ВЖГ', 'Ед.', 'Приход за период', 'Расход за период', 'Дней с фактом'],
-        report['warehouse'], ['label', 'unit', 'received', 'actual', 'recorded_days'],
-        'Общий складской факт связанных ВЖГ в м³. Включает расход на все обслуживаемые ими объекты. Нет записи — нет значения.')
+    if not report.get('equipment_only') and report.get('include_fuel',True):
+        sheet('ГСМ · план объекта', ['ГСМ', 'Ед.', 'План СМГ'], report['fuel'], ['label', 'unit', 'plan'],
+            'План объекта в единицах СМГ (л). Складской расход ВЖГ не распределён по объектам; сравнение не рассчитывается.')
+        sheet('ГСМ · факт ВЖГ', ['ВЖГ', 'Ед.', 'Приход за период', 'Расход за период', 'Дней с фактом'],
+            report['warehouse'], ['label', 'unit', 'received', 'actual', 'recorded_days'],
+            'Общий складской факт связанных ВЖГ в м³. Включает расход на все обслуживаемые ими объекты. Нет записи — нет значения.')
     if report.get('show_days'):
-        works_by_day=[]
-        for section in report['work_groups']:
-            for work in section['works']:
-                for obj in work['objects']:
-                    works_by_day.extend(dict(day,label=work['label'],section=section['label'],complex=obj['label']) for day in obj['total']['daily_rows'])
-        sheet('Работы · дни',['Раздел','Работа','Комплексный объект','Дата','Ед.','План','Факт','Факт − план','Выполнение, %'],works_by_day,
-            ['section','label','complex','date','unit','plan','actual','deviation','percent'],'Подневные значения по комплексным объектам. Прочерк в интерфейсе соответствует пустой ячейке.')
-        for key,title in [('labor_groups','Люди · дни'),('equipment_groups','Техника · дни')]:
+        if not report.get('equipment_only'):
+            works_by_day=[]
+            for section in report['work_groups']:
+                for work in section['works']:
+                    for obj in work['objects']:
+                        works_by_day.extend(dict(day,label=work['label'],section=section['label'],complex=obj['label']) for day in obj['total']['daily_rows'])
+            sheet('Работы · дни',['Раздел','Работа','Комплексный объект','Дата','Ед.','План','Факт','Факт − план','Выполнение, %'],works_by_day,
+                ['section','label','complex','date','unit','plan','actual','deviation','percent'],'Подневные значения по комплексным объектам. Прочерк в интерфейсе соответствует пустой ячейке.')
+        daily_sections=[('equipment_groups','Техника · дни')] if report.get('equipment_only') else [('labor_groups','Люди · дни'),('equipment_groups','Техника · дни')]
+        for key,title in daily_sections:
             records=[dict(day,group=group['label'],label=row['label']) for group in report[key] for row in group['rows'] for day in row['daily_rows']]
             sheet(title,['Группа','Наименование','Дата','Ед.','План','Факт','Факт − план','Выполнение, %'],records,
                 ['group','label','date','unit','plan','actual','deviation','percent'],'План и факт по дням. Не суммируйте эти строки повторно с итогами за период.')
+    if 'people_details_groups' in report:
+        people=[dict(person,group=group['label']) for group in report['people_details_groups'] for person in group['people']]
+        sheet('Сотрудники',['Группа','Сотрудник','Должность','Смена','Выполненные работы / занятость'],people,['group','name','position','shift','assignment'],'Сохранённый состав сотрудников и связи с работами за выбранный день.')
     output = BytesIO()
     book.save(output)
     output.seek(0)
@@ -115,6 +141,32 @@ def export(request):
     report = report_for(request)
     if report is None:
         return JsonResponse({'error': 'Выберите доступный объект и дату.'}, status=400)
+    filename=(f'Сводный_отчёт_{report["day"]:%Y-%m-%d}.xlsx' if report.get('day_only') else f'Техника_СМГ_{report["start"]:%Y-%m}.xlsx' if report.get('equipment_only') else f'План-факт_СМГ_{report["start"]:%Y-%m}.xlsx')
     return FileResponse(workbook(report), as_attachment=True,
-        filename=f'План-факт_СМГ_{report["start"]:%Y-%m}.xlsx',
+        filename=filename,
         content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+@login_required
+@require_GET
+@never_cache
+@sqlite_serialized
+def equipment_page(request):
+    require_roles(request.user, READ_ROLES | {'MECHANIZATION_DISPATCHER','ALL_FACT_DISPATCHER'})
+    day_only=request.GET.get('scope','day')!='period'
+    initial_day=request.GET.get('date') or timezone.localdate().isoformat()
+    selector=ObjectDateForm(request.GET if 'construction_object' in request.GET else None,user=request.user,initial={'date':initial_day})
+    context={'selector':selector,'day_only':day_only}
+    if selector.is_bound and selector.is_valid():
+        report=build(selector.cleaned_data['construction_object'],selector.cleaned_data['date'],request.GET.get('schedule'),day_only=day_only,include_fuel=False)
+        report['show_days']=not day_only and request.GET.get('by_day')=='1'
+        query={'construction_object':report['object'].pk,'date':report['day'].isoformat(),'include_fuel':'0','scope':'day' if day_only else 'period'}
+        if report['schedule']:query['schedule']=report['schedule'].pk
+        if report['show_days']:query['by_day']='1'
+        report['export_url']=reverse('production:smg_period_export')+'?'+urlencode(query)
+        context.update(report)
+        context['period_label']='за день' if day_only else 'за период'
+        if day_only:context['people_details_groups']=day_people(report['object'],report['day'])
+        context['day_url']='?'+urlencode({**query,'scope':'day','by_day':'0'})
+        context['period_url']='?'+urlencode({**query,'scope':'period','by_day':'0'})
+    return render(request,'production/equipment_report.html',context)

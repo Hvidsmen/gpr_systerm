@@ -262,8 +262,14 @@ def check_route(user, match, method):
             from apps.production.actuation_reasons import EDITORS, REVIEWERS
             require_roles(user, REVIEWERS | EDITORS | READ_ROLES if method in {'GET','HEAD'} else REVIEWERS if name=='actuation_reason_review' else EDITORS)
             return
-        if name in {'production_report_download','smg_period_detail','smg_period_export'}:
-            require_roles(user,READ_ROLES|{'DISPATCHER','ALL_FACT_DISPATCHER'})
+        if name=='production_report_download':
+            require_roles(user,READ_ROLES|{'DISPATCHER','ALL_FACT_DISPATCHER','MECHANIZATION_DISPATCHER'})
+            return
+        if name in {'smg_period_detail','smg_period_export'}:
+            require_roles(user,READ_ROLES|{'DISPATCHER','ALL_FACT_DISPATCHER','MECHANIZATION_DISPATCHER'})
+            return
+        if name=='equipment_report':
+            require_roles(user,READ_ROLES|{'ALL_FACT_DISPATCHER','MECHANIZATION_DISPATCHER'})
             return
         if name in {'production_live','production_links','production_copy_previous'}:
             require_roles(user,{'ADMIN','DISPATCHER','ALL_FACT_DISPATCHER'})

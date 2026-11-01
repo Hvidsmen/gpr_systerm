@@ -1,0 +1,17 @@
+const {chromium}=require('playwright'),fs=require('fs'),assert=require('assert');
+(async()=>{
+ const c=JSON.parse(process.env.MECHANIZATION_REPORT_CONFIG),browser=await chromium.launch({executablePath:c.chromium,headless:true,args:['--no-sandbox']}),context=await browser.newContext({viewport:{width:1440,height:1000},acceptDownloads:true}),errors=[];
+ await context.addCookies([{name:'sessionid',value:c.cookie,url:c.base}]);await context.route('**/*',route=>{const url=route.request().url();if(url.startsWith(c.base))return route.continue();if(url.includes('bootstrap')&&url.includes('.css'))return route.fulfill({body:fs.readFileSync('/tmp/catalogue-bootstrap.css'),contentType:'text/css'});return route.abort();});
+ const page=await context.newPage();page.on('pageerror',error=>errors.push(error.message));await page.goto(c.base+c.path);
+ const report=page.locator('[data-equipment-report]');assert((await report.innerText()).includes(c.category));assert((await report.innerText()).includes('План за день'));
+ for(const text of ['Установка камеры','Люди',c.person])assert((await report.innerText()).includes(text));assert(!(await report.innerText()).includes('ГСМ'));
+ assert((await page.locator('.sidebar').innerText()).includes('Сводный отчёт'));
+ await report.getByRole('link',{name:'План / факт за период СМГ',exact:true}).click();assert((await report.innerText()).includes('маш.·дн.'));
+ await page.locator('[data-period-days-toggle]').click();await page.waitForURL(/by_day=1/);assert(await report.locator('.production-report-days').count()>0);
+ assert((await report.innerText()).includes(c.type));assert((await report.innerText()).includes('Установка камеры'));
+ const downloaded=page.waitForEvent('download');await report.getByRole('link',{name:'Скачать Excel'}).click();const file=await downloaded;assert(file.suggestedFilename().endsWith('.xlsx'));assert(fs.statSync(await file.path()).size>1000);
+ await page.screenshot({path:'/tmp/mechanization-report-desktop.png',animations:'disabled'});
+ await page.setViewportSize({width:390,height:844});await page.waitForTimeout(400);assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2));await page.screenshot({path:'/tmp/mechanization-report-mobile.png',animations:'disabled'});
+ await page.locator('[data-period-days-toggle]').click();await page.waitForURL(/by_day=0/);assert.equal(await report.locator('.production-report-days').count(),0);
+ assert.deepEqual(errors,[]);await browser.close();console.log('PASS: mechanization read-only works/people/equipment day/month summary, catalogue grouping, daily drilldown, Excel and mobile');
+})().catch(error=>{console.error(error);process.exit(1);});
