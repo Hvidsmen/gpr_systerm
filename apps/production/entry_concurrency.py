@@ -9,7 +9,7 @@ SALT='production-dispatcher-rows-v1'
 
 def normalized(field, value):
     if isinstance(field,forms.BooleanField):return bool(value and str(value).lower() not in {'false','0'})
-    if isinstance(field,forms.MultipleChoiceField):return sorted(str(item) for item in (value or []))
+    if isinstance(field,(forms.MultipleChoiceField,forms.ModelMultipleChoiceField)):return sorted(str(item) for item in (value or []))
     if isinstance(field,forms.DecimalField) and value not in (None,''):
         try:return str(Decimal(str(value)).normalize())
         except InvalidOperation:return str(value)

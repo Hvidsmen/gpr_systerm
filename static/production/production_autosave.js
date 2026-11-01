@@ -93,7 +93,7 @@
  }
  window.productionAutoSave={flush,flushPeople,reindex,fingerprint,capture,get running(){return Boolean(running);},get pending(){return pending||Boolean(running)||dirty().length>0;}};
  const relevant=event=>{
-  if(form.productionApplying)return;
+  if(form.productionApplying||event.target.closest('[data-actuation-ui]'))return;
   const row=event.target.closest('[data-production-person],[data-work-fact-row]');
   if(row){if(row.dataset.autoSavedStamp===fingerprint(row)&&!row.dataset.autoPending){delete row.dataset.entryDirty;delete row.dataset.personDirty;return;}if(isPerson(row)&&!field(row,'employee').value&&!field(row,'id').value)return;if(!isPerson(row)&&!field(row,'project_work')?.value)return;schedule(row);}
  };

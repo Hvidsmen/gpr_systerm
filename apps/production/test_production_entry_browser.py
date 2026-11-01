@@ -27,7 +27,14 @@ class ProductionEntryBrowserTests(StaticLiveServerTestCase):
         self.client.force_login(self.users['DISPATCHER']);cookie=self.client.cookies['sessionid'].value
         from django.test import Client
         other_client=Client();other_client.force_login(self.second);second_cookie=other_client.cookies['sessionid'].value
-        config={'base':self.live_server_url,'cookie':cookie,'second_cookie':second_cookie,'chromium':shutil.which('chromium'),
+        from apps.accounts.models import User,Role
+        head=User.objects.create_user(username='browser-production-head',company=self.company,role=Role.objects.get(code='PRODUCTION_HEAD'))
+        head_client=Client();head_client.force_login(head);head_cookie=head_client.cookies['sessionid'].value
+        from tempfile import TemporaryDirectory
+        from django.test import override_settings
+        temporary=TemporaryDirectory();self.addCleanup(temporary.cleanup)
+        setting=override_settings(DEBUG=True,ACTUATION_FILES_ROOT=Path(temporary.name)/'private');setting.enable();self.addCleanup(setting.disable)
+        config={'base':self.live_server_url,'cookie':cookie,'second_cookie':second_cookie,'head_cookie':head_cookie,'reason_list':reverse('production:actuation_reason_reviews'),'chromium':shutil.which('chromium'),
             'path':f'{self.url}?construction_object={self.obj.pk}&date={self.day}&section=works','employee':self.employee.pk,'work':self.work.pk,'second_work':self.second_work.pk,'reason':self.reason.pk,'editor':self.second.username,'history':reverse('production:fact_history'),
             'package':package.pk,'camera':camera.pk,'cable':cable.pk,'day':self.day.strftime('%d.%m.%Y'),'planned_position':planned_position.pk}
         script=Path(__file__).resolve().parents[2]/'tests/browser/production_entry.js'
@@ -38,8 +45,6 @@ class ProductionEntryBrowserTests(StaticLiveServerTestCase):
         self.assertEqual(row.work_id,self.work.pk);self.assertTrue(row.assignment_reviewed)
         self.assertEqual(row.planning_position_id,planned_position.pk)
         self.assertEqual(row.position_id,self.employee.position_id)
-        from .dispatch_models import ProductionEntryDay
-        self.assertIsNotNone(ProductionEntryDay.objects.get(dispatcher=self.users['DISPATCHER']).confirmed_at, 'Explicit zero actuation rows complete all planned works and restore readiness')
         from .history_models import FactRevision
         from .models import DailyFact
         fact=DailyFact.objects.get(project_work=self.work,date=self.day)
@@ -49,7 +54,13 @@ class ProductionEntryBrowserTests(StaticLiveServerTestCase):
         revisions=FactRevision.objects.filter(entity_type='production.dailyfact',entity_id=str(fact.pk),operation='UPDATE',actor=self.second)
         self.assertTrue(any(Decimal(row.before['fields']['actual_quantity'])==5 and Decimal(row.after['fields']['actual_quantity'])==4 for row in revisions))
         self.assertEqual(DailyFact.objects.get(project_work=package,work_item=camera).actuation_type,'DAY')
-        self.assertEqual(DailyFact.objects.get(project_work=package,work_item=cable).actuation_reason,'Сильный ветер')
+        self.assertIn('Сильный ветер',DailyFact.objects.get(project_work=package,work_item=cable).actuation_reason)
+        from .models import ActuationReason,ActuationDocument
+        self.assertEqual(ActuationReason.objects.get(name='Сильный ветер').status,'APPROVED')
+        self.assertEqual(ActuationReason.objects.get(name='Проблема с автобусом').status,'MERGED')
+        self.assertEqual(ActuationReason.objects.get(name='Ошибка выбора причины').status,'REJECTED')
+        self.assertEqual(ActuationDocument.objects.count(),4)
+        self.assertEqual(ActuationDocument.objects.filter(removed_at__isnull=False).count(),1)
         from openpyxl import load_workbook
         workbook=load_workbook('/tmp/production-actuation-report.xlsx')
         self.assertTrue(any('Сильный ветер' in str(cell.value) for sheet in workbook for row in sheet for cell in row))

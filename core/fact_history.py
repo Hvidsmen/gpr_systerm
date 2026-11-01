@@ -33,6 +33,8 @@ def with_history_actor(function):
 
 def snapshot(instance):
     fields = {f.attname: getattr(instance, f.attname) for f in instance._meta.concrete_fields}
+    for field in instance._meta.concrete_fields:
+        if isinstance(field,models.FileField):fields[field.attname]=getattr(instance,field.attname).name or ''
     references = {}
     for field in instance._meta.concrete_fields:
         if field.is_relation and field.name != 'company' and fields.get(field.attname) is not None:

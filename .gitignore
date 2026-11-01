@@ -19,3 +19,5 @@ gpr_export.txt
 
 # Backups of copied or broken Windows virtual environments.
 .venv.broken-*/
+
+private_uploads/

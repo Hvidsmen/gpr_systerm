@@ -10,6 +10,7 @@ from apps.projects.models import ConstructionObject
 from .history_models import FactRevision
 
 TITLES={
+ 'production.actuationdocument':'Акт актировки',
  'production.workopeningbalance':'Входящий остаток работы',
  'production.dailyfact':'Работа', 'production.employeeactivity':'Сотрудник за смену',
  'production.employeeworklink':'Связь сотрудника и работы', 'production.equipmentactivity':'Техника на объекте',
@@ -21,7 +22,7 @@ TITLES={
 }
 TITLES.update({'personnel.lodgingstay':'Проживание','personnel.lodgingevent':'Событие коменданта','personnel.lodgingbuilding':'Вагон / корпус','personnel.lodgingbed':'Жилое место','personnel.lodgingresolution':'Объяснение сверки'})
 DIRECTIONS=[('lodging','Комендант'),('works','Производство'),('labor','Персонал'),('mechanization','Транспорт и ГСМ (прежний учёт)'),('fuel','ГСМ')]
-FIELD_LABELS={'source_id':'Исходный файл',
+FIELD_LABELS={'actuation_reason_ids':'Выбранные причины актировки','actuation_reason':'Причины актировки','actuation_type':'Вид актировки','original_name':'Имя файла','size':'Размер файла, байт','uploaded_by_id':'Кто прикрепил','removed_at':'Удалён из текущего списка','removed_by_id':'Кто удалил','file':'Файл акта','source_id':'Исходный файл',
  'quantity':'Входящий выполненный объём',
  'actual_quantity':'Фактический объём','actual_value':'Стоимость','reported_by_id':'Первоначальный автор',
  'recorded_by_id':'Первоначальный автор','actual_workers':'Численность','actual_count':'Количество техники',

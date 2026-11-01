@@ -77,6 +77,7 @@ class DailyFact(ActualHistoryMixin, BaseCompanyModel):
     actuation_type = models.CharField('Актировка работы', max_length=16, blank=True, default='',
         choices=[('DAY', 'Дневная'), ('NIGHT', 'Ночная'), ('FULL_DAY', 'Суточная')])
     actuation_reason = models.TextField('Причина актировки работы', blank=True, default='')
+    actuation_reason_ids = models.JSONField('Выбранные причины актировки', default=list, blank=True)
 
     class Meta:
         verbose_name = _("дневной факт")
@@ -123,6 +124,16 @@ class DailyFact(ActualHistoryMixin, BaseCompanyModel):
             and self.deviation_reason.company_id != self.company_id
         ):
             raise ValidationError({"deviation_reason": "Причина другой компании."})
+        if not isinstance(self.actuation_reason_ids,list) or any(type(pk) is not int or pk<=0 for pk in self.actuation_reason_ids):
+            raise ValidationError({'actuation_reason': 'Некорректный список причин актировки.'})
+        if self.actuation_reason_ids:
+            from .actuation_models import ActuationReason
+            reasons=list(ActuationReason.objects.filter(company_id=self.company_id,pk__in=self.actuation_reason_ids))
+            retained=type(self).objects.filter(pk=self.pk).values_list('actuation_reason_ids',flat=True).first() or []
+            if len(reasons)!=len(set(self.actuation_reason_ids)) or any(r.status not in {'APPROVED','PENDING'} and r.pk not in retained for r in reasons):
+                raise ValidationError({'actuation_reason': 'Выбрана чужая или удалённая причина актировки.'})
+            if not self.actuation_type:
+                raise ValidationError({'actuation_type': 'Выберите вид актировки для указанных причин.'})
         if self.actuation_type:
             if not self.actuation_reason.strip():
                 raise ValidationError({'actuation_reason': 'Укажите причину актировки этой работы.'})
@@ -479,3 +490,5 @@ from .transport_details_models import EquipmentDayDetails,EquipmentServiceStatus
 from .dispatch_models import ProductionPresence
 
 from .work_opening_models import WorkOpeningBalance  # noqa: F401,E402
+
+from .actuation_models import ActuationReason, ActuationDocument

@@ -30,6 +30,7 @@ class CreateForm(forms.Form):
 
 
 def link(task):
+    if task.key.startswith('actuation-reason:'):return reverse('production:actuation_reason_review',args=[int(task.key.rsplit(':',1)[1])])
     if task.catalogue_request_id:return reverse('resources:catalogue_review_detail',args=[task.catalogue_request_id])
     if task.key.startswith('prepare-resources:'):return reverse('planning:daily_schedule_detail',args=[task.schedule_id])+'#smg-matrix' if task.schedule_id else reverse('planning:global_detail',args=[task.version_id])+'#work-resources'
     if task.key.startswith('smg-update:'):
@@ -55,6 +56,9 @@ class TaskList(View):
             from apps.resources.catalogue_tasks import sync_company
             sync_company(request.user.company)
         else:service.sync_company(request.user.company)
+        if role_code(request.user) in {'ADMIN','PRODUCTION_HEAD'}:
+            from apps.production.actuation_reasons import sync_company
+            sync_company(request.user.company)
         tasks=service.visible(request.user)
         mode=request.GET.get('status','active' if role_code(request.user)=='ADMIN' else 'not_taken')
         valid_statuses={'not_taken','in_progress','history','active','overdue','all'} | set(dict(WorkTask._meta.get_field('status').choices))

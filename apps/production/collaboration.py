@@ -141,6 +141,8 @@ def canonical_rows(obj,day,report):
         values={name:str(value) if value is not None else '' for name,value in {
             'id':fact.pk,'project_work':fact.project_work_id,'work_item':fact.work_item_id,'actual_quantity':fact.actual_quantity.normalize(),
             'actuation_type':fact.actuation_type,'actuation_reason':fact.actuation_reason,'comment':fact.comment}.items()}
+        values['actuation_reasons']=sorted(str(pk) for pk in fact.actuation_reason_ids)
+        values['actuation_reasons_present']='1'
         values['DELETE']=False
         rows['works'].append({'id':fact.pk,'key':token(fact.project_work_id,fact.work_item_id),'version':fact.updated_at.isoformat(),'values':values})
     people={p['id']:p for p in report['people']}
@@ -201,10 +203,12 @@ def live(request):
                 item['editing']=item['editing'] or WorkFactClaim.objects.filter(company=obj.company,construction_object=obj,date=day,dispatcher_id=key,expires_at__gt=now).exists() or EmployeeFactClaim.objects.filter(company=obj.company,construction_object=obj,date=day,dispatcher_id=key,expires_at__gt=now).exists()
             users=[{**item,'steps':sorted(item['steps'])} for item in active.values()]
             report=report_data(obj,day);rows=canonical_rows(obj,day,report)
-            digest=hashlib.sha256(json.dumps([rows,report,users,[{k:v for k,v in c.items() if k!='expires_at'} for c in claims]],sort_keys=True,default=str).encode()).hexdigest()
+            from .actuation_models import ActuationReason
+            reason_options=[{'id':r.pk,'label':r.label,'active':r.status in {'PENDING','APPROVED'}} for r in ActuationReason.objects.filter(company=obj.company)]
+            digest=hashlib.sha256(json.dumps([rows,report,reason_options,users,[{k:v for k,v in c.items() if k!='expires_at'} for c in claims]],sort_keys=True,default=str).encode()).hexdigest()
             result={'users':users,'claims':claims,'digest':digest}
             if data.get('digest')!=digest:
-                result.update(report=report,rows=rows)
+                result.update(report=report,rows=rows,reason_options=reason_options)
                 if data.get('production_snapshot'):result['production_snapshot']=rebase(request.user,obj,day,data['production_snapshot'],rows,set(data.get('keep',[])))
             return JsonResponse(result)
     except (ValueError,TypeError,KeyError,signing.BadSignature):return JsonResponse({'error':'Не удалось обновить совместную форму. Обновите страницу.'},status=400)

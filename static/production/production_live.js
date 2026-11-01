@@ -2,6 +2,7 @@
 (()=>{
  'use strict';const form=document.querySelector('[data-production-form]');if(!form||form.dataset.readonly==='1')return;
  const {scope,csrf}=form.productionSession,field=(row,name)=>row.querySelector(`[name$="-${name}"]`),rows=()=>[...form.querySelectorAll('[data-work-fact-row],[data-production-person]')];
+ let reasonOptions=new Map();
  let step=Number(form.dataset.initialStep||1),digest='',polling=false,closed=false;
  const snapshot=()=>form.elements.namedItem('production_snapshot').value;
  function setValues(row,values,relationsOnly=false){
@@ -11,6 +12,11 @@
    if(name==='work_targets'){
     row.querySelectorAll('[name$="-work_targets"]').forEach(i=>i.remove());
     for(const target of value){const input=document.createElement('input');input.type='hidden';input.name=field(row,'work_mode').name.replace(/work_mode$/,'work_targets');input.value=target;row.append(input);}continue;
+   }
+   if(name==='actuation_reasons'){
+    const selected=(value||[]).map(String),host=row.querySelector('[data-actuation-reasons]');
+    if(host)for(const [id,option] of reasonOptions){let input=[...row.querySelectorAll('input[name$="-actuation_reasons"]')].find(i=>i.value===id);if(!input&&(option.active||selected.includes(id))){const label=document.createElement('label');input=document.createElement('input');input.type='checkbox';input.value=id;input.name=field(row,'actuation_reasons_present').name.replace(/actuation_reasons_present$/,'actuation_reasons');label.append(input,document.createTextNode(option.label));host.append(label);}if(input){input.closest('label').replaceChildren(input,document.createTextNode(option.label));input.disabled=!option.active&&!selected.includes(id);}}
+    row.querySelectorAll('input[name$="-actuation_reasons"]').forEach(input=>input.checked=selected.includes(input.value));continue;
    }
    const input=field(row,name);if(!input)continue;
    if(input.tagName==='SELECT'&&value&&!Array.from(input.options).some(o=>o.value===String(value)))input.add(new Option(String(value),String(value)));
@@ -29,6 +35,7 @@
  function apply(data){
   const keep=new Set(rows().filter(r=>r.dataset.entryDirty||r.dataset.personDirty||r.dataset.autoPending||field(r,r.matches('[data-production-person]')?'person_editing':'work_editing')?.value==='1').map(form.productionKeyOf));
   form.productionApplying=true;
+  reasonOptions=new Map((data.reason_options||[]).map(r=>[String(r.id),r]));
   try{
    for(const kind of ['works','labor']){
     const canonical=data.rows[kind],host=form.querySelector(`[data-rows="${kind}"]`),selector=kind==='works'?'[data-work-fact-row]':'[data-production-person]',existing=[...host.querySelectorAll(selector)],ids=new Set(canonical.map(r=>String(r.id)));

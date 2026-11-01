@@ -118,6 +118,8 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = Path(os.environ.get('DJANGO_MEDIA_ROOT', str(CONFIG_DIR / 'media')))
+# Private files are served only by authenticated, object-scoped download views.
+ACTUATION_FILES_ROOT = Path(os.environ.get('ACTUATION_FILES_ROOT', str(CONFIG_DIR / 'private_uploads' / 'actuation')))
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 

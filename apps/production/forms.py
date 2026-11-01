@@ -41,6 +41,9 @@ class CompanyFormMixin:
 
 
 class DailyFactForm(CompanyFormMixin, forms.ModelForm):
+    actuation_reasons = forms.MultipleChoiceField(label='Причины актировки',required=False,widget=forms.CheckboxSelectMultiple)
+    actuation_reasons_present = forms.CharField(required=False,initial='1',widget=forms.HiddenInput)
+
     class Meta:
         model = DailyFact
         fields = [
@@ -56,16 +59,31 @@ class DailyFactForm(CompanyFormMixin, forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        from . import actuation_reasons as reasons
+        self.actuation_user=kwargs.get('user')
+        retained=self.instance.actuation_reason_ids or []
+        self.initial_actuation_reason_ids=list(retained)
+        cached=getattr(self.actuation_user,'_actuation_reason_choices',None)
+        if cached is None:
+            cached=reasons.choices(self.company)
+            if self.actuation_user:self.actuation_user._actuation_reason_choices=cached
+        known={key for key,label in cached}
+        extra=[(str(r.pk),r.label) for r in reasons.ActuationReason.objects.filter(company=self.company,pk__in=[k for k in retained if str(k) not in known])]
+        self.fields['actuation_reasons'].choices=[*cached,*extra]
+        self.initial['actuation_reasons']=[str(pk) for pk in retained]
+        self.fields['actuation_reason'].widget=forms.HiddenInput()
         # Old clients may omit the new fields; never silently remove an existing actuation.
         if self.is_bound:
             self.data = self.data.copy()
             for name in ('actuation_type', 'actuation_reason'):
                 if self.add_prefix(name) not in self.data and self.instance.pk:
                     self.data[self.add_prefix(name)] = getattr(self.instance, name)
+            if not self.data.get(self.add_prefix('actuation_reasons_present')) and self.add_prefix('actuation_reasons') not in self.data and retained:
+                if hasattr(self.data,'setlist'):self.data.setlist(self.add_prefix('actuation_reasons'),[str(pk) for pk in retained])
+                else:self.data[self.add_prefix('actuation_reasons')]=[str(pk) for pk in retained]
             if self.data.get(self.add_prefix('actuation_type')) in dict(DayActuation.TYPES):
                 self.data[self.add_prefix('actual_quantity')] = '0'
         self.fields['actuation_type'].choices = [('', 'Без актировки'), *DayActuation.TYPES]
-        self.fields['actuation_reason'].widget = forms.Textarea(attrs={'rows': 2, 'class': 'form-control'})
         self.fields['project_work'].queryset=self.fields['project_work'].queryset.filter(merged_source__isnull=True)
         self.fields["work_item"].label_from_instance = (
             lambda item: f"{item.project_work}: {item.name}"
@@ -81,14 +99,38 @@ class DailyFactForm(CompanyFormMixin, forms.ModelForm):
                 self.add_error("work_item", "Для комплекса работ выберите работу в составе комплекса.")
             if item and item.project_work_id != work.pk:
                 self.add_error("work_item", "Работа в составе комплекса принадлежит другой работе.")
+        selected=list(dict.fromkeys(int(pk) for pk in data.get('actuation_reasons',[])))
+        self.instance.actuation_reason_ids=selected
+        self.proposed_actuation_reason=None
+        if self.initial_actuation_reason_ids and not selected and self.data.get(self.add_prefix('actuation_reasons_present')):
+            data['actuation_reason']=''
         if data.get('actuation_type'):
-            if not data.get('actuation_reason', '').strip():
-                self.add_error('actuation_reason', 'Укажите причину актировки этой работы.')
+            if selected:
+                from .actuation_reasons import reason_text
+                data['actuation_reason']=reason_text(self.company,selected)
+            elif not data.get('actuation_reason', '').strip():
+                self.add_error('actuation_reasons', 'Выберите причину актировки или добавьте новую.')
+            elif data['actuation_reason']!=self.initial.get('actuation_reason',''):
+                # Legacy forms can still submit text; it goes through the same review queue.
+                self.proposed_actuation_reason=data['actuation_reason']
         else:
             data['actuation_reason'] = ''
+            self.instance.actuation_reason_ids=[]
         if data.get("actual_quantity") is not None and data["actual_quantity"] < 0:
             self.add_error("actual_quantity", "Факт не может быть отрицательным.")
         return data
+
+    def save(self, commit=True):
+        from django.db import transaction
+        with transaction.atomic():
+            instance=super().save(commit=False)
+            if getattr(self,'proposed_actuation_reason',None):
+                from .actuation_reasons import propose
+                if not self.actuation_user:raise ValidationError('Добавьте причину актировки через форму пользователя.')
+                reason=propose(self.actuation_user,self.proposed_actuation_reason)
+                instance.actuation_reason_ids=[reason.pk];instance.actuation_reason=reason.name
+            if commit:instance.save();self.save_m2m()
+            return instance
 
 
 RESOURCE_FIELDS = {

@@ -327,6 +327,7 @@ class DispatcherDayView(CompanyRequiredMixin,View):
         people_status=FactSectionDay.objects.filter(company=obj.company,construction_object=obj,date=day,section='labor').first()
         context['labor_revision']=request.POST.get('labor_revision','') if bound else (people_status.revision if people_status else 0)
         context['production_work_choices']=catalogue
+        context['can_review_actuation_reasons']=role_code(request.user) in {'ADMIN','PRODUCTION_HEAD'}
         context['own_entry']=own_entry
         if section=='works':
             from .dispatch_models import ProductionEntryDay

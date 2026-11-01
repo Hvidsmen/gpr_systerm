@@ -52,7 +52,7 @@ class FactDayWorkspaceTests(TestCase):
                     if field.name == 'DELETE':
                         continue
                     value = field.value()
-                    data[field.html_name] = str(value) if value is not None else ''
+                    data[field.html_name] = value if isinstance(value,list) else str(value) if value is not None else ''
         return data
 
     def work_row(self, data, work):

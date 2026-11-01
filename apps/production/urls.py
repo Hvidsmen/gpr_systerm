@@ -8,7 +8,15 @@ from .report_export import download as production_report_download
 from .equipment_operations_views import assignments as equipment_assignments, history as equipment_history
 
 app_name = "production"
+from . import actuation_views
+
 urlpatterns = [
+    path('actuation/reasons/propose/',actuation_views.propose,name='actuation_reason_propose'),
+    path('actuation/reasons/',actuation_views.reviews,name='actuation_reason_reviews'),
+    path('actuation/reasons/<int:pk>/',actuation_views.review,name='actuation_reason_review'),
+    path('actuation/documents/',actuation_views.documents,name='actuation_documents'),
+    path('actuation/documents/<int:pk>/download/',actuation_views.download,name='actuation_document_download'),
+    path('actuation/documents/<int:pk>/remove/',actuation_views.remove,name='actuation_document_remove'),
     path('report.xlsx', production_report_download, name='production_report_download'),
     path('collaboration/', live, name='production_live'),
     path('links/', links, name='production_links'),
