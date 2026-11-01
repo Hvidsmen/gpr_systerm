@@ -40,10 +40,26 @@ def configuration(company):
     return dict(host=settings.EMAIL_HOST,port=settings.EMAIL_PORT,username=settings.EMAIL_HOST_USER,password=settings.EMAIL_HOST_PASSWORD,from_email=settings.DEFAULT_FROM_EMAIL,security='SSL' if settings.EMAIL_USE_SSL else 'STARTTLS' if settings.EMAIL_USE_TLS else 'NONE',portal_url=portal_address(settings.PORTAL_PUBLIC_URL))
 
 
+def transport_error(host,port,security):
+    """Provider-confirmed pairs; custom SMTP providers keep their own settings."""
+    if str(host).strip().rstrip('.').casefold()=='smtp.lancloud.ru':
+        if port==587 and security and security!='STARTTLS':
+            return 'Для smtp.lancloud.ru на порту 587 выберите STARTTLS. Для SSL/TLS используйте порт 465.'
+        if port==465 and security and security!='SSL':
+            return 'Для smtp.lancloud.ru на порту 465 выберите SSL/TLS. Для STARTTLS используйте порт 587.'
+    return ''
+
+
+def validate_transport(cfg):
+    error=transport_error(cfg['host'],cfg['port'],cfg['security'])
+    if error:raise ValidationError(error)
+
+
 def ready(company):
     try:
         cfg=configuration(company)
         if not cfg['host']:raise ValidationError('Настройте SMTP-сервер в разделе «Исходящая почта». IMAP используется только для чтения писем.')
+        validate_transport(cfg)
         forms.EmailField().clean(cfg['from_email'])
         if cfg['username'] and not cfg['password']:raise ValidationError('В настройках исходящей почты не указан пароль почтового ящика.')
         return cfg,''
@@ -51,6 +67,7 @@ def ready(company):
 
 
 def connection(cfg):
+    validate_transport(cfg)
     return mail.get_connection(host=cfg['host'],port=cfg['port'],username=cfg['username'],password=cfg['password'],use_tls=cfg['security']=='STARTTLS',use_ssl=cfg['security']=='SSL',timeout=settings.EMAIL_TIMEOUT,fail_silently=False)
 
 
@@ -68,6 +85,7 @@ class MailSettingsForm(forms.ModelForm):
         for name,field in self.fields.items():
             if name!='clear_password':field.widget.attrs['class']='form-select' if isinstance(field.widget,forms.Select) else 'form-control'
         self.fields['host'].required=True;self.fields['from_email'].required=True
+        self.fields['security'].help_text='LanCloud: порт 587 — STARTTLS; порт 465 — SSL/TLS. Эти варианты нельзя смешивать.'
         self.fields['host'].help_text='Нужен сервер исходящей почты SMTP, а не IMAP. Сервер и порт уточните у почтового провайдера.'
     def clean_host(self):
         value=self.cleaned_data['host'].strip()
@@ -80,6 +98,8 @@ class MailSettingsForm(forms.ModelForm):
     def clean_portal_url(self):return portal_address(self.cleaned_data['portal_url'])
     def clean(self):
         values=super().clean()
+        error=transport_error(values.get('host'),values.get('port'),values.get('security'))
+        if error:self.add_error('security',error)
         if values.get('username') and not values.get('password') and (values.get('clear_password') or not self.instance.password_encrypted):
             self.add_error('password','Укажите пароль почтового ящика для SMTP.')
         return values

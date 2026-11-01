@@ -1,7 +1,7 @@
 from uuid import uuid4
 from datetime import timedelta
 from unittest.mock import patch,MagicMock
-import smtplib,socket
+import smtplib,socket,ssl
 from django.test import TestCase,override_settings
 from django.urls import reverse
 from django.core import mail
@@ -193,3 +193,60 @@ class InvitationTests(TestCase):
         self.assertEqual(form.initial['host'],'company.example.org')
         self.assertEqual(form.initial['port'],2525)
         self.assertEqual(form.initial['username'],'company@example.org')
+
+    @patch('apps.accounts.invitation_mail.connection')
+    def test_lancloud_mixed_transport_is_rejected_before_save_or_connect_and_password_is_preserved(self,connection):
+        row=CompanyMailSettings.objects.create(company=self.company,host='smtp.lancloud.ru',port=587,security='SSL',username='sender@example.org',from_email='sender@example.org',password_encrypted=invitation_mail.encrypt_password(self.company.pk,'synthetic-preserved-secret'))
+        encrypted=row.password_encrypted
+        payload=dict(host=row.host,port=587,security='SSL',username=row.username,from_email=row.from_email,portal_url=row.portal_url,password='',action='test')
+        url=reverse('accounts:invitation_settings')
+        response=self.client.post(url,payload)
+        self.assertContains(response,'на порту 587 выберите STARTTLS')
+        self.assertIn('security',response.context['form'].errors)
+        connection.assert_not_called();row.refresh_from_db()
+        self.assertEqual(row.password_encrypted,encrypted)
+        payload['security']='STARTTLS'
+        self.assertEqual(self.client.post(url,payload).status_code,302)
+        cfg=connection.call_args.args[0]
+        self.assertEqual(cfg['security'],'STARTTLS');self.assertEqual(cfg['password'],'synthetic-preserved-secret')
+        connection.return_value.open.assert_called_once();connection.return_value.close.assert_called_once()
+        row.refresh_from_db();self.assertEqual(row.password_encrypted,encrypted)
+        self.assertFalse(getattr(mail,'outbox',[]))
+        self.assertNotContains(self.client.get(url),'synthetic-preserved-secret')
+
+    @patch('apps.accounts.invitation_mail.mail.get_connection')
+    def test_saved_or_environment_mixed_transport_never_opens_a_socket(self,backend):
+        with override_settings(EMAIL_HOST='smtp.lancloud.ru',EMAIL_PORT=587,EMAIL_USE_SSL=True,EMAIL_USE_TLS=False):
+            cfg,error=invitation_mail.ready(self.company)
+            self.assertIsNone(cfg);self.assertIn('STARTTLS',error)
+            raw=invitation_mail.configuration(self.company)
+            with self.assertRaisesMessage(ValidationError,'STARTTLS'):invitation_mail.connection(raw)
+        backend.assert_not_called()
+
+    @patch('apps.accounts.invitation_mail.mail.get_connection')
+    def test_documented_lancloud_transports_map_to_correct_django_flags(self,backend):
+        for port,security,tls,ssl_enabled in [(587,'STARTTLS',True,False),(465,'SSL',False,True)]:
+            cfg=dict(host='SMTP.LANCLOUD.RU',port=port,security=security,username='sender@example.org',password='synthetic-secret')
+            invitation_mail.connection(cfg)
+            self.assertEqual(backend.call_args.kwargs['use_tls'],tls)
+            self.assertEqual(backend.call_args.kwargs['use_ssl'],ssl_enabled)
+        for port,security in [(587,'SSL'),(587,'NONE'),(465,'STARTTLS'),(465,'NONE')]:
+            payload=dict(host='smtp.lancloud.ru',port=port,security=security,username='',from_email='sender@example.org',portal_url='http://192.168.70.9:8001/')
+            form=invitation_mail.MailSettingsForm(payload,company=self.company)
+            self.assertFalse(form.is_valid());self.assertIn('security',form.errors)
+        # Alternate providers may use custom transport/port combinations.
+        self.assertEqual(invitation_mail.transport_error('custom.example.org',587,'SSL'),'')
+
+    def test_smtp_diagnostics_explain_failure_without_echoing_server_text(self):
+        cases=[(ssl.SSLCertVerificationError('private-diagnostic'),'сертификат'),
+               (ssl.SSLError('private-diagnostic'),'587 — STARTTLS'),
+               (socket.gaierror('private-diagnostic'),'DNS'),
+               (socket.timeout('private-diagnostic'),'не ответил вовремя'),
+               (ConnectionRefusedError('private-diagnostic'),'отклонено'),
+               (smtplib.SMTPNotSupportedError('private-diagnostic'),'не поддерживает'),
+               (smtplib.SMTPServerDisconnected('private-diagnostic'),'закрыл соединение'),
+               (smtplib.SMTPAuthenticationError(535,b'private-diagnostic'),'разрешение на отправку'),
+               (smtplib.SMTPResponseException(550,b'private-diagnostic'),'код 550')]
+        for error,expected in cases:
+            message=invitations.safe_mail_error(error)
+            self.assertIn(expected,message);self.assertNotIn('private-diagnostic',message)

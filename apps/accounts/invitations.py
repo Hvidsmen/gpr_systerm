@@ -1,5 +1,5 @@
 """Reviewable Windows-login invitations and a persistent per-recipient outbox."""
-import hashlib,json,threading,time,smtplib,socket
+import hashlib,json,threading,time,smtplib,socket,ssl
 from datetime import timedelta
 from urllib.parse import urljoin
 from collections import Counter
@@ -113,7 +113,14 @@ def counts(batch):
 
 
 def safe_mail_error(error):
-    if isinstance(error,smtplib.SMTPAuthenticationError):return 'Почтовый сервер отклонил авторизацию. Проверьте логин и пароль в настройках исходящей почты.'
+    if isinstance(error,smtplib.SMTPAuthenticationError):return 'Почтовый сервер отклонил авторизацию. Проверьте логин, пароль и разрешение на отправку по SMTP в панели почтового провайдера.'
+    if isinstance(error,ssl.SSLCertVerificationError):return 'Не удалось проверить сертификат SMTP-сервера. Проверьте имя сервера, дату и время на сервере портала и доверенные сертификаты.'
+    if isinstance(error,ssl.SSLError):return 'Не удалось установить защищённое SMTP-соединение. Проверьте сочетание порта и защиты: для LanCloud 587 — STARTTLS, 465 — SSL/TLS.'
+    if isinstance(error,socket.gaierror):return 'Не удалось определить адрес SMTP-сервера. Проверьте его имя и настройки DNS на сервере портала.'
+    if isinstance(error,TimeoutError):return 'SMTP-сервер не ответил вовремя. Проверьте порт, защиту соединения и доступ к почтовому серверу с сервера портала.'
+    if isinstance(error,ConnectionRefusedError):return 'Соединение с SMTP-сервером отклонено. Проверьте порт и доступ к нему с сервера портала.'
+    if isinstance(error,smtplib.SMTPNotSupportedError):return 'SMTP-сервер не поддерживает выбранный способ защиты или авторизации. Проверьте настройки по инструкции почтового провайдера.'
+    if isinstance(error,smtplib.SMTPServerDisconnected):return 'SMTP-сервер закрыл соединение. Проверьте сочетание порта и защиты: для LanCloud 587 — STARTTLS, 465 — SSL/TLS.'
     if isinstance(error,smtplib.SMTPRecipientsRefused):return 'Почтовый сервер отклонил адрес получателя.'
     if isinstance(error,smtplib.SMTPResponseException):return 'Почтовый сервер отклонил запрос (код '+str(error.smtp_code)+').'
     return 'Не удалось завершить обмен с SMTP-сервером. Проверьте настройки исходящей почты и доступность сервера.'
