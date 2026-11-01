@@ -33,7 +33,7 @@
    await releaseClaim();
    bed.add(new Option(result.label,String(result.id),false,true));bed.dispatchEvent(new Event('change',{bubbles:true}));
    const buildings=quickForm.elements.namedItem('building');
-   if(![...buildings.options].some(option=>option.value===String(result.building.id)))buildings.add(new Option(result.building.name,String(result.building.id)));
+   if(![...buildings.options].some(option=>option.value===String(result.building.id)))buildings.add(new Option(result.building.label||result.building.name,String(result.building.id)));
    quickForm.reset();quickPanel.open=false;refresh();say('Новое место выбрано. Начните оформление сотрудника и места.');message.textContent='';
   }catch(error){message.textContent=error.message;message.classList.add('text-danger');}
   finally{button.disabled=false;}

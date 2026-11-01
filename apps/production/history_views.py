@@ -22,7 +22,7 @@ TITLES={
 }
 TITLES.update({'personnel.lodgingstay':'Проживание','personnel.lodgingevent':'Событие коменданта','personnel.lodgingbuilding':'Вагон / корпус','personnel.lodgingbed':'Жилое место','personnel.lodgingresolution':'Объяснение сверки'})
 DIRECTIONS=[('lodging','Комендант'),('works','Производство'),('labor','Персонал'),('mechanization','Транспорт и ГСМ (прежний учёт)'),('fuel','ГСМ')]
-FIELD_LABELS={'actuation_reason_ids':'Выбранные причины актировки','actuation_reason':'Причины актировки','actuation_type':'Вид актировки','original_name':'Имя файла','size':'Размер файла, байт','uploaded_by_id':'Кто прикрепил','removed_at':'Удалён из текущего списка','removed_by_id':'Кто удалил','file':'Файл акта','source_id':'Исходный файл',
+FIELD_LABELS={'gender':'Пол проживающих в вагоне','actuation_reason_ids':'Выбранные причины актировки','actuation_reason':'Причины актировки','actuation_type':'Вид актировки','original_name':'Имя файла','size':'Размер файла, байт','uploaded_by_id':'Кто прикрепил','removed_at':'Удалён из текущего списка','removed_by_id':'Кто удалил','file':'Файл акта','source_id':'Исходный файл',
  'quantity':'Входящий выполненный объём',
  'actual_quantity':'Фактический объём','actual_value':'Стоимость','reported_by_id':'Первоначальный автор',
  'recorded_by_id':'Первоначальный автор','actual_workers':'Численность','actual_count':'Количество техники',
@@ -44,7 +44,7 @@ FIELD_LABELS={'actuation_reason_ids':'Выбранные причины акти
 from .transport_details_models import DETAIL_FIELDS
 FIELD_LABELS.update(dict(DETAIL_FIELDS))
 FIELD_LABELS.update({'organization_snapshot':'Организация при заселении','position_snapshot':'Должность при заселении','department_snapshot':'Подразделение при заселении','bed_id':'Место','from_bed_id':'С прежнего места','to_bed_id':'На новое место','room':'Комната','number':'Номер места','building_id':'Вагон / корпус','planned_departure':'Плановое освобождение','keys_issued':'Ключи выданы','pass_number':'Пропуск','fingerprint':'Версия сверки'})
-CHOICES={'works':'Производство','labor':'Персонал','WORKED':'Работала','WORKING':'Работала','IDLE':'Простой','READY':'Исправна','REPAIR':'В ремонте','SCRAP':'Под списание / на запчасти',
+CHOICES={'M':'Мужской','F':'Женский','MIXED':'Смешанный','works':'Производство','labor':'Персонал','WORKED':'Работала','WORKING':'Работала','IDLE':'Простой','READY':'Исправна','REPAIR':'В ремонте','SCRAP':'Под списание / на запчасти',
  'CHECKIN':'Заселение','CHECKOUT':'Выселение','MOVE':'Переселение','UPDATE':'Изменение сведений','AVAILABLE':'Доступно','RESERVED':'Зарезервировано','UNAVAILABLE':'Недоступно','ARRIVAL':'Приезд / заезд','DEPARTURE':'Выезд','TRANSFER':'Перевод','WRITEOFF':'Списание','CONDITION':'Состояние','CANCEL':'Отмена'}
 
 

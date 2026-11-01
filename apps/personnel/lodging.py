@@ -30,6 +30,12 @@ def available_beds(company,camp,day,*,user=None,session=None):
     return LodgingBed.objects.filter(company=company,building__camp=camp,building__camp__is_active=True,building__is_active=True,state='AVAILABLE').exclude(pk__in=occupied).exclude(pk__in=leases.values('resource_id')).select_related('building')
 
 
+def building_label(building):return f'{building.name} · Пол: {building.get_gender_display()}'
+
+
+def bed_label(bed):return f'{bed} · Пол вагона: {bed.building.get_gender_display()} — Свободно'
+
+
 def session_id(value):
     try:return UUID(str(value))
     except (ValueError,TypeError,AttributeError):raise ValidationError('Обновите страницу: неверный сеанс оформления.')

@@ -63,7 +63,7 @@ def available_beds(request):
     try:session=lodging.session_id(request.GET.get('session')) if request.GET.get('session') else None
     except ValidationError:return JsonResponse({'error':'Обновите форму оформления.'},status=400)
     beds=lodging.available_beds(request.user.company,camp,day,user=request.user,session=session)
-    return JsonResponse({'beds':[{'id':bed.pk,'label':str(bed)+' — Свободно'} for bed in beds]})
+    return JsonResponse({'beds':[{'id':bed.pk,'label':lodging.bed_label(bed),'building_gender':bed.building.gender} for bed in beds]})
 
 
 def place_rows(company,camp,day):
@@ -125,10 +125,10 @@ def board(request):
     rows=[r for r in all_rows if (not state or r['status']==state) and all(term in ' '.join([str(r['bed']),r['stay'].employee.display_name if r['stay'] else '',r['stay'].employee.employee_number if r['stay'] else '',r['organization']]).casefold() for term in q)]
     from .housing_views import workbook_response
     if request.GET.get('export')=='xlsx':
-        values=[['ВЖГ','Вагон / корпус','Инвентарный номер','Сведения о вагоне','Тип','Комната','Место','Состояние','ФИО','Табельный номер','Пол','Группа должностей','Должность','Подразделение','Ключи','Номер ключа','Заселение','Плановая дата выселения','Выселение','Пропуск','Примечание']]
+        values=[['ВЖГ','Вагон / корпус','Инвентарный номер','Сведения о вагоне','Тип','Комната','Место','Состояние','ФИО','Табельный номер','Пол','Группа должностей','Должность','Подразделение','Ключи','Номер ключа','Заселение','Плановая дата выселения','Выселение','Пропуск','Примечание','Пол вагона']]
         for row in rows:
             b=row['bed'];s=row['stay'];e=s.employee if s else None
-            values.append([camp.name,b.building.name,b.building.inventory_number,b.building.description,b.building.kind,b.room,b.number,row['status_label'],e.display_name if e else '',e.employee_number if e else '',row['gender'],row['position_group'],row['position'],row['department'],('Да' if s.keys_issued else 'Нет') if s else '',s.key_number if s else '',s.arrived_on if s else '',s.planned_departure if s else '',s.departed_on if s else '',s.pass_number if s else '',s.comment if s else b.note])
+            values.append([camp.name,b.building.name,b.building.inventory_number,b.building.description,b.building.kind,b.room,b.number,row['status_label'],e.display_name if e else '',e.employee_number if e else '',row['gender'],row['position_group'],row['position'],row['department'],('Да' if s.keys_issued else 'Нет') if s else '',s.key_number if s else '',s.arrived_on if s else '',s.planned_departure if s else '',s.departed_on if s else '',s.pass_number if s else '',s.comment if s else b.note,b.building.get_gender_display()])
         return workbook_response('lodging.xlsx','Проживание',values)
     events=LodgingEvent.objects.filter(company=request.user.company,camp=camp,date__lte=day).select_related('employee','from_bed__building','to_bed__building','recorded_by','stay')[:100]
     groups=[{'building':b,'places':[r for r in rows if r['bed'].building_id==b.pk]} for b in LodgingBuilding.objects.filter(company=request.user.company,camp=camp)]
@@ -156,7 +156,7 @@ def quick_bed(request):
             if data.get('building'):
                 building=get_object_or_404(LodgingBuilding.objects.select_for_update(),pk=data['building'].pk,company=request.user.company,camp=camp,is_active=True)
             else:
-                building=LodgingBuilding(company=request.user.company,camp=camp,name=data['new_building_name'],inventory_number=data['new_building_inventory_number'])
+                building=LodgingBuilding(company=request.user.company,camp=camp,name=data['new_building_name'],inventory_number=data['new_building_inventory_number'],gender=data['new_building_gender'])
                 building.save()
             bed=LodgingBed(company=request.user.company,building=building,room=data['room'],number=data['number'],note=data['note'])
             bed.save()
@@ -164,7 +164,7 @@ def quick_bed(request):
         return JsonResponse({'error':'; '.join(exc.messages)},status=400)
     except IntegrityError:
         return JsonResponse({'error':'Такой вагон или место уже существует. Выберите его в списке либо укажите другой номер.'},status=409)
-    return JsonResponse({'id':bed.pk,'label':str(bed)+' — Свободно','building':{'id':building.pk,'name':building.name}},status=201)
+    return JsonResponse({'id':bed.pk,'label':lodging.bed_label(bed),'building_gender':bed.building.gender,'building':{'id':building.pk,'name':building.name,'label':lodging.building_label(building),'gender':building.gender}},status=201)
 
 
 @login_required

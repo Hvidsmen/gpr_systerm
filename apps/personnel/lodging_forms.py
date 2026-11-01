@@ -47,7 +47,7 @@ class LodgingMovementForm(StyledForm):
             try:session=lodging.session_id(self.data.get('session'))
             except forms.ValidationError:pass
         self.fields['bed'].queryset=lodging.available_beds(company,camp,selected_day,user=user,session=session)
-        self.fields['bed'].label_from_instance=lambda b:str(b)+' — Свободно'
+        self.fields['bed'].label_from_instance=lodging.bed_label
         self.style()
     def clean(self):
         data=super().clean()
@@ -59,14 +59,18 @@ class LodgingMovementForm(StyledForm):
 class BuildingForm(forms.ModelForm):
     places=forms.IntegerField(label='Создать мест',min_value=0,max_value=200,initial=4,required=False,help_text='Создадим места с номерами 1, 2 и далее. Комнаты можно задать в справочнике мест.')
     class Meta:
-        model=LodgingBuilding;fields=['name','inventory_number','description','kind','is_active']
+        model=LodgingBuilding;fields=['name','inventory_number','description','kind','gender','is_active']
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
-        if self.instance.pk:self.fields.pop('places',None)
+        if self.instance.pk:
+            self.fields.pop('places',None)
+            if self.is_bound and 'gender' not in self.data:
+                self.data=self.data.copy();self.data['gender']=self.instance.gender
+        self.fields['gender'].help_text='Укажите назначение вагона: мужской, женский или смешанный. Пол сотрудников ведётся отдельно.'
         self.fields['description'].widget.attrs['rows']=2
         self.fields['description'].label='Описание в заголовке вагона'
         self.fields['description'].help_text='Например: Вагон-дом жилой на 8 чел на санях 1218120 БП-002666. Номер вагона укажите отдельно.'
-        for f in self.fields.values():f.widget.attrs['class']='form-check-input' if isinstance(f.widget,forms.CheckboxInput) else 'form-control'
+        for f in self.fields.values():f.widget.attrs['class']='form-check-input' if isinstance(f.widget,forms.CheckboxInput) else 'form-select' if isinstance(f.widget,forms.Select) else 'form-control'
 
 
 class BedForm(forms.ModelForm):
@@ -80,6 +84,7 @@ class QuickBedForm(StyledForm):
     building=forms.ModelChoiceField(label='Вагон / корпус',queryset=LodgingBuilding.objects.none(),required=False)
     new_building_name=forms.CharField(label='Или новый вагон / корпус',max_length=200,required=False)
     new_building_inventory_number=forms.CharField(label='Инвентарный номер нового вагона',max_length=80,required=False)
+    new_building_gender=forms.ChoiceField(label='Пол проживающих в новом вагоне',choices=LodgingBuilding.GENDERS,required=False,help_text='Для существующего вагона пол меняется в его карточке.')
     room=forms.CharField(label='Комната',max_length=60,required=False)
     number=forms.CharField(label='Номер места',max_length=60)
     note=forms.CharField(label='Примечание к месту',max_length=500,required=False)
@@ -87,6 +92,7 @@ class QuickBedForm(StyledForm):
         kwargs.setdefault('auto_id','quick_bed_%s')
         super().__init__(*args,**kwargs)
         self.fields['building'].queryset=LodgingBuilding.objects.filter(company=company,camp=camp,is_active=True)
+        self.fields['building'].label_from_instance=lodging.building_label
         self.style()
         for field in self.fields.values():field.widget.attrs['form']='lodging-quick-bed-form'
     def clean(self):
@@ -94,6 +100,7 @@ class QuickBedForm(StyledForm):
         if data.get('building') and data.get('new_building_name'):self.add_error('new_building_name','Выберите существующий вагон или введите новый.')
         if not data.get('building') and not data.get('new_building_name'):self.add_error('building','Выберите вагон или укажите название нового.')
         if data.get('new_building_inventory_number') and not data.get('new_building_name'):self.add_error('new_building_name','Укажите название нового вагона.')
+        if data.get('new_building_gender') and not data.get('new_building_name'):self.add_error('new_building_gender','Это поле относится к новому вагону. Пол существующего вагона изменяется в его карточке.')
         return data
 
 

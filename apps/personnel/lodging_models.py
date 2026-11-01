@@ -8,11 +8,13 @@ from .models import PersonnelModel
 
 
 class LodgingBuilding(ActualHistoryMixin,PersonnelModel):
+    GENDERS=[('', 'Не указан'),('M','Мужской'),('F','Женский'),('MIXED','Смешанный')]
     camp=models.ForeignKey('personnel.Camp',on_delete=models.PROTECT,related_name='lodging_buildings')
     name=models.CharField('Вагон-дом / корпус',max_length=200)
     inventory_number=models.CharField('Инвентарный номер',max_length=80,blank=True)
     description=models.TextField('Сведения о вагоне',max_length=4000,blank=True)
     kind=models.CharField('Тип / назначение',max_length=100,blank=True)
+    gender=models.CharField('Пол проживающих',max_length=5,blank=True,default='',choices=GENDERS)
     is_active=models.BooleanField('Используется',default=True)
     class Meta:
         ordering=['camp__name','name','pk']

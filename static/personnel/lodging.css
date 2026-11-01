@@ -4,3 +4,5 @@
 .lodging-gender summary{cursor:pointer;white-space:nowrap;color:#16738e}.lodging-gender form{min-width:130px;padding-top:6px}.lodging-gender select{min-width:125px}
 
 .lodging-building>summary strong{min-width:0;overflow-wrap:anywhere}.lodging-building>summary [data-building-description]{display:inline;font-weight:500;color:#315a72}
+
+.lodging-building-gender{flex:none;border:1px solid #c7dce9;border-radius:6px;background:#fff;color:#315a72;font-size:12px;padding:4px 8px;line-height:1.4}.lodging-building>summary .lodging-building-gender{display:inline-block;width:fit-content;max-width:100%;overflow-wrap:anywhere}

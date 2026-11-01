@@ -59,4 +59,6 @@ class QuickBedBrowserTests(StaticLiveServerTestCase):
         config={'base':self.live_server_url,'url':reverse('personnel:lodging'),'cookie':self.client.cookies['sessionid'].value,'chromium':shutil.which('chromium'),'camp':self.a.pk,'day':str(self.day),'employee':self.second_employee.pk,'bed':self.bed.pk}
         script=Path(__file__).resolve().parents[2]/'tests/browser/lodging_quick_bed.js'
         result=subprocess.run(['node',str(script)],capture_output=True,text=True,env=dict(os.environ,QUICK_BED_CONFIG=json.dumps(config)),timeout=90)
-        self.assertEqual(result.returncode,0,result.stdout+'\n'+result.stderr);print(result.stdout.strip())
+        self.assertEqual(result.returncode,0,result.stdout+'\n'+result.stderr)
+        self.assertEqual(LodgingBuilding.objects.get(name='Вагон новый',company=self.company).gender,'F')
+        print(result.stdout.strip())
