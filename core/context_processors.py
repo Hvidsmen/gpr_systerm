@@ -1,10 +1,10 @@
-from core.permissions import role_code
+from core.permissions import role_code, DISPATCHER_ROLES
 
 
 def planning_tasks(request):
     user=request.user
     if not user.is_authenticated or not user.company_id:return {}
-    role=role_code(user);result={}
+    role=role_code(user);result={'catalogue_menu_hidden':role in DISPATCHER_ROLES | {'COMMANDANT'}}
     from .permissions import ROLES, CATALOG_MANAGER_ROLES
     if role in CATALOG_MANAGER_ROLES | {'ADMIN','PLANNER','MANAGER'}:
         from apps.resources.catalogue_review_views import queue_for

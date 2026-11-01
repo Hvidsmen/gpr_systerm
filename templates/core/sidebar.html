@@ -32,6 +32,7 @@
         {% if request.user|may:'planning:report_matrix' %}<a class="nav-link" href="{% url 'planning:report_matrix' %}" data-paths="/planning/reports/plan-fact/"><i class="bi bi-table" aria-hidden="true"></i> Таблица план и факт</a>{% endif %}
         </details>{% endif %}
         {% if request.user|may:'estimates:estimate_list' %}<a class="nav-link" href="{% url 'estimates:estimate_list' %}" data-paths="/estimates/"><i class="bi bi-file-earmark-spreadsheet" aria-hidden="true"></i> Сметы</a>{% endif %}
+        {% if not catalogue_menu_hidden %}
         {% if request.user|may:'personnel:camps' or request.user|may:'resources:employee_list' or request.user|may:'projects:project_list' or request.user|may:'works:work_list' or request.user|may:'works:group_list' or request.user|may:'works:unit_list' or request.user|may:'resources:brigade_list' or request.user|may:'resources:equipment_type_list' or request.user|may:'planning:profile_list' or request.user|may:'planning:calendar_list' %}<details class="nav-group"><summary><i class="bi bi-journal-text" aria-hidden="true"></i><span>Справочники</span></summary>
         {% if request.user|may:'personnel:camps' %}<a class="nav-link" href="{% url 'personnel:camps' %}" data-paths="/personnel/camps/"><i class="bi bi-buildings" aria-hidden="true"></i> ВЖГ</a>{% endif %}
         {% if request.user|may:'projects:project_list' %}<a class="nav-link" href="{% url 'projects:project_list' %}" data-paths="/projects/"><i class="bi bi-folder" aria-hidden="true"></i> Объекты и проекты</a>{% endif %}
@@ -45,6 +46,7 @@
         {% if request.user|may:'planning:profile_list' %}<a class="nav-link" href="{% url 'planning:profile_list' %}" data-paths="/planning/profiles/ /planning/profile-items/"><i class="bi bi-graph-up" aria-hidden="true"></i> Профили нагрузки</a>{% endif %}
         {% if request.user|may:'planning:calendar_list' %}<a class="nav-link" href="{% url 'planning:calendar_list' %}" data-paths="/planning/calendars/ /planning/calendar-days/"><i class="bi bi-calendar" aria-hidden="true"></i> Календари</a>{% endif %}
         </details>{% endif %}
+        {% endif %}
         {% if request.user|may:'instructions:index' %}<a class="nav-link" href="{% url 'instructions:index' %}" data-paths="/instructions/"><i class="bi bi-question-circle" aria-hidden="true"></i> Инструкции</a>{% endif %}
         {% if request.user|may:'accounts:user_list' or request.user|may:'accounts:portal_updates' %}
         <details class="nav-group sidebar-admin">
