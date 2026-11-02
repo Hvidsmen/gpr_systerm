@@ -58,7 +58,7 @@
             {% endif %}{% if request.user|may:'accounts:user_list' %}<a class="nav-link" href="{% url 'accounts:user_list' %}" data-paths="/accounts/users/ /accounts/access-groups/ /accounts/ad/ /accounts/view-as/"><i class="bi bi-person-gear" aria-hidden="true"></i> Пользователи и доступ</a>
             {% endif %}
             {% if request.user|may:'accounts:training_list' %}<a class="nav-link" href="{% url 'accounts:training_list' %}"><i class="bi bi-mortarboard" aria-hidden="true"></i> Учебные копии</a>{% endif %}
-            {% if request.user|may:'accounts:portal_updates' %}<a class="nav-link" href="{% url 'accounts:portal_updates' %}"><i class="bi bi-arrow-repeat" aria-hidden="true"></i> Обновление приложения</a>{% endif %}
+            {% if request.user|may:'accounts:portal_updates' %}<a class="nav-link" href="{% url 'accounts:portal_updates' %}"><i class="bi bi-arrow-repeat" aria-hidden="true"></i> {% if request.staging %}Обновление тестового портала{% else %}Обновление приложения{% endif %}</a>{% endif %}
         </details>
         {% endif %}
     </nav>

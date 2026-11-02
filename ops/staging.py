@@ -210,6 +210,22 @@ def serve(root):
         finally:
             if child.stdin:child.stdin.close()
         return
+    from ops.staging_updates import supervise
+    parent_gone = threading.Event()
+    if os.environ.get('GPR_STAGING_PARENT_PIPE') == '1':
+        def monitor_parent():
+            sys.stdin.buffer.read(1); parent_gone.set()
+        threading.Thread(target=monitor_parent, daemon=True).start()
+    supervise(root, parent_gone)
+
+
+def serve_http(root):
+    root = Path(root).resolve(); state = manifest(root)
+    if Path(state['code']).resolve() != CODE_ROOT:
+        raise ValueError('HTTP-процесс должен соответствовать выбранной тестовой версии.')
+    if (root / '.runtime/staging-recovery.json').exists():
+        raise RuntimeError('Тестовая база требует проверки восстановления.')
+    log_setup(root / '.runtime', 'server.log')
     watch_parent = os.environ.get('GPR_STAGING_PARENT_PIPE') == '1'
     env = environment(root)
     os.environ.clear(); os.environ.update(env)
@@ -221,7 +237,7 @@ def serve(root):
     from whitenoise import WhiteNoise
     runtime = root / '.runtime'; runtime.mkdir(exist_ok=True)
     with singleton(runtime / 'server.lock'):
-        stop = runtime / 'server.stop'; stop.unlink(missing_ok=True)
+        stop = runtime / 'server.stop'
         application = WhiteNoise(get_wsgi_application(), root=str(settings.STATIC_ROOT), prefix=settings.STATIC_URL)
         server = create_server(application, listen='0.0.0.0:' + str(state['port']), threads=4,
                                max_request_body_size=128 * 1024 * 1024, channel_timeout=120)
@@ -246,6 +262,8 @@ def update(root, archive, revision):
     if len(revision) != 40 or any(c not in '0123456789abcdef' for c in revision):
         raise ValueError('Нужен точный SHA проверяемого релиза, а не ветка main.')
     runtime = root / '.runtime'
+    if (runtime / 'staging-recovery.json').exists():
+        raise ValueError('Сначала проверьте восстановление тестовой базы и снимите маркер восстановления.')
     with singleton(runtime / 'server.lock'), singleton(runtime / 'prepare.lock'):
         release = private_path(root, '.runtime/releases/' + revision)
         if release.exists():raise ValueError('Эта версия уже подготовлена. Не перезаписывайте существующий релиз.')
@@ -281,8 +299,12 @@ def update(root, archive, revision):
             atomic_json(root / 'staging.json', candidate)
         except Exception:
             # Lock is held and no HTTP listener has been started: no new user writes can be lost.
-            for suffix in ['-wal', '-shm']:Path(str(root / 'data/db.sqlite3') + suffix).unlink(missing_ok=True)
-            shutil.copy2(backup / 'database.sqlite3', root / 'data/db.sqlite3')
+            try:
+                for suffix in ['-wal', '-shm']:Path(str(root / 'data/db.sqlite3') + suffix).unlink(missing_ok=True)
+                shutil.copy2(backup / 'database.sqlite3', root / 'data/db.sqlite3')
+            except Exception:
+                atomic_json(runtime / 'staging-recovery.json', {'backup': str(backup), 'revision': previous['revision']})
+                raise
             raise
         finally:candidate_file.unlink(missing_ok=True)
         print('Обновлён только тест. Версия: ' + revision + '. Запустите отдельное задание тестового портала.')
@@ -307,7 +329,7 @@ def prompt_password():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['prepare', 'serve', 'stop', 'status', 'update'])
+    parser.add_argument('command', choices=['prepare', 'serve', 'http', 'stop', 'status', 'update'])
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--source-root', type=Path)
     parser.add_argument('--owner-login')
@@ -324,6 +346,7 @@ def main():
                         revision=args.revision, actuation=args.actuation_root)
         print('Тест подготовлен: http://' + state['hosts'][0] + ':' + str(state['port']) + '/; логин: ' + state['owner_login'])
     elif args.command == 'serve':serve(args.root)
+    elif args.command == 'http':serve_http(args.root)
     elif args.command == 'update':
         if not args.archive:parser.error('Нужен --archive: архив выбранного релиза.')
         update(args.root, args.archive, args.revision)

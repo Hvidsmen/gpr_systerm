@@ -123,6 +123,15 @@ class StagingRuntimeTests(SimpleTestCase):
         self.assertTrue(Path(current['code']).is_relative_to(self.root / '.runtime/releases'))
         self.assertEqual(self.digest(), before)
 
+    def test_failed_database_restore_marks_test_for_recovery_and_blocks_restart_and_update(self):
+        self.prepare(); before=self.digest()
+        with patch.object(staging.subprocess,'run'), patch.object(staging,'run_manage',side_effect=RuntimeError('synthetic failed migration')), patch.object(staging.shutil,'copy2',side_effect=OSError('synthetic restore failure')):
+            with self.assertRaises(OSError):staging.update(self.root,self.archive(),'b'*40)
+        self.assertTrue((self.root/'.runtime/staging-recovery.json').exists())
+        with self.assertRaises(RuntimeError):staging.serve_http(self.root)
+        with self.assertRaises(ValueError):staging.update(self.root,self.archive(),'b'*40)
+        self.assertEqual(self.digest(),before)
+
     def test_password_reader_allows_admin_and_retries_empty_or_mismatched_input_without_echoing_passwords(self):
         good = 'admin'
         output = StringIO()

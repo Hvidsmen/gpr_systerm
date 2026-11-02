@@ -14,8 +14,27 @@ const {chromium}=require('playwright'),assert=require('assert'),fs=require('fs')
  await page.getByRole('button',{name:'Изменить пароль',exact:true}).click();assert((await page.innerText('body')).includes('Пароль успешно изменен.'));
  const cookies=await context.cookies();assert(cookies.some(cookie=>cookie.name.startsWith('staging_')&&cookie.name.endsWith('_session')));assert(cookies.some(cookie=>cookie.name==='sessionid'&&cookie.value===c.source_cookie));
  for(const path of c.blocked){const response=await context.request.get(c.base+path);assert.equal(response.status(),403);}
+ await page.goto(c.base+c.update_path);
+ assert(await page.getByRole('heading',{name:'Обновление тестового портала',exact:true}).isVisible());
+ assert(await page.getByRole('button',{name:'Проверить обновления',exact:true}).isEnabled());
+ assert(await page.getByRole('button',{name:'Обновить тестовый портал',exact:true}).isDisabled());
+ assert.equal(await page.locator('#portal-update-notice').count(),0);
+ if(c.web_release){
+  await page.getByRole('button',{name:'Проверить обновления',exact:true}).click();
+  await page.waitForURL(c.base+c.update_path);
+  await page.waitForFunction(()=>document.querySelector('[data-test-available]').textContent==='bbbbbbbbbbbb');
+  assert(await page.getByRole('button',{name:'Обновить тестовый портал',exact:true}).isEnabled());
+  await page.screenshot({path:'/tmp/staging-update-before.png',animations:'disabled'});
+  await page.getByRole('button',{name:'Обновить тестовый портал',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelector('[data-test-current]')?.textContent==='bbbbbbbbbbbb',null,{timeout:600000});
+  await page.waitForFunction(()=>document.querySelector('[data-test-status]')?.textContent.includes('обновлён и доступен'),null,{timeout:60000});
+  await page.screenshot({path:'/tmp/staging-update-after.png',animations:'disabled'});
+ }else{
+  await page.screenshot({path:'/tmp/staging-update-before.png',animations:'disabled'});
+ }
  const post=async path=>{const cookie=(await context.cookies()).find(cookie=>cookie.name.startsWith('staging_')&&cookie.name.endsWith('_csrf'));return context.request.post(c.base+path,{headers:{'X-CSRFToken':cookie.value,'Referer':c.base+'/'} ,form:{}});};
  const impersonation=await post(c.impersonate);assert(impersonation.ok());await page.goto(c.base+c.settings);assert((await page.innerText('body')).includes('Вы работаете как'));assert((await page.innerText('body')).includes('ТЕСТОВЫЙ ПОРТАЛ'));
+ assert.equal((await context.request.get(c.base+c.update_path)).status(),403);
  const stopped=await post(c.stop);assert(stopped.ok());await page.goto(c.base+c.settings);assert(!(await page.innerText('body')).includes('Вы работаете как'));
  await page.screenshot({path:'/tmp/staging-portal-desktop.png',animations:'disabled'});
  // Both processes use one host: visiting staging must not log the owner out of production.

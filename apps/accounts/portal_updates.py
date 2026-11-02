@@ -116,6 +116,9 @@ def enqueue(user):
 @login_required
 @require_http_methods(['GET','POST'])
 def updates(request):
+    if getattr(settings, 'STAGING_MODE', False):
+        from .staging_updates import updates as staging_updates
+        return staging_updates(request)
     require_roles(request.user,{'ADMIN'})
     if request.method=='POST':
         try:
@@ -129,6 +132,9 @@ def updates(request):
 @login_required
 @require_GET
 def update_status(request):
+    if getattr(settings, 'STAGING_MODE', False):
+        from .staging_updates import status as staging_status
+        return staging_status(request)
     require_roles(request.user,{'ADMIN'})
     response=JsonResponse(state(request.user.company_id))
     response['Cache-Control']='no-store'

@@ -1,0 +1,236 @@
+"""Explicit, owner-requested updates of the acceptance installation only."""
+from datetime import datetime, timezone
+import errno
+import json
+import logging
+from pathlib import Path
+import re
+import subprocess
+import time
+import uuid
+from urllib.request import Request, urlopen, build_opener, ProxyHandler
+
+from ops.windows_runtime import atomic_json, read_json, singleton
+
+REPOSITORY = 'Hvidsmen/gpr_systerm'
+BRANCH = 'codex/staging-portal-20261102'
+BUSY = {'queued', 'downloading', 'stopping', 'applying', 'starting'}
+STAGES = {'queued': 'Задание принято', 'downloading': 'Скачивание выбранной версии',
+          'stopping': 'Завершение запросов тестового портала',
+          'applying': 'Резервная копия, зависимости и проверка новой версии',
+          'starting': 'Запуск и проверка тестового портала'}
+
+
+def now():
+    return datetime.now(timezone.utc).isoformat()
+
+
+def runtime(root):
+    from ops.staging import private_path
+    return private_path(root, '.runtime')
+
+
+def supervisor_running(root):
+    try:
+        with singleton(runtime(root) / 'staging-supervisor.lock'):
+            return False
+    except OSError as exc:
+        return exc.errno in {errno.EACCES, errno.EAGAIN, errno.EDEADLK}
+
+
+def valid_sha(value):
+    return isinstance(value, str) and re.fullmatch('[0-9a-f]{40}', value) is not None
+
+
+def check_release(root):
+    from ops.staging import manifest
+    current = manifest(root)
+    request = Request(f'https://api.github.com/repos/{REPOSITORY}/git/ref/heads/{BRANCH}',
+                      headers={'Accept': 'application/vnd.github+json', 'User-Agent': 'YDS-Test-Updater'})
+    with urlopen(request, timeout=12) as response:
+        data = json.loads(response.read(1024 * 1024))
+    sha = data.get('object', {}).get('sha')
+    if data.get('ref') != 'refs/heads/' + BRANCH or not valid_sha(sha):
+        raise ValueError('Не удалось определить версию тестовой ветки.')
+    result = {'revision': sha, 'from_revision': current['revision'], 'checked_at': now(), 'branch': BRANCH}
+    atomic_json(runtime(root) / 'staging-latest.json', result)
+    return result
+
+
+def state(root):
+    from ops.staging import manifest
+    current = manifest(root)
+    job = read_json(runtime(root) / 'staging-update.json', {})
+    latest = read_json(runtime(root) / 'staging-latest.json', {})
+    ready = supervisor_running(root)
+    phase = job.get('state', 'idle')
+    if (runtime(root) / 'staging-recovery.json').exists():
+        phase = 'recovery'
+    busy = phase in BUSY
+    if busy and not ready:
+        phase, busy = 'error', False
+    messages = {'idle': 'Проверьте, есть ли новая тестовая версия.',
+                'done': 'Тестовый портал обновлён и доступен.',
+                'error': 'Обновление не завершено. Подробности в журнале тестовой установки.',
+                'recovery': 'Тест остановлен: требуется проверка восстановления базы администратором сервера.'}
+    message = STAGES.get(phase, messages.get(phase, messages['idle']))
+    if not ready and phase == 'idle':
+        message = 'Обработчик обновлений теста не запущен. Перезапустите задание YDS Portal Test.'
+    available = latest.get('revision', '')
+    if not valid_sha(available) or latest.get('branch') != BRANCH:
+        available = ''
+    if phase == 'idle' and ready and available and available != current['revision']:
+        message = 'Доступна новая тестовая версия. Можно обновить портал.'
+    return {'version': current['revision'], 'available': available, 'checked_at': latest.get('checked_at'),
+            'branch': BRANCH, 'ready': ready and phase != 'recovery', 'busy': busy, 'state': phase,
+            'message': message, 'stage': STAGES.get(phase, ''),
+            'can_update': ready and not busy and phase != 'recovery' and bool(available) and
+                          available != current['revision'] and latest.get('from_revision') == current['revision']}
+
+
+def enqueue(root, *, revision, from_revision, owner_id):
+    from ops.staging import manifest
+    with singleton(runtime(root) / 'staging-queue.lock'):
+        current = manifest(root)
+        status = state(root)
+        if owner_id != current['owner_id']:
+            raise ValueError('Обновление доступно только владельцу теста.')
+        if not status['can_update'] or status['available'] != revision or current['revision'] != from_revision:
+            raise ValueError('Версия или состояние теста изменились. Повторите проверку обновлений.')
+        job = {'id': uuid.uuid4().hex, 'state': 'queued', 'revision': revision,
+               'from_revision': from_revision, 'owner_id': owner_id, 'created_at': now(), 'branch': BRANCH}
+        atomic_json(runtime(root) / 'staging-update.json', job)
+        return job
+
+
+def download(root, revision):
+    if not valid_sha(revision):
+        raise ValueError('Некорректная версия теста.')
+    target = runtime(root) / ('staging-download-' + uuid.uuid4().hex + '.zip')
+    request = Request(f'https://github.com/{REPOSITORY}/archive/{revision}.zip',
+                      headers={'User-Agent': 'YDS-Test-Updater'})
+    started, size = time.monotonic(), 0
+    try:
+        with urlopen(request, timeout=30) as response, target.open('xb') as output:
+            while chunk := response.read(1024 * 1024):
+                size += len(chunk)
+                if size > 256 * 1024 * 1024 or time.monotonic() - started > 300:
+                    raise ValueError('Превышен размер или время скачивания тестовой версии.')
+                output.write(chunk)
+        return target
+    except Exception:
+        target.unlink(missing_ok=True)
+        raise
+
+
+def start_http(root):
+    from ops.staging import manifest, environment
+    current = manifest(root)
+    env = environment(root)
+    env['GPR_STAGING_PARENT_PIPE'] = '1'
+    return subprocess.Popen([current['python'], str(Path(current['code']) / 'ops/staging.py'),
+                             'http', '--root', str(root)], env=env, stdin=subprocess.PIPE)
+
+
+def stop_http(child):
+    if child.stdin:
+        child.stdin.close()
+    child.wait(timeout=115)
+
+
+def wait_http(root, child, parent_gone):
+    from ops.staging import manifest
+    current = manifest(root)
+    opener = build_opener(ProxyHandler({}))
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline and not parent_gone.is_set():
+        if child.poll() is not None:
+            break
+        try:
+            with opener.open(f"http://127.0.0.1:{current['port']}/accounts/login/", timeout=1) as response:
+                if (response.status == 200 and response.headers.get('X-Portal-Environment') == 'staging'
+                        and response.headers.get('X-Portal-Version') == current['revision'][:12]):
+                    return
+        except OSError:
+            pass
+        parent_gone.wait(.2)
+    raise RuntimeError('Тестовый HTTP-процесс не подтвердил запуск выбранной версии.')
+
+
+def process_job(root, child, job, parent_gone):
+    from ops import staging
+    archive = None
+    stopped = False
+    release = None
+    existed = False
+    def progress(phase):
+        job.update(state=phase, updated_at=now())
+        atomic_json(runtime(root) / 'staging-update.json', job)
+    try:
+        current = staging.manifest(root)
+        if (job.get('branch') != BRANCH or not valid_sha(job.get('revision')) or
+                job.get('owner_id') != current['owner_id'] or job.get('from_revision') != current['revision']):
+            raise ValueError('Задание не соответствует текущей тестовой установке.')
+        release = runtime(root) / 'releases' / job['revision']
+        existed = release.exists()
+        progress('downloading')
+        archive = download(root, job['revision'])
+        if parent_gone.is_set() or (runtime(root) / 'server.stop').exists():
+            raise RuntimeError('Обновление отменено остановкой теста.')
+        progress('stopping')
+        stop_http(child)
+        stopped = True
+        if parent_gone.is_set():
+            raise RuntimeError('Обновление отменено остановкой родительского процесса.')
+        progress('applying')
+        staging.update(root, archive, job['revision'])
+        progress('starting')
+        child = start_http(root)
+        stopped = False
+        wait_http(root, child, parent_gone)
+        progress('done')
+    except Exception:
+        logging.exception('Acceptance web update failed')
+        recovery = (runtime(root) / 'staging-recovery.json').exists()
+        progress('recovery' if recovery else 'error')
+        if recovery:
+            raise
+        # update() restores the stopped test DB before raising. A failed download
+        # keeps the original HTTP worker; neither case restarts production.
+        if stopped and not parent_gone.is_set() and not (runtime(root) / 'server.stop').exists():
+            if release is not None and not existed and release.exists() and staging.manifest(root)['revision'] != job['revision']:
+                import shutil
+                shutil.rmtree(release)
+            child = start_http(root)
+            wait_http(root, child, parent_gone)
+    finally:
+        if archive is not None:
+            archive.unlink(missing_ok=True)
+    return child
+
+
+def supervise(root, parent_gone):
+    """The scheduled test launcher stays alive while its HTTP child restarts."""
+    root = Path(root).resolve()
+    stop = runtime(root) / 'server.stop'
+    with singleton(runtime(root) / 'staging-supervisor.lock'):
+        stop.unlink(missing_ok=True)
+        previous = read_json(runtime(root) / 'staging-update.json', {})
+        if previous.get('state') == 'applying':
+            atomic_json(runtime(root) / 'staging-recovery.json', {'reason': 'interrupted-update', 'at': now()})
+        if (runtime(root) / 'staging-recovery.json').exists():
+            raise RuntimeError('Проверьте восстановление тестовой базы перед повторным запуском.')
+        if previous.get('state') in BUSY - {'queued'}:
+            atomic_json(runtime(root) / 'staging-update.json', {**previous, 'state': 'error'})
+        child = start_http(root)
+        try:
+            wait_http(root, child, parent_gone)
+            while not parent_gone.is_set() and not stop.exists():
+                if child.poll() is not None:
+                    raise RuntimeError('HTTP-процесс теста завершился.')
+                job = read_json(runtime(root) / 'staging-update.json', {})
+                if job.get('state') == 'queued':
+                    child = process_job(root, child, job, parent_gone)
+                parent_gone.wait(.5)
+        finally:
+            stop_http(child)

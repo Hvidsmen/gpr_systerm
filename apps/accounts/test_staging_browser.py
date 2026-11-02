@@ -48,6 +48,23 @@ class StagingBrowserTests(StaticLiveServerTestCase):
             atomic_json(prod / '.runtime/installed.json', {'database': str(connection.settings_dict['NAME']), 'media': str(media), 'port': source_port, 'hosts': ['127.0.0.1']})
             with patch.object(staging, 'CODE_ROOT', code):
                 state = staging.prepare(code, prod, owner.username, 'admin', port=port, hosts=['127.0.0.1'], revision='a' * 40)
+            web_release = os.environ.get('STAGING_WEB_RELEASE_TESTS') == '1'
+            if web_release:
+                # Only this disposable old release gets a local GitHub fixture.
+                # The downloaded candidate is the unmodified source, and uses
+                # the real venv, backup, migrations, static files and restart.
+                archive = root / 'web-candidate.zip'
+                with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as zipped:
+                    for item in Path(settings.BASE_DIR).rglob('*'):
+                        relative = item.relative_to(settings.BASE_DIR)
+                        if any(part in {'.git', '.venv', '__pycache__', '.runtime', 'staticfiles', 'data'} for part in relative.parts):continue
+                        if item.is_file() and item.name not in {'.env', '.dev-secret-key', 'secret.key', 'staging.json'}:
+                            zipped.write(item, 'gpr_systerm-' + 'b'*40 + '/' + relative.as_posix())
+                fixture = '\n\ndef check_release(root):\n    result = dict(revision="' + 'b'*40 + '", from_revision="' + 'a'*40 + '", branch=BRANCH, checked_at=now())\n    atomic_json(runtime(root)/"staging-latest.json", result)\n    return result\n\ndef download(root, revision):\n    import shutil\n    target = runtime(root)/"fixture-download.zip"\n    shutil.copy2(' + repr(str(archive)) + ', target)\n    return target\n'
+                with (code / 'ops/staging_updates.py').open('a') as fixture_file:
+                    fixture_file.write(fixture)
+                with sqlite3.connect(code / 'data/db.sqlite3') as db:
+                    db.execute('UPDATE accounts_company SET name=? WHERE id=?', ['Acceptance data retained', company.pk])
             with sqlite3.connect(code / 'data/db.sqlite3') as db:
                 self.assertEqual(db.execute('SELECT COUNT(*) FROM accounts_onecconnection').fetchone()[0], 0)
                 self.assertEqual(db.execute('SELECT COUNT(*) FROM django_session').fetchone()[0], 0)
@@ -55,7 +72,7 @@ class StagingBrowserTests(StaticLiveServerTestCase):
                 self.assertEqual(db.execute('SELECT enabled FROM accounts_trainingcopy').fetchone()[0], 0)
             server_log = open(root / 'test-process.log', 'wb')
             process = subprocess.Popen([sys.executable, str(code / 'ops/staging.py'), 'serve', '--root', str(code)],
-                                       env=staging.environment(code), stdout=server_log, stderr=subprocess.STDOUT)
+                                       env=staging.dependency_environment(code), stdout=server_log, stderr=subprocess.STDOUT)
             try:
                 base = 'http://127.0.0.1:' + str(port)
                 opener = build_opener(ProxyHandler({}))
@@ -71,11 +88,42 @@ class StagingBrowserTests(StaticLiveServerTestCase):
                     password='admin', other_password='synthetic-other-password',
                     settings=reverse('accounts:settings'), login_path=reverse('accounts:login'), password_change=reverse('accounts:password_change'),
                     impersonate=reverse('accounts:impersonation_start', args=[other.pk]), stop=reverse('accounts:impersonation_stop'),
-                    blocked=[reverse('accounts:invitation_settings'), reverse('accounts:portal_updates'), reverse('accounts:training_list')])
+                    update_path=reverse('accounts:portal_updates'), web_release=web_release,
+                    blocked=[reverse('accounts:invitation_settings'), reverse('accounts:training_list')])
                 result = subprocess.run(['node', str(Path(settings.BASE_DIR) / 'tests/browser/staging_portal.js')],
-                    capture_output=True, text=True, env=dict(os.environ, STAGING_CONFIG=json.dumps(config)), timeout=100)
+                    capture_output=True, text=True, env=dict(os.environ, STAGING_CONFIG=json.dumps(config)), timeout=750 if web_release else 100)
                 self.assertEqual(result.returncode, 0, result.stdout + '\n' + result.stderr)
                 print(result.stdout.strip())
+                if web_release:
+                    current = staging.manifest(code)
+                    self.assertEqual(current['revision'], 'b'*40)
+                    self.assertEqual(current['instance'], state['instance'])
+                    with sqlite3.connect(code / 'data/db.sqlite3') as db:
+                        self.assertEqual(db.execute('SELECT name FROM accounts_company WHERE id=?', [company.pk]).fetchone()[0], 'Acceptance data retained')
+                    self.assertTrue(list((code / '.runtime/backups').glob('*/database.sqlite3')))
+                    print('PASS: browser button → queued update → real dependencies/migrations → HTTP restart; test data, session and instance retained')
+                    # The Windows task keeps its original launcher path after
+                    # upgrades. Restart through it, then verify the whole
+                    # launcher -> current supervisor -> HTTP chain shuts down.
+                    (code / '.runtime/server.stop').touch()
+                    process.wait(timeout=115)
+                    process = subprocess.Popen([sys.executable,str(code / 'ops/staging.py'),'serve','--root',str(code)],
+                        env=staging.dependency_environment(code),stdout=server_log,stderr=subprocess.STDOUT)
+                    for _ in range(100):
+                        if process.poll() is not None:self.fail('Delegated test launcher failed')
+                        try:
+                            with opener.open(base + reverse('accounts:login'),timeout=1) as response:
+                                if response.headers.get('X-Portal-Version') == 'b'*12:break
+                        except OSError:time.sleep(.2)
+                    else:self.fail('Updated version did not restart through the original test launcher')
+                    process.terminate();process.wait(timeout=10)
+                    for _ in range(100):
+                        try:
+                            with opener.open(base + reverse('accounts:login'), timeout=.5):pass
+                        except OSError:break
+                        time.sleep(.1)
+                    else:self.fail('Updated HTTP worker survived its test supervisor')
+                    print('PASS: original launcher selects updated supervisor; HTTP worker exits after launcher loss')
             finally:
                 (code / '.runtime/server.stop').touch()
                 try:process.wait(timeout=115)
