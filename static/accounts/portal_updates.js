@@ -3,7 +3,7 @@
   const notice = document.getElementById('portal-update-notice');
   if (!panel && !notice) return;
   const url = (panel || notice).dataset.statusUrl;
-  let stopped = false, wasActive = false, lastStatus = null;
+  let authUnavailable = false, wasActive = false, lastStatus = null;
   const dismissKey = 'dismissed-portal-update';
   function dismissed(status) {
     try { return sessionStorage.getItem(dismissKey) === status.created_at; } catch (_) { return false; }
@@ -11,10 +11,23 @@
   function progress(root,status) {
     const track = root.querySelector('[data-update-progress]');
     const bar = root.querySelector('[data-update-fill]');
+    track.hidden = false;
+    root.querySelector('[data-update-step]').hidden = false;
     track.setAttribute('aria-valuenow',status.progress);
     bar.style.width = `${status.progress}%`;
     bar.className = `progress-bar ${status.state === 'done' ? 'bg-success' : status.state === 'error' ? 'bg-danger' : 'progress-bar-striped'}${status.busy ? ' progress-bar-animated' : ''}`;
     root.querySelector('[data-update-step]').textContent = status.state === 'done' ? 'ГОТОВО' : status.state === 'error' ? 'Обновление не завершено' : status.stage_number ? `Этап ${status.stage_number} из ${status.stage_total}: ${status.stage}` : status.stage || 'Ожидание запуска';
+  }
+  function unconfirmed(message, loginRequired) {
+    if (!panel) return;
+    panel.querySelector('[data-update-submit]').disabled = true;
+    panel.querySelector('[data-update-message]').textContent = message;
+    panel.querySelector('[data-update-stage]').textContent = '';
+    panel.querySelector('[data-update-box]').className = 'alert alert-warning';
+    panel.querySelector('[data-update-progress]').hidden = true;
+    panel.querySelector('[data-update-step]').hidden = true;
+    panel.querySelector('[data-update-fill]').classList.remove('progress-bar-animated');
+    panel.querySelector('[data-update-login]').hidden = !loginRequired;
   }
   if (panel) panel.querySelector('form').addEventListener('submit', () => {
     panel.querySelector('[data-update-submit]').disabled = true;
@@ -30,14 +43,20 @@
       if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') options.signal = AbortSignal.timeout(10000);
       const response = await fetch(url,options);
       if (response.redirected || [401,403].includes(response.status)) {
-        if (panel) panel.querySelector('[data-update-message]').textContent = 'Для просмотра результата войдите как администратор.';
+        authUnavailable = true;
+        const loginRequired = response.redirected || response.status === 401;
+        unconfirmed(loginRequired
+          ? 'Сессия завершилась. Войдите снова, чтобы проверить результат. Последний показанный этап больше не подтверждён.'
+          : 'Нет доступа к состоянию обновления. Проверить результат может администратор.', loginRequired);
         if (notice) notice.hidden = true;
-        stopped = true;return;
+        return;
       }
       if (!response.ok) throw new Error('Unavailable');
       const status = await response.json();lastStatus = status;
+      authUnavailable = false;
       if (status.busy) wasActive = true;
       if (panel) {
+        panel.querySelector('[data-update-login]').hidden = true;
         panel.querySelector('[data-update-version]').textContent = status.version || 'Не определена';
         panel.querySelector('[data-update-message]').textContent = status.message;
         panel.querySelector('[data-update-stage]').textContent = status.stage;
@@ -53,17 +72,13 @@
         progress(notice,status);
       }
     } catch (_) {
-      if (panel) {
-        panel.querySelector('[data-update-submit]').disabled = true;
-        panel.querySelector('[data-update-box]').className = 'alert alert-info';
-        panel.querySelector('[data-update-message]').textContent = 'Портал перезапускается или временно недоступен. Ожидаем восстановления связи…';
-      }
+      unconfirmed('Нет связи с порталом. Текущий этап не подтверждён; ожидаем восстановления связи…', authUnavailable);
       if (notice && wasActive && !panel) {
         notice.hidden = false;
         notice.querySelector('[data-update-notice-message]').textContent = 'Перезапуск портала. Ожидаем восстановления связи…';
       }
     } finally {
-      if (!stopped) setTimeout(refresh,panel || lastStatus?.busy ? 3000 : 15000);
+      setTimeout(refresh,authUnavailable ? 15000 : panel || lastStatus?.busy ? 3000 : 15000);
     }
   }
   refresh();

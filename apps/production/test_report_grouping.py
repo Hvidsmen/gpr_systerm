@@ -101,9 +101,13 @@ class ReportGroupingTests(TestCase):
         query={'construction_object':self.obj.pk,'date':self.selected}
         normal=self.client.get(reverse('production:smg_period_detail'),query)
         self.assertContains(normal,'Раскрыть по дням')
+        self.assertContains(normal,'data-report-expand',count=3)
+        self.assertContains(normal,'data-report-collapse',count=3)
         self.assertNotContains(normal,'production-report-days')
         detailed=self.client.get(reverse('production:smg_period_detail'),{**query,'by_day':'1'})
         self.assertContains(detailed,'production-report-days')
+        self.assertContains(detailed,'data-report-expand',count=3)
+        self.assertContains(detailed,'data-report-collapse',count=3)
         self.assertContains(detailed,self.later.strftime('%d.%m.%Y'))
         response=self.client.get(reverse('production:smg_period_export'),{**query,'by_day':'1'})
         book=load_workbook(BytesIO(b''.join(response.streaming_content)))

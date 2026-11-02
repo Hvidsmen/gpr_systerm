@@ -110,7 +110,7 @@ form[data-production-form]{max-width:1200px}.production-save-footer{border-top:1
 .production-report-days:not(.report-day-grid) th:first-child,.production-report-days:not(.report-day-grid) tbody th{width:20%;min-width:0;font-weight:400}
 .production-report-days .smg-period-number{white-space:normal;overflow-wrap:anywhere}
 
-.report-day-grid-scroll{--report-label-width:240px;--report-metric-width:112px;max-height:72vh;overflow:auto;contain:inline-size;position:relative;border:1px solid #cfdee8;border-radius:6px;overscroll-behavior:contain}
+.report-day-grid-scroll{--report-label-width:240px;--report-metric-width:112px;--report-period-width:108px;max-height:72vh;overflow:auto;contain:inline-size;position:relative;border:1px solid #cfdee8;border-radius:6px;overscroll-behavior:contain}
 .report-day-grid-scroll:focus-visible{outline:2px solid #087f9c;outline-offset:2px}
 .report-day-grid-table{table-layout:fixed;min-width:100%;margin:0;font-size:12px;font-variant-numeric:tabular-nums;border-collapse:separate;border-spacing:0}
 .report-day-grid-table th,.report-day-grid-table td{min-width:88px;padding:8px 10px!important;white-space:nowrap;text-align:right;border-right:1px solid #e4edf3;background:#fff}
@@ -121,10 +121,19 @@ form[data-production-form]{max-width:1200px}.production-save-footer{border-top:1
 .report-day-grid-table thead .report-day-label{z-index:6;background:#edf5fa}.report-day-grid-table thead .report-day-metric{z-index:5;background:#edf5fa}
 .report-day-grid-table .report-day-heading th{position:static;background:#e7f1f7;text-align:left;font-weight:650}.report-day-heading span{position:sticky;left:10px}
 .report-day-grid-table .report-day-subtotal th,.report-day-grid-table .report-day-subtotal td{background:#edf7f9;font-weight:600}
-.report-day-grid-table .report-day-child{padding-left:24px!important;font-weight:500}.report-day-grid-table .report-day-period{background:#f2f6f9;font-weight:600}
-@media(max-width:700px){.report-day-grid-scroll{--report-label-width:150px;--report-metric-width:94px;max-height:68vh}.report-day-grid-table th,.report-day-grid-table td{padding:7px!important;font-size:11px}.report-day-grid-table .report-day-child{padding-left:16px!important}}
+.report-day-grid-table .report-day-child{padding-left:24px!important;font-weight:500}.report-day-grid-table .report-day-period{position:sticky;left:calc(var(--report-label-width) + var(--report-metric-width));z-index:1;min-width:var(--report-period-width);width:var(--report-period-width);max-width:var(--report-period-width);background:#f2f6f9;font-weight:600;box-shadow:1px 0 #bdcfdb}
+.report-day-grid-table thead .report-day-period{z-index:4;background:#edf5fa;white-space:normal;box-shadow:1px 0 #bdcfdb,0 1px #bdcfdb}
+@media(max-width:700px){.report-day-grid-scroll{--report-label-width:150px;--report-metric-width:94px;max-height:68vh}.report-day-grid-table th,.report-day-grid-table td{padding:7px!important;font-size:11px}.report-day-grid-table .report-day-child{padding-left:16px!important}.report-day-grid-table .report-day-metric{overflow-wrap:anywhere}}
 
-.report-day-label-column{width:var(--report-label-width)}.report-day-metric-column{width:var(--report-metric-width)}
+@media(max-width:450px){.report-day-grid-scroll{--report-label-width:100px;--report-metric-width:72px;--report-period-width:72px}.report-day-grid-table .report-day-label{overflow-wrap:anywhere}}
+
+.report-day-label-column{width:var(--report-label-width)}.report-day-metric-column{width:var(--report-metric-width)}.report-day-period-column{width:var(--report-period-width)}
+
+.report-day-grid-table .report-day-block{--report-block-bg:#fff}
+.report-day-grid-table .report-day-band-tint{--report-block-bg:#edf3fa}
+.report-day-grid-table .report-day-subtotal{--report-block-bg:#e2eef3}
+.report-day-grid-table .report-day-block>tr>th,.report-day-grid-table .report-day-block>tr>td{background:var(--report-block-bg)}
+.report-day-grid-table .report-day-block>tr:first-child>th,.report-day-grid-table .report-day-block>tr:first-child>td{border-top:1px solid #c6d7e4}
 
 .smg-period-tabs{display:flex;flex-wrap:wrap;gap:4px;border-bottom:1px solid #cddfea;margin:16px 0}
 .smg-period-tabs [role=tab]{display:inline-flex;align-items:center;gap:7px;padding:10px 15px;border:0;border-bottom:3px solid transparent;background:transparent;color:#456279;font:inherit;cursor:pointer}

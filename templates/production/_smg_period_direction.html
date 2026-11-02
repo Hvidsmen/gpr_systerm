@@ -1,9 +1,17 @@
+<div data-report-scope>
+{% if direction == 'works' and work_groups or direction == 'equipment' and equipment_groups or direction == 'labor' and labor_groups %}
+<div class="d-flex flex-wrap gap-2 mb-2" role="group" aria-label="Управление раскрытием строк">
+  <button type="button" class="btn btn-sm btn-outline-primary" data-report-expand>Развернуть всё</button>
+  <button type="button" class="btn btn-sm btn-outline-primary" data-report-collapse>Свернуть всё</button>
+</div>
+{% endif %}
 {% if show_days %}
   {% include 'production/_report_day_matrix.html' with matrix_direction=direction %}
 {% elif direction == 'works' %}
   {% include 'production/_smg_work_groups.html' %}
 {% elif direction == 'equipment' %}
-  {% include 'production/_smg_resource_groups.html' with groups=equipment_groups heading='Техника' section_id='smg-period-equipment' explanation='План — сумма количества машин по дням. Факт — работавшие машины по дням. Одна машина за два дня = 2 машино-дня. Простой не считается работой. Детальные записи и их сводные копии не дублируются.' %}
+  {% include 'production/_smg_resource_groups.html' with groups=equipment_groups heading='Техника' section_id='smg-period-equipment' maximum=True explanation='План и факт за период — максимальное количество техники за один день, в ед. Максимумы могут приходиться на разные даты. Итог группы — максимум дневной суммы видов техники. Простой не считается работой. Детальные записи и их сводные копии не дублируются.' %}
 {% elif direction == 'labor' %}
-  {% include 'production/_smg_resource_groups.html' with groups=labor_groups heading='Люди' section_id='smg-period-labor' explanation='План — сумма потребности за каждый день. Факт — уникальные сотрудники за каждый день; две смены одного человека в одной должности считаются один раз.' %}
+  {% include 'production/_smg_resource_groups.html' with groups=labor_groups heading='Люди' section_id='smg-period-labor' maximum=True explanation='План и факт за период — максимальная численность за один день, в чел. Максимумы могут приходиться на разные даты. Итог группы — максимум дневной суммы должностей. Две смены одного сотрудника в одной должности за день считаются один раз.' %}
 {% endif %}
+</div>

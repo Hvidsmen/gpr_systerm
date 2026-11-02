@@ -5,6 +5,7 @@ import shutil
 import subprocess
 from unittest import skipUnless
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
+from django.urls import reverse
 
 
 @skipUnless(os.environ.get('SMG_PERIOD_BROWSER_TESTS') == '1', 'Optional monthly SMG Chromium scenario')
@@ -49,6 +50,7 @@ class SmgPeriodBrowserTests(StaticLiveServerTestCase):
         config = dict(base=self.live_server_url, cookie=self.client.cookies['sessionid'].value,
             chromium=shutil.which('chromium'), work=self.work.pk,group=staff.name,category=category.name,
             path=f'{self.url}?construction_object={self.obj.pk}&date={self.day}&section=works',
+            standalone_path=f'{reverse("production:equipment_report")}?construction_object={self.obj.pk}&date={self.day}&scope=period',
             readonly_path=f'{self.url}?construction_object={self.obj.pk}&date={self.start}&section=works&entry_step=5')
         script = Path(__file__).resolve().parents[2] / 'tests/browser/smg_period_report.js'
         result = subprocess.run(['node', str(script)], capture_output=True, text=True,

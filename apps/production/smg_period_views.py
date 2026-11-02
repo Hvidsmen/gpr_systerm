@@ -102,8 +102,10 @@ def workbook(report):
 
     sections=[('equipment','Техника')] if report.get('equipment_only') else [('works','Работы'),('labor','Люди'),('equipment','Техника')]
     for key, title in sections:
-        sheet(title, ['Наименование', 'Контекст', 'Ед.', 'План СМГ', 'Сохранённый факт', 'Факт − план', 'Выполнение, %', 'Дней с фактом'],
+        peak=key in {'labor','equipment'} and not report.get('day_only')
+        sheet(title, ['Наименование', 'Контекст', 'Ед.', 'План · максимум за день' if peak else 'План СМГ', 'Факт · максимум за день' if peak else 'Сохранённый факт', 'Факт − план', 'Выполнение, %', 'Дней с фактом'],
             work_display_rows(report['work_groups']) if key=='works' else resource_display_rows(report['labor_groups' if key=='labor' else 'equipment_groups']), ['label', 'context', 'unit', 'plan', 'actual', 'deviation', 'percent', 'recorded_days'],
+            (f'План и факт в {"чел." if key=="labor" else "ед."} — независимые максимумы за день; даты могут различаться. Итог группы — максимум дневной суммы позиций. ' if peak else '')+
             'Пустая ячейка — нет значения; 0 — сохранённый ноль. Факт за весь период, включая дни после выбранной даты.')
     if not report.get('equipment_only') and report.get('include_fuel',True):
         sheet('ГСМ · план объекта', ['ГСМ', 'Ед.', 'План СМГ'], report['fuel'], ['label', 'unit', 'plan'],

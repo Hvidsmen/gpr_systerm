@@ -24,6 +24,27 @@ def daily_rows(row, dates):
         row['daily_rows'].append(dict(metrics,date=day))
 
 
+def peak_daily_totals(row):
+    """Peak daily resource counts; group peaks use daily sums, not summed row peaks."""
+    for field in ['plan', 'actual']:
+        days=[day for day in row['daily'].values() if day.get(field) is not None]
+        row[field]=max((day[field] for day in days),default=None)
+        if 'row_count' in row:
+            row[field+'_count']=max((day.get(field+'_count',1) for day in days
+                if day[field]==row[field]),default=0)
+    complete=all(row.get(field+'_count',1)==row.get('row_count',1)
+        for field in ['plan','actual'])
+    plan,actual=row['plan'],row['actual']
+    known=complete and plan is not None and actual is not None
+    row['deviation']=actual-plan if known else None
+    row['percent']=actual/plan*100 if known and plan>0 else None
+    if 'row_count' in row:
+        for day in row['daily_rows']:
+            # Keep the group's original coverage and missing comparisons.
+            day.update(row['daily'].get(day['date'].isoformat(),{}))
+    return row
+
+
 def totals(rows, dates=()):
     result=metric_totals(rows)
     grouped={}
@@ -104,7 +125,9 @@ def day_matrix(report):
         metrics=[]
         for field,caption in [('plan','План'),('actual','Факт'),('deviation','Факт − план'),('percent','Выполнение, %')]:
             cells=[{'value':day.get(field),'partial':field=='actual' and day.get('actual') is not None and day.get('actual_count',0)<day.get('row_count',0)} for day in total['daily_rows']]
-            metrics.append({'label':caption,'field':field,'total':total.get(field),'cells':cells})
+            partial=(direction in {'labor','equipment'} and field=='actual' and total.get(field) is not None
+                and total.get('actual_count',1)<total.get('row_count',1))
+            metrics.append({'label':caption,'field':field,'total':total.get(field),'cells':cells,'total_partial':partial})
         blocks.append({'label':label,'unit':total['unit'],'metrics':metrics,'level':level,'toggle':toggle,'parent':parent,'context':context,'direction':direction})
 
     if not report.get('equipment_only'):
