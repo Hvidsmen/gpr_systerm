@@ -1,9 +1,20 @@
 (()=>{
- document.addEventListener('click',event=>{
-  const button=event.target.closest('[data-report-toggle]');if(!button)return;
+ function expandBranch(button,expanded){
   const table=button.closest('table');if(!table)return;
-  const expanded=button.getAttribute('aria-expanded')!=='true';button.setAttribute('aria-expanded',String(expanded));
+  button.setAttribute('aria-expanded',String(expanded));
   table.querySelectorAll('[data-report-branch]').forEach(branch=>{if(branch.dataset.reportBranch===button.dataset.reportToggle)branch.hidden=!expanded;});
+ }
+ document.addEventListener('click',event=>{
+  const bulk=event.target.closest('[data-report-expand], [data-report-collapse]');
+  if(bulk){
+   const scope=bulk.closest('[data-report-scope]');if(!scope)return;
+   const expanded=bulk.hasAttribute('data-report-expand');
+   scope.querySelectorAll('details.production-report-section, details.production-report-days').forEach(section=>{section.open=expanded;});
+   scope.querySelectorAll('[data-report-toggle]').forEach(button=>expandBranch(button,expanded));
+   return;
+  }
+  const button=event.target.closest('[data-report-toggle]');if(!button)return;
+  expandBranch(button,button.getAttribute('aria-expanded')!=='true');
  });
  const normalize=text=>String(text||'').trim().replace(/\s+/g,' ').toLocaleLowerCase('ru');
  function workTree(rows,catalogue){

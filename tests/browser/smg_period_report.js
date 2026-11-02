@@ -4,6 +4,14 @@ const {chromium}=require('playwright'),fs=require('fs'),assert=require('assert')
  await context.addCookies([{name:'sessionid',value:c.cookie,url:c.base}]);
  await context.route('**/*',route=>{const url=route.request().url();if(url.startsWith(c.base))return route.continue();if(url.includes('bootstrap')&&url.includes('.css'))return route.fulfill({body:fs.readFileSync('/tmp/catalogue-bootstrap.css'),contentType:'text/css'});return route.abort();});
  const page=await context.newPage();page.on('pageerror',error=>errors.push(error.message));
+ const inputPath=new URL(c.path,c.base).pathname;
+ let writes=0;page.on('request',request=>{if(['POST','PATCH','PUT','DELETE'].includes(request.method())&&new URL(request.url()).pathname===inputPath)writes++;});
+ const foldState=async(scope,expanded)=>{
+  assert(await scope.locator('[data-report-toggle]').evaluateAll((nodes,value)=>nodes.every(el=>el.getAttribute('aria-expanded')===String(value)),expanded));
+  assert(await scope.locator('[data-report-branch]').evaluateAll((nodes,value)=>nodes.every(el=>el.hidden===!value),expanded));
+  assert(await scope.locator('details.production-report-section, details.production-report-days').evaluateAll((nodes,value)=>nodes.every(el=>el.open===value),expanded));
+ };
+ const foldAll=async(scope,expanded)=>{await scope.locator(expanded?'[data-report-expand]':'[data-report-collapse]').click();await foldState(scope,expanded);};
  await page.goto(c.base+c.path);
  const panel=page.locator('[data-smg-period]'),work=page.locator('[data-work-fact-row]').filter({has:page.locator(`[name$="-project_work"][value="${c.work}"]`)});
  assert.equal(await page.locator('.production-steps [data-step]').count(),5);
@@ -20,7 +28,7 @@ const {chromium}=require('playwright'),fs=require('fs'),assert=require('assert')
  assert((await panel.locator('#smg-period-equipment').innerText()).includes('маш.·дн.'));
  assert((await panel.locator('#smg-period-equipment summary').first().innerText()).includes(c.category));
  await selectTab('labor');assert((await panel.locator('#smg-period-labor summary').first().innerText()).includes(c.group));
- await selectTab('fuel');assert((await panel.innerText()).includes('Расход, м³'));assert(await panel.locator('[data-period-days-toggle]').isHidden());
+ await selectTab('fuel');assert((await panel.innerText()).includes('Расход, м³'));assert(await panel.locator('[data-period-days-toggle]').isHidden());assert.equal(await panel.locator('[data-report-collapse]:visible').count(),0);
  await selectTab('works');
  await panel.locator('[data-period-tab="works"]').focus();await page.keyboard.press('ArrowRight');assert(await panel.locator('[data-period-panel="equipment"]').isVisible());
  await page.keyboard.press('End');assert(await panel.locator('[data-period-panel="fuel"]').isVisible());await page.keyboard.press('Home');assert(await panel.locator('[data-period-panel="works"]').isVisible());
@@ -28,6 +36,20 @@ const {chromium}=require('playwright'),fs=require('fs'),assert=require('assert')
  assert.equal((await camera.locator('td').nth(1).innerText()).trim(),'5');assert((await camera.locator('td').nth(2).innerText()).startsWith('3'));
  const branch=camera.locator('..').locator('xpath=following-sibling::tbody[1]');assert((await branch.innerText()).includes('ПК-1'));assert((await branch.innerText()).includes('ПК-2'));
  await camera.locator('[data-report-toggle]').click();assert(await branch.isHidden());await camera.locator('[data-report-toggle]').click();assert(await branch.isVisible());
+ const beforeFolding=writes;
+ for(const key of ['works','equipment','labor']){
+  await selectTab(key);const scope=panel.locator(`[data-period-panel="${key}"]`);
+  assert.equal(await panel.locator('[data-report-collapse]:visible').count(),1);
+  await foldAll(scope,false);
+  for(const other of ['works','equipment','labor'].filter(value=>value!==key))await foldState(panel.locator(`[data-period-panel="${other}"]`),true);
+  if(key==='works'){
+   const section=scope.locator('details.production-report-section').first();await section.locator('summary').first().click();
+   const toggle=section.locator('[data-report-toggle]').first();await toggle.click();assert.equal(await toggle.getAttribute('aria-expanded'),'true');
+  }
+  await foldAll(scope,true);
+ }
+ assert.equal(writes,beforeFolding,'Folding must not submit the fact form');
+ await selectTab('works');
  await panel.locator('[data-period-days-toggle]').click();await page.waitForFunction(()=>document.querySelector('[data-period-days-toggle]')?.getAttribute('aria-pressed')==='true');
  await panel.locator('[data-period-days-toggle]').hover();assert(await panel.locator('[data-period-days-toggle]').evaluate(el=>getComputedStyle(el).color!==getComputedStyle(el).backgroundColor));
  const grid=panel.locator('[data-period-panel="works"] [data-report-day-grid]');assert.equal(await panel.locator('[data-report-day-grid]:visible').count(),1);assert.equal(await grid.locator('thead').count(),1);
@@ -46,6 +68,7 @@ const {chromium}=require('playwright'),fs=require('fs'),assert=require('assert')
  await grid.evaluate(el=>{el.scrollLeft=0;el.scrollTop=0});
  const toggle=grid.locator('[data-report-toggle]').first(),key=await toggle.getAttribute('data-report-toggle'),children=grid.locator(`[data-report-branch="${key}"]`);
  await toggle.click();assert(await children.first().isHidden());await toggle.click();assert(await children.first().isVisible());
+ await foldAll(panel.locator('[data-period-panel="works"]'),false);await foldAll(panel.locator('[data-period-panel="works"]'),true);
  await page.screenshot({path:'/tmp/smg-period-by-day-desktop.png',animations:'disabled'});
  await page.setViewportSize({width:390,height:844});await page.waitForTimeout(200);assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2));
  await grid.scrollIntoViewIfNeeded();await page.screenshot({path:'/tmp/smg-period-by-day-mobile.png',animations:'disabled'});
@@ -53,6 +76,8 @@ const {chromium}=require('playwright'),fs=require('fs'),assert=require('assert')
 
  assert(await panel.locator('.production-report-days').count()>0);assert((await panel.locator('.production-report-days').first().innerText()).includes('План'));
  await selectTab('equipment');assert(await panel.locator('[data-period-panel="equipment"] [data-report-day-grid]').isVisible());
+ await foldAll(panel.locator('[data-period-panel="equipment"]'),false);await foldState(panel.locator('[data-period-panel="works"]'),true);await foldAll(panel.locator('[data-period-panel="equipment"]'),true);
+ await selectTab('labor');await foldAll(panel.locator('[data-period-panel="labor"]'),false);await foldAll(panel.locator('[data-period-panel="labor"]'),true);await selectTab('equipment');
  await panel.locator('[data-period-refresh]').click();await page.waitForFunction(()=>document.querySelector('[data-period-state]').textContent.includes('Обновлено'));
  assert(await panel.locator('[data-period-panel="equipment"]').isVisible());
  await panel.locator('[data-period-days-toggle]').click();await page.waitForFunction(()=>document.querySelector('[data-period-days-toggle]')?.getAttribute('aria-pressed')==='false');
@@ -84,5 +109,14 @@ const {chromium}=require('playwright'),fs=require('fs'),assert=require('assert')
  assert(await page.locator('[data-smg-period]').isVisible());assert(await panel.locator('[data-period-panel="labor"]').isVisible());
  await page.goto(c.base+c.readonly_path);await page.waitForFunction(()=>document.querySelector('[data-period-state]').textContent.includes('Обновлено'));
  assert(await page.locator('[data-period-refresh]').isEnabled());
+ for(const byDay of ['0','1']){
+  await page.goto(c.base+c.standalone_path+'&by_day='+byDay);
+  const scope=page.locator('[data-equipment-report] [data-period-panel="works"]');
+  await foldAll(scope,false);await foldAll(scope,true);
+ }
+ await page.setViewportSize({width:390,height:844});
+ assert(await page.locator('[data-report-collapse]:visible').isVisible());
+ assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2));
+ await page.screenshot({path:'/tmp/planfact-fold-buttons-mobile.png',animations:'disabled'});
  assert.deepEqual(errors,[]);await browser.close();console.log('PASS: fifth tab, save before report, period totals, Excel, failed refresh, mobile, direct link');
 })().catch(error=>{console.error(error);process.exit(1);});
