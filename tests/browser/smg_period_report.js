@@ -25,7 +25,8 @@ const {chromium}=require('playwright'),fs=require('fs'),assert=require('assert')
  const selectTab=async key=>{await panel.locator(`[data-period-tab="${key}"]`).click();assert.equal(await panel.locator('[data-period-panel]:visible').count(),1);assert(await panel.locator(`[data-period-panel="${key}"]`).isVisible());};
  assert.deepEqual(await panel.locator('[data-period-tab]').evaluateAll(nodes=>nodes.map(n=>n.dataset.periodTab)),['works','equipment','labor','fuel']);
  await selectTab('equipment');
- assert((await panel.locator('#smg-period-equipment').innerText()).includes('маш.·дн.'));
+ assert((await panel.locator('#smg-period-equipment').innerText()).includes('ед.'));
+ assert(!(await panel.locator('#smg-period-equipment').innerText()).includes('маш.·дн.'));
  assert((await panel.locator('#smg-period-equipment summary').first().innerText()).includes(c.category));
  await selectTab('labor');assert((await panel.locator('#smg-period-labor summary').first().innerText()).includes(c.group));
  await selectTab('fuel');assert((await panel.innerText()).includes('Расход, м³'));assert(await panel.locator('[data-period-days-toggle]').isHidden());assert.equal(await panel.locator('[data-report-collapse]:visible').count(),0);

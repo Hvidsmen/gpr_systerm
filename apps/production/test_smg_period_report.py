@@ -120,7 +120,7 @@ class SmgPeriodReportTests(TestCase):
             camp=self.housing_camp, date=self.start+timedelta(days=1), status='WORKED')
         report = build(self.obj, self.selected)
         rows = {r['label']: r for r in report['equipment']}
-        self.assertEqual((rows[target.name]['plan'], rows[target.name]['actual']), (5, 1))
+        self.assertEqual((rows[target.name]['plan'], rows[target.name]['actual']), (3, 1))
         self.assertEqual(rows[self.type.name]['actual'], 0)
 
     def test_labor_unique_person_per_day_and_no_projected_double_count(self):

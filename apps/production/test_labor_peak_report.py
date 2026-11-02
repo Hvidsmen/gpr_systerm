@@ -98,7 +98,7 @@ class LaborPeakReportTests(TestCase):
         block=next(row for row in day_matrix(report)['blocks'] if row.get('toggle')=='labor-0')
         self.assertTrue(block['metrics'][1]['total_partial'])
 
-    def test_selected_day_and_other_directions_keep_their_semantics(self):
+    def test_selected_day_works_and_equipment_counts(self):
         self.example()
         row=build(self.obj,self.start,day_only=True)['labor'][0]
         self.assertEqual((row['plan'],row['actual'],row['deviation'],row['percent']),(4,2,-2,50))
@@ -110,8 +110,8 @@ class LaborPeakReportTests(TestCase):
                 equipment_type=self.type,date=day,actual_count=count)
         report=build(self.obj,self.selected)
         self.assertEqual(report['works'][0]['plan'],12)
-        self.assertEqual((report['equipment'][0]['plan'],report['equipment'][0]['actual']),(5,5))
-        self.assertEqual(report['equipment'][0]['unit'],'маш.·дн.')
+        self.assertEqual((report['equipment'][0]['plan'],report['equipment'][0]['actual']),(3,3))
+        self.assertEqual(report['equipment'][0]['unit'],'ед.')
 
     def test_html_matrix_compact_view_and_excel_share_peak_totals(self):
         self.example()
