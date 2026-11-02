@@ -32,7 +32,7 @@
                 </form>
             </div>
             <div class="card-footer text-center">
-                <small>Нет аккаунта? <a href="{% url 'accounts:register' %}">Зарегистрироваться</a></small>
+                {% if not request.staging %}<small>Нет аккаунта? <a href="{% url 'accounts:register' %}">Зарегистрироваться</a></small>{% endif %}
             </div>
         </div>
     </div>

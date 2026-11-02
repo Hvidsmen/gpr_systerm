@@ -24,3 +24,8 @@ private_uploads/
 
 # Optional custom training copy storage.
 training-data/
+
+# Independent acceptance portal: private manifest, key and copied documents.
+/staging.json
+/secret.key
+/data/

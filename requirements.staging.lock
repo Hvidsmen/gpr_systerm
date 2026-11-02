@@ -1,0 +1,9 @@
+# Reproducible dependencies for the independent acceptance portal and its checks.
+-r requirements.lock
+openpyxl==3.1.5
+et_xmlfile==2.0.0
+ldap3==2.9.1
+pyasn1==0.6.4
+waitress==3.0.2
+whitenoise==6.12.0
+tzdata==2026.6; sys_platform == "win32"
