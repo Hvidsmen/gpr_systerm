@@ -54,6 +54,19 @@ const {chromium}=require('playwright'),fs=require('fs'),assert=require('assert')
  await panel.locator('[data-period-days-toggle]').click();await page.waitForFunction(()=>document.querySelector('[data-period-days-toggle]')?.getAttribute('aria-pressed')==='true');
  await panel.locator('[data-period-days-toggle]').hover();assert(await panel.locator('[data-period-days-toggle]').evaluate(el=>getComputedStyle(el).color!==getComputedStyle(el).backgroundColor));
  const grid=panel.locator('[data-period-panel="works"] [data-report-day-grid]');assert.equal(await panel.locator('[data-report-day-grid]:visible').count(),1);assert.equal(await grid.locator('thead').count(),1);
+ const bandSamples=scope=>scope.locator('tbody.report-day-block').evaluateAll(blocks=>blocks.map(block=>({
+  subtotal:block.classList.contains('report-day-subtotal'),
+  colors:[...new Set([...block.querySelectorAll(':scope > tr > th, :scope > tr > td')].map(cell=>getComputedStyle(cell).backgroundColor))]
+ })));
+ const checkBands=samples=>{
+  assert(samples.every(block=>block.colors.length===1),'A block must have one fill across labels, metrics, totals and dates');
+  assert(samples.every(block=>!['transparent','rgba(0, 0, 0, 0)'].includes(block.colors[0])),'Sticky cells need opaque fills');
+  const leaves=samples.filter(block=>!block.subtotal);assert(leaves.length>=3);
+  for(let i=1;i<leaves.length;i++)assert.notEqual(leaves[i].colors[0],leaves[i-1].colors[0],'Adjacent item blocks must alternate');
+  assert.equal(leaves[0].colors[0],leaves[2].colors[0]);
+  for(const group of samples.filter(block=>block.subtotal))assert(leaves.every(leaf=>leaf.colors[0]!==group.colors[0]),'Group totals keep a distinct fill');
+ };
+ const initialBands=await bandSamples(grid);checkBands(initialBands);
  const columns=await grid.locator('thead th').count();assert(columns>=31&&columns<=34);
  const geometry=()=>grid.evaluate(el=>{const rect=node=>{const r=node.getBoundingClientRect();return{x:r.x,y:r.y}};return{header:rect(el.querySelector('thead')),label:rect(el.querySelector('[data-day-label]')),metric:rect(el.querySelector('tbody .report-day-metric')),total:rect(el.querySelector('tbody .report-day-period')),totalHeader:rect(el.querySelector('thead .report-day-period')),left:el.scrollLeft,top:el.scrollTop}});
  await grid.scrollIntoViewIfNeeded();const before=await geometry();
@@ -64,6 +77,7 @@ const {chromium}=require('playwright'),fs=require('fs'),assert=require('assert')
  assert.equal(await grid.evaluate(el=>el.scrollLeft),await top.evaluate(el=>el.scrollLeft));
  assert(after.left>before.left);assert(after.top>before.top);assert(Math.abs(after.label.x-before.label.x)<2);assert(Math.abs(after.metric.x-before.metric.x)<2);
  assert(Math.abs(after.total.x-before.total.x)<2);assert(Math.abs(after.totalHeader.x-before.totalHeader.x)<2);
+ assert.deepEqual(await bandSamples(grid),initialBands,'Band fills must stay consistent while scrolling');
  // Individual header cells stick; the table's thead box itself scrolls.
  assert.equal(await grid.locator('thead th').first().evaluate(el=>getComputedStyle(el).position),'sticky');
  const sticky=await grid.locator('thead th').first().boundingBox(),bounds=await grid.boundingBox();assert(Math.abs(sticky.y-bounds.y)<3);
@@ -73,6 +87,7 @@ const {chromium}=require('playwright'),fs=require('fs'),assert=require('assert')
  const toggle=grid.locator('[data-report-toggle]').first(),key=await toggle.getAttribute('data-report-toggle'),children=grid.locator(`[data-report-branch="${key}"]`);
  await toggle.click();assert(await children.first().isHidden());await toggle.click();assert(await children.first().isVisible());
  await foldAll(panel.locator('[data-period-panel="works"]'),false);await foldAll(panel.locator('[data-period-panel="works"]'),true);
+ assert.deepEqual(await bandSamples(grid),initialBands,'Folding must preserve item band colors');
  await page.screenshot({path:'/tmp/smg-period-by-day-desktop.png',animations:'disabled'});
  await page.setViewportSize({width:390,height:844});await page.waitForTimeout(200);assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2));
  const mobileBefore=await geometry();
@@ -81,6 +96,7 @@ const {chromium}=require('playwright'),fs=require('fs'),assert=require('assert')
  assert(dateSpace>=80,'Frozen columns must leave room for a date on a narrow screen: '+dateSpace);
  await grid.evaluate(el=>el.scrollLeft+=400);await page.waitForTimeout(100);const mobileAfter=await geometry();
  assert(Math.abs(mobileAfter.total.x-mobileBefore.total.x)<2);assert(Math.abs(mobileAfter.totalHeader.x-mobileBefore.totalHeader.x)<2);
+ checkBands(await bandSamples(grid));
  await grid.scrollIntoViewIfNeeded();await page.screenshot({path:'/tmp/smg-period-by-day-mobile.png',animations:'disabled'});
  await page.setViewportSize({width:1440,height:1000});
 
@@ -125,6 +141,7 @@ const {chromium}=require('playwright'),fs=require('fs'),assert=require('assert')
   await foldAll(scope,false);await foldAll(scope,true);
   if(byDay==='1'){
    const ownGrid=scope.locator('[data-report-day-grid]');
+   checkBands(await bandSamples(ownGrid));
    const total=ownGrid.locator('tbody .report-day-period').first(),before=await total.boundingBox();
    await ownGrid.evaluate(el=>el.scrollLeft=500);const after=await total.boundingBox();assert(Math.abs(after.x-before.x)<2);
   }
