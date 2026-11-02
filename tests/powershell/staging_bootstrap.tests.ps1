@@ -51,6 +51,33 @@ try{
     Assert-True ($script:downloads -eq $required.Count) 'Expected every file to be downloaded directly.'
     Assert-True ([Convert]::ToBase64String([IO.File]::ReadAllBytes((Join-Path $destination 'static/binary.dat'))) -eq [Convert]::ToBase64String($script:fixtureFiles['static/binary.dat'])) 'Binary content was changed.'
     Assert-True (-not (Test-Path (Join-Path $destination '.git'))) 'File mode should not need Git.';$passed++
+    $countBeforeResume=$script:downloads
+    $venv=Join-Path $destination '.venv';[void][IO.Directory]::CreateDirectory($venv)
+    $venvMarker=Join-Path $venv 'preserve.txt';[IO.File]::WriteAllText($venvMarker,'existing environment')
+    Get-StagingCode $destination $commit 'GitHubFiles'
+    Assert-True ($script:downloads -eq $countBeforeResume) 'Resume downloaded or replaced source files.'
+    Assert-True ([IO.File]::ReadAllText($venvMarker) -eq 'existing environment') 'Resume changed the existing environment.';$passed++
+    foreach($protected in @('staging.json','data','secret.key','staticfiles','.env','.runtime/installed.json','.runtime/current.json')){
+        $marker=Join-Path $destination $protected
+        [void][IO.Directory]::CreateDirectory((Split-Path $marker -Parent))
+        if($protected -in @('data','staticfiles')){[void][IO.Directory]::CreateDirectory($marker)}else{[IO.File]::WriteAllText($marker,'private existing state')}
+        Assert-Fails {Get-StagingCode $destination $commit 'GitHubFiles'}
+        Assert-True (Test-Path -LiteralPath $marker) 'Protected state was removed.'
+        if($protected -in @('data','staticfiles')){[IO.Directory]::Delete($marker)}else{[IO.File]::Delete($marker)}
+    };$passed++
+    $modified=Join-Path $destination 'manage.py';[IO.File]::WriteAllText($modified,'modified locally')
+    Assert-Fails {Get-StagingCode $destination $commit 'GitHubFiles'}
+    Assert-True ([IO.File]::ReadAllText($modified) -eq 'modified locally') 'Modified source was overwritten.'
+    [IO.File]::WriteAllBytes($modified,$script:fixtureFiles['manage.py']);$passed++
+    # Runtime directory aliases must never lead setup into a working environment.
+    [IO.File]::Delete($venvMarker);[IO.Directory]::Delete($venv)
+    $external=Join-Path $testFolder 'external';[void][IO.Directory]::CreateDirectory($external)
+    $externalMarker=Join-Path $external 'preserve.txt';[IO.File]::WriteAllText($externalMarker,'external environment')
+    if($env:OS -eq 'Windows_NT'){$linkType='Junction'}else{$linkType='SymbolicLink'}
+    [void](New-Item -ItemType $linkType -Path $venv -Target $external)
+    Assert-Fails {Get-StagingCode $destination $commit 'GitHubFiles'}
+    Assert-True ([IO.File]::ReadAllText($externalMarker) -eq 'external environment') 'A linked environment was changed.'
+    [IO.Directory]::Delete($venv);$passed++
     $sentinel=Join-Path $destination 'preserve';[IO.File]::WriteAllText($sentinel,'preserve')
     Assert-Fails {Get-StagingCode $destination $commit 'GitHubFiles'}
     Assert-True ([IO.File]::ReadAllText($sentinel) -eq 'preserve') 'Existing destination changed.';$passed++

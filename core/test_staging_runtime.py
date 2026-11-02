@@ -1,4 +1,5 @@
 import hashlib
+from io import StringIO
 import json
 import os
 from pathlib import Path
@@ -120,4 +121,40 @@ class StagingRuntimeTests(SimpleTestCase):
         self.assertEqual(current['instance'], original['instance'])
         self.assertEqual(current['owner_id'], original['owner_id'])
         self.assertTrue(Path(current['code']).is_relative_to(self.root / '.runtime/releases'))
+        self.assertEqual(self.digest(), before)
+
+    def test_password_reader_retries_short_and_mismatched_input_without_echoing_passwords(self):
+        good = 'synthetic-valid-test-password'
+        output = StringIO()
+        with patch.object(staging.getpass, 'getpass', side_effect=['short', good, 'different-confirmation', good, good]) as reader, patch.object(staging.sys, 'stderr', output):
+            self.assertEqual(staging.prompt_password(), good)
+        self.assertEqual(reader.call_count, 5)
+        self.assertIn('12', output.getvalue()); self.assertIn('не совпали', output.getvalue())
+        for secret in ['short', good, 'different-confirmation']:self.assertNotIn(secret, output.getvalue())
+        self.assertFalse((self.root / 'data').exists())
+
+    def test_password_reader_retries_oversized_input_and_handles_cancel(self):
+        good = 'synthetic-valid-test-password'
+        with patch.object(staging.getpass, 'getpass', side_effect=['x' * 4097, good, good]), patch.object(staging.sys, 'stderr', StringIO()):
+            self.assertEqual(staging.prompt_password(), good)
+        with patch.object(staging.getpass, 'getpass', side_effect=EOFError):
+            with self.assertRaisesMessage(ValueError, 'Ввод пароля отменён'):staging.prompt_password()
+        self.assertFalse((self.root / 'data').exists())
+
+    def test_invalid_password_never_starts_copy_and_cli_prepares_once_after_correction(self):
+        before = self.digest()
+        with patch.object(staging, 'snapshot') as copy:
+            for invalid in ['short', 'x' * 4097]:
+                with self.assertRaises(ValueError):
+                    staging.prepare(self.root, self.prod, 'owner', invalid, revision='a' * 40)
+            copy.assert_not_called()
+        good = 'synthetic-valid-test-password'
+        arguments=['staging.py','prepare','--root',str(self.root),'--source-root',str(self.prod),'--owner-login','owner','--revision','a'*40]
+        state={'hosts':['127.0.0.1'],'port':8002,'owner_login':'owner'}
+        output = StringIO()
+        with patch.object(staging.sys, 'argv', arguments), patch.object(staging.getpass, 'getpass', side_effect=['short', good, good]), patch.object(staging, 'prepare', return_value=state) as prepare, patch.object(staging.sys, 'stderr', output), patch.object(staging.sys, 'stdout', output):
+            staging.main()
+        prepare.assert_called_once()
+        self.assertEqual(prepare.call_args.args[3], good)
+        self.assertNotIn(good, output.getvalue()); self.assertNotIn('short', output.getvalue())
         self.assertEqual(self.digest(), before)

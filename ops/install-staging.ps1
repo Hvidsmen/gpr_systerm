@@ -51,7 +51,7 @@ try {
     foreach($serverName in $Hosts){$arguments+=@('--host',$serverName)}
     if($ActuationRoot){$arguments+=@('--actuation-root',$ActuationRoot)}
     & $python @arguments
-    if($LASTEXITCODE -ne 0){throw 'Test preparation failed. Production was not changed. See .runtime\prepare.log.'}
+    if($LASTEXITCODE -ne 0){throw 'Test preparation failed. See the error above; .runtime\prepare.log is available if database preparation started. Production was not changed.'}
     $action=New-ScheduledTaskAction -Execute $python -Argument ('"{0}" serve --root "{1}"' -f (Join-Path $Root 'ops\staging.py'),$Root) -WorkingDirectory $Root
     $servicePrincipal=New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
     $trigger=New-ScheduledTaskTrigger -AtStartup

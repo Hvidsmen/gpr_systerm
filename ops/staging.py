@@ -144,8 +144,8 @@ def prepare(root, source_root, login, password, *, port=8002, hosts=None, revisi
     disjoint(root, source_root)
     if root != CODE_ROOT:raise ValueError('Подготовку запускайте из папки кода тестового портала (--root).')
     if not login.strip():raise ValueError('Укажите логин владельца теста.')
-    if len(password) < 12:
-        raise ValueError('Отдельный тестовый пароль должен содержать не менее 12 символов.')
+    if not 12 <= len(password) <= 4096:
+        raise ValueError('Отдельный тестовый пароль должен содержать от 12 до 4096 символов.')
     if len(revision) != 40 or any(c not in '0123456789abcdef' for c in revision):
         raise ValueError('Укажите точный SHA версии (40 символов), а не ветку main.')
     if not 1024 <= port <= 65535:
@@ -288,6 +288,23 @@ def update(root, archive, revision):
         print('Обновлён только тест. Версия: ' + revision + '. Запустите отдельное задание тестового портала.')
 
 
+
+def prompt_password():
+    """Validate before preparation and allow corrections without restarting setup."""
+    while True:
+        try:
+            password = getpass.getpass('Новый отдельный пароль для тестового портала (не менее 12 символов): ')
+            if not 12 <= len(password) <= 4096:
+                print('Пароль должен содержать от 12 до 4096 символов. Введите другой пароль.', file=sys.stderr)
+                continue
+            confirmation = getpass.getpass('Повторите тестовый пароль: ')
+        except EOFError:
+            raise ValueError('Ввод пароля отменён. Установку можно запустить повторно.') from None
+        if password == confirmation:
+            return password
+        print('Пароли не совпали. Введите пароль заново.', file=sys.stderr)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('command', choices=['prepare', 'serve', 'stop', 'status', 'update'])
@@ -302,8 +319,7 @@ def main():
     args = parser.parse_args()
     if args.command == 'prepare':
         if not args.source_root or not args.owner_login:parser.error('Нужны --source-root и --owner-login.')
-        password = getpass.getpass('Новый отдельный пароль для тестового портала: ')
-        if password != getpass.getpass('Повторите тестовый пароль: '):raise ValueError('Пароли не совпадают.')
+        password = prompt_password()
         state = prepare(args.root, args.source_root, args.owner_login, password, port=args.port, hosts=args.host,
                         revision=args.revision, actuation=args.actuation_root)
         print('Тест подготовлен: http://' + state['hosts'][0] + ':' + str(state['port']) + '/; логин: ' + state['owner_login'])
@@ -319,6 +335,8 @@ def main():
 
 if __name__ == '__main__':
     try:main()
+    except KeyboardInterrupt:
+        print('Установка отменена. Её можно запустить повторно.', file=sys.stderr); sys.exit(130)
     except Exception as error:
         if logging.getLogger().handlers:logging.exception('Test portal command failed')
         print(str(error), file=sys.stderr); sys.exit(1)

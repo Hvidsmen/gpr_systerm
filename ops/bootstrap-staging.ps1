@@ -1,7 +1,7 @@
 # Download a pinned acceptance release without an archive or a production update.
 [CmdletBinding()]
 param([string]$Root='', [string]$ProductionRoot='', [string]$OwnerLogin='',
-      [string]$Revision='4ed5e71adee65d76ac44a693323bec0f0f861db6', [int]$Port=8002,
+      [string]$Revision='', [int]$Port=8002,
       [string[]]$Hosts=@('192.168.70.9'), [string]$PythonExecutable='', [string]$ActuationRoot='',
       [ValidateSet('Auto','Git','GitHubFiles')][string]$DownloadMethod='Auto')
 $ErrorActionPreference='Stop'
@@ -72,13 +72,48 @@ function Get-StagingReleaseTree([string]$Commit){
     return $files
 }
 
+function Assert-StagingSourceFiles([string]$Directory,$Files){
+    $rootPath=[IO.Path]::GetFullPath($Directory).TrimEnd([char[]]@('\','/'))
+    foreach($file in $Files){
+        $target=Get-StagingFilePath $rootPath $file.path
+        if(-not (Test-Path -LiteralPath $target -PathType Leaf)){throw 'A TEST release file is missing.'}
+        $current=$target
+        while($current){
+            if((Get-Item -Force -LiteralPath $current).Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'Linked TEST files or directories cannot be reused.'}
+            if($current.Equals($rootPath,[StringComparison]::OrdinalIgnoreCase)){break}
+            $current=Split-Path $current -Parent
+        }
+        if((Get-StagingBlobHash $target) -cne $file.sha){throw 'Existing TEST code differs from the requested revision. It will not be overwritten.'}
+    }
+}
+
+function Assert-StagingCanResume([string]$Directory,$Files){
+    if(-not (Test-Path -LiteralPath $Directory -PathType Container)){throw 'TEST destination is not a directory.'}
+    if((Get-Item -Force -LiteralPath $Directory).Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'Linked TEST directories cannot be reused.'}
+    foreach($protected in @('staging.json','data','secret.key','staticfiles','.env','.runtime/installed.json','.runtime/current.json')){
+        if(Test-Path -LiteralPath (Join-Path $Directory $protected)){throw 'TEST or production data already exists. Setup will not overwrite it.'}
+    }
+    $allowed=New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+    foreach($file in $Files){[void]$allowed.Add($file.path.Split('/')[0])}
+    foreach($name in @('.git','.venv','.runtime','__pycache__')){[void]$allowed.Add($name)}
+    foreach($entry in Get-ChildItem -Force -LiteralPath $Directory){
+        if(-not $allowed.Contains($entry.Name)){throw 'Unexpected files in the existing directory. Setup will not reuse this directory.'}
+        if($entry.Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'Linked TEST directories cannot be reused.'}
+    }
+    Assert-StagingSourceFiles $Directory $Files
+}
+
 function Get-StagingCode([string]$Destination,[string]$Commit,[string]$Method='Auto'){
     Assert-StagingRevision $Commit
-    if(Test-Path -LiteralPath $Destination){throw 'TEST destination already exists. It will not be overwritten.'}
     $destinationPath=[IO.Path]::GetFullPath($Destination)
     $parent=Split-Path $destinationPath -Parent
     if(-not (Test-Path -LiteralPath $parent -PathType Container)){throw 'Create the TEST parent directory first, or choose an existing local parent.'}
     $files=@(Get-StagingReleaseTree $Commit)
+    if(Test-Path -LiteralPath $destinationPath){
+        Assert-StagingCanResume $destinationPath $files
+        Write-Host 'Verified the previous TEST download. Continuing setup without replacing code or data.'
+        return
+    }
     $temporary=Join-Path $parent ('.yds-test-download-'+[Guid]::NewGuid().ToString('N'))
     [void][IO.Directory]::CreateDirectory($temporary)
     try{
@@ -111,11 +146,7 @@ function Get-StagingCode([string]$Destination,[string]$Commit,[string]$Method='A
             }
             Write-Progress -Activity 'Downloading TEST release' -Completed
         }
-        foreach($file in $files){
-            $target=Get-StagingFilePath $temporary $file.path
-            if(-not (Test-Path -LiteralPath $target -PathType Leaf) -or (Get-Item -Force -LiteralPath $target).Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'A TEST release file is missing or linked.'}
-            if((Get-StagingBlobHash $target) -cne $file.sha){throw 'A TEST file does not match the pinned release.'}
-        }
+        Assert-StagingSourceFiles $temporary $files
         # Move into place only after the complete source has been checked.
         [IO.Directory]::Move($temporary,$destinationPath)
     }finally{
