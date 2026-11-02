@@ -134,8 +134,8 @@ class SmgPeriodReportTests(TestCase):
         LaborFact.objects.create(company=self.company, construction_object=self.obj, brigade=self.brigade,
             date=self.later, actual_workers=2)
         row = build(self.obj, self.selected)['labor'][0]
-        self.assertEqual((row['plan'], row['actual']), (5, 3))
-        self.assertEqual(row['unit'], 'чел.·дн.')
+        self.assertEqual((row['plan'], row['actual']), (3, 2))
+        self.assertEqual(row['unit'], 'чел.')
 
     def test_fuel_object_plan_separate_from_shared_camp_total_no_legacy_double_count(self):
         self.entry('fuel', [{'date': str(self.start), 'fuel_type': 'DIESEL', 'planned_liters': '2000'},

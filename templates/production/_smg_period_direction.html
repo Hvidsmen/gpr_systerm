@@ -5,5 +5,5 @@
 {% elif direction == 'equipment' %}
   {% include 'production/_smg_resource_groups.html' with groups=equipment_groups heading='Техника' section_id='smg-period-equipment' explanation='План — сумма количества машин по дням. Факт — работавшие машины по дням. Одна машина за два дня = 2 машино-дня. Простой не считается работой. Детальные записи и их сводные копии не дублируются.' %}
 {% elif direction == 'labor' %}
-  {% include 'production/_smg_resource_groups.html' with groups=labor_groups heading='Люди' section_id='smg-period-labor' explanation='План — сумма потребности за каждый день. Факт — уникальные сотрудники за каждый день; две смены одного человека в одной должности считаются один раз.' %}
+  {% include 'production/_smg_resource_groups.html' with groups=labor_groups heading='Люди' section_id='smg-period-labor' maximum=True explanation='План и факт за период — максимальная численность за один день, в чел. Максимумы могут приходиться на разные даты. Итог группы — максимум дневной суммы должностей. Две смены одного сотрудника в одной должности за день считаются один раз.' %}
 {% endif %}

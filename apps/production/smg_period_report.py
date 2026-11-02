@@ -14,7 +14,7 @@ from apps.personnel.models import Camp
 from .models import DailyFact, EmployeeActivity, EquipmentActivity, LaborFact, EquipmentFact
 from .transport_models import EquipmentDayRecord
 from .camp_fuel_models import CampFuelDay
-from .report_grouping import resource_groups, work_groups, daily_rows
+from .report_grouping import resource_groups, work_groups, daily_rows, peak_daily_totals
 from apps.resources.group_order import labor_group_order, equipment_group_order
 
 
@@ -76,7 +76,7 @@ def build(obj, day, schedule_id=None, *, day_only=False, equipment_only=False, i
     schedules = DailySchedule.objects.filter(company=obj.company, construction_object=obj, month=day.replace(day=1))
     if day_only:
         start = end = day
-    labor_unit = 'чел.' if day_only else 'чел.·дн.'
+    labor_unit = 'чел.'
     equipment_unit = 'ед.' if day_only else 'маш.·дн.'
     if schedule_id:
         schedule = schedules.filter(pk=identity(schedule_id), status__in=['APPLIED', 'ARCHIVED']).first()
@@ -241,7 +241,10 @@ def build(obj, day, schedule_id=None, *, day_only=False, equipment_only=False, i
     works_finished, labor_finished, equipment_finished = finish(work_rows), finish(labor_rows), finish(equipment_rows)
     dates=[start+timedelta(days=i) for i in range((end-start).days+1)]
     for row in works_finished+labor_finished+equipment_finished:daily_rows(row,dates)
-    return dict(work_groups=work_groups(works_finished,dates),labor_groups=resource_groups(labor_finished,dates),equipment_groups=resource_groups(equipment_finished,dates),
+    for row in labor_finished:peak_daily_totals(row)
+    labor_grouped=resource_groups(labor_finished,dates)
+    for group in labor_grouped:peak_daily_totals(group['total'])
+    return dict(work_groups=work_groups(works_finished,dates),labor_groups=labor_grouped,equipment_groups=resource_groups(equipment_finished,dates),
         object=obj, start=start, end=end, day=day, schedule=schedule,equipment_only=equipment_only,day_only=day_only,include_fuel=include_fuel,
         period_days=(end-start).days+1, works=works_finished, labor=labor_finished,
         equipment=equipment_finished, fuel=finish(fuel_rows), warehouse=warehouse)
