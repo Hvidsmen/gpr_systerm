@@ -21,8 +21,9 @@ class EmployeeListView(CatalogueExcelMixin, CompanyScopedMixin, ListView):
 
     def get_queryset(self):
         from .employee_filters import EmployeeFilterForm, filtered_employees
-        self.filter_form = EmployeeFilterForm(self.request.GET)
-        return filtered_employees(super().get_queryset(), self.filter_form).select_related('position').order_by('last_name', 'first_name', 'zup_full_name', 'pk')
+        queryset = super().get_queryset()
+        self.filter_form = EmployeeFilterForm(self.request.GET, queryset=queryset)
+        return filtered_employees(queryset, self.filter_form).select_related('position').order_by('last_name', 'first_name', 'zup_full_name', 'pk')
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)

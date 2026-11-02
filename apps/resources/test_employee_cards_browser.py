@@ -37,6 +37,7 @@ class EmployeeCardBrowserTests(StaticLiveServerTestCase):
                 'staffing_source': 'Занятость штатных позиций (наименование)',
                 'position_state': 'staffing', 'position_diagnostics': {
                     'probes': {'occupancy_position_row': 0}, 'references': {'position': 'b'*32}}})
+        Employee.objects.create(company=company, first_name='Сотрудник другого отдела', zup_department='Склад')
         config = dict(base=self.live_server_url, listing=reverse('resources:employee_list')+'?include_archived=1',
                       detail=reverse('resources:employee_detail', args=[employee.pk]),
                       staffing_detail=reverse('resources:employee_detail', args=[staffing_employee.pk]),
