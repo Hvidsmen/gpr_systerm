@@ -28,9 +28,33 @@ const {chromium}=require('playwright'),assert=require('assert'),fs=require('fs')
   await page.getByRole('button',{name:'Обновить тестовый портал',exact:true}).click();
   await page.waitForFunction(()=>document.querySelector('[data-test-current]')?.textContent==='bbbbbbbbbbbb',null,{timeout:600000});
   await page.waitForFunction(()=>document.querySelector('[data-test-status]')?.textContent.includes('обновлён и доступен'),null,{timeout:60000});
+  await page.waitForFunction(()=>document.getElementById('staging-update')?.dataset.version==='b'.repeat(40));
   await page.screenshot({path:'/tmp/staging-update-after.png',animations:'disabled'});
  }else{
   await page.screenshot({path:'/tmp/staging-update-before.png',animations:'disabled'});
+ }
+ if(c.refresh_data){
+  const refresh=page.getByRole('button',{name:'Обновить данные с основного портала',exact:true});
+  assert(await refresh.isDisabled());
+  await page.locator('[data-test-confirm]').check();
+  assert(await refresh.isEnabled());
+  await page.screenshot({path:'/tmp/staging-refresh-confirm.png',animations:'disabled'});
+  await page.setViewportSize({width:390,height:844});
+  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2));
+  await page.screenshot({path:'/tmp/staging-refresh-mobile.png',animations:'disabled'});
+  await page.setViewportSize({width:1440,height:950});
+  await refresh.click();
+  await page.waitForFunction(()=>{const login=document.querySelector('[data-test-login]');return location.pathname.includes('/accounts/login/') || (login && !login.hidden);},null,{timeout:300000});
+  if(!page.url().includes(c.login_path))await page.getByRole('link',{name:'Войти в тестовый портал',exact:true}).click();
+  await page.waitForURL(c.base+c.login_path+'**');
+  await page.locator('[name=username]').fill(c.login);await page.locator('[name=password]').fill(c.password);
+  await page.getByRole('button',{name:'Войти',exact:true}).click();
+  await page.waitForURL(url=>!url.pathname.includes(c.login_path));
+  await page.goto(c.base+c.update_path);
+  assert((await page.innerText('body')).includes('Данные теста обновлены'));
+  assert(!(await page.innerText('body')).includes('при создании теста'));
+  assert(await page.getByRole('button',{name:'Обновить данные с основного портала',exact:true}).isDisabled());
+  await page.screenshot({path:'/tmp/staging-refresh-complete.png',animations:'disabled'});
  }
  const post=async path=>{const cookie=(await context.cookies()).find(cookie=>cookie.name.startsWith('staging_')&&cookie.name.endsWith('_csrf'));return context.request.post(c.base+path,{headers:{'X-CSRFToken':cookie.value,'Referer':c.base+'/'} ,form:{}});};
  const impersonation=await post(c.impersonate);assert(impersonation.ok());await page.goto(c.base+c.settings);assert((await page.innerText('body')).includes('Вы работаете как'));assert((await page.innerText('body')).includes('ТЕСТОВЫЙ ПОРТАЛ'));

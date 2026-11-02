@@ -41,6 +41,8 @@ class StagingBrowserTests(StaticLiveServerTestCase):
         with TemporaryDirectory() as temp:
             root = Path(temp); prod = root / 'source'; (prod / '.runtime').mkdir(parents=True)
             media = prod / 'media'; media.mkdir(); (media / 'fixture.txt').write_text('original document')
+            actuation=prod/'private_uploads/actuation';actuation.mkdir(parents=True)
+            (actuation/'fixture-act.txt').write_text('original act')
             code = root / 'test'
             shutil.copytree(settings.BASE_DIR, code, ignore=shutil.ignore_patterns('.git', '.venv', '__pycache__', '.runtime', 'staticfiles', 'db.sqlite3', '.env', '.dev-secret-key'))
             with socket.socket() as sock:sock.bind(('127.0.0.1', 0)); port = sock.getsockname()[1]
@@ -49,6 +51,7 @@ class StagingBrowserTests(StaticLiveServerTestCase):
             with patch.object(staging, 'CODE_ROOT', code):
                 state = staging.prepare(code, prod, owner.username, 'admin', port=port, hosts=['127.0.0.1'], revision='a' * 40)
             web_release = os.environ.get('STAGING_WEB_RELEASE_TESTS') == '1'
+            refresh_data = os.environ.get('STAGING_REFRESH_TESTS') == '1'
             if web_release:
                 # Only this disposable old release gets a local GitHub fixture.
                 # The downloaded candidate is the unmodified source, and uses
@@ -65,6 +68,12 @@ class StagingBrowserTests(StaticLiveServerTestCase):
                     fixture_file.write(fixture)
                 with sqlite3.connect(code / 'data/db.sqlite3') as db:
                     db.execute('UPDATE accounts_company SET name=? WHERE id=?', ['Acceptance data retained', company.pk])
+            if refresh_data:
+                with sqlite3.connect(code / 'data/db.sqlite3') as db:
+                    db.execute('UPDATE accounts_company SET name=? WHERE id=?',['Test changes must disappear',company.pk])
+                (code/'data/media/fixture.txt').write_text('test-only document')
+                (code/'data/media/test-only.txt').write_text('test-only extra document')
+                (code/'data/private_uploads/actuation/fixture-act.txt').write_text('test-only act')
             with sqlite3.connect(code / 'data/db.sqlite3') as db:
                 self.assertEqual(db.execute('SELECT COUNT(*) FROM accounts_onecconnection').fetchone()[0], 0)
                 self.assertEqual(db.execute('SELECT COUNT(*) FROM django_session').fetchone()[0], 0)
@@ -88,18 +97,38 @@ class StagingBrowserTests(StaticLiveServerTestCase):
                     password='admin', other_password='synthetic-other-password',
                     settings=reverse('accounts:settings'), login_path=reverse('accounts:login'), password_change=reverse('accounts:password_change'),
                     impersonate=reverse('accounts:impersonation_start', args=[other.pk]), stop=reverse('accounts:impersonation_stop'),
-                    update_path=reverse('accounts:portal_updates'), web_release=web_release,
+                    update_path=reverse('accounts:portal_updates'), web_release=web_release, refresh_data=refresh_data,
                     blocked=[reverse('accounts:invitation_settings'), reverse('accounts:training_list')])
                 result = subprocess.run(['node', str(Path(settings.BASE_DIR) / 'tests/browser/staging_portal.js')],
-                    capture_output=True, text=True, env=dict(os.environ, STAGING_CONFIG=json.dumps(config)), timeout=750 if web_release else 100)
+                    capture_output=True, text=True, env=dict(os.environ, STAGING_CONFIG=json.dumps(config)), timeout=750 if web_release or refresh_data else 100)
                 self.assertEqual(result.returncode, 0, result.stdout + '\n' + result.stderr)
                 print(result.stdout.strip())
+                if refresh_data:
+                    from django.contrib.auth.hashers import check_password
+                    current=staging.manifest(code)
+                    self.assertEqual(current['revision'],'b'*40 if web_release else 'a'*40)
+                    self.assertEqual(current['instance'],state['instance'])
+                    self.assertNotEqual(current['data_generation'],state['instance'])
+                    with sqlite3.connect(code/'data/db.sqlite3') as db:
+                        self.assertEqual(db.execute('SELECT name FROM accounts_company WHERE id=?',[company.pk]).fetchone()[0],'Acceptance source')
+                        self.assertTrue(check_password('admin',db.execute('SELECT password FROM accounts_user WHERE id=?',[owner.pk]).fetchone()[0]))
+                        self.assertTrue(db.execute('SELECT password FROM accounts_user WHERE id=?',[other.pk]).fetchone()[0].startswith('!'))
+                        self.assertEqual(db.execute('SELECT COUNT(*) FROM accounts_onecconnection').fetchone()[0],0)
+                        self.assertEqual(db.execute('SELECT password_encrypted FROM accounts_companymailsettings WHERE company_id=?',[company.pk]).fetchone()[0],'')
+                        self.assertEqual(db.execute('SELECT enabled FROM accounts_trainingcopy').fetchone()[0],0)
+                    self.assertEqual((code/'data/media/fixture.txt').read_text(),'original document')
+                    self.assertEqual((code/'data/private_uploads/actuation/fixture-act.txt').read_text(),'original act')
+                    self.assertFalse((code/'data/media/test-only.txt').exists())
+                    backups=list((code/'.runtime/backups').glob('*/data/media/test-only.txt'))
+                    self.assertEqual(len(backups),1)
+                    self.assertEqual(backups[0].read_text(),'test-only extra document')
+                    print('PASS: confirmed browser data refresh; fresh DB/documents/acts, old full backup, retained test password/code/instance, source credentials and sessions removed')
                 if web_release:
                     current = staging.manifest(code)
                     self.assertEqual(current['revision'], 'b'*40)
                     self.assertEqual(current['instance'], state['instance'])
                     with sqlite3.connect(code / 'data/db.sqlite3') as db:
-                        self.assertEqual(db.execute('SELECT name FROM accounts_company WHERE id=?', [company.pk]).fetchone()[0], 'Acceptance data retained')
+                        self.assertEqual(db.execute('SELECT name FROM accounts_company WHERE id=?', [company.pk]).fetchone()[0], 'Acceptance source' if refresh_data else 'Acceptance data retained')
                     self.assertTrue(list((code / '.runtime/backups').glob('*/database.sqlite3')))
                     print('PASS: browser button → queued update → real dependencies/migrations → HTTP restart; test data, session and instance retained')
                     # The Windows task keeps its original launcher path after
@@ -178,4 +207,5 @@ class StagingBrowserTests(StaticLiveServerTestCase):
             self.assertEqual(OneCConnection.objects.get(company=company).server, 'synthetic-source')
             self.assertTrue(TrainingCopy.objects.get(company=company).enabled)
             self.assertEqual((media / 'fixture.txt').read_text(), 'original document')
+            self.assertEqual((actuation/'fixture-act.txt').read_text(),'original act')
             self.assertFalse((prod / 'staging.json').exists())

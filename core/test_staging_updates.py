@@ -16,7 +16,7 @@ class StagingWebRuntimeTests(SimpleTestCase):
     def setUp(self):
         temp=TemporaryDirectory();self.addCleanup(temp.cleanup)
         self.root=Path(temp.name);(self.root/'.runtime').mkdir()
-        self.current={'owner_id':1,'company_id':10,'revision':'a'*40,'port':8002,'code':str(self.root),'python':'python'}
+        self.current={'owner_id':1,'company_id':10,'revision':'a'*40,'port':8002,'code':str(self.root),'python':'python','instance':'synthetic-instance'}
         self.config=patch.object(staging,'manifest',return_value=self.current);self.config.start();self.addCleanup(self.config.stop)
         self.event=threading.Event()
 
@@ -102,6 +102,22 @@ class StagingWebRuntimeTests(SimpleTestCase):
 
     def test_interrupted_migration_requires_manual_recovery_before_http_starts(self):
         atomic_json(self.root/'.runtime/staging-update.json',{**self.job(),'state':'applying'})
+        with patch.object(updates,'start_http') as start:
+            with self.assertRaises(RuntimeError):updates.supervise(self.root,self.event)
+        start.assert_not_called()
+        self.assertTrue((self.root/'.runtime/staging-recovery.json').exists())
+
+    def test_refresh_failure_restarts_existing_test_only_after_helper_returns_safely(self):
+        from ops import staging_refresh
+        job={'kind':'refresh','owner_id':1,'from_revision':'a'*40,'data_generation':self.current['instance']}
+        old,new=Mock(),Mock()
+        with patch.object(updates,'stop_http') as stop,patch.object(staging_refresh,'refresh',side_effect=OSError('synthetic source error')),patch.object(updates,'start_http',return_value=new),patch.object(updates,'wait_http'):
+            self.assertIs(updates.process_refresh(self.root,old,job,self.event),new)
+        stop.assert_called_once_with(old)
+        self.assertEqual(json.loads((self.root/'.runtime/staging-update.json').read_text())['state'],'error')
+
+    def test_interrupted_data_swap_never_starts_http_over_mixed_data(self):
+        atomic_json(self.root/'.runtime/staging-refresh-transaction.json',{'backup':'synthetic'})
         with patch.object(updates,'start_http') as start:
             with self.assertRaises(RuntimeError):updates.supervise(self.root,self.event)
         start.assert_not_called()

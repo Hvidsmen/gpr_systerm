@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 import errno
 import json
 import logging
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -14,11 +15,13 @@ from ops.windows_runtime import atomic_json, read_json, singleton
 
 REPOSITORY = 'Hvidsmen/gpr_systerm'
 BRANCH = 'codex/staging-portal-20261102'
-BUSY = {'queued', 'downloading', 'stopping', 'applying', 'starting'}
+BUSY = {'queued', 'downloading', 'stopping', 'applying', 'starting', 'backing_up', 'copying', 'sanitizing', 'swapping'}
 STAGES = {'queued': 'Задание принято', 'downloading': 'Скачивание выбранной версии',
           'stopping': 'Завершение запросов тестового портала',
           'applying': 'Резервная копия, зависимости и проверка новой версии',
-          'starting': 'Запуск и проверка тестового портала'}
+          'starting': 'Запуск и проверка тестового портала',
+          'backing_up': 'Резервная копия тестовых данных', 'copying': 'Копирование рабочих данных и документов',
+          'sanitizing': 'Подготовка отдельной тестовой базы и проверка', 'swapping': 'Замена только тестовых данных'}
 
 
 def now():
@@ -66,6 +69,8 @@ def state(root):
     phase = job.get('state', 'idle')
     if (runtime(root) / 'staging-recovery.json').exists():
         phase = 'recovery'
+    if (runtime(root) / 'staging-refresh-transaction.json').exists():
+        phase = 'recovery'
     busy = phase in BUSY
     if busy and not ready:
         phase, busy = 'error', False
@@ -74,6 +79,8 @@ def state(root):
                 'error': 'Обновление не завершено. Подробности в журнале тестовой установки.',
                 'recovery': 'Тест остановлен: требуется проверка восстановления базы администратором сервера.'}
     message = STAGES.get(phase, messages.get(phase, messages['idle']))
+    if phase == 'done' and job.get('kind') == 'refresh':
+        message = 'Данные теста обновлены.'
     if not ready and phase == 'idle':
         message = 'Обработчик обновлений теста не запущен. Перезапустите задание YDS Portal Test.'
     available = latest.get('revision', '')
@@ -81,8 +88,14 @@ def state(root):
         available = ''
     if phase == 'idle' and ready and available and available != current['revision']:
         message = 'Доступна новая тестовая версия. Можно обновить портал.'
+    features = read_json(runtime(root) / 'staging-supervisor.json', {}).get('features', [])
+    from ops.staging_refresh import generation
     return {'version': current['revision'], 'available': available, 'checked_at': latest.get('checked_at'),
             'branch': BRANCH, 'ready': ready and phase != 'recovery', 'busy': busy, 'state': phase,
+            'operation': job.get('kind', 'update'), 'data_generation': generation(current),
+            'data_refreshed_at': current.get('data_refreshed_at'),
+            'refresh_supported': 'refresh-data' in features,
+            'can_refresh': ready and not busy and phase != 'recovery' and 'refresh-data' in features,
             'message': message, 'stage': STAGES.get(phase, ''),
             'can_update': ready and not busy and phase != 'recovery' and bool(available) and
                           available != current['revision'] and latest.get('from_revision') == current['revision']}
@@ -99,6 +112,21 @@ def enqueue(root, *, revision, from_revision, owner_id):
             raise ValueError('Версия или состояние теста изменились. Повторите проверку обновлений.')
         job = {'id': uuid.uuid4().hex, 'state': 'queued', 'revision': revision,
                'from_revision': from_revision, 'owner_id': owner_id, 'created_at': now(), 'branch': BRANCH}
+        atomic_json(runtime(root) / 'staging-update.json', job)
+        return job
+
+
+def enqueue_refresh(root, *, from_revision, data_generation, owner_id):
+    from ops.staging import manifest
+    with singleton(runtime(root) / 'staging-queue.lock'):
+        current = manifest(root)
+        status = state(root)
+        if (owner_id != current['owner_id'] or not status['can_refresh'] or
+                current['revision'] != from_revision or status['data_generation'] != data_generation):
+            raise ValueError('Тестовые данные или состояние изменились. Откройте страницу и подтвердите замену заново.')
+        job = {'id': uuid.uuid4().hex, 'state': 'queued', 'kind': 'refresh',
+               'from_revision': from_revision, 'data_generation': data_generation,
+               'owner_id': owner_id, 'created_at': now()}
         atomic_json(runtime(root) / 'staging-update.json', job)
         return job
 
@@ -209,6 +237,42 @@ def process_job(root, child, job, parent_gone):
     return child
 
 
+def process_refresh(root, child, job, parent_gone):
+    from ops.staging_refresh import refresh, generation
+    from ops.staging import manifest
+    stopped = False
+    def progress(phase):
+        job.update(state=phase, updated_at=now())
+        atomic_json(runtime(root) / 'staging-update.json', job)
+    try:
+        current = manifest(root)
+        if (job.get('owner_id') != current['owner_id'] or job.get('from_revision') != current['revision'] or
+                job.get('data_generation') != generation(current) or parent_gone.is_set()):
+            raise ValueError('Задание обновления данных устарело или тест остановлен.')
+        progress('stopping')
+        stop_http(child)
+        stopped = True
+        if parent_gone.is_set() or (runtime(root) / 'server.stop').exists():
+            raise RuntimeError('Обновление данных отменено остановкой теста.')
+        refresh(root, expected_generation=job['data_generation'], expected_revision=job['from_revision'],
+                owner_id=job['owner_id'], progress=progress)
+        progress('starting')
+        child = start_http(root)
+        stopped = False
+        wait_http(root, child, parent_gone)
+        progress('done')
+    except Exception:
+        logging.exception('Acceptance data refresh failed')
+        recovery = (runtime(root) / 'staging-recovery.json').exists() or (runtime(root) / 'staging-refresh-transaction.json').exists()
+        progress('recovery' if recovery else 'error')
+        if recovery:
+            raise
+        if stopped and not parent_gone.is_set() and not (runtime(root) / 'server.stop').exists():
+            child = start_http(root)
+            wait_http(root, child, parent_gone)
+    return child
+
+
 def supervise(root, parent_gone):
     """The scheduled test launcher stays alive while its HTTP child restarts."""
     root = Path(root).resolve()
@@ -216,12 +280,13 @@ def supervise(root, parent_gone):
     with singleton(runtime(root) / 'staging-supervisor.lock'):
         stop.unlink(missing_ok=True)
         previous = read_json(runtime(root) / 'staging-update.json', {})
-        if previous.get('state') == 'applying':
+        if previous.get('state') in {'applying', 'swapping'} or (runtime(root) / 'staging-refresh-transaction.json').exists():
             atomic_json(runtime(root) / 'staging-recovery.json', {'reason': 'interrupted-update', 'at': now()})
         if (runtime(root) / 'staging-recovery.json').exists():
             raise RuntimeError('Проверьте восстановление тестовой базы перед повторным запуском.')
         if previous.get('state') in BUSY - {'queued'}:
             atomic_json(runtime(root) / 'staging-update.json', {**previous, 'state': 'error'})
+        atomic_json(runtime(root) / 'staging-supervisor.json', {'pid': os.getpid(), 'features': ['refresh-data']})
         child = start_http(root)
         try:
             wait_http(root, child, parent_gone)
@@ -230,7 +295,10 @@ def supervise(root, parent_gone):
                     raise RuntimeError('HTTP-процесс теста завершился.')
                 job = read_json(runtime(root) / 'staging-update.json', {})
                 if job.get('state') == 'queued':
-                    child = process_job(root, child, job, parent_gone)
+                    child = (process_refresh if job.get('kind') == 'refresh' else process_job)(root, child, job, parent_gone)
                 parent_gone.wait(.5)
         finally:
-            stop_http(child)
+            try:
+                stop_http(child)
+            finally:
+                (runtime(root) / 'staging-supervisor.json').unlink(missing_ok=True)

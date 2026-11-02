@@ -11,7 +11,7 @@ from django.test import TestCase, Client, override_settings
 from django.urls import reverse
 
 from apps.accounts.models import Company, Role, User
-from apps.accounts.staging_updates import SALT
+from apps.accounts.staging_updates import SALT, REFRESH_SALT
 from ops import staging, staging_updates
 from ops.windows_runtime import atomic_json, singleton
 
@@ -42,6 +42,46 @@ class StagingUpdateViewTests(TestCase):
     def latest(self):
         atomic_json(self.root / '.runtime/staging-latest.json', dict(revision='b'*40,
             from_revision='a'*40, branch=staging_updates.BRANCH, checked_at=staging_updates.now()))
+
+    def refresh_ready(self):
+        atomic_json(self.root / '.runtime/staging-supervisor.json', {'features':['refresh-data']})
+
+    def test_refresh_requires_confirmation_and_uses_same_queue_as_code_updates(self):
+        self.refresh_ready();self.latest()
+        with singleton(self.root / '.runtime/staging-supervisor.lock'):
+            response=self.client.get(self.url)
+            self.assertContains(response,'Тестовая база, загруженные документы и акты будут заменены')
+            token=response.context['refresh_token'];self.assertTrue(token)
+            self.client.post(self.url,{'action':'refresh','refresh_token':token})
+            self.assertFalse((self.root/'.runtime/staging-update.json').exists())
+            self.client.post(self.url,{'action':'refresh','refresh_token':token,'confirm_replace':'yes'})
+            job=json.loads((self.root/'.runtime/staging-update.json').read_text())
+            self.assertEqual(job['kind'],'refresh')
+            self.assertEqual(job['data_generation'],self.config['instance'])
+            self.client.post(self.url,{'action':'refresh','refresh_token':token,'confirm_replace':'yes'})
+            self.client.post(self.url,{'action':'update','version_token':response.context['version_token']})
+            self.assertEqual(json.loads((self.root/'.runtime/staging-update.json').read_text())['id'],job['id'])
+        self.assertFalse((self.root/'.runtime/update.request').exists())
+
+    def test_refresh_rejects_tampered_wrong_instance_and_replayed_generation(self):
+        self.refresh_ready()
+        with singleton(self.root / '.runtime/staging-supervisor.lock'):
+            token=self.client.get(self.url).context['refresh_token']
+            foreign=signing.dumps({'instance':str(uuid.uuid4()),'revision':'a'*40,'data_generation':self.config['instance']},salt=REFRESH_SALT)
+            with patch('django.core.signing.time.time',return_value=0):
+                expired=signing.dumps({'instance':self.config['instance'],'revision':'a'*40,'data_generation':self.config['instance']},salt=REFRESH_SALT)
+            for bad in [token+'broken','',foreign,expired]:
+                self.client.post(self.url,{'action':'refresh','refresh_token':bad,'confirm_replace':'yes'})
+                self.assertFalse((self.root/'.runtime/staging-update.json').exists())
+            self.config['data_generation']='new-data';atomic_json(self.root/'staging.json',self.config)
+            self.client.post(self.url,{'action':'refresh','refresh_token':token,'confirm_replace':'yes'})
+            self.assertFalse((self.root/'.runtime/staging-update.json').exists())
+
+    def test_old_supervisor_needs_restart_before_accepting_refresh(self):
+        with singleton(self.root / '.runtime/staging-supervisor.lock'):
+            response=self.client.get(self.url)
+            self.assertFalse(response.context['update']['can_refresh'])
+            self.assertContains(response,'один раз перезапустите задание')
 
     def test_page_and_status_use_only_test_state_and_never_production_enqueue(self):
         self.latest()
@@ -100,6 +140,7 @@ class StagingUpdateViewTests(TestCase):
     def test_csrf_is_required_and_get_never_checks_github(self):
         client=Client(enforce_csrf_checks=True);client.force_login(self.owner)
         self.assertEqual(client.post(self.url, {'action':'check'}).status_code,403)
+        self.assertEqual(client.post(self.url, {'action':'refresh','confirm_replace':'yes'}).status_code,403)
         with patch.object(staging_updates,'check_release') as check:
             self.assertEqual(self.client.get(self.url).status_code,200)
             check.assert_not_called()
