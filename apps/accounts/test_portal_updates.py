@@ -2,6 +2,10 @@ from contextlib import ExitStack
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
+from unittest import skipUnless
+import json
+import os
+import subprocess
 from django.test import TestCase,Client,override_settings
 from django.urls import reverse
 from django.core.exceptions import ValidationError,PermissionDenied
@@ -106,3 +110,16 @@ class PortalUpdateTests(TestCase):
         with self.assertRaisesMessage(RuntimeError,'already queued or running'):
             request_update(self.runtime.parent)
         self.assertFalse((self.runtime/'update.request').exists())
+
+    @skipUnless(os.environ.get('PORTAL_UPDATE_BROWSER_TESTS') == '1', 'Requires Node, Playwright and Chromium')
+    def test_browser_recovers_after_authentication_and_connection_loss(self):
+        from django.conf import settings
+        with TemporaryDirectory() as directory:
+            page=Path(directory)/'update.html'
+            page.write_bytes(self.client.get(self.url).content)
+            config={'html':str(page),'page':self.url,'status':self.status_url,
+                    'source':str(Path(settings.BASE_DIR)/'static/accounts/portal_updates.js'),
+                    'chromium':os.environ.get('CHROMIUM_PATH','/usr/bin/chromium')}
+            subprocess.run(['node',str(Path(settings.BASE_DIR)/'tests/browser/portal_update_status.js')],
+                           env={**os.environ,'PORTAL_UPDATE_BROWSER_CONFIG':json.dumps(config)},
+                           check=True,timeout=90)
