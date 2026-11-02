@@ -54,23 +54,32 @@ const {chromium}=require('playwright'),fs=require('fs'),assert=require('assert')
  await panel.locator('[data-period-days-toggle]').hover();assert(await panel.locator('[data-period-days-toggle]').evaluate(el=>getComputedStyle(el).color!==getComputedStyle(el).backgroundColor));
  const grid=panel.locator('[data-period-panel="works"] [data-report-day-grid]');assert.equal(await panel.locator('[data-report-day-grid]:visible').count(),1);assert.equal(await grid.locator('thead').count(),1);
  const columns=await grid.locator('thead th').count();assert(columns>=31&&columns<=34);
- const geometry=()=>grid.evaluate(el=>{const rect=node=>{const r=node.getBoundingClientRect();return{x:r.x,y:r.y}};return{header:rect(el.querySelector('thead')),label:rect(el.querySelector('[data-day-label]')),metric:rect(el.querySelector('tbody .report-day-metric')),left:el.scrollLeft,top:el.scrollTop}});
+ const geometry=()=>grid.evaluate(el=>{const rect=node=>{const r=node.getBoundingClientRect();return{x:r.x,y:r.y}};return{header:rect(el.querySelector('thead')),label:rect(el.querySelector('[data-day-label]')),metric:rect(el.querySelector('tbody .report-day-metric')),total:rect(el.querySelector('tbody .report-day-period')),totalHeader:rect(el.querySelector('thead .report-day-period')),left:el.scrollLeft,top:el.scrollTop}});
  await grid.scrollIntoViewIfNeeded();const before=await geometry();
- const labelBox=await grid.locator('thead .report-day-label').boundingBox(),metricBox=await grid.locator('thead .report-day-metric').boundingBox();assert(Math.abs(labelBox.x+labelBox.width-metricBox.x)<2);
+ const labelBox=await grid.locator('thead .report-day-label').boundingBox(),metricBox=await grid.locator('thead .report-day-metric').boundingBox(),totalBox=await grid.locator('thead .report-day-period').boundingBox();assert(Math.abs(labelBox.x+labelBox.width-metricBox.x)<2);assert(Math.abs(metricBox.x+metricBox.width-totalBox.x)<2);
  const top=panel.locator('[data-period-panel="works"] [data-report-top-scroll]');assert(await top.isVisible());
  await top.evaluate(el=>el.scrollLeft=600);await page.waitForTimeout(150);assert.equal(await grid.evaluate(el=>el.scrollLeft),await top.evaluate(el=>el.scrollLeft));
  await grid.evaluate(el=>{el.scrollLeft=800;el.scrollTop=100});await page.waitForTimeout(150);const after=await geometry();
  assert.equal(await grid.evaluate(el=>el.scrollLeft),await top.evaluate(el=>el.scrollLeft));
  assert(after.left>before.left);assert(after.top>before.top);assert(Math.abs(after.label.x-before.label.x)<2);assert(Math.abs(after.metric.x-before.metric.x)<2);
+ assert(Math.abs(after.total.x-before.total.x)<2);assert(Math.abs(after.totalHeader.x-before.totalHeader.x)<2);
  // Individual header cells stick; the table's thead box itself scrolls.
  assert.equal(await grid.locator('thead th').first().evaluate(el=>getComputedStyle(el).position),'sticky');
  const sticky=await grid.locator('thead th').first().boundingBox(),bounds=await grid.boundingBox();assert(Math.abs(sticky.y-bounds.y)<3);
+ const stickyTotal=await grid.locator('thead .report-day-period').boundingBox();assert(Math.abs(stickyTotal.y-bounds.y)<3);
+ assert.equal(await grid.locator('tbody .report-day-period').first().evaluate(el=>getComputedStyle(el).position),'sticky');
  await grid.evaluate(el=>{el.scrollLeft=0;el.scrollTop=0});
  const toggle=grid.locator('[data-report-toggle]').first(),key=await toggle.getAttribute('data-report-toggle'),children=grid.locator(`[data-report-branch="${key}"]`);
  await toggle.click();assert(await children.first().isHidden());await toggle.click();assert(await children.first().isVisible());
  await foldAll(panel.locator('[data-period-panel="works"]'),false);await foldAll(panel.locator('[data-period-panel="works"]'),true);
  await page.screenshot({path:'/tmp/smg-period-by-day-desktop.png',animations:'disabled'});
  await page.setViewportSize({width:390,height:844});await page.waitForTimeout(200);assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2));
+ const mobileBefore=await geometry();
+ const dateSpace=await grid.evaluate(el=>{const total=el.querySelector('thead .report-day-period').getBoundingClientRect();return el.getBoundingClientRect().left+el.clientWidth-total.right;});
+ await page.screenshot({path:'/tmp/smg-sticky-total-mobile.png',animations:'disabled'});
+ assert(dateSpace>=80,'Frozen columns must leave room for a date on a narrow screen: '+dateSpace);
+ await grid.evaluate(el=>el.scrollLeft+=400);await page.waitForTimeout(100);const mobileAfter=await geometry();
+ assert(Math.abs(mobileAfter.total.x-mobileBefore.total.x)<2);assert(Math.abs(mobileAfter.totalHeader.x-mobileBefore.totalHeader.x)<2);
  await grid.scrollIntoViewIfNeeded();await page.screenshot({path:'/tmp/smg-period-by-day-mobile.png',animations:'disabled'});
  await page.setViewportSize({width:1440,height:1000});
 
@@ -113,6 +122,11 @@ const {chromium}=require('playwright'),fs=require('fs'),assert=require('assert')
   await page.goto(c.base+c.standalone_path+'&by_day='+byDay);
   const scope=page.locator('[data-equipment-report] [data-period-panel="works"]');
   await foldAll(scope,false);await foldAll(scope,true);
+  if(byDay==='1'){
+   const ownGrid=scope.locator('[data-report-day-grid]');
+   const total=ownGrid.locator('tbody .report-day-period').first(),before=await total.boundingBox();
+   await ownGrid.evaluate(el=>el.scrollLeft=500);const after=await total.boundingBox();assert(Math.abs(after.x-before.x)<2);
+  }
  }
  await page.setViewportSize({width:390,height:844});
  assert(await page.locator('[data-report-collapse]:visible').isVisible());

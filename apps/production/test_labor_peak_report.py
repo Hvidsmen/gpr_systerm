@@ -121,7 +121,7 @@ class LaborPeakReportTests(TestCase):
         self.assertContains(response,'План · максимум за день')
         self.assertNotContains(response,'чел.·дн.')
         response=self.client.get(reverse('production:smg_period_detail'),{**query,'by_day':'1'})
-        self.assertContains(response,'<th scope="col">Максимум за день</th>',html=True)
+        self.assertContains(response,'<th scope="col" class="report-day-period">Максимум за день</th>',html=True)
         export=self.client.get(reverse('production:smg_period_export'),{**query,'by_day':'1'})
         book=load_workbook(BytesIO(b''.join(export.streaming_content)))
         rows=list(book['Люди'].values)
