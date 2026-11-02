@@ -6,7 +6,9 @@ document.addEventListener('DOMContentLoaded', function () {
   let activeLink = null;
   let bestMatch = 0;
   sidebar.querySelectorAll('.nav-link').forEach(function (link) {
-    const href = new URL(link.href, window.location.origin).pathname;
+    const target = new URL(link.href, window.location.origin);
+    if (target.origin !== window.location.origin) return;
+    const href = target.pathname;
     const paths = [href, ...(link.dataset.paths || '').split(/\s+/).filter(Boolean)];
     paths.forEach(function (path) {
       // Match whole path segments, with the home page matching only itself.

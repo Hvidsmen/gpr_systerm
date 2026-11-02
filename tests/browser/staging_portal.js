@@ -63,6 +63,17 @@ const {chromium}=require('playwright'),assert=require('assert'),fs=require('fs')
  await page.screenshot({path:'/tmp/staging-portal-desktop.png',animations:'disabled'});
  // Both processes use one host: visiting staging must not log the owner out of production.
  await page.goto(c.source+c.settings);assert(!page.url().includes(c.login_path));assert(!(await page.innerText('body')).includes('ТЕСТОВЫЙ ПОРТАЛ'));
+ await page.locator('.sidebar-admin > summary').click();
+ const sourceLink=page.getByRole('link',{name:'Тестовый портал',exact:true});
+ assert.equal(await sourceLink.getAttribute('target'),'_blank');
+ assert((await sourceLink.getAttribute('rel')).includes('noopener'));
+ assert(!(await sourceLink.getAttribute('class')).split(/\s+/).includes('active'));
+ await page.screenshot({path:'/tmp/staging-source-link.png',animations:'disabled'});
+ const popupPromise=context.waitForEvent('page');await sourceLink.click();const popup=await popupPromise;
+ await popup.waitForURL(url=>url.origin===new URL(c.base).origin);await popup.waitForLoadState();
+ assert((await popup.innerText('body')).includes('ТЕСТОВЫЙ ПОРТАЛ'));
+ assert.equal(await popup.getByRole('link',{name:'Тестовый портал',exact:true}).count(),0);
+ assert(page.url().startsWith(c.source));await popup.close();
  await page.setViewportSize({width:390,height:844});await page.goto(c.base+c.settings);assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2));await page.screenshot({path:'/tmp/staging-portal-mobile.png',animations:'disabled'});
  assert.deepEqual(errors,[]);await browser.close();console.log('PASS: independent staging owner login with admin password, short-password change form, blocked other user, distinct cookies on same host, role impersonation, no integrations, banner and mobile');
 })().catch(error=>{console.error(error);process.exit(1)});

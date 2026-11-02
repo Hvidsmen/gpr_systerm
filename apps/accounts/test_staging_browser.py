@@ -13,6 +13,7 @@ from unittest import skipUnless
 from unittest.mock import patch
 from urllib.request import build_opener, ProxyHandler
 from django.conf import settings
+from django.test import override_settings
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
 from django.db import connection
 from django.urls import reverse
@@ -99,8 +100,9 @@ class StagingBrowserTests(StaticLiveServerTestCase):
                     impersonate=reverse('accounts:impersonation_start', args=[other.pk]), stop=reverse('accounts:impersonation_stop'),
                     update_path=reverse('accounts:portal_updates'), web_release=web_release, refresh_data=refresh_data,
                     blocked=[reverse('accounts:invitation_settings'), reverse('accounts:training_list')])
-                result = subprocess.run(['node', str(Path(settings.BASE_DIR) / 'tests/browser/staging_portal.js')],
-                    capture_output=True, text=True, env=dict(os.environ, STAGING_CONFIG=json.dumps(config)), timeout=750 if web_release or refresh_data else 100)
+                with override_settings(STAGING_PORTAL_OWNER_LOGIN=owner.username, STAGING_PORTAL_URL=base):
+                    result = subprocess.run(['node', str(Path(settings.BASE_DIR) / 'tests/browser/staging_portal.js')],
+                        capture_output=True, text=True, env=dict(os.environ, STAGING_CONFIG=json.dumps(config)), timeout=750 if web_release or refresh_data else 100)
                 self.assertEqual(result.returncode, 0, result.stdout + '\n' + result.stderr)
                 print(result.stdout.strip())
                 if refresh_data:
