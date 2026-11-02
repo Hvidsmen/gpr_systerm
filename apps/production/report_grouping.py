@@ -25,7 +25,7 @@ def daily_rows(row, dates):
 
 
 def peak_daily_totals(row):
-    """Peak daily headcounts; group peaks use daily sums, not summed row peaks."""
+    """Peak daily resource counts; group peaks use daily sums, not summed row peaks."""
     for field in ['plan', 'actual']:
         days=[day for day in row['daily'].values() if day.get(field) is not None]
         row[field]=max((day[field] for day in days),default=None)
@@ -125,7 +125,7 @@ def day_matrix(report):
         metrics=[]
         for field,caption in [('plan','План'),('actual','Факт'),('deviation','Факт − план'),('percent','Выполнение, %')]:
             cells=[{'value':day.get(field),'partial':field=='actual' and day.get('actual') is not None and day.get('actual_count',0)<day.get('row_count',0)} for day in total['daily_rows']]
-            partial=(direction=='labor' and field=='actual' and total.get(field) is not None
+            partial=(direction in {'labor','equipment'} and field=='actual' and total.get(field) is not None
                 and total.get('actual_count',1)<total.get('row_count',1))
             metrics.append({'label':caption,'field':field,'total':total.get(field),'cells':cells,'total_partial':partial})
         blocks.append({'label':label,'unit':total['unit'],'metrics':metrics,'level':level,'toggle':toggle,'parent':parent,'context':context,'direction':direction})
