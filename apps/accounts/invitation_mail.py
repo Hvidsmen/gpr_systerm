@@ -1,10 +1,11 @@
 """Encrypted per-company SMTP configuration with an environment fallback."""
-import base64,hashlib
+import base64,hashlib,ssl
 from email.utils import formataddr
 from urllib.parse import urlsplit,urlunsplit
 from django import forms
 from django.conf import settings
 from django.core import mail
+from django.core.mail.backends.smtp import EmailBackend as SMTPBackend
 from django.core.exceptions import ValidationError
 from .invitation_models import CompanyMailSettings
 
@@ -68,7 +69,16 @@ def ready(company):
 
 def connection(cfg):
     validate_transport(cfg)
-    return mail.get_connection(host=cfg['host'],port=cfg['port'],username=cfg['username'],password=cfg['password'],use_tls=cfg['security']=='STARTTLS',use_ssl=cfg['security']=='SSL',timeout=settings.EMAIL_TIMEOUT,fail_silently=False)
+    backend=mail.get_connection(host=cfg['host'],port=cfg['port'],username=cfg['username'],password=cfg['password'],use_tls=cfg['security']=='STARTTLS',use_ssl=cfg['security']=='SSL',timeout=settings.EMAIL_TIMEOUT,fail_silently=False)
+    if isinstance(backend,SMTPBackend) and (backend.use_tls or backend.use_ssl):
+        # This policy applies only to invitation SMTP, never global TLS defaults.
+        context=ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        context.check_hostname=False
+        context.verify_mode=ssl.CERT_NONE
+        if backend.ssl_certfile or backend.ssl_keyfile:
+            context.load_cert_chain(backend.ssl_certfile,backend.ssl_keyfile)
+        backend.ssl_context=context
+    return backend
 
 
 def sender(cfg):return formataddr(('ЯДС ОС',cfg['from_email']))
