@@ -123,18 +123,18 @@ class StagingRuntimeTests(SimpleTestCase):
         self.assertTrue(Path(current['code']).is_relative_to(self.root / '.runtime/releases'))
         self.assertEqual(self.digest(), before)
 
-    def test_password_reader_retries_short_and_mismatched_input_without_echoing_passwords(self):
-        good = 'synthetic-valid-test-password'
+    def test_password_reader_allows_admin_and_retries_empty_or_mismatched_input_without_echoing_passwords(self):
+        good = 'admin'
         output = StringIO()
-        with patch.object(staging.getpass, 'getpass', side_effect=['short', good, 'different-confirmation', good, good]) as reader, patch.object(staging.sys, 'stderr', output):
+        with patch.object(staging.getpass, 'getpass', side_effect=['', good, 'different-confirmation', good, good]) as reader, patch.object(staging.sys, 'stderr', output):
             self.assertEqual(staging.prompt_password(), good)
         self.assertEqual(reader.call_count, 5)
-        self.assertIn('12', output.getvalue()); self.assertIn('не совпали', output.getvalue())
-        for secret in ['short', good, 'different-confirmation']:self.assertNotIn(secret, output.getvalue())
+        self.assertIn('пустым', output.getvalue()); self.assertIn('не совпали', output.getvalue())
+        for secret in [good, 'different-confirmation']:self.assertNotIn(secret, output.getvalue())
         self.assertFalse((self.root / 'data').exists())
 
     def test_password_reader_retries_oversized_input_and_handles_cancel(self):
-        good = 'synthetic-valid-test-password'
+        good = 'admin'
         with patch.object(staging.getpass, 'getpass', side_effect=['x' * 4097, good, good]), patch.object(staging.sys, 'stderr', StringIO()):
             self.assertEqual(staging.prompt_password(), good)
         with patch.object(staging.getpass, 'getpass', side_effect=EOFError):
@@ -144,15 +144,15 @@ class StagingRuntimeTests(SimpleTestCase):
     def test_invalid_password_never_starts_copy_and_cli_prepares_once_after_correction(self):
         before = self.digest()
         with patch.object(staging, 'snapshot') as copy:
-            for invalid in ['short', 'x' * 4097]:
+            for invalid in ['', 'x' * 4097]:
                 with self.assertRaises(ValueError):
                     staging.prepare(self.root, self.prod, 'owner', invalid, revision='a' * 40)
             copy.assert_not_called()
-        good = 'synthetic-valid-test-password'
+        good = 'admin'
         arguments=['staging.py','prepare','--root',str(self.root),'--source-root',str(self.prod),'--owner-login','owner','--revision','a'*40]
         state={'hosts':['127.0.0.1'],'port':8002,'owner_login':'owner'}
         output = StringIO()
-        with patch.object(staging.sys, 'argv', arguments), patch.object(staging.getpass, 'getpass', side_effect=['short', good, good]), patch.object(staging, 'prepare', return_value=state) as prepare, patch.object(staging.sys, 'stderr', output), patch.object(staging.sys, 'stdout', output):
+        with patch.object(staging.sys, 'argv', arguments), patch.object(staging.getpass, 'getpass', side_effect=['', good, good]), patch.object(staging, 'prepare', return_value=state) as prepare, patch.object(staging.sys, 'stderr', output), patch.object(staging.sys, 'stdout', output):
             staging.main()
         prepare.assert_called_once()
         self.assertEqual(prepare.call_args.args[3], good)

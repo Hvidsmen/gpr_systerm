@@ -144,8 +144,8 @@ def prepare(root, source_root, login, password, *, port=8002, hosts=None, revisi
     disjoint(root, source_root)
     if root != CODE_ROOT:raise ValueError('Подготовку запускайте из папки кода тестового портала (--root).')
     if not login.strip():raise ValueError('Укажите логин владельца теста.')
-    if not 12 <= len(password) <= 4096:
-        raise ValueError('Отдельный тестовый пароль должен содержать от 12 до 4096 символов.')
+    if not 1 <= len(password) <= 4096:
+        raise ValueError('Введите непустой тестовый пароль длиной не более 4096 символов.')
     if len(revision) != 40 or any(c not in '0123456789abcdef' for c in revision):
         raise ValueError('Укажите точный SHA версии (40 символов), а не ветку main.')
     if not 1024 <= port <= 65535:
@@ -293,9 +293,9 @@ def prompt_password():
     """Validate before preparation and allow corrections without restarting setup."""
     while True:
         try:
-            password = getpass.getpass('Новый отдельный пароль для тестового портала (не менее 12 символов): ')
-            if not 12 <= len(password) <= 4096:
-                print('Пароль должен содержать от 12 до 4096 символов. Введите другой пароль.', file=sys.stderr)
+            password = getpass.getpass('Новый отдельный пароль для тестового портала (можно короткий): ')
+            if not 1 <= len(password) <= 4096:
+                print('Пароль не должен быть пустым или длиннее 4096 символов. Введите другой пароль.', file=sys.stderr)
                 continue
             confirmation = getpass.getpass('Повторите тестовый пароль: ')
         except EOFError:

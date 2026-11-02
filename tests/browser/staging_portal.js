@@ -8,6 +8,10 @@ const {chromium}=require('playwright'),assert=require('assert'),fs=require('fs')
  await page.locator('[name=username]').fill(c.other);await page.locator('[name=password]').fill(c.other_password);await page.getByRole('button',{name:'Войти',exact:true}).click();assert(page.url().includes(c.login_path));
  await page.locator('[name=username]').fill(c.login);await page.locator('[name=password]').fill(c.password);await page.getByRole('button',{name:'Войти',exact:true}).click();await page.waitForURL(url=>!url.pathname.includes(c.login_path));
  assert((await page.innerText('body')).includes('ТЕСТОВЫЙ ПОРТАЛ'));
+ // Short owner passwords must also be accepted by the ordinary change-password form.
+ await page.goto(c.base+c.password_change);
+ await page.locator('[name=old_password]').fill(c.password);await page.locator('[name=new_password1]').fill('admin');await page.locator('[name=new_password2]').fill('admin');
+ await page.getByRole('button',{name:'Изменить пароль',exact:true}).click();assert((await page.innerText('body')).includes('Пароль успешно изменен.'));
  const cookies=await context.cookies();assert(cookies.some(cookie=>cookie.name.startsWith('staging_')&&cookie.name.endsWith('_session')));assert(cookies.some(cookie=>cookie.name==='sessionid'&&cookie.value===c.source_cookie));
  for(const path of c.blocked){const response=await context.request.get(c.base+path);assert.equal(response.status(),403);}
  const post=async path=>{const cookie=(await context.cookies()).find(cookie=>cookie.name.startsWith('staging_')&&cookie.name.endsWith('_csrf'));return context.request.post(c.base+path,{headers:{'X-CSRFToken':cookie.value,'Referer':c.base+'/'} ,form:{}});};
@@ -17,5 +21,5 @@ const {chromium}=require('playwright'),assert=require('assert'),fs=require('fs')
  // Both processes use one host: visiting staging must not log the owner out of production.
  await page.goto(c.source+c.settings);assert(!page.url().includes(c.login_path));assert(!(await page.innerText('body')).includes('ТЕСТОВЫЙ ПОРТАЛ'));
  await page.setViewportSize({width:390,height:844});await page.goto(c.base+c.settings);assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2));await page.screenshot({path:'/tmp/staging-portal-mobile.png',animations:'disabled'});
- assert.deepEqual(errors,[]);await browser.close();console.log('PASS: independent staging owner login, blocked other user, distinct cookies on same host, role impersonation, no integrations, banner and mobile');
+ assert.deepEqual(errors,[]);await browser.close();console.log('PASS: independent staging owner login with admin password, short-password change form, blocked other user, distinct cookies on same host, role impersonation, no integrations, banner and mobile');
 })().catch(error=>{console.error(error);process.exit(1)});

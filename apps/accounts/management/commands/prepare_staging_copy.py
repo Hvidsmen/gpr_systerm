@@ -12,7 +12,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         if not getattr(settings, 'STAGING_MODE', False):raise CommandError('Команда разрешена только на отдельной тестовой базе.')
         password = sys.stdin.read(4097)
-        if not 12 <= len(password) <= 4096:raise CommandError('Нужен отдельный тестовый пароль длиной от 12 до 4096 символов.')
+        if not 1 <= len(password) <= 4096:raise CommandError('Нужен непустой тестовый пароль длиной не более 4096 символов.')
         from apps.accounts.models import User, Role, OneCConnection, CompanyMailSettings, InvitationBatch, UserInvitation
         from apps.accounts.training_models import TrainingCopy, TrainingTicketUse
         with connection.cursor() as cursor:cursor.execute('PRAGMA secure_delete=ON')

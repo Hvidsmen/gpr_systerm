@@ -14,6 +14,8 @@ os.environ.update(DJANGO_DB_PATH=str(private_path(_staging_root, 'data/db.sqlite
 from config.settings import *
 
 STAGING_MODE = True
+# Explicit owner preference for this isolated environment; production settings stay separate.
+AUTH_PASSWORD_VALIDATORS = []
 STAGING_CONFIG = manifest(CONFIG_DIR, os.environ.get('GPR_STAGING_CANDIDATE'))
 DATABASES['default']['NAME'] = private_path(CONFIG_DIR, 'data/db.sqlite3')
 MEDIA_ROOT = private_path(CONFIG_DIR, 'data/media')

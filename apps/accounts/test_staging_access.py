@@ -52,3 +52,9 @@ class StagingAccessTests(TestCase):
 
     def test_preparation_is_forbidden_on_normal_portal(self):
         with self.assertRaises(CommandError):call_command('prepare_staging_copy')
+
+    def test_normal_portal_keeps_its_password_policy(self):
+        from django.contrib.auth.password_validation import validate_password
+        from django.core.exceptions import ValidationError
+        self.assertTrue(settings.AUTH_PASSWORD_VALIDATORS)
+        with self.assertRaises(ValidationError):validate_password('admin', self.owner)

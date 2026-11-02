@@ -47,7 +47,7 @@ class StagingBrowserTests(StaticLiveServerTestCase):
             source_port = int(self.live_server_url.rsplit(':', 1)[1])
             atomic_json(prod / '.runtime/installed.json', {'database': str(connection.settings_dict['NAME']), 'media': str(media), 'port': source_port, 'hosts': ['127.0.0.1']})
             with patch.object(staging, 'CODE_ROOT', code):
-                state = staging.prepare(code, prod, owner.username, 'synthetic-acceptance-password', port=port, hosts=['127.0.0.1'], revision='a' * 40)
+                state = staging.prepare(code, prod, owner.username, 'admin', port=port, hosts=['127.0.0.1'], revision='a' * 40)
             with sqlite3.connect(code / 'data/db.sqlite3') as db:
                 self.assertEqual(db.execute('SELECT COUNT(*) FROM accounts_onecconnection').fetchone()[0], 0)
                 self.assertEqual(db.execute('SELECT COUNT(*) FROM django_session').fetchone()[0], 0)
@@ -68,8 +68,8 @@ class StagingBrowserTests(StaticLiveServerTestCase):
                 else:self.fail('Staging login did not become available')
                 config = dict(base=base, source=self.live_server_url, source_cookie=self.client.cookies['sessionid'].value,
                     chromium=shutil.which('chromium'), login=owner.username, other=other.username,
-                    password='synthetic-acceptance-password', other_password='synthetic-other-password',
-                    settings=reverse('accounts:settings'), login_path=reverse('accounts:login'),
+                    password='admin', other_password='synthetic-other-password',
+                    settings=reverse('accounts:settings'), login_path=reverse('accounts:login'), password_change=reverse('accounts:password_change'),
                     impersonate=reverse('accounts:impersonation_start', args=[other.pk]), stop=reverse('accounts:impersonation_stop'),
                     blocked=[reverse('accounts:invitation_settings'), reverse('accounts:portal_updates'), reverse('accounts:training_list')])
                 result = subprocess.run(['node', str(Path(settings.BASE_DIR) / 'tests/browser/staging_portal.js')],
