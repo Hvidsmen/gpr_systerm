@@ -128,9 +128,8 @@ LOGIN_REDIRECT_URL = '/dashboard/'
 LOGOUT_REDIRECT_URL = '/accounts/login/'
 LOGIN_URL = '/accounts/login/'
 
-# Production navigation for the single acceptance owner; no shared login ticket.
+# Production navigation for administrators; no shared login ticket.
 STAGING_PORTAL_URL = os.getenv('STAGING_PORTAL_URL', 'http://192.168.70.9:8002/').strip()
-STAGING_PORTAL_OWNER_LOGIN = os.getenv('STAGING_PORTAL_OWNER_LOGIN', 'admin').strip()
 
 
 # Corporate LDAP: service credentials are provided only by the server environment.
