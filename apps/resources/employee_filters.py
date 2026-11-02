@@ -4,14 +4,36 @@ from django.db.models import Q
 from .employee_staffing import staffing_parts
 
 
+def _department(department, source_position, staffing_position):
+    # Match Employee.display_department, including the ZUP staffing fallback.
+    return department or (staffing_parts(staffing_position)[1] if not source_position else '')
+
+
 class EmployeeFilterForm(forms.Form):
     catalogue_position = forms.IntegerField(required=False,min_value=1,widget=forms.HiddenInput)
     q = forms.CharField(label='ФИО или табельный номер', required=False, max_length=250,
         widget=forms.TextInput(attrs={'type': 'search', 'class': 'form-control', 'placeholder': 'Введите имя, фамилию или номер'}))
     position = forms.CharField(label='Должность', required=False, max_length=250,
         widget=forms.TextInput(attrs={'type': 'search', 'class': 'form-control', 'placeholder': 'Часть названия должности'}))
+    department = forms.ChoiceField(label='Подразделение', required=False,
+        choices=[('', 'Все подразделения')], widget=forms.Select(attrs={'class': 'form-select'}))
     include_archived = forms.BooleanField(label='Показывать уволенных / архивных', required=False,
         widget=forms.CheckboxInput(attrs={'class': 'form-check-input'}))
+
+    def __init__(self, *args, queryset=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if queryset is not None:
+            # Choices use the same access scope as the list, including archived
+            # staff so a selection remains valid when the archive is toggled.
+            departments = {
+                _department(department, position, staffing)
+                for department, position, staffing in queryset.order_by().values_list(
+                    'zup_department', 'zup_position_name', 'zup_card__staffing_position'
+                ).distinct().iterator(chunk_size=2000)
+            }
+            self.fields['department'].choices = [('', 'Все подразделения')] + [
+                (name, name) for name in sorted(filter(None, departments), key=lambda name: (name.casefold(), name))
+            ]
 
 
 def filtered_employees(queryset, form):
@@ -20,6 +42,12 @@ def filtered_employees(queryset, form):
     if form.cleaned_data.get('catalogue_position'):queryset=queryset.filter(position_id=form.cleaned_data['catalogue_position'])
     if not form.cleaned_data['include_archived']:
         queryset = queryset.filter(is_active=True)
+    department = form.cleaned_data['department']
+    if department:
+        ids = [pk for pk, source_department, source_position, staffing in queryset.values_list(
+            'pk', 'zup_department', 'zup_position_name', 'zup_card__staffing_position'
+        ).iterator(chunk_size=2000) if _department(source_department, source_position, staffing) == department]
+        queryset = queryset.filter(pk__in=ids)
     terms = form.cleaned_data['q'].casefold().split()
     position = form.cleaned_data['position'].casefold()
     if position or (connections[queryset.db].vendor == 'sqlite' and terms):

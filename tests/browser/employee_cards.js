@@ -5,9 +5,37 @@ const c=JSON.parse(process.env.EMPLOYEE_BROWSER_CONFIG);
  const browser=await chromium.launch({executablePath:c.chromium,headless:true,args:['--no-sandbox']});
  try{
   const context=await browser.newContext({viewport:{width:1440,height:1100}});
-  await context.route('**/*',route=>route.request().url().startsWith(c.base)?route.continue():route.abort());
+  await context.route('**/*',route=>{
+   if(process.env.EMPLOYEE_BOOTSTRAP_CSS && route.request().resourceType()==='stylesheet' && route.request().url().includes('bootstrap'))
+    return route.fulfill({path:process.env.EMPLOYEE_BOOTSTRAP_CSS,contentType:'text/css'});
+   return route.request().url().startsWith(c.base)?route.continue():route.abort();
+  });
   await context.addCookies([{name:'sessionid',value:c.admin_cookie,url:c.base}]);
   const page=await context.newPage();
+  await page.goto(c.base+c.listing);
+  await page.locator('#id_department + .search-select-shell .search-select-button').click();
+  const departments=page.locator('.search-select-popup:visible');
+  await departments.getByRole('searchbox').fill('цифровизации');
+  await departments.getByRole('option',{name:c.staffing_department,exact:true}).click();
+  await page.getByRole('button',{name:'Найти',exact:true}).click();
+  await page.waitForURL(url=>url.searchParams.get('department')===c.staffing_department);
+  assert.equal(await page.locator('#id_department').inputValue(),c.staffing_department);
+  assert.equal(await page.getByRole('link',{name:'Сотрудник другого отдела',exact:true}).count(),0);
+  assert(await page.getByRole('link',{name:'Сотрудник со штатной позицией',exact:true}).isVisible());
+  assert(new URL(await page.getByRole('link',{name:'Экспорт в Excel',exact:true}).getAttribute('href'),c.base).searchParams.get('department')===c.staffing_department);
+  if(process.env.EMPLOYEE_FILTER_SCREENSHOT)await page.screenshot({path:process.env.EMPLOYEE_FILTER_SCREENSHOT,fullPage:true});
+  await page.setViewportSize({width:390,height:844});
+  await page.waitForFunction(()=>document.querySelector('#sidebar').getBoundingClientRect().right<=1);
+  await page.evaluate(()=>window.scrollTo(0,0));
+  const filter=page.locator('form[method="get"]');
+  assert(await filter.evaluate(el=>el.scrollWidth<=el.clientWidth));
+  const filterBounds=await filter.boundingBox();
+  assert(filterBounds.x>=0 && filterBounds.x+filterBounds.width<=391);
+  if(process.env.EMPLOYEE_FILTER_MOBILE_SCREENSHOT)await page.screenshot({path:process.env.EMPLOYEE_FILTER_MOBILE_SCREENSHOT,fullPage:true});
+  await page.getByRole('link',{name:'Сбросить',exact:true}).click();
+  assert.equal(await page.locator('#id_department').inputValue(),'');
+  assert(await page.getByRole('link',{name:'Сотрудник другого отдела',exact:true}).isVisible());
+  await page.setViewportSize({width:1440,height:1100});
   await page.goto(c.base+c.listing);
   await page.getByRole('link',{name:'Иванов Иван Иванович',exact:true}).click();
   await page.waitForURL(c.base+c.detail);

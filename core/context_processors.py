@@ -1,6 +1,18 @@
 from core.permissions import role_code, DISPATCHER_ROLES
 
 
+def staging_portal(request):
+    from django.conf import settings
+    user = request.user
+    url = getattr(settings, 'STAGING_PORTAL_URL', '')
+    if (not url or getattr(settings, 'STAGING_MODE', False) or
+            getattr(settings, 'TRAINING_MODE', False) or getattr(request, 'acting_admin', None) or
+            not user.is_authenticated or not user.is_active or not user.company_id or
+            user.archived_at is not None or role_code(user) != 'ADMIN'):
+        return {}
+    return {'staging_portal_url': url}
+
+
 def planning_tasks(request):
     user=request.user
     if not user.is_authenticated or not user.company_id:return {}

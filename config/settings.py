@@ -82,6 +82,7 @@ TEMPLATES = [
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 'core.context_processors.planning_tasks',
+                'core.context_processors.staging_portal',
             ],
         },
     },
@@ -126,6 +127,9 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 LOGIN_REDIRECT_URL = '/dashboard/'
 LOGOUT_REDIRECT_URL = '/accounts/login/'
 LOGIN_URL = '/accounts/login/'
+
+# Production navigation for administrators; no shared login ticket.
+STAGING_PORTAL_URL = os.getenv('STAGING_PORTAL_URL', 'http://192.168.70.9:8002/').strip()
 
 
 # Corporate LDAP: service credentials are provided only by the server environment.

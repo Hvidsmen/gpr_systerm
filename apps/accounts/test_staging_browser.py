@@ -1,0 +1,225 @@
+import json
+import os
+from pathlib import Path
+import shutil
+import socket
+import sqlite3
+import subprocess
+import sys
+from tempfile import TemporaryDirectory
+import time
+import zipfile
+from unittest import skipUnless
+from unittest.mock import patch
+from urllib.request import build_opener, ProxyHandler
+from django.conf import settings
+from django.test import override_settings
+from django.contrib.staticfiles.testing import StaticLiveServerTestCase
+from django.db import connection
+from django.urls import reverse
+from .models import Company, User, Role, OneCConnection, CompanyMailSettings, TrainingCopy
+from .invitation_mail import encrypt_password
+from ops import staging
+from ops.windows_runtime import atomic_json
+
+
+@skipUnless(os.environ.get('STAGING_BROWSER_TESTS') == '1', 'Optional two independent portal processes and Chromium')
+class StagingBrowserTests(StaticLiveServerTestCase):
+    serialized_rollback = True
+
+    def test_real_snapshot_login_cookie_isolation_impersonation_and_source_preservation(self):
+        if connection.settings_dict['NAME'] == ':memory:' or 'mode=memory' in str(connection.settings_dict['NAME']):
+            self.fail('Use a dedicated disposable file-backed TEST database for this browser scenario.')
+        company = Company.objects.create(name='Acceptance source')
+        owner = User.objects.create_user(username='acceptance.owner', company=company, role=Role.objects.get(code='ADMIN'), password='synthetic-production-password')
+        other = User.objects.create_user(username='acceptance.other', company=company, role=Role.objects.get(code='DISPATCHER'), password='synthetic-other-password')
+        team = User.objects.create_user(username='acceptance.team', company=company, role=Role.objects.get(code='ADMIN'), password='synthetic-team-password')
+        team_hash=team.password
+        OneCConnection.objects.create(company=company, server='synthetic-source', database='synthetic-db')
+        credential = encrypt_password(company.pk, 'synthetic-source-mail-password')
+        CompanyMailSettings.objects.create(company=company, host='synthetic-smtp', password_encrypted=credential)
+        TrainingCopy.objects.create(company=company, name='Synthetic existing training', port=8101)
+        self.client.force_login(owner)
+        production_hash = owner.password
+        with TemporaryDirectory() as temp:
+            root = Path(temp); prod = root / 'source'; (prod / '.runtime').mkdir(parents=True)
+            media = prod / 'media'; media.mkdir(); (media / 'fixture.txt').write_text('original document')
+            actuation=prod/'private_uploads/actuation';actuation.mkdir(parents=True)
+            (actuation/'fixture-act.txt').write_text('original act')
+            code = root / 'test'
+            shutil.copytree(settings.BASE_DIR, code, ignore=shutil.ignore_patterns('.git', '.venv', '__pycache__', '.runtime', 'staticfiles', 'db.sqlite3', '.env', '.dev-secret-key'))
+            with socket.socket() as sock:sock.bind(('127.0.0.1', 0)); port = sock.getsockname()[1]
+            source_port = int(self.live_server_url.rsplit(':', 1)[1])
+            atomic_json(prod / '.runtime/installed.json', {'database': str(connection.settings_dict['NAME']), 'media': str(media), 'port': source_port, 'hosts': ['127.0.0.1']})
+            with patch.object(staging, 'CODE_ROOT', code):
+                state = staging.prepare(code, prod, owner.username, 'admin', port=port, hosts=['127.0.0.1'], revision='a' * 40)
+            # This administrator did not exist when the test DB was copied.
+            late = User.objects.create_user(username='acceptance.late', company=company, role=Role.objects.get(code='ADMIN'), password='synthetic-late-password')
+            late_hash=late.password
+            web_release = os.environ.get('STAGING_WEB_RELEASE_TESTS') == '1'
+            refresh_data = os.environ.get('STAGING_REFRESH_TESTS') == '1'
+            if web_release:
+                # Only this disposable old release gets a local GitHub fixture.
+                # The downloaded candidate is the unmodified source, and uses
+                # the real venv, backup, migrations, static files and restart.
+                archive = root / 'web-candidate.zip'
+                with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as zipped:
+                    for item in Path(settings.BASE_DIR).rglob('*'):
+                        relative = item.relative_to(settings.BASE_DIR)
+                        if any(part in {'.git', '.venv', '__pycache__', '.runtime', 'staticfiles', 'data'} for part in relative.parts):continue
+                        if item.is_file() and item.name not in {'.env', '.dev-secret-key', 'secret.key', 'staging.json'}:
+                            zipped.write(item, 'gpr_systerm-' + 'b'*40 + '/' + relative.as_posix())
+                fixture = '\n\ndef check_release(root):\n    result = dict(revision="' + 'b'*40 + '", from_revision="' + 'a'*40 + '", branch=BRANCH, checked_at=now())\n    atomic_json(runtime(root)/"staging-latest.json", result)\n    return result\n\ndef download(root, revision):\n    import shutil\n    target = runtime(root)/"fixture-download.zip"\n    shutil.copy2(' + repr(str(archive)) + ', target)\n    return target\n'
+                with (code / 'ops/staging_updates.py').open('a') as fixture_file:
+                    fixture_file.write(fixture)
+                with sqlite3.connect(code / 'data/db.sqlite3') as db:
+                    db.execute('UPDATE accounts_company SET name=? WHERE id=?', ['Acceptance data retained', company.pk])
+            if refresh_data:
+                with sqlite3.connect(code / 'data/db.sqlite3') as db:
+                    db.execute('UPDATE accounts_company SET name=? WHERE id=?',['Test changes must disappear',company.pk])
+                (code/'data/media/fixture.txt').write_text('test-only document')
+                (code/'data/media/test-only.txt').write_text('test-only extra document')
+                (code/'data/private_uploads/actuation/fixture-act.txt').write_text('test-only act')
+            with sqlite3.connect(code / 'data/db.sqlite3') as db:
+                self.assertEqual(db.execute('SELECT password FROM accounts_user WHERE id=?',[team.pk]).fetchone()[0],team_hash)
+                self.assertTrue(db.execute('SELECT password FROM accounts_user WHERE id=?',[other.pk]).fetchone()[0].startswith('!'))
+                self.assertEqual(db.execute('SELECT COUNT(*) FROM accounts_onecconnection').fetchone()[0], 0)
+                self.assertEqual(db.execute('SELECT COUNT(*) FROM django_session').fetchone()[0], 0)
+                self.assertEqual(db.execute('SELECT password_encrypted FROM accounts_companymailsettings WHERE company_id=?', [company.pk]).fetchone()[0], '')
+                self.assertEqual(db.execute('SELECT enabled FROM accounts_trainingcopy').fetchone()[0], 0)
+            server_log = open(root / 'test-process.log', 'wb')
+            process = subprocess.Popen([sys.executable, str(code / 'ops/staging.py'), 'serve', '--root', str(code)],
+                                       env=staging.dependency_environment(code), stdout=server_log, stderr=subprocess.STDOUT)
+            try:
+                base = 'http://127.0.0.1:' + str(port)
+                opener = build_opener(ProxyHandler({}))
+                for _ in range(100):
+                    if process.poll() is not None:self.fail((root / 'test-process.log').read_text())
+                    try:
+                        with opener.open(base + reverse('accounts:login'), timeout=1) as response:
+                            if response.status == 200:break
+                    except Exception:time.sleep(.2)
+                else:self.fail('Staging login did not become available')
+                config = dict(base=base, source=self.live_server_url, source_cookie=self.client.cookies['sessionid'].value,
+                    chromium=shutil.which('chromium'), login=owner.username, other=other.username,
+                    password='admin', other_password='synthetic-other-password',
+                    team_login=team.username, team_password='synthetic-team-password', late_login=late.username,late_password='synthetic-late-password',
+                    settings=reverse('accounts:settings'), login_path=reverse('accounts:login'), password_change=reverse('accounts:password_change'),
+                    impersonate=reverse('accounts:impersonation_start', args=[other.pk]), stop=reverse('accounts:impersonation_stop'),
+                    update_path=reverse('accounts:portal_updates'), web_release=web_release, refresh_data=refresh_data,
+                    blocked=[reverse('accounts:invitation_settings'), reverse('accounts:training_list')])
+                with override_settings(STAGING_PORTAL_URL=base):
+                    result = subprocess.run(['node', str(Path(settings.BASE_DIR) / 'tests/browser/staging_portal.js')],
+                        capture_output=True, text=True, env=dict(os.environ, STAGING_CONFIG=json.dumps(config)), timeout=750 if web_release or refresh_data else 100)
+                self.assertEqual(result.returncode, 0, result.stdout + '\n' + result.stderr)
+                print(result.stdout.strip())
+                if refresh_data:
+                    from django.contrib.auth.hashers import check_password
+                    current=staging.manifest(code)
+                    self.assertEqual(current['revision'],'b'*40 if web_release else 'a'*40)
+                    self.assertEqual(current['instance'],state['instance'])
+                    self.assertNotEqual(current['data_generation'],state['instance'])
+                    with sqlite3.connect(code/'data/db.sqlite3') as db:
+                        self.assertEqual(db.execute('SELECT name FROM accounts_company WHERE id=?',[company.pk]).fetchone()[0],'Acceptance source')
+                        self.assertTrue(check_password('admin',db.execute('SELECT password FROM accounts_user WHERE id=?',[owner.pk]).fetchone()[0]))
+                        self.assertTrue(db.execute('SELECT password FROM accounts_user WHERE id=?',[other.pk]).fetchone()[0].startswith('!'))
+                        self.assertEqual(db.execute('SELECT password FROM accounts_user WHERE id=?',[team.pk]).fetchone()[0],team_hash)
+                        self.assertEqual(db.execute('SELECT password FROM accounts_user WHERE id=?',[late.pk]).fetchone()[0],late_hash)
+                        self.assertEqual(db.execute('SELECT COUNT(*) FROM accounts_onecconnection').fetchone()[0],0)
+                        self.assertEqual(db.execute('SELECT password_encrypted FROM accounts_companymailsettings WHERE company_id=?',[company.pk]).fetchone()[0],'')
+                        self.assertEqual(db.execute('SELECT enabled FROM accounts_trainingcopy').fetchone()[0],0)
+                    self.assertEqual((code/'data/media/fixture.txt').read_text(),'original document')
+                    self.assertEqual((code/'data/private_uploads/actuation/fixture-act.txt').read_text(),'original act')
+                    self.assertFalse((code/'data/media/test-only.txt').exists())
+                    backups=list((code/'.runtime/backups').glob('*/data/media/test-only.txt'))
+                    self.assertEqual(len(backups),1)
+                    self.assertEqual(backups[0].read_text(),'test-only extra document')
+                    print('PASS: confirmed browser data refresh; fresh DB/documents/acts, old full backup, retained test password/code/instance, source credentials and sessions removed')
+                if web_release:
+                    current = staging.manifest(code)
+                    self.assertEqual(current['revision'], 'b'*40)
+                    self.assertEqual(current['instance'], state['instance'])
+                    with sqlite3.connect(code / 'data/db.sqlite3') as db:
+                        self.assertEqual(db.execute('SELECT name FROM accounts_company WHERE id=?', [company.pk]).fetchone()[0], 'Acceptance source' if refresh_data else 'Acceptance data retained')
+                    self.assertTrue(list((code / '.runtime/backups').glob('*/database.sqlite3')))
+                    print('PASS: browser button → queued update → real dependencies/migrations → HTTP restart; test data, session and instance retained')
+                    # The Windows task keeps its original launcher path after
+                    # upgrades. Restart through it, then verify the whole
+                    # launcher -> current supervisor -> HTTP chain shuts down.
+                    (code / '.runtime/server.stop').touch()
+                    process.wait(timeout=115)
+                    process = subprocess.Popen([sys.executable,str(code / 'ops/staging.py'),'serve','--root',str(code)],
+                        env=staging.dependency_environment(code),stdout=server_log,stderr=subprocess.STDOUT)
+                    for _ in range(100):
+                        if process.poll() is not None:self.fail('Delegated test launcher failed')
+                        try:
+                            with opener.open(base + reverse('accounts:login'),timeout=1) as response:
+                                if response.headers.get('X-Portal-Version') == 'b'*12:break
+                        except OSError:time.sleep(.2)
+                    else:self.fail('Updated version did not restart through the original test launcher')
+                    process.terminate();process.wait(timeout=10)
+                    for _ in range(100):
+                        try:
+                            with opener.open(base + reverse('accounts:login'), timeout=.5):pass
+                        except OSError:break
+                        time.sleep(.1)
+                    else:self.fail('Updated HTTP worker survived its test supervisor')
+                    print('PASS: original launcher selects updated supervisor; HTTP worker exits after launcher loss')
+            finally:
+                (code / '.runtime/server.stop').touch()
+                try:process.wait(timeout=115)
+                except subprocess.TimeoutExpired:process.kill();process.wait(timeout=10)
+                server_log.close()
+            if os.environ.get('STAGING_RELEASE_TESTS') == '1':
+                # An actual update on the disposable test installation: own venv,
+                # migrations, static files, pinned pointer and delegated HTTP child.
+                with sqlite3.connect(code / 'data/db.sqlite3') as db:
+                    db.execute('UPDATE accounts_company SET name=? WHERE id=?', ['Only acceptance changed', company.pk])
+                    test_hash = db.execute('SELECT password FROM accounts_user WHERE id=?', [owner.pk]).fetchone()[0]
+                archive = root / 'candidate.zip'
+                with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as zipped:
+                    for item in Path(settings.BASE_DIR).rglob('*'):
+                        relative = item.relative_to(settings.BASE_DIR)
+                        if any(part in {'.git', '.venv', '__pycache__', '.runtime', 'staticfiles', 'data'} for part in relative.parts):continue
+                        if item.is_file() and item.name not in {'.env', '.dev-secret-key', 'secret.key', 'staging.json'}:
+                            zipped.write(item, 'gpr_systerm-' + 'b' * 40 + '/' + relative.as_posix())
+                staging.update(code, archive, 'b' * 40)
+                current = staging.manifest(code)
+                self.assertEqual(current['revision'], 'b' * 40)
+                self.assertEqual(current['instance'], state['instance'])
+                with sqlite3.connect(code / 'data/db.sqlite3') as db:
+                    self.assertEqual(db.execute('SELECT name FROM accounts_company WHERE id=?', [company.pk]).fetchone()[0], 'Only acceptance changed')
+                    self.assertEqual(db.execute('SELECT password FROM accounts_user WHERE id=?', [owner.pk]).fetchone()[0], test_hash)
+                with open(root / 'updated-test-process.log', 'wb') as output:
+                    process = subprocess.Popen([sys.executable, str(code / 'ops/staging.py'), 'serve', '--root', str(code)], env=staging.environment(code), stdout=output, stderr=subprocess.STDOUT)
+                    try:
+                        for _ in range(100):
+                            if process.poll() is not None:self.fail((root / 'updated-test-process.log').read_text())
+                            try:
+                                with opener.open(base + reverse('accounts:login'), timeout=1) as response:
+                                    if response.headers.get('X-Portal-Version') == 'b' * 12:break
+                            except Exception:time.sleep(.2)
+                        else:self.fail('Updated staging release did not start')
+                        # Loss of the launcher must not leave its HTTP child orphaned.
+                        process.terminate();process.wait(timeout=10)
+                        for _ in range(100):
+                            try:
+                                with opener.open(base + reverse('accounts:login'), timeout=.5):pass
+                            except Exception:break
+                            time.sleep(.1)
+                        else:self.fail('Delegated staging HTTP worker survived its launcher')
+                    finally:
+                        (code / '.runtime/server.stop').touch()
+                        if process.poll() is None:process.kill();process.wait(timeout=10)
+                print('PASS: actual pinned test release, fresh dependencies, migrations, data/password/cookie identity retained, delegated worker and parent-loss shutdown')
+            owner.refresh_from_db(); other.refresh_from_db()
+            self.assertEqual(owner.password, production_hash)
+            self.assertTrue(other.check_password('synthetic-other-password'))
+            team.refresh_from_db();late.refresh_from_db()
+            self.assertEqual(team.password,team_hash);self.assertEqual(late.password,late_hash)
+            self.assertEqual(CompanyMailSettings.objects.get(company=company).password_encrypted, credential)
+            self.assertEqual(OneCConnection.objects.get(company=company).server, 'synthetic-source')
+            self.assertTrue(TrainingCopy.objects.get(company=company).enabled)
+            self.assertEqual((media / 'fixture.txt').read_text(), 'original document')
+            self.assertEqual((actuation/'fixture-act.txt').read_text(),'original act')
+            self.assertFalse((prod / 'staging.json').exists())

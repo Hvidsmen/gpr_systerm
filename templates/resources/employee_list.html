@@ -19,9 +19,10 @@
 <p class="text-muted small">Нажмите ФИО, чтобы открыть карточку сотрудника. Загрузка из ЗУП обновляет кадровые данные и включает уволенных с пометкой об архиве. Личные данные в карточке доступны кадровой службе и администратору.</p>
 <form method="get" class="card card-body mb-3">{{ filter_form.catalogue_position }}
   <div class="row g-3 align-items-end">
-    <div class="col-md-4">{{ filter_form.q.label_tag }}{{ filter_form.q }}{{ filter_form.q.errors }}</div>
-    <div class="col-md-4">{{ filter_form.position.label_tag }}{{ filter_form.position }}{{ filter_form.position.errors }}</div>
-    <div class="col-md-4 d-flex gap-2 align-items-center"><button class="btn btn-primary">Найти</button><a class="btn btn-outline-secondary" href="{% url 'resources:employee_list' %}">Сбросить</a></div>
+    <div class="col-md-6 col-xl-3">{{ filter_form.q.label_tag }}{{ filter_form.q }}{{ filter_form.q.errors }}</div>
+    <div class="col-md-6 col-xl-3">{{ filter_form.position.label_tag }}{{ filter_form.position }}{{ filter_form.position.errors }}</div>
+    <div class="col-md-6 col-xl-3">{{ filter_form.department.label_tag }}{{ filter_form.department }}{{ filter_form.department.errors }}</div>
+    <div class="col-md-6 col-xl-3 d-flex gap-2 align-items-center"><button class="btn btn-primary">Найти</button><a class="btn btn-outline-secondary" href="{% url 'resources:employee_list' %}">Сбросить</a></div>
     <div class="col-12"><label class="form-check">{{ filter_form.include_archived }} <span class="form-check-label">{{ filter_form.include_archived.label }}</span></label></div>
   </div>
 </form>

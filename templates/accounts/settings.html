@@ -28,7 +28,7 @@
                     </button>
                 </form>
                 <hr>
-                <a class="btn btn-outline-primary" href="{% url 'accounts:password_change' %}">Сменить пароль</a>
+                {% if request.staging and user.pk != request.staging.owner_id %}<p class="text-muted mb-0">Для входа используется пароль основной учётной записи. Меняйте его на основном портале или в Windows.</p>{% else %}<a class="btn btn-outline-primary" href="{% url 'accounts:password_change' %}">Сменить пароль</a>{% endif %}
             </div>
         </div>
     </div>
