@@ -4,6 +4,7 @@ from django.contrib.auth.hashers import make_password, identify_hasher, is_passw
 from django.contrib.sessions.models import Session
 from django.core.management.base import BaseCommand, CommandError
 from django.db import connection, transaction
+from django.db.models import Q
 
 
 class Command(BaseCommand):
@@ -31,8 +32,16 @@ class Command(BaseCommand):
         state = settings.STAGING_CONFIG
         with transaction.atomic():
             owner = User.objects.get(pk=state['owner_id'], company_id=state['company_id'], archived_at=None)
-            # Keep role accounts active for the owner's impersonation, never for login.
+            admins = User.objects.filter(Q(role__code='ADMIN') | Q(is_superuser=True),
+                is_active=True, archived_at__isnull=True, company__isnull=False)
+            admin_ids = list(admins.values_list('pk', flat=True))
+            local_hashes = list(admins.filter(auth_source='LOCAL').values_list('pk', 'password'))
+            # Keep working local passwords only for administrators. Directory
+            # passwords are verified in AD, never copied or stored as plaintext.
             User.objects.all().update(password=make_password(None), is_superuser=False, is_staff=False)
+            User.objects.filter(pk__in=admin_ids).update(role=Role.objects.get(code='ADMIN'))
+            for pk, existing_hash in local_hashes:
+                User.objects.filter(pk=pk).update(password=existing_hash)
             User.objects.filter(pk=owner.pk).update(password=encoded, role=Role.objects.get(code='ADMIN'),
                 is_active=True, auth_source='LOCAL', access_group=None, access_group_from_ad=False)
             Session.objects.all().delete(); TrainingTicketUse.objects.all().delete()
@@ -43,4 +52,4 @@ class Command(BaseCommand):
             TrainingCopy.objects.all().update(enabled=False, state='STOPPED')
         with connection.cursor() as cursor:
             cursor.execute('VACUUM'); cursor.execute('PRAGMA wal_checkpoint(TRUNCATE)')
-        self.stdout.write('Отдельная тестовая база подготовлена. Пароли, сессии и действующие подключения очищены.')
+        self.stdout.write('Тестовая база подготовлена. Хеши локальных паролей администраторов сохранены; пароли остальных пользователей, сессии и подключения очищены.')

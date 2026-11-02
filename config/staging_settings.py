@@ -25,7 +25,11 @@ SESSION_COOKIE_NAME = 'staging_' + STAGING_CONFIG['instance'].replace('-', '') +
 CSRF_COOKIE_NAME = 'staging_' + STAGING_CONFIG['instance'].replace('-', '') + '_csrf'
 SESSION_COOKIE_AGE = 12 * 60 * 60
 AUTHENTICATION_BACKENDS = ['apps.accounts.staging_access.OwnerBackend']
-LDAP_ENABLED = False
+# Only administrators' own AD binds are enabled. No directory provisioning,
+# group synchronization or service-account secret is inherited.
+from ops.staging_auth import directory_settings
+STAGING_DIRECTORY = directory_settings(CONFIG_DIR, STAGING_CONFIG)
+LDAP_ENABLED = STAGING_DIRECTORY['enabled']
 LDAP_SERVERS = []
 LDAP_BIND_USER = LDAP_BIND_PASSWORD = ''
 EMAIL_BACKEND = 'django.core.mail.backends.dummy.EmailBackend'

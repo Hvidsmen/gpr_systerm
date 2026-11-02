@@ -63,6 +63,8 @@ def manifest(root, candidate=None):
     private_path(root, data['static'])
     for name in ['database', 'media', 'actuation']:
         disjoint(root, data['source'][name])
+    if data.get('source_config_dir'):
+        disjoint(root, data['source_config_dir'])
     return data
 
 
@@ -175,6 +177,7 @@ def prepare(root, source_root, login, password, *, port=8002, hosts=None, revisi
             owner_id, company_id = find_owner(pending / 'data' / 'db.sqlite3', login)
             state = {'kind': KIND, 'instance': str(uuid.uuid4()), 'owner_id': owner_id, 'company_id': company_id,
                      'owner_login': login.strip(), 'port': port, 'hosts': hosts, 'revision': revision, 'source': source,
+                     'source_config_dir': str(source_root),
                      'code': str(root), 'python': sys.executable, 'static': 'staticfiles',
                      'production_url': 'http://' + (config.get('hosts') or hosts)[0] + ':' + str(config.get('port', 8001)) + '/'}
             preparing_state = {**state, 'code': str(pending)}

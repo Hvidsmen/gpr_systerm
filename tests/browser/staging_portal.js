@@ -6,6 +6,20 @@ const {chromium}=require('playwright'),assert=require('assert'),fs=require('fs')
  const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto(c.base+c.login_path);assert((await page.innerText('body')).includes('ТЕСТОВЫЙ ПОРТАЛ'));assert.equal(await page.getByRole('link',{name:'Зарегистрироваться'}).count(),0);
  await page.locator('[name=username]').fill(c.other);await page.locator('[name=password]').fill(c.other_password);await page.getByRole('button',{name:'Войти',exact:true}).click();assert(page.url().includes(c.login_path));
+ async function teamLogin(login,password){
+  // Use another context so each administrator has their own test session.
+  const teamContext=await browser.newContext({viewport:{width:1440,height:950}});
+  await teamContext.route('**/*',route=>{const url=route.request().url();if(url.startsWith(c.base))return route.continue();if(url.includes('bootstrap')&&url.includes('.css'))return route.fulfill({body:fs.readFileSync('/tmp/catalogue-bootstrap.css'),contentType:'text/css'});return route.abort();});
+  const teamTab=await teamContext.newPage();await teamTab.goto(c.base+c.login_path);
+  await teamTab.locator('[name=username]').fill(login);await teamTab.locator('[name=password]').fill(password);
+  await teamTab.getByRole('button',{name:'Войти',exact:true}).click();await teamTab.waitForURL(url=>!url.pathname.includes(c.login_path));
+  await teamTab.goto(c.base+c.settings);assert((await teamTab.innerText('body')).includes(login));
+  assert.equal(await teamTab.getByRole('link',{name:'Обновление тестового портала',exact:true}).count(),0);
+  assert.equal((await teamContext.request.get(c.base+c.update_path)).status(),403);
+  await teamTab.screenshot({path:'/tmp/staging-team-admin.png',animations:'disabled'});
+  await teamContext.close();
+ }
+ await teamLogin(c.team_login,c.team_password);await teamLogin(c.late_login,c.late_password);
  await page.locator('[name=username]').fill(c.login);await page.locator('[name=password]').fill(c.password);await page.getByRole('button',{name:'Войти',exact:true}).click();await page.waitForURL(url=>!url.pathname.includes(c.login_path));
  assert((await page.innerText('body')).includes('ТЕСТОВЫЙ ПОРТАЛ'));
  // Short owner passwords must also be accepted by the ordinary change-password form.
@@ -55,6 +69,7 @@ const {chromium}=require('playwright'),assert=require('assert'),fs=require('fs')
   assert(!(await page.innerText('body')).includes('при создании теста'));
   assert(await page.getByRole('button',{name:'Обновить данные с основного портала',exact:true}).isDisabled());
   await page.screenshot({path:'/tmp/staging-refresh-complete.png',animations:'disabled'});
+  await teamLogin(c.team_login,c.team_password);await teamLogin(c.late_login,c.late_password);
  }
  const post=async path=>{const cookie=(await context.cookies()).find(cookie=>cookie.name.startsWith('staging_')&&cookie.name.endsWith('_csrf'));return context.request.post(c.base+path,{headers:{'X-CSRFToken':cookie.value,'Referer':c.base+'/'} ,form:{}});};
  const impersonation=await post(c.impersonate);assert(impersonation.ok());await page.goto(c.base+c.settings);assert((await page.innerText('body')).includes('Вы работаете как'));assert((await page.innerText('body')).includes('ТЕСТОВЫЙ ПОРТАЛ'));

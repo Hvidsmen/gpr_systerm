@@ -33,6 +33,8 @@ class StagingBrowserTests(StaticLiveServerTestCase):
         company = Company.objects.create(name='Acceptance source')
         owner = User.objects.create_user(username='acceptance.owner', company=company, role=Role.objects.get(code='ADMIN'), password='synthetic-production-password')
         other = User.objects.create_user(username='acceptance.other', company=company, role=Role.objects.get(code='DISPATCHER'), password='synthetic-other-password')
+        team = User.objects.create_user(username='acceptance.team', company=company, role=Role.objects.get(code='ADMIN'), password='synthetic-team-password')
+        team_hash=team.password
         OneCConnection.objects.create(company=company, server='synthetic-source', database='synthetic-db')
         credential = encrypt_password(company.pk, 'synthetic-source-mail-password')
         CompanyMailSettings.objects.create(company=company, host='synthetic-smtp', password_encrypted=credential)
@@ -51,6 +53,9 @@ class StagingBrowserTests(StaticLiveServerTestCase):
             atomic_json(prod / '.runtime/installed.json', {'database': str(connection.settings_dict['NAME']), 'media': str(media), 'port': source_port, 'hosts': ['127.0.0.1']})
             with patch.object(staging, 'CODE_ROOT', code):
                 state = staging.prepare(code, prod, owner.username, 'admin', port=port, hosts=['127.0.0.1'], revision='a' * 40)
+            # This administrator did not exist when the test DB was copied.
+            late = User.objects.create_user(username='acceptance.late', company=company, role=Role.objects.get(code='ADMIN'), password='synthetic-late-password')
+            late_hash=late.password
             web_release = os.environ.get('STAGING_WEB_RELEASE_TESTS') == '1'
             refresh_data = os.environ.get('STAGING_REFRESH_TESTS') == '1'
             if web_release:
@@ -76,6 +81,8 @@ class StagingBrowserTests(StaticLiveServerTestCase):
                 (code/'data/media/test-only.txt').write_text('test-only extra document')
                 (code/'data/private_uploads/actuation/fixture-act.txt').write_text('test-only act')
             with sqlite3.connect(code / 'data/db.sqlite3') as db:
+                self.assertEqual(db.execute('SELECT password FROM accounts_user WHERE id=?',[team.pk]).fetchone()[0],team_hash)
+                self.assertTrue(db.execute('SELECT password FROM accounts_user WHERE id=?',[other.pk]).fetchone()[0].startswith('!'))
                 self.assertEqual(db.execute('SELECT COUNT(*) FROM accounts_onecconnection').fetchone()[0], 0)
                 self.assertEqual(db.execute('SELECT COUNT(*) FROM django_session').fetchone()[0], 0)
                 self.assertEqual(db.execute('SELECT password_encrypted FROM accounts_companymailsettings WHERE company_id=?', [company.pk]).fetchone()[0], '')
@@ -96,6 +103,7 @@ class StagingBrowserTests(StaticLiveServerTestCase):
                 config = dict(base=base, source=self.live_server_url, source_cookie=self.client.cookies['sessionid'].value,
                     chromium=shutil.which('chromium'), login=owner.username, other=other.username,
                     password='admin', other_password='synthetic-other-password',
+                    team_login=team.username, team_password='synthetic-team-password', late_login=late.username,late_password='synthetic-late-password',
                     settings=reverse('accounts:settings'), login_path=reverse('accounts:login'), password_change=reverse('accounts:password_change'),
                     impersonate=reverse('accounts:impersonation_start', args=[other.pk]), stop=reverse('accounts:impersonation_stop'),
                     update_path=reverse('accounts:portal_updates'), web_release=web_release, refresh_data=refresh_data,
@@ -115,6 +123,8 @@ class StagingBrowserTests(StaticLiveServerTestCase):
                         self.assertEqual(db.execute('SELECT name FROM accounts_company WHERE id=?',[company.pk]).fetchone()[0],'Acceptance source')
                         self.assertTrue(check_password('admin',db.execute('SELECT password FROM accounts_user WHERE id=?',[owner.pk]).fetchone()[0]))
                         self.assertTrue(db.execute('SELECT password FROM accounts_user WHERE id=?',[other.pk]).fetchone()[0].startswith('!'))
+                        self.assertEqual(db.execute('SELECT password FROM accounts_user WHERE id=?',[team.pk]).fetchone()[0],team_hash)
+                        self.assertEqual(db.execute('SELECT password FROM accounts_user WHERE id=?',[late.pk]).fetchone()[0],late_hash)
                         self.assertEqual(db.execute('SELECT COUNT(*) FROM accounts_onecconnection').fetchone()[0],0)
                         self.assertEqual(db.execute('SELECT password_encrypted FROM accounts_companymailsettings WHERE company_id=?',[company.pk]).fetchone()[0],'')
                         self.assertEqual(db.execute('SELECT enabled FROM accounts_trainingcopy').fetchone()[0],0)
@@ -205,6 +215,8 @@ class StagingBrowserTests(StaticLiveServerTestCase):
             owner.refresh_from_db(); other.refresh_from_db()
             self.assertEqual(owner.password, production_hash)
             self.assertTrue(other.check_password('synthetic-other-password'))
+            team.refresh_from_db();late.refresh_from_db()
+            self.assertEqual(team.password,team_hash);self.assertEqual(late.password,late_hash)
             self.assertEqual(CompanyMailSettings.objects.get(company=company).password_encrypted, credential)
             self.assertEqual(OneCConnection.objects.get(company=company).server, 'synthetic-source')
             self.assertTrue(TrainingCopy.objects.get(company=company).enabled)

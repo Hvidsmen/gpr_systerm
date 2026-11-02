@@ -26,6 +26,8 @@ def register_view(request):
     return render(request, 'accounts/register.html', {'form': form})
 
 
+@sensitive_post_parameters('password')
+@never_cache
 def login_view(request):
     if request.method == 'POST':
         form = UserLoginForm(request, data=request.POST)
@@ -179,6 +181,10 @@ class CompanyUserAccessView(CompanyScopedMixin, UpdateView):
 @never_cache
 @require_http_methods(['GET', 'POST'])
 def password_change_view(request):
+    from django.conf import settings
+    if getattr(settings, 'STAGING_MODE', False) and request.user.pk != settings.STAGING_CONFIG['owner_id']:
+        messages.info(request, 'Для входа на тест используется основной пароль. Меняйте его на основном портале или в Windows.')
+        return redirect('accounts:settings')
     if request.user.auth_source=='LDAP':
         messages.info(request, 'Пароль корпоративной учетной записи меняется в Windows или через администратора AD.')
         return redirect('accounts:access_pending' if not request.user.company_id or not request.user.role_id else 'accounts:settings')
