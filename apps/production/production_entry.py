@@ -89,6 +89,8 @@ def previous_people(obj, day, *, production, user=None):
 
 class ProductionPersonForm(PersonForm):
     production_entry = True
+    shift = forms.TypedChoiceField(label='Смена', choices=[(1,'День'),(2,'Ночь')], coerce=int, initial=1,
+        widget=forms.Select(attrs={'class':'form-select','data-native-select':'true','aria-label':'Смена сотрудника'}))
     prepared_from_previous = False
     work_mode = forms.ChoiceField(label='Занятость', choices=[('pending','Связи пока не проверены'),('works','Выполнял работы'),('general','Работал без привязки к работе')],
         initial='pending', widget=forms.Select(attrs={'class':'form-select','data-native-select':'true'}))
@@ -108,6 +110,8 @@ class ProductionPersonForm(PersonForm):
         from .employee_pool import prepare,apply
         apply(self.fields['employee'],self.employee_pool or prepare(self.obj,self.day),self.instance.employee if self.instance.employee_id else None)
         self.fields['employee'].help_text='Все активные сотрудники. Сначала — ВЖГ этого объекта, затем другие ВЖГ и сотрудники без оформленного нахождения.'
+        if self.instance.pk and self.instance.shift not in {1,2}:
+            self.fields['shift'].choices=[*self.fields['shift'].choices,(self.instance.shift,f'Смена {self.instance.shift} (ранее)')]
         self.initial.setdefault('work_targets',[])
         self.initial.setdefault('work_mode','pending')
         self.fields['work_targets'].choices=[(row['token'],row['label']) for row in self.activity_choices if (row['work'],row['item']) in self.activity_work_keys]

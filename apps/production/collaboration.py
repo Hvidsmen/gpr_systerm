@@ -56,7 +56,7 @@ def apply_relations(row):
 
 
 def detach_work(fact):
-    """Deleting a work fact clears its edges; a zero quantity does not."""
+    """Clearing or deleting a work fact removes only its edges for this day."""
     rows=EmployeeActivity.objects.filter(company=fact.company,construction_object=fact.project_work.section.construction_object,date=fact.date)
     affected=rows.filter(Q(work_id=fact.project_work_id,work_item_id=fact.work_item_id)|Q(work_links__work_id=fact.project_work_id,work_links__work_item_id=fact.work_item_id)).distinct()
     for row in affected.select_for_update():
@@ -117,6 +117,8 @@ def links(request):
                 # IDs are tombstones: an old card cannot bind a newly re-added fact.
                 fact=DailyFact.objects.select_for_update().filter(company=obj.company,date=day,project_work__section__construction_object=obj,pk=edge.get('fact')).first()
                 if not fact:return JsonResponse({'error':'Работа уже удалена из факта. Сначала проверьте обновлённый список работ.'},status=409)
+                if edge_action=='add' and fact.actual_quantity<=0:
+                    return JsonResponse({'error':'У работы нулевой факт. Сначала введите выполненный объём больше нуля, затем добавьте связь.','report':report_data(obj,day)},status=409)
                 resolved.append((edge_action,fact))
             for edge_action,fact in resolved:
                 if edge_action=='add':

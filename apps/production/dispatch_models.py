@@ -93,6 +93,8 @@ class EmployeeActivity(ShiftActivity):
         if self.equipment_id and EquipmentActivity.objects.filter(equipment_id=self.equipment_id,date=self.date,shift=self.shift).exclude(construction_object_id=self.construction_object_id).exists():raise ValidationError({'equipment':'Техника в этой смене находится на другом объекте.'})
         if self.planning_position_id and self.planning_position.company_id!=self.company_id:raise ValidationError({'planning_position':'Должность СМГ другой компании.'})
         if self.position_id and self.position.company_id!=self.company_id:raise ValidationError({'employee':'Должность другой компании.'})
+    @property
+    def shift_label(self):return {1:'День',2:'Ночь'}.get(self.shift,f'Смена {self.shift}')
     def __str__(self):return f'{self.employee} · {self.date} · смена {self.shift}'
 
 

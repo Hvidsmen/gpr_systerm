@@ -78,7 +78,7 @@ def workbook(obj,day,report):
         write(row,1,4,line['label'],bold=line.get('heading',False),fill=PALE if line.get('heading') else None)
         write(row,5,5,line['actual']);sheet.cell(row,5).number_format='#,##0.###';write(row,6,6,line['unit'])
         keys={token(w['project_work_id'],w['work_item_id']) for w in sources}
-        linked='\n'.join(p['name']+f" · смена {p['shift']}" for p in people if keys.intersection(p['targets'])) or 'Сотрудники не привязаны'
+        linked='\n'.join(p['name']+' · '+{1:'День',2:'Ночь'}.get(p['shift'],f"Смена {p['shift']}") for p in people if keys.intersection(p['targets'])) or 'Сотрудники не привязаны'
         notes=['Актировка: '+{'DAY':'Дневная','NIGHT':'Ночная','FULL_DAY':'Суточная'}.get(w['actuation_type'],w['actuation_type'])+' · '+w['actuation_reason'] for w in sources if w.get('actuation_type')]
         if notes:
             note_cell=sheet.cell(row,1);note_cell.value += '\n'+'\n'.join(dict.fromkeys(notes));note_cell.data_type='s'
@@ -97,7 +97,7 @@ def workbook(obj,day,report):
         assignment='Связи не проверены' if not person['reviewed'] else 'Работал без привязки к работе' if person['general'] else '\n'.join(choices.get(t,{}).get('label',t) for t in person['targets'])
         name=person['name'];staff=person.get('staff_position')
         if staff and staff!=role:name+='\nШтатная должность: '+staff
-        write(row,1,3,name);write(row,4,4,person['shift']);write(row,5,8,assignment);write(row,9,9,person['owner'])
+        write(row,1,3,name);write(row,4,4,{1:'День',2:'Ночь'}.get(person['shift'],f"Смена {person['shift']}"));write(row,5,8,assignment);write(row,9,9,person['owner'])
         sheet.row_dimensions[row].height=max(38,15*max(math.ceil(len(name)/42),math.ceil(len(assignment)/78)))
         row+=1
     if not people:write(row,1,9,'Сотрудники пока не добавлены.');row+=1

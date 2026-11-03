@@ -21,6 +21,8 @@
   matches.sort((a,b)=>Number(!field(a,'id')?.value)-Number(!field(b,'id')?.value)||Number(field(a,'employee').name.match(/-(\d+)-employee$/)?.[1]||0)-Number(field(b,'employee').name.match(/-(\d+)-employee$/)?.[1]||0));
   return matches[0]!==row;
  }
+ const previousKeys=row=>JSON.parse(row.dataset.previousShiftKeys||'[]');
+ const keysOf=row=>[...new Set([keyOf(row),...previousKeys(row)].filter(Boolean))];
  const duplicateText='Этот сотрудник уже выбран в этой смене. Измените существующую строку или уберите повтор.';
  const originalOptionState=new WeakMap();
  function refreshPeople(){
@@ -37,18 +39,43 @@
   if(event.target!==field(row,'employee')&&event.target!==field(row,'shift'))return;
   const conflict=personRows().some(other=>other!==row&&!deleted(other)&&!deleted(row)&&keyOf(other)&&keyOf(other)===keyOf(row));
   if(conflict){field(row,'employee').value=row.dataset.acceptedEmployee||'';field(row,'shift').value=row.dataset.acceptedShift||'1';row.querySelector('[data-error]').textContent=duplicateText;}
+  else if(event.target===field(row,'shift')&&field(row,'employee').value&&field(row,'shift').value!==row.dataset.acceptedShift&&!row.dataset.shiftApplying){
+   event.stopImmediatePropagation();changeShift(row,field(row,'shift').value);return;
+  }
   else{row.dataset.acceptedEmployee=field(row,'employee').value;row.dataset.acceptedShift=field(row,'shift').value;if(row.querySelector('[data-error]').textContent===duplicateText)row.querySelector('[data-error]').textContent='';}
  },true);
+ form.addEventListener('input',event=>{if(event.target.closest('[data-production-person]')&&event.target.name?.endsWith('-shift'))event.stopImmediatePropagation();},true);
  const controls=row=>[...row.querySelectorAll(person(row)?'[name$="-work_mode"],[name$="-planning_position"],[name$="-activity"],[name$="-DELETE"]':'[name$="-actual_quantity"],[name$="-comment"],[name$="-actuation_type"],[name$="-actuation_reason"],[name$="-actuation_reasons"],[name$="-DELETE"]')];
  async function request(action,key){const response=await fetch(url,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRFToken':csrf},body:JSON.stringify({...scope,action,key})});const data=(response.headers.get('content-type')||'').includes('application/json')?await response.json():{};if(!response.ok){if(data.claim)claims.set(data.claim.key,data.claim);const error=new Error(data.error||'Не удалось проверить резерв.');error.status=response.status;error.retryable=response.status>=500||response.status===429;throw error;}return data;}
  function render(row){const repeated=duplicate(row),claim=claims.get(keyOf(row)),mine=!repeated&&claim?.state==='editing'&&claim.mine,bar=row.querySelector('[data-entry-claim]');if(!bar)return;
   const blocked=repeated||Boolean(claim&&!mine&&(claim.state==='editing'||!claim.own));
-  controls(row).forEach(i=>{i.disabled=blocked;});row.querySelector('[data-person-remove],[data-work-remove]')?.toggleAttribute('disabled',blocked);editing(row).value=mine?'1':'0';token(row).value=mine?session:'';
-  // Identity belongs to the reservation too: it cannot change under edited data.
-  for(const name of person(row)?['employee','shift']:['project_work','work_item']){const input=field(row,name);if(input)input.disabled=blocked||Boolean(keyOf(row)&&(mine||row.dataset.entryDirty||person(row)&&field(row,'id')?.value));}
+  controls(row).forEach(i=>{i.disabled=blocked;});row.querySelectorAll('[data-person-remove],[data-work-remove],[data-work-clear]').forEach(button=>button.toggleAttribute('disabled',blocked));editing(row).value=mine?'1':'0';token(row).value=mine?session:'';
+  // Employee identity stays fixed; shift changes reserve source and destination.
+  for(const name of person(row)?['employee','shift']:['project_work','work_item']){const input=field(row,name);if(input)input.disabled=person(row)&&name==='shift' ? blocked||form.dataset.personShiftBusy==='1' : blocked||Boolean(keyOf(row)&&(mine||row.dataset.entryDirty||person(row)&&field(row,'id')?.value));}
   const take=bar.querySelector('[data-take]'),release=bar.querySelector('[data-release]');take.hidden=true;take.disabled=repeated||!keyOf(row)||Boolean(claim&& !mine&& (claim.state==='editing'||!claim.own));release.hidden=!row.dataset.entryDirty||mine;release.textContent=row.dataset.entryDirty?'Отменить изменения':'Освободить';
   bar.querySelector('[data-label]').textContent=repeated?'Повтор':mine?'Ваш резерв':claim?.state==='editing'?'Резерв: '+claim.owner+(claim.own?' · другая вкладка':''):claim?.state==='saved'?(claim.own?'Внёс: '+claim.owner+' · можно исправить':'Уже учтено: '+claim.owner+(claim.other_object?' · другой объект':' · только просмотр')):row.dataset.entryDirty?'Восстанавливаем резерв…':keyOf(row)?'Запись свободна':'Сначала выберите '+(person(row)?'сотрудника и смену':'работу');
   if(person(row))bar.querySelector('[data-label]').title=bar.querySelector('[data-label]').textContent;
+ }
+ async function changeShift(row,desired){
+  const input=field(row,'shift'),before=row.dataset.acceptedShift||'1',error=row.querySelector('[data-error]');
+  input.value=before;
+  if(form.dataset.personShiftBusy==='1')return;
+  form.dataset.personShiftBusy='1';rows().forEach(render);error.textContent='';
+  let applied=false;
+  try{
+   // Finish any request already in flight with its original identity intact.
+   if(window.productionAutoSave?.running&&!await window.productionAutoSave.whenIdle())throw new Error('Сначала исправьте ошибку сохранения. Смена не изменена.');
+   const source=keyOf(row),target=`employee:${field(row,'employee').value}:${Number(desired)}`;
+   generation++;
+   if(!claims.get(source)?.mine){const result=await request('take',source);claims.set(source,result.claim);}
+   if(!claims.get(target)?.mine){const result=await request('take',target);claims.set(target,result.claim);}
+   row.dataset.previousShiftKeys=JSON.stringify([...new Set([...previousKeys(row),source])]);
+   input.value=desired;row.dataset.acceptedShift=desired;row.dataset.entryKey=target;row.dataset.entryDirty='1';applied=true;
+  }catch(failure){input.value=before;row.dataset.acceptedShift=before;error.textContent=failure.message;}
+  finally{
+   delete form.dataset.personShiftBusy;changed();
+   if(applied){row.dataset.shiftApplying='1';input.dispatchEvent(new Event('change',{bubbles:true}));delete row.dataset.shiftApplying;}
+  }
  }
  function capture(row){return [...row.querySelectorAll('input,select,textarea')].filter(i=>i.name&&!['person_claim_token','person_editing','work_claim_token','work_editing'].some(n=>i.name.endsWith('-'+n))).map(i=>({name:i.name,value:i.value,checked:i.checked,type:i.type}));}
  function reset(row){const baseline=JSON.parse(row.dataset.entryOriginal);row.querySelectorAll('[name$="-work_targets"]').forEach(i=>i.remove());for(const entry of baseline){if(entry.name.endsWith('-work_targets')){const i=document.createElement('input');i.type='hidden';i.name=entry.name;i.value=entry.value;row.append(i);}else{const i=[...row.querySelectorAll('[name]')].find(i=>i.name===entry.name&&(entry.type!=='checkbox'||i.value===entry.value));if(i){i.value=entry.value;if(entry.type==='checkbox')i.checked=entry.checked;}}}}
@@ -59,7 +86,7 @@
   }}
  function changed(){refreshPeople();rows().forEach(render);form.dispatchEvent(new Event('production-claims-change'));}
  form.addEventListener('click',async event=>{const take=event.target.closest('[data-take]'),release=event.target.closest('[data-release]');if(!take&&!release)return;const row=event.target.closest('[data-work-fact-row],[data-production-person]'),key=keyOf(row),error=row.querySelector('[data-error]');if(duplicate(row))return;error.textContent='';busy=true;generation++;
-  try{if(take){const data=await request('take',key);claims.set(key,data.claim);if(person(row)&&!field(row,'id').value)row.dataset.entryDirty='1';}else{if(claims.get(key)?.mine)await request('release',key);reset(row);if(person(row)){row.dataset.acceptedEmployee=field(row,'employee').value;row.dataset.acceptedShift=field(row,'shift').value;}delete row.dataset.entryDirty;delete row.dataset.personDirty;delete row.dataset.autoPending;claims.delete(key);}render(row);changed();lastActivity=Date.now();}catch(failure){error.textContent=failure.message;render(row);}finally{busy=false;}
+  try{if(take){const data=await request('take',key);claims.set(key,data.claim);if(person(row)&&!field(row,'id').value)row.dataset.entryDirty='1';}else{await form.productionReleaseRow(row);reset(row);row.dataset.entryKey=keyOf(row);if(person(row)){row.dataset.acceptedEmployee=field(row,'employee').value;row.dataset.acceptedShift=field(row,'shift').value;}delete row.dataset.entryDirty;delete row.dataset.personDirty;delete row.dataset.autoPending;claims.delete(key);}render(row);changed();lastActivity=Date.now();}catch(failure){error.textContent=failure.message;render(row);}finally{busy=false;}
  });
  form.addEventListener('input',e=>{const row=e.target.closest('[data-work-fact-row],[data-production-person]');if(row&&controls(row).includes(e.target)&&!(e.target.name?.endsWith('-DELETE')&&!field(row,'id')?.value))row.dataset.entryDirty='1';lastActivity=Date.now();});
  form.addEventListener('change',e=>{wire();const row=e.target.closest('[data-work-fact-row],[data-production-person]');if(row){if(row.dataset.personDirty||controls(row).includes(e.target)&&!(e.target.name?.endsWith('-DELETE')&&!field(row,'id')?.value))row.dataset.entryDirty='1';const old=row.dataset.entryKey,key=keyOf(row);if(old!==key){if(claims.get(old)?.mine){generation++;request('release',old).catch(()=>{});claims.delete(old);}row.dataset.entryKey=key;}render(row);}refreshPeople();rows().forEach(render);lastActivity=Date.now();});
@@ -74,15 +101,16 @@
   }
   render(row);row.dataset.entryDirty='1';changed();lastActivity=Date.now();
  };
- form.productionSetClaims=values=>{claims=new Map(values.map(c=>[c.key,c]));wire();changed();};
+ form.productionSetClaims=values=>{for(const row of personRows())if(!row.dataset.entryDirty&&!row.dataset.personDirty&&!row.dataset.autoPending){row.dataset.acceptedShift=field(row,'shift').value;row.dataset.entryKey=keyOf(row);}claims=new Map(values.map(c=>[c.key,c]));wire();changed();};
  form.productionEmployeeAvailability=(employee,shift)=>{
   const claim=claims.get(`employee:${employee}:${Number(shift)}`);
   if(!claim||claim.state==='editing'&&claim.mine)return {available:true,label:''};
   return {available:false,label:claim.state==='editing'?'Сейчас заполняет: '+claim.owner:claim.other_object?'Уже учтён на другом объекте в этой смене':'Уже учтён в этой смене'};
  };
  form.productionKeyOf=keyOf;
+ form.productionKeysOf=keysOf;
  form.productionSession={scope,csrf};
- form.productionReleaseRow=async row=>{const key=keyOf(row);if(claims.get(key)?.mine){await request('release',key);claims.delete(key);}render(row);changed();};
+ form.productionReleaseRow=async row=>{for(const key of keysOf(row)){if(claims.get(key)?.mine){await request('release',key);claims.delete(key);}}delete row.dataset.previousShiftKeys;render(row);changed();};
  const reserve=event=>{
   if(form.productionApplying||form.dataset.resetRequired==='1')return;
   const row=event.target.closest('[data-work-fact-row],[data-production-person]');if(!row||!keyOf(row)||!event.target.name)return;
@@ -91,7 +119,7 @@
   }
  };
  form.addEventListener('input',reserve);form.addEventListener('change',reserve);
- form.addEventListener('production-autosave-committed',()=>{wire();refreshPeople();rows().forEach(render);changed();});
+ form.addEventListener('production-autosave-committed',()=>{for(const row of personRows()){if(row.dataset.entryDirty||row.dataset.personDirty||row.dataset.autoPending)continue;const stale=previousKeys(row).filter(key=>key!==keyOf(row));delete row.dataset.previousShiftKeys;for(const key of stale)if(claims.get(key)?.mine){claims.delete(key);request('release',key).catch(()=>{});}}wire();refreshPeople();rows().forEach(render);changed();});
  form.addEventListener('submit',event=>{if(event.defaultPrevented)return;refreshPeople();const repeated=personRows().find(duplicate);if(repeated){event.preventDefault();form.querySelector('[data-step="2"]')?.click();repeated.querySelector('[data-error]').textContent=duplicateText;repeated.scrollIntoView({block:'center'});return;}const lost=rows().find(row=>!(field(row,'DELETE')?.checked&&!field(row,'id')?.value)&&(row.dataset.entryDirty||row.dataset.personDirty)&&!claims.get(keyOf(row))?.mine);if(lost){event.preventDefault();const panel=lost.closest('[data-entry-step]');form.querySelector(`[data-step="${panel.dataset.entryStep}"]`)?.click();let group=lost.closest('details');while(group){group.open=true;group=group.parentElement.closest('details');}lost.querySelector('[data-error]').textContent='Возьмите запись снова или отмените изменения. Введённые значения сохранены в форме.';lost.scrollIntoView({block:'center'});return;}
   // Disabled identity controls still have to be posted for owned rows.
   rows().forEach(row=>{if(claims.get(keyOf(row))?.mine){for(const name of person(row)?['employee','shift']:['project_work','work_item']){const input=field(row,name);if(input)input.disabled=false;}}});submitting=true;

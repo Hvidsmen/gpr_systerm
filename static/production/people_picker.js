@@ -5,9 +5,9 @@
  const host=form.querySelector('[data-rows="labor"]'),template=document.getElementById('empty-labor'),field=(row,name)=>row.querySelector(`[name$="-${name}"]`),rows=()=>[...host.querySelectorAll('[data-production-person]')];
  const list=dialog.querySelector('[data-people-list]'),search=dialog.querySelector('[data-people-search]'),location=dialog.querySelector('[data-people-location]'),shift=dialog.querySelector('[data-people-shift]'),position=dialog.querySelector('[data-people-position]'),apply=dialog.querySelector('[data-people-apply]'),error=dialog.querySelector('[data-people-error]'),result=form.querySelector('[data-person-bulk-result]');
  let options=[],busy=false,controls=[];const selected=new Set();
- const validShift=()=>Number.isInteger(Number(shift.value))&&Number(shift.value)>=1&&Number(shift.value)<=24;
+ const validShift=()=>[1,2].includes(Number(shift.value));
  function presentInShift(){const present=new Map();for(const row of rows())if(Number(field(row,'shift').value)===Number(shift.value)&&!field(row,'DELETE')?.checked&&field(row,'employee')?.value)present.set(field(row,'employee').value,row);return present;}
- function availability(id,present=presentInShift()){if(!validShift())return {available:false,label:'Укажите смену от 1 до 24'};const existing=present.get(id);if(existing)return {available:false,label:field(existing,'id').value?'Уже добавлен в эту смену':'Уже есть в форме — ещё не сохранён'};return form.productionEmployeeAvailability(id,shift.value);}
+ function availability(id,present=presentInShift()){if(!validShift())return {available:false,label:'Выберите дневную или ночную смену'};const existing=present.get(id);if(existing)return {available:false,label:field(existing,'id').value?'Уже добавлен в эту смену':'Уже есть в форме — ещё не сохранён'};return form.productionEmployeeAvailability(id,shift.value);}
  function refresh(){
   if(busy)return;let visible=0,available=0;const present=presentInShift(),terms=search.value.toLocaleLowerCase('ru').trim().split(/\s+/).filter(Boolean);
   for(const item of options){const state=availability(item.person.id,present);item.checkbox.disabled=!state.available;if(!state.available&&validShift()){selected.delete(item.person.id);item.checkbox.checked=false;}if(item.status.textContent!==state.label)item.status.textContent=state.label;item.label.classList.toggle('people-picker-unavailable',!state.available);item.label.hidden=Boolean(location.value!==''&&String(item.person.group)!==location.value||!terms.every(term=>item.text.includes(term)));if(!item.label.hidden){visible++;if(state.available)available++;}}
@@ -36,7 +36,7 @@
    form.productionApplying=false;for(const row of staged){row.dataset.personDirty='1';field(row,'employee').dispatchEvent(new Event('change',{bubbles:true}));}saving=true;
    const saved=await window.productionAutoSave.flushPeople();if(!saved)throw new Error('Сотрудники добавлены в форму, но не сохранены. Проверьте сообщения у строк и нажмите «Повторить сохранение».');
    if(staged.some(row=>!field(row,'id')?.value))throw new Error('Некоторые сотрудники не сохранены. Проверьте их строки перед повторным выбором.');
-   result.textContent=`Добавлено: ${staged.length} · смена ${shiftValue}. Проверьте работы на вкладке «Связи».`;dialog.close();
+   result.textContent=`Добавлено: ${staged.length} · ${shiftValue==='2'?'Ночь':'День'}. Проверьте работы на вкладке «Связи».`;dialog.close();
   }catch(failure){
    if(!saving){for(const row of staged){try{await form.productionReleaseRow(row);}catch{}row.remove();}window.productionAutoSave.reindex();error.textContent=failure.message;}
    else{result.textContent=failure.message;dialog.close();}
