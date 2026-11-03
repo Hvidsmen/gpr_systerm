@@ -1,12 +1,12 @@
 {% extends 'base.html' %}{% load static calendar_tags %}
-{% block title %}Таблица перевахты{% endblock %}
+{% block title %}Персонал{% endblock %}
 {% block extra_css %}<link rel="stylesheet" href="{% static 'personnel/lodging.css' %}?v=20261028-1"><link rel="stylesheet" href="{% static 'personnel/housing.css' %}?v=20261030-compact-filters">{% endblock %}
 {% block content %}
-<div class="fact-page-heading"><h1>Таблица перевахты</h1>{% include 'core/_fact_help.html' with guide_slug='rotation' guide_label='Перевахта' %}</div><p class="text-muted">Сотрудники на вахте и межвахтовом отдыхе, индивидуальные графики и открытые вакансии. Можно выбрать объект с субобъектами и несколько ВЖГ.</p>
+<div class="fact-page-heading"><h1>Персонал</h1>{% include 'core/_fact_help.html' with guide_slug='rotation' guide_label='Персонал' %}</div><p class="text-muted">Сотрудники на вахте и межвахтовом отдыхе, индивидуальные графики и открытые вакансии. Можно выбрать объект с субобъектами и несколько ВЖГ.</p>
 {% include 'personnel/_housing_nav.html' %}
 {% include 'personnel/_housing_filters.html' %}
 {% if camp %}{% include 'core/_fact_context.html' with scope_list=selected_camps can_edit=fact_day_editable save_mode='rotation' %}
-<nav class="housing-tabs" aria-label="Вкладки размещения"><button type="button" data-housing-tab="roster">Перевахта</button><button type="button" data-housing-tab="calendar">График</button><button type="button" data-housing-tab="movement">Заезд / выезд / перевод</button><button type="button" data-housing-tab="events">История событий</button></nav>
+<nav class="housing-tabs" aria-label="Разделы персонала"><button type="button" data-housing-tab="roster">Перевахта</button><button type="button" data-housing-tab="calendar">График</button><button type="button" data-housing-tab="movement">Заезд / выезд / перевод</button><button type="button" data-housing-tab="events">История событий</button></nav>
 {% include 'personnel/_housing_summary.html' %}
 <details class="fact-rules"><summary>Кто включён в перевахту и производственный факт</summary><p class="small text-muted">ВЖГ: {% for selected in selected_camps %}{{ selected.name }}{% if not forloop.last %}; {% endif %}{% endfor %}. Люди на отдыхе и вакансии включены в перевахту. В производственном факте доступны все активные сотрудники; местонахождение используется для сортировки и подсказок.</p></details>
 {% include 'personnel/_lodging_sync_summary.html' %}

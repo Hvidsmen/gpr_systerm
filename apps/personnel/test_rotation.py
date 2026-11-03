@@ -20,7 +20,7 @@ class RotationTests(TestCase):
         self.assertEqual(len(rows),3)
         self.assertNotIn(self.second_employee.pk,set(__import__('apps.personnel.housing',fromlist=['available_employee_ids']).available_employee_ids(self.obj,self.day).values_list('person__employee_id',flat=True)))
         response=self.client.get(reverse('personnel:housing'),{'camp':self.a.pk,'date':str(self.day)})
-        self.assertContains(response,'Таблица перевахты');self.assertContains(response,'Межвахтовый отдых');self.assertContains(response,'Открытая вакансия')
+        self.assertContains(response,'<h1>Персонал</h1>',html=True);self.assertContains(response,'Межвахтовый отдых');self.assertContains(response,'Открытая вакансия')
     def test_macro_object_selects_all_linked_camps_of_its_children(self):
         parent=ConstructionObject.objects.create(company=self.company,project=self.project,name='Общий КТП')
         self.obj.parent=parent;self.obj.save();self.obj3.parent=parent;self.obj3.save()
