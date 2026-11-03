@@ -4,6 +4,7 @@
  const employeeLocations=JSON.parse(document.getElementById('production-employee-locations')?.textContent||'{}');
  const choices=JSON.parse(document.getElementById('production-work-choices').textContent),catalogue=new Map(choices.map(w=>[w.token,w]));let savedWorks=JSON.parse(document.getElementById('production-graph-saved').textContent),savedPeople=JSON.parse(document.getElementById('production-report-people').textContent);
  const reasonText=row=>[...row.querySelectorAll('input[name$="-actuation_reasons"]:checked')].map(i=>i.closest('label').textContent.trim()).join('; ')||row.querySelector('[name$="-actuation_reason"]')?.value||'';
+ const shiftLabel=value=>({'1':'День','2':'Ночь'}[String(value)]||'Смена '+value);
  const field=(row,name)=>row.querySelector(`[name$="-${name}"]`),key=(w,i)=>i?`item:${w}:${i}`:`work:${w}`;let exportRows=[];
  function collect(){const works=new Map(savedWorks.map(w=>[key(w.project_work_id,w.work_item_id),{token:key(w.project_work_id,w.work_item_id),quantity:String(w.actual_quantity),actuationType:w.actuation_type,actuationReason:w.actuation_reason,owner:w.owner||w.reported_by__username||'Общий ввод',draft:false}])),people=new Map(savedPeople.map(p=>['pk:'+p.id,{...p,draft:false}]));
   form.querySelectorAll('[data-work-fact-row]').forEach(row=>{const w=field(row,'project_work')?.value;if(!w)return;const token=key(w,field(row,'work_item')?.value);if(field(row,'id')?.value&&!row.dataset.entryDirty&&works.has(token))return;if(field(row,'DELETE')?.checked){works.delete(token);return;}const quantity=field(row,'actual_quantity')?.value.trim();if(quantity){const prior=works.get(token);works.set(token,{token,quantity,actuationType:field(row,'actuation_type')?.value,actuationReason:reasonText(row),owner:'Мой ввод',draft:!prior||Boolean(row.dataset.entryDirty)||Number(quantity.replace(',','.'))!==Number(prior.quantity.replace(',','.'))});}else if(row.dataset.entryDirty)works.delete(token);});
@@ -33,11 +34,11 @@
    for(const [index,work] of item.works.entries()){
     const total=document.createElement('tbody'),tr=document.createElement('tr');tr.className='production-report-total';tr.dataset.workTotal='';
     const name=cell(tr,''),toggle=document.createElement('button');toggle.type='button';toggle.className='production-report-toggle';toggle.dataset.reportToggle='work-'+index;toggle.dataset.reportFold='work:'+item.key+':'+work.key;toggle.setAttribute('aria-expanded',String(folds.get(toggle.dataset.reportFold)??true));toggle.textContent=work.label;name.append(toggle);
-    cell(tr,window.productionReportGroups.quantity(work.entries));cell(tr,work.unit);cell(tr,linked(work.entries).map(p=>p.name+' · смена '+p.shift).join('; ')||'Сотрудники не привязаны');cell(tr,work.entries.some(w=>w.draft)?'Есть несохранённые записи':'Сохранено');total.append(tr);grid.append(total);
+    cell(tr,window.productionReportGroups.quantity(work.entries));cell(tr,work.unit);cell(tr,linked(work.entries).map(p=>p.name+' · '+shiftLabel(p.shift)).join('; ')||'Сотрудники не привязаны');cell(tr,work.entries.some(w=>w.draft)?'Есть несохранённые записи':'Сохранено');total.append(tr);grid.append(total);
     const branch=document.createElement('tbody');branch.dataset.reportBranch='work-'+index;branch.hidden=toggle.getAttribute('aria-expanded')==='false';grid.append(branch);
     for(const object of work.objects){const row=document.createElement('tr'),title=cell(row,object.label);title.className='production-report-leaf';
      for(const entry of object.entries){if(entry.actuationType){const note=document.createElement('div');note.className='small text-warning-emphasis';note.textContent='Актировка: '+({DAY:'Дневная',NIGHT:'Ночная',FULL_DAY:'Суточная'}[entry.actuationType]||entry.actuationType)+' · '+entry.actuationReason;title.append(note);}}
-     cell(row,window.productionReportGroups.quantity(object.entries));cell(row,work.unit);cell(row,linked(object.entries).map(p=>p.name+' · смена '+p.shift).join('; ')||'Сотрудники не привязаны');cell(row,[...new Set(object.entries.map(w=>w.owner+' · '+(w.draft?'Не сохранено':'Сохранено')))].join('; '));branch.append(row);
+     cell(row,window.productionReportGroups.quantity(object.entries));cell(row,work.unit);cell(row,linked(object.entries).map(p=>p.name+' · '+shiftLabel(p.shift)).join('; ')||'Сотрудники не привязаны');cell(row,[...new Set(object.entries.map(w=>w.owner+' · '+(w.draft?'Не сохранено':'Сохранено')))].join('; '));branch.append(row);
     }
    }
   }
@@ -45,7 +46,7 @@
   for(const [group,persons] of groups){
    const host=section(peopleHost,group+' · Сотрудников: '+new Set(persons.map(p=>p.employee)).size,'people:'+group);let position=null,body=null;
    for(const person of persons){if(person.position!==position||!body){const title=document.createElement('h4');title.className='h6 production-report-group-role';title.textContent=person.position||'Должность не указана';host.append(title);const grid=table(host,['Сотрудник','Смена','Выполненные работы / занятость','Ввод']);body=document.createElement('tbody');grid.append(body);position=person.position;}
-    const tr=document.createElement('tr'),assignment=!person.reviewed?'Связи пока не проверены':person.general?'Работал без привязки к работе':person.targets.map(t=>catalogue.get(t)?.label||t).join('; '),status=person.draft?'Не сохранено':'Сохранено';cell(tr,person.name);cell(tr,person.shift);cell(tr,assignment);cell(tr,person.owner+' · '+status+(person.constant?' · постоянный персонал':''));body.append(tr);
+    const tr=document.createElement('tr'),assignment=!person.reviewed?'Связи пока не проверены':person.general?'Работал без привязки к работе':person.targets.map(t=>catalogue.get(t)?.label||t).join('; '),status=person.draft?'Не сохранено':'Сохранено';cell(tr,person.name);cell(tr,shiftLabel(person.shift));cell(tr,assignment);cell(tr,person.owner+' · '+status+(person.constant?' · постоянный персонал':''));body.append(tr);
    }
   }
   if(!works.length)workHost.textContent='Объёмы работ пока не внесены.';if(!people.length)peopleHost.textContent='Сотрудники пока не добавлены.';

@@ -152,9 +152,16 @@ class DailyFact(ActualHistoryMixin, BaseCompanyModel):
 
     @transaction.atomic
     def save(self, *args, **kwargs):
-        from decimal import Decimal
+        from decimal import Decimal, InvalidOperation
 
         from apps.works.models import ProjectWork
+        try:clearing = self.actual_quantity is not None and Decimal(str(self.actual_quantity)) == 0
+        except (InvalidOperation, TypeError, ValueError):clearing = False
+        if clearing and self.project_work_id:
+            # Match collaboration's object-before-work lock order for every zero writer.
+            from apps.projects.models import ConstructionObject
+            object_id=ProjectWork.objects.filter(pk=self.project_work_id,company_id=self.company_id).values_list('section__construction_object_id',flat=True).first()
+            ConstructionObject.objects.filter(pk=object_id,company_id=self.company_id).update(name=models.F('name'))
         if self.project_work_id:
             self.project_work=ProjectWork.objects.select_for_update().get(pk=self.project_work_id)
         # Composite value is a cost allocation; completion is calculated separately.
@@ -173,7 +180,11 @@ class DailyFact(ActualHistoryMixin, BaseCompanyModel):
         ).quantize(Decimal("0.01"))
         if kwargs.get("update_fields") is not None:
             kwargs["update_fields"] = set(kwargs["update_fields"]) | {"actual_value"}
-        return super().save(*args, **kwargs)
+        result=super().save(*args, **kwargs)
+        if clearing and type(self).objects.filter(pk=self.pk,actual_quantity=0).exists():
+            from .collaboration import detach_work
+            detach_work(self)
+        return result
 
     def __str__(self):
         return f"{self.project_work} — {self.date}: {self.actual_quantity}"

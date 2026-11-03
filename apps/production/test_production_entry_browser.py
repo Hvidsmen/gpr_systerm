@@ -42,7 +42,8 @@ class ProductionEntryBrowserTests(StaticLiveServerTestCase):
         self.assertEqual(result.returncode,0,result.stdout+'\n'+result.stderr)
         from .dispatch_models import EmployeeActivity
         row=EmployeeActivity.objects.get(employee=self.employee,date=self.day)
-        self.assertEqual(row.work_id,self.work.pk);self.assertTrue(row.assignment_reviewed)
+        self.assertIn(row.work_id,{self.work.pk,self.second_work.pk});self.assertTrue(row.assignment_reviewed)
+        self.assertEqual(set(row.work_links.values_list('work_id',flat=True)),{self.work.pk,self.second_work.pk})
         self.assertEqual(row.planning_position_id,planned_position.pk)
         self.assertEqual(row.position_id,self.employee.position_id)
         from .history_models import FactRevision

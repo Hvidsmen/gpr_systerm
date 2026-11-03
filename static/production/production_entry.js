@@ -11,9 +11,9 @@
   for(const value of selected){const li=document.createElement('li');li.textContent=labels.get(value)||value;list.append(li);}
   if(!selected.length){const li=document.createElement('li');li.textContent='Работы пока не выбраны';list.append(li);}
  }
- function available(){const saved=JSON.parse(document.getElementById('production-graph-saved')?.textContent||'[]'),result=new Set(saved.map(r=>token(r.project_work_id,r.work_item_id)));document.querySelectorAll('[data-work-fact-row]').forEach(row=>{
+ function available(){const saved=JSON.parse(document.getElementById('production-graph-saved')?.textContent||'[]'),result=new Set(saved.filter(r=>Number(r.actual_quantity)>0).map(r=>token(r.project_work_id,r.work_item_id)));document.querySelectorAll('[data-work-fact-row]').forEach(row=>{
    const work=row.querySelector('[name$="-project_work"]'),item=row.querySelector('[name$="-work_item"]'),deleted=row.querySelector('[name$="-DELETE"]');
-   if(work?.value){const key=token(work.value,item?.value);if(!deleted?.checked&&row.querySelector('[name$="-actual_quantity"]')?.value.trim())result.add(key);else if(deleted?.checked||row.dataset.entryDirty)result.delete(key);}
+   if(work?.value){const key=token(work.value,item?.value);if(!deleted?.checked&&Number(row.querySelector('[name$="-actual_quantity"]')?.value.replace(',','.'))>0)result.add(key);else result.delete(key);}
   });return result;}
  document.addEventListener('click',event=>{
   const button=event.target.closest('[data-person-pick]');if(!button)return;owner=button.closest('[data-production-person]');

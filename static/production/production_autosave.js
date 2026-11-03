@@ -70,11 +70,11 @@
    if(fingerprint(row)===item.stamp){delete row.dataset.entryDirty;delete row.dataset.personDirty;delete row.dataset.autoPending;row.dataset.autoSavedStamp=fingerprint(row);rowMessage(row,row.dataset.autoRejected|| (field(row,'id').value?'Сохранено':''),Boolean(row.dataset.autoRejected));if(!row.dataset.autoRejected)row.querySelector('[data-error]').textContent='';}
    else{row.dataset.autoPending='1';pending=true;rowMessage(row,'Есть изменения');}
   }
-  reindex();form.dispatchEvent(new CustomEvent('production-report-update',{detail:result.report}));form.dispatchEvent(new Event('production-autosave-committed'));
+  reindex();if(form.productionApplyReport)form.productionApplyReport(result.report);else form.dispatchEvent(new CustomEvent('production-report-update',{detail:result.report}));form.dispatchEvent(new Event('production-autosave-committed'));
   message(pending?'Есть изменения…':'Все изменения сохранены');
  }
  async function flush(){
-  if(form.dataset.peopleBulkBusy==='1'){clearTimeout(timer);timer=setTimeout(()=>flush(),700);return false;}
+  if((form.dataset.peopleBulkBusy==='1'||form.dataset.personShiftBusy==='1')){clearTimeout(timer);timer=setTimeout(()=>flush(),700);return false;}
   if(form.dataset.resetRequired==='1'){clearTimeout(timer);message('Производственная часть сброшена администратором. Обновите форму.',true);return false;}
   clearTimeout(timer);if(running)return running;
   running=(async()=>{
@@ -92,18 +92,26 @@
   running=(async()=>{try{await save(selected);return true;}catch(error){selected.forEach(row=>rowMessage(row,error.message,true));message(error.message,true);return false;}})();
   try{return await running;}finally{running=null;if(dirty().length){message('Сотрудники обработаны. Есть несохранённые изменения.',true);timer=setTimeout(()=>flush(),700);}}
  }
- window.productionAutoSave={flush,flushPeople,reindex,fingerprint,capture,get running(){return Boolean(running);},get pending(){return pending||Boolean(running)||dirty().length>0;}};
+ window.productionAutoSave={whenIdle:()=>running||Promise.resolve(true),flush,flushPeople,reindex,fingerprint,capture,get running(){return Boolean(running);},get pending(){return pending||Boolean(running)||dirty().length>0;}};
  const relevant=event=>{
-  if(form.productionApplying||form.dataset.peopleBulkBusy==='1'||event.target.closest('[data-actuation-ui]'))return;
+  if(form.productionApplying||(form.dataset.peopleBulkBusy==='1'||form.dataset.personShiftBusy==='1')||event.target.closest('[data-actuation-ui]'))return;
   const row=event.target.closest('[data-production-person],[data-work-fact-row]');
   if(row){if(row.dataset.autoSavedStamp===fingerprint(row)&&!row.dataset.autoPending){delete row.dataset.entryDirty;delete row.dataset.personDirty;return;}if(isPerson(row)&&!field(row,'employee').value&&!field(row,'id').value)return;if(!isPerson(row)&&!field(row,'project_work')?.value)return;schedule(row);}
  };
- form.addEventListener('production-claims-change',()=>{if(!form.productionApplying&&form.dataset.peopleBulkBusy!=='1'&&!running&&!pending&&dirty().some(row=>field(row,isPerson(row)?'person_editing':'work_editing')?.value==='1'))schedule();});
+ form.addEventListener('production-claims-change',()=>{if(!form.productionApplying&&form.dataset.peopleBulkBusy!=='1'&&form.dataset.personShiftBusy!=='1'&&!running&&!pending&&dirty().some(row=>field(row,isPerson(row)?'person_editing':'work_editing')?.value==='1'))schedule();});
  form.addEventListener('input',relevant);form.addEventListener('change',relevant);
  form.addEventListener('production-autosave-all',()=>{for(const row of rows())if(isPerson(row)&&field(row,'employee').value&&!field(row,'id').value&&field(row,'person_editing').value==='1'){row.dataset.entryDirty='1';schedule(row);}});
  rows().forEach(row=>{row.dataset.autoSavedStamp=fingerprint(row);if(field(row,'id').value)rowMessage(row,'Сохранено');});
  retry.addEventListener('click',()=>{retryAttempt=0;pending=true;flush();});
  form.addEventListener('click',async event=>{
+  const clear=event.target.closest('[data-work-clear]');
+  if(clear){
+   const row=clear.closest('[data-work-fact-row]');clear.disabled=true;
+   try{await form.productionClaimRow(row);const quantity=field(row,'actual_quantity');quantity.value='0';row.dataset.entryDirty='1';quantity.dispatchEvent(new Event('input',{bubbles:true}));quantity.dispatchEvent(new Event('change',{bubbles:true}));schedule(row);await flush();}
+   catch(error){rowMessage(row,error.message,true);message(error.message,true);}
+   finally{clear.disabled=false;}
+   return;
+  }
   const button=event.target.closest('[data-person-remove],[data-work-remove]');if(!button)return;
   const row=button.closest('[data-production-person],[data-work-fact-row]');button.disabled=true;
   try{

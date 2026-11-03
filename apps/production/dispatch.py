@@ -522,6 +522,12 @@ class DispatcherDayView(CompanyRequiredMixin,View):
                             from .production_entry import sync_links
                             for form in fs:
                                 if form.cleaned_data and not form.cleaned_data.get('DELETE'):sync_links(form)
+                        if section=='works':
+                            # Clear after both formsets: a stale person row in the same POST
+                            # must not recreate a link to a work that has just become zero.
+                            from .collaboration import detach_work
+                            for zero in DailyFact.objects.filter(company=obj.company,date=day,project_work__section__construction_object=obj,actual_quantity=0).select_related('project_work__section'):
+                                detach_work(zero)
                         if section=='mechanization':
                             present=set(EquipmentActivity.objects.filter(company=obj.company,construction_object=obj,date=day).values_list('equipment_id','shift'))
                             if set(equipment_baselines)-present:

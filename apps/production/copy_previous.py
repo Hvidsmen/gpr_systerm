@@ -62,7 +62,7 @@ def production_copy(user,obj,day,kind,*,session,reset_epoch,keep=(),revisions=No
     else:
         from .models import DailyFact
         allowed={(item['work'],item['item']) for item in work_catalogue(obj)}
-        facts=set(DailyFact.objects.filter(company=obj.company,date=day,project_work__section__construction_object=obj).values_list('project_work_id','work_item_id'))
+        facts=set(DailyFact.objects.filter(company=obj.company,date=day,project_work__section__construction_object=obj,actual_quantity__gt=0).values_list('project_work_id','work_item_id'))
         current={(row.employee_id,row.shift):row for row in EmployeeActivity.objects.select_for_update().filter(company=obj.company,construction_object=obj,date=day).exclude(labor_direction()).prefetch_related('work_links')}
         revisions=revisions or {}
         for old in source:
@@ -78,7 +78,7 @@ def production_copy(user,obj,day,kind,*,session,reset_epoch,keep=(),revisions=No
             if not selected:output['skipped']+=1
             for key in selected:
                 if key in existing:output['skipped']+=1;continue
-                if key not in facts or key not in allowed:warn(output,f'{old.employee.display_name}: работа ещё не внесена в факт текущего дня или недоступна.');continue
+                if key not in facts or key not in allowed:warn(output,f'{old.employee.display_name}: работа не внесена в факт текущего дня, имеет нулевой объём или недоступна.');continue
                 link=EmployeeWorkLink(company=obj.company,activity=row,work_id=key[0],work_item_id=key[1]);link.full_clean();link.save();existing.add(key);added+=1
             if added:apply_relations(row);output['added']+=added
     require_fact_day(user,day)

@@ -25,11 +25,15 @@ const {chromium}=require('playwright');const fs=require('fs');const assert=requi
  await a.setViewportSize({width:390,height:844});assert(await a.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2));await a.screenshot({path:'/tmp/production-collaboration-mobile.png',animations:'disabled'});await a.setViewportSize({width:1440,height:1000});
  await a.locator('[data-step="4"]').click();assert((await a.locator('[data-report-people]').innerText()).includes('Иванов'));assert(await a.locator('.production-report-group-role').count());
  const download=await Promise.all([a.waitForEvent('download'),a.locator('[data-report-download]').click()]);assert(download[0].suggestedFilename().endsWith('.xlsx'));await download[0].saveAs('/tmp/production-browser-report.xlsx');assert.equal(fs.readFileSync('/tmp/production-browser-report.xlsx').subarray(0,2).toString(),'PK');
- // Zero retains the two links; the second dispatcher sees the warning online.
- await a.locator('[data-step="1"]').click();await work(a,c.work).locator('[name$="-actual_quantity"]').fill('0');await save(a);
- await b.waitForFunction(()=>[...document.querySelectorAll('.graph-work')].some(el=>el.textContent.includes('Объём работы — 0')));assert.equal(await b.locator('[data-graph-lines] path').count(),2);
+ // Zero removes only this work link; other work links remain.
+ await a.locator('[data-step="1"]').click();await work(a,c.work).locator('[name$="-actual_quantity"]').fill('0');await save(a);await a.waitForFunction(id=>![...document.querySelectorAll('[name$="-work_targets"]')].some(i=>i.value==='work:'+id),c.work);
+ await b.waitForFunction(()=>[...document.querySelectorAll('.graph-work')].some(el=>el.textContent.includes('Объём работы — 0')));assert.equal(await b.locator('[data-graph-lines] path').count(),1);
  // Return to 5 so a colleague edit later leaves a meaningful 5 -> 4 audit.
  await work(a,c.work).locator('[name$="-actual_quantity"]').fill('5');await save(a);
+ await a.locator('[data-step="3"]').click();await a.waitForFunction(()=>document.querySelectorAll('[data-graph-lines] path').length===1);await a.locator(`.graph-work[data-token="work:${c.work}"]`).click();await a.locator('.graph-person .graph-port').click();await a.waitForFunction(()=>document.querySelectorAll('[data-graph-lines] path').length===2);
+ // The explicit clear button also saves zero and removes this work's links.
+ await a.locator('[data-step="1"]').click();await work(a,c.work).getByRole('button',{name:'Очистить работу',exact:true}).click();await save(a);assert.equal(await work(a,c.work).locator('[name$="-actual_quantity"]').inputValue(),'0');await a.waitForFunction(id=>![...document.querySelectorAll('[name$="-work_targets"]')].some(i=>i.value==='work:'+id),c.work);await b.waitForFunction(()=>document.querySelectorAll('[data-graph-lines] path').length===1);
+ await work(a,c.work).locator('[name$="-actual_quantity"]').fill('5');await save(a);await a.locator('[data-step="3"]').click();await a.locator(`.graph-work[data-token="work:${c.work}"]`).click();await a.locator('.graph-person .graph-port').click();await a.waitForFunction(()=>document.querySelectorAll('[data-graph-lines] path').length===2);
  // Release the saved data leases before switching to the reviewer workflow.
  await a.evaluate(async()=>{const form=document.querySelector('[data-production-form]');for(const row of form.querySelectorAll('[data-work-fact-row],[data-production-person]')){if(row.querySelector('[name$="-work_editing"],[name$="-person_editing"]')?.value==='1')await form.productionReleaseRow(row);}});
  await a.close();await b.locator('[data-step="1"]').click();await b.waitForFunction(id=>[...document.querySelectorAll('[data-work-fact-row]')].find(r=>r.querySelector('[name$="-project_work"]')?.value===String(id))?.querySelector('[name$="-actual_quantity"]')?.disabled===false,c.work,{timeout:15000});
@@ -86,5 +90,5 @@ const {chromium}=require('playwright');const fs=require('fs');const assert=requi
  await head.close();
  assert.equal(await camera.locator('[name$="-actual_quantity"]').inputValue(),'0');
  assert.equal(await work(b,c.work).locator('[name$="-actual_quantity"]').inputValue(),'4');
- assert.deepStrictEqual(errors,[]);await browser.close();console.log('PASS: reason checklist, proposal, role task review approve/replace/reject, multi-file bulk upload, private download, soft removal, automatic leases, live presence/data, independent live links, grouping, multi-select filters, compact graph, zero keeps edges, XLSX download, lease release, colleague edit, mobile');
+ assert.deepStrictEqual(errors,[]);await browser.close();console.log('PASS: reason checklist, proposal, role task review approve/replace/reject, multi-file bulk upload, private download, soft removal, automatic leases, live presence/data, independent live links, grouping, multi-select filters, compact graph, zero and clear button remove only matching work edges, XLSX download, lease release, colleague edit, mobile');
 })().catch(e=>{console.error(e);process.exit(1)});
