@@ -60,7 +60,7 @@ def visible_revisions(user):
         records=records.filter(Q(direction=direction)|Q(entity_type__in=['production.campfuelday','production.fuelfact']));direction=None
     if direction:records=records.filter(direction=direction)
     if role in {'DISPATCHER','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER','ALL_FACT_DISPATCHER','PLANNER','FOREMAN','FUEL_WAREHOUSE'}:
-        objects=scope_queryset(ConstructionObject.objects.all(),user).values('pk')
+        objects=scope_queryset(ConstructionObject.objects.all(),user,production_scope=True).values('pk')
         from .transport import camps_for
         camps=camps_for(user).values('pk')
         records=records.filter(Q(object_id__in=objects)|Q(camp_ids__0__in=camps)|Q(camp_ids__1__in=camps))

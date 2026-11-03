@@ -13,7 +13,8 @@ ACCOUNT_TABLES = (
     'auth_group_permissions', 'accounts_user_groups', 'accounts_user_user_permissions',
 )
 OBJECT_TABLES = ('projects_project', 'projects_constructionobject',
-                 'accounts_accessgroup_assigned_objects', 'accounts_user_assigned_objects')
+                 'accounts_accessgroup_assigned_objects', 'accounts_user_assigned_objects',
+                 'accounts_accessgroup_production_additional_objects', 'accounts_user_production_additional_objects')
 
 
 def copy_access(source, destination, keep_objects):

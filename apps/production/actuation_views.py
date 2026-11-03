@@ -30,7 +30,7 @@ EXTENSIONS={'.pdf','.jpg','.jpeg','.png','.webp','.tif','.tiff','.doc','.docx','
 
 def day_scope(request,data,edit=False):
     require_roles(request.user,service.EDITORS if edit else service.EDITORS|READ_ROLES)
-    selector=ObjectDateForm(data,user=request.user)
+    selector=ObjectDateForm(data,user=request.user,production_scope=True)
     if not selector.is_valid():raise ValidationError('Выберите доступный объект и дату.')
     obj,day=selector.cleaned_data['construction_object'],selector.cleaned_data['date']
     if edit:require_fact_day(request.user,day)
@@ -169,7 +169,7 @@ def documents(request):
 def download(request,pk):
     require_roles(request.user,service.EDITORS|READ_ROLES)
     record=get_object_or_404(ActuationDocument,company=request.user.company,pk=pk,removed_at=None)
-    if not scope_queryset(type(record.construction_object).objects.all(),request.user).filter(pk=record.construction_object_id).exists():raise Http404
+    if not scope_queryset(type(record.construction_object).objects.all(),request.user,production_scope=True).filter(pk=record.construction_object_id).exists():raise Http404
     try:stream=record.file.open('rb')
     except FileNotFoundError:raise Http404('Файл отсутствует в хранилище.')
     response=FileResponse(stream,as_attachment=True,filename=record.original_name,content_type='application/octet-stream')

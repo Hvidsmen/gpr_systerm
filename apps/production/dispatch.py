@@ -67,8 +67,8 @@ def plans(obj,day):
     return works,resources
 
 class ScopeFormMixin:
-    def __init__(self,*args,user,obj,day,work_plan=None,equipment_baselines=None,day_resource_plan=None,activity_work_keys=None,activity_choices=None,employee_pool=None,planned_positions=None,**kwargs):
-        super().__init__(*args,**({'user':user,**kwargs} if isinstance(self,DailyFactForm) else kwargs))
+    def __init__(self,*args,user,obj,day,work_plan=None,equipment_baselines=None,day_resource_plan=None,activity_work_keys=None,activity_choices=None,employee_pool=None,planned_positions=None,production_scope=True,**kwargs):
+        super().__init__(*args,**({'user':user,'production_scope':production_scope,**kwargs} if isinstance(self,DailyFactForm) else kwargs))
         self.obj=obj;self.day=day;self.work_plan=work_plan or {}
         self.equipment_baselines=equipment_baselines or {}
         self.day_resource_plan=day_resource_plan
@@ -80,7 +80,7 @@ class ScopeFormMixin:
         if hasattr(self.instance,'construction_object_id'):self.instance.construction_object=obj
         for name in ['date','construction_object']:self.fields.pop(name,None)
         for field in self.fields.values():
-            if isinstance(field,forms.ModelChoiceField):field.queryset=scope_queryset(field.queryset,user)
+            if isinstance(field,forms.ModelChoiceField):field.queryset=scope_queryset(field.queryset,user,production_scope=production_scope)
             if isinstance(field.widget,forms.Textarea):field.widget.attrs['rows']=2
         if 'work' in self.fields:
             self.fields['work'].queryset=ProjectWork.objects.filter(company=user.company,section__construction_object=obj,merged_source__isnull=True)

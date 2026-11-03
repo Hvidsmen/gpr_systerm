@@ -38,6 +38,7 @@ class AccessGroup(BaseTimestampedModel):
     name = models.CharField('Название группы', max_length=150)
     role = models.ForeignKey(Role, on_delete=models.PROTECT, verbose_name='Роль')
     assigned_objects = models.ManyToManyField('projects.ConstructionObject', blank=True, verbose_name='Объекты')
+    production_additional_objects = models.ManyToManyField('projects.ConstructionObject', blank=True, related_name='production_view_groups', verbose_name='Производство: дополнительные объекты без ежедневных заданий')
     ad_group_dn = models.CharField('DN группы AD', max_length=1024, blank=True, help_text='Полный distinguishedName группы AD. Пусто — только ручное назначение.')
 
     class Meta:
@@ -69,6 +70,10 @@ class User(AbstractUser):
     assigned_objects = models.ManyToManyField(
         'projects.ConstructionObject', blank=True, related_name='assigned_users',
         verbose_name=_('назначенные строительные объекты'),
+    )
+    production_additional_objects = models.ManyToManyField(
+        'projects.ConstructionObject', blank=True, related_name='production_viewers',
+        verbose_name='Производство: дополнительные объекты без ежедневных заданий',
     )
     position = models.CharField(_('должность'), max_length=100, blank=True)
     phone = models.CharField(_('телефон'), max_length=20, blank=True)
@@ -124,6 +129,7 @@ from django.db.models.signals import m2m_changed, pre_save
 from django.dispatch import receiver
 
 
+@receiver(m2m_changed, sender=User.production_additional_objects.through)
 @receiver(m2m_changed, sender=User.assigned_objects.through)
 def validate_object_assignments(sender, instance, action, reverse, pk_set, **kwargs):
     if action != 'pre_add':
@@ -139,7 +145,7 @@ def validate_object_assignments(sender, instance, action, reverse, pk_set, **kwa
 
 @receiver(pre_save, sender=User)
 def protect_assignment_company(sender, instance, **kwargs):
-    if instance.pk and instance.assigned_objects.exclude(company_id=instance.company_id).exists():
+    if instance.pk and (instance.assigned_objects.exclude(company_id=instance.company_id).exists() or instance.production_additional_objects.exclude(company_id=instance.company_id).exists()):
         raise ValidationError('Перед сменой компании удалите назначения строительных объектов.')
 
 
