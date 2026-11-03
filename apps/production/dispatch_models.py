@@ -185,3 +185,15 @@ class ProductionPresence(BaseCompanyModel):
     closing_at=models.DateTimeField(null=True,blank=True)
     class Meta:
         constraints=[models.UniqueConstraint(fields=['construction_object','date','session_key'],name='unique_production_presence')]
+
+
+class ProductionLinkReceipt(BaseCompanyModel):
+    """Deduplicates queued link commands after a lost satellite response."""
+    id=models.UUIDField(primary_key=True,editable=False)
+    construction_object=models.ForeignKey('projects.ConstructionObject',on_delete=models.CASCADE)
+    date=models.DateField()
+    user=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.CASCADE)
+    digest=models.CharField(max_length=64)
+    result=models.JSONField(default=dict)
+    class Meta:
+        indexes=[models.Index(fields=['company','created_at'],name='prod_link_receipt_age')]

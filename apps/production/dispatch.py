@@ -67,7 +67,7 @@ def plans(obj,day):
     return works,resources
 
 class ScopeFormMixin:
-    def __init__(self,*args,user,obj,day,work_plan=None,equipment_baselines=None,day_resource_plan=None,activity_work_keys=None,activity_choices=None,employee_pool=None,**kwargs):
+    def __init__(self,*args,user,obj,day,work_plan=None,equipment_baselines=None,day_resource_plan=None,activity_work_keys=None,activity_choices=None,employee_pool=None,planned_positions=None,**kwargs):
         super().__init__(*args,**({'user':user,**kwargs} if isinstance(self,DailyFactForm) else kwargs))
         self.obj=obj;self.day=day;self.work_plan=work_plan or {}
         self.equipment_baselines=equipment_baselines or {}
@@ -75,6 +75,7 @@ class ScopeFormMixin:
         self.activity_work_keys=set(activity_work_keys or [])
         self.activity_choices=activity_choices or []
         self.employee_pool=employee_pool
+        self.planned_positions=planned_positions
         self.instance.company=user.company;self.instance.date=day
         if hasattr(self.instance,'construction_object_id'):self.instance.construction_object=obj
         for name in ['date','construction_object']:self.fields.pop(name,None)
@@ -104,6 +105,7 @@ class WorkForm(ScopeFormMixin,DailyFactForm):
         self.fields['work_item'].queryset=self.fields['work_item'].queryset.select_related('project_work__complex_object','project_work__section')
         self.fields['work_item'].label_from_instance=lambda item:work_label(item.project_work)+' → '+item.name
         if not self.instance.pk:self.initial['actual_quantity']=None
+        else:self.initial['actual_quantity']=self.instance.actual_quantity.normalize()
     def clean(self):
         data=super().clean();work=data.get('project_work');item=data.get('work_item')
         if work:
@@ -117,9 +119,12 @@ class WorkForm(ScopeFormMixin,DailyFactForm):
 class ActivityForm(ScopeFormMixin,forms.ModelForm):
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
-        actual=DailyFact.objects.filter(company=self.obj.company,date=self.day,project_work__section__construction_object=self.obj)
-        work_ids={key[0] for key in self.work_plan}|set(actual.values_list('project_work_id',flat=True))
-        item_ids={key[1] for key in self.work_plan if key[1]}|set(actual.exclude(work_item=None).values_list('work_item_id',flat=True))
+        work_ids={key[0] for key in self.work_plan}
+        item_ids={key[1] for key in self.work_plan if key[1]}
+        if not getattr(self,'production_entry',False):
+            actual=DailyFact.objects.filter(company=self.obj.company,date=self.day,project_work__section__construction_object=self.obj)
+            work_ids.update(actual.values_list('project_work_id',flat=True))
+            item_ids.update(actual.exclude(work_item=None).values_list('work_item_id',flat=True))
         work_ids|={key[0] for key in self.activity_work_keys}
         item_ids|={key[1] for key in self.activity_work_keys if key[1]}
         if self.instance.work_id:work_ids.add(self.instance.work_id)
@@ -337,6 +342,8 @@ class DispatcherDayView(CompanyRequiredMixin,View):
 
         from .employee_pool import prepare as prepare_employee_pool,labor_direction
         employee_pool=prepare_employee_pool(obj,day) if section=='works' else None
+        from .production_positions import plan_positions
+        planned_positions=plan_positions(obj,day) if section=='works' else None
         if employee_pool:context['production_employee_locations']=employee_pool['locations']
         if section=='fuel':
             if bound:raise PermissionDenied('Учёт ГСМ ведётся по ВЖГ.')
@@ -349,7 +356,7 @@ class DispatcherDayView(CompanyRequiredMixin,View):
             if prefix=='fuel':qs=qs.filter(equipment_ref='')
             if prefix=='equipment':qs=qs.select_related('equipment__type__parent__category','equipment__type__category','equipment__catalogue_group')
             if prefix=='labor':
-                qs=qs.select_related('employee__position__planning_mapping__brigade__group','position').prefetch_related('work_links')
+                qs=qs.select_related('employee__position__planning_mapping__brigade__group','position','planning_position').prefetch_related('work_links')
                 if section=='works':qs=qs.exclude(labor_direction())
             initial=[]
             if prefix=='works':
@@ -368,7 +375,7 @@ class DispatcherDayView(CompanyRequiredMixin,View):
             extra=len(initial)+1
             if prefix=='equipment' and (equipment_baselines or existing):extra=len(initial)
             factory=modelformset_factory(model,form=form,formset=ScopedSet,extra=extra,can_delete=True,max_num=2000,absolute_max=2000)
-            formset=factory(data,prefix=prefix,queryset=qs.order_by('pk'),initial=initial,form_kwargs={'user':request.user,'obj':obj,'day':day,'work_plan':work_plan,'equipment_baselines':equipment_baselines,'day_resource_plan':resource_plan,'activity_work_keys':activity_keys,'activity_choices':catalogue,'employee_pool':employee_pool})
+            formset=factory(data,prefix=prefix,queryset=qs.order_by('pk'),initial=initial,form_kwargs={'user':request.user,'obj':obj,'day':day,'work_plan':work_plan,'equipment_baselines':equipment_baselines,'day_resource_plan':resource_plan,'activity_work_keys':activity_keys,'activity_choices':catalogue,'employee_pool':employee_pool,'planned_positions':planned_positions})
             if prefix=='equipment':
                 for row in formset:
                     try:key=(int(row.initial.get('equipment') or row['equipment'].value()),int(row.initial.get('shift') or row['shift'].value() or 1))

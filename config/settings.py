@@ -58,6 +58,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'django.middleware.gzip.GZipMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -162,3 +163,9 @@ TRAINING_ROOT=Path(os.getenv('GPR_TRAINING_ROOT',str(CONFIG_DIR / '.runtime' / '
 TRAINING_MODE=False
 
 INVITATION_ASYNC_ENABLED=env_bool('INVITATION_ASYNC_ENABLED',True)
+
+# Serve versioned vendor assets locally; precompress them during collectstatic.
+STORAGES = {
+    'default': {'BACKEND':'django.core.files.storage.FileSystemStorage'},
+    'staticfiles': {'BACKEND':'whitenoise.storage.CompressedStaticFilesStorage'},
+}

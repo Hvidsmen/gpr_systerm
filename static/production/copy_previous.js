@@ -23,6 +23,7 @@
    }else{
     if(form.dataset.resetRequired==='1')throw new Error('Производственная часть сброшена. Обновите форму.');
     if(kind==='links'&&!await window.productionAutoSave.flushPeople())throw new Error('Сначала исправьте несохранённые поля сотрудников.');
+    if(kind==='links'&&form.productionLinks&&!await form.productionLinks.flush())throw new Error('Сначала дождитесь отправки текущих связей. Черновик сохранён в браузере.');
     const field=(row,name)=>row.querySelector('[name$="-'+name+'"]'),people=[...form.querySelectorAll('[data-production-person]')];
     csrf=form.productionSession.csrf;data={...form.productionSession.scope,kind,replace_legacy:Boolean(form.elements.namedItem('replace_legacy')?.checked),keep:people.map(form.productionKeyOf).filter(Boolean),revisions:Object.fromEntries(people.filter(row=>field(row,'id').value).map(row=>[field(row,'id').value,Number(row.dataset.linksRevision||0)]))};
    }
@@ -30,7 +31,7 @@
    if(!response.ok)throw new Error(result.error||'Не удалось скопировать данные.');
    show(root,kind,result);
    if(kind==='equipment'&&result.added){try{sessionStorage.setItem(storageKey,JSON.stringify({url:location.href,at:Date.now(),result}));}catch{}busy=false;location.reload();}
-   else if(form){if(result.report)form.dispatchEvent(new CustomEvent('production-report-update',{detail:result.report}));await form.productionRefresh();}
+   else if(form){if(result.report){if(form.productionApplyReport)form.productionApplyReport(result.report);else form.dispatchEvent(new CustomEvent('production-report-update',{detail:result.report}));}await form.productionRefresh();}
   }catch(error){show(root,kind,null,error.message);}
   finally{controls.forEach(({el,disabled})=>el.disabled=disabled);buttons.forEach((b,i)=>b.disabled=disabled[i]);busy=false;}
  }));

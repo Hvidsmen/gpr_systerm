@@ -121,6 +121,8 @@ def claims(request):
     try:
         data=json.loads(request.body) if request.method=='POST' and request.content_type=='application/json' else request.POST if request.method=='POST' else request.GET
         if not hasattr(data,'get'):raise ValueError
+        if data.get('actor_id') is not None and (data.get('actor_id')!=request.user.pk or data.get('company_id')!=request.user.company_id):
+            return JsonResponse({'error':'Учётная запись изменилась. Откройте форму заново.','auth_changed':True},status=403)
         selector=ObjectDateForm(data,user=request.user)
         if not selector.is_valid():return JsonResponse({'error':'Выберите доступный объект и корректную дату.'},status=400)
         obj=selector.cleaned_data['construction_object'];day=selector.cleaned_data['date']
@@ -131,7 +133,7 @@ def claims(request):
         from .collaboration import expire_presence
         expire_presence(obj,day)
         action=data.get('action')
-        if action not in {'release','release_session'}:
+        if action not in {'release','release_session','release_many'}:
             from .day_reset import epoch
             if int(data.get('reset_epoch',0))!=epoch(obj,day):return JsonResponse({'error':'Производственная часть сброшена администратором. Обновите форму.','reset_required':True},status=409)
             from core.fact_edit_window import require_fact_day
@@ -140,6 +142,27 @@ def claims(request):
         if action=='release_session':
             release_session(request.user,obj,day,session)
             return JsonResponse({'released':True})
+        if action in {'take_many','release_many'}:
+            keys=data.get('keys')
+            if not isinstance(keys,list) or not 1<=len(keys)<=100 or len(set(keys))!=len(keys):raise ValueError
+            parsed=[]
+            for key in keys:
+                parts=str(key).split(':')
+                if len(parts)!=3 or parts[0]!='employee':raise ValueError
+                employee_id,shift=int(parts[1]),int(parts[2])
+                if not 1<=shift<=24:raise ValueError
+                parsed.append((employee_id,shift,parts))
+            with transaction.atomic():
+                type(obj).objects.filter(pk=obj.pk,company=obj.company).update(name=F('name'))
+                rows=[]
+                for _,_,parts in sorted(parsed):
+                    response=employee_claim(request.user,obj,day,session,'release' if action=='release_many' else 'take',parts)
+                    payload=json.loads(response.content)
+                    if response.status_code!=200:
+                        transaction.set_rollback(True)
+                        return response
+                    rows.append(payload if action=='release_many' else payload['claim'])
+                return JsonResponse({'released':True} if action=='release_many' else {'claims':rows})
         parts=str(data.get('key','')).split(':')
         if parts[0]=='employee':return employee_claim(request.user,obj,day,session,action,parts)
         require_roles(request.user,{'ADMIN','DISPATCHER','ALL_FACT_DISPATCHER'})

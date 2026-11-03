@@ -97,6 +97,9 @@ def automatic_readiness(obj,day,actor=None):
 def links(request):
     try:
         data,obj,day=scope(request)
+        if data.get('protocol')=='queued-v1':
+            from .satellite_links import batch
+            return batch(request,data,obj,day)
         from core.fact_edit_window import require_fact_day
         require_fact_day(request.user,day)
         action=data.get('action')
@@ -179,6 +182,8 @@ def rebase(user,obj,day,signed,rows,keep):
 def live(request):
     try:
         data,obj,day=scope(request);session=UUID(str(data.get('session','')))
+        if data.get('protocol')=='compact-v1' and (data.get('actor_id')!=request.user.pk or data.get('company_id')!=request.user.company_id):
+            return JsonResponse({'error':'Учётная запись изменилась. Откройте форму заново.','auth_changed':True},status=403)
         with transaction.atomic():
             type(obj).objects.filter(pk=obj.pk,company=obj.company).update(name=F('name'))
             expire_presence(obj,day)
@@ -197,13 +202,18 @@ def live(request):
             for model in (WorkFactClaim,EmployeeFactClaim):
                 model.objects.filter(company=obj.company,construction_object=obj,date=day,dispatcher=request.user,session_key=session,expires_at__gt=now).update(expires_at=now+TTL)
             claims=status_rows(request.user,obj,day,session)
+            editing_ids=set(WorkFactClaim.objects.filter(company=obj.company,construction_object=obj,date=day,expires_at__gt=now).values_list('dispatcher_id',flat=True))
+            editing_ids.update(EmployeeFactClaim.objects.filter(company=obj.company,construction_object=obj,date=day,expires_at__gt=now).values_list('dispatcher_id',flat=True))
             active={}
             for presence in ProductionPresence.objects.filter(company=obj.company,construction_object=obj,date=day,last_seen__gte=now-GRACE,closing_at=None).select_related('user').order_by('last_seen'):
                 key=presence.user_id
                 item=active.setdefault(key,{'id':key,'name':owner_name(presence.user),'self':key==request.user.pk,'steps':set(),'editing':False})
                 item['steps'].add(presence.step)
-                item['editing']=item['editing'] or WorkFactClaim.objects.filter(company=obj.company,construction_object=obj,date=day,dispatcher_id=key,expires_at__gt=now).exists() or EmployeeFactClaim.objects.filter(company=obj.company,construction_object=obj,date=day,dispatcher_id=key,expires_at__gt=now).exists()
+                item['editing']=item['editing'] or key in editing_ids
             users=[{**item,'steps':sorted(item['steps'])} for item in active.values()]
+            if data.get('protocol')=='compact-v1':
+                from .satellite_sync import response_data
+                return JsonResponse(response_data(request.user,obj,day,session,data,users,claims))
             report=report_data(obj,day);rows=canonical_rows(obj,day,report)
             from .actuation_models import ActuationReason
             reason_options=[{'id':r.pk,'label':r.label,'active':r.status in {'PENDING','APPROVED'}} for r in ActuationReason.objects.filter(company=obj.company)]
