@@ -17,7 +17,7 @@ from .models import (
 
 
 class CompanyFormMixin:
-    def __init__(self, *args, user=None, company=None, production_read=False, **kwargs):
+    def __init__(self, *args, user=None, company=None, production_scope=True, **kwargs):
         self.company = company or (user.company if user else None)
         super().__init__(*args, **kwargs)
         if self.company and hasattr(self, "instance"):
@@ -33,7 +33,7 @@ class CompanyFormMixin:
                     if not self.company:
                         field.queryset = field.queryset.none()
                     elif user:
-                        field.queryset = scope_queryset(field.queryset, user, production_read=production_read)
+                        field.queryset = scope_queryset(field.queryset, user, production_scope=production_scope)
                     else:
                         field.queryset = field.queryset.filter(company=self.company)
                     if field.queryset.model._meta.label_lower in {'resources.equipmenttype', 'resources.brigade'}:

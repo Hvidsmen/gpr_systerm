@@ -14,7 +14,7 @@ ACCOUNT_TABLES = (
 )
 OBJECT_TABLES = ('projects_project', 'projects_constructionobject',
                  'accounts_accessgroup_assigned_objects', 'accounts_user_assigned_objects',
-                 'accounts_accessgroup_production_view_objects', 'accounts_user_production_view_objects')
+                 'accounts_accessgroup_production_additional_objects', 'accounts_user_production_additional_objects')
 
 
 def copy_access(source, destination, keep_objects):

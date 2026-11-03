@@ -67,8 +67,8 @@ def plans(obj,day):
     return works,resources
 
 class ScopeFormMixin:
-    def __init__(self,*args,user,obj,day,work_plan=None,equipment_baselines=None,day_resource_plan=None,activity_work_keys=None,activity_choices=None,employee_pool=None,planned_positions=None,production_read=False,**kwargs):
-        super().__init__(*args,**({'user':user,'production_read':production_read,**kwargs} if isinstance(self,DailyFactForm) else kwargs))
+    def __init__(self,*args,user,obj,day,work_plan=None,equipment_baselines=None,day_resource_plan=None,activity_work_keys=None,activity_choices=None,employee_pool=None,planned_positions=None,production_scope=True,**kwargs):
+        super().__init__(*args,**({'user':user,'production_scope':production_scope,**kwargs} if isinstance(self,DailyFactForm) else kwargs))
         self.obj=obj;self.day=day;self.work_plan=work_plan or {}
         self.equipment_baselines=equipment_baselines or {}
         self.day_resource_plan=day_resource_plan
@@ -80,7 +80,7 @@ class ScopeFormMixin:
         if hasattr(self.instance,'construction_object_id'):self.instance.construction_object=obj
         for name in ['date','construction_object']:self.fields.pop(name,None)
         for field in self.fields.values():
-            if isinstance(field,forms.ModelChoiceField):field.queryset=scope_queryset(field.queryset,user,production_read=production_read)
+            if isinstance(field,forms.ModelChoiceField):field.queryset=scope_queryset(field.queryset,user,production_scope=production_scope)
             if isinstance(field.widget,forms.Textarea):field.widget.attrs['rows']=2
         if 'work' in self.fields:
             self.fields['work'].queryset=ProjectWork.objects.filter(company=user.company,section__construction_object=obj,merged_source__isnull=True)
@@ -302,7 +302,7 @@ class DispatcherDayView(CompanyRequiredMixin,View):
         if role_code(request.user)=='FUEL_WAREHOUSE' or (request.POST if bound else request.GET).get('section')=='fuel':
             if bound:raise PermissionDenied('Учёт ГСМ ведётся по ВЖГ.')
             return redirect('production:camp_fuel')
-        selector=ObjectDateForm(request.POST if bound else request.GET or None,user=request.user,production_read=not bound,initial={'date':timezone.localdate()})
+        selector=ObjectDateForm(request.POST if bound else request.GET or None,user=request.user,initial={'date':timezone.localdate()})
         allowed=sections_for(request.user)
         section=(request.POST if bound else request.GET).get('section',allowed[0])
         if section not in allowed:raise PermissionDenied('Другое направление факта.')
@@ -311,13 +311,8 @@ class DispatcherDayView(CompanyRequiredMixin,View):
         context={'selector':selector,'section':section,'tabs':[(s,LABELS[s]) for s in allowed],'editable':role_code(request.user) in FACT_ROLES}
         if not selector.is_bound or not selector.is_valid():return dispatcher_response(request,context,status=400 if bound else 200)
         obj=selector.cleaned_data['construction_object'];day=selector.cleaned_data['date']
-        from core.permissions import production_can_fill
-        can_fill=production_can_fill(request.user,obj)
-        context['production_view_only']=not can_fill
-        context['editable']=context['editable'] and can_fill
         from core.fact_edit_window import window_context,require_fact_day
         context.update(window_context(request.user,day))
-        if not can_fill:context['fact_window_message']=''
         context['editable']=context['editable'] and context['fact_day_editable']
         if bound:require_fact_day(request.user,day)
         from . import equipment_operations
@@ -328,14 +323,11 @@ class DispatcherDayView(CompanyRequiredMixin,View):
             context['equipment_assignments_url']=reverse('production:equipment_assignment_list')+'?'+urlencode({'construction_object':obj.pk,'date':day.isoformat()})
         from .day_reset import epoch as reset_epoch
         context['production_reset_epoch']=reset_epoch(obj,day)
-        status=FactSectionDay.objects.filter(company=obj.company,construction_object=obj,date=day,section=section).first()
-        if status is None:
-            status=FactSectionDay(company=obj.company,construction_object=obj,date=day,section=section)
-            if can_fill:status.save()
+        status,_=FactSectionDay.objects.get_or_create(company=obj.company,construction_object=obj,date=day,section=section)
         work_plan,resource_plan=plans(obj,day)
         from .production_entry import ProductionPersonForm, candidate_keys, previous_people, work_catalogue, GENERAL_PATH
         catalogue=work_catalogue(obj)
-        own_entry=section=='works' and role_code(request.user)=='DISPATCHER' and can_fill
+        own_entry=section=='works' and role_code(request.user)=='DISPATCHER'
         activity_keys=candidate_keys(obj,day,work_plan,catalogue,request.POST if bound else None,user=request.user if own_entry else None)
         people_status=FactSectionDay.objects.filter(company=obj.company,construction_object=obj,date=day,section='labor').first()
         context['labor_revision']=request.POST.get('labor_revision','') if bound else (people_status.revision if people_status else 0)
@@ -383,7 +375,7 @@ class DispatcherDayView(CompanyRequiredMixin,View):
             extra=len(initial)+1
             if prefix=='equipment' and (equipment_baselines or existing):extra=len(initial)
             factory=modelformset_factory(model,form=form,formset=ScopedSet,extra=extra,can_delete=True,max_num=2000,absolute_max=2000)
-            formset=factory(data,prefix=prefix,queryset=qs.order_by('pk'),initial=initial,form_kwargs={'user':request.user,'obj':obj,'day':day,'work_plan':work_plan,'equipment_baselines':equipment_baselines,'day_resource_plan':resource_plan,'activity_work_keys':activity_keys,'activity_choices':catalogue,'employee_pool':employee_pool,'planned_positions':planned_positions,'production_read':not can_fill})
+            formset=factory(data,prefix=prefix,queryset=qs.order_by('pk'),initial=initial,form_kwargs={'user':request.user,'obj':obj,'day':day,'work_plan':work_plan,'equipment_baselines':equipment_baselines,'day_resource_plan':resource_plan,'activity_work_keys':activity_keys,'activity_choices':catalogue,'employee_pool':employee_pool,'planned_positions':planned_positions})
             if prefix=='equipment':
                 for row in formset:
                     try:key=(int(row.initial.get('equipment') or row['equipment'].value()),int(row.initial.get('shift') or row['shift'].value() or 1))

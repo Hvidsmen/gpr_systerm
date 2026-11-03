@@ -1,5 +1,4 @@
-"""Production visibility never grants entry rights or a daily task subscription."""
-import json
+"""Both production access lists permit edits; only main assignments create daily tasks."""
 from datetime import timedelta
 from uuid import uuid4
 from django.core.exceptions import ValidationError
@@ -27,131 +26,124 @@ class ProductionObjectAccessTests(TestCase):
         cls.foreign_company=Company.objects.create(name='Foreign company')
         cls.foreign=ConstructionObject.objects.create(company=cls.foreign_company,project=Project.objects.create(company=cls.foreign_company,name='Foreign project'),name='Foreign object')
         section=Section.objects.create(company=cls.company,construction_object=cls.other,name='Other section')
-        cls.other_work=ProjectWork.objects.create(company=cls.company,section=section,name='Read only work',unit='m')
+        cls.other_work=ProjectWork.objects.create(company=cls.company,section=section,name='Additional object work',unit='m')
         cls.fact=DailyFact.objects.create(company=cls.company,project_work=cls.other_work,date=cls.day,actual_quantity=7,reported_by=cls.users['ADMIN'])
         cls.person=EmployeeActivity.objects.create(company=cls.company,construction_object=cls.other,date=cls.day,employee=cls.employee,position=cls.employee.position,entry_direction='works',reported_by=cls.users['ADMIN'])
 
     def setUp(self):
-        self.user=self.users['DISPATCHER']
-        self.user.production_view_objects.add(self.other)
+        self.user=self.users['DISPATCHER'];self.user.production_additional_objects.add(self.other)
         self.client.force_login(self.user)
         self.query={'construction_object':self.other.pk,'date':str(self.day),'section':'works'}
+        self.session=str(uuid4());self.scope={**self.query,'session':self.session}
 
-    def test_visible_union_without_expanding_default_write_scope(self):
-        self.assertSetEqual(set(scope_queryset(ConstructionObject.objects.all(),self.user,production_read=True)),{self.obj,self.other})
+    def payload(self):
+        page=self.client.get(self.url,self.query);self.assertEqual(page.status_code,200)
+        data={**self.query,'revision':str(page.context['status'].revision),'labor_revision':str(page.context['labor_revision']),'production_snapshot':page.context['production_snapshot'],'action':'save'}
+        for group in page.context['groups']:
+            for field in group['formset'].management_form:data[field.html_name]=field.value()
+            for row in group['formset']:
+                for field in row:
+                    if field.name=='DELETE':continue
+                    value=field.value();data[field.html_name]=value if isinstance(value,list) else str(value) if value is not None and value is not False else ''
+        return data
+
+    def test_production_union_without_expanding_nonproduction_scope(self):
+        self.assertSetEqual(set(scope_queryset(ConstructionObject.objects.all(),self.user,production_scope=True)),{self.obj,self.other})
         self.assertSetEqual(set(scope_queryset(ConstructionObject.objects.all(),self.user)),{self.obj})
-        self.user.production_view_objects.add(self.obj)
-        self.assertEqual(scope_queryset(ConstructionObject.objects.all(),self.user,production_read=True).count(),2)
+        self.user.production_additional_objects.add(self.obj)
+        self.assertEqual(scope_queryset(ConstructionObject.objects.all(),self.user,production_scope=True).count(),2)
 
-    def test_view_only_day_contains_other_authors_fact_and_disabled_controls_without_creating_fact_state(self):
-        self.assertFalse(FactSectionDay.objects.filter(construction_object=self.other).exists())
+    def test_additional_day_is_editable_and_has_existing_facts_and_collaboration_scripts(self):
         page=self.client.get(self.url,self.query)
-        self.assertEqual(page.status_code,200)
-        self.assertFalse(page.context['editable']);self.assertFalse(page.context['own_entry'])
-        self.assertContains(page,'Только просмотр.')
-        self.assertNotContains(page,'Ввод и повторные исправления доступны')
-        self.assertNotContains(page,'Сейчас в форме:')
-        self.assertContains(page,'<fieldset disabled>',html=False)
-        self.assertNotContains(page,'production/production_autosave.js')
-        self.assertNotContains(page,'production/links_outbox.js')
+        self.assertTrue(page.context['editable']);self.assertTrue(page.context['own_entry'])
+        self.assertContains(page,'data-readonly="0"');self.assertContains(page,'production/production_autosave.js');self.assertContains(page,'production/links_outbox.js')
         works=next(g['formset'] for g in page.context['groups'] if g['prefix']=='works')
         self.assertIn(self.fact.pk,[row.instance.pk for row in works])
-        saved=next(row for row in works if row.instance.pk==self.fact.pk)
-        self.assertTrue(saved.fields['project_work'].queryset.filter(pk=self.other_work.pk).exists())
-        self.assertFalse(FactSectionDay.objects.filter(construction_object=self.other).exists())
-        self.assertFalse(ProductionEntryDay.objects.filter(construction_object=self.other,dispatcher=self.user).exists())
+        self.assertFalse(WorkTask.objects.filter(assigned_to=self.user,construction_object=self.other,kind='FACT').exists())
 
-    def test_tasks_only_for_fill_objects_and_reassignment_preserves_view_but_cancels_old_tasks(self):
+    def test_actual_fact_can_be_changed_on_additional_object(self):
+        data=self.payload();prefix=next(k[:-len('project_work')] for k,v in data.items() if k.endswith('-project_work') and str(v)==str(self.other_work.pk))
+        data.update({prefix+'actual_quantity':'12','collaborative':'1','autosave':'1'})
+        response=self.client.post(self.url,data);self.assertEqual(response.status_code,200,response.content)
+        self.fact.refresh_from_db();self.assertEqual(self.fact.actual_quantity,12)
+        self.assertEqual(self.fact.reported_by_id,self.users['ADMIN'].pk)
+        self.assertTrue(ProductionEntryDay.objects.filter(construction_object=self.other,dispatcher=self.user).exists())
+        generate_daily(self.user,today=self.day+timedelta(days=1))
+        self.assertFalse(WorkTask.objects.filter(assigned_to=self.user,construction_object=self.other,kind='FACT').exists())
+
+    def test_claims_presence_and_both_link_protocols_allow_additional_object(self):
+        response=self.client.post(reverse('production:work_claims'),{**self.scope,'action':'take','key':f'work:{self.other_work.pk}'},content_type='application/json')
+        self.assertEqual(response.status_code,200,response.content)
+        self.assertTrue(WorkFactClaim.objects.filter(dispatcher=self.user,construction_object=self.other).exists())
+        response=self.client.post(reverse('production:production_live'),self.scope,content_type='application/json')
+        self.assertEqual(response.status_code,200,response.content)
+        response=self.client.post(reverse('production:production_links'),{**self.scope,'activity':self.person.pk,'fact':self.fact.pk,'action':'add'},content_type='application/json')
+        self.assertEqual(response.status_code,200,response.content);self.assertTrue(self.person.work_links.exists())
+        response=self.client.post(reverse('production:production_links'),{**self.scope,'protocol':'queued-v1','actor_id':self.user.pk,'company_id':self.company.pk,'commands':[{'id':str(uuid4()),'activity':self.person.pk,'action':'remove','fact':self.fact.pk}]},content_type='application/json')
+        self.assertEqual(response.status_code,200,response.content);self.assertTrue(response.json()['results'][0]['ok']);self.assertFalse(self.person.work_links.exists())
+
+    def test_tasks_only_for_main_objects_and_removal_preserves_additional_editing(self):
         generate_daily(self.user,today=self.day+timedelta(days=1))
         tasks=WorkTask.objects.filter(assigned_to=self.user,kind='FACT')
         self.assertSetEqual(set(tasks.values_list('construction_object_id',flat=True)),{self.obj.pk})
         self.assertFalse(DailyTaskCursor.objects.filter(user=self.user,construction_object=self.other).exists())
-        self.user.production_view_objects.add(self.obj)
-        self.user.assigned_objects.set([self.other])
+        self.user.production_additional_objects.add(self.obj);self.user.assigned_objects.set([self.other])
         generate_daily(self.user,today=self.day+timedelta(days=1))
-        self.assertEqual(tasks.get(construction_object=self.obj).status,'SUPERSEDED')
-        self.assertEqual(tasks.get(construction_object=self.other).status,'OPEN')
-        page=self.client.get(self.url,{**self.query,'construction_object':self.obj.pk})
-        self.assertFalse(page.context['editable'])
-        self.assertTrue(self.client.get(self.url,self.query).context['editable'])
+        self.assertEqual(tasks.get(construction_object=self.obj).status,'SUPERSEDED');self.assertEqual(tasks.get(construction_object=self.other).status,'OPEN')
+        for obj in [self.obj,self.other]:self.assertTrue(self.client.get(self.url,{**self.query,'construction_object':obj.pk}).context['editable'])
 
-    def test_no_fill_objects_still_can_view_without_daily_tasks(self):
-        self.user.assigned_objects.clear()
-        self.assertEqual(generate_daily(self.user,today=self.day+timedelta(days=1)),0)
-        self.assertEqual(self.client.get(self.url,self.query).status_code,200)
+    def test_no_main_objects_still_can_edit_without_daily_tasks(self):
+        self.user.assigned_objects.clear();self.assertEqual(generate_daily(self.user,today=self.day+timedelta(days=1)),0)
+        self.assertTrue(self.client.get(self.url,self.query).context['editable'])
         self.assertFalse(WorkTask.objects.filter(assigned_to=self.user,kind='FACT').exists())
 
-    def test_forged_mutation_endpoints_reject_view_only_object_and_do_not_write(self):
-        requests=[('production:fact_day_workspace',self.query,False),
-            ('production:production_links',{**self.query,'activity':self.person.pk,'action':'add','fact':self.fact.pk},True),
-            ('production:production_links',{**self.query,'protocol':'queued-v1','actor_id':self.user.pk,'company_id':self.company.pk,'commands':[{'id':str(uuid4()),'activity':self.person.pk,'action':'add','fact':self.fact.pk}]},True),
-            ('production:production_copy_previous',self.query,True),
-            ('production:work_claims',{**self.query,'session':str(uuid4()),'action':'take','key':f'work:{self.other_work.pk}'},True),
-            ('production:actuation_reason_propose',{**self.query,'label':'Must not be proposed'},False),
-            ('production:actuation_documents',self.query,False)]
-        for route,payload,as_json in requests:
-            with self.subTest(route=route,protocol=payload.get('protocol')):
-                response=self.client.post(reverse(route),json.dumps(payload) if as_json else payload,content_type='application/json' if as_json else 'application/x-www-form-urlencoded') if as_json else self.client.post(reverse(route),payload)
-                self.assertIn(response.status_code,{400,403,404,409})
-        self.fact.refresh_from_db();self.assertEqual(self.fact.actual_quantity,7)
-        for model in [WorkFactClaim,EmployeeFactClaim,EmployeeWorkLink,ProductionLinkReceipt,FactSectionDay,ProductionEntryDay]:
-            self.assertEqual(model.objects.count(),0,model.__name__)
-
-    def test_report_and_exports_allow_view_object_but_hidden_and_other_company_are_denied(self):
-        for route in ['production:production_report_download','production:smg_period_detail','production:smg_period_export','production:equipment_report']:
-            with self.subTest(route=route):
-                response=self.client.get(reverse(route),self.query)
-                self.assertEqual(response.status_code,200)
-                if response.streaming:response.close()
+    def test_hidden_and_foreign_objects_stay_blocked_for_reads_and_writes(self):
         for obj in [self.hidden,self.foreign]:
-            page=self.client.get(self.url,{**self.query,'construction_object':obj.pk})
-            self.assertNotIn('object',page.context)
-            self.assertEqual(self.client.get(reverse('production:production_report_download'),{**self.query,'construction_object':obj.pk}).status_code,400)
-        self.user.production_view_objects.clear()
+            query={**self.query,'construction_object':obj.pk}
+            self.assertNotIn('object',self.client.get(self.url,query).context)
+            for route in ['production:fact_day_workspace','production:work_claims','production:production_links','production:production_copy_previous','production:actuation_reason_propose','production:actuation_documents']:
+                response=self.client.post(reverse(route),{**query,'session':self.session,'activity':self.person.pk,'fact':self.fact.pk,'action':'add'})
+                self.assertIn(response.status_code,{400,403,404,409},route)
+        self.fact.refresh_from_db();self.assertEqual(self.fact.actual_quantity,7)
+        self.assertFalse(EmployeeWorkLink.objects.exists());self.assertFalse(ProductionLinkReceipt.objects.exists())
+        self.user.production_additional_objects.clear()
         self.assertNotIn('object',self.client.get(self.url,self.query).context)
+        self.assertIn(self.client.post(self.url,self.query).status_code,{400,403})
 
-    def test_other_roles_do_not_gain_production_rights_from_extra_view_objects(self):
+    def test_reports_and_exports_allow_additional_object(self):
+        for route in ['production:production_report_download','production:smg_period_detail','production:smg_period_export','production:equipment_report']:
+            response=self.client.get(reverse(route),self.query);self.assertEqual(response.status_code,200)
+            if response.streaming:response.close()
+
+    def test_other_roles_do_not_gain_rights_from_additional_production_objects(self):
         for code in ['PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER']:
-            user=self.users[code];user.production_view_objects.add(self.other)
-            self.assertFalse(scope_queryset(ConstructionObject.objects.all(),user,production_read=True).filter(pk=self.other.pk).exists())
+            user=self.users[code];user.production_additional_objects.add(self.other)
+            self.assertFalse(scope_queryset(ConstructionObject.objects.all(),user,production_scope=True).filter(pk=self.other.pk).exists())
 
-    def test_all_direction_dispatcher_read_only_on_each_direction(self):
+    def test_all_direction_dispatcher_can_edit_without_automatic_task(self):
         user=User.objects.create_user(username='all-object-scope',company=self.company,role=Role.objects.get(code='ALL_FACT_DISPATCHER'))
-        user.assigned_objects.add(self.obj);user.production_view_objects.add(self.other)
-        self.client.force_login(user)
+        user.assigned_objects.add(self.obj);user.production_additional_objects.add(self.other);self.client.force_login(user)
         for section in ['works','labor','mechanization']:
-            page=self.client.get(self.url,{**self.query,'section':section})
-            self.assertEqual(page.status_code,200);self.assertFalse(page.context['editable'])
+            page=self.client.get(self.url,{**self.query,'section':section});self.assertEqual(page.status_code,200);self.assertTrue(page.context['editable'])
+        generate_daily(user,today=self.day+timedelta(days=1))
+        self.assertFalse(WorkTask.objects.filter(assigned_to=user,construction_object=self.other,kind='FACT').exists())
 
-    def test_company_guards_on_direct_and_reverse_assignments_and_company_change(self):
-        with self.assertRaises(ValidationError),transaction.atomic():self.user.production_view_objects.add(self.foreign)
+    def test_company_guards_and_group_inheritance(self):
+        with self.assertRaises(ValidationError),transaction.atomic():self.user.production_additional_objects.add(self.foreign)
         outsider=User.objects.create_user(username='outsider-object-scope',company=self.foreign_company)
         with self.assertRaises(ValidationError),transaction.atomic():self.other.production_viewers.add(outsider)
-        self.user.assigned_objects.clear();self.user.company=self.foreign_company
-        with self.assertRaises(ValidationError),transaction.atomic():self.user.save()
-
-    def test_individual_form_and_group_inheritance_override_forged_view_selection(self):
-        form=CompanyUserAccessForm({'role':self.user.role_id,'assigned_objects':[self.obj.pk],'production_view_objects':[self.other.pk],'is_active':'on'},instance=self.user,company=self.company)
+        form=CompanyUserAccessForm({'role':self.user.role_id,'production_additional_objects':[self.foreign.pk]},instance=self.user,company=self.company)
+        self.assertFalse(form.is_valid());self.assertIn('production_additional_objects',form.errors)
+        group=AccessGroup.objects.create(company=self.company,name='Production access group',role=self.user.role)
+        group.assigned_objects.add(self.obj);group.production_additional_objects.add(self.other)
+        form=CompanyUserAccessForm({'access_group':group.pk,'assigned_objects':[self.hidden.pk],'production_additional_objects':[self.hidden.pk],'is_active':'on'},instance=self.user,company=self.company)
         self.assertTrue(form.is_valid(),form.errors);form.save()
-        self.assertSetEqual(set(self.user.production_view_objects.all()),{self.other})
-        form=CompanyUserAccessForm({'role':self.user.role_id,'production_view_objects':[self.foreign.pk]},instance=self.user,company=self.company)
-        self.assertFalse(form.is_valid());self.assertIn('production_view_objects',form.errors)
-        group=AccessGroup.objects.create(company=self.company,name='Production view group',role=self.user.role)
-        group.assigned_objects.add(self.obj);group.production_view_objects.add(self.other)
-        form=CompanyUserAccessForm({'access_group':group.pk,'assigned_objects':[self.hidden.pk],'production_view_objects':[self.hidden.pk],'is_active':'on'},instance=self.user,company=self.company)
-        self.assertTrue(form.is_valid(),form.errors);form.save()
-        self.assertSetEqual(set(self.user.assigned_objects.all()),{self.obj})
-        self.assertSetEqual(set(self.user.production_view_objects.all()),{self.other})
-        group.production_view_objects.clear();self.assertFalse(self.user.production_view_objects.exists())
-        with self.assertRaises(ValidationError),transaction.atomic():group.production_view_objects.add(self.foreign)
-        self.client.force_login(self.users['ADMIN'])
-        page=self.client.get(reverse('accounts:user_access',args=[self.user.pk]))
-        self.assertTrue(page.context['form'].fields['production_view_objects'].disabled)
+        self.assertSetEqual(set(self.user.assigned_objects.all()),{self.obj});self.assertSetEqual(set(self.user.production_additional_objects.all()),{self.other})
+        group.production_additional_objects.clear();self.assertFalse(self.user.production_additional_objects.exists())
+        with self.assertRaises(ValidationError),transaction.atomic():group.production_additional_objects.add(self.foreign)
 
-    def test_ad_membership_loss_revokes_additional_view_rights(self):
-        group=AccessGroup.objects.create(company=self.company,name='AD production group',role=self.user.role,ad_group_dn='CN=Production,DC=example,DC=org')
-        group.production_view_objects.add(self.other)
+    def test_ad_membership_loss_revokes_additional_rights(self):
+        group=AccessGroup.objects.create(company=self.company,name='AD production group',role=self.user.role,ad_group_dn='CN=Production,DC=example,DC=org');group.production_additional_objects.add(self.other)
         self.user.access_group=group;self.user.access_group_from_ad=True;self.user.save()
         map_directory_group(self.user,{'group_dns':[]})
-        self.assertFalse(self.user.production_view_objects.exists())
-        self.assertIsNone(self.user.role_id)
+        self.assertFalse(self.user.production_additional_objects.exists());self.assertIsNone(self.user.role_id)

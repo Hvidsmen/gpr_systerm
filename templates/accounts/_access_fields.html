@@ -4,6 +4,6 @@
 <div class="admin-inheritance" data-inheritance-note hidden><i class="bi bi-link-45deg" aria-hidden="true"></i> Роль и объекты наследуются от группы. При изменении группы доступ обновится у всех её участников.</div>
 {% include 'accounts/_admin_field.html' with field=form.role %}
 {% if form.objects %}{% include 'accounts/_admin_field.html' with field=form.objects %}{% else %}{% include 'accounts/_admin_field.html' with field=form.assigned_objects %}{% endif %}
-{% include 'accounts/_admin_field.html' with field=form.production_view_objects %}
+{% include 'accounts/_admin_field.html' with field=form.production_additional_objects %}
 <p class="admin-scope-hint" data-access-scope role="status">Выберите группу или роль, чтобы увидеть область доступа.</p>
 </section>

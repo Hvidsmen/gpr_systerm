@@ -35,7 +35,7 @@ def day_people(obj,day):
 
 def report_for(request):
     require_roles(request.user, READ_ROLES | {'DISPATCHER', 'ALL_FACT_DISPATCHER','MECHANIZATION_DISPATCHER'})
-    selector = ObjectDateForm(request.GET, user=request.user,production_read=True)
+    selector = ObjectDateForm(request.GET, user=request.user,production_scope=True)
     if not selector.is_valid():
         return None
     report = build(selector.cleaned_data['construction_object'], selector.cleaned_data['date'], request.GET.get('schedule'), day_only=request.GET.get('scope')=='day', equipment_only=request.GET.get('equipment_only')=='1',include_fuel=role_code(request.user)!='MECHANIZATION_DISPATCHER' and request.GET.get('include_fuel')!='0')
@@ -177,7 +177,7 @@ def equipment_page(request):
     require_roles(request.user, READ_ROLES | {'DISPATCHER','MECHANIZATION_DISPATCHER','ALL_FACT_DISPATCHER'})
     day_only=request.GET.get('scope','period')=='day'
     initial_day=request.GET.get('date') or timezone.localdate().isoformat()
-    selector=ObjectDateForm(request.GET if 'construction_object' in request.GET else None,user=request.user,production_read=True,initial={'date':initial_day})
+    selector=ObjectDateForm(request.GET if 'construction_object' in request.GET else None,user=request.user,production_scope=True,initial={'date':initial_day})
     context={'selector':selector,'day_only':day_only}
     if selector.is_bound and selector.is_valid():
         report=build(selector.cleaned_data['construction_object'],selector.cleaned_data['date'],request.GET.get('schedule'),day_only=day_only,include_fuel=role_code(request.user)!='MECHANIZATION_DISPATCHER')

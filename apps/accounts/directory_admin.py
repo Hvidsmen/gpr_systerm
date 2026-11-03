@@ -84,10 +84,10 @@ class AccessForm(forms.Form):
     access_group=forms.ModelChoiceField(label='Группа доступа',queryset=AccessGroup.objects.none(),required=False,empty_label='Индивидуальные права',widget=forms.Select(attrs={'class':'form-select'}),help_text='Сначала выберите группу: её роль и объекты будут унаследованы.')
     role=forms.ModelChoiceField(label='Роль в ГПР',queryset=Role.objects.none(),required=False,widget=forms.Select(attrs={'class':'form-select'}))
     objects=forms.ModelMultipleChoiceField(label='Объекты / субобъекты',help_text='Для планировщика, мастера и диспетчеров доступ ограничен назначенными объектами; пустой список означает отсутствие доступа. Руководящие роли видят все объекты компании. При выборе группы права наследуются.',queryset=ConstructionObject.objects.none(),required=False,widget=forms.SelectMultiple(attrs={'class':'form-select'}))
-    production_view_objects=forms.ModelMultipleChoiceField(label='Производство: дополнительные объекты для просмотра',queryset=ConstructionObject.objects.none(),required=False)
+    production_additional_objects=forms.ModelMultipleChoiceField(label='Производство: дополнительные объекты без ежедневных заданий',queryset=ConstructionObject.objects.none(),required=False)
     def __init__(self,*args,company,**kwargs):
         super().__init__(*args,**kwargs)
-        self.fields['production_view_objects'].queryset=ConstructionObject.objects.filter(company=company)
+        self.fields['production_additional_objects'].queryset=ConstructionObject.objects.filter(company=company)
         self.fields['role'].queryset=Role.objects.filter(code__in=ROLES)
         self.fields['objects'].queryset=ConstructionObject.objects.filter(company=company)
         self.fields['access_group'].queryset=AccessGroup.objects.filter(company=company).select_related('role').prefetch_related('assigned_objects')
@@ -97,7 +97,7 @@ class AccessForm(forms.Form):
     def clean(self):
         data=super().clean();group=data.get('access_group')
         if group:
-            data['role']=group.role;data['objects']=group.assigned_objects.all();data['production_view_objects']=group.production_view_objects.all()
+            data['role']=group.role;data['objects']=group.assigned_objects.all();data['production_additional_objects']=group.production_additional_objects.all()
         elif not data.get('role'):self.add_error('role','Выберите группу или роль.')
         return data
 
@@ -111,13 +111,13 @@ def selection(user,token):
 
 
 @transaction.atomic
-def provision(actor,identity,role,objects,group=None,production_view_objects=()):
+def provision(actor,identity,role,objects,group=None,production_additional_objects=()):
     require_roles(actor,{'ADMIN'})
     if group:
         group=AccessGroup.objects.select_for_update().filter(pk=group.pk,company=actor.company).select_related('role').first()
         if group is None:raise ValidationError('Группа другой компании или удалена.')
-        role=group.role;objects=list(group.assigned_objects.filter(company=actor.company));production_view_objects=list(group.production_view_objects.filter(company=actor.company))
-    if role is None or role.code not in ROLES or any(obj.company_id!=actor.company_id for obj in [*objects,*production_view_objects]):raise ValidationError('Недопустимые роль или объекты.')
+        role=group.role;objects=list(group.assigned_objects.filter(company=actor.company));production_additional_objects=list(group.production_additional_objects.filter(company=actor.company))
+    if role is None or role.code not in ROLES or any(obj.company_id!=actor.company_id for obj in [*objects,*production_additional_objects]):raise ValidationError('Недопустимые роль или объекты.')
     guid=UUID(identity['guid'])
     try:
         user,created=User.objects.get_or_create(ldap_guid=guid,defaults={'username':'ad:'+guid.hex,'auth_source':'LDAP','password':make_password(None)})
@@ -133,7 +133,7 @@ def provision(actor,identity,role,objects,group=None,production_view_objects=())
     user.ldap_login=normalize_login(identity.get('login')) or ''
     user.save(update_fields=['company','role','access_group','access_group_from_ad','first_name','last_name','email','ldap_login'])
     user.assigned_objects.set(objects)
-    user.production_view_objects.set(production_view_objects)
+    user.production_additional_objects.set(production_additional_objects)
     return user
 
 
@@ -150,7 +150,7 @@ def add_from_ad(request):
             chosen=result[0]
             form=AccessForm(request.POST if request.method=='POST' else None,company=request.user.company)
             if request.method=='POST' and form.is_valid():
-                user=provision(request.user,chosen,form.cleaned_data['role'],list(form.cleaned_data['objects']),group=form.cleaned_data.get('access_group'),production_view_objects=list(form.cleaned_data['production_view_objects']))
+                user=provision(request.user,chosen,form.cleaned_data['role'],list(form.cleaned_data['objects']),group=form.cleaned_data.get('access_group'),production_additional_objects=list(form.cleaned_data['production_additional_objects']))
                 messages.success(request,'Пользователь AD добавлен. Он может входить с доменным логином и паролем.')
                 return redirect('accounts:user_access',pk=user.pk)
         elif query:

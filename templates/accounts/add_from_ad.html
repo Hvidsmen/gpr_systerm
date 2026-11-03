@@ -19,4 +19,4 @@
 {% elif query %}<div class="admin-empty"><i class="bi bi-search" aria-hidden="true"></i><h2>Сотрудник не найден</h2><p>Проверьте ФИО или попробуйте доменный логин. Если поиск AD недоступен, на странице появится сообщение об ошибке.</p></div>
 {% else %}<p class="admin-secondary-path">Нужен отдельный вход без AD? <a href="{% url 'accounts:user_create' %}">Создать локального пользователя</a></p>{% endif %}
 {% endif %}</div>{% endblock %}
-{% block extra_js %}<script src="{% static 'accounts/access_inheritance.js' %}?v=20261103-object-access" defer></script>{% endblock %}
+{% block extra_js %}<script src="{% static 'accounts/access_inheritance.js' %}?v=20261103-task-access" defer></script>{% endblock %}
