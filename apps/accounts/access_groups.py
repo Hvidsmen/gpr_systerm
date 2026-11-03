@@ -20,6 +20,7 @@ def apply_group(user):
     User.objects.filter(pk=user.pk).update(role_id=group.role_id)
     user.role_id = group.role_id
     user.assigned_objects.set(group.assigned_objects.all())
+    user.production_view_objects.set(group.production_view_objects.all())
 
 
 @receiver(pre_save, sender=User)
@@ -43,6 +44,7 @@ def sync_group_role(sender, instance, **kwargs):
         apply_group(user)
 
 
+@receiver(m2m_changed, sender=AccessGroup.production_view_objects.through)
 @receiver(m2m_changed, sender=AccessGroup.assigned_objects.through)
 def sync_group_objects(sender, instance, action, reverse, pk_set, **kwargs):
     if reverse:
@@ -63,20 +65,25 @@ class GroupForm(forms.ModelForm):
 
     class Meta:
         model = AccessGroup
-        fields = ['name', 'role', 'assigned_objects', 'ad_group_dn']
+        fields = ['name', 'role', 'assigned_objects', 'production_view_objects', 'ad_group_dn']
 
     def __init__(self, *args, company, **kwargs):
         super().__init__(*args, **kwargs)
         self.instance.company = company
         self.fields['role'].queryset = self.fields['role'].queryset.filter(code__in=ROLES - {'ADMIN'})
         self.fields['assigned_objects'].queryset = self.fields['assigned_objects'].queryset.filter(company=company)
+        self.fields['production_view_objects'].queryset = self.fields['assigned_objects'].queryset
         self.fields['members'].queryset = User.objects.filter(company=company, is_superuser=False, is_staff=False).exclude(role__code='ADMIN')
         if self.instance.pk:
             self.initial['members'] = self.instance.members.values_list('pk', flat=True)
         self.fields['role'].label='Роль участников'
-        self.fields['assigned_objects'].label='Объекты и субобъекты'
+        self.fields['assigned_objects'].label='Объекты для заполнения / работы'
+        self.fields['assigned_objects'].help_text='Диспетчер заполняет факт и получает ежедневные задания только по этим объектам. Для других ролей — обычная область доступа.'
+        self.fields['production_view_objects'].help_text='Для диспетчеров производства и всех направлений: только просмотр факта и план/факта СМГ, без ввода и заданий. Объекты для заполнения уже видны; повторять их не нужно.'
         self.fields['assigned_objects'].queryset=self.fields['assigned_objects'].queryset.select_related('project','parent').order_by('project__name','parent_id','name','pk')
         self.fields['assigned_objects'].label_from_instance=lambda obj:obj.project.name+' / '+(obj.parent.name+' → ' if obj.parent_id else '')+obj.name
+        self.fields['production_view_objects'].queryset=self.fields['assigned_objects'].queryset
+        self.fields['production_view_objects'].label_from_instance=self.fields['assigned_objects'].label_from_instance
         self.fields['members'].label_from_instance=lambda user:user.full_name+' · '+user.username
         self.fields['ad_group_dn'].label='Полный DN группы AD'
         self.fields['ad_group_dn'].help_text='Необязательно. Можно найти группу через поиск ниже или указать DN вручную.'
@@ -114,6 +121,7 @@ def groups(request, pk=None):
                 user.role = None
                 user.save(update_fields=['access_group', 'access_group_from_ad', 'role'])
                 user.assigned_objects.clear()
+                user.production_view_objects.clear()
             for user in selected:
                 if user.access_group_id != group.pk:
                     user.access_group_from_ad = False
@@ -135,7 +143,7 @@ def groups(request, pk=None):
     if role.isdigit():query=query.filter(role_id=role)
     if ad=='linked':query=query.exclude(ad_group_dn='')
     if ad=='manual':query=query.filter(ad_group_dn='')
-    query=query.select_related('role').prefetch_related('assigned_objects').annotate(member_count=Count('members',distinct=True)).order_by('name','pk')
+    query=query.select_related('role').prefetch_related('assigned_objects','production_view_objects').annotate(member_count=Count('members',distinct=True)).order_by('name','pk')
     page=Paginator(query,30).get_page(request.GET.get('page'))
     limited={'PLANNER','FOREMAN','DISPATCHER','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER','ALL_FACT_DISPATCHER','FUEL_WAREHOUSE'}
     for row in page:
@@ -160,6 +168,7 @@ def map_directory_group(user, identity):
             user.role = None
             user.save(update_fields=['access_group', 'access_group_from_ad', 'role'])
             user.assigned_objects.clear()
+            user.production_view_objects.clear()
         return
     group = matches[0]
     if user.is_superuser or user.is_staff or (user.role_id and user.role.code == 'ADMIN'):

@@ -21,8 +21,10 @@ class NewUsersDatabaseTests(TransactionTestCase):
         planner,_=Role.objects.get_or_create(code='PLANNER',defaults={'name':'Планировщик'})
         self.access=AccessGroup.objects.create(company=company,role=planner,name='Группа AD',ad_group_dn='CN=test,DC=example,DC=local')
         self.access.assigned_objects.add(self.obj)
+        self.access.production_view_objects.add(self.obj)
         self.user=User.objects.create_user(username='retained-admin',password='test-only-password',company=company,role=role,is_superuser=True,is_staff=True)
         self.user.assigned_objects.add(self.obj)
+        self.user.production_view_objects.add(self.obj)
         import uuid
         self.ldap=User.objects.create_user(username='retained-ad',password=None,company=company,role=planner,access_group=self.access,access_group_from_ad=True,auth_source='LDAP',ldap_guid=uuid.uuid4())
         permission=Permission.objects.get(codename='view_user',content_type__app_label='accounts')
@@ -41,7 +43,7 @@ class NewUsersDatabaseTests(TransactionTestCase):
             row=db.execute("SELECT username,password,is_staff,is_superuser,access_group_id FROM accounts_user WHERE username='retained-admin'").fetchone()
             self.assertEqual(row,('retained-admin',self.user.password,1,1,None))
             self.assertEqual(db.execute('SELECT ad_group_dn FROM accounts_accessgroup').fetchone()[0],self.access.ad_group_dn)
-            for table in ['projects_project','projects_constructionobject','accounts_user_assigned_objects','accounts_accessgroup_assigned_objects','resources_equipmenttype','planning_planningworkspace','django_session']:
+            for table in ['projects_project','projects_constructionobject','accounts_user_assigned_objects','accounts_accessgroup_assigned_objects','accounts_user_production_view_objects','accounts_accessgroup_production_view_objects','resources_equipmenttype','planning_planningworkspace','django_session']:
                 self.assertEqual(db.execute(f'SELECT COUNT(*) FROM {table}').fetchone()[0],0)
             self.assertEqual(db.execute('SELECT COUNT(*) FROM accounts_user_user_permissions').fetchone()[0],1)
             self.assertEqual(db.execute('SELECT COUNT(*) FROM auth_group_permissions').fetchone()[0],1)
@@ -58,6 +60,8 @@ class NewUsersDatabaseTests(TransactionTestCase):
             self.assertEqual(db.execute('SELECT id FROM projects_constructionobject').fetchone()[0],self.obj.pk)
             self.assertEqual(db.execute('SELECT constructionobject_id FROM accounts_user_assigned_objects').fetchone()[0],self.obj.pk)
             self.assertEqual(db.execute('SELECT constructionobject_id FROM accounts_accessgroup_assigned_objects').fetchone()[0],self.obj.pk)
+            self.assertEqual(db.execute('SELECT constructionobject_id FROM accounts_user_production_view_objects').fetchone()[0],self.obj.pk)
+            self.assertEqual(db.execute('SELECT constructionobject_id FROM accounts_accessgroup_production_view_objects').fetchone()[0],self.obj.pk)
             self.assertEqual(db.execute('SELECT COUNT(*) FROM resources_equipmenttype').fetchone()[0],0)
             self.assertEqual(db.execute('PRAGMA foreign_key_check').fetchall(),[])
 

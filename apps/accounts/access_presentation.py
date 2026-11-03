@@ -3,22 +3,23 @@ from .models import AccessGroup
 
 
 def configure_access(form, company, objects_name):
-    groups = list(AccessGroup.objects.filter(company=company).select_related('role').prefetch_related('assigned_objects'))
+    groups = list(AccessGroup.objects.filter(company=company).select_related('role').prefetch_related('assigned_objects','production_view_objects'))
     form.fields['access_group'].queryset = AccessGroup.objects.filter(company=company)
     form.fields['access_group'].empty_label = 'Без группы — индивидуальные права'
     form.fields['access_group'].help_text = 'Выберите группу, чтобы автоматически назначить её роль и объекты.'
     form.fields['role'].label = 'Роль'
     form.fields['role'].empty_label = 'Выберите роль'
     form.fields['role'].help_text = 'Определяет доступные разделы и действия.'
-    form.fields[objects_name].label = 'Объекты и субобъекты'
-    form.fields[objects_name].help_text = 'Для ограниченных ролей выберите объекты. Доступ к ВЖГ определяется их связями с объектами.'
+    form.fields[objects_name].label = 'Объекты для заполнения / работы'
+    form.fields[objects_name].help_text = 'Диспетчер заполняет факт и получает ежедневные задания только по этим объектам. Для других ограниченных ролей — область работы; ВЖГ доступны по связям с объектами.'
+    form.fields['production_view_objects'].help_text = 'Для диспетчеров производства и всех направлений: дополнительные объекты только для просмотра факта и план/факта СМГ, без ввода и заданий. Объекты для заполнения уже видны; повторять их не нужно.'
     form.group_options = {
-        'groups': [{'id': group.pk, 'role': group.role_id, 'objects': [obj.pk for obj in group.assigned_objects.all()]} for group in groups],
+        'groups': [{'id': group.pk, 'role': group.role_id, 'objects': [obj.pk for obj in group.assigned_objects.all()], 'production_view_objects': [obj.pk for obj in group.production_view_objects.all()]} for group in groups],
         'roles': {str(role.pk): role.code for role in form.fields['role'].queryset},
     }
     selected = form.data.get(form.add_prefix('access_group')) if form.is_bound else form.initial.get('access_group')
     group = next((group for group in groups if str(group.pk) == str(selected)), None)
     if group:
-        for name, value in [('role', group.role_id), (objects_name, [obj.pk for obj in group.assigned_objects.all()])]:
+        for name, value in [('role', group.role_id), (objects_name, [obj.pk for obj in group.assigned_objects.all()]), ('production_view_objects', [obj.pk for obj in group.production_view_objects.all()])]:
             form.fields[name].disabled = True
             form.initial[name] = value

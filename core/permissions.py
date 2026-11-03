@@ -62,8 +62,15 @@ def require_global_action(user, action):
         raise PermissionDenied('Действие доступно ответственному руководителю, генеральному директору или администратору.')
 
 
-def scope_queryset(queryset, user, include_archived=False):
-    """Always company scope; planners, masters and dispatchers see only assigned objects."""
+PRODUCTION_DISPATCHERS = {'DISPATCHER', 'ALL_FACT_DISPATCHER'}
+
+
+def production_can_fill(user, obj):
+    return role_code(user) not in PRODUCTION_DISPATCHERS or user.assigned_objects.filter(company=user.company,pk=obj.pk).exists()
+
+
+def scope_queryset(queryset, user, include_archived=False, *, production_read=False):
+    """Company scope; extra production visibility is opt-in and never used for writes."""
     name = queryset.model._meta.label
     queryset = queryset.filter(**{('schedule__company' if name == 'planning.DailyScheduleEntry' else 'company'): user.company})
     if not include_archived:
@@ -79,6 +86,9 @@ def scope_queryset(queryset, user, include_archived=False):
             queryset = queryset.exclude(Q(version__workspace__is_archived=True) & Q(schedule__isnull=True))
     if role_code(user) not in ({'FOREMAN','PLANNER'} | DISPATCHER_ROLES):
         return queryset
+    permitted_objects = user.assigned_objects.filter(company=user.company)
+    if production_read and role_code(user) in PRODUCTION_DISPATCHERS:
+        permitted_objects = (permitted_objects | user.production_view_objects.filter(company=user.company)).distinct()
     paths = {
         'projects.ConstructionObject': 'pk',
         'projects.Section': 'construction_object_id',
@@ -111,7 +121,7 @@ def scope_queryset(queryset, user, include_archived=False):
     if path is None and any(field.name == 'construction_object' for field in queryset.model._meta.fields):
         path = 'construction_object_id'
     if path:
-        return queryset.filter(**{path + '__in': user.assigned_objects.filter(company=user.company).values('pk')}).distinct()
+        return queryset.filter(**{path + '__in': permitted_objects.values('pk')}).distinct()
     return queryset
 
 

@@ -26,10 +26,11 @@ class GlobalUserForm(forms.ModelForm):
 
     def clean(self):
         data = super().clean()
-        objects = data.get('assigned_objects')
         company = data.get('company')
-        if objects is not None and objects.exclude(company=company).exists():
-            self.add_error('assigned_objects', 'Назначенные объекты должны принадлежать компании пользователя.')
+        for name in ('assigned_objects','production_view_objects'):
+            objects=data.get(name)
+            if objects is not None and objects.exclude(company=company).exists():
+                self.add_error(name, 'Объекты должны принадлежать компании пользователя.')
         return data
 
 
@@ -42,6 +43,6 @@ class UserAdmin(BaseUserAdmin):
     search_fields = ['username', 'email', 'first_name', 'last_name']
     fieldsets = BaseUserAdmin.fieldsets + (
         (_('Дополнительная информация'), {
-            'fields': ('auth_source','ldap_guid','ldap_login','company', 'role', 'position', 'phone', 'assigned_objects')
+            'fields': ('auth_source','ldap_guid','ldap_login','company', 'role', 'position', 'phone', 'assigned_objects', 'production_view_objects')
         }),
     )

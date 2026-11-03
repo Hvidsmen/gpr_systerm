@@ -78,7 +78,7 @@ class UserLoginForm(AuthenticationForm):
 class CompanyUserAccessForm(forms.ModelForm):
     class Meta:
         model = User
-        fields = ('first_name', 'last_name', 'email', 'phone', 'position', 'access_group', 'role', 'assigned_objects', 'is_active')
+        fields = ('first_name', 'last_name', 'email', 'phone', 'position', 'access_group', 'role', 'assigned_objects', 'production_view_objects', 'is_active')
 
     def __init__(self, *args, company, **kwargs):
         super().__init__(*args, **kwargs)
@@ -93,6 +93,7 @@ class CompanyUserAccessForm(forms.ModelForm):
         self.fields['role'].required = False
         self.fields['role'].queryset = self.fields['role'].queryset.filter(code__in=ROLES)
         self.fields['assigned_objects'].queryset = ConstructionObject.objects.filter(company=company)
+        self.fields['production_view_objects'].queryset = ConstructionObject.objects.filter(company=company)
         self.fields['assigned_objects'].help_text = 'Планировщик видит и редактирует ГПР, СМГ и плановые данные только по назначенным объектам; без назначений доступа к объектным планам нет. Мастер и диспетчер видят и вводят факты только на назначенных объектах. Диспетчеру ежедневно создаются задания за вчера по каждому назначенному объекту.'
         for field in self.fields.values():
             if not isinstance(field.widget, forms.CheckboxInput):
@@ -110,6 +111,7 @@ class CompanyUserAccessForm(forms.ModelForm):
                 self.add_error('access_group', 'Администратор управляется индивидуально.')
             data['role'] = group.role
             data['assigned_objects'] = group.assigned_objects.all()
+            data['production_view_objects'] = group.production_view_objects.all()
             self.instance.access_group_from_ad = False
         elif not data.get('role'):
             self.add_error('role', 'Выберите роль или группу доступа.')
