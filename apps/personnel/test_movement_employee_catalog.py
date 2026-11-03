@@ -17,7 +17,7 @@ class MovementEmployeeCatalogTests(TestCase):
 
     def test_only_employee_catalog_is_exposed(self):
         self.client.force_login(self.hr)
-        response=self.client.get(reverse('personnel:housing'),{'camp':self.a.pk,'date':str(self.day)})
+        response=self.client.get(reverse('personnel:movements'),{'camp':self.a.pk,'date':str(self.day)})
         self.assertNotContains(response,'name="people"')
         self.assertContains(response,'name="employees"')
         self.assertNotContains(response,'Сотрудники кадрового реестра')

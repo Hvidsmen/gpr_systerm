@@ -176,3 +176,5 @@ class HousingEvent(ActualHistoryMixin, PersonnelModel):
 from .lodging_models import LodgingBuilding,LodgingBed,LodgingStay,LodgingEvent,LodgingControl,LodgingResolution
 
 from .lodging_import_models import LodgingImportBatch,LodgingImportRow
+
+from .recruitment_models import RecruitmentRequest, RecruitmentCandidate, ArrivalPreparation, CandidateDocument, RecruitmentEvent

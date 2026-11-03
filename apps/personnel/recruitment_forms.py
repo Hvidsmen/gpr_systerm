@@ -1,0 +1,67 @@
+from django import forms
+from django.utils import timezone
+from apps.projects.models import ConstructionObject
+from apps.resources.models import Employee
+from .models import RecruitmentRequest, RecruitmentCandidate
+from .recruitment import allowed_camps, validate_documents
+
+
+class RevisionForm(forms.Form):
+    revision = forms.IntegerField(min_value=0, widget=forms.HiddenInput)
+
+
+class ReasonForm(RevisionForm):
+    reason = forms.CharField(label='Причина отмены', max_length=2000, widget=forms.Textarea(attrs={'rows':2}))
+
+
+class RequestForm(forms.ModelForm):
+    revision = forms.IntegerField(min_value=0, widget=forms.HiddenInput, initial=0)
+    class Meta:
+        model = RecruitmentRequest
+        fields = ['construction_object','position','quantity','required_on','requirements']
+        widgets = {'required_on':forms.DateInput(format='%Y-%m-%d', attrs={'type':'date'}),'requirements':forms.Textarea(attrs={'rows':3})}
+    def __init__(self,*args,company,**kwargs):
+        super().__init__(*args,**kwargs)
+        self.instance.company=company
+        self.fields['construction_object'].queryset=ConstructionObject.objects.filter(company=company).order_by('name')
+        self.fields['quantity'].min_value=1
+        self.fields['quantity'].widget.attrs['min']=1
+        if self.instance.pk:self.initial['revision']=self.instance.revision
+
+
+class MultipleFiles(forms.ClearableFileInput):allow_multiple_selected=True
+class DocumentsField(forms.FileField):
+    def clean(self,data,initial=None):
+        files=[super(DocumentsField,self).clean(item,initial) for item in (data if isinstance(data,(list,tuple)) else [data]) if item]
+        validate_documents(files)
+        return files
+
+
+class CandidateForm(forms.ModelForm):
+    revision = forms.IntegerField(min_value=0, widget=forms.HiddenInput, initial=0)
+    documents = DocumentsField(label='Резюме и документы', required=False, widget=MultipleFiles,
+        help_text='До 10 файлов, каждый до 10 МБ: PDF, DOC, DOCX, TXT, JPG, PNG. Скачивание доступно только участникам процесса.')
+    class Meta:
+        model = RecruitmentCandidate
+        fields = ['full_name','phone','status','ready_on','notes']
+        widgets = {'ready_on':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}),'notes':forms.Textarea(attrs={'rows':3})}
+    def __init__(self,*args,company,request_row,**kwargs):
+        super().__init__(*args,**kwargs)
+        self.instance.company=company;self.instance.request=request_row
+        self.fields['status'].choices=[(v,l) for v,l in RecruitmentCandidate.STATES if v!='TRANSFERRED']
+        if self.instance.pk:self.initial['revision']=self.instance.revision
+
+
+class ArrivalForm(RevisionForm):
+    expected_on=forms.DateField(label='Плановая дата заезда',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
+    camp=forms.ModelChoiceField(label='ВЖГ',queryset=None,required=False)
+    employee=forms.ModelChoiceField(label='Оформленный сотрудник',queryset=None,required=False,
+        help_text='Выберите сотрудника после оформления и появления в реестре. Совпадение ФИО само по себе не связывает кандидата с сотрудником.')
+    actual_on=forms.DateField(label='Фактическая дата заезда',required=False,help_text='Используется только при подтверждении заезда. Кнопка «Сохранить подготовку» не фиксирует факт.',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
+    notes=forms.CharField(label='Комментарий к заезду',required=False,widget=forms.Textarea(attrs={'rows':3}))
+    def __init__(self,*args,company,preparation,**kwargs):
+        super().__init__(*args,**kwargs)
+        self.fields['camp'].queryset=allowed_camps(company,preparation.candidate.request.construction_object).order_by('name')
+        self.fields['employee'].queryset=Employee.objects.filter(company=company,is_active=True).order_by('last_name','first_name','pk')
+        self.fields['employee'].widget.attrs['data-personnel-searchable']='1'
+        self.initial.update(revision=preparation.revision,expected_on=preparation.expected_on,camp=preparation.camp_id,employee=preparation.employee_id,notes=preparation.notes,actual_on=timezone.localdate())

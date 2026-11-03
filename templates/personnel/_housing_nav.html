@@ -1,1 +1,3 @@
-<nav class="nav nav-tabs mb-3" aria-label="Персонал"><a class="nav-link {% if request.resolver_match.url_name == 'housing' %}active{% endif %}" href="{% url 'personnel:housing' %}">Перевахта</a><a class="nav-link" href="{% url 'resources:employee_list' %}">Сотрудники</a><a class="nav-link" href="{% url 'personnel:board_list' %}?tables=1">Начальные данные</a></nav>
+{% load access %}
+{% include 'personnel/_personnel_sections.html' %}
+{% if request.user|may:'resources:employee_list' %}<div class="d-flex gap-3 flex-wrap mb-3 small"><a href="{% url 'resources:employee_list' %}">Справочник сотрудников</a><a href="{% url 'personnel:board_list' %}?tables=1">Начальные данные и импорт</a></div>{% endif %}

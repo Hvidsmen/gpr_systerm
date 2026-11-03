@@ -7,11 +7,11 @@ from .models import Role,AccessGroup
 
 class GroupUxTests(TestCase):
     setUp=fixtures.AccessGroupTests.setUp
-    def test_filters_edit_dialog_member_links_and_no_personnel_root_link(self):
+    def test_filters_edit_dialog_member_links_and_top_level_personnel_link(self):
         other=AccessGroup.objects.create(company=self.company,name='Наблюдение',role=Role.objects.get(code='OBSERVER'))
         page=self.client.get(self.url)
         self.assertContains(page,'data-group-editor');self.assertContains(page,'data-open-group-editor')
-        self.assertNotContains(page,'> Персонал</a>');self.assertContains(page,'Ручное назначение')
+        self.assertContains(page,'href="/personnel/housing/#roster"');self.assertContains(page,'Ручное назначение')
         self.assertEqual(len(self.client.get(self.url,{'ad':'linked'}).context['groups']),1)
         self.assertEqual([g.pk for g in self.client.get(self.url,{'q':'НАБЛЮДЕНИЕ'}).context['groups']],[other.pk])
         self.assertEqual([g.pk for g in self.client.get(self.url,{'role':other.role_id}).context['groups']],[other.pk])

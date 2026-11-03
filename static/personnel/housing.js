@@ -1,8 +1,10 @@
 (() => {
  'use strict';
+ const legacy=document.querySelector('[data-movement-destination]');
+ if(legacy&&['#movement','#events'].includes(location.hash)){location.replace(legacy.dataset.movementDestination+location.search+location.hash);return;}
  const tabs=[...document.querySelectorAll('[data-housing-tab]')],panels=[...document.querySelectorAll('[data-housing-panel]')],form=document.querySelector('[data-movement-form]');let dirty=false,submitting=false;
  function show(name){if(name==='calendar')window.loadRotationCalendar?.();panels.forEach(p=>{p.hidden=p.dataset.housingPanel!==name;});tabs.forEach(t=>t.setAttribute('aria-current',t.dataset.housingTab===name?'page':'false'));}
- function linkedTab(){const name=location.hash.slice(1);return panels.some(p=>p.dataset.housingPanel===name)?name:'roster';}
+ function linkedTab(){const name=location.hash.slice(1);return panels.some(p=>p.dataset.housingPanel===name)?name:(panels[0]?.dataset.housingPanel||'roster');}
  tabs.forEach(t=>t.addEventListener('click',()=>{show(t.dataset.housingTab);history.replaceState(null,'','#'+t.dataset.housingTab);}));
  window.addEventListener('hashchange',()=>show(linkedTab()));
  show(form?.querySelector('.errorlist')?'movement':linkedTab());

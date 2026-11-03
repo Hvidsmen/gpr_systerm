@@ -1,0 +1,3 @@
+{% extends 'base.html' %}{% load static %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'personnel/recruitment.css' %}">{% endblock %}
+{% block content %}<h1>Персонал</h1>{% include 'personnel/_personnel_sections.html' %}{% block recruitment_content %}{% endblock %}{% endblock %}

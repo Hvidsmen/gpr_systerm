@@ -1,0 +1,14 @@
+{% extends 'personnel/recruitment_base.html' %}
+{% block title %}Подготовка заезда · {{ prep.candidate.full_name }}{% endblock %}
+{% block recruitment_content %}
+<p><a href="{% url 'personnel:movements' %}">← Ожидаемые заезды</a> · <a href="{% url 'personnel:recruitment_detail' prep.candidate.request_id %}">Заявка №{{ prep.candidate.request_id }}</a></p>
+<h2 class="h4">Подготовка заезда · {{ prep.candidate.full_name }}</h2><p>{{ prep.candidate.request.construction_object }} · {{ prep.candidate.request.position }} · {{ prep.candidate.phone }}</p>
+{% if prep.actually_arrived %}<div class="alert alert-success">Заезд подтверждён: {{ prep.actual_stay.arrived_on|date:'d.m.Y' }} · {{ prep.employee }} · {{ prep.camp }}.</div><a href="{% url 'personnel:housing_history' prep.actual_stay.person_id %}">История сотрудника и исправление размещения</a>
+{% elif prep.status == 'CANCELLED' or prep.candidate.request.cancelled_at %}<div class="alert alert-warning">Подготовка заезда отменена.</div>
+{% else %}
+{% if prep.actual_stay_id %}<div class="alert alert-warning">Предыдущее размещение отменено. Уточните данные и подтвердите заезд заново.</div>{% endif %}
+<p class="text-muted">Плановая дата используется для подготовки. В фактический состав человек попадёт только после кнопки «Подтвердить фактический заезд».</p>
+<form method="post" class="card card-body recruitment-form mb-3">{% csrf_token %}{% include 'forms/fields.html' with form=form %}<div class="recruitment-actions mt-3"><button class="btn btn-outline-primary" name="action" value="save">Сохранить подготовку</button><button class="btn btn-primary" name="action" value="confirm">Подтвердить фактический заезд</button></div></form>
+<details class="card card-body recruitment-form" {% if cancel_form.errors %}open{% endif %}><summary>Отменить подготовку заезда</summary><form method="post">{% csrf_token %}{% include 'forms/fields.html' with form=cancel_form %}<button class="btn btn-outline-danger mt-2" name="action" value="cancel">Отменить подготовку заезда</button></form></details>
+{% endif %}
+{% endblock %}

@@ -12,7 +12,7 @@ PLAN_ROLES = {'ADMIN', 'PLANNER'}
 PERSONNEL_CATALOG_MANAGER = 'PERSONNEL_CATALOG_MANAGER'
 EQUIPMENT_CATALOG_MANAGER = 'EQUIPMENT_CATALOG_MANAGER'
 CATALOG_MANAGER_ROLES = {PERSONNEL_CATALOG_MANAGER, EQUIPMENT_CATALOG_MANAGER}
-ROLES |= CATALOG_MANAGER_ROLES
+ROLES |= CATALOG_MANAGER_ROLES | {'RECRUITER'}
 PERSONNEL_CATALOG_EDIT_ROLES = PLAN_ROLES | {PERSONNEL_CATALOG_MANAGER}
 PERSONNEL_CATALOG_READ_ROLES = READ_ROLES | {PERSONNEL_CATALOG_MANAGER}
 EQUIPMENT_CATALOG_EDIT_ROLES = PLAN_ROLES | {EQUIPMENT_CATALOG_MANAGER}
@@ -127,6 +127,17 @@ def check_route(user, match, method):
     if namespace=='instructions' and name in {'index','article'}:
         require_roles(user,ROLES)
         if method not in {'GET','HEAD'}:raise PermissionDenied
+        return
+    if role == 'RECRUITER':
+        require_roles(user, {'RECRUITER'})
+        own_account = namespace == 'accounts' and (name in {'settings','logout','password_change','access_pending','impersonation_stop'} or name == 'user_detail' and match.kwargs.get('pk') == user.pk)
+        recruitment_routes = namespace == 'personnel' and name in {'recruitment_list','recruitment_detail','recruitment_candidate_create','recruitment_candidate_edit','recruitment_handoff','recruitment_document'}
+        if own_account or recruitment_routes or namespace == 'dashboard' and name == 'index' and method in {'GET','HEAD'}:return
+        raise PermissionDenied('Роль «Подбор персонала» работает с заявками и кандидатами.')
+    if namespace == 'personnel' and name.startswith('recruitment_'):
+        from apps.personnel.recruitment import READ, DISPATCH, RECRUIT
+        write_roles = DISPATCH if name in {'recruitment_create','recruitment_edit','recruitment_arrival'} else RECRUIT if name in {'recruitment_candidate_create','recruitment_candidate_edit','recruitment_handoff'} else READ
+        require_roles(user, write_roles)
         return
     if role == FUEL_WAREHOUSE:
         require_roles(user, {FUEL_WAREHOUSE})

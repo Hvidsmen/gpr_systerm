@@ -52,3 +52,17 @@ urlpatterns += [path("people/<int:pk>/initial-departure/",initial_departure,name
 
 from . import lodging_import
 urlpatterns += [path("lodging/import/",lodging_import.upload,name="lodging_import"),path("lodging/import/<int:pk>/",lodging_import.review,name="lodging_import_review")]
+
+from . import recruitment_views as recruitment
+urlpatterns += [
+    path('movements/', housing_views.movements, name='movements'),
+    path('recruitment/', recruitment.request_list, name='recruitment_list'),
+    path('recruitment/create/', recruitment.request_edit, name='recruitment_create'),
+    path('recruitment/<int:pk>/', recruitment.request_detail, name='recruitment_detail'),
+    path('recruitment/<int:pk>/edit/', recruitment.request_edit, name='recruitment_edit'),
+    path('recruitment/<int:request_pk>/candidates/add/', recruitment.candidate_edit, name='recruitment_candidate_create'),
+    path('recruitment/<int:request_pk>/candidates/<int:pk>/', recruitment.candidate_edit, name='recruitment_candidate_edit'),
+    path('recruitment/candidates/<int:pk>/handoff/', recruitment.candidate_handoff, name='recruitment_handoff'),
+    path('recruitment/documents/<int:pk>/', recruitment.document_download, name='recruitment_document'),
+    path('recruitment/arrivals/<int:pk>/', recruitment.arrival_edit, name='recruitment_arrival'),
+]
