@@ -9,7 +9,7 @@
  const url=form.dataset.claimUrl,csrf=form.querySelector('[name=csrfmiddlewaretoken]').value,session=storedSession||`${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
  sessionStorage.setItem(sessionStorageKey,session);
  const hidden=document.createElement('input');hidden.type='hidden';hidden.name='claim_session';hidden.value=session;form.append(hidden);
- const scope={construction_object:form.elements.construction_object.value,date:form.elements.date.value,session,reset_epoch:Number(form.dataset.resetEpoch||0)};
+ const scope={actor_id:Number(form.dataset.userId),company_id:Number(form.dataset.companyId),construction_object:form.elements.construction_object.value,date:form.elements.date.value,session,reset_epoch:Number(form.dataset.resetEpoch||0)};
  let claims=new Map(),generation=0,busy=false,lastActivity=Date.now(),lastRenew=0,submitting=false;
  const rows=()=>[...form.querySelectorAll('[data-work-fact-row],[data-production-person]')],person=row=>row.matches('[data-production-person]'),field=(row,name)=>row.querySelector(`[name$="-${name}"]`),editing=row=>field(row,person(row)?'person_editing':'work_editing'),token=row=>field(row,person(row)?'person_claim_token':'work_claim_token');
  const keyOf=row=>person(row)?(field(row,'employee')?.value?`employee:${field(row,'employee').value}:${Number(field(row,'shift').value)}`:''):(field(row,'project_work')?.value?(field(row,'work_item')?.value?`item:${field(row,'project_work').value}:${field(row,'work_item').value}`:`work:${field(row,'project_work').value}`):'');
@@ -26,9 +26,10 @@
  const duplicateText='Этот сотрудник уже выбран в этой смене. Измените существующую строку или уберите повтор.';
  const originalOptionState=new WeakMap();
  function refreshPeople(){
-  const records=personRows();
-  for(const row of records){const employee=field(row,'employee'),shift=Number(field(row,'shift').value),used=new Set(records.filter(other=>other!==row&&!deleted(other)&&Number(field(other,'shift').value)===shift).map(other=>field(other,'employee').value));
-   for(const option of employee.options){if(!originalOptionState.has(option))originalOptionState.set(option,option.disabled);const blocked=originalOptionState.get(option)||Boolean(option.value&&option.value!==employee.value&&used.has(option.value));if(option.disabled!==blocked)option.disabled=blocked;}
+  const records=personRows(),used=new Map();
+  for(const row of records){if(deleted(row))continue;const key=keyOf(row);if(key)used.set(key,(used.get(key)||0)+1);}
+  for(const row of records){const employee=field(row,'employee'),shift=Number(field(row,'shift').value);
+   for(const option of employee.options){if(!originalOptionState.has(option))originalOptionState.set(option,option.disabled);const blocked=originalOptionState.get(option)||Boolean(option.value&&option.value!==employee.value&&used.has(`employee:${option.value}:${shift}`));if(option.disabled!==blocked)option.disabled=blocked;}
    if(duplicate(row)){row.dataset.duplicatePerson='1';row.querySelector('[data-error]').textContent=duplicateText;}
    else if(row.dataset.duplicatePerson){delete row.dataset.duplicatePerson;if(row.querySelector('[data-error]').textContent===duplicateText)row.querySelector('[data-error]').textContent='';}
   }
@@ -46,7 +47,13 @@
  },true);
  form.addEventListener('input',event=>{if(event.target.closest('[data-production-person]')&&event.target.name?.endsWith('-shift'))event.stopImmediatePropagation();},true);
  const controls=row=>[...row.querySelectorAll(person(row)?'[name$="-work_mode"],[name$="-planning_position"],[name$="-activity"],[name$="-DELETE"]':'[name$="-actual_quantity"],[name$="-comment"],[name$="-actuation_type"],[name$="-actuation_reason"],[name$="-actuation_reasons"],[name$="-DELETE"]')];
- async function request(action,key){const response=await fetch(url,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRFToken':csrf},body:JSON.stringify({...scope,action,key})});const data=(response.headers.get('content-type')||'').includes('application/json')?await response.json():{};if(!response.ok){if(data.claim)claims.set(data.claim.key,data.claim);const error=new Error(data.error||'Не удалось проверить резерв.');error.status=response.status;error.retryable=response.status>=500||response.status===429;throw error;}return data;}
+ async function request(action,key,extra={}){
+  const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),20000);
+  try{const response=await fetch(url,{method:'POST',credentials:'same-origin',signal:controller.signal,headers:{'Content-Type':'application/json','X-CSRFToken':csrf},body:JSON.stringify({...scope,action,key,...extra})});const data=(response.headers.get('content-type')||'').includes('application/json')?await response.json():{};if(!response.ok){if(data.auth_changed)form.dataset.authChanged='1';if(data.claim)claims.set(data.claim.key,data.claim);const error=new Error(data.error||'Не удалось проверить резерв.');error.status=response.status;error.retryable=response.status>=500||response.status===429;throw error;}return data;}
+  catch(error){if(error.name==='AbortError'){error=new Error('Сервер отвечает долго. Ввод остался в форме; повторим сохранение.');error.retryable=true;}throw error;}
+  finally{clearTimeout(timeout);}
+ }
+
  function render(row){const repeated=duplicate(row),claim=claims.get(keyOf(row)),mine=!repeated&&claim?.state==='editing'&&claim.mine,bar=row.querySelector('[data-entry-claim]');if(!bar)return;
   const blocked=repeated||Boolean(claim&&!mine&&(claim.state==='editing'||!claim.own));
   controls(row).forEach(i=>{i.disabled=blocked;});row.querySelectorAll('[data-person-remove],[data-work-remove],[data-work-clear]').forEach(button=>button.toggleAttribute('disabled',blocked));editing(row).value=mine?'1':'0';token(row).value=mine?session:'';
@@ -91,6 +98,15 @@
  form.addEventListener('input',e=>{const row=e.target.closest('[data-work-fact-row],[data-production-person]');if(row&&controls(row).includes(e.target)&&!(e.target.name?.endsWith('-DELETE')&&!field(row,'id')?.value))row.dataset.entryDirty='1';lastActivity=Date.now();});
  form.addEventListener('change',e=>{wire();const row=e.target.closest('[data-work-fact-row],[data-production-person]');if(row){if(row.dataset.personDirty||controls(row).includes(e.target)&&!(e.target.name?.endsWith('-DELETE')&&!field(row,'id')?.value))row.dataset.entryDirty='1';const old=row.dataset.entryKey,key=keyOf(row);if(old!==key){if(claims.get(old)?.mine){generation++;request('release',old).catch(()=>{});claims.delete(old);}row.dataset.entryKey=key;}render(row);}refreshPeople();rows().forEach(render);lastActivity=Date.now();});
  async function poll(){if(document.hidden||busy)return;const version=generation;try{const response=await fetch(url+'?'+new URLSearchParams(scope),{credentials:'same-origin'});if(!response.ok)return;const data=await response.json();if(version!==generation)return;claims=new Map(data.claims.map(c=>[c.key,c]));if(data.report)form.dispatchEvent(new CustomEvent('production-report-update',{detail:data.report}));wire();rows().forEach(render);changed();}catch(error){/* Retry without clearing input. */}}
+ form.productionClaimPeople=async selected=>{
+  const acquired=[];
+  try{for(let start=0;start<selected.length;start+=100){const keys=selected.slice(start,start+100).map(item=>`employee:${item.employee}:${item.shift}`),data=await request('take_many',null,{keys});for(const claim of data.claims){if(!claims.get(claim.key)?.mine)acquired.push(claim.key);claims.set(claim.key,claim);}}}
+  catch(error){for(let i=0;i<acquired.length;i+=100)try{await request('release_many',null,{keys:acquired.slice(i,i+100)});for(const key of acquired.slice(i,i+100))claims.delete(key);}catch{}throw error;}
+  changed();
+ };
+ form.productionForgetClaims=selected=>{for(const row of selected)for(const key of keysOf(row))if(claims.get(key)?.mine)claims.delete(key);changed();};
+ form.addEventListener('production-people-bulk-staged',()=>{wire();changed();});
+
  form.productionValidatePeople=()=>{refreshPeople();const repeated=personRows().find(duplicate);if(repeated){repeated.querySelector('[data-error]').textContent=duplicateText;throw new Error(duplicateText);}};
  const acquiring=new Map();
  form.productionClaimRow=async row=>{

@@ -103,12 +103,24 @@ class ProductionPersonForm(PersonForm):
         super().__init__(*args, **kwargs)
         from .production_positions import plan_positions
         from apps.resources.models import Position
-        positions=set(plan_positions(self.obj,self.day))
+        positions=set(self.planned_positions if self.planned_positions is not None else plan_positions(self.obj,self.day))
         if self.instance.pk and self.instance.planning_position_id:positions.add(self.instance.planning_position_id)
         self.fields['planning_position'].queryset=Position.objects.filter(company=self.obj.company,pk__in=positions).order_by('name')
         self.fields['planning_position'].help_text='Выберите должность плана, которую закрывает сотрудник. Штатная должность сотрудника не меняется.'
         from .employee_pool import prepare,apply
-        apply(self.fields['employee'],self.employee_pool or prepare(self.obj,self.day),self.instance.employee if self.instance.employee_id else None)
+        pool=self.employee_pool or prepare(self.obj,self.day)
+        apply(self.fields['employee'],pool,self.instance.employee if self.instance.employee_id else None)
+        if '_position_choices' not in pool:
+            pool['_position_choices']={p.pk:str(p) for p in Position.objects.filter(company=self.obj.company,pk__in=positions).order_by('name')}
+        position_choices=dict(pool['_position_choices'])
+        if self.instance.planning_position_id and self.instance.planning_position_id not in position_choices:position_choices[self.instance.planning_position_id]=str(self.instance.planning_position)
+        self.fields['planning_position'].choices=[('',self.fields['planning_position'].empty_label),*position_choices.items()]
+        if self.instance.pk:
+            # Disabled saved selectors need one option, not a copy of the whole company.
+            chosen=str(self.instance.employee_id)
+            options=[(value,label) for _,group in pool['groups'] for value,label in group if str(value)==chosen]
+            if not options:options=[(self.instance.employee_id,self.instance.employee.display_name)]
+            self.fields['employee'].widget.choices=options
         self.fields['employee'].help_text='Все активные сотрудники. Сначала — ВЖГ этого объекта, затем другие ВЖГ и сотрудники без оформленного нахождения.'
         if self.instance.pk and self.instance.shift not in {1,2}:
             self.fields['shift'].choices=[*self.fields['shift'].choices,(self.instance.shift,f'Смена {self.instance.shift} (ранее)')]
@@ -180,10 +192,11 @@ def sync_links(form):
 
 
 def report_data(obj,day):
-    works=list(DailyFact.objects.filter(company=obj.company,project_work__section__construction_object=obj,date=day)
-        .values('id','project_work_id','work_item_id','actual_quantity','actuation_type','actuation_reason','actuation_reason_ids','comment','reported_by__username'))
-    authors={row.pk:(row.reported_by.get_full_name() or row.reported_by.username) if row.reported_by_id else 'Общий ввод' for row in DailyFact.objects.filter(company=obj.company,project_work__section__construction_object=obj,date=day).select_related('reported_by')}
-    for work in works:work['owner']=authors[work['id']]
+    works=[]
+    for row in DailyFact.objects.filter(company=obj.company,project_work__section__construction_object=obj,date=day).select_related('reported_by'):
+        works.append({**{name:getattr(row,name) for name in ('id','project_work_id','work_item_id','actual_quantity','actuation_type','actuation_reason','actuation_reason_ids','comment')},
+            'reported_by__username':row.reported_by.username if row.reported_by_id else None,
+            'owner':(row.reported_by.get_full_name() or row.reported_by.username) if row.reported_by_id else 'Общий ввод'})
     people=[]
     for row in EmployeeActivity.objects.filter(company=obj.company,construction_object=obj,date=day).select_related(
             'employee__position__planning_mapping__brigade__group','position__planning_mapping__brigade__group','planning_position__planning_mapping__brigade__group','reported_by').prefetch_related('work_links'):

@@ -503,3 +503,4 @@ from .dispatch_models import ProductionPresence
 from .work_opening_models import WorkOpeningBalance  # noqa: F401,E402
 
 from .actuation_models import ActuationReason, ActuationDocument
+from .dispatch_models import ProductionLinkReceipt

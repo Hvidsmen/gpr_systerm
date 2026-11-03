@@ -7,9 +7,9 @@
  const suffix=input=>input.name.replace(/^(works|labor)-\d+-/,'');
  const capture=row=>[...row.querySelectorAll('input,select,textarea')].filter(input=>input.name).map(input=>({name:input.name,value:input.value,checked:input.checked,type:input.type}));
  const fingerprint=row=>JSON.stringify(capture(row).filter(input=>!['id','person_claim_token','person_editing','work_claim_token','work_editing',...(isPerson(row)?['work_mode','work_targets','general','work','work_item']:[])].includes(input.name.replace(/^(works|labor)-\d+-/,''))).map(input=>[input.name.replace(/^(works|labor)-\d+-/,''),input.value,input.checked]));
- let timer=null,pending=false,running=null,failed=false,retryAttempt=0;
+ let timer=null,pending=false,running=null,failed=false,retryAttempt=0,lastMessage='',lastError=false;
  const dirty=()=>rows().filter(row=>row.dataset.entryDirty||row.dataset.personDirty||row.dataset.autoPending);
- function message(text,error=false){state.textContent=text;state.classList.toggle('text-danger',error);state.classList.toggle('fact-state-saving',!error&&text==='Сохранение…');state.classList.toggle('fact-state-saved',!error&&text==='Все изменения сохранены');state.classList.toggle('fact-state-pending',!error&&text.includes('изменения')&&text!=='Все изменения сохранены');retry.hidden=!error;}
+ function message(text,error=false){lastMessage=text;lastError=error;if(!error&&text==='Все изменения сохранены'&&Number(form.dataset.linksRejected||0)>0)text='Данные сохранены; часть связей требует проверки';if(!error&&text==='Все изменения сохранены'&&Number(form.dataset.linksPending||0)>0)text='Данные сохранены; связи ожидают отправки';state.textContent=text;state.classList.toggle('text-danger',error);state.classList.toggle('fact-state-saving',!error&&text==='Сохранение…');state.classList.toggle('fact-state-saved',!error&&text==='Все изменения сохранены');state.classList.toggle('fact-state-pending',!error&&text.includes('изменения')&&text!=='Все изменения сохранены');retry.hidden=!error;}
  function rowMessage(row,text,error=false){const target=row.querySelector('[data-autosave-row-state]');if(target){target.textContent=text;target.title=text;target.classList.toggle('text-danger',error);}row.classList.toggle('production-person-auto-failed',error);}
  function prefix(row){return field(row,'id').name.replace(/-id$/,'');}
  function reindex(){
@@ -45,24 +45,29 @@
   const sent=new Map(changed.map(row=>[prefix(row),{row,stamp:fingerprint(row),capture:capture(row)}]));
   const body=new FormData(form);body.set('autosave','1');body.set('action','save');
   for(const row of rows()){
-   if(!sent.has(prefix(row))){body.set(field(row,isPerson(row)?'person_editing':'work_editing').name,'0');body.delete(field(row,'DELETE').name);continue;}
+   if(!sent.has(prefix(row))){for(const input of row.querySelectorAll('[name]'))if(!input.name.endsWith('-id'))body.delete(input.name);body.set(field(row,isPerson(row)?'person_editing':'work_editing').name,'0');continue;}
    const editing=field(row,isPerson(row)?'person_editing':'work_editing')?.value==='1';
    if(editing)for(const name of isPerson(row)?['employee','shift']:['project_work','work_item']){const input=field(row,name);if(input)body.set(input.name,input.value);}
   }
   changed.forEach(row=>rowMessage(row,'Сохранение…'));message('Сохранение…');
-  const response=await fetch(form.getAttribute('action')||location.href,{method:'POST',credentials:'same-origin',headers:{'X-CSRFToken':form.querySelector('[name=csrfmiddlewaretoken]').value},body});
+  const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),30000);let response;
+  try{response=await fetch(form.getAttribute('action')||location.href,{method:'POST',credentials:'same-origin',signal:controller.signal,headers:{'X-CSRFToken':form.querySelector('[name=csrfmiddlewaretoken]').value},body});}
+  catch(error){form.productionForgetClaims?.(changed);if(error.name==='AbortError'){error=new Error('Сервер отвечает долго. Ввод остался в форме; повторим сохранение.');error.retryable=true;}throw error;}
+  finally{clearTimeout(timeout);}
   if(!(response.headers.get('content-type')||'').includes('application/json')){const error=new Error('Не удалось сохранить изменения. Проверьте доступ к порталу и повторите сохранение.');error.retryable=response.status>=500||response.status===429;throw error;}
   const result=await response.json();
   if(!response.ok){
    for(const issue of result.errors||[]){const item=sent.get(issue.prefix);if(!item)continue;const text=issue.message||Object.values(issue.fields||{}).flat().join(' ');const target=item.row.querySelector('[data-error]');if(target)target.textContent=text;rowMessage(item.row,text,true);}
-   const error=new Error(result.error||'Изменения не сохранены.');error.retryable=response.status>=500||response.status===429;throw error;
+   const error=new Error(result.error||'Изменения не сохранены.');error.retryable=response.status>=500||response.status===429||Boolean(result.error?.includes('Резерв')&&result.error?.includes('истёк'));if(error.retryable)form.productionForgetClaims?.(changed);throw error;
   }
   for(const name of ['production_snapshot','revision','labor_revision'])form.elements.namedItem(name).value=result[name];
   for(const entry of result.rows){
    const item=sent.get(entry.prefix);if(!item)continue;
    const row=item.row;
-   if(entry.deleted){try{await form.productionReleaseRow(row);}catch{}row.remove();continue;}
+   if(entry.deleted){if(isPerson(row))form.productionLinks?.cancelPerson(Number(field(row,'id').value));try{await form.productionReleaseRow(row);}catch{}row.remove();continue;}
+   if(!isPerson(row)&&Number(field(row,'actual_quantity').value.replace(',','.'))===0)form.productionLinks?.cancelWork(Number(entry.id));
    field(row,'id').value=entry.id;
+   if(isPerson(row)){const employee=field(row,'employee');if(employee.selectedOptions.length===1&&employee.options.length>1)employee.replaceChildren(employee.selectedOptions[0].cloneNode(true));}
    row.dataset.entryOriginal=JSON.stringify(item.capture.map(input=>input.name.endsWith('-id')?{...input,value:String(entry.id)}:input));
   }
   for(const item of sent.values()){
@@ -92,6 +97,7 @@
   running=(async()=>{try{await save(selected);return true;}catch(error){selected.forEach(row=>rowMessage(row,error.message,true));message(error.message,true);return false;}})();
   try{return await running;}finally{running=null;if(dirty().length){message('Сотрудники обработаны. Есть несохранённые изменения.',true);timer=setTimeout(()=>flush(),700);}}
  }
+ form.addEventListener('production-links-state',()=>{if(lastMessage)message(lastMessage,lastError);});
  window.productionAutoSave={whenIdle:()=>running||Promise.resolve(true),flush,flushPeople,reindex,fingerprint,capture,get running(){return Boolean(running);},get pending(){return pending||Boolean(running)||dirty().length>0;}};
  const relevant=event=>{
   if(form.productionApplying||(form.dataset.peopleBulkBusy==='1'||form.dataset.personShiftBusy==='1')||event.target.closest('[data-actuation-ui]'))return;
@@ -102,6 +108,7 @@
  form.addEventListener('input',relevant);form.addEventListener('change',relevant);
  form.addEventListener('production-autosave-all',()=>{for(const row of rows())if(isPerson(row)&&field(row,'employee').value&&!field(row,'id').value&&field(row,'person_editing').value==='1'){row.dataset.entryDirty='1';schedule(row);}});
  rows().forEach(row=>{row.dataset.autoSavedStamp=fingerprint(row);if(field(row,'id').value)rowMessage(row,'Сохранено');});
+ addEventListener('online',()=>{if(dirty().length){pending=true;retryAttempt=0;flush();}});
  retry.addEventListener('click',()=>{retryAttempt=0;pending=true;flush();});
  form.addEventListener('click',async event=>{
   const clear=event.target.closest('[data-work-clear]');

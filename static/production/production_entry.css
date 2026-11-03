@@ -147,3 +147,5 @@ form[data-production-form]{max-width:1200px}.production-save-footer{border-top:1
 .report-day-top-scroll{height:18px;overflow-x:scroll;overflow-y:hidden;max-width:100%;scrollbar-gutter:stable}.report-day-top-scroll>div{height:1px}.report-day-top-scroll:focus-visible{outline:2px solid #087f9c;outline-offset:1px}
 
 .report-day-top-scroll{scrollbar-color:#839fb3 #edf3f7}.report-day-top-scroll::-webkit-scrollbar{height:12px}.report-day-top-scroll::-webkit-scrollbar-track{background:#edf3f7;border-radius:6px}.report-day-top-scroll::-webkit-scrollbar-thumb{background:#839fb3;border-radius:6px;border:2px solid #edf3f7}
+
+.production-connection-bar{border:1px solid #c9dfe9;background:#f5fafc;border-radius:6px;padding:8px 12px}.production-connection-bar [data-links-errors]:empty{display:none}.graph-pending{border-color:#b68b20!important;background:#fffaf0!important}

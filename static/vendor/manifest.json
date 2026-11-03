@@ -1,0 +1,44 @@
+[
+  {
+    "path": "bootstrap-5.3.0/bootstrap.min.css",
+    "source": "https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css",
+    "sha256": "c6e9088a8d5ab202745f06f5579795b6e8d3d7505a39049e6a620a6ac995da9b",
+    "bytes": 232869
+  },
+  {
+    "path": "bootstrap-5.3.0/bootstrap.bundle.min.js",
+    "source": "https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js",
+    "sha256": "ee75315629808505fdd0a6f8751debfd2c0588836f0077816f9ea17b9d478c0d",
+    "bytes": 80373
+  },
+  {
+    "path": "bootstrap-5.3.0/LICENSE",
+    "source": "https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/LICENSE",
+    "sha256": "3d0b0c88216e4752b9afd3d24e36faaf27873b5a45a61458bb3c83e794c26832",
+    "bytes": 1093
+  },
+  {
+    "path": "bootstrap-icons-1.11.0/bootstrap-icons.min.css",
+    "source": "https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.min.css",
+    "sha256": "24d4bd5a70a7e420cd41e48766e824ef6f0afdc8088db40c8235d0045680b743",
+    "bytes": 85876
+  },
+  {
+    "path": "bootstrap-icons-1.11.0/fonts/bootstrap-icons.woff2",
+    "source": "https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/fonts/bootstrap-icons.woff2",
+    "sha256": "ae167342f8ad5aad834e774ddc99528b72ac9171a684f23ed79d83ea176ca04e",
+    "bytes": 130764
+  },
+  {
+    "path": "bootstrap-icons-1.11.0/fonts/bootstrap-icons.woff",
+    "source": "https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/fonts/bootstrap-icons.woff",
+    "sha256": "40f14c01ceff49ce457ff1e54fdf51b39498f845a85741cb08047172ac556bb9",
+    "bytes": 176196
+  },
+  {
+    "path": "bootstrap-icons-1.11.0/LICENSE",
+    "source": "https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/LICENSE",
+    "sha256": "0623348b57e817b6897c41b6065380b599d5befe2839d83270566c605e430441",
+    "bytes": 1093
+  }
+]
