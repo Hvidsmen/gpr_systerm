@@ -168,11 +168,12 @@ def workspace(request, movements=False):
         try:
             selected=form.cleaned_data['employees'];arrival=form.cleaned_data['kind']=='ARRIVAL'
             people=[] if arrival else list(Person.objects.filter(company=request.user.company,employee__in=selected))
-            count=housing.move(request.user,form.cleaned_data['kind'],camp,form.cleaned_data['date'],people,
+            operation=housing.request_moves if request.user.role.code=='TRANSPORT_DISPATCHER' else housing.move
+            count=operation(request.user,form.cleaned_data['kind'],camp,form.cleaned_data['date'],people,
                 employees=selected if arrival else (),target=form.cleaned_data.get('target'),comment=form.cleaned_data['comment'],snapshot=form.cleaned_data['snapshot'],departure_destination='DISMISSAL' if form.cleaned_data.get('destination')=='DISMISSAL' else 'REST')
         except (ValidationError,IntegrityError) as exc:form.add_error(None,'; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Размещение изменилось одновременно с вашим вводом. Обновите список.')
         else:
-            messages.success(request,f'Перемещение сохранено. Сотрудников: {count}.')
+            messages.success(request,(f'Заявка отправлена в перевахту. Сотрудников: {count}.' if request.user.role.code=='TRANSPORT_DISPATCHER' else f'Перемещение сохранено. Сотрудников: {count}.'))
             from .rotation_calendar import cycle_definition,effective_schedule
             missing=0
             for person in Person.objects.filter(company=request.user.company,employee__in=selected).select_related('employee','schedule_slot__pattern'):
@@ -240,9 +241,9 @@ def workspace(request, movements=False):
     objects=ConstructionObject.objects.filter(company=request.user.company,housing_camps__in=selected_camps).distinct()
     from .lodging_views import summary_context
     plan_context.update(summary_context(request.user,camp,day,camps=selected_camps))
-    review_requests=MovementReviewRequest.objects.filter(company=request.user.company).select_related('event__person','event__person__employee','event__from_camp','event__to_camp','event__recorded_by').order_by('status','-event__date','-pk')[:200]
-    arrival_review_requests=[row for row in review_requests if row.event.kind=='ARRIVAL']
-    departure_review_requests=[row for row in review_requests if row.event.kind!='ARRIVAL']
+    review_requests=MovementReviewRequest.objects.filter(company=request.user.company).select_related('person__employee','from_camp','to_camp','requested_by','event').order_by('status','-movement_date','-pk')[:200]
+    arrival_review_requests=[row for row in review_requests if row.kind=='ARRIVAL']
+    departure_review_requests=[row for row in review_requests if row.kind!='ARRIVAL']
     return render(request,template,{**extra,**plan_context,'rotation_filter':selector,'rotation_stats':rotation_stats,'position_groups':position_groups,'selected_camps':selected_camps,
         'roster_view':roster_view,'roster_view_links':view_links,'roster_sections':roster_sections(position_groups,roster_view=='groups',request.user.company),
         'camp':camp,'camps':camps,'day':day,'rows':rows,'dates':days,'form':form,'query':values.get('q',''),
@@ -257,7 +258,7 @@ def workspace(request, movements=False):
 @require_http_methods(['POST'])
 def movement_review_accept(request,pk):
     access(request)
-    row=get_object_or_404(MovementReviewRequest.objects.select_related('event__person','event__from_camp','event__to_camp'),pk=pk,company=request.user.company)
+    row=get_object_or_404(MovementReviewRequest.objects.select_related('person','from_camp','to_camp','event'),pk=pk,company=request.user.company)
     confirm=request.method=='POST' and request.POST.get('review_action')=='confirm'
     form=MovementReviewForm(request.POST if request.method=='POST' else None,instance=row,confirm=confirm)
     if request.method=='POST' and form.is_valid():
@@ -267,6 +268,8 @@ def movement_review_accept(request,pk):
                 messages.info(request,'Заявка уже подтверждена.');return redirect(reverse('personnel:housing')+'#movement-requests')
             for name in form._meta.fields:setattr(locked,name,form.cleaned_data[name])
             if confirm:
+                housing.move(request.user,locked.kind,locked.from_camp or locked.to_camp,locked.movement_date,[locked.person],target=locked.to_camp if locked.kind=='TRANSFER' else None,comment=locked.note,departure_destination=locked.departure_destination or 'REST')
+                locked.event=HousingEvent.objects.filter(company=locked.company,person=locked.person,date=locked.movement_date,kind=locked.kind,recorded_by=request.user).order_by('-pk').first()
                 locked.status='ACCEPTED';locked.reviewed_by=request.user;locked.reviewed_at=timezone.now()
             locked.save()
         messages.success(request,'Заявка перевахты подтверждена.' if confirm else 'Данные заявки сохранены.')

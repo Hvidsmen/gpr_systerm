@@ -4,7 +4,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 from apps.accounts.models import Role,User
-from .models import MovementRecommendationOverride
+from .models import MovementRecommendationOverride,MovementReviewRequest
 from .movement_recommendations import add,build,exclude
 
 
@@ -46,7 +46,7 @@ class MovementRecommendationTests(TestCase):
         self.assertEqual(response.status_code,200)
         self.assertContains(response,'1. Рекомендации к заезду')
         self.assertContains(response,'2. Рекомендации к выезду')
-        self.assertContains(response,'3. Фактический заезд или выезд')
+        self.assertContains(response,'3. Заявка на заезд или выезд')
         self.assertEqual(self.client.get(reverse('personnel:housing')).status_code,403)
 
     def test_transport_dispatcher_can_save_bulk_current_movement_but_not_old_fact(self):
@@ -54,7 +54,8 @@ class MovementRecommendationTests(TestCase):
         page=self.client.get(url,{'camp':self.a.pk});snapshot=page.context['form'].initial['snapshot']
         data={'workflow_action':'move','camp':self.a.pk,'kind':'ARRIVAL','date':today,'employees':[self.second_employee.pk],'snapshot':snapshot}
         self.assertEqual(self.client.post(url,data).status_code,302)
-        self.assertTrue(self.second_person.stays.filter(camp=self.a,arrived_on=today,cancelled_at=None).exists())
+        self.assertFalse(self.second_person.stays.exists())
+        self.assertTrue(MovementReviewRequest.objects.filter(person=self.second_person,kind='ARRIVAL',movement_date=today,status='OPEN').exists())
         data.update(kind='DEPARTURE',date=today-timedelta(days=2),snapshot=page.context['form'].initial['snapshot'])
         self.assertEqual(self.client.post(url,data).status_code,403)
 

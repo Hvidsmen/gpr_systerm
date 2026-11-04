@@ -20,10 +20,12 @@ class MovementReviewRequestTests(TestCase):
 
     def test_transport_movement_creates_request_and_personnel_accepts_it(self):
         event_count=self.person.housing_events.count()
-        housing.move(self.transport,'ARRIVAL',self.camp,timezone.localdate(),[self.person])
+        housing.request_moves(self.transport,'ARRIVAL',self.camp,timezone.localdate(),[self.person])
         request_row=MovementReviewRequest.objects.get()
-        self.assertEqual(request_row.event.person,self.person)
-        self.assertEqual(request_row.event.kind,'ARRIVAL')
+        self.assertEqual(request_row.person,self.person)
+        self.assertEqual(request_row.kind,'ARRIVAL')
+        self.assertIsNone(request_row.event)
+        self.assertFalse(self.person.housing_events.exists())
         self.assertEqual(request_row.status,'OPEN')
         self.assertEqual(request_row.position_name,self.employee.display_position)
         self.assertEqual(request_row.site,self.camp.name)
@@ -54,7 +56,7 @@ class MovementReviewRequestTests(TestCase):
         self.assertFalse(MovementReviewRequest.objects.exists())
 
     def test_transport_dispatcher_cannot_accept_request(self):
-        housing.move(self.transport,'ARRIVAL',self.camp,timezone.localdate(),[self.person])
+        housing.request_moves(self.transport,'ARRIVAL',self.camp,timezone.localdate(),[self.person])
         request_row=MovementReviewRequest.objects.get()
         self.client.force_login(self.transport)
         self.assertEqual(self.client.post(reverse('personnel:movement_review_accept',args=[request_row.pk])).status_code,403)

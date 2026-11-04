@@ -218,7 +218,14 @@ class HousingEvent(ActualHistoryMixin, PersonnelModel):
 class MovementReviewRequest(PersonnelModel):
     STATUSES=[('OPEN','Ожидает проверки'),('ACCEPTED','Принято')]
     EMPLOYMENT_KINDS=[('STAFF','Штат'),('NEW','Новый'),('TRANSFER','Перевод'),('BUSINESS_TRIP','Командировка')]
-    event=models.OneToOneField(HousingEvent,on_delete=models.PROTECT,related_name='review_request')
+    event=models.OneToOneField(HousingEvent,on_delete=models.PROTECT,related_name='review_request',null=True,blank=True)
+    person=models.ForeignKey(Person,on_delete=models.PROTECT,related_name='movement_review_requests')
+    kind=models.CharField('Действие',max_length=12,choices=HousingEvent.KINDS)
+    movement_date=models.DateField('Дата заезда / выезда')
+    from_camp=models.ForeignKey(Camp,on_delete=models.PROTECT,null=True,blank=True,related_name='+')
+    to_camp=models.ForeignKey(Camp,on_delete=models.PROTECT,null=True,blank=True,related_name='+')
+    departure_destination=models.CharField(max_length=10,blank=True)
+    requested_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,blank=True,related_name='+')
     status=models.CharField('Статус',max_length=10,choices=STATUSES,default='OPEN')
     employment_kind=models.CharField('Штат / новый / перевод',max_length=16,choices=EMPLOYMENT_KINDS,blank=True)
     position_name=models.CharField('Должность',max_length=250,blank=True)
@@ -232,10 +239,11 @@ class MovementReviewRequest(PersonnelModel):
     reviewed_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,blank=True,related_name='+')
     reviewed_at=models.DateTimeField(null=True,blank=True)
     class Meta:
-        ordering=['status','-event__date','-pk']
+        ordering=['status','-movement_date','-pk']
     def clean(self):
         super().clean()
-        if self.event_id and self.event.company_id!=self.company_id:raise ValidationError('Перемещение другой компании.')
+        for value in (self.event,self.person,self.from_camp,self.to_camp,self.requested_by):
+            if value and value.company_id!=self.company_id:raise ValidationError('Заявка другой компании.')
         if self.reviewed_by_id and self.reviewed_by.company_id!=self.company_id:raise ValidationError('Проверяющий другой компании.')
 
 from .lodging_models import LodgingBuilding,LodgingBed,LodgingStay,LodgingEvent,LodgingControl,LodgingResolution

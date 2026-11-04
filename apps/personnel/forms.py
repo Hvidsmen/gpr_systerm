@@ -211,12 +211,12 @@ class MovementReviewForm(StyledModelForm):
         widgets={'travel_time':forms.TimeInput(format='%H:%M',attrs={'type':'time'})}
     def __init__(self,*args,confirm=False,**kwargs):
         super().__init__(*args,**kwargs);self.confirm=confirm
-        if self.instance.event.kind!='ARRIVAL':
+        if self.instance.kind!='ARRIVAL':
             self.fields['employment_kind'].required=False
             self.fields['employment_kind'].widget=forms.HiddenInput()
         if confirm:
             required=['position_name','site','base_city','phone','request_number','travel_time','travel_status']
-            if self.instance.event.kind=='ARRIVAL':required.append('employment_kind')
+            if self.instance.kind=='ARRIVAL':required.append('employment_kind')
             for name in required:self.fields[name].required=True
 
 

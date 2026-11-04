@@ -3,11 +3,11 @@
 {% block extra_css %}<link rel="stylesheet" href="{% static 'personnel/housing.css' %}"><link rel="stylesheet" href="{% static 'personnel/recruitment.css' %}">{% endblock %}
 {% block content %}
 <h1>Персонал</h1>{% include 'personnel/_personnel_sections.html' %}
-<div class="recruitment-heading"><div><h2 class="h4">Заезд / выезд</h2><p class="text-muted">Рекомендации на ближайшие 14 дней и фактические массовые перемещения сотрудников.</p></div></div>
+<div class="recruitment-heading"><div><h2 class="h4">Заезд / выезд</h2><p class="text-muted">Рекомендации на ближайшие 14 дней и массовые заявки сотрудников.</p></div></div>
 {% include 'personnel/_movement_recommendation.html' with kind='ARRIVAL' title='1. Рекомендации к заезду' help_text='Сотрудники на межвахтовом отдыхе, которым по графику нужно заехать в ближайшие 14 дней.' rows=arrival_recommendations add_form=arrival_recommendation_form %}
 {% include 'personnel/_movement_recommendation.html' with kind='DEPARTURE' title='2. Рекомендации к выезду' help_text='Сотрудники на вахте, которым по графику нужно выехать в ближайшие 14 дней.' rows=departure_recommendations add_form=departure_recommendation_form %}
 {% if camp %}{% include 'core/_fact_context.html' with scope_list=selected_camps can_edit=fact_day_editable save_mode='rotation' %}
-<h3 class="h5 mt-4">3. Фактический заезд или выезд</h3><p class="small text-muted">Выберите действие, ВЖГ и сразу несколько сотрудников.</p><nav class="housing-tabs" aria-label="Перемещения"><button type="button" data-housing-tab="movement">Оформить перемещение</button><button type="button" data-housing-tab="events">История событий</button></nav>
+<h3 class="h5 mt-4">3. {% if request.user.role.code == 'TRANSPORT_DISPATCHER' %}Заявка на заезд или выезд{% else %}Фактический заезд или выезд{% endif %}</h3><p class="small text-muted">Выберите действие, ВЖГ и сразу несколько сотрудников.{% if request.user.role.code == 'TRANSPORT_DISPATCHER' %} Фактическое перемещение проведёт перевахта после проверки и заполнения данных поездки.{% endif %}</p><nav class="housing-tabs" aria-label="Перемещения"><button type="button" data-housing-tab="movement">{% if request.user.role.code == 'TRANSPORT_DISPATCHER' %}Создать заявку{% else %}Оформить перемещение{% endif %}</button><button type="button" data-housing-tab="events">История событий</button></nav>
 {% include 'personnel/_movement_panels.html' %}
 {% else %}<p class="alert alert-info">Для фактического перемещения нужен действующий ВЖГ. Подготовку кандидатов можно вести в списке выше.</p>{% endif %}
 {% endblock %}
