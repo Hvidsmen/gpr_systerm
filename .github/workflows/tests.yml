@@ -54,4 +54,4 @@ jobs:
           python-version: '3.13'
       - name: Verify bounded TEST child shutdown on Windows
         shell: powershell
-        run: python -m unittest apps.accounts.test_staging_process_stop apps.accounts.test_staging_repair apps.accounts.test_clear_staging_personnel -v
+        run: python -m unittest apps.accounts.test_staging_process_stop apps.accounts.test_staging_repair apps.accounts.test_clear_staging_personnel apps.accounts.test_staging_venv -v

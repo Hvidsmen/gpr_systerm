@@ -315,7 +315,8 @@ def process_job(root, child, job, parent_gone):
         if stopped and not parent_gone.is_set() and not (runtime(root) / 'server.stop').exists():
             if release is not None and not existed and release.exists() and staging.manifest(root)['revision'] != job['revision']:
                 import shutil
-                shutil.rmtree(release)
+                try:shutil.rmtree(release)
+                except OSError:logging.exception('Could not remove incomplete TEST release; retaining it and restarting the selected TEST version.')
             child = start_http(root)
             wait_http(root, child, parent_gone)
     finally:
