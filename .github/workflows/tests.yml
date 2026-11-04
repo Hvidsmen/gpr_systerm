@@ -35,7 +35,7 @@ jobs:
         shell: powershell
         run: |
           $failed = $false
-          foreach ($scriptName in @('bootstrap-staging.ps1', 'install-staging.ps1', 'control-staging.ps1')) {
+          foreach ($scriptName in @('bootstrap-staging.ps1', 'install-staging.ps1', 'control-staging.ps1', 'repair-staging.ps1')) {
             $tokens = $null
             $parseErrors = $null
             [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path "ops/$scriptName").Path, [ref]$tokens, [ref]$parseErrors)
@@ -45,3 +45,13 @@ jobs:
       - name: Verify bootstrap download and isolation
         shell: powershell
         run: .\tests\powershell\staging_bootstrap.tests.ps1
+
+      - name: Verify TEST recovery controller isolation
+        shell: powershell
+        run: .\tests\powershell\staging_repair.tests.ps1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Verify bounded TEST child shutdown on Windows
+        shell: powershell
+        run: python -m unittest apps.accounts.test_staging_process_stop apps.accounts.test_staging_repair -v
