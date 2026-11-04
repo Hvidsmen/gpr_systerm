@@ -99,6 +99,23 @@ class PlanAssignmentTests(TestCase):
         response=self.client.post(self.url,{**self.data,'construction_object':self.obj2.pk})
         self.assertContains(response,'уже есть назначение');self.assertEqual(StaffingSlot.objects.filter(planning_position=self.role).count(),1)
 
+    def test_employee_filter_hides_overlapping_assignments_and_restores_available_people(self):
+        available=Employee.objects.create(company=self.company,last_name='Свободный',first_name='Сотрудник',is_active=True)
+        self.client.post(self.url,self.data)
+        response=self.client.get(self.url,{'assigned_from':self.day})
+        choices=response.context['form'].fields['employee'].queryset
+        self.assertFalse(choices.filter(pk=self.second_employee.pk).exists())
+        self.assertTrue(choices.filter(pk=available.pk).exists())
+        slot=self.assigned();slot.assigned_from=self.day-timedelta(days=2);slot.assigned_until=self.day-timedelta(days=1);slot.save()
+        response=self.client.get(self.url,{'assigned_from':self.day})
+        self.assertTrue(response.context['form'].fields['employee'].queryset.filter(pk=self.second_employee.pk).exists())
+
+    def test_bound_form_keeps_stale_selected_employee_for_clear_overlap_error(self):
+        self.client.post(self.url,self.data)
+        response=self.client.post(self.url,{**self.data,'construction_object':self.obj2.pk})
+        self.assertContains(response,'уже есть назначение')
+        self.assertEqual(str(response.context['form']['employee'].value()),str(self.second_employee.pk))
+
     def test_edit_uses_version_and_preserves_employee_identity(self):
         self.client.post(self.url,self.data);slot=self.assigned()
         url=reverse('personnel:plan_assignment_edit',args=[slot.pk])

@@ -116,10 +116,30 @@ class AssignmentForm(forms.Form):
         self.company=company;self.row=row
         history=Person.objects.filter(company=company,employee_id=OuterRef('pk')).filter(Q(stays__isnull=False)|Q(housing_events__isnull=False))
         employees=Employee.objects.filter(company=company)
-        employees=employees.filter(pk=row.person.employee_id) if row else employees.filter(is_active=True)
+        if row:
+            employees=employees.filter(pk=row.person.employee_id)
+        else:
+            employees=employees.filter(is_active=True)
+            date_field=forms.DateField(required=False)
+            source=self.data if self.is_bound else self.initial
+            try:start=date_field.clean(source.get('assigned_from')) or timezone.localdate()
+            except ValidationError:start=timezone.localdate()
+            try:end=date_field.clean(source.get('assigned_until'))
+            except ValidationError:end=None
+            conflicts=StaffingSlot.objects.filter(company=company,planning_position__isnull=False,cancelled_at=None,person__employee__isnull=False).exclude(replaced_on=F('assigned_from')).filter(Q(assigned_until=None)|Q(assigned_until__gte=start)).filter(Q(replaced_on=None)|Q(replaced_on__gt=start))
+            if end:conflicts=conflicts.filter(Q(assigned_from=None)|Q(assigned_from__lte=end))
+            employees=employees.exclude(pk__in=conflicts.values('person__employee_id'))
+            # Keep a submitted choice available for validation if another dispatcher
+            # assigned the employee after this form was opened. save_assignment then
+            # reports the concurrent overlap instead of a misleading invalid choice.
+            if self.is_bound and self.data.get('employee'):
+                try:selected_employee=forms.IntegerField(min_value=1).clean(self.data.get('employee'))
+                except ValidationError:selected_employee=None
+                if selected_employee:
+                    employees=Employee.objects.filter(company=company,is_active=True).filter(Q(pk=selected_employee)|Q(pk__in=employees.values('pk')))
         self.fields['employee'].queryset=employees.annotate(has_personnel_history=Exists(history)).select_related('position').order_by('last_name','first_name','pk')
         self.fields['employee'].label_from_instance=lambda e:e.display_name+(' · '+str(e.position) if e.position_id else '')+(' · № '+e.employee_number if e.employee_number else '')
-        self.fields['employee'].help_text='Можно выбрать любого действующего сотрудника компании. Его штатная должность не изменится.'
+        self.fields['employee'].help_text='Показаны действующие сотрудники без другого назначения на выбранный период. Штатная должность не изменится.'
         self.fields['planning_position'].queryset=Brigade.objects.filter(company=company).order_by('name','pk')
         self.fields['construction_object'].queryset=ConstructionObject.objects.filter(company=company).select_related('project').order_by('project__name','name','pk')
         self.fields['construction_object'].label_from_instance=lambda obj:f'{obj.project.name} · {obj.name}'
