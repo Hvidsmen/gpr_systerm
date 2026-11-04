@@ -8,11 +8,13 @@ def days(month):
 
 
 def source_calendar(slot):
+    if not slot:return {}
     return {**(slot.pattern.calendar if slot.pattern_id else {}), **slot.calendar}
 
 
-def calendar_for(slot,*,start=None,end=None,stays=None):
-    from .rotation_calendar import project
+def calendar_for(slot,*,start=None,end=None,stays=None,person=None):
+    from .rotation_calendar import project,effective_schedule
+    slot=effective_schedule(slot,person)
     base=source_calendar(slot)
     return project(slot,base,start=start,end=end,stays=stays)[0]
 

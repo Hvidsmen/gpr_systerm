@@ -99,7 +99,7 @@ def rotation_stats(rows):
 
 
 def rotation_rows(company,camps,day,*,query='',position=None,state='',include_unassigned=False):
-    from .rotation_calendar import stays_by_person,anchor_for,description,cycle_definition
+    from .rotation_calendar import stays_by_person,anchor_for,description,cycle_definition,effective_schedule,schedule_label
     schedule_stays=stays_by_person(company)
     camp_ids={camp.pk for camp in camps};camp_names={camp.name.strip().casefold():camp for camp in camps}
     from .plan_assignments import active_on
@@ -144,10 +144,13 @@ def rotation_rows(company,camps,day,*,query='',position=None,state='',include_un
         display_slot=slot or (assigned[0] if assigned else None)
         status='MV' if active else 'MO' if previous and previous.departed_on and previous.departed_on<=day else 'MO' if initial_exit else 'MV' if any(s.status=='МВ' for s in assigned) else 'MO' if any(s.status=='МО' for s in assigned) else 'UNKNOWN'
         camp=active.camp if active else initial_exit.from_camp if initial_exit and not previous else slot_camp(display_slot) if display_slot else previous.camp if previous else None
-        calendar=calendar_for(slot,start=day.replace(day=1),end=day+timedelta(days=730),stays=schedule_stays.get(person_id,[])) if slot else {};start=active.arrived_on if active else slot.arrival_date if slot and slot.arrival_date else day
+        personal=housing.schedule_slot(person,assignments)
+        graph_slot=personal if personal and personal.pattern_id else slot
+        schedule=effective_schedule(graph_slot,person)
+        calendar=calendar_for(schedule,start=day.replace(day=1),end=day+timedelta(days=730),stays=schedule_stays.get(person_id,[]));start=active.arrived_on if active else slot.arrival_date if slot and slot.arrival_date else day
         origin=anchor_for(schedule_stays.get(person_id,[]),day)
         if active and origin and origin[1]=='ARRIVAL':start=origin[0]
-        known_cycle=cycle_definition(slot.pattern) if slot and slot.pattern_id else None
+        known_cycle=cycle_definition(schedule.pattern) if schedule and schedule.pattern_id else None
         outgoing=next(iter(departure_days(calendar,start)),'') if status=='MV' else ''
         if active and origin and origin[1]=='ARRIVAL' and known_cycle:
             due=str(origin[0]+timedelta(days=known_cycle['on_days']))
@@ -170,16 +173,18 @@ def rotation_rows(company,camps,day,*,query='',position=None,state='',include_un
         departing=trip=='DEPARTING' or outgoing==str(day) or person_id in departures or bool(slot and slot.departure_date==day)
         employee=person.employee if person.employee_id else None
         role=slot.planning_position.name if slot and slot.planning_position_id else str(employee.position) if employee and employee.position_id else display_slot.group.position if display_slot else 'Должность не указана'
-        rows.append({'person':person,'slot':slot,'stay':active,'camp':camp,'position':employee.position if employee and employee.position_id else None,'position_label':role,
+        rows.append({'person':person,'slot':slot,'schedule_slot':graph_slot,'stay':active,'camp':camp,'position':employee.position if employee and employee.position_id else None,'position_label':role,
             'planning_position_id':slot.planning_position_id if slot else None,'assignment_object':slot.construction_object if slot and slot.construction_object_id else None,
             'actual_elsewhere':elsewhere.camp if elsewhere else None,
             'staff_position_label':str(employee.position) if slot and slot.planning_position_id and employee and employee.position_id and str(employee.position)!=role else '',
             'state':status,'state_label':{'MV':'На вахте','MO':'Межвахтовый отдых','UNKNOWN':'Требует уточнения'}[status], 'verified':bool(active),'legacy_only':status=='MV' and not active,
             'arriving':arriving,'departing':departing,'departure_camp':departures[person_id].camp if person_id in departures else None,
-            'schedule_info':description(slot,day,schedule_stays.get(person_id,[])),
+            'schedule_info':description(schedule,day,schedule_stays.get(person_id,[])),
             'cycle_missing':not known_cycle,
+            'schedule_cycle_label':f"{known_cycle['on_days']}/{known_cycle['off_days']}" if known_cycle else '',
+            'schedule_from_zup':getattr(schedule,'schedule_from_zup',False),
             'state_since':state_since,'state_days':state_days,'state_days_source':state_source,
-            'schedule_label':str(slot.pattern) if slot and slot.planning_position_id and slot.pattern_id else employee_schedule_label(employee),
+            'schedule_label':schedule_label(schedule,person),
             'arrival_overdue':bool(not active and status!='MV' and upcoming and upcoming<str(day)),
             'arrived_on':active.arrived_on if active else previous.arrived_on if previous else slot.arrival_date if slot else None,'arrival_is_actual':bool(active or previous),'last_departure':previous.departed_on if previous else initial_exit.date if initial_exit else None,
             'planned_departure_display':departure,'planned_departure':outgoing,'departure_days':delta,

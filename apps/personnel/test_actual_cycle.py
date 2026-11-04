@@ -166,13 +166,13 @@ class ActualCycleTests(TestCase):
         self.pattern.name='Вахта 1.3 (60/30)';self.pattern.kind='М';self.pattern.save()
         self.employee.zup_card={'schedule':'Вахта 1.3 (60х30)'};self.employee.save()
         row=rotation_rows(self.company,[self.a],self.day)[0][0]
-        self.assertEqual(row['state_days'],1);self.assertEqual(row['schedule_label'],'Вахта 1.3 (60х30)')
+        self.assertEqual(row['state_days'],1);self.assertEqual(row['schedule_label'],str(self.pattern))
         from io import BytesIO
         import openpyxl
         response=self.client.get(reverse('personnel:housing_export'),{'camp':self.a.pk,'date':str(self.day)})
         sheet=openpyxl.load_workbook(BytesIO(response.content)).active;headers=[c.value for c in sheet[1]]
         self.assertEqual(sheet.cell(2,headers.index('Дней на вахте / МО')+1).value,1)
-        self.assertEqual(sheet.cell(2,headers.index('График')+1).value,'Вахта 1.3 (60х30)')
+        self.assertEqual(sheet.cell(2,headers.index('График')+1).value,str(self.pattern))
         housing.move(self.hr,'DEPARTURE',self.a,self.day,[self.person])
         row=rotation_rows(self.company,[self.a],self.day+timedelta(days=2))[0][0]
         self.assertEqual(row['state_days'],3);self.assertEqual(row['state_since'],self.day)

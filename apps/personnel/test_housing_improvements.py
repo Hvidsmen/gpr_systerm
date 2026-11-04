@@ -80,6 +80,7 @@ class HousingImprovementsTests(TestCase):
         self.assertEqual(arrival.status_code,200);self.assertEqual(arrival.context['form'].initial['employees'],[self.employee.pk]);self.assertIsNone(arrival.context['form'].initial['camp'])
 
     def test_schedule_label_comes_from_employee_card(self):
+        self.slot.pattern=None;self.slot.save()
         self.employee.zup_card={'schedule':'Вахта 1.2М (60х30)'};self.employee.save()
         response=self.client.get(reverse('personnel:housing'),{'camp':self.a.pk,'date':str(self.day)})
         row=next(r for r in response.context['rows'] if r.get('person') and r['person'].employee_id==self.employee.pk)

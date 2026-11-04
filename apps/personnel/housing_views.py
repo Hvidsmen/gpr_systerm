@@ -78,7 +78,7 @@ def roster_rows(company,camp,day,query='',position=''):
     days=[day.replace(day=n) for n in range(1,monthrange(day.year,day.month)[1]+1)]
     rows=[]
     for stay in stays.order_by('person__employee__position__name','person__full_name','pk'):
-        person=stay.person;slot=housing.schedule_slot(person);calendar=calendar_for(slot,start=day.replace(day=1),end=day+timedelta(days=730)) if slot else {}
+        person=stay.person;slot=housing.schedule_slot(person);calendar=calendar_for(slot,person=person,start=day.replace(day=1),end=day+timedelta(days=730))
         planned_departure=next(iter(departure_days(calendar,stay.arrived_on)),'')
         departure_date=date.fromisoformat(planned_departure) if planned_departure else None
         until_departure=(departure_date-day).days if departure_date else None
@@ -143,10 +143,10 @@ def workspace(request, movements=False):
         except (ValidationError,IntegrityError) as exc:form.add_error(None,'; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Размещение изменилось одновременно с вашим вводом. Обновите список.')
         else:
             messages.success(request,f'Перемещение сохранено. Сотрудников: {count}.')
-            from .rotation_calendar import cycle_definition
+            from .rotation_calendar import cycle_definition,effective_schedule
             missing=0
-            for person in Person.objects.filter(company=request.user.company,employee__in=selected).select_related('schedule_slot__pattern'):
-                assigned=housing.schedule_slot(person)
+            for person in Person.objects.filter(company=request.user.company,employee__in=selected).select_related('employee','schedule_slot__pattern'):
+                assigned=effective_schedule(housing.schedule_slot(person),person)
                 if not (assigned and assigned.pattern_id and cycle_definition(assigned.pattern)):missing+=1
             if missing:messages.warning(request,f'У {missing} сотрудников цикл вахта/отдых не задан. Укажите его через «Изменить график»; прогноз для них пока не пересчитан.')
             return redirect((reverse('personnel:movements')+'?camp='+str(camp.pk)+'&date='+str(form.cleaned_data['date'])+'#movement') if request.resolver_match.url_name=='movements' else camp_url(camp,form.cleaned_data['date'])+'#roster')
@@ -188,7 +188,7 @@ def workspace(request, movements=False):
             values_calendar=None
             if values_calendar is None:
                 if history is None:history=stays_by_person(request.user.company)
-                values_calendar=calendar_for(row['slot'],start=calendar_start,end=calendar_end,stays=history.get(row['person'].pk,[]) if row.get('person') else []) if row.get('slot') else {}
+                values_calendar=calendar_for(row.get('schedule_slot') or row.get('slot'),person=row.get('person'),start=calendar_start,end=calendar_end,stays=history.get(row['person'].pk,[]) if row.get('person') else [])
             row['calendar_codes']=[values_calendar.get(str(current),'') for current in calendar_dates]
         return render(request,'personnel/_rotation_calendar.html',{'rows':calendar_page.object_list,'day':day,'calendar_start':calendar_start,'calendar_end':calendar_end,'calendar_dates':calendar_dates,'calendar_months':calendar_months,'calendar_page':calendar_page,'calendar_query':calendar_params.urlencode()})
     events=HousingEvent.objects.filter(company=request.user.company).filter(Q(from_camp__in=selected_camps)|Q(to_camp__in=selected_camps)).select_related('person','from_camp','to_camp','recorded_by')[:50]
@@ -350,15 +350,14 @@ def individual_calendar(request,pk):
     raw=request.GET.get('month',timezone.localdate().strftime('%Y-%m'))
     try:month=date.fromisoformat(raw+'-01')
     except ValueError:return JsonResponse({'error':'Укажите месяц в формате ГГГГ-ММ.'},status=400)
-    slot=housing.schedule_slot(person);calendar=calendar_for(slot,start=month,end=month+timedelta(days=730)) if slot else {}
+    slot=housing.schedule_slot(person);calendar=calendar_for(slot,person=person,start=month,end=month+timedelta(days=730))
     last=monthrange(month.year,month.month)[1]
     days=[month.replace(day=n) for n in range(1,last+1)]
     previous=(month-timedelta(days=1)).replace(day=1);following=(month+timedelta(days=32)).replace(day=1)
-    from .rotation_calendar import description
-    from .rotation import employee_schedule_label
+    from .rotation_calendar import description,schedule_label
     return JsonResponse({'name':person.display_name,'number':person.display_employee_number,'month':month.strftime('%Y-%m'),
-        'schedule_info':description(slot,min(max(timezone.localdate(),month),days[-1])),
-        'pattern':employee_schedule_label(person.employee if person.employee_id else None),
+        'schedule_info':description(slot,min(max(timezone.localdate(),month),days[-1]),person=person),
+        'pattern':schedule_label(slot,person),
         'offset':month.weekday(),'previous':previous.strftime('%Y-%m'),'next':following.strftime('%Y-%m'),
         'edit_url':reverse('personnel:person_schedule',args=[person.pk]),
         'days':[{'day':d.day,'date':str(d),'code':calendar.get(str(d),''),'work':is_work(calendar.get(str(d),'')),'today':d==timezone.localdate()} for d in days]})
