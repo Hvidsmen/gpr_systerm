@@ -111,6 +111,17 @@ def planning_position_name(person,day):
     return str(assignment.planning_position or assignment.group.position or '')
 
 
+def request_object_pair(person,day,camp):
+    assignment=person.assignments.filter(cancelled_at=None,assigned_from__lte=day).filter(
+        Q(assigned_until=None)|Q(assigned_until__gte=day),Q(replaced_on=None)|Q(replaced_on__gt=day)
+    ).select_related('construction_object__parent').order_by('-assigned_from','-pk').first()
+    site=assignment.construction_object if assignment and assignment.construction_object_id else None
+    if not site:
+        link=camp.object_links.select_related('construction_object__parent').order_by('construction_object__name','pk').first()
+        site=link.construction_object if link else None
+    return ((site.parent if site and site.parent_id else site),site)
+
+
 @transaction.atomic
 @with_history_actor
 def move(user,kind,camp,day,people,employees=(),target=None,comment='',snapshot=None,departure_destination='REST',setup_direct=False):
@@ -176,11 +187,13 @@ def request_moves(user,kind,camp,day,people,employees=(),target=None,comment='',
         if kind=='ARRIVAL' and current:raise ValidationError(f'{person}: уже находится в {current.camp}. Используйте перевод.')
         if kind!='ARRIVAL' and (not current or current.camp_id!=camp.pk):raise ValidationError(f'{person}: на эту дату не находится в выбранном ВЖГ.')
         employee=person.employee
+        request_camp=target if kind=='TRANSFER' else camp
+        construction_object,site_object=request_object_pair(person,day,request_camp)
         rows.append(MovementReviewRequest(company=user.company,person=person,kind=kind,movement_date=day,
             from_camp=camp if kind!='ARRIVAL' else None,to_camp=target if kind=='TRANSFER' else camp if kind=='ARRIVAL' else None,
             departure_destination=departure_destination if kind=='DEPARTURE' else 'CAMP' if kind=='TRANSFER' else '',requested_by=user,
             employment_kind='TRANSFER' if kind=='TRANSFER' else 'STAFF',planning_position_name=planning_position_name(person,day),position_name=employee.display_position if employee else '',
-            site=(target if kind=='TRANSFER' else camp).name,phone=person.phone,
+            construction_object=construction_object,site_object=site_object,site=site_object.name if site_object else request_camp.name,phone=person.phone,
             travel_status='Прибыл' if kind=='ARRIVAL' else 'Убыл',note=comment))
     for row in rows:row.save()
     return len(rows)

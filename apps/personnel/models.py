@@ -241,6 +241,8 @@ class MovementReviewRequest(PersonnelModel):
     employment_kind=models.CharField('Штат / новый / перевод',max_length=16,choices=EMPLOYMENT_KINDS,blank=True)
     planning_position_name=models.CharField('Должность по ГПР / СМГ',max_length=250,blank=True)
     position_name=models.CharField('Должность по справочнику сотрудников',max_length=250,blank=True)
+    construction_object=models.ForeignKey('projects.ConstructionObject',on_delete=models.PROTECT,null=True,blank=True,related_name='movement_review_object_requests',verbose_name='Объект')
+    site_object=models.ForeignKey('projects.ConstructionObject',on_delete=models.PROTECT,null=True,blank=True,related_name='movement_review_site_requests',verbose_name='Участок')
     site=models.CharField('Участок',max_length=250,blank=True)
     base_city=models.CharField('Базовый город',max_length=150,blank=True)
     phone=models.CharField('Номер телефона',max_length=80,blank=True)
@@ -254,8 +256,10 @@ class MovementReviewRequest(PersonnelModel):
         ordering=['status','-movement_date','-pk']
     def clean(self):
         super().clean()
-        for value in (self.event,self.person,self.from_camp,self.to_camp,self.requested_by):
+        for value in (self.event,self.person,self.from_camp,self.to_camp,self.requested_by,self.construction_object,self.site_object):
             if value and value.company_id!=self.company_id:raise ValidationError('Заявка другой компании.')
+        if self.site_object_id and self.construction_object_id:
+            if self.site_object_id!=self.construction_object_id and self.site_object.parent_id!=self.construction_object_id:raise ValidationError({'site_object':'Участок должен относиться к выбранному объекту.'})
         if self.reviewed_by_id and self.reviewed_by.company_id!=self.company_id:raise ValidationError('Проверяющий другой компании.')
 
 from .lodging_models import LodgingBuilding,LodgingBed,LodgingStay,LodgingEvent,LodgingControl,LodgingResolution

@@ -5,9 +5,10 @@ from django.urls import reverse
 from django.utils import timezone
 
 from apps.accounts.models import Company, Role, User
+from apps.projects.models import ConstructionObject, Project
 from apps.resources.models import Employee, Position
 from . import housing
-from .models import BaseCity, Board, Camp, MovementReviewRequest, Person, StaffingGroup, StaffingSlot
+from .models import BaseCity, Board, Camp, CampObjectLink, MovementReviewRequest, Person, StaffingGroup, StaffingSlot
 
 
 class MovementReviewRequestTests(TestCase):
@@ -15,6 +16,10 @@ class MovementReviewRequestTests(TestCase):
     def setUpTestData(cls):
         cls.company=Company.objects.create(name='Очередь перевахты')
         cls.camp=Camp.objects.create(company=cls.company,name='ВЖГ-1')
+        cls.project=Project.objects.create(company=cls.company,name='Проект')
+        cls.obj=ConstructionObject.objects.create(company=cls.company,project=cls.project,name='Нефтепровод')
+        cls.site=ConstructionObject.objects.create(company=cls.company,project=cls.project,parent=cls.obj,name='КТП-1')
+        CampObjectLink.objects.create(company=cls.company,camp=cls.camp,construction_object=cls.site)
         cls.personnel=User.objects.create_user(username='personnel-request',company=cls.company,role=Role.objects.get(code='PERSONNEL_DISPATCHER'))
         cls.reviewer=User.objects.create_user(username='personnel-review',company=cls.company,role=Role.objects.get(code='HR_HEAD'))
         cls.transport=User.objects.create_user(username='transport-no-access',company=cls.company,role=Role.objects.get(code='TRANSPORT_DISPATCHER'))
@@ -36,7 +41,9 @@ class MovementReviewRequestTests(TestCase):
         self.assertEqual(request_row.status,'OPEN')
         self.assertEqual(request_row.planning_position_name,'Начальник участка по ГПР')
         self.assertEqual(request_row.position_name,self.employee.display_position)
-        self.assertEqual(request_row.site,self.camp.name)
+        self.assertEqual(request_row.construction_object,self.obj)
+        self.assertEqual(request_row.site_object,self.site)
+        self.assertEqual(request_row.site,self.site.name)
 
         self.client.force_login(self.reviewer)
         dispatcher_page=self.client.get(reverse('personnel:housing'))
@@ -54,11 +61,13 @@ class MovementReviewRequestTests(TestCase):
         self.assertContains(detail,'Подтвердить заявку')
         self.assertContains(detail,'Должность по ГПР / СМГ')
         self.assertContains(detail,'Должность по справочнику сотрудников')
+        self.assertContains(detail,'Выберите объект')
+        self.assertContains(detail,'КТП-1')
         self.assertContains(detail,'Не прибыл')
         changed_date=timezone.localdate()+timedelta(days=2)
         response=self.client.post(reverse('personnel:movement_review_accept',args=[request_row.pk]),{
             'review_action':'confirm','employment_kind':'STAFF','planning_position_name':'Начальник участка по ГПР',
-            'position_name':'Электромонтёр справочника','site':'КТП-1','movement_date':changed_date.isoformat(),
+            'position_name':'Электромонтёр справочника','construction_object':self.obj.pk,'site_object':self.site.pk,'movement_date':changed_date.isoformat(),
             'base_city_choice':'','new_base_city':'Уфа','phone':'8 900 000-00-00','request_number':'302','travel_time':'08:45',
             'travel_status':'Прибыл','note':'Рейс подтверждён',
         })
@@ -70,6 +79,8 @@ class MovementReviewRequestTests(TestCase):
         self.assertEqual(request_row.request_number,'302')
         self.assertEqual(request_row.base_city,'Уфа')
         self.assertEqual(request_row.movement_date,changed_date)
+        self.assertEqual(request_row.construction_object,self.obj)
+        self.assertEqual(request_row.site_object,self.site)
         self.assertTrue(BaseCity.objects.filter(company=self.company,name='Уфа').exists())
         self.assertEqual(self.person.housing_events.count(),event_count)
         self.assertIsNone(request_row.event)

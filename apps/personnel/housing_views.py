@@ -282,6 +282,7 @@ def movement_review_accept(request,pk):
             if locked.status=='ACCEPTED':
                 messages.info(request,'Заявка уже подтверждена.');return redirect(reverse('personnel:movement_reviews')+'#movement-requests')
             for name in form._meta.fields:setattr(locked,name,form.cleaned_data[name])
+            if locked.site_object_id:locked.site=locked.site_object.name
             selected_city=form.cleaned_data.get('base_city_choice');new_city=form.cleaned_data.get('new_base_city','')
             if new_city:
                 from .models import BaseCity
