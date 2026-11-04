@@ -32,6 +32,8 @@ class PositionAccountingTests(TestCase):
         self.client.force_login(self.users['DISPATCHER'])
         page=self.client.get(self.url,{'construction_object':self.obj.pk,'date':str(self.day),'section':'works'})
         self.assertContains(page,'Развернуть все');self.assertContains(page,'Свернуть все');self.assertContains(page,'data-position-group-assigned')
+        self.assertContains(page,'Простого совпадения названий недостаточно')
+        self.assertContains(page,'связанная должность СМГ определится автоматически')
     def test_different_staff_role_can_cover_smg_role_without_changing_employee(self):
         brigade=Brigade.objects.create(company=self.company,name='Должность плана')
         position=position_for(brigade)

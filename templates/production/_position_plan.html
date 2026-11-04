@@ -6,7 +6,7 @@
 <span>Ещё требуется: <strong data-position-total="remaining">{{ position_totals.remaining }}</strong></span>
 <span>Вне должностей плана: <strong data-position-total="unplanned">{{ position_totals.unplanned }}</strong></span>
 </div>
-<p class="small text-muted">Форма сотрудника находится под выбранной должностью СМГ. Штатная должность сотрудника может отличаться. Итог факта считает уникальных сотрудников; потребность — отдельно по каждой должности.</p>
+<p class="small text-muted">Если должность СМГ не выбрана вручную, сотрудник автоматически попадёт в строку своей штатной должности, когда она связана с должностью СМГ в справочнике. Простого совпадения названий недостаточно. Если связи нет, сотрудник останется в блоке «Другие сотрудники / без должности СМГ». Штатная должность сотрудника не меняется. Итог факта считает уникальных сотрудников; потребность — отдельно по каждой должности.</p>
 <div class="d-flex flex-wrap gap-2 mb-2"><button type="button" class="btn btn-sm btn-outline-secondary" data-position-groups-toggle="open">Развернуть все</button><button type="button" class="btn btn-sm btn-outline-secondary" data-position-groups-toggle="close">Свернуть все</button></div>
 {% for group in position_groups %}<details open class="production-position-group" data-position-group="{{ group.name }}" data-position-group-order="{{ group.order }}"><summary class="d-flex justify-content-between gap-2 flex-wrap"><strong>{{ group.name }}</strong><span class="small">План <strong data-position-group-plan>{{ group.plan }}</strong> · Людей <strong data-position-group-assigned>{{ group.actual }}</strong> · Ещё требуется <strong data-position-group-remaining>{{ group.remaining }}</strong></span></summary>
 {% for row in group.roles %}<section class="border rounded p-3 mb-3" data-position-plan="{{ row.id }}" data-plan-count="{{ row.plan }}">
@@ -14,6 +14,6 @@
 <div data-position-people="{{ row.id }}"></div>
 {% if editable %}<button type="button" class="btn btn-sm btn-outline-primary" data-add-for-position="{{ row.id }}">Назначить сотрудника</button> <button type="button" class="btn btn-sm btn-outline-primary" data-person-bulk-position="{{ row.id }}">Выбрать сотрудников</button>{% endif %}
 </section>{% empty %}<p>В применённом СМГ на эту дату должности не запланированы. Можно внести фактически работавших сотрудников.</p>{% endfor %}</details>{% endfor %}
-<section class="border rounded p-3 mb-3"><h4 class="h6">Другие сотрудники / без должности СМГ</h4><div data-position-people=""></div></section>
+<section class="border rounded p-3 mb-3"><h4 class="h6">Другие сотрудники / без должности СМГ</h4><p class="small text-muted">Здесь находятся сотрудники, чья штатная должность не связана с должностью текущего СМГ и которым должность СМГ не назначили вручную.</p><div data-position-people=""></div></section>
 <p class="small text-muted mb-0" data-position-plan-note>Итоги учитывают сохранённый факт всех диспетчеров и несохранённые изменения текущей формы. Изменения сохраняются автоматически.</p>
 </section>{{ position_plan_saved|json_script:'position-plan-saved' }}{{ position_employee_roles|json_script:'position-employee-roles' }}
