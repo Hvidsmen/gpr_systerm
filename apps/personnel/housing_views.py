@@ -125,10 +125,10 @@ def workspace(request, movements=False):
     day=selected_day(request) if movements else timezone.localdate()
     template = 'personnel/housing_movements.html' if movements else 'personnel/housing.html'
     extra = movement_context(request) if movements else {'personnel_section':'management','personnel_today_only':True}
-    from .rotation import RotationFilter,rotation_rows
+    from .rotation import RotationFilter,normalize_rotation_filter_data,rotation_rows
     raw=(request.GET if request.method=='GET' else request.POST).copy()
     raw['date']=str(day)
-    if raw.get('camp') and not raw.getlist('camps'):raw.setlist('camps',[raw['camp']])
+    raw=normalize_rotation_filter_data(raw,request.user.company)
     selector=RotationFilter(raw,company=request.user.company)
     if not selector.is_valid():
         if raw.get('camp'):raise Http404('ВЖГ не найден.')
@@ -428,9 +428,8 @@ def workbook_response(filename,title,rows):
 
 @login_required
 def roster_export(request):
-    from .rotation import RotationFilter,rotation_rows
-    raw=request.GET.copy();raw['date']=str(timezone.localdate())
-    if raw.get('camp') and not raw.getlist('camps'):raw.setlist('camps',[raw['camp']])
+    from .rotation import RotationFilter,normalize_rotation_filter_data,rotation_rows
+    raw=request.GET.copy();raw['date']=str(timezone.localdate());raw=normalize_rotation_filter_data(raw,request.user.company)
     selector=RotationFilter(raw,company=request.user.company)
     if not selector.is_valid():raise Http404('Некорректные фильтры перевахты.')
     camps=selector.selected_camps(request.user.company);data=selector.cleaned_data;day=data['date']

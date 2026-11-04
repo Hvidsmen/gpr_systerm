@@ -61,7 +61,7 @@ class AssignmentRemovalTests(TestCase):
 
     def test_add_uses_assignment_camp_when_actual_camp_differs_in_multi_camp_view(self):
         CampStay.objects.create(company=self.company,person=self.row.person,camp=self.b,arrived_on=self.day)
-        response=self.client.get(reverse('personnel:housing'),{'camps':[self.a.pk,self.b.pk],'date':self.day})
+        response=self.client.get(reverse('personnel:housing'),{'camps':self.a.pk,'construction_object':self.obj.pk,'date':self.day})
         group=next(g for g in response.context['position_groups'] if g['name']==self.role.name)
         self.assertEqual(group['assignment_initial']['housing_camp'],self.a.pk)
 

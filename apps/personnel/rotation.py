@@ -37,8 +37,8 @@ class RotationStatusSelect(forms.Select):
 
 
 class RotationFilter(forms.Form):
-    construction_object=forms.ModelChoiceField(label='Объект',queryset=ConstructionObject.objects.none(),required=False,empty_label='Все объекты')
-    camps=forms.ModelMultipleChoiceField(label='ВЖГ',queryset=Camp.objects.none(),required=False)
+    construction_object=forms.ModelChoiceField(label='Объект',queryset=ConstructionObject.objects.none(),required=True,empty_label=None)
+    camps=forms.ModelChoiceField(label='ВЖГ',queryset=Camp.objects.none(),required=True,empty_label=None)
     date=forms.DateField(label='На дату',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
     q=forms.CharField(label='Сотрудник',required=False,widget=forms.TextInput(attrs={'placeholder':'ФИО, должность или табельный номер'}))
     position=forms.ModelChoiceField(label='Должность',queryset=Position.objects.none(),required=False,empty_label='Все должности')
@@ -50,18 +50,46 @@ class RotationFilter(forms.Form):
         self.fields['camps'].queryset=Camp.objects.filter(company=company)
         self.fields['position'].queryset=Position.objects.filter(company=company).order_by('name')
         self.status_explanations=[(label,STATUS_HELP[value]) for value,label in self.fields['state'].choices]
+        self.company=company
+    def clean(self):
+        data=super().clean();obj=data.get('construction_object');camp=data.get('camps')
+        if obj and camp:
+            ids={obj.pk};pairs=list(ConstructionObject.objects.filter(company=self.company,project=obj.project).values_list('pk','parent_id'))
+            while True:
+                children={pk for pk,parent in pairs if parent in ids}
+                if children<=ids:break
+                ids.update(children)
+            if not camp.object_links.filter(company=self.company,construction_object_id__in=ids).exists():self.add_error('camps','Выбранный ВЖГ не обслуживает этот объект.')
+        return data
     def selected_camps(self,company):
-        camps=self.fields['camps'].queryset
-        obj=self.cleaned_data.get('construction_object')
+        camp=self.cleaned_data['camps']
+        return self.fields['camps'].queryset.filter(pk=camp.pk)
+
+
+def normalize_rotation_filter_data(data,company):
+    """Give every dispatcher view one concrete object and one compatible camp."""
+    from .models import CampObjectLink
+    values=data.copy();camp_id=values.get('camp') or values.get('camps');object_id=values.get('construction_object')
+    if camp_id and not object_id:
+        link=CampObjectLink.objects.filter(company=company,camp_id=camp_id).order_by('construction_object__name','pk').first()
+        if link:object_id=link.construction_object_id
+    elif object_id and not camp_id:
+        try:obj=ConstructionObject.objects.get(company=company,pk=object_id)
+        except (ConstructionObject.DoesNotExist,ValueError,TypeError):obj=None
         if obj:
             ids={obj.pk};pairs=list(ConstructionObject.objects.filter(company=company,project=obj.project).values_list('pk','parent_id'))
             while True:
                 children={pk for pk,parent in pairs if parent in ids}
                 if children<=ids:break
                 ids.update(children)
-            camps=camps.filter(object_links__company=company,object_links__construction_object_id__in=ids).distinct()
-        if self.cleaned_data.get('camps'):camps=camps.filter(pk__in=self.cleaned_data['camps'])
-        return camps.order_by('name','pk')
+            link=CampObjectLink.objects.filter(company=company,construction_object_id__in=ids).order_by('camp__name','pk').first()
+            if link:camp_id=link.camp_id
+    elif not camp_id and not object_id:
+        link=CampObjectLink.objects.filter(company=company,camp__is_active=True).order_by('construction_object__name','camp__name','pk').first()
+        if link:object_id=link.construction_object_id;camp_id=link.camp_id
+    if object_id:values['construction_object']=str(object_id)
+    if camp_id:values['camps']=str(camp_id)
+    return values
 
 
 def _day_code(row):
