@@ -4,6 +4,7 @@ app_name='personnel'
 urlpatterns=[
     path('assignments/create/',plan_assignments.edit,name='plan_assignment_create'),
     path('assignments/<int:pk>/',plan_assignments.edit,name='plan_assignment_edit'),
+    path('assignments/<int:pk>/change/',plan_assignments.change,name='plan_assignment_change'),
     path('housing/',housing_views.workspace,name='housing'),
     path('housing/export/',housing_views.roster_export,name='housing_export'),
     path('camps/',housing_views.camps,name='camps'),

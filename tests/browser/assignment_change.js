@@ -1,0 +1,16 @@
+const {chromium}=require('playwright'),assert=require('node:assert/strict');
+(async()=>{const c=JSON.parse(process.env.ASSIGNMENT_CHANGE_CONFIG),browser=await chromium.launch({executablePath:c.chromium,headless:true,args:['--no-sandbox']});try{
+ const context=await browser.newContext({viewport:{width:1440,height:950}});await context.addCookies([{name:'sessionid',value:c.cookie,url:c.base}]);await context.route('**/*',r=>r.request().url().startsWith(c.base)?r.continue():r.abort());
+ const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto(c.base+c.path);
+ const group=role=>page.locator('[data-housing-position]').filter({has:page.locator('.housing-position-title',{hasText:role})});
+ await group(c.old_role).getByRole('link',{name:'Сменить назначение',exact:true}).click();
+ assert.equal(await page.locator('#id_assigned_from').inputValue(),c.day);assert(await page.locator('#id_employee + .search-select-shell button').isDisabled());assert.equal(await page.locator('[data-assignment-initial]').count(),0);assert.equal(await page.locator('#id_pattern').count(),0);
+ await page.locator('#id_planning_position + .search-select-shell button').click();const popup=page.locator('.search-select-popup:visible');await popup.locator('input').fill(c.new_role);await popup.getByRole('option',{name:c.new_role,exact:true}).click();
+ await page.screenshot({path:'/tmp/assignment-change-form.png',fullPage:true,animations:'disabled'});await page.setViewportSize({width:390,height:844});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2));await page.screenshot({path:'/tmp/assignment-change-mobile.png',fullPage:true,animations:'disabled'});
+ await page.getByRole('button',{name:'Сменить назначение',exact:true}).click();await page.waitForURL(u=>u.pathname.endsWith('/housing/')&&u.hash==='#roster');
+ assert((await group(c.new_role).innerText()).includes(c.name));assert.equal(await group(c.new_role).locator('[data-position-fact-value=on_shift]').innerText(),'1');assert.equal(await group(c.new_role).locator('[data-housing-state-days]').getAttribute('data-housing-state-days'),'21');assert.equal(await group(c.old_role).locator('.housing-position-counts b').innerText(),'0');
+ await page.goto(c.base+c.history+'#assignments');assert.equal(await page.locator('[data-assignment-history]').count(),2);assert((await page.locator('#assignments').innerText()).includes(c.old_role));assert((await page.locator('#assignments').innerText()).includes(c.new_role));
+ await page.setViewportSize({width:1440,height:950});await page.locator('#assignments').scrollIntoViewIfNeeded();await page.screenshot({path:'/tmp/assignment-change-history.png',animations:'disabled'});
+ await page.goto(c.base+c.past);assert((await group(c.old_role).innerText()).includes(c.name));assert.equal(await group(c.new_role).locator('.housing-position-counts b').innerText(),'0');assert.deepEqual(errors,[]);
+ console.log('PASS: roster action -> fixed employee, selected date, new role search -> mobile save -> new role with same 21-day presence; both history rows retained; prior date shows prior role; no page errors.');
+}finally{await browser.close();}})().catch(e=>{console.error(e);process.exit(1);});

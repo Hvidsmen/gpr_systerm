@@ -220,7 +220,8 @@ def history(request,pk):
     stays=person.stays.select_related('camp','recorded_by','cancelled_by')
     for stay in stays:stay.can_cancel=can_edit_fact_day(request.user,stay.arrived_on)
     events=person.housing_events.select_related('from_camp','to_camp','recorded_by')
-    return render(request,'personnel/housing_history.html',{'person':person,'stays':stays,'events':events})
+    from .plan_assignments import assignment_history
+    return render(request,'personnel/housing_history.html',{'person':person,'stays':stays,'events':events,'assignments':assignment_history(person)})
 
 
 @login_required

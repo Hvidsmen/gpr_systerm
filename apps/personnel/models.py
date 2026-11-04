@@ -86,6 +86,9 @@ class StaffingSlot(PersonnelModel):
     assigned_from = models.DateField('Назначен с', null=True, blank=True)
     assigned_until = models.DateField('Назначен по (включительно)', null=True, blank=True)
     initial_movement = models.ForeignKey('HousingEvent', on_delete=models.PROTECT, null=True, blank=True, related_name='initial_assignments', verbose_name='Начальная запись перемещения')
+    previous_assignment = models.OneToOneField('self', on_delete=models.PROTECT, null=True, blank=True, related_name='next_assignment', verbose_name='Предыдущее назначение')
+    replaced_on = models.DateField('Заменено с', null=True, blank=True)
+    assigned_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+', verbose_name='Назначил')
     camp = models.CharField('ВЖГ из исходного файла', max_length=100, blank=True)
     housing_camp = models.ForeignKey('Camp', on_delete=models.PROTECT, null=True, blank=True, verbose_name='ВЖГ')
     status = models.CharField('Текущий статус', choices=STATUSES, max_length=10, blank=True)
@@ -97,9 +100,10 @@ class StaffingSlot(PersonnelModel):
     source_row = models.PositiveIntegerField(null=True, blank=True, editable=False)
     class Meta:
         ordering = ['group__order', 'pk']
-        constraints = [models.CheckConstraint(condition=models.Q(assigned_until__isnull=True)|models.Q(assigned_until__gte=models.F('assigned_from')), name='personnel_assignment_dates')]
+        constraints = [models.CheckConstraint(condition=models.Q(assigned_until__isnull=True)|models.Q(assigned_until__gte=models.F('assigned_from')), name='personnel_assignment_dates'),
+                       models.CheckConstraint(condition=models.Q(replaced_on__isnull=True)|models.Q(replaced_on__gte=models.F('assigned_from')), name='personnel_replacement_date')]
     def clean(self):
-        for name in ['group', 'person', 'pattern', 'housing_camp', 'planning_position', 'construction_object', 'initial_movement']:
+        for name in ['group', 'person', 'pattern', 'housing_camp', 'planning_position', 'construction_object', 'initial_movement', 'previous_assignment', 'assigned_by']:
             obj = getattr(self, name, None)
             if obj and obj.company_id != self.company_id: raise ValidationError('Данные другой компании.')
         if self.pattern_id and self.group_id and self.pattern.board_id != self.group.board_id: raise ValidationError('График другого объекта.')
@@ -111,6 +115,10 @@ class StaffingSlot(PersonnelModel):
             raise ValidationError({'assigned_until':'Дата окончания не может быть раньше начала назначения.'})
         if self.initial_movement_id and self.initial_movement.person_id!=self.person_id:
             raise ValidationError({'initial_movement':'Начальная запись принадлежит другому сотруднику.'})
+        if self.replaced_on and (not self.assigned_from or self.replaced_on<self.assigned_from):
+            raise ValidationError({'replaced_on':'Смена назначения не может быть раньше его начала.'})
+        if self.previous_assignment_id and (self.previous_assignment_id==self.pk or self.previous_assignment.person_id!=self.person_id):
+            raise ValidationError({'previous_assignment':'Предыдущее назначение должно принадлежать этому сотруднику.'})
 
 
 class Camp(PersonnelModel):
