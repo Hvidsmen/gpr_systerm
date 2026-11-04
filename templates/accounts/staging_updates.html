@@ -1,15 +1,24 @@
 {% extends 'base.html' %}{% load static %}
 {% block title %}Обновление тестового портала — ЯДС ОС{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'accounts/staging_updates.css' %}?v=20261104-progress">{% endblock %}
 {% block content %}
 <h1>Обновление тестового портала</h1>
 <p>Здесь можно отдельно обновить версию портала или заменить тестовые данные свежей копией рабочих.</p>
-<section class="card card-body" id="staging-update" data-status-url="{% url 'accounts:portal_update_status' %}" data-version="{{ update.version }}" data-state="{{ update.state }}">
+<section class="card card-body" id="staging-update" data-status-url="{% url 'accounts:portal_update_status' %}" data-version="{{ update.version }}" data-state="{{ update.state }}" data-available="{{ update.available }}">
   <h2 class="h5">Версия портала</h2>
   <p>При обновлении кода данные теста сохраняются.</p>
   <div class="row g-3 mb-3">
     <div class="col-md-6"><div class="text-muted small">Установлено на тесте</div><code data-test-current>{{ update.version|slice:':12' }}</code></div>
     <div class="col-md-6"><div class="text-muted small">Доступная версия</div><code data-test-available>{% if update.available %}{{ update.available|slice:':12' }}{% else %}Ещё не проверена{% endif %}</code></div>
   </div>
+  <section class="test-update-progress" aria-label="Ход обновления тестового портала" data-test-progress-panel>
+    <div class="test-progress-heading"><strong data-test-operation>{% if update.operation == 'refresh' %}Обновление тестовых данных{% else %}Установка версии портала{% endif %}</strong><span data-test-step>{% if update.state == 'done' %}Готово{% elif update.stage_number %}Этап {{ update.stage_number }} из {{ update.stage_total }}{% if update.state == 'error' or update.state == 'recovery' %} · не завершён{% endif %}{% elif update.state == 'error' or update.state == 'recovery' %}Обновление не завершено{% else %}Обновление не запущено{% endif %}</span></div>
+    <div class="progress" role="progressbar" aria-label="Завершённые этапы обновления теста" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ update.progress }}" data-test-progress><div class="progress-bar{% if update.state == 'done' %} bg-success{% elif update.state == 'error' or update.state == 'recovery' %} bg-danger{% else %} progress-bar-striped{% endif %}{% if update.busy %} progress-bar-animated{% endif %}" style="width:{{ update.progress }}%" data-test-progress-fill></div></div>
+    <ol class="test-update-steps" data-test-steps>{% for step in update.steps %}<li class="test-update-step is-{{ step.state }}" data-stage="{{ step.code }}"{% if step.state == 'current' %} aria-current="step"{% endif %}><span class="test-step-marker" aria-hidden="true">{% if step.state == 'complete' %}✓{% elif step.state == 'failed' %}!{% else %}{{ step.number }}{% endif %}</span><span>{{ step.label }}</span></li>{% endfor %}</ol>
+    <div class="test-update-timing"><span>Всего: <strong data-test-elapsed>{{ update.elapsed_label }}</strong></span><span><span data-test-stage-time-caption>На этапе:</span> <strong data-test-stage-elapsed>{{ update.stage_elapsed_label }}</strong></span></div>
+    <p class="small text-muted mb-0">Полоса показывает завершённые этапы, а не оставшееся время. Подготовка включает зависимости, резервную копию, миграции и статические файлы.</p>
+    <p class="test-update-connection small mb-0" data-test-connection role="status" aria-live="polite">{% if update.busy %}Обновление выполняется. Состояние проверяется автоматически.{% else %}Состояние получено с сервера.{% endif %}</p>
+  </section>
   <div class="alert {% if update.state == 'done' %}alert-success{% elif update.state == 'error' or update.state == 'recovery' %}alert-danger{% else %}alert-info{% endif %}" data-test-status role="status" aria-live="polite">{{ update.message }}{% if update.available == update.version %} Новых обновлений нет.{% endif %}</div>
   <div class="d-flex gap-2 flex-wrap">
     <form method="post" data-test-check>{% csrf_token %}<input type="hidden" name="action" value="check"><button class="btn btn-outline-primary" {% if update.busy %}disabled{% endif %}>Проверить обновления</button></form>
@@ -33,4 +42,4 @@
 </section>
 <p class="small text-muted mt-3">Источник: тестовая ветка <code>{{ update.branch }}</code>. Рабочий портал на порту 8001 продолжает работать.</p>
 {% endblock %}
-{% block extra_js %}<script src="{% static 'accounts/staging_updates.js' %}" defer></script>{% endblock %}
+{% block extra_js %}{{ update|json_script:'staging-update-initial' }}<script src="{% static 'accounts/staging_updates.js' %}?v=20261104-progress" defer></script>{% endblock %}
