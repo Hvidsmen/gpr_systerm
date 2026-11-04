@@ -13,7 +13,7 @@ class MovementRecommendationTests(TestCase):
     def setUpTestData(cls):
         from .test_housing import HousingTests
         HousingTests.setUpTestData.__func__(cls)
-        cls.transport=User.objects.create_user(username='transport-people',company=cls.company,role=Role.objects.get(code='TRANSPORT_DISPATCHER'))
+        cls.personnel_dispatcher=cls.hr
 
     def auto_rows(self):
         return [
@@ -27,30 +27,30 @@ class MovementRecommendationTests(TestCase):
         result=build(self.company,self.day)
         self.assertEqual([row['person'] for row in result['ARRIVAL']],[self.second_person])
         self.assertEqual([row['person'] for row in result['DEPARTURE']],[self.person])
-        self.assertEqual(exclude(self.transport,[result['ARRIVAL'][0]['token']]),1)
+        self.assertEqual(exclude(self.personnel_dispatcher,[result['ARRIVAL'][0]['token']]),1)
         self.assertEqual(build(self.company,self.day)['ARRIVAL'],[])
-        override=MovementRecommendationOverride.objects.get();self.assertEqual(override.action,'EXCLUDE');self.assertEqual(override.recorded_by,self.transport)
+        override=MovementRecommendationOverride.objects.get();self.assertEqual(override.action,'EXCLUDE');self.assertEqual(override.recorded_by,self.personnel_dispatcher)
 
     @patch('apps.personnel.rotation.rotation_rows',return_value=([],[],{}))
     def test_manual_arrival_is_shared_and_actual_presence_hides_it(self,rotation_rows):
         planned=self.day+timedelta(days=2)
-        self.assertEqual(add(self.transport,'ARRIVAL',[self.second_employee],self.a,planned),1)
+        self.assertEqual(add(self.personnel_dispatcher,'ARRIVAL',[self.second_employee],self.a,planned),1)
         result=build(self.company,self.day);self.assertEqual(len(result['ARRIVAL']),1);self.assertTrue(result['ARRIVAL'][0]['manual'])
         from . import housing
         housing.move(self.hr,'ARRIVAL',self.a,self.day,[self.second_person])
         self.assertEqual(build(self.company,self.day)['ARRIVAL'],[])
 
-    def test_transport_dispatcher_has_only_movement_workspace(self):
-        self.client.force_login(self.transport)
+    def test_personnel_dispatcher_has_dispatch_and_rotation_workspaces(self):
+        self.client.force_login(self.personnel_dispatcher)
         response=self.client.get(reverse('personnel:movements'))
         self.assertEqual(response.status_code,200)
         self.assertContains(response,'1. Рекомендации к заезду')
         self.assertContains(response,'2. Рекомендации к выезду')
         self.assertContains(response,'3. Заявка на заезд или выезд')
-        self.assertEqual(self.client.get(reverse('personnel:housing')).status_code,403)
+        self.assertEqual(self.client.get(reverse('personnel:housing')).status_code,200)
 
-    def test_transport_dispatcher_can_save_bulk_current_movement_but_not_old_fact(self):
-        self.client.force_login(self.transport);today=timezone.localdate();url=reverse('personnel:movements')
+    def test_personnel_dispatcher_can_submit_bulk_current_request_but_not_old_fact(self):
+        self.client.force_login(self.personnel_dispatcher);today=timezone.localdate();url=reverse('personnel:movements')
         page=self.client.get(url,{'camp':self.a.pk});snapshot=page.context['form'].initial['snapshot']
         data={'workflow_action':'move','camp':self.a.pk,'kind':'ARRIVAL','date':today,'employees':[self.second_employee.pk],'snapshot':snapshot}
         self.assertEqual(self.client.post(url,data).status_code,302)
@@ -60,7 +60,7 @@ class MovementRecommendationTests(TestCase):
         self.assertEqual(self.client.post(url,data).status_code,403)
 
     def test_recommendation_date_is_limited_to_fourteen_days(self):
-        self.client.force_login(self.transport)
+        self.client.force_login(self.personnel_dispatcher)
         response=self.client.post(reverse('personnel:movements'),{
             'workflow_action':'recommendation_add','recommendation_kind':'ARRIVAL',
             'arrival-employees':[self.second_employee.pk],'arrival-camp':self.a.pk,

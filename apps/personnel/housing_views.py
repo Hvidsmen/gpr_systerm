@@ -30,7 +30,7 @@ def camp_url(camp):return reverse('personnel:housing')+f'?camp={camp.pk}'
 
 def movement_access(request):
     from core.permissions import require_roles
-    require_roles(request.user,{'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER','TRANSPORT_DISPATCHER'})
+    require_roles(request.user,{'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'})
 
 
 @login_required
@@ -168,12 +168,12 @@ def workspace(request, movements=False):
         try:
             selected=form.cleaned_data['employees'];arrival=form.cleaned_data['kind']=='ARRIVAL'
             people=[] if arrival else list(Person.objects.filter(company=request.user.company,employee__in=selected))
-            operation=housing.request_moves if request.user.role.code=='TRANSPORT_DISPATCHER' else housing.move
+            operation=housing.request_moves if request.user.role.code=='PERSONNEL_DISPATCHER' else housing.move
             count=operation(request.user,form.cleaned_data['kind'],camp,form.cleaned_data['date'],people,
                 employees=selected if arrival else (),target=form.cleaned_data.get('target'),comment=form.cleaned_data['comment'],snapshot=form.cleaned_data['snapshot'],departure_destination='DISMISSAL' if form.cleaned_data.get('destination')=='DISMISSAL' else 'REST')
         except (ValidationError,IntegrityError) as exc:form.add_error(None,'; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Размещение изменилось одновременно с вашим вводом. Обновите список.')
         else:
-            messages.success(request,(f'Заявка отправлена в перевахту. Сотрудников: {count}.' if request.user.role.code=='TRANSPORT_DISPATCHER' else f'Перемещение сохранено. Сотрудников: {count}.'))
+            messages.success(request,(f'Заявка отправлена в перевахту. Сотрудников: {count}.' if request.user.role.code=='PERSONNEL_DISPATCHER' else f'Перемещение сохранено. Сотрудников: {count}.'))
             from .rotation_calendar import cycle_definition,effective_schedule
             missing=0
             for person in Person.objects.filter(company=request.user.company,employee__in=selected).select_related('employee','schedule_slot__pattern'):
