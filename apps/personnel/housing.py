@@ -103,6 +103,14 @@ def check_snapshot(user,signed,people):
         if before!=actual[str(person.pk)]:raise ValidationError(f'{person}: размещение уже изменил другой диспетчер. Обновите список.')
 
 
+def planning_position_name(person,day):
+    assignment=person.assignments.filter(cancelled_at=None,assigned_from__lte=day).filter(
+        Q(assigned_until=None)|Q(assigned_until__gte=day),Q(replaced_on=None)|Q(replaced_on__gt=day)
+    ).select_related('planning_position','group').order_by('-assigned_from','-pk').first()
+    if not assignment:return ''
+    return str(assignment.planning_position or assignment.group.position or '')
+
+
 @transaction.atomic
 @with_history_actor
 def move(user,kind,camp,day,people,employees=(),target=None,comment='',snapshot=None,departure_destination='REST',setup_direct=False):
@@ -171,7 +179,7 @@ def request_moves(user,kind,camp,day,people,employees=(),target=None,comment='',
         rows.append(MovementReviewRequest(company=user.company,person=person,kind=kind,movement_date=day,
             from_camp=camp if kind!='ARRIVAL' else None,to_camp=target if kind=='TRANSFER' else camp if kind=='ARRIVAL' else None,
             departure_destination=departure_destination if kind=='DEPARTURE' else 'CAMP' if kind=='TRANSFER' else '',requested_by=user,
-            employment_kind='TRANSFER' if kind=='TRANSFER' else 'STAFF',position_name=employee.display_position if employee else '',
+            employment_kind='TRANSFER' if kind=='TRANSFER' else 'STAFF',planning_position_name=planning_position_name(person,day),position_name=employee.display_position if employee else '',
             site=(target if kind=='TRANSFER' else camp).name,phone=person.phone,
             travel_status='Прибыл' if kind=='ARRIVAL' else 'Убыл',note=comment))
     for row in rows:row.save()

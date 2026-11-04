@@ -215,6 +215,17 @@ class HousingEvent(ActualHistoryMixin, PersonnelModel):
             if obj and obj.company_id!=self.company_id:raise ValidationError('Событие другой компании.')
 
 
+class BaseCity(PersonnelModel):
+    name=models.CharField('Базовый город',max_length=150)
+    class Meta:
+        ordering=['name','pk']
+        constraints=[models.UniqueConstraint(fields=['company','name'],name='personnel_unique_base_city')]
+    def clean(self):
+        super().clean();self.name=' '.join(self.name.split())
+        if not self.name:raise ValidationError({'name':'Укажите название города.'})
+    def __str__(self):return self.name
+
+
 class MovementReviewRequest(PersonnelModel):
     STATUSES=[('OPEN','Ожидает проверки'),('ACCEPTED','Принято')]
     EMPLOYMENT_KINDS=[('STAFF','Штат'),('NEW','Новый'),('TRANSFER','Перевод'),('BUSINESS_TRIP','Командировка')]
@@ -228,7 +239,8 @@ class MovementReviewRequest(PersonnelModel):
     requested_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,blank=True,related_name='+')
     status=models.CharField('Статус',max_length=10,choices=STATUSES,default='OPEN')
     employment_kind=models.CharField('Штат / новый / перевод',max_length=16,choices=EMPLOYMENT_KINDS,blank=True)
-    position_name=models.CharField('Должность',max_length=250,blank=True)
+    planning_position_name=models.CharField('Должность по ГПР / СМГ',max_length=250,blank=True)
+    position_name=models.CharField('Должность по справочнику сотрудников',max_length=250,blank=True)
     site=models.CharField('Участок',max_length=250,blank=True)
     base_city=models.CharField('Базовый город',max_length=150,blank=True)
     phone=models.CharField('Номер телефона',max_length=80,blank=True)

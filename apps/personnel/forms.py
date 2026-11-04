@@ -1,7 +1,7 @@
 from datetime import timedelta
 from django import forms
 from django.db.models import Q
-from .models import Board, MovementReviewRequest, Person, StaffingGroup, StaffingSlot
+from .models import BaseCity, Board, MovementReviewRequest, Person, StaffingGroup, StaffingSlot
 
 
 class StyledModelForm(forms.ModelForm):
@@ -209,19 +209,39 @@ class MovementRecommendationForm(forms.Form):
 
 
 class MovementReviewForm(StyledModelForm):
+    base_city_choice=forms.ModelChoiceField(label='Базовый город',queryset=BaseCity.objects.none(),required=False,empty_label='Выберите город')
+    new_base_city=forms.CharField(label='Добавить новый базовый город',max_length=150,required=False,
+        help_text='Если нужного города ещё нет в списке, введите его здесь — он сразу добавится в справочник.')
     class Meta:
         model=MovementReviewRequest
-        fields=['employment_kind','position_name','site','base_city','phone','request_number','travel_time','travel_status','note']
-        widgets={'travel_time':forms.TimeInput(format='%H:%M',attrs={'type':'time'})}
+        fields=['employment_kind','planning_position_name','position_name','site','movement_date','phone','request_number','travel_time','travel_status','note']
+        widgets={'movement_date':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}),'travel_time':forms.TimeInput(format='%H:%M',attrs={'type':'time'})}
     def __init__(self,*args,confirm=False,**kwargs):
         super().__init__(*args,**kwargs);self.confirm=confirm
+        self.fields['movement_date'].label='Дата заезда' if self.instance.kind=='ARRIVAL' else 'Дата выезда'
+        self.fields['base_city_choice'].queryset=BaseCity.objects.filter(company=self.instance.company).order_by('name')
+        current=BaseCity.objects.filter(company=self.instance.company,name__iexact=self.instance.base_city.strip()).first() if self.instance.base_city else None
+        if current:self.initial['base_city_choice']=current.pk
+        elif self.instance.base_city:self.initial['new_base_city']=self.instance.base_city
+        self.fields['travel_status'].widget=forms.Select(choices=self.status_choices())
         if self.instance.kind!='ARRIVAL':
             self.fields['employment_kind'].required=False
             self.fields['employment_kind'].widget=forms.HiddenInput()
         if confirm:
-            required=['position_name','site','base_city','phone','request_number','travel_time','travel_status']
+            required=['planning_position_name','position_name','site','movement_date','phone','request_number','travel_time','travel_status']
             if self.instance.kind=='ARRIVAL':required.append('employment_kind')
             for name in required:self.fields[name].required=True
+    def status_choices(self):
+        values=[('','Выберите статус'),('Ожидается','Ожидается'),('Перенесён','Перенесён'),('Отменён','Отменён')]
+        values.insert(2,('Прибыл','Прибыл') if self.instance.kind=='ARRIVAL' else ('Убыл','Убыл'))
+        values.insert(3,('Не прибыл','Не прибыл') if self.instance.kind=='ARRIVAL' else ('Не выехал','Не выехал'))
+        return values
+    def clean(self):
+        data=super().clean();new=' '.join((data.get('new_base_city') or '').split());selected=data.get('base_city_choice')
+        if new and selected:self.add_error('new_base_city','Выберите город из списка или добавьте новый, но не оба варианта.')
+        if self.confirm and not (new or selected):self.add_error('base_city_choice','Выберите базовый город или добавьте новый.')
+        data['new_base_city']=new
+        return data
 
 
 class PersonScheduleForm(forms.Form):

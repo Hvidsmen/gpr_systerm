@@ -1,11 +1,13 @@
+from datetime import timedelta
+
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
 from apps.accounts.models import Company, Role, User
-from apps.resources.models import Employee
+from apps.resources.models import Employee, Position
 from . import housing
-from .models import Camp, MovementReviewRequest, Person
+from .models import BaseCity, Board, Camp, MovementReviewRequest, Person, StaffingGroup, StaffingSlot
 
 
 class MovementReviewRequestTests(TestCase):
@@ -16,8 +18,12 @@ class MovementReviewRequestTests(TestCase):
         cls.personnel=User.objects.create_user(username='personnel-request',company=cls.company,role=Role.objects.get(code='PERSONNEL_DISPATCHER'))
         cls.reviewer=User.objects.create_user(username='personnel-review',company=cls.company,role=Role.objects.get(code='HR_HEAD'))
         cls.transport=User.objects.create_user(username='transport-no-access',company=cls.company,role=Role.objects.get(code='TRANSPORT_DISPATCHER'))
-        cls.employee=Employee.objects.create(company=cls.company,last_name='Иванов',first_name='Иван',employee_number='review-1')
+        cls.position=Position.objects.create(company=cls.company,name='Электромонтёр справочника')
+        cls.employee=Employee.objects.create(company=cls.company,last_name='Иванов',first_name='Иван',employee_number='review-1',position=cls.position)
         cls.person=Person.objects.create(company=cls.company,employee=cls.employee,full_name=cls.employee.display_name,employee_number=cls.employee.employee_number)
+        cls.board=Board.objects.create(company=cls.company,name='ГПР')
+        cls.group=StaffingGroup.objects.create(company=cls.company,board=cls.board,position='Начальник участка по ГПР')
+        cls.slot=StaffingSlot.objects.create(company=cls.company,group=cls.group,person=cls.person,assigned_from=timezone.localdate())
 
     def test_personnel_dispatcher_creates_request_and_rotation_accepts_it(self):
         event_count=self.person.housing_events.count()
@@ -28,6 +34,7 @@ class MovementReviewRequestTests(TestCase):
         self.assertIsNone(request_row.event)
         self.assertFalse(self.person.housing_events.exists())
         self.assertEqual(request_row.status,'OPEN')
+        self.assertEqual(request_row.planning_position_name,'Начальник участка по ГПР')
         self.assertEqual(request_row.position_name,self.employee.display_position)
         self.assertEqual(request_row.site,self.camp.name)
 
@@ -45,9 +52,14 @@ class MovementReviewRequestTests(TestCase):
         detail=self.client.get(reverse('personnel:movement_review_accept',args=[request_row.pk]))
         self.assertEqual(detail.status_code,200)
         self.assertContains(detail,'Подтвердить заявку')
+        self.assertContains(detail,'Должность по ГПР / СМГ')
+        self.assertContains(detail,'Должность по справочнику сотрудников')
+        self.assertContains(detail,'Не прибыл')
+        changed_date=timezone.localdate()+timedelta(days=2)
         response=self.client.post(reverse('personnel:movement_review_accept',args=[request_row.pk]),{
-            'review_action':'confirm','employment_kind':'STAFF','position_name':'Электромонтёр','site':'КТП-1',
-            'base_city':'Уфа','phone':'8 900 000-00-00','request_number':'302','travel_time':'08:45',
+            'review_action':'confirm','employment_kind':'STAFF','planning_position_name':'Начальник участка по ГПР',
+            'position_name':'Электромонтёр справочника','site':'КТП-1','movement_date':changed_date.isoformat(),
+            'base_city_choice':'','new_base_city':'Уфа','phone':'8 900 000-00-00','request_number':'302','travel_time':'08:45',
             'travel_status':'Прибыл','note':'Рейс подтверждён',
         })
         self.assertRedirects(response,reverse('personnel:movement_reviews')+'#movement-requests',fetch_redirect_response=False)
@@ -57,7 +69,10 @@ class MovementReviewRequestTests(TestCase):
         self.assertIsNotNone(request_row.reviewed_at)
         self.assertEqual(request_row.request_number,'302')
         self.assertEqual(request_row.base_city,'Уфа')
-        self.assertEqual(self.person.housing_events.count(),event_count+1)
+        self.assertEqual(request_row.movement_date,changed_date)
+        self.assertTrue(BaseCity.objects.filter(company=self.company,name='Уфа').exists())
+        self.assertEqual(self.person.housing_events.count(),event_count)
+        self.assertIsNone(request_row.event)
 
     def test_direct_hr_movement_does_not_create_dispatch_request(self):
         housing.move(self.reviewer,'ARRIVAL',self.camp,timezone.localdate(),[self.person])

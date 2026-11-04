@@ -282,9 +282,12 @@ def movement_review_accept(request,pk):
             if locked.status=='ACCEPTED':
                 messages.info(request,'Заявка уже подтверждена.');return redirect(reverse('personnel:movement_reviews')+'#movement-requests')
             for name in form._meta.fields:setattr(locked,name,form.cleaned_data[name])
+            selected_city=form.cleaned_data.get('base_city_choice');new_city=form.cleaned_data.get('new_base_city','')
+            if new_city:
+                from .models import BaseCity
+                selected_city=BaseCity.objects.filter(company=request.user.company,name__iexact=new_city).first() or BaseCity.objects.create(company=request.user.company,name=new_city)
+            if selected_city:locked.base_city=selected_city.name
             if confirm:
-                housing.move(request.user,locked.kind,locked.from_camp or locked.to_camp,locked.movement_date,[locked.person],target=locked.to_camp if locked.kind=='TRANSFER' else None,comment=locked.note,departure_destination=locked.departure_destination or 'REST')
-                locked.event=HousingEvent.objects.filter(company=locked.company,person=locked.person,date=locked.movement_date,kind=locked.kind,recorded_by=request.user).order_by('-pk').first()
                 locked.status='ACCEPTED';locked.reviewed_by=request.user;locked.reviewed_at=timezone.now()
             locked.save()
         messages.success(request,'Заявка перевахты подтверждена.' if confirm else 'Данные заявки сохранены.')
