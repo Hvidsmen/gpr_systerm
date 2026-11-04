@@ -18,6 +18,8 @@ class ZupCycleBrowserTests(StaticLiveServerTestCase):
         from apps.resources.models import Brigade
         from .models import StaffingSlot, CampStay, HousingEvent
         HousingTests.setUpTestData.__func__(type(self))
+        from django.utils import timezone
+        self.day=timezone.localdate()
         self.second_employee.zup_card={'schedule':'Вахта 1.1М (60х30)'};self.second_employee.save()
         role=Brigade.objects.create(company=self.company,name='Начальник участка')
         self.client.force_login(self.hr)

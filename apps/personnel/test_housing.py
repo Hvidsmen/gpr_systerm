@@ -155,7 +155,7 @@ class HousingTests(TestCase):
     def test_existing_calendar_is_used_and_overrides_do_not_move_employee(self):
         response=self.client.get(reverse('personnel:housing'),{'camp':self.a.pk,'date':str(self.day)})
         self.assertEqual(response.status_code,200)
-        self.assertEqual(response.context['rows'][0]['today_code'],'10')
+        self.assertEqual(response.context['rows'][0]['today_code'],'ДП')
         self.assertEqual(response.context['rows'][0]['planned_departure'],str(self.day+timedelta(days=1)))
         response=self.client.post(reverse('personnel:person_schedule',args=[self.person.pk]),{'version':housing.schedule_snapshot(Person.objects.get(pk=self.person.pk)),'slot':self.slot.pk,'pattern':self.pattern.pk,'start':str(self.day),'end':str(self.day),'code':'В'})
         self.assertEqual(response.status_code,302)

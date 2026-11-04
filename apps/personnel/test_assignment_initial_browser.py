@@ -16,6 +16,8 @@ class AssignmentInitialBrowserTests(StaticLiveServerTestCase):
         from apps.planning.models import GlobalPlanVersion
         from .models import StaffingSlot,CampStay,HousingEvent,Person
         HousingTests.setUpTestData.__func__(type(self))
+        from django.utils import timezone
+        self.day=timezone.localdate()
         role=Brigade.objects.create(company=self.company,name='Начальник участка')
         resting=Employee.objects.create(company=self.company,last_name='Сидоров',first_name='Сидор',position=self.position,employee_number='INITIAL-MO')
         GlobalPlanVersion.objects.create(company=self.company,construction_object=self.obj,start_date=self.day.replace(day=1),end_date=self.day+timedelta(days=100),version_number=1,status='APPROVED',snapshot={'works':[],'resources':{'labor':[{'date':str(self.day),'brigade_id':role.pk,'planned_workers':'2','label':role.name}]}})

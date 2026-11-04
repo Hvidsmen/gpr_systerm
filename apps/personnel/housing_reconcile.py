@@ -67,5 +67,5 @@ def reconcile(request):
         except ValidationError as exc:error='; '.join(exc.messages)
         else:
             messages.success(request,f'Перенесено сотрудников: {len(selected)}. Даты заезда и история сохранены.')
-            return redirect(reverse('personnel:housing')+f'?camp={camp.pk}&date={day}')
+            return redirect(reverse('personnel:housing')+f'?camp={camp.pk}')
     return render(request,'personnel/housing_reconcile.html',{'camp':camp,'day':day,'rows':rows,'totals':totals,'error':error,'snapshot':housing.movement_snapshot(request.user),'source_snapshot':signing.dumps(source,salt='rotation-table-review',compress=True)})

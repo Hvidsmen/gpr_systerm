@@ -18,6 +18,8 @@ class AssignmentRemovalBrowserTests(StaticLiveServerTestCase):
         from apps.resources.models import Brigade
         from .models import StaffingSlot, CampStay, HousingEvent
         HousingTests.setUpTestData.__func__(type(self))
+        from django.utils import timezone
+        self.day=timezone.localdate()
         role=Brigade.objects.create(company=self.company,name='Начальник участка')
         self.client.force_login(self.hr)
         response=self.client.post(reverse('personnel:plan_assignment_create'),{'employee':self.second_employee.pk,'planning_position':role.pk,'construction_object':self.obj.pk,'housing_camp':self.a.pk,'assigned_from':str(self.day-timedelta(days=5)),'pattern':self.pattern.pk,'initial-state':'MO','initial-departure_date':str(self.day-timedelta(days=6))})

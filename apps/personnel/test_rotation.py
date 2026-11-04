@@ -77,7 +77,7 @@ class RotationTests(TestCase):
         self.assertContains(page,'План и факт');self.assertContains(page,'В работе');self.assertContains(page,'В пути')
         for key in ['working','travelling','people','on_shift','rest','vacancies','no_schedule']:
             self.assertEqual(sum(g[key] for g in page.context['position_groups']),page.context['rotation_stats'][key])
-        self.assertContains(page,'data-position-fact-value="working">1</dd>',html=False)
+        self.assertContains(page,'data-position-fact-value="working">0</dd>',html=False)
         filtered=self.client.get(reverse('personnel:housing'),{'camp':self.a.pk,'date':str(self.day),'state':'TRAVEL'})
         self.assertEqual(filtered.context['rotation_stats']['people'],1);self.assertEqual(filtered.context['position_groups'][0]['travelling'],1)
 

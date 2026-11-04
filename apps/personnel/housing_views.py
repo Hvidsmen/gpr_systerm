@@ -25,7 +25,7 @@ def selected_day(request):
     except ValidationError:return timezone.localdate()
 
 
-def camp_url(camp,day):return reverse('personnel:housing')+f'?camp={camp.pk}&date={day.isoformat()}'
+def camp_url(camp):return reverse('personnel:housing')+f'?camp={camp.pk}'
 
 
 @login_required
@@ -95,13 +95,14 @@ def roster_rows(company,camp,day,query='',position=''):
 @login_required
 @require_http_methods(['GET','POST'])
 def workspace(request, movements=False):
-    access(request);day=selected_day(request)
+    access(request)
     movements = movements or request.method == 'POST' or bool(request.GET.get('employee') or request.GET.get('person') or request.GET.get('action'))
+    day=selected_day(request) if movements else timezone.localdate()
     template = 'personnel/housing_movements.html' if movements else 'personnel/housing.html'
-    extra = movement_context(request) if movements else {'personnel_section':'management'}
+    extra = movement_context(request) if movements else {'personnel_section':'management','personnel_today_only':True}
     from .rotation import RotationFilter,rotation_rows
     raw=(request.GET if request.method=='GET' else request.POST).copy()
-    raw.setdefault('date',str(day))
+    raw['date']=str(day)
     if raw.get('camp') and not raw.getlist('camps'):raw.setlist('camps',[raw['camp']])
     selector=RotationFilter(raw,company=request.user.company)
     if not selector.is_valid():
@@ -149,7 +150,7 @@ def workspace(request, movements=False):
                 assigned=effective_schedule(housing.schedule_slot(person),person)
                 if not (assigned and assigned.pattern_id and cycle_definition(assigned.pattern)):missing+=1
             if missing:messages.warning(request,f'У {missing} сотрудников цикл вахта/отдых не задан. Укажите его через «Изменить график»; прогноз для них пока не пересчитан.')
-            return redirect((reverse('personnel:movements')+'?camp='+str(camp.pk)+'&date='+str(form.cleaned_data['date'])+'#movement') if request.resolver_match.url_name=='movements' else camp_url(camp,form.cleaned_data['date'])+'#roster')
+            return redirect((reverse('personnel:movements')+'?camp='+str(camp.pk)+'&date='+str(form.cleaned_data['date'])+'#movement') if request.resolver_match.url_name=='movements' else camp_url(camp)+'#roster')
     if movements:
         events=HousingEvent.objects.filter(company=request.user.company).filter(Q(from_camp__in=selected_camps)|Q(to_camp__in=selected_camps)).select_related('person','from_camp','to_camp','recorded_by')[:50]
         return render(request,template,{**extra,'rotation_filter':selector,'day':day,'camp':camp,'camps':camps,'selected_camps':selected_camps,'form':form,'events':events,**window_context(request.user,day)})
@@ -168,7 +169,8 @@ def workspace(request, movements=False):
     calendar_start=day.replace(day=1);calendar_end=date(day.year+1,12,31)
     fragment=request.GET.get('calendar_fragment')=='1'
     calendar_dates=[];calendar_months=[]
-    calendar_params=request.GET.copy();calendar_params['calendar_fragment']='1';calendar_params.pop('calendar_page',None);calendar_params.pop('calendar_person',None)
+    roster_params=request.GET.copy();roster_params.pop('date',None)
+    calendar_params=roster_params.copy();calendar_params['calendar_fragment']='1';calendar_params.pop('calendar_page',None);calendar_params.pop('calendar_person',None)
     rotation_calendar_url=request.path+'?'+calendar_params.urlencode()
     if fragment:
         from django.core.paginator import Paginator
@@ -199,7 +201,7 @@ def workspace(request, movements=False):
     roster_view='groups' if raw.get('roster_view')=='groups' else 'positions'
     view_links=[]
     for value,label in [('positions','По должностям'),('groups','По группам должностей')]:
-        params=request.GET.copy();params['roster_view']=value
+        params=roster_params.copy();params['roster_view']=value
         view_links.append({'value':value,'label':label,'url':'?'+params.urlencode()+'#roster'})
     from apps.projects.models import ConstructionObject
     objects=ConstructionObject.objects.filter(company=request.user.company,housing_camps__in=selected_camps).distinct()
@@ -208,7 +210,7 @@ def workspace(request, movements=False):
     return render(request,template,{**extra,**plan_context,'rotation_filter':selector,'rotation_stats':rotation_stats,'position_groups':position_groups,'selected_camps':selected_camps,
         'roster_view':roster_view,'roster_view_links':view_links,'roster_sections':roster_sections(position_groups,roster_view=='groups',request.user.company),
         'camp':camp,'camps':camps,'day':day,'rows':rows,'dates':days,'form':form,'query':values.get('q',''),
-        'rotation_calendar_url':rotation_calendar_url,'calendar_dates':calendar_dates,'calendar_months':calendar_months,'calendar_start':calendar_start,'calendar_end':calendar_end,'events':events,'total':rotation_stats['people'],'objects':objects,
+        'roster_query':roster_params.urlencode(),'rotation_calendar_url':rotation_calendar_url,'calendar_dates':calendar_dates,'calendar_months':calendar_months,'calendar_start':calendar_start,'calendar_end':calendar_end,'events':events,'total':rotation_stats['people'],'objects':objects,
         'unknown_count':Person.objects.filter(company=request.user.company,stays__isnull=True,housing_events__isnull=True).count(),
         'unlinked_count':Person.objects.filter(company=request.user.company,employee=None).count(),**window_context(request.user,day)})
 
@@ -326,7 +328,7 @@ def workbook_response(filename,title,rows):
 @login_required
 def roster_export(request):
     from .rotation import RotationFilter,rotation_rows
-    raw=request.GET.copy();raw.setdefault('date',str(timezone.localdate()))
+    raw=request.GET.copy();raw['date']=str(timezone.localdate())
     if raw.get('camp') and not raw.getlist('camps'):raw.setlist('camps',[raw['camp']])
     selector=RotationFilter(raw,company=request.user.company)
     if not selector.is_valid():raise Http404('Некорректные фильтры перевахты.')
