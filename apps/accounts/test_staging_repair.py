@@ -14,6 +14,8 @@ class StagingRepairTests(TestCase):
     def setUp(self):
         self.temp=TemporaryDirectory();self.addCleanup(self.temp.cleanup)
         self.root=Path(self.temp.name)/'test';(self.root/'.runtime').mkdir(parents=True);(self.root/'data').mkdir()
+        # Windows runner TEMP can use an 8.3 alias; match the real helper's resolved path.
+        self.root=self.root.resolve()
         self.old='a'*40;self.new='b'*40
         self.config=dict(kind=staging.KIND,instance='11111111-1111-4111-8111-111111111111',owner_id=1,company_id=1,owner_login='synthetic-owner',port=18002,hosts=['127.0.0.1'],revision=self.old,code=str(self.root),python=sys.executable,static='staticfiles',production_url='http://127.0.0.1:18001/',source={name:str(Path(self.temp.name)/'production'/name) for name in ['database','media','actuation']})
         atomic_json(self.root/'staging.json',self.config)
