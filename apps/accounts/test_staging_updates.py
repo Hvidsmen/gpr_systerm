@@ -32,7 +32,8 @@ class StagingUpdateViewTests(TestCase):
             source={name: str(Path(temp.name)/'production'/name) for name in ['database','media','actuation']})
         atomic_json(self.root / 'staging.json', self.config)
         middleware=list(settings.MIDDLEWARE)
-        middleware.insert(middleware.index('core.impersonation.ActAsMiddleware'),'apps.accounts.staging_access.StagingGuard')
+        if 'apps.accounts.staging_access.StagingGuard' not in middleware:
+            middleware.insert(middleware.index('core.impersonation.ActAsMiddleware'),'apps.accounts.staging_access.StagingGuard')
         self.override = override_settings(STAGING_MODE=True, STAGING_CONFIG=self.config, CONFIG_DIR=self.root, MIDDLEWARE=middleware)
         self.override.enable(); self.addCleanup(self.override.disable)
         self.client.force_login(self.owner)
@@ -152,3 +153,57 @@ class StagingUpdateViewTests(TestCase):
             self.assertContains(response,'из ветки main')
             self.client.post(self.url)
             enqueue.assert_called_once_with(self.owner)
+
+    def test_stage_progress_is_based_on_confirmed_stages_and_only_done_reaches_100(self):
+        self.latest()
+        job={'id':'test-job','state':'queued','created_at':'2026-11-04T07:00:00+00:00','updated_at':'2026-11-04T07:02:00+00:00'}
+        with singleton(self.root/'.runtime/staging-supervisor.lock'),patch.object(staging_updates,'now',return_value='2026-11-04T07:02:11+00:00'):
+            for index,(phase,_) in enumerate(staging_updates.UPDATE_STEPS):
+                job['state']=phase;atomic_json(self.root/'.runtime/staging-update.json',job)
+                status=self.client.get(self.status_url).json()
+                self.assertEqual(status['stage_number'],index+1);self.assertEqual(status['stage_total'],5)
+                self.assertEqual(status['progress'],20*index);self.assertLess(status['progress'],100)
+                self.assertEqual(status['elapsed_seconds'],131);self.assertEqual(status['stage_elapsed_seconds'],11)
+                self.assertEqual(status['steps'][index]['state'],'current')
+            job.update(state='done',finished_at='2026-11-04T07:02:05+00:00');atomic_json(self.root/'.runtime/staging-update.json',job)
+            status=self.client.get(self.status_url).json();self.assertEqual(status['progress'],100);self.assertEqual(status['elapsed_seconds'],125)
+            self.assertTrue(all(step['state']=='complete' for step in status['steps']))
+            page=self.client.get(self.url);self.assertContains(page,'data-test-progress');self.assertContains(page,'staging-update-initial');self.assertContains(page,'20261104-progress')
+            self.assertContains(page,'Полоса показывает завершённые этапы')
+
+    def test_data_refresh_uses_seven_stages_and_old_launcher_metadata_works(self):
+        job={'kind':'refresh','state':'starting','created_at':'2026-11-04T07:00:00Z','updated_at':'2026-11-04T07:00:20Z'}
+        with singleton(self.root/'.runtime/staging-supervisor.lock'),patch.object(staging_updates,'now',return_value='2026-11-04T07:00:30Z'):
+            atomic_json(self.root/'.runtime/staging-update.json',job)
+            status=self.client.get(self.status_url).json()
+            self.assertEqual(status['stage_total'],7);self.assertEqual(status['stage_number'],7);self.assertEqual(status['progress'],85)
+            self.assertEqual(status['elapsed_seconds'],30);self.assertEqual(status['stage_elapsed_seconds'],10)
+            self.assertEqual(status['steps'][2]['code'],'backing_up')
+
+    def test_failure_keeps_failed_stage_and_never_looks_finished(self):
+        job={'state':'error','failed_stage':'applying','created_at':'2026-11-04T07:00:00Z','phase_started_at':'2026-11-04T07:01:00Z','finished_at':'2026-11-04T07:01:20Z'}
+        with singleton(self.root/'.runtime/staging-supervisor.lock'),patch.object(staging_updates,'now',return_value='2026-11-04T09:00:00Z'):
+            atomic_json(self.root/'.runtime/staging-update.json',job);status=self.client.get(self.status_url).json()
+            self.assertFalse(status['busy']);self.assertEqual(status['progress'],60);self.assertEqual(status['elapsed_seconds'],80)
+            self.assertEqual(status['stage_elapsed_seconds'],20);self.assertEqual(status['steps'][3]['state'],'failed')
+            self.assertContains(self.client.get(self.url),'is-failed')
+            job.pop('failed_stage');atomic_json(self.root/'.runtime/staging-update.json',job)
+            status=self.client.get(self.status_url).json();self.assertEqual(status['progress'],0);self.assertIsNone(status['stage_number'])
+            self.assertContains(self.client.get(self.url),'<span data-test-step>Обновление не завершено</span>')
+
+    def test_missing_or_invalid_times_are_safe_and_stopped_supervisor_is_not_success(self):
+        job={'state':'applying','created_at':'not-a-date','updated_at':42}
+        atomic_json(self.root/'.runtime/staging-update.json',job)
+        status=self.client.get(self.status_url).json()
+        self.assertEqual(status['state'],'error');self.assertFalse(status['busy']);self.assertEqual(status['progress'],60)
+        self.assertIsNone(status['elapsed_seconds']);self.assertEqual(status['elapsed_label'],'—')
+        self.assertFalse(status['can_update'])
+
+    def test_phase_timestamps_and_failure_stage_are_written_without_changing_job_identity(self):
+        job={'id':'same-job','state':'queued','created_at':'2026-11-04T07:00:00Z','revision':'b'*40}
+        with patch.object(staging_updates,'now',return_value='2026-11-04T07:00:10Z'):staging_updates.record_progress(self.root,job,'applying')
+        self.assertEqual(job['phase_started_at'],'2026-11-04T07:00:10Z')
+        with patch.object(staging_updates,'now',return_value='2026-11-04T07:00:30Z'):staging_updates.record_progress(self.root,job,'error')
+        stored=json.loads((self.root/'.runtime/staging-update.json').read_text())
+        self.assertEqual(stored['failed_stage'],'applying');self.assertEqual(stored['finished_at'],'2026-11-04T07:00:30Z')
+        self.assertEqual(stored['id'],'same-job');self.assertEqual(stored['revision'],'b'*40)

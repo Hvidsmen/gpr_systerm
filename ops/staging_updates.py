@@ -24,6 +24,76 @@ STAGES = {'queued': 'Задание принято', 'downloading': 'Скачи�
           'sanitizing': 'Подготовка отдельной тестовой базы и проверка', 'swapping': 'Замена только тестовых данных'}
 
 
+UPDATE_STEPS = [
+    ('queued', 'Задание принято'), ('downloading', 'Скачивание версии'),
+    ('stopping', 'Остановка теста'), ('applying', 'Подготовка и установка'),
+    ('starting', 'Запуск и проверка'),
+]
+REFRESH_STEPS = [
+    ('queued', 'Задание принято'), ('stopping', 'Остановка теста'),
+    ('backing_up', 'Резервная копия'), ('copying', 'Копирование данных'),
+    ('sanitizing', 'Подготовка базы'), ('swapping', 'Замена тестовых данных'),
+    ('starting', 'Запуск и проверка'),
+]
+
+
+def timestamp(value):
+    try:
+        parsed = datetime.fromisoformat(value)
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    except (TypeError, ValueError):
+        return None
+
+
+def duration_label(seconds):
+    if seconds is None:
+        return '—'
+    minutes, seconds = divmod(max(0, int(seconds)), 60)
+    hours, minutes = divmod(minutes, 60)
+    return (f'{hours} ч ' if hours else '') + (f'{minutes} мин ' if hours or minutes else '') + f'{seconds:02d} с'
+
+
+def progress_summary(job, phase):
+    steps = REFRESH_STEPS if job.get('kind') == 'refresh' else UPDATE_STEPS
+    failed = phase in {'error', 'recovery'}
+    last = (job.get('failed_stage') or job.get('state')) if failed else phase
+    index = next((i for i, (code, _) in enumerate(steps) if code == last), None)
+    finished = phase == 'done'
+    terminal = finished or failed
+    end = timestamp(job.get('finished_at')) if terminal else None
+    # Old launchers only recorded updated_at; they still get the same progress UI.
+    if end is None and terminal and job.get('state') in {'done', 'error', 'recovery'}:
+        end = timestamp(job.get('updated_at'))
+    end = end or timestamp(now())
+    created = timestamp(job.get('created_at'))
+    started = timestamp(job.get('phase_started_at') or job.get('updated_at') or job.get('created_at'))
+    elapsed = max(0, int((end-created).total_seconds())) if created and end else None
+    stage_elapsed = max(0, int((end-started).total_seconds())) if started and end and index is not None else None
+    progress = 100 if finished else int(100*index/len(steps)) if index is not None else 0
+    rows = []
+    for i, (code, label) in enumerate(steps):
+        state = 'complete' if finished or index is not None and i < index else ('failed' if failed else 'current') if i == index else 'pending'
+        rows.append({'code': code, 'label': label, 'state': state, 'number': i+1})
+    return {'progress': progress, 'stage_number': len(steps) if finished else index+1 if index is not None else None,
+            'stage_total': len(steps), 'steps': rows, 'created_at': job.get('created_at'),
+            'updated_at': job.get('updated_at'), 'phase_started_at': job.get('phase_started_at'),
+            'finished_at': job.get('finished_at'), 'elapsed_seconds': elapsed,
+            'stage_elapsed_seconds': stage_elapsed, 'elapsed_label': duration_label(elapsed),
+            'stage_elapsed_label': duration_label(stage_elapsed), 'job_id': job.get('id', '')}
+
+
+def record_progress(root, job, phase):
+    stamp = now()
+    if phase in {'error', 'recovery'}:
+        job['failed_stage'] = job.get('state')
+    if phase in {'done', 'error', 'recovery'}:
+        job['finished_at'] = stamp
+    else:
+        job['phase_started_at'] = stamp
+    job.update(state=phase, updated_at=stamp)
+    atomic_json(runtime(root) / 'staging-update.json', job)
+
+
 def now():
     return datetime.now(timezone.utc).isoformat()
 
@@ -90,7 +160,7 @@ def state(root):
         message = 'Доступна новая тестовая версия. Можно обновить портал.'
     features = read_json(runtime(root) / 'staging-supervisor.json', {}).get('features', [])
     from ops.staging_refresh import generation
-    return {'version': current['revision'], 'available': available, 'checked_at': latest.get('checked_at'),
+    return {**progress_summary(job, phase), 'version': current['revision'], 'available': available, 'checked_at': latest.get('checked_at'),
             'branch': BRANCH, 'ready': ready and phase != 'recovery', 'busy': busy, 'state': phase,
             'operation': job.get('kind', 'update'), 'data_generation': generation(current),
             'data_refreshed_at': current.get('data_refreshed_at'),
@@ -192,8 +262,7 @@ def process_job(root, child, job, parent_gone):
     release = None
     existed = False
     def progress(phase):
-        job.update(state=phase, updated_at=now())
-        atomic_json(runtime(root) / 'staging-update.json', job)
+        record_progress(root, job, phase)
     try:
         current = staging.manifest(root)
         if (job.get('branch') != BRANCH or not valid_sha(job.get('revision')) or
@@ -242,8 +311,7 @@ def process_refresh(root, child, job, parent_gone):
     from ops.staging import manifest
     stopped = False
     def progress(phase):
-        job.update(state=phase, updated_at=now())
-        atomic_json(runtime(root) / 'staging-update.json', job)
+        record_progress(root, job, phase)
     try:
         current = manifest(root)
         if (job.get('owner_id') != current['owner_id'] or job.get('from_revision') != current['revision'] or
