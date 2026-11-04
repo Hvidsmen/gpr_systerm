@@ -230,10 +230,28 @@ def start_http(root):
                              'http', '--root', str(root)], env=env, stdin=subprocess.PIPE)
 
 
-def stop_http(child):
-    if child.stdin:
-        child.stdin.close()
-    child.wait(timeout=115)
+def stop_http(child, *, graceful_timeout=115, terminate_timeout=15, kill_timeout=15):
+    """Stop only our Popen HTTP child; never apply a release until it has exited."""
+    if child.stdin and not child.stdin.closed:
+        try:
+            child.stdin.close()
+        except OSError:
+            logging.warning('TEST HTTP input pipe could not be closed; waiting for owned child exit.')
+    try:
+        child.wait(timeout=graceful_timeout)
+        return
+    except subprocess.TimeoutExpired:
+        logging.warning('TEST HTTP child pid=%s did not exit within %ss; terminating this child only.',
+                        child.pid, graceful_timeout)
+    if child.poll() is None:
+        child.terminate()
+    try:
+        child.wait(timeout=terminate_timeout)
+    except subprocess.TimeoutExpired:
+        logging.warning('TEST HTTP child pid=%s is still alive; killing this child only.', child.pid)
+        if child.poll() is None:
+            child.kill()
+        child.wait(timeout=kill_timeout)
 
 
 def wait_http(root, child, parent_gone):

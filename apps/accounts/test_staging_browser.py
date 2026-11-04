@@ -183,7 +183,17 @@ class StagingBrowserTests(StaticLiveServerTestCase):
                         if any(part in {'.git', '.venv', '__pycache__', '.runtime', 'staticfiles', 'data'} for part in relative.parts):continue
                         if item.is_file() and item.name not in {'.env', '.dev-secret-key', 'secret.key', 'staging.json'}:
                             zipped.write(item, 'gpr_systerm-' + 'b' * 40 + '/' + relative.as_posix())
-                staging.update(code, archive, 'b' * 40)
+                repair_job = None
+                if os.environ.get('STAGING_REPAIR_INSTALL_TESTS') == '1':
+                    from ops import staging_repair
+                    from ops.windows_runtime import read_json
+                    repair_source = code / '.runtime/repair-code' / ('b' * 40)
+                    shutil.copytree(settings.BASE_DIR, repair_source, ignore=shutil.ignore_patterns('.git', '.venv', '__pycache__', '.runtime', 'staticfiles', 'data', '.env', '.dev-secret-key'))
+                    with patch.object(staging_repair, 'CODE_ROOT', repair_source):
+                        archive = Path(staging_repair.pack(code, 'b' * 40)['archive'])
+                    repair_job = staging_repair.apply(code, 'b' * 40, archive, 'a' * 40)
+                else:
+                    staging.update(code, archive, 'b' * 40)
                 current = staging.manifest(code)
                 self.assertEqual(current['revision'], 'b' * 40)
                 self.assertEqual(current['instance'], state['instance'])
@@ -200,6 +210,9 @@ class StagingBrowserTests(StaticLiveServerTestCase):
                                     if response.headers.get('X-Portal-Version') == 'b' * 12:break
                             except Exception:time.sleep(.2)
                         else:self.fail('Updated staging release did not start')
+                        if repair_job:
+                            staging_repair.complete(code, 'b' * 40, repair_job['job_id'])
+                            self.assertEqual(read_json(code / '.runtime/staging-update.json')['state'], 'done')
                         # Loss of the launcher must not leave its HTTP child orphaned.
                         process.terminate();process.wait(timeout=10)
                         for _ in range(100):
