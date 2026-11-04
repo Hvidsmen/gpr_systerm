@@ -103,7 +103,7 @@ class StagingRepairTests(TestCase):
         child.wait.side_effect=subprocess.TimeoutExpired('synthetic HTTP child',115)
         child.terminate.side_effect=PermissionError('synthetic denied')
         job={'id':'failed-stop','state':'queued','revision':self.new,'from_revision':self.old,'owner_id':1,'branch':staging_updates.BRANCH}
-        with patch.object(staging_updates,'download',return_value=archive),patch.object(staging,'update') as update,patch.object(staging_updates,'start_http') as start:
+        with patch.object(staging,'prepare_update',return_value={'candidate_file':str(self.root/'.runtime/synthetic-candidate.json')}),patch.object(staging_updates,'download',return_value=archive),patch.object(staging,'update') as update,patch.object(staging_updates,'start_http') as start:
             self.assertIs(staging_updates.process_job(self.root,child,job,threading.Event()),child)
             update.assert_not_called();start.assert_not_called()
         stored=json.loads((self.root/'.runtime/staging-update.json').read_text());self.assertEqual(stored['state'],'error');self.assertEqual(stored['failed_stage'],'stopping')
@@ -113,11 +113,11 @@ class StagingRepairTests(TestCase):
         import subprocess
         archive=self.archive();old=Mock();replacement=Mock()
         release=self.root/'.runtime/releases'/self.new
-        def failed_update(*args):
+        def failed_update(*args,**kwargs):
             release.mkdir(parents=True)
             raise subprocess.TimeoutExpired('synthetic venv creation',300)
         job={'id':'failed-setup','state':'queued','revision':self.new,'from_revision':self.old,'owner_id':1,'branch':staging_updates.BRANCH}
-        with patch.object(staging_updates,'download',return_value=archive),patch.object(staging_updates,'stop_http'),patch.object(staging,'update',side_effect=failed_update),patch('shutil.rmtree',side_effect=PermissionError('synthetic locked venv')),patch.object(staging_updates,'start_http',return_value=replacement) as start,patch.object(staging_updates,'wait_http'):
+        with patch.object(staging,'prepare_update',return_value={'candidate_file':str(self.root/'.runtime/synthetic-candidate.json')}),patch.object(staging_updates,'download',return_value=archive),patch.object(staging_updates,'stop_http'),patch.object(staging,'update',side_effect=failed_update),patch('shutil.rmtree',side_effect=PermissionError('synthetic locked venv')),patch.object(staging_updates,'start_http',return_value=replacement) as start,patch.object(staging_updates,'wait_http'):
             self.assertIs(staging_updates.process_job(self.root,old,job,threading.Event()),replacement)
             start.assert_called_once_with(self.root)
         self.assertEqual(staging.manifest(self.root)['revision'],self.old)

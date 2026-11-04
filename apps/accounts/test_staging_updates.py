@@ -161,8 +161,8 @@ class StagingUpdateViewTests(TestCase):
             for index,(phase,_) in enumerate(staging_updates.UPDATE_STEPS):
                 job['state']=phase;atomic_json(self.root/'.runtime/staging-update.json',job)
                 status=self.client.get(self.status_url).json()
-                self.assertEqual(status['stage_number'],index+1);self.assertEqual(status['stage_total'],5)
-                self.assertEqual(status['progress'],20*index);self.assertLess(status['progress'],100)
+                self.assertEqual(status['stage_number'],index+1);self.assertEqual(status['stage_total'],6)
+                self.assertEqual(status['progress'],int(100*index/len(staging_updates.UPDATE_STEPS)));self.assertLess(status['progress'],100)
                 self.assertEqual(status['elapsed_seconds'],131);self.assertEqual(status['stage_elapsed_seconds'],11)
                 self.assertEqual(status['steps'][index]['state'],'current')
             job.update(state='done',finished_at='2026-11-04T07:02:05+00:00');atomic_json(self.root/'.runtime/staging-update.json',job)
@@ -184,8 +184,8 @@ class StagingUpdateViewTests(TestCase):
         job={'state':'error','failed_stage':'applying','created_at':'2026-11-04T07:00:00Z','phase_started_at':'2026-11-04T07:01:00Z','finished_at':'2026-11-04T07:01:20Z'}
         with singleton(self.root/'.runtime/staging-supervisor.lock'),patch.object(staging_updates,'now',return_value='2026-11-04T09:00:00Z'):
             atomic_json(self.root/'.runtime/staging-update.json',job);status=self.client.get(self.status_url).json()
-            self.assertFalse(status['busy']);self.assertEqual(status['progress'],60);self.assertEqual(status['elapsed_seconds'],80)
-            self.assertEqual(status['stage_elapsed_seconds'],20);self.assertEqual(status['steps'][3]['state'],'failed')
+            self.assertFalse(status['busy']);self.assertEqual(status['progress'],66);self.assertEqual(status['elapsed_seconds'],80)
+            self.assertEqual(status['stage_elapsed_seconds'],20);self.assertEqual(status['steps'][4]['state'],'failed')
             self.assertContains(self.client.get(self.url),'is-failed')
             job.pop('failed_stage');atomic_json(self.root/'.runtime/staging-update.json',job)
             status=self.client.get(self.status_url).json();self.assertEqual(status['progress'],0);self.assertIsNone(status['stage_number'])
@@ -195,7 +195,7 @@ class StagingUpdateViewTests(TestCase):
         job={'state':'applying','created_at':'not-a-date','updated_at':42}
         atomic_json(self.root/'.runtime/staging-update.json',job)
         status=self.client.get(self.status_url).json()
-        self.assertEqual(status['state'],'error');self.assertFalse(status['busy']);self.assertEqual(status['progress'],60)
+        self.assertEqual(status['state'],'error');self.assertFalse(status['busy']);self.assertEqual(status['progress'],66)
         self.assertIsNone(status['elapsed_seconds']);self.assertEqual(status['elapsed_label'],'—')
         self.assertFalse(status['can_update'])
 

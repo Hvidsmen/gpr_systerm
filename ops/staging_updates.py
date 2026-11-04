@@ -15,10 +15,11 @@ from ops.windows_runtime import atomic_json, read_json, singleton
 
 REPOSITORY = 'Hvidsmen/gpr_systerm'
 BRANCH = 'codex/staging-portal-20261102'
-BUSY = {'queued', 'downloading', 'stopping', 'applying', 'starting', 'backing_up', 'copying', 'sanitizing', 'swapping'}
+BUSY = {'queued', 'downloading', 'preparing', 'stopping', 'applying', 'starting', 'backing_up', 'copying', 'sanitizing', 'swapping'}
 STAGES = {'queued': 'Задание принято', 'downloading': 'Скачивание выбранной версии',
+          'preparing': 'Подготовка и проверка версии; тест продолжает работать',
           'stopping': 'Завершение запросов тестового портала',
-          'applying': 'Резервная копия, зависимости и проверка новой версии',
+          'applying': 'Резервная копия, миграции и статические файлы',
           'starting': 'Запуск и проверка тестового портала',
           'backing_up': 'Резервная копия тестовых данных', 'copying': 'Копирование рабочих данных и документов',
           'sanitizing': 'Подготовка отдельной тестовой базы и проверка', 'swapping': 'Замена только тестовых данных'}
@@ -26,7 +27,7 @@ STAGES = {'queued': 'Задание принято', 'downloading': 'Скачи�
 
 UPDATE_STEPS = [
     ('queued', 'Задание принято'), ('downloading', 'Скачивание версии'),
-    ('stopping', 'Остановка теста'), ('applying', 'Подготовка и установка'),
+    ('preparing', 'Подготовка без остановки'), ('stopping', 'Остановка теста'), ('applying', 'Установка'),
     ('starting', 'Запуск и проверка'),
 ]
 REFRESH_STEPS = [
@@ -83,6 +84,8 @@ def progress_summary(job, phase):
 
 
 def record_progress(root, job, phase):
+    if phase in {'error','recovery'} and job.get('detail'):job['failed_detail']=job['detail']
+    job.pop('detail',None)
     stamp = now()
     if phase in {'error', 'recovery'}:
         job['failed_stage'] = job.get('state')
@@ -92,6 +95,13 @@ def record_progress(root, job, phase):
         job['phase_started_at'] = stamp
     job.update(state=phase, updated_at=stamp)
     atomic_json(runtime(root) / 'staging-update.json', job)
+
+
+def record_detail(root,job,label):
+    job.update(detail=label,updated_at=now())
+    atomic_json(runtime(root)/'staging-update.json',job)
+    with (runtime(root)/'prepare.log').open('ab',buffering=0) as output:
+        output.write((now()+' TEST update: '+label+'\n').encode('utf-8'))
 
 
 def now():
@@ -148,7 +158,10 @@ def state(root):
                 'done': 'Тестовый портал обновлён и доступен.',
                 'error': 'Обновление не завершено. Подробности в журнале тестовой установки.',
                 'recovery': 'Тест остановлен: требуется проверка восстановления базы администратором сервера.'}
-    message = STAGES.get(phase, messages.get(phase, messages['idle']))
+    detail=job.get('detail') if phase in {'preparing','applying'} else None
+    message = detail or STAGES.get(phase, messages.get(phase, messages['idle']))
+    if phase=='error' and job.get('failed_stage')=='preparing':
+        message='Подготовка новой версии не завершена; установленная версия не изменена. Подробности: .runtime/prepare.log.'
     if phase == 'done' and job.get('kind') == 'refresh':
         message = 'Данные теста обновлены.'
     if not ready and phase == 'idle':
@@ -166,7 +179,7 @@ def state(root):
             'data_refreshed_at': current.get('data_refreshed_at'),
             'refresh_supported': 'refresh-data' in features,
             'can_refresh': ready and not busy and phase != 'recovery' and 'refresh-data' in features,
-            'message': message, 'stage': STAGES.get(phase, ''),
+            'message': message, 'stage': detail or STAGES.get(phase, ''),
             'can_update': ready and not busy and phase != 'recovery' and bool(available) and
                           available != current['revision'] and latest.get('from_revision') == current['revision']}
 
@@ -279,6 +292,7 @@ def process_job(root, child, job, parent_gone):
     stopped = False
     release = None
     existed = False
+    prepared = None
     def progress(phase):
         record_progress(root, job, phase)
     try:
@@ -290,6 +304,8 @@ def process_job(root, child, job, parent_gone):
         existed = release.exists()
         progress('downloading')
         archive = download(root, job['revision'])
+        progress('preparing')
+        prepared=staging.prepare_update(root,archive,job['revision'],progress=lambda label:record_detail(root,job,label))
         if parent_gone.is_set() or (runtime(root) / 'server.stop').exists():
             raise RuntimeError('Обновление отменено остановкой теста.')
         progress('stopping')
@@ -298,7 +314,7 @@ def process_job(root, child, job, parent_gone):
         if parent_gone.is_set():
             raise RuntimeError('Обновление отменено остановкой родительского процесса.')
         progress('applying')
-        staging.update(root, archive, job['revision'])
+        staging.update(root, archive, job['revision'],prepared=prepared,progress=lambda label:record_detail(root,job,label))
         progress('starting')
         child = start_http(root)
         stopped = False
@@ -312,14 +328,16 @@ def process_job(root, child, job, parent_gone):
             raise
         # update() restores the stopped test DB before raising. A failed download
         # keeps the original HTTP worker; neither case restarts production.
+        if release is not None and not existed and release.exists() and staging.manifest(root)['revision'] != job['revision']:
+            import shutil
+            try:shutil.rmtree(release)
+            except OSError:logging.exception('Could not remove incomplete TEST release; retaining it and restarting the selected TEST version.')
         if stopped and not parent_gone.is_set() and not (runtime(root) / 'server.stop').exists():
-            if release is not None and not existed and release.exists() and staging.manifest(root)['revision'] != job['revision']:
-                import shutil
-                try:shutil.rmtree(release)
-                except OSError:logging.exception('Could not remove incomplete TEST release; retaining it and restarting the selected TEST version.')
             child = start_http(root)
             wait_http(root, child, parent_gone)
     finally:
+        if prepared is not None:
+            Path(prepared['candidate_file']).unlink(missing_ok=True)
         if archive is not None:
             archive.unlink(missing_ok=True)
     return child

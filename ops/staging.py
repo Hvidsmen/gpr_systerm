@@ -130,15 +130,12 @@ def find_owner(database, login):
 
 
 def run_manage(root, command, *, password=None, code=None, python=None, candidate=None):
-    log = Path(root) / '.runtime' / 'prepare.log'
-    log.parent.mkdir(parents=True, exist_ok=True)
-    with log.open('ab') as output:
-        code = Path(code or CODE_ROOT)
-        result = subprocess.run([python or sys.executable, str(code / 'manage.py'), *command], cwd=code,
-                                env=environment(root, candidate), input=password.encode() if password is not None else None,
-                                stdout=output, stderr=subprocess.STDOUT, timeout=1800)
-    if result.returncode:
-        raise RuntimeError('Подготовка теста не завершилась. Подробности в закрытом .runtime/prepare.log.')
+    from ops.staging_venv import run_setup
+    code = Path(code or CODE_ROOT)
+    timeout=120 if command[0]=='check' else 1800
+    run_setup([python or sys.executable,'-I','-u',str(CODE_ROOT/'ops/staging_manage.py'),'--code',str(code),*command],
+              cwd=code,env=environment(root,candidate),log=Path(root)/'.runtime/prepare.log',
+              label='Django '+command[0],timeout=timeout,input_data=password.encode() if password is not None else None)
 
 
 def prepare(root, source_root, login, password, *, port=8002, hosts=None, revision='', actuation=None):
@@ -259,57 +256,87 @@ def serve_http(root):
 
 
 
-def update(root, archive, revision):
-    """Explicit offline release only. The HTTP process must already be stopped."""
-    root = Path(root).resolve(); previous = manifest(root)
-    if len(revision) != 40 or any(c not in '0123456789abcdef' for c in revision):
+def update_inputs(root, revision):
+    root=Path(root).resolve();previous=manifest(root)
+    if len(revision)!=40 or any(c not in '0123456789abcdef' for c in revision):
         raise ValueError('Нужен точный SHA проверяемого релиза, а не ветка main.')
-    runtime = root / '.runtime'
-    if (runtime / 'staging-recovery.json').exists():
+    if (root/'.runtime/staging-recovery.json').exists():
         raise ValueError('Сначала проверьте восстановление тестовой базы и снимите маркер восстановления.')
-    with singleton(runtime / 'server.lock'), singleton(runtime / 'prepare.lock'):
-        release = private_path(root, '.runtime/releases/' + revision)
-        if release.exists():raise ValueError('Эта версия уже подготовлена. Не перезаписывайте существующий релиз.')
-        with zipfile.ZipFile(archive) as zipped:
-            roots = {item.filename.split('/')[0] for item in zipped.infolist()}
-        if roots != {'gpr_systerm-' + revision}:raise ValueError('Архив должен быть выгрузкой GitHub именно указанного SHA.')
-        release.mkdir(parents=True)
-        code = release / 'code'
-        extract_archive(Path(archive), code)
-        if not (code / 'config/staging_settings.py').is_file() or not (code / 'ops/staging.py').is_file():
-            raise ValueError('Архив должен поддерживать отдельный тестовый портал.')
-        # A candidate gets its own dependencies, not the production or old test venv.
-        venv = release / 'venv'
-        from ops.staging_venv import create_test_venv, run_setup
-        python = create_test_venv(venv, env=dependency_environment(root), log=runtime/'prepare.log')
-        requirements = code / 'requirements.staging.lock'
-        if not requirements.is_file():raise ValueError('В релизе отсутствует фиксированный requirements.staging.lock.')
-        run_setup([python, '-I', '-m', 'pip', 'install', '--no-input', '--disable-pip-version-check', '-r', str(requirements)],
-                  env=dependency_environment(root), log=runtime/'prepare.log', label='Install pinned TEST dependencies', timeout=1800)
-        backup = private_path(root, '.runtime/backups/' + uuid.uuid4().hex)
-        backup.mkdir(parents=True)
-        snapshot(root / 'data/db.sqlite3', backup / 'database.sqlite3')
-        atomic_json(backup / 'staging.json', previous)
-        candidate = {**previous, 'revision': revision, 'code': str(code), 'python': python,
-                     'static': str((release / 'staticfiles').relative_to(root))}
-        candidate_file = runtime / ('candidate-' + uuid.uuid4().hex + '.json')
-        atomic_json(candidate_file, candidate)
-        try:
-            for command in [['check'], ['migrate', '--noinput'], ['collectstatic', '--noinput']]:
-                run_manage(root, command, code=code, python=python, candidate=candidate_file)
-            atomic_json(root / 'staging.json', candidate)
-        except Exception:
-            # Lock is held and no HTTP listener has been started: no new user writes can be lost.
-            try:
-                for suffix in ['-wal', '-shm']:Path(str(root / 'data/db.sqlite3') + suffix).unlink(missing_ok=True)
-                shutil.copy2(backup / 'database.sqlite3', root / 'data/db.sqlite3')
-            except Exception:
-                atomic_json(runtime / 'staging-recovery.json', {'backup': str(backup), 'revision': previous['revision']})
-                raise
-            raise
-        finally:candidate_file.unlink(missing_ok=True)
-        print('Обновлён только тест. Версия: ' + revision + '. Запустите отдельное задание тестового портала.')
+    return root,previous
 
+
+def prepare_release(root, archive, revision, previous, progress):
+    """Build only a private candidate. The selected TEST can keep serving requests."""
+    runtime=root/'.runtime';release=private_path(root,'.runtime/releases/'+revision)
+    if release.exists():raise ValueError('Эта версия уже подготовлена. Не перезаписывайте существующий релиз.')
+    with zipfile.ZipFile(archive) as zipped:
+        roots={item.filename.split('/')[0] for item in zipped.infolist()}
+    if roots!={'gpr_systerm-'+revision}:raise ValueError('Архив должен быть выгрузкой GitHub именно указанного SHA.')
+    release.mkdir(parents=True);code=release/'code';extract_archive(Path(archive),code)
+    if not (code/'config/staging_settings.py').is_file() or not (code/'ops/staging.py').is_file():
+        raise ValueError('Архив должен поддерживать отдельный тестовый портал.')
+    from ops.staging_venv import create_test_venv,run_setup
+    progress('Создание отдельного Python-окружения')
+    python=create_test_venv(release/'venv',env=dependency_environment(root),log=runtime/'prepare.log')
+    requirements=code/'requirements.staging.lock'
+    if not requirements.is_file():raise ValueError('В релизе отсутствует фиксированный requirements.staging.lock.')
+    progress('Установка фиксированных зависимостей')
+    run_setup([python,'-I','-m','pip','install','--no-input','--disable-pip-version-check','-r',str(requirements)],
+              env=dependency_environment(root),log=runtime/'prepare.log',label='Install pinned TEST dependencies',timeout=1800)
+    candidate={**previous,'revision':revision,'code':str(code),'python':python,
+               'static':str((release/'staticfiles').relative_to(root))}
+    candidate_file=runtime/('candidate-'+uuid.uuid4().hex+'.json');atomic_json(candidate_file,candidate)
+    try:
+        progress('Проверка новой версии Django; тест продолжает работать')
+        run_manage(root,['check'],code=code,python=python,candidate=candidate_file)
+    except BaseException:
+        candidate_file.unlink(missing_ok=True);raise
+    return {'root':str(root),'previous':previous,'candidate':candidate,'candidate_file':str(candidate_file)}
+
+
+def prepare_update(root, archive, revision, *, progress=lambda label:None):
+    root,previous=update_inputs(root,revision)
+    with singleton(root/'.runtime/prepare.lock'):
+        return prepare_release(root,archive,revision,previous,progress)
+
+
+def update(root, archive, revision, *, prepared=None, progress=lambda label:None):
+    """Apply a checked candidate only while TEST HTTP is stopped; back up latest data."""
+    root,previous=update_inputs(root,revision);runtime=root/'.runtime'
+    with singleton(runtime/'server.lock'),singleton(runtime/'prepare.lock'):
+        if prepared is None:prepared=prepare_release(root,archive,revision,previous,progress)
+        if prepared.get('root')!=str(root) or prepared.get('previous')!=previous:
+            raise ValueError('Тестовая версия изменилась после подготовки. Повторите обновление.')
+        candidate=prepared['candidate'];candidate_file=private_path(root,str(Path(prepared['candidate_file']).relative_to(root)))
+        release=private_path(root,'.runtime/releases/'+revision)
+        expected={**previous,'revision':revision,'code':str(release/'code'),'python':python_at(release/'venv'),
+                  'static':str((release/'staticfiles').relative_to(root))}
+        if (candidate!=expected or
+                candidate_file.parent!=runtime or not candidate_file.name.startswith('candidate-') or
+                read_json(candidate_file,{})!=candidate or manifest(root,candidate_file)!=candidate):
+            raise ValueError('Конфигурация подготовленной тестовой версии не совпала.')
+        backup=private_path(root,'.runtime/backups/'+uuid.uuid4().hex);backup.mkdir(parents=True)
+        try:
+            progress('Резервная копия последних тестовых данных')
+            snapshot(root/'data/db.sqlite3',backup/'database.sqlite3')
+            atomic_json(backup/'staging.json',previous)
+            try:
+                for command,label in [(['migrate','--noinput'],'Применение миграций тестовой базы'),
+                                      (['collectstatic','--noinput'],'Подготовка статических файлов')]:
+                    progress(label)
+                    run_manage(root,command,code=Path(candidate['code']),python=candidate['python'],candidate=candidate_file)
+                atomic_json(root/'staging.json',candidate)
+            except Exception:
+                # The complete backup was taken after HTTP stopped, so no user writes are lost.
+                try:
+                    for suffix in ['-wal','-shm']:Path(str(root/'data/db.sqlite3')+suffix).unlink(missing_ok=True)
+                    shutil.copy2(backup/'database.sqlite3',root/'data/db.sqlite3')
+                except Exception:
+                    atomic_json(runtime/'staging-recovery.json',{'backup':str(backup),'revision':previous['revision']})
+                    raise
+                raise
+        finally:candidate_file.unlink(missing_ok=True)
+        print('Обновлён только тест. Версия: '+revision+'. Запустите отдельное задание тестового портала.')
 
 
 def prompt_password():
