@@ -49,6 +49,16 @@ class AssignmentRemovalTests(TestCase):
         response=self.client.get(reverse('personnel:housing'),{'camp':self.a.pk,'date':self.day})
         self.assertContains(response,'Назначить сотрудника')
 
+    def test_roster_has_one_assignment_action_and_edit_page_contains_change_and_remove(self):
+        response=self.client.get(reverse('personnel:housing'),{'camp':self.a.pk})
+        content=response.content.decode()
+        self.assertEqual(content.count(f'href="{reverse("personnel:plan_assignment_edit",args=[self.row.pk])}">Назначение</a>'),1)
+        self.assertNotIn(reverse('personnel:plan_assignment_change',args=[self.row.pk]),content)
+        self.assertNotIn(reverse('personnel:plan_assignment_remove',args=[self.row.pk]),content)
+        edit=self.client.get(reverse('personnel:plan_assignment_edit',args=[self.row.pk]))
+        self.assertContains(edit,'Сменить назначение с выбранной даты')
+        self.assertContains(edit,'Удалить назначение')
+
     def test_add_uses_assignment_camp_when_actual_camp_differs_in_multi_camp_view(self):
         CampStay.objects.create(company=self.company,person=self.row.person,camp=self.b,arrived_on=self.day)
         response=self.client.get(reverse('personnel:housing'),{'camps':[self.a.pk,self.b.pk],'date':self.day})
