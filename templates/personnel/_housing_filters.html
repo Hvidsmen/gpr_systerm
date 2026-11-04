@@ -1,4 +1,5 @@
 <div data-rotation-filter-anchor aria-hidden="true"></div>
+{{ rotation_project_camps|json_script:"rotation-project-camps" }}
 <form method="get" action="{% url 'personnel:housing' %}#roster" class="card housing-rotation-filter{% if personnel_today_only %} housing-rotation-current{% endif %} mb-3" aria-label="Фильтры перевахты" data-rotation-filter data-fact-selector>
 <input type="hidden" name="roster_view" value="{{ roster_view|default:'positions' }}">
 <details class="housing-filter-disclosure" data-rotation-filter-disclosure data-storage-key="personnel:rotation-filter-open:{{ request.user.pk }}" data-has-errors="{{ rotation_filter.errors|yesno:'1,0' }}" open>

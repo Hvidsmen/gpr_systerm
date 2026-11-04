@@ -125,7 +125,8 @@ def workspace(request, movements=False):
     day=selected_day(request) if movements else timezone.localdate()
     template = 'personnel/housing_movements.html' if movements else 'personnel/housing.html'
     extra = movement_context(request) if movements else {'personnel_section':'management','personnel_today_only':True}
-    from .rotation import RotationFilter,normalize_rotation_filter_data,rotation_rows
+    from .rotation import RotationFilter,normalize_rotation_filter_data,rotation_project_camps,rotation_rows
+    extra['rotation_project_camps']=rotation_project_camps(request.user.company)
     raw=(request.GET if request.method=='GET' else request.POST).copy()
     raw['date']=str(day)
     raw=normalize_rotation_filter_data(raw,request.user.company)

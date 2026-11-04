@@ -79,7 +79,7 @@ def normalize_rotation_filter_data(data,company):
     if camp_ids and not object_id:
         link=CampObjectLink.objects.filter(company=company,camp_id=camp_ids[0]).order_by('construction_object__name','pk').first()
         if link:object_id=link.construction_object_id
-    elif object_id and not camp_ids:
+    elif object_id:
         try:obj=ConstructionObject.objects.get(company=company,pk=object_id)
         except (ConstructionObject.DoesNotExist,ValueError,TypeError):obj=None
         if obj:
@@ -88,7 +88,11 @@ def normalize_rotation_filter_data(data,company):
                 children={pk for pk,parent in pairs if parent in ids}
                 if children<=ids:break
                 ids.update(children)
-            camp_ids=list(CampObjectLink.objects.filter(company=company,construction_object_id__in=ids,camp__is_active=True).order_by('camp__name','pk').values_list('camp_id',flat=True).distinct())
+            allowed=list(CampObjectLink.objects.filter(company=company,construction_object_id__in=ids,camp__is_active=True).order_by('camp__name','pk').values_list('camp_id',flat=True).distinct())
+            # A project change can submit the WJG selection left by the previous
+            # project. Treat that as a dependent-filter change and select every
+            # WJG of the new project; genuine subsets remain untouched.
+            if not camp_ids or not set(camp_ids)<=set(map(str,allowed)):camp_ids=allowed
     elif not camp_ids and not object_id:
         link=CampObjectLink.objects.filter(company=company,camp__is_active=True).order_by('construction_object__name','camp__name','pk').first()
         if link:
@@ -104,6 +108,26 @@ def normalize_rotation_filter_data(data,company):
         if hasattr(values,'setlist'):values.setlist('camps',[str(value) for value in camp_ids])
         else:values['camps']=[str(value) for value in camp_ids]
     return values
+
+
+def rotation_project_camps(company):
+    """Return WJG ids available for every selectable project/object node."""
+    from .models import CampObjectLink
+    objects=list(ConstructionObject.objects.filter(company=company).values_list('pk','project_id','parent_id'))
+    children=defaultdict(set)
+    for pk,project_id,parent_id in objects:
+        if parent_id:children[parent_id].add(pk)
+    linked=defaultdict(set)
+    for object_id,camp_id in CampObjectLink.objects.filter(company=company,camp__is_active=True).values_list('construction_object_id','camp_id'):
+        linked[object_id].add(camp_id)
+    result={}
+    for pk,_,_ in objects:
+        descendants={pk};pending=[pk]
+        while pending:
+            child_ids=children[pending.pop()]-descendants
+            descendants.update(child_ids);pending.extend(child_ids)
+        result[str(pk)]=sorted({camp_id for object_id in descendants for camp_id in linked[object_id]})
+    return result
 
 
 def _day_code(row):

@@ -29,6 +29,12 @@ class RotationTests(TestCase):
         self.assertTrue(form.is_valid());self.assertEqual(set(form.selected_camps(self.company)),{self.a,self.b})
         form=RotationFilter({'construction_object':parent.pk,'date':str(self.day),'camps':[self.b.pk]},company=self.company)
         self.assertTrue(form.is_valid());self.assertEqual(list(form.selected_camps(self.company)),[self.b])
+    def test_project_change_replaces_stale_wjg_with_new_project_wjg(self):
+        data=normalize_rotation_filter_data({'construction_object':self.obj3.pk,'date':str(self.day),'camps':[self.a.pk]},self.company)
+        form=RotationFilter(data,company=self.company)
+        self.assertTrue(form.is_valid(),form.errors);self.assertEqual(list(form.selected_camps(self.company)),[self.b])
+        page=self.client.get(reverse('personnel:housing'),{'construction_object':self.obj3.pk,'camps':self.a.pk})
+        self.assertEqual(page.status_code,200);self.assertContains(page,'rotation-project-camps')
     def test_closed_stay_is_rest_and_transferred_employee_is_not_duplicated_in_previous_camp(self):
         self.stay.departed_on=self.day;self.stay.save()
         rows,_,stats=rotation_rows(self.company,[self.a],self.day)

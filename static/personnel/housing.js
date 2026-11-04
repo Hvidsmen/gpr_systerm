@@ -16,6 +16,12 @@
  const filter=document.querySelector('[data-rotation-filter]');
  filter?.querySelector('[name=state]')?.addEventListener('change',()=>filter.requestSubmit());
  if(filter){
+  const project=filter.querySelector('[name=construction_object]'),wjg=filter.querySelector('[name=camps]'),mapNode=document.getElementById('rotation-project-camps');
+  if(project&&wjg&&mapNode){
+   let projectCamps={};try{projectCamps=JSON.parse(mapNode.textContent||'{}');}catch{}
+   const syncWjg=selectAll=>{const allowed=new Set((projectCamps[project.value]||[]).map(String));for(const option of wjg.options){const available=allowed.has(option.value);option.hidden=!available;option.disabled=!available;if(selectAll)option.selected=available;else if(!available)option.selected=false;}wjg.dispatchEvent(new Event('change',{bubbles:true}));};
+   project.addEventListener('change',()=>syncWjg(true));syncWjg(false);
+  }
   const scrollKey='personnel:rotation-filter-position';
   filter.addEventListener('submit',()=>{
    const active=tabs.find(tab=>tab.getAttribute('aria-current')==='page');
