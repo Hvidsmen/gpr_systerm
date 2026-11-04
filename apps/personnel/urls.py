@@ -8,6 +8,7 @@ urlpatterns=[
     path('assignments/<int:pk>/remove/',plan_assignments.remove,name='plan_assignment_remove'),
     path('housing/',housing_views.workspace,name='housing'),
     path('housing/export/',housing_views.roster_export,name='housing_export'),
+    path('housing/movement-requests/<int:pk>/accept/',housing_views.movement_review_accept,name='movement_review_accept'),
     path('camps/',housing_views.camps,name='camps'),
     path('camps/create/',housing_views.camp_edit,name='camp_create'),
     path('camps/<int:pk>/',housing_views.camp_edit,name='camp_edit'),

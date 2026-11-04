@@ -9,7 +9,7 @@ from django.db import transaction
 from django.db.models import Q, F, Count, Max
 from django.utils import timezone
 from apps.resources.models import Employee
-from .models import Camp, CampObjectLink, CampStay, HousingEvent, Person, StaffingSlot, Board, StaffingGroup
+from .models import Camp, CampObjectLink, CampStay, HousingEvent, MovementReviewRequest, Person, StaffingSlot, Board, StaffingGroup
 
 SALT='personnel-camp-movement-v1'
 
@@ -140,7 +140,9 @@ def move(user,kind,camp,day,people,employees=(),target=None,comment='',snapshot=
             current.departed_on=day;current.save(update_fields=['departed_on','updated_at'])
             stay=current
             if kind=='TRANSFER':stay=CampStay.objects.create(company=user.company,person=person,camp=target,arrived_on=day,comment=comment,recorded_by=user)
-        HousingEvent.objects.create(company=user.company,person=person,date=day,kind=kind,departure_destination=departure_destination if kind=='DEPARTURE' else 'CAMP' if kind=='TRANSFER' else '',from_camp=camp if kind!='ARRIVAL' else None,to_camp=target if kind=='TRANSFER' else camp if kind=='ARRIVAL' else None,stay=stay,comment=comment,recorded_by=user)
+        event=HousingEvent.objects.create(company=user.company,person=person,date=day,kind=kind,departure_destination=departure_destination if kind=='DEPARTURE' else 'CAMP' if kind=='TRANSFER' else '',from_camp=camp if kind!='ARRIVAL' else None,to_camp=target if kind=='TRANSFER' else camp if kind=='ARRIVAL' else None,stay=stay,comment=comment,recorded_by=user)
+        from core.permissions import role_code
+        if role_code(user)=='TRANSPORT_DISPATCHER':MovementReviewRequest.objects.create(company=user.company,event=event)
     require_fact_day(user,day)
     return len(locked)
 

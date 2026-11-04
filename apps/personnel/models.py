@@ -214,6 +214,20 @@ class HousingEvent(ActualHistoryMixin, PersonnelModel):
             obj=getattr(self,name,None)
             if obj and obj.company_id!=self.company_id:raise ValidationError('Событие другой компании.')
 
+
+class MovementReviewRequest(PersonnelModel):
+    STATUSES=[('OPEN','Ожидает проверки'),('ACCEPTED','Принято')]
+    event=models.OneToOneField(HousingEvent,on_delete=models.PROTECT,related_name='review_request')
+    status=models.CharField('Статус',max_length=10,choices=STATUSES,default='OPEN')
+    reviewed_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,blank=True,related_name='+')
+    reviewed_at=models.DateTimeField(null=True,blank=True)
+    class Meta:
+        ordering=['status','-event__date','-pk']
+    def clean(self):
+        super().clean()
+        if self.event_id and self.event.company_id!=self.company_id:raise ValidationError('Перемещение другой компании.')
+        if self.reviewed_by_id and self.reviewed_by.company_id!=self.company_id:raise ValidationError('Проверяющий другой компании.')
+
 from .lodging_models import LodgingBuilding,LodgingBed,LodgingStay,LodgingEvent,LodgingControl,LodgingResolution
 
 from .lodging_import_models import LodgingImportBatch,LodgingImportRow
