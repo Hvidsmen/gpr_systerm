@@ -15,7 +15,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 from .views import access,scoped
 from .models import Camp,CampObjectLink,CampStay,HousingEvent,MovementReviewRequest,Person,Board,StaffingGroup,StaffingSlot
-from .forms import CampForm,MovementForm,MovementRecommendationForm,PersonScheduleForm
+from .forms import CampForm,MovementForm,MovementRecommendationForm,MovementReviewForm,PersonScheduleForm
 from . import housing
 from .services import calendar_for,departure_days
 
@@ -240,27 +240,38 @@ def workspace(request, movements=False):
     objects=ConstructionObject.objects.filter(company=request.user.company,housing_camps__in=selected_camps).distinct()
     from .lodging_views import summary_context
     plan_context.update(summary_context(request.user,camp,day,camps=selected_camps))
-    review_requests=MovementReviewRequest.objects.filter(company=request.user.company,status='OPEN').select_related('event__person','event__from_camp','event__to_camp','event__recorded_by')[:100]
+    review_requests=MovementReviewRequest.objects.filter(company=request.user.company).select_related('event__person','event__person__employee','event__from_camp','event__to_camp','event__recorded_by').order_by('status','-event__date','-pk')[:200]
+    arrival_review_requests=[row for row in review_requests if row.event.kind=='ARRIVAL']
+    departure_review_requests=[row for row in review_requests if row.event.kind!='ARRIVAL']
     return render(request,template,{**extra,**plan_context,'rotation_filter':selector,'rotation_stats':rotation_stats,'position_groups':position_groups,'selected_camps':selected_camps,
         'roster_view':roster_view,'roster_view_links':view_links,'roster_sections':roster_sections(position_groups,roster_view=='groups',request.user.company),
         'camp':camp,'camps':camps,'day':day,'rows':rows,'dates':days,'form':form,'query':values.get('q',''),
         'roster_query':roster_params.urlencode(),'rotation_calendar_url':rotation_calendar_url,'calendar_dates':calendar_dates,'calendar_months':calendar_months,'calendar_start':calendar_start,'calendar_end':calendar_end,'events':events,'total':rotation_stats['people'],'objects':objects,
         'unknown_count':Person.objects.filter(company=request.user.company,stays__isnull=True,housing_events__isnull=True).count(),
-        'unlinked_count':Person.objects.filter(company=request.user.company,employee=None).count(),'movement_review_requests':review_requests,**window_context(request.user,day)})
+        'unlinked_count':Person.objects.filter(company=request.user.company,employee=None).count(),'movement_review_requests':review_requests,
+        'arrival_review_requests':arrival_review_requests,'departure_review_requests':departure_review_requests,
+        'movement_review_open_count':sum(row.status=='OPEN' for row in review_requests),**window_context(request.user,day)})
 
 
 @login_required
 @require_http_methods(['POST'])
 def movement_review_accept(request,pk):
     access(request)
-    with transaction.atomic():
-        row=get_object_or_404(MovementReviewRequest.objects.select_for_update(),pk=pk,company=request.user.company)
-        if row.status=='OPEN':
-            row.status='ACCEPTED';row.reviewed_by=request.user;row.reviewed_at=timezone.now()
-            row.save(update_fields=['status','reviewed_by','reviewed_at','updated_at'])
-            messages.success(request,'Заявка перевахты принята.')
-        else:messages.info(request,'Заявка уже принята.')
-    return redirect(reverse('personnel:housing')+'#movement-requests')
+    row=get_object_or_404(MovementReviewRequest.objects.select_related('event__person','event__from_camp','event__to_camp'),pk=pk,company=request.user.company)
+    confirm=request.method=='POST' and request.POST.get('review_action')=='confirm'
+    form=MovementReviewForm(request.POST if request.method=='POST' else None,instance=row,confirm=confirm)
+    if request.method=='POST' and form.is_valid():
+        with transaction.atomic():
+            locked=MovementReviewRequest.objects.select_for_update().get(pk=row.pk,company=request.user.company)
+            if locked.status=='ACCEPTED':
+                messages.info(request,'Заявка уже подтверждена.');return redirect(reverse('personnel:housing')+'#movement-requests')
+            for name in form._meta.fields:setattr(locked,name,form.cleaned_data[name])
+            if confirm:
+                locked.status='ACCEPTED';locked.reviewed_by=request.user;locked.reviewed_at=timezone.now()
+            locked.save()
+        messages.success(request,'Заявка перевахты подтверждена.' if confirm else 'Данные заявки сохранены.')
+        return redirect(reverse('personnel:housing')+'#movement-requests')
+    return render(request,'personnel/movement_review.html',{'row':row,'form':form,'personnel_section':'management'})
 
 
 

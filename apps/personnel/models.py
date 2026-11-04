@@ -217,8 +217,18 @@ class HousingEvent(ActualHistoryMixin, PersonnelModel):
 
 class MovementReviewRequest(PersonnelModel):
     STATUSES=[('OPEN','Ожидает проверки'),('ACCEPTED','Принято')]
+    EMPLOYMENT_KINDS=[('STAFF','Штат'),('NEW','Новый'),('TRANSFER','Перевод'),('BUSINESS_TRIP','Командировка')]
     event=models.OneToOneField(HousingEvent,on_delete=models.PROTECT,related_name='review_request')
     status=models.CharField('Статус',max_length=10,choices=STATUSES,default='OPEN')
+    employment_kind=models.CharField('Штат / новый / перевод',max_length=16,choices=EMPLOYMENT_KINDS,blank=True)
+    position_name=models.CharField('Должность',max_length=250,blank=True)
+    site=models.CharField('Участок',max_length=250,blank=True)
+    base_city=models.CharField('Базовый город',max_length=150,blank=True)
+    phone=models.CharField('Номер телефона',max_length=80,blank=True)
+    request_number=models.CharField('№ заявки',max_length=50,blank=True)
+    travel_time=models.TimeField('Время прилёта / вылета',null=True,blank=True)
+    travel_status=models.CharField('Статус поездки',max_length=80,blank=True)
+    note=models.TextField('Комментарий / примечание',blank=True)
     reviewed_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,blank=True,related_name='+')
     reviewed_at=models.DateTimeField(null=True,blank=True)
     class Meta:

@@ -25,6 +25,8 @@ class MovementReviewRequestTests(TestCase):
         self.assertEqual(request_row.event.person,self.person)
         self.assertEqual(request_row.event.kind,'ARRIVAL')
         self.assertEqual(request_row.status,'OPEN')
+        self.assertEqual(request_row.position_name,self.employee.display_position)
+        self.assertEqual(request_row.site,self.camp.name)
 
         self.client.force_login(self.personnel)
         page=self.client.get(reverse('personnel:housing'))
@@ -33,12 +35,18 @@ class MovementReviewRequestTests(TestCase):
         self.assertContains(page,self.person.display_name)
         self.assertContains(page,'Диспетчерская')
         self.assertContains(page,'Перевахта')
-        response=self.client.post(reverse('personnel:movement_review_accept',args=[request_row.pk]))
+        response=self.client.post(reverse('personnel:movement_review_accept',args=[request_row.pk]),{
+            'review_action':'confirm','employment_kind':'STAFF','position_name':'Электромонтёр','site':'КТП-1',
+            'base_city':'Уфа','phone':'8 900 000-00-00','request_number':'302','travel_time':'08:45',
+            'travel_status':'Прибыл','note':'Рейс подтверждён',
+        })
         self.assertRedirects(response,reverse('personnel:housing')+'#movement-requests',fetch_redirect_response=False)
         request_row.refresh_from_db()
         self.assertEqual(request_row.status,'ACCEPTED')
         self.assertEqual(request_row.reviewed_by,self.personnel)
         self.assertIsNotNone(request_row.reviewed_at)
+        self.assertEqual(request_row.request_number,'302')
+        self.assertEqual(request_row.base_city,'Уфа')
         self.assertEqual(self.person.housing_events.count(),event_count+1)
 
     def test_personnel_movement_does_not_create_dispatch_request(self):
