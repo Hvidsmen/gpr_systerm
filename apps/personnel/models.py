@@ -124,6 +124,23 @@ class StaffingSlot(PersonnelModel):
             raise ValidationError({'previous_assignment':'Предыдущее назначение должно принадлежать этому сотруднику.'})
 
 
+class MovementRecommendationOverride(PersonnelModel):
+    KINDS=[('ARRIVAL','Заезд'),('DEPARTURE','Выезд')]
+    ACTIONS=[('ADD','Добавить'),('EXCLUDE','Исключить')]
+    person=models.ForeignKey(Person,on_delete=models.CASCADE,related_name='movement_recommendation_overrides')
+    camp=models.ForeignKey('Camp',on_delete=models.PROTECT,related_name='movement_recommendation_overrides')
+    kind=models.CharField('Направление',max_length=12,choices=KINDS)
+    planned_on=models.DateField('Рекомендуемая дата')
+    action=models.CharField('Изменение',max_length=8,choices=ACTIONS)
+    recorded_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,blank=True,related_name='+')
+    class Meta:
+        ordering=['planned_on','person__full_name','pk']
+        constraints=[models.UniqueConstraint(fields=['company','person','camp','kind','planned_on'],name='personnel_unique_movement_recommendation_override')]
+    def clean(self):
+        for value in (self.person,self.camp,self.recorded_by):
+            if value and value.company_id!=self.company_id:raise ValidationError('Данные другой компании.')
+
+
 class Camp(PersonnelModel):
     name = models.CharField('Название ВЖГ', max_length=200)
     address = models.CharField('Расположение / адрес', max_length=300, blank=True)

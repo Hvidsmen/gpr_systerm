@@ -15,7 +15,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 from .views import access,scoped
 from .models import Camp,CampObjectLink,CampStay,HousingEvent,Person,Board,StaffingGroup,StaffingSlot
-from .forms import CampForm,MovementForm,PersonScheduleForm
+from .forms import CampForm,MovementForm,MovementRecommendationForm,PersonScheduleForm
 from . import housing
 from .services import calendar_for,departure_days
 
@@ -26,6 +26,11 @@ def selected_day(request):
 
 
 def camp_url(camp):return reverse('personnel:housing')+f'?camp={camp.pk}'
+
+
+def movement_access(request):
+    from core.permissions import require_roles
+    require_roles(request.user,{'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER','TRANSPORT_DISPATCHER'})
 
 
 @login_required
@@ -95,8 +100,8 @@ def roster_rows(company,camp,day,query='',position=''):
 @login_required
 @require_http_methods(['GET','POST'])
 def workspace(request, movements=False):
-    access(request)
     movements = movements or request.method == 'POST' or bool(request.GET.get('employee') or request.GET.get('person') or request.GET.get('action'))
+    movement_access(request) if movements else access(request)
     day=selected_day(request) if movements else timezone.localdate()
     template = 'personnel/housing_movements.html' if movements else 'personnel/housing.html'
     extra = movement_context(request) if movements else {'personnel_section':'management','personnel_today_only':True}
@@ -109,11 +114,12 @@ def workspace(request, movements=False):
         if raw.get('camp'):raise Http404('ВЖГ не найден.')
         return render(request,template,{**extra,'rotation_filter':selector,'day':day},status=400)
     selected_camps=selector.selected_camps(request.user.company)
-    camps=scoped(request,Camp).order_by('name')
+    camps=(Camp.objects.filter(company=request.user.company) if movements else scoped(request,Camp)).order_by('name')
     camp_id=(request.POST if request.method=='POST' else request.GET).get('camp')
     camp=get_object_or_404(camps,pk=camp_id) if camp_id else selected_camps.first()
     if camp is None:return render(request,template,{**extra,'rotation_filter':selector,'camps':camps,'day':day,'no_camp_match':True})
-    if request.method=='POST':
+    workflow_action=request.POST.get('workflow_action','move') if request.method=='POST' else ''
+    if request.method=='POST' and workflow_action=='move':
         try:require_fact_day(request.user,day)
         except ValidationError as exc:raise PermissionDenied('; '.join(exc.messages))
     kind=request.GET.get('action','ARRIVAL');kind=kind if kind in {'ARRIVAL','DEPARTURE','TRANSFER','DISMISSAL'} else 'ARRIVAL'
@@ -133,9 +139,32 @@ def workspace(request, movements=False):
     if fixed_employee:
         get_object_or_404(Employee,company=request.user.company,pk=fixed_employee)
         personal_token=signing.dumps({'user':request.user.pk,'company':request.user.company_id,'employee':fixed_employee},salt='personnel-single-movement')
-    form=MovementForm(request.POST if request.method=='POST' else None,company=request.user.company,camp=camp,day=day,fixed_employee=fixed_employee,
+    recommendation_day=timezone.localdate()
+    recommendation_kind=request.POST.get('recommendation_kind','') if request.method=='POST' else ''
+    arrival_recommendation_form=MovementRecommendationForm(request.POST if workflow_action=='recommendation_add' and recommendation_kind=='ARRIVAL' else None,
+        company=request.user.company,day=recommendation_day,kind='ARRIVAL',prefix='arrival')
+    departure_recommendation_form=MovementRecommendationForm(request.POST if workflow_action=='recommendation_add' and recommendation_kind=='DEPARTURE' else None,
+        company=request.user.company,day=recommendation_day,kind='DEPARTURE',prefix='departure')
+    if request.method=='POST' and workflow_action=='recommendation_add':
+        recommendation_form=arrival_recommendation_form if recommendation_kind=='ARRIVAL' else departure_recommendation_form if recommendation_kind=='DEPARTURE' else None
+        if recommendation_form is None:messages.error(request,'Неизвестное направление рекомендации.')
+        elif recommendation_form.is_valid():
+            from .movement_recommendations import add
+            try:count=add(request.user,recommendation_kind,recommendation_form.cleaned_data['employees'],recommendation_form.cleaned_data['camp'],recommendation_form.cleaned_data['planned_on'])
+            except ValidationError as exc:recommendation_form.add_error(None,'; '.join(exc.messages))
+            else:
+                messages.success(request,f'Рекомендации добавлены. Сотрудников: {count}.')
+                return redirect(reverse('personnel:movements')+'#recommendations-'+recommendation_kind.lower())
+    if request.method=='POST' and workflow_action=='recommendation_remove':
+        from .movement_recommendations import exclude
+        try:count=exclude(request.user,request.POST.getlist('recommendations'))
+        except ValidationError as exc:messages.error(request,'; '.join(exc.messages))
+        else:
+            messages.success(request,f'Из рекомендаций убрано сотрудников: {count}.')
+            return redirect(reverse('personnel:movements')+'#recommendations-'+(recommendation_kind.lower() if recommendation_kind in {'ARRIVAL','DEPARTURE'} else 'arrival'))
+    form=MovementForm(request.POST if request.method=='POST' and workflow_action=='move' else None,company=request.user.company,camp=camp,day=day,fixed_employee=fixed_employee,
         initial={'personal_scope':personal_token,'kind':kind,'date':day,'camp':None if request.GET.get('choose_camp')=='1' and kind=='ARRIVAL' else camp.pk,'snapshot':housing.movement_snapshot(request.user),'employees':[selected_employee] if selected_employee.isdigit() else []})
-    if request.method=='POST' and form.is_valid():
+    if request.method=='POST' and workflow_action=='move' and form.is_valid():
         try:
             selected=form.cleaned_data['employees'];arrival=form.cleaned_data['kind']=='ARRIVAL'
             people=[] if arrival else list(Person.objects.filter(company=request.user.company,employee__in=selected))
@@ -152,8 +181,12 @@ def workspace(request, movements=False):
             if missing:messages.warning(request,f'У {missing} сотрудников цикл вахта/отдых не задан. Укажите его через «Изменить график»; прогноз для них пока не пересчитан.')
             return redirect((reverse('personnel:movements')+'?camp='+str(camp.pk)+'&date='+str(form.cleaned_data['date'])+'#movement') if request.resolver_match.url_name=='movements' else camp_url(camp)+'#roster')
     if movements:
+        from .movement_recommendations import build
+        recommendations=build(request.user.company,recommendation_day)
         events=HousingEvent.objects.filter(company=request.user.company).filter(Q(from_camp__in=selected_camps)|Q(to_camp__in=selected_camps)).select_related('person','from_camp','to_camp','recorded_by')[:50]
-        return render(request,template,{**extra,'rotation_filter':selector,'day':day,'camp':camp,'camps':camps,'selected_camps':selected_camps,'form':form,'events':events,**window_context(request.user,day)})
+        return render(request,template,{**extra,'rotation_filter':selector,'day':day,'camp':camp,'camps':camps,'selected_camps':selected_camps,'form':form,'events':events,
+            'arrival_recommendations':recommendations['ARRIVAL'],'departure_recommendations':recommendations['DEPARTURE'],
+            'arrival_recommendation_form':arrival_recommendation_form,'departure_recommendation_form':departure_recommendation_form,**window_context(request.user,day)})
     values=selector.cleaned_data
     rows,days,rotation_stats=rotation_rows(request.user.company,list(selected_camps),day,query=values.get('q',''),state=values.get('state',''),include_unassigned=not values.get('construction_object') and not values.get('camps'))
     from .rotation import positions_in_rows,filter_position,rotation_stats as count_rotation

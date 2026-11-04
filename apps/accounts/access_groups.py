@@ -145,7 +145,7 @@ def groups(request, pk=None):
     if ad=='manual':query=query.filter(ad_group_dn='')
     query=query.select_related('role').prefetch_related('assigned_objects','production_additional_objects').annotate(member_count=Count('members',distinct=True)).order_by('name','pk')
     page=Paginator(query,30).get_page(request.GET.get('page'))
-    limited={'PLANNER','FOREMAN','DISPATCHER','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER','ALL_FACT_DISPATCHER','FUEL_WAREHOUSE'}
+    limited={'PLANNER','FOREMAN','DISPATCHER','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER','TRANSPORT_DISPATCHER','ALL_FACT_DISPATCHER','FUEL_WAREHOUSE'}
     for row in page:
         row.scope_limited=row.role.code in limited
         row.scope_empty=row.scope_limited and not row.assigned_objects.all()

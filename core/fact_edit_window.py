@@ -2,7 +2,9 @@
 from datetime import timedelta
 from django.core.exceptions import ValidationError
 from django.utils import timezone
-from .permissions import DISPATCHER_ROLES, role_code
+from .permissions import DISPATCHER_ROLES,TRANSPORT_DISPATCHER,role_code
+
+WINDOWED_ROLES=DISPATCHER_ROLES|{TRANSPORT_DISPATCHER,'COMMANDANT'}
 
 
 def edit_deadline(day):
@@ -19,7 +21,7 @@ def can_edit_fact_day(user, day, *, today=None):
         return False
     # Supervisory access is retained; ordinary dispatchers share the same window
     # in production, personnel, transport and the combined dispatcher role.
-    return role_code(user) not in (DISPATCHER_ROLES|{'COMMANDANT'}) or today <= edit_deadline(day)
+    return role_code(user) not in WINDOWED_ROLES or today <= edit_deadline(day)
 
 
 def window_message(user, day, *, today=None):
@@ -29,7 +31,7 @@ def window_message(user, day, *, today=None):
         return ''
     if day > today:
         return 'Будущий день доступен для просмотра. Факт можно вносить начиная с даты его выполнения.'
-    if role_code(user) not in (DISPATCHER_ROLES|{'COMMANDANT'}):
+    if role_code(user) not in WINDOWED_ROLES:
         return ''
     deadline = edit_deadline(day)
     if today > deadline:

@@ -1,3 +1,4 @@
+from datetime import timedelta
 from django import forms
 from django.db.models import Q
 from .models import Board, Person, StaffingGroup, StaffingSlot
@@ -182,6 +183,25 @@ class MovementForm(forms.Form):
         if data.get('kind')=='DISMISSAL':data['kind']='DEPARTURE';data['destination']='DISMISSAL'
         if data.get('kind')=='TRANSFER' and not data.get('target'):self.add_error('target','Выберите ВЖГ назначения.')
         return data
+
+
+class MovementRecommendationForm(forms.Form):
+    employees=forms.ModelMultipleChoiceField(label='Сотрудники',queryset=None,widget=forms.SelectMultiple(attrs={'size':6,'data-personnel-searchable':''}))
+    camp=forms.ModelChoiceField(label='ВЖГ',queryset=None)
+    planned_on=forms.DateField(label='Рекомендуемая дата',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
+    def __init__(self,*args,company,day,kind,**kwargs):
+        from apps.resources.models import Employee
+        from .models import Camp
+        super().__init__(*args,**kwargs);self.company=company;self.day=day;self.kind=kind
+        self.fields['employees'].queryset=Employee.objects.filter(company=company,is_active=True).select_related('position').order_by('last_name','first_name','middle_name','pk')
+        self.fields['employees'].label_from_instance=lambda employee:employee.display_name+(' · '+str(employee.position) if employee.position_id else '')
+        self.fields['camp'].queryset=Camp.objects.filter(company=company,is_active=True).order_by('name')
+        self.initial.setdefault('planned_on',day)
+        for field in self.fields.values():field.widget.attrs.setdefault('class','form-select' if isinstance(field.widget,forms.Select) else 'form-control')
+    def clean_planned_on(self):
+        value=self.cleaned_data['planned_on']
+        if not self.day<=value<=self.day+timedelta(days=14):raise forms.ValidationError('Дата должна быть в пределах ближайших 14 дней.')
+        return value
 
 
 class PersonScheduleForm(forms.Form):
