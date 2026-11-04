@@ -1,3 +1,4 @@
+from contextlib import closing
 import json
 from pathlib import Path
 import sqlite3
@@ -15,7 +16,7 @@ class ClearStagingPersonnelTests(TestCase):
         self.config=dict(kind=staging.KIND,instance='11111111-1111-4111-8111-111111111111',owner_id=1,company_id=1,owner_login='admin',port=8002,hosts=['127.0.0.1'],revision='a'*40,code=str(self.root),python=sys.executable,static='staticfiles',source={n:str(self.root.parent/'production'/n) for n in ('database','media','actuation')})
         atomic_json(self.root/'staging.json',self.config)
         self.database=self.root/'data/db.sqlite3'
-        with sqlite3.connect(self.database) as db:
+        with closing(sqlite3.connect(self.database)) as db, db:
             db.executescript('''
                 CREATE TABLE personnel_shiftpattern(id INTEGER PRIMARY KEY,company_id INTEGER);
                 CREATE TABLE personnel_staffingslot(id INTEGER PRIMARY KEY,company_id INTEGER,pattern_id INTEGER REFERENCES personnel_shiftpattern(id));
@@ -40,12 +41,12 @@ class ClearStagingPersonnelTests(TestCase):
 
     def test_real_clear_has_readable_full_backup_and_retains_employee_other_facts_and_company(self):
         (self.root/'.runtime/server.stop').touch();result=reset.clear(self.root,True)
-        with sqlite3.connect(self.database) as db:
+        with closing(sqlite3.connect(self.database)) as db, db:
             for table in reset.TABLES:self.assertEqual(db.execute(f'SELECT company_id FROM {table}').fetchall(),[(2,)])
             self.assertEqual(db.execute('SELECT schedule_slot_id FROM personnel_person ORDER BY id').fetchall(),[(None,),(2,)])
             self.assertEqual(db.execute('SELECT name FROM resources_employee').fetchone(),('Keep employee',))
             self.assertEqual(db.execute('SELECT value FROM production_laborfact').fetchone(),(5,))
-        with sqlite3.connect(result['backup']) as db:
+        with closing(sqlite3.connect(result['backup'])) as db, db:
             self.assertEqual(db.execute('SELECT COUNT(*) FROM personnel_campstay').fetchone(),(2,))
         self.assertEqual(json.loads((Path(result['backup']).parent/'result.json').read_text())['cleared'],result['cleared'])
 
@@ -74,10 +75,10 @@ class ClearStagingPersonnelTests(TestCase):
         with self.assertRaises(ValueError):reset.clear(self.root,True)
 
     def test_recruitment_reference_causes_full_rollback(self):
-        with sqlite3.connect(self.database) as db:
+        with closing(sqlite3.connect(self.database)) as db, db:
             db.executescript('CREATE TABLE recruitment(id INTEGER PRIMARY KEY,stay_id INTEGER REFERENCES personnel_campstay(id));INSERT INTO recruitment VALUES(1,1);')
         (self.root/'.runtime/server.stop').touch()
         with self.assertRaises(sqlite3.IntegrityError):reset.clear(self.root,True)
-        with sqlite3.connect(self.database) as db:
+        with closing(sqlite3.connect(self.database)) as db, db:
             for table in reset.TABLES:self.assertEqual(db.execute(f'SELECT COUNT(*) FROM {table}').fetchone(),(2,))
             self.assertEqual(db.execute('SELECT schedule_slot_id FROM personnel_person WHERE id=1').fetchone(),(1,))
