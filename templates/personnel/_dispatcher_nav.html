@@ -1,0 +1,4 @@
+<nav class="d-flex flex-wrap gap-2 mb-3" aria-label="Рабочие разделы диспетчера по персоналу">
+<a class="btn btn-sm {% if dispatcher_page == 'roster' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{% url 'personnel:housing' %}">Состав, назначения и графики</a>
+<a class="btn btn-sm {% if dispatcher_page == 'movements' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{% url 'personnel:movements' %}">Рекомендации и заявки на заезд / выезд</a>
+</nav>

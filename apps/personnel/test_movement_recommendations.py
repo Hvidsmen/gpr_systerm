@@ -47,6 +47,7 @@ class MovementRecommendationTests(TestCase):
         self.assertContains(response,'1. Рекомендации к заезду')
         self.assertContains(response,'2. Рекомендации к выезду')
         self.assertContains(response,'3. Заявка на заезд или выезд')
+        self.assertContains(response,'Состав, назначения и графики')
         self.assertEqual(self.client.get(reverse('personnel:housing')).status_code,200)
 
     def test_personnel_dispatcher_can_submit_bulk_current_request_but_not_old_fact(self):

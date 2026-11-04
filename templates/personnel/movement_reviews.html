@@ -1,0 +1,6 @@
+{% extends 'base.html' %}
+{% block title %}Персонал · перевахта{% endblock %}
+{% block content %}<h1>Персонал</h1>{% include 'personnel/_personnel_sections.html' %}
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3"><div><h2 class="h4 mb-1">Перевахта</h2><p class="text-muted mb-0">Полученные от диспетчера по персоналу заявки. Заполните данные поездки и подтвердите фактический заезд или выезд.</p></div><span class="badge bg-primary">Новых: {{ movement_review_open_count }}</span></div>
+<section id="movement-requests" class="card card-body"><h3 class="h5">Заезд</h3>{% include 'personnel/_movement_review_table.html' with rows=arrival_review_requests arrival=True %}<h3 class="h5 mt-4">Выезд и увольнение</h3>{% include 'personnel/_movement_review_table.html' with rows=departure_review_requests arrival=False %}</section>
+{% endblock %}

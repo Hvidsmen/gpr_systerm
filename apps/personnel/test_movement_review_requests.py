@@ -32,18 +32,25 @@ class MovementReviewRequestTests(TestCase):
         self.assertEqual(request_row.site,self.camp.name)
 
         self.client.force_login(self.reviewer)
-        page=self.client.get(reverse('personnel:housing'))
+        dispatcher_page=self.client.get(reverse('personnel:housing'))
+        self.assertEqual(dispatcher_page.status_code,200)
+        self.assertContains(dispatcher_page,'Состав, назначения и графики')
+        self.assertNotContains(dispatcher_page,'Заявки из диспетчерской')
+        page=self.client.get(reverse('personnel:movement_reviews'))
         self.assertEqual(page.status_code,200)
-        self.assertContains(page,'Заявки из диспетчерской')
+        self.assertContains(page,'Полученные от диспетчера по персоналу заявки')
         self.assertContains(page,self.person.display_name)
         self.assertContains(page,'Диспетчерская')
         self.assertContains(page,'Перевахта')
+        detail=self.client.get(reverse('personnel:movement_review_accept',args=[request_row.pk]))
+        self.assertEqual(detail.status_code,200)
+        self.assertContains(detail,'Подтвердить заявку')
         response=self.client.post(reverse('personnel:movement_review_accept',args=[request_row.pk]),{
             'review_action':'confirm','employment_kind':'STAFF','position_name':'Электромонтёр','site':'КТП-1',
             'base_city':'Уфа','phone':'8 900 000-00-00','request_number':'302','travel_time':'08:45',
             'travel_status':'Прибыл','note':'Рейс подтверждён',
         })
-        self.assertRedirects(response,reverse('personnel:housing')+'#movement-requests',fetch_redirect_response=False)
+        self.assertRedirects(response,reverse('personnel:movement_reviews')+'#movement-requests',fetch_redirect_response=False)
         request_row.refresh_from_db()
         self.assertEqual(request_row.status,'ACCEPTED')
         self.assertEqual(request_row.reviewed_by,self.reviewer)

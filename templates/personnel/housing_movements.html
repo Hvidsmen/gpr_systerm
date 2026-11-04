@@ -3,6 +3,7 @@
 {% block extra_css %}<link rel="stylesheet" href="{% static 'personnel/housing.css' %}"><link rel="stylesheet" href="{% static 'personnel/recruitment.css' %}">{% endblock %}
 {% block content %}
 <h1>Персонал</h1>{% include 'personnel/_personnel_sections.html' %}
+{% include 'personnel/_dispatcher_nav.html' with dispatcher_page='movements' %}
 <div class="recruitment-heading"><div><h2 class="h4">Заезд / выезд</h2><p class="text-muted">Рекомендации на ближайшие 14 дней и массовые заявки сотрудников.</p></div></div>
 {% include 'personnel/_movement_recommendation.html' with kind='ARRIVAL' title='1. Рекомендации к заезду' help_text='Сотрудники на межвахтовом отдыхе, которым по графику нужно заехать в ближайшие 14 дней.' rows=arrival_recommendations add_form=arrival_recommendation_form %}
 {% include 'personnel/_movement_recommendation.html' with kind='DEPARTURE' title='2. Рекомендации к выезду' help_text='Сотрудники на вахте, которым по графику нужно выехать в ближайшие 14 дней.' rows=departure_recommendations add_form=departure_recommendation_form %}
