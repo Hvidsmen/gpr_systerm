@@ -186,6 +186,11 @@ def position_headers(company,rows,plan_context,*,query='',position=None,state=''
         group['labor_group']=brigade.group.name if explicit and brigade and brigade.group_id else position_group(actual) if actual else brigade.group.name if brigade and brigade.group_id else 'Без группы'
         default=next((plan for plan in group['plans'] if plan['kind']=='СМГ'),next(iter(group['plans']),None))
         if default:group['assignment_initial']={'planning_position':default['brigade_id'],'construction_object':default['object'].pk}
+        else:
+            assigned=next((row for row in group['rows'] if row.get('planning_position_id') and row.get('assignment_object')),None)
+            if assigned:
+                group['assignment_initial']={'planning_position':assigned['planning_position_id'],'construction_object':assigned['assignment_object'].pk,'housing_camp':assigned['slot'].housing_camp_id}
+            elif brigade:group['assignment_initial']={'planning_position':brigade.pk}
     output.sort(key=lambda group:(labor_group_order(group['labor_group']),normalized(group['name'])))
     for index,group in enumerate(output):group['uid']=index+1
     return output

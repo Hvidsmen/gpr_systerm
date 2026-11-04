@@ -4,9 +4,9 @@
 <h1>Персонал</h1>{% include 'personnel/_personnel_sections.html' %}
 <p><a href="{% url 'personnel:housing' %}">← Персонал</a></p>
 <h2 class="h4">{{ title }}</h2>
-{% if row %}<p><a href="{% url 'personnel:housing_history' row.person_id %}#assignments">История назначений</a>{% if not historical %} · <a href="{% url 'personnel:plan_assignment_change' row.pk %}">Сменить назначение с выбранной даты</a>{% endif %}</p>{% endif %}
+{% if row %}<p><a href="{% url 'personnel:housing_history' row.person_id %}#assignments">История назначений</a>{% if not historical %} · <a href="{% url 'personnel:plan_assignment_change' row.pk %}">Сменить назначение с выбранной даты</a>{% endif %}{% if not row.cancelled_at %} · <a class="text-danger" href="{% url 'personnel:plan_assignment_remove' row.pk %}">Удалить назначение</a>{% endif %}</p>{% endif %}
 <p class="text-muted">Закрепите сотрудника за должностью плана и объектом. Одна запись используется при сравнении с СМГ и ГПР; штатная должность сотрудника сохраняется.</p>
-<div class="alert alert-info">{% if historical %}Заменено с {{ row.replaced_on|date:'d.m.Y' }}. Прежнее назначение доступно для просмотра. Действующее назначение можно открыть из истории сотрудника.{% else %}При первом вводе можно сразу указать начальный статус и реальные даты. Дальнейшие перемещения оформляйте в разделе «Заезд / выезд».{% endif %}</div>
+<div class="alert alert-info">{% if row.cancelled_at %}Назначение удалено {{ row.cancelled_at|date:'d.m.Y H:i' }}. Запись сохранена в истории и не участвует в расчётах. Для повторного назначения создайте новую запись.{% elif historical %}Заменено с {{ row.replaced_on|date:'d.m.Y' }}. Прежнее назначение доступно для просмотра. Действующее назначение можно открыть из истории сотрудника.{% else %}При первом вводе можно сразу указать начальный статус и реальные даты. Дальнейшие перемещения оформляйте в разделе «Заезд / выезд».{% endif %}</div>
 <form method="post" class="card card-body" style="max-width:900px">{% csrf_token %}
 {% include 'forms/fields.html' with form=form %}
 {% if initial_form %}<fieldset data-assignment-initial><legend class="h5">Начальное состояние · один раз</legend>
