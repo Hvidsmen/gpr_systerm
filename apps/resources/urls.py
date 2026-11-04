@@ -2,7 +2,7 @@ from django.urls import path
 from . import views
 from .purge import single_purge
 from .employee_import import employee_zup_import
-from .employee_cards import EmployeeDetail, EmployeeUpdate
+from .employee_cards import EmployeeDetail, EmployeeUpdate, EmployeePhoneUpdate
 
 from .equipment_import import EquipmentTypeImport, equipment_import_template
 
@@ -18,6 +18,7 @@ urlpatterns = [
     path('employees/create/', views.EmployeeCreateView.as_view(), name='employee_create'),
     path('employees/<int:pk>/', EmployeeDetail.as_view(), name='employee_detail'),
     path('employees/<int:pk>/update/', EmployeeUpdate.as_view(), name='employee_update'),
+    path('employees/<int:pk>/phone/', EmployeePhoneUpdate.as_view(), name='employee_phone_update'),
     path('brigades/', views.BrigadeListView.as_view(), name='brigade_list'),
     path('brigades/create/', views.BrigadeCreateView.as_view(), name='brigade_create'),
     path('brigades/<int:pk>/update/', views.BrigadeUpdateView.as_view(), name='brigade_update'),

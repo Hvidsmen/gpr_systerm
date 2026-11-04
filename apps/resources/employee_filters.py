@@ -11,8 +11,8 @@ def _department(department, source_position, staffing_position):
 
 class EmployeeFilterForm(forms.Form):
     catalogue_position = forms.IntegerField(required=False,min_value=1,widget=forms.HiddenInput)
-    q = forms.CharField(label='ФИО или табельный номер', required=False, max_length=250,
-        widget=forms.TextInput(attrs={'type': 'search', 'class': 'form-control', 'placeholder': 'Введите имя, фамилию или номер'}))
+    q = forms.CharField(label='ФИО, табельный номер или телефон', required=False, max_length=250,
+        widget=forms.TextInput(attrs={'type': 'search', 'class': 'form-control', 'placeholder': 'Введите имя, номер или телефон'}))
     position = forms.CharField(label='Должность', required=False, max_length=250,
         widget=forms.TextInput(attrs={'type': 'search', 'class': 'form-control', 'placeholder': 'Часть названия должности'}))
     department = forms.ChoiceField(label='Подразделение', required=False,
@@ -54,15 +54,15 @@ def filtered_employees(queryset, form):
         # SQLite LIKE handles Latin case only. Match Cyrillic consistently with
         # other portal catalogues, while still returning a paginated queryset.
         ids = []
-        for pk, full, last, first, middle, number, source_position, staffing_position, local_position in queryset.values_list(
-                'pk', 'zup_full_name', 'last_name', 'first_name', 'middle_name', 'employee_number',
+        for pk, full, last, first, middle, number, phone, source_position, staffing_position, local_position in queryset.values_list(
+                'pk', 'zup_full_name', 'last_name', 'first_name', 'middle_name', 'employee_number', 'phone',
                 'zup_position_name', 'zup_card__staffing_position', 'position__name').iterator(chunk_size=2000):
-            name = ' '.join([full, last, first, middle, number]).casefold()
+            name = ' '.join([full, last, first, middle, number,phone]).casefold()
             job = (source_position or staffing_parts(staffing_position)[0] or local_position or '').casefold()
             if all(term in name for term in terms) and position in job:
                 ids.append(pk)
         return queryset.filter(pk__in=ids)
     for term in terms:
         queryset = queryset.filter(Q(zup_full_name__icontains=term) | Q(last_name__icontains=term) |
-            Q(first_name__icontains=term) | Q(middle_name__icontains=term) | Q(employee_number__icontains=term))
+            Q(first_name__icontains=term) | Q(middle_name__icontains=term) | Q(employee_number__icontains=term) | Q(phone__icontains=term))
     return queryset

@@ -99,7 +99,7 @@ def create_requests(user,tokens):
         MovementReviewRequest.objects.create(**lookup,requested_by=user,
             employment_kind='STAFF',planning_position_name=housing.planning_position_name(person,planned_on),position_name=employee.display_position if employee else '',
             construction_object=construction_object,site_object=site_object,site=site_object.name if site_object else camp.name,
-            phone=person.phone,travel_status='Прибыл' if kind=='ARRIVAL' else 'Убыл')
+            phone=(employee.phone if employee else '') or person.phone,travel_status='Прибыл' if kind=='ARRIVAL' else 'Убыл')
         MovementRecommendationOverride.objects.update_or_create(company=user.company,person=person,camp=camp,kind=kind,planned_on=planned_on,
             defaults={'action':'EXCLUDE','recorded_by':user})
         count+=1

@@ -24,7 +24,7 @@ class MovementReviewRequestTests(TestCase):
         cls.reviewer=User.objects.create_user(username='personnel-review',company=cls.company,role=Role.objects.get(code='HR_HEAD'))
         cls.transport=User.objects.create_user(username='transport-no-access',company=cls.company,role=Role.objects.get(code='TRANSPORT_DISPATCHER'))
         cls.position=Position.objects.create(company=cls.company,name='Электромонтёр справочника')
-        cls.employee=Employee.objects.create(company=cls.company,last_name='Иванов',first_name='Иван',employee_number='review-1',position=cls.position)
+        cls.employee=Employee.objects.create(company=cls.company,last_name='Иванов',first_name='Иван',employee_number='review-1',position=cls.position,phone='+7 900 123-45-67')
         cls.person=Person.objects.create(company=cls.company,employee=cls.employee,full_name=cls.employee.display_name,employee_number=cls.employee.employee_number)
         cls.board=Board.objects.create(company=cls.company,name='ГПР')
         cls.group=StaffingGroup.objects.create(company=cls.company,board=cls.board,position='Начальник участка по ГПР')
@@ -44,6 +44,7 @@ class MovementReviewRequestTests(TestCase):
         self.assertEqual(request_row.construction_object,self.obj)
         self.assertEqual(request_row.site_object,self.site)
         self.assertEqual(request_row.site,self.site.name)
+        self.assertEqual(request_row.phone,self.employee.phone)
 
         self.client.force_login(self.reviewer)
         dispatcher_page=self.client.get(reverse('personnel:housing'))

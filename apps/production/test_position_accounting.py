@@ -27,7 +27,11 @@ class PositionAccountingTests(TestCase):
             EmployeeActivity.objects.create(company=self.company,construction_object=self.obj,date=self.day,employee=employee,position=employee.position,planning_position=role,shift=shift,general=True)
         values=context(self.obj,self.day)
         self.assertEqual(values['position_totals'],{'plan':4,'assigned':2,'remaining':3,'unplanned':0})
+        self.assertEqual([(group['name'],group['plan'],group['actual'],group['remaining']) for group in values['position_groups']],[('Без группы плана',4,2,3)])
         self.assertEqual(next(row for row in values['position_plan'] if row['id']==role.pk)['actual'],2)
+        self.client.force_login(self.users['DISPATCHER'])
+        page=self.client.get(self.url,{'construction_object':self.obj.pk,'date':str(self.day),'section':'works'})
+        self.assertContains(page,'Развернуть все');self.assertContains(page,'Свернуть все');self.assertContains(page,'data-position-group-assigned')
     def test_different_staff_role_can_cover_smg_role_without_changing_employee(self):
         brigade=Brigade.objects.create(company=self.company,name='Должность плана')
         position=position_for(brigade)

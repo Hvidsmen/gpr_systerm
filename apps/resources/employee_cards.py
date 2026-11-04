@@ -10,7 +10,7 @@ from django.views.generic import DetailView, UpdateView
 
 from core.mixins import CompanyScopedMixin, CompanyRequiredMixin
 from core.permissions import role_code, PERSONNEL_CATALOG_EDIT_ROLES
-from .forms import EmployeeForm
+from .forms import EmployeeForm,EmployeePhoneForm
 from .models import Employee
 
 
@@ -32,6 +32,7 @@ class EmployeeDetail(CompanyScopedMixin, DetailView):
         data = employee.zup_card
         context['employment_rows'] = [
             ('Табельный номер', employee.employee_number or '—'),
+            ('Телефон', employee.phone or '—'),
             ('Пол', employee.get_gender_display()),
             ('Организация', employee.zup_organisation or '—'),
             ('Подразделение', employee.display_department or '—'),
@@ -59,6 +60,7 @@ class EmployeeDetail(CompanyScopedMixin, DetailView):
         }.get(data.get('position_state'), '')
         context['can_view_private'] = role_code(self.request.user) in {'ADMIN', 'HR_HEAD'}
         context['can_edit'] = not employee.zup_ref and role_code(self.request.user) in PERSONNEL_CATALOG_EDIT_ROLES | {'HR_HEAD'}
+        context['can_edit_phone'] = role_code(self.request.user) in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'}
         if context['can_view_private']:
             context['personal_rows'] = [
                 ('Полное имя', employee.display_name),
@@ -88,6 +90,16 @@ class EmployeeUpdate(CompanyRequiredMixin, UpdateView):
 
     def get_success_url(self):
         return reverse('resources:employee_detail', args=[self.object.pk])
+
+
+class EmployeePhoneUpdate(CompanyRequiredMixin,UpdateView):
+    model=Employee
+    form_class=EmployeePhoneForm
+    template_name='resources/employee_form.html'
+    def form_valid(self,form):
+        messages.success(self.request,'Телефон сотрудника сохранён и будет подставляться в заявки на заезд и выезд.')
+        return super().form_valid(form)
+    def get_success_url(self):return reverse('resources:employee_detail',args=[self.object.pk])
 
 
 @login_required

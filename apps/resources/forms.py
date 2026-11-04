@@ -15,15 +15,23 @@ class EmployeeForm(forms.ModelForm):
 
     class Meta:
         model = Employee
-        fields = ['first_name', 'last_name', 'middle_name', 'employee_number', 'gender', 'position', 'is_active']
+        fields = ['first_name', 'last_name', 'middle_name', 'employee_number', 'phone', 'gender', 'position', 'is_active']
         widgets = {
             'first_name': forms.TextInput(attrs={'class': 'form-control'}),
             'last_name': forms.TextInput(attrs={'class': 'form-control'}),
             'middle_name': forms.TextInput(attrs={'class': 'form-control'}),
+            'phone': forms.TextInput(attrs={'class': 'form-control','autocomplete':'tel'}),
             'gender': forms.Select(attrs={'class': 'form-select'}),
             'position': forms.Select(attrs={'class': 'form-control'}),
             'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
+
+
+class EmployeePhoneForm(forms.ModelForm):
+    class Meta:
+        model=Employee
+        fields=['phone']
+        widgets={'phone':forms.TextInput(attrs={'class':'form-control','autocomplete':'tel','placeholder':'+7 ...'})}
 
 class BrigadeForm(forms.ModelForm):
     excel_aliases = ExcelAliasesField(label='Ассоциации из Excel',

@@ -90,6 +90,17 @@ class EmployeeCardTests(TestCase):
         self.role('OBSERVER')
         self.assertEqual(self.client.post(reverse('resources:employee_update', args=[employee.pk]), data).status_code, 403)
 
+    def test_dispatcher_can_edit_only_phone_of_zup_employee(self):
+        employee=self.import_card()
+        self.role('PERSONNEL_DISPATCHER')
+        self.assertEqual(self.client.get(reverse('resources:employee_update',args=[employee.pk])).status_code,403)
+        url=reverse('resources:employee_phone_update',args=[employee.pk])
+        self.assertRedirects(self.client.post(url,{'phone':'+7 900 555-44-33'}),reverse('resources:employee_detail',args=[employee.pk]))
+        employee.refresh_from_db();self.assertEqual(employee.phone,'+7 900 555-44-33')
+        page=self.client.get(reverse('resources:employee_detail',args=[employee.pk]))
+        self.assertContains(page,'+7 900 555-44-33')
+        self.assertContains(self.client.get(reverse('resources:employee_list'),{'include_archived':'1'}),'+7 900 555-44-33')
+
     def test_card_validation_is_atomic_and_whitelisted(self):
         employee = self.import_card()
         for key, value in [('birth_date', '3990-01-01'), ('hire_date', {'bad': 1}), ('fte', 'NaN'),

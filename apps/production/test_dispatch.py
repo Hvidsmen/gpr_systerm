@@ -91,6 +91,16 @@ class DispatcherTests(TestCase):
         self.assertEqual(LaborFact.objects.get().actual_workers,1)
         self.assertIsNone(LaborFact.objects.get().actual_hours)
 
+    def test_personnel_dispatcher_can_select_legacy_structure_work(self):
+        from apps.works.models import ProjectWork
+        ProjectWork.objects.filter(pk=self.work.pk).update(is_legacy_structure=True)
+        self.schedule.entries.all().delete()
+        self.client.force_login(self.users['PERSONNEL_DISPATCHER'])
+        response=self.client.get(self.url,{'construction_object':self.obj.pk,'date':str(self.day),'section':'labor'})
+        form=response.context['groups'][0]['formset'].empty_form
+        self.assertTrue(form.fields['work'].queryset.filter(pk=self.work.pk).exists())
+        self.assertIn('Старая структура',dict(form.fields['work'].choices)[self.work.pk])
+
     def test_general_staff_without_work_and_no_duplicate_shift(self):
         data=self.payload('PERSONNEL_DISPATCHER','labor');data.update({'labor-0-employee':self.employee.pk,'labor-0-general':'on'})
         self.assertEqual(self.client.post(self.url,data).status_code,302)

@@ -35,6 +35,7 @@ class HousingTests(TestCase):
         cls.stay=CampStay.objects.create(company=cls.company,camp=cls.a,person=cls.person,arrived_on=cls.day-timedelta(days=1))
         cls.hr=User.objects.create_user(username='housing-hr',company=cls.company,role=Role.objects.get(code='PERSONNEL_DISPATCHER'))
         cls.hr2=User.objects.create_user(username='housing-hr2',company=cls.company,role=Role.objects.get(code='PERSONNEL_DISPATCHER'))
+        cls.admin=User.objects.create_user(username='housing-admin',company=cls.company,role=Role.objects.get(code='ADMIN'))
         cls.dispatcher=User.objects.create_user(username='housing-production',company=cls.company,role=Role.objects.get(code='DISPATCHER'))
         cls.dispatcher.assigned_objects.add(cls.obj,cls.obj2,cls.obj3)
         cls.users={'DISPATCHER':cls.dispatcher};cls.url=reverse('production:fact_day_workspace')
@@ -153,6 +154,7 @@ class HousingTests(TestCase):
         self.assertEqual(EmployeeActivity.objects.get().activity,'Уточнение ранее сохранённого факта')
 
     def test_existing_calendar_is_used_and_overrides_do_not_move_employee(self):
+        self.client.force_login(self.admin)
         response=self.client.get(reverse('personnel:housing'),{'camp':self.a.pk,'date':str(self.day)})
         self.assertEqual(response.status_code,200)
         self.assertEqual(response.context['rows'][0]['today_code'],'ДП')
@@ -166,6 +168,7 @@ class HousingTests(TestCase):
         self.assertEqual(response.status_code,302);self.slot.refresh_from_db();self.assertEqual(self.slot.calendar,{})
 
     def test_new_person_calendar_uses_existing_table_structure(self):
+        self.client.force_login(self.admin)
         response=self.client.post(reverse('personnel:person_schedule',args=[self.second_person.pk]),{'version':housing.schedule_snapshot(self.second_person),'start':str(self.day),'end':str(self.day+timedelta(days=1)),'code':'10'})
         self.assertEqual(response.status_code,302);self.second_person.refresh_from_db()
         self.assertIsNotNone(self.second_person.schedule_slot_id)
@@ -206,6 +209,7 @@ class HousingTests(TestCase):
         self.assertEqual(list(StaffingSlot.objects.filter(group=group).values_list('camp',flat=True)),['Старый ВЖГ','Другой ВЖГ'])
 
     def test_schedule_and_camp_edits_reject_stale_versions(self):
+        self.client.force_login(self.admin)
         token=housing.schedule_snapshot(self.person)
         data={'version':token,'slot':self.slot.pk,'pattern':self.pattern.pk,'start':str(self.day),'end':str(self.day),'code':'В'}
         url=reverse('personnel:person_schedule',args=[self.person.pk])

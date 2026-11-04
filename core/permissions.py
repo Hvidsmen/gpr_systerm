@@ -220,6 +220,8 @@ def check_route(user, match, method):
         require_roles(user, {'ADMIN'});return
     if namespace=='resources' and name in {'employee_list','employee_detail'}:
         require_roles(user,READ_ROLES|{'HR_HEAD','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER','ALL_FACT_DISPATCHER','DISPATCHER','COMMANDANT'});return
+    if namespace=='resources' and name=='employee_phone_update':
+        require_roles(user,{'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'});return
     if namespace == 'resources' and name in {'employee_create', 'employee_update'}:
         require_roles(user, {'ADMIN', 'HR_HEAD', 'PLANNER'});return
     if namespace == 'accounts' and name in {'password_change','access_pending','impersonation_stop'}:

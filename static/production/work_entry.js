@@ -3,10 +3,21 @@
   const source = document.getElementById('production-work-choices');
   const host = document.querySelector('[data-rows="works"]');
   if (!source || !host) return;
-  const catalogue = new Map(JSON.parse(source.textContent).map(choice => [choice.token, choice.display]));
+  const choices = JSON.parse(source.textContent);
+  const catalogue = new Map(choices.map(choice => [choice.token, choice.display]));
+  const itemOwners = new Map(choices.filter(choice => choice.item).map(choice => [String(choice.item), String(choice.work)]));
   const number = new Intl.NumberFormat('ru-RU', {maximumFractionDigits:6});
   function refresh(row) {
     const work = row.querySelector('[name$="-project_work"]'), item = row.querySelector('[name$="-work_item"]');
+    if (work && item && item.tagName === 'SELECT') {
+      const owner = String(work.value || '');
+      for (const option of item.options) {
+        if (!option.value) { option.hidden = false; option.disabled = false; continue; }
+        const allowed = Boolean(owner) && itemOwners.get(String(option.value)) === owner;
+        option.hidden = !allowed; option.disabled = !allowed;
+        if (!allowed && option.selected) option.selected = false;
+      }
+    }
     const display = catalogue.get(item?.value ? `item:${work?.value}:${item.value}` : `work:${work?.value}`);
     const heading = row.querySelector('[data-work-heading]');
     if (!heading) return;

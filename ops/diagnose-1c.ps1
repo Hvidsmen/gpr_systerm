@@ -388,7 +388,8 @@ WHERE s.name='dbo' AND t.name IN ('Params','Config','_Enum817')
                 $employee | Add-Member -NotePropertyName gender -NotePropertyValue $gender
                 $employee.PSObject.Properties.Remove('gender_ref')
             }
-            Write-Json $reportPath @{employees_import=$true;employees_card_version=6;gender_source='ФизическоеЛицо.Пол';gender_resolved=$genderResolved;position_catalog=$positionCatalogue[0];employees=@($employees)}
+            $scheduleCatalogue=@(Query $connection "SELECT CONVERT(varchar(32),[_IDRRef],2) AS ref,[_Description] AS name,CONVERT(varchar(20),[_Marked],1) AS marked FROM [dbo].[_Reference75] WHERE NULLIF(LTRIM(RTRIM([_Description])),N'') IS NOT NULL")
+            Write-Json $reportPath @{employees_import=$true;employees_card_version=7;gender_source='ФизическоеЛицо.Пол';gender_resolved=$genderResolved;position_catalog=$positionCatalogue[0];schedule_catalog=$scheduleCatalogue;employees=@($employees)}
             Write-Json $statusPath @{ok=$true;report=$reportPath}
             return
         }

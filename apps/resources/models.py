@@ -26,6 +26,7 @@ class Employee(BaseCompanyModel):
     first_name = models.CharField(_('имя'), max_length=100, blank=True)
     last_name = models.CharField(_('фамилия'), max_length=100, blank=True)
     middle_name = models.CharField(_('отчество'), max_length=100, blank=True)
+    phone = models.CharField('Телефон', max_length=80, blank=True)
     position = models.ForeignKey(
         Position, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='employees',

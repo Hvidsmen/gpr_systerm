@@ -60,6 +60,8 @@ def link_people(company):
         for person in Person.objects.select_for_update().filter(company=company,employee=None):
             employee=matching_employee(person)
             if employee:
+                if person.phone and not employee.phone:
+                    employee.phone=person.phone;employee.save(update_fields=['phone','updated_at'])
                 person.employee=employee;person.save(update_fields=['employee','updated_at']);count+=1
     return count
 
@@ -78,7 +80,7 @@ def person_for(employee):
         person=matches[0];person.employee=employee;person.save(update_fields=['employee','updated_at']);return person
     if employee.employee_number and Person.objects.filter(company=employee.company,employee_number=employee.employee_number).exists():
         raise ValidationError(f'{employee.display_name}: табельный номер занят кадровой карточкой. Уточните связь в реестре сотрудников.')
-    return Person.objects.create(company=employee.company,employee=employee,full_name=employee.display_name,employee_number=employee.employee_number)
+    return Person.objects.create(company=employee.company,employee=employee,full_name=employee.display_name,employee_number=employee.employee_number,phone=employee.phone)
 
 
 def versions(company,people):
@@ -193,7 +195,7 @@ def request_moves(user,kind,camp,day,people,employees=(),target=None,comment='',
             from_camp=camp if kind!='ARRIVAL' else None,to_camp=target if kind=='TRANSFER' else camp if kind=='ARRIVAL' else None,
             departure_destination=departure_destination if kind=='DEPARTURE' else 'CAMP' if kind=='TRANSFER' else '',requested_by=user,
             employment_kind='TRANSFER' if kind=='TRANSFER' else 'STAFF',planning_position_name=planning_position_name(person,day),position_name=employee.display_position if employee else '',
-            construction_object=construction_object,site_object=site_object,site=site_object.name if site_object else request_camp.name,phone=person.phone,
+            construction_object=construction_object,site_object=site_object,site=site_object.name if site_object else request_camp.name,phone=(employee.phone if employee else '') or person.phone,
             travel_status='Прибыл' if kind=='ARRIVAL' else 'Убыл',note=comment))
     for row in rows:row.save()
     return len(rows)

@@ -47,6 +47,17 @@ class WorkCatalogTests(TestCase):
         self.assertTrue(form.is_valid(),form.errors)
         self.assertEqual(form.save().work_group,group)
 
+    def test_quick_section_creation_is_scoped_to_selected_object(self):
+        response=self.client.post(reverse('works:section_quick_create'),{'construction_object':self.obj.pk,'name':'Новый раздел'})
+        self.assertEqual(response.status_code,201)
+        section=Section.objects.get(pk=response.json()['value'])
+        self.assertEqual((section.company,section.construction_object,section.name),(self.company,self.obj,'Новый раздел'))
+        self.assertTrue(section.code.startswith('SEC-'))
+        self.assertEqual(self.client.post(reverse('works:section_quick_create'),{'construction_object':self.obj.pk,'name':'Новый раздел'}).status_code,400)
+        foreign_project=Project.objects.create(company=self.foreign,code='fp',name='Foreign')
+        foreign_object=ConstructionObject.objects.create(company=self.foreign,project=foreign_project,code='fo',name='Foreign')
+        self.assertEqual(self.client.post(reverse('works:section_quick_create'),{'construction_object':foreign_object.pk,'name':'Чужой'}).status_code,404)
+
     def test_foreign_group_and_unit_and_free_text_unit_rejected(self):
         group=WorkGroup.objects.create(company=self.foreign,name='Foreign group')
         MeasurementUnit.objects.create(company=self.foreign,symbol='foreign-unit',name='Foreign unit')
@@ -77,4 +88,5 @@ class WorkCatalogTests(TestCase):
         self.assertContains(response,'id_work_group')
         self.assertContains(response,'data-catalog-open="group"')
         self.assertContains(response,'data-catalog-open="unit"')
+        self.assertContains(response,'data-catalog-open="section"')
         self.assertContains(response,'catalog-group')

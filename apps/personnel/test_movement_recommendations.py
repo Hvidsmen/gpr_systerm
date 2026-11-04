@@ -42,10 +42,12 @@ class MovementRecommendationTests(TestCase):
 
     @patch('apps.personnel.rotation.rotation_rows')
     def test_recommendation_can_be_converted_to_request(self,rotation_rows):
+        self.second_employee.phone='+7 999 000-11-22';self.second_employee.save(update_fields=['phone'])
         rotation_rows.return_value=self.auto_rows();result=build(self.company,self.day);row=result['ARRIVAL'][0]
         self.assertEqual(create_requests(self.personnel_dispatcher,[row['token']]),1)
         request=MovementReviewRequest.objects.get()
         self.assertEqual((request.person,request.kind,request.to_camp,request.movement_date),(self.second_person,'ARRIVAL',self.a,row['planned_on']))
+        self.assertEqual(request.phone,self.second_employee.phone)
         self.assertEqual(build(self.company,self.day)['ARRIVAL'],[])
 
     def test_personnel_dispatcher_has_dispatch_and_rotation_workspaces(self):

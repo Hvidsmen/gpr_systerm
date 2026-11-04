@@ -5,7 +5,7 @@ from .price_views import WorkPriceChange
 from .price_sources import WorkPriceSources
 from .unit_views import UnitUpdate, UnitDelete
 from .unit_merge import UnitMerge
-from .catalogs import WorkGroupList, MeasurementUnitList, quick_create
+from .catalogs import WorkGroupList, MeasurementUnitList, quick_create, quick_section_create
 
 app_name = 'works'
 
@@ -17,6 +17,7 @@ urlpatterns = [
     path("catalogs/groups/create/", quick_create("group"), name="group_create"),
     path("catalogs/units/", MeasurementUnitList.as_view(), name="unit_list"),
     path("catalogs/units/create/", quick_create("unit"), name="unit_create"),
+    path("catalogs/sections/create/", quick_section_create, name="section_quick_create"),
     path("catalogs/units/merge/", UnitMerge.as_view(), name="unit_merge"),
     path("catalogs/units/<int:pk>/update/", UnitUpdate.as_view(), name="unit_update"),
     path("catalogs/units/<int:pk>/delete/", UnitDelete.as_view(), name="unit_delete"),

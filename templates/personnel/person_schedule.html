@@ -1,0 +1,7 @@
+{% extends 'base.html' %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}<p><a href="{% url 'personnel:housing' %}">← Персонал</a></p><h1>{{ title }}</h1>
+{% if pending_schedule_change %}<div class="alert alert-warning"><strong>График меняется в ЗУП.</strong><br>Запрошен график «{{ pending_schedule_change.requested_schedule }}». После обновления справочника сотрудников портал применит его автоматически.</div>{% endif %}
+<section class="card card-body" style="max-width:900px"><h2 class="h5">Запросить изменение графика в ЗУП</h2><p class="text-muted">Выберите график из справочника ЗУП. Локально он не изменится до следующей успешной синхронизации сотрудников.</p><form method="post">{% csrf_token %}{% include 'forms/fields.html' with form=request_form %}<button class="btn btn-primary" name="schedule_action" value="request_zup">Создать задание на изменение в ЗУП</button></form></section>
+{% if manual_allowed %}<details class="card card-body"><summary>Администраторская ручная корректировка календаря</summary><p class="text-muted mt-3">Аварийный инструмент для исключений. Основной график меняется только через заявку в ЗУП выше.</p><form method="post">{% csrf_token %}{% include 'forms/fields.html' with form=form %}<button class="btn btn-outline-primary">Сохранить ручную корректировку</button></form></details>{% endif %}
+{% endblock %}

@@ -84,7 +84,6 @@ def work_groups(rows, dates=()):
             leaves=[]
             for obj in work['objects'].values():
                 obj['total']=totals(obj['rows'],dates);leaves.extend(obj['rows'])
-                obj['packages']='; '.join(sorted({row['package'] for row in obj['rows'] if row.get('package')}))
             work['total']=totals(leaves,dates)
             work['objects']=sorted(work['objects'].values(),key=lambda obj:obj['label'].casefold())
         section['works']=sorted(section['works'].values(),key=lambda work:(work['label'].casefold(),work['unit']))
@@ -99,7 +98,7 @@ def work_display_rows(groups):
             sources=[row for obj in work['objects'] for row in obj['rows']]
             result.append(dict(work['total'],label=work['label'],context=section['label'],level=1,heading=True,source_rows=sources))
             for obj in work['objects']:
-                result.append(dict(obj['total'],label=obj['label'],context=' → '.join([section['label'],work['label'],obj['packages']]),level=2,source_rows=obj['rows']))
+                result.append(dict(obj['total'],label=obj['label'],context=' → '.join([section['label'],work['label']]),level=2,source_rows=obj['rows']))
     return result
 
 
@@ -138,7 +137,7 @@ def day_matrix(report):
                 key=f'work-{section_index}-{work_index}'
                 block(work['label'],work['total'],toggle=key)
                 for obj in work['objects']:
-                    block(obj['label'],obj['total'],level=1,parent=key,context=obj['packages'])
+                    block(obj['label'],obj['total'],level=1,parent=key)
         direction='labor'
         heading('Люди','smg-period-labor')
         for index,group in enumerate(report['labor_groups']):

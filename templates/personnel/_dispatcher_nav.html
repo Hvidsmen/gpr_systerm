@@ -1,4 +1,6 @@
 <nav class="d-flex flex-wrap gap-2 mb-3" aria-label="Рабочие разделы диспетчера по персоналу">
 <a class="btn btn-sm {% if dispatcher_page == 'roster' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{% url 'personnel:housing' %}">Состав, назначения и графики</a>
-<a class="btn btn-sm {% if dispatcher_page == 'movements' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{% url 'personnel:movements' %}">Рекомендации и заявки на заезд / выезд</a>
+<span><a class="btn btn-sm {% if dispatcher_page == 'movements' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{% url 'personnel:movements' %}#recommendations-arrival">Заезд</a><small class="d-block text-muted mt-1">Рекомендуется: {{ arrival_recommendation_count|default:0 }} чел.</small></span>
+<span><a class="btn btn-sm {% if dispatcher_page == 'movements' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{% url 'personnel:movements' %}#recommendations-departure">Выезд</a><small class="d-block text-muted mt-1">Рекомендуется: {{ departure_recommendation_count|default:0 }} чел.</small></span>
+<span><a class="btn btn-sm {% if dispatcher_page == 'movements' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{% url 'personnel:movements' %}#movement">Новая заявка</a><small class="d-block text-muted mt-1">Заезд или выезд вручную</small></span>
 </nav>

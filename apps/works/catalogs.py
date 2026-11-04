@@ -1,11 +1,12 @@
 from django import forms
 from django.db import transaction, IntegrityError
 from django.http import JsonResponse
-from django.shortcuts import render
+from django.shortcuts import render, get_object_or_404
 from django.views import View
 from django.views.decorators.http import require_POST
-from core.permissions import require_roles, PLAN_ROLES
+from core.permissions import require_roles, PLAN_ROLES, scope_queryset
 from .models import WorkGroup, MeasurementUnit
+from apps.projects.models import ConstructionObject, Section
 
 DEFAULT_UNITS = [('м','Метр'),('м²','Квадратный метр'),('м³','Кубический метр'),('шт','Штука'),('т','Тонна'),('кг','Килограмм'),('л','Литр'),('ч','Час'),('m','Метр (m)'),('m3','Кубический метр (m3)')]
 
@@ -62,6 +63,22 @@ def quick_create(kind):
             return JsonResponse({'value': row.symbol if kind == 'unit' else str(row.pk), 'label': str(row)}, status=201)
         return JsonResponse({'errors': form.errors}, status=400)
     return view
+
+
+@require_POST
+def quick_section_create(request):
+    require_roles(request.user, PLAN_ROLES)
+    obj=get_object_or_404(scope_queryset(ConstructionObject.objects.filter(company=request.user.company),request.user),pk=request.POST.get('construction_object',''))
+    name=' '.join(request.POST.get('name','').split())
+    if not name:return JsonResponse({'errors':{'name':['Укажите название раздела.']}},status=400)
+    if len(name)>255:return JsonResponse({'errors':{'name':['Название слишком длинное.']}},status=400)
+    if Section.objects.filter(company=request.user.company,construction_object=obj,name=name).exists():
+        return JsonResponse({'errors':{'name':['Такой раздел уже существует на выбранном объекте.']}},status=400)
+    try:
+        with transaction.atomic():row=Section.objects.create(company=request.user.company,construction_object=obj,name=name)
+    except IntegrityError:
+        return JsonResponse({'errors':{'name':['Такой раздел уже существует на выбранном объекте.']}},status=400)
+    return JsonResponse({'value':str(row.pk),'label':row.name,'construction_object':obj.pk},status=201)
 
 
 class CatalogList(View):

@@ -60,7 +60,8 @@ def prepare_rows(formset, obj, day, work_plan, catalogue):
         title = item.name if item else work.name
         path = [work.section.name]
         if work.complex_object_id: path.append(work.complex_object.name)
-        if item and work.name != title: path.append(work.name)
+        # For a composite row the item itself is the summary work.  The parent
+        # ProjectWork is an internal catalogue container, not a visible level.
         planned_before=accumulated_plan.get(key)
         actual_before=previous.get(key,Decimal(0))
         deviation=((actual_before/planned_before-1)*100).quantize(Decimal('.01')) if planned_before is not None and planned_before>0 else None
@@ -78,14 +79,25 @@ def prepare_rows(formset, obj, day, work_plan, catalogue):
         row.fields['project_work'].widget = forms.HiddenInput()
         row.fields['work_item'].widget = forms.HiddenInput()
         work = works[key[0]]
-        group = groups.setdefault((work.section_id, work.complex_object_id), {'label': work.complex_object.name if work.complex_object_id else 'Самостоятельные работы',
-            'section': work.section.name, 'is_complex': bool(work.complex_object_id), 'rows': [], 'packages': {}, 'count': 0})
-        group['count'] += 1
-        if work.kind == 'COMPOSITE':
-            group['packages'].setdefault(work.pk, {'label': work.name, 'rows': []})['rows'].append(row)
+        if work.kind == 'COMPOSITE' and key[1]:
+            # A work item is the summary work, while the complex object is the
+            # place where its fact is entered.  ProjectWork is only a catalogue
+            # container here and must not add another visible hierarchy level.
+            item = items[key[1]]
+            summary_key = (work.section_id, ' '.join(item.name.split()).casefold(), item.unit)
+            group = groups.setdefault(summary_key, {'label': item.name, 'section': work.section.name,
+                'is_complex': True, 'objects': {}, 'rows': [], 'count': 0})
+            object_group = group['objects'].setdefault(work.complex_object_id or 0,
+                {'label': work.complex_object.name if work.complex_object_id else 'Без комплексного объекта', 'rows': []})
+            object_group['rows'].append(row)
         else:
+            summary_key = (work.section_id, 'standalone', work.pk, key[1] or 0)
+            group = groups.setdefault(summary_key, {'label': row.work_display['title'], 'section': work.section.name,
+                'is_complex': False, 'objects': {}, 'rows': [], 'count': 0})
             group['rows'].append(row)
+        group['count'] += 1
     result = sorted(groups.values(), key=lambda g: (g['section'].casefold(), g['label'].casefold()))
     for group in result:
-        group['packages'] = sorted(group['packages'].values(), key=lambda p: p['label'].casefold())
+        group['objects'] = sorted(group['objects'].values(), key=lambda obj: obj['label'].casefold())
+        group['object_count'] = len(group['objects'])
     return result, extra

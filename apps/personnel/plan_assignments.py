@@ -288,7 +288,7 @@ def edit(request,pk=None):
     access(request)
     row=get_object_or_404(StaffingSlot.objects.select_related('person'),company=request.user.company,pk=pk,planning_position__isnull=False) if pk else None
     historical=bool(row and (row.replaced_on or row.cancelled_at))
-    initial={key:request.GET[key] for key in ('planning_position','construction_object','housing_camp','assigned_from') if key in request.GET}
+    initial={key:request.GET[key] for key in ('employee','planning_position','construction_object','housing_camp','assigned_from') if key in request.GET}
     initial.setdefault('assigned_from',timezone.localdate())
     form=AssignmentForm(request.POST if request.method=='POST' else None,company=request.user.company,row=row,initial=initial)
     initial_form=InitialStateForm(request.POST if request.method=='POST' else None,prefix='initial') if not historical and (row is None or not has_movements(row.person)) else None

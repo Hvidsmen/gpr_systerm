@@ -12,6 +12,7 @@
   <div class="d-flex flex-wrap gap-2">
     {% if employee.zup_card.position_diagnostics %}{% if request.user|may:'resources:employee_position_report' %}<a class="btn btn-outline-secondary" href="{% url 'resources:employee_position_report' employee.pk %}">Проверка должности (ZIP)</a>{% endif %}{% endif %}
     {% if can_edit %}<a class="btn btn-primary" href="{% url 'resources:employee_update' employee.pk %}">Редактировать</a>{% endif %}
+    {% if can_edit_phone %}<a class="btn btn-outline-primary" href="{% url 'resources:employee_phone_update' employee.pk %}">Изменить телефон</a>{% endif %}
     {% if request.user|may:'resources:employee_zup_import' %}<form method="post" action="{% url 'resources:employee_zup_import' %}">{% csrf_token %}<button class="btn btn-outline-primary">Обновить сотрудников из ЗУП</button></form>{% endif %}
   </div>
 </header>

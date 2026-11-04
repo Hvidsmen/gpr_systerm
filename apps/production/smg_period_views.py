@@ -53,9 +53,8 @@ def detail(request):
     report = report_for(request)
     if report is None:
         return JsonResponse({'error': 'Выберите доступный объект и дату.'}, status=400)
-    if request.GET.get('scope') == 'day':
-        return render(request, 'production/_daily_report_equipment.html', report)
     query = {'construction_object': report['object'].pk, 'date': report['day'].isoformat()}
+    if report['day_only']:query['scope']='day'
     if report['schedule']:
         query['schedule'] = report['schedule'].pk
     report['show_days'] = request.GET.get('by_day') == '1'

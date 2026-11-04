@@ -214,6 +214,17 @@ def apply_employees(run, report):
         if references or any('probe_' + probe in item for probe in PROBES) or 'position_state' in item:
             values['zup_card']['position_diagnostics'] = {'probes': row_probes, 'references': references}
         normalized.append((ref, values))
+    schedule_catalog=report.get('schedule_catalog')
+    if schedule_catalog is not None:
+        if not isinstance(schedule_catalog,list):raise ValidationError('Некорректный справочник графиков ЗУП.')
+        checked=[];schedule_names=set()
+        for item in schedule_catalog:
+            if not isinstance(item,dict):raise ValidationError('Некорректная строка справочника графиков ЗУП.')
+            ref,name,marked=item.get('ref',''),str(item.get('name','')).strip(),item.get('marked')
+            if not re.fullmatch('[0-9a-fA-F]{32}',ref) or not name or len(name)>250 or marked not in {'0x00','0x01'}:raise ValidationError('Некорректный график в справочнике ЗУП.')
+            key=name.casefold()
+            if key in schedule_names:raise ValidationError('В справочнике ЗУП повторяется название графика.')
+            schedule_names.add(key);checked.append((ref.lower(),name,marked=='0x00'))
     from apps.resources.zup_positions import employee_job
     # Employee cards may only link to existing positions. Catalogue creation is
     # exclusively the staffing-schedule job, never employee occupancy/history.
@@ -234,6 +245,16 @@ def apply_employees(run, report):
         'active_employees': sum(values['is_active'] for _, values in normalized), 'coverage': coverage}
     if catalogue is not None:counts['position_diagnostics']['catalogue'] = catalogue
     now = timezone.now()
+    from apps.personnel.models import ZupWorkSchedule
+    if schedule_catalog is not None:
+        active_names=[]
+        for ref,name,active in checked:
+            ZupWorkSchedule.objects.update_or_create(company_id=connection.company_id,name=name,defaults={'source_ref':ref,'is_active':active,'synced_at':now})
+            active_names.append(name)
+        ZupWorkSchedule.objects.filter(company_id=connection.company_id).exclude(name__in=active_names).update(is_active=False,synced_at=now)
+    else:
+        for name in sorted({values['zup_card'].get('schedule','') for _,values in normalized if values['zup_card'].get('schedule')}):
+            ZupWorkSchedule.objects.update_or_create(company_id=connection.company_id,name=name,defaults={'is_active':True,'synced_at':now})
     for ref, values in normalized:
         matches = positions.get(position_key(employee_job(values)), [])
         values['position'] = matches[0] if len(matches) == 1 else None
@@ -248,6 +269,8 @@ def apply_employees(run, report):
                 setattr(employee, key, value)
         employee.zup_synced_at = now
         employee.save()
+    from apps.personnel.schedule_changes import reconcile_company
+    counts['schedule_changes_applied']=reconcile_company(connection.company)
     from apps.audit.models import AuditLog
     AuditLog.objects.create(user=run.created_by, action='UPDATE', entity_type='resources.Employee', entity_id=str(run.pk),
                             new_value=counts, comment='Загрузка списка сотрудников из ЗУП; ручные записи сохранены')

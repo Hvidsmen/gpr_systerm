@@ -1,10 +1,7 @@
-<section class="card card-body mb-3" data-entry-step="4" data-production-report>
-<div class="d-flex justify-content-between flex-wrap gap-2"><h2>Сводный отчёт за {{ day|date:'d.m.Y' }}</h2><button type="button" class="btn btn-sm btn-outline-primary" data-report-download data-url="{% url 'production:production_report_download' %}">Скачать Excel</button></div>
-<p class="small text-muted">{{ object.name }}. Сводка учитывает текущие значения формы и сохранённый ввод коллег. Несохранённые записи помечены «Не сохранено». Между вкладками можно свободно переключаться.</p>
-<div class="production-report-totals" data-report-totals></div><div data-report-issues role="status" class="my-3"></div>
-<h3 class="h5 mt-3">Работы и сотрудники</h3><div data-report-works></div>
-<h3 class="h5 mt-3">Сотрудники</h3><div data-report-people></div>
-<div class="d-flex align-items-center flex-wrap gap-2 mt-3"><button type="button" class="btn btn-sm btn-outline-primary" data-daily-equipment-refresh data-url="{% url 'production:smg_period_detail' %}">Обновить технику</button><span class="small" data-daily-equipment-status role="status"></span></div><div data-daily-equipment></div>
-<p class="small" data-report-download-status aria-live="polite"></p>
+<section class="card card-body mb-3" data-entry-step="4" data-daily-summary data-url="{% url 'production:smg_period_detail' %}">
+  <div class="d-flex justify-content-between align-items-start flex-wrap gap-2"><h2>Сводный отчёт за {{ day|date:'d.m.Y' }}</h2><button type="button" class="btn btn-sm btn-outline-primary" data-daily-summary-refresh>Обновить отчёт</button></div>
+  <p class="small text-muted">План и сохранённый факт только за выбранный день. Структура, группировка и показатели совпадают с вкладкой «План / факт СМГ».</p>
+  <p data-daily-summary-state role="status" aria-live="polite">Откройте вкладку для построения отчёта.</p>
+  <div data-daily-summary-content></div>
 </section>
 {{ production_report_people|json_script:'production-report-people' }}

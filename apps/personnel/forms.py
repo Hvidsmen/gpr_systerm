@@ -1,7 +1,7 @@
 from datetime import timedelta
 from django import forms
 from django.db.models import Q
-from .models import BaseCity, Board, MovementReviewRequest, Person, StaffingGroup, StaffingSlot
+from .models import BaseCity, Board, MovementReviewRequest, Person, StaffingGroup, StaffingSlot, ZupWorkSchedule
 
 
 class StyledModelForm(forms.ModelForm):
@@ -289,3 +289,13 @@ class PersonScheduleForm(forms.Form):
             if not check.is_valid():raise forms.ValidationError(check.errors.as_text())
             data['code']=check.cleaned_data['code']
         return data
+
+
+class ZupScheduleChangeForm(forms.Form):
+    schedule=forms.ModelChoiceField(label='Новый график из ЗУП',queryset=ZupWorkSchedule.objects.none(),empty_label='Выберите график')
+    def __init__(self,*args,person,**kwargs):
+        super().__init__(*args,**kwargs);self.person=person
+        self.fields['schedule'].queryset=ZupWorkSchedule.objects.filter(company=person.company,is_active=True).order_by('name','pk')
+        self.fields['schedule'].widget.attrs['class']='form-select'
+        current=((person.employee.zup_card or {}).get('schedule') or '').strip() if person.employee_id else ''
+        self.fields['schedule'].help_text='Сейчас в ЗУП: '+(current or 'не указан')+'. После сохранения график изменится в портале только при следующей синхронизации из ЗУП.'

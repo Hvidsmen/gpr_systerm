@@ -1,6 +1,9 @@
 (() => {
  'use strict';
  const form=document.querySelector('[data-production-form]');if(!form)return;
+ const catalogue=JSON.parse(document.getElementById('production-work-choices')?.textContent||'[]');
+ const compositeWorks=new Set(catalogue.filter(row=>row.kind==='COMPOSITE').map(row=>String(row.work)));
+ const itemOwners=new Map(catalogue.filter(row=>row.item).map(row=>[String(row.item),String(row.work)]));
  // randomUUID is restricted to secure contexts; getRandomValues also works on HTTP.
  const bytes=crypto.getRandomValues(new Uint8Array(16));bytes[6]=(bytes[6]&15)|64;bytes[8]=(bytes[8]&63)|128;
  const hex=[...bytes].map(value=>value.toString(16).padStart(2,'0')).join('');
@@ -12,7 +15,12 @@
  const scope={actor_id:Number(form.dataset.userId),company_id:Number(form.dataset.companyId),construction_object:form.elements.construction_object.value,date:form.elements.date.value,session,reset_epoch:Number(form.dataset.resetEpoch||0)};
  let claims=new Map(),generation=0,busy=false,lastActivity=Date.now(),lastRenew=0,submitting=false;
  const rows=()=>[...form.querySelectorAll('[data-work-fact-row],[data-production-person]')],person=row=>row.matches('[data-production-person]'),field=(row,name)=>row.querySelector(`[name$="-${name}"]`),editing=row=>field(row,person(row)?'person_editing':'work_editing'),token=row=>field(row,person(row)?'person_claim_token':'work_claim_token');
- const keyOf=row=>person(row)?(field(row,'employee')?.value?`employee:${field(row,'employee').value}:${Number(field(row,'shift').value)}`:''):(field(row,'project_work')?.value?(field(row,'work_item')?.value?`item:${field(row,'project_work').value}:${field(row,'work_item').value}`:`work:${field(row,'project_work').value}`):'');
+ const keyOf=row=>{
+  if(person(row))return field(row,'employee')?.value?`employee:${field(row,'employee').value}:${Number(field(row,'shift').value)}`:'';
+  const work=field(row,'project_work')?.value,item=field(row,'work_item')?.value;
+  if(!work||compositeWorks.has(String(work))&&!item||item&&itemOwners.get(String(item))!==String(work))return '';
+  return item?`item:${work}:${item}`:`work:${work}`;
+ };
  const personRows=()=>rows().filter(person),deleted=row=>Boolean(field(row,'DELETE')?.checked);
  const samePerson=row=>person(row)&&keyOf(row)&&personRows().filter(other=>!deleted(other)&&keyOf(other)===keyOf(row));
  function duplicate(row){
@@ -24,6 +32,14 @@
  const previousKeys=row=>JSON.parse(row.dataset.previousShiftKeys||'[]');
  const keysOf=row=>[...new Set([keyOf(row),...previousKeys(row)].filter(Boolean))];
  const duplicateText='Этот сотрудник уже выбран в этой смене. Измените существующую строку или уберите повтор.';
+ function filterWorkItems(row){
+  if(!row||person(row))return;
+  const work=field(row,'project_work'),item=field(row,'work_item');if(!work||!item||item.tagName!=='SELECT')return;
+  const owner=String(work.value||''),selected=String(item.value||'');
+  for(const option of item.options){const allowed=!option.value||Boolean(owner)&&itemOwners.get(String(option.value))===owner;option.hidden=!allowed;option.disabled=!allowed;}
+  if(selected&&itemOwners.get(selected)!==owner){item.value='';row.querySelector('[data-error]').textContent='Выберите работу в составе выбранного комплекса.';}
+  item.dispatchEvent(new Event('work-options-updated'));
+ }
  const originalOptionState=new WeakMap();
  function refreshPeople(){
   const records=personRows(),used=new Map();
@@ -36,6 +52,8 @@
  }
  // Reject a forced duplicate before target widgets and other form listeners see it.
  form.addEventListener('change',event=>{
+  const workRow=event.target.closest('[data-work-fact-row]');
+  if(workRow&&event.target===field(workRow,'project_work'))filterWorkItems(workRow);
   const row=event.target.closest('[data-production-person]');if(!row)return;
   if(event.target!==field(row,'employee')&&event.target!==field(row,'shift'))return;
   const conflict=personRows().some(other=>other!==row&&!deleted(other)&&!deleted(row)&&keyOf(other)&&keyOf(other)===keyOf(row));
@@ -86,7 +104,7 @@
  }
  function capture(row){return [...row.querySelectorAll('input,select,textarea')].filter(i=>i.name&&!['person_claim_token','person_editing','work_claim_token','work_editing'].some(n=>i.name.endsWith('-'+n))).map(i=>({name:i.name,value:i.value,checked:i.checked,type:i.type}));}
  function reset(row){const baseline=JSON.parse(row.dataset.entryOriginal);row.querySelectorAll('[name$="-work_targets"]').forEach(i=>i.remove());for(const entry of baseline){if(entry.name.endsWith('-work_targets')){const i=document.createElement('input');i.type='hidden';i.name=entry.name;i.value=entry.value;row.append(i);}else{const i=[...row.querySelectorAll('[name]')].find(i=>i.name===entry.name&&(entry.type!=='checkbox'||i.value===entry.value));if(i){i.value=entry.value;if(entry.type==='checkbox')i.checked=entry.checked;}}}}
- function wire(){for(const row of rows()){if(row.dataset.entryWired)continue;row.dataset.entryWired='1';row.dataset.entryOriginal=JSON.stringify(capture(row));row.dataset.entryKey=keyOf(row);if(person(row)){row.dataset.acceptedEmployee=field(row,'employee').value;row.dataset.acceptedShift=field(row,'shift').value;}
+ function wire(){for(const row of rows()){filterWorkItems(row);if(row.dataset.entryWired)continue;row.dataset.entryWired='1';row.dataset.entryOriginal=JSON.stringify(capture(row));row.dataset.entryKey=keyOf(row);if(person(row)){row.dataset.acceptedEmployee=field(row,'employee').value;row.dataset.acceptedShift=field(row,'shift').value;}
    if(!row.querySelector('[data-entry-claim]')){const bar=document.createElement('div');bar.dataset.entryClaim='';bar.className='work-claim-bar';
    for(const [tag,attr,text] of [['span','label',''],['button','take','Резерв'],['button','release','Освободить'],['span','error','']]){const el=document.createElement(tag);el.dataset[attr]='';el.textContent=text;if(tag==='button'){el.type='button';el.className='btn btn-sm btn-outline-primary';}else el.className=attr==='error'?'small text-danger':'small';bar.append(el);}row.prepend(bar);}
    if(form.dataset.productionBound==='1'&&editing(row)?.value==='1'&&(person(row)?field(row,'employee')?.value:field(row,'actual_quantity')?.value))row.dataset.entryDirty='1';render(row);
@@ -115,6 +133,7 @@
    if(!acquiring.has(key)){generation++;acquiring.set(key,request('take',key).then(data=>{claims.set(key,data.claim);}).finally(()=>acquiring.delete(key)));}
    await acquiring.get(key);
   }
+  row.querySelector('[data-error]').textContent='';
   render(row);row.dataset.entryDirty='1';changed();lastActivity=Date.now();
  };
  form.productionSetClaims=values=>{for(const row of personRows())if(!row.dataset.entryDirty&&!row.dataset.personDirty&&!row.dataset.autoPending){row.dataset.acceptedShift=field(row,'shift').value;row.dataset.entryKey=keyOf(row);}claims=new Map(values.map(c=>[c.key,c]));wire();changed();};

@@ -81,6 +81,17 @@ class ShiftPattern(PersonnelModel):
     def __str__(self): return ' · '.join(value for value in [self.kind,self.name] if value)
 
 
+class ZupWorkSchedule(PersonnelModel):
+    source_ref=models.CharField('Идентификатор ЗУП',max_length=32,blank=True)
+    name=models.CharField('График ЗУП',max_length=250)
+    is_active=models.BooleanField('Доступен в ЗУП',default=True)
+    synced_at=models.DateTimeField('Обновлён из ЗУП',null=True,blank=True)
+    class Meta:
+        ordering=['name','pk']
+        constraints=[models.UniqueConstraint(fields=['company','name'],name='personnel_unique_zup_schedule_name')]
+    def __str__(self):return self.name
+
+
 class StaffingSlot(PersonnelModel):
     STATUSES = [('МВ', 'МВ — на вахте'), ('МО', 'МО — межвахтовый отдых'), ('OTHER', 'Другое / уточнить')]
     group = models.ForeignKey(StaffingGroup, on_delete=models.CASCADE, related_name='slots')
@@ -265,6 +276,24 @@ class MovementReviewRequest(PersonnelModel):
         if self.site_object_id and self.construction_object_id:
             if self.site_object_id!=self.construction_object_id and self.site_object.parent_id!=self.construction_object_id:raise ValidationError({'site_object':'Участок должен относиться к выбранному объекту.'})
         if self.reviewed_by_id and self.reviewed_by.company_id!=self.company_id:raise ValidationError('Проверяющий другой компании.')
+
+
+class ScheduleChangeRequest(PersonnelModel):
+    STATUSES=[('PENDING','Ожидает изменения в ЗУП'),('APPLIED','Применено из ЗУП'),('CANCELLED','Отменено')]
+    person=models.ForeignKey(Person,on_delete=models.PROTECT,related_name='schedule_change_requests')
+    requested_schedule=models.ForeignKey(ZupWorkSchedule,on_delete=models.PROTECT,related_name='change_requests')
+    previous_schedule=models.CharField('График до изменения',max_length=250,blank=True)
+    status=models.CharField(max_length=12,choices=STATUSES,default='PENDING')
+    requested_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,blank=True,related_name='+')
+    applied_at=models.DateTimeField(null=True,blank=True)
+    task_key=models.CharField(max_length=180,blank=True)
+    class Meta:
+        ordering=['-created_at','-pk']
+        constraints=[models.UniqueConstraint(fields=['person'],condition=models.Q(status='PENDING'),name='personnel_one_pending_schedule_change')]
+    def clean(self):
+        super().clean()
+        for value in (self.person,self.requested_schedule,self.requested_by):
+            if value and value.company_id!=self.company_id:raise ValidationError('Запрос графика другой компании.')
 
 from .lodging_models import LodgingBuilding,LodgingBed,LodgingStay,LodgingEvent,LodgingControl,LodgingResolution
 

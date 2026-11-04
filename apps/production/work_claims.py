@@ -170,7 +170,10 @@ def claims(request):
         elif parts[0]=='item' and len(parts)==3:work_id=int(parts[1]);item_id=int(parts[2])
         else:raise ValueError
         work=get_object_or_404(ProjectWork,company=obj.company,section__construction_object=obj,pk=work_id,merged_source__isnull=True)
-        if work.kind=='COMPOSITE':get_object_or_404(ProjectWorkItem,company=obj.company,project_work=work,pk=item_id)
+        if work.kind=='COMPOSITE':
+            if not item_id:return JsonResponse({'error':'Сначала выберите работу в составе комплекса.'},status=400)
+            if not ProjectWorkItem.objects.filter(company=obj.company,project_work=work,pk=item_id).exists():
+                return JsonResponse({'error':'Выбранная работа не относится к этому комплексу. Выберите её заново.'},status=400)
         elif item_id:raise ValueError
         if action not in {'take','renew','release'}:raise ValueError
         with transaction.atomic():

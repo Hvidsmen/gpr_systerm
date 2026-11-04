@@ -1,6 +1,8 @@
 from datetime import timedelta
 from decimal import Decimal
 from django.test import TestCase
+from django.urls import reverse
+from uuid import uuid4
 from apps.works.models import ComplexObject, ProjectWork, ProjectWorkItem
 from apps.planning.models import DailyScheduleEntry
 from . import test_dispatch as fixtures
@@ -36,16 +38,22 @@ class WorkEntryPresentationTests(TestCase):
     def test_hierarchy_shows_leaf_titles_exact_day_plan_units_and_zero(self):
         response = self.page(); self.assertEqual(response.status_code, 200)
         group = response.context['groups'][0]
-        structured = next(g for g in group['work_groups'] if g['is_complex'])
-        self.assertEqual(structured['label'], 'ПК2763')
-        self.assertEqual(structured['packages'][0]['label'], self.package.name)
-        rows = {r.work_display['title']:r.work_display for r in structured['packages'][0]['rows']}
+        structured = next(g for g in group['work_groups'] if g['is_complex'] and g['label']=='Установка камеры')
+        self.assertEqual(structured['objects'][0]['label'], 'ПК2763')
+        self.assertEqual(structured['object_count'], 1)
+        rows = {g['label']:g['objects'][0]['rows'][0].work_display for g in group['work_groups'] if g['is_complex']}
+        self.assertEqual(rows['Установка камеры']['path'], f'{self.work.section.name} → ПК2763')
         self.assertEqual(rows['Установка камеры']['plan'], Decimal(30))
         self.assertEqual(rows['Установка камеры']['unit'], 'шт')
         self.assertTrue(rows['Прокладка кабеля']['has_plan'])
         self.assertEqual(rows['Прокладка кабеля']['plan'], 0)
         self.assertContains(response, f'План СМГ на {self.day:%d.%m.%Y}')
         self.assertContains(response, '<h3 data-work-title>Установка камеры</h3>', html=True)
+        html = response.content.decode()
+        self.assertNotIn('Комплексная работа', html)
+        self.assertLess(html.index('Работа в составе комплекса'), html.index('Комплексный объект'))
+        self.assertIn('<span class="production-work-level">Работа в составе комплекса</span><strong>Установка камеры</strong>', html)
+        self.assertIn('<span class="production-work-level">Комплексный объект</span><strong>ПК2763</strong>', html)
         self.assertEqual(WorkFactClaim.objects.count(), 0, 'Displaying planned work must not reserve it')
         self.assertEqual(DailyFact.objects.count(), 0)
 
@@ -82,3 +90,13 @@ class WorkEntryPresentationTests(TestCase):
         self.assertEqual(DailyFact.objects.get(project_work=self.package,work_item=self.camera).actual_quantity,30)
         self.assertEqual(DailyFact.objects.get(project_work=self.package,work_item=self.cable).actual_quantity,0)
         self.entry.refresh_from_db();self.assertEqual(self.entry.rows,original)
+
+    def test_composite_claim_requires_an_item_from_the_selected_work(self):
+        scope={'construction_object':self.obj.pk,'date':str(self.day),'session':str(uuid4()),'action':'take'}
+        missing=self.client.post(reverse('production:work_claims'),{**scope,'key':f'work:{self.package.pk}'},content_type='application/json')
+        self.assertEqual(missing.status_code,400);self.assertIn('Сначала выберите',missing.json()['error'])
+        other_package=ProjectWork.objects.create(company=self.company,section=self.package.section,complex_object=self.complex_object,
+            name='Другой комплекс работ',kind='COMPOSITE',unit='компл')
+        other=ProjectWorkItem.objects.create(company=self.company,project_work=other_package,name='Чужая позиция',unit='шт')
+        mismatch=self.client.post(reverse('production:work_claims'),{**scope,'key':f'item:{self.package.pk}:{other.pk}'},content_type='application/json')
+        self.assertEqual(mismatch.status_code,400);self.assertIn('не относится',mismatch.json()['error'])

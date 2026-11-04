@@ -15,7 +15,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 from .views import access,scoped
 from .models import Camp,CampObjectLink,CampStay,HousingEvent,MovementReviewRequest,Person,Board,StaffingGroup,StaffingSlot
-from .forms import CampForm,MovementForm,MovementRecommendationForm,MovementReviewForm,PersonScheduleForm
+from .forms import CampForm,MovementForm,MovementRecommendationForm,MovementReviewForm,PersonScheduleForm,ZupScheduleChangeForm
 from . import housing
 from .services import calendar_for,departure_days
 
@@ -213,6 +213,7 @@ def workspace(request, movements=False):
         events=HousingEvent.objects.filter(company=request.user.company).filter(Q(from_camp__in=selected_camps)|Q(to_camp__in=selected_camps)).select_related('person','from_camp','to_camp','recorded_by')[:50]
         return render(request,template,{**extra,'rotation_filter':selector,'day':day,'camp':camp,'camps':camps,'selected_camps':selected_camps,'form':form,'events':events,
             'arrival_recommendations':recommendations['ARRIVAL'],'departure_recommendations':recommendations['DEPARTURE'],
+            'arrival_recommendation_count':len(recommendations['ARRIVAL']),'departure_recommendation_count':len(recommendations['DEPARTURE']),
             'arrival_recommendation_form':arrival_recommendation_form,'departure_recommendation_form':departure_recommendation_form,**window_context(request.user,day)})
     values=selector.cleaned_data
     rows,days,rotation_stats=rotation_rows(request.user.company,list(selected_camps),day,query=values.get('q',''),state=values.get('state',''),include_unassigned=not values.get('construction_object') and not values.get('camps'))
@@ -267,12 +268,15 @@ def workspace(request, movements=False):
     objects=ConstructionObject.objects.filter(company=request.user.company,housing_camps__in=selected_camps).distinct()
     from .lodging_views import summary_context
     plan_context.update(summary_context(request.user,camp,day,camps=selected_camps))
+    from .movement_recommendations import build as build_recommendations
+    navigation_recommendations=build_recommendations(request.user.company,recommendation_day)
     return render(request,template,{**extra,**plan_context,'rotation_filter':selector,'rotation_stats':rotation_stats,'position_groups':position_groups,'selected_camps':selected_camps,
         'roster_view':roster_view,'roster_view_links':view_links,'roster_sections':roster_sections(position_groups,roster_view=='groups',request.user.company),
         'camp':camp,'camps':camps,'day':day,'rows':rows,'dates':days,'form':form,'query':values.get('q',''),
         'roster_query':roster_params.urlencode(),'rotation_calendar_url':rotation_calendar_url,'calendar_dates':calendar_dates,'calendar_months':calendar_months,'calendar_start':calendar_start,'calendar_end':calendar_end,'events':events,'total':rotation_stats['people'],'objects':objects,
         'unknown_count':Person.objects.filter(company=request.user.company,stays__isnull=True,housing_events__isnull=True).count(),
-        'unlinked_count':Person.objects.filter(company=request.user.company,employee=None).count(),**window_context(request.user,day)})
+        'unlinked_count':Person.objects.filter(company=request.user.company,employee=None).count(),
+        'arrival_recommendation_count':len(navigation_recommendations['ARRIVAL']),'departure_recommendation_count':len(navigation_recommendations['DEPARTURE']),**window_context(request.user,day)})
 
 
 def review_request_context(request):
@@ -348,11 +352,23 @@ def cancel(request,pk):
 @require_http_methods(['GET','POST'])
 def schedule(request,pk):
     person=get_object_or_404(scoped(request,Person).select_related('employee__position','schedule_slot'),pk=pk)
-    form=PersonScheduleForm(request.POST if request.method=='POST' else None,person=person)
+    from core.permissions import role_code
+    manual_allowed=role_code(request.user)=='ADMIN'
+    request_mode=request.method=='POST' and request.POST.get('schedule_action')=='request_zup'
+    if request.method=='POST' and not request_mode and not manual_allowed:raise PermissionDenied('График сотрудника меняется через заявку в ЗУП.')
+    request_form=ZupScheduleChangeForm(request.POST if request_mode else None,person=person)
+    form=PersonScheduleForm(request.POST if request.method=='POST' and not request_mode else None,person=person)
+    if request_mode and request_form.is_valid():
+        from .schedule_changes import request_change
+        try:request_change(request.user,person,request_form.cleaned_data['schedule'])
+        except ValidationError as exc:request_form.add_error(None,'; '.join(exc.messages))
+        else:
+            messages.success(request,'Заявка создана. График изменится после подтверждения изменения очередной синхронизацией из ЗУП.')
+            return redirect('personnel:person_schedule',pk=person.pk)
     if request.method=='GET' and request.GET.get('slot','').isdigit():
         selected=person.assignments.filter(company=person.company,pk=request.GET['slot'],cancelled_at=None).first()
         if selected:form.initial.update(slot=selected.pk,pattern=selected.pattern_id)
-    if request.method=='POST' and form.is_valid():
+    if request.method=='POST' and not request_mode and form.is_valid():
         with transaction.atomic():
             from apps.accounts.models import Company
             from django.db.models import F
@@ -405,7 +421,8 @@ def schedule(request,pk):
                     slot.calendar=calendar
                 slot.save();person.schedule_slot=slot;person.save(update_fields=['schedule_slot','updated_at'])
                 messages.success(request,'График сотрудника сохранён. Размещение в ВЖГ не изменено.');return redirect('personnel:housing_history',pk=person.pk)
-    return render(request,'personnel/form.html',{'form':form,'title':'График: '+person.full_name})
+    pending=person.schedule_change_requests.filter(status='PENDING').select_related('requested_schedule','requested_by').first()
+    return render(request,'personnel/person_schedule.html',{'form':form,'request_form':request_form,'person':person,'pending_schedule_change':pending,'manual_allowed':manual_allowed,'title':'График: '+person.display_name})
 
 
 @login_required

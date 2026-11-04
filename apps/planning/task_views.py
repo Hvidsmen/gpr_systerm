@@ -30,6 +30,10 @@ class CreateForm(forms.Form):
 
 
 def link(task):
+    if task.key.startswith('zup-schedule-change:'):
+        from apps.personnel.models import ScheduleChangeRequest
+        row=ScheduleChangeRequest.objects.filter(company=task.company,task_key=task.key).first()
+        if row:return reverse('personnel:person_schedule',args=[row.person_id])
     if task.kind=='TRAINING' and task.key.startswith('training:'):
         return reverse('accounts:training_enter',args=[task.key.split(':')[1]])
     if task.key.startswith('actuation-reason:'):return reverse('production:actuation_reason_review',args=[int(task.key.rsplit(':',1)[1])])
@@ -80,7 +84,7 @@ class TaskList(View):
         tasks=service.filter_status(tasks,mode)
         from django.core.paginator import Paginator
         page=Paginator(tasks.select_related('assigned_to__role','created_by','construction_object').order_by('due_date','-created_at','-pk'),50).get_page(request.GET.get('page'))
-        return render(request,'planning/task_list.html',{'roles':roles,'selected_role':selected_role,'page':page,'stages':stages,'kind':kind,'can_view_all':role_code(request.user) in {'ADMIN','OBSERVER'},'status_options':[('active','Все активные'),('overdue','Просроченные'),('IN_REVIEW','На проверке автора'),('all','Все статусы'),('DONE','Выполненные'),('CLOSED_ADMIN','Принудительно закрытые'),('SUPERSEDED','Заменённые / отменённые')],'status':mode,'scope':scope,'kinds':[choice for choice in WorkTask._meta.get_field('kind').choices if not catalogue_role or choice[0] in {'CATALOGUE','TRAINING'}],'can_create':role_code(request.user) not in {'OBSERVER','FUEL_WAREHOUSE'} and not catalogue_role,'needs_objects':role_code(request.user) in {'DISPATCHER','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER'} and not request.user.assigned_objects.exists()})
+        return render(request,'planning/task_list.html',{'roles':roles,'selected_role':selected_role,'page':page,'stages':stages,'kind':kind,'can_view_all':role_code(request.user) in {'ADMIN','OBSERVER'},'status_options':[('active','Все активные'),('overdue','Просроченные'),('IN_REVIEW','На проверке автора'),('all','Все статусы'),('DONE','Выполненные'),('CLOSED_ADMIN','Принудительно закрытые'),('SUPERSEDED','Заменённые / отменённые')],'status':mode,'scope':scope,'kinds':[choice for choice in WorkTask._meta.get_field('kind').choices if not catalogue_role or choice[0] in {'CATALOGUE','TRAINING','MANUAL'}],'can_create':role_code(request.user) not in {'OBSERVER','FUEL_WAREHOUSE'} and not catalogue_role,'needs_objects':role_code(request.user) in {'DISPATCHER','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER'} and not request.user.assigned_objects.exists()})
 
 
 class TaskCreate(View):

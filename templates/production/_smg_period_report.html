@@ -6,11 +6,6 @@
 </div>
 {% if not schedule %}<div class="alert alert-warning">Для этого объекта и месяца нет действующего СМГ. Показан сохранённый факт за месяц, план обозначен прочерком.</div>{% endif %}
 <p class="small text-muted">{% if day_only %}Факт собран за выбранный день.{% else %}Факт собран за весь период, включая дни после выбранной даты.{% endif %} «—» означает отсутствие записи, 0 — явно сохранённый ноль. Отклонение = факт − план. Объёмы с разными единицами не складываются.</p>
-{% if day_only %}
-{% if not equipment_only %}{% include 'production/_smg_period_direction.html' with direction='works' %}{% include 'production/_smg_period_direction.html' with direction='labor' %}{% endif %}
-{% include 'production/_smg_period_direction.html' with direction='equipment' %}
-{% if not equipment_only and include_fuel %}{% include 'production/_smg_fuel_report.html' %}{% endif %}
-{% else %}
 <div data-period-tabs>
   <div class="smg-period-tabs" role="tablist" aria-label="Разделы плана и факта СМГ">
     {% if not equipment_only %}<button type="button" role="tab" id="smg-period-tab-works" data-period-tab="works" aria-controls="smg-period-panel-works" aria-selected="true">Работы <span>{{ works|length }}</span></button>{% endif %}
@@ -23,4 +18,3 @@
   {% if not equipment_only %}<section role="tabpanel" id="smg-period-panel-labor" aria-labelledby="smg-period-tab-labor" data-period-panel="labor" tabindex="0" hidden>{% include 'production/_smg_period_direction.html' with direction='labor' %}</section>
   {% if include_fuel %}<section role="tabpanel" id="smg-period-panel-fuel" aria-labelledby="smg-period-tab-fuel" data-period-panel="fuel" tabindex="0" hidden>{% include 'production/_smg_fuel_report.html' %}</section>{% endif %}{% endif %}
 </div>
-{% endif %}

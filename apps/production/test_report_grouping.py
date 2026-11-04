@@ -95,6 +95,11 @@ class ReportGroupingTests(TestCase):
         response=self.client.get(reverse('production:smg_period_detail'),{'construction_object':self.obj.pk,'date':self.start,'scope':'day'})
         self.assertContains(response,self.category.name)
         self.assertContains(response,'План за день')
+        self.assertContains(response,'data-period-tabs')
+        self.assertContains(response,'Работы')
+        self.assertContains(response,'Техника')
+        self.assertContains(response,'Люди')
+        self.assertContains(response,'scope=day')
 
     def test_month_html_lazy_daily_mode_and_excel(self):
         self.client.force_login(self.users['DISPATCHER'])

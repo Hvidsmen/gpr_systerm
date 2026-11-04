@@ -33,11 +33,12 @@ def work_catalogue(obj):
     for work in works:
         label = f'{work.section.name} → ' + (f'{work.complex_object.name} → ' if work.complex_object_id else '') + work.name
         if work.kind == 'SIMPLE':
-            choices.append({'token':token(work.pk),'work':work.pk,'item':None,'label':label,'unit':work.unit,'title':work.name,'kind':'SIMPLE','object':work.complex_object.name if work.complex_object_id else work.section.name,'package':''})
+            choices.append({'token':token(work.pk),'work':work.pk,'item':None,'label':label,'unit':work.unit,'title':work.name,'kind':'SIMPLE','object':work.complex_object.name if work.complex_object_id else work.section.name,'package':'','legacy':work.is_legacy_structure})
         else:
             for item in work.items.all():
                 if item.company_id == obj.company_id:
-                    choices.append({'token':token(work.pk,item.pk),'work':work.pk,'item':item.pk,'label':f'{label} → {item.name}','unit':item.unit,'title':item.name,'kind':'COMPOSITE','object':work.complex_object.name if work.complex_object_id else work.section.name,'package':work.name})
+                    legacy=work.is_legacy_structure or item.is_legacy_structure
+                    choices.append({'token':token(work.pk,item.pk),'work':work.pk,'item':item.pk,'label':f'{label} → {item.name}','unit':item.unit,'title':item.name,'kind':'COMPOSITE','object':work.complex_object.name if work.complex_object_id else work.section.name,'package':work.name,'legacy':legacy})
     by_id = {work.pk:work for work in works}
     for choice in choices:
         work = by_id[choice['work']]
@@ -46,8 +47,9 @@ def work_catalogue(obj):
     return choices
 
 
-def candidate_keys(obj, day, work_plan, catalogue, data=None, user=None):
+def candidate_keys(obj, day, work_plan, catalogue, data=None, user=None, include_legacy=False):
     keys = set(work_plan)
+    if include_legacy:keys.update((row['work'],row['item']) for row in catalogue if row.get('legacy'))
     facts=DailyFact.objects.filter(company=obj.company, project_work__section__construction_object=obj,date__lte=day)
     if user:facts=facts.filter(Q(date=day)|Q(reported_by=user)|Q(reported_by=None))
     keys.update(facts.values_list('project_work_id','work_item_id'))

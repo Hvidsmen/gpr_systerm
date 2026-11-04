@@ -37,8 +37,9 @@ class RotationStatusSelect(forms.Select):
 
 
 class RotationFilter(forms.Form):
-    construction_object=forms.ModelChoiceField(label='Объект',queryset=ConstructionObject.objects.none(),required=True,empty_label=None)
-    camps=forms.ModelChoiceField(label='ВЖГ',queryset=Camp.objects.none(),required=True,empty_label=None)
+    construction_object=forms.ModelChoiceField(label='Проект',queryset=ConstructionObject.objects.none(),required=True,empty_label=None)
+    camps=forms.ModelMultipleChoiceField(label='ВЖГ',queryset=Camp.objects.none(),required=True,
+        widget=forms.SelectMultiple(attrs={'size':6,'data-personnel-searchable':''}))
     date=forms.DateField(label='На дату',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
     q=forms.CharField(label='Сотрудник',required=False,widget=forms.TextInput(attrs={'placeholder':'ФИО, должность или табельный номер'}))
     position=forms.ModelChoiceField(label='Должность',queryset=Position.objects.none(),required=False,empty_label='Все должности')
@@ -52,28 +53,33 @@ class RotationFilter(forms.Form):
         self.status_explanations=[(label,STATUS_HELP[value]) for value,label in self.fields['state'].choices]
         self.company=company
     def clean(self):
-        data=super().clean();obj=data.get('construction_object');camp=data.get('camps')
-        if obj and camp:
+        data=super().clean();obj=data.get('construction_object');camps=data.get('camps')
+        if obj and camps:
             ids={obj.pk};pairs=list(ConstructionObject.objects.filter(company=self.company,project=obj.project).values_list('pk','parent_id'))
             while True:
                 children={pk for pk,parent in pairs if parent in ids}
                 if children<=ids:break
                 ids.update(children)
-            if not camp.object_links.filter(company=self.company,construction_object_id__in=ids).exists():self.add_error('camps','Выбранный ВЖГ не обслуживает этот объект.')
+            invalid=camps.exclude(object_links__company=self.company,object_links__construction_object_id__in=ids).distinct()
+            if invalid.exists():self.add_error('camps','Выберите только ВЖГ, относящиеся к выбранному проекту.')
         return data
     def selected_camps(self,company):
-        camp=self.cleaned_data['camps']
-        return self.fields['camps'].queryset.filter(pk=camp.pk)
+        return self.cleaned_data['camps'].order_by('name','pk')
 
 
 def normalize_rotation_filter_data(data,company):
-    """Give every dispatcher view one concrete object and one compatible camp."""
+    """Always choose one project; default its WJG filter to every linked camp."""
     from .models import CampObjectLink
-    values=data.copy();camp_id=values.get('camp') or values.get('camps');object_id=values.get('construction_object')
-    if camp_id and not object_id:
-        link=CampObjectLink.objects.filter(company=company,camp_id=camp_id).order_by('construction_object__name','pk').first()
+    values=data.copy();camp_ids=values.getlist('camps') if hasattr(values,'getlist') else values.get('camps') or []
+    if not isinstance(camp_ids,(list,tuple)):camp_ids=[camp_ids]
+    camp_ids=[str(value) for value in camp_ids if str(value)]
+    direct_camp=values.get('camp')
+    if direct_camp:camp_ids=[str(direct_camp)]
+    object_id=values.get('construction_object')
+    if camp_ids and not object_id:
+        link=CampObjectLink.objects.filter(company=company,camp_id=camp_ids[0]).order_by('construction_object__name','pk').first()
         if link:object_id=link.construction_object_id
-    elif object_id and not camp_id:
+    elif object_id and not camp_ids:
         try:obj=ConstructionObject.objects.get(company=company,pk=object_id)
         except (ConstructionObject.DoesNotExist,ValueError,TypeError):obj=None
         if obj:
@@ -82,13 +88,21 @@ def normalize_rotation_filter_data(data,company):
                 children={pk for pk,parent in pairs if parent in ids}
                 if children<=ids:break
                 ids.update(children)
-            link=CampObjectLink.objects.filter(company=company,construction_object_id__in=ids).order_by('camp__name','pk').first()
-            if link:camp_id=link.camp_id
-    elif not camp_id and not object_id:
+            camp_ids=list(CampObjectLink.objects.filter(company=company,construction_object_id__in=ids,camp__is_active=True).order_by('camp__name','pk').values_list('camp_id',flat=True).distinct())
+    elif not camp_ids and not object_id:
         link=CampObjectLink.objects.filter(company=company,camp__is_active=True).order_by('construction_object__name','camp__name','pk').first()
-        if link:object_id=link.construction_object_id;camp_id=link.camp_id
+        if link:
+            object_id=link.construction_object_id
+            obj=link.construction_object;ids={obj.pk};pairs=list(ConstructionObject.objects.filter(company=company,project=obj.project).values_list('pk','parent_id'))
+            while True:
+                children={pk for pk,parent in pairs if parent in ids}
+                if children<=ids:break
+                ids.update(children)
+            camp_ids=list(CampObjectLink.objects.filter(company=company,construction_object_id__in=ids,camp__is_active=True).order_by('camp__name','pk').values_list('camp_id',flat=True).distinct())
     if object_id:values['construction_object']=str(object_id)
-    if camp_id:values['camps']=str(camp_id)
+    if camp_ids:
+        if hasattr(values,'setlist'):values.setlist('camps',[str(value) for value in camp_ids])
+        else:values['camps']=[str(value) for value in camp_ids]
     return values
 
 
@@ -158,6 +172,8 @@ def rotation_rows(company,camps,day,*,query='',position=None,state='',include_un
         if stay.camp_id in camp_ids:people[person_id]=stay.person
     if state=='DEPARTING':
         for person_id,stay in departures.items():people[person_id]=stay.person
+    from .models import ScheduleChangeRequest
+    pending_schedules={row.person_id:row for row in ScheduleChangeRequest.objects.filter(company=company,person_id__in=people,status='PENDING').select_related('requested_schedule')}
     days=[day.replace(day=n) for n in range(1,monthrange(day.year,day.month)[1]+1)];rows=[]
     for person_id,person in people.items():
         active=current.get(person_id);previous=last.get(person_id);initial_exit=initial.get(person_id);assigned=by_person[person_id]
@@ -214,6 +230,7 @@ def rotation_rows(company,camps,day,*,query='',position=None,state='',include_un
             'cycle_missing':not known_cycle,
             'schedule_cycle_label':f"{known_cycle['on_days']}/{known_cycle['off_days']}" if known_cycle else '',
             'schedule_from_zup':getattr(schedule,'schedule_from_zup',False),
+            'schedule_change_pending':pending_schedules.get(person_id),
             'state_since':state_since,'state_days':state_days,'state_days_source':state_source,
             'schedule_label':schedule_label(schedule,person),
             'arrival_overdue':bool(not active and status!='MV' and upcoming and upcoming<str(day)),

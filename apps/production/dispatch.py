@@ -173,6 +173,11 @@ class PersonForm(ActivityForm):
         from apps.resources.group_order import ordered
         self.fields['employee'].queryset=ordered(self.fields['employee'].queryset.select_related('position__planning_mapping__brigade__group'),group_path='position__planning_mapping__brigade__group',within=('position__name','last_name','first_name','pk'))
         self.fields['employee'].label_from_instance=lambda e: f"{e.display_name} · {e.position or 'Должность не указана'}"
+        if not getattr(self,'production_entry',False):
+            self.fields['work'].queryset=self.fields['work'].queryset.select_related('section','complex_object')
+            self.fields['work_item'].queryset=self.fields['work_item'].queryset.select_related('project_work')
+            self.fields['work'].label_from_instance=lambda work: f"{work}{' · Старая структура' if work.is_legacy_structure else ''}"
+            self.fields['work_item'].label_from_instance=lambda item: f"{item}{' · Старая структура' if item.is_legacy_structure or item.project_work.is_legacy_structure else ''}"
         self.fields['general'].label='Работал без привязки к работе'
     def clean(self):
         if not getattr(self,'production_entry',False):self.instance.assignment_reviewed=True
@@ -328,7 +333,8 @@ class DispatcherDayView(CompanyRequiredMixin,View):
         from .production_entry import ProductionPersonForm, candidate_keys, previous_people, work_catalogue, GENERAL_PATH
         catalogue=work_catalogue(obj)
         own_entry=section=='works' and role_code(request.user)=='DISPATCHER'
-        activity_keys=candidate_keys(obj,day,work_plan,catalogue,request.POST if bound else None,user=request.user if own_entry else None)
+        activity_keys=candidate_keys(obj,day,work_plan,catalogue,request.POST if bound else None,user=request.user if own_entry else None,
+            include_legacy=role_code(request.user)=='PERSONNEL_DISPATCHER')
         people_status=FactSectionDay.objects.filter(company=obj.company,construction_object=obj,date=day,section='labor').first()
         context['labor_revision']=request.POST.get('labor_revision','') if bound else (people_status.revision if people_status else 0)
         context['production_work_choices']=catalogue

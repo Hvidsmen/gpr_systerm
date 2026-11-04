@@ -216,10 +216,28 @@ class EmployeesImportTests(TestCase):
         self.assertGreater(query_at,open_at)
         self.assertIn("if($EmployeesImport){$arguments+=' -EmployeesImport'}",script[:open_at])
         self.assertNotIn('SELECT TOP (200001)',script[:open_at])
-        self.assertIn("employees_card_version=6;gender_source='ФизическоеЛицо.Пол'",script[query_at:])
+        self.assertIn("employees_card_version=7;gender_source='ФизическоеЛицо.Пол'",script[query_at:])
+        self.assertIn('schedule_catalog=$scheduleCatalogue',script[query_at:])
         self.assertIn("NULLIF(LTRIM(RTRIM(p.[_Fld31265])),N'')",script[query_at:])
         self.assertIn("NULLIF(LTRIM(RTRIM(p.[_Description])),N'')",script[query_at:])
         self.assertIn("NULLIF(LTRIM(RTRIM(e.[_Description])),N'')",script[query_at:])
+
+    def test_schedule_catalog_is_imported_and_missing_schedules_are_deactivated(self):
+        from apps.personnel.models import ZupWorkSchedule
+        old=ZupWorkSchedule.objects.create(company=self.company,name='Старый график')
+        result=apply_employees(self.run_record(),{
+            'employees':[self.row(schedule='Вахта 60/30')],
+            'schedule_catalog':[
+                {'ref':'a'*32,'name':'Вахта 60/30','marked':'0x00'},
+                {'ref':'b'*32,'name':'Удалённый график','marked':'0x01'},
+            ],
+        })
+        active=ZupWorkSchedule.objects.get(company=self.company,name='Вахта 60/30')
+        deleted=ZupWorkSchedule.objects.get(company=self.company,name='Удалённый график')
+        old.refresh_from_db()
+        self.assertTrue(active.is_active);self.assertEqual(active.source_ref,'a'*32)
+        self.assertFalse(deleted.is_active);self.assertFalse(old.is_active)
+        self.assertEqual(result['schedule_changes_applied'],0)
 
     def test_missing_empty_and_oversized_reports_explain_distinct_causes(self):
         run=self.run_record()
@@ -287,7 +305,7 @@ class EmployeesImportTests(TestCase):
             path = Path(directory)/'.runtime/1c-diagnostics'/run.pk.hex
             path.mkdir(parents=True)
             (path/'status.json').write_text(json.dumps({'ok': True}))
-            (path/'report.json').write_text(json.dumps({'employees_import': True, 'employees_card_version': 6, 'employees': [self.row()]}))
+            (path/'report.json').write_text(json.dumps({'employees_import': True, 'employees_card_version': 7, 'employees': [self.row()]}))
             from pathlib import PosixPath
             with override_settings(CONFIG_DIR=directory), patch('apps.accounts.one_c.os.name', 'nt'), patch('apps.accounts.one_c.Path', PosixPath), patch('apps.accounts.one_c.subprocess.CREATE_NO_WINDOW', 0, create=True), patch('apps.accounts.one_c.subprocess.run') as execute:
                 process_queue()
