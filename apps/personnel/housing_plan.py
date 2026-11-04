@@ -114,6 +114,9 @@ def position_headers(company,rows,plan_context,*,query='',position=None,state=''
         return pk
     def normalized(value):return ' '.join(str(value).split()).casefold()
     def maximum(values):return max((value for value in values if value is not None),default=None)
+    def belongs_to_source(row,source):
+        obj=row.get('assignment_object')
+        return row.get('camp') and row['camp'].pk in source['scope_camp_ids'] and (obj is None or obj.pk in source['scope_object_ids'])
     sources=plan_context['housing_plan_groups'];months=plan_context['housing_plan_months']
     from .models import CampObjectLink
     linked_camps=defaultdict(set)
@@ -135,12 +138,12 @@ def position_headers(company,rows,plan_context,*,query='',position=None,state=''
         source['totals']=totals;source['current_total']=totals[0]['value']
         source['peak_total']=maximum(cell['value'] for cell in totals)
         source['scope_camp_ids']=set().union(*(linked_camps[pk] for pk in source['scope_object_ids']))
-        scoped=[row for row in rows if row.get('camp') and row['camp'].pk in source['scope_camp_ids']]
+        scoped=[row for row in rows if belongs_to_source(row,source)]
         source['on_shift']=rotation_stats(scoped)['on_shift']
         source['shortage']=max(source['peak_total']-source['on_shift'],Decimal(0)) if source['peak_total'] is not None else None
         for row in source['rows']:
             by_name[normalized(row['name'])].add(row['id'])
-            plans.setdefault(row['id'],{'name':row['name'],'sources':[]})['sources'].append({'object':source['object'],'kind':source['kind'],'used_for':source['used_for'],'peak':maximum(row['values']),'brigade_id':row['id'],'scope_camp_ids':source['scope_camp_ids'],
+            plans.setdefault(row['id'],{'name':row['name'],'sources':[]})['sources'].append({'object':source['object'],'kind':source['kind'],'used_for':source['used_for'],'peak':maximum(row['values']),'brigade_id':row['id'],'scope_camp_ids':source['scope_camp_ids'],'scope_object_ids':source['scope_object_ids'],
                 'months':[{'month':month,'value':value,'versions':column['versions']} for month,value,column in zip(months,row['values'],source['columns'])]})
     position_ids={row['position'].pk for row in rows if row.get('position')}
     if position:position_ids.add(position.pk)
@@ -152,7 +155,7 @@ def position_headers(company,rows,plan_context,*,query='',position=None,state=''
     for row in rows:
         label=row['position_label'];key=normalized(label)
         group=groups.setdefault(key,{'name':label,'rows':[],'plan_ids':set()});group['rows'].append(row)
-        mapped=mappings.get(row['position'].pk) if row.get('position') else None
+        mapped=canonical(row['planning_position_id']) if row.get('planning_position_id') else mappings.get(row['position'].pk) if row.get('position') else None
         if mapped in plans:group['plan_ids'].add(mapped);row_plan_ids[id(row)]=mapped
         elif len(by_name[key])==1:
             group['plan_ids'].update(by_name[key]);row_plan_ids[id(row)]=next(iter(by_name[key]))
@@ -167,7 +170,7 @@ def position_headers(company,rows,plan_context,*,query='',position=None,state=''
         group.update(rotation_stats(group['rows']))
         group['plans']=[{**source,'position':plans[pk]['name']} for pk in sorted(group['plan_ids']) for source in plans[pk]['sources']]
         for plan in group['plans']:
-            scoped=[row for row in group['rows'] if row_plan_ids.get(id(row))==plan['brigade_id'] and row.get('camp') and row['camp'].pk in plan['scope_camp_ids']]
+            scoped=[row for row in group['rows'] if row_plan_ids.get(id(row))==plan['brigade_id'] and belongs_to_source(row,plan)]
             plan['on_shift']=rotation_stats(scoped)['on_shift']
             plan['shortage']=max(plan['peak']-plan['on_shift'],Decimal(0)) if plan['peak'] is not None else None
         output.append(group)
@@ -179,7 +182,10 @@ def position_headers(company,rows,plan_context,*,query='',position=None,state=''
     for group in output:
         brigade=next((catalogue[pk] for pk in sorted(group['plan_ids']) if pk in catalogue),None) or names.get(normalized(group['name']))
         actual=next((row.get('sort_position') or row.get('position') for row in group['rows'] if row.get('sort_position') or row.get('position')),None)
-        group['labor_group']=position_group(actual) if actual else brigade.group.name if brigade and brigade.group_id else 'Без группы'
+        explicit=any(row.get('planning_position_id') for row in group['rows'])
+        group['labor_group']=brigade.group.name if explicit and brigade and brigade.group_id else position_group(actual) if actual else brigade.group.name if brigade and brigade.group_id else 'Без группы'
+        default=next((plan for plan in group['plans'] if plan['kind']=='СМГ'),next(iter(group['plans']),None))
+        if default:group['assignment_initial']={'planning_position':default['brigade_id'],'construction_object':default['object'].pk}
     output.sort(key=lambda group:(labor_group_order(group['labor_group']),normalized(group['name'])))
     for index,group in enumerate(output):group['uid']=index+1
     return output

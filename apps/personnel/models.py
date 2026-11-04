@@ -81,6 +81,10 @@ class StaffingSlot(PersonnelModel):
     STATUSES = [('МВ', 'МВ — на вахте'), ('МО', 'МО — межвахтовый отдых'), ('OTHER', 'Другое / уточнить')]
     group = models.ForeignKey(StaffingGroup, on_delete=models.CASCADE, related_name='slots')
     person = models.ForeignKey(Person, null=True, blank=True, on_delete=models.PROTECT, related_name='assignments', verbose_name='Сотрудник (пусто — вакансия)')
+    planning_position = models.ForeignKey('resources.Brigade', on_delete=models.PROTECT, null=True, blank=True, related_name='personnel_assignments', verbose_name='Должность плана')
+    construction_object = models.ForeignKey('projects.ConstructionObject', on_delete=models.PROTECT, null=True, blank=True, related_name='personnel_assignments', verbose_name='Объект назначения')
+    assigned_from = models.DateField('Назначен с', null=True, blank=True)
+    assigned_until = models.DateField('Назначен по (включительно)', null=True, blank=True)
     camp = models.CharField('ВЖГ из исходного файла', max_length=100, blank=True)
     housing_camp = models.ForeignKey('Camp', on_delete=models.PROTECT, null=True, blank=True, verbose_name='ВЖГ')
     status = models.CharField('Текущий статус', choices=STATUSES, max_length=10, blank=True)
@@ -92,12 +96,18 @@ class StaffingSlot(PersonnelModel):
     source_row = models.PositiveIntegerField(null=True, blank=True, editable=False)
     class Meta:
         ordering = ['group__order', 'pk']
+        constraints = [models.CheckConstraint(condition=models.Q(assigned_until__isnull=True)|models.Q(assigned_until__gte=models.F('assigned_from')), name='personnel_assignment_dates')]
     def clean(self):
-        for name in ['group', 'person', 'pattern', 'housing_camp']:
+        for name in ['group', 'person', 'pattern', 'housing_camp', 'planning_position', 'construction_object']:
             obj = getattr(self, name, None)
             if obj and obj.company_id != self.company_id: raise ValidationError('Данные другой компании.')
         if self.pattern_id and self.group_id and self.pattern.board_id != self.group.board_id: raise ValidationError('График другого объекта.')
         if not self.person_id and self.status: raise ValidationError('У вакансии не может быть фактического статуса.')
+        if self.planning_position_id or self.construction_object_id:
+            if not all((self.planning_position_id,self.construction_object_id,self.person_id,self.housing_camp_id,self.assigned_from)):
+                raise ValidationError('Для назначения укажите сотрудника, должность плана, объект, ВЖГ и дату начала.')
+        if self.assigned_until and (not self.assigned_from or self.assigned_until < self.assigned_from):
+            raise ValidationError({'assigned_until':'Дата окончания не может быть раньше начала назначения.'})
 
 
 class Camp(PersonnelModel):

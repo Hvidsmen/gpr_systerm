@@ -163,7 +163,8 @@ def cancel_stay(user,stay,reason,version):
 
 
 def schedule_slot(person,slots=None):
-    if person.schedule_slot_id and person.schedule_slot.person_id==person.pk and person.schedule_slot.company_id==person.company_id:return person.schedule_slot
+    if slots is not None:slots=list(slots)
+    if person.schedule_slot_id and person.schedule_slot.person_id==person.pk and person.schedule_slot.company_id==person.company_id and (slots is None or any(slot.pk==person.schedule_slot_id for slot in slots)):return person.schedule_slot
     slots=sorted(slots,key=lambda row:-row.pk) if slots is not None else list(person.assignments.select_related('pattern','group__board').order_by('-pk'))
     if len(slots)==1:return slots[0]
     if slots and len({(s.pattern_id,str(sorted(s.calendar.items()))) for s in slots})==1:return slots[0]
