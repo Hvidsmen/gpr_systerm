@@ -49,6 +49,10 @@ select.search-select-native { position:absolute !important; width:1px !important
 .search-select-chevron { width:7px; height:7px; flex:none; border-right:1.5px solid #748299; border-bottom:1.5px solid #748299; transform:rotate(45deg); margin:0 4px 4px; }
 .search-select-popup { position:fixed; z-index:2500; display:flex; flex-direction:column; background:#fff; border:1px solid #d4deec; border-radius:12px; box-shadow:0 12px 32px rgb(15 23 42 / 16%); padding:10px; font-size:14px; }
 .search-select-popup[hidden] { display:none !important; }
+.search-select-compact { padding:4px; border-radius:8px; box-shadow:0 5px 16px rgb(36 53 75 / 12%); }
+.search-select-compact .search-select-options { margin-top:0; }
+.search-select-compact .search-select-option { padding:7px 9px; font-size:13px; }
+.search-select-compact .search-select-option:focus-visible { outline:2px solid var(--app-form-focus); outline-offset:-2px; }
 .search-select-search { width:100%; flex:none; min-height:38px; border:1px solid #dbe3ee; border-radius:7px; background:#f8fafc; padding:8px 10px; font-size:14px; outline:none; }
 .search-select-search:focus { border-color:var(--app-form-focus); box-shadow:0 0 0 2px rgb(37 99 235 / 9%); }
 .search-select-options { margin-top:8px; overflow:auto; min-height:0; overscroll-behavior:contain; }

@@ -10,6 +10,7 @@
   class SearchSelect {
     constructor(select) {
       this.select = select;
+      this.compact = select.hasAttribute('data-compact-select') && !select.multiple;
       this.limit = 100;
       this.shell = document.createElement('div');
       this.shell.className = 'search-select-shell';
@@ -36,12 +37,14 @@
       select.tabIndex = -1;
       this.popup = document.createElement('div');
       this.popup.className = 'search-select-popup';
+      this.popup.classList.toggle('search-select-compact', this.compact);
       this.popup.hidden = true;
       this.search = document.createElement('input');
       this.search.type = 'search';
       this.search.autocomplete = 'off';
       this.search.placeholder = 'Поиск в списке…';
       this.search.className = 'search-select-search';
+      this.search.hidden = this.compact;
       this.options = document.createElement('div');
       this.options.className = 'search-select-options';
       this.options.id = 'search-select-options-' + (++sequence);
@@ -122,7 +125,9 @@
       this.limit = 100;
       this.popup.hidden = false;
       this.button.setAttribute('aria-expanded', 'true');
-      this.render(); this.position(); this.search.focus({preventScroll:true});
+      this.render(); this.position();
+      const focus = this.compact ? (this.options.querySelector('[aria-selected="true"]:not(:disabled)') || this.options.querySelector('[role="option"]:not(:disabled)')) : this.search;
+      focus?.focus({preventScroll:true});
     }
     close(returnFocus = false) {
       this.popup.hidden = true;
@@ -134,7 +139,7 @@
       if (!this.isOpen) return;
       const rect = this.button.getBoundingClientRect();
       if (!rect.width || !rect.height) {this.close(); return;}
-      const width = Math.min(Math.max(rect.width, 280), window.innerWidth - 20);
+      const width = Math.min(Math.max(rect.width, this.compact ? 140 : 280), window.innerWidth - 20);
       const below = window.innerHeight - rect.bottom - 16;
       const above = rect.top - 16;
       const upwards = below < 180 && above > below;
@@ -153,6 +158,7 @@
       this.sync();
     }
     render() {
+      const focusedIndex = this.compact && this.options.contains(document.activeElement) ? document.activeElement.dataset.optionIndex : null;
       const all = [...this.select.options].filter(option => !option.hidden);
       let options = all.filter(option => matches((option.dataset.objectPath || option.textContent) + ' ' + (option.dataset.searchAliases || '') + ' ' + (option.parentElement.tagName === 'OPTGROUP' ? option.parentElement.label : ''), this.search.value));
       const ancestors = new Set(options.flatMap(option => JSON.parse(option.dataset.objectAncestors || '[]')).map(String));
@@ -176,6 +182,7 @@
         const item = document.createElement('button');
         item.type = 'button'; item.className = 'search-select-option'; item.tabIndex = -1;
         item.setAttribute('role', 'option'); item.setAttribute('aria-selected', String(option.selected));
+        if (this.compact) item.dataset.optionIndex = String(option.index);
         item.disabled = option.disabled || Boolean(group?.disabled);
         const mark = document.createElement('span'); mark.className = 'search-select-mark'; mark.textContent = option.selected ? '✓' : ''; mark.setAttribute('aria-hidden', 'true');
         const text = document.createElement('span'); text.textContent = option.dataset.objectLabel || (!option.value && /^[-–—]+$/.test(option.textContent.trim()) ? 'Не выбрано' : (option.textContent || 'Не выбрано'));
@@ -216,6 +223,7 @@
         more.addEventListener('click', () => {this.limit += 100; this.render();}); this.options.append(more);
       }
       this.position();
+      if (focusedIndex != null) this.options.querySelector(`[data-option-index="${focusedIndex}"]:not(:disabled)`)?.focus({preventScroll:true});
     }
     keydown(event) {
       if (event.key === 'Tab') {this.close(true); return;}
@@ -223,7 +231,7 @@
       const items = [...this.options.querySelectorAll('[role="option"]:not(:disabled)')];
       const index = items.indexOf(document.activeElement);
       if (event.key === 'ArrowDown') {event.preventDefault(); items[Math.min(index + 1, items.length - 1)]?.focus();}
-      else if (event.key === 'ArrowUp') {event.preventDefault(); index <= 0 ? this.search.focus() : items[index - 1].focus();}
+      else if (event.key === 'ArrowUp') {event.preventDefault(); index <= 0 ? (this.compact ? items[0] : this.search)?.focus() : items[index - 1].focus();}
       else if (event.key === 'Enter' && event.target === this.search) {event.preventDefault(); items[0]?.click();}
       else if (event.target !== this.search && event.key === 'Home') {event.preventDefault(); items[0]?.focus();}
       else if (event.target !== this.search && event.key === 'End') {event.preventDefault(); items.at(-1)?.focus();}
