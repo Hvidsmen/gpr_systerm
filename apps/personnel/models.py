@@ -31,6 +31,9 @@ class Person(PersonnelModel):
     notes = models.TextField('Примечание', blank=True)
     employee = models.OneToOneField('resources.Employee', on_delete=models.PROTECT, null=True, blank=True, related_name='personnel_card', verbose_name='Сотрудник производственного учёта')
     schedule_slot = models.ForeignKey('StaffingSlot', on_delete=models.SET_NULL, null=True, blank=True, related_name='primary_schedules', verbose_name='Строка графика')
+    dispatcher_removed_at=models.DateTimeField('Удалён из диспетчерской',null=True,blank=True)
+    dispatcher_removed_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,blank=True,related_name='+',verbose_name='Удалил из диспетчерской')
+    dispatcher_removal_reason=models.TextField('Причина удаления из диспетчерской',blank=True)
     class Meta:
         ordering = ['full_name', 'pk']
         constraints = [models.UniqueConstraint(fields=['company', 'employee_number'], condition=~models.Q(employee_number=''), name='personnel_unique_employee_number')]
@@ -38,6 +41,7 @@ class Person(PersonnelModel):
         super().clean()
         if self.employee_id and self.employee.company_id != self.company_id: raise ValidationError({'employee':'Сотрудник другой компании.'})
         if self.schedule_slot_id and (self.schedule_slot.company_id != self.company_id or self.schedule_slot.person_id != self.pk): raise ValidationError({'schedule_slot':'Выберите строку графика этого сотрудника.'})
+        if self.dispatcher_removed_by_id and self.dispatcher_removed_by.company_id != self.company_id:raise ValidationError({'dispatcher_removed_by':'Пользователь другой компании.'})
     @property
     def display_employee_number(self):return self.employee.employee_number if self.employee_id else self.employee_number
     @property

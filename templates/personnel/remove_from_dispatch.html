@@ -1,0 +1,9 @@
+{% extends 'base.html' %}
+{% block title %}Удалить из диспетчерской{% endblock %}
+{% block content %}<h1>Удалить из диспетчерской</h1>
+<div class="card card-body"><h2 class="h5">{{ person.display_name }}</h2>
+<p>Сотрудник исчезнет из диспетчерской и списков назначения. Кадровая карточка, факты и история заездов/выездов сохранятся.</p>
+{% if has_active_assignment %}<div class="alert alert-danger">Сначала удалите действующее назначение сотрудника.</div>{% endif %}
+{% if has_pending_request %}<div class="alert alert-danger">Сначала завершите или отмените открытую заявку перевахты.</div>{% endif %}
+<form method="post">{% csrf_token %}<div class="mb-3"><label class="form-label" for="removal-reason">Причина удаления</label><textarea class="form-control" id="removal-reason" name="reason" rows="3" required></textarea></div><div class="d-flex gap-2"><a class="btn btn-outline-secondary" href="{% url 'personnel:housing' %}">Отмена</a><button class="btn btn-danger"{% if has_active_assignment or has_pending_request %} disabled{% endif %}>Удалить из диспетчерской</button></div></form></div>
+{% endblock %}

@@ -147,7 +147,7 @@ class MovementForm(forms.Form):
         self.fields['camp'].queryset=Camp.objects.filter(company=company).order_by('name','pk')
         self.initial.setdefault('camp',camp.pk)
         kind=self.data.get('kind',self.initial.get('kind','ARRIVAL'))
-        employees=Employee.objects.filter(company=company).select_related('position')
+        employees=Employee.objects.filter(company=company).exclude(personnel_card__dispatcher_removed_at__isnull=False).select_related('position')
         present=present_stays(company,day).filter(camp=camp).values('person__employee_id')
         # Keep present archived employees selectable for departure/transfer.
         # The browser switches the visible choices without clearing the form.
@@ -197,7 +197,7 @@ class MovementRecommendationForm(forms.Form):
         from apps.resources.models import Employee
         from .models import Camp
         super().__init__(*args,**kwargs);self.company=company;self.day=day;self.kind=kind
-        self.fields['employees'].queryset=Employee.objects.filter(company=company,is_active=True).select_related('position').order_by('last_name','first_name','middle_name','pk')
+        self.fields['employees'].queryset=Employee.objects.filter(company=company,is_active=True).exclude(personnel_card__dispatcher_removed_at__isnull=False).select_related('position').order_by('last_name','first_name','middle_name','pk')
         self.fields['employees'].label_from_instance=lambda employee:employee.display_name+(' · '+str(employee.position) if employee.position_id else '')
         self.fields['camp'].queryset=Camp.objects.filter(company=company,is_active=True).order_by('name')
         self.initial.setdefault('planned_on',day)

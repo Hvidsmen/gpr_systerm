@@ -117,7 +117,7 @@ class AssignmentForm(forms.Form):
         super().__init__(*args,**kwargs)
         self.company=company;self.row=row
         history=Person.objects.filter(company=company,employee_id=OuterRef('pk')).filter(Q(stays__isnull=False)|Q(housing_events__isnull=False))
-        employees=Employee.objects.filter(company=company)
+        employees=Employee.objects.filter(company=company).exclude(personnel_card__dispatcher_removed_at__isnull=False)
         if row:
             employees=employees.filter(pk=row.person.employee_id)
         else:

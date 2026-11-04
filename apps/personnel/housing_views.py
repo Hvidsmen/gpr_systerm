@@ -34,6 +34,26 @@ def movement_access(request):
 
 
 @login_required
+@require_http_methods(['GET','POST'])
+def remove_from_dispatch(request,pk):
+    movement_access(request)
+    person=get_object_or_404(Person.objects.select_related('employee'),pk=pk,company=request.user.company,dispatcher_removed_at=None)
+    active=person.assignments.filter(planning_position__isnull=False,cancelled_at=None,replaced_on=None).exists()
+    pending=person.movement_review_requests.filter(status='OPEN').exists()
+    if request.method=='POST':
+        reason=' '.join(request.POST.get('reason','').split())
+        if active:messages.error(request,'Сначала удалите действующее назначение сотрудника.')
+        elif pending:messages.error(request,'Сначала завершите или отмените открытую заявку перевахты.')
+        elif not reason:messages.error(request,'Укажите причину удаления из диспетчерской.')
+        else:
+            person.dispatcher_removed_at=timezone.now();person.dispatcher_removed_by=request.user;person.dispatcher_removal_reason=reason
+            person.save(update_fields=['dispatcher_removed_at','dispatcher_removed_by','dispatcher_removal_reason','updated_at'])
+            messages.success(request,f'{person.display_name} удалён из диспетчерской. Кадровая карточка и история сохранены.')
+            return redirect(reverse('personnel:housing'))
+    return render(request,'personnel/remove_from_dispatch.html',{'person':person,'has_active_assignment':active,'has_pending_request':pending,'personnel_section':'management'})
+
+
+@login_required
 def camps(request):
     from core.permissions import require_roles,READ_ROLES
     require_roles(request.user,READ_ROLES|{'HR_HEAD','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER','ALL_FACT_DISPATCHER'})

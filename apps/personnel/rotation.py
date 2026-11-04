@@ -103,7 +103,7 @@ def rotation_rows(company,camps,day,*,query='',position=None,state='',include_un
     schedule_stays=stays_by_person(company)
     camp_ids={camp.pk for camp in camps};camp_names={camp.name.strip().casefold():camp for camp in camps}
     from .plan_assignments import active_on
-    slots=list(StaffingSlot.objects.filter(company=company).filter(active_on(day)).select_related('group__board','housing_camp','planning_position__group','construction_object','person__employee__position__planning_mapping__brigade__group','person__schedule_slot').prefetch_related('pattern','person__schedule_slot__pattern'))
+    slots=list(StaffingSlot.objects.filter(company=company).filter(Q(person=None)|Q(person__dispatcher_removed_at=None)).filter(active_on(day)).select_related('group__board','housing_camp','planning_position__group','construction_object','person__employee__position__planning_mapping__brigade__group','person__schedule_slot').prefetch_related('pattern','person__schedule_slot__pattern'))
     removed_people=set(StaffingSlot.objects.filter(company=company,planning_position__isnull=False,cancelled_at__isnull=False,person__isnull=False).values_list('person_id',flat=True))
     all_assignments=defaultdict(list)
     for slot in slots:
@@ -115,14 +115,14 @@ def rotation_rows(company,camps,day,*,query='',position=None,state='',include_un
     by_person=defaultdict(list)
     for slot in relevant:
         if slot.person_id:by_person[slot.person_id].append(slot)
-    all_stays=list(CampStay.objects.filter(company=company,cancelled_at=None,arrived_on__lte=day).select_related('camp','person__employee__position__planning_mapping__brigade__group','person__schedule_slot__group__board').prefetch_related('person__schedule_slot__pattern').order_by('-arrived_on','-pk'))
+    all_stays=list(CampStay.objects.filter(company=company,person__dispatcher_removed_at=None,cancelled_at=None,arrived_on__lte=day).select_related('camp','person__employee__position__planning_mapping__brigade__group','person__schedule_slot__group__board').prefetch_related('person__schedule_slot__pattern').order_by('-arrived_on','-pk'))
     current={};last={};departures={}
     for stay in all_stays:
         last.setdefault(stay.person_id,stay)
         if stay.camp_id in camp_ids and stay.departed_on==day:departures.setdefault(stay.person_id,stay)
         if (stay.departed_on is None or stay.departed_on>day) and stay.arrived_on!=stay.departed_on:current.setdefault(stay.person_id,stay)
     from .models import HousingEvent
-    initial={row.person_id:row for row in HousingEvent.objects.filter(company=company,kind='DEPARTURE',stay=None,date__lte=day).select_related('person__employee__position__planning_mapping__brigade__group','from_camp').order_by('date','pk')}
+    initial={row.person_id:row for row in HousingEvent.objects.filter(company=company,person__dispatcher_removed_at=None,kind='DEPARTURE',stay=None,date__lte=day).select_related('person__employee__position__planning_mapping__brigade__group','from_camp').order_by('date','pk')}
     people={slot.person_id:slot.person for slot in relevant if slot.person_id}
     for person_id,event in initial.items():
         if event.from_camp_id in camp_ids:people[person_id]=event.person

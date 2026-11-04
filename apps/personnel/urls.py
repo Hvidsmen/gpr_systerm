@@ -17,6 +17,7 @@ urlpatterns=[
     path('housing/stays/<int:pk>/cancel/',housing_views.cancel,name='housing_cancel'),
     path('people/<int:pk>/individual-calendar/',housing_views.individual_calendar,name='individual_calendar'),
     path('people/<int:pk>/schedule/',housing_views.schedule,name='person_schedule'),
+    path('people/<int:pk>/remove-from-dispatch/',housing_views.remove_from_dispatch,name='remove_from_dispatch'),
     path('people/link/',housing_views.link_people,name='link_people'),
     path('',views.board_list,name='board_list'),
     path('create/',views.board_create,name='board_create'),
