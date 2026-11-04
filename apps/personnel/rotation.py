@@ -179,9 +179,9 @@ def rotation_rows(company,camps,day,*,query='',position=None,state='',include_un
             'schedule_info':description(slot,day,schedule_stays.get(person_id,[])),
             'cycle_missing':not known_cycle,
             'state_since':state_since,'state_days':state_days,'state_days_source':state_source,
-            'schedule_label':employee_schedule_label(employee),
+            'schedule_label':str(slot.pattern) if slot and slot.planning_position_id and slot.pattern_id else employee_schedule_label(employee),
             'arrival_overdue':bool(not active and status!='MV' and upcoming and upcoming<str(day)),
-            'arrived_on':active.arrived_on if active else slot.arrival_date if slot else None,'last_departure':previous.departed_on if previous else initial_exit.date if initial_exit else None,
+            'arrived_on':active.arrived_on if active else previous.arrived_on if previous else slot.arrival_date if slot else None,'arrival_is_actual':bool(active or previous),'last_departure':previous.departed_on if previous else initial_exit.date if initial_exit else None,
             'planned_departure_display':departure,'planned_departure':outgoing,'departure_days':delta,
             'departure_warning':('overdue' if delta<0 else 'soon' if delta<=14 else '') if delta is not None else '',
             'planned_return':date.fromisoformat(upcoming) if upcoming else None,'codes':[calendar.get(str(d),'') for d in days],'today_code':calendar.get(str(day),'')})

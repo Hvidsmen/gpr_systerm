@@ -60,6 +60,9 @@ def clear(root, execute=False):
                 before = counts(db)
                 # Preserve employee cards. Remove their pointer to deleted schedules.
                 db.execute('UPDATE personnel_person SET schedule_slot_id=NULL WHERE company_id=?', [company])
+                # Newer TESTs retain a reference to the one-time opening movement.
+                if 'initial_movement_id' in {column[1] for column in db.execute('PRAGMA table_info(personnel_staffingslot)')}:
+                    db.execute('UPDATE personnel_staffingslot SET initial_movement_id=NULL WHERE company_id=?', [company])
                 for table in TABLES:
                     db.execute(f'DELETE FROM {table} WHERE company_id=?', [company])
                 if any(counts(db).values()):raise RuntimeError('Personnel cleanup was incomplete.')

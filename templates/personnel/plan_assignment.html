@@ -1,13 +1,19 @@
-{% extends 'base.html' %}
+{% extends 'base.html' %}{% load static %}
 {% block title %}{{ title }}{% endblock %}
 {% block content %}
 <h1>Персонал</h1>{% include 'personnel/_personnel_sections.html' %}
 <p><a href="{% url 'personnel:housing' %}">← Персонал</a></p>
 <h2 class="h4">{{ title }}</h2>
 <p class="text-muted">Закрепите сотрудника за должностью плана и объектом. Одна запись используется при сравнении с СМГ и ГПР; штатная должность сотрудника сохраняется.</p>
-<div class="alert alert-info">Назначение не подтверждает присутствие на вахте. После приезда оформите заезд в разделе «Заезд / выезд».</div>
+<div class="alert alert-info">При первом вводе можно сразу указать начальный статус и реальные даты. Дальнейшие перемещения оформляйте в разделе «Заезд / выезд».</div>
 <form method="post" class="card card-body" style="max-width:900px">{% csrf_token %}
 {% include 'forms/fields.html' with form=form %}
+{% if initial_form %}<fieldset data-assignment-initial><legend class="h5">Начальное состояние · один раз</legend>
+<p class="small text-muted">Если сотрудник уже на вахте — укажите дату заезда. Если на МО — дату выезда; дату предыдущего заезда можно оставить неизвестной. Допускаются реальные даты в прошлом.</p>
+<p class="small text-muted" data-initial-existing hidden>У сотрудника уже есть история перемещений. Для изменения статуса используйте «Заезд / выезд».</p>
+{% include 'forms/fields.html' with form=initial_form %}
+</fieldset>{% else %}<p class="small text-muted">Начальное состояние уже введено. Перемещения и исправления — через «Заезд / выезд» и историю сотрудника.</p>{% endif %}
 <div class="d-flex flex-wrap gap-2"><button class="btn btn-primary">{% if row %}Сохранить назначение{% else %}Назначить сотрудника{% endif %}</button><a class="btn btn-outline-secondary" href="{% url 'personnel:housing' %}">Отмена</a></div>
 </form>
 {% endblock %}
+{% block extra_js %}<script src="{% static 'personnel/assignment_initial.js' %}?v=20261104-initial-state" defer></script>{% endblock %}

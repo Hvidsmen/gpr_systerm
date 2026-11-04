@@ -57,6 +57,15 @@ class ClearStagingPersonnelTests(TestCase):
         with singleton(self.root/'.runtime/server.lock'),self.assertRaises(OSError):reset.clear(self.root,True)
         self.assertEqual(self.database.read_bytes(),before)
 
+    def test_clear_handles_new_initial_movement_pointer_and_retains_other_company(self):
+        with closing(sqlite3.connect(self.database)) as db,db:
+            db.execute('ALTER TABLE personnel_staffingslot ADD COLUMN initial_movement_id INTEGER REFERENCES personnel_housingevent(id)')
+            db.execute('UPDATE personnel_staffingslot SET initial_movement_id=id')
+        (self.root/'.runtime/server.stop').touch();reset.clear(self.root,True)
+        with closing(sqlite3.connect(self.database)) as db:
+            self.assertEqual(db.execute('SELECT company_id,initial_movement_id FROM personnel_staffingslot').fetchall(),[(2,2)])
+            self.assertEqual(db.execute('PRAGMA foreign_key_check').fetchall(),[])
+
     def test_wrong_port_production_marker_and_production_source_are_refused(self):
         for change in ({'port':8001},{'source':{**self.config['source'],'database':str(self.database)}}):
             atomic_json(self.root/'staging.json',{**self.config,**change})

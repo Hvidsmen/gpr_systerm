@@ -209,7 +209,7 @@ def workspace(request, movements=False):
         'roster_view':roster_view,'roster_view_links':view_links,'roster_sections':roster_sections(position_groups,roster_view=='groups',request.user.company),
         'camp':camp,'camps':camps,'day':day,'rows':rows,'dates':days,'form':form,'query':values.get('q',''),
         'rotation_calendar_url':rotation_calendar_url,'calendar_dates':calendar_dates,'calendar_months':calendar_months,'calendar_start':calendar_start,'calendar_end':calendar_end,'events':events,'total':rotation_stats['people'],'objects':objects,
-        'unknown_count':Person.objects.filter(company=request.user.company,stays__isnull=True).count(),
+        'unknown_count':Person.objects.filter(company=request.user.company,stays__isnull=True,housing_events__isnull=True).count(),
         'unlinked_count':Person.objects.filter(company=request.user.company,employee=None).count(),**window_context(request.user,day)})
 
 
