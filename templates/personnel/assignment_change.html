@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+{% block title %}Сменить назначение{% endblock %}
+{% block content %}
+<h1>Персонал</h1>{% include 'personnel/_personnel_sections.html' %}
+<p><a href="{% url 'personnel:housing_history' source.person_id %}#assignments">← История назначений сотрудника</a></p>
+<h2 class="h4">Сменить назначение</h2>
+<div class="card card-body mb-3" style="max-width:900px"><strong>{{ source.person.display_name }}</strong><span>{{ source.planning_position }} · {{ source.construction_object }} · {{ source.housing_camp }}</span><small class="text-muted">Начало прежнего назначения: {{ source.assigned_from|date:'d.m.Y' }}. График {{ source.pattern|default:'не задан' }} сохраняется.</small></div>
+<p class="text-muted">Укажите новое назначение и дату перехода. До этой даты сохраняется прежнее назначение, с неё действует новое. Смена в день начала также сохраняет прежнюю запись в истории.</p>
+<div class="alert alert-info">Статус «На вахте / МО», фактические заезды и выезды, проживание и штатная должность не меняются. Фактический переезд в другой ВЖГ оформляйте через «Заезд / выезд».</div>
+{% if successor %}<div class="alert alert-warning">По этому назначению уже оформлена смена. <a href="{% url 'personnel:plan_assignment_edit' successor.pk %}">Открыть новое назначение</a>.</div>{% endif %}
+<form method="post" class="card card-body" style="max-width:900px">{% csrf_token %}{% include 'forms/fields.html' with form=form %}
+<div class="d-flex gap-2 flex-wrap">{% if not successor %}<button class="btn btn-primary">Сменить назначение</button>{% endif %}<a class="btn btn-outline-secondary" href="{% url 'personnel:housing' %}">Вернуться к персоналу</a></div></form>
+{% endblock %}

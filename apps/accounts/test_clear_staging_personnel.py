@@ -66,6 +66,15 @@ class ClearStagingPersonnelTests(TestCase):
             self.assertEqual(db.execute('SELECT company_id,initial_movement_id FROM personnel_staffingslot').fetchall(),[(2,2)])
             self.assertEqual(db.execute('PRAGMA foreign_key_check').fetchall(),[])
 
+    def test_clear_handles_assignment_history_chain(self):
+        with closing(sqlite3.connect(self.database)) as db,db:
+            db.execute('ALTER TABLE personnel_staffingslot ADD COLUMN previous_assignment_id INTEGER REFERENCES personnel_staffingslot(id)')
+            db.execute('INSERT INTO personnel_staffingslot(id,company_id,pattern_id,previous_assignment_id) VALUES(3,1,1,1)')
+        (self.root/'.runtime/server.stop').touch();reset.clear(self.root,True)
+        with closing(sqlite3.connect(self.database)) as db:
+            self.assertEqual(db.execute('SELECT company_id FROM personnel_staffingslot').fetchall(),[(2,)])
+            self.assertEqual(db.execute('PRAGMA foreign_key_check').fetchall(),[])
+
     def test_wrong_port_production_marker_and_production_source_are_refused(self):
         for change in ({'port':8001},{'source':{**self.config['source'],'database':str(self.database)}}):
             atomic_json(self.root/'staging.json',{**self.config,**change})
