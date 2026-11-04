@@ -5,7 +5,7 @@ from django.urls import reverse
 from django.utils import timezone
 from apps.accounts.models import Role,User
 from .models import MovementRecommendationOverride,MovementReviewRequest
-from .movement_recommendations import add,build,exclude
+from .movement_recommendations import add,build,create_requests,exclude
 
 
 class MovementRecommendationTests(TestCase):
@@ -38,6 +38,14 @@ class MovementRecommendationTests(TestCase):
         result=build(self.company,self.day);self.assertEqual(len(result['ARRIVAL']),1);self.assertTrue(result['ARRIVAL'][0]['manual'])
         from . import housing
         housing.move(self.hr,'ARRIVAL',self.a,self.day,[self.second_person])
+        self.assertEqual(build(self.company,self.day)['ARRIVAL'],[])
+
+    @patch('apps.personnel.rotation.rotation_rows')
+    def test_recommendation_can_be_converted_to_request(self,rotation_rows):
+        rotation_rows.return_value=self.auto_rows();result=build(self.company,self.day);row=result['ARRIVAL'][0]
+        self.assertEqual(create_requests(self.personnel_dispatcher,[row['token']]),1)
+        request=MovementReviewRequest.objects.get()
+        self.assertEqual((request.person,request.kind,request.to_camp,request.movement_date),(self.second_person,'ARRIVAL',self.a,row['planned_on']))
         self.assertEqual(build(self.company,self.day)['ARRIVAL'],[])
 
     def test_personnel_dispatcher_has_dispatch_and_rotation_workspaces(self):

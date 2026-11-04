@@ -157,12 +157,14 @@ def workspace(request, movements=False):
             else:
                 messages.success(request,f'Рекомендации добавлены. Сотрудников: {count}.')
                 return redirect(reverse('personnel:movements')+'#recommendations-'+recommendation_kind.lower())
-    if request.method=='POST' and workflow_action=='recommendation_remove':
-        from .movement_recommendations import exclude
-        try:count=exclude(request.user,request.POST.getlist('recommendations'))
+    if request.method=='POST' and (workflow_action in {'recommendation_remove','recommendation_request'} or request.POST.get('request_one')):
+        from .movement_recommendations import create_requests,exclude
+        tokens=[request.POST['request_one']] if request.POST.get('request_one') else request.POST.getlist('recommendations')
+        action='recommendation_request' if workflow_action=='recommendation_request' or request.POST.get('request_one') else 'recommendation_remove'
+        try:count=create_requests(request.user,tokens) if action=='recommendation_request' else exclude(request.user,tokens)
         except ValidationError as exc:messages.error(request,'; '.join(exc.messages))
         else:
-            messages.success(request,f'Из рекомендаций убрано сотрудников: {count}.')
+            messages.success(request,(f'Заявки оформлены и отправлены в перевахту. Сотрудников: {count}.' if action=='recommendation_request' else f'Из рекомендаций убрано сотрудников: {count}.'))
             return redirect(reverse('personnel:movements')+'#recommendations-'+(recommendation_kind.lower() if recommendation_kind in {'ARRIVAL','DEPARTURE'} else 'arrival'))
     form=MovementForm(request.POST if request.method=='POST' and workflow_action=='move' else None,company=request.user.company,camp=camp,day=day,fixed_employee=fixed_employee,allow_direct=request.user.role.code=='PERSONNEL_DISPATCHER',
         initial={'personal_scope':personal_token,'kind':kind,'date':day,'camp':None if request.GET.get('choose_camp')=='1' and kind=='ARRIVAL' else camp.pk,'snapshot':housing.movement_snapshot(request.user),'employees':[selected_employee] if selected_employee.isdigit() else []})

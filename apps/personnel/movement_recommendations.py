@@ -3,7 +3,7 @@ from datetime import timedelta
 from django.core import signing
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from .models import Camp,MovementRecommendationOverride,Person
+from .models import Camp,MovementRecommendationOverride,MovementReviewRequest,Person
 from . import housing
 
 TOKEN_SALT='personnel-movement-recommendation-v1'
@@ -39,6 +39,9 @@ def build(company,day):
         if override.action=='EXCLUDE':auto.pop(key,None);continue
         eligible=(override.person_id,override.camp_id) not in present if override.kind=='ARRIVAL' else (override.person_id,override.camp_id) in present
         if eligible:auto[key]=_row(override.kind,override.person,override.camp,override.planned_on,manual=True)
+    for request in MovementReviewRequest.objects.filter(company=company,movement_date__range=(day,end)).exclude(status='CANCELLED'):
+        camp_id=request.to_camp_id if request.kind=='ARRIVAL' else request.from_camp_id
+        if camp_id:auto.pop(_key(request.kind,request.person_id,camp_id,request.movement_date),None)
     values=sorted(auto.values(),key=lambda row:(row['planned_on'],row['person'].display_name.casefold(),row['camp'].name.casefold()))
     return {'ARRIVAL':[row for row in values if row['kind']=='ARRIVAL'],'DEPARTURE':[row for row in values if row['kind']=='DEPARTURE']}
 
@@ -80,4 +83,23 @@ def add(user,kind,employees,camp,planned_on):
         MovementRecommendationOverride.objects.update_or_create(company=user.company,person=person,camp=camp,kind=kind,planned_on=planned_on,
             defaults={'action':'ADD','recorded_by':user})
         count+=1
+    return count
+
+
+@transaction.atomic
+def create_requests(user,tokens):
+    count=0
+    for token in dict.fromkeys(tokens):
+        kind,person,camp,planned_on=decode(token,user.company)
+        lookup={'company':user.company,'person':person,'kind':kind,'movement_date':planned_on,
+            'to_camp':camp if kind=='ARRIVAL' else None,'from_camp':camp if kind=='DEPARTURE' else None}
+        if MovementReviewRequest.objects.filter(**lookup).exists():continue
+        employee=person.employee
+        MovementReviewRequest.objects.create(**lookup,requested_by=user,
+            employment_kind='STAFF',position_name=employee.display_position if employee else '',site=camp.name,
+            phone=person.phone,travel_status='Прибыл' if kind=='ARRIVAL' else 'Убыл')
+        MovementRecommendationOverride.objects.update_or_create(company=user.company,person=person,camp=camp,kind=kind,planned_on=planned_on,
+            defaults={'action':'EXCLUDE','recorded_by':user})
+        count+=1
+    if not tokens:raise ValidationError('Выберите хотя бы одного сотрудника.')
     return count
