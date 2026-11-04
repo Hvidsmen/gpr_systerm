@@ -1,5 +1,6 @@
 """Prepare/check a TEST release before its HTTP worker or latest data is stopped."""
 import json
+from contextlib import closing
 from pathlib import Path
 import sqlite3
 import sys
@@ -20,7 +21,7 @@ class StagingPreflightTests(TestCase):
         self.old='a'*40;self.new='b'*40
         for path in [self.root/'data',self.root/'.runtime',self.root/'staticfiles',self.prod]:path.mkdir(parents=True,exist_ok=True)
         self.db=self.root/'data/db.sqlite3'
-        with sqlite3.connect(self.db) as db:db.execute('CREATE TABLE marker(value TEXT)');db.execute("INSERT INTO marker VALUES ('before preparation')")
+        with closing(sqlite3.connect(self.db)) as db,db:db.execute('CREATE TABLE marker(value TEXT)');db.execute("INSERT INTO marker VALUES ('before preparation')")
         code=self.root/'.runtime/releases'/self.old/'code';(code/'ops').mkdir(parents=True)
         cfg={'kind':staging.KIND,'instance':str(uuid.uuid4()),'revision':self.old,'owner_id':1,'company_id':10,'owner_login':'admin','port':18002,'hosts':['127.0.0.1'],
              'code':str(code),'python':sys.executable,'static':'staticfiles','source':{'database':str(self.prod/'db.sqlite3'),'media':str(self.prod/'media'),'actuation':str(self.prod/'private')}}
@@ -35,7 +36,7 @@ class StagingPreflightTests(TestCase):
         self.manage=self.enterContext(patch.object(staging,'run_manage'))
 
     def value(self):
-        with sqlite3.connect(self.db) as db:return db.execute('SELECT value FROM marker').fetchone()[0]
+        with closing(sqlite3.connect(self.db)) as db:return db.execute('SELECT value FROM marker').fetchone()[0]
 
     def job(self):return {'id':'preflight-job','state':'queued','revision':self.new,'from_revision':self.old,'owner_id':1,'branch':staging_updates.BRANCH,'created_at':staging_updates.now()}
 
@@ -50,10 +51,10 @@ class StagingPreflightTests(TestCase):
 
     def test_snapshot_includes_writes_after_preparation_and_rollback_preserves_them(self):
         prepared=staging.prepare_update(self.root,self.archive,self.new)
-        with sqlite3.connect(self.db) as db:db.execute("UPDATE marker SET value='saved before actual stop'")
+        with closing(sqlite3.connect(self.db)) as db,db:db.execute("UPDATE marker SET value='saved before actual stop'")
         def fail(root,command,**kwargs):
             if command[0]=='migrate':
-                with sqlite3.connect(self.db) as db:db.execute("UPDATE marker SET value='failed migration'")
+                with closing(sqlite3.connect(self.db)) as db,db:db.execute("UPDATE marker SET value='failed migration'")
                 raise RuntimeError('synthetic migration failure')
         self.manage.side_effect=fail
         with self.assertRaisesRegex(RuntimeError,'synthetic migration failure'):staging.update(self.root,self.archive,self.new,prepared=prepared)
@@ -80,7 +81,7 @@ class StagingPreflightTests(TestCase):
             self.assertIs(staging_updates.process_job(self.root,child,job,threading.Event()),child)
         stop.assert_not_called();start.assert_not_called()
         self.manage.assert_called_once()
-        stored=json.loads((self.root/'.runtime/staging-update.json').read_text())
+        stored=json.loads((self.root/'.runtime/staging-update.json').read_text(encoding='utf-8'))
         self.assertEqual(stored['state'],'error');self.assertEqual(stored['failed_stage'],'preparing')
         self.assertEqual(self.value(),'before preparation');self.assertEqual(staging.manifest(self.root)['revision'],self.old)
         self.assertFalse((self.root/'.runtime/releases'/self.new).exists());self.assertEqual(list((self.root/'.runtime').glob('candidate-*.json')),[])

@@ -18,6 +18,8 @@ def main():
         raise ValueError('A TEST code directory and management command are required.')
     # -I ignores inherited Python paths; only the selected release is imported.
     os.chdir(code);sys.path.insert(0,str(code));sys.argv=[str(code/'manage.py'),*args.command]
+    for output in (sys.stdout,sys.stderr):
+        if hasattr(output,'reconfigure'):output.reconfigure(encoding='utf-8',errors='backslashreplace')
     faulthandler.enable()
     faulthandler.dump_traceback_later(args.trace_after,repeat=True)
     try:runpy.run_path(str(code/'manage.py'),run_name='__main__')

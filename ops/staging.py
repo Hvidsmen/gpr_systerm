@@ -336,7 +336,7 @@ def update(root, archive, revision, *, prepared=None, progress=lambda label:None
                     raise
                 raise
         finally:candidate_file.unlink(missing_ok=True)
-        print('Обновлён только тест. Версия: '+revision+'. Запустите отдельное задание тестового портала.')
+        print('Updated TEST only. Revision: '+revision+'. Start its separate scheduled task.')
 
 
 def prompt_password():
