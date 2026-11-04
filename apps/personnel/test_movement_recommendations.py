@@ -31,6 +31,28 @@ class MovementRecommendationTests(TestCase):
         self.assertEqual(build(self.company,self.day)['ARRIVAL'],[])
         override=MovementRecommendationOverride.objects.get();self.assertEqual(override.action,'EXCLUDE');self.assertEqual(override.recorded_by,self.personnel_dispatcher)
 
+    @patch('apps.personnel.rotation.rotation_rows')
+    def test_departures_include_overdue_and_fourteenth_day_but_not_day_fifteen(self,rotation_rows):
+        def row(person,planned):
+            return {'person':person,'slot':self.slot,'camp':self.a,'state':'MV','planned_return':None,
+                'planned_departure_display':planned}
+        rotation_rows.return_value=([row(self.person,self.day-timedelta(days=36)),
+            row(self.second_person,self.day+timedelta(days=14))],[],{})
+        result=build(self.company,self.day)
+        self.assertEqual([(item['person'],item['planned_on']) for item in result['DEPARTURE']],
+            [(self.person,self.day-timedelta(days=36)),(self.second_person,self.day+timedelta(days=14))])
+        rotation_rows.return_value=([row(self.person,self.day+timedelta(days=15))],[],{})
+        self.assertEqual(build(self.company,self.day)['DEPARTURE'],[])
+
+    @patch('apps.personnel.rotation.rotation_rows')
+    def test_overdue_departure_stays_hidden_after_exclusion_or_request(self,rotation_rows):
+        planned=self.day-timedelta(days=5)
+        rotation_rows.return_value=([{'person':self.person,'slot':self.slot,'camp':self.a,'state':'MV',
+            'planned_return':None,'planned_departure_display':planned}],[],{})
+        recommendation=build(self.company,self.day)['DEPARTURE'][0]
+        exclude(self.personnel_dispatcher,[recommendation['token']])
+        self.assertEqual(build(self.company,self.day)['DEPARTURE'],[])
+
     @patch('apps.personnel.rotation.rotation_rows',return_value=([],[],{}))
     def test_manual_arrival_is_shared_and_actual_presence_hides_it(self,rotation_rows):
         planned=self.day+timedelta(days=2)

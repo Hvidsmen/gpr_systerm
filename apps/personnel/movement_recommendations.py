@@ -3,6 +3,7 @@ from datetime import timedelta
 from django.core import signing
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.db.models import Q
 from .models import Camp,MovementRecommendationOverride,MovementReviewRequest,Person
 from . import housing
 
@@ -31,15 +32,19 @@ def build(company,day):
             if row.get('state')=='MO' and row.get('planned_return') and day<=row['planned_return']<=end:
                 camp=row['slot'].housing_camp if row.get('slot') and row['slot'].housing_camp_id else row.get('camp')
                 if camp:auto[_key('ARRIVAL',person.pk,camp.pk,row['planned_return'])]=_row('ARRIVAL',person,camp,row['planned_return'])
-            if row.get('state')=='MV' and row.get('planned_departure_display') and day<=row['planned_departure_display']<=end and row.get('camp'):
+            # An overdue departure remains actionable until the employee
+            # actually leaves.  The upper bound is still the agreed 14 days.
+            if row.get('state')=='MV' and row.get('planned_departure_display') and row['planned_departure_display']<=end and row.get('camp'):
                 planned=row['planned_departure_display'];auto[_key('DEPARTURE',person.pk,row['camp'].pk,planned)]=_row('DEPARTURE',person,row['camp'],planned)
     present={(person_id,camp_id) for person_id,camp_id in housing.present_stays(company,day).values_list('person_id','camp_id')}
-    for override in MovementRecommendationOverride.objects.filter(company=company,planned_on__range=(day,end)).select_related('person__employee','camp'):
+    recommendation_window=Q(planned_on__range=(day,end))|Q(kind='DEPARTURE',planned_on__lt=day)
+    for override in MovementRecommendationOverride.objects.filter(recommendation_window,company=company).select_related('person__employee','camp'):
         key=_key(override.kind,override.person_id,override.camp_id,override.planned_on)
         if override.action=='EXCLUDE':auto.pop(key,None);continue
         eligible=(override.person_id,override.camp_id) not in present if override.kind=='ARRIVAL' else (override.person_id,override.camp_id) in present
         if eligible:auto[key]=_row(override.kind,override.person,override.camp,override.planned_on,manual=True)
-    for request in MovementReviewRequest.objects.filter(company=company,movement_date__range=(day,end)).exclude(status='CANCELLED'):
+    request_window=Q(movement_date__range=(day,end))|Q(kind='DEPARTURE',movement_date__lt=day)
+    for request in MovementReviewRequest.objects.filter(request_window,company=company).exclude(status='CANCELLED'):
         camp_id=request.to_camp_id if request.kind=='ARRIVAL' else request.from_camp_id
         if camp_id:auto.pop(_key(request.kind,request.person_id,camp_id,request.movement_date),None)
     values=sorted(auto.values(),key=lambda row:(row['planned_on'],row['person'].display_name.casefold(),row['camp'].name.casefold()))
