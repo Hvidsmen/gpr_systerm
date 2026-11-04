@@ -85,6 +85,7 @@ class StaffingSlot(PersonnelModel):
     construction_object = models.ForeignKey('projects.ConstructionObject', on_delete=models.PROTECT, null=True, blank=True, related_name='personnel_assignments', verbose_name='Объект назначения')
     assigned_from = models.DateField('Назначен с', null=True, blank=True)
     assigned_until = models.DateField('Назначен по (включительно)', null=True, blank=True)
+    initial_movement = models.ForeignKey('HousingEvent', on_delete=models.PROTECT, null=True, blank=True, related_name='initial_assignments', verbose_name='Начальная запись перемещения')
     camp = models.CharField('ВЖГ из исходного файла', max_length=100, blank=True)
     housing_camp = models.ForeignKey('Camp', on_delete=models.PROTECT, null=True, blank=True, verbose_name='ВЖГ')
     status = models.CharField('Текущий статус', choices=STATUSES, max_length=10, blank=True)
@@ -98,7 +99,7 @@ class StaffingSlot(PersonnelModel):
         ordering = ['group__order', 'pk']
         constraints = [models.CheckConstraint(condition=models.Q(assigned_until__isnull=True)|models.Q(assigned_until__gte=models.F('assigned_from')), name='personnel_assignment_dates')]
     def clean(self):
-        for name in ['group', 'person', 'pattern', 'housing_camp', 'planning_position', 'construction_object']:
+        for name in ['group', 'person', 'pattern', 'housing_camp', 'planning_position', 'construction_object', 'initial_movement']:
             obj = getattr(self, name, None)
             if obj and obj.company_id != self.company_id: raise ValidationError('Данные другой компании.')
         if self.pattern_id and self.group_id and self.pattern.board_id != self.group.board_id: raise ValidationError('График другого объекта.')
@@ -108,6 +109,8 @@ class StaffingSlot(PersonnelModel):
                 raise ValidationError('Для назначения укажите сотрудника, должность плана, объект, ВЖГ и дату начала.')
         if self.assigned_until and (not self.assigned_from or self.assigned_until < self.assigned_from):
             raise ValidationError({'assigned_until':'Дата окончания не может быть раньше начала назначения.'})
+        if self.initial_movement_id and self.initial_movement.person_id!=self.person_id:
+            raise ValidationError({'initial_movement':'Начальная запись принадлежит другому сотруднику.'})
 
 
 class Camp(PersonnelModel):

@@ -57,7 +57,7 @@ def board_detail(request,pk):
 def people(request):
     queryset=scoped(request,Person).select_related('employee').prefetch_related('assignments__group__board')
     if request.GET.get('unlinked'):queryset=queryset.filter(employee=None)
-    if request.GET.get('unplaced'):queryset=queryset.filter(stays__isnull=True)
+    if request.GET.get('unplaced'):queryset=queryset.filter(stays__isnull=True,housing_events__isnull=True)
     query=request.GET.get('q','').strip()
     if query: queryset=queryset.filter(Q(full_name__icontains=query)|Q(employee_number__icontains=query)|Q(employee__employee_number__icontains=query)|Q(employee__zup_full_name__icontains=query)|Q(phone__icontains=query))
     return render(request,'personnel/people.html',{'people':queryset,'query':query})
