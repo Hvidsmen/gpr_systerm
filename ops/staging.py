@@ -280,14 +280,12 @@ def update(root, archive, revision):
             raise ValueError('Архив должен поддерживать отдельный тестовый портал.')
         # A candidate gets its own dependencies, not the production or old test venv.
         venv = release / 'venv'
-        base_python = getattr(sys, '_base_executable', sys.executable)
-        subprocess.run([base_python, '-m', 'venv', str(venv)], check=True, timeout=300)
-        python = python_at(venv)
+        from ops.staging_venv import create_test_venv, run_setup
+        python = create_test_venv(venv, env=dependency_environment(root), log=runtime/'prepare.log')
         requirements = code / 'requirements.staging.lock'
         if not requirements.is_file():raise ValueError('В релизе отсутствует фиксированный requirements.staging.lock.')
-        with (runtime / 'prepare.log').open('ab') as output:
-            subprocess.run([python, '-m', 'pip', 'install', '-r', str(requirements)],
-                           env=dependency_environment(root), stdout=output, stderr=subprocess.STDOUT, check=True, timeout=1800)
+        run_setup([python, '-I', '-m', 'pip', 'install', '--no-input', '--disable-pip-version-check', '-r', str(requirements)],
+                  env=dependency_environment(root), log=runtime/'prepare.log', label='Install pinned TEST dependencies', timeout=1800)
         backup = private_path(root, '.runtime/backups/' + uuid.uuid4().hex)
         backup.mkdir(parents=True)
         snapshot(root / 'data/db.sqlite3', backup / 'database.sqlite3')
