@@ -108,7 +108,7 @@ class AssignmentForm(forms.Form):
     housing_camp=forms.ModelChoiceField(label='ВЖГ назначения',queryset=Camp.objects.none(),help_text='Выберите ВЖГ, обслуживающий этот объект или его подобъекты. Начальные заезд / выезд ниже относятся к этому ВЖГ.')
     assigned_from=forms.DateField(label='Назначить с',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
     assigned_until=forms.DateField(label='По дату включительно',required=False,widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}),help_text='Оставьте пустым для назначения без даты окончания.')
-    pattern=forms.ModelChoiceField(label='График',queryset=ShiftPattern.objects.none(),required=False,empty_label='Пока без графика')
+    pattern=forms.ModelChoiceField(label='График',queryset=ShiftPattern.objects.none(),required=False,empty_label='Без личного графика — вахтовый цикл из ЗУП, если задан',help_text='Личный график имеет приоритет над вахтовым циклом из кадровых данных.')
     version=forms.CharField(required=False,widget=forms.HiddenInput)
 
     def __init__(self,*args,company,row=None,**kwargs):

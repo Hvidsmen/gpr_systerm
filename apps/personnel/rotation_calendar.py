@@ -10,6 +10,41 @@ def work(code):
     except (TypeError,ValueError):return code=='МВ'
 
 
+def named_cycle(name):
+    """Read an unambiguous on/off pair, including the Cyrillic х used by ZUP."""
+    pairs={tuple(map(int,pair)) for pair in re.findall(r'(?<![\d.,])(\d{1,3})\s*[/\\xх×*]\s*(\d{1,3})(?![\d.,])',name,re.IGNORECASE)}
+    if len(pairs)!=1:return None
+    on,off=next(iter(pairs))
+    return (on,off) if 1<=on<=365 and 1<=off<=365 else None
+
+
+def effective_schedule(slot,person=None):
+    """Read-only ZUP fallback. An explicitly selected personal pattern always wins.
+
+    The virtual slot is only for projection, never returned as an editable assignment.
+    Ordinary weekly schedules must not be reanchored to a camp arrival.
+    """
+    if slot and slot.pattern_id:return slot
+    person=person or (slot.person if slot and slot.person_id else None)
+    employee=person.employee if person and person.employee_id else None
+    label=str((employee.zup_card or {}).get('schedule') or '').strip() if employee else ''
+    lengths=named_cycle(label)
+    if not lengths or not re.search('вахт',label,re.IGNORECASE):return slot
+    on,off=lengths
+    pattern=SimpleNamespace(name=label,updated_at=employee.updated_at,on_days=on,off_days=off,calendar={},cycle_codes=[])
+    return SimpleNamespace(pattern=pattern,pattern_id='zup',schedule_from_zup=True,person=person,person_id=person.pk,company=person.company,company_id=person.company_id,
+        calendar=slot.calendar if slot else {},status=slot.status if slot else '',arrival_date=slot.arrival_date if slot else None,departure_date=slot.departure_date if slot else None)
+
+
+def schedule_label(slot,person=None):
+    schedule=effective_schedule(slot,person)
+    if schedule and schedule.pattern_id:
+        return schedule.pattern.name if getattr(schedule,'schedule_from_zup',False) else str(schedule.pattern)
+    person=person or (slot.person if slot and slot.person_id else None)
+    from .rotation import employee_schedule_label
+    return employee_schedule_label(person.employee if person and person.employee_id else None)
+
+
 def cycle_definition(pattern):
     if not pattern:return None
     key=(pattern.updated_at,pattern.name,pattern.on_days,pattern.off_days,id(pattern.calendar),id(pattern.cycle_codes))
@@ -24,9 +59,9 @@ def _cycle_definition(pattern):
     if not pattern:return None
     on,off=pattern.on_days,pattern.off_days
     if not on or not off:
-        found=re.search(r'(?<!\d)(\d{1,3})\s*[/\\]\s*(\d{1,3})(?!\d)',pattern.name)
-        if not found:return None
-        on,off=map(int,found.groups())
+        lengths=named_cycle(pattern.name)
+        if not lengths:return None
+        on,off=lengths
     if not (1<=on<=365 and 1<=off<=365):return None
     length=on+off
     if len(pattern.cycle_codes)==length:codes=list(pattern.cycle_codes)
@@ -105,20 +140,22 @@ def anchor_for(stays,day):
     return eligible[-1] if eligible else None
 
 
-def description(slot,day,stays=None):
+def description(slot,day,stays=None,*,person=None):
+    slot=effective_schedule(slot,person)
     cycle=cycle_definition(slot.pattern) if slot and slot.pattern_id else None
     if not cycle:return 'Цикл не задан: укажите дни вахты и отдыха в графике сотрудника.'
     if stays is None:
         from .models import CampStay
         stays=stays_by_person(slot.company).get(slot.person_id,[])
     anchor=anchor_for(stays,day)
-    label=f"{cycle['on_days']}/{cycle['off_days']}"
-    if not anchor:return label+' · календарь из таблицы; фактический заезд или выезд не оформлен.'
+    label=f"{cycle['on_days']}/{cycle['off_days']}"+(' · из ЗУП' if getattr(slot,'schedule_from_zup',False) else '')
+    if not anchor:return label+' · фактический заезд или выезд не оформлен; используются только известные дни календаря.'
     return label+f" · от фактического {'заезда' if anchor[1]=='ARRIVAL' else 'выезда'} {anchor[0]:%d.%m.%Y}"
 
 
 def project(slot,base,*,start=None,end=None,stays=None):
-    if not slot.pattern_id:return base,None
+    slot=effective_schedule(slot)
+    if not slot or not slot.pattern_id:return base,None
     cycle=cycle_definition(slot.pattern)
     if not cycle:return base,None
     if stays is None:

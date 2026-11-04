@@ -201,6 +201,7 @@ class PersonScheduleForm(forms.Form):
         self.fields['slot'].queryset=person.assignments.filter(company=person.company,cancelled_at=None).select_related('group__board')
         self.fields['slot'].label_from_instance=lambda s:f'{s.group.board.name} · {s.group.position}'
         self.fields['pattern'].queryset=ShiftPattern.objects.filter(company=person.company).select_related('board')
+        self.fields['pattern'].empty_label='Без личного графика — вахтовый цикл из ЗУП, если задан'
         self.fields['pattern'].label_from_instance=lambda p:f'{p.board.name} · {p}'
         from .housing import schedule_snapshot
         self.initial['version']=schedule_snapshot(person)
@@ -208,7 +209,7 @@ class PersonScheduleForm(forms.Form):
         if slot:self.initial.update(slot=slot.pk,pattern=slot.pattern_id)
         from .rotation_calendar import description
         from django.utils import timezone
-        self.fields['pattern'].help_text=description(slot,timezone.localdate())+' Фактический заезд начинает вахту, выезд на МО — отдых. Перевод между ВЖГ сохраняет текущий цикл.'
+        self.fields['pattern'].help_text=description(slot,timezone.localdate(),person=person)+' Личный график имеет приоритет. Без него используется вахтовый цикл из ЗУП, например 60х30. Фактический заезд начинает вахту, выезд на МО — отдых; перевод между ВЖГ сохраняет цикл.'
         for f in self.fields.values():f.widget.attrs['class']='form-select' if isinstance(f.widget,forms.Select) else 'form-control'
     def clean(self):
         data=super().clean();start,end=data.get('start'),data.get('end')
