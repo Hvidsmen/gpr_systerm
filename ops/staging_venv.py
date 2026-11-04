@@ -37,16 +37,20 @@ def stop_owned_setup(child,output):
         child.wait(timeout=10)
 
 
-def run_setup(args,*,env,log,label,timeout):
+def run_setup(args,*,env,log,label,timeout,cwd=None,input_data=None):
     log=Path(log);log.parent.mkdir(parents=True,exist_ok=True)
     started=time.monotonic()
     with log.open('ab',buffering=0) as output:
         def message(text):output.write((datetime.now(timezone.utc).isoformat()+' TEST setup: '+text+'\n').encode('utf-8'))
         message('START '+label)
         options={'creationflags':subprocess.CREATE_NEW_PROCESS_GROUP} if os.name=='nt' else {'start_new_session':True}
-        child=subprocess.Popen(args,env=env,stdin=subprocess.DEVNULL,stdout=output,stderr=subprocess.STDOUT,**options)
+        if cwd is not None:options['cwd']=str(cwd)
+        child=subprocess.Popen(args,env=env,stdin=subprocess.PIPE if input_data is not None else subprocess.DEVNULL,stdout=output,stderr=subprocess.STDOUT,**options)
         try:
-            code=child.wait(timeout=timeout)
+            if input_data is None:code=child.wait(timeout=timeout)
+            else:
+                child.communicate(input=input_data,timeout=timeout)
+                code=child.returncode
             if code:raise subprocess.CalledProcessError(code,args)
         except subprocess.TimeoutExpired as exc:
             message(f'TIMEOUT {label} after {timeout}s; stopping only the owned setup process tree')
@@ -56,6 +60,8 @@ def run_setup(args,*,env,log,label,timeout):
             stop_owned_setup(child,output)
             message('FAILED '+label)
             raise
+        finally:
+            if input_data is not None and child.stdin and not child.stdin.closed:child.stdin.close()
         message(f'DONE {label} ({time.monotonic()-started:.1f}s)')
 
 

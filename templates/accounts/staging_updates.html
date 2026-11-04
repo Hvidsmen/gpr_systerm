@@ -16,7 +16,7 @@
     <div class="progress" role="progressbar" aria-label="Завершённые этапы обновления теста" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ update.progress }}" data-test-progress><div class="progress-bar{% if update.state == 'done' %} bg-success{% elif update.state == 'error' or update.state == 'recovery' %} bg-danger{% else %} progress-bar-striped{% endif %}{% if update.busy %} progress-bar-animated{% endif %}" style="width:{{ update.progress }}%" data-test-progress-fill></div></div>
     <ol class="test-update-steps" data-test-steps>{% for step in update.steps %}<li class="test-update-step is-{{ step.state }}" data-stage="{{ step.code }}"{% if step.state == 'current' %} aria-current="step"{% endif %}><span class="test-step-marker" aria-hidden="true">{% if step.state == 'complete' %}✓{% elif step.state == 'failed' %}!{% else %}{{ step.number }}{% endif %}</span><span>{{ step.label }}</span></li>{% endfor %}</ol>
     <div class="test-update-timing"><span>Всего: <strong data-test-elapsed>{{ update.elapsed_label }}</strong></span><span><span data-test-stage-time-caption>На этапе:</span> <strong data-test-stage-elapsed>{{ update.stage_elapsed_label }}</strong></span></div>
-    <p class="small text-muted mb-0">Полоса показывает завершённые этапы, а не оставшееся время. Подготовка включает зависимости, резервную копию, миграции и статические файлы.</p>
+    <p class="small text-muted mb-0">Полоса показывает завершённые этапы, а не оставшееся время. Окружение и проверка кода готовятся без остановки теста. Затем выполняются резервная копия, миграции и статические файлы.</p>
     <p class="test-update-connection small mb-0" data-test-connection role="status" aria-live="polite">{% if update.busy %}Обновление выполняется. Состояние проверяется автоматически.{% else %}Состояние получено с сервера.{% endif %}</p>
   </section>
   <div class="alert {% if update.state == 'done' %}alert-success{% elif update.state == 'error' or update.state == 'recovery' %}alert-danger{% else %}alert-info{% endif %}" data-test-status role="status" aria-live="polite">{{ update.message }}{% if update.available == update.version %} Новых обновлений нет.{% endif %}</div>
@@ -24,7 +24,7 @@
     <form method="post" data-test-check>{% csrf_token %}<input type="hidden" name="action" value="check"><button class="btn btn-outline-primary" {% if update.busy %}disabled{% endif %}>Проверить обновления</button></form>
     <form method="post" data-test-update>{% csrf_token %}<input type="hidden" name="action" value="update"><input type="hidden" name="version_token" value="{{ version_token }}"><button class="btn btn-primary" {% if not update.can_update %}disabled{% endif %}>Обновить тестовый портал</button></form>
   </div>
-  <p class="small text-muted mt-3 mb-0">Во время установки тест будет временно недоступен. Обновление продолжится, даже если закрыть эту страницу. Перед миграциями создаётся резервная копия тестовой базы.</p>
+  <p class="small text-muted mt-3 mb-0">Во время подготовки тест продолжает работать. Для установки проверенной версии он временно остановится; перед миграциями сохраняется копия последних данных. Обновление продолжится, даже если закрыть страницу.</p>
   <hr class="my-4">
   <section aria-labelledby="refresh-data-title">
     <h2 class="h5" id="refresh-data-title">Данные с основного портала</h2>

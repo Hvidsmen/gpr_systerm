@@ -26,6 +26,8 @@ class StagingRuntimeTests(SimpleTestCase):
         self.config = {'database': str(self.db), 'media': str(self.media), 'port': 8001, 'hosts': ['192.168.70.9']}
         atomic_json(self.prod / '.runtime/installed.json', self.config)
         self.code = patch.object(staging, 'CODE_ROOT', self.root); self.code.start(); self.addCleanup(self.code.stop)
+        creator=patch('ops.staging_venv.create_test_venv',side_effect=lambda path,**kwargs:staging.python_at(path));creator.start();self.addCleanup(creator.stop)
+        setup=patch('ops.staging_venv.run_setup');setup.start();self.addCleanup(setup.stop)
 
     def digest(self):return hashlib.sha256(self.db.read_bytes()).hexdigest()
 
@@ -125,7 +127,9 @@ class StagingRuntimeTests(SimpleTestCase):
 
     def test_failed_database_restore_marks_test_for_recovery_and_blocks_restart_and_update(self):
         self.prepare(); before=self.digest()
-        with patch.object(staging.subprocess,'run'), patch.object(staging,'run_manage',side_effect=RuntimeError('synthetic failed migration')), patch.object(staging.shutil,'copy2',side_effect=OSError('synthetic restore failure')):
+        def fail(root,command,**kwargs):
+            if command[0]=='migrate':raise RuntimeError('synthetic failed migration')
+        with patch.object(staging.subprocess,'run'), patch.object(staging,'run_manage',side_effect=fail), patch.object(staging.shutil,'copy2',side_effect=OSError('synthetic restore failure')):
             with self.assertRaises(OSError):staging.update(self.root,self.archive(),'b'*40)
         self.assertTrue((self.root/'.runtime/staging-recovery.json').exists())
         with self.assertRaises(RuntimeError):staging.serve_http(self.root)
