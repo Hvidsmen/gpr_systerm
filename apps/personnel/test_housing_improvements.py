@@ -139,7 +139,7 @@ class MovementScopeTests(TestCase):
         self.assertFalse(CampStay.objects.filter(person=self.second_person).exists())
         response=self.client.get(reverse('personnel:housing'),{'camp':self.a.pk,'date':str(self.day)})
         row=next(row for row in response.context['rows'] if row.get('person')==self.second_person)
-        self.assertEqual(row['state'],'MO');self.assertEqual(row['state_days'],101)
+        self.assertEqual(row['state'],'MO');self.assertEqual(row['state_days'],(response.context['day']-past).days+1)
         self.assertContains(self.client.post(url,data),'другой пользователь')
         self.assertEqual(self.client.get(reverse('personnel:initial_departure',args=[self.foreign_person.pk])).status_code,404)
     def test_initial_departure_rejects_existing_actual_stay_and_future_date(self):

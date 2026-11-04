@@ -16,6 +16,8 @@ class AssignmentChangeBrowserTests(StaticLiveServerTestCase):
         from apps.planning.models import GlobalPlanVersion
         from .models import StaffingSlot,CampStay,HousingEvent
         HousingTests.setUpTestData.__func__(type(self))
+        from django.utils import timezone
+        self.day=timezone.localdate()
         old=Brigade.objects.create(company=self.company,name='Начальник участка');new=Brigade.objects.create(company=self.company,name='Производитель работ')
         self.client.force_login(self.hr)
         self.client.post(reverse('personnel:plan_assignment_create'),{'employee':self.second_employee.pk,'planning_position':old.pk,'construction_object':self.obj.pk,'housing_camp':self.a.pk,'assigned_from':str(self.day-timedelta(days=5)),'pattern':self.pattern.pk,'initial-state':'MV','initial-arrival_date':str(self.day-timedelta(days=20))})

@@ -224,7 +224,6 @@ def assignment_history(person):
 
 class RemoveAssignmentForm(forms.Form):
     version=forms.CharField(widget=forms.HiddenInput)
-    date=forms.DateField(required=False,widget=forms.HiddenInput)
     reason=forms.CharField(label='Комментарий (необязательно)',required=False,max_length=2000,widget=forms.Textarea(attrs={'class':'form-control','rows':2}))
 
 
@@ -251,15 +250,13 @@ def remove_assignment(user,row_id,data):
 def remove(request,pk):
     access(request)
     row=get_object_or_404(StaffingSlot.objects.select_related('person','planning_position','construction_object','housing_camp'),company=request.user.company,pk=pk,planning_position__isnull=False)
-    try:day=forms.DateField().clean(request.GET.get('date') or timezone.localdate())
-    except ValidationError:day=timezone.localdate()
-    form=RemoveAssignmentForm(request.POST if request.method=='POST' else None,initial={'version':row.updated_at.isoformat(),'date':day})
+    form=RemoveAssignmentForm(request.POST if request.method=='POST' else None,initial={'version':row.updated_at.isoformat()})
     if request.method=='POST' and form.is_valid():
         try:saved=remove_assignment(request.user,pk,form.cleaned_data)
         except (ValidationError,IntegrityError,ObjectDoesNotExist) as exc:form.add_error(None,'; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Данные изменились одновременно. Обновите страницу.')
         else:
             messages.success(request,'Назначение удалено. Сотрудник, график и фактические перемещения сохранены; запись доступна в истории назначений.')
-            return redirect(reverse('personnel:housing')+f"?camp={saved.housing_camp_id}&date={form.cleaned_data.get('date') or day}#roster")
+            return redirect(reverse('personnel:housing')+f'?camp={saved.housing_camp_id}#roster')
     return render(request,'personnel/assignment_remove.html',{'form':form,'row':row,'personnel_section':'management'})
 
 
@@ -286,7 +283,7 @@ def edit(request,pk=None):
         except (ValidationError,IntegrityError,ObjectDoesNotExist) as exc:form.add_error(None,'; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Данные изменились одновременно. Обновите страницу.')
         else:
             messages.success(request,'Назначение и начальное состояние сохранены.' if initial_form and initial_form.cleaned_data.get('state') else 'Сотрудник назначен. Фактический заезд оформляется отдельно.')
-            return redirect(reverse('personnel:housing')+f'?camp={saved.housing_camp_id}&date={saved.assigned_from}#roster')
+            return redirect(reverse('personnel:housing')+f'?camp={saved.housing_camp_id}#roster')
     if historical:
         for field in form.fields.values():field.disabled=True
     return render(request,'personnel/plan_assignment.html',{'form':form,'initial_form':initial_form,'row':row,'historical':historical,'personnel_section':'management','title':'Удалённое назначение' if row and row.cancelled_at else 'Прежнее назначение' if historical else 'Изменить назначение' if row else 'Назначить сотрудника'})
@@ -312,6 +309,6 @@ def change(request,pk):
         except (ValidationError,IntegrityError,ObjectDoesNotExist) as exc:form.add_error(None,'; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Данные изменились одновременно. Обновите страницу.')
         else:
             messages.success(request,f'Назначение изменено с {saved.assigned_from:%d.%m.%Y}. Прежнее назначение сохранено в истории.')
-            return redirect(reverse('personnel:housing')+f'?camp={saved.housing_camp_id}&date={saved.assigned_from}#roster')
+            return redirect(reverse('personnel:housing')+f'?camp={saved.housing_camp_id}#roster')
     successor=StaffingSlot.objects.filter(company=request.user.company,previous_assignment=source).first()
     return render(request,'personnel/assignment_change.html',{'form':form,'source':source,'successor':successor,'personnel_section':'management'})

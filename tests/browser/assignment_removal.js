@@ -16,7 +16,7 @@ const {chromium}=require('playwright'),assert=require('node:assert/strict');
  await group().locator('tbody tr').filter({hasText:c.name}).getByRole('link',{name:'Удалить назначение',exact:true}).click();
  await page.setViewportSize({width:390,height:844});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2));await page.screenshot({path:'/tmp/assignment-removal-mobile.png',fullPage:true,animations:'disabled'});
  await page.locator('#id_reason').fill('Ошибочно выбрана должность');await page.getByRole('button',{name:'Удалить назначение',exact:true}).click();await page.waitForURL(u=>u.pathname.endsWith('/housing/')&&u.hash==='#roster');
- assert.equal(new URL(page.url()).searchParams.get('date'),c.day);
+ assert.equal(new URL(page.url()).searchParams.get('date'),null);
  assert.equal(await group().locator('.housing-position-counts b').innerText(),'1');assert((await group().innerText()).includes(c.another));assert(!(await group().innerText()).includes(c.name));assert.equal(await group().getByRole('link',{name:'Назначить сотрудника',exact:true}).count(),1);
  await page.goto(c.base+c.history+'#assignments');const history=page.locator('[data-assignment-history]');assert.equal(await history.count(),1);assert((await history.innerText()).includes('Удалено'));assert((await history.innerText()).includes('Ошибочно выбрана должность'));assert.equal(await history.getByRole('link',{name:'Сменить назначение',exact:true}).count(),0);
  await page.setViewportSize({width:1440,height:950});await page.locator('#assignments').scrollIntoViewIfNeeded();await page.screenshot({path:'/tmp/assignment-removal-history.png',animations:'disabled'});assert.deepEqual(errors,[]);

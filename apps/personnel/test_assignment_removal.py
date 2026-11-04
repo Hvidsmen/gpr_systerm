@@ -80,10 +80,10 @@ class AssignmentRemovalTests(TestCase):
         self.assertContains(response,'Удалено');self.assertContains(response,self.hr.username);self.assertContains(response,'Ошибочно выбрана должность')
         self.assertEqual(self.client.put(self.url).status_code,405)
 
-    def test_removal_returns_to_selected_report_date(self):
+    def test_removal_returns_to_current_roster_without_report_date(self):
         chosen=self.day-timedelta(days=1)
         response=self.client.post(self.url,{**self.payload(),'date':str(chosen)})
-        self.assertEqual(parse_qs(urlsplit(response.url).query)['date'],[str(chosen)])
+        self.assertNotIn('date',parse_qs(urlsplit(response.url).query))
 
     def test_removed_assignment_does_not_count_on_past_current_or_future_dates_and_can_be_reassigned(self):
         self.client.post(self.url,self.payload())
