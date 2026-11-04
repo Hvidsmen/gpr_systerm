@@ -90,7 +90,7 @@ def previous_people(obj, day, *, production, user=None):
 class ProductionPersonForm(PersonForm):
     production_entry = True
     shift = forms.TypedChoiceField(label='Смена', choices=[(1,'День'),(2,'Ночь')], coerce=int, initial=1,
-        widget=forms.Select(attrs={'class':'form-select','data-native-select':'true','aria-label':'Смена сотрудника'}))
+        widget=forms.Select(attrs={'class':'form-select form-select-sm','data-compact-select':'true','aria-label':'Смена сотрудника'}))
     prepared_from_previous = False
     work_mode = forms.ChoiceField(label='Занятость', choices=[('pending','Связи пока не проверены'),('works','Выполнял работы'),('general','Работал без привязки к работе')],
         initial='pending', widget=forms.Select(attrs={'class':'form-select','data-native-select':'true'}))
