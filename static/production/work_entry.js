@@ -37,10 +37,14 @@
 
   }
   function refreshAll(){host.querySelectorAll('[data-work-fact-row]').forEach(refresh);}
-  refreshAll();host.closest('form').addEventListener('production-live-applied',refreshAll);
+  function refreshGroupTotals(){
+    host.querySelectorAll('[data-work-group-total]').forEach(total=>{const group=total.closest('[data-work-object]');let value=0;group.querySelectorAll('[data-work-fact-row]').forEach(row=>{const deleted=row.querySelector('[name$="-DELETE"]');const input=row.querySelector('[name$="-actual_quantity"]');if(!deleted?.checked&&input?.value.trim()){const parsed=Number(input.value.replace(',','.'));if(Number.isFinite(parsed))value+=parsed;}});total.querySelector('[data-work-group-actual]').textContent=number.format(value);});
+  }
+  refreshAll();refreshGroupTotals();host.closest('form').addEventListener('production-live-applied',()=>{refreshAll();refreshGroupTotals();});
+  host.addEventListener('input',event=>{if(event.target.matches('[name$="-actual_quantity"]'))refreshGroupTotals();});
   host.addEventListener('change', event => {
     const row = event.target.closest('[data-work-fact-row]');
-    if (row) refresh(row);
+    if (row){refresh(row);refreshGroupTotals();}
   });
   host.addEventListener('click', event => {
     const expand = event.target.closest('[data-work-expand]'), collapse = event.target.closest('[data-work-collapse]');

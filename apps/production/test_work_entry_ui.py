@@ -41,6 +41,8 @@ class WorkEntryPresentationTests(TestCase):
         structured = next(g for g in group['work_groups'] if g['is_complex'] and g['label']=='Установка камеры')
         self.assertEqual(structured['objects'][0]['label'], 'ПК2763')
         self.assertEqual(structured['object_count'], 1)
+        self.assertEqual(structured['plan_total'], Decimal(30))
+        self.assertEqual(structured['actual_total'], Decimal(0))
         rows = {g['label']:g['objects'][0]['rows'][0].work_display for g in group['work_groups'] if g['is_complex']}
         self.assertEqual(rows['Установка камеры']['path'], f'{self.work.section.name} → ПК2763')
         self.assertEqual(rows['Установка камеры']['plan'], Decimal(30))
@@ -54,6 +56,7 @@ class WorkEntryPresentationTests(TestCase):
         self.assertLess(html.index('Работа в составе комплекса'), html.index('Комплексный объект'))
         self.assertIn('<span class="production-work-level">Работа в составе комплекса</span><strong>Установка камеры</strong>', html)
         self.assertIn('<span class="production-work-level">Комплексный объект</span><strong>ПК2763</strong>', html)
+        self.assertContains(response,'Итого: план 30 шт · факт')
         self.assertEqual(WorkFactClaim.objects.count(), 0, 'Displaying planned work must not reserve it')
         self.assertEqual(DailyFact.objects.count(), 0)
 

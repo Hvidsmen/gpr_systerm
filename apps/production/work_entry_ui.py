@@ -100,4 +100,16 @@ def prepare_rows(formset, obj, day, work_plan, catalogue):
     for group in result:
         group['objects'] = sorted(group['objects'].values(), key=lambda obj: obj['label'].casefold())
         group['object_count'] = len(group['objects'])
+        rows=[row for object_group in group['objects'] for row in object_group['rows']] if group['is_complex'] else group['rows']
+        group['unit']=rows[0].work_display['unit'] if rows else ''
+        planned=[row.work_display['plan'] for row in rows if row.work_display['has_plan']]
+        group['has_plan']=bool(planned)
+        group['plan_total']=sum(planned,Decimal(0))
+        actual=[]
+        for row in rows:
+            value=row['actual_quantity'].value()
+            if value not in (None,''):
+                try:actual.append(Decimal(str(value).replace(',','.')))
+                except (ValueError,ArithmeticError):pass
+        group['actual_total']=sum(actual,Decimal(0))
     return result, extra
