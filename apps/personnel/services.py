@@ -24,7 +24,7 @@ def report(board, month, query='', status='', camp=''):
     daily = [0] * len(dates)
     people = set()
     for group in board.groups.prefetch_related('slots__person', 'slots__pattern'):
-        slots = list(group.slots.all())
+        slots = [slot for slot in group.slots.all() if not slot.cancelled_at]
         people.update(s.person_id for s in slots if s.person_id)
         stats = dict(attendance=group.attendance_plan, staffing=group.staffing_plan, employed=sum(s.person_id is not None for s in slots), vacancies=sum(s.person_id is None for s in slots), on=sum(s.person_id is not None and s.status=='МВ' for s in slots), off=sum(s.person_id is not None and s.status=='МО' for s in slots), unknown=sum(s.person_id is not None and s.status not in {'МВ','МО'} for s in slots))
         stats['shortage'] = max(group.staffing_plan - stats['employed'], 0)

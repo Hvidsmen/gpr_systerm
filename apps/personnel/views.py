@@ -107,7 +107,8 @@ def group_edit(request,board_pk,pk=None):
 @require_http_methods(['GET','POST'])
 def slot_edit(request,group_pk,pk=None):
     group=get_object_or_404(scoped(request,StaffingGroup).select_related('board'),pk=group_pk)
-    obj=get_object_or_404(group.slots,pk=pk) if pk else StaffingSlot(company=request.user.company,group=group)
+    obj=get_object_or_404(group.slots,cancelled_at=None,pk=pk) if pk else StaffingSlot(company=request.user.company,group=group)
+    if obj.planning_position_id:return redirect('personnel:plan_assignment_edit',pk=obj.pk)
     form=SlotForm(request.POST if request.method=='POST' else None,instance=obj,board=group.board)
     if request.method=='POST' and form.is_valid():
         slot=form.save()
@@ -119,14 +120,17 @@ def slot_edit(request,group_pk,pk=None):
 @login_required
 @require_http_methods(['GET','POST'])
 def calendar_edit(request,pk):
-    slot=get_object_or_404(scoped(request,StaffingSlot).select_related('group__board'),pk=pk)
+    slot=get_object_or_404(scoped(request,StaffingSlot).select_related('group__board'),pk=pk,cancelled_at=None)
     if request.method=='GET' and slot.person_id:
         from django.urls import reverse
         return redirect(reverse('personnel:person_schedule',args=[slot.person_id])+f'?slot={slot.pk}')
     form=CalendarForm(request.POST if request.method=='POST' else None)
     if request.method=='POST' and form.is_valid():
         with transaction.atomic():
-            slot=StaffingSlot.objects.select_for_update().get(pk=slot.pk)
+            from apps.accounts.models import Company
+            from django.db.models import F
+            Company.objects.filter(pk=request.user.company_id).update(name=F('name'))
+            slot=get_object_or_404(StaffingSlot.objects.select_for_update(),company=request.user.company,pk=slot.pk,cancelled_at=None)
             day=form.cleaned_data['start']; code=form.cleaned_data['code']; calendar=dict(slot.calendar)
             while day<=form.cleaned_data['end']:
                 if code: calendar[day.isoformat()]=code

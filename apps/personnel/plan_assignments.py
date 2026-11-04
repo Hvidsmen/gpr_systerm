@@ -29,7 +29,7 @@ def object_scope(obj):
 
 
 def active_on(day):
-    return (Q(assigned_from=None)|Q(assigned_from__lte=day)) & (Q(assigned_until=None)|Q(assigned_until__gte=day)) & (Q(replaced_on=None)|Q(replaced_on__gt=day))
+    return Q(cancelled_at=None) & (Q(assigned_from=None)|Q(assigned_from__lte=day)) & (Q(assigned_until=None)|Q(assigned_until__gte=day)) & (Q(replaced_on=None)|Q(replaced_on__gt=day))
 
 
 class InitialEmployeeSelect(forms.Select):
@@ -154,15 +154,17 @@ def save_assignment(user,data,row_id=None,initial_state=None,previous=None):
     if not camp.object_links.filter(company=user.company,construction_object_id__in=object_scope(obj)).exists():raise ValidationError('ВЖГ не обслуживает объект назначения.')
     person=housing.person_for(employee)
     row=StaffingSlot.objects.select_for_update().get(pk=row_id,company=user.company,person=person,planning_position__isnull=False) if row_id else None
+    if row and row.cancelled_at:raise ValidationError('Назначение удалено. Создайте новое назначение сотрудника.')
     if row and row.replaced_on:raise ValidationError('Назначение уже заменено. Откройте действующее назначение сотрудника.')
     if row and row.updated_at.isoformat()!=data['version']:raise ValidationError('Назначение уже изменено другим пользователем. Обновите страницу.')
     start,end=data['assigned_from'],data.get('assigned_until')
     if row and row.previous_assignment_id and start!=row.assigned_from:
         predecessor=StaffingSlot.objects.select_for_update().get(pk=row.previous_assignment_id,company=user.company,person=person)
-        if predecessor.replaced_on!=row.assigned_from:raise ValidationError('История назначения уже изменилась. Обновите страницу.')
-        if start<predecessor.assigned_from:raise ValidationError('Дата перехода не может быть раньше начала предыдущего назначения.')
-        predecessor.replaced_on=start;predecessor.save(update_fields=['replaced_on','updated_at'])
-    overlap=person.assignments.filter(company=user.company,planning_position__isnull=False).exclude(pk=row_id).exclude(replaced_on=F('assigned_from')).filter(Q(assigned_until=None)|Q(assigned_until__gte=start)).filter(Q(replaced_on=None)|Q(replaced_on__gt=start))
+        if not predecessor.cancelled_at:
+            if predecessor.replaced_on!=row.assigned_from:raise ValidationError('История назначения уже изменилась. Обновите страницу.')
+            if start<predecessor.assigned_from:raise ValidationError('Дата перехода не может быть раньше начала предыдущего назначения.')
+            predecessor.replaced_on=start;predecessor.save(update_fields=['replaced_on','updated_at'])
+    overlap=person.assignments.filter(company=user.company,planning_position__isnull=False,cancelled_at=None).exclude(pk=row_id).exclude(replaced_on=F('assigned_from')).filter(Q(assigned_until=None)|Q(assigned_until__gte=start)).filter(Q(replaced_on=None)|Q(replaced_on__gt=start))
     if end:overlap=overlap.filter(Q(assigned_from=None)|Q(assigned_from__lte=end))
     existing=overlap.first()
     if existing:
@@ -194,10 +196,12 @@ def save_assignment(user,data,row_id=None,initial_state=None,previous=None):
 def change_assignment(user,source_id,data):
     Company.objects.filter(pk=user.company_id).update(name=F('name'))
     source=StaffingSlot.objects.select_for_update().select_related('person__employee','pattern').get(pk=source_id,company=user.company,planning_position__isnull=False)
+    if source.cancelled_at:raise ValidationError('Назначение удалено. Создайте новое назначение сотрудника.')
     if data['employee'].pk!=source.person.employee_id:raise ValidationError('При смене назначения сотрудник не меняется.')
     values=(data['planning_position'].pk,data['construction_object'].pk,data['housing_camp'].pk,data['assigned_from'],data.get('assigned_until'))
     successor=StaffingSlot.objects.filter(company=user.company,previous_assignment=source).first()
     if successor:
+        if successor.cancelled_at:raise ValidationError('Новое назначение уже удалено. Создайте отдельное назначение сотрудника.')
         if (successor.planning_position_id,successor.construction_object_id,successor.housing_camp_id,successor.assigned_from,successor.assigned_until)==values:return successor
         raise ValidationError('По этому назначению уже оформлена смена. Откройте новое назначение сотрудника.')
     if source.updated_at.isoformat()!=data['version']:raise ValidationError('Назначение уже изменено другим пользователем. Обновите страницу.')
@@ -210,7 +214,7 @@ def change_assignment(user,source_id,data):
 
 
 def assignment_history(person):
-    rows=list(person.assignments.filter(planning_position__isnull=False).select_related('planning_position','construction_object','housing_camp','assigned_by','previous_assignment').order_by('-assigned_from','-pk'))
+    rows=list(person.assignments.filter(planning_position__isnull=False).select_related('planning_position','construction_object','housing_camp','assigned_by','previous_assignment','cancelled_by').order_by('-assigned_from','-pk'))
     for row in rows:
         row.replaced_immediately=row.replaced_on==row.assigned_from
         boundary=row.replaced_on-timedelta(days=1) if row.replaced_on and not row.replaced_immediately else None
@@ -218,19 +222,60 @@ def assignment_history(person):
     return rows
 
 
+class RemoveAssignmentForm(forms.Form):
+    version=forms.CharField(widget=forms.HiddenInput)
+    date=forms.DateField(required=False,widget=forms.HiddenInput)
+    reason=forms.CharField(label='Комментарий (необязательно)',required=False,max_length=2000,widget=forms.Textarea(attrs={'class':'form-control','rows':2}))
+
+
+@transaction.atomic
+def remove_assignment(user,row_id,data):
+    Company.objects.filter(pk=user.company_id).update(name=F('name'))
+    row=StaffingSlot.objects.select_for_update().get(pk=row_id,company=user.company,planning_position__isnull=False)
+    if row.cancelled_at:return row
+    if row.updated_at.isoformat()!=data['version']:raise ValidationError('Назначение уже изменено другим пользователем. Обновите страницу перед удалением.')
+    person=Person.objects.select_for_update().get(pk=row.person_id,company=user.company)
+    # Preserve the personal schedule independently of the removed plan connection.
+    if person.schedule_slot_id==row.pk:
+        schedule=None
+        if row.pattern_id or row.calendar:
+            schedule=StaffingSlot.objects.create(company=user.company,group=row.group,person=person,pattern=row.pattern,calendar=dict(row.calendar),comment='График сохранён при удалении назначения.')
+        person.schedule_slot=schedule;person.save(update_fields=['schedule_slot','updated_at'])
+    row.cancelled_at=timezone.now();row.cancelled_by=user;row.cancellation_reason=data.get('reason','').strip()
+    row.save(update_fields=['cancelled_at','cancelled_by','cancellation_reason','updated_at'])
+    return row
+
+
+@login_required
+@require_http_methods(['GET','POST'])
+def remove(request,pk):
+    access(request)
+    row=get_object_or_404(StaffingSlot.objects.select_related('person','planning_position','construction_object','housing_camp'),company=request.user.company,pk=pk,planning_position__isnull=False)
+    try:day=forms.DateField().clean(request.GET.get('date') or timezone.localdate())
+    except ValidationError:day=timezone.localdate()
+    form=RemoveAssignmentForm(request.POST if request.method=='POST' else None,initial={'version':row.updated_at.isoformat(),'date':day})
+    if request.method=='POST' and form.is_valid():
+        try:saved=remove_assignment(request.user,pk,form.cleaned_data)
+        except (ValidationError,IntegrityError,ObjectDoesNotExist) as exc:form.add_error(None,'; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Данные изменились одновременно. Обновите страницу.')
+        else:
+            messages.success(request,'Назначение удалено. Сотрудник, график и фактические перемещения сохранены; запись доступна в истории назначений.')
+            return redirect(reverse('personnel:housing')+f"?camp={saved.housing_camp_id}&date={form.cleaned_data.get('date') or day}#roster")
+    return render(request,'personnel/assignment_remove.html',{'form':form,'row':row,'personnel_section':'management'})
+
+
 @login_required
 @require_http_methods(['GET','POST'])
 def edit(request,pk=None):
     access(request)
     row=get_object_or_404(StaffingSlot.objects.select_related('person'),company=request.user.company,pk=pk,planning_position__isnull=False) if pk else None
-    historical=bool(row and row.replaced_on)
+    historical=bool(row and (row.replaced_on or row.cancelled_at))
     initial={key:request.GET[key] for key in ('planning_position','construction_object','housing_camp','assigned_from') if key in request.GET}
     initial.setdefault('assigned_from',timezone.localdate())
     form=AssignmentForm(request.POST if request.method=='POST' else None,company=request.user.company,row=row,initial=initial)
     initial_form=InitialStateForm(request.POST if request.method=='POST' else None,prefix='initial') if not historical and (row is None or not has_movements(row.person)) else None
     if request.method=='POST':
         valid=form.is_valid()
-        if historical:form.add_error(None,'Прежнее назначение сохранено в истории. Изменяйте действующее назначение.');valid=False
+        if historical:form.add_error(None,'Назначение удалено.' if row.cancelled_at else 'Прежнее назначение сохранено в истории. Изменяйте действующее назначение.');valid=False
         if initial_form:
             initial_form.as_of=form.cleaned_data.get('assigned_from')
             valid=initial_form.is_valid() and valid
@@ -244,7 +289,7 @@ def edit(request,pk=None):
             return redirect(reverse('personnel:housing')+f'?camp={saved.housing_camp_id}&date={saved.assigned_from}#roster')
     if historical:
         for field in form.fields.values():field.disabled=True
-    return render(request,'personnel/plan_assignment.html',{'form':form,'initial_form':initial_form,'row':row,'historical':historical,'personnel_section':'management','title':'Прежнее назначение' if historical else 'Изменить назначение' if row else 'Назначить сотрудника'})
+    return render(request,'personnel/plan_assignment.html',{'form':form,'initial_form':initial_form,'row':row,'historical':historical,'personnel_section':'management','title':'Удалённое назначение' if row and row.cancelled_at else 'Прежнее назначение' if historical else 'Изменить назначение' if row else 'Назначить сотрудника'})
 
 
 @login_required
@@ -252,6 +297,7 @@ def edit(request,pk=None):
 def change(request,pk):
     access(request)
     source=get_object_or_404(StaffingSlot.objects.select_related('person__employee','planning_position','construction_object','housing_camp','pattern'),company=request.user.company,pk=pk,planning_position__isnull=False)
+    if source.cancelled_at and request.method=='GET':return redirect('personnel:plan_assignment_edit',pk=source.pk)
     form=AssignmentForm(request.POST if request.method=='POST' else None,company=request.user.company,row=source)
     form.fields.pop('pattern');form.fields['assigned_from'].label='Сменить с'
     form.fields['housing_camp'].help_text='ВЖГ планового назначения. Фактический перевод оформляется в «Заезд / выезд».'

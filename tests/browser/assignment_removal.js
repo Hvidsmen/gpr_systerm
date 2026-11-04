@@ -1,0 +1,24 @@
+const {chromium}=require('playwright'),assert=require('node:assert/strict');
+(async()=>{const c=JSON.parse(process.env.ASSIGNMENT_REMOVAL_CONFIG),browser=await chromium.launch({executablePath:c.chromium,headless:true,args:['--no-sandbox']});try{
+ const context=await browser.newContext({viewport:{width:1440,height:950}});await context.addCookies([{name:'sessionid',value:c.cookie,url:c.base}]);await context.route('**/*',r=>r.request().url().startsWith(c.base)?r.continue():r.abort());
+ const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto(c.base+c.path);
+ const group=()=>page.locator('[data-housing-position]').filter({has:page.locator('.housing-position-title',{hasText:c.role})});
+ assert((await group().innerText()).includes('План не задан'));assert.equal(await group().locator('.housing-position-counts b').innerText(),'1');
+ await group().getByRole('link',{name:'Назначить сотрудника',exact:true}).click();
+ assert.equal(await page.locator('#id_planning_position').inputValue(),String(c.role_id));assert.equal(await page.locator('#id_construction_object').inputValue(),String(c.object_id));assert.equal(await page.locator('#id_housing_camp').inputValue(),String(c.camp_id));assert.equal(await page.locator('#id_assigned_from').inputValue(),c.day);
+ await page.locator('#id_employee + .search-select-shell button').click();const popup=page.locator('.search-select-popup:visible');await popup.locator('input').fill(c.another);await popup.getByRole('option',{name:new RegExp(c.another)}).click();
+ await page.getByRole('button',{name:'Назначить сотрудника',exact:true}).click();await page.waitForURL(u=>u.pathname.endsWith('/housing/')&&u.hash==='#roster');
+ assert.equal(await group().locator('.housing-position-counts b').innerText(),'2');assert.equal(await group().getByRole('link',{name:'Назначить сотрудника',exact:true}).count(),1);
+ await group().scrollIntoViewIfNeeded();await page.screenshot({path:'/tmp/assignment-removal-two-people.png',animations:'disabled'});
+ const first=group().locator('tbody tr').filter({hasText:c.name});await first.getByRole('link',{name:'Удалить назначение',exact:true}).click();
+ assert.equal(new URL(page.url()).pathname,c.remove);assert((await page.locator('main').innerText()).includes(c.name));await page.getByRole('link',{name:'Отмена',exact:true}).click();
+ await page.goto(c.base+c.path);assert.equal(await group().locator('.housing-position-counts b').innerText(),'2');
+ await group().locator('tbody tr').filter({hasText:c.name}).getByRole('link',{name:'Удалить назначение',exact:true}).click();
+ await page.setViewportSize({width:390,height:844});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2));await page.screenshot({path:'/tmp/assignment-removal-mobile.png',fullPage:true,animations:'disabled'});
+ await page.locator('#id_reason').fill('Ошибочно выбрана должность');await page.getByRole('button',{name:'Удалить назначение',exact:true}).click();await page.waitForURL(u=>u.pathname.endsWith('/housing/')&&u.hash==='#roster');
+ assert.equal(new URL(page.url()).searchParams.get('date'),c.day);
+ assert.equal(await group().locator('.housing-position-counts b').innerText(),'1');assert((await group().innerText()).includes(c.another));assert(!(await group().innerText()).includes(c.name));assert.equal(await group().getByRole('link',{name:'Назначить сотрудника',exact:true}).count(),1);
+ await page.goto(c.base+c.history+'#assignments');const history=page.locator('[data-assignment-history]');assert.equal(await history.count(),1);assert((await history.innerText()).includes('Удалено'));assert((await history.innerText()).includes('Ошибочно выбрана должность'));assert.equal(await history.getByRole('link',{name:'Сменить назначение',exact:true}).count(),0);
+ await page.setViewportSize({width:1440,height:950});await page.locator('#assignments').scrollIntoViewIfNeeded();await page.screenshot({path:'/tmp/assignment-removal-history.png',animations:'disabled'});assert.deepEqual(errors,[]);
+ console.log('PASS: no-plan position with one employee -> role/object/camp/date preserved -> add second employee -> add button retained -> cancel removal changes nothing -> mobile confirmation -> remove one connection -> second employee and add button retained -> deletion audit retained; no page errors.');
+}finally{await browser.close();}})().catch(e=>{console.error(e);process.exit(1);});

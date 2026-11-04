@@ -89,6 +89,9 @@ class StaffingSlot(PersonnelModel):
     previous_assignment = models.OneToOneField('self', on_delete=models.PROTECT, null=True, blank=True, related_name='next_assignment', verbose_name='Предыдущее назначение')
     replaced_on = models.DateField('Заменено с', null=True, blank=True)
     assigned_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+', verbose_name='Назначил')
+    cancelled_at = models.DateTimeField('Назначение удалено', null=True, blank=True)
+    cancelled_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+', verbose_name='Удалил назначение')
+    cancellation_reason = models.TextField('Комментарий к удалению назначения', blank=True)
     camp = models.CharField('ВЖГ из исходного файла', max_length=100, blank=True)
     housing_camp = models.ForeignKey('Camp', on_delete=models.PROTECT, null=True, blank=True, verbose_name='ВЖГ')
     status = models.CharField('Текущий статус', choices=STATUSES, max_length=10, blank=True)
@@ -103,7 +106,7 @@ class StaffingSlot(PersonnelModel):
         constraints = [models.CheckConstraint(condition=models.Q(assigned_until__isnull=True)|models.Q(assigned_until__gte=models.F('assigned_from')), name='personnel_assignment_dates'),
                        models.CheckConstraint(condition=models.Q(replaced_on__isnull=True)|models.Q(replaced_on__gte=models.F('assigned_from')), name='personnel_replacement_date')]
     def clean(self):
-        for name in ['group', 'person', 'pattern', 'housing_camp', 'planning_position', 'construction_object', 'initial_movement', 'previous_assignment', 'assigned_by']:
+        for name in ['group', 'person', 'pattern', 'housing_camp', 'planning_position', 'construction_object', 'initial_movement', 'previous_assignment', 'assigned_by', 'cancelled_by']:
             obj = getattr(self, name, None)
             if obj and obj.company_id != self.company_id: raise ValidationError('Данные другой компании.')
         if self.pattern_id and self.group_id and self.pattern.board_id != self.group.board_id: raise ValidationError('График другого объекта.')

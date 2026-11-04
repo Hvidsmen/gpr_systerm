@@ -15,7 +15,7 @@ from . import housing
 
 
 def review(company,camp,day):
-    rows=StaffingSlot.objects.filter(company=company,person__isnull=False).select_related('person__employee','housing_camp','group__board').order_by('person__full_name','pk')
+    rows=StaffingSlot.objects.filter(company=company,person__isnull=False,cancelled_at=None).select_related('person__employee','housing_camp','group__board').order_by('person__full_name','pk')
     by_person=defaultdict(list)
     for row in rows:by_person[row.person_id].append(row)
     current={stay.person_id:stay for stay in housing.present_stays(company,day).select_related('camp')}

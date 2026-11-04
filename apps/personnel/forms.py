@@ -198,7 +198,7 @@ class PersonScheduleForm(forms.Form):
         from .models import ShiftPattern
         from .housing import schedule_slot
         super().__init__(*args,**kwargs)
-        self.fields['slot'].queryset=person.assignments.filter(company=person.company).select_related('group__board')
+        self.fields['slot'].queryset=person.assignments.filter(company=person.company,cancelled_at=None).select_related('group__board')
         self.fields['slot'].label_from_instance=lambda s:f'{s.group.board.name} · {s.group.position}'
         self.fields['pattern'].queryset=ShiftPattern.objects.filter(company=person.company).select_related('board')
         self.fields['pattern'].label_from_instance=lambda p:f'{p.board.name} · {p}'

@@ -163,9 +163,9 @@ def cancel_stay(user,stay,reason,version):
 
 
 def schedule_slot(person,slots=None):
-    if slots is not None:slots=list(slots)
-    if person.schedule_slot_id and person.schedule_slot.person_id==person.pk and person.schedule_slot.company_id==person.company_id and (slots is None or any(slot.pk==person.schedule_slot_id for slot in slots)):return person.schedule_slot
-    slots=sorted(slots,key=lambda row:-row.pk) if slots is not None else list(person.assignments.select_related('pattern','group__board').order_by('-pk'))
+    if slots is not None:slots=[slot for slot in slots if not slot.cancelled_at]
+    if person.schedule_slot_id and not person.schedule_slot.cancelled_at and person.schedule_slot.person_id==person.pk and person.schedule_slot.company_id==person.company_id and (slots is None or any(slot.pk==person.schedule_slot_id for slot in slots)):return person.schedule_slot
+    slots=sorted(slots,key=lambda row:-row.pk) if slots is not None else list(person.assignments.filter(cancelled_at=None).select_related('pattern','group__board').order_by('-pk'))
     if len(slots)==1:return slots[0]
     if slots and len({(s.pattern_id,str(sorted(s.calendar.items()))) for s in slots})==1:return slots[0]
     return None
@@ -183,7 +183,7 @@ def bootstrap_legacy(company,slots=None,*,user=None):
 
 def _bootstrap_legacy(company,slots,user):
     """Preserve source values; infer residence only from consistent explicit actual dates."""
-    slots=list((slots if slots is not None else StaffingSlot.objects.filter(company=company)).select_related('person','housing_camp'))
+    slots=list((slots if slots is not None else StaffingSlot.objects.filter(company=company)).filter(cancelled_at=None).select_related('person','housing_camp'))
     camps={' '.join(c.name.split()).casefold():c for c in Camp.objects.filter(company=company)}
     by_person={};seeded_dates=[]
     for slot in slots:

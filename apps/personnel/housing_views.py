@@ -247,7 +247,7 @@ def schedule(request,pk):
     person=get_object_or_404(scoped(request,Person).select_related('employee__position','schedule_slot'),pk=pk)
     form=PersonScheduleForm(request.POST if request.method=='POST' else None,person=person)
     if request.method=='GET' and request.GET.get('slot','').isdigit():
-        selected=person.assignments.filter(company=person.company,pk=request.GET['slot']).first()
+        selected=person.assignments.filter(company=person.company,pk=request.GET['slot'],cancelled_at=None).first()
         if selected:form.initial.update(slot=selected.pk,pattern=selected.pattern_id)
     if request.method=='POST' and form.is_valid():
         with transaction.atomic():
@@ -258,6 +258,7 @@ def schedule(request,pk):
             slot=form.cleaned_data.get('slot');pattern=form.cleaned_data.get('pattern')
             if slot:
                 slot=StaffingSlot.objects.select_for_update().get(pk=slot.pk,person=person,company=person.company)
+                if slot.cancelled_at:form.add_error('slot','Назначение удалено. Обновите страницу графика.')
                 if pattern and pattern.board_id!=slot.group.board_id:
                     form.add_error('pattern','График должен принадлежать таблице выбранной строки. Выберите другую строку или очистите выбор строки.')
             if not form.errors:
