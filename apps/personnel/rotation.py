@@ -104,6 +104,7 @@ def rotation_rows(company,camps,day,*,query='',position=None,state='',include_un
     camp_ids={camp.pk for camp in camps};camp_names={camp.name.strip().casefold():camp for camp in camps}
     from .plan_assignments import active_on
     slots=list(StaffingSlot.objects.filter(company=company).filter(active_on(day)).select_related('group__board','housing_camp','planning_position__group','construction_object','person__employee__position__planning_mapping__brigade__group','person__schedule_slot').prefetch_related('pattern','person__schedule_slot__pattern'))
+    removed_people=set(StaffingSlot.objects.filter(company=company,planning_position__isnull=False,cancelled_at__isnull=False,person__isnull=False).values_list('person_id',flat=True))
     all_assignments=defaultdict(list)
     for slot in slots:
         if slot.person_id:all_assignments[slot.person_id].append(slot)
@@ -172,11 +173,13 @@ def rotation_rows(company,camps,day,*,query='',position=None,state='',include_un
         arriving=trip=='ARRIVING' or bool(active and active.camp_id in camp_ids and active.arrived_on==day) or bool(not active and slot and slot.arrival_date==day) or upcoming==str(day)
         departing=trip=='DEPARTING' or outgoing==str(day) or person_id in departures or bool(slot and slot.departure_date==day)
         employee=person.employee if person.employee_id else None
-        role=slot.planning_position.name if slot and slot.planning_position_id else str(employee.position) if employee and employee.position_id else display_slot.group.position if display_slot else 'Должность не указана'
+        assignment_removed=not planned and person_id in removed_people
+        role=slot.planning_position.name if slot and slot.planning_position_id else 'Без назначения' if assignment_removed else str(employee.position) if employee and employee.position_id else display_slot.group.position if display_slot else 'Должность не указана'
         rows.append({'person':person,'slot':slot,'schedule_slot':graph_slot,'stay':active,'camp':camp,'position':employee.position if employee and employee.position_id else None,'position_label':role,
             'planning_position_id':slot.planning_position_id if slot else None,'assignment_object':slot.construction_object if slot and slot.construction_object_id else None,
+            'assignment_removed':assignment_removed,
             'actual_elsewhere':elsewhere.camp if elsewhere else None,
-            'staff_position_label':str(employee.position) if slot and slot.planning_position_id and employee and employee.position_id and str(employee.position)!=role else '',
+            'staff_position_label':str(employee.position) if employee and employee.position_id and (assignment_removed or slot and slot.planning_position_id and str(employee.position)!=role) else '',
             'state':status,'state_label':{'MV':'На вахте','MO':'Межвахтовый отдых','UNKNOWN':'Требует уточнения'}[status], 'verified':bool(active),'legacy_only':status=='MV' and not active,
             'arriving':arriving,'departing':departing,'departure_camp':departures[person_id].camp if person_id in departures else None,
             'schedule_info':description(schedule,day,schedule_stays.get(person_id,[])),

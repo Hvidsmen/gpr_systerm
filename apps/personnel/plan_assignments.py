@@ -18,6 +18,8 @@ from core.fact_history import history_actor
 from . import housing
 from .views import access
 
+REMOVED_ASSIGNMENT_SCHEDULE_COMMENT='График сохранён при удалении назначения.'
+
 
 def object_scope(obj):
     ids={obj.pk}
@@ -258,7 +260,7 @@ def remove_assignment(user,row_id,data):
     if person.schedule_slot_id==row.pk:
         schedule=None
         if row.pattern_id or row.calendar:
-            schedule=StaffingSlot.objects.create(company=user.company,group=row.group,person=person,pattern=row.pattern,calendar=dict(row.calendar),comment='График сохранён при удалении назначения.')
+            schedule=StaffingSlot.objects.create(company=user.company,group=row.group,person=person,pattern=row.pattern,calendar=dict(row.calendar),comment=REMOVED_ASSIGNMENT_SCHEDULE_COMMENT)
         person.schedule_slot=schedule;person.save(update_fields=['schedule_slot','updated_at'])
     row.cancelled_at=timezone.now();row.cancelled_by=user;row.cancellation_reason=data.get('reason','').strip()
     row.save(update_fields=['cancelled_at','cancelled_by','cancellation_reason','updated_at'])

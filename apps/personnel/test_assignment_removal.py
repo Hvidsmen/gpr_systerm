@@ -79,6 +79,25 @@ class AssignmentRemovalTests(TestCase):
         self.assertEqual([p['on_shift'] for p in group['plans']],[0,0])
         self.assertTrue(housing.present_stays(self.company,self.day).filter(person_id=self.row.person_id).exists())
 
+    def test_removed_employee_is_separated_from_matching_hr_position_and_plan(self):
+        from apps.resources.position_catalog import position_for
+        from .housing_plan import position_headers
+        from .test_plan_assignments import PlanAssignmentTests
+        position=position_for(self.role)
+        self.second_employee.position=position;self.second_employee.save()
+        self.row.pattern=None;self.row.calendar={};self.row.save()
+        CampStay.objects.create(company=self.company,person=self.row.person,camp=self.a,arrived_on=self.day)
+        self.client.post(self.url,self.payload())
+        rows=rotation_rows(self.company,[self.a],self.day)[0]
+        person_row=next(row for row in rows if row.get('person') and row['person'].pk==self.row.person_id)
+        self.assertEqual(person_row['position_label'],'Без назначения')
+        self.assertEqual(person_row['staff_position_label'],position.name)
+        groups=position_headers(self.company,rows,PlanAssignmentTests.context(self))
+        planned=next(group for group in groups if group['name']==self.role.name)
+        unassigned=next(group for group in groups if group['name']=='Без назначения')
+        self.assertEqual(planned['people'],0);self.assertEqual([p['shortage'] for p in planned['plans']],[1,1])
+        self.assertEqual(unassigned['people'],1);self.assertEqual(unassigned['plans'],[])
+
     def test_get_only_confirms_post_retains_record_and_audits_actor(self):
         self.assertContains(self.client.get(self.url),'Удалить назначение')
         self.row.refresh_from_db();self.assertIsNone(self.row.cancelled_at)

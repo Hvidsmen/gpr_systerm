@@ -155,7 +155,7 @@ def position_headers(company,rows,plan_context,*,query='',position=None,state=''
     for row in rows:
         label=row['position_label'];key=normalized(label)
         group=groups.setdefault(key,{'name':label,'rows':[],'plan_ids':set()});group['rows'].append(row)
-        mapped=canonical(row['planning_position_id']) if row.get('planning_position_id') else mappings.get(row['position'].pk) if row.get('position') else None
+        mapped=canonical(row['planning_position_id']) if row.get('planning_position_id') else mappings.get(row['position'].pk) if row.get('position') and not row.get('assignment_removed') else None
         if mapped in plans:group['plan_ids'].add(mapped);row_plan_ids[id(row)]=mapped
         elif len(by_name[key])==1:
             group['plan_ids'].update(by_name[key]);row_plan_ids[id(row)]=next(iter(by_name[key]))
