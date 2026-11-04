@@ -60,6 +60,22 @@ class MovementRecommendationTests(TestCase):
         data.update(kind='DEPARTURE',date=today-timedelta(days=2),snapshot=page.context['form'].initial['snapshot'])
         self.assertEqual(self.client.post(url,data).status_code,403)
 
+    def test_personnel_dispatcher_can_temporarily_record_arrival_and_departure_without_requests(self):
+        self.client.force_login(self.personnel_dispatcher);today=timezone.localdate();arrival=today-timedelta(days=5);url=reverse('personnel:movements')
+        page=self.client.get(url,{'camp':self.a.pk})
+        data={'workflow_action':'move','direct_fact':'on','camp':self.a.pk,'kind':'ARRIVAL','date':arrival,
+            'employees':[self.second_employee.pk],'snapshot':page.context['form'].initial['snapshot']}
+        self.assertEqual(self.client.post(url,data).status_code,302)
+        self.assertTrue(self.second_person.stays.filter(camp=self.a,arrived_on=arrival,departed_on=None).exists())
+        self.assertFalse(MovementReviewRequest.objects.exists())
+
+        page=self.client.get(url,{'camp':self.a.pk})
+        data.update(kind='DEPARTURE',date=today,snapshot=page.context['form'].initial['snapshot'])
+        self.assertEqual(self.client.post(url,data).status_code,302)
+        self.assertTrue(self.second_person.stays.filter(camp=self.a,arrived_on=arrival,departed_on=today).exists())
+        self.assertEqual(list(self.second_person.housing_events.values_list('kind','date')),[('DEPARTURE',today),('ARRIVAL',arrival)])
+        self.assertFalse(MovementReviewRequest.objects.exists())
+
     def test_recommendation_date_is_limited_to_fourteen_days(self):
         self.client.force_login(self.personnel_dispatcher)
         response=self.client.post(reverse('personnel:movements'),{

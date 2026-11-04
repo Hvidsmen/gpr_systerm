@@ -136,8 +136,10 @@ class MovementForm(forms.Form):
     destination=forms.ChoiceField(label='Куда / причина выезда',choices=[('REST','На межвахтовый отдых'),('CAMP','В другой ВЖГ'),('DISMISSAL','По увольнению')],initial='REST',required=False)
     target=forms.ModelChoiceField(label='ВЖГ назначения',queryset=None,required=False)
     comment=forms.CharField(label='Комментарий',required=False,widget=forms.Textarea(attrs={'rows':2}),max_length=4000)
+    direct_fact=forms.BooleanField(label='Временный режим: провести факт сразу, без заявки',required=False,
+        help_text='Используйте только на этапе настройки рабочих мест. Дата может быть сегодняшней или прошедшей; будущий факт запрещён.')
     snapshot=forms.CharField(widget=forms.HiddenInput)
-    def __init__(self,*args,company,camp,day,fixed_employee=None,**kwargs):
+    def __init__(self,*args,company,camp,day,fixed_employee=None,allow_direct=False,**kwargs):
         from .models import Camp
         from .housing import present_stays
         from apps.resources.models import Employee
@@ -167,7 +169,9 @@ class MovementForm(forms.Form):
             self.fields['employees'].label='Сотрудник'
         self.camp=camp;self.company=company
         self.fields['target'].queryset=Camp.objects.filter(company=company,is_active=True)
+        if not allow_direct:self.fields.pop('direct_fact')
         for field in self.fields.values():field.widget.attrs.setdefault('class','form-select' if isinstance(field.widget,forms.Select) else 'form-control')
+        if 'direct_fact' in self.fields:self.fields['direct_fact'].widget.attrs['class']='form-check-input'
     def clean(self):
         data=super().clean()
         camp=data.get('camp') or self.camp

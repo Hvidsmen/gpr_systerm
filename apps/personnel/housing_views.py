@@ -119,8 +119,10 @@ def workspace(request, movements=False):
     camp=get_object_or_404(camps,pk=camp_id) if camp_id else selected_camps.first()
     if camp is None:return render(request,template,{**extra,'rotation_filter':selector,'camps':camps,'day':day,'no_camp_match':True})
     workflow_action=request.POST.get('workflow_action','move') if request.method=='POST' else ''
+    setup_direct=request.method=='POST' and workflow_action=='move' and request.user.role.code=='PERSONNEL_DISPATCHER' and request.POST.get('direct_fact') in {'1','on','true'}
     if request.method=='POST' and workflow_action=='move':
-        try:require_fact_day(request.user,day)
+        try:
+            if not setup_direct:require_fact_day(request.user,day)
         except ValidationError as exc:raise PermissionDenied('; '.join(exc.messages))
     kind=request.GET.get('action','ARRIVAL');kind=kind if kind in {'ARRIVAL','DEPARTURE','TRANSFER','DISMISSAL'} else 'ARRIVAL'
     selected_employee=request.GET.get('employee','')
@@ -162,18 +164,20 @@ def workspace(request, movements=False):
         else:
             messages.success(request,f'Из рекомендаций убрано сотрудников: {count}.')
             return redirect(reverse('personnel:movements')+'#recommendations-'+(recommendation_kind.lower() if recommendation_kind in {'ARRIVAL','DEPARTURE'} else 'arrival'))
-    form=MovementForm(request.POST if request.method=='POST' and workflow_action=='move' else None,company=request.user.company,camp=camp,day=day,fixed_employee=fixed_employee,
+    form=MovementForm(request.POST if request.method=='POST' and workflow_action=='move' else None,company=request.user.company,camp=camp,day=day,fixed_employee=fixed_employee,allow_direct=request.user.role.code=='PERSONNEL_DISPATCHER',
         initial={'personal_scope':personal_token,'kind':kind,'date':day,'camp':None if request.GET.get('choose_camp')=='1' and kind=='ARRIVAL' else camp.pk,'snapshot':housing.movement_snapshot(request.user),'employees':[selected_employee] if selected_employee.isdigit() else []})
     if request.method=='POST' and workflow_action=='move' and form.is_valid():
         try:
             selected=form.cleaned_data['employees'];arrival=form.cleaned_data['kind']=='ARRIVAL'
             people=[] if arrival else list(Person.objects.filter(company=request.user.company,employee__in=selected))
-            operation=housing.request_moves if request.user.role.code=='PERSONNEL_DISPATCHER' else housing.move
+            direct=bool(form.cleaned_data.get('direct_fact'))
+            operation=housing.move if direct or request.user.role.code!='PERSONNEL_DISPATCHER' else housing.request_moves
+            options={'setup_direct':True} if direct else {}
             count=operation(request.user,form.cleaned_data['kind'],camp,form.cleaned_data['date'],people,
-                employees=selected if arrival else (),target=form.cleaned_data.get('target'),comment=form.cleaned_data['comment'],snapshot=form.cleaned_data['snapshot'],departure_destination='DISMISSAL' if form.cleaned_data.get('destination')=='DISMISSAL' else 'REST')
+                employees=selected if arrival else (),target=form.cleaned_data.get('target'),comment=form.cleaned_data['comment'],snapshot=form.cleaned_data['snapshot'],departure_destination='DISMISSAL' if form.cleaned_data.get('destination')=='DISMISSAL' else 'REST',**options)
         except (ValidationError,IntegrityError) as exc:form.add_error(None,'; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Размещение изменилось одновременно с вашим вводом. Обновите список.')
         else:
-            messages.success(request,(f'Заявка отправлена в перевахту. Сотрудников: {count}.' if request.user.role.code=='PERSONNEL_DISPATCHER' else f'Перемещение сохранено. Сотрудников: {count}.'))
+            messages.success(request,(f'Факт сохранён напрямую, без заявки. Сотрудников: {count}.' if direct else f'Заявка отправлена в перевахту. Сотрудников: {count}.' if request.user.role.code=='PERSONNEL_DISPATCHER' else f'Перемещение сохранено. Сотрудников: {count}.'))
             from .rotation_calendar import cycle_definition,effective_schedule
             missing=0
             for person in Person.objects.filter(company=request.user.company,employee__in=selected).select_related('employee','schedule_slot__pattern'):
