@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<h1>Персонал</h1>{% include 'personnel/_personnel_sections.html' %}
+<p><a href="{% url 'personnel:housing' %}">← Персонал</a></p>
+<h2 class="h4">{{ title }}</h2>
+<p class="text-muted">Закрепите сотрудника за должностью плана и объектом. Одна запись используется при сравнении с СМГ и ГПР; штатная должность сотрудника сохраняется.</p>
+<div class="alert alert-info">Назначение не подтверждает присутствие на вахте. После приезда оформите заезд в разделе «Заезд / выезд».</div>
+<form method="post" class="card card-body" style="max-width:900px">{% csrf_token %}
+{% include 'forms/fields.html' with form=form %}
+<div class="d-flex flex-wrap gap-2"><button class="btn btn-primary">{% if row %}Сохранить назначение{% else %}Назначить сотрудника{% endif %}</button><a class="btn btn-outline-secondary" href="{% url 'personnel:housing' %}">Отмена</a></div>
+</form>
+{% endblock %}

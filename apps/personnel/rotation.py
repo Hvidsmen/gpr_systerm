@@ -102,7 +102,8 @@ def rotation_rows(company,camps,day,*,query='',position=None,state='',include_un
     from .rotation_calendar import stays_by_person,anchor_for,description,cycle_definition
     schedule_stays=stays_by_person(company)
     camp_ids={camp.pk for camp in camps};camp_names={camp.name.strip().casefold():camp for camp in camps}
-    slots=list(StaffingSlot.objects.filter(company=company).select_related('group__board','housing_camp','person__employee__position__planning_mapping__brigade__group','person__schedule_slot').prefetch_related('pattern','person__schedule_slot__pattern'))
+    from .plan_assignments import active_on
+    slots=list(StaffingSlot.objects.filter(company=company).filter(active_on(day)).select_related('group__board','housing_camp','planning_position__group','construction_object','person__employee__position__planning_mapping__brigade__group','person__schedule_slot').prefetch_related('pattern','person__schedule_slot__pattern'))
     all_assignments=defaultdict(list)
     for slot in slots:
         if slot.person_id:all_assignments[slot.person_id].append(slot)
@@ -131,9 +132,15 @@ def rotation_rows(company,camps,day,*,query='',position=None,state='',include_un
     days=[day.replace(day=n) for n in range(1,monthrange(day.year,day.month)[1]+1)];rows=[]
     for person_id,person in people.items():
         active=current.get(person_id);previous=last.get(person_id);initial_exit=initial.get(person_id);assigned=by_person[person_id]
-        if active and active.camp_id not in camp_ids and not (state=='DEPARTING' and person_id in departures):continue
+        elsewhere=None
+        if active and active.camp_id not in camp_ids and not (state=='DEPARTING' and person_id in departures):
+            if any(slot.planning_position_id for slot in assigned):
+                elsewhere=active;active=None;previous=None;initial_exit=None
+            else:continue
         if not active and previous and previous.camp_id not in camp_ids and not assigned:continue
-        slot=housing.schedule_slot(person,all_assignments.get(person_id,[]))
+        assignments=all_assignments.get(person_id,[])
+        planned=[slot for slot in assignments if slot.planning_position_id]
+        slot=max(planned,key=lambda slot:(slot.assigned_from or date.min,slot.pk)) if planned else housing.schedule_slot(person,assignments)
         display_slot=slot or (assigned[0] if assigned else None)
         status='MV' if active else 'MO' if previous and previous.departed_on and previous.departed_on<=day else 'MO' if initial_exit else 'MV' if any(s.status=='МВ' for s in assigned) else 'MO' if any(s.status=='МО' for s in assigned) else 'UNKNOWN'
         camp=active.camp if active else initial_exit.from_camp if initial_exit and not previous else slot_camp(display_slot) if display_slot else previous.camp if previous else None
@@ -162,8 +169,11 @@ def rotation_rows(company,camps,day,*,query='',position=None,state='',include_un
         arriving=trip=='ARRIVING' or bool(active and active.camp_id in camp_ids and active.arrived_on==day) or bool(not active and slot and slot.arrival_date==day) or upcoming==str(day)
         departing=trip=='DEPARTING' or outgoing==str(day) or person_id in departures or bool(slot and slot.departure_date==day)
         employee=person.employee if person.employee_id else None
-        role=str(employee.position) if employee and employee.position_id else display_slot.group.position if display_slot else 'Должность не указана'
+        role=slot.planning_position.name if slot and slot.planning_position_id else str(employee.position) if employee and employee.position_id else display_slot.group.position if display_slot else 'Должность не указана'
         rows.append({'person':person,'slot':slot,'stay':active,'camp':camp,'position':employee.position if employee and employee.position_id else None,'position_label':role,
+            'planning_position_id':slot.planning_position_id if slot else None,'assignment_object':slot.construction_object if slot and slot.construction_object_id else None,
+            'actual_elsewhere':elsewhere.camp if elsewhere else None,
+            'staff_position_label':str(employee.position) if slot and slot.planning_position_id and employee and employee.position_id and str(employee.position)!=role else '',
             'state':status,'state_label':{'MV':'На вахте','MO':'Межвахтовый отдых','UNKNOWN':'Требует уточнения'}[status], 'verified':bool(active),'legacy_only':status=='MV' and not active,
             'arriving':arriving,'departing':departing,'departure_camp':departures[person_id].camp if person_id in departures else None,
             'schedule_info':description(slot,day,schedule_stays.get(person_id,[])),
@@ -181,7 +191,7 @@ def rotation_rows(company,camps,day,*,query='',position=None,state='',include_un
     if query:
         terms=query.casefold().split()
         rows=[row for row in rows if all(term in (' '.join([row['person'].display_name if row['person'] else 'Вакансия',row['person'].display_employee_number if row['person'] else '',row['position_label']])).casefold() for term in terms)]
-    if position:rows=[row for row in rows if row.get('position') and row['position'].pk==position.pk or not row.get('person') and row['position_label'].casefold()==position.name.casefold()]
+    if position:rows=filter_position(rows,position)
     if state=='WORKING':rows=[row for row in rows if row.get('person') and is_work(_day_code(row))]
     elif state=='TRAVEL':rows=[row for row in rows if row.get('person') and _day_code(row)=='ДП']
     elif state=='ARRIVING':rows=[row for row in rows if row.get('person') and row.get('arriving')]
@@ -192,8 +202,10 @@ def rotation_rows(company,camps,day,*,query='',position=None,state='',include_un
     elif state:rows=[row for row in rows if row['state']==state]
     from apps.resources.group_order import position_order
     from apps.resources.models import Position
-    vacant_positions={p.name.casefold():p for p in Position.objects.filter(company=company).select_related('planning_mapping__brigade__group')}
-    for row in rows:row['sort_position']=row.get('position') or vacant_positions.get(row['position_label'].casefold())
+    positions=list(Position.objects.filter(company=company).select_related('planning_mapping__brigade__group'))
+    vacant_positions={p.name.casefold():p for p in positions}
+    plan_positions={p.planning_mapping.brigade_id:p for p in positions if getattr(p,'planning_mapping',None)}
+    for row in rows:row['sort_position']=plan_positions.get(row.get('planning_position_id')) or row.get('position') or vacant_positions.get(row['position_label'].casefold())
     return sorted(rows,key=lambda row:(position_order(row.get('sort_position'),row['position_label']),row['state']=='VACANCY',row['person'].display_name.casefold() if row['person'] else '',row['slot'].pk if row['slot'] else 0)),days,rotation_stats(rows)
 
 
@@ -201,13 +213,15 @@ def positions_in_rows(company,rows):
     ids={row['position'].pk for row in rows if row.get('position')}
     labels={row.get('position_label','').strip().casefold() for row in rows}
     ids.update(pk for pk,name in Position.objects.filter(company=company).values_list('pk','name') if name.strip().casefold() in labels)
+    ids.update(Position.objects.filter(company=company,planning_mapping__brigade_id__in={row['planning_position_id'] for row in rows if row.get('planning_position_id')}).values_list('pk',flat=True))
     from apps.resources.group_order import ordered
     return ordered(Position.objects.filter(company=company,pk__in=ids),group_path='planning_mapping__brigade__group')
 
 
 def filter_position(rows,position):
     if position is None:return rows
-    return [row for row in rows if row.get('position') and row['position'].pk==position.pk or row.get('position_label','').strip().casefold()==position.name.strip().casefold()]
+    mapping=getattr(position,'planning_mapping',None)
+    return [row for row in rows if row.get('position') and row['position'].pk==position.pk or row.get('position_label','').strip().casefold()==position.name.strip().casefold() or mapping and row.get('planning_position_id')==mapping.brigade_id]
 
 
 def status_indicator(row):
