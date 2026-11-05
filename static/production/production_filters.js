@@ -5,7 +5,9 @@
  const roleOf=row=>field(row,'planning_position')?.value||String(JSON.parse(document.getElementById('position-employee-roles').textContent)[field(row,'employee')?.value]||'');
  const roleName=row=>field(row,'planning_position')?.selectedOptions[0]?.value?field(row,'planning_position').selectedOptions[0].textContent:row.closest('[data-position-plan]')?.querySelector('h4')?.textContent||'';
  const groupOf=row=>row.closest('[data-position-group]')?.dataset.positionGroup||'Без группы плана';
- function widget(host,label,options){return window.graphMultiselect.create(host,label,options,refresh);}
+ let refreshPending=false;
+ function scheduleRefresh(){if(refreshPending)return;refreshPending=true;requestAnimationFrame(()=>{refreshPending=false;refresh();});}
+ function widget(host,label,options){return window.graphMultiselect.create(host,label,options,scheduleRefresh);}
  const options=values=>[...new Map(values.filter(v=>v.value).map(v=>[String(v.value),{value:String(v.value),label:v.label}])).values()].sort((a,b)=>a.label.localeCompare(b.label,'ru'));
  const filters={};
  for(const kind of ['works','people','graph']){
@@ -37,8 +39,8 @@
   form.dispatchEvent(new Event('production-filter-change'));
  }
  form.productionFilters={workMatches,personMatches,syncGraph:()=>{}};
- document.querySelector('[data-work-search]')?.addEventListener('input',refresh);
- form.addEventListener('production-work-created',event=>{choices.push(event.detail);catalogue.set(event.detail.token,event.detail);for(const f of Object.values(filters))if(f.work)f.work.setOptions(options(choices.map(w=>({value:w.token,label:w.title||w.label}))));refresh();});
- form.addEventListener('production-report-update',()=>{syncPeople();refresh();});form.addEventListener('production-live-applied',()=>{syncPeople();refresh();});form.addEventListener('change',event=>{if(event.target.closest('[data-production-person]')){syncPeople();refresh();}});
- syncPeople();refresh();
+ document.querySelector('[data-work-search]')?.addEventListener('input',scheduleRefresh);
+ form.addEventListener('production-work-created',event=>{choices.push(event.detail);catalogue.set(event.detail.token,event.detail);for(const f of Object.values(filters))if(f.work)f.work.setOptions(options(choices.map(w=>({value:w.token,label:w.title||w.label}))));scheduleRefresh();});
+ form.addEventListener('production-report-update',()=>{syncPeople();scheduleRefresh();});form.addEventListener('production-live-applied',()=>{syncPeople();scheduleRefresh();});form.addEventListener('change',event=>{if(event.target.closest('[data-production-person]')){syncPeople();scheduleRefresh();}});
+ refresh();form.addEventListener('production-background-ready',()=>{syncPeople();scheduleRefresh();},{once:true});
 })();

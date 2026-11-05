@@ -52,8 +52,9 @@
   if(!works.length)workHost.textContent='Объёмы работ пока не внесены.';if(!people.length)peopleHost.textContent='Сотрудники пока не добавлены.';
 
  }
- form.addEventListener('production-report-update',event=>{savedWorks=event.detail.works;savedPeople=event.detail.people;if(!panel.hidden)render();});
- form.addEventListener('production-step-change',event=>{if(event.detail===4){render();loadEquipment();}});form.addEventListener('change',()=>{if(!panel.hidden)render();});
+ let renderPending=false;function scheduleRender(){if(panel.hidden||renderPending)return;renderPending=true;requestAnimationFrame(()=>{renderPending=false;render();});}
+ form.addEventListener('production-report-update',event=>{savedWorks=event.detail.works;savedPeople=event.detail.people;scheduleRender();});
+ form.addEventListener('production-step-change',event=>{if(event.detail===4){scheduleRender();loadEquipment();}});form.addEventListener('change',scheduleRender);
  panel.querySelector('[data-report-download]').addEventListener('click',async event=>{
   const button=event.currentTarget,status=panel.querySelector('[data-report-download-status]');button.disabled=true;
   try{

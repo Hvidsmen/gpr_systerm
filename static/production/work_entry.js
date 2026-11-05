@@ -91,16 +91,19 @@
       }catch(error){status.className='small text-danger';status.textContent=error.message;}
     });
   }
+  let allPending=false,totalsPending=false;
   function refreshAll(){host.querySelectorAll('[data-work-fact-row]').forEach(row=>{setupCreator(row);refresh(row);});}
+  function scheduleAll(){if(allPending)return;allPending=true;requestAnimationFrame(()=>{allPending=false;refreshAll();});}
   function refreshGroupTotals(){
     host.querySelectorAll('[data-work-group-total]').forEach(total=>{const group=total.closest('[data-work-object]');let value=0;group.querySelectorAll('[data-work-fact-row]').forEach(row=>{const deleted=row.querySelector('[name$="-DELETE"]');const input=row.querySelector('[name$="-actual_quantity"]');if(!deleted?.checked&&input?.value.trim()){const parsed=Number(input.value.replace(',','.'));if(Number.isFinite(parsed))value+=parsed;}});total.querySelector('[data-work-group-actual]').textContent=number.format(value);});
   }
-  refreshAll();refreshGroupTotals();host.closest('form').addEventListener('production-live-applied',()=>{refreshAll();refreshGroupTotals();});
-  host.addEventListener('input',event=>{if(event.target.matches('[name$="-actual_quantity"]'))refreshGroupTotals();});
+  function scheduleTotals(){if(totalsPending)return;totalsPending=true;requestAnimationFrame(()=>{totalsPending=false;refreshGroupTotals();});}
+  refreshAll();refreshGroupTotals();host.closest('form').addEventListener('production-live-applied',()=>{scheduleAll();scheduleTotals();});
+  host.addEventListener('input',event=>{if(event.target.matches('[name$="-actual_quantity"]'))scheduleTotals();});
   host.addEventListener('change', event => {
     const row = event.target.closest('[data-work-fact-row]');
-    if (row){refresh(row);refreshGroupTotals();}
-    else if(event.target===host)refreshAll();
+    if (row){refresh(row);scheduleTotals();}
+    else if(event.target===host)scheduleAll();
   });
   new MutationObserver(records=>{
     for(const record of records)for(const node of record.addedNodes){

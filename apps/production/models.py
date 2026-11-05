@@ -86,6 +86,7 @@ class DailyFact(ActualHistoryMixin, BaseCompanyModel):
         verbose_name = _("дневной факт")
         verbose_name_plural = _("дневные факты")
         ordering = ["-date", "project_work"]
+        indexes = [models.Index(fields=['company','date','project_work'],name='prod_fact_company_day_work')]
         constraints = [
             models.UniqueConstraint(
                 fields=["project_work", "work_item", "date"],

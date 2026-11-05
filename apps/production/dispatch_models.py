@@ -83,6 +83,7 @@ class EmployeeActivity(ShiftActivity):
     equipment=models.ForeignKey('resources.Equipment',on_delete=models.PROTECT,null=True,blank=True,verbose_name='Техника экипажа')
     reported_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,blank=True,editable=False,related_name='reported_employee_activities')
     class Meta:
+        indexes=[models.Index(fields=['company','construction_object','date','entry_direction'],name='prod_emp_obj_day_direction')]
         constraints=[models.UniqueConstraint(fields=['employee','date','shift'],name='one_employee_shift_location')]
     def clean(self):
         super().clean()
@@ -106,6 +107,7 @@ class EmployeeWorkLink(ActualHistoryMixin, BaseCompanyModel):
 
     class Meta:
         ordering = ['pk']
+        indexes = [models.Index(fields=['company','activity','fact'],name='prod_link_activity_fact')]
         constraints = [
             models.UniqueConstraint(fields=['activity','work'], condition=models.Q(work_item__isnull=True, fact__isnull=True), name='unique_employee_simple_work'),
             models.UniqueConstraint(fields=['activity','work','work_item'], condition=models.Q(work_item__isnull=False), name='unique_employee_component_work'),

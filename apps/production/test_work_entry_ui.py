@@ -210,6 +210,18 @@ class WorkEntryPresentationTests(TestCase):
         self.assertIn("for(const name of ['comment','actuation_type','actuation_reason'])",autosave)
         self.assertIn("field(row,'DELETE').checked=true",autosave)
 
+    def test_work_screen_batches_expensive_refreshes_and_exposes_performance_metrics(self):
+        root=Path(__file__).resolve().parents[2]/'static/production'
+        filters=(root/'production_filters.js').read_text(encoding='utf-8')
+        works=(root/'work_entry.js').read_text(encoding='utf-8')
+        metrics=(root/'production_performance.js').read_text(encoding='utf-8')
+        self.assertIn('requestAnimationFrame(()=>{refreshPending=false;refresh();})',filters)
+        self.assertIn('requestAnimationFrame(()=>{totalsPending=false;refreshGroupTotals();})',works)
+        self.assertIn("form.dispatchEvent(new Event('production-background-ready'))",metrics)
+        self.assertIn('window.productionPerformance=',metrics)
+        positions=(root/'production_positions.js').read_text(encoding='utf-8')
+        self.assertIn("addEventListener('production-background-ready',start",positions)
+
     def test_plan_changes_with_selected_day_and_previous_fact_excludes_this_day(self):
         DailyFact.objects.create(company=self.company, project_work=self.package, work_item=self.camera, date=self.day-timedelta(days=2), actual_quantity=3)
         DailyFact.objects.create(company=self.company, project_work=self.package, work_item=self.camera, date=self.day, actual_quantity=7)
