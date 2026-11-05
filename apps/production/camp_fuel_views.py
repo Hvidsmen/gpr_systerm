@@ -97,12 +97,17 @@ def board(request):
             return redirect(reverse('production:camp_fuel')+'?'+urlencode(selector.cleaned_data|{'camp':camp.pk}))
     rows=camp_fuel.ledger(camp,fuel_type).filter(date__lte=day).select_related('recorded_by')
     if request.GET.get('export')=='xlsx':return excel(camp,fuel_type,rows)
+    fragment=request.GET.get('fragment')
+    if fragment=='ledger':return render(request,'production/_camp_fuel_ledger.html',{'rows':rows.order_by('-date')[:60],'camp':camp})
+    if fragment=='revisions':
+        from .history_views import visible_revisions,changes
+        revisions=visible_revisions(request.user).filter(entity_type='production.campfuelday',camp_ids__0=camp.pk).order_by('-created_at')[:30]
+        for revision in revisions:revision.changes=changes(revision)
+        return render(request,'production/_camp_fuel_revisions.html',{'revisions':revisions})
     closing=current.actual_balance if current else opening
-    from .history_views import visible_revisions,changes
-    revisions=visible_revisions(request.user).filter(entity_type='production.campfuelday',camp_ids__0=camp.pk).order_by('-created_at')[:30]
-    for revision in revisions:revision.changes=changes(revision)
+    fragment_query=urlencode({'camp':camp.pk,'date':str(day)})
     context.update(camp=camp,day=day,fuel_type=fuel_type,fuel_label=dict(FUEL_CHOICES)[fuel_type],form=form,editable=editable,current=current,
         opening=opening,closing=closing,opening_density=initial['opening_density'],closing_density=initial['closing_density'],
-        opening_tonnes=mass_tonnes(opening,initial['opening_density']),closing_tonnes=mass_tonnes(closing,initial['closing_density']),rows=rows.order_by('-date')[:60],revisions=revisions,
+        opening_tonnes=mass_tonnes(opening,initial['opening_density']),closing_tonnes=mass_tonnes(closing,initial['closing_density']),ledger_url='?'+fragment_query+'&fragment=ledger',revisions_url='?'+fragment_query+'&fragment=revisions',
         query=urlencode({'camp':camp.pk,'date':str(day)}),camp_query=urlencode({'camp':camp.pk,'date':str(day)}))
     return render(request,'production/camp_fuel.html',context,status=400 if request.method=='POST' else 200)

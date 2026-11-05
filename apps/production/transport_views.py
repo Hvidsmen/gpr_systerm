@@ -273,10 +273,11 @@ def board(request):
         query=urlencode({'camp':camp.pk,'date':str(day),'view':day_view}),export_query=urlencode({'camp':camp.pk,'date':str(day),'q':data['q'],'condition':data['condition'],'use':data['use'],'tab':tab,'view':day_view}),error_open=request.method=='POST',can_create=role_code(request.user) in service.OPERATORS)
     occupied=service.present(request.user.company,day).values('equipment_id')
     disposed=EquipmentTransportEvent.objects.filter(company=request.user.company,kind='WRITEOFF',cancelled_at=None).values('equipment_id')
-    context['arrival_ids']=list(Equipment.objects.filter(company=request.user.company,is_active=True).exclude(pk__in=occupied).exclude(pk__in=disposed).values_list('pk',flat=True))
-    from apps.resources.transport_import_models import TransportImportRow
-    context['import_errors']=TransportImportRow.objects.filter(company=request.user.company,status='PENDING',batch__applied_at__isnull=False).count()
-    context['events']=EquipmentTransportEvent.objects.filter(company=request.user.company).filter(Q(from_camp=camp)|Q(to_camp=camp)).filter(date__lte=day).select_related('equipment','from_camp','to_camp','recorded_by','cancelled_by')[:100]
+    context['arrival_ids']=list(Equipment.objects.filter(company=request.user.company,is_active=True).exclude(pk__in=occupied).exclude(pk__in=disposed).values_list('pk',flat=True)) if tab=='state' else []
+    if tab!='day':
+        from apps.resources.transport_import_models import TransportImportRow
+        context['import_errors']=TransportImportRow.objects.filter(company=request.user.company,status='PENDING',batch__applied_at__isnull=False).count()
+    if tab=='events':context['events']=EquipmentTransportEvent.objects.filter(company=request.user.company).filter(Q(from_camp=camp)|Q(to_camp=camp)).filter(date__lte=day).select_related('equipment','from_camp','to_camp','recorded_by','cancelled_by')[:100]
     if context['tab']=='calendar':
         start=day.replace(day=1);end=day.replace(day=monthrange(day.year,day.month)[1]);days=[start+timedelta(days=i) for i in range(end.day)]
         stays=list(EquipmentCampStay.objects.filter(company=request.user.company,camp=camp,cancelled_at=None,arrived_on__lte=end).filter(Q(departed_on=None)|Q(departed_on__gt=start)).exclude(departed_on=F('arrived_on')).select_related('equipment__type__parent'))

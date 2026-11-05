@@ -136,7 +136,10 @@ class LodgingTests(TestCase):
         self.edit()
         url=reverse('personnel:lodging');data={'camp':self.a.pk,'date':str(self.day)}
         response=self.client.get(url,data);self.assertEqual(response.status_code,200)
-        self.assertContains(response,'data-lodging-bed',count=3);self.assertContains(response,self.second_employee.display_name)
+        self.assertNotContains(response,'data-lodging-bed');self.assertContains(response,'data-lazy-url')
+        places=self.client.get(reverse('personnel:lodging_building_places',args=[self.building.pk]),data)
+        self.assertContains(places,'data-lodging-bed',count=3);self.assertContains(places,self.second_employee.display_name)
+        history=self.client.get(reverse('personnel:lodging_event_history'),data);self.assertEqual(history.status_code,200)
         self.assertContains(response,'Сверка перевахты и проживания');self.assertContains(response,'Комендант · проживание')
         self.assertEqual(self.client.get(url,{**data,'export':'xlsx'})['Content-Type'],'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         self.assertEqual(self.client.get(reverse('production:fact_history'),{'direction':'lodging'}).status_code,200)

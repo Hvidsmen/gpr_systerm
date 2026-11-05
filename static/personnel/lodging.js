@@ -18,7 +18,7 @@
  employee.addEventListener('change',()=>{const row=roster.find(r=>String(r.employee)===employee.value);if(row){field('planned_departure').value=row.planned_departure;field('keys_issued').checked=row.keys_issued;field('key_number').value=row.key_number||'';field('pass_number').value=row.pass_number;field('comment').value=row.comment;}else{field('planned_departure').value='';field('keys_issued').checked=false;field('key_number').value='';field('pass_number').value='';field('comment').value='';}});
  take.addEventListener('click',async()=>{if(busy)return;busy=true;take.disabled=true;[kind,employee,bed,day].forEach(node=>node.disabled=true);say('Резервируем сотрудника и место…');try{const result=await request('acquire');signed.value=result.signed;held=payload('acquire');setClaim(true);say('Вы оформляете сотрудника и место. Резерв продлевается, пока страница открыта.');}catch(error){setClaim(false);say(error.message,true);refresh();}finally{busy=false;[kind,employee,bed,day].forEach(node=>node.disabled=false);refresh();}});
  release.addEventListener('click',async()=>{await releaseClaim();refresh();say('Оформление освобождено.');});
- document.querySelectorAll('[data-lodging-action]').forEach(button=>button.addEventListener('click',async()=>{await releaseClaim();kind.value=button.dataset.lodgingAction;employee.value=button.dataset.employee||'';bed.value=button.dataset.bed||'';employee.dispatchEvent(new Event('change',{bubbles:true}));kind.dispatchEvent(new Event('change',{bubbles:true}));bed.dispatchEvent(new Event('change',{bubbles:true}));const panel=document.getElementById('movement');panel.open=true;panel.scrollIntoView({block:'center',behavior:'smooth'});refresh();}));
+ document.addEventListener('click',async event=>{const button=event.target.closest('[data-lodging-action]');if(!button)return;await releaseClaim();kind.value=button.dataset.lodgingAction;employee.value=button.dataset.employee||'';bed.value=button.dataset.bed||'';employee.dispatchEvent(new Event('change',{bubbles:true}));kind.dispatchEvent(new Event('change',{bubbles:true}));bed.dispatchEvent(new Event('change',{bubbles:true}));const panel=document.getElementById('movement');panel.open=true;panel.scrollIntoView({block:'center',behavior:'smooth'});refresh();});
  document.querySelector('[data-open-lodging-movement]')?.addEventListener('click',()=>{document.getElementById('movement').open=true;});
  form.addEventListener('submit',e=>{if(!claimed||!signed.value){e.preventDefault();say('Сначала начните оформление сотрудника и места.',true);return;}posting=true;save.disabled=true;});
  const quickForm=document.querySelector('[data-quick-bed-form]'),quickPanel=document.querySelector('[data-lodging-quick-bed]');
@@ -41,4 +41,16 @@
  setInterval(async()=>{if(!claimed||document.hidden)return;try{const result=await request('renew');signed.value=result.signed;}catch(error){setClaim(false);refresh();say(error.message,true);}},60000);
  window.addEventListener('pagehide',()=>{if(claimed&&!posting)fetch(form.dataset.claimUrl,{method:'POST',credentials:'same-origin',keepalive:true,headers:{'Content-Type':'application/json','X-CSRFToken':csrf},body:JSON.stringify({...held,action:'release'})}).catch(()=>{});});
  window.addEventListener('beforeunload',e=>{if(claimed&&!posting){e.preventDefault();e.returnValue='';}});refresh();
+})();
+(()=>{'use strict';
+ async function load(panel,url=panel.dataset.lazyUrl){
+  if(panel.dataset.lazyLoaded==='1'||panel.dataset.lazyLoading==='1'||!url)return;
+  const host=panel.querySelector('[data-lazy-content]');panel.dataset.lazyLoading='1';host.innerHTML='<p class="small text-muted m-3">Загрузка…</p>';
+  try{const response=await fetch(url,{credentials:'same-origin',headers:{'X-Requested-With':'XMLHttpRequest'}});if(!response.ok)throw new Error('Не удалось загрузить данные.');host.innerHTML=await response.text();panel.dataset.lazyLoaded='1';}
+  catch(error){host.innerHTML='<p class="text-danger m-3">'+error.message+' Повторно закройте и откройте раздел.</p>';}
+  finally{delete panel.dataset.lazyLoading;}
+ }
+ document.querySelectorAll('details[data-lazy-url]').forEach(panel=>panel.addEventListener('toggle',()=>{if(panel.open)load(panel);}));
+ document.addEventListener('click',async event=>{const button=event.target.closest('[data-lodging-history-more]');if(!button)return;button.disabled=true;const panel=button.closest('details'),host=panel.querySelector('[data-lazy-content]');try{const response=await fetch(button.dataset.url,{credentials:'same-origin'});if(!response.ok)throw new Error('Не удалось загрузить историю.');const wrapper=document.createElement('div');wrapper.innerHTML=await response.text();const rows=wrapper.querySelectorAll('tbody tr'),body=host.querySelector('tbody');rows.forEach(row=>body.append(row));button.replaceWith(wrapper.querySelector('[data-lodging-history-more]')||document.createTextNode(''));}catch(error){button.disabled=false;button.textContent=error.message+' Повторить';}});
+ if(location.hash==='#history'){const history=document.getElementById('history');if(history){history.open=true;load(history);}}
 })();
