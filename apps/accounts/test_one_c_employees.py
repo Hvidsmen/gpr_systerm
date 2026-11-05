@@ -239,6 +239,23 @@ class EmployeesImportTests(TestCase):
         self.assertFalse(deleted.is_active);self.assertFalse(old.is_active)
         self.assertEqual(result['schedule_changes_applied'],0)
 
+    def test_duplicate_schedule_names_are_merged_and_active_row_wins(self):
+        from apps.personnel.models import ZupWorkSchedule
+        result=apply_employees(self.run_record(),{
+            'employees':[self.row(schedule='Вахта 60/30')],
+            'schedule_catalog':[
+                {'ref':'a'*32,'name':' Вахта  60/30 ','marked':'0x01'},
+                {'ref':'b'*32,'name':'вахта 60/30','marked':'0x00'},
+                {'ref':'c'*32,'name':'ВАХТА 60/30','marked':'0x00'},
+            ],
+        })
+        schedules=list(ZupWorkSchedule.objects.filter(company=self.company))
+        self.assertEqual(len(schedules),1)
+        self.assertEqual(schedules[0].name,'вахта 60/30')
+        self.assertEqual(schedules[0].source_ref,'b'*32)
+        self.assertTrue(schedules[0].is_active)
+        self.assertEqual(result['schedule_duplicates_merged'],2)
+
     def test_missing_empty_and_oversized_reports_explain_distinct_causes(self):
         run=self.run_record()
         for report,message in [({},'без списка'),({'employees':{}},'формат'),({'employees':[]},'0 сотрудников'),({'employees':[{}]*200001},'200001 строк')]:

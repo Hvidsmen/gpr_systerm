@@ -215,16 +215,23 @@ def apply_employees(run, report):
             values['zup_card']['position_diagnostics'] = {'probes': row_probes, 'references': references}
         normalized.append((ref, values))
     schedule_catalog=report.get('schedule_catalog')
+    schedule_duplicates_merged=0
     if schedule_catalog is not None:
         if not isinstance(schedule_catalog,list):raise ValidationError('Некорректный справочник графиков ЗУП.')
-        checked=[];schedule_names=set()
+        checked_by_name={}
         for item in schedule_catalog:
             if not isinstance(item,dict):raise ValidationError('Некорректная строка справочника графиков ЗУП.')
             ref,name,marked=item.get('ref',''),str(item.get('name','')).strip(),item.get('marked')
             if not re.fullmatch('[0-9a-fA-F]{32}',ref) or not name or len(name)>250 or marked not in {'0x00','0x01'}:raise ValidationError('Некорректный график в справочнике ЗУП.')
-            key=name.casefold()
-            if key in schedule_names:raise ValidationError('В справочнике ЗУП повторяется название графика.')
-            schedule_names.add(key);checked.append((ref.lower(),name,marked=='0x00'))
+            key=' '.join(name.split()).casefold();active=marked=='0x00'
+            previous=checked_by_name.get(key)
+            if previous:
+                schedule_duplicates_merged+=1
+                # An active duplicate wins over a deletion-marked row. If both
+                # have the same state, retain the first stable ZUP reference.
+                if active and not previous[2]:checked_by_name[key]=(ref.lower(),name,True)
+            else:checked_by_name[key]=(ref.lower(),name,active)
+        checked=list(checked_by_name.values())
     from apps.resources.zup_positions import employee_job
     # Employee cards may only link to existing positions. Catalogue creation is
     # exclusively the staffing-schedule job, never employee occupancy/history.
@@ -240,6 +247,7 @@ def apply_employees(run, report):
               'staffing_fallback':sum(not values['zup_position_name'] and bool(values['zup_card'].get('staffing_position')) for _,values in normalized),
               'incomplete_names':sum(not values['first_name'] or not values['last_name'] for _,values in normalized),
               'unnamed':sum(not any(values[name] for name in ['zup_full_name','first_name','last_name','middle_name']) for _,values in normalized)}
+    counts['schedule_duplicates_merged']=schedule_duplicates_merged
     counts['gender']={'male':sum(v.get('gender')=='M' for _,v in normalized),'female':sum(v.get('gender')=='F' for _,v in normalized),'unresolved':sum('gender' not in v for _,v in normalized),'source':'ФизическоеЛицо.Пол'}
     counts['position_diagnostics'] = {'version': 1, 'employees': len(normalized),
         'active_employees': sum(values['is_active'] for _, values in normalized), 'coverage': coverage}
