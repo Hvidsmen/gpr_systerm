@@ -195,6 +195,8 @@ class WorkEntryPresentationTests(TestCase):
         self.assertIn("[name$=\"-operational_name\"]",claims)
         self.assertIn("window.productionAutoSave?.fingerprint(row)===row.dataset.autoSavedStamp",claims)
         self.assertIn("autosaveState==='Сохранено'",claims)
+        self.assertIn("field(row,'id')?.value?'Запись сохранена'",claims)
+        self.assertIn("'Заполните объём работы'",claims)
 
     def test_saved_and_operational_rows_use_their_actual_object_in_work_filters(self):
         filters=(Path(__file__).resolve().parents[2]/'static/production/production_filters.js').read_text(encoding='utf-8')
@@ -203,7 +205,10 @@ class WorkEntryPresentationTests(TestCase):
         self.assertIn("workMatches(key,'works',w)",filters)
         entry=(Path(__file__).resolve().parents[2]/'static/production/work_entry.js').read_text(encoding='utf-8')
         self.assertIn("savedSelection=Boolean(row.dataset.workToken||row.dataset.operationalName)",entry)
-        self.assertIn("savedSelection?'':'Сначала выберите работу.'",entry)
+        self.assertIn("savedSelection?'':'Заполните объём работы.'",entry)
+        autosave=(Path(__file__).resolve().parents[2]/'static/production/production_autosave.js').read_text(encoding='utf-8')
+        self.assertIn("for(const name of ['comment','actuation_type','actuation_reason'])",autosave)
+        self.assertIn("field(row,'DELETE').checked=true",autosave)
 
     def test_plan_changes_with_selected_day_and_previous_fact_excludes_this_day(self):
         DailyFact.objects.create(company=self.company, project_work=self.package, work_item=self.camera, date=self.day-timedelta(days=2), actual_quantity=3)

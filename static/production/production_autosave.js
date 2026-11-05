@@ -124,18 +124,26 @@
  form.addEventListener('click',async event=>{
   const clear=event.target.closest('[data-work-clear]');
   if(clear){
+   event.preventDefault();
    const row=clear.closest('[data-work-fact-row]');clear.disabled=true;
-   try{await form.productionClaimRow(row);const quantity=field(row,'actual_quantity');quantity.value='0';row.dataset.entryDirty='1';quantity.dispatchEvent(new Event('input',{bubbles:true}));quantity.dispatchEvent(new Event('change',{bubbles:true}));schedule(row);await flush();}
+   try{
+    await form.productionClaimRow(row);
+    const quantity=field(row,'actual_quantity');quantity.value='0';
+    for(const name of ['comment','actuation_type','actuation_reason']){const input=field(row,name);if(input)input.value='';}
+    row.querySelectorAll('[name$="-actuation_reasons"]').forEach(input=>{input.checked=false;});
+    row.dataset.entryDirty='1';quantity.dispatchEvent(new Event('input',{bubbles:true}));schedule(row);await flush();
+   }
    catch(error){rowMessage(row,error.message,true);message(error.message,true);}
    finally{clear.disabled=false;}
    return;
   }
   const button=event.target.closest('[data-person-remove],[data-work-remove]');if(!button)return;
+  event.preventDefault();
   const row=button.closest('[data-production-person],[data-work-fact-row]');button.disabled=true;
   try{
    if(!field(row,'id').value&&!running){try{await form.productionReleaseRow(row);}catch{}row.remove();reindex();form.dispatchEvent(new Event('change',{bubbles:true}));return;}
-   await form.productionClaimRow(row);field(row,'DELETE').checked=true;row.classList.add('production-person-auto-deleting');row.dataset.entryDirty='1';row.dispatchEvent(new Event('change',{bubbles:true}));schedule(row);await flush();
-  }catch(error){rowMessage(row,error.message,true);message(error.message,true);}finally{if(row.isConnected)row.classList.remove('production-person-auto-deleting');button.disabled=false;}
+   await form.productionClaimRow(row);field(row,'DELETE').checked=true;row.classList.add('production-row-auto-deleting');row.dataset.entryDirty='1';row.dispatchEvent(new Event('change',{bubbles:true}));schedule(row);await flush();
+  }catch(error){row.hidden=false;rowMessage(row,error.message,true);message(error.message,true);}finally{if(row.isConnected)row.classList.remove('production-row-auto-deleting');button.disabled=false;}
  });
  form.addEventListener('submit',event=>{event.preventDefault();flush();},true);
  window.addEventListener('beforeunload',event=>{if(running||pending||dirty().length){event.preventDefault();event.returnValue='';}});

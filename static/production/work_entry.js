@@ -43,7 +43,7 @@
         if (!allowed && option.selected) option.selected = false;
       }
       item.disabled=!owner||simple;if(simple)item.value='';
-      const hint=row.querySelector('[data-work-item-hint]'),savedSelection=Boolean(row.dataset.workToken||row.dataset.operationalName);if(hint)hint.textContent=simple?'Для самостоятельной работы это поле не заполняется.':owner?'Выберите работу в составе комплекса.':savedSelection?'':'Сначала выберите работу.';
+      const hint=row.querySelector('[data-work-item-hint]'),savedSelection=Boolean(row.dataset.workToken||row.dataset.operationalName);if(hint)hint.textContent=simple?'Для самостоятельной работы это поле не заполняется.':owner?'Выберите работу в составе комплекса.':savedSelection?'':'Заполните объём работы.';
       const creator=row.querySelector('[data-dispatcher-item-create]');if(creator)creator.hidden=true;
     }
     const meta=workMeta.get(String(work?.value||'')),operational=Boolean(work?.value&&meta?.kind==='COMPOSITE'&&creatorObjects.has(String(meta.complex_id))&&!item?.value);
