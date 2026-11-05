@@ -237,6 +237,10 @@ class WorkEntryPresentationTests(TestCase):
         self.assertIn("row.dataset.entryDirty='1';row.hidden=true",autosave)
         self.assertIn("row.isConnected&&field(row,'DELETE').checked",autosave)
         self.assertIn("form.addEventListener('input',relevant,true)",autosave)
+        links=(Path(__file__).resolve().parents[2]/'static/production/production_entry.js').read_text(encoding='utf-8')
+        self.assertIn("factToken=f=>f.operational_name?'operational:'+f.id",links)
+        self.assertIn("saved.filter(f=>f.operational_name)",links)
+        self.assertIn("saved.find(w=>factToken(w)===target)",links)
 
     def test_work_screen_batches_expensive_refreshes_and_exposes_performance_metrics(self):
         root=Path(__file__).resolve().parents[2]/'static/production'
