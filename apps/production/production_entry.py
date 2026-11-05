@@ -1,4 +1,6 @@
 """Work candidates and employee assignments reused by the production dispatcher."""
+from copy import copy
+from django.db import transaction
 from django import forms
 from django.db.models import Max, Q
 from apps.works.models import ProjectWork
@@ -9,6 +11,45 @@ from .dispatch import PersonForm
 
 
 GENERAL_PATH = 'employee__position__planning_mapping__brigade__group__is_general_staff'
+
+
+@transaction.atomic
+def inherit_parent_works(obj, user):
+    """Materialise parent catalogue entries locally so facts remain owned by the child object."""
+    from apps.projects.models import ConstructionObject,Section
+    from apps.works.models import ComplexObject,ProjectWorkItem
+    rows={row.pk:row for row in ConstructionObject.objects.filter(company=obj.company,project=obj.project)}
+    ancestors=[];current=rows.get(obj.parent_id);seen=set()
+    while current and current.pk not in seen:
+        seen.add(current.pk);ancestors.append(current);current=rows.get(current.parent_id)
+    if not ancestors:return
+    ConstructionObject.objects.select_for_update().get(pk=obj.pk)
+    local=list(ProjectWork.objects.filter(company=obj.company,section__construction_object=obj,merged_source__isnull=True).select_related('section','complex_object').prefetch_related('items'))
+    signatures={(work.kind,work.section.name.casefold(),(work.complex_object.name.casefold() if work.complex_object_id else ''),work.name.casefold()) for work in local}
+    # Nearest parent wins when the same catalogue path exists at several ancestor levels.
+    ancestor_order={ancestor.pk:index for index,ancestor in enumerate(ancestors)}
+    sources=list(ProjectWork.objects.filter(company=obj.company,section__construction_object__in=ancestors,merged_source__isnull=True,is_legacy_structure=False).select_related('section','complex_object').prefetch_related('items'))
+    sources.sort(key=lambda work:(ancestor_order[work.section.construction_object_id],work.pk))
+    for source in sources:
+        signature=(source.kind,source.section.name.casefold(),(source.complex_object.name.casefold() if source.complex_object_id else ''),source.name.casefold())
+        if signature in signatures:continue
+        section=Section.objects.filter(company=obj.company,construction_object=obj,name__iexact=source.section.name).order_by('pk').first()
+        if not section:section=Section.objects.create(company=obj.company,construction_object=obj,name=source.section.name)
+        complex_object=None
+        if source.complex_object_id:
+            complex_object=ComplexObject.objects.filter(company=obj.company,construction_object=obj,name__iexact=source.complex_object.name).order_by('pk').first()
+            if not complex_object:complex_object=ComplexObject.objects.create(company=obj.company,construction_object=obj,section=section,name=source.complex_object.name)
+            section=complex_object.section
+        work=copy(source);work.pk=None;work._state=copy(source._state);work._state.fields_cache={};work._state.adding=True;work.code='';work.section=section;work.complex_object=complex_object;work._price_actor=user;work.save()
+        mapping={};pending=[]
+        for original in source.items.all().order_by('sequence','pk'):
+            item=copy(original);item.pk=None;item._state=copy(original._state);item._state.fields_cache={};item._state.adding=True;item.code='';item.project_work=work;item.parent=None;item.save()
+            mapping[str(original.pk)]=item.pk;pending.append((item,original.parent_id))
+        for item,parent_id in pending:
+            if parent_id and str(parent_id) in mapping:item.parent_id=mapping[str(parent_id)];item.save(update_fields=['parent'])
+        from apps.planning.models import SubobjectWorkOrigin
+        link=SubobjectWorkOrigin(company=obj.company,source_work=source,local_work=work,item_mapping=mapping);link.full_clean();link.save()
+        signatures.add(signature)
 
 
 def is_general_employee(employee):

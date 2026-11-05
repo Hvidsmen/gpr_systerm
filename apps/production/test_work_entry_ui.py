@@ -4,6 +4,8 @@ from django.test import TestCase
 from django.urls import reverse
 from uuid import uuid4
 from apps.works.models import ComplexObject, ProjectWork, ProjectWorkItem
+from apps.projects.models import ConstructionObject,Section
+from apps.planning.models import SubobjectWorkOrigin
 from apps.planning.models import DailyScheduleEntry
 from . import test_dispatch as fixtures
 from .models import DailyFact
@@ -34,6 +36,22 @@ class WorkEntryPresentationTests(TestCase):
 
     def page(self, day=None):
         return self.client.get(self.url, {'construction_object':self.obj.pk,'date':str(day or self.day),'section':'works'})
+
+    def test_parent_macro_object_work_is_materialised_and_searchable_on_child(self):
+        parent=ConstructionObject.objects.create(company=self.company,project=self.obj.project,name='КТП')
+        self.obj.parent=parent;self.obj.save(update_fields=['parent'])
+        section=Section.objects.create(company=self.company,construction_object=parent,name='УЗА')
+        complex_object=ComplexObject.objects.create(company=self.company,construction_object=parent,section=section,name='УЗА 30')
+        source=ProjectWork.objects.create(company=self.company,section=section,complex_object=complex_object,name='Монтаж кабеля',kind='COMPOSITE',unit='компл')
+        source_item=ProjectWorkItem.objects.create(company=self.company,project_work=source,name='Прокладка кабеля',unit='м',quantity_per_unit=2)
+        response=self.page();self.assertEqual(response.status_code,200)
+        link=SubobjectWorkOrigin.objects.get(source_work=source)
+        self.assertEqual(link.local_work.section.construction_object,self.obj)
+        self.assertEqual(link.local_work.complex_object.name,'УЗА 30')
+        self.assertEqual(link.local_work.items.get().name,source_item.name)
+        empty=response.context['groups'][0]['formset'].empty_form
+        self.assertIn(link.local_work,list(empty.fields['project_work'].queryset))
+        self.assertContains(response,'Монтаж кабеля')
 
     def test_hierarchy_shows_leaf_titles_exact_day_plan_units_and_zero(self):
         response = self.page(); self.assertEqual(response.status_code, 200)

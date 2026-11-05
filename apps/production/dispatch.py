@@ -340,7 +340,8 @@ class DispatcherDayView(CompanyRequiredMixin,View):
         context['production_reset_epoch']=reset_epoch(obj,day)
         status,_=FactSectionDay.objects.get_or_create(company=obj.company,construction_object=obj,date=day,section=section)
         work_plan,resource_plan=plans(obj,day)
-        from .production_entry import ProductionPersonForm, candidate_keys, previous_people, work_catalogue, GENERAL_PATH
+        from .production_entry import ProductionPersonForm, candidate_keys, previous_people, work_catalogue, inherit_parent_works, GENERAL_PATH
+        if section=='works':inherit_parent_works(obj,request.user)
         catalogue=work_catalogue(obj)
         own_entry=section=='works' and role_code(request.user)=='DISPATCHER'
         activity_keys=candidate_keys(obj,day,work_plan,catalogue,request.POST if bound else None,user=request.user if own_entry else None,
