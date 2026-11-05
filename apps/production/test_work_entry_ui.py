@@ -93,6 +93,12 @@ class WorkEntryPresentationTests(TestCase):
         self.assertEqual(WorkFactClaim.objects.count(), 0, 'Displaying planned work must not reserve it')
         self.assertEqual(DailyFact.objects.count(), 0)
 
+    def test_whole_number_fact_is_rendered_without_scientific_notation(self):
+        fact=DailyFact.objects.create(company=self.company,date=self.day,project_work=self.work,actual_quantity=10)
+        response=self.page();row=next(form for form in response.context['groups'][0]['formset'] if form.instance.pk==fact.pk)
+        self.assertEqual(row['actual_quantity'].value(),'10')
+        self.assertNotContains(response,'value="1E+1"')
+
     def test_dispatcher_creates_item_only_in_enabled_other_object(self):
         self.complex_object.allow_dispatcher_work_items=True
         self.complex_object.save(update_fields=['allow_dispatcher_work_items'])

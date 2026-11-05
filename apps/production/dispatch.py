@@ -119,7 +119,7 @@ class WorkForm(ScopeFormMixin,DailyFactForm):
         self.fields['operational_unit'].widget.attrs.update({'placeholder':'Например: шт., м, рейс','data-operational-unit':'1'})
         self.order_fields(['complex_object_filter','project_work','work_item','operational_name','operational_unit','actual_quantity','comment'])
         if not self.instance.pk:self.initial['actual_quantity']=None
-        else:self.initial['actual_quantity']=self.instance.actual_quantity.normalize()
+        else:self.initial['actual_quantity']=format(self.instance.actual_quantity.normalize(),'f')
     def clean(self):
         data=super().clean();work=data.get('project_work');item=data.get('work_item')
         name=(data.get('operational_name') or '').strip();unit=(data.get('operational_unit') or '').strip()

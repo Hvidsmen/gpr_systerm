@@ -146,7 +146,7 @@ def canonical_rows(obj,day,report):
     rows={'works':[],'labor':[]}
     for fact in DailyFact.objects.filter(company=obj.company,date=day,project_work__section__construction_object=obj):
         values={name:str(value) if value is not None else '' for name,value in {
-            'id':fact.pk,'project_work':fact.project_work_id,'work_item':fact.work_item_id,'operational_name':fact.operational_name,'operational_unit':fact.operational_unit,'actual_quantity':fact.actual_quantity.normalize(),
+            'id':fact.pk,'project_work':fact.project_work_id,'work_item':fact.work_item_id,'operational_name':fact.operational_name,'operational_unit':fact.operational_unit,'actual_quantity':format(fact.actual_quantity.normalize(),'f'),
             'actuation_type':fact.actuation_type,'actuation_reason':fact.actuation_reason,'comment':fact.comment}.items()}
         values['actuation_reasons']=sorted(str(pk) for pk in fact.actuation_reason_ids)
         values['actuation_reasons_present']='1'

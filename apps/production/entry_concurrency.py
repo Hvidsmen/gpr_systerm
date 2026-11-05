@@ -11,7 +11,7 @@ def normalized(field, value):
     if isinstance(field,forms.BooleanField):return bool(value and str(value).lower() not in {'false','0'})
     if isinstance(field,(forms.MultipleChoiceField,forms.ModelMultipleChoiceField)):return sorted(str(item) for item in (value or []))
     if isinstance(field,forms.DecimalField) and value not in (None,''):
-        try:return str(Decimal(str(value)).normalize())
+        try:return format(Decimal(str(value)).normalize(),'f')
         except InvalidOperation:return str(value)
     if isinstance(field,forms.IntegerField) and value not in (None,''):
         try:return str(int(value))
