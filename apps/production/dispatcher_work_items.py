@@ -15,7 +15,7 @@ from apps.works.models import MeasurementUnit, ProjectWork, ProjectWorkItem
 @login_required
 @require_POST
 def create(request):
-    require_roles(request.user, PRODUCTION_DISPATCHERS)
+    require_roles(request.user, PRODUCTION_DISPATCHERS | {'ADMIN'})
     from django import forms
     try:
         day = forms.DateField().clean(request.POST.get('date'))

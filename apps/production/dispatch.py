@@ -353,7 +353,7 @@ class DispatcherDayView(CompanyRequiredMixin,View):
         context['production_work_meta']=list(ProjectWork.objects.filter(
             company=obj.company,section__construction_object=obj,merged_source__isnull=True,
         ).values('id','kind','complex_object_id'))
-        if section=='works' and role_code(request.user) in {'DISPATCHER','ALL_FACT_DISPATCHER'}:
+        if section=='works' and role_code(request.user) in {'ADMIN','DISPATCHER','ALL_FACT_DISPATCHER'}:
             from apps.works.models import ComplexObject,MeasurementUnit
             context['dispatcher_item_object_ids']=list(ComplexObject.objects.filter(
                 company=obj.company,construction_object=obj,allow_dispatcher_work_items=True,
