@@ -100,7 +100,7 @@ def batch(request,data,obj,day):
             from .collaboration import automatic_readiness
             automatic_readiness(obj,day,request.user)
         ids={c['activity'] for _,c,_ in prepared}
-        people=[person_state(row) for row in EmployeeActivity.objects.filter(company=obj.company,construction_object=obj,date=day,entry_direction='works')]
+        people=[person_state(row) for row in EmployeeActivity.objects.filter(company=obj.company,construction_object=obj,date=day,pk__in=ids,entry_direction='works')]
         response={'results':results,'people':people,'removed':sorted(ids-{p['id'] for p in people}),'reset_epoch':current_epoch,'compact':True}
         if acknowledge_digest:response['digest']=state_stamp(obj,day)
         return JsonResponse(response)

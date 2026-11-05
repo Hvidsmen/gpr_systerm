@@ -90,6 +90,9 @@ class SatelliteProtocolTests(TestCase):
         self.assertTrue(self.person.work_links.filter(work=self.work).exists());self.assertTrue(other.work_links.filter(work=self.work).exists())
         linked={row['id']:row['targets'] for row in response.json()['people']}
         self.assertIn(f'work:{self.work.pk}',linked[self.person.pk]);self.assertIn(f'work:{self.work.pk}',linked[other.pk])
+        untouched=Employee.objects.create(company=self.company,last_name='Незатронутый',first_name='Сотрудник',position=self.employee.position)
+        EmployeeActivity.objects.create(company=self.company,construction_object=self.obj,date=self.day,employee=untouched,position=untouched.position,assignment_reviewed=False,entry_direction='works',reported_by=self.user)
+        response=self.send([self.command(action='remove')]);self.assertEqual({row['id'] for row in response.json()['people']},{self.person.pk})
     def test_zero_work_rejected_without_restore_and_other_operation_succeeds(self):
         self.fact.actual_quantity=0;self.fact.save()
         data=self.send([self.command(),self.command(fact=self.second_fact.pk)]).json()
