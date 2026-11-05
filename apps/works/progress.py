@@ -36,9 +36,13 @@ def quantity_from_totals(spec, totals):
     if spec["kind"] == "SIMPLE":
         return totals.get(None, ZERO)
     items = spec.get("valuation_items",spec["items"])
-    if not items or any(Decimal(item["norm"]) <= 0 for item in items):
+    # Operational complexes (for example "Прочее") may intentionally stay
+    # empty until a dispatcher adds their first item from the fact form.
+    if not items:
+        return ZERO
+    if any(Decimal(item["norm"]) <= 0 for item in items):
         raise ValidationError(
-            "У комплекса работ должны быть работы в составе комплекса с положительными нормативами."
+            f"У комплекса работ «{spec.get('name', 'Без названия')}» все работы в составе комплекса должны иметь положительные нормативы."
         )
     value = min(totals.get(item["id"], ZERO) / Decimal(item["norm"]) for item in items)
     if not spec["allow_fractional"]:
