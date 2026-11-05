@@ -193,6 +193,7 @@ class WorkEntryPresentationTests(TestCase):
         claims=(Path(__file__).resolve().parents[2]/'static/production/work_claims.js').read_text(encoding='utf-8')
         self.assertIn("key.startsWith('operational:')",claims)
         self.assertIn("[name$=\"-operational_name\"]",claims)
+        self.assertIn("window.productionAutoSave?.fingerprint(row)===row.dataset.autoSavedStamp",claims)
 
     def test_plan_changes_with_selected_day_and_previous_fact_excludes_this_day(self):
         DailyFact.objects.create(company=self.company, project_work=self.package, work_item=self.camera, date=self.day-timedelta(days=2), actual_quantity=3)
