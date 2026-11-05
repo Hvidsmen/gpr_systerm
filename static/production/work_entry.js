@@ -6,17 +6,26 @@
   const choices = JSON.parse(source.textContent);
   const catalogue = new Map(choices.map(choice => [choice.token, choice.display]));
   const itemOwners = new Map(choices.filter(choice => choice.item).map(choice => [String(choice.item), String(choice.work)]));
+  const workMeta = new Map(choices.map(choice => [String(choice.work), choice]));
+  const locationKey = choice => choice?.complex_id ? `complex:${choice.complex_id}` : `section:${choice?.section_id}`;
+  const locationLabels = new Map(choices.map(choice => [locationKey(choice), choice.complex || `${choice.section} · без комплексного объекта`]));
   const number = new Intl.NumberFormat('ru-RU', {maximumFractionDigits:6});
   function refresh(row) {
     const work = row.querySelector('[name$="-project_work"]'), item = row.querySelector('[name$="-work_item"]');
+    const location=row.querySelector('[data-work-location]');
+    if(location&&location.options.length===1){for(const [value,label] of [...locationLabels].sort((a,b)=>a[1].localeCompare(b[1],'ru'))){const option=document.createElement('option');option.value=value;option.textContent=label;location.append(option);}if(work?.value)location.value=locationKey(workMeta.get(String(work.value)));location.addEventListener('change',()=>{for(const option of work.options){const available=!location.value||locationKey(workMeta.get(String(option.value)))===location.value;option.hidden=!available;option.disabled=!available;}work.value='';item.value='';work.dispatchEvent(new Event('change',{bubbles:true}));});}
+    if(location&&work){for(const option of work.options){const available=!location.value||locationKey(workMeta.get(String(option.value)))===location.value;option.hidden=!available;option.disabled=!available;}}
     if (work && item && item.tagName === 'SELECT') {
       const owner = String(work.value || '');
+      const meta=workMeta.get(owner),simple=meta?.kind==='SIMPLE';
       for (const option of item.options) {
         if (!option.value) { option.hidden = false; option.disabled = false; continue; }
         const allowed = Boolean(owner) && itemOwners.get(String(option.value)) === owner;
         option.hidden = !allowed; option.disabled = !allowed;
         if (!allowed && option.selected) option.selected = false;
       }
+      item.disabled=!owner||simple;if(simple)item.value='';
+      const hint=row.querySelector('[data-work-item-hint]');if(hint)hint.textContent=simple?'Для самостоятельной работы это поле не заполняется.':owner?'Выберите работу в составе комплекса.':'Сначала выберите работу.';
     }
     const display = catalogue.get(item?.value ? `item:${work?.value}:${item.value}` : `work:${work?.value}`);
     const heading = row.querySelector('[data-work-heading]');
