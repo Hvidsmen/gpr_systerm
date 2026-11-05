@@ -77,6 +77,12 @@ def targets(activity):
     return [(link.work_id, link.work_item_id) for link in links] or ([(activity.work_id, activity.work_item_id)] if activity.work_id else [])
 
 
+def target_tokens(activity):
+    links=list(activity.work_links.select_related('fact').all()) if activity.pk else []
+    if links:return [f'operational:{link.fact_id}' if link.fact_id else token(link.work_id,link.work_item_id) for link in links]
+    return [token(activity.work_id,activity.work_item_id)] if activity.work_id else []
+
+
 def work_catalogue(obj):
     choices = []
     works = ProjectWork.objects.filter(company=obj.company, section__construction_object=obj,
@@ -248,7 +254,7 @@ def sync_links(form):
 def report_data(obj,day):
     works=[]
     for row in DailyFact.objects.filter(company=obj.company,project_work__section__construction_object=obj,date=day).select_related('reported_by'):
-        works.append({**{name:getattr(row,name) for name in ('id','project_work_id','work_item_id','actual_quantity','actuation_type','actuation_reason','actuation_reason_ids','comment')},
+        works.append({**{name:getattr(row,name) for name in ('id','project_work_id','work_item_id','operational_name','operational_unit','actual_quantity','actuation_type','actuation_reason','actuation_reason_ids','comment')},
             'reported_by__username':row.reported_by.username if row.reported_by_id else None,
             'owner':(row.reported_by.get_full_name() or row.reported_by.username) if row.reported_by_id else 'Общий ввод'})
     people=[]
@@ -260,6 +266,6 @@ def report_data(obj,day):
         from apps.resources.group_order import labor_group_order
         people.append({'group_order':labor_group_order(group)[0],'group':group.name if group else 'Без группы плана','id':row.pk,'employee':row.employee_id,'name':row.employee.display_name,'position':str(row.planning_position or row.position or ''),'staff_position':str(row.position or ''),
             'role':row.planning_position_id or row.position_id,'shift':row.shift,'general':row.general,'reviewed':row.assignment_reviewed,'constant':is_general_employee(row.employee),
-            'links_revision':row.links_revision,'direction':row.entry_direction,'targets':[token(w,i) for w,i in targets(row)],
+            'links_revision':row.links_revision,'direction':row.entry_direction,'targets':target_tokens(row),
             'owner':(row.reported_by.get_full_name() or row.reported_by.username) if row.reported_by_id else 'Общий ввод'})
     return {'works':works,'people':people}

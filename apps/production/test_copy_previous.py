@@ -61,6 +61,21 @@ class ProductionCopyTests(TestCase):
         self.assertEqual(LaborFact.objects.get(date=self.day).actual_workers,9)
         self.assertEqual(self.copy(replace_legacy=True).json()['added'],1)
 
+    def test_operational_work_and_its_link_copy_without_quantity(self):
+        from apps.works.models import ComplexObject,ProjectWork
+        complex_object=ComplexObject.objects.create(company=self.company,construction_object=self.obj,section=self.work.section,name='Прочее',allow_dispatcher_work_items=True)
+        package=ProjectWork.objects.create(company=self.company,section=self.work.section,complex_object=complex_object,name='ЭМР. Прочее',kind='COMPOSITE',unit='компл')
+        operational=DailyFact.objects.create(company=self.company,project_work=package,date=self.previous,operational_key=uuid4(),operational_name='Уборка мусора',operational_unit='рейс',actual_quantity=4,reported_by=self.user)
+        EmployeeWorkLink.objects.create(company=self.company,activity=self.old,work=package,fact=operational)
+        self.copy()
+        row=EmployeeActivity.objects.get(date=self.day)
+        response=self.copy('links',revisions={str(row.pk):0})
+        self.assertEqual(response.status_code,200,response.content)
+        copied=DailyFact.objects.get(date=self.day,operational_key=operational.operational_key)
+        self.assertEqual(copied.actual_quantity,0)
+        self.assertEqual((copied.operational_name,copied.operational_unit),('Уборка мусора','рейс'))
+        self.assertTrue(row.work_links.filter(fact=copied).exists())
+
 
 class EquipmentCopyTests(TestCase):
     @classmethod

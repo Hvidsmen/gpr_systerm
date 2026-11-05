@@ -49,6 +49,8 @@ class DailyFactForm(CompanyFormMixin, forms.ModelForm):
         fields = [
             "project_work",
             "work_item",
+            "operational_name",
+            "operational_unit",
             "date",
             "actual_quantity",
             "comment",
@@ -95,10 +97,17 @@ class DailyFactForm(CompanyFormMixin, forms.ModelForm):
         if work:
             if work.kind == "SIMPLE" and item:
                 self.add_error("work_item", "Самостоятельная работа не имеет работ в составе комплекса.")
-            if work.kind == "COMPOSITE" and not item:
-                self.add_error("work_item", "Для комплекса работ выберите работу в составе комплекса.")
+            operational=bool((data.get('operational_name') or '').strip() or (data.get('operational_unit') or '').strip())
+            allowed=bool(work.complex_object_id and work.complex_object.allow_dispatcher_work_items)
+            if work.kind == "COMPOSITE" and not item and not (operational and allowed):
+                self.add_error("work_item", "Выберите работу в составе комплекса либо заполните прочую работу.")
             if item and item.project_work_id != work.pk:
                 self.add_error("work_item", "Работа в составе комплекса принадлежит другой работе.")
+            if operational:
+                if item:self.add_error('operational_name','Нельзя одновременно выбрать работу справочника и указать прочую работу.')
+                if not allowed:self.add_error('operational_name','Прочие работы разрешены только внутри объекта «Прочее».')
+                if not (data.get('operational_name') or '').strip() or not (data.get('operational_unit') or '').strip():
+                    self.add_error('operational_name','Укажите название и единицу измерения прочей работы.')
         selected=list(dict.fromkeys(int(pk) for pk in data.get('actuation_reasons',[])))
         self.instance.actuation_reason_ids=selected
         self.proposed_actuation_reason=None

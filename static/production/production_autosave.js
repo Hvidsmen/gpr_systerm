@@ -67,6 +67,7 @@
    if(entry.deleted){if(isPerson(row))form.productionLinks?.cancelPerson(Number(field(row,'id').value));try{await form.productionReleaseRow(row);}catch{}row.remove();continue;}
    if(!isPerson(row)&&Number(field(row,'actual_quantity').value.replace(',','.'))===0)form.productionLinks?.cancelWork(Number(entry.id));
    field(row,'id').value=entry.id;
+   if(!isPerson(row))row.dataset.factId=String(entry.id);
    if(isPerson(row)){const employee=field(row,'employee');if(employee.selectedOptions.length===1&&employee.options.length>1)employee.replaceChildren(employee.selectedOptions[0].cloneNode(true));}
    row.dataset.entryOriginal=JSON.stringify(item.capture.map(input=>input.name.endsWith('-id')?{...input,value:String(entry.id)}:input));
   }

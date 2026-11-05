@@ -15,8 +15,8 @@ from .models import DailyFact
 def person_state(row):
     return {'id':row.pk,'employee':row.employee_id,'shift':row.shift,'general':row.general,'reviewed':row.assignment_reviewed,
         'links_revision':row.links_revision,'targets':[
-            f'item:{work}:{item}' if item else f'work:{work}'
-            for work,item in row.work_links.order_by('pk').values_list('work_id','work_item_id')]}
+            f'operational:{link.fact_id}' if link.fact_id else (f'item:{link.work_id}:{link.work_item_id}' if link.work_item_id else f'work:{link.work_id}')
+            for link in row.work_links.order_by('pk')]}
 
 
 def execute(user,obj,day,command):
@@ -43,8 +43,8 @@ def execute(user,obj,day,command):
         if edge['action']=='add' and fact.actual_quantity<=0:raise ValidationError('У работы нулевой факт. Связь не добавлена; сначала внесите выполненный объём.')
         resolved.append((edge['action'],fact))
     for action,fact in resolved:
-        if action=='add':EmployeeWorkLink.objects.get_or_create(company=obj.company,activity=row,work_id=fact.project_work_id,work_item_id=fact.work_item_id)
-        else:row.work_links.filter(work_id=fact.project_work_id,work_item_id=fact.work_item_id).delete()
+        if action=='add':EmployeeWorkLink.objects.get_or_create(company=obj.company,activity=row,work_id=fact.project_work_id,work_item_id=fact.work_item_id,fact=fact if fact.operational_key else None)
+        else:(row.work_links.filter(fact=fact) if fact.operational_key else row.work_links.filter(work_id=fact.project_work_id,work_item_id=fact.work_item_id,fact=None)).delete()
     apply_relations(row)
 
 

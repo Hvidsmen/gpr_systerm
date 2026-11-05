@@ -53,11 +53,13 @@ def prepare_rows(formset, obj, day, work_plan, catalogue):
 
     accumulated_plan=plan_before(obj,day)
 
-    def display(key):
+    def display(key, row=None):
         work = works.get(key[0]); item = items.get(key[1]) if key[1] else None
         if work is None or key[1] and (item is None or item.project_work_id != work.pk):
             return None
-        title = item.name if item else work.name
+        operational_name=(row['operational_name'].value() or '').strip() if row is not None and 'operational_name' in row.fields else ''
+        operational_unit=(row['operational_unit'].value() or '').strip() if row is not None and 'operational_unit' in row.fields else ''
+        title = operational_name or (item.name if item else work.name)
         path = [work.section.name]
         if work.complex_object_id: path.append(work.complex_object.name)
         # For a composite row the item itself is the summary work.  The parent
@@ -65,8 +67,8 @@ def prepare_rows(formset, obj, day, work_plan, catalogue):
         planned_before=accumulated_plan.get(key)
         actual_before=previous.get(key,Decimal(0))
         deviation=((actual_before/planned_before-1)*100).quantize(Decimal('.01')) if planned_before is not None and planned_before>0 else None
-        return {'plan_before':planned_before,'deviation':deviation,'title': title, 'path': ' → '.join(path), 'unit': item.unit if item else work.unit,
-            'has_plan': key in work_plan, 'plan': work_plan.get(key), 'previous': previous.get(key, Decimal(0))}
+        return {'plan_before':None if operational_name else planned_before,'deviation':None if operational_name else deviation,'title': title, 'path': ' → '.join(path), 'unit': operational_unit or (item.unit if item else work.unit),
+            'has_plan': False if operational_name else key in work_plan, 'plan': None if operational_name else work_plan.get(key), 'previous': Decimal(0) if operational_name else previous.get(key, Decimal(0)), 'operational':bool(operational_name)}
 
     catalogue_by_key={(choice['work'],choice['item']):choice for choice in catalogue}
     for choice in catalogue:
@@ -74,14 +76,20 @@ def prepare_rows(formset, obj, day, work_plan, catalogue):
     groups = {}; extra = []
     for row in formset:
         key = keys.get(row.prefix)
-        row.work_display = display(key) if key else None
-        row.work_choice = catalogue_by_key.get(key)
+        row.work_display = display(key,row) if key else None
+        if row.work_display and row.work_display.get('operational'):
+            row.work_choice={'token':f'operational:{row.instance.pk or row.prefix}','work':key[0],'item':None,'complex_id':works[key[0]].complex_object_id}
+        else:row.work_choice = catalogue_by_key.get(key)
         if not row.work_display:
             extra.append(row); continue
         row.fields['project_work'].widget = forms.HiddenInput()
         row.fields['work_item'].widget = forms.HiddenInput()
         work = works[key[0]]
-        if work.kind == 'COMPOSITE' and key[1]:
+        if row.work_display.get('operational'):
+            summary_key=(work.section_id,'operational',str(row.instance.operational_key or row.prefix))
+            group=groups.setdefault(summary_key,{'label':row.work_display['title'],'section':work.section.name,'is_complex':False,'objects':{},'rows':[],'count':0})
+            group['rows'].append(row)
+        elif work.kind == 'COMPOSITE' and key[1]:
             # A work item is the summary work, while the complex object is the
             # place where its fact is entered.  ProjectWork is only a catalogue
             # container here and must not add another visible hierarchy level.

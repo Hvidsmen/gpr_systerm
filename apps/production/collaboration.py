@@ -46,10 +46,12 @@ def scope(request):
 
 
 def apply_relations(row):
-    selected=list(row.work_links.order_by('pk').values_list('work_id','work_item_id'))
+    links=EmployeeWorkLink.objects.filter(activity=row)
+    selected=list(links.filter(fact=None).order_by('pk').values_list('work_id','work_item_id'))
+    has_links=links.exists()
     row.work_id,row.work_item_id=selected[0] if selected else (None,None)
     row.general=False
-    row.assignment_reviewed=bool(selected)
+    row.assignment_reviewed=has_links
     row.links_revision+=1
     # Relationship edits must not invalidate an independent data-field baseline.
     row.save(update_fields=RELATION_FIELDS)
@@ -58,9 +60,9 @@ def apply_relations(row):
 def detach_work(fact):
     """Clearing or deleting a work fact removes only its edges for this day."""
     rows=EmployeeActivity.objects.filter(company=fact.company,construction_object=fact.project_work.section.construction_object,date=fact.date)
-    affected=rows.filter(Q(work_id=fact.project_work_id,work_item_id=fact.work_item_id)|Q(work_links__work_id=fact.project_work_id,work_links__work_item_id=fact.work_item_id)).distinct()
+    affected=(rows.filter(work_links__fact=fact) if fact.operational_key else rows.filter(Q(work_id=fact.project_work_id,work_item_id=fact.work_item_id)|Q(work_links__work_id=fact.project_work_id,work_links__work_item_id=fact.work_item_id,work_links__fact=None))).distinct()
     for row in affected.select_for_update():
-        row.work_links.filter(work_id=fact.project_work_id,work_item_id=fact.work_item_id).delete()
+        (row.work_links.filter(fact=fact) if fact.operational_key else row.work_links.filter(work_id=fact.project_work_id,work_item_id=fact.work_item_id,fact=None)).delete()
         apply_relations(row)
 
 
@@ -125,8 +127,8 @@ def links(request):
                 resolved.append((edge_action,fact))
             for edge_action,fact in resolved:
                 if edge_action=='add':
-                    EmployeeWorkLink.objects.get_or_create(company=obj.company,activity=person,work_id=fact.project_work_id,work_item_id=fact.work_item_id)
-                else:person.work_links.filter(work_id=fact.project_work_id,work_item_id=fact.work_item_id).delete()
+                    EmployeeWorkLink.objects.get_or_create(company=obj.company,activity=person,work_id=fact.project_work_id,work_item_id=fact.work_item_id,fact=fact if fact.operational_key else None)
+                else:(person.work_links.filter(fact=fact) if fact.operational_key else person.work_links.filter(work_id=fact.project_work_id,work_item_id=fact.work_item_id,fact=None)).delete()
             if action=='mode':
                 if data.get('mode') not in {'pending','general'}:raise ValueError
                 person.work_links.all().delete()
@@ -144,12 +146,12 @@ def canonical_rows(obj,day,report):
     rows={'works':[],'labor':[]}
     for fact in DailyFact.objects.filter(company=obj.company,date=day,project_work__section__construction_object=obj):
         values={name:str(value) if value is not None else '' for name,value in {
-            'id':fact.pk,'project_work':fact.project_work_id,'work_item':fact.work_item_id,'actual_quantity':fact.actual_quantity.normalize(),
+            'id':fact.pk,'project_work':fact.project_work_id,'work_item':fact.work_item_id,'operational_name':fact.operational_name,'operational_unit':fact.operational_unit,'actual_quantity':fact.actual_quantity.normalize(),
             'actuation_type':fact.actuation_type,'actuation_reason':fact.actuation_reason,'comment':fact.comment}.items()}
         values['actuation_reasons']=sorted(str(pk) for pk in fact.actuation_reason_ids)
         values['actuation_reasons_present']='1'
         values['DELETE']=False
-        rows['works'].append({'id':fact.pk,'key':token(fact.project_work_id,fact.work_item_id),'version':fact.updated_at.isoformat(),'values':values})
+        rows['works'].append({'id':fact.pk,'key':f'operational:{fact.pk}' if fact.operational_key else token(fact.project_work_id,fact.work_item_id),'version':fact.updated_at.isoformat(),'values':values})
     people={p['id']:p for p in report['people']}
     for person in EmployeeActivity.objects.filter(company=obj.company,construction_object=obj,date=day,entry_direction='works'):
         values={name:str(value) if value is not None else '' for name,value in {

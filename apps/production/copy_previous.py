@@ -5,7 +5,7 @@ from uuid import UUID
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
 from django.db import transaction,IntegrityError
-from django.db.models import F
+from django.db.models import F, Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -62,7 +62,17 @@ def production_copy(user,obj,day,kind,*,session,reset_epoch,keep=(),revisions=No
     else:
         from .models import DailyFact
         allowed={(item['work'],item['item']) for item in work_catalogue(obj)}
-        facts=set(DailyFact.objects.filter(company=obj.company,date=day,project_work__section__construction_object=obj,actual_quantity__gt=0).values_list('project_work_id','work_item_id'))
+        copied_operational={}
+        previous_operational=DailyFact.objects.filter(company=obj.company,date=day-timedelta(days=1),project_work__section__construction_object=obj,operational_key__isnull=False)
+        for old_fact in previous_operational:
+            current,created=DailyFact.objects.get_or_create(company=obj.company,date=day,operational_key=old_fact.operational_key,defaults={
+                'project_work':old_fact.project_work,'work_item':None,'operational_name':old_fact.operational_name,
+                'operational_unit':old_fact.operational_unit,'actual_quantity':0,'comment':old_fact.comment,
+                'outside_smg':True,'reported_by':user,
+            })
+            copied_operational[old_fact.pk]=current
+            if created:output['added']+=1
+        facts=set(DailyFact.objects.filter(company=obj.company,date=day,project_work__section__construction_object=obj).filter(Q(actual_quantity__gt=0)|Q(reported_by=None)).values_list('project_work_id','work_item_id'))
         current={(row.employee_id,row.shift):row for row in EmployeeActivity.objects.select_for_update().filter(company=obj.company,construction_object=obj,date=day).exclude(labor_direction()).prefetch_related('work_links')}
         revisions=revisions or {}
         for old in source:
@@ -70,7 +80,8 @@ def production_copy(user,obj,day,kind,*,session,reset_epoch,keep=(),revisions=No
             row=current.get((old.employee_id,old.shift))
             if not row:warn(output,f'{old.employee.display_name}: сначала добавьте сотрудника в текущий день.');continue
             if row.general or revisions.get(str(row.pk))!=row.links_revision:output['skipped']+=1;continue
-            selected=targets(old);existing=set(targets(row));added=0
+            selected=list(old.work_links.filter(fact=None).values_list('work_id','work_item_id')) or ([(old.work_id,old.work_item_id)] if old.work_id else [])
+            existing=set(row.work_links.filter(fact=None).values_list('work_id','work_item_id')) or (set([(row.work_id,row.work_item_id)]) if row.work_id else set());added=0
             if old.general and old.assignment_reviewed and not existing and not row.assignment_reviewed:
                 row.general=True;row.assignment_reviewed=True;row.work=None;row.work_item=None;row.links_revision+=1
                 from .collaboration import RELATION_FIELDS
@@ -78,8 +89,14 @@ def production_copy(user,obj,day,kind,*,session,reset_epoch,keep=(),revisions=No
             if not selected:output['skipped']+=1
             for key in selected:
                 if key in existing:output['skipped']+=1;continue
-                if key not in facts or key not in allowed:warn(output,f'{old.employee.display_name}: работа не внесена в факт текущего дня, имеет нулевой объём или недоступна.');continue
+                if key not in facts or key not in allowed:warn(output,f'{old.employee.display_name}: работа не внесена в факт текущего дня или недоступна.');continue
                 link=EmployeeWorkLink(company=obj.company,activity=row,work_id=key[0],work_item_id=key[1]);link.full_clean();link.save();existing.add(key);added+=1
+            existing_operational=set(row.work_links.exclude(fact=None).values_list('fact_id',flat=True))
+            for old_link in old.work_links.exclude(fact=None):
+                current_fact=copied_operational.get(old_link.fact_id)
+                if not current_fact or current_fact.pk in existing_operational:continue
+                link=EmployeeWorkLink(company=obj.company,activity=row,work=current_fact.project_work,fact=current_fact)
+                link.full_clean();link.save();existing_operational.add(current_fact.pk);added+=1
             if added:apply_relations(row);output['added']+=added
     require_fact_day(user,day)
     if output['added']:automatic_readiness(obj,day,user)

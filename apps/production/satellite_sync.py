@@ -12,9 +12,9 @@ from .actuation_models import ActuationReason
 def digest(value):return hashlib.sha256(json.dumps(value,sort_keys=True,default=str,separators=(',',':')).encode()).hexdigest()
 
 def state_stamp(obj,day):
-    works=list(DailyFact.objects.filter(company=obj.company,date=day,project_work__section__construction_object=obj).order_by('pk').values_list('pk','updated_at','actual_quantity','actuation_type','actuation_reason','actuation_reason_ids','comment','reported_by_id'))
+    works=list(DailyFact.objects.filter(company=obj.company,date=day,project_work__section__construction_object=obj).order_by('pk').values_list('pk','updated_at','operational_key','operational_name','operational_unit','actual_quantity','actuation_type','actuation_reason','actuation_reason_ids','comment','reported_by_id'))
     people=list(EmployeeActivity.objects.filter(company=obj.company,date=day,construction_object=obj).order_by('pk').values_list('pk','updated_at','links_revision','employee_id','shift','planning_position_id','position_id','work_id','work_item_id','equipment_id','general','assignment_reviewed','activity'))
-    edges=EmployeeWorkLink.objects.filter(company=obj.company,activity__construction_object=obj,activity__date=day).order_by('pk').values_list('pk','activity_id','work_id','work_item_id')
+    edges=EmployeeWorkLink.objects.filter(company=obj.company,activity__construction_object=obj,activity__date=day).order_by('pk').values_list('pk','activity_id','work_id','work_item_id','fact_id')
     reasons=list(ActuationReason.objects.filter(company=obj.company).order_by('pk').values_list('pk','revision','updated_at'))
     return digest([works,people,list(edges),reasons])
 

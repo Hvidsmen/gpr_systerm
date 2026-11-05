@@ -102,12 +102,14 @@ class EmployeeWorkLink(ActualHistoryMixin, BaseCompanyModel):
     activity = models.ForeignKey(EmployeeActivity, on_delete=models.CASCADE, related_name='work_links')
     work = models.ForeignKey('works.ProjectWork', on_delete=models.PROTECT)
     work_item = models.ForeignKey('works.ProjectWorkItem', on_delete=models.PROTECT, null=True, blank=True)
+    fact = models.ForeignKey('production.DailyFact', on_delete=models.CASCADE, null=True, blank=True, related_name='employee_links')
 
     class Meta:
         ordering = ['pk']
         constraints = [
-            models.UniqueConstraint(fields=['activity','work'], condition=models.Q(work_item__isnull=True), name='unique_employee_simple_work'),
+            models.UniqueConstraint(fields=['activity','work'], condition=models.Q(work_item__isnull=True, fact__isnull=True), name='unique_employee_simple_work'),
             models.UniqueConstraint(fields=['activity','work','work_item'], condition=models.Q(work_item__isnull=False), name='unique_employee_component_work'),
+            models.UniqueConstraint(fields=['activity','fact'], condition=models.Q(fact__isnull=False), name='unique_employee_operational_fact'),
         ]
 
     def clean(self):
@@ -118,7 +120,9 @@ class EmployeeWorkLink(ActualHistoryMixin, BaseCompanyModel):
             raise ValidationError('Работа другого объекта.')
         if self.work_item_id and (self.work_item.company_id != self.company_id or self.work_item.project_work_id != self.work_id):
             raise ValidationError('Работа не входит в выбранный комплекс.')
-        if self.work.kind == 'COMPOSITE' and not self.work_item_id:
+        if self.fact_id and (not self.fact.operational_key or self.fact.project_work_id != self.work_id or self.fact.date != self.activity.date):
+            raise ValidationError('Оперативная работа не соответствует связи.')
+        if self.work.kind == 'COMPOSITE' and not self.work_item_id and not self.fact_id:
             raise ValidationError('Выберите работу в составе комплекса.')
 
 

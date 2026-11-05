@@ -33,6 +33,9 @@ class DeviationReason(BaseCompanyModel):
 class DailyFact(ActualHistoryMixin, BaseCompanyModel):
     outside_smg = models.BooleanField("Вне СМГ", default=False)
     smg_plan_quantity = models.DecimalField("План СМГ на дату ввода", max_digits=15, decimal_places=3, null=True, blank=True)
+    operational_key = models.UUIDField("Идентификатор оперативной работы", null=True, blank=True, default=None)
+    operational_name = models.CharField("Название прочей работы", max_length=255, blank=True, default="")
+    operational_unit = models.CharField("Единица измерения прочей работы", max_length=50, blank=True, default="")
 
     """Дневной факт выполнения работы (объём)."""
 
@@ -91,9 +94,10 @@ class DailyFact(ActualHistoryMixin, BaseCompanyModel):
             ),
             models.UniqueConstraint(
                 fields=["project_work", "date"],
-                condition=models.Q(work_item__isnull=True),
+                condition=models.Q(work_item__isnull=True, operational_key__isnull=True),
                 name="unique_simple_fact",
             ),
+            models.UniqueConstraint(fields=["date", "operational_key"], condition=models.Q(operational_key__isnull=False), name="unique_operational_fact"),
         ]
 
     def clean(self):
@@ -108,7 +112,14 @@ class DailyFact(ActualHistoryMixin, BaseCompanyModel):
                 raise ValidationError(
                     {"work_item": "Самостоятельная работа не имеет работ в составе комплекса."}
                 )
-            if work.kind == "COMPOSITE" and not self.work_item_id:
+            if self.operational_key:
+                if work.kind != "COMPOSITE" or self.work_item_id:
+                    raise ValidationError({"operational_name": "Оперативная работа должна находиться внутри комплекса."})
+                if not self.operational_name.strip() or not self.operational_unit.strip():
+                    raise ValidationError({"operational_name": "Укажите название и единицу измерения прочей работы."})
+            elif self.operational_name or self.operational_unit:
+                raise ValidationError({"operational_name": "Некорректная оперативная работа."})
+            if work.kind == "COMPOSITE" and not self.work_item_id and not self.operational_key:
                 raise ValidationError(
                     {"work_item": "Выберите работу в составе комплекса комплекса работ."}
                 )

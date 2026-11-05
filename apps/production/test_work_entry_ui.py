@@ -98,7 +98,8 @@ class WorkEntryPresentationTests(TestCase):
         self.complex_object.save(update_fields=['allow_dispatcher_work_items'])
         MeasurementUnit.objects.get_or_create(company=self.company,symbol='м',defaults={'name':'метр'})
         page=self.page()
-        self.assertContains(page,'+ Создать работу в составе комплекса')
+        self.assertContains(page,'name="works-0-operational_name"')
+        self.assertNotContains(page,'+ Создать работу в составе комплекса')
         response=self.client.post(reverse('production:dispatcher_work_item_create'),{
             'construction_object':self.obj.pk,'date':self.day,'project_work':self.package.pk,
             'name':'Дополнительная прокладка','unit':'м',
@@ -141,6 +142,24 @@ class WorkEntryPresentationTests(TestCase):
         self.assertEqual(response.status_code,400)
         self.assertFalse(MeasurementUnit.objects.filter(company=self.company,symbol='п.м.').exists())
 
+    def test_dispatcher_saves_operational_work_without_catalogue_rows(self):
+        from .dispatch import WorkForm
+        self.complex_object.allow_dispatcher_work_items=True
+        self.complex_object.save(update_fields=['allow_dispatcher_work_items'])
+        item_count=ProjectWorkItem.objects.count();unit_count=MeasurementUnit.objects.count()
+        form=WorkForm(data={
+            'project_work':self.package.pk,'work_item':'','operational_name':'Уборка временного ограждения',
+            'operational_unit':'м.п.','actual_quantity':'12.5','comment':'Оперативно',
+            'actuation_type':'','actuation_reason':'','actuation_reasons_present':'1',
+            'work_claim_token':'','work_editing':'1','complex_object_filter':self.complex_object.pk,
+        },user=self.users['DISPATCHER'],obj=self.obj,day=self.day,work_plan={})
+        self.assertTrue(form.is_valid(),form.errors)
+        fact=form.save()
+        self.assertIsNotNone(fact.operational_key)
+        self.assertEqual((fact.operational_name,fact.operational_unit),('Уборка временного ограждения','м.п.'))
+        self.assertEqual(ProjectWorkItem.objects.count(),item_count)
+        self.assertEqual(MeasurementUnit.objects.count(),unit_count)
+
     def test_empty_enabled_composite_is_available_for_first_dispatcher_item(self):
         empty=ProjectWork.objects.create(company=self.company,section=self.package.section,complex_object=self.complex_object,
             name='ЭМР. Прочее',kind='COMPOSITE',unit='компл')
@@ -157,7 +176,7 @@ class WorkEntryPresentationTests(TestCase):
         self.complex_object.save(update_fields=['allow_dispatcher_work_items'])
         MeasurementUnit.objects.get_or_create(company=self.company,symbol='шт',defaults={'name':'штука'})
         self.client.force_login(self.users['ADMIN'])
-        page=self.page();self.assertContains(page,'+ Создать работу в составе комплекса')
+        page=self.page();self.assertContains(page,'name="works-0-operational_name"')
         response=self.client.post(reverse('production:dispatcher_work_item_create'),{
             'construction_object':self.obj.pk,'date':self.day,'project_work':self.package.pk,
             'name':'Работа администратора','unit':'шт',

@@ -40,7 +40,7 @@
     if(command.action==='mode'){person.targets=[];person.general=command.mode==='general';person.reviewed=person.general;}
     else{
      const edges=command.action==='delta'?command.edges:[{action:command.action,fact:command.fact}];const targets=new Set(person.targets);
-     for(const edge of edges||[]){const fact=facts.get(Number(edge.fact));if(!fact)continue;const token=fact.work_item_id?`item:${fact.project_work_id}:${fact.work_item_id}`:`work:${fact.project_work_id}`;if(edge.action==='remove')targets.delete(token);else if(Number(fact.actual_quantity)>0)targets.add(token);}
+     for(const edge of edges||[]){const fact=facts.get(Number(edge.fact));if(!fact)continue;const token=fact.operational_name?`operational:${fact.id}`:fact.work_item_id?`item:${fact.project_work_id}:${fact.work_item_id}`:`work:${fact.project_work_id}`;if(edge.action==='remove')targets.delete(token);else if(Number(fact.actual_quantity)>0)targets.add(token);}
      person.targets=[...targets];person.general=false;person.reviewed=person.targets.length>0;
     }
     person.links_revision=Number(person.links_revision||0)+1;person.pending_links=(person.pending_links||0)+1;

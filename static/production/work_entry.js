@@ -15,13 +15,14 @@
   const choices = JSON.parse(source.textContent);
   const catalogue = new Map(choices.map(choice => [choice.token, choice.display]));
   const itemOwners = new Map(choices.filter(choice => choice.item).map(choice => [String(choice.item), String(choice.work)]));
-  const workMeta = new Map(JSON.parse(document.getElementById('production-work-meta')?.textContent||'[]').map(work=>[String(work.id),{kind:work.kind,complex_id:work.complex_object_id}]));
+  const workMeta = new Map(JSON.parse(document.getElementById('production-work-meta')?.textContent||'[]').map(work=>[String(work.id),{kind:work.kind,complex_id:work.complex_object_id,complex_object_name:work.complex_object__name,section:work.section__name}]));
   choices.forEach(choice=>workMeta.set(String(choice.work),{...workMeta.get(String(choice.work)),...choice}));
   const creatorConfig=document.querySelector('[data-dispatcher-item-config]');
   const creatorObjects=new Set(JSON.parse(document.getElementById('dispatcher-item-object-ids')?.textContent||'[]').map(String));
   const number = new Intl.NumberFormat('ru-RU', {maximumFractionDigits:6});
   function refresh(row) {
     const work = row.querySelector('[name$="-project_work"]'), item = row.querySelector('[name$="-work_item"]');
+    const operationalName=row.querySelector('[name$="-operational_name"]'),operationalUnit=row.querySelector('[name$="-operational_unit"]');
     const location=row.querySelector('[name$="-complex_object_filter"]');
     if(work&&!work._allWorkOptions)work._allWorkOptions=Array.from(work.options || []);
     if(location&&!location.dataset.workLocationReady){location.dataset.workLocationReady='1';location.addEventListener('change',()=>{work.value='';item.value='';filterWorks();work.dispatchEvent(new Event('change',{bubbles:true}));});}
@@ -43,10 +44,15 @@
       }
       item.disabled=!owner||simple;if(simple)item.value='';
       const hint=row.querySelector('[data-work-item-hint]');if(hint)hint.textContent=simple?'Для самостоятельной работы это поле не заполняется.':owner?'Выберите работу в составе комплекса.':'Сначала выберите работу.';
-      const creator=row.querySelector('[data-dispatcher-item-create]');if(creator)creator.hidden=!(owner&&meta?.kind==='COMPOSITE'&&creatorObjects.has(String(meta.complex_id)));
+      const creator=row.querySelector('[data-dispatcher-item-create]');if(creator)creator.hidden=true;
     }
-    const selectedToken=item?.value ? `item:${work?.value}:${item.value}` : `work:${work?.value}`;
-    const display = catalogue.get(selectedToken),selectedChoice=choices.find(choice=>choice.token===selectedToken);
+    const meta=workMeta.get(String(work?.value||'')),operational=Boolean(work?.value&&meta?.kind==='COMPOSITE'&&creatorObjects.has(String(meta.complex_id))&&!item?.value);
+    for(const input of [operationalName,operationalUnit]){const field=input?.closest('.production-work-field');if(field)field.hidden=!operational;}
+    const itemField=item?.closest('.production-work-field');if(itemField&&operational)itemField.hidden=true;
+    const operationalToken=operational?`operational:${row.dataset.factId||row.dataset.workToken||row.id||operationalName?.id}`:'';
+    const selectedToken=operationalToken||(item?.value ? `item:${work?.value}:${item.value}` : `work:${work?.value}`);
+    let display = catalogue.get(selectedToken),selectedChoice=choices.find(choice=>choice.token===selectedToken);
+    if(operational&&(operationalName?.value||row.dataset.operationalName)){display={title:operationalName?.value||row.dataset.operationalName,path:[meta?.section,meta?.complex_object_name].filter(Boolean).join(' → '),unit:operationalUnit?.value||row.dataset.operationalUnit,has_plan:false,plan:null,previous:0,plan_before:null,deviation:null};}
     if(selectedChoice){row.dataset.workToken=selectedChoice.token;row.dataset.complexId=selectedChoice.complex_id||'';row.dataset.packageId=selectedChoice.work||'';}
     else if(work?.tagName==='SELECT'){row.dataset.workToken='';row.dataset.complexId='';row.dataset.packageId='';}
     const heading = row.querySelector('[data-work-heading]');

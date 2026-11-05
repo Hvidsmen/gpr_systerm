@@ -1,5 +1,6 @@
 """Three independent fact directions sharing one object/day, without hours."""
 from collections import defaultdict
+import uuid
 from decimal import Decimal
 from urllib.parse import urlencode
 from django import forms
@@ -114,11 +115,19 @@ class WorkForm(ScopeFormMixin,DailyFactForm):
         if selected_work_id:
             complex_object_id=self.fields['project_work'].queryset.filter(pk=selected_work_id).values_list('complex_object_id',flat=True).first()
             if complex_object_id:self.initial.setdefault('complex_object_filter',str(complex_object_id))
-        self.order_fields(['complex_object_filter','project_work','work_item','actual_quantity','comment'])
+        self.fields['operational_name'].widget.attrs.update({'placeholder':'Что выполнено','data-operational-name':'1'})
+        self.fields['operational_unit'].widget.attrs.update({'placeholder':'Например: шт., м, рейс','data-operational-unit':'1'})
+        self.order_fields(['complex_object_filter','project_work','work_item','operational_name','operational_unit','actual_quantity','comment'])
         if not self.instance.pk:self.initial['actual_quantity']=None
         else:self.initial['actual_quantity']=self.instance.actual_quantity.normalize()
     def clean(self):
         data=super().clean();work=data.get('project_work');item=data.get('work_item')
+        name=(data.get('operational_name') or '').strip();unit=(data.get('operational_unit') or '').strip()
+        data['operational_name']=name;data['operational_unit']=unit
+        if name and unit:
+            self.instance.operational_key=self.instance.operational_key or uuid.uuid4()
+        elif not self.instance.pk:
+            self.instance.operational_key=None
         if work:
             key=(work.pk,item.pk if item else None);plan=self.work_plan.get(key,Decimal(0))
             if self.instance.pk:
@@ -354,12 +363,10 @@ class DispatcherDayView(CompanyRequiredMixin,View):
             company=obj.company,section__construction_object=obj,merged_source__isnull=True,
         ).values('id','name','kind','complex_object_id','complex_object__name','section__name'))
         if section=='works' and role_code(request.user) in {'ADMIN','DISPATCHER','ALL_FACT_DISPATCHER'}:
-            from apps.works.models import ComplexObject,MeasurementUnit
+            from apps.works.models import ComplexObject
             context['dispatcher_item_object_ids']=list(ComplexObject.objects.filter(
                 company=obj.company,construction_object=obj,allow_dispatcher_work_items=True,
             ).values_list('pk',flat=True))
-            context['dispatcher_item_units']=list(MeasurementUnit.objects.filter(company=obj.company).order_by('symbol').values_list('symbol','name'))
-            context['dispatcher_item_create_url']=reverse('production:dispatcher_work_item_create')
         context['can_review_actuation_reasons']=role_code(request.user) in {'ADMIN','PRODUCTION_HEAD'}
         context['own_entry']=own_entry
         if section=='works':
