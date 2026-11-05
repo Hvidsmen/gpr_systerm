@@ -110,7 +110,9 @@
   if(row){if(row.dataset.autoSavedStamp===fingerprint(row)&&!row.dataset.autoPending){delete row.dataset.entryDirty;delete row.dataset.personDirty;return;}if(isPerson(row)&&!field(row,'employee').value&&!field(row,'id').value)return;if(!isPerson(row)&&!field(row,'project_work')?.value)return;schedule(row);}
  };
  form.addEventListener('production-claims-change',()=>{if(!form.productionApplying&&form.dataset.peopleBulkBusy!=='1'&&form.dataset.personShiftBusy!=='1'&&!running&&!pending&&dirty().length)schedule();});
- form.addEventListener('input',relevant);form.addEventListener('change',relevant);
+ // Capture edits before row widgets, filters or live-sync handlers can react.
+ // The saved indicator must change synchronously with the user's input.
+ form.addEventListener('input',relevant,true);form.addEventListener('change',relevant,true);
  form.addEventListener('production-autosave-all',()=>{for(const row of rows())if(isPerson(row)&&field(row,'employee').value&&!field(row,'id').value&&field(row,'person_editing').value==='1'){row.dataset.entryDirty='1';schedule(row);}});
  rows().forEach(row=>{row.dataset.autoSavedStamp=fingerprint(row);if(field(row,'id').value)rowMessage(row,'Сохранено');});
  // Claim wiring runs before this module. A bound form may therefore already
@@ -142,7 +144,8 @@
   const row=button.closest('[data-production-person],[data-work-fact-row]');button.disabled=true;
   try{
    if(!field(row,'id').value&&!running){try{await form.productionReleaseRow(row);}catch{}row.remove();reindex();form.dispatchEvent(new Event('change',{bubbles:true}));return;}
-   await form.productionClaimRow(row);field(row,'DELETE').checked=true;row.classList.add('production-row-auto-deleting');row.dataset.entryDirty='1';row.dispatchEvent(new Event('change',{bubbles:true}));schedule(row);await flush();
+   await form.productionClaimRow(row);field(row,'DELETE').checked=true;row.classList.add('production-row-auto-deleting');row.dataset.entryDirty='1';row.hidden=true;row.dispatchEvent(new Event('change',{bubbles:true}));schedule(row);await flush();
+   if(row.isConnected&&field(row,'DELETE').checked){row.dataset.entryDirty='1';row.dataset.autoPending='1';pending=true;await flush();}
   }catch(error){row.hidden=false;rowMessage(row,error.message,true);message(error.message,true);}finally{if(row.isConnected)row.classList.remove('production-row-auto-deleting');button.disabled=false;}
  });
  form.addEventListener('submit',event=>{event.preventDefault();flush();},true);

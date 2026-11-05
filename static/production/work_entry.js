@@ -25,11 +25,12 @@
     const operationalName=row.querySelector('[name$="-operational_name"]'),operationalUnit=row.querySelector('[name$="-operational_unit"]');
     const location=row.querySelector('[name$="-complex_object_filter"]');
     if(work&&!work._allWorkOptions)work._allWorkOptions=Array.from(work.options || []);
-    if(location&&!location.dataset.workLocationReady){location.dataset.workLocationReady='1';location.addEventListener('change',()=>{work.value='';item.value='';filterWorks();work.dispatchEvent(new Event('change',{bubbles:true}));});}
+    if(location&&!location.dataset.workLocationReady){location.dataset.workLocationReady='1';location.addEventListener('change',()=>{if(work?.tagName!=='SELECT')return;work.value='';item.value='';filterWorks();work.dispatchEvent(new Event('change',{bubbles:true}));});}
     function filterWorks(){
-      if(!location||!work)return;
-      const selected=work.value;
-      const allowed=work._allWorkOptions.filter(option=>!option.value||(location.value?workMeta.get(String(option.value))?.kind==='COMPOSITE'&&String(workMeta.get(String(option.value))?.complex_id)===location.value:workMeta.get(String(option.value))?.kind==='SIMPLE'));
+      if(!location||!work||work.tagName!=='SELECT')return;
+      const savedWork=row.dataset.packageId||row.dataset.workToken?.split(':')[1]||'';
+      const selected=work.value||savedWork;
+      const allowed=work._allWorkOptions.filter(option=>!option.value||option.value===savedWork||(location.value?workMeta.get(String(option.value))?.kind==='COMPOSITE'&&String(workMeta.get(String(option.value))?.complex_id)===location.value:workMeta.get(String(option.value))?.kind==='SIMPLE'));
       work.replaceChildren(...allowed);work.value=allowed.some(option=>option.value===selected)?selected:'';
     }
     filterWorks();

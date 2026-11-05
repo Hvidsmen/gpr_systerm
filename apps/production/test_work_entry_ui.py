@@ -160,6 +160,25 @@ class WorkEntryPresentationTests(TestCase):
         self.assertEqual(ProjectWorkItem.objects.count(),item_count)
         self.assertEqual(MeasurementUnit.objects.count(),unit_count)
 
+    def test_dispatcher_autosave_deletes_operational_work_completely(self):
+        from .dispatch import WorkForm
+        self.complex_object.allow_dispatcher_work_items=True
+        self.complex_object.save(update_fields=['allow_dispatcher_work_items'])
+        form=WorkForm(data={
+            'project_work':self.package.pk,'work_item':'','operational_name':'Временная уборка',
+            'operational_unit':'шт','actual_quantity':'4','comment':'Удалить',
+            'actuation_type':'','actuation_reason':'','actuation_reasons_present':'1',
+            'work_claim_token':'','work_editing':'1','complex_object_filter':self.complex_object.pk,
+        },user=self.users['DISPATCHER'],obj=self.obj,day=self.day,work_plan={})
+        self.assertTrue(form.is_valid(),form.errors);fact=form.save()
+        data=self.payload('DISPATCHER','works')
+        prefix=next(name[:-len('id')] for name,value in data.items() if name.startswith('works-') and name.endswith('-id') and str(value)==str(fact.pk))
+        data.update({'autosave':'1','collaborative':'1',prefix+'DELETE':'on',prefix+'work_editing':'1'})
+        response=self.client.post(self.url,data)
+        self.assertEqual(response.status_code,200,response.content)
+        self.assertFalse(DailyFact.objects.filter(pk=fact.pk).exists())
+        self.assertTrue(next(row for row in response.json()['rows'] if row['prefix']==prefix[:-1])['deleted'])
+
     def test_empty_enabled_composite_is_available_for_first_dispatcher_item(self):
         empty=ProjectWork.objects.create(company=self.company,section=self.package.section,complex_object=self.complex_object,
             name='ЭМР. Прочее',kind='COMPOSITE',unit='компл')
@@ -209,6 +228,9 @@ class WorkEntryPresentationTests(TestCase):
         autosave=(Path(__file__).resolve().parents[2]/'static/production/production_autosave.js').read_text(encoding='utf-8')
         self.assertIn("for(const name of ['comment','actuation_type','actuation_reason'])",autosave)
         self.assertIn("field(row,'DELETE').checked=true",autosave)
+        self.assertIn("row.dataset.entryDirty='1';row.hidden=true",autosave)
+        self.assertIn("row.isConnected&&field(row,'DELETE').checked",autosave)
+        self.assertIn("form.addEventListener('input',relevant,true)",autosave)
 
     def test_work_screen_batches_expensive_refreshes_and_exposes_performance_metrics(self):
         root=Path(__file__).resolve().parents[2]/'static/production'
@@ -217,6 +239,9 @@ class WorkEntryPresentationTests(TestCase):
         metrics=(root/'production_performance.js').read_text(encoding='utf-8')
         self.assertIn('requestAnimationFrame(()=>{refreshPending=false;refresh();})',filters)
         self.assertIn('requestAnimationFrame(()=>{totalsPending=false;refreshGroupTotals();})',works)
+        self.assertIn("const selected=work.value||savedWork",works)
+        self.assertIn("option.value===savedWork",works)
+        self.assertIn("work.tagName!=='SELECT'",works)
         self.assertIn("form.dispatchEvent(new Event('production-background-ready'))",metrics)
         self.assertIn('window.productionPerformance=',metrics)
         positions=(root/'production_positions.js').read_text(encoding='utf-8')
