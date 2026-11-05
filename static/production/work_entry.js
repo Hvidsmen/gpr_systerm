@@ -61,5 +61,13 @@
   host.addEventListener('change', event => {
     const row = event.target.closest('[data-work-fact-row]');
     if (row){refresh(row);refreshGroupTotals();}
+    else if(event.target===host)refreshAll();
   });
+  new MutationObserver(records=>{
+    for(const record of records)for(const node of record.addedNodes){
+      if(node.nodeType!==1)continue;
+      if(node.matches?.('[data-work-fact-row]'))refresh(node);
+      node.querySelectorAll?.('[data-work-fact-row]').forEach(refresh);
+    }
+  }).observe(host,{childList:true,subtree:true});
 })();
