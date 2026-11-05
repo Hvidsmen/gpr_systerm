@@ -48,6 +48,7 @@
       const creator=row.querySelector('[data-dispatcher-item-create]');if(creator)creator.hidden=true;
     }
     const meta=workMeta.get(String(work?.value||'')),operational=Boolean(work?.value&&meta?.kind==='COMPOSITE'&&creatorObjects.has(String(meta.complex_id))&&!item?.value);
+    const clear=row.querySelector('[data-work-clear]');if(clear)clear.hidden=operational;
     for(const input of [operationalName,operationalUnit]){const field=input?.closest('.production-work-field');if(field)field.hidden=!operational;}
     const itemField=item?.closest('.production-work-field');if(itemField&&operational)itemField.hidden=true;
     const operationalToken=operational?`operational:${row.dataset.factId||row.dataset.workToken||row.id||operationalName?.id}`:'';

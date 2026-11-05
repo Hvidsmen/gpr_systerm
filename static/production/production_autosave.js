@@ -127,7 +127,9 @@
   const clear=event.target.closest('[data-work-clear]');
   if(clear){
    event.preventDefault();
-   const row=clear.closest('[data-work-fact-row]');clear.disabled=true;
+   const row=clear.closest('[data-work-fact-row]');
+   if(field(row,'operational_name')?.value.trim()){row.querySelector('[data-work-remove]')?.click();return;}
+   clear.disabled=true;
    try{
     await form.productionClaimRow(row);
     const quantity=field(row,'actual_quantity');quantity.value='0';
