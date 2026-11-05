@@ -34,7 +34,7 @@
    const fact=saved.find(w=>factToken(w)===target);if(!fact)continue;
    edges.push({action:selected.includes(target)?'add':'remove',fact:fact.id});
   }
-  try{await owner.closest('form').productionChangeLinks(owner,{action:'delta',edges});refresh(owner);dialog.close();}
+  try{const form=owner.closest('form');await form.productionChangeLinks(owner,{action:'delta',edges});if(form.productionLinks&&!await form.productionLinks.flush())throw new Error('Связи не отправлены. Проверьте статус над вкладками.');refresh(owner);dialog.close();}
   catch(error){dialog.querySelector('[data-person-work-options]').prepend(document.createTextNode(error.message+' '));}
  });
  document.addEventListener('change',event=>{const row=event.target.closest('[data-production-person]');if(row)refresh(row);});

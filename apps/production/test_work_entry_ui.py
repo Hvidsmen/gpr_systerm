@@ -241,6 +241,10 @@ class WorkEntryPresentationTests(TestCase):
         self.assertIn("factToken=f=>f.operational_name?'operational:'+f.id",links)
         self.assertIn("saved.filter(f=>f.operational_name)",links)
         self.assertIn("saved.find(w=>factToken(w)===target)",links)
+        self.assertIn("form.productionLinks.flush()",links)
+        graph=(Path(__file__).resolve().parents[2]/'static/production/employee_graph.js').read_text(encoding='utf-8')
+        self.assertIn("await form.productionLinks.flush()",graph)
+        self.assertIn("Сохраняем связь…",graph)
 
     def test_work_screen_batches_expensive_refreshes_and_exposes_performance_metrics(self):
         root=Path(__file__).resolve().parents[2]/'static/production'

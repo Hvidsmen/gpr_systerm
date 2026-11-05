@@ -13,7 +13,7 @@
  function editable(row){return form.dataset.readonly!=='1';}
  async function operation(row,op){
   if(!editable(row))return;
-  try{await form.productionChangeLinks(row,op);message.textContent=form.productionLinks?.pending?'Связь изменена. Отправка идёт в фоне.':'Связи сохранены';}
+  try{await form.productionChangeLinks(row,op);message.textContent='Сохраняем связь…';if(form.productionLinks&&!await form.productionLinks.flush())throw new Error('Связь не отправлена. Проверьте сообщение над вкладками и нажмите «Отправить сейчас».');message.textContent='Связи сохранены';}
   catch(error){message.textContent=error.message;}
  }
  function update(row,values,mode){operation(row,{action:'mode',mode});}
