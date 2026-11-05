@@ -247,6 +247,11 @@ class WorkEntryPresentationTests(TestCase):
         self.assertIn("Сохраняем связь…",graph)
         self.assertIn("function applyConfirmed(row,op)",graph)
         self.assertIn("structureStamp='';render();form.productionRefresh?.()",graph)
+        self.assertNotIn("active=null;activePerson=null",graph)
+        self.assertNotIn("data-graph-lines-toggle",graph)
+        template=(Path(__file__).resolve().parents[2]/'templates/production/_employee_graph.html').read_text(encoding='utf-8')
+        self.assertIn('graph-lines-visible',template)
+        self.assertNotIn('data-graph-lines-toggle',template)
 
     def test_work_screen_batches_expensive_refreshes_and_exposes_performance_metrics(self):
         root=Path(__file__).resolve().parents[2]/'static/production'
