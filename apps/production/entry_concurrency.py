@@ -49,9 +49,21 @@ def prepare(user,obj,day,groups,signed):
             pk=form['id'].value()
             marker='pk:'+str(pk) if pk else form.prefix
             original=originals.get(marker)
-            if pk and original is None:raise ValidationError('В форме появилась чужая строка. Обновите день.')
-            posted={name:normalized(field,form[name].value()) for name,field in form.fields.items() if name not in {'work_claim_token','work_editing','person_claim_token','person_editing'}}
             inactive=form.data.get(form.add_prefix('work_editing' if group['prefix']=='works' else 'person_editing'))=='0'
+            # Collaborative/live refreshes can learn about a newly saved row
+            # before the browser receives the matching signed baseline.  Such
+            # rows are posted as inactive placeholders and are deliberately
+            # excluded from this save, so they must not invalidate an otherwise
+            # independent edit.  An unknown row that is actually being edited
+            # remains rejected below.
+            if pk and original is None:
+                if inactive:
+                    form.empty_permitted=True
+                    form.has_changed=lambda:False
+                    form.changed_data=[]
+                    continue
+                raise ValidationError('В форме появилась чужая строка. Обновите день.')
+            posted={name:normalized(field,form[name].value()) for name,field in form.fields.items() if name not in {'work_claim_token','work_editing','person_claim_token','person_editing'}}
             original_values=original['values'] if original else None
             if group['prefix']=='labor' and form.data.get('collaborative')=='1':
                 relation_names={'work','work_item','general','work_mode','work_targets'}

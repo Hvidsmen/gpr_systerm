@@ -41,6 +41,29 @@ class ProductionAutosaveTests(TestCase):
         self.assertFalse(EmployeeActivity.objects.filter(pk=record.pk).exists())
         self.assertTrue(FactRevision.objects.filter(entity_type='production.employeeactivity',entity_id=str(record.pk),operation='DELETE',actor=self.users['DISPATCHER']).exists())
 
+    def test_inactive_saved_row_missing_from_stale_snapshot_does_not_block_autosave(self):
+        data=self.setup_person();stale_snapshot=data['production_snapshot']
+        response=self.client.post(self.url,data)
+        self.assertEqual(response.status_code,200,response.content)
+        result=response.json();record=EmployeeActivity.objects.get(employee=self.employee)
+        self.apply_state(data,result)
+        data.update({'production_snapshot':stale_snapshot,'labor-0-id':str(record.pk),'labor-0-person_editing':'0'})
+        response=self.client.post(self.url,data)
+        self.assertEqual(response.status_code,200,response.content)
+        record.refresh_from_db();self.assertEqual(record.employee,self.employee)
+
+    def test_edited_saved_row_missing_from_snapshot_is_still_rejected(self):
+        data=self.setup_person();stale_snapshot=data['production_snapshot']
+        response=self.client.post(self.url,data)
+        self.assertEqual(response.status_code,200,response.content)
+        result=response.json();record=EmployeeActivity.objects.get(employee=self.employee)
+        self.apply_state(data,result)
+        data.update({'production_snapshot':stale_snapshot,'labor-0-id':str(record.pk),'labor-0-person_editing':'1','labor-0-activity':'Неподтверждённая правка'})
+        response=self.client.post(self.url,data)
+        self.assertEqual(response.status_code,400,response.content)
+        self.assertIn('чужая строка',response.json()['error'])
+        record.refresh_from_db();self.assertNotEqual(record.activity,'Неподтверждённая правка')
+
     def test_invalid_autosave_returns_errors_and_preserves_saved_values(self):
         data=self.setup_person();response=self.client.post(self.url,data);self.apply_state(data,response.json())
         data['labor-0-shift']='25'
