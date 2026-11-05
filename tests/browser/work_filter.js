@@ -7,5 +7,8 @@ const {chromium}=require('playwright'),assert=require('node:assert/strict');
  console.log(JSON.stringify({location:await row.locator('[name$="-complex_object_filter"]').inputValue(),options,errors}));
  assert.deepEqual(options.filter(row=>row.value).map(row=>row.value),[String(c.work)]);assert(options[1].text.includes('старая структура'));
  await row.locator('.production-work-field-project_work .search-select-button').click();const visible=await page.locator('.search-select-popup:not([hidden]) .search-select-option').allTextContents();assert.equal(visible.length,2);assert(visible[1].includes('УЗА 33'));assert.deepEqual(errors,[]);
+ const objectFilter=page.locator('.production-top-filters .rg-multi').filter({hasText:'Комплексные объекты'});await objectFilter.locator('summary').click();await objectFilter.getByText('УЗА 33',{exact:true}).click();
+ const states=await page.locator('[data-work-package]').evaluateAll(rows=>rows.map(row=>({label:row.querySelector(':scope > summary strong')?.textContent.trim(),hidden:row.hidden})));
+ assert(states.some(row=>row.label==='УЗА 33'&&!row.hidden),JSON.stringify(states));assert(states.some(row=>row.label==='УЗА 32'&&row.hidden),JSON.stringify(states));
  console.log('PASS: complex object strictly filters a new searchable work row and legacy work remains selectable.');
  }finally{await browser.close();}})().catch(error=>{console.error(error);process.exit(1);});

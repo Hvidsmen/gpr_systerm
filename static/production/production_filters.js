@@ -1,7 +1,7 @@
 (()=>{
  'use strict';const form=document.querySelector('[data-production-form]');if(!form)return;
  const choices=JSON.parse(document.getElementById('production-work-choices').textContent),workMeta=JSON.parse(document.getElementById('production-work-meta')?.textContent||'[]'),catalogue=new Map(choices.map(w=>[w.token,w]));
- const field=(row,name)=>row.querySelector(`[name$="-${name}"]`),token=row=>field(row,'work_item')?.value?`item:${field(row,'project_work')?.value}:${field(row,'work_item').value}`:`work:${field(row,'project_work')?.value}`;
+ const field=(row,name)=>row.querySelector(`[name$="-${name}"]`),token=row=>row.dataset.workToken||(field(row,'work_item')?.value?`item:${field(row,'project_work')?.value}:${field(row,'work_item').value}`:`work:${field(row,'project_work')?.value}`);
  const roleOf=row=>field(row,'planning_position')?.value||String(JSON.parse(document.getElementById('position-employee-roles').textContent)[field(row,'employee')?.value]||'');
  const roleName=row=>field(row,'planning_position')?.selectedOptions[0]?.value?field(row,'planning_position').selectedOptions[0].textContent:row.closest('[data-position-plan]')?.querySelector('h4')?.textContent||'';
  const groupOf=row=>row.closest('[data-position-group]')?.dataset.positionGroup||'Без группы плана';

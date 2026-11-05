@@ -82,6 +82,7 @@ class WorkEntryPresentationTests(TestCase):
         self.assertEqual(rows['Прокладка кабеля']['plan'], 0)
         self.assertContains(response, f'План СМГ на {self.day:%d.%m.%Y}')
         self.assertContains(response, '<h3 data-work-title>Установка камеры</h3>', html=True)
+        self.assertContains(response,f'data-work-token="item:{self.package.pk}:{self.camera.pk}"')
         self.assertContains(response,'complex_object_filter')
         html = response.content.decode()
         self.assertNotIn('Комплексная работа', html)

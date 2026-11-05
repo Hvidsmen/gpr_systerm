@@ -45,7 +45,10 @@
       const hint=row.querySelector('[data-work-item-hint]');if(hint)hint.textContent=simple?'Для самостоятельной работы это поле не заполняется.':owner?'Выберите работу в составе комплекса.':'Сначала выберите работу.';
       const creator=row.querySelector('[data-dispatcher-item-create]');if(creator)creator.hidden=!(owner&&meta?.kind==='COMPOSITE'&&creatorObjects.has(String(meta.complex_id)));
     }
-    const display = catalogue.get(item?.value ? `item:${work?.value}:${item.value}` : `work:${work?.value}`);
+    const selectedToken=item?.value ? `item:${work?.value}:${item.value}` : `work:${work?.value}`;
+    const display = catalogue.get(selectedToken),selectedChoice=choices.find(choice=>choice.token===selectedToken);
+    if(selectedChoice){row.dataset.workToken=selectedChoice.token;row.dataset.complexId=selectedChoice.complex_id||'';row.dataset.packageId=selectedChoice.work||'';}
+    else if(work?.tagName==='SELECT'){row.dataset.workToken='';row.dataset.complexId='';row.dataset.packageId='';}
     const heading = row.querySelector('[data-work-heading]');
     if (!heading) return;
     if (!display) {

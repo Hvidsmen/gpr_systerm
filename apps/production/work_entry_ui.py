@@ -68,12 +68,14 @@ def prepare_rows(formset, obj, day, work_plan, catalogue):
         return {'plan_before':planned_before,'deviation':deviation,'title': title, 'path': ' → '.join(path), 'unit': item.unit if item else work.unit,
             'has_plan': key in work_plan, 'plan': work_plan.get(key), 'previous': previous.get(key, Decimal(0))}
 
+    catalogue_by_key={(choice['work'],choice['item']):choice for choice in catalogue}
     for choice in catalogue:
         choice['display'] = display((choice['work'], choice['item']))
     groups = {}; extra = []
     for row in formset:
         key = keys.get(row.prefix)
         row.work_display = display(key) if key else None
+        row.work_choice = catalogue_by_key.get(key)
         if not row.work_display:
             extra.append(row); continue
         row.fields['project_work'].widget = forms.HiddenInput()
