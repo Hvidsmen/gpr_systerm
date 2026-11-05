@@ -15,7 +15,7 @@ const {chromium}=require('playwright');const fs=require('fs');const assert=requi
  await b.locator('[data-step="2"]').click();await b.waitForFunction(id=>[...document.querySelectorAll('[data-production-person]')].some(r=>r.querySelector('[name$="-employee"]')?.value===String(id)&&r.querySelector('[name$="-id"]').value),c.employee);
  assert(await person(b).locator('[name$="-activity"]').isDisabled());
  await b.locator('[data-step="3"]').click();await b.locator(`.graph-work[data-token="work:${c.work}"]`).click();await b.locator('.graph-person .graph-port').click();await b.waitForFunction(()=>document.querySelectorAll('[data-graph-lines] path').length===1);
- await b.locator(`.graph-work[data-token="work:${c.second_work}"]`).click();await b.locator('.graph-person .graph-port').click();await b.waitForFunction(()=>document.querySelectorAll('[data-graph-lines] path').length===2);
+ await b.locator('.graph-person').click({position:{x:80,y:25}});assert(await b.locator('.graph-person').evaluate(card=>card.classList.contains('selected')));await b.locator(`.graph-work[data-token="work:${c.second_work}"]`).click();await b.waitForFunction(()=>document.querySelectorAll('[data-graph-lines] path').length===2);
  await a.locator('[data-step="3"]').click();await a.waitForFunction(()=>document.querySelectorAll('[data-graph-lines] path').length===2);
  assert((await a.locator('.graph-person').innerText()).includes('Должность из СМГ'));assert((await a.locator('.graph-work strong').first().innerText()).length>0);
  // Filters permit selecting multiple values without changing form facts.

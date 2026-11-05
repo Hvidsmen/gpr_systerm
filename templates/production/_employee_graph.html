@@ -1,6 +1,6 @@
 <section class="card card-body mb-3" data-entry-step="3" data-employee-graph>
 <h2>Связи сотрудников и работ</h2>{% if editable %}<div class="d-flex flex-wrap align-items-center gap-2 mb-3"><button type="button" class="btn btn-sm btn-outline-primary" data-copy-previous="links">Скопировать из предыдущего дня</button><span class="small" data-copy-result="links" role="status"></span></div>{% endif %}
-<p class="small text-muted">Выберите работу слева, затем сотрудника справа — связь появится или удалится. Можно перетянуть точку от работы к сотруднику. При изменении связей карточки остаются на месте.</p>
+<p class="small text-muted">Можно начать с любой стороны: выберите работу, затем сотрудника — или сотрудника, затем работу. Связь появится либо удалится при повторном выборе пары. Также можно перетянуть точку от работы к сотруднику.</p>
 <p class="small" data-graph-message aria-live="polite"></p>
 <div class="employee-graph-search"><input type="search" class="form-control" data-graph-work-search placeholder="Поиск работы, раздела или комплекса" aria-label="Поиск работ"><input type="search" class="form-control" data-graph-person-search placeholder="Поиск сотрудника или должности" aria-label="Поиск сотрудников"></div>
 <div class="production-filters" data-production-filters="graph"></div>
