@@ -77,7 +77,8 @@
   // Live refreshes can leave a stale dirty marker after the exact row values
   // were already acknowledged by autosave. Never show claim recovery for a
   // byte-for-byte saved row; a real subsequent edit changes the fingerprint.
-  if(row.dataset.entryDirty&&row.dataset.autoSavedStamp&&!row.dataset.autoPending&&window.productionAutoSave?.fingerprint(row)===row.dataset.autoSavedStamp){delete row.dataset.entryDirty;delete row.dataset.personDirty;}
+  const autosaveState=row.querySelector('[data-autosave-row-state]')?.textContent.trim();
+  if(row.dataset.entryDirty&&!row.dataset.autoPending&&(autosaveState==='Сохранено'||row.dataset.autoSavedStamp&&window.productionAutoSave?.fingerprint(row)===row.dataset.autoSavedStamp)){delete row.dataset.entryDirty;delete row.dataset.personDirty;}
   const repeated=duplicate(row),claim=claims.get(keyOf(row)),mine=!repeated&&claim?.state==='editing'&&claim.mine,bar=row.querySelector('[data-entry-claim]');if(!bar)return;
   const blocked=repeated||Boolean(claim&&!mine&&(claim.state==='editing'||!claim.own));
   controls(row).forEach(i=>{i.disabled=blocked;});row.querySelectorAll('[data-person-remove],[data-work-remove],[data-work-clear]').forEach(button=>button.toggleAttribute('disabled',blocked));editing(row).value=mine?'1':'0';token(row).value=mine?session:'';
