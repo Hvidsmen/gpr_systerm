@@ -23,22 +23,33 @@ def inherit_parent_works(obj, user):
     while current and current.pk not in seen:
         seen.add(current.pk);ancestors.append(current);current=rows.get(current.parent_id)
     if not ancestors:return
-    ConstructionObject.objects.select_for_update().get(pk=obj.pk)
-    local=list(ProjectWork.objects.filter(company=obj.company,section__construction_object=obj,merged_source__isnull=True).select_related('section','complex_object').prefetch_related('items'))
-    signatures={(work.kind,work.section.name.casefold(),(work.complex_object.name.casefold() if work.complex_object_id else ''),work.name.casefold(),work.is_legacy_structure) for work in local}
+    fields=('pk','kind','section__construction_object_id','section__name','complex_object__name','name','is_legacy_structure')
+    def signature(row):
+        return (row['kind'],row['section__name'].casefold(),(row['complex_object__name'] or '').casefold(),row['name'].casefold(),row['is_legacy_structure'])
+    local_rows=ProjectWork.objects.filter(company=obj.company,section__construction_object=obj,merged_source__isnull=True).values(*fields)
+    signatures={signature(row) for row in local_rows}
     # Nearest parent wins when the same catalogue path exists at several ancestor levels.
     ancestor_order={ancestor.pk:index for index,ancestor in enumerate(ancestors)}
-    sources=list(ProjectWork.objects.filter(company=obj.company,section__construction_object__in=ancestors,merged_source__isnull=True).select_related('section','complex_object').prefetch_related('items'))
-    sources.sort(key=lambda work:(ancestor_order[work.section.construction_object_id],work.pk))
+    source_rows=list(ProjectWork.objects.filter(company=obj.company,section__construction_object__in=ancestors,merged_source__isnull=True).values(*fields))
+    source_rows.sort(key=lambda row:(ancestor_order[row['section__construction_object_id']],row['pk']))
+    missing=[]
+    for row in source_rows:
+        key=signature(row)
+        if key not in signatures:missing.append(row['pk']);signatures.add(key)
+    if not missing:return
+    ConstructionObject.objects.select_for_update().get(pk=obj.pk)
+    sources=ProjectWork.objects.filter(pk__in=missing).select_related('section','complex_object').prefetch_related('items').order_by('pk')
+    sections={row.name.casefold():row for row in Section.objects.filter(company=obj.company,construction_object=obj)}
+    complex_objects={row.name.casefold():row for row in ComplexObject.objects.filter(company=obj.company,construction_object=obj).select_related('section')}
     for source in sources:
-        signature=(source.kind,source.section.name.casefold(),(source.complex_object.name.casefold() if source.complex_object_id else ''),source.name.casefold(),source.is_legacy_structure)
-        if signature in signatures:continue
-        section=Section.objects.filter(company=obj.company,construction_object=obj,name__iexact=source.section.name).order_by('pk').first()
-        if not section:section=Section.objects.create(company=obj.company,construction_object=obj,name=source.section.name)
+        section=sections.get(source.section.name.casefold())
+        if not section:
+            section=Section.objects.create(company=obj.company,construction_object=obj,name=source.section.name);sections[section.name.casefold()]=section
         complex_object=None
         if source.complex_object_id:
-            complex_object=ComplexObject.objects.filter(company=obj.company,construction_object=obj,name__iexact=source.complex_object.name).order_by('pk').first()
-            if not complex_object:complex_object=ComplexObject.objects.create(company=obj.company,construction_object=obj,section=section,name=source.complex_object.name)
+            complex_object=complex_objects.get(source.complex_object.name.casefold())
+            if not complex_object:
+                complex_object=ComplexObject.objects.create(company=obj.company,construction_object=obj,section=section,name=source.complex_object.name);complex_objects[complex_object.name.casefold()]=complex_object
             section=complex_object.section
         work=copy(source);work.pk=None;work._state=copy(source._state);work._state.fields_cache={};work._state.adding=True;work.code='';work.section=section;work.complex_object=complex_object;work._price_actor=user;work.save()
         mapping={};pending=[]
@@ -49,7 +60,6 @@ def inherit_parent_works(obj, user):
             if parent_id and str(parent_id) in mapping:item.parent_id=mapping[str(parent_id)];item.save(update_fields=['parent'])
         from apps.planning.models import SubobjectWorkOrigin
         link=SubobjectWorkOrigin(company=obj.company,source_work=source,local_work=work,item_mapping=mapping);link.full_clean();link.save()
-        signatures.add(signature)
 
 
 def is_general_employee(employee):

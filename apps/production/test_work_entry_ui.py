@@ -1,6 +1,8 @@
 from datetime import timedelta
 from decimal import Decimal
 from django.test import TestCase
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from uuid import uuid4
 from apps.works.models import ComplexObject, ProjectWork, ProjectWorkItem
@@ -54,6 +56,10 @@ class WorkEntryPresentationTests(TestCase):
         self.assertIn(link.local_work,list(empty.fields['project_work'].queryset))
         self.assertContains(response,'Монтаж кабеля')
         self.assertContains(response,'старая структура')
+        from .production_entry import inherit_parent_works
+        with CaptureQueriesContext(connection) as queries:inherit_parent_works(self.obj,self.users['DISPATCHER'])
+        self.assertLessEqual(len(queries),6)
+        self.assertFalse(any('production_projectworkitem' in query['sql'].lower() for query in queries))
 
     def test_hierarchy_shows_leaf_titles_exact_day_plan_units_and_zero(self):
         response = self.page(); self.assertEqual(response.status_code, 200)
