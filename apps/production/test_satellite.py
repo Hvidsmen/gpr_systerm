@@ -88,6 +88,8 @@ class SatelliteProtocolTests(TestCase):
         response=self.send([self.command(),self.command(activity=other.pk)])
         self.assertEqual(response.status_code,200,response.content);self.assertTrue(all(row['ok'] for row in response.json()['results']))
         self.assertTrue(self.person.work_links.filter(work=self.work).exists());self.assertTrue(other.work_links.filter(work=self.work).exists())
+        linked={row['id']:row['targets'] for row in response.json()['people']}
+        self.assertIn(f'work:{self.work.pk}',linked[self.person.pk]);self.assertIn(f'work:{self.work.pk}',linked[other.pk])
     def test_zero_work_rejected_without_restore_and_other_operation_succeeds(self):
         self.fact.actual_quantity=0;self.fact.save()
         data=self.send([self.command(),self.command(fact=self.second_fact.pk)]).json()

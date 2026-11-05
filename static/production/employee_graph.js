@@ -11,15 +11,9 @@
  form.addEventListener('invalid',event=>{const panel=event.target.closest('[data-entry-step]');if(panel)showStep(Number(panel.dataset.entryStep));},true);
  function targets(row){return [...row.querySelectorAll('[name$="-work_targets"]')].map(i=>i.value).filter(Boolean);}
  function editable(row){return form.dataset.readonly!=='1';}
- function applyConfirmed(row,op){
-  const mode=field(row,'work_mode');
-  if(op.action==='mode'){row.querySelectorAll('[name$="-work_targets"]').forEach(i=>i.remove());mode.value=op.mode==='general'?'general':'pending';}
-  else{const fact=saved.find(w=>Number(w.id)===Number(op.fact)),target=fact&&factToken(fact);if(!target)return;const existing=[...row.querySelectorAll('[name$="-work_targets"]')];if(op.action==='remove')existing.filter(i=>i.value===target).forEach(i=>i.remove());else if(!existing.some(i=>i.value===target)){const input=document.createElement('input');input.type='hidden';input.name=mode.name.replace(/work_mode$/,'work_targets');input.value=target;row.append(input);}mode.value=targets(row).length?'works':'pending';}
-  structureStamp='';render();form.productionRefresh?.();
- }
  async function operation(row,op){
   if(!editable(row))return;
-  try{await form.productionChangeLinks(row,op);message.textContent='Сохраняем связь…';if(form.productionLinks&&!await form.productionLinks.flush())throw new Error('Связь не отправлена. Проверьте сообщение над вкладками и нажмите «Отправить сейчас».');applyConfirmed(row,op);message.textContent='Связи сохранены';return true;}
+  try{await form.productionChangeLinks(row,op);message.textContent='Сохраняем связь…';if(form.productionLinks&&!await form.productionLinks.flush())throw new Error('Связь не отправлена. Проверьте сообщение над вкладками и нажмите «Отправить сейчас».');message.textContent='Связи сохранены';return true;}
   catch(error){message.textContent=error.message;return false;}
  }
  function update(row,values,mode){operation(row,{action:'mode',mode});}
