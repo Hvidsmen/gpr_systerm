@@ -20,7 +20,7 @@
   function refresh(row) {
     const work = row.querySelector('[name$="-project_work"]'), item = row.querySelector('[name$="-work_item"]');
     const location=row.querySelector('[name$="-complex_object_filter"]');
-    if(work&&!work._allWorkOptions)work._allWorkOptions=[...work.options];
+    if(work&&!work._allWorkOptions)work._allWorkOptions=Array.from(work.options || []);
     if(location&&!location.dataset.workLocationReady){location.dataset.workLocationReady='1';location.addEventListener('change',()=>{work.value='';item.value='';filterWorks();work.dispatchEvent(new Event('change',{bubbles:true}));});}
     function filterWorks(){
       if(!location||!work)return;
@@ -32,7 +32,7 @@
     if (work && item && item.tagName === 'SELECT') {
       const owner = String(work.value || '');
       const meta=workMeta.get(owner),simple=meta?.kind==='SIMPLE';
-      for (const option of item.options) {
+      for (const option of Array.from(item.options || [])) {
         if (!option.value) { option.hidden = false; option.disabled = false; continue; }
         const allowed = Boolean(owner) && itemOwners.get(String(option.value)) === owner;
         option.hidden = !allowed; option.disabled = !allowed;
