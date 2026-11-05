@@ -1,5 +1,14 @@
 /* Keep the dated work heading visible when adding another fact row. */
 (() => {
+  document.addEventListener('click', event => {
+    const button = event.target.closest('[data-work-expand], [data-work-collapse]');
+    if (!button) return;
+    const tree = button.closest('[data-rows="works"]');
+    if (!tree) return;
+    event.preventDefault();
+    const expanded = button.hasAttribute('data-work-expand');
+    tree.querySelectorAll('details[data-work-object], details[data-work-package]').forEach(group => { group.open = expanded; });
+  });
   const source = document.getElementById('production-work-choices');
   const host = document.querySelector('[data-rows="works"]');
   if (!source || !host) return;
@@ -52,9 +61,5 @@
   host.addEventListener('change', event => {
     const row = event.target.closest('[data-work-fact-row]');
     if (row){refresh(row);refreshGroupTotals();}
-  });
-  host.addEventListener('click', event => {
-    const expand = event.target.closest('[data-work-expand]'), collapse = event.target.closest('[data-work-collapse]');
-    if (expand || collapse) host.querySelectorAll('[data-work-object], [data-work-package]').forEach(group => { group.open = Boolean(expand); });
   });
 })();
