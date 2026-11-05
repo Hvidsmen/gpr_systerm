@@ -291,7 +291,17 @@ def review_request_context(request):
 @login_required
 def movement_reviews(request):
     access(request)
-    return render(request,'personnel/movement_reviews.html',review_request_context(request))
+    result=None
+    if request.method=='POST' and request.POST.get('review_action')=='import_excel':
+        uploaded=request.FILES.get('movement_excel')
+        if not uploaded:messages.error(request,'Выберите Excel-файл перевахты.')
+        else:
+            try:
+                from .movement_excel_import import apply
+                result=apply(request.user,uploaded.read())
+                messages.success(request,f"Импорт завершён. Создано заявок: {result['created']}; повторов пропущено: {result['duplicates']}; не сопоставлено: {len(result['unmatched'])}.")
+            except ValidationError as exc:messages.error(request,'; '.join(exc.messages))
+    return render(request,'personnel/movement_reviews.html',{**review_request_context(request),'movement_import_result':result})
 
 
 @login_required

@@ -1,8 +1,10 @@
 from datetime import timedelta
+from io import BytesIO
 
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
+from django.core.files.uploadedfile import SimpleUploadedFile
 
 from apps.accounts.models import Company, Role, User
 from apps.projects.models import ConstructionObject, Project
@@ -97,3 +99,19 @@ class MovementReviewRequestTests(TestCase):
         self.assertEqual(self.client.post(reverse('personnel:movement_review_accept',args=[request_row.pk])).status_code,403)
         request_row.refresh_from_db()
         self.assertEqual(request_row.status,'OPEN')
+
+    def test_visible_excel_sheets_create_review_requests_without_duplicates(self):
+        from openpyxl import Workbook
+        book=Workbook();arrival=book.active;arrival.title='Заезд Ноябрь 26'
+        arrival.append(['№','штат/новый/перевод','Фамилия Имя Отчество','Должность','Участок','Базовый город','Номер телефона','№ заявки','Дата заезда','Время прилета','Статус'])
+        arrival.append([1,'Штат',self.employee.display_name,'Электромонтёр СМГ',self.site.name,'Уфа','8 900 000 00 00',302,timezone.localdate(),'08:45','Ожидается'])
+        arrival.append([2,'Новый','Неизвестный Человек','Рабочий',self.site.name,'Омск','',303,timezone.localdate(),'09:00','Ожидается'])
+        archive=book.create_sheet('Выезд Январь 24');archive.sheet_state='hidden'
+        archive.append(['Фамилия Имя Отчество','Дата выезда']);archive.append([self.employee.display_name,timezone.localdate()])
+        stream=BytesIO();book.save(stream);upload=lambda:SimpleUploadedFile('perevakhta.xlsx',stream.getvalue(),content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        self.client.force_login(self.reviewer)
+        response=self.client.post(reverse('personnel:movement_reviews'),{'review_action':'import_excel','movement_excel':upload()})
+        self.assertEqual(response.status_code,200);self.assertContains(response,'создано 1');self.assertContains(response,'Неизвестный Человек')
+        row=MovementReviewRequest.objects.get();self.assertEqual(row.person,self.person);self.assertEqual(row.request_number,'302');self.assertEqual(row.site_object,self.site)
+        response=self.client.post(reverse('personnel:movement_reviews'),{'review_action':'import_excel','movement_excel':upload()})
+        self.assertEqual(MovementReviewRequest.objects.count(),1);self.assertContains(response,'повторов 1')
