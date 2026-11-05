@@ -122,6 +122,7 @@ class WorkEntryPresentationTests(TestCase):
         self.complex_object.allow_dispatcher_work_items=True
         self.complex_object.save(update_fields=['allow_dispatcher_work_items'])
         page=self.page();meta={row['id']:row for row in page.context['production_work_meta']}
+        self.assertContains(page,'Фильтры работ');self.assertContains(page,'data-production-filters="works"',count=1)
         self.assertIn(empty.pk,meta);self.assertEqual(meta[empty.pk]['kind'],'COMPOSITE')
         self.assertEqual(meta[empty.pk]['complex_object_id'],self.complex_object.pk)
         self.assertIn(empty,page.context['groups'][0]['formset'].empty_form.fields['project_work'].queryset)
