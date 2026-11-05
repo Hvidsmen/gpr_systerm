@@ -20,8 +20,15 @@
   function refresh(row) {
     const work = row.querySelector('[name$="-project_work"]'), item = row.querySelector('[name$="-work_item"]');
     const location=row.querySelector('[name$="-complex_object_filter"]');
-    if(location&&!location.dataset.workLocationReady){location.dataset.workLocationReady='1';location.addEventListener('change',()=>{work.value='';item.value='';work.dispatchEvent(new Event('change',{bubbles:true}));});}
-    if(location&&work){for(const option of work.options){if(!option.value){option.hidden=false;option.disabled=false;continue;}const meta=workMeta.get(String(option.value));const available=location.value?meta?.kind==='COMPOSITE'&&String(meta.complex_id)===location.value:meta?.kind==='SIMPLE';option.hidden=!available;option.disabled=!available;if(!available&&option.selected)option.selected=false;}}
+    if(work&&!work._allWorkOptions)work._allWorkOptions=[...work.options];
+    if(location&&!location.dataset.workLocationReady){location.dataset.workLocationReady='1';location.addEventListener('change',()=>{work.value='';item.value='';filterWorks();work.dispatchEvent(new Event('change',{bubbles:true}));});}
+    function filterWorks(){
+      if(!location||!work)return;
+      const selected=work.value;
+      const allowed=work._allWorkOptions.filter(option=>!option.value||(location.value?workMeta.get(String(option.value))?.kind==='COMPOSITE'&&String(workMeta.get(String(option.value))?.complex_id)===location.value:workMeta.get(String(option.value))?.kind==='SIMPLE'));
+      work.replaceChildren(...allowed);work.value=allowed.some(option=>option.value===selected)?selected:'';
+    }
+    filterWorks();
     if (work && item && item.tagName === 'SELECT') {
       const owner = String(work.value || '');
       const meta=workMeta.get(owner),simple=meta?.kind==='SIMPLE';

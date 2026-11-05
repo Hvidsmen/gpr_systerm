@@ -101,11 +101,12 @@ class WorkForm(ScopeFormMixin,DailyFactForm):
         self.fields['project_work'].queryset=self.fields['project_work'].queryset.filter(section__construction_object=self.obj)
         self.fields['work_item'].queryset=self.fields['work_item'].queryset.filter(project_work__section__construction_object=self.obj)
         def work_label(work):
-            return ' → '.join(part for part in [work.complex_object.name if work.complex_object_id else work.section.name,work.name] if part)
+            label=' → '.join(part for part in [work.complex_object.name if work.complex_object_id else work.section.name,work.name] if part)
+            return label+(' · старая структура' if work.is_legacy_structure else '')
         self.fields['project_work'].queryset=self.fields['project_work'].queryset.select_related('complex_object','section')
         self.fields['project_work'].label_from_instance=work_label
         self.fields['work_item'].queryset=self.fields['work_item'].queryset.select_related('project_work__complex_object','project_work__section')
-        self.fields['work_item'].label_from_instance=lambda item:work_label(item.project_work)+' → '+item.name
+        self.fields['work_item'].label_from_instance=lambda item:work_label(item.project_work)+' → '+item.name+(' · старая структура' if item.is_legacy_structure and not item.project_work.is_legacy_structure else '')
         complex_objects=self.fields['project_work'].queryset.filter(kind='COMPOSITE',complex_object__isnull=False).values_list('complex_object_id','complex_object__name').distinct().order_by('complex_object__name','complex_object_id')
         self.fields['complex_object_filter'].choices=[('','Без объекта — самостоятельная работа'),*((str(pk),name) for pk,name in complex_objects)]
         self.fields['project_work'].label='Комплекс / самостоятельная работа'

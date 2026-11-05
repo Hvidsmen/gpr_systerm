@@ -25,13 +25,13 @@ def inherit_parent_works(obj, user):
     if not ancestors:return
     ConstructionObject.objects.select_for_update().get(pk=obj.pk)
     local=list(ProjectWork.objects.filter(company=obj.company,section__construction_object=obj,merged_source__isnull=True).select_related('section','complex_object').prefetch_related('items'))
-    signatures={(work.kind,work.section.name.casefold(),(work.complex_object.name.casefold() if work.complex_object_id else ''),work.name.casefold()) for work in local}
+    signatures={(work.kind,work.section.name.casefold(),(work.complex_object.name.casefold() if work.complex_object_id else ''),work.name.casefold(),work.is_legacy_structure) for work in local}
     # Nearest parent wins when the same catalogue path exists at several ancestor levels.
     ancestor_order={ancestor.pk:index for index,ancestor in enumerate(ancestors)}
-    sources=list(ProjectWork.objects.filter(company=obj.company,section__construction_object__in=ancestors,merged_source__isnull=True,is_legacy_structure=False).select_related('section','complex_object').prefetch_related('items'))
+    sources=list(ProjectWork.objects.filter(company=obj.company,section__construction_object__in=ancestors,merged_source__isnull=True).select_related('section','complex_object').prefetch_related('items'))
     sources.sort(key=lambda work:(ancestor_order[work.section.construction_object_id],work.pk))
     for source in sources:
-        signature=(source.kind,source.section.name.casefold(),(source.complex_object.name.casefold() if source.complex_object_id else ''),source.name.casefold())
+        signature=(source.kind,source.section.name.casefold(),(source.complex_object.name.casefold() if source.complex_object_id else ''),source.name.casefold(),source.is_legacy_structure)
         if signature in signatures:continue
         section=Section.objects.filter(company=obj.company,construction_object=obj,name__iexact=source.section.name).order_by('pk').first()
         if not section:section=Section.objects.create(company=obj.company,construction_object=obj,name=source.section.name)
@@ -72,14 +72,15 @@ def work_catalogue(obj):
     works = ProjectWork.objects.filter(company=obj.company, section__construction_object=obj,
         merged_source__isnull=True).select_related('section','complex_object').prefetch_related('items').order_by('section__name','name','pk')
     for work in works:
-        label = f'{work.section.name} → ' + (f'{work.complex_object.name} → ' if work.complex_object_id else '') + work.name
+        label = f'{work.section.name} → ' + (f'{work.complex_object.name} → ' if work.complex_object_id else '') + work.name + (' · старая структура' if work.is_legacy_structure else '')
         if work.kind == 'SIMPLE':
             choices.append({'token':token(work.pk),'work':work.pk,'item':None,'label':label,'unit':work.unit,'title':work.name,'kind':'SIMPLE','object':work.complex_object.name if work.complex_object_id else work.section.name,'package':'','legacy':work.is_legacy_structure})
         else:
             for item in work.items.all():
                 if item.company_id == obj.company_id:
                     legacy=work.is_legacy_structure or item.is_legacy_structure
-                    choices.append({'token':token(work.pk,item.pk),'work':work.pk,'item':item.pk,'label':f'{label} → {item.name}','unit':item.unit,'title':item.name,'kind':'COMPOSITE','object':work.complex_object.name if work.complex_object_id else work.section.name,'package':work.name,'legacy':legacy})
+                    item_label=item.name+(' · старая структура' if item.is_legacy_structure and not work.is_legacy_structure else '')
+                    choices.append({'token':token(work.pk,item.pk),'work':work.pk,'item':item.pk,'label':f'{label} → {item_label}','unit':item.unit,'title':item.name,'kind':'COMPOSITE','object':work.complex_object.name if work.complex_object_id else work.section.name,'package':work.name,'legacy':legacy})
     by_id = {work.pk:work for work in works}
     for choice in choices:
         work = by_id[choice['work']]
