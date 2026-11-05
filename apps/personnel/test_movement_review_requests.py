@@ -117,6 +117,19 @@ class MovementReviewRequestTests(TestCase):
         request_row.refresh_from_db()
         self.assertEqual(request_row.status,'OPEN')
 
+    def test_review_tabs_and_date_filter_separate_arrivals_from_departures(self):
+        first=timezone.localdate();second=first+timedelta(days=1)
+        arrival=MovementReviewRequest.objects.create(company=self.company,person=self.person,kind='ARRIVAL',movement_date=first,to_camp=self.camp,requested_by=self.personnel)
+        departure=MovementReviewRequest.objects.create(company=self.company,person=self.person,kind='DEPARTURE',movement_date=second,from_camp=self.camp,requested_by=self.personnel)
+        self.client.force_login(self.reviewer);url=reverse('personnel:movement_reviews')
+        page=self.client.get(url)
+        self.assertContains(page,'Заезд');self.assertContains(page,'Выезд и увольнение');self.assertContains(page,'Дата заявки')
+        self.assertContains(page,f'housing/movement-requests/{arrival.pk}/');self.assertNotContains(page,f'housing/movement-requests/{departure.pk}/')
+        page=self.client.get(url,{'kind':'departure','date':second.isoformat()})
+        self.assertContains(page,f'housing/movement-requests/{departure.pk}/');self.assertNotContains(page,f'housing/movement-requests/{arrival.pk}/')
+        page=self.client.get(url,{'kind':'departure','date':first.isoformat()})
+        self.assertNotContains(page,f'housing/movement-requests/{departure.pk}/')
+
     def test_visible_excel_sheets_create_review_requests_without_duplicates(self):
         from openpyxl import Workbook
         book=Workbook();arrival=book.active;arrival.title='Заезд Ноябрь 26'

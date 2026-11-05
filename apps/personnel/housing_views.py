@@ -283,11 +283,19 @@ def workspace(request, movements=False):
 
 
 def review_request_context(request):
-    rows=list(MovementReviewRequest.objects.filter(company=request.user.company).select_related('person__employee','from_camp','to_camp','requested_by','event').order_by('status','-movement_date','-pk')[:200])
-    return {'personnel_section':'reviews','movement_review_requests':rows,
-        'arrival_review_requests':[row for row in rows if row.kind=='ARRIVAL'],
-        'departure_review_requests':[row for row in rows if row.kind!='ARRIVAL'],
-        'movement_review_open_count':sum(row.status=='OPEN' for row in rows)}
+    tab='departure' if request.GET.get('kind')=='departure' else 'arrival'
+    raw_date=request.GET.get('date','').strip();filter_date=None
+    if raw_date:
+        try:filter_date=forms.DateField().clean(raw_date)
+        except ValidationError:raw_date=''
+    base=MovementReviewRequest.objects.filter(company=request.user.company)
+    qs=base.filter(kind='ARRIVAL') if tab=='arrival' else base.exclude(kind='ARRIVAL')
+    if filter_date:qs=qs.filter(movement_date=filter_date)
+    rows=list(qs.select_related('person__employee','from_camp','to_camp','requested_by','event').order_by('status','-movement_date','-pk')[:1000])
+    return {'personnel_section':'reviews','movement_review_requests':rows,'review_tab':tab,'review_date':raw_date,
+        'arrival_review_requests':rows if tab=='arrival' else [],'departure_review_requests':rows if tab=='departure' else [],
+        'arrival_review_count':base.filter(kind='ARRIVAL').count(),'departure_review_count':base.exclude(kind='ARRIVAL').count(),
+        'movement_review_open_count':base.filter(status='OPEN').count()}
 
 
 @login_required
