@@ -237,6 +237,7 @@ class WorkEntryPresentationTests(TestCase):
         self.assertIn("for(const name of ['comment','actuation_type','actuation_reason'])",autosave)
         self.assertIn("row.dataset.planned!=='1'",autosave)
         self.assertIn("row.querySelector('[data-work-remove]')?.click()",autosave)
+        self.assertIn("else form.productionLinks?.cancelWork(Number(field(row,'id').value))",autosave)
         self.assertIn("field(row,'DELETE').checked=true",autosave)
         self.assertIn("row.dataset.entryDirty='1';row.hidden=true",autosave)
         self.assertIn("row.isConnected&&field(row,'DELETE').checked",autosave)

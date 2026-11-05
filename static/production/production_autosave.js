@@ -68,7 +68,7 @@
   for(const entry of result.rows){
    const item=sent.get(entry.prefix);if(!item)continue;
    const row=item.row;
-   if(entry.deleted){if(isPerson(row))form.productionLinks?.cancelPerson(Number(field(row,'id').value));try{await form.productionReleaseRow(row);}catch{}row.remove();continue;}
+   if(entry.deleted){if(isPerson(row))form.productionLinks?.cancelPerson(Number(field(row,'id').value));else form.productionLinks?.cancelWork(Number(field(row,'id').value));try{await form.productionReleaseRow(row);}catch{}row.remove();continue;}
    if(!isPerson(row)&&Number(field(row,'actual_quantity').value.replace(',','.'))===0)form.productionLinks?.cancelWork(Number(entry.id));
    field(row,'id').value=entry.id;
    if(!isPerson(row))row.dataset.factId=String(entry.id);
