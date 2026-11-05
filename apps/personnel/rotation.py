@@ -114,20 +114,18 @@ def rotation_project_camps(company):
     """Return WJG ids available for every selectable project/object node."""
     from .models import CampObjectLink
     objects=list(ConstructionObject.objects.filter(company=company).values_list('pk','project_id','parent_id'))
-    children=defaultdict(set)
-    for pk,project_id,parent_id in objects:
-        if parent_id:children[parent_id].add(pk)
     linked=defaultdict(set)
     for object_id,camp_id in CampObjectLink.objects.filter(company=company,camp__is_active=True).values_list('construction_object_id','camp_id'):
         linked[object_id].add(camp_id)
-    result={}
-    for pk,_,_ in objects:
-        descendants={pk};pending=[pk]
-        while pending:
-            child_ids=children[pending.pop()]-descendants
-            descendants.update(child_ids);pending.extend(child_ids)
-        result[str(pk)]=sorted({camp_id for object_id in descendants for camp_id in linked[object_id]})
-    return result
+    parents={pk:parent_id for pk,_,parent_id in objects}
+    # Accumulate each direct link into all its ancestors once. This is linear
+    # for ordinary project trees instead of walking every subtree separately.
+    result=defaultdict(set)
+    for object_id,camp_ids in linked.items():
+        current=object_id;seen=set()
+        while current and current not in seen:
+            seen.add(current);result[current].update(camp_ids);current=parents.get(current)
+    return {str(pk):sorted(result[pk]) for pk,_,_ in objects}
 
 
 def _day_code(row):
