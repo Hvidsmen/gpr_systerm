@@ -309,12 +309,13 @@ def movement_reviews(request):
 def movement_review_accept(request,pk):
     access(request)
     row=get_object_or_404(MovementReviewRequest.objects.select_related('person','from_camp','to_camp','event'),pk=pk,company=request.user.company)
+    edit_mode=row.status=='OPEN' or request.GET.get('edit')=='1' or request.method=='POST'
     confirm=request.method=='POST' and request.POST.get('review_action')=='confirm'
     form=MovementReviewForm(request.POST if request.method=='POST' else None,instance=row,confirm=confirm)
     if request.method=='POST' and form.is_valid():
         with transaction.atomic():
             locked=MovementReviewRequest.objects.select_for_update().get(pk=row.pk,company=request.user.company)
-            if locked.status=='ACCEPTED':
+            if locked.status=='ACCEPTED' and confirm:
                 messages.info(request,'Заявка уже подтверждена.');return redirect(reverse('personnel:movement_reviews')+'#movement-requests')
             for name in form._meta.fields:setattr(locked,name,form.cleaned_data[name])
             camp=form.cleaned_data.get('camp')
@@ -330,6 +331,7 @@ def movement_review_accept(request,pk):
                 locked.status='ACCEPTED';locked.reviewed_by=request.user;locked.reviewed_at=timezone.now()
             locked.save()
         messages.success(request,'Заявка перевахты подтверждена.' if confirm else 'Данные заявки сохранены.')
+        if row.status=='ACCEPTED' and not confirm:return redirect('personnel:movement_review_accept',pk=row.pk)
         return redirect(reverse('personnel:movement_reviews')+'#movement-requests')
     from .models import CampObjectLink
     from apps.projects.models import ConstructionObject
@@ -338,7 +340,7 @@ def movement_review_accept(request,pk):
         root=object_id;seen=set()
         while tree.get(root) and root not in seen:seen.add(root);root=tree[root]
         pairs.setdefault(str(root),set()).add(camp_id)
-    return render(request,'personnel/movement_review.html',{'row':row,'form':form,'personnel_section':'reviews','project_camps':{key:sorted(value) for key,value in pairs.items()}})
+    return render(request,'personnel/movement_review.html',{'row':row,'form':form,'edit_mode':edit_mode,'personnel_section':'reviews','project_camps':{key:sorted(value) for key,value in pairs.items()}})
 
 
 

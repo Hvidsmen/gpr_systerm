@@ -88,6 +88,22 @@ class MovementReviewRequestTests(TestCase):
         self.assertEqual(self.person.housing_events.count(),event_count)
         self.assertIsNone(request_row.event)
 
+        accepted=self.client.get(reverse('personnel:movement_review_accept',args=[request_row.pk]))
+        self.assertContains(accepted,'Редактировать')
+        edit=self.client.get(reverse('personnel:movement_review_accept',args=[request_row.pk])+'?edit=1')
+        self.assertContains(edit,'Сохранить изменения')
+        response=self.client.post(reverse('personnel:movement_review_accept',args=[request_row.pk]),{
+            'review_action':'save','employment_kind':'STAFF','planning_position_name':'Начальник участка по ГПР',
+            'position_name':'Электромонтёр справочника','construction_object':self.obj.pk,'camp':self.camp.pk,'movement_date':changed_date.isoformat(),
+            'base_city_choice':'','new_base_city':'Уфа','phone':'8 999 111-22-33','request_number':'302','travel_time':'08:45',
+            'travel_status':'Прибыл','note':'Данные исправлены',
+        })
+        self.assertRedirects(response,reverse('personnel:movement_review_accept',args=[request_row.pk]),fetch_redirect_response=False)
+        request_row.refresh_from_db()
+        self.assertEqual(request_row.status,'ACCEPTED')
+        self.assertEqual(request_row.phone,'8 999 111-22-33')
+        self.assertEqual(request_row.note,'Данные исправлены')
+
     def test_direct_hr_movement_does_not_create_dispatch_request(self):
         housing.move(self.reviewer,'ARRIVAL',self.camp,timezone.localdate(),[self.person])
         self.assertFalse(MovementReviewRequest.objects.exists())
