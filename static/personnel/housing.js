@@ -39,6 +39,7 @@
   const offset=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--navbar-height'))||48;
   if(anchor&&'IntersectionObserver' in window)new IntersectionObserver(entries=>{const entry=entries[0];filter.classList.toggle('is-pinned',!entry.isIntersecting&&entry.boundingClientRect.top<offset);},{rootMargin:`-${offset}px 0px 0px 0px`}).observe(anchor);
  }
+ document.querySelectorAll('[data-recommendation-select-all]').forEach(toggle=>{const recommendationForm=toggle.closest('form'),rows=[...recommendationForm.querySelectorAll('input[name="recommendations"]')];const sync=()=>{const selected=rows.filter(input=>input.checked).length;toggle.checked=Boolean(rows.length)&&selected===rows.length;toggle.indeterminate=selected>0&&selected<rows.length;};toggle.addEventListener('change',()=>{rows.forEach(input=>input.checked=toggle.checked);sync();});rows.forEach(input=>input.addEventListener('change',sync));sync();});
  if(!form)return;
  form.querySelectorAll('[data-personnel-searchable]').forEach(select=>{const count=document.createElement('div');count.className='housing-count';count.setAttribute('aria-live','polite');select.after(count);const update=()=>{count.textContent='Выбрано: '+select.selectedOptions.length;};select.addEventListener('change',update);update();});
  const kind=form.querySelector('[name=kind]'),target=form.querySelector('[name=target]'),employees=form.querySelector('[name=employees]'),destination=form.querySelector('[name=destination]'),camp=form.querySelector('[name=camp]');

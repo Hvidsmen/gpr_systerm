@@ -82,6 +82,14 @@ class MovementRecommendationTests(TestCase):
         self.assertContains(response,'Состав, назначения и графики')
         self.assertEqual(self.client.get(reverse('personnel:housing')).status_code,200)
 
+    @patch('apps.personnel.rotation.rotation_rows')
+    def test_recommendation_tables_have_select_all_checkbox(self,rotation_rows):
+        rotation_rows.return_value=self.auto_rows();self.client.force_login(self.personnel_dispatcher)
+        response=self.client.get(reverse('personnel:movements'))
+        self.assertEqual(response.status_code,200)
+        self.assertContains(response,'data-recommendation-select-all',count=2)
+        self.assertContains(response,'aria-label="Выбрать всех сотрудников"',count=2)
+
     def test_personnel_dispatcher_can_submit_bulk_current_request_but_not_old_fact(self):
         self.client.force_login(self.personnel_dispatcher);today=timezone.localdate();url=reverse('personnel:movements')
         page=self.client.get(url,{'camp':self.a.pk});snapshot=page.context['form'].initial['snapshot']
