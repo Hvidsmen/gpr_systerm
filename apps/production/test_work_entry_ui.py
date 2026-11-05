@@ -38,7 +38,11 @@ class WorkEntryPresentationTests(TestCase):
     def test_hierarchy_shows_leaf_titles_exact_day_plan_units_and_zero(self):
         response = self.page(); self.assertEqual(response.status_code, 200)
         group = response.context['groups'][0]
+        empty=group['formset'].empty_form
+        self.assertEqual(empty.fields['project_work'].label,'Комплекс / самостоятельная работа')
+        self.assertIn((str(self.complex_object.pk),self.complex_object.name),list(empty.fields['complex_object_filter'].choices))
         structured = next(g for g in group['work_groups'] if g['is_complex'] and g['label']=='Установка камеры')
+        self.assertEqual(str(structured['objects'][0]['rows'][0]['complex_object_filter'].value()),str(self.complex_object.pk))
         self.assertEqual(structured['objects'][0]['label'], 'ПК2763')
         self.assertEqual(structured['object_count'], 1)
         self.assertEqual(structured['plan_total'], Decimal(30))
@@ -51,7 +55,7 @@ class WorkEntryPresentationTests(TestCase):
         self.assertEqual(rows['Прокладка кабеля']['plan'], 0)
         self.assertContains(response, f'План СМГ на {self.day:%d.%m.%Y}')
         self.assertContains(response, '<h3 data-work-title>Установка камеры</h3>', html=True)
-        self.assertContains(response,'data-work-location')
+        self.assertContains(response,'complex_object_filter')
         html = response.content.decode()
         self.assertNotIn('Комплексная работа', html)
         self.assertLess(html.index('<span class="production-work-level">Работа в составе комплекса</span>'),html.index('<span class="production-work-level">Комплексный объект</span>'))

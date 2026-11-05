@@ -92,6 +92,8 @@ class ScopeFormMixin:
         for field in self.fields.values():field.widget.attrs.setdefault('class','form-control')
 
 class WorkForm(ScopeFormMixin,DailyFactForm):
+    complex_object_filter=forms.ChoiceField(label='Комплексный объект',required=False,choices=(),
+        help_text='Выберите объект для работы по схеме «объект → комплекс → работа». Оставьте пустым, чтобы выбрать самостоятельную работу.')
     work_claim_token=forms.CharField(required=False,widget=forms.HiddenInput)
     work_editing=forms.CharField(required=False,initial='1',widget=forms.HiddenInput)
     def __init__(self,*args,**kwargs):
@@ -104,6 +106,14 @@ class WorkForm(ScopeFormMixin,DailyFactForm):
         self.fields['project_work'].label_from_instance=work_label
         self.fields['work_item'].queryset=self.fields['work_item'].queryset.select_related('project_work__complex_object','project_work__section')
         self.fields['work_item'].label_from_instance=lambda item:work_label(item.project_work)+' → '+item.name
+        complex_objects=self.fields['project_work'].queryset.filter(kind='COMPOSITE',complex_object__isnull=False).values_list('complex_object_id','complex_object__name').distinct().order_by('complex_object__name','complex_object_id')
+        self.fields['complex_object_filter'].choices=[('','Без объекта — самостоятельная работа'),*((str(pk),name) for pk,name in complex_objects)]
+        self.fields['project_work'].label='Комплекс / самостоятельная работа'
+        selected_work_id=self.instance.project_work_id or self.initial.get('project_work')
+        if selected_work_id:
+            complex_object_id=self.fields['project_work'].queryset.filter(pk=selected_work_id).values_list('complex_object_id',flat=True).first()
+            if complex_object_id:self.initial.setdefault('complex_object_filter',str(complex_object_id))
+        self.order_fields(['complex_object_filter','project_work','work_item','actual_quantity','comment'])
         if not self.instance.pk:self.initial['actual_quantity']=None
         else:self.initial['actual_quantity']=self.instance.actual_quantity.normalize()
     def clean(self):

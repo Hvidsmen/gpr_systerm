@@ -7,14 +7,12 @@
   const catalogue = new Map(choices.map(choice => [choice.token, choice.display]));
   const itemOwners = new Map(choices.filter(choice => choice.item).map(choice => [String(choice.item), String(choice.work)]));
   const workMeta = new Map(choices.map(choice => [String(choice.work), choice]));
-  const locationKey = choice => choice?.complex_id ? `complex:${choice.complex_id}` : `section:${choice?.section_id}`;
-  const locationLabels = new Map(choices.map(choice => [locationKey(choice), choice.complex || `${choice.section} · без комплексного объекта`]));
   const number = new Intl.NumberFormat('ru-RU', {maximumFractionDigits:6});
   function refresh(row) {
     const work = row.querySelector('[name$="-project_work"]'), item = row.querySelector('[name$="-work_item"]');
-    const location=row.querySelector('[data-work-location]');
-    if(location&&location.options.length===1){for(const [value,label] of [...locationLabels].sort((a,b)=>a[1].localeCompare(b[1],'ru'))){const option=document.createElement('option');option.value=value;option.textContent=label;location.append(option);}if(work?.value)location.value=locationKey(workMeta.get(String(work.value)));location.addEventListener('change',()=>{for(const option of work.options){const available=!location.value||locationKey(workMeta.get(String(option.value)))===location.value;option.hidden=!available;option.disabled=!available;}work.value='';item.value='';work.dispatchEvent(new Event('change',{bubbles:true}));});}
-    if(location&&work){for(const option of work.options){const available=!location.value||locationKey(workMeta.get(String(option.value)))===location.value;option.hidden=!available;option.disabled=!available;}}
+    const location=row.querySelector('[name$="-complex_object_filter"]');
+    if(location&&!location.dataset.workLocationReady){location.dataset.workLocationReady='1';location.addEventListener('change',()=>{work.value='';item.value='';work.dispatchEvent(new Event('change',{bubbles:true}));});}
+    if(location&&work){for(const option of work.options){if(!option.value){option.hidden=false;option.disabled=false;continue;}const meta=workMeta.get(String(option.value));const available=location.value?meta?.kind==='COMPOSITE'&&String(meta.complex_id)===location.value:meta?.kind==='SIMPLE';option.hidden=!available;option.disabled=!available;if(!available&&option.selected)option.selected=false;}}
     if (work && item && item.tagName === 'SELECT') {
       const owner = String(work.value || '');
       const meta=workMeta.get(owner),simple=meta?.kind==='SIMPLE';

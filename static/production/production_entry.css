@@ -16,7 +16,7 @@
 .production-work-name h3{font-size:14px;font-weight:650;line-height:1.35;color:#193c55;margin:0}
 .production-work-name .badge{font-size:10px;margin-top:3px}
 .production-work-inputs{display:grid;grid-template-columns:minmax(90px,.65fr) minmax(220px,1.6fr) minmax(180px,1fr);gap:8px;align-items:start}
-.production-work-field{min-width:0}.production-work-field-location{grid-column:span 1}.production-work-field-project_work,.production-work-field-work_item{grid-column:span 2}
+.production-work-field{min-width:0}.production-work-field-complex_object_filter{grid-column:span 1}.production-work-field-project_work,.production-work-field-work_item{grid-column:span 2}
 .production-work-field label{display:block;margin-bottom:3px;font-size:11px;line-height:1.35}
 .production-work-field .form-control,.production-work-field .form-select,.production-work-field .search-select-button{min-height:32px;padding:4px 7px;font-size:12px;line-height:1.5}
 .production-work-field textarea.form-control{height:32px;min-height:32px;resize:vertical}
