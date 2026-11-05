@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% load static access %}
 {% block title %}Факт за день{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'production/production_entry.css' %}?v=20261105-work-delete">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'production/production_entry.css' %}?v=20261105-ux-pass-1">{% endblock %}
 {% block content %}
 {% include 'production/_work_opening_tabs.html' %}
 
@@ -10,7 +10,7 @@
 {% if object %}
 {% if dispatcher_item_object_ids != None %}{{ dispatcher_item_object_ids|json_script:'dispatcher-item-object-ids' }}{% endif %}
 {% if section == 'works' %}{% include 'core/_fact_context.html' with scope_label='Объект' scope_name=object.name can_edit=editable save_mode='auto' %}{% else %}{% include 'core/_fact_context.html' with scope_label='Объект' scope_name=object.name can_edit=editable save_mode='manual' %}{% endif %}
-{% if section == 'works' %}<section class="card card-body production-top-filters" data-entry-step="1"><h2 class="h6 mb-2">Фильтры работ</h2><div class="production-filters"><input type="search" class="form-control" data-work-search placeholder="Поиск по названию работы или комплекса" aria-label="Поиск по названию работы или комплекса"><div data-production-filters="works"></div></div></section>{% endif %}
+{% if section == 'works' %}<section class="card card-body production-top-filters" data-entry-step="1"><div class="production-filter-heading"><h2 class="h6 mb-0">Фильтры работ</h2><div class="production-quick-filters" role="group" aria-label="Быстрые фильтры работ"><button type="button" class="active" data-work-quick="all" aria-pressed="true">Все из плана СМГ</button><button type="button" data-work-quick="day-plan" aria-pressed="false">План на день</button><button type="button" data-work-quick="actual" aria-pressed="false">Есть факт</button><button type="button" data-work-quick="empty" aria-pressed="false">Не заполнено</button><button type="button" data-work-quick="unplanned" aria-pressed="false">Вне СМГ</button><button type="button" data-work-quick="deviation" aria-pressed="false">Есть отклонение</button></div></div><div class="production-filters"><input type="search" class="form-control" data-work-search placeholder="Поиск по названию работы или комплекса" aria-label="Поиск по названию работы или комплекса"><div data-production-filters="works"></div></div><p class="small text-muted mb-0">Показаны все работы общего плана СМГ, включая позиции с нулевым планом на выбранный день.</p></section>{% endif %}
 
 
 <details class="fact-rules"><summary>Правила ввода и заполненность направлений</summary><div class="d-flex gap-3 mb-3">{% for record in summary %}<span>{{ record.label }}: {% if record.confirmed %}<strong>Подтверждено</strong>{% elif record.started %}Сохранено{% else %}Не заполнено{% endif %}</span>{% endfor %}</div>
