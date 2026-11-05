@@ -42,7 +42,7 @@
  form.productionApplyReport=merge;
  outbox=new window.ProductionLinksOutbox(form,{digest:()=>digest,ackDigest:value=>{digest=value;},changed:()=>{lastActivity=Date.now();publish();},people:(people,removed)=>{
   const byId=new Map(canonical.people.map(p=>[Number(p.id),p]));for(const person of people){const current=byId.get(Number(person.id));if(current&&Number(person.links_revision)<Number(current.links_revision||0))continue;if(current)byId.set(Number(person.id),{...current,...person});}for(const id of removed)byId.delete(Number(id));canonical={...canonical,people:[...byId.values()]};
-  published='';
+  published='';publish();
  }});
  form.productionLinks=outbox;
  function apply(data){

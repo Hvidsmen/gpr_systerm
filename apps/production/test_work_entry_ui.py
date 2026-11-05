@@ -254,6 +254,7 @@ class WorkEntryPresentationTests(TestCase):
         self.assertIn("active=null;activePerson=null;activePersonRow=null",graph)
         live=(Path(__file__).resolve().parents[2]/'static/production/production_live.js').read_text(encoding='utf-8')
         self.assertIn("person.links_revision)<Number(current.links_revision",live)
+        self.assertIn("published='';publish();",live)
         self.assertIn("highlight(null,null);await operation(row",graph)
         template=(Path(__file__).resolve().parents[2]/'templates/production/_employee_graph.html').read_text(encoding='utf-8')
         self.assertIn('graph-lines-visible',template)
