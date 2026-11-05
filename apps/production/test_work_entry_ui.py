@@ -245,6 +245,8 @@ class WorkEntryPresentationTests(TestCase):
         graph=(Path(__file__).resolve().parents[2]/'static/production/employee_graph.js').read_text(encoding='utf-8')
         self.assertIn("await form.productionLinks.flush()",graph)
         self.assertIn("Сохраняем связь…",graph)
+        self.assertIn("function applyConfirmed(row,op)",graph)
+        self.assertIn("structureStamp='';render();form.productionRefresh?.()",graph)
 
     def test_work_screen_batches_expensive_refreshes_and_exposes_performance_metrics(self):
         root=Path(__file__).resolve().parents[2]/'static/production'
