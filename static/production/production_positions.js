@@ -1,18 +1,24 @@
 (()=>{
  'use strict';const source=document.getElementById('position-plan-saved');if(!source)return;
- let saved=JSON.parse(source.textContent);const staff=JSON.parse(document.getElementById('position-employee-roles').textContent),host=document.querySelector('[data-rows=labor]');
+ let saved=JSON.parse(source.textContent);const staff=JSON.parse(document.getElementById('position-employee-roles').textContent),locations=JSON.parse(document.getElementById('production-employee-locations')?.textContent||'{}'),host=document.querySelector('[data-rows=labor]');
  const field=(row,name)=>row.querySelector(`[name$="-${name}"]`),containers=new Map([...host.querySelectorAll('[data-position-people]')].map(el=>[el.dataset.positionPeople,el]));
  const number=new Intl.NumberFormat('ru-RU',{maximumFractionDigits:2});
  const positionStorageKey=`production-position-filter:${host.closest('form').elements.construction_object?.value||''}:${host.closest('form').elements.date?.value||''}`;let quickPosition=sessionStorage.getItem(positionStorageKey)||'all';
  let refreshPending=false;
  function scheduleRefresh(){if(refreshPending)return;refreshPending=true;requestAnimationFrame(()=>{refreshPending=false;refresh();});}
  function write(el,value){const text=number.format(value);if(el.textContent!==text)el.textContent=text;}
+ function prioritizeEmployees(row,role){
+  const select=field(row,'employee');if(!select)return;const current=select.value;select.querySelector('[data-position-matches]')?.remove();select.querySelectorAll('option[data-position-original]').forEach(option=>{option.hidden=false;delete option.dataset.positionOriginal;});
+  if(!role)return;const matches=[...select.querySelectorAll('optgroup option')].filter(option=>option.value&&String(locations[option.value]?.position||'')===String(role));if(!matches.length)return;
+  const label=row.closest('[data-position-plan]')?.querySelector('h4')?.textContent?.trim()||'выбранной должности',group=document.createElement('optgroup');group.label='Подходят по должности · '+label;group.dataset.positionMatches='1';
+  matches.forEach(option=>{const clone=option.cloneNode(true);group.append(clone);option.hidden=true;option.dataset.positionOriginal='1';});const empty=[...select.children].find(node=>node.tagName==='OPTION');empty?.after(group);if(!empty)select.prepend(group);select.value=current;
+ }
  function refresh(){
   const records=new Map(saved.map(row=>[String(row.id),row])),extras=[];
   host.querySelectorAll('[data-production-person]').forEach(row=>{
    const id=field(row,'id')?.value,employee=field(row,'employee')?.value,role=field(row,'planning_position')?.value||row.dataset.requestedPosition||staff[employee],deleted=field(row,'DELETE')?.checked;
    if(id)records.delete(id);if(employee&&!deleted)extras.push({employee,role});
-   const target=containers.get(String(role))||containers.get('');if(target&&row.parentElement!==target)target.append(row);
+   const target=containers.get(String(role))||containers.get('');if(target&&row.parentElement!==target)target.append(row);prioritizeEmployees(row,role);
   });
   const people=new Map(),unique=new Set(),unplanned=new Set();
   for(const row of [...records.values(),...extras]){const key=String(row.role);if(!people.has(key))people.set(key,new Set());people.get(key).add(String(row.employee));unique.add(String(row.employee));if(!containers.has(key))unplanned.add(String(row.employee));}
@@ -25,7 +31,7 @@
   const button=event.target.closest('[data-add-for-position]');if(!button)return;
   let row=[...host.querySelectorAll('[data-production-person]')].find(row=>!field(row,'employee').value&&!field(row,'DELETE')?.checked&&!row.dataset.entryDirty&&(!row.dataset.requestedPosition||row.dataset.requestedPosition===button.dataset.addForPosition));
   if(!row){const before=new Set(host.querySelectorAll('[data-production-person]'));document.querySelector('[data-add=labor]').click();row=[...host.querySelectorAll('[data-production-person]')].find(row=>!before.has(row));}
-  if(!row)return;row.dataset.requestedPosition=button.dataset.addForPosition;const role=field(row,'planning_position');role.value=button.dataset.addForPosition;if(!role.disabled)role.dispatchEvent(new Event('change',{bubbles:true}));refresh();row.scrollIntoView({block:'center'});field(row,'employee').focus();
+  if(!row)return;row.dataset.requestedPosition=button.dataset.addForPosition;const role=field(row,'planning_position');role.value=button.dataset.addForPosition;prioritizeEmployees(row,button.dataset.addForPosition);if(!role.disabled)role.dispatchEvent(new Event('change',{bubbles:true}));refresh();row.scrollIntoView({block:'center'});(field(row,'employee').nextElementSibling?.querySelector('.search-select-button')||field(row,'employee')).focus();
  });
  document.addEventListener('click',event=>{const button=event.target.closest('[data-position-groups-toggle]');if(!button)return;host.querySelectorAll('[data-position-group]').forEach(group=>group.open=button.dataset.positionGroupsToggle==='open');});
  document.querySelectorAll('[data-position-quick]').forEach(button=>{const active=button.dataset.positionQuick===quickPosition;button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));});
