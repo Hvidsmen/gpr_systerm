@@ -82,6 +82,12 @@ class SatelliteProtocolTests(TestCase):
         with patch('apps.production.collaboration.automatic_readiness') as ready:response=self.send(commands)
         self.assertEqual(response.status_code,200);self.assertTrue(all(r['ok'] for r in response.json()['results']));ready.assert_called_once()
         self.assertEqual(set(self.person.work_links.values_list('work_id',flat=True)),{self.second_work.pk})
+    def test_same_work_remains_linked_to_multiple_people(self):
+        employee=Employee.objects.create(company=self.company,last_name='Второй',first_name='Сотрудник',position=self.employee.position)
+        other=EmployeeActivity.objects.create(company=self.company,construction_object=self.obj,date=self.day,employee=employee,position=employee.position,assignment_reviewed=False,entry_direction='works',reported_by=self.user)
+        response=self.send([self.command(),self.command(activity=other.pk)])
+        self.assertEqual(response.status_code,200,response.content);self.assertTrue(all(row['ok'] for row in response.json()['results']))
+        self.assertTrue(self.person.work_links.filter(work=self.work).exists());self.assertTrue(other.work_links.filter(work=self.work).exists())
     def test_zero_work_rejected_without_restore_and_other_operation_succeeds(self):
         self.fact.actual_quantity=0;self.fact.save()
         data=self.send([self.command(),self.command(fact=self.second_fact.pk)]).json()
