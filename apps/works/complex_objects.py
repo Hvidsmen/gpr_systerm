@@ -12,7 +12,7 @@ from .models import ComplexObject, ProjectWork, ProjectWorkItem
 class ComplexObjectForm(forms.ModelForm):
     class Meta:
         model=ComplexObject
-        fields=['construction_object','section','name','description']
+        fields=['construction_object','section','name','description','allow_dispatcher_work_items']
 
     def __init__(self,*args,user,**kwargs):
         super().__init__(*args,**kwargs)
@@ -48,7 +48,7 @@ class ComplexObjectCatalogue(View):
 class ComplexObjectDetailForm(forms.ModelForm):
     class Meta:
         model=ComplexObject
-        fields=['name','description','section']
+        fields=['name','description','section','allow_dispatcher_work_items']
 
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)

@@ -634,6 +634,10 @@ class ComplexObject(BaseCompanyModel):
     construction_object = models.ForeignKey('projects.ConstructionObject', on_delete=models.PROTECT, related_name='complex_objects', verbose_name='Строительный объект')
     name = models.CharField('Название комплексного объекта', max_length=255)
     description = models.TextField('Описание', blank=True)
+    allow_dispatcher_work_items = models.BooleanField(
+        'Разрешить диспетчеру добавлять работы при вводе факта', default=False,
+        help_text='Действует только для работ вне СМГ. Диспетчер сможет создавать работы внутри комплексов этого объекта.',
+    )
 
     @property
     def quantity(self):

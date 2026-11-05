@@ -296,7 +296,7 @@ def check_route(user, match, method):
         if name in {'production_live','production_links','production_copy_previous'}:
             require_roles(user,{'ADMIN','DISPATCHER','ALL_FACT_DISPATCHER'})
             return
-        if name in {'fact_day_workspace','work_claims'}:
+        if name in {'fact_day_workspace','work_claims','dispatcher_work_item_create'}:
             require_roles(user, ROLES if method in {'GET','HEAD'} else FACT_ROLES)
             return
         if role in DISPATCHER_ROLES and method not in {'GET','HEAD'}:

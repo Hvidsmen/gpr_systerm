@@ -5,7 +5,7 @@ from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from uuid import uuid4
-from apps.works.models import ComplexObject, ProjectWork, ProjectWorkItem
+from apps.works.models import ComplexObject, MeasurementUnit, ProjectWork, ProjectWorkItem
 from apps.projects.models import ConstructionObject,Section
 from apps.planning.models import SubobjectWorkOrigin
 from apps.planning.models import DailyScheduleEntry
@@ -90,6 +90,31 @@ class WorkEntryPresentationTests(TestCase):
         self.assertContains(response,'Итого: план 30 шт · факт')
         self.assertEqual(WorkFactClaim.objects.count(), 0, 'Displaying planned work must not reserve it')
         self.assertEqual(DailyFact.objects.count(), 0)
+
+    def test_dispatcher_creates_item_only_in_enabled_other_object(self):
+        self.complex_object.allow_dispatcher_work_items=True
+        self.complex_object.save(update_fields=['allow_dispatcher_work_items'])
+        MeasurementUnit.objects.get_or_create(company=self.company,symbol='м',defaults={'name':'метр'})
+        page=self.page()
+        self.assertContains(page,'+ Создать работу в составе комплекса')
+        response=self.client.post(reverse('production:dispatcher_work_item_create'),{
+            'construction_object':self.obj.pk,'date':self.day,'project_work':self.package.pk,
+            'name':'Дополнительная прокладка','unit':'м',
+        })
+        self.assertEqual(response.status_code,200,response.content)
+        item=ProjectWorkItem.objects.get(name='Дополнительная прокладка')
+        self.assertEqual(item.project_work,self.package);self.assertEqual(item.unit,'м')
+        self.assertEqual(response.json()['choice']['item'],item.pk)
+        refreshed=self.page()
+        self.assertTrue(any(choice['item']==item.pk for choice in refreshed.context['production_work_choices']))
+        self.assertIn(item,refreshed.context['groups'][0]['formset'].empty_form.fields['work_item'].queryset)
+        self.complex_object.allow_dispatcher_work_items=False
+        self.complex_object.save(update_fields=['allow_dispatcher_work_items'])
+        denied=self.client.post(reverse('production:dispatcher_work_item_create'),{
+            'construction_object':self.obj.pk,'date':self.day,'project_work':self.package.pk,
+            'name':'Запрещённая работа','unit':'м',
+        })
+        self.assertEqual(denied.status_code,404)
 
     def test_plan_changes_with_selected_day_and_previous_fact_excludes_this_day(self):
         DailyFact.objects.create(company=self.company, project_work=self.package, work_item=self.camera, date=self.day-timedelta(days=2), actual_quantity=3)

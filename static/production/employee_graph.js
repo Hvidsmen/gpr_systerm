@@ -84,6 +84,7 @@
  function filter(){const a=graph.querySelector('[data-graph-work-search]').value.toLocaleLowerCase('ru'),b=graph.querySelector('[data-graph-person-search]').value.toLocaleLowerCase('ru');for(const card of workCards.values())card.hidden=!card.textContent.toLocaleLowerCase('ru').includes(a)||Boolean(form.productionFilters&&!form.productionFilters.workMatches(card.dataset.token));for(const {card,person} of personCards.values())card.hidden=!card.textContent.toLocaleLowerCase('ru').includes(b)||Boolean(form.productionFilters&&!form.productionFilters.personMatches(person.row));draw();}
  graph.querySelectorAll('input[type=search]').forEach(i=>i.addEventListener('input',filter));
  form.addEventListener('production-report-update',event=>{saved=event.detail.works;savedPeople=event.detail.people;document.getElementById('production-graph-saved').textContent=JSON.stringify(saved);if(step===3)render();});
+ form.addEventListener('production-work-created',event=>{catalogue.push(event.detail);labels.set(event.detail.token,event.detail);structureStamp='';if(step===3)render();});
  form.addEventListener('change',()=>{if(!scheduled){scheduled=true;requestAnimationFrame(()=>{scheduled=false;if(step===3)render();});}});form.addEventListener('production-filter-change',()=>{if(step===3)render();});new ResizeObserver(draw).observe(canvas);
  const errors=form.querySelector('[data-entry-step] .errorlist');showStep(errors?Number(errors.closest('[data-entry-step]').dataset.entryStep):Number(form.dataset.initialStep||1));
 })();

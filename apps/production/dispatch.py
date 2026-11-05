@@ -350,6 +350,13 @@ class DispatcherDayView(CompanyRequiredMixin,View):
         people_status=FactSectionDay.objects.filter(company=obj.company,construction_object=obj,date=day,section='labor').first()
         context['labor_revision']=request.POST.get('labor_revision','') if bound else (people_status.revision if people_status else 0)
         context['production_work_choices']=catalogue
+        if section=='works' and role_code(request.user) in {'DISPATCHER','ALL_FACT_DISPATCHER'}:
+            from apps.works.models import ComplexObject,MeasurementUnit
+            context['dispatcher_item_object_ids']=list(ComplexObject.objects.filter(
+                company=obj.company,construction_object=obj,allow_dispatcher_work_items=True,
+            ).values_list('pk',flat=True))
+            context['dispatcher_item_units']=list(MeasurementUnit.objects.filter(company=obj.company).order_by('symbol').values_list('symbol','name'))
+            context['dispatcher_item_create_url']=reverse('production:dispatcher_work_item_create')
         context['can_review_actuation_reasons']=role_code(request.user) in {'ADMIN','PRODUCTION_HEAD'}
         context['own_entry']=own_entry
         if section=='works':
