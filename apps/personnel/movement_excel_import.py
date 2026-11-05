@@ -136,10 +136,14 @@ def apply(user,raw):
         if MovementReviewRequest.objects.filter(**lookup).exists():result['duplicates']+=1;continue
         object_matches=objects.get(normalized(data['site']),[]);site_object=object_matches[0] if len(object_matches)==1 else None
         employee=person.employee
+        from .models import CampObjectLink
+        camp_ids=list(CampObjectLink.objects.filter(company=company,construction_object=site_object,camp__is_active=True).values_list('camp_id',flat=True).distinct()) if site_object else []
+        camp_id=camp_ids[0] if len(camp_ids)==1 else None
         row=MovementReviewRequest(**lookup,requested_by=user,status='OPEN',employment_kind=data['employment_kind'],
             planning_position_name=data['planning_position_name'],position_name=employee.display_position if employee else '',
             construction_object=site_object.parent if site_object and site_object.parent_id else site_object,site_object=site_object,
             site=data['site'],base_city=data['base_city'],phone=data['phone'] or ((employee.phone if employee else '') or person.phone),
+            to_camp_id=camp_id if data['kind']=='ARRIVAL' else None,from_camp_id=camp_id if data['kind']!='ARRIVAL' else None,
             travel_time=data['travel_time'],travel_status=data['travel_status'] or ('Ожидается'),note=data['note'])
         row.full_clean();row.save();result['created']+=1
     from apps.audit.models import AuditLog

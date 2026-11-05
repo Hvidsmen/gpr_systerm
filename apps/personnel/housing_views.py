@@ -317,6 +317,9 @@ def movement_review_accept(request,pk):
             if locked.status=='ACCEPTED':
                 messages.info(request,'Заявка уже подтверждена.');return redirect(reverse('personnel:movement_reviews')+'#movement-requests')
             for name in form._meta.fields:setattr(locked,name,form.cleaned_data[name])
+            camp=form.cleaned_data.get('camp')
+            if locked.kind=='ARRIVAL':locked.to_camp=camp
+            else:locked.from_camp=camp
             if locked.site_object_id:locked.site=locked.site_object.name
             selected_city=form.cleaned_data.get('base_city_choice');new_city=form.cleaned_data.get('new_base_city','')
             if new_city:
@@ -328,7 +331,14 @@ def movement_review_accept(request,pk):
             locked.save()
         messages.success(request,'Заявка перевахты подтверждена.' if confirm else 'Данные заявки сохранены.')
         return redirect(reverse('personnel:movement_reviews')+'#movement-requests')
-    return render(request,'personnel/movement_review.html',{'row':row,'form':form,'personnel_section':'reviews'})
+    from .models import CampObjectLink
+    from apps.projects.models import ConstructionObject
+    tree={obj.pk:obj.parent_id for obj in ConstructionObject.objects.filter(company=request.user.company)};pairs={}
+    for object_id,camp_id in CampObjectLink.objects.filter(company=request.user.company,camp__is_active=True).values_list('construction_object_id','camp_id'):
+        root=object_id;seen=set()
+        while tree.get(root) and root not in seen:seen.add(root);root=tree[root]
+        pairs.setdefault(str(root),set()).add(camp_id)
+    return render(request,'personnel/movement_review.html',{'row':row,'form':form,'personnel_section':'reviews','project_camps':{key:sorted(value) for key,value in pairs.items()}})
 
 
 

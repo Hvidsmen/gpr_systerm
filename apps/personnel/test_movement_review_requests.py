@@ -64,13 +64,13 @@ class MovementReviewRequestTests(TestCase):
         self.assertContains(detail,'Подтвердить заявку')
         self.assertContains(detail,'Должность по ГПР / СМГ')
         self.assertContains(detail,'Должность по справочнику сотрудников')
-        self.assertContains(detail,'Выберите объект')
-        self.assertContains(detail,'КТП-1')
+        self.assertContains(detail,'Выберите проект')
+        self.assertContains(detail,'ВЖГ')
         self.assertContains(detail,'Не прибыл')
         changed_date=timezone.localdate()+timedelta(days=2)
         response=self.client.post(reverse('personnel:movement_review_accept',args=[request_row.pk]),{
             'review_action':'confirm','employment_kind':'STAFF','planning_position_name':'Начальник участка по ГПР',
-            'position_name':'Электромонтёр справочника','construction_object':self.obj.pk,'site_object':self.site.pk,'movement_date':changed_date.isoformat(),
+            'position_name':'Электромонтёр справочника','construction_object':self.obj.pk,'camp':self.camp.pk,'movement_date':changed_date.isoformat(),
             'base_city_choice':'','new_base_city':'Уфа','phone':'8 900 000-00-00','request_number':'302','travel_time':'08:45',
             'travel_status':'Прибыл','note':'Рейс подтверждён',
         })
@@ -83,7 +83,7 @@ class MovementReviewRequestTests(TestCase):
         self.assertEqual(request_row.base_city,'Уфа')
         self.assertEqual(request_row.movement_date,changed_date)
         self.assertEqual(request_row.construction_object,self.obj)
-        self.assertEqual(request_row.site_object,self.site)
+        self.assertEqual(request_row.to_camp,self.camp)
         self.assertTrue(BaseCity.objects.filter(company=self.company,name='Уфа').exists())
         self.assertEqual(self.person.housing_events.count(),event_count)
         self.assertIsNone(request_row.event)
@@ -112,6 +112,6 @@ class MovementReviewRequestTests(TestCase):
         self.client.force_login(self.reviewer)
         response=self.client.post(reverse('personnel:movement_reviews'),{'review_action':'import_excel','movement_excel':upload()})
         self.assertEqual(response.status_code,200);self.assertContains(response,'создано 1');self.assertContains(response,'Неизвестный Человек')
-        row=MovementReviewRequest.objects.get();self.assertEqual(row.person,self.person);self.assertEqual(row.request_number,'302');self.assertEqual(row.site_object,self.site)
+        row=MovementReviewRequest.objects.get();self.assertEqual(row.person,self.person);self.assertEqual(row.request_number,'302');self.assertEqual(row.site_object,self.site);self.assertEqual(row.to_camp,self.camp)
         response=self.client.post(reverse('personnel:movement_reviews'),{'review_action':'import_excel','movement_excel':upload()})
         self.assertEqual(MovementReviewRequest.objects.count(),1);self.assertContains(response,'повторов 1')

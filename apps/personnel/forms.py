@@ -209,12 +209,13 @@ class MovementRecommendationForm(forms.Form):
 
 
 class MovementReviewForm(StyledModelForm):
+    camp=forms.ModelChoiceField(label='ВЖГ',queryset=None,required=False,empty_label='Выберите ВЖГ')
     base_city_choice=forms.ModelChoiceField(label='Базовый город',queryset=BaseCity.objects.none(),required=False,empty_label='Выберите город')
     new_base_city=forms.CharField(label='Добавить новый базовый город',max_length=150,required=False,
         help_text='Если нужного города ещё нет в списке, введите его здесь — он сразу добавится в справочник.')
     class Meta:
         model=MovementReviewRequest
-        fields=['employment_kind','planning_position_name','position_name','construction_object','site_object','movement_date','phone','request_number','travel_time','travel_status','note']
+        fields=['employment_kind','planning_position_name','position_name','construction_object','movement_date','phone','request_number','travel_time','travel_status','note']
         widgets={'movement_date':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}),'travel_time':forms.TimeInput(format='%H:%M',attrs={'type':'time'})}
     def __init__(self,*args,confirm=False,**kwargs):
         super().__init__(*args,**kwargs);self.confirm=confirm
@@ -222,10 +223,10 @@ class MovementReviewForm(StyledModelForm):
         from apps.projects.models import ConstructionObject
         objects=ConstructionObject.objects.filter(company=self.instance.company).select_related('parent').order_by('name')
         self.fields['construction_object'].queryset=objects.filter(parent=None)
-        self.fields['construction_object'].empty_label='Выберите объект'
-        self.fields['site_object'].queryset=objects
-        self.fields['site_object'].empty_label='Выберите участок'
-        self.fields['site_object'].label_from_instance=lambda value:f'{value.parent.name} · {value.name}' if value.parent_id else value.name
+        self.fields['construction_object'].label='Проект';self.fields['construction_object'].empty_label='Выберите проект'
+        from .models import Camp
+        self.fields['camp'].queryset=Camp.objects.filter(company=self.instance.company,is_active=True).order_by('name','pk')
+        self.initial['camp']=self.instance.to_camp_id if self.instance.kind=='ARRIVAL' else self.instance.from_camp_id
         self.fields['base_city_choice'].queryset=BaseCity.objects.filter(company=self.instance.company).order_by('name')
         current=BaseCity.objects.filter(company=self.instance.company,name__iexact=self.instance.base_city.strip()).first() if self.instance.base_city else None
         if current:self.initial['base_city_choice']=current.pk
@@ -235,7 +236,7 @@ class MovementReviewForm(StyledModelForm):
             self.fields['employment_kind'].required=False
             self.fields['employment_kind'].widget=forms.HiddenInput()
         if confirm:
-            required=['planning_position_name','position_name','construction_object','site_object','movement_date','phone','request_number','travel_time','travel_status']
+            required=['planning_position_name','position_name','construction_object','camp','movement_date','phone','request_number','travel_time','travel_status']
             if self.instance.kind=='ARRIVAL':required.append('employment_kind')
             for name in required:self.fields[name].required=True
     def status_choices(self):
@@ -247,8 +248,13 @@ class MovementReviewForm(StyledModelForm):
         data=super().clean();new=' '.join((data.get('new_base_city') or '').split());selected=data.get('base_city_choice')
         if new and selected:self.add_error('new_base_city','Выберите город из списка или добавьте новый, но не оба варианта.')
         if self.confirm and not (new or selected):self.add_error('base_city_choice','Выберите базовый город или добавьте новый.')
-        obj,site=data.get('construction_object'),data.get('site_object')
-        if obj and site and site.pk!=obj.pk and site.parent_id!=obj.pk:self.add_error('site_object','Выберите участок выбранного объекта.')
+        obj,camp=data.get('construction_object'),data.get('camp')
+        if obj and camp:
+            from apps.projects.models import ConstructionObject
+            ids={obj.pk};front={obj.pk};pairs=list(ConstructionObject.objects.filter(company=self.instance.company,project=obj.project).values_list('pk','parent_id'))
+            while front:
+                children={pk for pk,parent in pairs if parent in front};ids|=children;front=children
+            if not camp.object_links.filter(company=self.instance.company,construction_object_id__in=ids).exists():self.add_error('camp','Выберите ВЖГ выбранного проекта.')
         data['new_base_city']=new
         return data
 
