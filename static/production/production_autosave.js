@@ -60,6 +60,10 @@
    for(const issue of result.errors||[]){const item=sent.get(issue.prefix);if(!item)continue;const text=issue.message||Object.values(issue.fields||{}).flat().join(' ');const target=item.row.querySelector('[data-error]');if(target)target.textContent=text;rowMessage(item.row,text,true);}
    const error=new Error(result.error||'Изменения не сохранены.');error.retryable=response.status>=500||response.status===429||Boolean(result.error?.includes('Резерв')&&result.error?.includes('истёк'));if(error.retryable)form.productionForgetClaims?.(changed);throw error;
   }
+  // A successful autosave resolves the server-bound form state. Live updates
+  // may rebuild rows afterwards; they must not be marked dirty again merely
+  // because the original page was rendered from a POST.
+  form.dataset.productionBound='0';
   for(const name of ['production_snapshot','revision','labor_revision'])form.elements.namedItem(name).value=result[name];
   for(const entry of result.rows){
    const item=sent.get(entry.prefix);if(!item)continue;

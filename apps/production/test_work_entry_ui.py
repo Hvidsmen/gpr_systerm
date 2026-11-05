@@ -188,6 +188,7 @@ class WorkEntryPresentationTests(TestCase):
         source=(Path(__file__).resolve().parents[2]/'static/production/production_autosave.js').read_text(encoding='utf-8')
         self.assertIn("if(dirty().length){",source)
         self.assertIn("pending=true;message('Восстанавливаем резерв и сохраняем изменения…');timer=setTimeout(()=>flush(),0)",source)
+        self.assertIn("form.dataset.productionBound='0'",source)
         self.assertNotIn("dirty().some(row=>field(row,isPerson(row)?'person_editing':'work_editing')?.value==='1')",source)
 
     def test_plan_changes_with_selected_day_and_previous_fact_excludes_this_day(self):
