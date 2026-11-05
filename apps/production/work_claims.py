@@ -48,7 +48,7 @@ def status_rows(user,obj,day,session):
     values={work_key(row.work_id,row.work_item_id):public_claim(row,user,session) for row in
         WorkFactClaim.objects.filter(company=obj.company,construction_object=obj,date=day,expires_at__gt=now).select_related('dispatcher')}
     for fact in DailyFact.objects.filter(company=obj.company,project_work__section__construction_object=obj,date=day).select_related('reported_by'):
-        key=work_key(fact.project_work_id,fact.work_item_id)
+        key=f'operational:{fact.pk}' if fact.operational_key else work_key(fact.project_work_id,fact.work_item_id)
         if key not in values:
                         values[key]={'key':key,'state':'saved','owner':owner_name(fact.reported_by) if fact.reported_by_id else 'Общий ввод',
                 'own':True,'mine':False}
@@ -101,6 +101,7 @@ def check_form_claims(user,obj,day,groups):
             if not form.cleaned_data or not form.has_changed():continue
             work=form.cleaned_data.get('project_work');item=form.cleaned_data.get('work_item')
             if not work:continue
+            if form.instance.operational_key or (form.cleaned_data.get('operational_name') or '').strip():continue
             claim=active.get((work.pk,item.pk if item else None))
             supplied=form.cleaned_data.get('work_claim_token','')
             if claim and (claim.dispatcher_id!=user.pk or str(claim.session_key)!=supplied):

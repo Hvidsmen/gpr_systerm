@@ -18,6 +18,7 @@
  const keyOf=row=>{
   if(person(row))return field(row,'employee')?.value?`employee:${field(row,'employee').value}:${Number(field(row,'shift').value)}`:'';
   const work=field(row,'project_work')?.value,item=field(row,'work_item')?.value;
+  if(work&&field(row,'operational_name')?.value.trim())return `operational:${row.dataset.factId||field(row,'operational_name').name}`;
   if(!work||compositeWorks.has(String(work))&&!item||item&&itemOwners.get(String(item))!==String(work))return '';
   return item?`item:${work}:${item}`:`work:${work}`;
  };
@@ -64,7 +65,7 @@
   else{row.dataset.acceptedEmployee=field(row,'employee').value;row.dataset.acceptedShift=field(row,'shift').value;if(row.querySelector('[data-error]').textContent===duplicateText)row.querySelector('[data-error]').textContent='';}
  },true);
  form.addEventListener('input',event=>{if(event.target.closest('[data-production-person]')&&event.target.name?.endsWith('-shift'))event.stopImmediatePropagation();},true);
- const controls=row=>[...row.querySelectorAll(person(row)?'[name$="-work_mode"],[name$="-planning_position"],[name$="-activity"],[name$="-DELETE"]':'[name$="-actual_quantity"],[name$="-comment"],[name$="-actuation_type"],[name$="-actuation_reason"],[name$="-actuation_reasons"],[name$="-DELETE"]')];
+ const controls=row=>[...row.querySelectorAll(person(row)?'[name$="-work_mode"],[name$="-planning_position"],[name$="-activity"],[name$="-DELETE"]':'[name$="-operational_name"],[name$="-operational_unit"],[name$="-actual_quantity"],[name$="-comment"],[name$="-actuation_type"],[name$="-actuation_reason"],[name$="-actuation_reasons"],[name$="-DELETE"]')];
  async function request(action,key,extra={}){
   const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),20000);
   try{const response=await fetch(url,{method:'POST',credentials:'same-origin',signal:controller.signal,headers:{'Content-Type':'application/json','X-CSRFToken':csrf},body:JSON.stringify({...scope,action,key,...extra})});const data=(response.headers.get('content-type')||'').includes('application/json')?await response.json():{};if(!response.ok){if(data.auth_changed)form.dataset.authChanged='1';if(data.claim)claims.set(data.claim.key,data.claim);const error=new Error(data.error||'Не удалось проверить резерв.');error.status=response.status;error.retryable=response.status>=500||response.status===429;throw error;}return data;}
@@ -129,6 +130,7 @@
  const acquiring=new Map();
  form.productionClaimRow=async row=>{
   if(duplicate(row))throw new Error(duplicateText);const key=keyOf(row);if(!key)return;
+  if(key.startsWith('operational:')){claims.set(key,{key,state:'editing',mine:true,own:true,owner:'Вы'});row.querySelector('[data-error]').textContent='';render(row);row.dataset.entryDirty='1';changed();return;}
   if(!claims.get(key)?.mine){
    if(!acquiring.has(key)){generation++;acquiring.set(key,request('take',key).then(data=>{claims.set(key,data.claim);}).finally(()=>acquiring.delete(key)));}
    await acquiring.get(key);
@@ -145,7 +147,7 @@
  form.productionKeyOf=keyOf;
  form.productionKeysOf=keysOf;
  form.productionSession={scope,csrf};
- form.productionReleaseRow=async row=>{for(const key of keysOf(row)){if(claims.get(key)?.mine){await request('release',key);claims.delete(key);}}delete row.dataset.previousShiftKeys;render(row);changed();};
+ form.productionReleaseRow=async row=>{for(const key of keysOf(row)){if(claims.get(key)?.mine){if(!key.startsWith('operational:'))await request('release',key);claims.delete(key);}}delete row.dataset.previousShiftKeys;render(row);changed();};
  const reserve=event=>{
   if(form.productionApplying||form.dataset.resetRequired==='1')return;
   const row=event.target.closest('[data-work-fact-row],[data-production-person]');if(!row||!keyOf(row)||!event.target.name)return;
