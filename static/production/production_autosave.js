@@ -108,6 +108,12 @@
  form.addEventListener('input',relevant);form.addEventListener('change',relevant);
  form.addEventListener('production-autosave-all',()=>{for(const row of rows())if(isPerson(row)&&field(row,'employee').value&&!field(row,'id').value&&field(row,'person_editing').value==='1'){row.dataset.entryDirty='1';schedule(row);}});
  rows().forEach(row=>{row.dataset.autoSavedStamp=fingerprint(row);if(field(row,'id').value)rowMessage(row,'Сохранено');});
+ // Claim wiring runs before this module. A bound form may therefore already
+ // contain dirty rows whose earlier claims-change event could not be heard.
+ // Explicitly resume them instead of leaving "Restoring reservation" forever.
+ if(dirty().some(row=>field(row,isPerson(row)?'person_editing':'work_editing')?.value==='1')){
+  pending=true;message('Восстанавливаем резерв и сохраняем изменения…');timer=setTimeout(()=>flush(),0);
+ }
  addEventListener('online',()=>{if(dirty().length){pending=true;retryAttempt=0;flush();}});
  retry.addEventListener('click',()=>{retryAttempt=0;pending=true;flush();});
  form.addEventListener('click',async event=>{

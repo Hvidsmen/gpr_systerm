@@ -5,6 +5,7 @@ from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from uuid import uuid4
+from pathlib import Path
 from apps.works.models import ComplexObject, MeasurementUnit, ProjectWork, ProjectWorkItem
 from apps.projects.models import ConstructionObject,Section
 from apps.planning.models import SubobjectWorkOrigin
@@ -139,6 +140,10 @@ class WorkEntryPresentationTests(TestCase):
         })
         self.assertEqual(response.status_code,200,response.content)
         self.assertTrue(self.package.items.filter(name='Работа администратора').exists())
+
+    def test_autosave_resumes_dirty_bound_rows_after_claim_wiring(self):
+        source=(Path(__file__).resolve().parents[2]/'static/production/production_autosave.js').read_text(encoding='utf-8')
+        self.assertIn("pending=true;message('Восстанавливаем резерв и сохраняем изменения…');timer=setTimeout(()=>flush(),0)",source)
 
     def test_plan_changes_with_selected_day_and_previous_fact_excludes_this_day(self):
         DailyFact.objects.create(company=self.company, project_work=self.package, work_item=self.camera, date=self.day-timedelta(days=2), actual_quantity=3)
