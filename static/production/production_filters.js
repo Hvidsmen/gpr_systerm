@@ -9,7 +9,7 @@
  function scheduleRefresh(){if(refreshPending)return;refreshPending=true;requestAnimationFrame(()=>{refreshPending=false;refresh();});}
  function widget(host,label,options){return window.graphMultiselect.create(host,label,options,scheduleRefresh);}
  const options=values=>[...new Map(values.filter(v=>v.value).map(v=>[String(v.value),{value:String(v.value),label:v.label}])).values()].sort((a,b)=>a.label.localeCompare(b.label,'ru'));
- const filters={};let quickWork='all';
+ const filterStorageKey=`production-work-filter:${form.elements.construction_object?.value||''}:${form.elements.date?.value||''}`;let quickWork=sessionStorage.getItem(filterStorageKey)||'all';const filters={};
  for(const kind of ['works','people','graph']){
   const host=document.querySelector(`[data-production-filters="${kind}"]`);if(!host)continue;
   filters[kind]={};
@@ -50,7 +50,7 @@
  }
  form.productionFilters={workMatches,personMatches,syncGraph:()=>{}};
  document.querySelector('[data-work-search]')?.addEventListener('input',scheduleRefresh);
- document.querySelectorAll('[data-work-quick]').forEach(button=>button.addEventListener('click',()=>{quickWork=button.dataset.workQuick;document.querySelectorAll('[data-work-quick]').forEach(candidate=>{const active=candidate===button;candidate.classList.toggle('active',active);candidate.setAttribute('aria-pressed',String(active));});scheduleRefresh();}));
+ document.querySelectorAll('[data-work-quick]').forEach(button=>{const active=button.dataset.workQuick===quickWork;button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));button.addEventListener('click',()=>{quickWork=button.dataset.workQuick;sessionStorage.setItem(filterStorageKey,quickWork);document.querySelectorAll('[data-work-quick]').forEach(candidate=>{const selected=candidate===button;candidate.classList.toggle('active',selected);candidate.setAttribute('aria-pressed',String(selected));});scheduleRefresh();});});
  form.addEventListener('production-work-created',event=>{choices.push(event.detail);catalogue.set(event.detail.token,event.detail);for(const f of Object.values(filters))if(f.work)f.work.setOptions(options(choices.map(w=>({value:w.token,label:w.title||w.label}))));scheduleRefresh();});
  form.addEventListener('production-report-update',()=>{syncPeople();scheduleRefresh();});form.addEventListener('production-live-applied',()=>{syncPeople();scheduleRefresh();});form.addEventListener('change',event=>{if(event.target.closest('[data-production-person]')){syncPeople();scheduleRefresh();}else if(event.target.closest('[data-work-fact-row]'))scheduleRefresh();});
  refresh();form.addEventListener('production-background-ready',()=>{syncPeople();scheduleRefresh();},{once:true});

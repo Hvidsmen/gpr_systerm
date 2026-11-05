@@ -4,6 +4,7 @@
     <button type="button" class="btn btn-sm btn-outline-primary" data-period-refresh>Обновить отчёт</button>
   </div>
   <p class="small text-muted">Весь месяц выбранной даты. Работы, люди, техника и ГСМ. Здесь показаны сохранённые данные всех участников.</p>
+  <div class="production-report-filters"><input type="search" class="form-control" placeholder="Поиск по объекту, работе или должности" aria-label="Поиск в плане и факте" data-report-search><select class="form-select" data-report-mode aria-label="Фильтр плана и факта"><option value="all">Все строки</option><option value="actual">Есть факт</option><option value="missing">Нет факта</option><option value="deviation">Есть отклонение</option></select></div>
   <p data-period-state role="status" aria-live="polite">Откройте вкладку для построения отчёта.</p>
   <div data-period-content></div>
 </section>
