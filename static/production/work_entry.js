@@ -15,7 +15,8 @@
   const choices = JSON.parse(source.textContent);
   const catalogue = new Map(choices.map(choice => [choice.token, choice.display]));
   const itemOwners = new Map(choices.filter(choice => choice.item).map(choice => [String(choice.item), String(choice.work)]));
-  const workMeta = new Map(choices.map(choice => [String(choice.work), choice]));
+  const workMeta = new Map(JSON.parse(document.getElementById('production-work-meta')?.textContent||'[]').map(work=>[String(work.id),{kind:work.kind,complex_id:work.complex_object_id}]));
+  choices.forEach(choice=>workMeta.set(String(choice.work),{...workMeta.get(String(choice.work)),...choice}));
   const creatorConfig=document.querySelector('[data-dispatcher-item-config]');
   const creatorObjects=new Set(JSON.parse(document.getElementById('dispatcher-item-object-ids')?.textContent||'[]').map(String));
   const number = new Intl.NumberFormat('ru-RU', {maximumFractionDigits:6});

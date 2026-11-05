@@ -116,6 +116,16 @@ class WorkEntryPresentationTests(TestCase):
         })
         self.assertEqual(denied.status_code,404)
 
+    def test_empty_enabled_composite_is_available_for_first_dispatcher_item(self):
+        empty=ProjectWork.objects.create(company=self.company,section=self.package.section,complex_object=self.complex_object,
+            name='ЭМР. Прочее',kind='COMPOSITE',unit='компл')
+        self.complex_object.allow_dispatcher_work_items=True
+        self.complex_object.save(update_fields=['allow_dispatcher_work_items'])
+        page=self.page();meta={row['id']:row for row in page.context['production_work_meta']}
+        self.assertIn(empty.pk,meta);self.assertEqual(meta[empty.pk]['kind'],'COMPOSITE')
+        self.assertEqual(meta[empty.pk]['complex_object_id'],self.complex_object.pk)
+        self.assertIn(empty,page.context['groups'][0]['formset'].empty_form.fields['project_work'].queryset)
+
     def test_plan_changes_with_selected_day_and_previous_fact_excludes_this_day(self):
         DailyFact.objects.create(company=self.company, project_work=self.package, work_item=self.camera, date=self.day-timedelta(days=2), actual_quantity=3)
         DailyFact.objects.create(company=self.company, project_work=self.package, work_item=self.camera, date=self.day, actual_quantity=7)
