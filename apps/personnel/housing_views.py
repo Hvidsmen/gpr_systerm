@@ -339,9 +339,9 @@ def movement_review_accept(request,pk):
     from apps.projects.models import ConstructionObject
     tree={obj.pk:obj.parent_id for obj in ConstructionObject.objects.filter(company=request.user.company)};pairs={}
     for object_id,camp_id in CampObjectLink.objects.filter(company=request.user.company,camp__is_active=True).values_list('construction_object_id','camp_id'):
-        root=object_id;seen=set()
-        while tree.get(root) and root not in seen:seen.add(root);root=tree[root]
-        pairs.setdefault(str(root),set()).add(camp_id)
+        current=object_id;seen=set()
+        while current and current not in seen:
+            seen.add(current);pairs.setdefault(str(current),set()).add(camp_id);current=tree.get(current)
     return render(request,'personnel/movement_review.html',{'row':row,'form':form,'edit_mode':edit_mode,'personnel_section':'reviews','project_camps':{key:sorted(value) for key,value in pairs.items()}})
 
 

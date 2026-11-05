@@ -222,8 +222,15 @@ class MovementReviewForm(StyledModelForm):
         self.fields['movement_date'].label='Дата заезда' if self.instance.kind=='ARRIVAL' else 'Дата выезда'
         from apps.projects.models import ConstructionObject
         objects=ConstructionObject.objects.filter(company=self.instance.company).select_related('parent').order_by('name')
-        self.fields['construction_object'].queryset=objects.filter(parent=None)
+        self.fields['construction_object'].queryset=objects
         self.fields['construction_object'].label='Проект';self.fields['construction_object'].empty_label='Выберите проект'
+        by_id={row.pk:row for row in objects}
+        def object_label(row):
+            names=[row.name];seen={row.pk};parent=row.parent_id
+            while parent and parent not in seen and parent in by_id:
+                seen.add(parent);names.append(by_id[parent].name);parent=by_id[parent].parent_id
+            return ' → '.join(reversed(names))
+        self.fields['construction_object'].label_from_instance=object_label
         from .models import Camp
         self.fields['camp'].queryset=Camp.objects.filter(company=self.instance.company,is_active=True).order_by('name','pk')
         self.initial['camp']=self.instance.to_camp_id if self.instance.kind=='ARRIVAL' else self.instance.from_camp_id

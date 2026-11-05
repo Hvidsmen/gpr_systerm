@@ -65,6 +65,7 @@ class MovementReviewRequestTests(TestCase):
         self.assertContains(detail,'Должность по ГПР / СМГ')
         self.assertContains(detail,'Должность по справочнику сотрудников')
         self.assertContains(detail,'Выберите проект')
+        self.assertContains(detail,'Нефтепровод → КТП-1')
         self.assertContains(detail,'ВЖГ')
         self.assertContains(detail,'Не прибыл')
         changed_date=timezone.localdate()+timedelta(days=2)
