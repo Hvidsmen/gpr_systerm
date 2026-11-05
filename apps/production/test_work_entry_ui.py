@@ -196,6 +196,15 @@ class WorkEntryPresentationTests(TestCase):
         self.assertIn("window.productionAutoSave?.fingerprint(row)===row.dataset.autoSavedStamp",claims)
         self.assertIn("autosaveState==='Сохранено'",claims)
 
+    def test_saved_and_operational_rows_use_their_actual_object_in_work_filters(self):
+        filters=(Path(__file__).resolve().parents[2]/'static/production/production_filters.js').read_text(encoding='utf-8')
+        self.assertIn("function rowChoice(row,key)",filters)
+        self.assertIn("field(row,'complex_object_filter')?.value||meta.complex_object_id",filters)
+        self.assertIn("workMatches(key,'works',w)",filters)
+        entry=(Path(__file__).resolve().parents[2]/'static/production/work_entry.js').read_text(encoding='utf-8')
+        self.assertIn("savedSelection=Boolean(row.dataset.workToken||row.dataset.operationalName)",entry)
+        self.assertIn("savedSelection?'':'Сначала выберите работу.'",entry)
+
     def test_plan_changes_with_selected_day_and_previous_fact_excludes_this_day(self):
         DailyFact.objects.create(company=self.company, project_work=self.package, work_item=self.camera, date=self.day-timedelta(days=2), actual_quantity=3)
         DailyFact.objects.create(company=self.company, project_work=self.package, work_item=self.camera, date=self.day, actual_quantity=7)
