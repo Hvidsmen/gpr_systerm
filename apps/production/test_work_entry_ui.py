@@ -231,6 +231,7 @@ class WorkEntryPresentationTests(TestCase):
         entry=(Path(__file__).resolve().parents[2]/'static/production/work_entry.js').read_text(encoding='utf-8')
         self.assertIn("savedSelection=Boolean(row.dataset.workToken||row.dataset.operationalName)",entry)
         self.assertIn("savedSelection?'':'Заполните объём работы.'",entry)
+        self.assertIn("operationalName?.value.trim()||row.dataset.operationalName",entry)
         self.assertIn("clear.hidden=operational",entry)
         autosave=(Path(__file__).resolve().parents[2]/'static/production/production_autosave.js').read_text(encoding='utf-8')
         self.assertIn("for(const name of ['comment','actuation_type','actuation_reason'])",autosave)

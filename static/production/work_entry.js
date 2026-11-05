@@ -47,7 +47,7 @@
       const hint=row.querySelector('[data-work-item-hint]'),savedSelection=Boolean(row.dataset.workToken||row.dataset.operationalName);if(hint)hint.textContent=simple?'Для самостоятельной работы это поле не заполняется.':owner?'Выберите работу в составе комплекса.':savedSelection?'':'Заполните объём работы.';
       const creator=row.querySelector('[data-dispatcher-item-create]');if(creator)creator.hidden=true;
     }
-    const meta=workMeta.get(String(work?.value||'')),operational=Boolean(work?.value&&meta?.kind==='COMPOSITE'&&creatorObjects.has(String(meta.complex_id))&&!item?.value);
+    const meta=workMeta.get(String(work?.value||'')),operational=Boolean(operationalName?.value.trim()||row.dataset.operationalName||work?.value&&meta?.kind==='COMPOSITE'&&creatorObjects.has(String(meta.complex_id))&&!item?.value);
     const clear=row.querySelector('[data-work-clear]');if(clear)clear.hidden=operational;
     for(const input of [operationalName,operationalUnit]){const field=input?.closest('.production-work-field');if(field)field.hidden=!operational;}
     const itemField=item?.closest('.production-work-field');if(itemField&&operational)itemField.hidden=true;
