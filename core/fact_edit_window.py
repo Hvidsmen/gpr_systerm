@@ -19,6 +19,10 @@ def can_edit_fact_day(user, day, *, today=None):
         return True
     if day > today:
         return False
+    if getattr(user, 'company_id', None):
+        from .models import OpenFactPeriod
+        if OpenFactPeriod.objects.filter(company_id=user.company_id,date_from__lte=day,date_to__gte=day).exists():
+            return True
     # Supervisory access is retained; ordinary dispatchers share the same window
     # in production, personnel, transport and the combined dispatcher role.
     return role_code(user) not in WINDOWED_ROLES or today <= edit_deadline(day)
@@ -31,6 +35,11 @@ def window_message(user, day, *, today=None):
         return ''
     if day > today:
         return 'Будущий день доступен для просмотра. Факт можно вносить начиная с даты его выполнения.'
+    if getattr(user, 'company_id', None):
+        from .models import OpenFactPeriod
+        period=OpenFactPeriod.objects.filter(company_id=user.company_id,date_from__lte=day,date_to__gte=day).first()
+        if period:
+            return f'Дата входит в открытый период «{period}». Ввод и исправление факта разрешены администратором.'
     if role_code(user) not in WINDOWED_ROLES:
         return ''
     deadline = edit_deadline(day)

@@ -40,3 +40,18 @@ class CodeSequence(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['company', 'model_label'], name='unique_company_code_sequence')]
+
+
+class OpenFactPeriod(BaseCompanyModel):
+    name = models.CharField('Название', max_length=200, blank=True)
+    date_from = models.DateField('Начало периода')
+    date_to = models.DateField('Конец периода')
+
+    class Meta:
+        ordering = ['-date_from', '-date_to', '-pk']
+        verbose_name = 'открытый период факта'
+        verbose_name_plural = 'открытые периоды факта'
+        constraints = [models.CheckConstraint(condition=models.Q(date_to__gte=models.F('date_from')), name='open_fact_period_dates_valid')]
+
+    def __str__(self):
+        return self.name or f'{self.date_from:%d.%m.%Y} — {self.date_to:%d.%m.%Y}'

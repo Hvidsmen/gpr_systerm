@@ -10,10 +10,12 @@ from .one_c_report import download_report
 from .portal_updates import updates, update_status
 from .user_archive import bulk_archive
 from . import invitation_views, training_views
+from .fact_period_views import periods as fact_open_periods
 
 app_name = 'accounts'
 
 urlpatterns = [
+    path('admin/fact-periods/',fact_open_periods,name='fact_open_periods'),
     path('training/',training_views.groups,name='training_list'),
     path('training/health/',training_views.health,name='training_health'),
     path('training/consume/',training_views.consume,name='training_consume'),

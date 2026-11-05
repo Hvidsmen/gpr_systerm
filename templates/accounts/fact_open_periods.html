@@ -1,0 +1,8 @@
+{% extends 'base.html' %}
+{% block title %}Открытые периоды{% endblock %}
+{% block content %}
+<h1>Открытые периоды</h1>
+<p class="text-muted">Добавленные периоды разрешают диспетчерам вносить и исправлять факт за прошлые даты после окончания обычного срока. Будущие даты остаются закрытыми.</p>
+<section class="card card-body mb-3"><h2 class="h5">Добавить период</h2><form method="post">{% csrf_token %}{{ form.non_field_errors }}<div class="row g-3">{% for field in form %}<div class="col-md-4">{{ field.label_tag }} {{ field }}<div class="text-danger small">{{ field.errors }}</div></div>{% endfor %}</div><button class="btn btn-primary mt-3">Открыть период</button></form></section>
+<section class="card card-body"><h2 class="h5">Добавленные периоды</h2><div class="table-responsive"><table class="table"><thead><tr><th>Название</th><th>Начало</th><th>Окончание</th><th></th></tr></thead><tbody>{% for period in periods %}<tr><td>{{ period.name|default:'Без названия' }}</td><td>{{ period.date_from|date:'d.m.Y' }}</td><td>{{ period.date_to|date:'d.m.Y' }}</td><td class="text-end"><form method="post" onsubmit="return confirm('Удалить открытый период?')">{% csrf_token %}<input type="hidden" name="action" value="delete"><input type="hidden" name="period" value="{{ period.pk }}"><button class="btn btn-sm btn-outline-danger">Удалить</button></form></td></tr>{% empty %}<tr><td colspan="4">Открытых периодов пока нет.</td></tr>{% endfor %}</tbody></table></div></section>
+{% endblock %}
