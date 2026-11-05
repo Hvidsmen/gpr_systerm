@@ -128,7 +128,7 @@
   if(clear){
    event.preventDefault();
    const row=clear.closest('[data-work-fact-row]');
-   if(field(row,'operational_name')?.value.trim()){row.querySelector('[data-work-remove]')?.click();return;}
+   if(row.dataset.planned!=='1'){row.querySelector('[data-work-remove]')?.click();return;}
    clear.disabled=true;
    try{
     await form.productionClaimRow(row);

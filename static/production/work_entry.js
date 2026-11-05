@@ -48,13 +48,13 @@
       const creator=row.querySelector('[data-dispatcher-item-create]');if(creator)creator.hidden=true;
     }
     const meta=workMeta.get(String(work?.value||'')),operational=Boolean(operationalName?.value.trim()||row.dataset.operationalName||work?.value&&meta?.kind==='COMPOSITE'&&creatorObjects.has(String(meta.complex_id))&&!item?.value);
-    const clear=row.querySelector('[data-work-clear]');if(clear)clear.hidden=operational;
     for(const input of [operationalName,operationalUnit]){const field=input?.closest('.production-work-field');if(field)field.hidden=!operational;}
     const itemField=item?.closest('.production-work-field');if(itemField&&operational)itemField.hidden=true;
     const operationalToken=operational?`operational:${row.dataset.factId||row.dataset.workToken||row.id||operationalName?.id}`:'';
     const selectedToken=operationalToken||(item?.value ? `item:${work?.value}:${item.value}` : `work:${work?.value}`);
     let display = catalogue.get(selectedToken),selectedChoice=choices.find(choice=>choice.token===selectedToken);
     if(operational&&(operationalName?.value||row.dataset.operationalName)){display={title:operationalName?.value||row.dataset.operationalName,path:[meta?.section,meta?.complex_object_name].filter(Boolean).join(' → '),unit:operationalUnit?.value||row.dataset.operationalUnit,has_plan:false,plan:null,previous:0,plan_before:null,deviation:null};}
+    const clear=row.querySelector('[data-work-clear]');if(clear)clear.hidden=!display?.has_plan;
     if(selectedChoice){row.dataset.workToken=selectedChoice.token;row.dataset.complexId=selectedChoice.complex_id||'';row.dataset.packageId=selectedChoice.work||'';}
     else if(work?.tagName==='SELECT'){row.dataset.workToken='';row.dataset.complexId='';row.dataset.packageId='';}
     const heading = row.querySelector('[data-work-heading]');
