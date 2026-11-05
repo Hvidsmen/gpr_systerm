@@ -255,6 +255,8 @@ class WorkEntryPresentationTests(TestCase):
         self.assertIn("port.draggable=true",graph)
         self.assertIn("if(activePersonRow)connect(work.token,activePersonRow)",graph)
         self.assertIn("active=null;activePerson=null;activePersonRow=null",graph)
+        self.assertIn("saved.filter(fact=>hasPositiveQuantity(fact.actual_quantity))",graph)
+        self.assertIn("!hasPositiveQuantity(field(row,'actual_quantity')?.value)",graph)
         live=(Path(__file__).resolve().parents[2]/'static/production/production_live.js').read_text(encoding='utf-8')
         self.assertIn("person.links_revision)<currentRevision",live)
         self.assertIn("setValues(row,{work_targets:person.targets",live)
