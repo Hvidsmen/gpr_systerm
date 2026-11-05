@@ -68,18 +68,19 @@
   }
   function setupCreator(row){
     const creator=row.querySelector('[data-dispatcher-item-create]');if(!creator||creator.dataset.ready)return;creator.dataset.ready='1';
-    const fields=creator.querySelector('[data-dispatcher-item-fields]'),name=creator.querySelector('[data-dispatcher-item-name]'),unit=creator.querySelector('[data-dispatcher-item-unit]'),status=creator.querySelector('[data-dispatcher-item-status]');
+    const fields=creator.querySelector('[data-dispatcher-item-fields]'),name=creator.querySelector('[data-dispatcher-item-name]'),unit=creator.querySelector('[data-dispatcher-item-unit]'),newUnit=creator.querySelector('[data-dispatcher-new-unit]'),unitSymbol=creator.querySelector('[data-dispatcher-unit-symbol]'),unitName=creator.querySelector('[data-dispatcher-unit-name]'),status=creator.querySelector('[data-dispatcher-item-status]');
     creator.querySelector('[data-dispatcher-item-toggle]').addEventListener('click',()=>{fields.hidden=false;name.focus();});
-    creator.querySelector('[data-dispatcher-item-cancel]').addEventListener('click',()=>{fields.hidden=true;status.textContent='';});
+    unit.addEventListener('change',()=>{newUnit.hidden=unit.value!=='__new__';if(!newUnit.hidden)unitSymbol.focus();});
+    creator.querySelector('[data-dispatcher-item-cancel]').addEventListener('click',()=>{fields.hidden=true;newUnit.hidden=true;unit.value='';unitSymbol.value='';unitName.value='';status.textContent='';});
     creator.querySelector('[data-dispatcher-item-submit]').addEventListener('click',async()=>{
       const work=row.querySelector('[name$="-project_work"]'),item=row.querySelector('[name$="-work_item"]'),form=row.closest('form');
       status.className='small';status.textContent='Создание…';
-      const body=new FormData();body.set('construction_object',form.querySelector('[name=construction_object]').value);body.set('date',form.querySelector('[name=date]').value);body.set('project_work',work.value);body.set('name',name.value);body.set('unit',unit.value);
+      const body=new FormData();body.set('construction_object',form.querySelector('[name=construction_object]').value);body.set('date',form.querySelector('[name=date]').value);body.set('project_work',work.value);body.set('name',name.value);body.set('unit',unit.value==='__new__'?'':unit.value);if(unit.value==='__new__'){body.set('new_unit_symbol',unitSymbol.value);body.set('new_unit_name',unitName.value);}
       try{
         const response=await fetch(creatorConfig.dataset.url,{method:'POST',headers:{'X-CSRFToken':form.querySelector('[name=csrfmiddlewaretoken]').value},body});const data=await response.json();if(!response.ok)throw new Error(data.error||'Не удалось создать работу.');
         const choice=data.choice;choices.push(choice);catalogue.set(choice.token,choice.display);itemOwners.set(String(choice.item),String(choice.work));
         host.querySelectorAll('[name$="-work_item"]').forEach(select=>{if(!Array.from(select.options).some(option=>option.value===String(choice.item)))select.add(new Option(choice.label,choice.item));});
-        item.value=String(choice.item);name.value='';unit.value='';fields.hidden=true;status.textContent='Работа создана и выбрана.';item.dispatchEvent(new Event('change',{bubbles:true}));
+        item.value=String(choice.item);name.value='';if(data.unit){host.querySelectorAll('[data-dispatcher-item-unit]').forEach(select=>{if(!Array.from(select.options).some(option=>option.value===data.unit.symbol))select.add(new Option(data.unit.label,data.unit.symbol),select.querySelector('option[value="__new__"]'));});}unit.value='';unitSymbol.value='';unitName.value='';newUnit.hidden=true;fields.hidden=true;status.textContent='Работа создана и выбрана.';item.dispatchEvent(new Event('change',{bubbles:true}));
         form.dispatchEvent(new CustomEvent('production-work-created',{detail:choice}));
       }catch(error){status.className='small text-danger';status.textContent=error.message;}
     });

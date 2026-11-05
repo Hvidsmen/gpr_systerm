@@ -118,6 +118,29 @@ class WorkEntryPresentationTests(TestCase):
         })
         self.assertEqual(denied.status_code,404)
 
+    def test_dispatcher_can_create_measurement_unit_with_item(self):
+        self.complex_object.allow_dispatcher_work_items=True
+        self.complex_object.save(update_fields=['allow_dispatcher_work_items'])
+        response=self.client.post(reverse('production:dispatcher_work_item_create'),{
+            'construction_object':self.obj.pk,'date':self.day,'project_work':self.package.pk,
+            'name':'Разметка трассы','new_unit_symbol':'п.м.','new_unit_name':'Погонный метр',
+        })
+        self.assertEqual(response.status_code,200,response.content)
+        unit=MeasurementUnit.objects.get(company=self.company,symbol='п.м.')
+        self.assertEqual(unit.name,'Погонный метр')
+        self.assertEqual(self.package.items.get(name='Разметка трассы').unit,'п.м.')
+        self.assertTrue(response.json()['unit']['created'])
+
+    def test_new_measurement_unit_requires_symbol_and_name(self):
+        self.complex_object.allow_dispatcher_work_items=True
+        self.complex_object.save(update_fields=['allow_dispatcher_work_items'])
+        response=self.client.post(reverse('production:dispatcher_work_item_create'),{
+            'construction_object':self.obj.pk,'date':self.day,'project_work':self.package.pk,
+            'name':'Разметка трассы','new_unit_symbol':'п.м.',
+        })
+        self.assertEqual(response.status_code,400)
+        self.assertFalse(MeasurementUnit.objects.filter(company=self.company,symbol='п.м.').exists())
+
     def test_empty_enabled_composite_is_available_for_first_dispatcher_item(self):
         empty=ProjectWork.objects.create(company=self.company,section=self.package.section,complex_object=self.complex_object,
             name='ЭМР. Прочее',kind='COMPOSITE',unit='компл')
