@@ -5,7 +5,7 @@
  const catalogue=JSON.parse(document.getElementById('production-work-choices').textContent);let saved=JSON.parse(document.getElementById('production-graph-saved').textContent);const labels=new Map(catalogue.map(w=>[w.token,w]));
  const workHost=graph.querySelector('[data-graph-works]'),peopleHost=graph.querySelector('[data-graph-people]'),svg=graph.querySelector('svg'),canvas=graph.querySelector('.employee-graph-canvas'),message=graph.querySelector('[data-graph-message]');
  const key=(w,i)=>i?`item:${w}:${i}`:`work:${w}`,factToken=f=>f.operational_name?`operational:${f.id}`:key(f.project_work_id,f.work_item_id),field=(row,name)=>row.querySelector(`[name$="-${name}"]`),personRows=()=>[...form.querySelectorAll('[data-production-person]')];
- let active=null,activePerson=null,step=1,scheduled=false,workCards=new Map(),personCards=new Map();
+ let active=null,activePerson=null,activePersonRow=null,step=1,scheduled=false,workCards=new Map(),personCards=new Map();
  function showStep(next){step=Math.max(1,Math.min(5,next));const currentUrl=new URL(location.href);currentUrl.searchParams.set('entry_step',step);history.replaceState(null,'',currentUrl);document.querySelectorAll('[data-entry-step]').forEach(p=>{p.hidden=Number(p.dataset.entryStep)!==step;});form.querySelectorAll('[data-step]').forEach(b=>{b.setAttribute('aria-current',Number(b.dataset.step)===step?'step':'false');});const nextButton=form.querySelector('[data-step-next]'),confirmButton=form.querySelector('[data-confirm-production]');const previousButton=form.querySelector('[data-step-previous]');if(previousButton)previousButton.hidden=step===1;if(nextButton){nextButton.hidden=step===5;nextButton.textContent=({1:'К сотрудникам →',2:'Назначить работы →',3:'К сводному отчёту →',4:'К плану / факту СМГ →'})[step]||'Далее';}if(confirmButton)confirmButton.hidden=step!==4;if(step===3)render();form.dispatchEvent(new CustomEvent('production-step-change',{detail:step}));}
  form.querySelectorAll('[data-step]').forEach(b=>b.addEventListener('click',()=>showStep(Number(b.dataset.step))));form.querySelector('[data-step-next]')?.addEventListener('click',()=>showStep(step+1));form.querySelector('[data-step-previous]')?.addEventListener('click',()=>showStep(step-1));
  form.addEventListener('invalid',event=>{const panel=event.target.closest('[data-entry-step]');if(panel)showStep(Number(panel.dataset.entryStep));},true);
@@ -49,7 +49,7 @@
   workHost.replaceChildren();peopleHost.replaceChildren();workCards=new Map();personCards=new Map();
   for(const work of orderedWorks){const card=document.createElement('div');card.className='employee-graph-card graph-work';card.dataset.token=work.token;card.tabIndex=0;card.setAttribute('role','button');card.setAttribute('aria-label',work.label);card.title=work.label;const kind=document.createElement('small');kind.className='graph-work-kind';kind.textContent=work.kind==='OPERATIONAL'?'Прочая работа':work.kind==='COMPOSITE'?'В составе комплекса':'Самостоятельная работа';const path=document.createElement('span');path.className='graph-work-path';path.textContent=work.label.slice(0,Math.max(0,work.label.lastIndexOf(' → ')));const title=document.createElement('strong');title.textContent=work.title||work.label;card.append(kind,path,title);const value=saved.find(w=>factToken(w)===work.token);if(value&&Number(value.actual_quantity)===0){const zero=document.createElement('small');zero.className='text-warning-emphasis';zero.textContent='Объём работы — 0. Для назначения внесите выполненный объём.';card.append(zero);}
    const port=button('●',()=>selectWork(work.token));port.classList.add('graph-port');port.setAttribute('aria-label','Связать: '+work.label);port.draggable=true;port.addEventListener('dragstart',e=>{active=work.token;e.dataTransfer.setData('text/plain',work.token);});card.append(port);
-   card.addEventListener('click',()=>selectWork(work.token));card.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();selectWork(work.token);}});workHost.append(card);workCards.set(work.token,card);
+   card.addEventListener('dragover',e=>{if(activePersonRow)e.preventDefault();});card.addEventListener('drop',e=>{e.preventDefault();if(activePersonRow)connect(work.token,activePersonRow);});card.addEventListener('click',()=>selectWork(work.token));card.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();selectWork(work.token);}});workHost.append(card);workCards.set(work.token,card);
   }
   let previousGroup=null;
   for(const person of orderedPeople){const row=person.row,mode=field(row,'work_mode').value,group=person.workTokens.length?'Связаны с работами':mode==='general'?'Работали без привязки':'Связи пока не проверены';
@@ -58,7 +58,7 @@
    const position=document.createElement('p');position.className='small graph-person-role';position.dataset.graphPersonPosition='';position.textContent=(plannedRole||staffRole||'Должность не указана');card.append(position);
    if(plannedRole&&staffRole&&plannedRole.trim().toLocaleLowerCase('ru')!==staffRole.trim().toLocaleLowerCase('ru')){const staff=document.createElement('p');staff.className='small text-muted mb-2';staff.dataset.graphStaffPosition='';staff.textContent='Штатная: '+staffRole;card.append(staff);}
    const meta=document.createElement('p');meta.className='small text-muted graph-person-meta';meta.textContent=`${field(row,'shift').selectedOptions?.[0]?.textContent||('Смена '+field(row,'shift').value)} · `+(person.workTokens.length?`Связей: ${person.workTokens.length}`:group);card.append(meta);
-   const port=button('●',()=>selectPerson(person.id,row));port.classList.add('graph-port');port.setAttribute('aria-label','Связать сотрудника '+name.textContent);card.append(port);
+   const port=button('●',()=>selectPerson(person.id,row));port.classList.add('graph-port');port.setAttribute('aria-label','Связать сотрудника '+name.textContent);port.draggable=true;port.addEventListener('dragstart',e=>{active=null;activePerson=person.id;activePersonRow=row;e.dataTransfer.setData('text/plain',person.id);highlight(null,activePerson);});card.append(port);
    const actions=document.createElement('div');actions.className='d-flex gap-2 flex-wrap';actions.append(button('Выбрать работы',()=>{if(!editable(row))return;row.querySelector('[data-person-pick]').click();}),button(mode==='general'?'Назначить работы':'Без привязки',()=>update(row,[],field(row,'work_mode').value==='general'?'pending':'general')));actions.lastElementChild.dataset.graphMode='';card.append(actions);
    card.addEventListener('dragover',e=>{if(active)e.preventDefault();});card.addEventListener('drop',e=>{e.preventDefault();if(active&&available.has(active))connect(active,row);});card.addEventListener('click',e=>{if(!e.target.closest('button'))selectPerson(person.id,row);});
    peopleHost.append(card);personCards.set(person.id,{card,person});
@@ -78,12 +78,12 @@
   draw();
  }
  function selectWork(token){
-  if(activePerson){const person=personCards.get(activePerson)?.person;if(person)connect(token,person.row);return;}
+  if(activePersonRow){connect(token,activePersonRow);return;}
   active=active===token?null:token;message.textContent=active?'Теперь выберите сотрудника справа. Повторное соединение удалит связь.':'';highlight(active,null);
  }
  function selectPerson(id,row){
   if(active){connect(active,row);return;}
-  activePerson=activePerson===id?null:id;message.textContent=activePerson?'Теперь выберите работу слева. Повторное соединение удалит связь.':'';highlight(null,activePerson);
+  if(activePerson===id){activePerson=null;activePersonRow=null;}else{activePerson=id;activePersonRow=row;}message.textContent=activePerson?'Теперь выберите работу слева. Можно связать сразу с несколькими работами.':'';highlight(null,activePerson);
  }
  function highlight(work,person){for(const [key,card] of workCards)card.classList.toggle('selected',key===work);for(const [id,{card}] of personCards)card.classList.toggle('selected',id===person);svg.querySelectorAll('path').forEach(p=>p.classList.toggle('selected',p.dataset.work===work||p.dataset.person===person));}
  function draw(){if(drawPending||graph.hidden)return;drawPending=true;requestAnimationFrame(()=>{drawPending=false;drawNow();});}
