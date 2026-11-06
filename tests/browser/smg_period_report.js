@@ -14,11 +14,11 @@ const {chromium}=require('playwright'),fs=require('fs'),assert=require('assert')
  const foldAll=async(scope,expanded)=>{await scope.locator(expanded?'[data-report-expand]':'[data-report-collapse]').click();await foldState(scope,expanded);};
  await page.goto(c.base+c.path);
  const panel=page.locator('[data-smg-period]'),work=page.locator('[data-work-fact-row]').filter({has:page.locator(`[name$="-project_work"][value="${c.work}"]`)});
- assert.equal(await page.locator('.production-steps [data-step]').count(),5);
+ assert.equal(await page.locator('.production-steps [data-step]').count(),6);
  await work.locator('[name$="-actual_quantity"]').fill('4');
- await page.locator('[data-step="5"]').click();
+ await page.locator('[data-step="6"]').click();
  await page.waitForFunction(()=>document.querySelector('[data-period-state]').textContent.includes('Обновлено'));
- assert(await panel.isVisible());assert(await page.locator('[data-entry-step="4"]').isHidden());
+ assert(await panel.isVisible());assert(await page.locator('[data-entry-step="5"]').isHidden());
  const row=panel.locator('#smg-period-works tbody tr').first();
  assert.equal((await row.locator('td').nth(1).innerText()).trim(),'12');
  assert((await row.locator('td').nth(2).innerText()).startsWith('6'));
@@ -113,7 +113,7 @@ const {chromium}=require('playwright'),fs=require('fs'),assert=require('assert')
  await page.screenshot({path:'/tmp/smg-period-desktop.png',animations:'disabled'});
  const downloaded=page.waitForEvent('download');await panel.locator('[data-period-export]').click();const file=await downloaded;
  assert(file.suggestedFilename().endsWith('.xlsx'));assert(fs.statSync(await file.path()).size>1000);
- await page.locator('[data-step="4"]').click();assert(await page.locator('[data-entry-step="4"]').isVisible());assert(await panel.isHidden());
+ await page.locator('[data-step="5"]').click();assert(await page.locator('[data-entry-step="5"]').isVisible());assert(await panel.isHidden());
  await page.waitForFunction(()=>document.querySelector('[data-daily-equipment-status]').textContent.includes('обновлена'));
  assert((await page.locator('[data-report-people] summary').first().innerText()).includes(c.group));
  await page.locator('[data-production-report]').scrollIntoViewIfNeeded();await page.screenshot({path:'/tmp/production-grouped-day-desktop.png',animations:'disabled'});
@@ -130,8 +130,8 @@ const {chromium}=require('playwright'),fs=require('fs'),assert=require('assert')
  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2));
  await panel.scrollIntoViewIfNeeded();
  await page.screenshot({path:'/tmp/smg-period-mobile.png',animations:'disabled'});
- await page.locator('[data-step-previous]').click();assert(await page.locator('[data-entry-step="4"]').isVisible());
- await page.goto(c.base+c.path+'&entry_step=5&report_section=labor');await page.waitForFunction(()=>document.querySelector('[data-period-state]').textContent.includes('Обновлено'));
+ await page.locator('[data-step-previous]').click();assert(await page.locator('[data-entry-step="5"]').isVisible());
+ await page.goto(c.base+c.path+'&entry_step=6&report_section=labor');await page.waitForFunction(()=>document.querySelector('[data-period-state]').textContent.includes('Обновлено'));
  assert(await page.locator('[data-smg-period]').isVisible());assert(await panel.locator('[data-period-panel="labor"]').isVisible());
  await page.goto(c.base+c.readonly_path);await page.waitForFunction(()=>document.querySelector('[data-period-state]').textContent.includes('Обновлено'));
  assert(await page.locator('[data-period-refresh]').isEnabled());

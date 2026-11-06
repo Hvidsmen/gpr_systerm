@@ -67,7 +67,7 @@
   }finally{form.productionApplying=false;}
  }
  let presenceStamp='';
- function presence(users){const stamp=JSON.stringify(users);if(stamp===presenceStamp)return;presenceStamp=stamp;const host=form.querySelector('[data-production-presence]');if(!host)return;host.replaceChildren();for(const user of users){const chip=document.createElement('span');chip.className='production-presence-user';chip.textContent=user.name+(user.self?' · Вы':'')+' · '+user.steps.map(s=>['','Работы','Люди','Связи','Отчёт','План / факт СМГ'][s]).join(', ')+' · '+(user.editing?'редактирует':'смотрит');host.append(chip);}}
+ function presence(users){const stamp=JSON.stringify(users);if(stamp===presenceStamp)return;presenceStamp=stamp;const host=form.querySelector('[data-production-presence]');if(!host)return;host.replaceChildren();for(const user of users){const chip=document.createElement('span');chip.className='production-presence-user';chip.textContent=user.name+(user.self?' · Вы':'')+' · '+user.steps.map(s=>['','Работы','Люди','Бригады','Связи','Отчёт','План / факт СМГ'][s]).join(', ')+' · '+(user.editing?'редактирует':'смотрит');host.append(chip);}}
  const wait=()=>failures?Math.min(60000,3000*2**failures):slow?12000:Date.now()-lastActivity>45000?15000:3000;
  function schedule(delay=wait()){clearTimeout(timer);if(!closed)timer=setTimeout(()=>poll(),delay);}
  async function poll(force=false){

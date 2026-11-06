@@ -128,6 +128,48 @@ class EmployeeWorkLink(ActualHistoryMixin, BaseCompanyModel):
             raise ValidationError('Выберите работу в составе комплекса.')
 
 
+class ProductionDailyCrew(BaseCompanyModel):
+    """A dispatcher-created crew snapshot for one object, day and shift."""
+    construction_object=models.ForeignKey('projects.ConstructionObject',on_delete=models.CASCADE,related_name='production_daily_crews')
+    date=models.DateField()
+    shift=models.PositiveSmallIntegerField(default=1)
+    number=models.PositiveIntegerField()
+    name=models.CharField(max_length=160,blank=True)
+    is_active=models.BooleanField(default=True)
+    reported_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,blank=True,related_name='reported_production_crews')
+
+    class Meta:
+        ordering=['shift','number','pk']
+        constraints=[models.UniqueConstraint(fields=['construction_object','date','shift','number'],name='unique_production_daily_crew_number')]
+
+    def clean(self):
+        super().clean()
+        if self.construction_object_id and self.construction_object.company_id!=self.company_id:
+            raise ValidationError({'construction_object':'Объект другой компании.'})
+        if self.shift not in {1,2}:raise ValidationError({'shift':'Выберите дневную или ночную смену.'})
+        if self.number is not None and self.number<1:raise ValidationError({'number':'Номер бригады должен быть положительным.'})
+
+    def __str__(self):
+        suffix=f' · {self.name}' if self.name else ''
+        return f'Бригада №{self.number}{suffix}'
+
+
+class ProductionDailyCrewMember(BaseCompanyModel):
+    crew=models.ForeignKey(ProductionDailyCrew,on_delete=models.CASCADE,related_name='members')
+    activity=models.OneToOneField(EmployeeActivity,on_delete=models.CASCADE,related_name='daily_crew_member')
+
+    class Meta:
+        ordering=['activity__employee__last_name','activity__employee__first_name','pk']
+
+    def clean(self):
+        super().clean()
+        if not self.crew_id or not self.activity_id:return
+        if self.crew.company_id!=self.company_id or self.activity.company_id!=self.company_id:
+            raise ValidationError('Бригада и сотрудник другой компании.')
+        if (self.crew.construction_object_id,self.crew.date,self.crew.shift)!=(self.activity.construction_object_id,self.activity.date,self.activity.shift):
+            raise ValidationError('Сотрудник и бригада должны относиться к одному объекту, дню и смене.')
+
+
 class ProductionEntryDay(BaseCompanyModel):
     roster_started=models.BooleanField(default=False)
     construction_object=models.ForeignKey('projects.ConstructionObject',on_delete=models.CASCADE)

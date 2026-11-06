@@ -1,4 +1,4 @@
-<section class="card card-body mb-3" data-entry-step="4" data-daily-summary data-url="{% url 'production:smg_period_detail' %}">
+<section class="card card-body mb-3" data-entry-step="5" data-daily-summary data-url="{% url 'production:smg_period_detail' %}">
   <div class="d-flex justify-content-between align-items-start flex-wrap gap-2"><h2>Сводный отчёт за {{ day|date:'d.m.Y' }}</h2><button type="button" class="btn btn-sm btn-outline-primary" data-daily-summary-refresh>Обновить отчёт</button></div>
   <p class="small text-muted">План и сохранённый факт только за выбранный день. Структура, группировка и показатели совпадают с вкладкой «План / факт СМГ».</p>
   <div class="production-control-summary" data-daily-control-summary aria-live="polite"></div>

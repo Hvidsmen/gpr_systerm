@@ -17,7 +17,7 @@ from core.permissions import require_roles
 from apps.audit.models import AuditLog
 from apps.projects.models import ConstructionObject
 from .models import DailyFact,DayActuation
-from .dispatch_models import EmployeeActivity,EmployeeWorkLink,WorkFactClaim,EmployeeFactClaim,FactSectionDay,ProductionEntryDay
+from .dispatch_models import EmployeeActivity,EmployeeWorkLink,ProductionDailyCrew,WorkFactClaim,EmployeeFactClaim,FactSectionDay,ProductionEntryDay
 from .entry_concurrency import sqlite_serialized
 
 KIND='production.day_reset'
@@ -31,6 +31,7 @@ def records(obj,day):
     people=EmployeeActivity.objects.filter(company=obj.company,construction_object=obj,date=day).exclude(labor_direction())
     return {'works':DailyFact.objects.filter(company=obj.company,date=day,project_work__section__construction_object=obj),
         'people':people,'links':EmployeeWorkLink.objects.filter(company=obj.company,activity__in=people),
+        'crews':ProductionDailyCrew.objects.filter(company=obj.company,construction_object=obj,date=day),
         'actuations':DayActuation.objects.filter(company=obj.company,construction_object=obj,date=day)}
 
 
@@ -69,7 +70,7 @@ def reset(request):
                 for person in selected['people'].select_related('position__planning_mapping','planning_position__planning_mapping'):
                     mapping=getattr(person.planning_position or person.position,'planning_mapping',None)
                     if mapping:affected.add(mapping.brigade_id)
-                selected['people'].delete();selected['works'].delete();selected['actuations'].delete()
+                selected['people'].delete();selected['works'].delete();selected['crews'].delete();selected['actuations'].delete()
                 # Recalculate affected headcounts without touching separate personnel facts.
                 from collections import defaultdict
                 from .models import LaborFact

@@ -211,5 +211,5 @@ class SmgPeriodReportTests(TestCase):
     def test_fifth_tab_and_presence_are_available(self):
         self.client.force_login(self.users['DISPATCHER'])
         response = self.client.get(self.url, {'construction_object': self.obj.pk, 'date': str(self.day), 'section': 'works'})
-        self.assertContains(response, '5. План / факт СМГ')
+        self.assertContains(response, '6. План / факт СМГ')
         self.assertContains(response, 'data-smg-period')
