@@ -6,6 +6,7 @@
  let step=Number(form.dataset.initialStep||1),digest='',claimsDigest='',usersDigest='',polling=false,closed=false,timer=null,failures=0,slow=false,lastActivity=Date.now(),lastSync=0,published='';
  const knownSnapshots=new Set();let outbox=null;
  let canonical={works:JSON.parse(document.getElementById('production-graph-saved').textContent),people:JSON.parse(document.getElementById('production-report-people').textContent)};
+ const factToken=work=>work.operational_name?`operational:${work.id}`:work.work_item_id?`item:${work.project_work_id}:${work.work_item_id}`:`work:${work.project_work_id}`;
  const snapshot=()=>form.elements.namedItem('production_snapshot').value;
  function setValues(row,values,relationsOnly=false){
   const relationNames=new Set(['work','work_item','general','work_mode','work_targets']);
@@ -27,7 +28,7 @@
   }
  }
  function publish(){
-  const allowed=new Set(canonical.works.filter(w=>Number(w.actual_quantity)>0).map(w=>w.work_item_id?`item:${w.project_work_id}:${w.work_item_id}`:`work:${w.project_work_id}`));
+  const allowed=new Set(canonical.works.filter(w=>Number(w.actual_quantity)>0).map(factToken));
   const clean={...canonical,people:canonical.people.map(p=>({...p,targets:p.targets.filter(t=>allowed.has(t))}))};
   const report=outbox?outbox.overlay(clean):clean,stamp=JSON.stringify(report);if(stamp===published)return;published=stamp;
   const byId=new Map(rows().filter(r=>r.matches('[data-production-person]')).map(r=>[Number(field(r,'id')?.value),r]));
