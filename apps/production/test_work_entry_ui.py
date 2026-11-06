@@ -267,6 +267,7 @@ class WorkEntryPresentationTests(TestCase):
         self.assertIn("async function connectCrew",graph)
         self.assertIn("employee-graph-crew",graph)
         self.assertIn("if(memberCommon.has(activity+':'+token))continue",graph)
+        self.assertIn("structureStamp='';if(step===4)render()",graph)
         live=(Path(__file__).resolve().parents[2]/'static/production/production_live.js').read_text(encoding='utf-8')
         self.assertIn("person.links_revision)<currentRevision",live)
         self.assertIn("setValues(row,{work_targets:person.targets",live)
