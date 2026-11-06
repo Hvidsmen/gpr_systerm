@@ -277,6 +277,8 @@ class WorkEntryPresentationTests(TestCase):
         self.assertIn("menuAction('Удалить связь'",graph)
         self.assertIn("часть бригады: ${linked} из ${crew.members.length}",graph)
         self.assertIn("partial:brigade?'0':'1'",graph)
+        self.assertIn("if(undoLinks.length>20)undoLinks.shift();render();",graph)
+        self.assertIn("render();message.textContent='Индивидуальные связи удалены'",graph)
         styles=(Path(__file__).resolve().parents[2]/'static/production/production_entry.css').read_text(encoding='utf-8')
         self.assertIn('path[data-partial="1"]',styles)
         self.assertIn('stroke-dasharray:7 5',styles)
