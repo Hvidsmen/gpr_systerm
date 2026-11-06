@@ -136,10 +136,11 @@ def build(obj, day, schedule_id=None, *, day_only=False, equipment_only=False, i
         work = works.get(fact.project_work_id)
         if not work or not fact.operational_key:
             return None
-        label = fact.operational_name.strip()
-        unit = fact.operational_unit.strip()
-        if not label or not unit:
-            return None
+        # Older/manual rows may have been saved before both fields became
+        # mandatory.  They still carry a real daily quantity and must not
+        # disappear from either report.
+        label = fact.operational_name.strip() or 'Работа без названия'
+        unit = fact.operational_unit.strip() or work.unit
         context = ' → '.join(p for p in [work.section.name,
             work.complex_object.name if work.complex_object_id else '', work.name] if p)
         target = bucket(work_rows, ('operational', fact.operational_key, unit), label, unit, context)

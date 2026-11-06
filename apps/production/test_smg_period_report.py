@@ -91,6 +91,18 @@ class SmgPeriodReportTests(TestCase):
         self.assertContains(self.request(), 'Временное ограждение')
         self.assertContains(self.request(scope='day', date=str(self.start)), 'Временное ограждение')
 
+    def test_legacy_operational_work_without_name_is_not_lost(self):
+        package = ProjectWork.objects.create(company=self.company, section=self.work.section,
+            complex_object=self.work.complex_object, name='ЭМР. Прочее', kind='COMPOSITE', unit='компл.')
+        DailyFact.objects.bulk_create([DailyFact(company=self.company, project_work=package, date=self.start,
+            operational_key=uuid4(), operational_name='', operational_unit='', actual_quantity=12,
+            outside_smg=True, reported_by=self.users['DISPATCHER'])])
+
+        row = next(row for row in build(self.obj, self.selected)['works'] if row['label'] == 'Работа без названия')
+        self.assertEqual((row['plan'], row['actual'], row['unit']), (None, 12, 'компл.'))
+        self.assertContains(self.request(), 'Работа без названия')
+        self.assertContains(self.request(scope='day', date=str(self.start)), 'Работа без названия')
+
     def test_no_applied_smg_has_no_gpr_fallback(self):
         self.schedule.status = 'DRAFT'; self.schedule.save()
         self.fact(3)
