@@ -5,7 +5,7 @@
  const catalogue=JSON.parse(document.getElementById('production-work-choices').textContent);let saved=JSON.parse(document.getElementById('production-graph-saved').textContent);const labels=new Map(catalogue.map(w=>[w.token,w]));
  const workHost=graph.querySelector('[data-graph-works]'),peopleHost=graph.querySelector('[data-graph-people]'),svg=graph.querySelector('svg'),canvas=graph.querySelector('.employee-graph-canvas'),message=graph.querySelector('[data-graph-message]');
  const key=(w,i)=>i?`item:${w}:${i}`:`work:${w}`,factToken=f=>f.operational_name?`operational:${f.id}`:key(f.project_work_id,f.work_item_id),field=(row,name)=>row.querySelector(`[name$="-${name}"]`),personRows=()=>[...form.querySelectorAll('[data-production-person]')],hasPositiveQuantity=value=>Number(String(value??'').replace(',','.'))>0;
- let active=null,activePerson=null,activePersonRow=null,step=1,scheduled=false,workCards=new Map(),personCards=new Map();
+ let active=null,activePerson=null,activePersonRow=null,step=1,scheduled=false,workCards=new Map(),personCards=new Map();const undoLinks=[];
  function showStep(next){step=Math.max(1,Math.min(5,next));const currentUrl=new URL(location.href);currentUrl.searchParams.set('entry_step',step);history.replaceState(null,'',currentUrl);document.querySelectorAll('[data-entry-step]').forEach(p=>{p.hidden=Number(p.dataset.entryStep)!==step;});form.querySelectorAll('[data-step]').forEach(b=>{b.setAttribute('aria-current',Number(b.dataset.step)===step?'step':'false');});const nextButton=form.querySelector('[data-step-next]'),confirmButton=form.querySelector('[data-confirm-production]');const previousButton=form.querySelector('[data-step-previous]');if(previousButton)previousButton.hidden=step===1;if(nextButton){nextButton.hidden=step===5;nextButton.textContent=({1:'К сотрудникам →',2:'Назначить работы →',3:'К сводному отчёту →',4:'К плану / факту СМГ →'})[step]||'Далее';}if(confirmButton)confirmButton.hidden=step!==4;if(step===3)render();form.dispatchEvent(new CustomEvent('production-step-change',{detail:step}));}
  form.querySelectorAll('[data-step]').forEach(b=>b.addEventListener('click',()=>showStep(Number(b.dataset.step))));form.querySelector('[data-step-next]')?.addEventListener('click',()=>showStep(step+1));form.querySelector('[data-step-previous]')?.addEventListener('click',()=>showStep(step-1));
  form.addEventListener('invalid',event=>{const panel=event.target.closest('[data-entry-step]');if(panel)showStep(Number(panel.dataset.entryStep));},true);
@@ -21,8 +21,9 @@
   let fact=saved.find(w=>factToken(w)===token);
   if(!fact&&window.productionAutoSave?.pending){message.textContent='Сохраняем объём работы…';await window.productionAutoSave.flush();fact=saved.find(w=>factToken(w)===token);}
   if(!fact){message.textContent='Работа ещё не сохранена. Проверьте сообщение в её строке и повторите связь.';return;}
-  const remove=targets(row).includes(token);if(!remove&&Number(fact.actual_quantity)<=0){message.textContent='У работы нулевой факт. Сначала введите выполненный объём больше нуля.';return;}active=null;activePerson=null;activePersonRow=null;highlight(null,null);await operation(row,{action:remove?'remove':'add',fact:fact.id});
+  const remove=targets(row).includes(token);if(!remove&&Number(fact.actual_quantity)<=0){message.textContent='У работы нулевой факт. Сначала введите выполненный объём больше нуля.';return;}active=null;activePerson=null;activePersonRow=null;highlight(null,null);const changed=await operation(row,{action:remove?'remove':'add',fact:fact.id});if(changed||form.productionLinks?.pending){undoLinks.push({row,fact:fact.id,action:remove?'add':'remove',label:labels.get(token)?.title||labels.get(token)?.label||'работа'});if(undoLinks.length>20)undoLinks.shift();}
  }
+ async function undoLastLink(){const item=undoLinks.pop();if(!item){message.textContent='Нет изменений связей для отмены.';return;}if(!item.row.isConnected){message.textContent='Сотрудник уже удалён из формы — отмена связи недоступна.';return;}message.textContent='Отменяем последнее изменение связи…';const changed=await operation(item.row,{action:item.action,fact:item.fact});if(changed||form.productionLinks?.pending)message.textContent='Последнее изменение связи отменено: '+item.label;else undoLinks.push(item);}
  function button(label,action){const b=document.createElement('button');b.type='button';b.className='btn btn-sm btn-outline-primary';b.textContent=label;b.addEventListener('click',event=>{event.stopPropagation();action();});return b;}
  let structureStamp='',drawPending=false;
  function render(){
@@ -31,11 +32,12 @@
   const available=new Set(saved.filter(fact=>hasPositiveQuantity(fact.actual_quantity)).map(factToken));
   form.querySelectorAll('[data-work-fact-row]').forEach(row=>{const w=field(row,'project_work')?.value;if(!w)return;const token=field(row,'operational_name')?.value?(row.dataset.factId?`operational:${row.dataset.factId}`:''):key(w,field(row,'work_item')?.value);if(!token)return;if(field(row,'DELETE')?.checked||!hasPositiveQuantity(field(row,'actual_quantity')?.value))available.delete(token);else available.add(token);});
   const works=catalogue.filter(w=>available.has(w.token)),people=personRows().filter(r=>field(r,'employee')?.value&&!field(r,'DELETE')?.checked).map(row=>({id:field(row,'work_mode').name,row,workTokens:field(row,'work_mode').value==='works'?targets(row):[]}));
-  const stamp=JSON.stringify([works.map(w=>[w.token,saved.find(s=>factToken(s)===w.token)?.actual_quantity]),people.map(p=>[p.id,field(p.row,'employee').value,field(p.row,'planning_position')?.value,field(p.row,'shift').value])]);
+  if(form.productionFilters)form.productionFilters.syncGraph(works,people.map(person=>person.row));
+  const stamp=JSON.stringify([works.map(w=>[w.token,saved.find(s=>factToken(s)===w.token)?.actual_quantity]),people.map(p=>[p.id,field(p.row,'employee').value,field(p.row,'planning_position')?.value,field(p.row,'shift').value,field(p.row,'work_mode').value])]);
   if(stamp===structureStamp&&personCards.size===people.length){
    for(const person of people){const current=personCards.get(person.id);if(!current)continue;current.person=person;const mode=field(person.row,'work_mode').value,pending=Number(person.row.dataset.pendingLinks||0);
     current.card.querySelector('.graph-person-meta').textContent=(field(person.row,'shift').selectedOptions?.[0]?.textContent||'')+' · '+(person.workTokens.length?'Связей: '+person.workTokens.length:mode==='general'?'Работали без привязки':'Связи пока не проверены')+(pending?' · в очереди: '+pending:'');
-    const modeButton=current.card.querySelector('[data-graph-mode]');if(modeButton)modeButton.textContent=mode==='general'?'Назначить работы':'Без привязки';current.card.classList.toggle('graph-pending',pending>0);
+    current.card.classList.toggle('graph-pending',pending>0);
    }
    filter();draw();return;
   }
@@ -54,12 +56,11 @@
    if(plannedRole&&staffRole&&plannedRole.trim().toLocaleLowerCase('ru')!==staffRole.trim().toLocaleLowerCase('ru')){const staff=document.createElement('p');staff.className='small text-muted mb-2';staff.dataset.graphStaffPosition='';staff.textContent='Штатная: '+staffRole;card.append(staff);}
    const meta=document.createElement('p');meta.className='small text-muted graph-person-meta';meta.textContent=`${field(row,'shift').selectedOptions?.[0]?.textContent||('Смена '+field(row,'shift').value)} · `+(person.workTokens.length?`Связей: ${person.workTokens.length}`:group);card.append(meta);
    const port=button('●',()=>selectPerson(person.id,row));port.classList.add('graph-port');port.setAttribute('aria-label','Связать сотрудника '+name.textContent);port.draggable=true;port.addEventListener('dragstart',e=>{active=null;activePerson=person.id;activePersonRow=row;e.dataTransfer.setData('text/plain',person.id);highlight(null,activePerson);});card.append(port);
-   const actions=document.createElement('div');actions.className='d-flex gap-2 flex-wrap';actions.append(button('Выбрать работы',()=>{if(!editable(row))return;row.querySelector('[data-person-pick]').click();}),button(mode==='general'?'Назначить работы':'Без привязки',()=>update(row,[],field(row,'work_mode').value==='general'?'pending':'general')));actions.lastElementChild.dataset.graphMode='';card.append(actions);
+   const actions=document.createElement('div');actions.className='d-flex gap-2 flex-wrap';actions.append(button('Выбрать работы',()=>{if(!editable(row))return;row.querySelector('[data-person-pick]').click();}));if(mode!=='general')actions.append(button('Без привязки',()=>update(row,[],'general')));card.append(actions);
    card.addEventListener('dragover',e=>{if(active)e.preventDefault();});card.addEventListener('drop',e=>{e.preventDefault();if(active&&available.has(active))connect(active,row);});card.addEventListener('click',e=>{if(!e.target.closest('button'))selectPerson(person.id,row);});
    peopleHost.append(card);personCards.set(person.id,{card,person});
   }
   if(!works.length)workHost.textContent='На шаге «Работы» введите объёмы за день.';if(!people.length)peopleHost.textContent='На шаге «Люди» добавьте сотрудников.';
-  if(form.productionFilters)form.productionFilters.syncGraph();
   filter();
   // Both sides of each connected component share a height and centre line.
   for(const component of layout.components){
@@ -86,6 +87,7 @@
  function filter(){const a=graph.querySelector('[data-graph-work-search]').value.toLocaleLowerCase('ru'),b=graph.querySelector('[data-graph-person-search]').value.toLocaleLowerCase('ru');for(const card of workCards.values())card.hidden=!card.textContent.toLocaleLowerCase('ru').includes(a)||Boolean(form.productionFilters&&!form.productionFilters.workMatches(card.dataset.token));for(const {card,person} of personCards.values())card.hidden=!card.textContent.toLocaleLowerCase('ru').includes(b)||Boolean(form.productionFilters&&!form.productionFilters.personMatches(person.row));draw();}
  let filterPending=false;function scheduleFilter(){if(filterPending)return;filterPending=true;requestAnimationFrame(()=>{filterPending=false;filter();});}
  graph.querySelectorAll('input[type=search]').forEach(i=>i.addEventListener('input',scheduleFilter));
+ document.addEventListener('keydown',event=>{if(step!==3||event.defaultPrevented||event.key.toLocaleLowerCase()!=='z'||!event.ctrlKey||event.altKey||event.metaKey)return;if(event.target.closest('input,textarea,select,[contenteditable=true]'))return;event.preventDefault();undoLastLink();});
  form.addEventListener('production-report-update',event=>{saved=event.detail.works;savedPeople=event.detail.people;document.getElementById('production-graph-saved').textContent=JSON.stringify(saved);if(step===3)render();});
  form.addEventListener('production-work-created',event=>{catalogue.push(event.detail);labels.set(event.detail.token,event.detail);structureStamp='';if(step===3)render();});
  form.addEventListener('change',()=>{if(!scheduled){scheduled=true;requestAnimationFrame(()=>{scheduled=false;if(step===3)render();});}});form.addEventListener('production-filter-change',()=>{if(step===3)render();});new ResizeObserver(draw).observe(canvas);

@@ -3,8 +3,9 @@
  const choices=JSON.parse(document.getElementById('production-work-choices').textContent),workMeta=JSON.parse(document.getElementById('production-work-meta')?.textContent||'[]'),catalogue=new Map(choices.map(w=>[w.token,w])),metaById=new Map(workMeta.map(w=>[String(w.id),w]));
  const field=(row,name)=>row.querySelector(`[name$="-${name}"]`),token=row=>field(row,'operational_name')?.value.trim()?`operational:${row.dataset.factId||field(row,'operational_name').name}`:row.dataset.workToken||(field(row,'work_item')?.value?`item:${field(row,'project_work')?.value}:${field(row,'work_item').value}`:`work:${field(row,'project_work')?.value}`);
  const roleOf=row=>field(row,'planning_position')?.value||String(JSON.parse(document.getElementById('position-employee-roles').textContent)[field(row,'employee')?.value]||'');
- const roleName=row=>field(row,'planning_position')?.selectedOptions[0]?.value?field(row,'planning_position').selectedOptions[0].textContent:row.closest('[data-position-plan]')?.querySelector('h4')?.textContent||'';
- const groupOf=row=>row.closest('[data-position-group]')?.dataset.positionGroup||'Без группы плана';
+ const employeeLocations=JSON.parse(document.getElementById('production-employee-locations')?.textContent||'{}');
+ const roleName=row=>field(row,'planning_position')?.selectedOptions[0]?.value?field(row,'planning_position').selectedOptions[0].textContent:row.closest('[data-position-plan]')?.querySelector('h4')?.textContent||employeeLocations[field(row,'employee')?.value]?.position_label||'';
+ const groupOf=row=>row.closest('[data-position-group]')?.dataset.positionGroup||employeeLocations[field(row,'employee')?.value]?.staff_group||'Без группы плана';
  let refreshPending=false;
  function scheduleRefresh(){if(refreshPending)return;refreshPending=true;requestAnimationFrame(()=>{refreshPending=false;refresh();});}
  function widget(host,label,options){return window.graphMultiselect.create(host,label,options,scheduleRefresh);}
@@ -39,6 +40,8 @@
  function syncPeople(){const people=[...form.querySelectorAll('[data-production-person]')].filter(r=>field(r,'employee')?.value&&!field(r,'DELETE')?.checked),roles=options(people.map(row=>({value:roleOf(row),label:roleName(row)||field(row,'employee').selectedOptions[0]?.textContent.split(' · ')[2]||'Без должности'}))),groups=[...form.querySelectorAll('[data-position-group]')].map(g=>({value:g.dataset.positionGroup,label:g.dataset.positionGroup})),employees=options(people.map(row=>({value:field(row,'employee').value,label:field(row,'employee').selectedOptions[0]?.textContent.split(' · ')[0]||''})));
   for(const f of Object.values(filters)){if(f.employee){f.group.setOptions(groups);f.role.setOptions(roles);f.employee.setOptions(employees);}}
  }
+ function syncGraph(works,rows){const f=filters.graph;if(!f)return;f.object.setOptions(options(works.filter(w=>w.complex_id).map(w=>({value:w.complex_id,label:w.complex||w.object||'Комплексный объект'}))));f.package.setOptions(options(works.filter(w=>w.kind==='COMPOSITE'||w.kind==='OPERATIONAL').map(w=>({value:w.work,label:w.package||w.label}))));f.work.setOptions(options(works.map(w=>({value:w.token,label:w.title||w.label}))));f.group.setOptions(options(rows.map(row=>({value:groupOf(row),label:groupOf(row)}))));f.role.setOptions(options(rows.map(row=>({value:roleOf(row),label:roleName(row)||'Без должности'}))));f.employee.setOptions(options(rows.map(row=>({value:field(row,'employee').value,label:field(row,'employee').selectedOptions[0]?.textContent.split(' · ')[0]||''}))));
+ }
  function refresh(){
   const query=(document.querySelector('[data-work-search]')?.value||'').toLocaleLowerCase('ru').trim();
   form.querySelectorAll('[data-work-fact-row]').forEach(row=>{const key=token(row),w=rowChoice(row,key);row.hidden=!quickWorkMatches(row)||Boolean(w&&(!workMatches(key,'works',w)||!query.split(/\s+/).every(term=>w.label.toLocaleLowerCase('ru').includes(term))));});
@@ -48,7 +51,7 @@
   form.querySelectorAll('[data-position-group]').forEach(group=>{group.hidden=[...group.querySelectorAll('[data-position-plan]')].every(role=>role.hidden);});
   form.dispatchEvent(new Event('production-filter-change'));
  }
- form.productionFilters={workMatches,personMatches,syncGraph:()=>{}};
+ form.productionFilters={workMatches,personMatches,syncGraph};
  document.querySelector('[data-work-search]')?.addEventListener('input',scheduleRefresh);
  document.querySelectorAll('[data-work-quick]').forEach(button=>{const active=button.dataset.workQuick===quickWork;button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));button.addEventListener('click',()=>{quickWork=button.dataset.workQuick;sessionStorage.setItem(filterStorageKey,quickWork);document.querySelectorAll('[data-work-quick]').forEach(candidate=>{const selected=candidate===button;candidate.classList.toggle('active',selected);candidate.setAttribute('aria-pressed',String(selected));});scheduleRefresh();});});
  form.addEventListener('production-work-created',event=>{choices.push(event.detail);catalogue.set(event.detail.token,event.detail);for(const f of Object.values(filters))if(f.work)f.work.setOptions(options(choices.map(w=>({value:w.token,label:w.title||w.label}))));scheduleRefresh();});

@@ -6,7 +6,7 @@ from django.test import TestCase
 from django.urls import reverse
 from apps.projects.models import Section
 from apps.works.models import ComplexObject,ProjectWork,ProjectWorkItem
-from apps.resources.models import BrigadeGroup,EquipmentCategory,EquipmentType
+from apps.resources.models import BrigadeGroup,Equipment,EquipmentCategory,EquipmentType
 from apps.planning.models import DailyScheduleEntry
 from .models import DailyFact,EmployeeActivity,EquipmentActivity
 from .smg_period_report import build
@@ -89,15 +89,35 @@ class ReportGroupingTests(TestCase):
         subgroup=next(group for group in group['subgroups'] if group['label']==self.staff_group.name)
         row=next(row for row in subgroup['rows'] if row['label']==self.employee.position.name)
         self.assertEqual(row['actual'],1)
-        self.assertEqual(row['people'],[self.employee.display_name])
+        self.assertNotIn('people',row)
         smg_group=next(group for group in report['labor_groups'] if group['label']==self.staff_group.name)
         smg_row=next(row for row in smg_group['rows'] if row['label']==self.brigade.name)
         self.assertEqual(smg_row['actual'],1)
+        self.assertEqual(report['labor_total']['actual'],1)
         self.client.force_login(self.users['DISPATCHER'])
         response=self.client.get(reverse('production:smg_period_detail'),
             {'construction_object':self.obj.pk,'date':self.selected})
         self.assertContains(response,'Люди без должностей СМГ')
-        self.assertContains(response,self.employee.display_name)
+        self.assertNotContains(response,self.employee.display_name)
+        self.assertContains(response,'Максимум сотрудников за день')
+        self.assertContains(response,'План:')
+        self.assertNotContains(response,'Позиций:')
+
+    def test_equipment_without_smg_plan_uses_separate_category_hierarchy(self):
+        equipment_type=EquipmentType.objects.create(company=self.company,name='Внеплановый погрузчик',category=self.category)
+        machine=Equipment.objects.create(company=self.company,type=equipment_type,plate_number='OUT-1',name='Погрузчик')
+        EquipmentActivity.objects.create(company=self.company,construction_object=self.obj,
+            equipment=machine,date=self.start,shift=1,state='WORKING')
+        report=build(self.obj,self.selected)
+        group=next(group for group in report['equipment_groups'] if group['label']=='Техника вне СМГ')
+        subgroup=next(group for group in group['subgroups'] if group['label']==self.category.name)
+        row=next(row for row in subgroup['rows'] if row['label']==equipment_type.name)
+        self.assertEqual((row['plan'],row['actual']),(None,1))
+        self.client.force_login(self.users['DISPATCHER'])
+        response=self.client.get(reverse('production:smg_period_detail'),
+            {'construction_object':self.obj.pk,'date':self.selected})
+        self.assertContains(response,'Техника вне СМГ')
+        self.assertContains(response,'Максимум техники за день')
 
     def test_custom_group_order_and_ungrouped_last(self):
         first=EquipmentCategory.objects.create(company=self.company,name='Я — первая',sort_order=1)

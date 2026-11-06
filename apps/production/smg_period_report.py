@@ -14,7 +14,7 @@ from apps.personnel.models import Camp
 from .models import DailyFact, EmployeeActivity, EquipmentActivity, LaborFact, EquipmentFact
 from .transport_models import EquipmentDayRecord
 from .camp_fuel_models import CampFuelDay
-from .report_grouping import resource_groups, work_groups, daily_rows, peak_daily_totals
+from .report_grouping import resource_groups, work_groups, daily_rows, peak_daily_totals, totals
 from apps.resources.group_order import NONE, labor_group_order, equipment_group_order, position_group
 
 
@@ -89,6 +89,7 @@ def build(obj, day, schedule_id=None, *, day_only=False, equipment_only=False, i
     works = {} if equipment_only else {w.pk: w for w in ProjectWork.objects.filter(company=obj.company,
         section__construction_object=obj).select_related('section', 'complex_object').prefetch_related('items')}
     work_rows, labor_rows, equipment_rows, fuel_rows = {}, {}, {}, {}
+    all_labor = defaultdict(set)
     labor_alias = {} if equipment_only else brigade_aliases(obj.company)
     equipment_alias = equipment_aliases(obj.company)
     brigade_models = {} if equipment_only else {b.pk: b for b in Brigade.objects.filter(company=obj.company).select_related('group')}
@@ -194,7 +195,6 @@ def build(obj, day, schedule_id=None, *, day_only=False, equipment_only=False, i
 
         mapping = dict(PositionPlanningBrigade.objects.filter(company=obj.company).values_list('position_id', 'brigade_id'))
         named_labor = defaultdict(set)
-        labor_people = defaultdict(set)
         activities = EmployeeActivity.objects.filter(**scope).select_related(
             'employee', 'position__planning_mapping__brigade__group',
             'planning_position__planning_mapping__brigade__group')
@@ -213,11 +213,9 @@ def build(obj, day, schedule_id=None, *, day_only=False, equipment_only=False, i
                 target.update(group='Люди без должностей СМГ', group_id='non-smg',
                     group_order=NONE, subgroup=position_group(position))
             named_labor[(activity.date, key)].add(activity.employee_id)
-            labor_people[key].add(activity.employee.display_name)
+            all_labor[activity.date].add(activity.employee_id)
         for (actual_day, key), employees in named_labor.items():
             add(labor_rows[key], 'actual', len(employees), actual_day)
-        for key, people in labor_people.items():
-            labor_rows[key]['people'] = sorted(people, key=str.casefold)
         for fact in LaborFact.objects.filter(**scope):
             pk = canonical(fact.brigade_id, labor_alias)
             if (fact.date, pk) not in named_labor and pk in brigades:
@@ -270,13 +268,24 @@ def build(obj, day, schedule_id=None, *, day_only=False, equipment_only=False, i
             actual=sum((r.actual_liters for r in records), Decimal(0)) if records else None))
 
     works_finished, labor_finished, equipment_finished = finish(work_rows), finish(labor_rows), finish(equipment_rows)
+    for row in equipment_finished:
+        if row['plan'] is None and row['actual'] is not None:
+            row['subgroup']=row.get('group') or 'Без группы'
+            row.update(group='Техника вне СМГ',group_id='non-smg',group_order=NONE)
     dates=[start+timedelta(days=i) for i in range((end-start).days+1)]
     for row in works_finished+labor_finished+equipment_finished:daily_rows(row,dates)
     for row in labor_finished+equipment_finished:peak_daily_totals(row)
+    labor_total=totals(labor_finished,dates)
+    for actual_day,employees in all_labor.items():
+        values=labor_total['daily'].setdefault(actual_day.isoformat(),{'plan':None,'actual':None,'unit':labor_unit})
+        values['actual']=Decimal(len(employees))
+    daily_rows(labor_total,dates);peak_daily_totals(labor_total)
+    equipment_total=totals(equipment_finished,dates);peak_daily_totals(equipment_total)
     labor_grouped=resource_groups(labor_finished,dates)
     equipment_grouped=resource_groups(equipment_finished,dates)
     for group in labor_grouped+equipment_grouped:peak_daily_totals(group['total'])
     return dict(work_groups=work_groups(works_finished,dates),labor_groups=labor_grouped,equipment_groups=equipment_grouped,
         object=obj, start=start, end=end, day=day, schedule=schedule,equipment_only=equipment_only,day_only=day_only,include_fuel=include_fuel,
         period_days=(end-start).days+1, works=works_finished, labor=labor_finished,
-        equipment=equipment_finished, fuel=finish(fuel_rows), warehouse=warehouse)
+        labor_total=labor_total,equipment=equipment_finished,equipment_total=equipment_total,
+        fuel=finish(fuel_rows), warehouse=warehouse)

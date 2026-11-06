@@ -119,7 +119,7 @@ def resource_display_rows(groups):
         if group.get('subgroups'):
             for subgroup in group['subgroups']:
                 result.append(dict(subgroup['total'],label=subgroup['label'],context=group['label'],level=1,heading=True))
-                result.extend(dict(row,context=' → '.join([group['label'],subgroup['label'],', '.join(row.get('people',[]))]),level=2) for row in subgroup['rows'])
+                result.extend(dict(row,context=' → '.join([group['label'],subgroup['label']]),level=2) for row in subgroup['rows'])
         else:
             result.extend(dict(row,context=group['label'],level=1) for row in group['rows'])
     return result
@@ -163,8 +163,7 @@ def day_matrix(report):
                     subgroup_key=f'{key}-subgroup-{subgroup_index}'
                     block(subgroup['label'],subgroup['total'],level=1,toggle=subgroup_key,parent=key)
                     for row in subgroup['rows']:
-                        block(row['label'],row,level=2,parent=subgroup_key,
-                            context=', '.join(row.get('people',[])))
+                        block(row['label'],row,level=2,parent=subgroup_key)
             else:
                 for row in group['rows']:block(row['label'],row,level=1,parent=key)
     direction='equipment'

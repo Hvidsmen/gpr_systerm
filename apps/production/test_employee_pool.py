@@ -33,6 +33,8 @@ class ProductionEmployeePoolTests(TestCase):
     def test_group_order_is_local_then_other_camps_then_unknown_with_number_and_dated_location(self):
         pool=prepare(self.obj,self.day);by_id=pool['locations']
         self.assertEqual(by_id[str(self.employee.pk)]['group'],0)
+        self.assertTrue(by_id[str(self.employee.pk)]['staff_group'])
+        self.assertEqual(by_id[str(self.missing_role.pk)]['staff_group'],'Без группы')
         self.assertEqual(by_id[str(self.away.pk)]['group'],1);self.assertEqual(by_id[str(self.unknown.pk)]['group'],2)
         self.assertNotIn(str(self.inactive.pk),by_id)
         choices=[pk for _,values in pool['groups'] for pk,_ in values]

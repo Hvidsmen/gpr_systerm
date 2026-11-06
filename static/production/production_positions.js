@@ -13,13 +13,23 @@
   const label=row.closest('[data-position-plan]')?.querySelector('h4')?.textContent?.trim()||'выбранной должности',group=document.createElement('optgroup');group.label='Подходят по должности · '+label;group.dataset.positionMatches='1';
   matches.forEach(option=>{const clone=option.cloneNode(true);group.append(clone);option.hidden=true;option.dataset.positionOriginal='1';});const empty=[...select.children].find(node=>node.tagName==='OPTION');empty?.after(group);if(!empty)select.prepend(group);select.value=current;
  }
+ const unplannedGroups=new Map(),unplannedPositions=new Map();
+ function unplannedTarget(employee){
+  const output=host.querySelector('[data-unplanned-groups]'),info=locations[employee]||{},group=info.staff_group||'Без группы',position=info.position_label||'Должность не указана';if(!output)return containers.get('');
+  let details=unplannedGroups.get(group);if(!details){details=document.createElement('details');details.open=true;details.className='production-position-group';details.dataset.unplannedGroup=group;const summary=document.createElement('summary');summary.dataset.unplannedGroupLabel='';details.append(summary);output.append(details);unplannedGroups.set(group,details);}
+  const key=group+'\u0000'+position;let target=unplannedPositions.get(key);if(!target){const block=document.createElement('section');block.className='border rounded p-3 mb-2';block.dataset.unplannedPosition=position;const title=document.createElement('h5');title.className='h6';title.dataset.unplannedPositionLabel='';target=document.createElement('div');target.dataset.unplannedRows='';block.append(title,target);details.append(block);unplannedPositions.set(key,target);}return target;
+ }
+ function updateUnplanned(){
+  for(const details of unplannedGroups.values()){let total=0;details.querySelectorAll('[data-unplanned-rows]').forEach(target=>{const count=target.querySelectorAll(':scope > [data-production-person]').length,totalLabel=target.parentElement.querySelector('[data-unplanned-position-label]'),text=`${target.parentElement.dataset.unplannedPosition} · Людей: ${count}`;target.parentElement.hidden=count===0;total+=count;if(totalLabel&&totalLabel.textContent!==text)totalLabel.textContent=text;});details.hidden=total===0;const label=details.querySelector('[data-unplanned-group-label]'),text=`${details.dataset.unplannedGroup} · Людей: ${total}`;if(label&&label.textContent!==text)label.textContent=text;}
+ }
  function refresh(){
   const records=new Map(saved.map(row=>[String(row.id),row])),extras=[];
   host.querySelectorAll('[data-production-person]').forEach(row=>{
    const id=field(row,'id')?.value,employee=field(row,'employee')?.value,role=field(row,'planning_position')?.value||row.dataset.requestedPosition||staff[employee],deleted=field(row,'DELETE')?.checked;
    if(id)records.delete(id);if(employee&&!deleted)extras.push({employee,role});
-   const target=containers.get(String(role))||containers.get('');if(target&&row.parentElement!==target)target.append(row);prioritizeEmployees(row,role);
+   const target=containers.get(String(role))||(employee?unplannedTarget(employee):containers.get(''));if(target&&row.parentElement!==target)target.append(row);prioritizeEmployees(row,role);
   });
+  updateUnplanned();
   const people=new Map(),unique=new Set(),unplanned=new Set();
   for(const row of [...records.values(),...extras]){const key=String(row.role);if(!people.has(key))people.set(key,new Set());people.get(key).add(String(row.employee));unique.add(String(row.employee));if(!containers.has(key))unplanned.add(String(row.employee));}
   let plan=0,remaining=0;
@@ -33,7 +43,7 @@
   if(!row){const before=new Set(host.querySelectorAll('[data-production-person]'));document.querySelector('[data-add=labor]').click();row=[...host.querySelectorAll('[data-production-person]')].find(row=>!before.has(row));}
   if(!row)return;row.dataset.requestedPosition=button.dataset.addForPosition;const role=field(row,'planning_position');role.value=button.dataset.addForPosition;prioritizeEmployees(row,button.dataset.addForPosition);if(!role.disabled)role.dispatchEvent(new Event('change',{bubbles:true}));refresh();row.scrollIntoView({block:'center'});(field(row,'employee').nextElementSibling?.querySelector('.search-select-button')||field(row,'employee')).focus();
  });
- document.addEventListener('click',event=>{const button=event.target.closest('[data-position-groups-toggle]');if(!button)return;host.querySelectorAll('[data-position-group]').forEach(group=>group.open=button.dataset.positionGroupsToggle==='open');});
+ document.addEventListener('click',event=>{const button=event.target.closest('[data-position-groups-toggle]');if(!button)return;host.querySelectorAll('[data-position-group],[data-unplanned-group]').forEach(group=>group.open=button.dataset.positionGroupsToggle==='open');});
  document.querySelectorAll('[data-position-quick]').forEach(button=>{const active=button.dataset.positionQuick===quickPosition;button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));});
  document.addEventListener('click',event=>{const button=event.target.closest('[data-position-quick]');if(!button)return;quickPosition=button.dataset.positionQuick;sessionStorage.setItem(positionStorageKey,quickPosition);document.querySelectorAll('[data-position-quick]').forEach(candidate=>{const active=candidate===button;candidate.classList.toggle('active',active);candidate.setAttribute('aria-pressed',String(active));});scheduleRefresh();});
  host.addEventListener('change',event=>{const row=event.target.closest('[data-production-person]');if(row&&event.target===field(row,'planning_position'))delete row.dataset.requestedPosition;scheduleRefresh();});
