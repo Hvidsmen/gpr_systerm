@@ -1,6 +1,6 @@
 """Presentation groups and totals shared by day/month HTML and Excel reports."""
 from decimal import Decimal
-from apps.resources.group_order import NONE
+from apps.resources.group_order import NONE, labor_group_order
 
 
 def metric_totals(rows):
@@ -64,6 +64,16 @@ def resource_groups(rows, dates=()):
     for group in grouped.values():
         group['rows'].sort(key=lambda row:row['label'].casefold())
         group['total']=totals(group['rows'],dates)
+        subgrouped={}
+        for row in group['rows']:
+            if row.get('subgroup'):
+                subgrouped.setdefault(row['subgroup'],[]).append(row)
+        if subgrouped:
+            group['subgroups']=[]
+            for label,rows_in_group in subgrouped.items():
+                group['subgroups'].append({'label':label,'rows':rows_in_group,
+                    'total':totals(rows_in_group,dates)})
+            group['subgroups'].sort(key=lambda item:(labor_group_order(item['label']),item['label'].casefold()))
     return sorted(grouped.values(),key=lambda group:(group['order'],group['label'].casefold()))
 
 
@@ -106,7 +116,12 @@ def resource_display_rows(groups):
     result=[]
     for group in groups:
         result.append(dict(group['total'],label='Итого · '+group['label'],context=group['label'],level=0,heading=True))
-        result.extend(dict(row,context=group['label'],level=1) for row in group['rows'])
+        if group.get('subgroups'):
+            for subgroup in group['subgroups']:
+                result.append(dict(subgroup['total'],label=subgroup['label'],context=group['label'],level=1,heading=True))
+                result.extend(dict(row,context=' → '.join([group['label'],subgroup['label'],', '.join(row.get('people',[]))]),level=2) for row in subgroup['rows'])
+        else:
+            result.extend(dict(row,context=group['label'],level=1) for row in group['rows'])
     return result
 
 
@@ -143,7 +158,15 @@ def day_matrix(report):
         for index,group in enumerate(report['labor_groups']):
             key=f'labor-{index}'
             block(group['label'],group['total'],toggle=key)
-            for row in group['rows']:block(row['label'],row,level=1,parent=key)
+            if group.get('subgroups'):
+                for subgroup_index,subgroup in enumerate(group['subgroups']):
+                    subgroup_key=f'{key}-subgroup-{subgroup_index}'
+                    block(subgroup['label'],subgroup['total'],level=1,toggle=subgroup_key,parent=key)
+                    for row in subgroup['rows']:
+                        block(row['label'],row,level=2,parent=subgroup_key,
+                            context=', '.join(row.get('people',[])))
+            else:
+                for row in group['rows']:block(row['label'],row,level=1,parent=key)
     direction='equipment'
     heading('Техника','smg-period-equipment')
     for index,group in enumerate(report['equipment_groups']):

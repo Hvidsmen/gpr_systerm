@@ -8,7 +8,7 @@ from apps.projects.models import Section
 from apps.works.models import ComplexObject,ProjectWork,ProjectWorkItem
 from apps.resources.models import BrigadeGroup,EquipmentCategory,EquipmentType
 from apps.planning.models import DailyScheduleEntry
-from .models import DailyFact,EquipmentActivity
+from .models import DailyFact,EmployeeActivity,EquipmentActivity
 from .smg_period_report import build
 from .report_export import workbook
 from .production_entry import report_data
@@ -77,6 +77,27 @@ class ReportGroupingTests(TestCase):
         self.assertEqual(report['labor_groups'][0]['label'],self.staff_group.name)
         self.assertEqual(report['equipment_groups'][0]['label'],self.category.name)
         self.assertEqual(report['equipment_groups'][0]['total']['actual'],1)
+
+    def test_people_without_explicit_smg_position_use_staffing_hierarchy(self):
+        EmployeeActivity.objects.create(company=self.company, construction_object=self.obj,
+            employee=self.employee, position=self.employee.position, date=self.start, shift=1)
+        EmployeeActivity.objects.create(company=self.company, construction_object=self.obj,
+            employee=self.employee, position=self.employee.position, planning_position=self.employee.position,
+            date=self.later, shift=1)
+        report=build(self.obj,self.selected)
+        group=next(group for group in report['labor_groups'] if group['label']=='Люди без должностей СМГ')
+        subgroup=next(group for group in group['subgroups'] if group['label']==self.staff_group.name)
+        row=next(row for row in subgroup['rows'] if row['label']==self.employee.position.name)
+        self.assertEqual(row['actual'],1)
+        self.assertEqual(row['people'],[self.employee.display_name])
+        smg_group=next(group for group in report['labor_groups'] if group['label']==self.staff_group.name)
+        smg_row=next(row for row in smg_group['rows'] if row['label']==self.brigade.name)
+        self.assertEqual(smg_row['actual'],1)
+        self.client.force_login(self.users['DISPATCHER'])
+        response=self.client.get(reverse('production:smg_period_detail'),
+            {'construction_object':self.obj.pk,'date':self.selected})
+        self.assertContains(response,'Люди без должностей СМГ')
+        self.assertContains(response,self.employee.display_name)
 
     def test_custom_group_order_and_ungrouped_last(self):
         first=EquipmentCategory.objects.create(company=self.company,name='Я — первая',sort_order=1)

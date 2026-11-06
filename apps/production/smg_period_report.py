@@ -15,7 +15,7 @@ from .models import DailyFact, EmployeeActivity, EquipmentActivity, LaborFact, E
 from .transport_models import EquipmentDayRecord
 from .camp_fuel_models import CampFuelDay
 from .report_grouping import resource_groups, work_groups, daily_rows, peak_daily_totals
-from apps.resources.group_order import labor_group_order, equipment_group_order
+from apps.resources.group_order import NONE, labor_group_order, equipment_group_order, position_group
 
 
 def number(value):
@@ -131,6 +131,22 @@ def build(obj, day, schedule_id=None, *, day_only=False, equipment_only=False, i
             package=work.name if item else '')
         return target
 
+    def operational_row(fact):
+        work = works.get(fact.project_work_id)
+        if not work or not fact.operational_key:
+            return None
+        label = fact.operational_name.strip()
+        unit = fact.operational_unit.strip()
+        if not label or not unit:
+            return None
+        context = ' → '.join(p for p in [work.section.name,
+            work.complex_object.name if work.complex_object_id else '', work.name] if p)
+        target = bucket(work_rows, ('operational', fact.operational_key, unit), label, unit, context)
+        target.update(section_id=work.section_id, section=work.section.name, kind='OPERATIONAL',
+            complex_id=work.complex_object_id, complex=work.complex_object.name if work.complex_object_id else '',
+            package=work.name)
+        return target
+
     entries = list((schedule.entries.filter(kind='equipment') if equipment_only else schedule.entries.all()).order_by('pk')) if schedule else []
     for entry in entries:
         if entry.kind=='fuel' and not include_fuel:continue
@@ -172,21 +188,36 @@ def build(obj, day, schedule_id=None, *, day_only=False, equipment_only=False, i
         for fact in DailyFact.objects.filter(company=obj.company, project_work__section__construction_object=obj,
                 date__range=(start, end)).order_by('pk'):
             # Actual quantities use today's unit; a changed frozen unit forms a separate row.
-            target = work_row(fact.project_work_id, fact.work_item_id)
+            target = operational_row(fact) if fact.operational_key else work_row(fact.project_work_id, fact.work_item_id)
             if target is not None:
                 add(target, 'actual', fact.actual_quantity, fact.date)
 
         mapping = dict(PositionPlanningBrigade.objects.filter(company=obj.company).values_list('position_id', 'brigade_id'))
         named_labor = defaultdict(set)
-        for activity in EmployeeActivity.objects.filter(**scope).select_related('position', 'planning_position'):
-            position = activity.planning_position or activity.position
-            pk = canonical(mapping.get(position.pk) if position else None, labor_alias)
-            key = pk if pk in brigades else f'position:{position.pk if position else "unknown"}'
-            label = brigades.get(pk) or (position.name if position else 'Должность не указана')
-            resource(labor_rows, key, label, labor_unit)
+        labor_people = defaultdict(set)
+        activities = EmployeeActivity.objects.filter(**scope).select_related(
+            'employee', 'position__planning_mapping__brigade__group',
+            'planning_position__planning_mapping__brigade__group')
+        for activity in activities:
+            if activity.planning_position_id:
+                position = activity.planning_position
+                pk = canonical(mapping.get(position.pk), labor_alias)
+                key = pk if pk in brigades else f'planning-position:{position.pk}'
+                label = brigades.get(pk) or position.name
+                resource(labor_rows, key, label, labor_unit)
+            else:
+                position = activity.position or activity.employee.position
+                key = f'staff-position:{position.pk if position else "unknown"}'
+                label = position.name if position else 'Должность не указана'
+                target = bucket(labor_rows, key, label, labor_unit)
+                target.update(group='Люди без должностей СМГ', group_id='non-smg',
+                    group_order=NONE, subgroup=position_group(position))
             named_labor[(activity.date, key)].add(activity.employee_id)
+            labor_people[key].add(activity.employee.display_name)
         for (actual_day, key), employees in named_labor.items():
             add(labor_rows[key], 'actual', len(employees), actual_day)
+        for key, people in labor_people.items():
+            labor_rows[key]['people'] = sorted(people, key=str.casefold)
         for fact in LaborFact.objects.filter(**scope):
             pk = canonical(fact.brigade_id, labor_alias)
             if (fact.date, pk) not in named_labor and pk in brigades:

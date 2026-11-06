@@ -143,7 +143,11 @@ def workbook(report):
             matrix('Работы · дни',['Раздел','Работа','Комплексный объект','Ед.'],['section','label','complex','unit'],works)
         daily_sections=[('equipment_groups','Техника · дни')] if report.get('equipment_only') else [('labor_groups','Люди · дни'),('equipment_groups','Техника · дни')]
         for key,title in daily_sections:
-            records=[dict(row,group=group['label']) for group in report[key] for row in group['rows']]
+            records=[]
+            for group in report[key]:
+                for row in group['rows']:
+                    label=' → '.join(filter(None,[group['label'],row.get('subgroup','')]))
+                    records.append(dict(row,group=label))
             matrix(title,['Группа','Наименование','Ед.'],['group','label','unit'],records)
     if 'people_details_groups' in report:
         people=[dict(person,group=group['label']) for group in report['people_details_groups'] for person in group['people']]

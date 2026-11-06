@@ -1,6 +1,7 @@
 from datetime import timedelta
 from decimal import Decimal
 from io import BytesIO
+from uuid import uuid4
 from openpyxl import load_workbook
 from django.test import TestCase
 from django.urls import reverse
@@ -71,6 +72,24 @@ class SmgPeriodReportTests(TestCase):
         self.assertIsNone(rows[second.name]['plan'])
         self.assertIsNone(rows[second.name]['deviation'])
         self.assertContains(self.request(), '0 дн. с фактом', count=0)
+
+    def test_operational_work_outside_smg_is_included(self):
+        package = ProjectWork.objects.create(company=self.company, section=self.work.section,
+            complex_object=self.work.complex_object, name='Прочее', kind='COMPOSITE')
+        key = uuid4()
+        DailyFact.objects.create(company=self.company, project_work=package, date=self.start,
+            operational_key=key, operational_name='Временное ограждение', operational_unit='м.п.',
+            actual_quantity=4, outside_smg=True, reported_by=self.users['DISPATCHER'])
+        DailyFact.objects.create(company=self.company, project_work=package, date=self.later,
+            operational_key=key, operational_name='Временное ограждение', operational_unit='м.п.',
+            actual_quantity=6, outside_smg=True, reported_by=self.users['DISPATCHER'])
+
+        report = build(self.obj, self.selected)
+        row = next(row for row in report['works'] if row['label'] == 'Временное ограждение')
+        self.assertEqual((row['plan'], row['actual'], row['unit'], row['recorded_days']),
+            (None, 10, 'м.п.', 2))
+        self.assertContains(self.request(), 'Временное ограждение')
+        self.assertContains(self.request(scope='day', date=str(self.start)), 'Временное ограждение')
 
     def test_no_applied_smg_has_no_gpr_fallback(self):
         self.schedule.status = 'DRAFT'; self.schedule.save()
