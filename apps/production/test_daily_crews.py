@@ -89,3 +89,17 @@ class DailyCrewTests(TestCase):
         inherited=EmployeeWorkLink.objects.get(activity=self.second_person);self.assertFalse(inherited.assigned_individually);self.assertEqual(inherited.crew_source_id,crew.pk)
         self.assertEqual(self.post('move',activity=self.second_person.pk,crew=None).status_code,200)
         self.assertFalse(EmployeeWorkLink.objects.filter(activity=self.second_person).exists())
+
+    def test_recommendation_creates_crew_from_common_links(self):
+        extra=DailyFact.objects.create(company=self.company,date=self.day,project_work=self.second_work,actual_quantity=2,reported_by=self.user)
+        change_individual(self.first,self.fact,'add');change_individual(self.second_person,self.fact,'add');change_individual(self.first,extra,'add')
+        state=self.client.get(self.url_crews,{'construction_object':self.obj.pk,'date':str(self.day)}).json()
+        recommendation=state['recommendations'][0];self.assertEqual(set(recommendation['activities']),{self.first.pk,self.second_person.pk})
+        response=self.post('create_recommended',activities=recommendation['activities'],facts=recommendation['facts'])
+        self.assertEqual(response.status_code,200,response.content);crew=ProductionDailyCrew.objects.get(is_active=True)
+        self.assertEqual(set(crew.members.values_list('activity_id',flat=True)),{self.first.pk,self.second_person.pk})
+        self.assertEqual(list(crew.work_assignments.values_list('fact_id',flat=True)),[self.fact.pk])
+        for link in EmployeeWorkLink.objects.filter(activity__in=[self.first,self.second_person],work=self.work):
+            self.assertFalse(link.assigned_individually);self.assertEqual(link.crew_source_id,crew.pk)
+        personal=EmployeeWorkLink.objects.get(activity=self.first,work=self.second_work);self.assertTrue(personal.assigned_individually);self.assertIsNone(personal.crew_source_id)
+        self.assertFalse(response.json()['recommendations'])

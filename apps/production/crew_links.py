@@ -49,6 +49,14 @@ def change_crew(activity,crew,fact,action):
         _detach_fact(activity,crew,fact)
 
 
+def promote_to_crew(activity,crew,fact):
+    """Convert an existing effective employee edge into a crew-owned edge."""
+    ProductionDailyCrewWorkLink.objects.get_or_create(company=activity.company,crew=crew,fact=fact)
+    link=_ensure_link(activity,fact,crew=crew)
+    if link.assigned_individually:
+        link.assigned_individually=False;link.save(update_fields=['assigned_individually'])
+
+
 def _detach_fact(activity,crew,fact):
     for link in _links(activity,fact).filter(crew_source=crew):
         if link.assigned_individually:
