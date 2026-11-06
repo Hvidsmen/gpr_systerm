@@ -49,7 +49,7 @@
     current.card.querySelector('.graph-person-meta').textContent=(field(person.row,'shift').selectedOptions?.[0]?.textContent||'')+' · '+(person.workTokens.length?'Связей: '+person.workTokens.length:mode==='general'?'Работали без привязки':'Связи пока не проверены')+(pending?' · в очереди: '+pending:'');
     current.card.classList.toggle('graph-pending',pending>0);
    }
-   for(const value of crewCards.values()){const members=value.crew.members.map(member=>personCards.get(member.person.id)||member).filter(Boolean),common=new Set(members[0]?.person.workTokens||[]);for(const member of members.slice(1))for(const token of [...common])if(!member.person.workTokens.includes(token))common.delete(token);value.crew.members=members;value.crew.common=common;const meta=value.card.querySelector('p');if(meta)meta.textContent=(value.crew.shift===1?'День':'Ночь')+' · Сотрудников: '+members.length+' · Общих работ: '+common.size;}
+   for(const value of crewCards.values()){const members=value.crew.members.map(member=>personCards.get(member.person.id)||member).filter(Boolean),factIds=new Set((value.crew.facts||[]).map(Number)),common=new Set(saved.filter(fact=>factIds.has(Number(fact.id))).map(factToken));value.crew.members=members;value.crew.common=common;const meta=value.card.querySelector('p');if(meta)meta.textContent=(value.crew.shift===1?'День':'Ночь')+' · Сотрудников: '+members.length+' · Общих работ: '+common.size;}
    filter();draw();return;
   }
   structureStamp=stamp;
@@ -80,9 +80,11 @@
    workHost.append(left);peopleHost.append(right);
    const height=Math.max(left.offsetHeight,right.offsetHeight);left.style.minHeight=right.style.minHeight=height+'px';
   }
-  // Place isolated cards after connected components.
-  for(const w of layout.unlinkedWorks)workHost.append(workCards.get(w.token));for(const p of [...layout.hiddenResources,...layout.unlinkedResources])peopleHost.append(personCards.get(p.id).card);
+  // Crews are shown after connected components but before isolated people.
+  for(const w of layout.unlinkedWorks)workHost.append(workCards.get(w.token));
+  const isolatedPeople=[...layout.hiddenResources,...layout.unlinkedResources];for(const p of isolatedPeople)personCards.get(p.id).card.remove();
   renderCrews();
+  for(const p of isolatedPeople)peopleHost.append(personCards.get(p.id).card);
   draw();
  }
  function selectWork(token){
