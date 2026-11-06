@@ -2,7 +2,7 @@
 from copy import copy
 from django.db import transaction
 from django import forms
-from django.db.models import Max, Q
+from django.db.models import Max, Prefetch, Q
 from apps.works.models import ProjectWork
 from apps.resources.models import Position
 from .dispatch_models import EmployeeActivity, EmployeeWorkLink
@@ -73,12 +73,14 @@ def token(work, item=None):
 
 
 def targets(activity):
-    links = list(activity.work_links.all()) if activity.pk else []
+    links = getattr(activity,'_prefetched_work_links',None)
+    if links is None:links=list(activity.work_links.all()) if activity.pk else []
     return [(link.work_id, link.work_item_id) for link in links] or ([(activity.work_id, activity.work_item_id)] if activity.work_id else [])
 
 
 def target_tokens(activity):
-    links=list(activity.work_links.select_related('fact').all()) if activity.pk else []
+    links=getattr(activity,'_prefetched_work_links',None)
+    if links is None:links=list(activity.work_links.all()) if activity.pk else []
     if links:return [f'operational:{link.fact_id}' if link.fact_id else token(link.work_id,link.work_item_id) for link in links]
     return [token(activity.work_id,activity.work_item_id)] if activity.work_id else []
 
@@ -134,7 +136,7 @@ def previous_people(obj, day, *, production, user=None):
     if production and user:qs=qs.filter(Q(reported_by=user)|Q(reported_by=None))
     previous = qs.aggregate(day=Max('date'))['day']
     if previous is None:return None, []
-    rows = qs.filter(date=previous).select_related('employee__position__planning_mapping__brigade__group').prefetch_related('work_links').order_by('employee__last_name','employee__first_name','employee_id','shift','pk')
+    rows = qs.filter(date=previous).select_related('employee__position__planning_mapping__brigade__group').prefetch_related(Prefetch('work_links',to_attr='_prefetched_work_links')).order_by('employee__last_name','employee__first_name','employee_id','shift','pk')
     initial=[]
     from .production_positions import plan_positions
     current_roles=set(plan_positions(obj,day)) if production else set()
@@ -259,7 +261,7 @@ def report_data(obj,day):
             'owner':(row.reported_by.get_full_name() or row.reported_by.username) if row.reported_by_id else 'Общий ввод'})
     people=[]
     for row in EmployeeActivity.objects.filter(company=obj.company,construction_object=obj,date=day).select_related(
-            'employee__position__planning_mapping__brigade__group','position__planning_mapping__brigade__group','planning_position__planning_mapping__brigade__group','reported_by').prefetch_related('work_links'):
+            'employee__position__planning_mapping__brigade__group','position__planning_mapping__brigade__group','planning_position__planning_mapping__brigade__group','reported_by').prefetch_related(Prefetch('work_links',to_attr='_prefetched_work_links')):
         role=row.planning_position or row.position
         mapping=getattr(role,'planning_mapping',None) if role else None
         group=mapping.brigade.group if mapping and mapping.brigade.group_id else None

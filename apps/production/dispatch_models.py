@@ -104,6 +104,8 @@ class EmployeeWorkLink(ActualHistoryMixin, BaseCompanyModel):
     work = models.ForeignKey('works.ProjectWork', on_delete=models.PROTECT)
     work_item = models.ForeignKey('works.ProjectWorkItem', on_delete=models.PROTECT, null=True, blank=True)
     fact = models.ForeignKey('production.DailyFact', on_delete=models.CASCADE, null=True, blank=True, related_name='employee_links')
+    assigned_individually = models.BooleanField(default=True)
+    crew_source = models.ForeignKey('production.ProductionDailyCrew', on_delete=models.SET_NULL, null=True, blank=True, related_name='materialized_employee_links')
 
     class Meta:
         ordering = ['pk']
@@ -168,6 +170,24 @@ class ProductionDailyCrewMember(BaseCompanyModel):
             raise ValidationError('Бригада и сотрудник другой компании.')
         if (self.crew.construction_object_id,self.crew.date,self.crew.shift)!=(self.activity.construction_object_id,self.activity.date,self.activity.shift):
             raise ValidationError('Сотрудник и бригада должны относиться к одному объекту, дню и смене.')
+
+
+class ProductionDailyCrewWorkLink(BaseCompanyModel):
+    """A work assigned to a daily crew, independently of member-level links."""
+    crew=models.ForeignKey(ProductionDailyCrew,on_delete=models.CASCADE,related_name='work_assignments')
+    fact=models.ForeignKey('production.DailyFact',on_delete=models.CASCADE,related_name='daily_crew_assignments')
+
+    class Meta:
+        ordering=['pk']
+        constraints=[models.UniqueConstraint(fields=['crew','fact'],name='unique_daily_crew_work_link')]
+
+    def clean(self):
+        super().clean()
+        if not self.crew_id or not self.fact_id:return
+        if self.crew.company_id!=self.company_id or self.fact.company_id!=self.company_id:
+            raise ValidationError('Бригада и работа другой компании.')
+        if (self.crew.construction_object_id,self.crew.date)!=(self.fact.project_work.section.construction_object_id,self.fact.date):
+            raise ValidationError('Работа не соответствует объекту и дате бригады.')
 
 
 class ProductionEntryDay(BaseCompanyModel):

@@ -7,7 +7,7 @@ from django import forms
 from django.contrib import messages
 from django.core.exceptions import ValidationError, PermissionDenied
 from django.db import transaction, IntegrityError
-from django.db.models import Q
+from django.db.models import Prefetch, Q
 from django.forms import BaseModelFormSet, modelformset_factory
 from django.shortcuts import render, redirect
 from django.http import JsonResponse
@@ -391,7 +391,7 @@ class DispatcherDayView(CompanyRequiredMixin,View):
             if prefix=='fuel':qs=qs.filter(equipment_ref='')
             if prefix=='equipment':qs=qs.select_related('equipment__type__parent__category','equipment__type__category','equipment__catalogue_group')
             if prefix=='labor':
-                qs=qs.select_related('employee__position__planning_mapping__brigade__group','position','planning_position').prefetch_related('work_links')
+                qs=qs.select_related('employee__position__planning_mapping__brigade__group','position','planning_position').prefetch_related(Prefetch('work_links',to_attr='_prefetched_work_links'))
                 if section=='works':qs=qs.exclude(labor_direction())
             initial=[]
             if prefix=='works':

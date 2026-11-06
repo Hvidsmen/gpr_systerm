@@ -10,6 +10,7 @@ from core.fact_edit_window import require_fact_day
 from core.permissions import require_roles
 from .forms import ObjectDateForm
 from .dispatch_models import EmployeeActivity, ProductionDailyCrew, ProductionDailyCrewMember
+from .crew_links import attach_member,detach_member,delete_crew_assignments
 
 
 EDIT_ROLES={'ADMIN','DISPATCHER','ALL_FACT_DISPATCHER'}
@@ -26,8 +27,8 @@ def _state(obj,day,message=''):
     people=list(EmployeeActivity.objects.filter(company=obj.company,construction_object=obj,date=day,entry_direction='works').select_related('employee','position').order_by('shift','employee__last_name','employee__first_name','pk'))
     memberships={row.activity_id:row.crew_id for row in ProductionDailyCrewMember.objects.filter(company=obj.company,activity__in=people)}
     crews=[]
-    for crew in ProductionDailyCrew.objects.filter(company=obj.company,construction_object=obj,date=day,is_active=True).prefetch_related('members').order_by('shift','number','pk'):
-        crews.append({'id':crew.pk,'number':crew.number,'shift':crew.shift,'name':crew.name,'members':[row.activity_id for row in crew.members.all()]})
+    for crew in ProductionDailyCrew.objects.filter(company=obj.company,construction_object=obj,date=day,is_active=True).prefetch_related('members','work_assignments').order_by('shift','number','pk'):
+        crews.append({'id':crew.pk,'number':crew.number,'shift':crew.shift,'name':crew.name,'members':[row.activity_id for row in crew.members.all()],'facts':[row.fact_id for row in crew.work_assignments.all()]})
     return {'crews':crews,'people':[{'id':row.pk,'name':str(row.employee),'position':str(row.position or row.employee.position or ''),'shift':row.shift,'crew':memberships.get(row.pk)} for row in people],'message':message}
 
 
@@ -53,16 +54,19 @@ def crews(request):
                 crew.name=str(data.get('name','')).strip()[:160];crew.full_clean();crew.save(update_fields=['name']);message='Название сохранено.'
             elif action=='delete':
                 crew=ProductionDailyCrew.objects.select_for_update().get(pk=data.get('crew'),company=obj.company,construction_object=obj,date=day,is_active=True)
-                crew.members.all().delete();crew.is_active=False;crew.save(update_fields=['is_active']);message=f'Бригада №{crew.number} удалена. Сотрудники перемещены в список «Без бригады».'
+                delete_crew_assignments(crew);crew.members.all().delete();crew.is_active=False;crew.save(update_fields=['is_active']);message=f'Бригада №{crew.number} удалена. Бригадные связи сняты, сотрудники перемещены в список «Без бригады».'
             elif action=='move':
                 activity=EmployeeActivity.objects.select_for_update().get(pk=data.get('activity'),company=obj.company,construction_object=obj,date=day,entry_direction='works')
                 crew_id=data.get('crew')
+                previous=ProductionDailyCrewMember.objects.filter(company=obj.company,activity=activity).select_related('crew').first()
                 if crew_id in (None,''):
-                    ProductionDailyCrewMember.objects.filter(company=obj.company,activity=activity).delete();message='Сотрудник перемещён в список «Без бригады».'
+                    if previous:detach_member(previous.crew,activity);previous.delete()
+                    message='Сотрудник перемещён в список «Без бригады». Бригадные связи сняты.'
                 else:
                     crew=ProductionDailyCrew.objects.get(pk=crew_id,company=obj.company,construction_object=obj,date=day,shift=activity.shift,is_active=True)
+                    if previous and previous.crew_id!=crew.pk:detach_member(previous.crew,activity)
                     membership,_=ProductionDailyCrewMember.objects.update_or_create(activity=activity,defaults={'company':obj.company,'crew':crew})
-                    membership.full_clean();message=f'Сотрудник перемещён в бригаду №{crew.number}.'
+                    membership.full_clean();attach_member(crew,activity);message=f'Сотрудник перемещён в бригаду №{crew.number}. Бригадные связи применены.'
             elif action=='bulk_move':
                 activity_ids=data.get('activities',[])
                 if not isinstance(activity_ids,list) or not activity_ids or len(activity_ids)>2000:raise ValueError
@@ -70,13 +74,18 @@ def crews(request):
                 if len(activities)!=len({int(pk) for pk in activity_ids}):raise ValidationError('Часть сотрудников уже удалена из факта. Обновите список.')
                 crew_id=data.get('crew')
                 if crew_id in (None,''):
+                    for membership in ProductionDailyCrewMember.objects.filter(company=obj.company,activity__in=activities).select_related('crew','activity'):
+                        detach_member(membership.crew,membership.activity)
                     ProductionDailyCrewMember.objects.filter(company=obj.company,activity__in=activities).delete()
                     message=f'Из бригад удалено сотрудников: {len(activities)}.'
                 else:
                     crew=ProductionDailyCrew.objects.get(pk=crew_id,company=obj.company,construction_object=obj,date=day,is_active=True)
                     if any(activity.shift!=crew.shift for activity in activities):raise ValidationError('В бригаду можно добавить сотрудников только той же смены.')
                     for activity in activities:
+                        previous=ProductionDailyCrewMember.objects.filter(company=obj.company,activity=activity).select_related('crew').first()
+                        if previous and previous.crew_id!=crew.pk:detach_member(previous.crew,activity)
                         ProductionDailyCrewMember.objects.update_or_create(activity=activity,defaults={'company':obj.company,'crew':crew})
+                        attach_member(crew,activity)
                     message=f'В бригаду №{crew.number} добавлено сотрудников: {len(activities)}.'
             elif action=='copy_previous':
                 if ProductionDailyCrew.objects.filter(company=obj.company,construction_object=obj,date=day,is_active=True).exists():
@@ -95,6 +104,9 @@ def crews(request):
                         else:skipped+=1
                 message=f'Бригады скопированы с {previous:%d.%m.%Y}: сотрудников {copied}.'+(f' Не перенесены отсутствующие на шаге «Люди»: {skipped}.' if skipped else '')
             else:raise ValueError
+            if action in {'delete','move','bulk_move'}:
+                from .collaboration import automatic_readiness
+                automatic_readiness(obj,day,request.user)
         return JsonResponse(_state(obj,day,message))
     except ProductionDailyCrew.DoesNotExist:return JsonResponse({'error':'Бригада уже изменена или удалена. Обновите данные.'},status=409)
     except EmployeeActivity.DoesNotExist:return JsonResponse({'error':'Сотрудник уже удалён из факта. Обновите данные.'},status=409)

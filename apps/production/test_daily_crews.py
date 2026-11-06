@@ -1,7 +1,10 @@
 from datetime import timedelta
 from django.test import TestCase
 from django.urls import reverse
-from .dispatch_models import EmployeeActivity, ProductionDailyCrew, ProductionDailyCrewMember
+from .dispatch_models import (EmployeeActivity, EmployeeWorkLink, ProductionDailyCrew,
+    ProductionDailyCrewMember, ProductionDailyCrewWorkLink)
+from .models import DailyFact
+from .crew_links import change_crew,change_individual
 
 
 class DailyCrewTests(TestCase):
@@ -14,6 +17,7 @@ class DailyCrewTests(TestCase):
         self.user=self.users['DISPATCHER'];self.client.force_login(self.user);self.url_crews=reverse('production:production_crews')
         self.first=EmployeeActivity.objects.create(company=self.company,construction_object=self.obj,date=self.day,shift=1,employee=self.employee,position=self.employee.position,entry_direction='works',assignment_reviewed=False,reported_by=self.user)
         self.second_person=EmployeeActivity.objects.create(company=self.company,construction_object=self.obj,date=self.day,shift=1,employee=self.cook,position=self.cook.position,entry_direction='works',assignment_reviewed=False,reported_by=self.user)
+        self.fact=DailyFact.objects.create(company=self.company,date=self.day,project_work=self.work,actual_quantity=1,reported_by=self.user)
 
     def post(self,action,**extra):
         return self.client.post(self.url_crews,{'construction_object':self.obj.pk,'date':str(self.day),'action':action,**extra},content_type='application/json')
@@ -59,3 +63,29 @@ class DailyCrewTests(TestCase):
         response=self.client.get(self.url,{'construction_object':self.obj.pk,'date':self.day,'section':'works'})
         self.assertContains(response,'3. Бригады (необязательно)');self.assertContains(response,'Создать бригаду')
         self.assertNotContains(response,'Бригадир')
+
+    def test_deleting_crew_removes_only_crew_origin_links(self):
+        crew=ProductionDailyCrew.objects.create(company=self.company,construction_object=self.obj,date=self.day,shift=1,number=1,reported_by=self.user)
+        for activity in [self.first,self.second_person]:ProductionDailyCrewMember.objects.create(company=self.company,crew=crew,activity=activity)
+        change_individual(self.first,self.fact,'add')
+        change_crew(self.first,crew,self.fact,'add');change_crew(self.second_person,crew,self.fact,'add')
+        response=self.post('delete',crew=crew.pk);self.assertEqual(response.status_code,200,response.content)
+        retained=EmployeeWorkLink.objects.get(activity=self.first);self.assertTrue(retained.assigned_individually);self.assertIsNone(retained.crew_source_id)
+        self.assertFalse(EmployeeWorkLink.objects.filter(activity=self.second_person).exists())
+        self.assertFalse(ProductionDailyCrewWorkLink.objects.filter(crew=crew).exists())
+
+    def test_existing_links_stay_individual_when_people_join_new_crew(self):
+        change_individual(self.first,self.fact,'add')
+        crew=self.post('create',shift=1).json()['crews'][0]
+        self.assertEqual(self.post('move',activity=self.first.pk,crew=crew['id']).status_code,200)
+        link=EmployeeWorkLink.objects.get(activity=self.first);self.assertTrue(link.assigned_individually);self.assertIsNone(link.crew_source_id)
+        self.assertFalse(ProductionDailyCrewWorkLink.objects.exists())
+
+    def test_new_member_inherits_explicit_crew_links_and_loses_them_on_exit(self):
+        crew=ProductionDailyCrew.objects.create(company=self.company,construction_object=self.obj,date=self.day,shift=1,number=1,reported_by=self.user)
+        ProductionDailyCrewMember.objects.create(company=self.company,crew=crew,activity=self.first)
+        change_crew(self.first,crew,self.fact,'add')
+        self.assertEqual(self.post('move',activity=self.second_person.pk,crew=crew.pk).status_code,200)
+        inherited=EmployeeWorkLink.objects.get(activity=self.second_person);self.assertFalse(inherited.assigned_individually);self.assertEqual(inherited.crew_source_id,crew.pk)
+        self.assertEqual(self.post('move',activity=self.second_person.pk,crew=None).status_code,200)
+        self.assertFalse(EmployeeWorkLink.objects.filter(activity=self.second_person).exists())

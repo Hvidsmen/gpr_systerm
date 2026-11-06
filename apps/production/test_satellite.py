@@ -49,7 +49,8 @@ class SatelliteProfileTests(TestCase):
 from unittest.mock import patch
 from django.core.exceptions import ValidationError
 from django.core.cache import cache
-from .dispatch_models import ProductionLinkReceipt,EmployeeWorkLink
+from .dispatch_models import (ProductionDailyCrew,ProductionDailyCrewMember,
+    ProductionDailyCrewWorkLink,ProductionLinkReceipt,EmployeeWorkLink)
 from .models import FactSectionDay
 
 
@@ -93,6 +94,13 @@ class SatelliteProtocolTests(TestCase):
         untouched=Employee.objects.create(company=self.company,last_name='Незатронутый',first_name='Сотрудник',position=self.employee.position)
         EmployeeActivity.objects.create(company=self.company,construction_object=self.obj,date=self.day,employee=untouched,position=untouched.position,assignment_reviewed=False,entry_direction='works',reported_by=self.user)
         response=self.send([self.command(action='remove')]);self.assertEqual({row['id'] for row in response.json()['people']},{self.person.pk})
+    def test_queued_crew_link_records_brigade_origin(self):
+        crew=ProductionDailyCrew.objects.create(company=self.company,construction_object=self.obj,date=self.day,shift=self.person.shift,number=1,reported_by=self.user)
+        ProductionDailyCrewMember.objects.create(company=self.company,crew=crew,activity=self.person)
+        response=self.send([self.command(crew=crew.pk)]);self.assertEqual(response.status_code,200,response.content)
+        link=EmployeeWorkLink.objects.get(activity=self.person,work=self.fact.project_work)
+        self.assertFalse(link.assigned_individually);self.assertEqual(link.crew_source_id,crew.pk)
+        self.assertTrue(ProductionDailyCrewWorkLink.objects.filter(crew=crew,fact=self.fact).exists())
     def test_zero_work_rejected_without_restore_and_other_operation_succeeds(self):
         self.fact.actual_quantity=0;self.fact.save()
         data=self.send([self.command(),self.command(fact=self.second_fact.pk)]).json()

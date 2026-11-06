@@ -8,7 +8,7 @@ from django.db.models import F
 from django.http import JsonResponse
 from core.fact_edit_window import require_fact_day
 from core.fact_history import history_actor
-from .dispatch_models import EmployeeActivity, EmployeeWorkLink, ProductionLinkReceipt
+from .dispatch_models import EmployeeActivity, EmployeeWorkLink, ProductionDailyCrew, ProductionLinkReceipt
 from .models import DailyFact
 
 
@@ -27,7 +27,8 @@ def execute(user,obj,day,command):
     if action=='mode':
         if command.get('mode') not in {'general','pending'}:raise ValidationError('Неизвестный вид занятости.')
         if command.get('revision')!=row.links_revision:raise ValidationError('Занятость уже изменена коллегой. Проверьте обновлённые связи и повторите действие.')
-        row.work_links.all().delete();row.general=command['mode']=='general';row.assignment_reviewed=row.general
+        from .crew_links import clear_individual
+        clear_individual(row);has_crew_links=row.work_links.exists();row.general=command['mode']=='general' and not has_crew_links;row.assignment_reviewed=has_crew_links or row.general
         row.work=None;row.work_item=None;row.links_revision+=1;row.save(update_fields=RELATION_FIELDS)
         return
     # Keep a valid legacy primary assignment when adding an independent second edge.
@@ -42,9 +43,13 @@ def execute(user,obj,day,command):
         if fact is None:raise ValidationError('Работа удалена из факта. Проверьте обновлённый список работ.')
         if edge['action']=='add' and fact.actual_quantity<=0:raise ValidationError('У работы нулевой факт. Связь не добавлена; сначала внесите выполненный объём.')
         resolved.append((edge['action'],fact))
+    crew=None
+    if command.get('crew') is not None:
+        crew=ProductionDailyCrew.objects.filter(pk=command['crew'],company=obj.company,construction_object=obj,date=day,is_active=True).first()
+        if crew is None:raise ValidationError('Бригада уже удалена или изменена.')
+    from .crew_links import change_crew,change_individual
     for action,fact in resolved:
-        if action=='add':EmployeeWorkLink.objects.get_or_create(company=obj.company,activity=row,work_id=fact.project_work_id,work_item_id=fact.work_item_id,fact=fact if fact.operational_key else None)
-        else:(row.work_links.filter(fact=fact) if fact.operational_key else row.work_links.filter(work_id=fact.project_work_id,work_item_id=fact.work_item_id,fact=None)).delete()
+        (change_crew(row,crew,fact,action) if crew else change_individual(row,fact,action))
     apply_relations(row)
 
 
@@ -61,7 +66,7 @@ def batch(request,data,obj,day):
             if not isinstance(source,dict):raise ValueError
             key=UUID(str(source.get('id')))
             if key in seen:raise ValueError
-            seen.add(key);command={name:source[name] for name in ('activity','action','fact','edges','mode','revision') if name in source}
+            seen.add(key);command={name:source[name] for name in ('activity','action','fact','edges','mode','revision','crew') if name in source}
             if type(command.get('activity')) is not int or command['activity']<=0:raise ValueError
             if command.get('action') not in {'add','remove','delta','mode'}:raise ValueError
             digest=hashlib.sha256(json.dumps(command,sort_keys=True,separators=(',',':')).encode()).hexdigest()

@@ -15,7 +15,7 @@ from core.fact_history import history_actor
 from core.permissions import require_roles
 from .forms import ObjectDateForm
 from .entry_concurrency import sqlite_serialized
-from .dispatch_models import (EmployeeActivity, EmployeeWorkLink, ProductionPresence,
+from .dispatch_models import (EmployeeActivity, EmployeeWorkLink, ProductionDailyCrew, ProductionPresence,
     WorkFactClaim, EmployeeFactClaim, FactSectionDay, ProductionEntryDay)
 from .models import DailyFact
 from .production_entry import targets, token, report_data
@@ -125,15 +125,19 @@ def links(request):
                 if edge_action=='add' and fact.actual_quantity<=0:
                     return JsonResponse({'error':'У работы нулевой факт. Сначала введите выполненный объём больше нуля, затем добавьте связь.','report':report_data(obj,day)},status=409)
                 resolved.append((edge_action,fact))
+            crew=None
+            if data.get('crew') is not None:
+                crew=ProductionDailyCrew.objects.filter(pk=data['crew'],company=obj.company,construction_object=obj,date=day,is_active=True).first()
+                if crew is None:raise ValidationError('Бригада уже удалена или изменена.')
+            from .crew_links import change_crew,change_individual
             for edge_action,fact in resolved:
-                if edge_action=='add':
-                    EmployeeWorkLink.objects.get_or_create(company=obj.company,activity=person,work_id=fact.project_work_id,work_item_id=fact.work_item_id,fact=fact if fact.operational_key else None)
-                else:(person.work_links.filter(fact=fact) if fact.operational_key else person.work_links.filter(work_id=fact.project_work_id,work_item_id=fact.work_item_id,fact=None)).delete()
+                (change_crew(person,crew,fact,edge_action) if crew else change_individual(person,fact,edge_action))
             if action=='mode':
                 if data.get('mode') not in {'pending','general'}:raise ValueError
-                person.work_links.all().delete()
-                person.general=data['mode']=='general';person.work=None;person.work_item=None
-                person.assignment_reviewed=person.general;person.links_revision+=1
+                from .crew_links import clear_individual
+                clear_individual(person);has_crew_links=person.work_links.exists()
+                person.general=data['mode']=='general' and not has_crew_links;person.work=None;person.work_item=None
+                person.assignment_reviewed=has_crew_links or person.general;person.links_revision+=1
                 person.save(update_fields=RELATION_FIELDS)
             else:apply_relations(person)
             automatic_readiness(obj,day,request.user)
