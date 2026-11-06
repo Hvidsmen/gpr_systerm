@@ -272,6 +272,8 @@ class WorkEntryPresentationTests(TestCase):
         self.assertIn("addEventListener('contextmenu'",graph)
         self.assertIn("Оставить карточку и её связи",graph)
         self.assertIn("Сбросить фильтр",graph)
+        self.assertIn("function openEdgeContext",graph)
+        self.assertIn("menuAction('Удалить связь'",graph)
         live=(Path(__file__).resolve().parents[2]/'static/production/production_live.js').read_text(encoding='utf-8')
         self.assertIn("person.links_revision)<currentRevision",live)
         self.assertIn("setValues(row,{work_targets:person.targets",live)
