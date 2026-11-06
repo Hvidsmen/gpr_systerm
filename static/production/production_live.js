@@ -40,7 +40,7 @@
  }
  function merge(report){canonical=report;digest='';publish();}
  form.productionApplyReport=merge;
- outbox=new window.ProductionLinksOutbox(form,{digest:()=>digest,ackDigest:value=>{digest=value;},changed:()=>{lastActivity=Date.now();},people:(people,removed)=>{
+ outbox=new window.ProductionLinksOutbox(form,{digest:()=>digest,ackDigest:value=>{digest=value;},changed:()=>{lastActivity=Date.now();published='';publish();},people:(people,removed)=>{
   const byId=new Map(canonical.people.map(p=>[Number(p.id),p]));for(const person of people){const row=rows().find(item=>item.matches('[data-production-person]')&&Number(field(item,'id')?.value)===Number(person.id)),current=byId.get(Number(person.id)),currentRevision=Number(row?.dataset.linksRevision||current?.links_revision||0);if(Number(person.links_revision)<currentRevision)continue;if(current)byId.set(Number(person.id),{...current,...person});if(row){row.dataset.linksRevision=person.links_revision;row.dataset.pendingLinks=0;setValues(row,{work_targets:person.targets,work_mode:person.general?'general':person.reviewed?'works':'pending',general:person.general},true);}}
   for(const id of removed)byId.delete(Number(id));canonical={...canonical,people:[...byId.values()]};published='';form.dispatchEvent(new CustomEvent('production-report-update',{detail:canonical}));
  }});

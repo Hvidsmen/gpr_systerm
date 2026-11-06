@@ -94,13 +94,13 @@
     try{await save(selected);failed=false;retryAttempt=0;}catch(error){failed=true;selected.forEach(row=>rowMessage(row,row.querySelector('[data-error]')?.textContent||error.message,true));message(error.message,true);if((error.retryable||error instanceof TypeError)&&retryAttempt<3){retryAttempt++;clearTimeout(timer);timer=setTimeout(()=>{pending=true;flush();},1000*Math.pow(2,retryAttempt));}break;}}
    return !failed;
   })();
-  try{return await running;}finally{running=null;}
+  try{return await running;}finally{running=null;if(pending&&dirty().length){clearTimeout(timer);timer=setTimeout(()=>flush(),0);}}
  }
  async function flushPeople(){
   clearTimeout(timer);if(running)await running;
   const selected=dirty().filter(isPerson);if(!selected.length){if(dirty().length)timer=setTimeout(()=>flush(),700);return true;}
   running=(async()=>{try{await save(selected);return true;}catch(error){selected.forEach(row=>rowMessage(row,error.message,true));message(error.message,true);return false;}})();
-  try{return await running;}finally{running=null;if(dirty().length){message('Сотрудники обработаны. Есть несохранённые изменения.',true);timer=setTimeout(()=>flush(),700);}}
+  try{return await running;}finally{running=null;if(dirty().length){message('Сотрудники обработаны. Есть несохранённые изменения.',true);pending=true;clearTimeout(timer);timer=setTimeout(()=>flush(),700);}}
  }
  form.addEventListener('production-links-state',()=>{if(lastMessage)message(lastMessage,lastError);});
  window.productionAutoSave={whenIdle:()=>running||Promise.resolve(true),flush,flushPeople,reindex,fingerprint,capture,get running(){return Boolean(running);},get pending(){return pending||Boolean(running)||dirty().length>0;}};

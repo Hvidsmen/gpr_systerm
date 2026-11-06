@@ -18,8 +18,9 @@
  }
  function update(row,values,mode){operation(row,{action:'mode',mode});}
  async function connect(token,row){
-  const fact=saved.find(w=>factToken(w)===token);
-  if(!fact){message.textContent='Дождитесь автоматического сохранения объёма работы.';return;}
+  let fact=saved.find(w=>factToken(w)===token);
+  if(!fact&&window.productionAutoSave?.pending){message.textContent='Сохраняем объём работы…';await window.productionAutoSave.flush();fact=saved.find(w=>factToken(w)===token);}
+  if(!fact){message.textContent='Работа ещё не сохранена. Проверьте сообщение в её строке и повторите связь.';return;}
   const remove=targets(row).includes(token);if(!remove&&Number(fact.actual_quantity)<=0){message.textContent='У работы нулевой факт. Сначала введите выполненный объём больше нуля.';return;}active=null;activePerson=null;activePersonRow=null;highlight(null,null);await operation(row,{action:remove?'remove':'add',fact:fact.id});
  }
  function button(label,action){const b=document.createElement('button');b.type='button';b.className='btn btn-sm btn-outline-primary';b.textContent=label;b.addEventListener('click',event=>{event.stopPropagation();action();});return b;}
