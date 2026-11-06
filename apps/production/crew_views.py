@@ -63,6 +63,21 @@ def crews(request):
                     crew=ProductionDailyCrew.objects.get(pk=crew_id,company=obj.company,construction_object=obj,date=day,shift=activity.shift,is_active=True)
                     membership,_=ProductionDailyCrewMember.objects.update_or_create(activity=activity,defaults={'company':obj.company,'crew':crew})
                     membership.full_clean();message=f'Сотрудник перемещён в бригаду №{crew.number}.'
+            elif action=='bulk_move':
+                activity_ids=data.get('activities',[])
+                if not isinstance(activity_ids,list) or not activity_ids or len(activity_ids)>2000:raise ValueError
+                activities=list(EmployeeActivity.objects.select_for_update().filter(pk__in=activity_ids,company=obj.company,construction_object=obj,date=day,entry_direction='works'))
+                if len(activities)!=len({int(pk) for pk in activity_ids}):raise ValidationError('Часть сотрудников уже удалена из факта. Обновите список.')
+                crew_id=data.get('crew')
+                if crew_id in (None,''):
+                    ProductionDailyCrewMember.objects.filter(company=obj.company,activity__in=activities).delete()
+                    message=f'Из бригад удалено сотрудников: {len(activities)}.'
+                else:
+                    crew=ProductionDailyCrew.objects.get(pk=crew_id,company=obj.company,construction_object=obj,date=day,is_active=True)
+                    if any(activity.shift!=crew.shift for activity in activities):raise ValidationError('В бригаду можно добавить сотрудников только той же смены.')
+                    for activity in activities:
+                        ProductionDailyCrewMember.objects.update_or_create(activity=activity,defaults={'company':obj.company,'crew':crew})
+                    message=f'В бригаду №{crew.number} добавлено сотрудников: {len(activities)}.'
             elif action=='copy_previous':
                 if ProductionDailyCrew.objects.filter(company=obj.company,construction_object=obj,date=day,is_active=True).exists():
                     return JsonResponse(_state(obj,day,'На выбранный день бригады уже созданы. Удалите их перед копированием, если хотите заменить состав.'))

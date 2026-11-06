@@ -33,6 +33,15 @@ class DailyCrewTests(TestCase):
         response=self.post('move',activity=self.first.pk,crew=crew['id']);self.assertEqual(response.status_code,409)
         self.client.force_login(self.users['PERSONNEL_DISPATCHER']);self.assertEqual(self.post('create',shift=1).status_code,403)
 
+    def test_bulk_move_adds_and_removes_selected_people(self):
+        crew=self.post('create',shift=1).json()['crews'][0]
+        response=self.post('bulk_move',activities=[self.first.pk,self.second_person.pk],crew=crew['id'])
+        self.assertEqual(response.status_code,200,response.content)
+        self.assertEqual(ProductionDailyCrewMember.objects.filter(crew_id=crew['id']).count(),2)
+        response=self.post('bulk_move',activities=[self.first.pk,self.second_person.pk],crew=None)
+        self.assertEqual(response.status_code,200,response.content)
+        self.assertFalse(ProductionDailyCrewMember.objects.exists())
+
     def test_copy_previous_maps_only_people_already_entered_today(self):
         previous=self.day-timedelta(days=1)
         old_first=EmployeeActivity.objects.create(company=self.company,construction_object=self.obj,date=previous,shift=1,employee=self.employee,position=self.employee.position,entry_direction='works',reported_by=self.user)
