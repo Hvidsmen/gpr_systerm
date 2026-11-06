@@ -5,6 +5,7 @@
   </div>
   {% if editable %}<div class="d-flex gap-2 align-items-end flex-wrap my-3"><label>Смена<select class="form-select" data-crew-new-shift><option value="1">День</option><option value="2">Ночь</option></select></label><label class="flex-grow-1">Название <span class="text-muted">(необязательно)</span><input class="form-control" maxlength="160" data-crew-new-name placeholder="Например, электромонтажники"></label><button type="button" class="btn btn-primary" data-crew-create>Создать бригаду</button></div>{% endif %}
   <p class="small" data-crews-state role="status" aria-live="polite">Загрузка бригад…</p>
+  <div class="d-flex gap-2 mb-2"><button type="button" class="btn btn-sm btn-outline-secondary" data-crews-expand>Развернуть все</button><button type="button" class="btn btn-sm btn-outline-secondary" data-crews-collapse>Свернуть все</button></div>
   <div class="production-crews-grid" data-crews-list></div>
 </section>
-<script src="{% static 'production/production_crews.js' %}?v=20261106-inline-bulk" defer></script>
+<script src="{% static 'production/production_crews.js' %}?v=20261106-collapse" defer></script>
