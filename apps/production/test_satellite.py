@@ -96,11 +96,15 @@ class SatelliteProtocolTests(TestCase):
         response=self.send([self.command(action='remove')]);self.assertEqual({row['id'] for row in response.json()['people']},{self.person.pk})
     def test_queued_crew_link_records_brigade_origin(self):
         crew=ProductionDailyCrew.objects.create(company=self.company,construction_object=self.obj,date=self.day,shift=self.person.shift,number=1,reported_by=self.user)
-        ProductionDailyCrewMember.objects.create(company=self.company,crew=crew,activity=self.person)
-        response=self.send([self.command(crew=crew.pk)]);self.assertEqual(response.status_code,200,response.content)
+        employee=Employee.objects.create(company=self.company,last_name='Второй',first_name='Участник',position=self.employee.position)
+        other=EmployeeActivity.objects.create(company=self.company,construction_object=self.obj,date=self.day,shift=self.person.shift,employee=employee,position=employee.position,assignment_reviewed=False,entry_direction='works',reported_by=self.user)
+        for activity in [self.person,other]:ProductionDailyCrewMember.objects.create(company=self.company,crew=crew,activity=activity)
+        response=self.send([self.command(crew=crew.pk),self.command(activity=other.pk,crew=crew.pk)]);self.assertEqual(response.status_code,200,response.content)
         link=EmployeeWorkLink.objects.get(activity=self.person,work=self.fact.project_work)
         self.assertFalse(link.assigned_individually);self.assertEqual(link.crew_source_id,crew.pk)
         self.assertTrue(ProductionDailyCrewWorkLink.objects.filter(crew=crew,fact=self.fact).exists())
+        response=self.send([self.command(action='remove',crew=crew.pk),self.command(activity=other.pk,action='remove',crew=crew.pk)]);self.assertEqual(response.status_code,200,response.content)
+        self.assertFalse(ProductionDailyCrewWorkLink.objects.filter(crew=crew,fact=self.fact).exists());self.assertFalse(EmployeeWorkLink.objects.filter(activity__in=[self.person,other],work=self.fact.project_work).exists())
     def test_zero_work_rejected_without_restore_and_other_operation_succeeds(self):
         self.fact.actual_quantity=0;self.fact.save()
         data=self.send([self.command(),self.command(fact=self.second_fact.pk)]).json()
