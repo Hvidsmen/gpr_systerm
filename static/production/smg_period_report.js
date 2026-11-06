@@ -23,7 +23,7 @@
  }
  button.addEventListener('click',load);
  panel.addEventListener('click',event=>{const toggle=event.target.closest('[data-period-days-toggle]');if(toggle&&!busy){showDays=toggle.getAttribute('aria-pressed')!=='true';load();}});
- form.addEventListener('production-step-change',event=>{if(event.detail===5)load();});
+ form.addEventListener('production-step-change',event=>{if(event.detail===6)load();});
  // employee_graph initializes before this script.
  if(!panel.hidden)load();
 })();

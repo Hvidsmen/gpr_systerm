@@ -297,6 +297,10 @@ class WorkEntryPresentationTests(TestCase):
         template=(Path(__file__).resolve().parents[2]/'templates/production/_employee_graph.html').read_text(encoding='utf-8')
         self.assertIn('graph-lines-visible',template)
         self.assertNotIn('data-graph-lines-toggle',template)
+        daily=(Path(__file__).resolve().parents[2]/'static/production/daily_summary_report.js').read_text(encoding='utf-8')
+        period=(Path(__file__).resolve().parents[2]/'static/production/smg_period_report.js').read_text(encoding='utf-8')
+        self.assertIn('if(event.detail===5){renderSummary();load();}',daily)
+        self.assertIn('if(event.detail===6)load()',period)
 
     def test_work_screen_batches_expensive_refreshes_and_exposes_performance_metrics(self):
         root=Path(__file__).resolve().parents[2]/'static/production'

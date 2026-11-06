@@ -21,5 +21,5 @@
   }catch(error){state.textContent=error.message+(content.children.length?' Ниже остаётся предыдущий результат.':'');}
   finally{busy=false;button.disabled=false;content.removeAttribute('aria-busy');}
  }
- button.addEventListener('click',load);form.addEventListener('change',renderSummary);form.addEventListener('production-report-update',renderSummary);form.addEventListener('production-step-change',event=>{if(event.detail===4){renderSummary();load();}});renderSummary();if(!panel.hidden)load();
+ button.addEventListener('click',load);form.addEventListener('change',renderSummary);form.addEventListener('production-report-update',renderSummary);form.addEventListener('production-step-change',event=>{if(event.detail===5){renderSummary();load();}});renderSummary();if(!panel.hidden)load();
 })();
