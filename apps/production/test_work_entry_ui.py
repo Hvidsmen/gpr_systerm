@@ -265,6 +265,7 @@ class WorkEntryPresentationTests(TestCase):
         self.assertIn("syncGraph(works,people.map(person=>person.row))",graph)
         self.assertIn("function renderCrews()",graph)
         self.assertIn("async function connectCrew",graph)
+        self.assertIn("member.person?.row||",graph)
         self.assertIn("employee-graph-crew",graph)
         self.assertIn("details.open?crew.common",graph)
         self.assertIn("suppressedMemberLinks.has(activity+':'+token)",graph)
