@@ -179,10 +179,6 @@ class MovementForm(forms.Form):
         if employees:
             if data.get('kind')=='ARRIVAL' and employees.filter(is_active=False).exists():
                 self.add_error('employees','Для заезда выберите активных сотрудников.')
-            elif data.get('kind') in {'DEPARTURE','TRANSFER','DISMISSAL'}:
-                from .housing import present_stays
-                ids=present_stays(self.company,data.get('date') or self.initial.get('date')).filter(camp=camp).values('person__employee_id')
-                if employees.exclude(pk__in=ids).exists():self.add_error('employees','Для выезда или перевода выберите сотрудников, находящихся в этом ВЖГ на выбранную дату.')
         if data.get('kind')=='DEPARTURE' and data.get('destination')=='CAMP':data['kind']='TRANSFER'
         if data.get('kind')=='DISMISSAL':data['kind']='DEPARTURE';data['destination']='DISMISSAL'
         if data.get('kind')=='TRANSFER' and not data.get('target'):self.add_error('target','Выберите ВЖГ назначения.')

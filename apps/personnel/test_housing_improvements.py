@@ -4,7 +4,7 @@ from django.urls import reverse
 from .test_housing import HousingTests
 from .housing_views import roster_rows
 from . import housing
-from .models import HousingEvent
+from .models import HousingEvent,MovementReviewRequest
 
 
 class HousingImprovementsTests(TestCase):
@@ -127,8 +127,34 @@ class MovementScopeTests(TestCase):
         token=response.context['form'].initial['personal_scope']
         response=self.client.post(reverse('personnel:housing'),{**common,'personal_scope':token})
         self.assertEqual(response.status_code,302)
-        self.stay.refresh_from_db();self.assertEqual(self.stay.departed_on,self.day)
+        self.stay.refresh_from_db();self.assertIsNone(self.stay.departed_on)
         self.assertIsNone(self.second_person.stays.get().departed_on)
+        self.assertTrue(MovementReviewRequest.objects.filter(person=self.person,kind='DEPARTURE').exists())
+        self.assertFalse(MovementReviewRequest.objects.filter(person=self.second_person).exists())
+
+    def test_personnel_movement_window_is_ninety_days_and_future_is_closed(self):
+        from django.utils import timezone
+        today=timezone.localdate()
+        self.assertTrue(housing.can_edit_movement_day(self.hr,today-timedelta(days=90),today=today))
+        self.assertFalse(housing.can_edit_movement_day(self.hr,today-timedelta(days=91),today=today))
+        self.assertFalse(housing.can_edit_movement_day(self.hr,today+timedelta(days=1),today=today))
+
+    def test_extended_backdate_requires_reason(self):
+        from django.core.exceptions import ValidationError
+        old_day=self.day-timedelta(days=2)
+        with self.assertRaisesMessage(ValidationError,'комментарий-основание'):
+            housing.move(self.hr,'DEPARTURE',self.a,old_day,[self.person])
+
+    def test_bulk_operation_saves_valid_employee_and_retains_invalid_with_reason(self):
+        saved,excluded=housing.process_moves_partially(
+            housing.move,self.hr,'DEPARTURE',self.a,self.day,[self.person,self.second_person],
+            employees=[self.employee,self.second_employee],snapshot=housing.movement_snapshot(self.hr),
+            comment='',departure_destination='REST')
+        self.assertEqual(saved,[self.employee])
+        self.assertEqual([row['employee'] for row in excluded],[self.second_employee])
+        self.assertIn('не находится',excluded[0]['reason'])
+        self.stay.refresh_from_db();self.assertEqual(self.stay.departed_on,self.day)
+        self.assertFalse(self.second_person.stays.exists())
     def test_initial_departure_supports_backdate_without_inventing_arrival(self):
         from .models import CampStay,StaffingSlot
         StaffingSlot.objects.create(company=self.company,person=self.second_person,group=self.group,pattern=self.pattern,housing_camp=self.a,status='МО')

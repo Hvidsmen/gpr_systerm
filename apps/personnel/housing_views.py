@@ -143,7 +143,7 @@ def workspace(request, movements=False):
     setup_direct=request.method=='POST' and workflow_action=='move' and request.user.role.code=='PERSONNEL_DISPATCHER' and request.POST.get('direct_fact') in {'1','on','true'}
     if request.method=='POST' and workflow_action=='move':
         try:
-            if not setup_direct:require_fact_day(request.user,day)
+            housing.require_movement_day(request.user,day)
         except ValidationError as exc:raise PermissionDenied('; '.join(exc.messages))
     kind=request.GET.get('action','ARRIVAL');kind=kind if kind in {'ARRIVAL','DEPARTURE','TRANSFER','DISMISSAL'} else 'ARRIVAL'
     selected_employee=request.GET.get('employee','')
@@ -189,6 +189,7 @@ def workspace(request, movements=False):
             return redirect(reverse('personnel:movements')+'#recommendations-'+(recommendation_kind.lower() if recommendation_kind in {'ARRIVAL','DEPARTURE'} else 'arrival'))
     form=MovementForm(request.POST if request.method=='POST' and workflow_action=='move' else None,company=request.user.company,camp=camp,day=day,fixed_employee=fixed_employee,allow_direct=request.user.role.code=='PERSONNEL_DISPATCHER',
         initial={'personal_scope':personal_token,'kind':kind,'date':day,'camp':None if request.GET.get('choose_camp')=='1' and kind=='ARRIVAL' else camp.pk,'snapshot':housing.movement_snapshot(request.user),'employees':[selected_employee] if selected_employee.isdigit() else []})
+    movement_exclusions=[]
     if request.method=='POST' and workflow_action=='move' and form.is_valid():
         try:
             selected=form.cleaned_data['employees'];arrival=form.cleaned_data['kind']=='ARRIVAL'
@@ -196,26 +197,32 @@ def workspace(request, movements=False):
             direct=bool(form.cleaned_data.get('direct_fact'))
             operation=housing.move if direct or request.user.role.code!='PERSONNEL_DISPATCHER' else housing.request_moves
             options={'setup_direct':True} if direct else {}
-            count=operation(request.user,form.cleaned_data['kind'],camp,form.cleaned_data['date'],people,
-                employees=selected if arrival else (),target=form.cleaned_data.get('target'),comment=form.cleaned_data['comment'],snapshot=form.cleaned_data['snapshot'],departure_destination='DISMISSAL' if form.cleaned_data.get('destination')=='DISMISSAL' else 'REST',**options)
+            saved,movement_exclusions=housing.process_moves_partially(operation,request.user,form.cleaned_data['kind'],camp,form.cleaned_data['date'],people,
+                employees=selected,target=form.cleaned_data.get('target'),comment=form.cleaned_data['comment'],snapshot=form.cleaned_data['snapshot'],departure_destination='DISMISSAL' if form.cleaned_data.get('destination')=='DISMISSAL' else 'REST',**options)
         except (ValidationError,IntegrityError) as exc:form.add_error(None,'; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Размещение изменилось одновременно с вашим вводом. Обновите список.')
         else:
-            messages.success(request,(f'Факт сохранён напрямую, без заявки. Сотрудников: {count}.' if direct else f'Заявка отправлена в перевахту. Сотрудников: {count}.' if request.user.role.code=='PERSONNEL_DISPATCHER' else f'Перемещение сохранено. Сотрудников: {count}.'))
+            count=len(saved)
+            messages.success(request,f'Сохранено сотрудников: {count}. Исключено: {len(movement_exclusions)}.')
+            for row in movement_exclusions:messages.warning(request,f'{row["employee"].display_name}: {row["reason"]}')
             from .rotation_calendar import cycle_definition,effective_schedule
             missing=0
-            for person in Person.objects.filter(company=request.user.company,employee__in=selected).select_related('employee','schedule_slot__pattern'):
+            for person in Person.objects.filter(company=request.user.company,employee__in=saved).select_related('employee','schedule_slot__pattern'):
                 assigned=effective_schedule(housing.schedule_slot(person),person)
                 if not (assigned and assigned.pattern_id and cycle_definition(assigned.pattern)):missing+=1
             if missing:messages.warning(request,f'У {missing} сотрудников цикл вахта/отдых не задан. Укажите его через «Изменить график»; прогноз для них пока не пересчитан.')
-            return redirect((reverse('personnel:movements')+'?camp='+str(camp.pk)+'&date='+str(form.cleaned_data['date'])+'#movement') if request.resolver_match.url_name=='movements' else camp_url(camp)+'#roster')
+            if not movement_exclusions:
+                return redirect((reverse('personnel:movements')+'?camp='+str(camp.pk)+'&date='+str(form.cleaned_data['date'])+'#movement') if request.resolver_match.url_name=='movements' else camp_url(camp)+'#roster')
+            retry=request.POST.copy();retry.setlist('employees',[str(row['employee'].pk) for row in movement_exclusions]);retry['snapshot']=housing.movement_snapshot(request.user)
+            form=MovementForm(retry,company=request.user.company,camp=camp,day=day,fixed_employee=fixed_employee,allow_direct=request.user.role.code=='PERSONNEL_DISPATCHER')
     if movements:
         from .movement_recommendations import build
         recommendations=build(request.user.company,recommendation_day)
         events=HousingEvent.objects.filter(company=request.user.company).filter(Q(from_camp__in=selected_camps)|Q(to_camp__in=selected_camps)).select_related('person','from_camp','to_camp','recorded_by')[:50]
         return render(request,template,{**extra,'rotation_filter':selector,'day':day,'camp':camp,'camps':camps,'selected_camps':selected_camps,'form':form,'events':events,
+            'movement_exclusions':movement_exclusions,
             'arrival_recommendations':recommendations['ARRIVAL'],'departure_recommendations':recommendations['DEPARTURE'],
             'arrival_recommendation_count':len(recommendations['ARRIVAL']),'departure_recommendation_count':len(recommendations['DEPARTURE']),
-            'arrival_recommendation_form':arrival_recommendation_form,'departure_recommendation_form':departure_recommendation_form,**window_context(request.user,day)})
+            'arrival_recommendation_form':arrival_recommendation_form,'departure_recommendation_form':departure_recommendation_form,**housing.movement_window_context(request.user,day)})
     values=selector.cleaned_data
     selected_camp_list=list(selected_camps)
     rows,days,rotation_stats=rotation_rows(request.user.company,selected_camp_list,day,query=values.get('q',''),state=values.get('state',''),include_unassigned=not values.get('construction_object') and not values.get('camps'))

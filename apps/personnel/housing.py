@@ -2,16 +2,52 @@
 
 from core.fact_history import with_history_actor
 from core.fact_edit_window import require_fact_day
-from datetime import date
+from datetime import date, timedelta
 from django.core import signing
 from django.core.exceptions import ValidationError
-from django.db import transaction
+from django.db import transaction, IntegrityError
 from django.db.models import Q, F, Count, Max
 from django.utils import timezone
 from apps.resources.models import Employee
 from .models import Camp, CampObjectLink, CampStay, HousingEvent, MovementReviewRequest, Person, StaffingSlot, Board, StaffingGroup
 
 SALT='personnel-camp-movement-v1'
+MOVEMENT_BACKDATE_DAYS=90
+
+
+def can_edit_movement_day(user,day,*,today=None):
+    """Movement-specific window: personnel dispatchers may backdate 90 days."""
+    today=today or timezone.localdate()
+    if day is None or day>today:return False
+    from core.permissions import role_code
+    if role_code(user) in {'ADMIN','PERSONNEL_DISPATCHER'}:
+        return day>=today-timedelta(days=MOVEMENT_BACKDATE_DAYS) or role_code(user)=='ADMIN'
+    from core.fact_edit_window import can_edit_fact_day
+    return can_edit_fact_day(user,day,today=today)
+
+
+def require_movement_day(user,day):
+    if can_edit_movement_day(user,day):return
+    today=timezone.localdate()
+    if day and day>today:raise ValidationError('Будущее фактическое перемещение сохранить нельзя.')
+    raise ValidationError(f'Обычный диспетчер может оформить перемещение не более чем за {MOVEMENT_BACKDATE_DAYS} дней назад.')
+
+
+def movement_window_context(user,day):
+    today=timezone.localdate();editable=can_edit_movement_day(user,day,today=today)
+    if day>today:message='Будущая дата доступна только для просмотра.'
+    elif editable:
+        message=(f'Фактические перемещения доступны за последние {MOVEMENT_BACKDATE_DAYS} дней. '
+                 'Для даты старше вчерашней укажите комментарий-основание.')
+    else:message=f'Дата старше {MOVEMENT_BACKDATE_DAYS} дней. Доступен только просмотр.'
+    return {'fact_day_editable':editable,'fact_edit_deadline':today,'fact_window_message':message}
+
+
+def require_backdate_comment(day,comment):
+    # Yesterday remains inside the ordinary correction window. A reason is
+    # mandatory when the dispatcher uses the extended historical window.
+    if day<timezone.localdate()-timedelta(days=1) and not comment.strip():
+        raise ValidationError('Для перемещения задним числом укажите комментарий-основание.')
 
 
 def present_stays(company, day):
@@ -131,8 +167,9 @@ def move(user,kind,camp,day,people,employees=(),target=None,comment='',snapshot=
     if setup_direct:
         from core.permissions import role_code
         if role_code(user)!='PERSONNEL_DISPATCHER':raise ValidationError('Прямой ввод доступен только диспетчеру по персоналу.')
-        if day>timezone.localdate():raise ValidationError('Будущий фактический заезд или выезд сохранить нельзя.')
-    else:require_fact_day(user,day)
+        require_movement_day(user,day)
+    else:require_movement_day(user,day)
+    require_backdate_comment(day,comment)
     if kind not in {'ARRIVAL','DEPARTURE','TRANSFER'}:raise ValidationError('Неизвестное действие.')
     if kind=='DEPARTURE' and departure_destination not in {'REST','DISMISSAL'}:raise ValidationError('Выберите причину выезда.')
     if kind=='TRANSFER' and (not target or target.pk==camp.pk):raise ValidationError('Выберите другой ВЖГ для перевода.')
@@ -155,7 +192,7 @@ def move(user,kind,camp,day,people,employees=(),target=None,comment='',snapshot=
     camp=locked_camps[camp.pk];target=locked_camps[target.pk] if target else None
     if kind=='ARRIVAL' and not camp.is_active or target and not target.is_active:raise ValidationError('Для заезда выберите действующий ВЖГ.')
     for person in locked:
-        if not setup_direct:require_fact_day(user,day)
+        if not setup_direct:require_movement_day(user,day)
         current=present_stays(user.company,day).filter(person=person).first()
         if kind=='ARRIVAL':
             if current:raise ValidationError(f'{person}: уже находится в {current.camp}. Используйте перевод.')
@@ -166,14 +203,14 @@ def move(user,kind,camp,day,people,employees=(),target=None,comment='',snapshot=
             stay=current
             if kind=='TRANSFER':stay=CampStay.objects.create(company=user.company,person=person,camp=target,arrived_on=day,comment=comment,recorded_by=user)
         HousingEvent.objects.create(company=user.company,person=person,date=day,kind=kind,departure_destination=departure_destination if kind=='DEPARTURE' else 'CAMP' if kind=='TRANSFER' else '',from_camp=camp if kind!='ARRIVAL' else None,to_camp=target if kind=='TRANSFER' else camp if kind=='ARRIVAL' else None,stay=stay,comment=comment,recorded_by=user)
-    if not setup_direct:require_fact_day(user,day)
+    if not setup_direct:require_movement_day(user,day)
     return len(locked)
 
 
 @transaction.atomic
 def request_moves(user,kind,camp,day,people,employees=(),target=None,comment='',snapshot=None,departure_destination='REST'):
     if camp.company_id!=user.company_id or target and target.company_id!=user.company_id:raise ValidationError('ВЖГ другой компании.')
-    require_fact_day(user,day)
+    require_movement_day(user,day);require_backdate_comment(day,comment)
     if kind not in {'ARRIVAL','DEPARTURE','TRANSFER'}:raise ValidationError('Неизвестное действие.')
     if kind=='TRANSFER' and (not target or target.pk==camp.pk):raise ValidationError('Выберите другой ВЖГ для перевода.')
     selected={p.pk:p for p in people}
@@ -199,6 +236,26 @@ def request_moves(user,kind,camp,day,people,employees=(),target=None,comment='',
             travel_status='Прибыл' if kind=='ARRIVAL' else 'Убыл',note=comment))
     for row in rows:row.save()
     return len(rows)
+
+
+def process_moves_partially(operation,user,kind,camp,day,people,employees=(),**options):
+    """Save each selected employee independently and report rejected rows."""
+    selected=[]
+    for person in people:selected.append((person.employee,person))
+    known={person.employee_id for _,person in selected if person.employee_id}
+    for employee in employees:
+        if employee.pk not in known:selected.append((employee,None))
+    saved=[];excluded=[]
+    for employee,person in selected:
+        try:
+            count=operation(user,kind,camp,day,[person] if person else [],employees=[] if person else [employee],**options)
+        except ValidationError as exc:
+            excluded.append({'employee':employee,'reason':'; '.join(exc.messages)})
+        except IntegrityError:
+            excluded.append({'employee':employee,'reason':'Данные сотрудника изменились одновременно с сохранением. Повторите операцию.'})
+        else:
+            if count:saved.append(employee)
+    return saved,excluded
 
 
 @transaction.atomic

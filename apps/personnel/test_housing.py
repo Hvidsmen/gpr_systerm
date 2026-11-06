@@ -232,7 +232,9 @@ class HousingTests(TestCase):
         response=self.client.post(reverse('personnel:housing'),data);self.assertEqual(response.status_code,302)
         self.assertEqual(self.visible(self.obj),{self.employee.pk,self.second_employee.pk})
         response=self.client.post(reverse('personnel:housing'),data)
-        self.assertEqual(response.status_code,200);self.assertTrue(response.context['form'].errors)
+        self.assertEqual(response.status_code,200)
+        self.assertContains(response,'Исключено: 1')
+        self.assertContains(response,'размещение уже изменил')
         self.assertEqual(self.second_person.stays.count(),1)
 
     def test_source_status_does_not_change_residence_without_movement(self):

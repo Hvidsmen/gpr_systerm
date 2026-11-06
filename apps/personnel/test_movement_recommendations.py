@@ -90,7 +90,7 @@ class MovementRecommendationTests(TestCase):
         self.assertContains(response,'data-recommendation-select-all',count=2)
         self.assertContains(response,'aria-label="Выбрать всех сотрудников"',count=2)
 
-    def test_personnel_dispatcher_can_submit_bulk_current_request_but_not_old_fact(self):
+    def test_personnel_dispatcher_can_submit_bulk_current_request_and_old_date_needs_reason(self):
         self.client.force_login(self.personnel_dispatcher);today=timezone.localdate();url=reverse('personnel:movements')
         page=self.client.get(url,{'camp':self.a.pk});snapshot=page.context['form'].initial['snapshot']
         data={'workflow_action':'move','camp':self.a.pk,'kind':'ARRIVAL','date':today,'employees':[self.second_employee.pk],'snapshot':snapshot}
@@ -98,13 +98,15 @@ class MovementRecommendationTests(TestCase):
         self.assertFalse(self.second_person.stays.exists())
         self.assertTrue(MovementReviewRequest.objects.filter(person=self.second_person,kind='ARRIVAL',movement_date=today,status='OPEN').exists())
         data.update(kind='DEPARTURE',date=today-timedelta(days=2),snapshot=page.context['form'].initial['snapshot'])
-        self.assertEqual(self.client.post(url,data).status_code,403)
+        response=self.client.post(url,data)
+        self.assertEqual(response.status_code,200)
+        self.assertContains(response,'комментарий-основание')
 
     def test_personnel_dispatcher_can_temporarily_record_arrival_and_departure_without_requests(self):
         self.client.force_login(self.personnel_dispatcher);today=timezone.localdate();arrival=today-timedelta(days=5);url=reverse('personnel:movements')
         page=self.client.get(url,{'camp':self.a.pk})
         data={'workflow_action':'move','direct_fact':'on','camp':self.a.pk,'kind':'ARRIVAL','date':arrival,
-            'employees':[self.second_employee.pk],'snapshot':page.context['form'].initial['snapshot']}
+            'employees':[self.second_employee.pk],'snapshot':page.context['form'].initial['snapshot'],'comment':'Уточнение по ведомости'}
         self.assertEqual(self.client.post(url,data).status_code,302)
         self.assertTrue(self.second_person.stays.filter(camp=self.a,arrived_on=arrival,departed_on=None).exists())
         self.assertFalse(MovementReviewRequest.objects.exists())

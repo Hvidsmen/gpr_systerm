@@ -64,17 +64,23 @@ class FactWindowIntegrationTests(TestCase):
         self.day=timezone.localdate()+timedelta(days=10)
         admin=self.users['ADMIN'];camp=self.housing_camp
         self.client.force_login(admin)
-        for path,data in [(self.url,{'construction_object':self.obj.pk,'date':str(self.day),'section':'works'}),(reverse('personnel:housing'),{'camp':camp.pk,'date':str(self.day)}),(reverse('production:transport_board'),{'camp':camp.pk,'date':str(self.day)})]:
+        personnel_path=reverse('personnel:movements')
+        for path,data in [(self.url,{'construction_object':self.obj.pk,'date':str(self.day),'section':'works'}),(personnel_path,{'camp':camp.pk,'date':str(self.day)}),(reverse('production:transport_board'),{'camp':camp.pk,'date':str(self.day)})]:
             response=self.client.get(path,data)
             self.assertEqual(response.status_code,200)
-            self.assertTrue(response.context['fact_day_editable'])
-            self.assertNotContains(response,'Будущий день доступен для просмотра')
+            if path==personnel_path:
+                self.assertFalse(response.context['fact_day_editable'])
+                self.assertContains(response,'Будущая дата доступна только для просмотра')
+            else:
+                self.assertTrue(response.context['fact_day_editable'])
+                self.assertNotContains(response,'Будущий день доступен для просмотра')
         data=self.payload('ADMIN','works')
         data.update({'works-0-project_work':self.work.pk,'works-0-actual_quantity':'3','works-0-deviation_reason':self.reason.pk})
         self.assertEqual(self.client.post(self.url,data).status_code,302)
         fact=DailyFact.objects.get(date=self.day);self.assertEqual(fact.actual_quantity,3)
-        housing.move(admin,'DEPARTURE',camp,self.day+timedelta(days=1),[self.housing_person])
-        self.assertEqual(self.housing_person.stays.get().departed_on,self.day+timedelta(days=1))
+        with self.assertRaisesMessage(ValidationError,'Будущее фактическое перемещение'):
+            housing.move(admin,'DEPARTURE',camp,self.day+timedelta(days=1),[self.housing_person])
+        self.assertIsNone(self.housing_person.stays.get().departed_on)
         transport.move(admin,camp,self.day,[self.machine.pk],'ARRIVAL',signed=transport.snapshot(admin,camp,self.day))
         transport.save_day(admin,camp,self.day,[self.machine.pk],'WORKED',signed=transport.snapshot(admin,camp,self.day))
         self.assertEqual(EquipmentDayRecord.objects.get(date=self.day).status,'WORKED')
@@ -107,12 +113,15 @@ class FactWindowIntegrationTests(TestCase):
 
     def test_closed_day_is_read_only_in_all_three_workspaces(self):
         with patch('django.utils.timezone.localdate',return_value=self.day+timedelta(days=2)):
-            for role,path,data in [('DISPATCHER',self.url,{'construction_object':self.obj.pk,'date':str(self.day),'section':'works'}),('PERSONNEL_DISPATCHER',reverse('personnel:housing'),{'camp':self.housing_camp.pk,'date':str(self.day)}),('MECHANIZATION_DISPATCHER',reverse('production:transport_board'),{'camp':self.housing_camp.pk,'date':str(self.day)})]:
+            for role,path,data in [('DISPATCHER',self.url,{'construction_object':self.obj.pk,'date':str(self.day),'section':'works'}),('PERSONNEL_DISPATCHER',reverse('personnel:movements'),{'camp':self.housing_camp.pk,'date':str(self.day)}),('MECHANIZATION_DISPATCHER',reverse('production:transport_board'),{'camp':self.housing_camp.pk,'date':str(self.day)})]:
                 self.client.force_login(self.users[role]);response=self.client.get(path,data)
-                self.assertEqual(response.status_code,200);self.assertFalse(response.context['fact_day_editable']);self.assertContains(response,'закрыты')
-                if role=='DISPATCHER':self.assertNotContains(response,'value="confirm"')
-                elif role=='PERSONNEL_DISPATCHER':self.assertNotContains(response,'data-movement-form')
-                else:self.assertNotContains(response,'data-edit-machine=')
+                self.assertEqual(response.status_code,200)
+                if role=='PERSONNEL_DISPATCHER':
+                    self.assertTrue(response.context['fact_day_editable']);self.assertContains(response,'data-movement-form')
+                else:
+                    self.assertFalse(response.context['fact_day_editable']);self.assertContains(response,'закрыты')
+                    if role=='DISPATCHER':self.assertNotContains(response,'value="confirm"')
+                    else:self.assertNotContains(response,'data-edit-machine=')
 
     def test_work_and_employee_reservations_close_but_status_and_release_stay_available(self):
         self.client.force_login(self.users['DISPATCHER']);session=str(uuid4())
@@ -151,14 +160,13 @@ class FactWindowIntegrationTests(TestCase):
                 transport.save_day(user,camp,self.day,[self.machine.pk],'WORKED',signed=transport.snapshot(user,camp,self.day))
         self.assertFalse(EquipmentDayRecord.objects.exists());self.assertEqual(FactRevision.objects.count(),before)
 
-    def test_personnel_cannot_rewrite_old_arrival_but_can_record_todays_departure(self):
+    def test_personnel_can_record_backdated_departure_with_reason(self):
         user=self.users['PERSONNEL_DISPATCHER'];person=self.housing_person;stay=person.stays.get()
         stay.arrived_on=self.day-timedelta(days=10);stay.save()
         today=self.day+timedelta(days=2)
         with patch('django.utils.timezone.localdate',return_value=today):
-            with self.assertRaisesMessage(ValidationError,'закрыты'):housing.move(user,'DEPARTURE',self.housing_camp,self.day,[person])
-            housing.move(user,'DEPARTURE',self.housing_camp,today,[person])
-            stay.refresh_from_db();self.assertEqual(stay.departed_on,today)
+            housing.move(user,'DEPARTURE',self.housing_camp,self.day,[person],comment='Уточнение по ведомости')
+            stay.refresh_from_db();self.assertEqual(stay.departed_on,self.day)
             with self.assertRaisesMessage(ValidationError,'закрыты'):housing.cancel_stay(user,stay,'Удалить прежний период',stay.updated_at.isoformat())
 
     def test_personnel_import_cannot_seed_closed_actual_dates(self):
