@@ -62,6 +62,7 @@ def detail(request):
     if report['equipment_only']:query['equipment_only']='1'
     if not report['include_fuel']:query['include_fuel']='0'
     report['export_url'] = reverse('production:smg_period_export') + '?' + urlencode(query)
+    report['can_match_operational_works']=role_code(request.user) in {'ADMIN','PLANNER'}
     return render(request, 'production/_smg_period_report.html', report)
 
 

@@ -46,7 +46,7 @@ def canonical(value, aliases):
 
 def bucket(rows, key, label, unit, context=''):
     return rows.setdefault(key, dict(label=str(label), unit=str(unit), context=str(context),
-        plan=None, actual=None, days=set(), daily={}, comments=[]))
+        plan=None, actual=None, days=set(), daily={}, comments=[], operational_facts=[]))
 
 
 def add(row, field, value, day=None):
@@ -89,6 +89,7 @@ def build(obj, day, schedule_id=None, *, day_only=False, equipment_only=False, i
     works = {} if equipment_only else {w.pk: w for w in ProjectWork.objects.filter(company=obj.company,
         section__construction_object=obj).select_related('section', 'complex_object').prefetch_related('items')}
     work_rows, labor_rows, equipment_rows, fuel_rows = {}, {}, {}, {}
+    operational_matches=[]
     all_labor = defaultdict(set)
     labor_alias = {} if equipment_only else brigade_aliases(obj.company)
     equipment_alias = equipment_aliases(obj.company)
@@ -200,6 +201,11 @@ def build(obj, day, schedule_id=None, *, day_only=False, equipment_only=False, i
                 if text:
                     entry={'date':fact.date,'text':text}
                     if entry not in target['comments']:target['comments'].append(entry)
+                if fact.operational_key:
+                    match=getattr(fact,'operational_match',None)
+                    matching={'id':fact.pk,'date':fact.date,'name':fact.operational_name or 'Работа без названия',
+                        'unit':fact.operational_unit,'matched':bool(match),'target':match.target_label if match else ''}
+                    target['operational_facts'].append(matching);operational_matches.append(matching)
 
         mapping = dict(PositionPlanningBrigade.objects.filter(company=obj.company).values_list('position_id', 'brigade_id'))
         named_labor = defaultdict(set)
@@ -295,5 +301,6 @@ def build(obj, day, schedule_id=None, *, day_only=False, equipment_only=False, i
     return dict(work_groups=work_groups(works_finished,dates),labor_groups=labor_grouped,equipment_groups=equipment_grouped,
         object=obj, start=start, end=end, day=day, schedule=schedule,equipment_only=equipment_only,day_only=day_only,include_fuel=include_fuel,
         period_days=(end-start).days+1, works=works_finished, labor=labor_finished,
+        operational_matches=sorted(operational_matches,key=lambda fact:(fact['date'],fact['name'],fact['id'])),
         labor_total=labor_total,equipment=equipment_finished,equipment_total=equipment_total,
         fuel=finish(fuel_rows), warehouse=warehouse)

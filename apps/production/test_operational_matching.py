@@ -28,6 +28,9 @@ class OperationalWorkMatchingTests(TestCase):
         day=self.client.get(reverse('production:fact_day_workspace'),{'construction_object':self.obj.pk,'date':self.day,'section':'works'})
         self.assertEqual(day.status_code,200);self.assertContains(day,f'?fact={self.fact.pk}')
         page=self.client.get(self.url,{'fact':self.fact.pk});self.assertEqual(page.status_code,200);self.assertContains(page,'Прокладка кабеля временная')
+        report_url=reverse('production:smg_period_detail')
+        report_query={'construction_object':self.obj.pk,'date':self.day,'scope':'day'}
+        before=self.client.get(report_url,report_query);self.assertContains(before,f'?fact={self.fact.pk}');self.assertContains(before,'Сопоставить')
         response=self.client.post(self.url,{'fact':self.fact.pk,'target':f'work:{self.target.pk}'})
         self.assertRedirects(response,self.url)
         match=OperationalWorkMatch.objects.get(fact=self.fact);self.assertEqual((match.target_work,match.matched_by),(self.target,self.planner))
@@ -35,6 +38,10 @@ class OperationalWorkMatchingTests(TestCase):
         target=next(row for row in rows if row['label']=='Прокладка кабеля')
         self.assertEqual(target['actual'],11)
         self.assertFalse(any(row['label']=='Прокладка кабеля временная' for row in rows))
+        after=self.client.get(report_url,report_query);self.assertContains(after,'Прокладка кабеля временная');self.assertContains(after,'Изменить')
+        matrix=self.client.get(report_url,{**report_query,'by_day':'1'});self.assertContains(matrix,f'?fact={self.fact.pk}')
+        self.client.force_login(self.users['DISPATCHER'])
+        dispatcher=self.client.get(report_url,report_query);self.assertContains(dispatcher,'Прокладка кабеля временная');self.assertNotContains(dispatcher,f'?fact={self.fact.pk}')
 
     def test_group_and_future_rule_only_match_same_object_name_and_unit(self):
         second=DailyFact.objects.create(company=self.company,project_work=self.package,date=self.day-timedelta(days=1),operational_key=uuid4(),operational_name=self.fact.operational_name,operational_unit='м.',actual_quantity=2)

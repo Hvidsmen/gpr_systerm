@@ -5,6 +5,7 @@
   <button type="button" class="btn btn-sm btn-outline-primary" data-report-collapse>Свернуть всё</button>
 </div>
 {% endif %}
+{% if direction == 'works' and show_days and operational_matches %}<details class="production-report-matching mb-2"><summary>Соответствия прочих работ · {{ operational_matches|length }}</summary><div>{% for fact in operational_matches %}<p><time>{{ fact.date|date:'d.m.Y' }}</time> · <strong>{{ fact.name }}</strong> · {{ fact.unit }}{% if fact.matched %} → {{ fact.target }}{% else %} · <span class="text-warning">не сопоставлено</span>{% endif %}{% if can_match_operational_works %} <a class="btn btn-sm btn-outline-primary" href="{% url 'production:operational_matches' %}?fact={{ fact.id }}">{% if fact.matched %}Изменить{% else %}Сопоставить{% endif %}</a>{% endif %}</p>{% endfor %}</div></details>{% endif %}
 {% if show_days %}
   {% include 'production/_report_day_matrix.html' with matrix_direction=direction %}
 {% elif direction == 'works' %}

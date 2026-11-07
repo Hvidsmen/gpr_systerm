@@ -95,6 +95,7 @@ def work_groups(rows, dates=()):
             for obj in work['objects'].values():
                 obj['total']=totals(obj['rows'],dates)
                 obj['comments']=sorted((comment for row in obj['rows'] for comment in row.get('comments',[])),key=lambda comment:(comment['date'],comment['text']))
+                obj['operational_facts']=sorted((fact for row in obj['rows'] for fact in row.get('operational_facts',[])),key=lambda fact:(fact['date'],fact['name'],fact['id']))
                 leaves.extend(obj['rows'])
             work['total']=totals(leaves,dates)
             work['objects']=sorted(work['objects'].values(),key=lambda obj:obj['label'].casefold())
