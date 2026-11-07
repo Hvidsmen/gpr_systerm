@@ -43,17 +43,19 @@ class OperationalWorkMatchingTests(TestCase):
         self.client.force_login(self.users['DISPATCHER'])
         dispatcher=self.client.get(report_url,report_query);self.assertContains(dispatcher,'Прокладка кабеля временная');self.assertNotContains(dispatcher,f'?fact={self.fact.pk}')
 
-    def test_group_and_future_rule_only_match_same_object_name_and_unit(self):
-        second=DailyFact.objects.create(company=self.company,project_work=self.package,date=self.day-timedelta(days=1),operational_key=uuid4(),operational_name=self.fact.operational_name,operational_unit='м.',actual_quantity=2)
+    def test_group_and_future_rule_match_same_object_name_without_unit_check(self):
+        second=DailyFact.objects.create(company=self.company,project_work=self.package,date=self.day-timedelta(days=1),operational_key=uuid4(),operational_name=self.fact.operational_name,operational_unit='шт.',actual_quantity=2)
         self.client.post(self.url,{'fact':self.fact.pk,'target':f'work:{self.target.pk}','apply_group':'1','remember_future':'1'})
         self.assertEqual(OperationalWorkMatch.objects.filter(fact__in=[self.fact,second]).count(),2)
         self.assertEqual(OperationalWorkMatchRule.objects.count(),1)
-        future=DailyFact.objects.create(company=self.company,project_work=self.package,date=self.day+timedelta(days=1),operational_key=uuid4(),operational_name=self.fact.operational_name,operational_unit='м.',actual_quantity=3)
+        future=DailyFact.objects.create(company=self.company,project_work=self.package,date=self.day+timedelta(days=1),operational_key=uuid4(),operational_name=self.fact.operational_name,operational_unit='рейс',actual_quantity=3)
         self.assertEqual(future.operational_match.target_work,self.target)
 
-    def test_permissions_and_units_are_enforced(self):
+    def test_permissions_are_enforced_but_different_units_are_allowed_without_conversion(self):
         self.client.force_login(self.users['DISPATCHER']);self.assertEqual(self.client.get(self.url).status_code,403)
         self.client.force_login(self.planner)
         wrong=ProjectWork.objects.create(company=self.company,section=self.work.section,name='Штучная работа',kind='SIMPLE',unit='шт.')
         self.client.post(self.url,{'fact':self.fact.pk,'target':f'work:{wrong.pk}'})
-        self.assertFalse(OperationalWorkMatch.objects.exists())
+        self.assertEqual(OperationalWorkMatch.objects.get(fact=self.fact).target_work,wrong)
+        row=next(row for row in build(self.obj,self.day,day_only=True)['works'] if row['label']=='Штучная работа')
+        self.assertEqual((row['actual'],row['unit']),(11,'шт.'))

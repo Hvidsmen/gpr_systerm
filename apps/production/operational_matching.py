@@ -73,14 +73,11 @@ def matches(request):
             try:work,item=resolve_target(request.user,request.POST.get('target'),obj)
             except ValidationError as exc:
                 messages.error(request,'; '.join(exc.messages));return redirect(reverse('production:operational_matches')+f'?fact={selected.pk}')
-            if normalize(target_unit(work,item)) != normalize(selected.operational_unit):
-                messages.error(request,f'Единицы не совпадают: «{selected.operational_unit}» и «{target_unit(work,item)}». Сопоставление не выполнено.')
-                return redirect(reverse('production:operational_matches')+f'?fact={selected.pk}')
             group=request.POST.get('apply_group')=='1'
             remember=request.POST.get('remember_future')=='1'
             targets=facts.filter(project_work__section__construction_object=obj)
             if group:
-                targets=targets.filter(operational_name__iexact=selected.operational_name.strip(),operational_unit__iexact=selected.operational_unit.strip())
+                targets=targets.filter(operational_name__iexact=selected.operational_name.strip())
             else:targets=targets.filter(pk=selected.pk)
             with transaction.atomic():
                 count=0
@@ -88,7 +85,7 @@ def matches(request):
                     OperationalWorkMatch.objects.update_or_create(company=request.user.company,fact=fact,defaults={'target_work':work,'target_item':item,'matched_by':request.user});count+=1
                 if remember:
                     OperationalWorkMatchRule.objects.update_or_create(company=request.user.company,construction_object=obj,
-                        normalized_name=normalize(selected.operational_name),normalized_unit=normalize(selected.operational_unit),
+                        normalized_name=normalize(selected.operational_name),
                         defaults={'target_work':work,'target_item':item,'created_by':request.user})
             messages.success(request,f'Соответствие установлено для записей: {count}.')
         return redirect('production:operational_matches')
@@ -102,7 +99,7 @@ def apply_rule(sender, instance, created=False, raw=False, **kwargs):
     if raw or not instance.operational_key or hasattr(instance,'operational_match'):return
     obj=instance.project_work.section.construction_object
     rule=OperationalWorkMatchRule.objects.filter(company=instance.company,construction_object=obj,
-        normalized_name=normalize(instance.operational_name),normalized_unit=normalize(instance.operational_unit)).first()
+        normalized_name=normalize(instance.operational_name)).first()
     if rule:
         OperationalWorkMatch.objects.get_or_create(company=instance.company,fact=instance,defaults={
             'target_work':rule.target_work,'target_item':rule.target_item,'matched_by':rule.created_by})

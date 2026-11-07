@@ -217,13 +217,12 @@ class OperationalWorkMatch(BaseCompanyModel):
 class OperationalWorkMatchRule(BaseCompanyModel):
     construction_object = models.ForeignKey('projects.ConstructionObject', on_delete=models.CASCADE, related_name='operational_match_rules')
     normalized_name = models.CharField(max_length=255)
-    normalized_unit = models.CharField(max_length=50)
     target_work = models.ForeignKey('works.ProjectWork', on_delete=models.PROTECT, related_name='operational_match_rules')
     target_item = models.ForeignKey('works.ProjectWorkItem', on_delete=models.PROTECT, null=True, blank=True, related_name='operational_match_rules')
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='operational_work_match_rules')
 
     class Meta:
-        constraints = [models.UniqueConstraint(fields=['company','construction_object','normalized_name','normalized_unit'], name='unique_operational_match_rule')]
+        constraints = [models.UniqueConstraint(fields=['company','construction_object','normalized_name'], name='unique_operational_match_rule_name')]
 
 
 class ObjectResourceRecord(BaseCompanyModel):
