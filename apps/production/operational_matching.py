@@ -7,6 +7,7 @@ from django.http import HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_http_methods
+import json
 
 from core.permissions import PLAN_ROLES, require_roles, scope_queryset
 from apps.works.models import ProjectWork, ProjectWorkItem
@@ -45,14 +46,26 @@ def candidates(user, obj=None):
     works = scope_queryset(ProjectWork.objects.filter(company=user.company, merged_source__isnull=True).select_related(
         'section__construction_object', 'complex_object').prefetch_related('items'), user)
     if obj:works=works.filter(section__construction_object=obj)
-    result=[]
+    leaves=[]
     for work in works.order_by('section__construction_object__name','section__name','name'):
-        if work.kind == 'SIMPLE':result.append({'token':f'work:{work.pk}','label':work.name,'unit':work.unit,'path':f'{work.section.construction_object} → {work.section}',
-            'complex_object':'Без комплексного объекта','complex':'Самостоятельные работы','member':work.name})
+        if work.kind == 'SIMPLE':leaves.append({'token':f'work:{work.pk}','label':work.name,'unit':work.unit,'path':f'{work.section.construction_object} → Без комплексного объекта → Самостоятельные работы',
+            'complex_object':'Без комплексного объекта','complex':'Самостоятельные работы','member':work.name,
+            'object_id':'standalone','complex_id':'standalone:works'})
         else:
             complex_object=work.complex_object.name if work.complex_object_id else 'Без комплексного объекта'
-            for item in work.items.all():result.append({'token':f'item:{item.pk}','label':item.name,'unit':item.unit,'path':f'{work.section.construction_object} → {work.name}',
-                'complex_object':complex_object,'complex':work.name,'member':item.name})
+            object_id=f'object:{work.complex_object_id or 0}'
+            for item in work.items.all():leaves.append({'token':f'item:{item.pk}','label':item.name,'unit':item.unit,'path':f'{work.section.construction_object} → {complex_object} → {work.name}',
+                'complex_object':complex_object,'complex':work.name,'member':item.name,
+                'object_id':object_id,'complex_id':f'complex:{work.pk}'})
+    result=[];seen_objects=set();seen_complexes=set()
+    for leaf in leaves:
+        if leaf['object_id'] not in seen_objects:
+            seen_objects.add(leaf['object_id']);result.append({'context':True,'label':leaf['complex_object'],'object_id':leaf['object_id'],
+                'ancestors':'[]','path':leaf['complex_object']})
+        if leaf['complex_id'] not in seen_complexes:
+            seen_complexes.add(leaf['complex_id']);result.append({'context':True,'label':leaf['complex'],'object_id':leaf['complex_id'],
+                'ancestors':json.dumps([leaf['object_id']]),'path':f"{leaf['complex_object']} → {leaf['complex']}"})
+        leaf['ancestors']=json.dumps([leaf['object_id'],leaf['complex_id']]);leaf['object_id']=leaf['token'];result.append(leaf)
     return result
 
 
