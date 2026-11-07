@@ -5,6 +5,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from apps.accounts.models import Role, User
+from apps.projects.models import ConstructionObject, Section
 from apps.works.models import ComplexObject, ProjectWork
 from . import test_production_entry as fixtures
 from .models import DailyFact, OperationalWorkMatch, OperationalWorkMatchRule
@@ -64,3 +65,17 @@ class OperationalWorkMatchingTests(TestCase):
         self.assertEqual(OperationalWorkMatch.objects.get(fact=self.fact).target_work,wrong)
         row=next(row for row in build(self.obj,self.day,day_only=True)['works'] if row['label']=='Штучная работа')
         self.assertEqual((row['actual'],row['unit']),(11,'шт.'))
+
+    def test_parent_object_work_is_available_but_fact_stays_on_current_object(self):
+        parent=ConstructionObject.objects.create(company=self.company,project=self.obj.project,name='Общий КТП')
+        self.obj.parent=parent;self.obj.save()
+        section=Section.objects.create(company=self.company,construction_object=parent,name='Общие работы')
+        parent_work=ProjectWork.objects.create(company=self.company,section=section,name='Общая работа',kind='SIMPLE',unit='м.')
+        page=self.client.get(self.url,{'fact':self.fact.pk})
+        self.assertContains(page,f'Текущий объект · {self.obj}')
+        self.assertContains(page,'Общий родительский объект · Общий КТП')
+        self.assertContains(page,'Общие работы → Общая работа')
+        response=self.client.post(self.url,{'fact':self.fact.pk,'target':f'work:{parent_work.pk}'})
+        self.assertRedirects(response,self.url)
+        self.assertEqual(OperationalWorkMatch.objects.get(fact=self.fact).target_work,parent_work)
+        self.assertEqual(self.fact.project_work.section.construction_object,self.obj)

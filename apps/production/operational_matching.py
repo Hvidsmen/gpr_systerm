@@ -21,10 +21,15 @@ def target_unit(work, item):
     return (item.unit if item else work.unit).strip()
 
 
+def target_objects(obj):
+    return [obj]+([obj.parent] if obj.parent_id else [])
+
+
 def resolve_target(user, token, obj):
     try: kind, raw_pk = token.split(':', 1);pk = int(raw_pk)
     except (AttributeError, TypeError, ValueError): raise ValidationError('Выберите работу справочника.')
-    works = scope_queryset(ProjectWork.objects.filter(company=user.company, merged_source__isnull=True, section__construction_object=obj), user)
+    works = ProjectWork.objects.filter(company=user.company, merged_source__isnull=True,
+        section__construction_object_id__in=[row.pk for row in target_objects(obj)])
     if kind == 'work':
         work = get_object_or_404(works, pk=pk)
         if work.kind == 'COMPOSITE':raise ValidationError('Для комплекса выберите конкретную работу из его состава.')
@@ -42,17 +47,24 @@ def fact_scope(user):
 
 
 def candidates(user, obj=None):
-    works = scope_queryset(ProjectWork.objects.filter(company=user.company, merged_source__isnull=True).select_related(
-        'section__construction_object', 'complex_object').prefetch_related('items'), user)
-    if obj:works=works.filter(section__construction_object=obj)
+    works = ProjectWork.objects.filter(company=user.company, merged_source__isnull=True).select_related(
+        'section__construction_object', 'complex_object').prefetch_related('items')
+    if obj:works=works.filter(section__construction_object_id__in=[row.pk for row in target_objects(obj)])
     result=[]
-    for work in works.order_by('section__construction_object__name','section__name','name'):
+    ordered_objects=target_objects(obj) if obj else []
+    ordered_works=[]
+    if ordered_objects:
+        for target_obj in ordered_objects:ordered_works.extend(works.filter(section__construction_object=target_obj).order_by('section__name','name','pk'))
+    else:ordered_works=works.order_by('section__construction_object__name','section__name','name')
+    for work in ordered_works:
+        scope_label=(f'Текущий объект · {obj}' if obj and work.section.construction_object_id==obj.pk else
+            f'Общий родительский объект · {work.section.construction_object}')
         if work.kind == 'SIMPLE':result.append({'token':f'work:{work.pk}','label':work.name,'unit':work.unit,'path':str(work.section),
-            'complex_object':'Без комплексного объекта','complex':'Самостоятельные работы','member':work.name})
+            'complex_object':'Без комплексного объекта','complex':'Самостоятельные работы','member':work.name,'scope_label':scope_label})
         else:
             complex_object=work.complex_object.name if work.complex_object_id else 'Без комплексного объекта'
             for item in work.items.all():result.append({'token':f'item:{item.pk}','label':item.name,'unit':item.unit,'path':f'{work.section} → {work.name}',
-                'complex_object':complex_object,'complex':work.name,'member':item.name})
+                'complex_object':complex_object,'complex':work.name,'member':item.name,'scope_label':scope_label})
     return result
 
 
