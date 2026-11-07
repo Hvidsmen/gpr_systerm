@@ -1,27 +1,32 @@
 (()=>{
  'use strict';const form=document.querySelector('[data-production-form]'),board=document.querySelector('[data-transport-board]'),storageKey='production-copy-previous-result';let busy=false;
+ function stage(root,kind,label,value,state='active'){
+  const host=root.querySelector('[data-copy-result="'+kind+'"]');if(!host)return;host.replaceChildren();host.classList.remove('text-danger');host.classList.add('production-copy-status');host.dataset.state=state;
+  const text=document.createElement('span');text.className='production-copy-status__label';text.textContent=label;const track=document.createElement('span');track.className='production-copy-status__track';track.setAttribute('aria-hidden','true');const fill=document.createElement('span');fill.className='production-copy-status__fill';fill.style.width=Math.max(0,Math.min(100,value))+'%';track.append(fill);host.append(text,track);
+ }
  function show(root,kind,result,error){
   const host=root.querySelector('[data-copy-result="'+kind+'"]');if(!host)return;host.replaceChildren();host.classList.toggle('text-danger',Boolean(error));
-  if(error){host.textContent=error;return;}
+  host.classList.add('production-copy-status');host.dataset.state=error?'error':'done';const label=document.createElement('span');label.className='production-copy-status__label';label.textContent=error?'Ошибка копирования':'Готово';const track=document.createElement('span');track.className='production-copy-status__track';track.setAttribute('aria-hidden','true');const fill=document.createElement('span');fill.className='production-copy-status__fill';fill.style.width='100%';track.append(fill);host.append(label,track);if(error){const message=document.createElement('span');message.textContent=error;host.append(message);return;}
   const source=new Date(result.source_date+'T12:00:00').toLocaleDateString('ru-RU');
-  if(!result.source_count)host.append(document.createTextNode(`За ${source} нет записей для переноса.`));
+  const summary=document.createElement('span');host.append(summary);
+  if(!result.source_count)summary.append(document.createTextNode(`За ${source} нет записей для переноса.`));
   else if(kind==='people'){
    const parts=[`Из ${source}: добавлено ${result.added}.`,`Уже были в текущем дне: ${result.already_present||0}.`];
    if(result.inactive)parts.push(`Неактивных: ${result.inactive}.`);if(result.conflicts)parts.push(`На другом объекте: ${result.conflicts}.`);if(result.busy)parts.push(`Сейчас редактируются: ${result.busy}.`);if(result.failed)parts.push(`Не добавлено из-за ошибок: ${result.failed}.`);
-   host.append(document.createTextNode(parts.join(' ')));
-  }else host.append(document.createTextNode(`Из ${source}: скопировано ${result.added}, пропущено ${result.skipped}.`));
+   summary.append(document.createTextNode(parts.join(' ')));
+  }else summary.append(document.createTextNode(`Из ${source}: скопировано ${result.added}, пропущено ${result.skipped}.`));
   if(result.warnings?.length){const details=document.createElement('details'),summary=document.createElement('summary');summary.textContent='Пояснения · '+result.warnings.length;details.append(summary);const list=document.createElement('ul');for(const message of result.warnings){const li=document.createElement('li');li.textContent=message;list.append(li);}details.append(list);host.append(details);}
  }
- async function syncForm(result){
+ async function syncForm(root,kind,result){
   if(result.report){if(form.productionApplyReport)form.productionApplyReport(result.report);else form.dispatchEvent(new CustomEvent('production-report-update',{detail:result.report}));}
   const expected=new Set((result.report?.people||[]).map(person=>String(person.id))),visible=()=>{const ids=new Set([...form.querySelectorAll('[data-production-person] [name$="-id"]')].map(input=>input.value).filter(Boolean));return [...expected].every(id=>ids.has(id));};
-  for(let attempt=0;attempt<12;attempt++){await form.productionRefresh();if(visible())return true;await new Promise(resolve=>setTimeout(resolve,150));}
+  for(let attempt=0;attempt<12;attempt++){stage(root,kind,'Данные сохранены. Обновляем список…',70+attempt*2);await form.productionRefresh();if(visible())return true;await new Promise(resolve=>setTimeout(resolve,150));}
   return visible();
  }
  try{const saved=JSON.parse(sessionStorage.getItem(storageKey)||'null');sessionStorage.removeItem(storageKey);if(saved&&saved.url===location.href&&Date.now()-saved.at<60000&&board)show(board,'equipment',saved.result);}catch{}
  document.querySelectorAll('[data-copy-previous]').forEach(button=>button.addEventListener('click',async()=>{
   if(busy)return;busy=true;const kind=button.dataset.copyPrevious,root=kind==='equipment'?board:form,host=root.querySelector('[data-copy-result="'+kind+'"]');
-  const buttons=[...document.querySelectorAll('[data-copy-previous]')],disabled=buttons.map(b=>b.disabled);buttons.forEach(b=>b.disabled=true);host.textContent='Копирование…';host.classList.remove('text-danger');
+  const buttons=[...document.querySelectorAll('[data-copy-previous]')],disabled=buttons.map(b=>b.disabled);buttons.forEach(b=>b.disabled=true);stage(root,kind,'Подготавливаем данные…',15);
   let controls=[];
   try{
    let data,csrf;
@@ -38,10 +43,10 @@
     const field=(row,name)=>row.querySelector('[name$="-'+name+'"]'),people=[...form.querySelectorAll('[data-production-person]')];
     csrf=form.productionSession.csrf;data={...form.productionSession.scope,kind,replace_legacy:Boolean(form.elements.namedItem('replace_legacy')?.checked),keep:people.map(form.productionKeyOf).filter(Boolean),revisions:Object.fromEntries(people.filter(row=>field(row,'id').value).map(row=>[field(row,'id').value,Number(row.dataset.linksRevision||0)]))};
    }
-   const response=await fetch(root.dataset.copyPreviousUrl,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRFToken':csrf},body:JSON.stringify(data)});if(!(response.headers.get('content-type')||'').includes('application/json'))throw new Error('Не удалось скопировать данные. Обновите форму и проверьте доступ.');const result=await response.json();
+   stage(root,kind,'Копируем данные…',40);const response=await fetch(root.dataset.copyPreviousUrl,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRFToken':csrf},body:JSON.stringify(data)});if(!(response.headers.get('content-type')||'').includes('application/json'))throw new Error('Не удалось скопировать данные. Обновите форму и проверьте доступ.');const result=await response.json();
    if(!response.ok)throw new Error(result.error||'Не удалось скопировать данные.');
    if(kind==='equipment'&&result.added){show(root,kind,result);try{sessionStorage.setItem(storageKey,JSON.stringify({url:location.href,at:Date.now(),result}));}catch{}busy=false;location.reload();}
-   else if(form){if(!await syncForm(result))throw new Error('Данные скопированы, но список не обновился. Обновите страницу.');show(root,kind,result);}
+   else if(form){if(!await syncForm(root,kind,result))throw new Error('Данные скопированы, но список не обновился. Обновите страницу.');show(root,kind,result);}
    else show(root,kind,result);
   }catch(error){show(root,kind,null,error.message);}
   finally{controls.forEach(({el,disabled})=>el.disabled=disabled);buttons.forEach((b,i)=>b.disabled=disabled[i]);busy=false;}
