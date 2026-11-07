@@ -80,8 +80,10 @@ class SmgPeriodReportTests(TestCase):
         obj=report['work_groups'][0]['works'][0]['objects'][0]
         self.assertEqual([row['text'] for row in obj['comments']],['Комментарий за первый день','Комментарий за второй день'])
         response=self.request()
-        self.assertContains(response,'<summary>Комментарий · 2</summary>',html=True)
-        self.assertNotContains(response,'<details open><summary>Комментарий')
+        self.assertContains(response,'data-report-comment-toggle=')
+        self.assertContains(response,'aria-expanded="false"')
+        self.assertContains(response,'data-report-comment=')
+        self.assertNotContains(response,'<summary>Комментарий')
 
     def test_operational_work_outside_smg_is_included(self):
         package = ProjectWork.objects.create(company=self.company, section=self.work.section,

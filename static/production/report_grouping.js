@@ -4,6 +4,12 @@
   button.setAttribute('aria-expanded',String(expanded));
   table.querySelectorAll('[data-report-branch]').forEach(branch=>{if(branch.dataset.reportBranch===button.dataset.reportToggle)branch.hidden=!expanded;});
  }
+ function expandComment(button,expanded){
+  const table=button.closest('table');if(!table)return;
+  button.setAttribute('aria-expanded',String(expanded));
+  button.title=expanded?'Скрыть комментарий':'Показать комментарий';
+  table.querySelectorAll('[data-report-comment]').forEach(row=>{if(row.dataset.reportComment===button.dataset.reportCommentToggle)row.hidden=!expanded;});
+ }
  document.addEventListener('click',event=>{
   const bulk=event.target.closest('[data-report-expand], [data-report-collapse]');
   if(bulk){
@@ -11,8 +17,11 @@
    const expanded=bulk.hasAttribute('data-report-expand');
    scope.querySelectorAll('details.production-report-section, details.production-report-days').forEach(section=>{section.open=expanded;});
    scope.querySelectorAll('[data-report-toggle]').forEach(button=>expandBranch(button,expanded));
+   scope.querySelectorAll('[data-report-comment-toggle]').forEach(button=>expandComment(button,expanded));
    return;
   }
+  const comment=event.target.closest('[data-report-comment-toggle]');
+  if(comment){expandComment(comment,comment.getAttribute('aria-expanded')!=='true');return;}
   const button=event.target.closest('[data-report-toggle]');if(!button)return;
   expandBranch(button,button.getAttribute('aria-expanded')!=='true');
  });
