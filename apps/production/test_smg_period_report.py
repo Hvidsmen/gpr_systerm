@@ -73,6 +73,16 @@ class SmgPeriodReportTests(TestCase):
         self.assertIsNone(rows[second.name]['deviation'])
         self.assertContains(self.request(), '0 дн. с фактом', count=0)
 
+    def test_work_comments_follow_complex_object_and_are_collapsed_by_default(self):
+        self.fact(3,comment='Комментарий за первый день')
+        self.fact(4,self.later,comment='Комментарий за второй день')
+        report=build(self.obj,self.selected)
+        obj=report['work_groups'][0]['works'][0]['objects'][0]
+        self.assertEqual([row['text'] for row in obj['comments']],['Комментарий за первый день','Комментарий за второй день'])
+        response=self.request()
+        self.assertContains(response,'<summary>Комментарий · 2</summary>',html=True)
+        self.assertNotContains(response,'<details open><summary>Комментарий')
+
     def test_operational_work_outside_smg_is_included(self):
         package = ProjectWork.objects.create(company=self.company, section=self.work.section,
             complex_object=self.work.complex_object, name='Прочее', kind='COMPOSITE')

@@ -46,7 +46,7 @@ def canonical(value, aliases):
 
 def bucket(rows, key, label, unit, context=''):
     return rows.setdefault(key, dict(label=str(label), unit=str(unit), context=str(context),
-        plan=None, actual=None, days=set(), daily={}))
+        plan=None, actual=None, days=set(), daily={}, comments=[]))
 
 
 def add(row, field, value, day=None):
@@ -196,6 +196,10 @@ def build(obj, day, schedule_id=None, *, day_only=False, equipment_only=False, i
             target = operational_row(fact) if fact.operational_key else work_row(fact.project_work_id, fact.work_item_id)
             if target is not None:
                 add(target, 'actual', fact.actual_quantity, fact.date)
+                text=(fact.comment or '').strip()
+                if text:
+                    entry={'date':fact.date,'text':text}
+                    if entry not in target['comments']:target['comments'].append(entry)
 
         mapping = dict(PositionPlanningBrigade.objects.filter(company=obj.company).values_list('position_id', 'brigade_id'))
         named_labor = defaultdict(set)
