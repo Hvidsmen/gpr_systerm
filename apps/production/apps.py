@@ -8,8 +8,11 @@ class ProductionConfig(AppConfig):
 
     def ready(self):
         from . import task_signals  # noqa: F401
+        from .models import DailyFact
+        from .operational_matching import apply_rule
         from django.apps import apps
-        from django.db.models.signals import pre_delete
+        from django.db.models.signals import post_save,pre_delete
+        post_save.connect(apply_rule,sender=DailyFact,dispatch_uid='production-operational-work-rule')
         from core.fact_history import ActualHistoryMixin,record_deletion
         for model in apps.get_models():
             if issubclass(model,ActualHistoryMixin) and not model._meta.abstract:

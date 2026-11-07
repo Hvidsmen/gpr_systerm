@@ -280,6 +280,8 @@ def check_route(user, match, method):
         require_roles(user, READ_ROLES)
         return
     if namespace == 'production':
+        if name=='operational_matches':
+            require_roles(user,PLAN_ROLES);return
         if name in {'actuation_reason_propose','actuation_documents','actuation_document_download','actuation_document_remove','actuation_reason_review','actuation_reason_reviews'}:
             from apps.production.actuation_reasons import EDITORS, REVIEWERS
             require_roles(user, REVIEWERS | EDITORS | READ_ROLES if method in {'GET','HEAD'} else REVIEWERS if name=='actuation_reason_review' else EDITORS)

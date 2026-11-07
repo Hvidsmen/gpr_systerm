@@ -200,6 +200,32 @@ class DailyFact(ActualHistoryMixin, BaseCompanyModel):
         return f"{self.project_work} — {self.date}: {self.actual_quantity}"
 
 
+class OperationalWorkMatch(BaseCompanyModel):
+    fact = models.OneToOneField(DailyFact, on_delete=models.CASCADE, related_name='operational_match', verbose_name='прочая работа')
+    target_work = models.ForeignKey('works.ProjectWork', on_delete=models.PROTECT, related_name='operational_matches', verbose_name='работа справочника')
+    target_item = models.ForeignKey('works.ProjectWorkItem', on_delete=models.PROTECT, null=True, blank=True, related_name='operational_matches', verbose_name='работа в составе комплекса')
+    matched_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='operational_work_matches', verbose_name='сопоставил')
+
+    class Meta:
+        ordering = ['-created_at', '-pk']
+
+    @property
+    def target_label(self):
+        return str(self.target_item or self.target_work)
+
+
+class OperationalWorkMatchRule(BaseCompanyModel):
+    construction_object = models.ForeignKey('projects.ConstructionObject', on_delete=models.CASCADE, related_name='operational_match_rules')
+    normalized_name = models.CharField(max_length=255)
+    normalized_unit = models.CharField(max_length=50)
+    target_work = models.ForeignKey('works.ProjectWork', on_delete=models.PROTECT, related_name='operational_match_rules')
+    target_item = models.ForeignKey('works.ProjectWorkItem', on_delete=models.PROTECT, null=True, blank=True, related_name='operational_match_rules')
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='operational_work_match_rules')
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['company','construction_object','normalized_name','normalized_unit'], name='unique_operational_match_rule')]
+
+
 class ObjectResourceRecord(BaseCompanyModel):
     construction_object = models.ForeignKey(
         "projects.ConstructionObject",

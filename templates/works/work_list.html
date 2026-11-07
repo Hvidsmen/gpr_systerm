@@ -11,6 +11,7 @@
 <p>Состав комплексов, нормативы и доли стоимости</p>
 </div>
   <div class="catalogue-header-actions">
+  {% if can_match_operational_works %}<a class="btn btn-outline-primary" href="{% url 'production:operational_matches' %}">Прочие работы</a>{% endif %}
   {% if request.user|may:'works:work_create' %}<details class="catalogue-menu">
 <summary class="btn btn-primary">Добавить <span aria-hidden="true">⌄</span>
 </summary>

@@ -8,11 +8,13 @@ from .report_export import download as production_report_download
 from .equipment_operations_views import assignments as equipment_assignments, history as equipment_history
 from .dispatcher_work_items import create as dispatcher_work_item_create
 from .crew_views import crews as production_crews
+from .operational_matching import matches as operational_matches
 
 app_name = "production"
 from . import actuation_views, smg_period_views
 
 urlpatterns = [
+    path('operational-matches/', operational_matches, name='operational_matches'),
     path('crews/', production_crews, name='production_crews'),
     path('dispatcher-work-items/create/', dispatcher_work_item_create, name='dispatcher_work_item_create'),
     path('equipment-report/', smg_period_views.equipment_page, name='equipment_report'),

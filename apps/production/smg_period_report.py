@@ -133,6 +133,9 @@ def build(obj, day, schedule_id=None, *, day_only=False, equipment_only=False, i
         return target
 
     def operational_row(fact):
+        match=getattr(fact,'operational_match',None)
+        if match:
+            return work_row(match.target_work_id,match.target_item_id)
         work = works.get(fact.project_work_id)
         if not work or not fact.operational_key:
             return None
@@ -188,7 +191,7 @@ def build(obj, day, schedule_id=None, *, day_only=False, equipment_only=False, i
     scope = dict(company=obj.company, construction_object=obj, date__range=(start, end))
     if not equipment_only:
         for fact in DailyFact.objects.filter(company=obj.company, project_work__section__construction_object=obj,
-                date__range=(start, end)).order_by('pk'):
+                date__range=(start, end)).select_related('operational_match__target_work','operational_match__target_item').order_by('pk'):
             # Actual quantities use today's unit; a changed frozen unit forms a separate row.
             target = operational_row(fact) if fact.operational_key else work_row(fact.project_work_id, fact.work_item_id)
             if target is not None:

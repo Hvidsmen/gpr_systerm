@@ -368,6 +368,7 @@ class DispatcherDayView(CompanyRequiredMixin,View):
                 company=obj.company,construction_object=obj,allow_dispatcher_work_items=True,
             ).values_list('pk',flat=True))
         context['can_review_actuation_reasons']=role_code(request.user) in {'ADMIN','PRODUCTION_HEAD'}
+        context['can_match_operational_works']=role_code(request.user) in {'ADMIN','PLANNER'}
         context['own_entry']=own_entry
         if section=='works':
             from .dispatch_models import ProductionEntryDay

@@ -106,6 +106,8 @@ class WorkListView(CatalogueExcelMixin, CompanyScopedMixin, ListView):
         context['advanced_filters_open'] = bool(context['advanced_filter_count'] or self.filter_form.errors)
         context['result_count'] = context['paginator'].count if context.get('paginator') else len(context['works'])
         context['bulk_contextual'] = True
+        from core.permissions import role_code
+        context['can_match_operational_works'] = role_code(self.request.user) in PLAN_ROLES
         for work in context['works']:
             work.catalogue_match = bool(context['search_query'] and context['search_query'].casefold() in work.name.casefold())
             work.catalogue_items = list(work.items.all())
