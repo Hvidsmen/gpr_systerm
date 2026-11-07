@@ -28,6 +28,8 @@ class OperationalWorkMatchingTests(TestCase):
         day=self.client.get(reverse('production:fact_day_workspace'),{'construction_object':self.obj.pk,'date':self.day,'section':'works'})
         self.assertEqual(day.status_code,200);self.assertContains(day,f'?fact={self.fact.pk}')
         page=self.client.get(self.url,{'fact':self.fact.pk});self.assertEqual(page.status_code,200);self.assertContains(page,'Прокладка кабеля временная')
+        self.assertContains(page,'Комплексный объект');self.assertContains(page,'Комплекс');self.assertContains(page,'Работа в составе комплекса')
+        self.assertContains(page,'data-complex-object="Без комплексного объекта"')
         report_url=reverse('production:smg_period_detail')
         report_query={'construction_object':self.obj.pk,'date':self.day,'scope':'day'}
         before=self.client.get(report_url,report_query);self.assertContains(before,f'?fact={self.fact.pk}');self.assertContains(before,'Сопоставить')

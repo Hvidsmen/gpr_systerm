@@ -47,9 +47,12 @@ def candidates(user, obj=None):
     if obj:works=works.filter(section__construction_object=obj)
     result=[]
     for work in works.order_by('section__construction_object__name','section__name','name'):
-        if work.kind == 'SIMPLE':result.append({'token':f'work:{work.pk}','label':work.name,'unit':work.unit,'path':f'{work.section.construction_object} → {work.section}'})
+        if work.kind == 'SIMPLE':result.append({'token':f'work:{work.pk}','label':work.name,'unit':work.unit,'path':f'{work.section.construction_object} → {work.section}',
+            'complex_object':'Без комплексного объекта','complex':'Самостоятельные работы','member':work.name})
         else:
-            for item in work.items.all():result.append({'token':f'item:{item.pk}','label':item.name,'unit':item.unit,'path':f'{work.section.construction_object} → {work.name}'})
+            complex_object=work.complex_object.name if work.complex_object_id else 'Без комплексного объекта'
+            for item in work.items.all():result.append({'token':f'item:{item.pk}','label':item.name,'unit':item.unit,'path':f'{work.section.construction_object} → {work.name}',
+                'complex_object':complex_object,'complex':work.name,'member':item.name})
     return result
 
 
