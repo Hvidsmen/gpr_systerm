@@ -83,8 +83,6 @@ class DailyFactForm(CompanyFormMixin, forms.ModelForm):
             if not self.data.get(self.add_prefix('actuation_reasons_present')) and self.add_prefix('actuation_reasons') not in self.data and retained:
                 if hasattr(self.data,'setlist'):self.data.setlist(self.add_prefix('actuation_reasons'),[str(pk) for pk in retained])
                 else:self.data[self.add_prefix('actuation_reasons')]=[str(pk) for pk in retained]
-            if self.data.get(self.add_prefix('actuation_type')) in dict(DayActuation.TYPES):
-                self.data[self.add_prefix('actual_quantity')] = '0'
         self.fields['actuation_type'].choices = [('', 'Без актировки'), *DayActuation.TYPES]
         self.fields['project_work'].queryset=self.fields['project_work'].queryset.filter(merged_source__isnull=True)
         self.fields["work_item"].label_from_instance = (

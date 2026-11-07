@@ -4,7 +4,12 @@
   const host=root.querySelector('[data-copy-result="'+kind+'"]');if(!host)return;host.replaceChildren();host.classList.toggle('text-danger',Boolean(error));
   if(error){host.textContent=error;return;}
   const source=new Date(result.source_date+'T12:00:00').toLocaleDateString('ru-RU');
-  host.append(document.createTextNode(result.added||result.skipped?`Из ${source}: скопировано ${result.added}, пропущено ${result.skipped}.`:`За ${source} нет записей для переноса.`));
+  if(!result.source_count)host.append(document.createTextNode(`За ${source} нет записей для переноса.`));
+  else if(kind==='people'){
+   const parts=[`Из ${source}: добавлено ${result.added}.`,`Уже были в текущем дне: ${result.already_present||0}.`];
+   if(result.inactive)parts.push(`Неактивных: ${result.inactive}.`);if(result.conflicts)parts.push(`На другом объекте: ${result.conflicts}.`);if(result.busy)parts.push(`Сейчас редактируются: ${result.busy}.`);if(result.failed)parts.push(`Не добавлено из-за ошибок: ${result.failed}.`);
+   host.append(document.createTextNode(parts.join(' ')));
+  }else host.append(document.createTextNode(`Из ${source}: скопировано ${result.added}, пропущено ${result.skipped}.`));
   if(result.warnings?.length){const details=document.createElement('details'),summary=document.createElement('summary');summary.textContent='Пояснения · '+result.warnings.length;details.append(summary);const list=document.createElement('ul');for(const message of result.warnings){const li=document.createElement('li');li.textContent=message;list.append(li);}details.append(list);host.append(details);}
  }
  try{const saved=JSON.parse(sessionStorage.getItem(storageKey)||'null');sessionStorage.removeItem(storageKey);if(saved&&saved.url===location.href&&Date.now()-saved.at<60000&&board)show(board,'equipment',saved.result);}catch{}
@@ -31,7 +36,7 @@
    if(!response.ok)throw new Error(result.error||'Не удалось скопировать данные.');
    show(root,kind,result);
    if(kind==='equipment'&&result.added){try{sessionStorage.setItem(storageKey,JSON.stringify({url:location.href,at:Date.now(),result}));}catch{}busy=false;location.reload();}
-   else if(form){if(result.report){if(form.productionApplyReport)form.productionApplyReport(result.report);else form.dispatchEvent(new CustomEvent('production-report-update',{detail:result.report}));}await form.productionRefresh();}
+   else if(form&&result.added){if(result.report){if(form.productionApplyReport)form.productionApplyReport(result.report);else form.dispatchEvent(new CustomEvent('production-report-update',{detail:result.report}));}await form.productionRefresh();}
   }catch(error){show(root,kind,null,error.message);}
   finally{controls.forEach(({el,disabled})=>el.disabled=disabled);buttons.forEach((b,i)=>b.disabled=disabled[i]);busy=false;}
  }));

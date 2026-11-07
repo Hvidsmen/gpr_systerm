@@ -20,7 +20,7 @@ class WorkActuationTests(TestCase):
         data.update({a+'actuation_type':'DAY',a+'actuation_reason':'Мороз',a+'actual_quantity':'9',b+'actual_quantity':'3'})
         self.assertEqual(self.client.post(self.url,data).status_code,302)
         fact=DailyFact.objects.get(project_work=self.work)
-        self.assertEqual((fact.actual_quantity,fact.actual_value),(0,0))
+        self.assertEqual((fact.actual_quantity,fact.actual_value),(9,90))
         self.assertEqual(DailyFact.objects.get(project_work=self.second_work).actual_quantity,3)
         self.assertFalse(DayActuation.objects.exists())
         page=self.client.get(self.url,{'construction_object':self.obj.pk,'date':str(self.day),'section':'works'})
@@ -34,10 +34,10 @@ class WorkActuationTests(TestCase):
 
     def test_bulk_multiple_work_payload_and_clear_one(self):
         data=self.payload('DISPATCHER','works')
-        for work in (self.work,self.second_work):
-            prefix=self.row(data,work);data.update({prefix+'actuation_type':'FULL_DAY',prefix+'actuation_reason':'Ветер'})
+        for work,quantity in ((self.work,'4'),(self.second_work,'6')):
+            prefix=self.row(data,work);data.update({prefix+'actuation_type':'FULL_DAY',prefix+'actuation_reason':'Ветер',prefix+'actual_quantity':quantity})
         self.assertEqual(self.client.post(self.url,data).status_code,302)
-        self.assertEqual(DailyFact.objects.filter(actuation_type='FULL_DAY',actual_quantity=0).count(),2)
+        self.assertEqual(list(DailyFact.objects.filter(actuation_type='FULL_DAY').order_by('actual_quantity').values_list('actual_quantity',flat=True)),[4,6])
         data=self.payload('DISPATCHER','works');prefix=self.row(data,self.work)
         data.update({prefix+'actuation_type':'',prefix+'actuation_reason':'',prefix+'actual_quantity':'4'})
         self.assertEqual(self.client.post(self.url,data).status_code,302)
@@ -51,9 +51,9 @@ class WorkActuationTests(TestCase):
             self.assertEqual(self.client.post(self.url,data).status_code,400)
             self.assertFalse(DailyFact.objects.exists())
 
-    def test_direct_model_cannot_save_nonzero_actuated_fact(self):
-        with self.assertRaises(ValidationError):
-            DailyFact.objects.create(company=self.company,project_work=self.work,date=self.day,actual_quantity=1,actuation_type='DAY',actuation_reason='Ветер')
+    def test_direct_model_allows_nonzero_actuated_fact(self):
+        fact=DailyFact.objects.create(company=self.company,project_work=self.work,date=self.day,actual_quantity=1,actuation_type='DAY',actuation_reason='Ветер')
+        self.assertEqual(fact.actual_quantity,1)
 
     def test_old_client_preserves_work_actuation(self):
         fact=DailyFact.objects.create(company=self.company,project_work=self.work,date=self.day,actual_quantity=0,actuation_type='DAY',actuation_reason='Ветер')

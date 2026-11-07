@@ -16,9 +16,10 @@ from core.permissions import require_roles
 from .entry_concurrency import sqlite_serialized
 
 
-def result(day):return {'source_date':str(day-timedelta(days=1)),'added':0,'skipped':0,'warnings':[]}
-def warn(output,message):
+def result(day):return {'source_date':str(day-timedelta(days=1)),'source_count':0,'added':0,'skipped':0,'already_present':0,'inactive':0,'conflicts':0,'busy':0,'failed':0,'warnings':[]}
+def warn(output,message,reason='failed'):
     output['skipped']+=1
+    output[reason]+=1
     if len(output['warnings'])<50:output['warnings'].append(message)
 
 
@@ -33,7 +34,7 @@ def production_copy(user,obj,day,kind,*,session,reset_epoch,keep=(),revisions=No
     if kind not in {'people','links'}:raise ValidationError('Выберите людей или связи.')
     if int(reset_epoch)!=epoch(obj,day):raise ValidationError('Производственная часть была сброшена. Обновите форму.')
     output=result(day);source=EmployeeActivity.objects.filter(company=obj.company,construction_object=obj,date=day-timedelta(days=1)).exclude(labor_direction()).select_related('employee__position').prefetch_related('work_links').order_by('pk')
-    source_count=source.count()
+    source_count=source.count();output['source_count']=source_count
     if source_count>2000:raise ValidationError('В предыдущем дне более 2000 сотрудников. Уточните состав.')
     if kind=='people':
         from .models import LaborFact
@@ -43,9 +44,13 @@ def production_copy(user,obj,day,kind,*,session,reset_epoch,keep=(),revisions=No
         roles=set(plan_positions(obj,day));protected=set(keep)
         for old in source:
             employee=old.employee;key=f'employee:{employee.pk}:{old.shift}'
-            if not employee.is_active or employee.company_id!=obj.company_id:warn(output,f'{employee.display_name}: сотрудник неактивен.');continue
-            if key in protected or EmployeeActivity.objects.filter(company=obj.company,employee=employee,date=day,shift=old.shift).exists():output['skipped']+=1;continue
-            if EmployeeFactClaim.objects.filter(company=obj.company,date=day,employee=employee,shift=old.shift,expires_at__gt=timezone.now()).exists():warn(output,f'{employee.display_name}: запись сейчас редактируется.');continue
+            if not employee.is_active or employee.company_id!=obj.company_id:warn(output,f'{employee.display_name}: сотрудник неактивен.','inactive');continue
+            current=EmployeeActivity.objects.filter(company=obj.company,employee=employee,date=day,shift=old.shift).select_related('construction_object').first()
+            if key in protected or current and current.construction_object_id==obj.pk:
+                output['skipped']+=1;output['already_present']+=1;continue
+            if current:
+                warn(output,f'{employee.display_name}: уже учтён на объекте «{current.construction_object}».','conflicts');continue
+            if EmployeeFactClaim.objects.filter(company=obj.company,date=day,employee=employee,shift=old.shift,expires_at__gt=timezone.now()).exists():warn(output,f'{employee.display_name}: запись сейчас редактируется.','busy');continue
             try:
                 with transaction.atomic():
                     row=EmployeeActivity(company=obj.company,construction_object=obj,date=day,employee=employee,position=employee.position,planning_position_id=old.planning_position_id if old.planning_position_id in roles else None,shift=old.shift,activity=old.activity,entry_direction='works',assignment_reviewed=False,reported_by=user)
@@ -137,7 +142,8 @@ def equipment(request):
         signed=data.get('signed');transport._payload(request.user,camp,day,signed)
         output=result(day)
         source=EquipmentDayRecord.objects.filter(company=request.user.company,camp=camp,date=day-timedelta(days=1)).select_related('equipment','construction_object','work','work_item')
-        if source.count()>2000:raise ValidationError('В предыдущем дне более 2000 машин. Уточните состав.')
+        output['source_count']=source.count()
+        if output['source_count']>2000:raise ValidationError('В предыдущем дне более 2000 машин. Уточните состав.')
         details={row.equipment_id:row for row in EquipmentDayDetails.objects.filter(company=request.user.company,camp=camp,date=day-timedelta(days=1))}
         active=set(Employee.objects.filter(company=request.user.company,is_active=True).values_list('pk',flat=True))
         for old in source:

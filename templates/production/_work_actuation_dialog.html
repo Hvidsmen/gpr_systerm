@@ -6,7 +6,7 @@
 <div class="production-actuation-list" data-actuation-list></div>
 <div class="production-actuation-fields mt-3"><div><label for="bulk-actuation-type">Действие / вид актировки</label><select id="bulk-actuation-type" class="form-select" data-actuation-type><option value="FULL_DAY">Суточная</option><option value="DAY">Дневная</option><option value="NIGHT">Ночная</option><option value="">Снять актировку</option></select></div><div><strong>Причины актировки</strong><div class="actuation-reason-options" data-bulk-actuation-reasons></div><button type="button" class="btn btn-sm btn-outline-primary" data-actuation-reason-new>+ Добавить причину</button></div></div>
 <div class="mt-2" data-actuation-ui><label for="bulk-actuation-files">Акты для всех выбранных работ</label><input id="bulk-actuation-files" type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.tif,.tiff,.doc,.docx,.odt,.xls,.xlsx,.xlsm,.zip,.rar,.7z" class="form-control" data-bulk-actuation-files><small>До 30 файлов за одну загрузку, до 25 МБ каждый и 100 МБ всего.</small></div>
-<p class="alert alert-warning my-3" data-actuation-warning>У выбранных работ факт станет нулевым. Остальные работы не изменятся.</p>
+<p class="alert alert-info my-3" data-actuation-warning>Актировка будет добавлена к выбранным работам. Внесённые фактические объёмы не изменятся.</p>
 <p class="text-danger" data-actuation-error role="alert"></p><div class="d-flex justify-content-end gap-2"><button type="button" class="btn btn-outline-secondary" data-actuation-close>Отмена</button><button type="button" class="btn btn-primary" data-actuation-apply disabled>Применить к выбранным</button></div>
 </dialog>
 

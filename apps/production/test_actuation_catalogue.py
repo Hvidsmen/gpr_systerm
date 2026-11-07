@@ -43,7 +43,7 @@ class ActuationCatalogueTests(TestCase):
         data.update({a+'actuation_type':'DAY',a+'actuation_reasons':[key for key,label in available],a+'actual_quantity':'7',b+'actual_quantity':'3'})
         self.assertEqual(self.client.post(self.url,data).status_code,302)
         fact=DailyFact.objects.get(project_work=self.work)
-        self.assertEqual(len(fact.actuation_reason_ids),2);self.assertEqual(fact.actual_quantity,0)
+        self.assertEqual(len(fact.actuation_reason_ids),2);self.assertEqual(fact.actual_quantity,7)
         self.assertEqual(DailyFact.objects.get(project_work=self.second_work).actual_quantity,3)
         self.assertFalse(WorkTask.objects.filter(key__startswith='actuation-reason:').exists())
 
@@ -123,6 +123,14 @@ class ActuationCatalogueTests(TestCase):
         from .history_models import FactRevision
         self.assertEqual(FactRevision.objects.filter(entity_type='production.actuationdocument',operation='CREATE').count(),4)
         with self.assertRaises(ValueError):record.file.url
+
+    def test_file_upload_keeps_nonzero_actuated_volume(self):
+        fact,reason=self.marked_fact();fact.actual_quantity=12;fact.save();self.claim(fact)
+        response=self.upload([fact])
+        self.assertEqual(response.status_code,200,response.content)
+        fact.refresh_from_db()
+        self.assertEqual(fact.actual_quantity,12)
+        self.assertEqual(ActuationDocument.objects.filter(fact=fact,removed_at=None).count(),2)
 
     def test_same_batch_with_different_bytes_is_rejected(self):
         fact,_=self.marked_fact();self.claim(fact);batch=uuid4()

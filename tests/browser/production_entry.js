@@ -40,7 +40,9 @@ const {chromium}=require('playwright');const fs=require('fs');const assert=requi
  await a.close();await b.locator('[data-step="1"]').click();await b.waitForFunction(id=>[...document.querySelectorAll('[data-work-fact-row]')].find(r=>r.querySelector('[name$="-project_work"]')?.value===String(id))?.querySelector('[name$="-actual_quantity"]')?.disabled===false,c.work,{timeout:15000});
  await work(b,c.work).locator('[name$="-actual_quantity"]').fill('4');await save(b);
  assert.equal(await work(b,c.work).locator('[data-work-remove]').isHidden(),true);
- // Per-work actuation: two leaves selected together, a third work stays untouched.
+ // Per-work actuation preserves the entered volumes on selected leaves and leaves a third work untouched.
+ const cameraBefore= b.locator('[data-work-fact-row]').filter({has:b.locator(`[name$="-work_item"][value="${c.camera}"]`)}),cableBefore=b.locator('[data-work-fact-row]').filter({has:b.locator(`[name$="-work_item"][value="${c.cable}"]`)});
+ await cameraBefore.locator('[name$="-actual_quantity"]').fill('2');await cableBefore.locator('[name$="-actual_quantity"]').fill('3');await save(b);
  await b.locator('[data-work-actuation-open]').click();const act=b.locator('[data-work-actuation-dialog]');
  await act.locator('[data-actuation-search]').fill('кабеля');await act.locator('[data-actuation-select]').click();
  assert.equal(await act.locator('input[type=checkbox]:checked').count(),1);
@@ -58,7 +60,7 @@ const {chromium}=require('playwright');const fs=require('fs');const assert=requi
  await b.setViewportSize({width:1440,height:1000});await b.screenshot({path:'/tmp/work-actuation-desktop.png',animations:'disabled'});
  await act.locator('[data-actuation-apply]').click();await act.waitFor({state:'hidden'});
  assert.equal(await work(b,c.work).locator('[name$="-actual_quantity"]').inputValue(),'4');
- for(const item of [c.camera,c.cable]){const leaf=b.locator('[data-work-fact-row]').filter({has:b.locator(`[name$="-work_item"][value="${item}"]`)});assert.equal(await leaf.locator('[name$="-actual_quantity"]').inputValue(),'0');assert.equal(await leaf.locator('[name$="-actuation_type"]').inputValue(),'FULL_DAY');}
+ for(const [item,quantity] of [[c.camera,'2'],[c.cable,'3']]){const leaf=b.locator('[data-work-fact-row]').filter({has:b.locator(`[name$="-work_item"][value="${item}"]`)});assert.equal(await leaf.locator('[name$="-actual_quantity"]').inputValue(),quantity);assert.equal(await leaf.locator('[name$="-actuation_type"]').inputValue(),'FULL_DAY');}
  await b.locator('[data-step="4"]').click();assert((await b.locator('[data-report-works]').textContent()).includes('Сильный ветер'));
  const actExport=await Promise.all([b.waitForEvent('download'),b.locator('[data-report-download]').click()]);await actExport[0].saveAs('/tmp/production-actuation-report.xlsx');
  // Clear only one leaf from the same picker, then restore its quantity individually.
@@ -66,11 +68,10 @@ const {chromium}=require('playwright');const fs=require('fs');const assert=requi
  await act.locator(`[data-work-token="item:${c.package}:${c.camera}"] input`).check();await act.locator('[data-actuation-type]').selectOption('');
  await act.locator('[data-actuation-apply]').click();await act.waitFor({state:'hidden'});
  const camera=b.locator('[data-work-fact-row]').filter({has:b.locator(`[name$="-work_item"][value="${c.camera}"]`)});
- assert.equal(await camera.locator('[name$="-actuation_type"]').inputValue(),'');assert.equal(await camera.locator('[name$="-actual_quantity"]').inputValue(),'0');
- await camera.locator('[name$="-actual_quantity"]').fill('2');await save(b);
+ assert.equal(await camera.locator('[name$="-actuation_type"]').inputValue(),'');assert.equal(await camera.locator('[name$="-actual_quantity"]').inputValue(),'2');
  const cable=b.locator('[data-work-fact-row]').filter({has:b.locator(`[name$="-work_item"][value="${c.cable}"]`)});
  assert.equal(await cable.locator('[name$="-actuation_type"]').inputValue(),'FULL_DAY');
- // Individual actuation also clears only this row.
+ // Individual actuation preserves this row's volume.
  await camera.locator('[name$="-actuation_type"]').selectOption('DAY');await camera.locator('input[name$="-actuation_reasons"]').first().check();await save(b);
  // Files survive removing actuation and can be downloaded by name.
  assert.equal(await camera.locator('[data-actuation-documents] a').count(),2);
@@ -89,7 +90,7 @@ const {chromium}=require('playwright');const fs=require('fs');const assert=requi
  assert.equal(await camera.locator('[data-actuation-documents] a').count(),2);
  await camera.locator('[data-actuation-documents] button').first().click();await camera.locator('[data-actuation-documents] a').first().waitFor();await b.waitForFunction(id=>[...document.querySelectorAll('[data-work-fact-row]')].find(r=>r.querySelector('[name$="-work_item"]')?.value===String(id))?.querySelectorAll('[data-actuation-documents] a').length===1,c.camera);
  await head.close();
- assert.equal(await camera.locator('[name$="-actual_quantity"]').inputValue(),'0');
+ assert.equal(await camera.locator('[name$="-actual_quantity"]').inputValue(),'2');
  assert.equal(await work(b,c.work).locator('[name$="-actual_quantity"]').inputValue(),'4');
  assert.deepStrictEqual(errors,[]);await browser.close();console.log('PASS: reason checklist, proposal, role task review approve/replace/reject, multi-file bulk upload, private download, soft removal, automatic leases, live presence/data, independent live links, grouping, multi-select filters, compact graph, zero and clear button remove only matching work edges, XLSX download, lease release, colleague edit, mobile');
 })().catch(e=>{console.error(e);process.exit(1)});

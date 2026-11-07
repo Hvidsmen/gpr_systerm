@@ -26,7 +26,7 @@ class ProductionCopyTests(TestCase):
         response=self.copy();self.assertEqual(response.status_code,200,response.content);self.assertEqual(response.json()['added'],1)
         row=EmployeeActivity.objects.get(date=self.day);self.assertEqual(row.shift,2);self.assertFalse(row.assignment_reviewed);self.assertIsNone(row.work_id);self.assertEqual(row.reported_by,self.user)
         self.assertEqual(LaborFact.objects.get(date=self.day).actual_workers,1);self.assertFalse(DailyFact.objects.filter(date=self.day).exists())
-        self.assertEqual(self.copy().json()['added'],0);self.assertEqual(EmployeeActivity.objects.filter(date=self.day).count(),1)
+        repeated=self.copy().json();self.assertEqual((repeated['added'],repeated['already_present'],repeated['source_count']),(0,1,1));self.assertEqual(EmployeeActivity.objects.filter(date=self.day).count(),1)
     def test_links_copy_only_to_existing_people_and_current_facts_and_keep_existing_relations(self):
         self.assertEqual(self.copy('links').json()['added'],0);self.copy()
         row=EmployeeActivity.objects.get(date=self.day)

@@ -149,8 +149,6 @@ class DailyFact(ActualHistoryMixin, BaseCompanyModel):
         if self.actuation_type:
             if not self.actuation_reason.strip():
                 raise ValidationError({'actuation_reason': 'Укажите причину актировки этой работы.'})
-            if self.actual_quantity:
-                raise ValidationError({'actual_quantity': 'При актировке этой работы её факт должен быть нулевым.'})
         elif self.actuation_reason:
             raise ValidationError({'actuation_type': 'Выберите вид актировки или очистите причину.'})
         if self.actual_quantity and self.project_work_id and self.date and WorkOpeningBalance.objects.filter(
