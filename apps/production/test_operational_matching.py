@@ -20,7 +20,7 @@ class OperationalWorkMatchingTests(TestCase):
         complex_object=ComplexObject.objects.create(company=self.company,construction_object=self.obj,section=self.work.section,name='Прочее',allow_dispatcher_work_items=True)
         self.package=ProjectWork.objects.create(company=self.company,section=self.work.section,complex_object=complex_object,name='Пакет прочих работ',kind='COMPOSITE',unit='компл.')
         self.target=ProjectWork.objects.create(company=self.company,section=self.work.section,name='Прокладка кабеля',kind='SIMPLE',unit='м.')
-        self.fact=DailyFact.objects.create(company=self.company,project_work=self.package,date=self.day,operational_key=uuid4(),operational_name='Прокладка кабеля временная',operational_unit='м.',actual_quantity=11,reported_by=self.users['DISPATCHER'])
+        self.fact=DailyFact.objects.create(company=self.company,project_work=self.package,date=self.day,operational_key=uuid4(),operational_name='Прокладка кабеля временная',operational_unit='м.',actual_quantity=11,comment='Участок УЗА №33',reported_by=self.users['DISPATCHER'])
         self.url=reverse('production:operational_matches')
 
     def test_planner_matches_fact_and_report_groups_it_as_catalogue_work(self):
@@ -28,6 +28,7 @@ class OperationalWorkMatchingTests(TestCase):
         day=self.client.get(reverse('production:fact_day_workspace'),{'construction_object':self.obj.pk,'date':self.day,'section':'works'})
         self.assertEqual(day.status_code,200);self.assertContains(day,f'?fact={self.fact.pk}')
         page=self.client.get(self.url,{'fact':self.fact.pk});self.assertEqual(page.status_code,200);self.assertContains(page,'Прокладка кабеля временная')
+        self.assertContains(page,'Комментарий');self.assertContains(page,'Участок УЗА №33')
         self.assertContains(page,'Комплексный объект');self.assertContains(page,'Комплекс');self.assertContains(page,'Работа в составе комплекса')
         self.assertContains(page,'data-complex-object="Без комплексного объекта"')
         self.assertContains(page,'data-object-context')
