@@ -17,7 +17,6 @@
    const expanded=bulk.hasAttribute('data-report-expand');
    scope.querySelectorAll('details.production-report-section, details.production-report-days').forEach(section=>{section.open=expanded;});
    scope.querySelectorAll('[data-report-toggle]').forEach(button=>expandBranch(button,expanded));
-   scope.querySelectorAll('[data-report-comment-toggle]').forEach(button=>expandComment(button,expanded));
    return;
   }
   const comment=event.target.closest('[data-report-comment-toggle]');
