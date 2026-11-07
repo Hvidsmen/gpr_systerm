@@ -7,12 +7,13 @@ const {chromium}=require('playwright'),fs=require('fs'),assert=require('node:ass
  const workName=await page.locator('[data-work-fact-row]').evaluateAll((rows,id)=>rows.find(row=>row.querySelector('[name$="-project_work"]')?.value===String(id)).querySelector('[name$="-actual_quantity"]').name,c.work);
  const quantity=page.locator('[name="'+workName+'"]');await quantity.fill('');await quantity.press('Tab');
  await page.locator('[data-step="2"]').click();assert.equal(await page.locator('[data-production-person] [name$="-employee"]').evaluateAll(nodes=>nodes.filter(n=>n.value).length),0);
- await page.locator('[data-copy-previous=people]').click();await page.locator('[data-copy-result=people]').filter({hasText:'скопировано 1'}).waitFor();
+ await page.locator('[data-copy-previous=people]').click();await page.locator('[data-copy-result=people]').filter({hasText:'добавлено 1'}).waitFor();
  await page.waitForFunction(id=>[...document.querySelectorAll('[data-production-person]')].some(row=>row.querySelector('[name$="-employee"]').value===String(id)&&row.querySelector('[name$="-id"]').value),c.employee);
- await page.locator('[data-copy-previous=people]').click();await page.locator('[data-copy-result=people]').filter({hasText:'скопировано 0'}).waitFor();
- await page.locator('[data-step="3"]').click();await page.locator('[data-copy-previous=links]').click();await page.locator('[data-copy-result=links]').filter({hasText:'скопировано 1'}).waitFor();
+ await page.locator('[data-copy-previous=people]').click();await page.locator('[data-copy-result=people]').filter({hasText:'Уже были в текущем дне: 1'}).waitFor();
+ assert.equal(await page.locator('[data-production-person] [name$="-employee"]').evaluateAll((nodes,id)=>nodes.filter(node=>node.value===String(id)).length,c.employee),1);
+ await page.locator('[data-step="4"]').click();await page.locator('[data-copy-previous=links]').click();await page.locator('[data-copy-result=links]').filter({hasText:'скопировано 1'}).waitFor();
  assert.equal(await quantity.inputValue(),'');await page.locator('[data-step="1"]').click();await quantity.fill('5');await quantity.press('Tab');await page.locator('[data-autosave-state]').filter({hasText:'Все изменения сохранены'}).waitFor();
- await page.locator('[data-step="3"]').click();await page.screenshot({path:'/tmp/copy-previous-links.png',fullPage:true});
+ await page.locator('[data-step="4"]').click();await page.screenshot({path:'/tmp/copy-previous-links.png',fullPage:true});
  await context.addCookies([{name:'sessionid',value:c.operator_cookie,url:c.base}]);await page.goto(c.base+c.transport+`?camp=${c.camp}&date=${c.day}`);
  await page.waitForFunction(()=>document.querySelector('[data-transport-board]')?.dataset.planningReady==='1');await Promise.all([page.waitForNavigation(),page.locator('[data-copy-previous=equipment]').click()]);
  await page.locator('[data-copy-result=equipment]').filter({hasText:'скопировано 1'}).waitFor();assert.equal(await page.locator('[data-transport-row]').count(),1);
