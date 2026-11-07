@@ -31,8 +31,8 @@ class OperationalWorkMatchingTests(TestCase):
         self.assertContains(page,'Комментарий');self.assertContains(page,'Участок УЗА №33')
         self.assertContains(page,'Комплексный объект');self.assertContains(page,'Комплекс');self.assertContains(page,'Работа в составе комплекса')
         self.assertContains(page,'data-complex-object="Без комплексного объекта"')
-        self.assertContains(page,'data-object-context')
-        self.assertContains(page,'data-object-ancestors="[&quot;standalone&quot;, &quot;standalone:works&quot;]"')
+        self.assertContains(page,'data-highlight-leaf')
+        self.assertContains(page,f'{self.target.section} → Прокладка кабеля')
         report_url=reverse('production:smg_period_detail')
         report_query={'construction_object':self.obj.pk,'date':self.day,'scope':'day'}
         before=self.client.get(report_url,report_query);self.assertContains(before,f'?fact={self.fact.pk}');self.assertContains(before,'Сопоставить')
