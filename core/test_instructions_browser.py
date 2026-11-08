@@ -19,6 +19,7 @@ class InstructionsBrowserTests(StaticLiveServerTestCase):
         from apps.production import transport,camp_fuel
         from apps.personnel.models import LodgingStay
         from apps.resources.test_transport_import import TransportImportTests,upload
+        from apps.resources.models import Employee
         from apps.resources import transport_import
         demo=type('TransportDemo',(),{});TransportTests.setUpTestData.__func__(demo)
         home=type('HousingDemo',(),{});LodgingTests.setUpTestData.__func__(home)
@@ -29,6 +30,9 @@ class InstructionsBrowserTests(StaticLiveServerTestCase):
         for work,item,quantity in [(demo.work,None,5),(package,camera,30),(package,cable,0)]:DailyFact.objects.create(company=demo.company,project_work=work,work_item=item,date=demo.day,actual_quantity=quantity,reported_by=demo.users['DISPATCHER'])
         person=EmployeeActivity.objects.create(company=demo.company,construction_object=demo.obj,date=demo.day,employee=demo.employee,position=demo.employee.position,work=demo.work,entry_direction='works',assignment_reviewed=True,reported_by=demo.users['DISPATCHER'])
         EmployeeWorkLink.objects.create(company=demo.company,activity=person,work=demo.work)
+        second_employee=Employee.objects.create(company=demo.company,last_name='Петров',first_name='Пётр',middle_name='Учебный',employee_number='HELP-002',position=demo.employee.position)
+        second_person=EmployeeActivity.objects.create(company=demo.company,construction_object=demo.obj,date=demo.day,employee=second_employee,position=second_employee.position,work=demo.work,entry_direction='works',assignment_reviewed=True,reported_by=demo.users['DISPATCHER'])
+        EmployeeWorkLink.objects.create(company=demo.company,activity=second_person,work=demo.work)
         transport.move(demo.admin,demo.camp,demo.day,[demo.machine.pk],'ARRIVAL',condition='READY',signed=transport.snapshot(demo.admin,demo.camp,demo.day))
         transport.save_day(demo.admin,demo.camp,demo.day,[demo.machine.pk],'WORKED',signed=transport.snapshot(demo.admin,demo.camp,demo.day))
         LodgingStay.objects.create(company=home.company,camp=home.a,bed=home.bed,employee=home.second_employee,arrived_on=home.day,recorded_by=home.commandant,keys_issued=True,key_number='12')
@@ -39,7 +43,7 @@ class InstructionsBrowserTests(StaticLiveServerTestCase):
             user.last_name='Учебный';user.first_name='Пользователь';user.save(update_fields=['last_name','first_name'])
             client=Client();client.force_login(user);return client.cookies['sessionid'].value
         from urllib.parse import urlencode
-        config={'base':self.live_server_url,'chromium':shutil.which('chromium'),'images':str(Path(__file__).resolve().parents[1]/'static/instructions'),
+        config={'base':self.live_server_url,'chromium':shutil.which('chromium'),'images':str(Path(__file__).resolve().parents[1]/'static/instructions'),'production_only':os.environ.get('INSTRUCTIONS_PRODUCTION_ONLY')=='1',
             'production':{'cookie':actor(demo.users['DISPATCHER']),'url':reverse('production:fact_day_workspace')+'?'+urlencode({'construction_object':demo.obj.pk,'date':str(demo.day),'section':'works'})},
             'rotation':{'cookie':actor(home.hr),'url':reverse('personnel:housing')+'?'+urlencode({'camp':home.a.pk,'date':str(home.day)})},
             'lodging':{'cookie':actor(home.commandant),'url':reverse('personnel:lodging')+'?'+urlencode({'camp':home.a.pk,'date':str(home.day)})},
