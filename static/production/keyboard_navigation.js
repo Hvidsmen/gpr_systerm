@@ -23,6 +23,7 @@
   if(target.matches('button')&&key==='Enter')return false;
   if(target.matches('textarea')){const next=textareaTarget(event,row);if(!next)return false;event.preventDefault();focus(next);return true;}
   if(target.matches('input[type=text],input[type=search],input:not([type])')&&['ArrowLeft','ArrowRight'].includes(key))return false;
+  if(suffix(target)==='actual_quantity'&&key==='ArrowLeft'){const rows=rowsFor(row),previous=rows[rows.indexOf(row)-1];if(!previous)return false;reveal(previous);const comment=controls(previous).find(node=>suffix(node)==='comment');if(!comment)return false;event.preventDefault();focus(comment);return true;}
   if(target.matches('input[type=number]')&&event.ctrlKey&&['ArrowUp','ArrowDown'].includes(key)){event.preventDefault();key==='ArrowUp'?target.stepUp():target.stepDown();target.dispatchEvent(new Event('input',{bubbles:true}));target.dispatchEvent(new Event('change',{bubbles:true}));return true;}
   let next=null;if(key==='ArrowLeft')next=list[index-1];else if(key==='ArrowRight'||key==='Enter')next=list[index+1];else if(key==='ArrowUp')next=siblingField(row,target,-1);else if(key==='ArrowDown')next=siblingField(row,target,1);else return false;
   if(!next)return false;event.preventDefault();focus(next);return true;

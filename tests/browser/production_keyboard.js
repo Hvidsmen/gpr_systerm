@@ -1,8 +1,8 @@
 const {chromium}=require('playwright'),assert=require('assert'),path=require('path');
 (async()=>{const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',headless:true,args:['--no-sandbox']});try{const page=await browser.newPage({viewport:{width:1200,height:900}});await page.setContent(`
 <form data-production-form>
- <section data-work-fact-row><input name="works-0-actual_quantity" type="number" value="2"><input name="works-0-comment"><textarea name="works-0-note"></textarea><button type="button" data-action>Кнопка</button></section>
- <details><summary>Следующая группа</summary><section data-work-fact-row><input name="works-1-actual_quantity" type="number" value="4"><input name="works-1-comment"><textarea name="works-1-note"></textarea></section></details>
+ <section data-work-fact-row><input name="works-0-actual_quantity" type="number" value="2"><textarea name="works-0-comment"></textarea><button type="button" data-action>Кнопка</button></section>
+ <details><summary>Следующая группа</summary><section data-work-fact-row><input name="works-1-actual_quantity" type="number" value="4"><textarea name="works-1-comment"></textarea></section></details>
  <section data-production-person><select name="labor-0-employee"><option>Первый</option></select><select name="labor-0-shift"><option>День</option></select></section>
  <section data-production-person><select name="labor-1-employee"><option>Второй</option></select><select name="labor-1-shift"><option>Ночь</option></select></section>
  <div class="production-crew-person"><input type="checkbox"><span>А</span><select><option>1</option></select></div><div class="production-crew-person"><input type="checkbox"><span>Б</span><select><option>2</option></select></div>
@@ -12,11 +12,12 @@ const {chromium}=require('playwright'),assert=require('assert'),path=require('pa
  await page.locator('[name="works-0-actual_quantity"]').focus();await page.keyboard.press('ArrowDown');assert.equal(await active(),'works-1-actual_quantity');
  await page.locator('[name="works-0-actual_quantity"]').focus();await page.keyboard.press('ArrowRight');assert.equal(await active(),'works-0-comment');
  await page.locator('[name="works-0-actual_quantity"]').focus();await page.keyboard.press('Control+ArrowUp');assert.equal(await page.locator('[name="works-0-actual_quantity"]').inputValue(),'3');
- await page.locator('[name="works-0-note"]').fill('текст');await page.locator('[name="works-0-note"]').evaluate(el=>el.setSelectionRange(2,2));await page.keyboard.press('ArrowLeft');assert.equal(await active(),'works-0-note');
- await page.locator('[name="works-0-note"]').fill('');await page.keyboard.press('ArrowLeft');assert.equal(await active(),'works-0-actual_quantity');
- await page.locator('[name="works-0-note"]').focus();await page.keyboard.press('Control+Enter');assert.equal(await active(),'works-1-actual_quantity');assert(await page.locator('details').first().evaluate(el=>el.open));
- await page.locator('details').first().evaluate(el=>el.open=false);await page.locator('[name="works-0-note"]').focus();await page.keyboard.press('ArrowRight');assert.equal(await active(),'works-1-actual_quantity');
- await page.locator('[name="works-0-note"]').focus();await page.keyboard.press('ArrowDown');assert.equal(await active(),'works-1-note');await page.keyboard.press('ArrowUp');assert.equal(await active(),'works-0-note');
+ await page.locator('[name="works-0-comment"]').fill('текст');await page.locator('[name="works-0-comment"]').evaluate(el=>el.setSelectionRange(2,2));await page.keyboard.press('ArrowLeft');assert.equal(await active(),'works-0-comment');
+ await page.locator('[name="works-0-comment"]').fill('');await page.keyboard.press('ArrowLeft');assert.equal(await active(),'works-0-actual_quantity');
+ await page.locator('[name="works-0-comment"]').focus();await page.keyboard.press('Control+Enter');assert.equal(await active(),'works-1-actual_quantity');assert(await page.locator('details').first().evaluate(el=>el.open));
+ await page.locator('[name="works-1-actual_quantity"]').focus();await page.keyboard.press('ArrowLeft');assert.equal(await active(),'works-0-comment');
+ await page.locator('details').first().evaluate(el=>el.open=false);await page.locator('[name="works-0-comment"]').focus();await page.keyboard.press('ArrowRight');assert.equal(await active(),'works-1-actual_quantity');
+ await page.locator('[name="works-0-comment"]').focus();await page.keyboard.press('ArrowDown');assert.equal(await active(),'works-1-comment');await page.keyboard.press('ArrowUp');assert.equal(await active(),'works-0-comment');
  await page.locator('[name="labor-0-shift"]').focus();await page.keyboard.press('ArrowDown');assert.equal(await active(),'labor-1-shift');
  await page.locator('.production-crew-person').first().locator('input').focus();await page.keyboard.press('ArrowDown');assert(await page.locator('.production-crew-person').nth(1).locator('input').evaluate(el=>el===document.activeElement));
  const work=page.locator('.graph-work');await work.focus();await page.keyboard.press('ArrowRight');assert(await page.locator('.graph-crew').evaluate(el=>el===document.activeElement));await page.keyboard.press('ArrowRight');assert(await page.locator('.employee-graph-crew').evaluate(el=>el.open));
