@@ -3,13 +3,14 @@
  const form=document.querySelector('[data-production-form]');if(!form)return;
  const selector='input:not([type=hidden]),select,textarea,button,[tabindex]:not([tabindex="-1"])';
  const visible=node=>Boolean(node&&!node.disabled&&!node.hidden&&node.getClientRects().length&&!node.closest('[hidden]'));
+ const reveal=node=>{for(let group=node?.closest('details');group;group=group.parentElement?.closest('details'))group.open=true;};
  const controls=row=>[...row.querySelectorAll(selector)].filter(visible);
- const focus=node=>{if(!node)return;node.focus({preventScroll:true});node.scrollIntoView({block:'nearest',inline:'nearest',behavior:'smooth'});};
+ const focus=node=>{if(!node)return;reveal(node);node.focus({preventScroll:true});node.scrollIntoView({block:'nearest',inline:'nearest',behavior:'smooth'});};
  const suffix=node=>(node.name||node.dataset.keyboardField||'').replace(/^(works|labor)-\d+-/,'');
- const rowsFor=row=>row.matches('[data-work-fact-row]')?[...form.querySelectorAll('[data-work-fact-row]')].filter(visible):[...form.querySelectorAll('[data-production-person]')].filter(visible);
- function siblingField(row,target,direction){const rows=rowsFor(row),next=rows[rows.indexOf(row)+direction];if(!next)return null;const name=suffix(target),same=controls(next).find(node=>suffix(node)===name);if(same)return same;const index=controls(row).indexOf(target);return controls(next)[Math.max(0,Math.min(index,controls(next).length-1))];}
+ const rowsFor=row=>row.matches('[data-work-fact-row]')?[...form.querySelectorAll('[data-work-fact-row]')].filter(item=>!item.hidden&&!item.closest('[hidden]')):[...form.querySelectorAll('[data-production-person]')].filter(visible);
+ function siblingField(row,target,direction){const rows=rowsFor(row),next=rows[rows.indexOf(row)+direction];if(!next)return null;reveal(next);const name=suffix(target),same=controls(next).find(node=>suffix(node)===name);if(same)return same;const index=controls(row).indexOf(target);return controls(next)[Math.max(0,Math.min(index,controls(next).length-1))];}
  function textareaTarget(event,row){
-  const target=event.target,key=event.key,value=target.value,start=target.selectionStart??0,end=target.selectionEnd??start,rows=rowsFor(row),index=rows.indexOf(row),quantity=item=>controls(item).find(node=>suffix(node)==='actual_quantity');
+  const target=event.target,key=event.key,value=target.value,start=target.selectionStart??0,end=target.selectionEnd??start,rows=rowsFor(row),index=rows.indexOf(row),quantity=item=>{if(!item)return null;reveal(item);return controls(item).find(node=>suffix(node)==='actual_quantity');};
   if(event.ctrlKey&&key==='Enter')return quantity(rows[index+1]);
   if(key==='ArrowLeft'&&start===0&&end===0)return quantity(row);
   if(key==='ArrowRight'&&start===value.length&&end===value.length)return quantity(rows[index+1]);
