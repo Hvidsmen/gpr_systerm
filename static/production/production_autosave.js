@@ -2,6 +2,9 @@
  'use strict';
  const form=document.querySelector('[data-production-form]');if(!form||form.dataset.readonly==='1')return;
  const state=form.querySelector('[data-autosave-state]'),retry=form.querySelector('[data-autosave-retry]');
+ const recovery=document.createElement('div'),recoveryText=document.createElement('span'),reload=document.createElement('button');recovery.className='production-recovery-advice alert alert-warning';recovery.hidden=true;recovery.setAttribute('role','alert');reload.type='button';reload.className='btn btn-sm btn-outline-primary';reload.textContent='Перезагрузить страницу';reload.hidden=true;reload.addEventListener('click',()=>location.reload());recovery.append(recoveryText,reload);form.querySelector('[data-links-sync]')?.after(recovery);
+ function recoveryState(text,allowReload=false){recoveryText.textContent=text;reload.hidden=!allowReload;recovery.hidden=false;}
+ form.productionRecovery={offline:()=>recoveryState('Нет соединения с сервером. Изменения сохранены в браузере. Не закрывайте страницу.'),online:()=>recoveryState('Соединение восстановлено. Нажмите «Сохранить», чтобы отправить оставшиеся изменения.'),reload:text=>recoveryState(text||'Не удалось синхронизировать форму с сервером. Черновик сохранён в браузере. Перезагрузите страницу — он восстановится автоматически.',true),clear:()=>{recovery.hidden=true;reload.hidden=true;}};
  const progress=document.createElement('div'),progressLabel=document.createElement('span'),progressTrack=document.createElement('progress');let progressTimer=null;
  progress.className='production-operation-progress';progress.hidden=true;progressTrack.max=100;progress.append(progressLabel,progressTrack);form.querySelector('.production-save-footer')?.prepend(progress);
  function progressState(kind,label,done=0,total=0){clearTimeout(progressTimer);progress.hidden=false;progress.dataset.state=kind;progressLabel.textContent=label;if(total)progressTrack.value=Math.round(done/total*100);else progressTrack.removeAttribute('value');progressTrack.classList.toggle('is-indeterminate',!total);if(kind==='done')progressTimer=setTimeout(()=>{progress.hidden=true;},2500);}
@@ -71,7 +74,7 @@
   const result=await response.json();
   if(!response.ok){
    for(const issue of result.errors||[]){const item=sent.get(issue.prefix);if(!item)continue;const text=issue.message||Object.values(issue.fields||{}).flat().join(' ');const target=item.row.querySelector('[data-error]');if(target)target.textContent=text;rowMessage(item.row,text,true);}
-   const error=new Error(result.error||'Изменения не сохранены.');error.retryable=response.status>=500||response.status===429||Boolean(result.error?.includes('Резерв')&&result.error?.includes('истёк'));if(error.retryable)form.productionForgetClaims?.(changed);throw error;
+   const error=new Error(result.error||'Изменения не сохранены.');error.status=response.status;error.retryable=response.status>=500||response.status===429||Boolean(result.error?.includes('Резерв')&&result.error?.includes('истёк'));if(error.retryable)form.productionForgetClaims?.(changed);throw error;
   }
   // A successful autosave resolves the server-bound form state. Live updates
   // may rebuild rows afterwards; they must not be marked dirty again merely
@@ -99,18 +102,18 @@
  }
  async function flush(){
   if((form.dataset.peopleBulkBusy==='1'||form.dataset.personShiftBusy==='1')){clearTimeout(timer);timer=setTimeout(()=>flush(),700);return false;}
-  if(form.dataset.resetRequired==='1'){clearTimeout(timer);message('Производственная часть сброшена администратором. Обновите форму.',true);return false;}
+  if(form.dataset.resetRequired==='1'){clearTimeout(timer);message('Производственная часть сброшена администратором. Обновите форму.',true);form.productionRecovery.reload('Производственный день был сброшен. Черновик сохранён отдельно. Перезагрузите страницу и проверьте данные перед повторным сохранением.');return false;}
   clearTimeout(timer);if(running)return running;
   running=(async()=>{
    while(pending||dirty().length){
     pending=false;const changed=dirty(),deletions=changed.filter(row=>field(row,'DELETE')?.checked),people=changed.filter(isPerson);
     const selected=(deletions.length?deletions:people.length?people:changed).slice(0,25);
-    try{await save(selected);failed=false;retryAttempt=0;}catch(error){failed=true;selected.forEach(row=>rowMessage(row,row.querySelector('[data-error]')?.textContent||error.message,true));message(error.message,true);form.productionStatus.error(error.message);break;}}
+    try{await save(selected);failed=false;retryAttempt=0;}catch(error){failed=true;retryAttempt++;selected.forEach(row=>rowMessage(row,row.querySelector('[data-error]')?.textContent||error.message,true));message(error.message,true);form.productionStatus.error(error.message);if(error.status===409||form.dataset.authChanged==='1'||retryAttempt>=2)form.productionRecovery.reload();else if(navigator.onLine===false)form.productionRecovery.offline();break;}}
    if(!failed&&form.productionLinks?.pending){
     form.productionStatus.start(`Сохраняем связи · изменений: ${form.productionLinks.pending}`,form.productionLinks.pending);
     if(!await form.productionLinks.flush()){failed=true;message('Связи не сохранены. Проверьте статус над вкладками и повторите сохранение.',true);form.productionStatus.error('Связи не сохранены');}
    }
-   if(!failed){message('Все изменения сохранены');form.productionStatus.done('Изменения и связи сохранены');}
+   if(!failed){message('Все изменения сохранены');form.productionStatus.done('Изменения и связи сохранены');form.productionRecovery.clear();}
    return !failed;
   })();
   try{return await running;}finally{running=null;if(pending&&dirty().length)message('Есть несохранённые изменения');}
@@ -138,8 +141,9 @@
  // contain dirty rows whose earlier claims-change event could not be heard.
  // Explicitly resume them instead of leaving "Restoring reservation" forever.
  if(dirty().length){pending=true;message(restoredDrafts?`Восстановлен локальный черновик: ${restoredDrafts} записей. Нажмите «Сохранить».`:'Есть несохранённые изменения');}
- addEventListener('online',()=>{if(dirty().length){pending=true;retryAttempt=0;message('Соединение восстановлено · нажмите «Сохранить»');}});
- retry.addEventListener('click',()=>{retryAttempt=0;pending=true;flush();});
+ addEventListener('offline',()=>form.productionRecovery.offline());
+ addEventListener('online',()=>{if(dirty().length||form.productionLinks?.pending){pending=true;message('Соединение восстановлено · нажмите «Сохранить»');form.productionRecovery.online();}else form.productionRecovery.clear();});
+ retry.addEventListener('click',()=>{pending=true;flush();});
  form.querySelector('[data-production-save]')?.addEventListener('click',()=>flush());
  document.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&event.key.toLocaleLowerCase()==='s'){event.preventDefault();if(form.dataset.lockState==='mine')flush();}});
  form.addEventListener('click',async event=>{

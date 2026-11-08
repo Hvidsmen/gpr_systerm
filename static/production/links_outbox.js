@@ -90,19 +90,19 @@
     const response=await fetch(this.form.dataset.linksUrl,{method:'POST',credentials:'same-origin',signal:controller.signal,headers:{'Content-Type':'application/json','X-CSRFToken':csrf},body:JSON.stringify({...scope,protocol:'queued-v1',data_digest:dataDigest,commands})});
     if(response.redirected||response.status===401||response.status===403){
      const details=response.headers.get('content-type')?.includes('application/json')?await response.json():{};
-     this.blocked=true;this.blockedReason=details.error||'Проверьте вход и права в портале. Изменения сохранены в этом браузере; откройте форму заново под своей учётной записью.';if(details.auth_changed||response.redirected)this.form.dataset.authChanged='1';this.render(this.blockedReason);return;
+     this.blocked=true;this.blockedReason=details.error||'Проверьте вход и права в портале. Изменения сохранены в этом браузере; откройте форму заново под своей учётной записью.';if(details.auth_changed||response.redirected)this.form.dataset.authChanged='1';this.form.productionRecovery?.reload(this.blockedReason+' Перезагрузите страницу после проверки входа.');this.render(this.blockedReason);return;
     }
     if(![200,400,409].includes(response.status)||!response.headers.get('content-type')?.includes('application/json'))throw new Error('Не удалось связаться с порталом. Изменения остаются в очереди.');
     const result=await response.json();
     if(!response.ok){
-     for(const record of batch){record.rejected=result.error||'Пакет не принят сервером.';this.put(record);}if(result.reset_required){this.blocked=true;this.blockedReason=result.error;this.form.dataset.resetRequired='1';}
+     for(const record of batch){record.rejected=result.error||'Пакет не принят сервером.';this.put(record);}if(result.reset_required){this.blocked=true;this.blockedReason=result.error;this.form.dataset.resetRequired='1';this.form.productionRecovery?.reload('Производственный день был сброшен. Перезагрузите страницу — локальный черновик сохранён.');}
     }else{
      const results=new Map(result.results.map(r=>[r.id,r]));
      for(const record of batch){if(!localStorage.getItem(this.prefix+record.id))continue;const receipt=results.get(record.id);if(!receipt)throw new Error('Ответ сервера неполный. Повторим отправку безопасно.');if(receipt.ok)this.remove(record.id);else{record.rejected=receipt.error;this.put(record);}}
      this.callbacks.people(result.people||[],result.removed||[]);if(result.digest&&dataDigest===this.callbacks.digest())this.callbacks.ackDigest(result.digest);this.attempt=0;
     }
     this.load();this.changed();
-   }catch(error){this.attempt++;this.render('Связь нестабильна. Изменения сохранены в этом браузере; отправим при восстановлении соединения.');}
+   }catch(error){this.attempt++;if(navigator.onLine===false)this.form.productionRecovery?.offline();else if(this.attempt>=2)this.form.productionRecovery?.reload();this.render('Связь нестабильна. Изменения сохранены в этом браузере; отправим при восстановлении соединения.');}
    finally{clearTimeout(timeout);this.running=false;this.form.dispatchEvent(new CustomEvent('production-network-time',{detail:{slow:this.attempt>0}}));this.render(this.blocked?this.blockedReason:undefined);}
   }
   async flush(){

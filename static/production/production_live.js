@@ -69,7 +69,7 @@
  }
  let presenceStamp='';
  function editLock(lock){
-  if(!lock)return;const mine=Boolean(lock.mine),previous=form.dataset.lockState;form.dataset.lockState=mine?'mine':'readonly';form.dataset.readonly=mine?'0':'1';
+  if(!lock)return;const mine=Boolean(lock.mine),previous=form.dataset.lockState;form.dataset.lockState=mine?'mine':'readonly';form.dataset.readonly=mine?'0':'1';if(previous==='mine'&&!mine)form.productionRecovery?.reload(`Право редактирования перешло пользователю ${lock.owner}. Черновик сохранён в браузере. Перезагрузите страницу для синхронизации.`);
   form.querySelectorAll('[data-production-edit-fields]').forEach(fieldset=>fieldset.disabled=!mine);
   const save=form.querySelector('[data-production-save]');if(save)save.disabled=!mine;
   form.querySelectorAll('[data-production-crews] button,[data-production-crews] input,[data-production-crews] select,[data-employee-graph] button').forEach(control=>control.disabled=!mine);
@@ -88,9 +88,9 @@
   const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),25000);
   try{
    const response=await fetch(form.dataset.liveUrl,{method:'POST',credentials:'same-origin',signal:controller.signal,headers:{'Content-Type':'application/json','X-CSRFToken':csrf},body:JSON.stringify(body)});
-   if(response.status===409){const result=await response.json();if(result.reset_required){closed=true;form.dataset.resetRequired='1';const warning=document.createElement('div');warning.className='alert alert-warning';warning.role='alert';warning.append(document.createTextNode(result.error+' '));const link=document.createElement('a');link.href=location.href;link.textContent='Обновить форму';warning.append(link);form.before(warning);}return false;}
-   if(response.status===403&&response.headers.get('content-type')?.includes('application/json')){const result=await response.json();if(result.auth_changed){closed=true;form.dataset.authChanged='1';form.querySelector('[data-links-status]').textContent=result.error;}return false;}
-   if(response.redirected||response.status===401||response.status===403){closed=true;form.dataset.authChanged='1';form.querySelector('[data-links-status]').textContent='Проверьте вход и права в портале. Изменения связей сохранены в этом браузере.';return false;}
+   if(response.status===409){const result=await response.json();if(result.reset_required){closed=true;form.dataset.resetRequired='1';form.productionRecovery?.reload(result.error+' Черновик сохранён в браузере. Перезагрузите страницу и проверьте данные.');}return false;}
+   if(response.status===403&&response.headers.get('content-type')?.includes('application/json')){const result=await response.json();if(result.auth_changed){closed=true;form.dataset.authChanged='1';form.querySelector('[data-links-status]').textContent=result.error;form.productionRecovery?.reload(result.error+' Перезагрузите страницу после повторного входа.');}return false;}
+   if(response.redirected||response.status===401||response.status===403){closed=true;form.dataset.authChanged='1';form.querySelector('[data-links-status]').textContent='Проверьте вход и права в портале. Изменения связей сохранены в этом браузере.';form.productionRecovery?.reload('Сеанс или права доступа изменились. Черновик сохранён в браузере. Проверьте вход и перезагрузите страницу.');return false;}
    if(!response.ok||!response.headers.get('content-type')?.includes('application/json'))throw new Error('sync');
    const data=await response.json();failures=0;slow=performance.now()-started>800;lastSync=Date.now();
    if(data.need_snapshot){knownSnapshots.delete(snapshotKey);return false;}knownSnapshots.add(snapshotKey);
@@ -100,7 +100,7 @@
    if(data.rows&&data.production_snapshot){apply(data);knownSnapshots.add(data.snapshot_key);}else if(data.claims)form.productionSetClaims(data.claims);
    if(data.digest)digest=data.digest;if(data.claims_digest)claimsDigest=data.claims_digest;if(data.users_digest)usersDigest=data.users_digest;
    return true;
-  }catch{failures++;slow=true;return false;}finally{clearTimeout(timeout);polling=false;schedule();}
+  }catch{failures++;slow=true;if(navigator.onLine===false)form.productionRecovery?.offline();else if(failures>=3)form.productionRecovery?.reload();return false;}finally{clearTimeout(timeout);polling=false;schedule();}
  }
  form.productionRefresh=()=>poll(true);
  form.productionChangeLinks=async(row,operation)=>{
