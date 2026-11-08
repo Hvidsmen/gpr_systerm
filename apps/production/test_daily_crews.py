@@ -65,8 +65,9 @@ class DailyCrewTests(TestCase):
         self.assertContains(response,'3. Бригады (необязательно)');self.assertContains(response,'Создать бригаду')
         self.assertNotContains(response,'Бригадир')
         source=(Path(__file__).resolve().parents[2]/'static/production/production_crews.js').read_text(encoding='utf-8')
-        self.assertIn("if(event.detail===3)request()",source)
-        self.assertIn("form.productionLoadCrews=(force=false)",source)
+        self.assertIn("if([3,4].includes(event.detail))load()",source)
+        self.assertIn("form.productionLoadCrews=load",source)
+        self.assertIn("form.productionCrewDraft={flush,undo",source)
 
     def test_deleting_crew_removes_only_crew_origin_links(self):
         crew=ProductionDailyCrew.objects.create(company=self.company,construction_object=self.obj,date=self.day,shift=1,number=1,reported_by=self.user)

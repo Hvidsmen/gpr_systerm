@@ -39,6 +39,7 @@
  }
  function crewRows(){return [...form.querySelectorAll('.production-crew-person')].filter(visible);}
  function moveCrew(event,row){const target=event.target,key=event.key,list=controls(row),index=list.indexOf(target);if(target.matches('button')&&key==='Enter')return false;let next=null;if(key==='ArrowLeft')next=list[index-1];else if(key==='ArrowRight'||key==='Enter')next=list[index+1];else if(['ArrowUp','ArrowDown'].includes(key)){const rows=crewRows(),other=rows[rows.indexOf(row)+(key==='ArrowUp'?-1:1)];if(other)next=controls(other)[Math.max(0,Math.min(index,controls(other).length-1))];}else return false;if(!next)return false;event.preventDefault();focus(next);return true;}
+ function moveCrewForm(event,root){const target=event.target,key=event.key,list=controls(root),index=list.indexOf(target);if(index<0||target.matches('button')&&key==='Enter')return false;if(target.matches('input[type=text],input:not([type])')&&['ArrowLeft','ArrowRight'].includes(key)){const start=target.selectionStart??0,end=target.selectionEnd??start;if(key==='ArrowLeft'&&(start||end)||key==='ArrowRight'&&(start!==target.value.length||end!==target.value.length))return false;}let next=null;if(key==='ArrowLeft')next=list[index-1];else if(key==='ArrowRight'||key==='Enter')next=list[index+1];else if(['ArrowUp','ArrowDown'].includes(key)){const direction=key==='ArrowUp'?-1:1,same=target.matches('[data-crew-name],[data-crew-new-name]')?list.filter(node=>node.matches('[data-crew-name],[data-crew-new-name]')):list;next=same[same.indexOf(target)+direction]||list[index+direction];}else return false;if(!next)return false;event.preventDefault();focus(next);return true;}
  function graphCards(side){return [...form.querySelectorAll(side==='work'?'.graph-work':'.graph-person')].filter(visible);}
  function nearestAcross(card,side){const y=card.getBoundingClientRect().top+card.offsetHeight/2;return graphCards(side).sort((a,b)=>Math.abs(a.getBoundingClientRect().top+a.offsetHeight/2-y)-Math.abs(b.getBoundingClientRect().top+b.offsetHeight/2-y))[0];}
  function wireGraph(){
@@ -55,6 +56,7 @@
   const graph=event.target.closest('.employee-graph-card');if(graph&&event.target===graph)return graphKey(event,graph);
   const toggle=event.target.closest('[data-crew-card-toggle]');if(toggle&&['ArrowLeft','ArrowRight','Enter'].includes(event.key)){const expanded=toggle.getAttribute('aria-expanded')==='true',wanted=event.key==='ArrowRight'||event.key==='Enter'&&!expanded;if(wanted!==expanded)toggle.click();event.preventDefault();return;}
   const crew=event.target.closest('.production-crew-person');if(crew)return moveCrew(event,crew);
+  const crews=event.target.closest('[data-production-crews]');if(crews)return moveCrewForm(event,crews);
   const row=event.target.closest('[data-work-fact-row],[data-production-person]');if(row)moveInForm(event,row);
  },true);
  form.addEventListener('wheel',event=>{

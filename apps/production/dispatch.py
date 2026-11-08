@@ -560,6 +560,18 @@ class DispatcherDayView(CompanyRequiredMixin,View):
                                 row.delete()
                             for row in rows:
                                 if isinstance(row,(DailyFact,EmployeeActivity)) and not row.pk and not row.reported_by_id:row.reported_by=request.user
+                                if isinstance(row,EmployeeActivity) and row.pk:
+                                    # A daily crew belongs to one shift. Moving a person to another
+                                    # shift must detach the old crew membership in the same save;
+                                    # otherwise the person becomes invisible in both crew columns.
+                                    original_shift=EmployeeActivity.objects.only('shift').get(pk=row.pk,company=obj.company).shift
+                                    if original_shift!=row.shift:
+                                        from .dispatch_models import ProductionDailyCrewMember
+                                        from .crew_links import detach_member
+                                        membership=ProductionDailyCrewMember.objects.select_related('crew','activity').filter(company=obj.company,activity_id=row.pk).first()
+                                        if membership:
+                                            detach_member(membership.crew,membership.activity)
+                                            membership.delete()
                                 if isinstance(row,EquipmentActivity) and not row.pk:
                                     baseline=equipment_baselines.get((row.equipment_id,row.shift))
                                     if baseline:

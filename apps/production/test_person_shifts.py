@@ -4,8 +4,10 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 from .test_production_entry import ProductionEntryTests
-from .dispatch_models import EmployeeActivity, EmployeeWorkLink, EmployeeFactClaim
-from .models import LaborFact
+from .dispatch_models import (EmployeeActivity, EmployeeWorkLink, EmployeeFactClaim,
+    ProductionDailyCrew, ProductionDailyCrewMember, ProductionDailyCrewWorkLink)
+from .models import DailyFact, LaborFact
+from .crew_links import change_crew,change_individual
 
 
 class ProductionPersonShiftTests(TestCase):
@@ -49,6 +51,20 @@ class ProductionPersonShiftTests(TestCase):
         self.assertEqual(LaborFact.objects.get().actual_workers,1)
         data=self.payload('DISPATCHER','works');data['labor-0-shift']='1'
         self.assertEqual(self.client.post(self.url,data).status_code,302);row.refresh_from_db();self.assertEqual(row.shift,1)
+    def test_change_shift_removes_old_crew_membership_and_only_crew_owned_links(self):
+        row=self.saved();row.general=False;row.save()
+        crew=ProductionDailyCrew.objects.create(company=self.company,construction_object=self.obj,date=self.day,shift=1,number=1,reported_by=self.users['DISPATCHER'])
+        ProductionDailyCrewMember.objects.create(company=self.company,crew=crew,activity=row)
+        crew_fact,_=DailyFact.objects.get_or_create(company=self.company,date=self.day,project_work=self.work,defaults={'actual_quantity':1,'reported_by':self.users['DISPATCHER']})
+        personal_fact,_=DailyFact.objects.get_or_create(company=self.company,date=self.day,project_work=self.second_work,defaults={'actual_quantity':1,'reported_by':self.users['DISPATCHER']})
+        change_crew(row,crew,crew_fact,'add');change_individual(row,personal_fact,'add')
+        data=self.payload('DISPATCHER','works');data['labor-0-shift']='2'
+        self.assertEqual(self.client.post(self.url,data).status_code,302)
+        row.refresh_from_db();self.assertEqual(row.shift,2)
+        self.assertFalse(ProductionDailyCrewMember.objects.filter(activity=row).exists())
+        self.assertFalse(EmployeeWorkLink.objects.filter(activity=row,work=self.work).exists())
+        self.assertTrue(EmployeeWorkLink.objects.filter(activity=row,work=self.second_work,assigned_individually=True).exists())
+        self.assertTrue(ProductionDailyCrewWorkLink.objects.filter(crew=crew,fact=crew_fact).exists())
     def test_autosave_transition_with_source_and_destination_claims(self):
         row=self.saved();data=self.payload('DISPATCHER','works');session=str(uuid4())
         self.assertEqual(self.claim(1,session).status_code,200);self.assertEqual(self.claim(2,session).status_code,200)
