@@ -2,6 +2,11 @@
  'use strict';
  const form=document.querySelector('[data-production-form]');if(!form||form.dataset.readonly==='1')return;
  const state=form.querySelector('[data-autosave-state]'),retry=form.querySelector('[data-autosave-retry]');
+ const progress=document.createElement('div'),progressLabel=document.createElement('span'),progressTrack=document.createElement('progress');let progressTimer=null;
+ progress.className='production-operation-progress';progress.hidden=true;progressTrack.max=100;progress.append(progressLabel,progressTrack);form.querySelector('.production-save-footer')?.prepend(progress);
+ function progressState(kind,label,done=0,total=0){clearTimeout(progressTimer);progress.hidden=false;progress.dataset.state=kind;progressLabel.textContent=label;if(total)progressTrack.value=Math.round(done/total*100);else progressTrack.removeAttribute('value');progressTrack.classList.toggle('is-indeterminate',!total);if(kind==='done')progressTimer=setTimeout(()=>{progress.hidden=true;},2500);}
+ form.productionStatus={start:(label,total=0)=>progressState('loading',label,0,total),update:(label,done,total)=>progressState('loading',label,done,total),done:label=>progressState('done',label,1,1),error:label=>progressState('error',label,1,1)};
+ document.querySelector('[data-fact-selector]')?.addEventListener('submit',()=>progressState('loading','Открываем выбранный объект и день…'));
  const rows=()=>[...form.querySelectorAll('[data-production-person],[data-work-fact-row]')];
  const field=(row,name)=>row.querySelector(`[name$="-${name}"]`),isPerson=row=>row.hasAttribute('data-production-person');
  const suffix=input=>input.name.replace(/^(works|labor)-\d+-/,'');
@@ -31,6 +36,7 @@
  }
  async function save(selected){
   const changed=selected||dirty();
+  form.productionStatus.start(`Сохраняем текущую вкладку · записей: ${changed.length}`,changed.length);
   if(changed.some(row=>isPerson(row)&&!field(row,'DELETE')?.checked))form.productionValidatePeople();
   for(const row of changed){
    if(!isPerson(row)&&!field(row,'DELETE')?.checked&&field(row,'actual_quantity')?.value===''){
@@ -80,6 +86,7 @@
    if(fingerprint(row)===item.stamp){delete row.dataset.entryDirty;delete row.dataset.personDirty;delete row.dataset.autoPending;row.dataset.autoSavedStamp=fingerprint(row);rowMessage(row,row.dataset.autoRejected|| (field(row,'id').value?'Сохранено':''),Boolean(row.dataset.autoRejected));if(!row.dataset.autoRejected)row.querySelector('[data-error]').textContent='';}
    else{row.dataset.autoPending='1';pending=true;rowMessage(row,'Есть изменения');}
   }
+  form.productionStatus.update(`Сохранено записей: ${changed.length} из ${changed.length}`,changed.length,changed.length);
   reindex();if(form.productionApplyReport)form.productionApplyReport(result.report);else form.dispatchEvent(new CustomEvent('production-report-update',{detail:result.report}));form.dispatchEvent(new Event('production-autosave-committed'));
   message(pending?'Есть изменения…':'Все изменения сохранены');
  }
@@ -91,7 +98,8 @@
    while(pending||dirty().length){
     pending=false;const changed=dirty(),deletions=changed.filter(row=>field(row,'DELETE')?.checked),people=changed.filter(isPerson);
     const selected=deletions.length?deletions:people.length?people:changed;
-    try{await save(selected);failed=false;retryAttempt=0;}catch(error){failed=true;selected.forEach(row=>rowMessage(row,row.querySelector('[data-error]')?.textContent||error.message,true));message(error.message,true);break;}}
+    try{await save(selected);failed=false;retryAttempt=0;}catch(error){failed=true;selected.forEach(row=>rowMessage(row,row.querySelector('[data-error]')?.textContent||error.message,true));message(error.message,true);form.productionStatus.error(error.message);break;}}
+   if(!failed)form.productionStatus.done('Изменения сохранены');
    return !failed;
   })();
   try{return await running;}finally{running=null;if(pending&&dirty().length)message('Есть несохранённые изменения');}

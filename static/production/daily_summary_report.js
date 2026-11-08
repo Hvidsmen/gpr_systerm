@@ -9,6 +9,7 @@
  }
  async function load(){
   if(busy)return;busy=true;button.disabled=true;state.textContent='Сохранение изменений и построение дневного отчёта…';content.setAttribute('aria-busy','true');
+  form.productionStatus?.start('Загружаем сводный отчёт…');
   try{
    if(form.dataset.resetRequired==='1')throw new Error('Данные были сброшены администратором. Обновите страницу.');
    const save=window.productionAutoSave;if(save){const saved=await save.flush();if(saved===false||save.pending)throw new Error('Есть несохранённые изменения. Исправьте ошибки и повторите обновление отчёта.');}
@@ -17,8 +18,8 @@
    const response=await fetch(panel.dataset.url+'?'+query,{credentials:'same-origin',headers:{'X-Requested-With':'XMLHttpRequest'},cache:'no-store'});
    if(!response.ok||response.redirected||!response.headers.get('content-type')?.includes('text/html'))throw new Error('Не удалось построить дневной отчёт. Проверьте подключение и доступ к проекту.');
    content.innerHTML=await response.text();window.productionPeriodTabs?.init(content);window.productionReportFilters?.init(panel,content);panel.dispatchEvent(new Event('production-report-loaded'));
-   state.textContent='Обновлено в '+new Intl.DateTimeFormat('ru-RU',{hour:'2-digit',minute:'2-digit',second:'2-digit'}).format(new Date())+'. Показаны сохранённые данные за день.';
-  }catch(error){state.textContent=error.message+(content.children.length?' Ниже остаётся предыдущий результат.':'');}
+   state.textContent='Обновлено в '+new Intl.DateTimeFormat('ru-RU',{hour:'2-digit',minute:'2-digit',second:'2-digit'}).format(new Date())+'. Показаны сохранённые данные за день.';form.productionStatus?.done('Сводный отчёт загружен');
+  }catch(error){state.textContent=error.message+(content.children.length?' Ниже остаётся предыдущий результат.':'');form.productionStatus?.error(error.message);}
   finally{busy=false;button.disabled=false;content.removeAttribute('aria-busy');}
  }
  button.addEventListener('click',load);form.addEventListener('change',renderSummary);form.addEventListener('production-report-update',renderSummary);form.addEventListener('production-step-change',event=>{if(event.detail===5){renderSummary();load();}});renderSummary();if(!panel.hidden)load();

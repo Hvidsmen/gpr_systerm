@@ -8,6 +8,7 @@
  let busy=false,showDays=false;
  async function load(){
   if(busy)return;busy=true;button.disabled=true;state.textContent='Сохранение изменений и построение отчёта…';content.setAttribute('aria-busy','true');
+  form.productionStatus?.start('Загружаем план / факт СМГ…');
   try{
    if(form.dataset.resetRequired==='1')throw new Error('Данные были сброшены администратором. Обновите страницу.');
    const save=window.productionAutoSave;
@@ -17,8 +18,8 @@
    if(!response.ok||response.redirected||!response.headers.get('content-type')?.includes('text/html'))throw new Error('Не удалось построить отчёт. Проверьте подключение и доступ к объекту.');
    content.innerHTML=await response.text();
    window.productionPeriodTabs?.init(content);window.productionReportFilters?.init(panel,content);panel.dispatchEvent(new Event('production-report-loaded'));
-   state.textContent='Обновлено в '+new Intl.DateTimeFormat('ru-RU',{hour:'2-digit',minute:'2-digit',second:'2-digit'}).format(new Date())+'. Показаны сохранённые данные.';
-  }catch(error){state.textContent=error.message+(content.children.length?' Ниже остаётся предыдущий результат.':'');}
+   state.textContent='Обновлено в '+new Intl.DateTimeFormat('ru-RU',{hour:'2-digit',minute:'2-digit',second:'2-digit'}).format(new Date())+'. Показаны сохранённые данные.';form.productionStatus?.done('План / факт СМГ загружен');
+  }catch(error){state.textContent=error.message+(content.children.length?' Ниже остаётся предыдущий результат.':'');form.productionStatus?.error(error.message);}
   finally{busy=false;button.disabled=false;content.removeAttribute('aria-busy');}
  }
  button.addEventListener('click',load);

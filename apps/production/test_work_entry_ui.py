@@ -215,6 +215,8 @@ class WorkEntryPresentationTests(TestCase):
         self.assertIn("pending=true;message('Есть несохранённые изменения')",source)
         self.assertIn("data-production-save",self.page().content.decode())
         self.assertIn("event.key.toLocaleLowerCase()==='s'",source)
+        self.assertIn('production-operation-progress',source)
+        self.assertIn('Открываем выбранный объект и день',source)
         graph=(Path(__file__).resolve().parents[2]/'static/production/employee_graph.js').read_text(encoding='utf-8')
         self.assertIn('window.productionAutoSave?.pending',graph)
         self.assertIn("form.dataset.productionBound='0'",source)
