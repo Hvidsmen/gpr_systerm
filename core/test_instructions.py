@@ -36,5 +36,5 @@ class InstructionsTests(TestCase):
                 if chapter['image']:self.assertTrue((Path(__file__).resolve().parents[1]/'static/instructions'/ (chapter['image']+'.png')).exists())
     def test_current_fact_workflows_are_described(self):
         content=lambda slug:' '.join([*(step for chapter in next(g for g in GUIDES if g['slug']==slug)['chapters'] for step in chapter.get('steps',())),*(point for chapter in next(g for g in GUIDES if g['slug']==slug)['chapters'] for point in chapter.get('bullets',()))])
-        production=content('production');self.assertIn('многие ко многим',production);self.assertIn('фактическим объёмом больше нуля',production);self.assertIn('только кнопка «Удалить работу»',production)
+        production=content('production');self.assertIn('многие ко многим',production);self.assertIn('фактическим объёмом больше нуля',production);self.assertIn('только кнопка «Удалить работу»',production);self.assertIn('Ctrl+Z',production);self.assertIn('до 20 действий',production)
         self.assertIn('по 50 записей',content('lodging'));self.assertIn('журнал загружается только при раскрытии',content('fuel'));self.assertIn('группы техники сначала свёрнуты',content('transport'))
