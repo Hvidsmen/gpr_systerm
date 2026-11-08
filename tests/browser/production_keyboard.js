@@ -12,6 +12,7 @@ const {chromium}=require('playwright'),assert=require('assert'),path=require('pa
  await page.locator('[name="works-0-actual_quantity"]').focus();await page.keyboard.press('ArrowDown');assert.equal(await active(),'works-1-actual_quantity');
  await page.locator('[name="works-0-actual_quantity"]').focus();await page.keyboard.press('ArrowRight');assert.equal(await active(),'works-0-comment');
  await page.locator('[name="works-0-actual_quantity"]').focus();await page.keyboard.press('Control+ArrowUp');assert.equal(await page.locator('[name="works-0-actual_quantity"]').inputValue(),'3');
+ assert.equal(await page.locator('[name="works-0-actual_quantity"]').evaluate(input=>input.dispatchEvent(new WheelEvent('wheel',{deltaY:100,bubbles:true,cancelable:true}))),false);assert.equal(await page.locator('[name="works-0-actual_quantity"]').inputValue(),'3');
  await page.locator('[name="works-0-comment"]').fill('текст');await page.locator('[name="works-0-comment"]').evaluate(el=>el.setSelectionRange(2,2));await page.keyboard.press('ArrowLeft');assert.equal(await active(),'works-0-comment');
  await page.locator('[name="works-0-comment"]').fill('');await page.keyboard.press('ArrowLeft');assert.equal(await active(),'works-0-actual_quantity');
  await page.locator('[name="works-0-comment"]').focus();await page.keyboard.press('Control+Enter');assert.equal(await active(),'works-1-actual_quantity');assert(await page.locator('details').first().evaluate(el=>el.open));

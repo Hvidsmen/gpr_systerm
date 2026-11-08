@@ -48,5 +48,10 @@
   const crew=event.target.closest('.production-crew-person');if(crew)return moveCrew(event,crew);
   const row=event.target.closest('[data-work-fact-row],[data-production-person]');if(row)moveInForm(event,row);
  },true);
+ form.addEventListener('wheel',event=>{
+  const input=event.target.closest('input[type=number]');if(!input||document.activeElement!==input)return;event.preventDefault();
+  let scroller=input.parentElement;while(scroller&&scroller!==document.body){const style=getComputedStyle(scroller);if(scroller.scrollHeight>scroller.clientHeight&&/(auto|scroll)/.test(style.overflowY))break;scroller=scroller.parentElement;}
+  if(scroller&&scroller!==document.body)scroller.scrollBy({top:event.deltaY,left:event.deltaX});else window.scrollBy({top:event.deltaY,left:event.deltaX});
+ },{passive:false});
  const graphRoot=form.querySelector('[data-employee-graph]');if(graphRoot)new MutationObserver(wireGraph).observe(graphRoot,{childList:true,subtree:true});wireGraph();
 })();
