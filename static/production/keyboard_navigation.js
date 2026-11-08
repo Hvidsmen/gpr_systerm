@@ -11,6 +11,13 @@
  function siblingField(row,target,direction){const rows=rowsFor(row),next=rows[rows.indexOf(row)+direction];if(!next)return null;reveal(next);const name=suffix(target),same=controls(next).find(node=>suffix(node)===name);if(same)return same;const index=controls(row).indexOf(target);return controls(next)[Math.max(0,Math.min(index,controls(next).length-1))];}
  function textareaTarget(event,row){
   const target=event.target,key=event.key,value=target.value,start=target.selectionStart??0,end=target.selectionEnd??start,rows=rowsFor(row),index=rows.indexOf(row),quantity=item=>{if(!item)return null;reveal(item);return controls(item).find(node=>suffix(node)==='actual_quantity');};
+  if(row.matches('[data-production-person]')){
+   const list=controls(row),position=list.indexOf(target),next=rows[index+1];
+   if(key==='ArrowLeft'&&start===0&&end===0)return list[position-1];
+   if((key==='ArrowRight'&&start===value.length&&end===value.length||event.ctrlKey&&key==='Enter')&&next){reveal(next);return controls(next).find(node=>suffix(node)==='employee')||controls(next)[0];}
+   if(key==='ArrowUp'||key==='ArrowDown'){const other=rows[index+(key==='ArrowUp'?-1:1)],comment=other?.querySelector('[name$="-activity"]');if(comment){reveal(comment);return comment;}}
+   return null;
+  }
   if(event.ctrlKey&&key==='Enter')return quantity(rows[index+1]);
   if(key==='ArrowLeft'&&start===0&&end===0)return quantity(row);
   if(key==='ArrowRight'&&start===value.length&&end===value.length)return quantity(rows[index+1]);
