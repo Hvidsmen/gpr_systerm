@@ -107,6 +107,7 @@
   if(!field(row,'id')?.value){if(!await window.productionAutoSave.flush())throw new Error('Сначала исправьте ошибки сохранения сотрудника.');}
   lastActivity=Date.now();return outbox.enqueue(row,operation);
  };
+ form.productionChangeCrewLinks=(crew,activities,operation)=>outbox.enqueueCrew(crew,activities,operation);
  form.addEventListener('production-step-change',event=>{step=event.detail;lastActivity=Date.now();if(Date.now()-lastSync>10000)schedule(100);});
  form.addEventListener('production-autosave-committed',()=>{lastActivity=Date.now();schedule(3000);});
  form.addEventListener('input',()=>{lastActivity=Date.now();});

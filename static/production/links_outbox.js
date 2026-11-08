@@ -16,7 +16,7 @@
   get busy(){return this.running||this.pending>0;}
   uuid(){const b=crypto.getRandomValues(new Uint8Array(16));b[6]=(b[6]&15)|64;b[8]=(b[8]&63)|128;return [...b].map((v,i)=>([4,6,8,10].includes(i)?'-':'')+v.toString(16).padStart(2,'0')).join('');}
   load(){
-   const records=[];try{for(let i=0;i<localStorage.length;i++){const key=localStorage.key(i);if(!key?.startsWith(this.prefix))continue;try{const record=JSON.parse(localStorage.getItem(key));if(record&&record.id&&Number.isInteger(record.activity))records.push(record);}catch{}}}catch{}
+   const records=[];try{for(let i=0;i<localStorage.length;i++){const key=localStorage.key(i);if(!key?.startsWith(this.prefix))continue;try{const record=JSON.parse(localStorage.getItem(key));if(record&&record.id&&(Number.isInteger(record.activity)||Number.isInteger(record.crew)))records.push(record);}catch{}}}catch{}
    this.records=records.sort((a,b)=>a.order-b.order||a.id.localeCompare(b.id));
   }
   put(record){localStorage.setItem(this.prefix+record.id,JSON.stringify(record));}
@@ -33,17 +33,25 @@
    this.records.push(record);this.records.sort((a,b)=>a.order-b.order||a.id.localeCompare(b.id));this.changed();
    return {queued:true};
   }
+  enqueueCrew(crew,activities,operation){
+   if(this.form.dataset.authChanged==='1')throw new Error('Учётная запись изменилась. Откройте форму заново.');
+   if(this.form.dataset.resetRequired==='1')throw new Error('День сброшен. Обновите форму перед новым вводом.');
+   const id=this.uuid(),record={id,crew:Number(crew),activities:activities.map(Number),...operation,order:Math.max(Date.now(),...this.records.map(r=>r.order+1)),label:'Бригада'};
+   try{this.put(record);}catch{throw new Error('Браузер не смог сохранить изменение бригады. Освободите место и повторите действие.');}
+   this.records.push(record);this.records.sort((a,b)=>a.order-b.order||a.id.localeCompare(b.id));this.changed();return {queued:true};
+  }
   overlay(report){
    const people=report.people.map(p=>({...p,targets:[...p.targets]})),byId=new Map(people.map(p=>[Number(p.id),p]));
    const facts=new Map(report.works.map(w=>[Number(w.id),w]));
-   for(const command of this.records){if(command.rejected)continue;const person=byId.get(command.activity);if(!person)continue;
+   for(const command of this.records){if(command.rejected)continue;const commandPeople=command.action?.startsWith('crew_')?(command.activities||[]).map(id=>byId.get(id)).filter(Boolean):[byId.get(command.activity)].filter(Boolean);for(const person of commandPeople){
     if(command.action==='mode'){person.targets=[];person.general=command.mode==='general';person.reviewed=person.general;}
     else{
-     const edges=command.action==='delta'?command.edges:[{action:command.action,fact:command.fact}];const targets=new Set(person.targets);
+     const edges=command.action==='delta'?command.edges:[{action:command.action==='crew_add'?'add':command.action==='crew_remove'?'remove':command.action,fact:command.fact}];const targets=new Set(person.targets);
      for(const edge of edges||[]){const fact=facts.get(Number(edge.fact));if(!fact)continue;const token=fact.operational_name?`operational:${fact.id}`:fact.work_item_id?`item:${fact.project_work_id}:${fact.work_item_id}`:`work:${fact.project_work_id}`;if(edge.action==='remove')targets.delete(token);else if(Number(fact.actual_quantity)>0)targets.add(token);}
      person.targets=[...targets];person.general=false;person.reviewed=person.targets.length>0;
     }
     person.links_revision=Number(person.links_revision||0)+1;person.pending_links=(person.pending_links||0)+1;
+   }
    }
    return {...report,people};
   }
@@ -74,11 +82,11 @@
    if(this.running||this.blocked||!this.pending)return;
    if(navigator.onLine===false){this.render();return;}
    if((!explicit&&window.productionAutoSave?.running)||this.form.dataset.peopleBulkBusy==='1'||this.form.dataset.personShiftBusy==='1')return;
-   this.running=true;this.render();const batch=this.records.filter(r=>!r.rejected).slice(0,40);
+   this.running=true;this.render();const batch=this.records.filter(r=>!r.rejected).slice(0,20);
    const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),25000);
    try{
     const {scope,csrf}=this.form.productionSession,dataDigest=this.callbacks.digest();
-    const commands=batch.map(({label,order,rejected,...command})=>command);
+    const commands=batch.map(({label,order,rejected,activities,...command})=>command);
     const response=await fetch(this.form.dataset.linksUrl,{method:'POST',credentials:'same-origin',signal:controller.signal,headers:{'Content-Type':'application/json','X-CSRFToken':csrf},body:JSON.stringify({...scope,protocol:'queued-v1',data_digest:dataDigest,commands})});
     if(response.redirected||response.status===401||response.status===403){
      const details=response.headers.get('content-type')?.includes('application/json')?await response.json():{};
@@ -98,10 +106,10 @@
    finally{clearTimeout(timeout);this.running=false;this.form.dispatchEvent(new CustomEvent('production-network-time',{detail:{slow:this.attempt>0}}));this.render(this.blocked?this.blockedReason:undefined);}
   }
   async flush(){
-   const deadline=Date.now()+30000;
+   const deadline=Date.now()+30000,total=this.pending;
    while(this.pending||this.running){
     if(this.blocked||navigator.onLine===false||this.attempt>0||Date.now()>deadline)return false;
-    if(!this.running)await this.send(true);
+    if(!this.running){await this.send(true);const done=total-this.pending;this.form.productionStatus?.update(`Сохранено связей: ${done} из ${total}`,done,total);}
     if(this.pending||this.running)await new Promise(resolve=>setTimeout(resolve,50));
    }
    return !this.records.some(r=>r.rejected);

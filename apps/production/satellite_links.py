@@ -21,9 +21,18 @@ def person_state(row):
 
 def execute(user,obj,day,command):
     from .collaboration import apply_relations, RELATION_FIELDS
+    action=command['action']
+    if action in {'crew_add','crew_remove'}:
+        crew=ProductionDailyCrew.objects.select_for_update().filter(pk=command.get('crew'),company=obj.company,construction_object=obj,date=day,is_active=True).first()
+        if crew is None:raise ValidationError('Бригада уже удалена или изменена.')
+        fact=DailyFact.objects.select_for_update().filter(company=obj.company,date=day,project_work__section__construction_object=obj,pk=command.get('fact')).first()
+        if fact is None:raise ValidationError('Работа удалена из факта. Проверьте обновлённый список работ.')
+        if action=='crew_add' and fact.actual_quantity<=0:raise ValidationError('У работы нулевой факт. Связь не добавлена; сначала внесите выполненный объём.')
+        from .crew_links import change_whole_crew
+        change_whole_crew(crew,fact,'add' if action=='crew_add' else 'remove')
+        return
     row=EmployeeActivity.objects.select_for_update().filter(company=obj.company,construction_object=obj,date=day,pk=command['activity'],entry_direction='works').first()
     if row is None:raise ValidationError('Сотрудник удалён из производственного факта. Обновите список.')
-    action=command['action']
     if action=='mode':
         if command.get('mode') not in {'general','pending'}:raise ValidationError('Неизвестный вид занятости.')
         if command.get('revision')!=row.links_revision:raise ValidationError('Занятость уже изменена коллегой. Проверьте обновлённые связи и повторите действие.')
@@ -67,8 +76,10 @@ def batch(request,data,obj,day):
             key=UUID(str(source.get('id')))
             if key in seen:raise ValueError
             seen.add(key);command={name:source[name] for name in ('activity','action','fact','edges','mode','revision','crew') if name in source}
-            if type(command.get('activity')) is not int or command['activity']<=0:raise ValueError
-            if command.get('action') not in {'add','remove','delta','mode'}:raise ValueError
+            if command.get('action') not in {'add','remove','delta','mode','crew_add','crew_remove'}:raise ValueError
+            if command['action'].startswith('crew_'):
+                if type(command.get('crew')) is not int or command['crew']<=0 or type(command.get('fact')) is not int or command['fact']<=0:raise ValueError
+            elif type(command.get('activity')) is not int or command['activity']<=0:raise ValueError
             digest=hashlib.sha256(json.dumps(command,sort_keys=True,separators=(',',':')).encode()).hexdigest()
             prepared.append((key,command,digest))
     except (TypeError,ValueError):return JsonResponse({'error':'Некорректный пакет изменений связей.'},status=400)
@@ -91,7 +102,7 @@ def batch(request,data,obj,day):
                 if (receipt.company_id,receipt.user_id,receipt.construction_object_id,receipt.date,receipt.digest)!=(obj.company_id,request.user.pk,obj.pk,day,digest):
                     return JsonResponse({'error':'Идентификатор изменения уже использован для других данных.'},status=409)
                 results.append(receipt.result);continue
-            result={'id':str(key),'activity':command['activity'],'ok':True}
+            result={'id':str(key),'activity':command.get('activity'),'crew':command.get('crew'),'ok':True}
             try:
                 with transaction.atomic():
                     require_fact_day(request.user,day)
@@ -104,7 +115,9 @@ def batch(request,data,obj,day):
         if changed:
             from .collaboration import automatic_readiness
             automatic_readiness(obj,day,request.user)
-        ids={c['activity'] for _,c,_ in prepared}
+        ids={c['activity'] for _,c,_ in prepared if c.get('activity')}
+        crew_ids={c['crew'] for _,c,_ in prepared if c['action'].startswith('crew_')}
+        if crew_ids:ids.update(EmployeeActivity.objects.filter(daily_crew_member__crew_id__in=crew_ids).values_list('pk',flat=True))
         people=[person_state(row) for row in EmployeeActivity.objects.filter(company=obj.company,construction_object=obj,date=day,pk__in=ids,entry_direction='works')]
         response={'results':results,'people':people,'removed':sorted(ids-{p['id'] for p in people}),'reset_epoch':current_epoch,'compact':True}
         if acknowledge_digest:response['digest']=state_stamp(obj,day)

@@ -97,7 +97,7 @@
   running=(async()=>{
    while(pending||dirty().length){
     pending=false;const changed=dirty(),deletions=changed.filter(row=>field(row,'DELETE')?.checked),people=changed.filter(isPerson);
-    const selected=deletions.length?deletions:people.length?people:changed;
+    const selected=(deletions.length?deletions:people.length?people:changed).slice(0,25);
     try{await save(selected);failed=false;retryAttempt=0;}catch(error){failed=true;selected.forEach(row=>rowMessage(row,row.querySelector('[data-error]')?.textContent||error.message,true));message(error.message,true);form.productionStatus.error(error.message);break;}}
    if(!failed&&form.productionLinks?.pending){
     form.productionStatus.start(`Сохраняем связи · изменений: ${form.productionLinks.pending}`,form.productionLinks.pending);

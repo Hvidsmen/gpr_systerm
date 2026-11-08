@@ -105,6 +105,25 @@ class SatelliteProtocolTests(TestCase):
         self.assertTrue(ProductionDailyCrewWorkLink.objects.filter(crew=crew,fact=self.fact).exists())
         response=self.send([self.command(action='remove',crew=crew.pk),self.command(activity=other.pk,action='remove',crew=crew.pk)]);self.assertEqual(response.status_code,200,response.content)
         self.assertFalse(ProductionDailyCrewWorkLink.objects.filter(crew=crew,fact=self.fact).exists());self.assertFalse(EmployeeWorkLink.objects.filter(activity__in=[self.person,other],work=self.fact.project_work).exists())
+    def test_whole_crew_command_is_one_idempotent_atomic_change(self):
+        crew=ProductionDailyCrew.objects.create(company=self.company,construction_object=self.obj,date=self.day,shift=self.person.shift,number=1,reported_by=self.user)
+        employee=Employee.objects.create(company=self.company,last_name='Второй',first_name='Участник',position=self.employee.position)
+        other=EmployeeActivity.objects.create(company=self.company,construction_object=self.obj,date=self.day,shift=self.person.shift,employee=employee,position=employee.position,assignment_reviewed=False,entry_direction='works',reported_by=self.user)
+        for activity in [self.person,other]:ProductionDailyCrewMember.objects.create(company=self.company,crew=crew,activity=activity)
+        command={'id':str(uuid4()),'action':'crew_add','crew':crew.pk,'fact':self.fact.pk}
+        response=self.send([command]);self.assertEqual(response.status_code,200,response.content);self.assertTrue(response.json()['results'][0]['ok'])
+        self.assertEqual(EmployeeWorkLink.objects.filter(crew_source=crew).count(),2);self.assertEqual({row['id'] for row in response.json()['people']},{self.person.pk,other.pk})
+        self.assertEqual(ProductionLinkReceipt.objects.count(),1);self.assertEqual(self.send([command]).status_code,200);self.assertEqual(EmployeeWorkLink.objects.filter(crew_source=crew).count(),2)
+        remove={'id':str(uuid4()),'action':'crew_remove','crew':crew.pk,'fact':self.fact.pk}
+        self.assertTrue(self.send([remove]).json()['results'][0]['ok']);self.assertFalse(EmployeeWorkLink.objects.filter(crew_source=crew).exists())
+    def test_whole_crew_command_rolls_back_every_member_on_error(self):
+        crew=ProductionDailyCrew.objects.create(company=self.company,construction_object=self.obj,date=self.day,shift=self.person.shift,number=1,reported_by=self.user)
+        employee=Employee.objects.create(company=self.company,last_name='Второй',first_name='Участник',position=self.employee.position)
+        other=EmployeeActivity.objects.create(company=self.company,construction_object=self.obj,date=self.day,shift=self.person.shift,employee=employee,position=employee.position,assignment_reviewed=False,entry_direction='works',reported_by=self.user)
+        for activity in [self.person,other]:ProductionDailyCrewMember.objects.create(company=self.company,crew=crew,activity=activity)
+        with patch('apps.production.crew_links._ensure_link',side_effect=[None,ValidationError('Сбой')]):
+            data=self.send([{'id':str(uuid4()),'action':'crew_add','crew':crew.pk,'fact':self.fact.pk}]).json()
+        self.assertFalse(data['results'][0]['ok']);self.assertFalse(ProductionDailyCrewWorkLink.objects.filter(crew=crew).exists());self.assertFalse(EmployeeWorkLink.objects.filter(crew_source=crew).exists())
     def test_zero_work_rejected_without_restore_and_other_operation_succeeds(self):
         self.fact.actual_quantity=0;self.fact.save()
         data=self.send([self.command(),self.command(fact=self.second_fact.pk)]).json()

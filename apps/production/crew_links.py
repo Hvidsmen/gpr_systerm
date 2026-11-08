@@ -49,6 +49,21 @@ def change_crew(activity,crew,fact,action):
         _detach_fact(activity,crew,fact)
 
 
+def change_whole_crew(crew,fact,action):
+    """Apply one crew assignment atomically to the crew's current membership."""
+    memberships=list(crew.members.select_for_update().select_related('activity'))
+    if not memberships:raise ValidationError('В бригаде нет сотрудников.')
+    if action=='add':
+        ProductionDailyCrewWorkLink.objects.get_or_create(company=crew.company,crew=crew,fact=fact)
+        for membership in memberships:
+            _ensure_link(membership.activity,fact,crew=crew);_refresh(membership.activity)
+    else:
+        ProductionDailyCrewWorkLink.objects.filter(company=crew.company,crew=crew,fact=fact).delete()
+        for membership in memberships:
+            _detach_fact(membership.activity,crew,fact);_refresh(membership.activity)
+    return [membership.activity for membership in memberships]
+
+
 def promote_to_crew(activity,crew,fact):
     """Convert an existing effective employee edge into a crew-owned edge."""
     ProductionDailyCrewWorkLink.objects.get_or_create(company=activity.company,crew=crew,fact=fact)
