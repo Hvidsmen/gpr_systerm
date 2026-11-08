@@ -13,7 +13,7 @@
   if(event.ctrlKey&&key==='Enter')return quantity(rows[index+1]);
   if(key==='ArrowLeft'&&start===0&&end===0)return quantity(row);
   if(key==='ArrowRight'&&start===value.length&&end===value.length)return quantity(rows[index+1]);
-  if(key==='ArrowUp'&&start<=Math.max(0,value.indexOf('\n')))return siblingField(row,target,-1);
+  if(key==='ArrowUp'&&(value.indexOf('\n')<0||start<=value.indexOf('\n')))return siblingField(row,target,-1);
   if(key==='ArrowDown'&&(value.lastIndexOf('\n')<0||start>value.lastIndexOf('\n')))return siblingField(row,target,1);
   return null;
  }
