@@ -145,7 +145,7 @@
  addEventListener('online',()=>{if(dirty().length||form.productionLinks?.pending){pending=true;message('Соединение восстановлено · нажмите «Сохранить»');form.productionRecovery.online();}else form.productionRecovery.clear();});
  retry.addEventListener('click',()=>{pending=true;flush();});
  form.querySelector('[data-production-save]')?.addEventListener('click',()=>flush());
- document.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&event.key.toLocaleLowerCase()==='s'){event.preventDefault();if(form.dataset.lockState==='mine')flush();}});
+ document.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&(event.code==='KeyS'||event.key.toLocaleLowerCase()==='s')){event.preventDefault();event.stopPropagation();if(form.dataset.lockState==='mine')flush();}},true);
  form.addEventListener('click',async event=>{
   const clear=event.target.closest('[data-work-clear]');
   if(clear){
