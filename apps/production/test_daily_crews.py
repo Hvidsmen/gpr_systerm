@@ -1,4 +1,5 @@
 from datetime import timedelta
+from pathlib import Path
 from django.test import TestCase
 from django.urls import reverse
 from .dispatch_models import (EmployeeActivity, EmployeeWorkLink, ProductionDailyCrew,
@@ -63,6 +64,9 @@ class DailyCrewTests(TestCase):
         response=self.client.get(self.url,{'construction_object':self.obj.pk,'date':self.day,'section':'works'})
         self.assertContains(response,'3. Бригады (необязательно)');self.assertContains(response,'Создать бригаду')
         self.assertNotContains(response,'Бригадир')
+        source=(Path(__file__).resolve().parents[2]/'static/production/production_crews.js').read_text(encoding='utf-8')
+        self.assertIn("if(event.detail===3)request()",source)
+        self.assertIn("form.productionLoadCrews=(force=false)",source)
 
     def test_deleting_crew_removes_only_crew_origin_links(self):
         crew=ProductionDailyCrew.objects.create(company=self.company,construction_object=self.obj,date=self.day,shift=1,number=1,reported_by=self.user)
