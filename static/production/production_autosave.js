@@ -109,6 +109,10 @@
     pending=false;const changed=dirty(),deletions=changed.filter(row=>field(row,'DELETE')?.checked),people=changed.filter(isPerson);
     const selected=(deletions.length?deletions:people.length?people:changed).slice(0,25);
     try{await save(selected);failed=false;retryAttempt=0;}catch(error){failed=true;retryAttempt++;selected.forEach(row=>{if(field(row,'DELETE')?.checked)row.hidden=false;rowMessage(row,row.querySelector('[data-error]')?.textContent||error.message,true);});message(error.message,true);form.productionStatus.error(error.message);if(error.status===409||form.dataset.authChanged==='1'||retryAttempt>=2)form.productionRecovery.reload();else if(navigator.onLine===false)form.productionRecovery.offline();break;}}
+   if(!failed&&form.productionCrewDraft?.pending){
+    form.productionStatus.start(`Сохраняем состав бригад · изменений: ${form.productionCrewDraft.pending}`,form.productionCrewDraft.pending);
+    try{await form.productionCrewDraft.flush();}catch(error){failed=true;message(error.message,true);form.productionStatus.error(error.message);}
+   }
    if(!failed&&form.productionLinks?.pending){
     form.productionStatus.start(`Сохраняем связи · изменений: ${form.productionLinks.pending}`,form.productionLinks.pending);
     if(!await form.productionLinks.flush()){failed=true;message('Связи не сохранены. Проверьте статус над вкладками и повторите сохранение.',true);form.productionStatus.error('Связи не сохранены');}
@@ -125,7 +129,7 @@
   try{return await running;}finally{running=null;if(dirty().length){message('Сотрудники обработаны. Есть несохранённые изменения. Нажмите «Сохранить».');pending=true;clearTimeout(timer);}}
  }
  form.addEventListener('production-links-state',event=>{if(event.detail.pending)message(`Есть несохранённые связи: ${event.detail.pending}. Нажмите «Сохранить».`);else if(lastMessage)message(lastMessage,lastError);});
- window.productionAutoSave={whenIdle:()=>running||Promise.resolve(true),flush,flushPeople,reindex,fingerprint,capture,get running(){return Boolean(running);},get pending(){return pending||Boolean(running)||dirty().length>0||Boolean(form.productionLinks?.pending);}};
+ window.productionAutoSave={whenIdle:()=>running||Promise.resolve(true),flush,flushPeople,reindex,fingerprint,capture,get running(){return Boolean(running);},get pending(){return pending||Boolean(running)||dirty().length>0||Boolean(form.productionCrewDraft?.pending)||Boolean(form.productionLinks?.pending);}};
  const relevant=event=>{
   if(form.productionApplying||(form.dataset.peopleBulkBusy==='1'||form.dataset.personShiftBusy==='1')||event.target.closest('[data-actuation-ui]'))return;
   const row=event.target.closest('[data-production-person],[data-work-fact-row]');

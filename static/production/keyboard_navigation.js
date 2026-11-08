@@ -1,6 +1,7 @@
 (()=>{
  'use strict';
  const form=document.querySelector('[data-production-form]');if(!form)return;
+ const undoStack=[],beforeEdit=new WeakMap();let replaying=false;
  const selector='input:not([type=hidden]),select,textarea,button,[tabindex]:not([tabindex="-1"])';
  const visible=node=>Boolean(node&&!node.disabled&&!node.hidden&&node.getClientRects().length&&!node.closest('[hidden]'));
  const reveal=node=>{for(let group=node?.closest('details');group;group=group.parentElement?.closest('details'))group.open=true;};
@@ -62,4 +63,9 @@
   if(scroller&&scroller!==document.body)scroller.scrollBy({top:event.deltaY,left:event.deltaX});else window.scrollBy({top:event.deltaY,left:event.deltaX});
  },{passive:false});
  const graphRoot=form.querySelector('[data-employee-graph]');if(graphRoot)new MutationObserver(wireGraph).observe(graphRoot,{childList:true,subtree:true});wireGraph();
+ const stateOf=node=>node.type==='checkbox'||node.type==='radio'?Boolean(node.checked):node.value;
+ const locate=node=>{const activity=node.closest('[data-crew-activity]')?.dataset.crewActivity;if(activity&&node.matches('[data-crew-assignment]'))return ()=>form.querySelector(`[data-crew-activity="${CSS.escape(activity)}"] [data-crew-assignment]`);const crew=node.closest('[data-crew-id]')?.dataset.crewId;if(crew&&node.matches('[data-crew-name]'))return ()=>form.querySelector(`[data-crew-id="${CSS.escape(crew)}"] [data-crew-name]`);const name=node.name;if(name)return ()=>form.elements.namedItem(name);return ()=>node.isConnected?node:null;};
+ form.addEventListener('focusin',event=>{if(event.target.matches('input,select,textarea'))beforeEdit.set(event.target,stateOf(event.target));});
+ form.addEventListener('change',event=>{const node=event.target;if(replaying||!node.matches('input,select,textarea')||!node.closest('[data-work-fact-row],[data-production-person],[data-production-crews]'))return;const before=beforeEdit.has(node)?beforeEdit.get(node):node.defaultValue,after=stateOf(node);beforeEdit.set(node,after);if(before===after)return;undoStack.push({find:locate(node),value:before});if(undoStack.length>50)undoStack.shift();});
+ document.addEventListener('keydown',event=>{if(event.defaultPrevented||!(event.ctrlKey||event.metaKey)||event.altKey||event.shiftKey||event.key.toLocaleLowerCase()!=='z')return;if(form.querySelector('[data-entry-step="3"]:not([hidden])')&&form.productionCrewDraft?.undo()){event.preventDefault();return;}if(event.target.matches('textarea,input[type=text],input[type=search],input[type=number],input:not([type])'))return;if(form.querySelector('[data-entry-step="4"]:not([hidden])'))return;const item=undoStack.pop();if(!item)return;const node=item.find();if(!node)return;event.preventDefault();replaying=true;if(node.type==='checkbox'||node.type==='radio')node.checked=Boolean(item.value);else node.value=item.value;beforeEdit.set(node,item.value);node.dispatchEvent(new Event('input',{bubbles:true}));node.dispatchEvent(new Event('change',{bubbles:true}));replaying=false;focus(node);const status=form.querySelector('[data-autosave-state]');if(status)status.textContent='Последнее изменение возвращено.';},true);
 })();
