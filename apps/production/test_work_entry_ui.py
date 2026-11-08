@@ -85,6 +85,10 @@ class WorkEntryPresentationTests(TestCase):
         self.assertContains(response,f'data-work-token="item:{self.package.pk}:{self.camera.pk}"')
         self.assertContains(response,'complex_object_filter')
         html = response.content.decode()
+        import re
+        planned=re.search(rf'<article[^>]+data-work-token="item:{self.package.pk}:{self.camera.pk}"[\s\S]*?</article>',html)
+        self.assertIsNotNone(planned)
+        self.assertNotIn('complex_object_filter',planned.group(), 'A prepared SMG row must not offer a misleading object selector')
         self.assertNotIn('Комплексная работа', html)
         self.assertLess(html.index('<span class="production-work-level">Работа в составе комплекса</span>'),html.index('<span class="production-work-level">Комплексный объект</span>'))
         self.assertIn('<span class="production-work-level">Работа в составе комплекса</span><strong>Установка камеры</strong>', html)
