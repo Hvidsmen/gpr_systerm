@@ -8,10 +8,19 @@
  const suffix=node=>(node.name||node.dataset.keyboardField||'').replace(/^(works|labor)-\d+-/,'');
  const rowsFor=row=>row.matches('[data-work-fact-row]')?[...form.querySelectorAll('[data-work-fact-row]')].filter(visible):[...form.querySelectorAll('[data-production-person]')].filter(visible);
  function siblingField(row,target,direction){const rows=rowsFor(row),next=rows[rows.indexOf(row)+direction];if(!next)return null;const name=suffix(target),same=controls(next).find(node=>suffix(node)===name);if(same)return same;const index=controls(row).indexOf(target);return controls(next)[Math.max(0,Math.min(index,controls(next).length-1))];}
+ function textareaTarget(event,row){
+  const target=event.target,key=event.key,value=target.value,start=target.selectionStart??0,end=target.selectionEnd??start,rows=rowsFor(row),index=rows.indexOf(row),quantity=item=>controls(item).find(node=>suffix(node)==='actual_quantity');
+  if(event.ctrlKey&&key==='Enter')return quantity(rows[index+1]);
+  if(key==='ArrowLeft'&&start===0&&end===0)return quantity(row);
+  if(key==='ArrowRight'&&start===value.length&&end===value.length)return quantity(rows[index+1]);
+  if(key==='ArrowUp'&&start<=Math.max(0,value.indexOf('\n')))return siblingField(row,target,-1);
+  if(key==='ArrowDown'&&(value.lastIndexOf('\n')<0||start>value.lastIndexOf('\n')))return siblingField(row,target,1);
+  return null;
+ }
  function moveInForm(event,row){
   const target=event.target,key=event.key,list=controls(row),index=list.indexOf(target);if(index<0)return false;
   if(target.matches('button')&&key==='Enter')return false;
-  if(target.matches('textarea')&&!(event.ctrlKey&&key==='Enter'))return false;
+  if(target.matches('textarea')){const next=textareaTarget(event,row);if(!next)return false;event.preventDefault();focus(next);return true;}
   if(target.matches('input[type=text],input[type=search],input:not([type])')&&['ArrowLeft','ArrowRight'].includes(key))return false;
   if(target.matches('input[type=number]')&&event.ctrlKey&&['ArrowUp','ArrowDown'].includes(key)){event.preventDefault();key==='ArrowUp'?target.stepUp():target.stepDown();target.dispatchEvent(new Event('input',{bubbles:true}));target.dispatchEvent(new Event('change',{bubbles:true}));return true;}
   let next=null;if(key==='ArrowLeft')next=list[index-1];else if(key==='ArrowRight'||key==='Enter')next=list[index+1];else if(key==='ArrowUp')next=siblingField(row,target,-1);else if(key==='ArrowDown')next=siblingField(row,target,1);else return false;

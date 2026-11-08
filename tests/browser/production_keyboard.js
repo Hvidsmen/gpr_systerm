@@ -12,7 +12,9 @@ const {chromium}=require('playwright'),assert=require('assert'),path=require('pa
  await page.locator('[name="works-0-actual_quantity"]').focus();await page.keyboard.press('ArrowDown');assert.equal(await active(),'works-1-actual_quantity');
  await page.locator('[name="works-0-actual_quantity"]').focus();await page.keyboard.press('ArrowRight');assert.equal(await active(),'works-0-comment');
  await page.locator('[name="works-0-actual_quantity"]').focus();await page.keyboard.press('Control+ArrowUp');assert.equal(await page.locator('[name="works-0-actual_quantity"]').inputValue(),'3');
- await page.locator('[name="works-0-note"]').focus();await page.keyboard.press('ArrowDown');assert.equal(await active(),'works-0-note');
+ await page.locator('[name="works-0-note"]').fill('текст');await page.locator('[name="works-0-note"]').evaluate(el=>el.setSelectionRange(2,2));await page.keyboard.press('ArrowLeft');assert.equal(await active(),'works-0-note');
+ await page.locator('[name="works-0-note"]').fill('');await page.keyboard.press('ArrowLeft');assert.equal(await active(),'works-0-actual_quantity');
+ await page.locator('[name="works-0-note"]').focus();await page.keyboard.press('ArrowRight');assert.equal(await active(),'works-1-actual_quantity');
  await page.locator('[name="labor-0-shift"]').focus();await page.keyboard.press('ArrowDown');assert.equal(await active(),'labor-1-shift');
  await page.locator('.production-crew-person').first().locator('input').focus();await page.keyboard.press('ArrowDown');assert(await page.locator('.production-crew-person').nth(1).locator('input').evaluate(el=>el===document.activeElement));
  const work=page.locator('.graph-work');await work.focus();await page.keyboard.press('ArrowRight');assert(await page.locator('.graph-crew').evaluate(el=>el===document.activeElement));await page.keyboard.press('ArrowRight');assert(await page.locator('.employee-graph-crew').evaluate(el=>el.open));
