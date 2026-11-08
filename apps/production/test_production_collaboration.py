@@ -116,6 +116,17 @@ class ProductionCollaborationTests(TestCase):
         self.client.force_login(self.second);acquired=self.client.post(reverse('production:production_live'),other,content_type='application/json')
         self.assertTrue(acquired.json()['edit_lock']['mine']);self.assertEqual(ProductionEditLock.objects.get().user,self.second)
 
+    def test_compact_link_outbox_obeys_object_and_day_edit_lock(self):
+        self.heartbeat()
+        self.client.force_login(self.second);other={**self.scope,'session':str(uuid4())}
+        response=self.client.post(reverse('production:production_links'),{
+            **other,'protocol':'queued-v1','actor_id':self.second.pk,'company_id':self.company.pk,
+            'reset_epoch':0,'commands':[{'id':str(uuid4()),'activity':self.person.pk,'fact':self.fact.pk,'action':'add'}],
+        },content_type='application/json')
+        self.assertEqual(response.status_code,400,response.content)
+        self.assertIn('только просмотр',response.json()['error'])
+        self.assertFalse(EmployeeWorkLink.objects.exists())
+
     def test_idle_heartbeat_renews_claim_and_internal_tab_switch_keeps_it(self):
         self.heartbeat();self.claim(f'work:{self.work.pk}')
         WorkFactClaim.objects.update(expires_at=timezone.now()+timedelta(seconds=2))

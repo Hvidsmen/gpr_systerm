@@ -63,6 +63,10 @@ def execute(user,obj,day,command):
 
 
 def batch(request,data,obj,day):
+    # Links belong to the same production-day draft as works, people and crews.
+    # The compact outbox must not bypass the exclusive object+date edit lock.
+    from .edit_lock import require_available
+    require_available(request.user,obj,day,data)
     from .day_reset import epoch
     if data.get('actor_id')!=request.user.pk or data.get('company_id')!=request.user.company_id:
         return JsonResponse({'error':'Учётная запись изменилась. Откройте форму под нужным пользователем; очередь осталась в его браузере.','auth_changed':True},status=403)
