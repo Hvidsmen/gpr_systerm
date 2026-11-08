@@ -108,7 +108,7 @@
    while(pending||dirty().length){
     pending=false;const changed=dirty(),deletions=changed.filter(row=>field(row,'DELETE')?.checked),people=changed.filter(isPerson);
     const selected=(deletions.length?deletions:people.length?people:changed).slice(0,25);
-    try{await save(selected);failed=false;retryAttempt=0;}catch(error){failed=true;retryAttempt++;selected.forEach(row=>rowMessage(row,row.querySelector('[data-error]')?.textContent||error.message,true));message(error.message,true);form.productionStatus.error(error.message);if(error.status===409||form.dataset.authChanged==='1'||retryAttempt>=2)form.productionRecovery.reload();else if(navigator.onLine===false)form.productionRecovery.offline();break;}}
+    try{await save(selected);failed=false;retryAttempt=0;}catch(error){failed=true;retryAttempt++;selected.forEach(row=>{if(field(row,'DELETE')?.checked)row.hidden=false;rowMessage(row,row.querySelector('[data-error]')?.textContent||error.message,true);});message(error.message,true);form.productionStatus.error(error.message);if(error.status===409||form.dataset.authChanged==='1'||retryAttempt>=2)form.productionRecovery.reload();else if(navigator.onLine===false)form.productionRecovery.offline();break;}}
    if(!failed&&form.productionLinks?.pending){
     form.productionStatus.start(`Сохраняем связи · изменений: ${form.productionLinks.pending}`,form.productionLinks.pending);
     if(!await form.productionLinks.flush()){failed=true;message('Связи не сохранены. Проверьте статус над вкладками и повторите сохранение.',true);form.productionStatus.error('Связи не сохранены');}
@@ -158,7 +158,7 @@
     const quantity=field(row,'actual_quantity');quantity.value='0';
     for(const name of ['comment','actuation_type','actuation_reason']){const input=field(row,name);if(input)input.value='';}
     row.querySelectorAll('[name$="-actuation_reasons"]').forEach(input=>{input.checked=false;});
-    row.dataset.entryDirty='1';quantity.dispatchEvent(new Event('input',{bubbles:true}));schedule(row);await flush();
+    row.dataset.entryDirty='1';quantity.dispatchEvent(new Event('input',{bubbles:true}));schedule(row);
    }
    catch(error){rowMessage(row,error.message,true);message(error.message,true);}
    finally{clear.disabled=false;}
@@ -169,8 +169,7 @@
   const row=button.closest('[data-production-person],[data-work-fact-row]');button.disabled=true;
   try{
    if(!field(row,'id').value&&!running){removeDraft(row);try{await form.productionReleaseRow(row);}catch{}row.remove();reindex();form.dispatchEvent(new Event('change',{bubbles:true}));return;}
-   await form.productionClaimRow(row);field(row,'DELETE').checked=true;row.classList.add('production-row-auto-deleting');row.dataset.entryDirty='1';row.hidden=true;row.dispatchEvent(new Event('change',{bubbles:true}));schedule(row);await flush();
-   if(row.isConnected&&field(row,'DELETE').checked){row.dataset.entryDirty='1';row.dataset.autoPending='1';pending=true;await flush();}
+   await form.productionClaimRow(row);field(row,'DELETE').checked=true;row.classList.add('production-row-auto-deleting');row.dataset.entryDirty='1';row.hidden=true;row.dispatchEvent(new Event('change',{bubbles:true}));schedule(row);
   }catch(error){row.hidden=false;rowMessage(row,error.message,true);message(error.message,true);}finally{if(row.isConnected)row.classList.remove('production-row-auto-deleting');button.disabled=false;}
  });
  form.addEventListener('submit',event=>{event.preventDefault();flush();},true);
