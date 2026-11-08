@@ -103,7 +103,7 @@
  async function flush(){
   if((form.dataset.peopleBulkBusy==='1'||form.dataset.personShiftBusy==='1')){clearTimeout(timer);timer=setTimeout(()=>flush(),700);return false;}
   if(form.dataset.resetRequired==='1'){clearTimeout(timer);message('Производственная часть сброшена администратором. Обновите форму.',true);form.productionRecovery.reload('Производственный день был сброшен. Черновик сохранён отдельно. Перезагрузите страницу и проверьте данные перед повторным сохранением.');return false;}
-  clearTimeout(timer);if(running)return running;
+  clearTimeout(timer);if(running){pending=true;const current=running;await current;return new Promise(resolve=>setTimeout(()=>resolve(flush()),0));}
   running=(async()=>{
    while(pending||dirty().length){
     pending=false;const changed=dirty(),deletions=changed.filter(row=>field(row,'DELETE')?.checked),people=changed.filter(isPerson);
