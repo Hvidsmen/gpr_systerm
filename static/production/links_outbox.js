@@ -5,12 +5,12 @@
    this.form=form;this.callbacks=callbacks;this.running=false;this.attempt=0;this.timer=null;this.blocked=false;this.blockedReason='';this.storageTimer=null;
    this.prefix=['yds-links-v1',form.dataset.companyId,form.dataset.userId,form.elements.construction_object.value,form.elements.date.value,form.dataset.resetEpoch||'0'].join(':')+':';
    this.host=form.querySelector('[data-links-sync]');this.records=[];this.load();
-   this.host?.querySelector('[data-links-retry]')?.addEventListener('click',()=>{this.blocked=false;this.attempt=0;this.schedule(0);});
+   this.host?.querySelector('[data-links-retry]')?.addEventListener('click',()=>{this.blocked=false;this.attempt=0;this.flush();});
    this.host?.addEventListener('click',event=>{const remove=event.target.closest('[data-links-dismiss]');if(remove){this.remove(remove.dataset.linksDismiss);this.changed();}});
-   addEventListener('online',()=>{this.blocked=false;this.attempt=0;this.schedule(0);});
-   addEventListener('storage',event=>{if(event.key?.startsWith(this.prefix)){clearTimeout(this.storageTimer);this.storageTimer=setTimeout(()=>{this.load();this.changed();this.schedule(300);},80);}});
+   addEventListener('online',()=>{this.blocked=false;this.attempt=0;this.render();});
+   addEventListener('storage',event=>{if(event.key?.startsWith(this.prefix)){clearTimeout(this.storageTimer);this.storageTimer=setTimeout(()=>{this.load();this.changed();},80);}});
    addEventListener('beforeunload',event=>{if(this.pending){event.preventDefault();event.returnValue='';}});
-   setTimeout(()=>{this.changed();this.schedule(250);},0);
+   setTimeout(()=>this.changed(),0);
   }
   get pending(){return this.records.filter(r=>!r.rejected).length;}
   get busy(){return this.running||this.pending>0;}
@@ -30,7 +30,7 @@
    // The revision shown in the row includes this tab's pending commands.
    if(record.action==='mode')record.revision=Number(row.dataset.linksRevision||0);
    try{this.put(record);}catch{throw new Error('Браузер не смог сохранить изменение. Освободите место или повторите действие; связь пока не изменена.');}
-   this.records.push(record);this.records.sort((a,b)=>a.order-b.order||a.id.localeCompare(b.id));this.changed();this.schedule(250);
+   this.records.push(record);this.records.sort((a,b)=>a.order-b.order||a.id.localeCompare(b.id));this.changed();
    return {queued:true};
   }
   overlay(report){
@@ -56,7 +56,7 @@
      this.remove(record.id);if(edges.length){const replacement={...record,id:this.uuid(),edges};delete replacement.rejected;this.put(replacement);this.records.push(replacement);}
     }else if(Number(record.fact)===Number(id))this.remove(record.id);
    }
-   this.records.sort((a,b)=>a.order-b.order||a.id.localeCompare(b.id));this.changed();this.schedule(250);
+   this.records.sort((a,b)=>a.order-b.order||a.id.localeCompare(b.id));this.changed();
   }
   changed(){
    this.form.dataset.linksPending=String(this.pending);this.form.dataset.linksRejected=String(this.records.filter(r=>r.rejected).length);this.callbacks.changed();this.render();
@@ -70,11 +70,10 @@
    const errors=this.host.querySelector('[data-links-errors]');errors.replaceChildren();
    for(const record of this.records.filter(r=>r.rejected)){const item=document.createElement('div');item.className='small text-danger d-flex gap-2 align-items-start';const text=document.createElement('span');text.textContent=record.label+': '+record.rejected+' Проверьте данные и повторите нужное действие.';const dismiss=document.createElement('button');dismiss.type='button';dismiss.className='btn btn-sm btn-outline-secondary';dismiss.dataset.linksDismiss=record.id;dismiss.textContent='Понятно';item.append(text,dismiss);errors.append(item);}
   }
-  schedule(delay){clearTimeout(this.timer);if(this.pending&&!this.blocked)this.timer=setTimeout(()=>this.send(),delay);}
-  async send(){
+  async send(explicit=false){
    if(this.running||this.blocked||!this.pending)return;
-   if(navigator.onLine===false){this.render();this.schedule(5000);return;}
-   if(window.productionAutoSave?.running||this.form.dataset.peopleBulkBusy==='1'||this.form.dataset.personShiftBusy==='1'){this.schedule(700);return;}
+   if(navigator.onLine===false){this.render();return;}
+   if((!explicit&&window.productionAutoSave?.running)||this.form.dataset.peopleBulkBusy==='1'||this.form.dataset.personShiftBusy==='1')return;
    this.running=true;this.render();const batch=this.records.filter(r=>!r.rejected).slice(0,40);
    const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),25000);
    try{
@@ -96,13 +95,13 @@
     }
     this.load();this.changed();
    }catch(error){this.attempt++;this.render('Связь нестабильна. Изменения сохранены в этом браузере; отправим при восстановлении соединения.');}
-   finally{clearTimeout(timeout);this.running=false;this.form.dispatchEvent(new CustomEvent('production-network-time',{detail:{slow:this.attempt>0}}));this.render(this.blocked?this.blockedReason:undefined);this.schedule(this.attempt?Math.min(30000,1500*2**this.attempt):250);}
+   finally{clearTimeout(timeout);this.running=false;this.form.dispatchEvent(new CustomEvent('production-network-time',{detail:{slow:this.attempt>0}}));this.render(this.blocked?this.blockedReason:undefined);}
   }
   async flush(){
-   const deadline=Date.now()+30000;this.schedule(0);
+   const deadline=Date.now()+30000;
    while(this.pending||this.running){
     if(this.blocked||navigator.onLine===false||this.attempt>0||Date.now()>deadline)return false;
-    if(!this.running)await this.send();
+    if(!this.running)await this.send(true);
     if(this.pending||this.running)await new Promise(resolve=>setTimeout(resolve,50));
    }
    return !this.records.some(r=>r.rejected);

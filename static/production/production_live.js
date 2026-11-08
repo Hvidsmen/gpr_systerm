@@ -111,7 +111,7 @@
  form.addEventListener('production-autosave-committed',()=>{lastActivity=Date.now();schedule(3000);});
  form.addEventListener('input',()=>{lastActivity=Date.now();});
  form.addEventListener('production-network-time',event=>{if(event.detail.slow)slow=true;});
- form.querySelector('[data-production-refresh]')?.addEventListener('click',()=>{if(outbox.pending)outbox.schedule(0);else poll(true);});
+ form.querySelector('[data-production-refresh]')?.addEventListener('click',async()=>{if(outbox.pending)await window.productionAutoSave.flush();else poll(true);});
  document.addEventListener('visibilitychange',()=>{clearTimeout(timer);if(!document.hidden)schedule(100);});
  addEventListener('online',()=>{failures=0;schedule(100);});
  window.addEventListener('pagehide',()=>{closed=true;clearTimeout(timer);navigator.sendBeacon(form.dataset.liveUrl,new URLSearchParams({...scope,action:'close',csrfmiddlewaretoken:csrf}));});
