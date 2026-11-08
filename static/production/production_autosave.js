@@ -27,7 +27,7 @@
  }
  function schedule(row){
   if(row){delete row.dataset.autoRejected;row.dataset.autoPending='1';rowMessage(row,'Не сохранено');}
-  pending=true;failed=false;retryAttempt=0;message('Есть изменения…');clearTimeout(timer);timer=setTimeout(()=>flush(),700);
+  pending=true;failed=false;retryAttempt=0;message('Есть несохранённые изменения');clearTimeout(timer);
  }
  async function save(selected){
   const changed=selected||dirty();
@@ -91,16 +91,16 @@
    while(pending||dirty().length){
     pending=false;const changed=dirty(),deletions=changed.filter(row=>field(row,'DELETE')?.checked),people=changed.filter(isPerson);
     const selected=deletions.length?deletions:people.length?people:changed;
-    try{await save(selected);failed=false;retryAttempt=0;}catch(error){failed=true;selected.forEach(row=>rowMessage(row,row.querySelector('[data-error]')?.textContent||error.message,true));message(error.message,true);if((error.retryable||error instanceof TypeError)&&retryAttempt<3){retryAttempt++;clearTimeout(timer);timer=setTimeout(()=>{pending=true;flush();},1000*Math.pow(2,retryAttempt));}break;}}
+    try{await save(selected);failed=false;retryAttempt=0;}catch(error){failed=true;selected.forEach(row=>rowMessage(row,row.querySelector('[data-error]')?.textContent||error.message,true));message(error.message,true);break;}}
    return !failed;
   })();
-  try{return await running;}finally{running=null;if(pending&&dirty().length){clearTimeout(timer);timer=setTimeout(()=>flush(),0);}}
+  try{return await running;}finally{running=null;if(pending&&dirty().length)message('Есть несохранённые изменения');}
  }
  async function flushPeople(){
   clearTimeout(timer);if(running)await running;
   const selected=dirty().filter(isPerson);if(!selected.length){if(dirty().length)timer=setTimeout(()=>flush(),700);return true;}
   running=(async()=>{try{await save(selected);return true;}catch(error){selected.forEach(row=>rowMessage(row,error.message,true));message(error.message,true);return false;}})();
-  try{return await running;}finally{running=null;if(dirty().length){message('Сотрудники обработаны. Есть несохранённые изменения.',true);pending=true;clearTimeout(timer);timer=setTimeout(()=>flush(),700);}}
+  try{return await running;}finally{running=null;if(dirty().length){message('Сотрудники обработаны. Есть несохранённые изменения. Нажмите «Сохранить».');pending=true;clearTimeout(timer);}}
  }
  form.addEventListener('production-links-state',()=>{if(lastMessage)message(lastMessage,lastError);});
  window.productionAutoSave={whenIdle:()=>running||Promise.resolve(true),flush,flushPeople,reindex,fingerprint,capture,get running(){return Boolean(running);},get pending(){return pending||Boolean(running)||dirty().length>0;}};
@@ -118,11 +118,11 @@
  // Claim wiring runs before this module. A bound form may therefore already
  // contain dirty rows whose earlier claims-change event could not be heard.
  // Explicitly resume them instead of leaving "Restoring reservation" forever.
- if(dirty().length){
-  pending=true;message('Восстанавливаем резерв и сохраняем изменения…');timer=setTimeout(()=>flush(),0);
- }
- addEventListener('online',()=>{if(dirty().length){pending=true;retryAttempt=0;flush();}});
+ if(dirty().length){pending=true;message('Есть несохранённые изменения');}
+ addEventListener('online',()=>{if(dirty().length){pending=true;retryAttempt=0;message('Соединение восстановлено · нажмите «Сохранить»');}});
  retry.addEventListener('click',()=>{retryAttempt=0;pending=true;flush();});
+ form.querySelector('[data-production-save]')?.addEventListener('click',()=>flush());
+ document.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&event.key.toLocaleLowerCase()==='s'){event.preventDefault();if(form.dataset.lockState==='mine')flush();}});
  form.addEventListener('click',async event=>{
   const clear=event.target.closest('[data-work-clear]');
   if(clear){

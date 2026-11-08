@@ -5,7 +5,7 @@ from django.urls import reverse
 from django.utils import timezone
 from core.fact_history import history_actor
 from .test_production_entry import ProductionEntryTests
-from .dispatch_models import EmployeeActivity,EmployeeWorkLink,WorkFactClaim,EmployeeFactClaim,ProductionPresence,FactSectionDay
+from .dispatch_models import EmployeeActivity,EmployeeWorkLink,WorkFactClaim,EmployeeFactClaim,ProductionPresence,ProductionEditLock,FactSectionDay
 from .models import DailyFact
 from .history_models import FactRevision
 
@@ -104,6 +104,17 @@ class ProductionCollaborationTests(TestCase):
         response=self.heartbeat(session=str(uuid4()),step=3);self.assertEqual(response.status_code,200)
         users=response.json()['users'];self.assertEqual(len(users),1);self.assertEqual(users[0]['steps'],[2,3]);self.assertTrue(users[0]['self']);self.assertFalse(users[0]['editing'])
         self.assertFalse(WorkFactClaim.objects.exists());self.assertFalse(EmployeeFactClaim.objects.exists())
+
+    def test_one_session_edits_production_day_and_other_session_is_read_only(self):
+        first=self.heartbeat();self.assertTrue(first.json()['edit_lock']['mine'])
+        self.client.force_login(self.second);other={**self.scope,'session':str(uuid4())}
+        second=self.client.post(reverse('production:production_live'),other,content_type='application/json')
+        self.assertFalse(second.json()['edit_lock']['mine']);self.assertEqual(second.json()['edit_lock']['owner'],self.user.full_name or self.user.username)
+        blocked=self.client.post(reverse('production:production_links'),{**other,'activity':self.person.pk,'fact':self.fact.pk,'action':'add'},content_type='application/json')
+        self.assertEqual(blocked.status_code,400);self.assertIn('только просмотр',blocked.json()['error'])
+        self.client.force_login(self.user);self.heartbeat(action='close')
+        self.client.force_login(self.second);acquired=self.client.post(reverse('production:production_live'),other,content_type='application/json')
+        self.assertTrue(acquired.json()['edit_lock']['mine']);self.assertEqual(ProductionEditLock.objects.get().user,self.second)
 
     def test_idle_heartbeat_renews_claim_and_internal_tab_switch_keeps_it(self):
         self.heartbeat();self.claim(f'work:{self.work.pk}')

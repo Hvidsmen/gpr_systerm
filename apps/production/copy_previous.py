@@ -117,6 +117,8 @@ def production(request):
     from .collaboration import scope
     try:
         data,obj,day=scope(request);session=UUID(str(data.get('session','')))
+        from .edit_lock import require_available
+        require_available(request.user,obj,day,data)
         keep=data.get('keep',[]);revisions=data.get('revisions',{})
         if not isinstance(keep,list) or len(keep)>2000 or not isinstance(revisions,dict) or len(revisions)>2000:raise ValueError
         with transaction.atomic(),history_actor(request.user,'Копирование из предыдущего дня'):

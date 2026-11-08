@@ -336,6 +336,12 @@ class DispatcherDayView(CompanyRequiredMixin,View):
         context={'selector':selector,'section':section,'tabs':[(s,LABELS[s]) for s in allowed],'editable':role_code(request.user) in FACT_ROLES}
         if not selector.is_bound or not selector.is_valid():return dispatcher_response(request,context,status=400 if bound else 200)
         obj=selector.cleaned_data['construction_object'];day=selector.cleaned_data['date']
+        if bound and section=='works':
+            from .edit_lock import require_available
+            try:require_available(request.user,obj,day,request.POST)
+            except ValidationError as exc:
+                context['error']='; '.join(exc.messages)
+                return dispatcher_response(request,context,status=409)
         from core.fact_edit_window import window_context,require_fact_day
         context.update(window_context(request.user,day))
         context['editable']=context['editable'] and context['fact_day_editable']

@@ -131,6 +131,8 @@ def claims(request):
         if request.method=='GET':
             from .production_entry import report_data
             return JsonResponse({'claims':status_rows(request.user,obj,day,session),'report':report_data(obj,day)})
+        from .edit_lock import require_available
+        require_available(request.user,obj,day,data)
         from .collaboration import expire_presence
         expire_presence(obj,day)
         action=data.get('action')

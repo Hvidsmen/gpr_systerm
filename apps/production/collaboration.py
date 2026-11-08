@@ -19,6 +19,7 @@ from .dispatch_models import (EmployeeActivity, EmployeeWorkLink, ProductionDail
     WorkFactClaim, EmployeeFactClaim, FactSectionDay, ProductionEntryDay)
 from .models import DailyFact
 from .production_entry import targets, token, report_data
+from .edit_lock import acquire as acquire_edit_lock, release as release_edit_lock, require_available, session_value
 from .work_claims import owner_name, status_rows, release_session, TTL
 
 ROLES={'ADMIN','DISPATCHER','ALL_FACT_DISPATCHER'}
@@ -102,6 +103,7 @@ def links(request):
         if data.get('protocol')=='queued-v1':
             from .satellite_links import batch
             return batch(request,data,obj,day)
+        require_available(request.user,obj,day,data)
         from core.fact_edit_window import require_fact_day
         require_fact_day(request.user,day)
         action=data.get('action')
@@ -199,12 +201,14 @@ def live(request):
             existing=ProductionPresence.objects.filter(company=obj.company,construction_object=obj,date=day,session_key=session).first()
             if existing and existing.user_id!=request.user.pk:return JsonResponse({'error':'Сеанс принадлежит другому пользователю.'},status=403)
             if data.get('action')=='close':
+                release_edit_lock(request.user,obj,day,session)
                 if existing:existing.closing_at=now;existing.save(update_fields=['closing_at'])
                 return JsonResponse({'closed':True})
             step=int(data.get('step',1))
             if step not in {1,2,3,4,5,6}:raise ValueError
             if existing is None:existing=ProductionPresence(company=obj.company,construction_object=obj,date=day,user=request.user,session_key=session)
             existing.step=step;existing.last_seen=now;existing.closing_at=None;existing.save()
+            edit_lock=acquire_edit_lock(request.user,obj,day,session)
             for model in (WorkFactClaim,EmployeeFactClaim):
                 model.objects.filter(company=obj.company,construction_object=obj,date=day,dispatcher=request.user,session_key=session,expires_at__gt=now).update(expires_at=now+TTL)
             claims=status_rows(request.user,obj,day,session)
@@ -219,12 +223,13 @@ def live(request):
             users=[{**item,'steps':sorted(item['steps'])} for item in active.values()]
             if data.get('protocol')=='compact-v1':
                 from .satellite_sync import response_data
-                return JsonResponse(response_data(request.user,obj,day,session,data,users,claims))
+                result=response_data(request.user,obj,day,session,data,users,claims);result['edit_lock']=edit_lock
+                return JsonResponse(result)
             report=report_data(obj,day);rows=canonical_rows(obj,day,report)
             from .actuation_models import ActuationReason
             reason_options=[{'id':r.pk,'label':r.label,'active':r.status in {'PENDING','APPROVED'}} for r in ActuationReason.objects.filter(company=obj.company)]
             digest=hashlib.sha256(json.dumps([rows,report,reason_options,users,[{k:v for k,v in c.items() if k!='expires_at'} for c in claims]],sort_keys=True,default=str).encode()).hexdigest()
-            result={'users':users,'claims':claims,'digest':digest}
+            result={'users':users,'claims':claims,'digest':digest,'edit_lock':edit_lock}
             if data.get('digest')!=digest:
                 result.update(report=report,rows=rows,reason_options=reason_options)
                 if data.get('production_snapshot'):result['production_snapshot']=rebase(request.user,obj,day,data['production_snapshot'],rows,set(data.get('keep',[])))

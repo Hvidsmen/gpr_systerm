@@ -13,6 +13,7 @@ from .dispatch_models import (EmployeeActivity, EmployeeWorkLink, ProductionDail
     ProductionDailyCrewMember)
 from .models import DailyFact
 from .crew_links import attach_member,detach_member,delete_crew_assignments,promote_to_crew
+from .edit_lock import require_available
 
 
 EDIT_ROLES={'ADMIN','DISPATCHER','ALL_FACT_DISPATCHER'}
@@ -70,6 +71,7 @@ def crews(request):
         data=request.GET if request.method=='GET' else json.loads(request.body or '{}')
         obj,day=_scope(request,data)
         if request.method=='GET':return JsonResponse(_state(obj,day))
+        require_available(request.user,obj,day,data)
         require_fact_day(request.user,day)
         action=data.get('action')
         with transaction.atomic():

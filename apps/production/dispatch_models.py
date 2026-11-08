@@ -255,6 +255,16 @@ class ProductionPresence(BaseCompanyModel):
         constraints=[models.UniqueConstraint(fields=['construction_object','date','session_key'],name='unique_production_presence')]
 
 
+class ProductionEditLock(BaseCompanyModel):
+    construction_object=models.ForeignKey('projects.ConstructionObject',on_delete=models.CASCADE)
+    date=models.DateField()
+    user=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.CASCADE)
+    session_key=models.UUIDField()
+    expires_at=models.DateTimeField(db_index=True)
+    class Meta:
+        constraints=[models.UniqueConstraint(fields=['construction_object','date'],name='unique_production_edit_lock')]
+
+
 class ProductionLinkReceipt(BaseCompanyModel):
     """Deduplicates queued link commands after a lost satellite response."""
     id=models.UUIDField(primary_key=True,editable=False)

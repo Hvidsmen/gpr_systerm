@@ -83,7 +83,7 @@
     creator.querySelector('[data-dispatcher-item-submit]').addEventListener('click',async()=>{
       const work=row.querySelector('[name$="-project_work"]'),item=row.querySelector('[name$="-work_item"]'),form=row.closest('form');
       status.className='small';status.textContent='Создание…';
-      const body=new FormData();body.set('construction_object',form.querySelector('[name=construction_object]').value);body.set('date',form.querySelector('[name=date]').value);body.set('project_work',work.value);body.set('name',name.value);body.set('unit',unit.value==='__new__'?'':unit.value);if(unit.value==='__new__'){body.set('new_unit_symbol',unitSymbol.value);body.set('new_unit_name',unitName.value);}
+      const body=new FormData();body.set('construction_object',form.querySelector('[name=construction_object]').value);body.set('date',form.querySelector('[name=date]').value);body.set('claim_session',form.productionSession?.scope.session||'');body.set('project_work',work.value);body.set('name',name.value);body.set('unit',unit.value==='__new__'?'':unit.value);if(unit.value==='__new__'){body.set('new_unit_symbol',unitSymbol.value);body.set('new_unit_name',unitName.value);}
       try{
         const response=await fetch(creatorConfig.dataset.url,{method:'POST',headers:{'X-CSRFToken':form.querySelector('[name=csrfmiddlewaretoken]').value},body});const data=await response.json();if(!response.ok)throw new Error(data.error||'Не удалось создать работу.');
         const choice=data.choice;choices.push(choice);catalogue.set(choice.token,choice.display);itemOwners.set(String(choice.item),String(choice.work));

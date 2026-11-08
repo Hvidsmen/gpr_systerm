@@ -28,6 +28,9 @@ def create(request):
         return JsonResponse({'error': '; '.join(exc.messages)}, status=400)
 
     obj = get_object_or_404(ConstructionObject, pk=request.POST.get('construction_object'), company=request.user.company)
+    from .edit_lock import require_available
+    try:require_available(request.user,obj,day,request.POST)
+    except ValidationError as exc:return JsonResponse({'error':'; '.join(exc.messages)},status=409)
     work = get_object_or_404(
         ProjectWork.objects.select_related('section', 'complex_object'),
         pk=request.POST.get('project_work'), company=request.user.company,
