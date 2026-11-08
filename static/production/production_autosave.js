@@ -12,6 +12,13 @@
  const suffix=input=>input.name.replace(/^(works|labor)-\d+-/,'');
  const capture=row=>[...row.querySelectorAll('input,select,textarea')].filter(input=>input.name).map(input=>({name:input.name,value:input.value,checked:input.checked,type:input.type}));
  const fingerprint=row=>JSON.stringify(capture(row).filter(input=>!['id','person_claim_token','person_editing','work_claim_token','work_editing',...(isPerson(row)?['work_mode','work_targets','general','work','work_item']:[])].includes(input.name.replace(/^(works|labor)-\d+-/,''))).map(input=>[input.name.replace(/^(works|labor)-\d+-/,''),input.value,input.checked]));
+ const draftPrefix=['yds-production-draft-v1',form.dataset.companyId,form.dataset.userId,form.elements.construction_object.value,form.elements.date.value,form.dataset.resetEpoch||'0'].join(':')+':';
+ const draftIdentity=row=>{const id=field(row,'id')?.value;if(id)return (isPerson(row)?'labor:id:':'works:id:')+id;if(!row.dataset.browserDraftId)row.dataset.browserDraftId=crypto.randomUUID();return (isPerson(row)?'labor:new:':'works:new:')+row.dataset.browserDraftId;};
+ function draftRecord(row){const relations=new Set(['work_mode','work_targets','general','work','work_item']),internal=new Set(['id','person_claim_token','person_editing','work_claim_token','work_editing']),values=capture(row).map(input=>({...input,name:input.name.replace(/^(works|labor)-\d+-/,'')})).filter(input=>!internal.has(input.name)&&(!isPerson(row)||!relations.has(input.name))),options={};row.querySelectorAll('select[name]').forEach(input=>{const selected=input.selectedOptions?.[0];if(selected)options[input.name.replace(/^(works|labor)-\d+-/,'')]={value:selected.value,label:selected.textContent};});return {kind:isPerson(row)?'labor':'works',identity:draftIdentity(row),values,options,updated:Date.now()};}
+ function storeDraft(row){try{const record=draftRecord(row),key=draftPrefix+record.identity;if(row.dataset.draftStorageKey&&row.dataset.draftStorageKey!==key)localStorage.removeItem(row.dataset.draftStorageKey);localStorage.setItem(key,JSON.stringify(record));row.dataset.draftStorageKey=key;}catch{message('Не удалось сохранить локальный черновик. Не закрывайте страницу до сохранения на сервере.',true);}}
+ function removeDraft(row){const key=row.dataset.draftStorageKey||draftPrefix+draftIdentity(row);try{localStorage.removeItem(key);}catch{}delete row.dataset.draftStorageKey;}
+ function applyDraft(row,record){const prefixName=field(row,'id').name.replace(/-id$/,'');for(const saved of record.values){const candidates=[...row.querySelectorAll(`[name="${CSS.escape(prefixName+'-'+saved.name)}"]`)];const input=['checkbox','radio'].includes(saved.type)?candidates.find(item=>item.value===saved.value):candidates[0];if(!input)continue;const option=record.options?.[saved.name];if(input.tagName==='SELECT'&&saved.value&&!Array.from(input.options).some(item=>item.value===saved.value))input.add(new Option(option?.label||saved.value,saved.value));if(input.type==='checkbox'||input.type==='radio')input.checked=Boolean(saved.checked);else input.value=saved.value;}row.dataset.browserDraftId=record.identity.split(':').at(-1);row.dataset.draftStorageKey=draftPrefix+record.identity;row.dataset.entryDirty='1';row.dataset.autoPending='1';rowMessage(row,'Восстановлено из браузера');}
+ function restoreDrafts(){const records=[];let restored=0;try{for(let i=0;i<localStorage.length;i++){const key=localStorage.key(i);if(!key?.startsWith(draftPrefix))continue;try{const record=JSON.parse(localStorage.getItem(key));if(record?.identity&&['works','labor'].includes(record.kind))records.push(record);}catch{}}}catch{}form.productionApplying=true;try{for(const record of records.sort((a,b)=>a.updated-b.updated)){let row;if(record.identity.includes(':id:')){const id=record.identity.split(':').at(-1);row=rows().find(item=>(isPerson(item)?'labor':'works')===record.kind&&field(item,'id')?.value===id);if(!row){try{localStorage.removeItem(draftPrefix+record.identity);}catch{}continue;}}else{const total=form.elements.namedItem(record.kind+'-TOTAL_FORMS'),host=form.querySelector(`[data-rows="${record.kind}"]`);if(!total||!host)continue;const index=Number(total.value);host.insertAdjacentHTML('beforeend',document.getElementById('empty-'+record.kind).innerHTML.replaceAll('__prefix__',index));row=host.lastElementChild;total.value=index+1;}if(row){applyDraft(row,record);row.dispatchEvent(new Event('change',{bubbles:true}));restored++;}}}finally{form.productionApplying=false;}return restored;}
  let timer=null,pending=false,running=null,failed=false,retryAttempt=0,lastMessage='',lastError=false;
  const dirty=()=>rows().filter(row=>row.dataset.entryDirty||row.dataset.personDirty||row.dataset.autoPending);
  function message(text,error=false){lastMessage=text;lastError=error;if(!error&&text==='Все изменения сохранены'&&Number(form.dataset.linksRejected||0)>0)text='Данные сохранены; часть связей требует проверки';if(!error&&text==='Все изменения сохранены'&&Number(form.dataset.linksPending||0)>0)text='Данные сохранены; связи ожидают отправки';state.textContent=text;state.classList.toggle('text-danger',error);state.classList.toggle('fact-state-saving',!error&&text==='Сохранение…');state.classList.toggle('fact-state-saved',!error&&text==='Все изменения сохранены');state.classList.toggle('fact-state-pending',!error&&text.includes('изменения')&&text!=='Все изменения сохранены');retry.hidden=!error;}
@@ -31,7 +38,7 @@
   }
  }
  function schedule(row){
-  if(row){delete row.dataset.autoRejected;row.dataset.autoPending='1';rowMessage(row,'Не сохранено');}
+  if(row){delete row.dataset.autoRejected;row.dataset.autoPending='1';rowMessage(row,'Не сохранено');storeDraft(row);}
   pending=true;failed=false;retryAttempt=0;message('Есть несохранённые изменения');clearTimeout(timer);
  }
  async function save(selected){
@@ -74,7 +81,7 @@
   for(const entry of result.rows){
    const item=sent.get(entry.prefix);if(!item)continue;
    const row=item.row;
-   if(entry.deleted){if(isPerson(row))form.productionLinks?.cancelPerson(Number(field(row,'id').value));else form.productionLinks?.cancelWork(Number(field(row,'id').value));try{await form.productionReleaseRow(row);}catch{}row.remove();continue;}
+   if(entry.deleted){if(isPerson(row))form.productionLinks?.cancelPerson(Number(field(row,'id').value));else form.productionLinks?.cancelWork(Number(field(row,'id').value));removeDraft(row);try{await form.productionReleaseRow(row);}catch{}row.remove();continue;}
    if(!isPerson(row)&&Number(field(row,'actual_quantity').value.replace(',','.'))===0)form.productionLinks?.cancelWork(Number(entry.id));
    field(row,'id').value=entry.id;
    if(!isPerson(row))row.dataset.factId=String(entry.id);
@@ -83,8 +90,8 @@
   }
   for(const item of sent.values()){
    const row=item.row;if(!row.isConnected)continue;
-   if(fingerprint(row)===item.stamp){delete row.dataset.entryDirty;delete row.dataset.personDirty;delete row.dataset.autoPending;row.dataset.autoSavedStamp=fingerprint(row);rowMessage(row,row.dataset.autoRejected|| (field(row,'id').value?'Сохранено':''),Boolean(row.dataset.autoRejected));if(!row.dataset.autoRejected)row.querySelector('[data-error]').textContent='';}
-   else{row.dataset.autoPending='1';pending=true;rowMessage(row,'Есть изменения');}
+   if(fingerprint(row)===item.stamp){removeDraft(row);delete row.dataset.entryDirty;delete row.dataset.personDirty;delete row.dataset.autoPending;row.dataset.autoSavedStamp=fingerprint(row);rowMessage(row,row.dataset.autoRejected|| (field(row,'id').value?'Сохранено':''),Boolean(row.dataset.autoRejected));if(!row.dataset.autoRejected)row.querySelector('[data-error]').textContent='';}
+   else{row.dataset.autoPending='1';pending=true;storeDraft(row);rowMessage(row,'Есть изменения');}
   }
   form.productionStatus.update(`Сохранено записей: ${changed.length} из ${changed.length}`,changed.length,changed.length);
   reindex();if(form.productionApplyReport)form.productionApplyReport(result.report);else form.dispatchEvent(new CustomEvent('production-report-update',{detail:result.report}));form.dispatchEvent(new Event('production-autosave-committed'));
@@ -126,11 +133,11 @@
  // The saved indicator must change synchronously with the user's input.
  form.addEventListener('input',relevant,true);form.addEventListener('change',relevant,true);
  form.addEventListener('production-autosave-all',()=>{for(const row of rows())if(isPerson(row)&&field(row,'employee').value&&!field(row,'id').value&&field(row,'person_editing').value==='1'){row.dataset.entryDirty='1';schedule(row);}});
- rows().forEach(row=>{row.dataset.autoSavedStamp=fingerprint(row);if(field(row,'id').value)rowMessage(row,'Сохранено');});
+ const restoredDrafts=restoreDrafts();rows().forEach(row=>{if(!row.dataset.autoPending)row.dataset.autoSavedStamp=fingerprint(row);if(field(row,'id').value&&!row.dataset.autoPending)rowMessage(row,'Сохранено');});
  // Claim wiring runs before this module. A bound form may therefore already
  // contain dirty rows whose earlier claims-change event could not be heard.
  // Explicitly resume them instead of leaving "Restoring reservation" forever.
- if(dirty().length){pending=true;message('Есть несохранённые изменения');}
+ if(dirty().length){pending=true;message(restoredDrafts?`Восстановлен локальный черновик: ${restoredDrafts} записей. Нажмите «Сохранить».`:'Есть несохранённые изменения');}
  addEventListener('online',()=>{if(dirty().length){pending=true;retryAttempt=0;message('Соединение восстановлено · нажмите «Сохранить»');}});
  retry.addEventListener('click',()=>{retryAttempt=0;pending=true;flush();});
  form.querySelector('[data-production-save]')?.addEventListener('click',()=>flush());
@@ -157,7 +164,7 @@
   event.preventDefault();
   const row=button.closest('[data-production-person],[data-work-fact-row]');button.disabled=true;
   try{
-   if(!field(row,'id').value&&!running){try{await form.productionReleaseRow(row);}catch{}row.remove();reindex();form.dispatchEvent(new Event('change',{bubbles:true}));return;}
+   if(!field(row,'id').value&&!running){removeDraft(row);try{await form.productionReleaseRow(row);}catch{}row.remove();reindex();form.dispatchEvent(new Event('change',{bubbles:true}));return;}
    await form.productionClaimRow(row);field(row,'DELETE').checked=true;row.classList.add('production-row-auto-deleting');row.dataset.entryDirty='1';row.hidden=true;row.dispatchEvent(new Event('change',{bubbles:true}));schedule(row);await flush();
    if(row.isConnected&&field(row,'DELETE').checked){row.dataset.entryDirty='1';row.dataset.autoPending='1';pending=true;await flush();}
   }catch(error){row.hidden=false;rowMessage(row,error.message,true);message(error.message,true);}finally{if(row.isConnected)row.classList.remove('production-row-auto-deleting');button.disabled=false;}
