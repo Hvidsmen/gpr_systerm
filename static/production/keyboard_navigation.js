@@ -14,7 +14,8 @@
   if(row.matches('[data-production-person]')){
    const list=controls(row),position=list.indexOf(target),next=rows[index+1];
    if(key==='ArrowLeft'&&start===0&&end===0)return list[position-1];
-   if((key==='ArrowRight'&&start===value.length&&end===value.length||event.ctrlKey&&key==='Enter')&&next){reveal(next);return controls(next).find(node=>suffix(node)==='employee')||controls(next)[0];}
+   if(event.ctrlKey&&key==='Enter'&&next){const comment=next.querySelector('[name$="-activity"]');if(comment){reveal(comment);return comment;}}
+   if(key==='ArrowRight'&&start===value.length&&end===value.length&&next){reveal(next);return controls(next).find(node=>suffix(node)==='employee')||next.querySelector('[name$="-activity"]')||controls(next)[0];}
    if(key==='ArrowUp'||key==='ArrowDown'){const other=rows[index+(key==='ArrowUp'?-1:1)],comment=other?.querySelector('[name$="-activity"]');if(comment){reveal(comment);return comment;}}
    return null;
   }
