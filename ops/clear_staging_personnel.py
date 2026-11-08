@@ -45,7 +45,7 @@ def clear(root, execute=False):
             return {'port':8002, 'company_id':company, 'would_clear':counts(db)}
     if not (root/'.runtime/server.stop').is_file():
         raise ValueError('Stop the separate TEST task first; nothing cleared.')
-    from ops.windows_runtime import singleton, atomic_json
+    from ops.windows_runtime import singleton, atomic_json, retain_directories
     # Share all installer/queue locks. A live HTTP worker prevents any deletion.
     with singleton(root/'.runtime/staging-queue.lock'), singleton(root/'.runtime/server.lock'), singleton(root/'.runtime/prepare.lock'):
         runtime(root)
@@ -68,6 +68,7 @@ def clear(root, execute=False):
                 if any(counts(db).values()):raise RuntimeError('Personnel cleanup was incomplete.')
         result = {'port':8002, 'company_id':company, 'cleared':before, 'backup':str(backup)}
         atomic_json(folder/'result.json', result)
+        retain_directories(root/'.runtime/backups')
         return result
 
 

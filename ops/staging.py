@@ -19,7 +19,8 @@ import zipfile
 
 CODE_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(CODE_ROOT))
-from ops.windows_runtime import atomic_json, read_json, singleton, log_setup, extract_archive, python_at
+from ops.windows_runtime import (atomic_json,read_json,singleton,log_setup,extract_archive,python_at,
+                                 require_update_space,retain_directories)
 
 
 KIND = 'gpr-acceptance-v1'
@@ -267,7 +268,11 @@ def update_inputs(root, revision):
 
 def prepare_release(root, archive, revision, previous, progress):
     """Build only a private candidate. The selected TEST can keep serving requests."""
-    runtime=root/'.runtime';release=private_path(root,'.runtime/releases/'+revision)
+    runtime=root/'.runtime'
+    retain_directories(runtime/'backups')
+    retain_directories(runtime/'releases',protected=[Path(previous['code']).parent])
+    require_update_space(root/'.runtime')
+    release=private_path(root,'.runtime/releases/'+revision)
     if release.exists():raise ValueError('Эта версия уже подготовлена. Не перезаписывайте существующий релиз.')
     with zipfile.ZipFile(archive) as zipped:
         roots={item.filename.split('/')[0] for item in zipped.infolist()}
@@ -334,8 +339,12 @@ def update(root, archive, revision, *, prepared=None, progress=lambda label:None
                 except Exception:
                     atomic_json(runtime/'staging-recovery.json',{'backup':str(backup),'revision':previous['revision']})
                     raise
+                retain_directories(runtime/'backups')
+                retain_directories(runtime/'releases',protected=[Path(previous['code']).parent])
                 raise
         finally:candidate_file.unlink(missing_ok=True)
+        retain_directories(runtime/'backups')
+        retain_directories(runtime/'releases',protected=[release])
         print('Updated TEST only. Revision: '+revision+'. Start its separate scheduled task.')
 
 

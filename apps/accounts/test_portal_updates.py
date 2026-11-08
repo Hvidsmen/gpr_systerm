@@ -1,7 +1,7 @@
 from contextlib import ExitStack
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest.mock import patch
+from unittest.mock import patch,Mock
 from unittest import skipUnless
 import json
 import os
@@ -9,7 +9,8 @@ import subprocess
 from django.test import TestCase,Client,override_settings
 from django.urls import reverse
 from django.core.exceptions import ValidationError,PermissionDenied
-from ops.windows_runtime import atomic_json,singleton
+from ops.windows_runtime import (atomic_json,singleton,retain_directories,require_update_space,
+                                 InsufficientDiskSpace)
 from .models import Company,User,Role
 from .portal_updates import enqueue,state
 
@@ -76,6 +77,14 @@ class PortalUpdateTests(TestCase):
         self.assertFalse(state(self.company.pk)['ready'])
         with self.assertRaises(ValueError):enqueue(self.user)
 
+    def test_insufficient_space_is_shown_without_exposing_a_log_path(self):
+        identifier=enqueue(self.user);(self.runtime/'update.request').unlink()
+        atomic_json(self.runtime/'results'/identifier,{'ok':False,'error_code':'insufficient_space',
+                    'message':'Недостаточно места на диске для обновления. Освободите не менее 1 ГБ и повторите попытку.'})
+        status=state(self.company.pk)
+        self.assertEqual(status['state'],'error')
+        self.assertIn('Недостаточно места',status['message'])
+
     def test_external_update_lock_and_audit_failure_do_not_create_request(self):
         with singleton(self.runtime/'update.lock'):
             with self.assertRaises(ValueError):enqueue(self.user)
@@ -123,3 +132,20 @@ class PortalUpdateTests(TestCase):
             subprocess.run(['node',str(Path(settings.BASE_DIR)/'tests/browser/portal_update_status.js')],
                            env={**os.environ,'PORTAL_UPDATE_BROWSER_CONFIG':json.dumps(config)},
                            check=True,timeout=90)
+
+
+class RuntimeRetentionTests(TestCase):
+    def test_keeps_five_directories_including_protected_older_one(self):
+        with TemporaryDirectory() as directory:
+            parent=Path(directory)
+            folders=[]
+            for index in range(7):
+                folder=parent/str(index);folder.mkdir();os.utime(folder,(index,index));folders.append(folder)
+            retain_directories(parent,protected=[folders[0]])
+            self.assertEqual({path.name for path in parent.iterdir()},{'0','3','4','5','6'})
+
+    def test_disk_preflight_has_clear_error(self):
+        usage=Mock(free=0)
+        with patch('ops.windows_runtime.shutil.disk_usage',return_value=usage):
+            with self.assertRaisesMessage(InsufficientDiskSpace,'Недостаточно места'):
+                require_update_space(Path('.'))

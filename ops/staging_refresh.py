@@ -8,7 +8,7 @@ import sqlite3
 import uuid
 
 from ops import staging
-from ops.windows_runtime import atomic_json, singleton
+from ops.windows_runtime import atomic_json, singleton, retain_directories
 
 
 def generation(state):
@@ -76,6 +76,7 @@ def refresh(root, *, expected_generation, expected_revision, owner_id, progress=
             new_moved = True
             atomic_json(root / 'staging.json', refreshed)
             journal.unlink()
+            retain_directories(runtime / 'backups')
             return refreshed
         except Exception:
             if old_moved:

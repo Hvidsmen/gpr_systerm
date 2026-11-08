@@ -21,6 +21,12 @@ import zipfile
 
 REPOSITORY='Hvidsmen/gpr_systerm'
 TASK='YDS Portal'
+RUNTIME_HISTORY=5
+MIN_UPDATE_FREE_BYTES=1024*1024*1024
+
+
+class InsufficientDiskSpace(RuntimeError):
+    pass
 
 
 def atomic_json(path,value):
@@ -81,6 +87,45 @@ def rotate_output(path):
         previous=path.with_name(path.name+'.'+str(index))
         if previous.exists():os.replace(previous,path.with_name(path.name+'.'+str(index+1)))
     os.replace(path,path.with_name(path.name+'.1'))
+
+
+def retain_directories(parent,keep=RUNTIME_HISTORY,protected=()):
+    """Keep bounded history without deleting an active or recovery directory."""
+    parent=Path(parent)
+    if not parent.is_dir():return []
+    protected={Path(path).resolve() for path in protected if path and Path(path).resolve().parent==parent.resolve()}
+    folders=sorted((path for path in parent.iterdir() if path.is_dir()),
+                   key=lambda path:path.stat().st_mtime,reverse=True)
+    retained=set(protected)
+    for path in folders:
+        if len(retained)>=keep:break
+        retained.add(path.resolve())
+    removed=[]
+    for path in folders:
+        if path.resolve() not in retained:
+            shutil.rmtree(path);removed.append(path)
+    return removed
+
+
+def rotate_runtime_history(runtime,current=None):
+    """Rotate completed MAIN backups/releases while preserving recovery data."""
+    runtime=Path(runtime);transaction=read_json(runtime/'transaction.json',{}) or {}
+    protected_backups=[]
+    if transaction.get('backup'):protected_backups.append(Path(transaction['backup']).parent)
+    retain_directories(runtime/'backups',protected=protected_backups)
+    protected_release=[Path(current['code'])] if current and current.get('code') else []
+    protected_venv=[Path(current['python']).parent.parent] if current and current.get('python') else []
+    retain_directories(runtime/'releases',protected=protected_release)
+    retain_directories(runtime/'venvs',protected=protected_venv)
+
+
+def require_update_space(runtime,minimum=MIN_UPDATE_FREE_BYTES):
+    free=shutil.disk_usage(Path(runtime)).free
+    if free<minimum:
+        needed=max(0,minimum-free)
+        gigabytes=max(1,(needed+1024**3-1)//1024**3)
+        raise InsufficientDiskSpace('Недостаточно места на диске для обновления. Освободите не менее '
+                                    +str(gigabytes)+' ГБ и повторите попытку.')
 
 
 def run(args,cwd,env):
@@ -363,6 +408,9 @@ def stage_update(root,config,current):
     with urlopen(Request(endpoint+'/commits/main',headers=headers),timeout=45) as response:sha=json.load(response)['sha']
     if len(sha)!=40 or any(c not in '0123456789abcdef' for c in sha):raise RuntimeError('Invalid commit identity.')
     if sha==current.get('sha'):return None
+    # Reclaim completed history before estimating whether a new candidate fits.
+    rotate_runtime_history(root/'.runtime',current)
+    require_update_space(root/'.runtime')
     destination=root/'.runtime/releases'/sha
     if destination.exists():shutil.rmtree(destination)
     destination.mkdir(parents=True)
@@ -409,12 +457,14 @@ def update(root,process,current):
         stop_process(root,probe,probe=True)
         try:recover_update(root)
         except Exception as exc:raise RecoveryRequired('Database recovery must finish before the server is started.') from exc
+        rotate_runtime_history(runtime,current)
         old,_=launch(root,current)
         logging.exception('Update rejected; previous code and database restored.')
         return old,current,'Update failed. Previous version restored; see protected logs.'
     update_stage(root,'starting')
     new,_=launch(root,candidate)
     (runtime/'transaction.json').unlink(missing_ok=True)
+    rotate_runtime_history(runtime,candidate)
     # Once the public listener is started, do not restore its database: users may write facts.
     return new,candidate,'Updated to '+candidate['sha'][:12]+'. Database backup: '+str(backup)
 
@@ -474,6 +524,9 @@ def supervise(root):
                     except RecoveryRequired:
                         atomic_json(runtime/'status.json',{'state':'recovery_required'})
                         raise
+                    except InsufficientDiskSpace as exc:
+                        logging.warning(str(exc))
+                        result={'ok':False,'message':str(exc),'error_code':'insufficient_space'}
                     except Exception:
                         logging.exception('Update preparation or public start failed.')
                         current=read_json(runtime/'current.json',current)

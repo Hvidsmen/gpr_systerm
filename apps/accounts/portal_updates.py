@@ -76,7 +76,8 @@ def state(company_id):
             message='Установлена актуальная версия. Новых обновлений нет.' if str(result.get('message','')).startswith('Already up to date') else 'ГОТОВО. Обновление завершено, портал доступен.'
             output.update(state='done',message=message)
         else:
-            message='Обновление не применено. Предыдущая версия восстановлена.' if str(result.get('message','')).startswith('Update failed') else 'Обновление не завершено. Проверьте журнал фонового портала.'
+            if result.get('error_code')=='insufficient_space':message=str(result.get('message'))
+            else:message='Обновление не применено. Предыдущая версия восстановлена.' if str(result.get('message','')).startswith('Update failed') else 'Обновление не завершено. Проверьте журнал фонового портала.'
             output.update(state='error',message=message)
     elif own and metadata:
         output.update(state='error',message='Не удалось подтвердить завершение последнего обновления. Проверьте состояние фонового портала.')
