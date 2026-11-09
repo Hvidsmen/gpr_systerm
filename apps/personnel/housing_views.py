@@ -1,6 +1,7 @@
 from calendar import monthrange
 from datetime import date,timedelta
 from io import BytesIO
+from urllib.parse import urlencode
 from django import forms
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -412,7 +413,12 @@ def schedule(request,pk):
         except ValidationError as exc:request_form.add_error(None,'; '.join(exc.messages))
         else:
             messages.success(request,'Заявка создана. График изменится после подтверждения изменения очередной синхронизацией из ЗУП.')
-            return redirect('personnel:person_schedule',pk=person.pk)
+            current=housing.present_stays(person.company,timezone.localdate()).filter(person=person).select_related('camp').first()
+            camp_id=current.camp_id if current else person.schedule_slot.housing_camp_id if person.schedule_slot_id else None
+            params={}
+            if camp_id:params['camp']=camp_id
+            params['q']=person.display_name
+            return redirect(reverse('personnel:housing')+'?'+urlencode(params)+'#roster')
     if request.method=='GET' and request.GET.get('slot','').isdigit():
         selected=person.assignments.filter(company=person.company,pk=request.GET['slot'],cancelled_at=None).first()
         if selected:form.initial.update(slot=selected.pk,pattern=selected.pattern_id)

@@ -1,5 +1,6 @@
 from django.test import TestCase
 from django.urls import reverse
+from urllib.parse import urlencode
 from apps.accounts.models import Role,User
 from apps.planning.models import WorkTask
 from apps.planning.task_services import visible
@@ -27,7 +28,8 @@ class ScheduleChangeWorkflowTests(TestCase):
         page=self.client.get(url)
         self.assertContains(page,self.current.name);self.assertContains(page,self.requested.name);self.assertNotContains(page,self.inactive.name)
         response=self.client.post(url,{'schedule_action':'request_zup','schedule':self.requested.pk})
-        self.assertRedirects(response,url,fetch_redirect_response=False)
+        expected=reverse('personnel:housing')+'?'+urlencode({'camp':self.a.pk,'q':self.person.display_name})+'#roster'
+        self.assertRedirects(response,expected,fetch_redirect_response=False)
         row=ScheduleChangeRequest.objects.get(person=self.person,status='PENDING')
         task=WorkTask.objects.get(key=row.task_key)
         self.assertEqual(task.target_role,'PERSONNEL_CATALOG_MANAGER');self.assertEqual(task.status,'OPEN')
