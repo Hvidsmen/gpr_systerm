@@ -67,15 +67,12 @@ class ProductionEntryTests(TestCase):
         response,details=self.post('DISPATCHER',data);self.assertEqual(response.status_code,302,details)
         self.assertEqual(EmployeeActivity.objects.get(employee=self.cook).entry_direction,'works')
 
-    def test_daily_task_readiness_needs_one_saved_work_and_one_person_only(self):
+    def test_daily_task_readiness_needs_only_one_successful_save(self):
         entry=ProductionEntryDay.objects.create(company=self.company,construction_object=self.obj,date=self.day,dispatcher=self.users['DISPATCHER'])
-        DailyFact.objects.create(company=self.company,date=self.day,project_work=self.work,actual_quantity=0,reported_by=self.users['DISPATCHER'])
         self.assertFalse(automatic_readiness(self.obj,self.day,self.users['DISPATCHER']))
-        person=EmployeeActivity.objects.create(company=self.company,construction_object=self.obj,date=self.day,employee=self.employee,position=self.employee.position,entry_direction='works',assignment_reviewed=False,reported_by=self.users['DISPATCHER'])
+        entry.revision=1;entry.save(update_fields=['revision'])
         self.assertTrue(automatic_readiness(self.obj,self.day,self.users['DISPATCHER']))
         entry.refresh_from_db();self.assertIsNotNone(entry.confirmed_at)
-        person.delete();self.assertFalse(automatic_readiness(self.obj,self.day,self.users['DISPATCHER']))
-        entry.refresh_from_db();self.assertIsNone(entry.confirmed_at)
 
     def test_previous_work_candidates_stay_but_people_require_explicit_copy(self):
         previous=self.day-timedelta(days=1)

@@ -301,15 +301,13 @@ def invalidate_fact(company_id,object_id,day,section=None):
 def validate_fact(task):
     from .report_services import select_sources
     from apps.production.models import DailyFact,LaborFact,EquipmentFact,FuelFact
-    from apps.production.dispatch_models import EmployeeActivity
+    from apps.production.dispatch_models import ProductionEntryDay
     user=task.assigned_to;obj=task.construction_object;day=task.fact_date
     from apps.production.dispatch import required_fact_sections,fact_sections_confirmed
     if required_fact_sections(user):
         if not user.assigned_objects.filter(pk=obj.pk,company_id=task.company_id).exists():raise PermissionDenied('Объект не закреплен за исполнителем.')
         if role_code(user)=='DISPATCHER':
-            has_work=DailyFact.objects.filter(company_id=task.company_id,date=day,project_work__section__construction_object=obj).exists()
-            has_person=EmployeeActivity.objects.filter(company_id=task.company_id,construction_object=obj,date=day,entry_direction='works').exists()
-            if has_work and has_person:return
+            if ProductionEntryDay.objects.filter(company_id=task.company_id,construction_object=obj,date=day,dispatcher=user,revision__gt=0).exists():return
         if not fact_sections_confirmed(user,task.company_id,obj.pk,day):raise ValidationError('Подтвердите все свои направления на странице «Факт за день».')
         return
     if not user or not obj or obj.company_id!=task.company_id or not user.assigned_objects.filter(pk=obj.pk,company_id=task.company_id).exists():raise PermissionDenied('Объект не закреплен за исполнителем.')
