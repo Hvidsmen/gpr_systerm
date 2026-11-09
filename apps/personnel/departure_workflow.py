@@ -59,7 +59,7 @@ def resubmit(user,row):
 def arrive_hub(user,row,day):
     row=MovementReviewRequest.objects.select_for_update().select_related('person','from_camp').get(pk=row.pk,company=user.company)
     if row.status!='PEREVAKHTA':raise ValidationError('Прибытие в ОП Дудинка фиксируется после согласования.')
-    if day>timezone.localdate():raise ValidationError('Нельзя указать будущую дату прибытия.')
+    if day>timezone.localdate():raise ValidationError('Фактическое прибытие в ОП Дудинка нельзя отметить будущей датой. Дождитесь события или укажите уже наступившую дату.')
     if row.kind=='DEPARTURE':
         stay=CampStay.objects.select_for_update().filter(company=row.company,person=row.person,camp=row.from_camp,cancelled_at=None,departed_on=None).order_by('-arrived_on').first()
         if not stay:raise ValidationError('У сотрудника нет открытого размещения в указанном ВЖГ.')
@@ -89,7 +89,8 @@ def leave_hub(user,row,day):
     row=MovementReviewRequest.objects.select_for_update().select_related('person__employee').get(pk=row.pk,company=user.company)
     if row.status!='AT_HUB':raise ValidationError('Выезд из Дудинки фиксируется только для сотрудника в ОП Дудинка.')
     if not row.tickets_ready or not row.clearance_document:raise ValidationError('Перед выездом должны быть оформлены билеты и прикреплён обходной лист.')
-    if day<row.hub_arrived_on or day>timezone.localdate():raise ValidationError('Проверьте фактическую дату выезда из Дудинки.')
+    if day<row.hub_arrived_on:raise ValidationError('Фактический выезд из ОП Дудинка не может быть раньше прибытия в Дудинку.')
+    if day>timezone.localdate():raise ValidationError('Фактический выезд из ОП Дудинка нельзя отметить будущей датой. Плановая дата указана в заявке; факт внесите после выезда.')
     row.hub_departed_on=day;row.status='EN_ROUTE' if row.kind=='ARRIVAL' else 'COMPLETED';row.travel_status='В пути в ВЖГ' if row.kind=='ARRIVAL' else 'Убыл из ОП Дудинка';row.reviewed_by=user;row.reviewed_at=timezone.now()
     row.save(update_fields=['hub_departed_on','status','travel_status','reviewed_by','reviewed_at','updated_at'])
     if row.departure_destination=='DISMISSAL' and row.person.employee_id:
@@ -101,7 +102,8 @@ def leave_hub(user,row,day):
 def arrive_camp(user,row,day):
     row=MovementReviewRequest.objects.select_for_update().select_related('person__employee','to_camp').get(pk=row.pk,company=user.company)
     if row.kind!='ARRIVAL' or row.status!='EN_ROUTE':raise ValidationError('Фактический заезд доступен после отправления сотрудника из ОП Дудинка.')
-    if day<row.hub_departed_on or day>timezone.localdate():raise ValidationError('Проверьте фактическую дату прибытия в ВЖГ.')
+    if day<row.hub_departed_on:raise ValidationError('Фактическое прибытие в ВЖГ не может быть раньше выезда из ОП Дудинка.')
+    if day>timezone.localdate():raise ValidationError('Фактическое прибытие в ВЖГ нельзя отметить будущей датой. Внесите факт после прибытия сотрудника.')
     from . import housing
     housing.move(user,'ARRIVAL',row.to_camp,day,[row.person],comment=f'Заявка на заезд №{row.pk}. Прибытие через ОП Дудинка.')
     event=HousingEvent.objects.filter(company=row.company,person=row.person,kind='ARRIVAL',date=day,to_camp=row.to_camp).order_by('-pk').first()

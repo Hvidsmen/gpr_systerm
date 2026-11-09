@@ -380,7 +380,7 @@ def movement_review_accept(request,pk):
         current=object_id;seen=set()
         while current and current not in seen:
             seen.add(current);pairs.setdefault(str(current),set()).add(camp_id);current=tree.get(current)
-    return render(request,'personnel/movement_review.html',{'row':row,'form':form,'edit_mode':edit_mode,'can_manage_workflow':role_code(request.user) in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'},'personnel_section':'reviews','project_camps':{key:sorted(value) for key,value in pairs.items()}})
+    return render(request,'personnel/movement_review.html',{'row':row,'form':form,'edit_mode':edit_mode,'workflow_today':timezone.localdate(),'can_manage_workflow':role_code(request.user) in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'},'personnel_section':'reviews','project_camps':{key:sorted(value) for key,value in pairs.items()}})
 
 
 
