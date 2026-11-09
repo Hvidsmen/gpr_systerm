@@ -88,19 +88,15 @@ class TaskTests(TestCase):
         tasks.generate_daily(self.dispatcher,today=TODAY+timedelta(days=4))
         self.assertFalse(WorkTask.objects.filter(kind='FACT',status='OPEN').exists())
 
-    def test_fact_missing_is_not_zero_and_changes_reopen_confirmation(self):
-        version=self.approve(self.create().baseline_version)
+    def test_production_dispatcher_can_complete_fact_without_data_check(self):
+        self.approve(self.create().baseline_version)
         tasks.generate_daily(self.dispatcher,today=TODAY)
         task=WorkTask.objects.get(kind='FACT')
-        with self.assertRaises(ValidationError):tasks.complete_fact(self.dispatcher,task,['works'])
-        fact=DailyFact.objects.create(company=self.company,project_work=self.simple,date=task.fact_date,actual_quantity=0)
-        with self.assertRaises(ValidationError):tasks.complete_fact(self.dispatcher,task,['works'])
-        self.confirm_section(task)
-        tasks.complete_fact(self.dispatcher,task,['works'])
+        tasks.complete_fact(self.dispatcher,task,[])
         task.refresh_from_db();self.assertEqual(task.status,'DONE')
-        fact.actual_quantity=1;fact.save()
-        task.refresh_from_db();self.assertEqual(task.status,'OPEN')
-        self.assertTrue(task.events.filter(action='Открыто').exists())
+        DailyFact.objects.create(company=self.company,project_work=self.simple,date=task.fact_date,actual_quantity=1)
+        task.refresh_from_db()
+        self.assertEqual(task.status,'DONE')
 
     def test_parallel_approval_tasks_ceo_only_after_five_and_stale_round(self):
         version=self.create().baseline_version
@@ -152,7 +148,10 @@ class TaskTests(TestCase):
         self.client.force_login(self.dispatcher)
         with patch('django.utils.timezone.localdate',return_value=TODAY):
             self.assertContains(self.client.get(reverse('planning:task_list')),'Внести факт')
-            self.assertContains(self.client.get(reverse('planning:task_detail',args=[task.pk])),'Факт заполнен')
+            detail=self.client.get(reverse('planning:task_detail',args=[task.pk]))
+            self.assertContains(detail,'Завершить задание')
+            self.assertContains(detail,'без проверки заполненности формы')
+            self.assertNotContains(detail,'name="confirmed"')
             page=self.client.get(reverse('production:fact_day_workspace')+f'?construction_object={self.obj.pk}&date=2026-01-06')
             self.assertEqual(page.status_code,200)
         self.client.force_login(self.estimator)

@@ -215,7 +215,7 @@ def generate_daily(user,*,today=None):
         while day<=yesterday:
             key=f'fact:{user.pk}:{obj.pk}:{day.isoformat()}'
             from apps.production.dispatch import required_fact_sections,fact_sections_confirmed
-            description='Внесите работы, персонал, технику и ГСМ и подтвердите все направления на странице «Факт за день».' if len(required_fact_sections(user))>1 else 'Внесите факт своего направления и подтвердите его полноту на странице «Факт за день». Другие направления заполняют соответствующие диспетчеры.'
+            description='Внесите доступные данные на странице «Факт за день». Задание можно завершить без проверки заполненности формы.' if role_code(user)=='DISPATCHER' else ('Внесите работы, персонал, технику и ГСМ и подтвердите все направления на странице «Факт за день».' if len(required_fact_sections(user))>1 else 'Внесите факт своего направления и подтвердите его полноту на странице «Факт за день». Другие направления заполняют соответствующие диспетчеры.')
             task=ensure(user.company,key,kind='FACT',title=f'Внести факт · {user.role.name} за {day:%d.%m.%Y} · {obj.name}'[:255],assigned_to=user,construction_object=obj,fact_date=day,due_date=day+timedelta(days=1),description=description)
             if fact_sections_confirmed(user,user.company_id,obj.pk,day):state(task,'DONE',text='Направление факта уже подтверждено.')
             count+=1;day+=timedelta(days=1)
@@ -295,19 +295,18 @@ def invalidate_fact(company_id,object_id,day,section=None):
     if section:records=records.filter(section=section)
     records.update(confirmed_at=None,confirmed_by=None,revision=F('revision')+1)
     for task in WorkTask.objects.filter(company_id=company_id,kind='FACT',construction_object_id=object_id,fact_date=day,status='DONE').select_related('assigned_to__role'):
+        if task.assigned_to and role_code(task.assigned_to)=='DISPATCHER':continue
         if not section or task.assigned_to and section in (required_fact_sections(task.assigned_to) or set()):state(task,'OPEN',text='Факт направления изменен после подтверждения. Повторно проверьте полноту данных.')
 
 
 def validate_fact(task):
     from .report_services import select_sources
     from apps.production.models import DailyFact,LaborFact,EquipmentFact,FuelFact
-    from apps.production.dispatch_models import ProductionEntryDay
     user=task.assigned_to;obj=task.construction_object;day=task.fact_date
     from apps.production.dispatch import required_fact_sections,fact_sections_confirmed
     if required_fact_sections(user):
         if not user.assigned_objects.filter(pk=obj.pk,company_id=task.company_id).exists():raise PermissionDenied('Объект не закреплен за исполнителем.')
-        if role_code(user)=='DISPATCHER':
-            if ProductionEntryDay.objects.filter(company_id=task.company_id,construction_object=obj,date=day,dispatcher=user,revision__gt=0).exists():return
+        if role_code(user)=='DISPATCHER':return
         if not fact_sections_confirmed(user,task.company_id,obj.pk,day):raise ValidationError('Подтвердите все свои направления на странице «Факт за день».')
         return
     if not user or not obj or obj.company_id!=task.company_id or not user.assigned_objects.filter(pk=obj.pk,company_id=task.company_id).exists():raise PermissionDenied('Объект не закреплен за исполнителем.')
@@ -330,6 +329,8 @@ def complete_fact(user,task,confirmed):
     require_roles(user,FACT_ROLES)
     task=visible(user).select_for_update().select_related('assigned_to','construction_object').get(pk=task.pk)
     if task.kind!='FACT' or task.status!='OPEN' or not is_executor(user,task):raise PermissionDenied
+    if task.assigned_to and role_code(task.assigned_to)=='DISPATCHER':
+        state(task,'DONE',user,'Задание завершено исполнителем без проверки заполненности факта.');return task
     from apps.production.dispatch import required_fact_sections
     expected=required_fact_sections(task.assigned_to) or {'works','labor','equipment','fuel'}
     if set(confirmed)!=expected:raise ValidationError('Подтвердите проверку своего направления факта.')
