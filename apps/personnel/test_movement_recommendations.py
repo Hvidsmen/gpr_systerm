@@ -75,8 +75,10 @@ class MovementRecommendationTests(TestCase):
     def test_personnel_dispatcher_has_dispatch_and_rotation_workspaces(self):
         self.client.force_login(self.personnel_dispatcher)
         arrival=self.client.get(reverse('personnel:arrivals'));departure=self.client.get(reverse('personnel:departures'));request=self.client.get(reverse('personnel:movements'))
+        self.assertEqual(arrival.context['movement_page'],'arrival');self.assertEqual(departure.context['movement_page'],'departure');self.assertEqual(request.context['movement_page'],'new')
         self.assertContains(arrival,'Рекомендации к заезду');self.assertNotContains(arrival,'Рекомендации к выезду')
         self.assertContains(departure,'Рекомендации к выезду');self.assertNotContains(departure,'Рекомендации к заезду')
+        self.assertNotContains(arrival,'data-movement-form');self.assertNotContains(departure,'data-movement-form')
         self.assertContains(request,'Заявка на заезд или выезд');self.assertNotContains(request,'Рекомендации к заезду')
         self.assertContains(arrival,'Состав, назначения и графики')
         self.assertEqual(self.client.get(reverse('personnel:housing')).status_code,200)
