@@ -74,13 +74,13 @@ def preserve_relations(row):
 
 
 def automatic_readiness(obj,day,actor=None):
-    from .dispatch import plans
-    planned=plans(obj,day)[0]
-    present=set(DailyFact.objects.filter(company=obj.company,date=day,project_work__section__construction_object=obj).values_list('project_work_id','work_item_id'))
+    works=DailyFact.objects.filter(company=obj.company,date=day,project_work__section__construction_object=obj)
     people=EmployeeActivity.objects.filter(company=obj.company,construction_object=obj,date=day,entry_direction='works')
-    used=set(EmployeeWorkLink.objects.filter(company=obj.company,activity__in=people).values_list('work_id','work_item_id'))
-    used.update(people.exclude(work=None).values_list('work_id','work_item_id'))
-    ready=not(set(planned)-present or used-present or people.filter(assignment_reviewed=False).exists())
+    # A production task is complete after the dispatcher has saved at least
+    # one work (an explicit zero also counts) and at least one person. Full SMG
+    # coverage and relationship checks remain visible in the summary report,
+    # but do not block the daily task.
+    ready=works.exists() and people.exists()
     stamp=timezone.now() if ready else None
     FactSectionDay.objects.filter(company=obj.company,construction_object=obj,date=day,section='works').update(confirmed_at=stamp,confirmed_by=None)
     ProductionEntryDay.objects.filter(company=obj.company,construction_object=obj,date=day).update(confirmed_at=stamp)
