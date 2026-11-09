@@ -258,6 +258,7 @@ class MovementReviewRequest(PersonnelModel):
     to_camp=models.ForeignKey(Camp,on_delete=models.PROTECT,null=True,blank=True,related_name='+')
     departure_destination=models.CharField(max_length=10,blank=True)
     requested_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,blank=True,related_name='+')
+    approval_batch=models.UUIDField(null=True,blank=True,db_index=True)
     source=models.CharField('Источник заявки',max_length=12,choices=SOURCES,default='DISPATCHER')
     status=models.CharField('Статус',max_length=20,choices=STATUSES,default='OPEN')
     employment_kind=models.CharField('Штат / новый / перевод',max_length=16,choices=EMPLOYMENT_KINDS,blank=True)

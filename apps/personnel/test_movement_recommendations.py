@@ -70,6 +70,7 @@ class MovementRecommendationTests(TestCase):
         request=MovementReviewRequest.objects.get()
         self.assertEqual((request.person,request.kind,request.to_camp,request.movement_date),(self.second_person,'ARRIVAL',self.a,row['planned_on']))
         self.assertEqual(request.phone,self.second_employee.phone)
+        self.assertEqual(request.status,'PENDING_APPROVAL');self.assertIsNotNone(request.approval_batch)
         self.assertEqual(build(self.company,self.day)['ARRIVAL'],[])
 
     def test_personnel_dispatcher_has_dispatch_and_rotation_workspaces(self):
@@ -97,7 +98,7 @@ class MovementRecommendationTests(TestCase):
         data={'workflow_action':'move','camp':self.a.pk,'kind':'ARRIVAL','date':today,'employees':[self.second_employee.pk],'snapshot':snapshot}
         self.assertEqual(self.client.post(url,data).status_code,302)
         self.assertFalse(self.second_person.stays.exists())
-        self.assertTrue(MovementReviewRequest.objects.filter(person=self.second_person,kind='ARRIVAL',movement_date=today,status='OPEN').exists())
+        self.assertTrue(MovementReviewRequest.objects.filter(person=self.second_person,kind='ARRIVAL',movement_date=today,status='PENDING_APPROVAL').exists())
         data.update(kind='DEPARTURE',date=today-timedelta(days=2),snapshot=page.context['form'].initial['snapshot'])
         response=self.client.post(url,data)
         self.assertEqual(response.status_code,200)

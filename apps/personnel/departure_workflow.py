@@ -14,6 +14,25 @@ def log(row,actor,action,comment=''):
     return MovementReviewEvent.objects.create(company=row.company,request=row,actor=actor,action=action,comment=comment.strip())
 
 
+def approval_task_key(row):
+    return f'personnel-movement-batch:{row.approval_batch}' if row.approval_batch else f'personnel-movement-approval:{row.pk}'
+
+
+def approval_rows(row):
+    query=MovementReviewRequest.objects.filter(company=row.company)
+    return query.filter(approval_batch=row.approval_batch) if row.approval_batch else query.filter(pk=row.pk)
+
+
+def sync_approval_task(row,user=None):
+    task=WorkTask.objects.filter(company=row.company,key=approval_task_key(row)).first()
+    if not task:return None
+    pending=approval_rows(row).filter(status='PENDING_APPROVAL').count()
+    if pending:
+        if task.status!='OPEN':task.status='OPEN';task.started_at=None;task.save(update_fields=['status','started_at','updated_at'])
+    elif task.status=='OPEN':state(task,'DONE',user,'Все сотрудники в заявке рассмотрены.')
+    return task
+
+
 @transaction.atomic
 def cancel_request(user,row,reason):
     row=MovementReviewRequest.objects.select_for_update().get(pk=row.pk,company=user.company)
@@ -25,8 +44,8 @@ def cancel_request(user,row,reason):
     row.status='CANCELLED';row.cancellation_reason=reason;row.cancelled_by=user;row.cancelled_at=timezone.now();row.travel_status='Отменено'
     row.save(update_fields=['status','cancellation_reason','cancelled_by','cancelled_at','travel_status','updated_at'])
     log(row,user,'Заявка отменена',reason)
-    task=WorkTask.objects.filter(company=row.company,key=f'personnel-movement-approval:{row.pk}').first()
-    if task and task.status not in {'DONE','SUPERSEDED'}:state(task,'SUPERSEDED',user,reason)
+    task=sync_approval_task(row,user)
+    if task and not approval_rows(row).exclude(status='CANCELLED').exists() and task.status!='SUPERSEDED':state(task,'SUPERSEDED',user,reason)
     return row
 
 
@@ -39,35 +58,66 @@ def delete_request(user,row):
         raise ValidationError('Нельзя удалить заявку, по которой уже зафиксировано фактическое движение.')
     if hasattr(row,'recruitment_arrival'):
         raise ValidationError('Нельзя удалить заявку, связанную с подбором. Оставьте её отменённой для сохранения истории.')
-    WorkTask.objects.filter(company=row.company,key=f'personnel-movement-approval:{row.pk}').delete()
+    task=WorkTask.objects.filter(company=row.company,key=approval_task_key(row)).first()
     row.delete()
+    if task:
+        remaining=MovementReviewRequest.objects.filter(company=task.company,approval_batch=row.approval_batch).exists() if row.approval_batch else False
+        if remaining:sync_approval_task(MovementReviewRequest.objects.filter(company=task.company,approval_batch=row.approval_batch).first(),user)
+        else:task.delete()
 
 
 def create_approval(row):
-    if row.kind not in {'ARRIVAL','DEPARTURE'} or row.source!='DISPATCHER':return None
-    direction='заезд' if row.kind=='ARRIVAL' else 'выезд'
-    task=ensure(row.company,f'personnel-movement-approval:{row.pk}',kind='APPROVAL',
-        title=f'Согласовать {direction}: {row.person.display_name}',
-        description=(f'{row.person.display_name}\nВЖГ: {(row.to_camp if row.kind=="ARRIVAL" else row.from_camp) or "—"}\n'
+    if row.kind not in {'ARRIVAL','DEPARTURE','TRANSFER'} or row.source!='DISPATCHER':return None
+    direction={'ARRIVAL':'заезд','DEPARTURE':'выезд','TRANSFER':'перевод'}[row.kind]
+    rows=approval_rows(row).select_related('person','from_camp','to_camp').order_by('pk');count=rows.count()
+    names='\n'.join(f'• {item.person.display_name}' for item in rows[:30])
+    task=ensure(row.company,approval_task_key(row),kind='APPROVAL',
+        title=f'Согласовать {direction}: {count} сотрудник' if count==1 else f'Согласовать {direction}: {count} сотрудников',
+        description=(f'{names}\nВЖГ: {(row.to_camp if row.kind in {"ARRIVAL","TRANSFER"} else row.from_camp) or "—"}\n'
                      f'Плановая дата: {row.movement_date:%d.%m.%Y}\n'
-                     f'Вид: {"Заезд" if row.kind=="ARRIVAL" else "Выезд с увольнением" if row.departure_destination=="DISMISSAL" else "Выезд на межвахтовый отдых"}'),
+                     f'Вид: {"Заезд" if row.kind=="ARRIVAL" else "Перевод" if row.kind=="TRANSFER" else "Выезд с увольнением" if row.departure_destination=="DISMISSAL" else "Выезд на межвахтовый отдых"}'),
         target_role='MANAGER',created_by=row.requested_by,due_date=timezone.localdate()+timedelta(days=1),
         construction_object=row.construction_object)
+    title=f'Согласовать {direction}: {count} сотрудник' if count==1 else f'Согласовать {direction}: {count} сотрудников'
+    description=f'{names}\nВЖГ: {(row.to_camp if row.kind in {"ARRIVAL","TRANSFER"} else row.from_camp) or "—"}\nПлановая дата: {row.movement_date:%d.%m.%Y}'
+    if task.title!=title or task.description!=description:
+        task.title=title;task.description=description;task.save(update_fields=['title','description','updated_at'])
     return task
 
 
 @transaction.atomic
-def decide(user,row,approved,comment=''):
+def decide(user,row,approved,comment='',sync_task=True):
     row=MovementReviewRequest.objects.select_for_update().get(pk=row.pk,company=user.company)
     if role_code(user) not in {'ADMIN','MANAGER'}:raise PermissionDenied('Согласование доступно руководителю проекта.')
     if row.status!='PENDING_APPROVAL':raise ValidationError('Заявка уже обработана или находится на другом этапе.')
     if not approved and not comment.strip():raise ValidationError('При возврате укажите причину.')
-    row.status='PEREVAKHTA' if approved else 'RETURNED';row.approved_by=user;row.approved_at=timezone.now();row.approval_comment=comment.strip()
+    row.status=('OPEN' if row.kind=='TRANSFER' else 'PEREVAKHTA') if approved else 'RETURNED';row.approved_by=user;row.approved_at=timezone.now();row.approval_comment=comment.strip()
     row.save(update_fields=['status','approved_by','approved_at','approval_comment','updated_at'])
     log(row,user,'Согласовано руководителем' if approved else 'Возвращено на доработку',comment)
-    task=WorkTask.objects.filter(company=row.company,key=f'personnel-movement-approval:{row.pk}').first()
-    if task:state(task,'DONE' if approved else 'SUPERSEDED',user,comment)
+    task=WorkTask.objects.filter(company=row.company,key=approval_task_key(row)).first()
+    if task and sync_task:
+        if row.approval_batch:sync_approval_task(row,user)
+        else:state(task,'DONE' if approved else 'SUPERSEDED',user,comment)
     return row
+
+
+@transaction.atomic
+def decide_many(user,task,ids,approved,comment='',all_pending=False):
+    if role_code(user) not in {'ADMIN','MANAGER'}:raise PermissionDenied('Согласование доступно руководителю проекта.')
+    if not task.key.startswith('personnel-movement-batch:'):raise ValidationError('Это не пакетное согласование перевахты.')
+    batch=task.key.split(':',1)[1]
+    query=MovementReviewRequest.objects.select_for_update().filter(company=user.company,approval_batch=batch,status='PENDING_APPROVAL')
+    if not all_pending:
+        selected={int(value) for value in ids if str(value).isdigit()}
+        if not selected:raise ValidationError('Выберите хотя бы одного сотрудника.')
+        query=query.filter(pk__in=selected)
+    rows=list(query.order_by('pk'))
+    if not rows:raise ValidationError('Выбранные заявки уже обработаны или недоступны.')
+    if not approved and not comment.strip():raise ValidationError('При возврате укажите причину.')
+    for row in rows:decide(user,row,approved,comment,sync_task=False)
+    sync_approval_task(rows[0],user)
+    task_event(task,user,('Согласовано' if approved else 'Возвращено')+f' сотрудников: {len(rows)}',comment)
+    return len(rows)
 
 
 @transaction.atomic
@@ -77,7 +127,7 @@ def resubmit(user,row):
     if role_code(user) not in {'ADMIN','PERSONNEL_DISPATCHER','HR_HEAD'}:raise PermissionDenied
     row.status='PENDING_APPROVAL';row.approved_by=None;row.approved_at=None;row.approval_comment=''
     row.save(update_fields=['status','approved_by','approved_at','approval_comment','updated_at'])
-    task=WorkTask.objects.filter(company=row.company,key=f'personnel-movement-approval:{row.pk}').first()
+    task=WorkTask.objects.filter(company=row.company,key=approval_task_key(row)).first()
     if task:
         task.status='OPEN';task.started_at=None;task.save(update_fields=['status','started_at','updated_at']);task_event(task,user,'Повторно отправлено на согласование')
     else:create_approval(row)

@@ -209,7 +209,7 @@ def move(user,kind,camp,day,people,employees=(),target=None,comment='',snapshot=
 
 
 @transaction.atomic
-def request_moves(user,kind,camp,day,people,employees=(),target=None,comment='',snapshot=None,departure_destination='REST'):
+def request_moves(user,kind,camp,day,people,employees=(),target=None,comment='',snapshot=None,departure_destination='REST',approval_batch=None):
     if camp.company_id!=user.company_id or target and target.company_id!=user.company_id:raise ValidationError('ВЖГ другой компании.')
     require_movement_day(user,day);require_backdate_comment(day,comment)
     if kind not in {'ARRIVAL','DEPARTURE','TRANSFER'}:raise ValidationError('Неизвестное действие.')
@@ -231,12 +231,12 @@ def request_moves(user,kind,camp,day,people,employees=(),target=None,comment='',
         construction_object,site_object=request_object_pair(person,day,request_camp)
         rows.append(MovementReviewRequest(company=user.company,person=person,kind=kind,movement_date=day,
             from_camp=camp if kind!='ARRIVAL' else None,to_camp=target if kind=='TRANSFER' else camp if kind=='ARRIVAL' else None,
-            departure_destination=departure_destination if kind=='DEPARTURE' else 'CAMP' if kind=='TRANSFER' else '',requested_by=user,
+            departure_destination=departure_destination if kind=='DEPARTURE' else 'CAMP' if kind=='TRANSFER' else '',requested_by=user,approval_batch=approval_batch,
             employment_kind='TRANSFER' if kind=='TRANSFER' else 'STAFF',planning_position_name=planning_position_name(person,day),position_name=employee.display_position if employee else '',
             construction_object=construction_object,site_object=site_object,site=site_object.name if site_object else request_camp.name,phone=(employee.phone if employee else '') or person.phone,
             travel_status='Ожидается',note=comment))
     for row in rows:
-        if row.kind in {'ARRIVAL','DEPARTURE'} and row.source=='DISPATCHER':row.status='PENDING_APPROVAL'
+        if row.kind in {'ARRIVAL','DEPARTURE','TRANSFER'} and row.source=='DISPATCHER':row.status='PENDING_APPROVAL'
         row.save()
         if row.status=='PENDING_APPROVAL':
             from .departure_workflow import create_approval,log

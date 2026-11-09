@@ -193,11 +193,12 @@ def workspace(request, movements=False, movement_page='new'):
     movement_exclusions=[]
     if request.method=='POST' and workflow_action=='move' and form.is_valid():
         try:
+            from uuid import uuid4
             selected=form.cleaned_data['employees'];arrival=form.cleaned_data['kind']=='ARRIVAL'
             people=[] if arrival else list(Person.objects.filter(company=request.user.company,employee__in=selected))
             direct=bool(form.cleaned_data.get('direct_fact'))
             operation=housing.move if direct else housing.request_moves
-            options={'setup_direct':True} if direct else {}
+            options={'setup_direct':True} if direct else {'approval_batch':uuid4()}
             saved,movement_exclusions=housing.process_moves_partially(operation,request.user,form.cleaned_data['kind'],camp,form.cleaned_data['date'],people,
                 employees=selected,target=form.cleaned_data.get('target'),comment=form.cleaned_data['comment'],snapshot=form.cleaned_data['snapshot'],departure_destination='DISMISSAL' if form.cleaned_data.get('destination')=='DISMISSAL' else 'REST',**options)
         except (ValidationError,IntegrityError) as exc:form.add_error(None,'; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Размещение изменилось одновременно с вашим вводом. Обновите список.')

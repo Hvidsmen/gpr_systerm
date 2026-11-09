@@ -30,6 +30,7 @@ class CreateForm(forms.Form):
 
 
 def link(task):
+    if task.key.startswith('personnel-movement-batch:'):return None
     if task.key.startswith('personnel-movement-approval:'):
         return reverse('personnel:movement_review_accept',args=[int(task.key.rsplit(':',1)[1])])
     if task.key.startswith('zup-schedule-change:'):
@@ -127,7 +128,12 @@ class TaskDetail(View):
         from apps.production.dispatch import LABELS,required_fact_sections
         required=required_fact_sections(task.assigned_to)
         next_label=('Открыть актуализацию СМГ' if task.schedule_id else 'Создать актуализацию СМГ') if task.key.startswith('smg-update:') else next_action(task.schedule) if task.kind=='SUBMISSION' and task.schedule_id else ''
-        return render(request,'planning/task_detail.html',{'submission_action_label':next_label,'task':task,'target_url':link(task),'personnel_departure_approval':task.key.startswith('personnel-movement-approval:'),'executor':role_code(request.user)!='OBSERVER' and service.is_executor(request.user,task),'author':role_code(request.user)!='OBSERVER' and task.created_by_id==request.user.pk,'events':task.events.select_related('actor'),'children':service.visible(request.user).filter(estimate_id=task.estimate_id,kind='REMARK') if task.kind=='ESTIMATE' and task.estimate_id else service.visible(request.user).filter(parent=task),'can_comment':role_code(request.user)!='OBSERVER','fact_completion_without_check':task.kind=='FACT' and task.assigned_to and role_code(task.assigned_to)=='DISPATCHER','fact_sections':[(key,LABELS[key]) for key in LABELS if key in required] if required else [('works','Работы'),('labor','Персонал'),('equipment','Техника'),('fuel','ГСМ')]})
+        movement_batch=task.key.startswith('personnel-movement-batch:')
+        movement_rows=[]
+        if movement_batch:
+            from apps.personnel.models import MovementReviewRequest
+            movement_rows=MovementReviewRequest.objects.filter(company=request.user.company,approval_batch=task.key.split(':',1)[1]).select_related('person','from_camp','to_camp').order_by('person__full_name','pk')
+        return render(request,'planning/task_detail.html',{'submission_action_label':next_label,'task':task,'target_url':link(task),'movement_batch_approval':movement_batch,'movement_approval_rows':movement_rows,'personnel_departure_approval':task.key.startswith('personnel-movement-approval:'),'executor':role_code(request.user)!='OBSERVER' and service.is_executor(request.user,task),'author':role_code(request.user)!='OBSERVER' and task.created_by_id==request.user.pk,'events':task.events.select_related('actor'),'children':service.visible(request.user).filter(estimate_id=task.estimate_id,kind='REMARK') if task.kind=='ESTIMATE' and task.estimate_id else service.visible(request.user).filter(parent=task),'can_comment':role_code(request.user)!='OBSERVER','fact_completion_without_check':task.kind=='FACT' and task.assigned_to and role_code(task.assigned_to)=='DISPATCHER','fact_sections':[(key,LABELS[key]) for key in LABELS if key in required] if required else [('works','Работы'),('labor','Персонал'),('equipment','Техника'),('fuel','ГСМ')]})
     def post(self,request,pk):
         if role_code(request.user)=='OBSERVER':raise PermissionDenied
         task=get_object_or_404(service.visible(request.user),pk=pk)
@@ -178,6 +184,13 @@ class TaskDetail(View):
                         if version.status!='SUBMITTED' or version.approval_round!=task.review.number:raise ValidationError('Раунд согласования уже изменился.')
                         from .global_services import GlobalPlanService
                         GlobalPlanService.transition(version,request.user,commands[task.target_role] if action=='approve' else 'reject',text)
+            elif action in {'movement_approve_selected','movement_reject_selected','movement_approve_all','movement_reject_all'}:
+                if task.kind!='APPROVAL' or task.status!='OPEN' or not service.is_executor(request.user,task):raise PermissionDenied
+                from apps.personnel.departure_workflow import decide_many
+                approved='approve' in action;all_pending=action.endswith('_all')
+                count=decide_many(request.user,task,request.POST.getlist('selected'),approved,text,all_pending=all_pending)
+                messages.success(request,f'Обработано сотрудников: {count}.')
+                return redirect('planning:task_detail',pk=pk)
             else:raise ValidationError('Неизвестное действие.')
             messages.success(request,'Задание обновлено.')
         except ValidationError as e:messages.error(request,'; '.join(e.messages))

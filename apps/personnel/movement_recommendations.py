@@ -94,6 +94,9 @@ def add(user,kind,employees,camp,planned_on):
 
 @transaction.atomic
 def create_requests(user,tokens):
+    from uuid import uuid4
+    from .departure_workflow import create_approval,log
+    batch=uuid4();created=[]
     count=0
     for token in dict.fromkeys(tokens):
         kind,person,camp,planned_on=decode(token,user.company)
@@ -102,12 +105,14 @@ def create_requests(user,tokens):
         if MovementReviewRequest.objects.filter(**lookup).exists():continue
         employee=person.employee
         construction_object,site_object=housing.request_object_pair(person,planned_on,camp)
-        MovementReviewRequest.objects.create(**lookup,requested_by=user,
+        row=MovementReviewRequest.objects.create(**lookup,requested_by=user,approval_batch=batch,status='PENDING_APPROVAL',
             employment_kind='STAFF',planning_position_name=housing.planning_position_name(person,planned_on),position_name=employee.display_position if employee else '',
             construction_object=construction_object,site_object=site_object,site=site_object.name if site_object else camp.name,
             phone=(employee.phone if employee else '') or person.phone,travel_status='Ожидается')
+        created.append(row)
         MovementRecommendationOverride.objects.update_or_create(company=user.company,person=person,camp=camp,kind=kind,planned_on=planned_on,
             defaults={'action':'EXCLUDE','recorded_by':user})
         count+=1
     if not tokens:raise ValidationError('Выберите хотя бы одного сотрудника.')
+    for row in created:create_approval(row);log(row,user,'Отправлено на согласование руководителю')
     return count

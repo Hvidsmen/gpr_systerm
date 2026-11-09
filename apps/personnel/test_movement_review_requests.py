@@ -1,5 +1,6 @@
 from datetime import timedelta
 from io import BytesIO
+from uuid import uuid4
 
 from django.test import TestCase
 from django.urls import reverse
@@ -142,6 +143,40 @@ class MovementReviewRequestTests(TestCase):
         self.client.force_login(self.reviewer)
         self.client.post(reverse('personnel:movement_review_cancel',args=[row.pk]),{'reason':'Попытка отмены'})
         row.refresh_from_db();self.assertEqual(row.status,'AT_HUB')
+
+    def test_batch_request_creates_one_task_and_supports_individual_and_bulk_decisions(self):
+        from apps.planning.models import WorkTask
+        second_employee=Employee.objects.create(company=self.company,last_name='Петров',first_name='Пётр',employee_number='review-2',position=self.position)
+        second=Person.objects.create(company=self.company,employee=second_employee,full_name=second_employee.display_name,employee_number=second_employee.employee_number)
+        day=timezone.localdate();housing.move(self.reviewer,'ARRIVAL',self.camp,day,[self.person,second])
+        batch=uuid4();housing.request_moves(self.personnel,'DEPARTURE',self.camp,day,[self.person,second],departure_destination='REST',approval_batch=batch)
+        rows=list(MovementReviewRequest.objects.filter(approval_batch=batch).order_by('pk'));self.assertEqual(len(rows),2)
+        task=WorkTask.objects.get(key=f'personnel-movement-batch:{batch}')
+        self.assertIn('2 сотрудников',task.title)
+        self.client.force_login(self.admin);url=reverse('planning:task_detail',args=[task.pk])
+        page=self.client.get(url);self.assertContains(page,self.person.display_name);self.assertContains(page,second.display_name)
+        self.assertContains(page,'Согласовать выбранных');self.assertContains(page,'Не согласовать всех ожидающих')
+        self.client.post(url,{'action':'movement_approve_selected','selected':[rows[0].pk]})
+        rows[0].refresh_from_db();rows[1].refresh_from_db();task.refresh_from_db()
+        self.assertEqual(rows[0].status,'PEREVAKHTA');self.assertEqual(rows[1].status,'PENDING_APPROVAL');self.assertEqual(task.status,'OPEN')
+        self.client.post(url,{'action':'movement_reject_all','text':'Перенести дату'})
+        rows[1].refresh_from_db();task.refresh_from_db()
+        self.assertEqual(rows[1].status,'RETURNED');self.assertEqual(rows[1].approval_comment,'Перенести дату');self.assertEqual(task.status,'DONE')
+
+    def test_arrival_and_transfer_batches_also_create_single_approval_task(self):
+        from apps.planning.models import WorkTask
+        second_employee=Employee.objects.create(company=self.company,last_name='Сидоров',first_name='Семён',employee_number='review-3',position=self.position)
+        second=Person.objects.create(company=self.company,employee=second_employee,full_name=second_employee.display_name,employee_number=second_employee.employee_number)
+        day=timezone.localdate();arrival_batch=uuid4()
+        housing.request_moves(self.personnel,'ARRIVAL',self.camp,day,[self.person,second],approval_batch=arrival_batch)
+        self.assertEqual(WorkTask.objects.filter(key=f'personnel-movement-batch:{arrival_batch}').count(),1)
+        self.assertEqual(MovementReviewRequest.objects.filter(approval_batch=arrival_batch,status='PENDING_APPROVAL').count(),2)
+        MovementReviewRequest.objects.filter(approval_batch=arrival_batch).delete();WorkTask.objects.filter(key=f'personnel-movement-batch:{arrival_batch}').delete()
+        target=Camp.objects.create(company=self.company,name='ВЖГ-2');housing.move(self.reviewer,'ARRIVAL',self.camp,day,[self.person,second])
+        transfer_batch=uuid4();housing.request_moves(self.personnel,'TRANSFER',self.camp,day,[self.person,second],target=target,approval_batch=transfer_batch)
+        task=WorkTask.objects.get(key=f'personnel-movement-batch:{transfer_batch}');self.assertEqual(MovementReviewRequest.objects.filter(approval_batch=transfer_batch,status='PENDING_APPROVAL').count(),2)
+        self.client.force_login(self.admin);self.client.post(reverse('planning:task_detail',args=[task.pk]),{'action':'movement_approve_all'})
+        self.assertEqual(set(MovementReviewRequest.objects.filter(approval_batch=transfer_batch).values_list('status',flat=True)),{'OPEN'})
 
     def test_departure_goes_through_manager_dudinka_and_parallel_documents(self):
         from apps.planning.models import WorkTask
