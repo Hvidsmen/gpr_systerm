@@ -291,6 +291,7 @@ def workspace(request, movements=False, movement_page='new'):
 
 
 def review_request_context(request):
+    from core.permissions import role_code
     tab='departure' if request.GET.get('kind')=='departure' else 'arrival'
     sort=request.GET.get('sort','created_desc')
     sort_options=[('created_desc','Новые заявки сверху'),('created_asc','Старые заявки сверху'),('name_asc','ФИО: А–Я'),('name_desc','ФИО: Я–А'),('movement_asc','Дата заезда / выезда: ранние сверху'),('movement_desc','Дата заезда / выезда: поздние сверху')]
@@ -306,11 +307,16 @@ def review_request_context(request):
     ordering={'created_desc':['-created_at','-pk'],'created_asc':['created_at','pk'],'name_asc':['person__full_name','pk'],'name_desc':['-person__full_name','-pk'],
         'movement_asc':['movement_date','pk'],'movement_desc':['-movement_date','-pk']}[sort]
     rows=list(qs.select_related('person__employee','from_camp','to_camp','requested_by','event').annotate(
-        open_order=Case(When(status='OPEN',then=Value(0)),default=Value(1),output_field=IntegerField())).order_by('open_order',*ordering)[:1000])
+        cancelled_order=Case(When(status='CANCELLED',then=Value(1)),default=Value(0),output_field=IntegerField()),
+        open_order=Case(When(status='OPEN',then=Value(0)),default=Value(1),output_field=IntegerField())).order_by('cancelled_order','open_order',*ordering)[:1000])
+    user_role=role_code(request.user)
+    for row in rows:
+        row.can_cancel=user_role in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'} and row.status not in {'AT_HUB','EN_ROUTE','COMPLETED','CANCELLED'} and not row.event_id and not row.hub_arrived_on
+        row.can_delete=user_role=='ADMIN' and row.status=='CANCELLED' and not row.event_id and not row.hub_arrived_on and not row.hub_departed_on and not row.final_arrived_on
     dispatcher_rows=[row for row in rows if row.source=='DISPATCHER'];excel_rows=[row for row in rows if row.source=='EXCEL']
     return {'personnel_section':'reviews','movement_review_requests':rows,'dispatcher_review_requests':dispatcher_rows,'excel_review_requests':excel_rows,'review_tab':tab,'review_arrival':tab=='arrival','review_date':raw_date,'review_sort':sort,'review_sort_options':sort_options,
         'arrival_review_requests':rows if tab=='arrival' else [],'departure_review_requests':rows if tab=='departure' else [],
-        'arrival_review_count':base.filter(kind='ARRIVAL').count(),'departure_review_count':base.exclude(kind='ARRIVAL').count(),
+        'arrival_review_count':base.filter(kind='ARRIVAL').exclude(status='CANCELLED').count(),'departure_review_count':base.exclude(kind='ARRIVAL').exclude(status='CANCELLED').count(),
         'movement_review_open_count':base.filter(status='OPEN').count()}
 
 
@@ -353,7 +359,9 @@ def movement_review_accept(request,pk):
         except ValidationError as exc:messages.error(request,'; '.join(exc.messages))
         else:messages.success(request,{'resubmit':'Заявка повторно отправлена руководителю.','arrive_hub':'Прибытие в ОП Дудинка зафиксировано.','hub_documents':'Данные по билетам и обходному листу сохранены.','leave_hub':'Выезд из ОП Дудинка зафиксирован.','arrive_camp':'Фактический заезд в ВЖГ подтверждён. Заявка завершена.'}[workflow_action])
         return redirect('personnel:movement_review_accept',pk=row.pk)
-    edit_mode=row.status in {'OPEN','RETURNED'} or request.GET.get('edit')=='1' or request.method=='POST'
+    if row.status=='CANCELLED' and request.method=='POST':
+        messages.error(request,'Отменённую заявку нельзя редактировать.');return redirect('personnel:movement_review_accept',pk=row.pk)
+    edit_mode=row.status!='CANCELLED' and (row.status in {'OPEN','RETURNED'} or request.GET.get('edit')=='1' or request.method=='POST')
     confirm=request.method=='POST' and request.POST.get('review_action')=='confirm'
     form=MovementReviewForm(request.POST if request.method=='POST' else None,instance=row,confirm=confirm)
     if request.method=='POST' and form.is_valid():
@@ -384,7 +392,33 @@ def movement_review_accept(request,pk):
         current=object_id;seen=set()
         while current and current not in seen:
             seen.add(current);pairs.setdefault(str(current),set()).add(camp_id);current=tree.get(current)
-    return render(request,'personnel/movement_review.html',{'row':row,'form':form,'edit_mode':edit_mode,'workflow_today':timezone.localdate(),'can_manage_workflow':role_code(request.user) in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'},'personnel_section':'reviews','project_camps':{key:sorted(value) for key,value in pairs.items()}})
+    user_role=role_code(request.user)
+    can_cancel_request=user_role in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'} and row.status not in {'AT_HUB','EN_ROUTE','COMPLETED','CANCELLED'} and not row.event_id and not row.hub_arrived_on
+    can_delete_request=user_role=='ADMIN' and row.status=='CANCELLED' and not row.event_id and not row.hub_arrived_on and not row.hub_departed_on and not row.final_arrived_on
+    return render(request,'personnel/movement_review.html',{'row':row,'form':form,'edit_mode':edit_mode,'workflow_today':timezone.localdate(),'can_manage_workflow':user_role in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'},'can_cancel_request':can_cancel_request,'can_delete_request':can_delete_request,'personnel_section':'reviews','project_camps':{key:sorted(value) for key,value in pairs.items()}})
+
+
+@login_required
+@require_http_methods(['POST'])
+def movement_review_cancel(request,pk):
+    from .departure_workflow import cancel_request
+    row=get_object_or_404(MovementReviewRequest,pk=pk,company=request.user.company)
+    try:cancel_request(request.user,row,request.POST.get('reason',''))
+    except ValidationError as exc:messages.error(request,'; '.join(exc.messages))
+    else:messages.success(request,'Заявка отменена и сохранена в истории.')
+    return redirect(request.POST.get('next') or reverse('personnel:movement_review_accept',args=[pk]))
+
+
+@login_required
+@require_http_methods(['POST'])
+def movement_review_delete(request,pk):
+    from .departure_workflow import delete_request
+    row=get_object_or_404(MovementReviewRequest,pk=pk,company=request.user.company)
+    try:delete_request(request.user,row)
+    except ValidationError as exc:
+        messages.error(request,'; '.join(exc.messages));return redirect('personnel:movement_review_accept',pk=pk)
+    messages.success(request,'Отменённая заявка удалена безвозвратно.')
+    return redirect(reverse('personnel:movement_reviews')+'#movement-requests')
 
 
 

@@ -246,6 +246,7 @@ class MovementReviewRequest(PersonnelModel):
         ('OPEN','Ожидает проверки'),('PENDING_APPROVAL','На согласовании'),
         ('RETURNED','Возвращено на доработку'),('PEREVAKHTA','Передано в перевахту'),
         ('AT_HUB','В ОП Дудинка'),('EN_ROUTE','В пути из ОП Дудинка'),('COMPLETED','Завершено'),('ACCEPTED','Принято'),
+        ('CANCELLED','Отменено'),
     ]
     SOURCES=[('DISPATCHER','Портал'),('EXCEL','Excel')]
     EMPLOYMENT_KINDS=[('STAFF','Штат'),('NEW','Новый'),('TRANSFER','Перевод'),('BUSINESS_TRIP','Командировка')]
@@ -283,11 +284,14 @@ class MovementReviewRequest(PersonnelModel):
     tickets_ready_at=models.DateTimeField(null=True,blank=True)
     clearance_document=models.FileField('Обходной лист',upload_to='personnel/clearance/%Y/%m/',blank=True)
     clearance_uploaded_at=models.DateTimeField(null=True,blank=True)
+    cancellation_reason=models.TextField('Причина отмены',blank=True)
+    cancelled_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,blank=True,related_name='+')
+    cancelled_at=models.DateTimeField(null=True,blank=True)
     class Meta:
         ordering=['status','-movement_date','-pk']
     def clean(self):
         super().clean()
-        for value in (self.event,self.person,self.from_camp,self.to_camp,self.requested_by,self.construction_object,self.site_object):
+        for value in (self.event,self.person,self.from_camp,self.to_camp,self.requested_by,self.cancelled_by,self.construction_object,self.site_object):
             if value and value.company_id!=self.company_id:raise ValidationError('Заявка другой компании.')
         if self.site_object_id and self.construction_object_id:
             if self.site_object_id!=self.construction_object_id and self.site_object.parent_id!=self.construction_object_id:raise ValidationError({'site_object':'Участок должен относиться к выбранному объекту.'})

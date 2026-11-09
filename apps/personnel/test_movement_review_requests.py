@@ -25,6 +25,7 @@ class MovementReviewRequestTests(TestCase):
         cls.personnel=User.objects.create_user(username='personnel-request',company=cls.company,role=Role.objects.get(code='PERSONNEL_DISPATCHER'))
         cls.reviewer=User.objects.create_user(username='personnel-review',company=cls.company,role=Role.objects.get(code='HR_HEAD'))
         cls.transport=User.objects.create_user(username='transport-no-access',company=cls.company,role=Role.objects.get(code='TRANSPORT_DISPATCHER'))
+        cls.admin=User.objects.create_user(username='movement-admin',company=cls.company,role=Role.objects.get(code='ADMIN'))
         cls.position=Position.objects.create(company=cls.company,name='Электромонтёр справочника')
         cls.employee=Employee.objects.create(company=cls.company,last_name='Иванов',first_name='Иван',employee_number='review-1',position=cls.position,phone='+7 900 123-45-67')
         cls.person=Person.objects.create(company=cls.company,employee=cls.employee,full_name=cls.employee.display_name,employee_number=cls.employee.employee_number)
@@ -113,6 +114,34 @@ class MovementReviewRequestTests(TestCase):
     def test_direct_hr_movement_does_not_create_dispatch_request(self):
         housing.move(self.reviewer,'ARRIVAL',self.camp,timezone.localdate(),[self.person])
         self.assertFalse(MovementReviewRequest.objects.exists())
+
+    def test_request_is_cancelled_with_reason_and_admin_can_delete_it(self):
+        from apps.planning.models import WorkTask
+        housing.move(self.reviewer,'ARRIVAL',self.camp,timezone.localdate(),[self.person])
+        housing.request_moves(self.personnel,'DEPARTURE',self.camp,timezone.localdate(),[self.person],departure_destination='REST')
+        row=MovementReviewRequest.objects.get()
+        self.client.force_login(self.reviewer)
+        response=self.client.post(reverse('personnel:movement_review_cancel',args=[row.pk]),{'reason':'Создана ошибочно'})
+        self.assertRedirects(response,reverse('personnel:movement_review_accept',args=[row.pk]),fetch_redirect_response=False)
+        row.refresh_from_db();self.assertEqual(row.status,'CANCELLED');self.assertEqual(row.cancellation_reason,'Создана ошибочно')
+        self.assertEqual(row.cancelled_by,self.reviewer);self.assertIsNotNone(row.cancelled_at)
+        self.assertEqual(WorkTask.objects.get(key=f'personnel-movement-approval:{row.pk}').status,'SUPERSEDED')
+        detail=self.client.get(reverse('personnel:movement_review_accept',args=[row.pk]))
+        self.assertContains(detail,'Заявка отменена');self.assertNotContains(detail,'Редактировать данные заявки')
+        self.client.force_login(self.admin)
+        response=self.client.post(reverse('personnel:movement_review_delete',args=[row.pk]))
+        self.assertRedirects(response,reverse('personnel:movement_reviews')+'#movement-requests',fetch_redirect_response=False)
+        self.assertFalse(MovementReviewRequest.objects.filter(pk=row.pk).exists())
+
+    def test_request_cannot_be_cancelled_after_actual_route_started(self):
+        from .departure_workflow import arrive_hub,decide
+        manager=User.objects.create_user(username='cancel-manager',company=self.company,role=Role.objects.get(code='MANAGER'))
+        day=timezone.localdate();housing.move(self.reviewer,'ARRIVAL',self.camp,day,[self.person])
+        housing.request_moves(self.personnel,'DEPARTURE',self.camp,day,[self.person],departure_destination='REST')
+        row=MovementReviewRequest.objects.get(kind='DEPARTURE');decide(manager,row,True);arrive_hub(self.reviewer,row,day)
+        self.client.force_login(self.reviewer)
+        self.client.post(reverse('personnel:movement_review_cancel',args=[row.pk]),{'reason':'Попытка отмены'})
+        row.refresh_from_db();self.assertEqual(row.status,'AT_HUB')
 
     def test_departure_goes_through_manager_dudinka_and_parallel_documents(self):
         from apps.planning.models import WorkTask

@@ -14,6 +14,35 @@ def log(row,actor,action,comment=''):
     return MovementReviewEvent.objects.create(company=row.company,request=row,actor=actor,action=action,comment=comment.strip())
 
 
+@transaction.atomic
+def cancel_request(user,row,reason):
+    row=MovementReviewRequest.objects.select_for_update().get(pk=row.pk,company=user.company)
+    if role_code(user) not in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'}:raise PermissionDenied('Отмена заявки недоступна для вашей роли.')
+    if row.status in {'AT_HUB','EN_ROUTE','COMPLETED','CANCELLED'} or row.event_id or row.hub_arrived_on:
+        raise ValidationError('Заявку нельзя отменить после начала фактического маршрута или повторно.')
+    reason=reason.strip()
+    if not reason:raise ValidationError('Укажите причину отмены заявки.')
+    row.status='CANCELLED';row.cancellation_reason=reason;row.cancelled_by=user;row.cancelled_at=timezone.now();row.travel_status='Отменено'
+    row.save(update_fields=['status','cancellation_reason','cancelled_by','cancelled_at','travel_status','updated_at'])
+    log(row,user,'Заявка отменена',reason)
+    task=WorkTask.objects.filter(company=row.company,key=f'personnel-movement-approval:{row.pk}').first()
+    if task and task.status not in {'DONE','SUPERSEDED'}:state(task,'SUPERSEDED',user,reason)
+    return row
+
+
+@transaction.atomic
+def delete_request(user,row):
+    row=MovementReviewRequest.objects.select_for_update().get(pk=row.pk,company=user.company)
+    if role_code(user)!='ADMIN':raise PermissionDenied('Безвозвратное удаление доступно только администратору.')
+    if row.status!='CANCELLED':raise ValidationError('Сначала отмените заявку и укажите причину.')
+    if row.event_id or row.hub_arrived_on or row.hub_departed_on or row.final_arrived_on:
+        raise ValidationError('Нельзя удалить заявку, по которой уже зафиксировано фактическое движение.')
+    if hasattr(row,'recruitment_arrival'):
+        raise ValidationError('Нельзя удалить заявку, связанную с подбором. Оставьте её отменённой для сохранения истории.')
+    WorkTask.objects.filter(company=row.company,key=f'personnel-movement-approval:{row.pk}').delete()
+    row.delete()
+
+
 def create_approval(row):
     if row.kind not in {'ARRIVAL','DEPARTURE'} or row.source!='DISPATCHER':return None
     direction='заезд' if row.kind=='ARRIVAL' else 'выезд'

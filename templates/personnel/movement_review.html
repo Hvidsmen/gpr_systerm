@@ -24,7 +24,7 @@
       </div>
     </div>
     <div class="text-end">
-      <span class="badge fs-6 {% if row.status == 'OPEN' or row.status == 'PENDING_APPROVAL' %}bg-warning text-dark{% elif row.status == 'RETURNED' %}bg-danger{% elif row.status == 'COMPLETED' or row.status == 'ACCEPTED' %}bg-success{% else %}bg-info text-dark{% endif %}">{{ row.get_status_display }}</span>
+      <span class="badge fs-6 {% if row.status == 'OPEN' or row.status == 'PENDING_APPROVAL' %}bg-warning text-dark{% elif row.status == 'RETURNED' %}bg-danger{% elif row.status == 'CANCELLED' %}bg-secondary{% elif row.status == 'COMPLETED' or row.status == 'ACCEPTED' %}bg-success{% else %}bg-info text-dark{% endif %}">{{ row.get_status_display }}</span>
       {% if row.status == 'COMPLETED' %}<div class="small text-success mt-2">{% if row.kind == 'DEPARTURE' %}Сотрудник выбыл из ОП Дудинка{% if row.hub_departed_on %} {{ row.hub_departed_on|date:'d.m.Y' }}{% endif %}{% else %}Сотрудник прибыл в ВЖГ{% if row.final_arrived_on %} {{ row.final_arrived_on|date:'d.m.Y' }}{% endif %}{% endif %}</div>{% endif %}
     </div>
   </div>
@@ -33,7 +33,7 @@
 <form method="post" class="mt-3">{% csrf_token %}{% include 'forms/fields.html' with form=form %}<div class="d-flex flex-wrap gap-2"><button class="btn btn-outline-primary" name="review_action" value="save">{% if row.status == 'OPEN' %}Сохранить черновик{% else %}Сохранить изменения{% endif %}</button>{% if row.status == 'OPEN' %}<button class="btn btn-primary" name="review_action" value="confirm">Подтвердить заявку</button>{% else %}<a class="btn btn-outline-secondary" href="{% url 'personnel:movement_review_accept' row.pk %}">Отмена</a>{% endif %}</div></form>
 {{ project_camps|json_script:'movement-project-camps' }}<script>document.addEventListener('DOMContentLoaded',()=>{const project=document.querySelector('[name=construction_object]'),camp=document.querySelector('[name=camp]'),data=JSON.parse(document.getElementById('movement-project-camps').textContent),all=Array.from(camp.options);function refresh(){const selected=camp.value,allowed=new Set((data[project.value]||[]).map(String));camp.replaceChildren(...all.filter(option=>!option.value||allowed.has(option.value)));camp.value=Array.from(camp.options).some(option=>option.value===selected)?selected:'';camp.dispatchEvent(new Event('change',{bubbles:true}));}project.addEventListener('change',refresh);refresh();});</script>
 {% else %}
-<div class="d-flex justify-content-end mt-3">
+{% if row.status != 'CANCELLED' %}<div class="d-flex justify-content-end mt-3">
   <details class="movement-actions">
     <summary class="btn btn-outline-primary">Действия <span aria-hidden="true">⌄</span></summary>
     <div class="movement-actions-menu">
@@ -41,7 +41,7 @@
       {% if row.clearance_document %}<a href="{{ row.clearance_document.url }}" target="_blank" rel="noopener">Открыть обходной лист</a>{% endif %}
     </div>
   </details>
-</div>
+</div>{% endif %}
 <div class="movement-meta mt-3">
   <div class="movement-field"><small>Должность ГПР/СМГ</small><strong>{{ row.planning_position_name|default:'—' }}</strong></div>
   <div class="movement-field"><small>Должность сотрудника</small><span>{{ row.position_name|default:'—' }}</span></div>
@@ -58,6 +58,9 @@
   {% if row.kind == 'ARRIVAL' %}<div class="movement-field"><small>Фактическое прибытие в ВЖГ</small><strong>{{ row.final_arrived_on|date:'d.m.Y'|default:'—' }}</strong></div>{% endif %}
   <div class="movement-field"><small>Примечание</small><span>{{ row.note|default:'—' }}</span></div>
 </div>
+{% if row.status == 'CANCELLED' %}<div class="alert alert-secondary mt-3"><strong>Заявка отменена{% if row.cancelled_at %} {{ row.cancelled_at|date:'d.m.Y H:i' }}{% endif %}.</strong><br>{{ row.cancellation_reason }}{% if row.cancelled_by %}<div class="small mt-1">Отменил: {{ row.cancelled_by }}</div>{% endif %}</div>{% endif %}
+{% if can_cancel_request %}<details class="mt-3"><summary class="btn btn-outline-danger">Отменить заявку</summary><form method="post" action="{% url 'personnel:movement_review_cancel' row.pk %}" class="border rounded p-3 mt-2">{% csrf_token %}<label class="form-label" for="cancel-reason">Причина отмены</label><textarea id="cancel-reason" class="form-control mb-2" name="reason" required></textarea><button class="btn btn-danger">Подтвердить отмену</button></form></details>{% endif %}
+{% if can_delete_request %}<form method="post" action="{% url 'personnel:movement_review_delete' row.pk %}" class="mt-3" onsubmit="return confirm('Удалить отменённую заявку безвозвратно? Восстановить её будет нельзя.')">{% csrf_token %}<button class="btn btn-outline-danger">Удалить безвозвратно</button></form>{% endif %}
 {% endif %}
 {% if row.kind == 'DEPARTURE' or row.kind == 'ARRIVAL' %}
 <hr class="my-4"><h3 class="h5 mb-3">Маршрут {% if row.kind == 'ARRIVAL' %}заезда{% else %}выезда{% endif %}</h3>
@@ -76,7 +79,7 @@
   <li><div class="movement-event text-muted">Маршрут ещё не начат.</div></li>
 {% endfor %}
 </ol>
-{% if row.status != 'COMPLETED' %}<div class="alert alert-light border mt-3 mb-0"><strong>Следующий шаг:</strong> {% if row.status == 'PENDING_APPROVAL' %}согласование руководителем{% elif row.status == 'RETURNED' %}исправление и повторная отправка{% elif row.status == 'PEREVAKHTA' %}зафиксировать прибытие в ОП Дудинка{% elif row.status == 'AT_HUB' %}{% if not row.tickets_ready %}оформить билеты{% elif not row.clearance_document %}прикрепить обходной лист{% else %}зафиксировать выезд из ОП Дудинка{% endif %}{% elif row.status == 'EN_ROUTE' %}зафиксировать прибытие в ВЖГ{% else %}обработать заявку{% endif %}.</div>{% endif %}
+{% if row.status != 'COMPLETED' and row.status != 'CANCELLED' %}<div class="alert alert-light border mt-3 mb-0"><strong>Следующий шаг:</strong> {% if row.status == 'PENDING_APPROVAL' %}согласование руководителем{% elif row.status == 'RETURNED' %}исправление и повторная отправка{% elif row.status == 'PEREVAKHTA' %}зафиксировать прибытие в ОП Дудинка{% elif row.status == 'AT_HUB' %}{% if not row.tickets_ready %}оформить билеты{% elif not row.clearance_document %}прикрепить обходной лист{% else %}зафиксировать выезд из ОП Дудинка{% endif %}{% elif row.status == 'EN_ROUTE' %}зафиксировать прибытие в ВЖГ{% else %}обработать заявку{% endif %}.</div>{% endif %}
 {% endif %}
 </div>
 {% endblock %}
