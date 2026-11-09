@@ -30,8 +30,10 @@
   row.hidden=false;row.classList.toggle('production-row-pending-delete',deleted);
   const button=row.querySelector('[data-person-remove],[data-work-remove]');if(!button)return;
   button.textContent=deleted?'Вернуть':'Удалить';button.classList.toggle('btn-outline-danger',!deleted);button.classList.toggle('btn-outline-secondary',deleted);
+  if(deleted)button.disabled=false;
   button.title=deleted?'Отменить удаление до сохранения':isPerson(row)?'Убрать сотрудника из факта за этот день':'Удалить работу из факта за этот день';
  }
+ form.productionRenderPendingDelete=renderPendingDelete;
  function prefix(row){return field(row,'id').name.replace(/-id$/,'');}
  function reindex(){
   for(const kind of ['works','labor']){
@@ -139,7 +141,7 @@
  const relevant=event=>{
   if(form.productionApplying||(form.dataset.peopleBulkBusy==='1'||form.dataset.personShiftBusy==='1')||event.target.closest('[data-actuation-ui]'))return;
   const row=event.target.closest('[data-production-person],[data-work-fact-row]');
-  if(row){if(row.dataset.autoSavedStamp===fingerprint(row)&&!row.dataset.autoPending){delete row.dataset.entryDirty;delete row.dataset.personDirty;return;}if(isPerson(row)&&!field(row,'employee').value&&!field(row,'id').value)return;if(!isPerson(row)&&!field(row,'project_work')?.value)return;schedule(row);}
+  if(row){renderPendingDelete(row);if(row.dataset.autoSavedStamp===fingerprint(row)&&!row.dataset.autoPending){delete row.dataset.entryDirty;delete row.dataset.personDirty;return;}if(isPerson(row)&&!field(row,'employee').value&&!field(row,'id').value)return;if(!isPerson(row)&&!field(row,'project_work')?.value)return;schedule(row);}
  };
  form.addEventListener('production-claims-change',()=>{if(!form.productionApplying&&form.dataset.peopleBulkBusy!=='1'&&form.dataset.personShiftBusy!=='1'&&!running&&!pending&&dirty().length)schedule();});
  // Capture edits before row widgets, filters or live-sync handlers can react.

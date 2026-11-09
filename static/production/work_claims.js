@@ -82,6 +82,7 @@
   const repeated=duplicate(row),claim=claims.get(keyOf(row)),mine=!repeated&&claim?.state==='editing'&&claim.mine,bar=row.querySelector('[data-entry-claim]');if(!bar)return;
   const blocked=repeated||Boolean(claim&&!mine&&(claim.state==='editing'||!claim.own));
   controls(row).forEach(i=>{i.disabled=blocked;});row.querySelectorAll('[data-person-remove],[data-work-remove],[data-work-clear]').forEach(button=>{const restore=deleted(row)&&button.matches('[data-person-remove],[data-work-remove]');button.toggleAttribute('disabled',blocked&&!restore);});editing(row).value=mine?'1':'0';token(row).value=mine?session:'';
+  if(deleted(row))form.productionRenderPendingDelete?.(row,true);
   // Employee identity stays fixed; shift changes reserve source and destination.
   for(const name of person(row)?['employee','shift']:['project_work','work_item']){const input=field(row,name);if(input)input.disabled=person(row)&&name==='shift' ? blocked||form.dataset.personShiftBusy==='1' : blocked||Boolean(keyOf(row)&&(mine||row.dataset.entryDirty||person(row)&&field(row,'id')?.value));}
   const take=bar.querySelector('[data-take]'),release=bar.querySelector('[data-release]');take.hidden=true;take.disabled=repeated||!keyOf(row)||Boolean(claim&& !mine&& (claim.state==='editing'||!claim.own));release.hidden=!row.dataset.entryDirty||mine;release.textContent=row.dataset.entryDirty?'Отменить изменения':'Освободить';
