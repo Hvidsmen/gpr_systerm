@@ -7,8 +7,8 @@
 {% elif prep.status == 'CANCELLED' or prep.candidate.request.cancelled_at %}<div class="alert alert-warning">Подготовка заезда отменена.</div>
 {% else %}
 {% if prep.actual_stay_id %}<div class="alert alert-warning">Предыдущее размещение отменено. Уточните данные и подтвердите заезд заново.</div>{% endif %}
-<p class="text-muted">Плановая дата используется для подготовки. В фактический состав человек попадёт только после кнопки «Подтвердить фактический заезд».</p>
-<form method="post" class="card card-body recruitment-form mb-3">{% csrf_token %}{% include 'forms/fields.html' with form=form %}<div class="recruitment-actions mt-3"><button class="btn btn-outline-primary" name="action" value="save">Сохранить подготовку</button><button class="btn btn-primary" name="action" value="confirm">Подтвердить фактический заезд</button></div></form>
+<p class="text-muted">Плановая дата используется для подготовки. После отправки заявка проходит согласование руководителя, перевахту и ОП Дудинка. В фактический состав ВЖГ человек попадёт только после подтверждения его прибытия.</p>
+<form method="post" class="card card-body recruitment-form mb-3">{% csrf_token %}{% include 'forms/fields.html' with form=form %}<div class="recruitment-actions mt-3"><button class="btn btn-outline-primary" name="action" value="save">Сохранить подготовку</button><button class="btn btn-primary" name="action" value="submit" {% if prep.movement_request_id %}disabled{% endif %}>{% if prep.movement_request_id %}Заявка уже отправлена{% else %}Отправить на согласование{% endif %}</button></div></form>
 <details class="card card-body recruitment-form" {% if cancel_form.errors %}open{% endif %}><summary>Отменить подготовку заезда</summary><form method="post">{% csrf_token %}{% include 'forms/fields.html' with form=cancel_form %}<button class="btn btn-outline-danger mt-2" name="action" value="cancel">Отменить подготовку заезда</button></form></details>
 {% endif %}
 {% endblock %}

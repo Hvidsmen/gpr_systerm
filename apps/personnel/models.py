@@ -245,7 +245,7 @@ class MovementReviewRequest(PersonnelModel):
     STATUSES=[
         ('OPEN','Ожидает проверки'),('PENDING_APPROVAL','На согласовании'),
         ('RETURNED','Возвращено на доработку'),('PEREVAKHTA','Передано в перевахту'),
-        ('AT_HUB','В ОП Дудинка'),('COMPLETED','Завершено'),('ACCEPTED','Принято'),
+        ('AT_HUB','В ОП Дудинка'),('EN_ROUTE','В пути из ОП Дудинка'),('COMPLETED','Завершено'),('ACCEPTED','Принято'),
     ]
     SOURCES=[('DISPATCHER','Портал'),('EXCEL','Excel')]
     EMPLOYMENT_KINDS=[('STAFF','Штат'),('NEW','Новый'),('TRANSFER','Перевод'),('BUSINESS_TRIP','Командировка')]
@@ -278,6 +278,7 @@ class MovementReviewRequest(PersonnelModel):
     approval_comment=models.TextField('Комментарий согласования',blank=True)
     hub_arrived_on=models.DateField('Прибытие в ОП Дудинка',null=True,blank=True)
     hub_departed_on=models.DateField('Выезд из ОП Дудинка',null=True,blank=True)
+    final_arrived_on=models.DateField('Прибытие в ВЖГ',null=True,blank=True)
     tickets_ready=models.BooleanField('Билеты приобретены',default=False)
     tickets_ready_at=models.DateTimeField(null=True,blank=True)
     clearance_document=models.FileField('Обходной лист',upload_to='personnel/clearance/%Y/%m/',blank=True)
@@ -326,4 +327,4 @@ from .lodging_models import LodgingBuilding,LodgingBed,LodgingStay,LodgingEvent,
 
 from .lodging_import_models import LodgingImportBatch,LodgingImportRow
 
-from .recruitment_models import RecruitmentRequest, RecruitmentCandidate, ArrivalPreparation, CandidateDocument, RecruitmentEvent
+from .recruitment_models import RecruitmentRequest, RecruitmentCandidate, ArrivalPreparation, CandidateDocument, RecruitmentEvent,TalentPoolCandidate

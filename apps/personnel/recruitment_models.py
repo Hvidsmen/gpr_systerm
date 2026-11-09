@@ -23,6 +23,16 @@ def resume_storage():return RecruitmentStorage()
 def resume_path(instance, filename):return f'{instance.company_id}/{uuid4().hex}'
 
 
+class TalentPoolCandidate(PersonnelModel):
+    full_name=models.CharField('ФИО',max_length=250)
+    phone=models.CharField('Телефон',max_length=80,blank=True)
+    notes=models.TextField('Комментарий',blank=True)
+    is_active=models.BooleanField('Доступен для вакансий',default=True)
+    created_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='talent_pool_candidates')
+    class Meta:ordering=['full_name','pk']
+    def __str__(self):return self.full_name
+
+
 class RecruitmentRequest(PersonnelModel):
     construction_object = models.ForeignKey('projects.ConstructionObject', on_delete=models.PROTECT, verbose_name='Объект')
     position = models.CharField('Должность', max_length=250)
@@ -49,6 +59,7 @@ class RecruitmentCandidate(PersonnelModel):
     STATES = [('NEW','Новый'), ('SCREENING','На рассмотрении'), ('READY','Готов к заезду'),
               ('TRANSFERRED','Передан диспетчеру'), ('REJECTED','Не подошёл'), ('WITHDRAWN','Отказался')]
     request = models.ForeignKey(RecruitmentRequest, on_delete=models.PROTECT, related_name='candidates')
+    pool_candidate=models.ForeignKey(TalentPoolCandidate,on_delete=models.PROTECT,null=True,blank=True,related_name='vacancy_candidates',verbose_name='Кандидат из пула')
     full_name = models.CharField('ФИО кандидата', max_length=250)
     phone = models.CharField('Телефон', max_length=80, blank=True)
     status = models.CharField('Статус', max_length=16, choices=STATES, default='NEW')
@@ -61,6 +72,7 @@ class RecruitmentCandidate(PersonnelModel):
     def clean(self):
         super().clean()
         if self.request_id and self.request.company_id != self.company_id:raise ValidationError('Заявка другой компании.')
+        if self.pool_candidate_id and self.pool_candidate.company_id!=self.company_id:raise ValidationError('Кандидат общего пула другой компании.')
         if self.created_by_id and self.created_by.company_id != self.company_id:raise ValidationError('Автор другой компании.')
         if self.status in {'READY','TRANSFERRED'} and not self.ready_on:raise ValidationError({'ready_on':'Укажите дату готовности.'})
 
@@ -73,6 +85,7 @@ class ArrivalPreparation(PersonnelModel):
     employee = models.ForeignKey('resources.Employee', on_delete=models.PROTECT, null=True, blank=True, verbose_name='Оформленный сотрудник')
     status = models.CharField(max_length=12, choices=STATES, default='EXPECTED')
     actual_stay = models.OneToOneField('personnel.CampStay', on_delete=models.PROTECT, null=True, blank=True, related_name='recruitment_arrival')
+    movement_request = models.OneToOneField('personnel.MovementReviewRequest',on_delete=models.PROTECT,null=True,blank=True,related_name='recruitment_arrival')
     handed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='handed_candidates')
     notes = models.TextField('Комментарий к заезду', blank=True)
     revision = models.PositiveIntegerField(default=0)

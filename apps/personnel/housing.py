@@ -236,7 +236,7 @@ def request_moves(user,kind,camp,day,people,employees=(),target=None,comment='',
             construction_object=construction_object,site_object=site_object,site=site_object.name if site_object else request_camp.name,phone=(employee.phone if employee else '') or person.phone,
             travel_status='Ожидается',note=comment))
     for row in rows:
-        if row.kind=='DEPARTURE' and row.source=='DISPATCHER':row.status='PENDING_APPROVAL'
+        if row.kind in {'ARRIVAL','DEPARTURE'} and row.source=='DISPATCHER':row.status='PENDING_APPROVAL'
         row.save()
         if row.status=='PENDING_APPROVAL':
             from .departure_workflow import create_approval,log

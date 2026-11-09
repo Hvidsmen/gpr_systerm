@@ -143,7 +143,7 @@ def check_route(user, match, method):
         raise PermissionDenied('Роль «Подбор персонала» работает с заявками и кандидатами.')
     if namespace == 'personnel' and name.startswith('recruitment_'):
         from apps.personnel.recruitment import READ, DISPATCH, RECRUIT
-        write_roles = DISPATCH if name in {'recruitment_create','recruitment_edit','recruitment_arrival'} else RECRUIT if name in {'recruitment_candidate_create','recruitment_candidate_edit','recruitment_handoff'} else READ
+        write_roles = DISPATCH if name in {'recruitment_create','recruitment_edit','recruitment_arrival'} else RECRUIT if name in {'recruitment_candidate_create','recruitment_candidate_edit','recruitment_handoff','recruitment_pool_create','recruitment_pool_edit'} else READ
         require_roles(user, write_roles)
         return
     if role == FUEL_WAREHOUSE:

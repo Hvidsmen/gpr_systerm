@@ -6,7 +6,7 @@ from django.db.models import F
 from django.utils import timezone
 from core.permissions import require_roles
 from .models import (RecruitmentRequest, RecruitmentCandidate, ArrivalPreparation,
-                     CandidateDocument, RecruitmentEvent, CampStay)
+                     CandidateDocument, RecruitmentEvent, CampStay,MovementReviewRequest)
 
 DISPATCH = {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'}
 RECRUIT = {'ADMIN','HR_HEAD','RECRUITER'}
@@ -120,6 +120,7 @@ def save_candidate(user, request_id, values, pk=None, revision=None, files=()):
             if pk and ArrivalPreparation.objects.filter(candidate=c).exists():raise ValidationError('Кандидат уже передан. Изменения заезда оформляет диспетчер.')
             if values['status'] not in {'NEW','SCREENING','READY','REJECTED','WITHDRAWN'}:raise ValidationError('Недопустимый статус кандидата.')
             validate_documents(files)
+            c.pool_candidate=values.get('pool_candidate')
             for field in ('full_name','phone','status','ready_on','notes'):setattr(c,field,values[field])
             c.revision+=1;c.save()
             for file in files:
@@ -149,7 +150,7 @@ def handoff(user, candidate_id, revision):
 
 
 @transaction.atomic
-def prepare_arrival(user, pk, revision, values, *, confirm=False):
+def prepare_arrival(user, pk, revision, values, *, confirm=False, workflow=False):
     serialize(user,DISPATCH)
     prep=ArrivalPreparation.objects.get(company=user.company,pk=pk)
     row=current(user,prep.candidate.request_id)
@@ -165,25 +166,35 @@ def prepare_arrival(user, pk, revision, values, *, confirm=False):
     if prep.employee_id and ArrivalPreparation.objects.filter(company=user.company,employee=prep.employee,status='EXPECTED').exclude(pk=pk).exists():raise ValidationError('Этот сотрудник уже привязан к другому ожидаемому заезду.')
     # A cancelled actual stay can be corrected without keeping an obsolete binding.
     if prep.actual_stay_id and prep.actual_stay.cancelled_at:prep.actual_stay=None;prep.status='EXPECTED'
-    if confirm:
+    if workflow:
+        if not prep.employee_id or not prep.camp_id:raise ValidationError('Укажите оформленного сотрудника и ВЖГ. Кандидат сам по себе не является сотрудником.')
+        if prep.movement_request_id:raise ValidationError('Заявка на заезд уже отправлена. Следите за её этапами в перевахте.')
+        from . import housing
+        person=housing.person_for(prep.employee)
+        request=MovementReviewRequest.objects.create(company=user.company,person=person,kind='ARRIVAL',movement_date=prep.expected_on,to_camp=prep.camp,
+            requested_by=user,source='DISPATCHER',status='PENDING_APPROVAL',employment_kind='NEW',planning_position_name=row.position,
+            position_name=prep.employee.display_position,construction_object=row.construction_object,site_object=row.construction_object,
+            site=row.construction_object.name,phone=prep.employee.phone or prep.candidate.phone,travel_status='Ожидается',note=f'Кандидат из Магазина подбора. Заявка №{row.pk}. '+prep.notes)
+        prep.movement_request=request
+        from .departure_workflow import create_approval,log
+        create_approval(request);log(request,user,'Кандидат из Магазина подбора отправлен на согласование руководителю')
+    elif confirm:
         if not prep.employee_id or not prep.camp_id:raise ValidationError('Укажите оформленного сотрудника и ВЖГ. Кандидат сам по себе не является сотрудником.')
         day=values.get('actual_on')
         if not day:raise ValidationError('Укажите фактическую дату заезда.')
         if day<prep.candidate.ready_on:raise ValidationError('Фактический заезд раньше готовности кандидата.')
         from . import housing
         prep.full_clean()
-        from core.fact_edit_window import require_fact_day
-        require_fact_day(user,day)
+        housing.require_fact_day(user,day)
         existing=CampStay.objects.filter(company=user.company,person__employee=prep.employee,camp=prep.camp,arrived_on=day,cancelled_at__isnull=True).first()
         if existing:
             if ArrivalPreparation.objects.filter(actual_stay=existing).exclude(pk=pk).exists():raise ValidationError('Этот заезд уже подтверждён по другому кандидату.')
         else:
             housing.move(user,'ARRIVAL',prep.camp,day,[],employees=[prep.employee],comment=f'Заявка на подбор №{row.pk}. '+prep.notes)
             existing=CampStay.objects.get(company=user.company,person__employee=prep.employee,camp=prep.camp,arrived_on=day,cancelled_at__isnull=True)
-        prep.actual_stay=existing
-        prep.status='ARRIVED'
+        prep.actual_stay=existing;prep.status='ARRIVED'
     prep.revision+=1;prep.save();touch(row)
-    audit(user,row,'Фактический заезд подтверждён.' if confirm else 'Подготовка заезда обновлена.',prep.candidate)
+    audit(user,row,'Заезд отправлен на согласование руководителю.' if workflow else 'Фактический заезд подтверждён.' if confirm else 'Подготовка заезда обновлена.',prep.candidate)
     return prep
 
 

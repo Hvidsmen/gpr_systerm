@@ -61,6 +61,25 @@ class RecruitmentTests(TestCase):
         self.assertTrue(prep.actually_arrived);self.assertEqual(prep.actual_stay.person.employee_id,self.employee.pk)
         self.assertEqual(HousingEvent.objects.get().kind,'ARRIVAL');self.assertEqual(service.progress(RecruitmentRequest.objects.get(pk=row.pk))['arrived'],1)
         self.assertEqual(Employee.objects.count(),before)
+    def test_candidate_can_be_sent_from_vacancy_into_arrival_workflow(self):
+        from apps.planning.models import WorkTask
+        prep=self.preparation()
+        prep=service.prepare_arrival(self.dispatch,prep.pk,prep.revision,self.arrival_values(),workflow=True)
+        self.assertIsNotNone(prep.movement_request_id)
+        self.assertEqual(prep.movement_request.status,'PENDING_APPROVAL')
+        self.assertEqual(prep.movement_request.employment_kind,'NEW')
+        self.assertTrue(WorkTask.objects.filter(key=f'personnel-movement-approval:{prep.movement_request_id}',target_role='MANAGER').exists())
+        self.assertFalse(CampStay.objects.exists())
+    def test_common_pool_candidate_can_be_selected_for_vacancy(self):
+        from .models import TalentPoolCandidate
+        from .recruitment_forms import CandidateForm
+        row=self.row();service.take_request(self.recruiter,row.pk,row.revision)
+        pool=TalentPoolCandidate.objects.create(company=self.company,full_name='Человек из пула',phone='555',created_by=self.recruiter)
+        form=CandidateForm({'pool_candidate':pool.pk,'full_name':'','phone':'','status':'READY','ready_on':self.day,'notes':'','revision':0},company=self.company,request_row=row)
+        self.assertTrue(form.is_valid(),form.errors)
+        candidate=service.save_candidate(self.recruiter,row.pk,form.cleaned_data)
+        self.assertEqual(candidate.pool_candidate,pool);self.assertEqual(candidate.full_name,pool.full_name)
+        self.assertTrue(pool.vacancy_candidates.filter(request=row).exists())
     def test_handoff_and_confirmation_are_idempotent(self):
         prep=self.preparation();c=prep.candidate
         self.assertEqual(service.handoff(self.recruiter,c.pk,0).pk,prep.pk)

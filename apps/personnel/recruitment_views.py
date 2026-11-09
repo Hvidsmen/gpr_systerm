@@ -8,9 +8,9 @@ from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_http_methods, require_POST, require_GET
 from core.permissions import require_roles, role_code
-from .models import RecruitmentRequest, RecruitmentCandidate, ArrivalPreparation, CandidateDocument
+from .models import RecruitmentRequest, RecruitmentCandidate, ArrivalPreparation, CandidateDocument,TalentPoolCandidate
 from . import recruitment as service
-from .recruitment_forms import RequestForm, CandidateForm, ArrivalForm, RevisionForm, ReasonForm
+from .recruitment_forms import RequestForm, CandidateForm, ArrivalForm, RevisionForm, ReasonForm,TalentPoolForm
 
 
 def requests_for(user):
@@ -41,6 +41,27 @@ def request_list(request):
     for row in page:row.progress=service.progress(row)
     params=request.GET.copy();params.pop('page',None)
     return render(request,'personnel/recruitment_list.html',{**context(request.user),'page':page,'filter_query':query,'filter_state':state,'pagination_query':params.urlencode()})
+
+
+@login_required
+@require_GET
+def pool_list(request):
+    require_roles(request.user,service.READ)
+    rows=TalentPoolCandidate.objects.filter(company=request.user.company).prefetch_related('vacancy_candidates__request')
+    query=request.GET.get('q','').strip()
+    if query:rows=rows.filter(Q(full_name__icontains=query)|Q(phone__icontains=query))
+    return render(request,'personnel/recruitment_pool.html',{**context(request.user),'rows':rows,'query':query})
+
+
+@login_required
+@require_http_methods(['GET','POST'])
+def pool_edit(request,pk=None):
+    require_roles(request.user,service.RECRUIT)
+    row=get_object_or_404(TalentPoolCandidate,company=request.user.company,pk=pk) if pk else None
+    form=TalentPoolForm(request.POST if request.method=='POST' else None,company=request.user.company,user=request.user,instance=row)
+    if request.method=='POST' and form.is_valid():
+        saved=form.save();messages.success(request,'Кандидат сохранён в общем пуле.');return redirect('personnel:recruitment_pool')
+    return render(request,'personnel/recruitment_form.html',{**context(request.user),'title':'Карточка кандидата общего пула','form':form})
 
 
 @login_required
@@ -138,9 +159,9 @@ def arrival_edit(request,pk):
         if bound.is_valid():
             try:
                 if action=='cancel':service.cancel_preparation(request.user,pk,bound.cleaned_data['revision'],bound.cleaned_data['reason'])
-                elif action in {'save','confirm'}:service.prepare_arrival(request.user,pk,bound.cleaned_data['revision'],bound.cleaned_data,confirm=action=='confirm')
+                elif action in {'save','confirm','submit'}:service.prepare_arrival(request.user,pk,bound.cleaned_data['revision'],bound.cleaned_data,confirm=action=='confirm',workflow=action=='submit')
                 else:raise ValidationError('Неизвестное действие.')
             except (ValidationError,IntegrityError) as exc:error(bound,exc)
             else:
-                messages.success(request,'Заезд подтверждён.' if action=='confirm' else 'Подготовка заезда сохранена.');return redirect('personnel:movements')
+                messages.success(request,'Заезд отправлен руководителю на согласование.' if action=='submit' else 'Заезд подтверждён.' if action=='confirm' else 'Подготовка заезда сохранена.');return redirect('personnel:movements')
     return render(request,'personnel/recruitment_arrival.html',{**context(request.user),'personnel_section':'movements','prep':prep,'form':form,'cancel_form':cancel_form})

@@ -338,15 +338,16 @@ def movement_review_accept(request,pk):
     row=get_object_or_404(MovementReviewRequest.objects.select_related('person','from_camp','to_camp','event'),pk=pk,company=request.user.company)
     workflow_action=request.POST.get('workflow_action') if request.method=='POST' else None
     if workflow_action:
-        from .departure_workflow import arrive_hub,leave_hub,resubmit,update_hub
+        from .departure_workflow import arrive_camp,arrive_hub,leave_hub,resubmit,update_hub
         try:
             if workflow_action=='resubmit':resubmit(request.user,row)
             elif workflow_action=='arrive_hub':arrive_hub(request.user,row,forms.DateField().clean(request.POST.get('hub_arrived_on')))
             elif workflow_action=='hub_documents':update_hub(request.user,row,tickets_ready=request.POST.get('tickets_ready')=='1',clearance_document=request.FILES.get('clearance_document'))
             elif workflow_action=='leave_hub':leave_hub(request.user,row,forms.DateField().clean(request.POST.get('hub_departed_on')))
+            elif workflow_action=='arrive_camp':arrive_camp(request.user,row,forms.DateField().clean(request.POST.get('final_arrived_on')))
             else:raise ValidationError('Неизвестное действие по заявке.')
         except ValidationError as exc:messages.error(request,'; '.join(exc.messages))
-        else:messages.success(request,{'resubmit':'Заявка повторно отправлена руководителю.','arrive_hub':'Прибытие в ОП Дудинка зафиксировано.','hub_documents':'Данные по билетам и обходному листу сохранены.','leave_hub':'Выезд из ОП Дудинка зафиксирован. Заявка завершена.'}[workflow_action])
+        else:messages.success(request,{'resubmit':'Заявка повторно отправлена руководителю.','arrive_hub':'Прибытие в ОП Дудинка зафиксировано.','hub_documents':'Данные по билетам и обходному листу сохранены.','leave_hub':'Выезд из ОП Дудинка зафиксирован.','arrive_camp':'Фактический заезд в ВЖГ подтверждён. Заявка завершена.'}[workflow_action])
         return redirect('personnel:movement_review_accept',pk=row.pk)
     edit_mode=row.status in {'OPEN','RETURNED'} or request.GET.get('edit')=='1' or request.method=='POST'
     confirm=request.method=='POST' and request.POST.get('review_action')=='confirm'

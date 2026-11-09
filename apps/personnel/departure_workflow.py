@@ -15,12 +15,13 @@ def log(row,actor,action,comment=''):
 
 
 def create_approval(row):
-    if row.kind!='DEPARTURE' or row.source!='DISPATCHER':return None
-    task=ensure(row.company,f'personnel-departure-approval:{row.pk}',kind='APPROVAL',
-        title=f'Согласовать выезд: {row.person.display_name}',
-        description=(f'{row.person.display_name}\nВЖГ: {row.from_camp or "—"}\n'
+    if row.kind not in {'ARRIVAL','DEPARTURE'} or row.source!='DISPATCHER':return None
+    direction='заезд' if row.kind=='ARRIVAL' else 'выезд'
+    task=ensure(row.company,f'personnel-movement-approval:{row.pk}',kind='APPROVAL',
+        title=f'Согласовать {direction}: {row.person.display_name}',
+        description=(f'{row.person.display_name}\nВЖГ: {(row.to_camp if row.kind=="ARRIVAL" else row.from_camp) or "—"}\n'
                      f'Плановая дата: {row.movement_date:%d.%m.%Y}\n'
-                     f'Вид: {"Выезд с увольнением" if row.departure_destination=="DISMISSAL" else "Выезд на межвахтовый отдых"}'),
+                     f'Вид: {"Заезд" if row.kind=="ARRIVAL" else "Выезд с увольнением" if row.departure_destination=="DISMISSAL" else "Выезд на межвахтовый отдых"}'),
         target_role='MANAGER',created_by=row.requested_by,due_date=timezone.localdate()+timedelta(days=1),
         construction_object=row.construction_object)
     return task
@@ -35,7 +36,7 @@ def decide(user,row,approved,comment=''):
     row.status='PEREVAKHTA' if approved else 'RETURNED';row.approved_by=user;row.approved_at=timezone.now();row.approval_comment=comment.strip()
     row.save(update_fields=['status','approved_by','approved_at','approval_comment','updated_at'])
     log(row,user,'Согласовано руководителем' if approved else 'Возвращено на доработку',comment)
-    task=WorkTask.objects.filter(company=row.company,key=f'personnel-departure-approval:{row.pk}').first()
+    task=WorkTask.objects.filter(company=row.company,key=f'personnel-movement-approval:{row.pk}').first()
     if task:state(task,'DONE' if approved else 'SUPERSEDED',user,comment)
     return row
 
@@ -47,7 +48,7 @@ def resubmit(user,row):
     if role_code(user) not in {'ADMIN','PERSONNEL_DISPATCHER','HR_HEAD'}:raise PermissionDenied
     row.status='PENDING_APPROVAL';row.approved_by=None;row.approved_at=None;row.approval_comment=''
     row.save(update_fields=['status','approved_by','approved_at','approval_comment','updated_at'])
-    task=WorkTask.objects.filter(company=row.company,key=f'personnel-departure-approval:{row.pk}').first()
+    task=WorkTask.objects.filter(company=row.company,key=f'personnel-movement-approval:{row.pk}').first()
     if task:
         task.status='OPEN';task.started_at=None;task.save(update_fields=['status','started_at','updated_at']);task_event(task,user,'Повторно отправлено на согласование')
     else:create_approval(row)
@@ -59,15 +60,16 @@ def arrive_hub(user,row,day):
     row=MovementReviewRequest.objects.select_for_update().select_related('person','from_camp').get(pk=row.pk,company=user.company)
     if row.status!='PEREVAKHTA':raise ValidationError('Прибытие в ОП Дудинка фиксируется после согласования.')
     if day>timezone.localdate():raise ValidationError('Нельзя указать будущую дату прибытия.')
-    stay=CampStay.objects.select_for_update().filter(company=row.company,person=row.person,camp=row.from_camp,cancelled_at=None,departed_on=None).order_by('-arrived_on').first()
-    if not stay:raise ValidationError('У сотрудника нет открытого размещения в указанном ВЖГ.')
-    if day<stay.arrived_on:raise ValidationError('Дата прибытия в Дудинку не может быть раньше заезда в ВЖГ.')
-    stay.departed_on=day;stay.save(update_fields=['departed_on','updated_at'])
-    event=HousingEvent.objects.create(company=row.company,person=row.person,date=day,kind='DEPARTURE',departure_destination=row.departure_destination,
-        from_camp=row.from_camp,stay=stay,comment='Прибыл в ОП Дудинка. Фактический выезд из ВЖГ.',recorded_by=user)
-    row.event=event;row.hub_arrived_on=day;row.status='AT_HUB';row.travel_status='В ОП Дудинка'
+    if row.kind=='DEPARTURE':
+        stay=CampStay.objects.select_for_update().filter(company=row.company,person=row.person,camp=row.from_camp,cancelled_at=None,departed_on=None).order_by('-arrived_on').first()
+        if not stay:raise ValidationError('У сотрудника нет открытого размещения в указанном ВЖГ.')
+        if day<stay.arrived_on:raise ValidationError('Дата прибытия в Дудинку не может быть раньше заезда в ВЖГ.')
+        stay.departed_on=day;stay.save(update_fields=['departed_on','updated_at'])
+        row.event=HousingEvent.objects.create(company=row.company,person=row.person,date=day,kind='DEPARTURE',departure_destination=row.departure_destination,
+            from_camp=row.from_camp,stay=stay,comment='Прибыл в ОП Дудинка. Фактический выезд из ВЖГ.',recorded_by=user)
+    row.hub_arrived_on=day;row.status='AT_HUB';row.travel_status='В ОП Дудинка'
     row.save(update_fields=['event','hub_arrived_on','status','travel_status','updated_at'])
-    log(row,user,'Прибыл в ОП Дудинка','Зафиксирован фактический выезд из ВЖГ.')
+    log(row,user,'Прибыл в ОП Дудинка','Зафиксирован фактический выезд из ВЖГ.' if row.kind=='DEPARTURE' else 'Фактический заезд в ВЖГ ещё не выполнен.')
 
 
 @transaction.atomic
@@ -88,8 +90,26 @@ def leave_hub(user,row,day):
     if row.status!='AT_HUB':raise ValidationError('Выезд из Дудинки фиксируется только для сотрудника в ОП Дудинка.')
     if not row.tickets_ready or not row.clearance_document:raise ValidationError('Перед выездом должны быть оформлены билеты и прикреплён обходной лист.')
     if day<row.hub_arrived_on or day>timezone.localdate():raise ValidationError('Проверьте фактическую дату выезда из Дудинки.')
-    row.hub_departed_on=day;row.status='COMPLETED';row.travel_status='Убыл из ОП Дудинка';row.reviewed_by=user;row.reviewed_at=timezone.now()
+    row.hub_departed_on=day;row.status='EN_ROUTE' if row.kind=='ARRIVAL' else 'COMPLETED';row.travel_status='В пути в ВЖГ' if row.kind=='ARRIVAL' else 'Убыл из ОП Дудинка';row.reviewed_by=user;row.reviewed_at=timezone.now()
     row.save(update_fields=['hub_departed_on','status','travel_status','reviewed_by','reviewed_at','updated_at'])
     if row.departure_destination=='DISMISSAL' and row.person.employee_id:
         employee=row.person.employee;employee.is_active=False;employee.save(update_fields=['is_active','updated_at'])
-    log(row,user,'Выехал из ОП Дудинка','Заявка завершена. '+('Сотрудник уволен.' if row.departure_destination=='DISMISSAL' else 'Сотрудник переведён на межвахтовый отдых.'))
+    log(row,user,'Выехал из ОП Дудинка','Сотрудник направлен в ВЖГ.' if row.kind=='ARRIVAL' else 'Заявка завершена. '+('Сотрудник уволен.' if row.departure_destination=='DISMISSAL' else 'Сотрудник переведён на межвахтовый отдых.'))
+
+
+@transaction.atomic
+def arrive_camp(user,row,day):
+    row=MovementReviewRequest.objects.select_for_update().select_related('person__employee','to_camp').get(pk=row.pk,company=user.company)
+    if row.kind!='ARRIVAL' or row.status!='EN_ROUTE':raise ValidationError('Фактический заезд доступен после отправления сотрудника из ОП Дудинка.')
+    if day<row.hub_departed_on or day>timezone.localdate():raise ValidationError('Проверьте фактическую дату прибытия в ВЖГ.')
+    from . import housing
+    housing.move(user,'ARRIVAL',row.to_camp,day,[row.person],comment=f'Заявка на заезд №{row.pk}. Прибытие через ОП Дудинка.')
+    event=HousingEvent.objects.filter(company=row.company,person=row.person,kind='ARRIVAL',date=day,to_camp=row.to_camp).order_by('-pk').first()
+    row.event=event;row.final_arrived_on=day;row.status='COMPLETED';row.travel_status='Прибыл в ВЖГ';row.reviewed_by=user;row.reviewed_at=timezone.now()
+    row.save(update_fields=['event','final_arrived_on','status','travel_status','reviewed_by','reviewed_at','updated_at'])
+    prep=getattr(row,'recruitment_arrival',None)
+    if prep:
+        prep.actual_stay=event.stay;prep.status='ARRIVED';prep.revision+=1;prep.save(update_fields=['actual_stay','status','revision','updated_at'])
+        from .recruitment import audit,touch
+        touch(prep.candidate.request);audit(user,prep.candidate.request,'Фактический заезд в ВЖГ подтверждён.',prep.candidate)
+    log(row,user,'Прибыл в ВЖГ','Фактический заезд зафиксирован. Заявка завершена.')

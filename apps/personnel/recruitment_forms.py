@@ -2,7 +2,7 @@ from django import forms
 from django.utils import timezone
 from apps.projects.models import ConstructionObject
 from apps.resources.models import Employee
-from .models import RecruitmentRequest, RecruitmentCandidate
+from .models import RecruitmentRequest, RecruitmentCandidate,TalentPoolCandidate
 from .recruitment import allowed_camps, validate_documents
 
 
@@ -43,13 +43,30 @@ class CandidateForm(forms.ModelForm):
         help_text='До 10 файлов, каждый до 10 МБ: PDF, DOC, DOCX, TXT, JPG, PNG. Скачивание доступно только участникам процесса.')
     class Meta:
         model = RecruitmentCandidate
-        fields = ['full_name','phone','status','ready_on','notes']
+        fields = ['pool_candidate','full_name','phone','status','ready_on','notes']
         widgets = {'ready_on':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}),'notes':forms.Textarea(attrs={'rows':3})}
     def __init__(self,*args,company,request_row,**kwargs):
         super().__init__(*args,**kwargs)
         self.instance.company=company;self.instance.request=request_row
+        self.fields['pool_candidate'].queryset=TalentPoolCandidate.objects.filter(company=company,is_active=True).order_by('full_name','pk')
+        self.fields['pool_candidate'].required=False;self.fields['pool_candidate'].empty_label='Новый человек — заполнить вручную'
+        self.fields['full_name'].required=False
         self.fields['status'].choices=[(v,l) for v,l in RecruitmentCandidate.STATES if v!='TRANSFERRED']
         if self.instance.pk:self.initial['revision']=self.instance.revision
+    def clean(self):
+        data=super().clean();pool=data.get('pool_candidate')
+        if pool:
+            data['full_name']=pool.full_name;data['phone']=pool.phone or data.get('phone','');data['notes']=data.get('notes') or pool.notes
+        if not (data.get('full_name') or '').strip():self.add_error('full_name','Выберите человека из пула или укажите ФИО.')
+        return data
+
+
+class TalentPoolForm(forms.ModelForm):
+    class Meta:
+        model=TalentPoolCandidate;fields=['full_name','phone','notes','is_active'];widgets={'notes':forms.Textarea(attrs={'rows':3})}
+    def __init__(self,*args,company,user,**kwargs):
+        super().__init__(*args,**kwargs);self.instance.company=company
+        if not self.instance.pk:self.instance.created_by=user
 
 
 class ArrivalForm(RevisionForm):
@@ -57,7 +74,7 @@ class ArrivalForm(RevisionForm):
     camp=forms.ModelChoiceField(label='ВЖГ',queryset=None,required=False)
     employee=forms.ModelChoiceField(label='Оформленный сотрудник',queryset=None,required=False,
         help_text='Выберите сотрудника после оформления и появления в реестре. Совпадение ФИО само по себе не связывает кандидата с сотрудником.')
-    actual_on=forms.DateField(label='Фактическая дата заезда',required=False,help_text='Используется только при подтверждении заезда. Кнопка «Сохранить подготовку» не фиксирует факт.',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
+    actual_on=forms.DateField(required=False,widget=forms.HiddenInput())
     notes=forms.CharField(label='Комментарий к заезду',required=False,widget=forms.Textarea(attrs={'rows':3}))
     def __init__(self,*args,company,preparation,**kwargs):
         super().__init__(*args,**kwargs)

@@ -40,7 +40,8 @@ class MovementReviewRequestTests(TestCase):
         self.assertEqual(request_row.kind,'ARRIVAL')
         self.assertIsNone(request_row.event)
         self.assertFalse(self.person.housing_events.exists())
-        self.assertEqual(request_row.status,'OPEN')
+        self.assertEqual(request_row.status,'PENDING_APPROVAL')
+        MovementReviewRequest.objects.filter(pk=request_row.pk).update(status='OPEN');request_row.refresh_from_db()
         self.assertEqual(request_row.planning_position_name,'Начальник участка по ГПР')
         self.assertEqual(request_row.position_name,self.employee.display_position)
         self.assertEqual(request_row.construction_object,self.obj)
@@ -119,7 +120,7 @@ class MovementReviewRequestTests(TestCase):
         housing.request_moves(self.personnel,'DEPARTURE',self.camp,day,[self.person],departure_destination='REST')
         row=MovementReviewRequest.objects.get(kind='DEPARTURE')
         self.assertEqual(row.status,'PENDING_APPROVAL')
-        task=WorkTask.objects.get(key=f'personnel-departure-approval:{row.pk}')
+        task=WorkTask.objects.get(key=f'personnel-movement-approval:{row.pk}')
         self.assertEqual(task.target_role,'MANAGER')
         decide(manager,row,True,'Согласовано')
         row.refresh_from_db();self.assertEqual(row.status,'PEREVAKHTA')
@@ -132,6 +133,22 @@ class MovementReviewRequestTests(TestCase):
         leave_hub(self.reviewer,row,day)
         row.refresh_from_db();self.assertEqual(row.status,'COMPLETED');self.assertEqual(row.hub_departed_on,day)
         self.assertEqual(row.workflow_events.count(),6)
+
+    def test_arrival_is_recorded_only_after_dudinka_and_reaching_camp(self):
+        from .departure_workflow import arrive_camp,arrive_hub,decide,leave_hub,update_hub
+        manager=User.objects.create_user(username='arrival-manager',company=self.company,role=Role.objects.get(code='MANAGER'))
+        day=timezone.localdate()
+        housing.request_moves(self.personnel,'ARRIVAL',self.camp,day,[self.person])
+        row=MovementReviewRequest.objects.get(kind='ARRIVAL')
+        self.assertEqual(row.status,'PENDING_APPROVAL');self.assertFalse(self.person.stays.exists())
+        decide(manager,row,True)
+        arrive_hub(self.reviewer,row,day);row.refresh_from_db()
+        self.assertEqual(row.status,'AT_HUB');self.assertFalse(self.person.stays.exists())
+        update_hub(self.reviewer,row,tickets_ready=True,clearance_document=SimpleUploadedFile('arrival-clearance.pdf',b'pdf'))
+        leave_hub(self.reviewer,row,day);row.refresh_from_db()
+        self.assertEqual(row.status,'EN_ROUTE');self.assertFalse(self.person.stays.exists())
+        arrive_camp(self.reviewer,row,day);row.refresh_from_db()
+        self.assertEqual(row.status,'COMPLETED');self.assertEqual(self.person.stays.get().camp,self.camp)
 
     def test_planning_position_falls_back_to_employee_position(self):
         self.slot.cancelled_at=timezone.now();self.slot.save(update_fields=['cancelled_at','updated_at'])
@@ -151,7 +168,7 @@ class MovementReviewRequestTests(TestCase):
         self.client.force_login(self.transport)
         self.assertEqual(self.client.post(reverse('personnel:movement_review_accept',args=[request_row.pk])).status_code,403)
         request_row.refresh_from_db()
-        self.assertEqual(request_row.status,'OPEN')
+        self.assertEqual(request_row.status,'PENDING_APPROVAL')
 
     def test_review_tabs_and_date_filter_separate_arrivals_from_departures(self):
         first=timezone.localdate();second=first+timedelta(days=1)
