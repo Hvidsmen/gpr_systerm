@@ -133,12 +133,14 @@ class MovementReviewRequestTests(TestCase):
     def test_dispatcher_and_excel_requests_are_separate_and_newest_first(self):
         day=timezone.localdate()
         older=MovementReviewRequest.objects.create(company=self.company,person=self.person,kind='ARRIVAL',movement_date=day,to_camp=self.camp,requested_by=self.personnel)
-        imported=MovementReviewRequest.objects.create(company=self.company,person=self.person,kind='ARRIVAL',movement_date=day,to_camp=self.camp,requested_by=self.reviewer,source='EXCEL')
-        newer=MovementReviewRequest.objects.create(company=self.company,person=self.person,kind='ARRIVAL',movement_date=day,to_camp=self.camp,requested_by=self.personnel)
+        imported=MovementReviewRequest.objects.create(company=self.company,person=self.person,kind='ARRIVAL',movement_date=day+timedelta(days=1),to_camp=self.camp,requested_by=self.reviewer,source='EXCEL')
+        newer=MovementReviewRequest.objects.create(company=self.company,person=self.person,kind='ARRIVAL',movement_date=day+timedelta(days=2),to_camp=self.camp,requested_by=self.personnel)
         self.client.force_login(self.reviewer);page=self.client.get(reverse('personnel:movement_reviews'))
         self.assertContains(page,'Заявки диспетчера');self.assertContains(page,'Заявки из Excel')
         self.assertEqual([row.pk for row in page.context['dispatcher_review_requests']],[newer.pk,older.pk])
         self.assertEqual([row.pk for row in page.context['excel_review_requests']],[imported.pk])
+        sorted_page=self.client.get(reverse('personnel:movement_reviews'),{'sort':'movement_asc'})
+        self.assertEqual(sorted_page.context['review_sort'],'movement_asc');self.assertEqual([row.pk for row in sorted_page.context['dispatcher_review_requests']],[older.pk,newer.pk]);self.assertContains(sorted_page,'ФИО: А–Я')
 
     def test_visible_excel_sheets_create_review_requests_without_duplicates(self):
         from openpyxl import Workbook

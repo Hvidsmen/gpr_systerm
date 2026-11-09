@@ -291,6 +291,9 @@ def workspace(request, movements=False, movement_page='new'):
 
 def review_request_context(request):
     tab='departure' if request.GET.get('kind')=='departure' else 'arrival'
+    sort=request.GET.get('sort','created_desc')
+    sort_options=[('created_desc','Новые заявки сверху'),('created_asc','Старые заявки сверху'),('name_asc','ФИО: А–Я'),('name_desc','ФИО: Я–А'),('movement_asc','Дата заезда / выезда: ранние сверху'),('movement_desc','Дата заезда / выезда: поздние сверху')]
+    if sort not in dict(sort_options):sort='created_desc'
     raw_date=request.GET.get('date','').strip();filter_date=None
     if raw_date:
         try:filter_date=forms.DateField().clean(raw_date)
@@ -299,10 +302,12 @@ def review_request_context(request):
     qs=base.filter(kind='ARRIVAL') if tab=='arrival' else base.exclude(kind='ARRIVAL')
     if filter_date:qs=qs.filter(movement_date=filter_date)
     from django.db.models import Case,When,Value,IntegerField
+    ordering={'created_desc':['-created_at','-pk'],'created_asc':['created_at','pk'],'name_asc':['person__full_name','pk'],'name_desc':['-person__full_name','-pk'],
+        'movement_asc':['movement_date','pk'],'movement_desc':['-movement_date','-pk']}[sort]
     rows=list(qs.select_related('person__employee','from_camp','to_camp','requested_by','event').annotate(
-        open_order=Case(When(status='OPEN',then=Value(0)),default=Value(1),output_field=IntegerField())).order_by('open_order','-created_at','-pk')[:1000])
+        open_order=Case(When(status='OPEN',then=Value(0)),default=Value(1),output_field=IntegerField())).order_by('open_order',*ordering)[:1000])
     dispatcher_rows=[row for row in rows if row.source=='DISPATCHER'];excel_rows=[row for row in rows if row.source=='EXCEL']
-    return {'personnel_section':'reviews','movement_review_requests':rows,'dispatcher_review_requests':dispatcher_rows,'excel_review_requests':excel_rows,'review_tab':tab,'review_arrival':tab=='arrival','review_date':raw_date,
+    return {'personnel_section':'reviews','movement_review_requests':rows,'dispatcher_review_requests':dispatcher_rows,'excel_review_requests':excel_rows,'review_tab':tab,'review_arrival':tab=='arrival','review_date':raw_date,'review_sort':sort,'review_sort_options':sort_options,
         'arrival_review_requests':rows if tab=='arrival' else [],'departure_review_requests':rows if tab=='departure' else [],
         'arrival_review_count':base.filter(kind='ARRIVAL').count(),'departure_review_count':base.exclude(kind='ARRIVAL').count(),
         'movement_review_open_count':base.filter(status='OPEN').count()}
