@@ -15,7 +15,7 @@ class MovementActionTests(TestCase):
     def setUp(self):
         self.client.force_login(self.hr)
         self.url=reverse('personnel:housing')
-        self.unassigned=StaffingSlot.objects.create(company=self.company,group=self.group,person=self.second_person,status='МВ',pattern=self.pattern,arrival_date=self.day)
+        self.unassigned=StaffingSlot.objects.create(company=self.company,group=self.group,person=self.second_person,status='МО',pattern=self.pattern,arrival_date=self.day)
 
     def payload(self, kind, employee=None, camp=None, **extra):
         return {'camp':(camp or self.a).pk,'kind':kind,'date':str(self.day),'employees':[employee or self.employee.pk], 'snapshot':housing.movement_snapshot(self.hr),**extra}
@@ -23,12 +23,21 @@ class MovementActionTests(TestCase):
     def test_unassigned_employee_has_arrival_button_and_must_choose_camp(self):
         page=self.client.get(self.url,{'date':str(self.day)})
         self.assertContains(page,f'choose_camp=1&amp;date={self.day}&amp;action=ARRIVAL&amp;employee={self.second_employee.pk}#movement')
+        self.assertNotContains(page,reverse('personnel:initial_departure',args=[self.second_person.pk]))
+        self.assertNotContains(page,f'action=DEPARTURE&amp;employee={self.second_employee.pk}')
+        self.assertNotContains(page,f'action=TRANSFER&amp;employee={self.second_employee.pk}')
         page=self.client.get(self.url,{'date':str(self.day),'action':'ARRIVAL','employee':self.second_employee.pk,'choose_camp':'1'})
         self.assertIsNone(page.context['form']['camp'].value())
         payload=self.payload('ARRIVAL',employee=self.second_employee.pk);payload['camp']=''
         response=self.client.post(self.url,payload)
         self.assertIn('camp',response.context['form'].errors)
         self.assertFalse(CampStay.objects.filter(person=self.second_person).exists())
+
+    def test_present_employee_has_departure_and_transfer_but_no_arrival(self):
+        page=self.client.get(self.url,{'camp':self.a.pk,'date':str(self.day)})
+        self.assertContains(page,f'action=DEPARTURE&amp;employee={self.employee.pk}')
+        self.assertContains(page,f'action=TRANSFER&amp;employee={self.employee.pk}')
+        self.assertNotContains(page,f'action=ARRIVAL&amp;employee={self.employee.pk}')
 
     def test_arrival_uses_explicit_camp_and_preserves_initial_table(self):
         self.assertEqual(self.client.post(self.url,self.payload('ARRIVAL',employee=self.second_employee.pk,camp=self.b)).status_code,302)
