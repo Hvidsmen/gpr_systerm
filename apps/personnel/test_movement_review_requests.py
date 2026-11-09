@@ -24,6 +24,7 @@ class MovementReviewRequestTests(TestCase):
         cls.site=ConstructionObject.objects.create(company=cls.company,project=cls.project,parent=cls.obj,name='КТП-1')
         CampObjectLink.objects.create(company=cls.company,camp=cls.camp,construction_object=cls.site)
         cls.personnel=User.objects.create_user(username='personnel-request',company=cls.company,role=Role.objects.get(code='PERSONNEL_DISPATCHER'))
+        cls.other_personnel=User.objects.create_user(username='other-personnel-request',company=cls.company,role=Role.objects.get(code='PERSONNEL_DISPATCHER'))
         cls.reviewer=User.objects.create_user(username='personnel-review',company=cls.company,role=Role.objects.get(code='HR_HEAD'))
         cls.transport=User.objects.create_user(username='transport-no-access',company=cls.company,role=Role.objects.get(code='TRANSPORT_DISPATCHER'))
         cls.admin=User.objects.create_user(username='movement-admin',company=cls.company,role=Role.objects.get(code='ADMIN'))
@@ -153,6 +154,9 @@ class MovementReviewRequestTests(TestCase):
         rows=list(MovementReviewRequest.objects.filter(approval_batch=batch).order_by('pk'));self.assertEqual(len(rows),2)
         task=WorkTask.objects.get(key=f'personnel-movement-batch:{batch}')
         self.assertIn('2 сотрудников',task.title)
+        self.client.force_login(self.personnel);mine=self.client.get(reverse('personnel:my_movement_requests'))
+        self.assertContains(mine,'Мои заявки');self.assertContains(mine,self.person.display_name);self.assertContains(mine,second.display_name);self.assertContains(mine,'На согласовании')
+        self.assertEqual(self.client.get(reverse('personnel:movement_reviews')).status_code,403)
         self.client.force_login(self.admin);url=reverse('planning:task_detail',args=[task.pk])
         page=self.client.get(url);self.assertContains(page,self.person.display_name);self.assertContains(page,second.display_name)
         self.assertContains(page,'Согласовать выбранных');self.assertContains(page,'Не согласовать всех ожидающих')
@@ -177,6 +181,12 @@ class MovementReviewRequestTests(TestCase):
         task=WorkTask.objects.get(key=f'personnel-movement-batch:{transfer_batch}');self.assertEqual(MovementReviewRequest.objects.filter(approval_batch=transfer_batch,status='PENDING_APPROVAL').count(),2)
         self.client.force_login(self.admin);self.client.post(reverse('planning:task_detail',args=[task.pk]),{'action':'movement_approve_all'})
         self.assertEqual(set(MovementReviewRequest.objects.filter(approval_batch=transfer_batch).values_list('status',flat=True)),{'OPEN'})
+
+    def test_dispatcher_sees_only_own_request_details(self):
+        row=MovementReviewRequest.objects.create(company=self.company,person=self.person,kind='ARRIVAL',movement_date=timezone.localdate(),to_camp=self.camp,requested_by=self.other_personnel,status='PENDING_APPROVAL')
+        self.client.force_login(self.personnel)
+        self.assertEqual(self.client.get(reverse('personnel:movement_review_accept',args=[row.pk])).status_code,404)
+        self.assertNotContains(self.client.get(reverse('personnel:my_movement_requests')),self.person.display_name)
 
     def test_departure_goes_through_manager_dudinka_and_parallel_documents(self):
         from apps.planning.models import WorkTask

@@ -213,6 +213,7 @@ def workspace(request, movements=False, movement_page='new'):
                 if not (assigned and assigned.pattern_id and cycle_definition(assigned.pattern)):missing+=1
             if missing:messages.warning(request,f'У {missing} сотрудников цикл вахта/отдых не задан. Укажите его через «Изменить график»; прогноз для них пока не пересчитан.')
             if not movement_exclusions:
+                if not direct and request.user.role.code=='PERSONNEL_DISPATCHER':return redirect('personnel:my_movement_requests')
                 return redirect((reverse('personnel:movements')+'?camp='+str(camp.pk)+'&date='+str(form.cleaned_data['date'])+'#movement') if request.resolver_match.url_name=='movements' else camp_url(camp)+'#roster')
             retry=request.POST.copy();retry.setlist('employees',[str(row['employee'].pk) for row in movement_exclusions]);retry['snapshot']=housing.movement_snapshot(request.user)
             form=MovementForm(retry,company=request.user.company,camp=camp,day=day,fixed_employee=fixed_employee,allow_direct=request.user.role.code=='PERSONNEL_DISPATCHER')
@@ -323,7 +324,8 @@ def review_request_context(request):
 
 @login_required
 def movement_reviews(request):
-    access(request)
+    from core.permissions import require_roles
+    require_roles(request.user,{'ADMIN','HR_HEAD'})
     result=None
     if request.method=='POST' and request.POST.get('review_action')=='import_excel':
         uploaded=request.FILES.get('movement_excel')
@@ -342,8 +344,10 @@ def movement_reviews(request):
 def movement_review_accept(request,pk):
     from core.permissions import require_roles,role_code
     require_roles(request.user,{'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER','MANAGER'})
+    row_query=MovementReviewRequest.objects.select_related('person','from_camp','to_camp','event')
+    if role_code(request.user)=='PERSONNEL_DISPATCHER':row_query=row_query.filter(requested_by=request.user)
     row=get_object_or_404(
-        MovementReviewRequest.objects.select_related('person','from_camp','to_camp','event')
+        row_query
         .prefetch_related('workflow_events__actor'),
         pk=pk,company=request.user.company,
     )
@@ -403,7 +407,10 @@ def movement_review_accept(request,pk):
 @require_http_methods(['POST'])
 def movement_review_cancel(request,pk):
     from .departure_workflow import cancel_request
-    row=get_object_or_404(MovementReviewRequest,pk=pk,company=request.user.company)
+    query=MovementReviewRequest.objects.filter(company=request.user.company)
+    from core.permissions import role_code
+    if role_code(request.user)=='PERSONNEL_DISPATCHER':query=query.filter(requested_by=request.user)
+    row=get_object_or_404(query,pk=pk)
     try:cancel_request(request.user,row,request.POST.get('reason',''))
     except ValidationError as exc:messages.error(request,'; '.join(exc.messages))
     else:messages.success(request,'Заявка отменена и сохранена в истории.')
@@ -600,6 +607,37 @@ def movement_context(request):
 @require_http_methods(['GET','POST'])
 def movements(request):
     return workspace(request,movements=True,movement_page='new')
+
+
+@login_required
+def my_movement_requests(request):
+    access(request)
+    from collections import OrderedDict
+    from django.db.models import Prefetch
+    from .models import MovementReviewEvent
+    scope=request.GET.get('scope','active');scope=scope if scope in {'active','history','all'} else 'active'
+    kind=request.GET.get('kind','');kind=kind if kind in {'ARRIVAL','DEPARTURE','TRANSFER'} else ''
+    query=MovementReviewRequest.objects.filter(company=request.user.company,requested_by=request.user).select_related('person','from_camp','to_camp','approved_by').prefetch_related(Prefetch('workflow_events',queryset=MovementReviewEvent.objects.select_related('actor')))
+    terminal={'COMPLETED','CANCELLED','ACCEPTED'}
+    if scope=='active':query=query.exclude(status__in=terminal)
+    elif scope=='history':query=query.filter(status__in=terminal)
+    if kind:query=query.filter(kind=kind)
+    search=request.GET.get('q','').strip()
+    if search:query=query.filter(Q(person__full_name__icontains=search)|Q(request_number__icontains=search)|Q(base_city__icontains=search))
+    grouped=OrderedDict()
+    for row in query.order_by('-created_at','-pk')[:1000]:
+        key=str(row.approval_batch) if row.approval_batch else f'row-{row.pk}'
+        group=grouped.setdefault(key,{'key':key,'is_batch':bool(row.approval_batch),'created_at':row.created_at,'kind':row.kind,'kind_label':row.get_kind_display(),'items':[]})
+        group['items'].append(row)
+    for group in grouped.values():
+        statuses={row.status for row in group['items']}
+        if 'RETURNED' in statuses:group['status']='Требует доработки';group['status_class']='bg-danger'
+        elif 'PENDING_APPROVAL' in statuses:group['status']='На согласовании';group['status_class']='bg-warning text-dark'
+        elif statuses <= {'COMPLETED','ACCEPTED'}:group['status']='Завершено';group['status_class']='bg-success'
+        elif statuses == {'CANCELLED'}:group['status']='Отменено';group['status_class']='bg-secondary'
+        else:group['status']='В работе';group['status_class']='bg-info text-dark'
+    active_count=MovementReviewRequest.objects.filter(company=request.user.company,requested_by=request.user).exclude(status__in=terminal).count()
+    return render(request,'personnel/my_movement_requests.html',{'personnel_section':'movements','dispatcher_page':'requests','groups':list(grouped.values()),'scope':scope,'kind':kind,'query':search,'active_request_count':active_count})
 
 
 @login_required
