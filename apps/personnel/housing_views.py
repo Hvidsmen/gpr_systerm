@@ -195,14 +195,14 @@ def workspace(request, movements=False, movement_page='new'):
             selected=form.cleaned_data['employees'];arrival=form.cleaned_data['kind']=='ARRIVAL'
             people=[] if arrival else list(Person.objects.filter(company=request.user.company,employee__in=selected))
             direct=bool(form.cleaned_data.get('direct_fact'))
-            operation=housing.move if direct or request.user.role.code!='PERSONNEL_DISPATCHER' else housing.request_moves
+            operation=housing.move if direct else housing.request_moves
             options={'setup_direct':True} if direct else {}
             saved,movement_exclusions=housing.process_moves_partially(operation,request.user,form.cleaned_data['kind'],camp,form.cleaned_data['date'],people,
                 employees=selected,target=form.cleaned_data.get('target'),comment=form.cleaned_data['comment'],snapshot=form.cleaned_data['snapshot'],departure_destination='DISMISSAL' if form.cleaned_data.get('destination')=='DISMISSAL' else 'REST',**options)
         except (ValidationError,IntegrityError) as exc:form.add_error(None,'; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Размещение изменилось одновременно с вашим вводом. Обновите список.')
         else:
             count=len(saved)
-            messages.success(request,f'Сохранено сотрудников: {count}. Исключено: {len(movement_exclusions)}.')
+            messages.success(request,(f'Сохранено фактических перемещений: {count}.' if direct else f'Создано заявок в перевахту: {count}.')+f' Исключено: {len(movement_exclusions)}.')
             for row in movement_exclusions:messages.warning(request,f'{row["employee"].display_name}: {row["reason"]}')
             from .rotation_calendar import cycle_definition,effective_schedule
             missing=0

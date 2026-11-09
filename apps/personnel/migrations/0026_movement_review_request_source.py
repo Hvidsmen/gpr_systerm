@@ -7,6 +7,6 @@ def classify_existing(apps,schema_editor):
 class Migration(migrations.Migration):
     dependencies=[('personnel','0025_zup_schedule_change_workflow')]
     operations=[
-        migrations.AddField(model_name='movementreviewrequest',name='source',field=models.CharField(choices=[('DISPATCHER','Диспетчерская'),('EXCEL','Excel')],default='DISPATCHER',max_length=12,verbose_name='Источник заявки')),
+        migrations.AddField(model_name='movementreviewrequest',name='source',field=models.CharField(choices=[('DISPATCHER','Портал'),('EXCEL','Excel')],default='DISPATCHER',max_length=12,verbose_name='Источник заявки')),
         migrations.RunPython(classify_existing,migrations.RunPython.noop),
     ]

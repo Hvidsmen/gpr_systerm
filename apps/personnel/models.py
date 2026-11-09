@@ -243,7 +243,7 @@ class BaseCity(PersonnelModel):
 
 class MovementReviewRequest(PersonnelModel):
     STATUSES=[('OPEN','Ожидает проверки'),('ACCEPTED','Принято')]
-    SOURCES=[('DISPATCHER','Диспетчерская'),('EXCEL','Excel')]
+    SOURCES=[('DISPATCHER','Портал'),('EXCEL','Excel')]
     EMPLOYMENT_KINDS=[('STAFF','Штат'),('NEW','Новый'),('TRANSFER','Перевод'),('BUSINESS_TRIP','Командировка')]
     event=models.OneToOneField(HousingEvent,on_delete=models.PROTECT,related_name='review_request',null=True,blank=True)
     person=models.ForeignKey(Person,on_delete=models.PROTECT,related_name='movement_review_requests')

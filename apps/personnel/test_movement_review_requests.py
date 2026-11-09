@@ -109,6 +109,14 @@ class MovementReviewRequestTests(TestCase):
         housing.move(self.reviewer,'ARRIVAL',self.camp,timezone.localdate(),[self.person])
         self.assertFalse(MovementReviewRequest.objects.exists())
 
+    def test_new_request_screen_creates_review_request_for_hr_role(self):
+        self.client.force_login(self.reviewer);url=reverse('personnel:movements');day=timezone.localdate()
+        page=self.client.get(url,{'camp':self.camp.pk});snapshot=page.context['form'].initial['snapshot']
+        response=self.client.post(url,{'workflow_action':'move','camp':self.camp.pk,'kind':'ARRIVAL','date':day,
+            'employees':[self.employee.pk],'snapshot':snapshot})
+        self.assertEqual(response.status_code,302);self.assertFalse(self.person.stays.exists())
+        row=MovementReviewRequest.objects.get();self.assertEqual(row.requested_by,self.reviewer);self.assertEqual(row.source,'DISPATCHER')
+
     def test_transport_dispatcher_cannot_accept_request(self):
         housing.request_moves(self.personnel,'ARRIVAL',self.camp,timezone.localdate(),[self.person])
         request_row=MovementReviewRequest.objects.get()
@@ -136,7 +144,7 @@ class MovementReviewRequestTests(TestCase):
         imported=MovementReviewRequest.objects.create(company=self.company,person=self.person,kind='ARRIVAL',movement_date=day+timedelta(days=1),to_camp=self.camp,requested_by=self.reviewer,source='EXCEL')
         newer=MovementReviewRequest.objects.create(company=self.company,person=self.person,kind='ARRIVAL',movement_date=day+timedelta(days=2),to_camp=self.camp,requested_by=self.personnel)
         self.client.force_login(self.reviewer);page=self.client.get(reverse('personnel:movement_reviews'))
-        self.assertContains(page,'Заявки диспетчера');self.assertContains(page,'Заявки из Excel')
+        self.assertContains(page,'Заявки с портала');self.assertContains(page,'Заявки из Excel')
         self.assertEqual([row.pk for row in page.context['dispatcher_review_requests']],[newer.pk,older.pk])
         self.assertEqual([row.pk for row in page.context['excel_review_requests']],[imported.pk])
         sorted_page=self.client.get(reverse('personnel:movement_reviews'),{'sort':'movement_asc'})
