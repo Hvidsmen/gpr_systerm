@@ -78,6 +78,7 @@ class MovementRecommendationTests(TestCase):
         arrival=self.client.get(reverse('personnel:arrivals'));departure=self.client.get(reverse('personnel:departures'));request=self.client.get(reverse('personnel:movements'))
         self.assertEqual(arrival.context['movement_page'],'arrival');self.assertEqual(departure.context['movement_page'],'departure');self.assertEqual(request.context['movement_page'],'new')
         self.assertContains(arrival,'Рекомендации к заезду');self.assertNotContains(arrival,'Рекомендации к выезду')
+        self.assertNotContains(arrival,'>Перевахта<');self.assertNotContains(arrival,'>Магазин подбора<')
         self.assertContains(departure,'Рекомендации к выезду');self.assertNotContains(departure,'Рекомендации к заезду')
         self.assertNotContains(arrival,'data-movement-form');self.assertNotContains(departure,'data-movement-form')
         self.assertContains(request,'Заявка на заезд или выезд');self.assertNotContains(request,'Рекомендации к заезду')
