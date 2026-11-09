@@ -10,6 +10,7 @@ urlpatterns=[
     path('housing/export/',housing_views.roster_export,name='housing_export'),
     path('perevakhta/',housing_views.movement_reviews,name='movement_reviews'),
     path('housing/movement-requests/<int:pk>/',housing_views.movement_review_accept,name='movement_review_accept'),
+    path('housing/movement-requests/<int:pk>/clearance/',housing_views.movement_review_clearance,name='movement_review_clearance'),
     path('housing/movement-requests/<int:pk>/cancel/',housing_views.movement_review_cancel,name='movement_review_cancel'),
     path('housing/movement-requests/<int:pk>/delete/',housing_views.movement_review_delete,name='movement_review_delete'),
     path('camps/',housing_views.camps,name='camps'),

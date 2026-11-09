@@ -9,7 +9,7 @@ from django.core.exceptions import ValidationError,PermissionDenied
 from core.fact_edit_window import can_edit_fact_day,require_fact_day,window_context
 from django.db import transaction,IntegrityError
 from django.db.models import Q
-from django.http import HttpResponse,Http404
+from django.http import FileResponse,HttpResponse,Http404
 from django.shortcuts import get_object_or_404,redirect,render
 from django.urls import reverse
 from django.utils import timezone
@@ -415,6 +415,20 @@ def movement_review_accept(request,pk):
     can_cancel_request=user_role in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'} and row.status not in {'AT_HUB','EN_ROUTE','COMPLETED','CANCELLED'} and not row.event_id and not row.hub_arrived_on
     can_delete_request=user_role=='ADMIN' and row.status=='CANCELLED' and not row.event_id and not row.hub_arrived_on and not row.hub_departed_on and not row.final_arrived_on
     return render(request,'personnel/movement_review.html',{'row':row,'form':form,'edit_mode':edit_mode,'workflow_today':timezone.localdate(),'can_manage_workflow':user_role in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'},'can_cancel_request':can_cancel_request,'can_delete_request':can_delete_request,'personnel_section':'reviews','project_camps':{key:sorted(value) for key,value in pairs.items()}})
+
+
+@login_required
+def movement_review_clearance(request,pk):
+    """Download through Django because the Windows application server does not expose /media/."""
+    from pathlib import Path
+    from core.permissions import require_roles,role_code
+    require_roles(request.user,{'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER','MANAGER'})
+    rows=MovementReviewRequest.objects.filter(pk=pk,company=request.user.company).exclude(clearance_document='')
+    if role_code(request.user)=='PERSONNEL_DISPATCHER':rows=rows.filter(requested_by=request.user)
+    row=get_object_or_404(rows)
+    try:stream=row.clearance_document.storage.open(row.clearance_document.name,'rb')
+    except (FileNotFoundError,OSError):raise Http404('Файл обходного листа не найден в хранилище.')
+    return FileResponse(stream,as_attachment=True,filename=Path(row.clearance_document.name).name,content_type='application/octet-stream')
 
 
 @login_required
