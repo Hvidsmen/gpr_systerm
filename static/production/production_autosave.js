@@ -26,6 +26,12 @@
  const dirty=()=>rows().filter(row=>row.dataset.entryDirty||row.dataset.personDirty||row.dataset.autoPending);
  function message(text,error=false){lastMessage=text;lastError=error;if(!error&&text==='Все изменения сохранены'&&Number(form.dataset.linksRejected||0)>0)text='Данные сохранены; часть связей требует проверки';if(!error&&text==='Все изменения сохранены'&&Number(form.dataset.linksPending||0)>0)text='Данные сохранены; связи ожидают отправки';state.textContent=text;state.classList.toggle('text-danger',error);state.classList.toggle('fact-state-saving',!error&&text==='Сохранение…');state.classList.toggle('fact-state-saved',!error&&text==='Все изменения сохранены');state.classList.toggle('fact-state-pending',!error&&text.includes('изменения')&&text!=='Все изменения сохранены');retry.hidden=!error;}
  function rowMessage(row,text,error=false){const target=row.querySelector('[data-autosave-row-state]');if(target){target.textContent=text;target.title=text;target.classList.toggle('text-danger',error);}row.classList.toggle('production-person-auto-failed',error);}
+ function renderPendingDelete(row,deleted=Boolean(field(row,'DELETE')?.checked)){
+  row.hidden=false;row.classList.toggle('production-row-pending-delete',deleted);
+  const button=row.querySelector('[data-person-remove],[data-work-remove]');if(!button)return;
+  button.textContent=deleted?'Вернуть':'Удалить';button.classList.toggle('btn-outline-danger',!deleted);button.classList.toggle('btn-outline-secondary',deleted);
+  button.title=deleted?'Отменить удаление до сохранения':isPerson(row)?'Убрать сотрудника из факта за этот день':'Удалить работу из факта за этот день';
+ }
  function prefix(row){return field(row,'id').name.replace(/-id$/,'');}
  function reindex(){
   for(const kind of ['works','labor']){
@@ -41,7 +47,7 @@
   }
  }
  function schedule(row){
-  if(row){delete row.dataset.autoRejected;row.dataset.autoPending='1';rowMessage(row,'Не сохранено');storeDraft(row);}
+  if(row){delete row.dataset.autoRejected;row.dataset.autoPending='1';rowMessage(row,field(row,'DELETE')?.checked?'Будет удалено':'Не сохранено');storeDraft(row);}
   pending=true;failed=false;retryAttempt=0;message('Есть несохранённые изменения');clearTimeout(timer);
  }
  async function save(selected){
@@ -140,7 +146,7 @@
  // The saved indicator must change synchronously with the user's input.
  form.addEventListener('input',relevant,true);form.addEventListener('change',relevant,true);
  form.addEventListener('production-autosave-all',()=>{for(const row of rows())if(isPerson(row)&&field(row,'employee').value&&!field(row,'id').value&&field(row,'person_editing').value==='1'){row.dataset.entryDirty='1';schedule(row);}});
- const restoredDrafts=restoreDrafts();rows().forEach(row=>{if(!row.dataset.autoPending)row.dataset.autoSavedStamp=fingerprint(row);if(field(row,'id').value&&!row.dataset.autoPending)rowMessage(row,'Сохранено');});
+ const restoredDrafts=restoreDrafts();rows().forEach(row=>{if(!row.dataset.autoPending)row.dataset.autoSavedStamp=fingerprint(row);if(field(row,'id').value&&!row.dataset.autoPending)rowMessage(row,'Сохранено');renderPendingDelete(row);if(field(row,'DELETE')?.checked)rowMessage(row,'Будет удалено');});
  // Claim wiring runs before this module. A bound form may therefore already
  // contain dirty rows whose earlier claims-change event could not be heard.
  // Explicitly resume them instead of leaving "Restoring reservation" forever.
@@ -172,8 +178,14 @@
   event.preventDefault();
   const row=button.closest('[data-production-person],[data-work-fact-row]');button.disabled=true;
   try{
+   if(field(row,'DELETE')?.checked){
+    field(row,'DELETE').checked=false;renderPendingDelete(row,false);delete row.dataset.entryDirty;delete row.dataset.personDirty;delete row.dataset.autoPending;removeDraft(row);
+    row.dispatchEvent(new Event('change',{bubbles:true}));
+    if(row.dataset.autoSavedStamp!==fingerprint(row))schedule(row);else rowMessage(row,field(row,'id').value?'Сохранено':'');
+    return;
+   }
    if(!field(row,'id').value&&!running){removeDraft(row);try{await form.productionReleaseRow(row);}catch{}row.remove();reindex();form.dispatchEvent(new Event('change',{bubbles:true}));return;}
-   await form.productionClaimRow(row);field(row,'DELETE').checked=true;row.classList.add('production-row-auto-deleting');row.dataset.entryDirty='1';row.hidden=true;row.dispatchEvent(new Event('change',{bubbles:true}));schedule(row);
+   await form.productionClaimRow(row);field(row,'DELETE').checked=true;row.dataset.entryDirty='1';renderPendingDelete(row,true);rowMessage(row,'Будет удалено');row.dispatchEvent(new Event('change',{bubbles:true}));schedule(row);
   }catch(error){row.hidden=false;rowMessage(row,error.message,true);message(error.message,true);}finally{if(row.isConnected)row.classList.remove('production-row-auto-deleting');button.disabled=false;}
  });
  form.addEventListener('submit',event=>{event.preventDefault();flush();},true);

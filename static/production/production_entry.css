@@ -84,7 +84,7 @@ body:has([data-production-form]) .scroll-to-top{bottom:calc(var(--production-foo
 [data-report-branch][hidden]{display:none!important}.production-report-section .production-report-table{min-width:650px}
 @media(max-width:700px){.smg-period-context{flex-wrap:wrap}.production-steps{gap:5px}.production-steps button{flex:1 1 30%;font-size:12px}}
 
-.production-person-save-actions{display:flex;align-items:center;gap:6px;white-space:nowrap}.production-person-save-actions [data-autosave-row-state]{max-width:85px;overflow:hidden;text-overflow:ellipsis;font-size:10px}.production-row-auto-deleting{opacity:.35;pointer-events:none}.production-person-auto-failed{border-color:#dc3545!important}
+.production-person-save-actions{display:flex;align-items:center;gap:6px;white-space:nowrap}.production-person-save-actions [data-autosave-row-state]{max-width:85px;overflow:hidden;text-overflow:ellipsis;font-size:10px}.production-row-auto-deleting{opacity:.35;pointer-events:none}.production-row-pending-delete{opacity:.58;background:#fff5f5!important;border-color:#dc8791!important}.production-row-pending-delete .production-person-main-scroll,.production-row-pending-delete .production-person-extra,.production-row-pending-delete .production-work-heading,.production-row-pending-delete .production-work-inputs,.production-row-pending-delete .production-work-actuation{text-decoration:line-through;pointer-events:none}.production-person-auto-failed{border-color:#dc3545!important}
 
 .production-save-footer{flex-wrap:wrap}.production-save-footer [data-autosave-state]{min-width:0;flex:1 1 180px;overflow-wrap:anywhere}
 
