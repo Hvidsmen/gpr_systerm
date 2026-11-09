@@ -64,6 +64,7 @@ class MovementReviewRequestTests(TestCase):
         self.assertContains(page,self.person.display_name)
         self.assertContains(page,'Диспетчерская')
         self.assertContains(page,'Перевахта')
+        self.assertNotContains(page,'data-personnel-sections')
         detail=self.client.get(reverse('personnel:movement_review_accept',args=[request_row.pk]))
         self.assertEqual(detail.status_code,200)
         self.assertContains(detail,'Подтвердить заявку')
@@ -116,6 +117,11 @@ class MovementReviewRequestTests(TestCase):
     def test_direct_hr_movement_does_not_create_dispatch_request(self):
         housing.move(self.reviewer,'ARRIVAL',self.camp,timezone.localdate(),[self.person])
         self.assertFalse(MovementReviewRequest.objects.exists())
+
+    def test_admin_personnel_sections_are_in_sidebar_not_page_tabs(self):
+        self.client.force_login(self.admin);page=self.client.get(reverse('personnel:housing'))
+        self.assertContains(page,'Диспетчерская');self.assertContains(page,'Перевахта');self.assertContains(page,'Магазин подбора')
+        self.assertNotContains(page,'data-personnel-sections')
 
     def test_request_is_cancelled_with_reason_and_admin_can_delete_it(self):
         from apps.planning.models import WorkTask
