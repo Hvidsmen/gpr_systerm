@@ -166,7 +166,7 @@ class RecruitmentTests(TestCase):
             self.assertFalse(RecruitmentCandidate.objects.exists());self.assertFalse([p for p in Path(root).rglob('*') if p.is_file()])
     def test_three_actual_sections_and_request_prefill(self):
         self.client.force_login(self.dispatch)
-        for route,title in [('housing','Ведение персонала'),('movements','Заезд / выезд'),('recruitment_list','Магазин подбора')]:
+        for route,title in [('housing','Ведение персонала'),('movements','Новая заявка'),('recruitment_list','Магазин подбора')]:
             page=self.client.get(reverse('personnel:'+route));self.assertContains(page,'data-personnel-sections');self.assertContains(page,title)
         page=self.client.get(reverse('personnel:housing'));self.assertNotContains(page,'data-movement-form')
         page=self.client.get(reverse('personnel:movements'));self.assertContains(page,'data-movement-form');self.assertNotContains(page,'data-roster-grid')

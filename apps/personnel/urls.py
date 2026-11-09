@@ -64,6 +64,8 @@ urlpatterns += [path("lodging/import/",lodging_import.upload,name="lodging_impor
 
 from . import recruitment_views as recruitment
 urlpatterns += [
+    path('movements/arrivals/', housing_views.arrivals, name='arrivals'),
+    path('movements/departures/', housing_views.departures, name='departures'),
     path('movements/', housing_views.movements, name='movements'),
     path('recruitment/', recruitment.request_list, name='recruitment_list'),
     path('recruitment/create/', recruitment.request_edit, name='recruitment_create'),

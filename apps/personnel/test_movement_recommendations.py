@@ -74,21 +74,20 @@ class MovementRecommendationTests(TestCase):
 
     def test_personnel_dispatcher_has_dispatch_and_rotation_workspaces(self):
         self.client.force_login(self.personnel_dispatcher)
-        response=self.client.get(reverse('personnel:movements'))
-        self.assertEqual(response.status_code,200)
-        self.assertContains(response,'1. Рекомендации к заезду')
-        self.assertContains(response,'2. Рекомендации к выезду')
-        self.assertContains(response,'3. Заявка на заезд или выезд')
-        self.assertContains(response,'Состав, назначения и графики')
+        arrival=self.client.get(reverse('personnel:arrivals'));departure=self.client.get(reverse('personnel:departures'));request=self.client.get(reverse('personnel:movements'))
+        self.assertContains(arrival,'Рекомендации к заезду');self.assertNotContains(arrival,'Рекомендации к выезду')
+        self.assertContains(departure,'Рекомендации к выезду');self.assertNotContains(departure,'Рекомендации к заезду')
+        self.assertContains(request,'Заявка на заезд или выезд');self.assertNotContains(request,'Рекомендации к заезду')
+        self.assertContains(arrival,'Состав, назначения и графики')
         self.assertEqual(self.client.get(reverse('personnel:housing')).status_code,200)
 
     @patch('apps.personnel.rotation.rotation_rows')
     def test_recommendation_tables_have_select_all_checkbox(self,rotation_rows):
         rotation_rows.return_value=self.auto_rows();self.client.force_login(self.personnel_dispatcher)
-        response=self.client.get(reverse('personnel:movements'))
-        self.assertEqual(response.status_code,200)
-        self.assertContains(response,'data-recommendation-select-all',count=2)
-        self.assertContains(response,'aria-label="Выбрать всех сотрудников"',count=2)
+        for route in ('arrivals','departures'):
+            response=self.client.get(reverse('personnel:'+route));self.assertEqual(response.status_code,200)
+            self.assertContains(response,'data-recommendation-select-all',count=1)
+            self.assertContains(response,'aria-label="Выбрать всех сотрудников"',count=1)
 
     def test_personnel_dispatcher_can_submit_bulk_current_request_and_old_date_needs_reason(self):
         self.client.force_login(self.personnel_dispatcher);today=timezone.localdate();url=reverse('personnel:movements')
@@ -120,7 +119,7 @@ class MovementRecommendationTests(TestCase):
 
     def test_recommendation_date_is_limited_to_fourteen_days(self):
         self.client.force_login(self.personnel_dispatcher)
-        response=self.client.post(reverse('personnel:movements'),{
+        response=self.client.post(reverse('personnel:arrivals'),{
             'workflow_action':'recommendation_add','recommendation_kind':'ARRIVAL',
             'arrival-employees':[self.second_employee.pk],'arrival-camp':self.a.pk,
             'arrival-planned_on':timezone.localdate()+timedelta(days=15),

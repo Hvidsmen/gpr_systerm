@@ -119,12 +119,12 @@ def roster_rows(company,camp,day,query='',position=''):
 
 @login_required
 @require_http_methods(['GET','POST'])
-def workspace(request, movements=False):
+def workspace(request, movements=False, movement_page='new'):
     movements = movements or request.method == 'POST' or bool(request.GET.get('employee') or request.GET.get('person') or request.GET.get('action'))
     movement_access(request) if movements else access(request)
     day=selected_day(request) if movements else timezone.localdate()
     template = 'personnel/housing_movements.html' if movements else 'personnel/housing.html'
-    extra = movement_context(request) if movements else {'personnel_section':'management','personnel_today_only':True}
+    extra = {**movement_context(request),'dispatcher_page':movement_page} if movements else {'personnel_section':'management','personnel_today_only':True}
     from .rotation import RotationFilter,normalize_rotation_filter_data,rotation_project_camps,rotation_rows
     extra['rotation_project_camps']=rotation_project_camps(request.user.company)
     raw=(request.GET if request.method=='GET' else request.POST).copy()
@@ -177,7 +177,7 @@ def workspace(request, movements=False):
             except ValidationError as exc:recommendation_form.add_error(None,'; '.join(exc.messages))
             else:
                 messages.success(request,f'Рекомендации добавлены. Сотрудников: {count}.')
-                return redirect(reverse('personnel:movements')+'#recommendations-'+recommendation_kind.lower())
+                return redirect('personnel:arrivals' if recommendation_kind=='ARRIVAL' else 'personnel:departures')
     if request.method=='POST' and (workflow_action in {'recommendation_remove','recommendation_request'} or request.POST.get('request_one')):
         from .movement_recommendations import create_requests,exclude
         tokens=[request.POST['request_one']] if request.POST.get('request_one') else request.POST.getlist('recommendations')
@@ -186,7 +186,7 @@ def workspace(request, movements=False):
         except ValidationError as exc:messages.error(request,'; '.join(exc.messages))
         else:
             messages.success(request,(f'Заявки оформлены и отправлены в перевахту. Сотрудников: {count}.' if action=='recommendation_request' else f'Из рекомендаций убрано сотрудников: {count}.'))
-            return redirect(reverse('personnel:movements')+'#recommendations-'+(recommendation_kind.lower() if recommendation_kind in {'ARRIVAL','DEPARTURE'} else 'arrival'))
+            return redirect('personnel:arrivals' if recommendation_kind!='DEPARTURE' else 'personnel:departures')
     form=MovementForm(request.POST if request.method=='POST' and workflow_action=='move' else None,company=request.user.company,camp=camp,day=day,fixed_employee=fixed_employee,allow_direct=request.user.role.code=='PERSONNEL_DISPATCHER',
         initial={'personal_scope':personal_token,'kind':kind,'date':day,'camp':None if request.GET.get('choose_camp')=='1' and kind=='ARRIVAL' else camp.pk,'snapshot':housing.movement_snapshot(request.user),'employees':[selected_employee] if selected_employee.isdigit() else []})
     movement_exclusions=[]
@@ -532,4 +532,16 @@ def movement_context(request):
 @login_required
 @require_http_methods(['GET','POST'])
 def movements(request):
-    return workspace(request,movements=True)
+    return workspace(request,movements=True,movement_page='new')
+
+
+@login_required
+@require_http_methods(['GET','POST'])
+def arrivals(request):
+    return workspace(request,movements=True,movement_page='arrival')
+
+
+@login_required
+@require_http_methods(['GET','POST'])
+def departures(request):
+    return workspace(request,movements=True,movement_page='departure')
