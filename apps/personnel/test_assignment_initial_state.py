@@ -66,10 +66,10 @@ class AssignmentInitialStateTests(TestCase):
         response=self.post('MV',self.day,assigned_from=str(self.day-timedelta(days=1)))
         self.assertEqual(response.status_code,200);self.assertTrue(response.context['initial_form'].errors)
 
-    def test_existing_actual_history_is_not_overwritten_and_assignment_rolls_back(self):
+    def test_existing_matching_actual_status_is_accepted_without_duplicate(self):
         before=(CampStay.objects.count(),HousingEvent.objects.count())
-        response=self.post('MV',self.day-timedelta(days=100),employee=self.employee.pk)
-        self.assertContains(response,'уже есть история перемещений');self.assertFalse(StaffingSlot.objects.filter(planning_position=self.role).exists())
+        response=self.post('MV',self.day,employee=self.employee.pk)
+        self.assertEqual(response.status_code,302);self.assertTrue(StaffingSlot.objects.filter(planning_position=self.role).exists())
         self.assertEqual((CampStay.objects.count(),HousingEvent.objects.count()),before)
 
     def test_repost_has_no_duplicate_and_conflicting_opening_payload_is_rejected(self):
@@ -81,14 +81,11 @@ class AssignmentInitialStateTests(TestCase):
         self.assertEqual(CampStay.objects.get(person=slot.person).arrived_on,past)
 
     def test_initialize_previously_empty_assignment_once_then_hide_fields_on_edit(self):
-        self.assertEqual(self.client.post(self.url,self.data).status_code,302)
+        response=self.client.post(self.url,self.data)
+        self.assertEqual(response.status_code,200);self.assertIn('state',response.context['initial_form'].errors)
+        self.assertEqual(self.post('MO',departure=self.day-timedelta(days=8)).status_code,302)
         slot=self.assigned();url=reverse('personnel:plan_assignment_edit',args=[slot.pk])
-        response=self.client.get(url);self.assertContains(response,'data-assignment-initial')
-        data={**self.data,'version':slot.updated_at.isoformat(),'initial-state':'MO','initial-departure_date':str(self.day-timedelta(days=8))}
-        self.assertEqual(self.client.post(url,data).status_code,302)
         self.assertNotContains(self.client.get(url),'data-assignment-initial')
-        slot.refresh_from_db();data['version']=slot.updated_at.isoformat()
-        self.assertContains(self.client.post(url,data),'Начальное состояние уже введено')
 
     def test_event_failure_rolls_back_assignment_and_created_stay(self):
         with patch('apps.personnel.plan_assignments.HousingEvent.objects.create',side_effect=ValidationError('event failed')):

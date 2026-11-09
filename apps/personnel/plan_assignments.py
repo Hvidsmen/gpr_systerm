@@ -1,4 +1,4 @@
-"""Plan-role assignments with an optional one-time actual opening state."""
+"""Plan-role assignments with an explicit actual employee state."""
 from django import forms
 from datetime import timedelta
 from django.contrib import messages
@@ -43,7 +43,7 @@ class InitialEmployeeSelect(forms.Select):
 
 
 class InitialStateForm(forms.Form):
-    state=forms.ChoiceField(label='Начальный статус',required=False,choices=[('','Не указывать — только назначить'),('MV','На вахте'),('MO','МО — межвахтовый отдых')],widget=forms.Select(attrs={'data-initial-state':'','data-compact-select':''}))
+    state=forms.ChoiceField(label='Статус сотрудника',required=True,choices=[('','Выберите статус'),('MV','На вахте'),('MO','МО — межвахтовый отдых')],widget=forms.Select(attrs={'data-initial-state':'','data-compact-select':''}))
     arrival_date=forms.DateField(label='Дата заезда',required=False,widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date','data-initial-arrival':''}),help_text='При МО можно указать известную дату предыдущего заезда. Если она неизвестна, оставьте поле пустым.')
     departure_date=forms.DateField(label='Дата выезда на МО',required=False,widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date','data-initial-departure':''}))
 
@@ -54,9 +54,7 @@ class InitialStateForm(forms.Form):
 
     def clean(self):
         data=super().clean();state=data.get('state');arrival,departure=data.get('arrival_date'),data.get('departure_date')
-        if not state:
-            if arrival or departure:raise forms.ValidationError('Выберите начальный статус для указанных дат.')
-            return data
+        if not state:return data
         if state=='MV':
             if not arrival:self.add_error('arrival_date','Для статуса «На вахте» укажите дату заезда.')
             if departure:self.add_error('departure_date','Для статуса «На вахте» дата выезда не указывается.')
@@ -75,7 +73,7 @@ def has_movements(person):
 
 
 def initialize_state(user,row,data):
-    """One explicit opening balance, not an unrestricted historical movement editor."""
+    """Record the selected actual state without duplicating an existing state."""
     if not data or not data.get('state'):return False
     state,arrival,departure=data['state'],data.get('arrival_date'),data.get('departure_date')
     if row.initial_movement_id:
@@ -86,12 +84,24 @@ def initialize_state(user,row,data):
         saved_camp=event.to_camp_id if event.kind=='ARRIVAL' else event.from_camp_id
         if (saved_state,saved_arrival,saved_departure,saved_camp)==(state,arrival,departure,row.housing_camp_id):return False
         raise ValidationError('Начальное состояние уже введено. Для изменений используйте историю и заезд / выезд.')
-    if has_movements(row.person):raise ValidationError('У сотрудника уже есть история перемещений. Начальное состояние не сохранено; используйте заезд / выезд.')
-    # Opening balances can predate the daily edit window. Existing movements are never rewritten here.
+    # Opening balances can predate the daily edit window.
     # Validate again inside the transaction for callers outside the HTTP form.
     check=InitialStateForm({'state':state,'arrival_date':arrival or '', 'departure_date':departure or ''},as_of=row.assigned_from)
     if not check.is_valid():raise ValidationError(check.errors.as_text())
     comment='Начальное состояние при первом назначении на должность плана.'
+    if has_movements(row.person):
+        fact_day=arrival if state=='MV' else departure
+        current=housing.present_stays(user.company,fact_day).filter(person=row.person).select_related('camp').first()
+        if state=='MV' and current and current.camp_id==row.housing_camp_id:return False
+        if state=='MO' and not current:return False
+        if state=='MV':
+            kind='TRANSFER' if current else 'ARRIVAL'
+            housing.move(user,kind,current.camp if current else row.housing_camp,fact_day,[row.person],target=row.housing_camp if current else None,comment=comment,setup_direct=True)
+        else:
+            housing.move(user,'DEPARTURE',current.camp,fact_day,[row.person],comment=comment,departure_destination='REST',setup_direct=True)
+        event=HousingEvent.objects.filter(company=user.company,person=row.person,date=fact_day).order_by('-pk').first()
+        row.initial_movement=event;row.save(update_fields=['initial_movement','updated_at'])
+        return True
     with history_actor(user,comment):
         stay=None
         if arrival:
@@ -295,7 +305,7 @@ def edit(request,pk=None):
     initial={key:request.GET[key] for key in ('employee','planning_position','construction_object','housing_camp','assigned_from') if key in request.GET}
     initial.setdefault('assigned_from',timezone.localdate())
     form=AssignmentForm(request.POST if request.method=='POST' else None,company=request.user.company,row=row,initial=initial)
-    initial_form=InitialStateForm(request.POST if request.method=='POST' else None,prefix='initial') if not historical and (row is None or not has_movements(row.person)) else None
+    initial_form=InitialStateForm(request.POST if request.method=='POST' else None,prefix='initial') if not historical and (row is None or not row.initial_movement_id) else None
     if request.method=='POST':
         valid=form.is_valid()
         if historical:form.add_error(None,'Назначение удалено.' if row.cancelled_at else 'Прежнее назначение сохранено в истории. Изменяйте действующее назначение.');valid=False
