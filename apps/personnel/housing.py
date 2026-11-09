@@ -235,7 +235,12 @@ def request_moves(user,kind,camp,day,people,employees=(),target=None,comment='',
             employment_kind='TRANSFER' if kind=='TRANSFER' else 'STAFF',planning_position_name=planning_position_name(person,day),position_name=employee.display_position if employee else '',
             construction_object=construction_object,site_object=site_object,site=site_object.name if site_object else request_camp.name,phone=(employee.phone if employee else '') or person.phone,
             travel_status='Ожидается',note=comment))
-    for row in rows:row.save()
+    for row in rows:
+        if row.kind=='DEPARTURE' and row.source=='DISPATCHER':row.status='PENDING_APPROVAL'
+        row.save()
+        if row.status=='PENDING_APPROVAL':
+            from .departure_workflow import create_approval,log
+            create_approval(row);log(row,user,'Отправлено на согласование руководителю')
     return len(rows)
 
 

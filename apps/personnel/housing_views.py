@@ -333,9 +333,22 @@ def movement_reviews(request):
 @login_required
 @require_http_methods(['GET','POST'])
 def movement_review_accept(request,pk):
-    access(request)
+    from core.permissions import require_roles,role_code
+    require_roles(request.user,{'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER','MANAGER'})
     row=get_object_or_404(MovementReviewRequest.objects.select_related('person','from_camp','to_camp','event'),pk=pk,company=request.user.company)
-    edit_mode=row.status=='OPEN' or request.GET.get('edit')=='1' or request.method=='POST'
+    workflow_action=request.POST.get('workflow_action') if request.method=='POST' else None
+    if workflow_action:
+        from .departure_workflow import arrive_hub,leave_hub,resubmit,update_hub
+        try:
+            if workflow_action=='resubmit':resubmit(request.user,row)
+            elif workflow_action=='arrive_hub':arrive_hub(request.user,row,forms.DateField().clean(request.POST.get('hub_arrived_on')))
+            elif workflow_action=='hub_documents':update_hub(request.user,row,tickets_ready=request.POST.get('tickets_ready')=='1',clearance_document=request.FILES.get('clearance_document'))
+            elif workflow_action=='leave_hub':leave_hub(request.user,row,forms.DateField().clean(request.POST.get('hub_departed_on')))
+            else:raise ValidationError('Неизвестное действие по заявке.')
+        except ValidationError as exc:messages.error(request,'; '.join(exc.messages))
+        else:messages.success(request,{'resubmit':'Заявка повторно отправлена руководителю.','arrive_hub':'Прибытие в ОП Дудинка зафиксировано.','hub_documents':'Данные по билетам и обходному листу сохранены.','leave_hub':'Выезд из ОП Дудинка зафиксирован. Заявка завершена.'}[workflow_action])
+        return redirect('personnel:movement_review_accept',pk=row.pk)
+    edit_mode=row.status in {'OPEN','RETURNED'} or request.GET.get('edit')=='1' or request.method=='POST'
     confirm=request.method=='POST' and request.POST.get('review_action')=='confirm'
     form=MovementReviewForm(request.POST if request.method=='POST' else None,instance=row,confirm=confirm)
     if request.method=='POST' and form.is_valid():
@@ -366,7 +379,7 @@ def movement_review_accept(request,pk):
         current=object_id;seen=set()
         while current and current not in seen:
             seen.add(current);pairs.setdefault(str(current),set()).add(camp_id);current=tree.get(current)
-    return render(request,'personnel/movement_review.html',{'row':row,'form':form,'edit_mode':edit_mode,'personnel_section':'reviews','project_camps':{key:sorted(value) for key,value in pairs.items()}})
+    return render(request,'personnel/movement_review.html',{'row':row,'form':form,'edit_mode':edit_mode,'can_manage_workflow':role_code(request.user) in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'},'personnel_section':'reviews','project_camps':{key:sorted(value) for key,value in pairs.items()}})
 
 
 

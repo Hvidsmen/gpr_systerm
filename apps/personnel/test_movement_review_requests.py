@@ -110,6 +110,29 @@ class MovementReviewRequestTests(TestCase):
         housing.move(self.reviewer,'ARRIVAL',self.camp,timezone.localdate(),[self.person])
         self.assertFalse(MovementReviewRequest.objects.exists())
 
+    def test_departure_goes_through_manager_dudinka_and_parallel_documents(self):
+        from apps.planning.models import WorkTask
+        from .departure_workflow import arrive_hub,decide,leave_hub,update_hub
+        manager=User.objects.create_user(username='project-manager',company=self.company,role=Role.objects.get(code='MANAGER'))
+        day=timezone.localdate()
+        housing.move(self.reviewer,'ARRIVAL',self.camp,day,[self.person])
+        housing.request_moves(self.personnel,'DEPARTURE',self.camp,day,[self.person],departure_destination='REST')
+        row=MovementReviewRequest.objects.get(kind='DEPARTURE')
+        self.assertEqual(row.status,'PENDING_APPROVAL')
+        task=WorkTask.objects.get(key=f'personnel-departure-approval:{row.pk}')
+        self.assertEqual(task.target_role,'MANAGER')
+        decide(manager,row,True,'Согласовано')
+        row.refresh_from_db();self.assertEqual(row.status,'PEREVAKHTA')
+        arrive_hub(self.reviewer,row,day)
+        row.refresh_from_db();self.assertEqual(row.status,'AT_HUB')
+        self.assertEqual(self.person.stays.get().departed_on,day)
+        update_hub(self.reviewer,row,tickets_ready=True)
+        update_hub(self.reviewer,row,clearance_document=SimpleUploadedFile('clearance.pdf',b'pdf'))
+        row.refresh_from_db();self.assertTrue(row.tickets_ready);self.assertTrue(row.clearance_document)
+        leave_hub(self.reviewer,row,day)
+        row.refresh_from_db();self.assertEqual(row.status,'COMPLETED');self.assertEqual(row.hub_departed_on,day)
+        self.assertEqual(row.workflow_events.count(),6)
+
     def test_planning_position_falls_back_to_employee_position(self):
         self.slot.cancelled_at=timezone.now();self.slot.save(update_fields=['cancelled_at','updated_at'])
         self.assertEqual(housing.planning_position_name(self.person,timezone.localdate()),self.employee.display_position)

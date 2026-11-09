@@ -246,6 +246,8 @@ def check_route(user, match, method):
         require_roles(user,READ_ROLES|{'HR_HEAD','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER','ALL_FACT_DISPATCHER','COMMANDANT'});return
     if namespace=='personnel' and name=='movements':
         require_roles(user,{'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'});return
+    if namespace=='personnel' and name=='movement_review_accept' and method in {'GET','HEAD'}:
+        require_roles(user,{'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER','MANAGER'});return
     if namespace == 'personnel':
         require_roles(user, {'ADMIN', 'HR_HEAD', 'PERSONNEL_DISPATCHER'})
         return

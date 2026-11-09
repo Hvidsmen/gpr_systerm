@@ -242,7 +242,11 @@ class BaseCity(PersonnelModel):
 
 
 class MovementReviewRequest(PersonnelModel):
-    STATUSES=[('OPEN','Ожидает проверки'),('ACCEPTED','Принято')]
+    STATUSES=[
+        ('OPEN','Ожидает проверки'),('PENDING_APPROVAL','На согласовании'),
+        ('RETURNED','Возвращено на доработку'),('PEREVAKHTA','Передано в перевахту'),
+        ('AT_HUB','В ОП Дудинка'),('COMPLETED','Завершено'),('ACCEPTED','Принято'),
+    ]
     SOURCES=[('DISPATCHER','Портал'),('EXCEL','Excel')]
     EMPLOYMENT_KINDS=[('STAFF','Штат'),('NEW','Новый'),('TRANSFER','Перевод'),('BUSINESS_TRIP','Командировка')]
     event=models.OneToOneField(HousingEvent,on_delete=models.PROTECT,related_name='review_request',null=True,blank=True)
@@ -254,7 +258,7 @@ class MovementReviewRequest(PersonnelModel):
     departure_destination=models.CharField(max_length=10,blank=True)
     requested_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,blank=True,related_name='+')
     source=models.CharField('Источник заявки',max_length=12,choices=SOURCES,default='DISPATCHER')
-    status=models.CharField('Статус',max_length=10,choices=STATUSES,default='OPEN')
+    status=models.CharField('Статус',max_length=20,choices=STATUSES,default='OPEN')
     employment_kind=models.CharField('Штат / новый / перевод',max_length=16,choices=EMPLOYMENT_KINDS,blank=True)
     planning_position_name=models.CharField('Должность по ГПР / СМГ',max_length=250,blank=True)
     position_name=models.CharField('Должность по справочнику сотрудников',max_length=250,blank=True)
@@ -269,6 +273,15 @@ class MovementReviewRequest(PersonnelModel):
     note=models.TextField('Комментарий / примечание',blank=True)
     reviewed_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,blank=True,related_name='+')
     reviewed_at=models.DateTimeField(null=True,blank=True)
+    approved_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,blank=True,related_name='+')
+    approved_at=models.DateTimeField(null=True,blank=True)
+    approval_comment=models.TextField('Комментарий согласования',blank=True)
+    hub_arrived_on=models.DateField('Прибытие в ОП Дудинка',null=True,blank=True)
+    hub_departed_on=models.DateField('Выезд из ОП Дудинка',null=True,blank=True)
+    tickets_ready=models.BooleanField('Билеты приобретены',default=False)
+    tickets_ready_at=models.DateTimeField(null=True,blank=True)
+    clearance_document=models.FileField('Обходной лист',upload_to='personnel/clearance/%Y/%m/',blank=True)
+    clearance_uploaded_at=models.DateTimeField(null=True,blank=True)
     class Meta:
         ordering=['status','-movement_date','-pk']
     def clean(self):
@@ -278,6 +291,18 @@ class MovementReviewRequest(PersonnelModel):
         if self.site_object_id and self.construction_object_id:
             if self.site_object_id!=self.construction_object_id and self.site_object.parent_id!=self.construction_object_id:raise ValidationError({'site_object':'Участок должен относиться к выбранному объекту.'})
         if self.reviewed_by_id and self.reviewed_by.company_id!=self.company_id:raise ValidationError('Проверяющий другой компании.')
+        if self.approved_by_id and self.approved_by.company_id!=self.company_id:raise ValidationError('Согласующий другой компании.')
+
+
+class MovementReviewEvent(PersonnelModel):
+    request=models.ForeignKey(MovementReviewRequest,on_delete=models.CASCADE,related_name='workflow_events')
+    actor=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,blank=True,related_name='+')
+    action=models.CharField(max_length=120)
+    comment=models.TextField(blank=True)
+    class Meta:ordering=['created_at','pk']
+    def clean(self):
+        super().clean()
+        if self.request.company_id!=self.company_id or self.actor_id and self.actor.company_id!=self.company_id:raise ValidationError('Событие другой компании.')
 
 
 class ScheduleChangeRequest(PersonnelModel):
