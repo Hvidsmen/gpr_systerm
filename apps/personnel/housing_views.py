@@ -298,8 +298,11 @@ def review_request_context(request):
     base=MovementReviewRequest.objects.filter(company=request.user.company)
     qs=base.filter(kind='ARRIVAL') if tab=='arrival' else base.exclude(kind='ARRIVAL')
     if filter_date:qs=qs.filter(movement_date=filter_date)
-    rows=list(qs.select_related('person__employee','from_camp','to_camp','requested_by','event').order_by('status','-movement_date','-pk')[:1000])
-    return {'personnel_section':'reviews','movement_review_requests':rows,'review_tab':tab,'review_date':raw_date,
+    from django.db.models import Case,When,Value,IntegerField
+    rows=list(qs.select_related('person__employee','from_camp','to_camp','requested_by','event').annotate(
+        open_order=Case(When(status='OPEN',then=Value(0)),default=Value(1),output_field=IntegerField())).order_by('open_order','-created_at','-pk')[:1000])
+    dispatcher_rows=[row for row in rows if row.source=='DISPATCHER'];excel_rows=[row for row in rows if row.source=='EXCEL']
+    return {'personnel_section':'reviews','movement_review_requests':rows,'dispatcher_review_requests':dispatcher_rows,'excel_review_requests':excel_rows,'review_tab':tab,'review_arrival':tab=='arrival','review_date':raw_date,
         'arrival_review_requests':rows if tab=='arrival' else [],'departure_review_requests':rows if tab=='departure' else [],
         'arrival_review_count':base.filter(kind='ARRIVAL').count(),'departure_review_count':base.exclude(kind='ARRIVAL').count(),
         'movement_review_open_count':base.filter(status='OPEN').count()}

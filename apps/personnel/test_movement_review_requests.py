@@ -130,6 +130,16 @@ class MovementReviewRequestTests(TestCase):
         page=self.client.get(url,{'kind':'departure','date':first.isoformat()})
         self.assertNotContains(page,f'housing/movement-requests/{departure.pk}/')
 
+    def test_dispatcher_and_excel_requests_are_separate_and_newest_first(self):
+        day=timezone.localdate()
+        older=MovementReviewRequest.objects.create(company=self.company,person=self.person,kind='ARRIVAL',movement_date=day,to_camp=self.camp,requested_by=self.personnel)
+        imported=MovementReviewRequest.objects.create(company=self.company,person=self.person,kind='ARRIVAL',movement_date=day,to_camp=self.camp,requested_by=self.reviewer,source='EXCEL')
+        newer=MovementReviewRequest.objects.create(company=self.company,person=self.person,kind='ARRIVAL',movement_date=day,to_camp=self.camp,requested_by=self.personnel)
+        self.client.force_login(self.reviewer);page=self.client.get(reverse('personnel:movement_reviews'))
+        self.assertContains(page,'Заявки диспетчера');self.assertContains(page,'Заявки из Excel')
+        self.assertEqual([row.pk for row in page.context['dispatcher_review_requests']],[newer.pk,older.pk])
+        self.assertEqual([row.pk for row in page.context['excel_review_requests']],[imported.pk])
+
     def test_visible_excel_sheets_create_review_requests_without_duplicates(self):
         from openpyxl import Workbook
         book=Workbook();arrival=book.active;arrival.title='Заезд Ноябрь 26'
@@ -142,6 +152,6 @@ class MovementReviewRequestTests(TestCase):
         self.client.force_login(self.reviewer)
         response=self.client.post(reverse('personnel:movement_reviews'),{'review_action':'import_excel','movement_excel':upload()})
         self.assertEqual(response.status_code,200);self.assertContains(response,'создано 1');self.assertContains(response,'Неизвестный Человек')
-        row=MovementReviewRequest.objects.get();self.assertEqual(row.person,self.person);self.assertEqual(row.request_number,'302');self.assertEqual(row.site_object,self.site);self.assertEqual(row.to_camp,self.camp)
+        row=MovementReviewRequest.objects.get();self.assertEqual(row.person,self.person);self.assertEqual(row.source,'EXCEL');self.assertEqual(row.request_number,'302');self.assertEqual(row.site_object,self.site);self.assertEqual(row.to_camp,self.camp)
         response=self.client.post(reverse('personnel:movement_reviews'),{'review_action':'import_excel','movement_excel':upload()})
         self.assertEqual(MovementReviewRequest.objects.count(),1);self.assertContains(response,'повторов 1')
