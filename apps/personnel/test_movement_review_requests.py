@@ -6,6 +6,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core.exceptions import ValidationError
 
 from apps.accounts.models import Company, Role, User
 from apps.projects.models import ConstructionObject, Project
@@ -34,6 +35,12 @@ class MovementReviewRequestTests(TestCase):
         cls.board=Board.objects.create(company=cls.company,name='ГПР')
         cls.group=StaffingGroup.objects.create(company=cls.company,board=cls.board,position='Начальник участка по ГПР')
         cls.slot=StaffingSlot.objects.create(company=cls.company,group=cls.group,person=cls.person,assigned_from=timezone.localdate())
+
+    def complete_trip_details(self,row):
+        row.planning_position_name=row.planning_position_name or 'Должность СМГ';row.position_name=row.position_name or 'Должность сотрудника'
+        row.construction_object=self.obj;row.base_city='Норильск';row.phone='8 900 000-00-00';row.request_number='123'
+        row.travel_time='08:30';row.travel_status='Ожидается';row.employment_kind=row.employment_kind or 'STAFF'
+        row.save(update_fields=['planning_position_name','position_name','construction_object','base_city','phone','request_number','travel_time','travel_status','employment_kind','updated_at'])
 
     def test_personnel_dispatcher_creates_request_and_rotation_accepts_it(self):
         event_count=self.person.housing_events.count()
@@ -146,7 +153,7 @@ class MovementReviewRequestTests(TestCase):
         manager=User.objects.create_user(username='cancel-manager',company=self.company,role=Role.objects.get(code='MANAGER'))
         day=timezone.localdate();housing.move(self.reviewer,'ARRIVAL',self.camp,day,[self.person])
         housing.request_moves(self.personnel,'DEPARTURE',self.camp,day,[self.person],departure_destination='REST')
-        row=MovementReviewRequest.objects.get(kind='DEPARTURE');decide(manager,row,True);arrive_hub(self.reviewer,row,day)
+        row=MovementReviewRequest.objects.get(kind='DEPARTURE');decide(manager,row,True);self.complete_trip_details(row);arrive_hub(self.reviewer,row,day)
         self.client.force_login(self.reviewer)
         self.client.post(reverse('personnel:movement_review_cancel',args=[row.pk]),{'reason':'Попытка отмены'})
         row.refresh_from_db();self.assertEqual(row.status,'AT_HUB')
@@ -207,6 +214,8 @@ class MovementReviewRequestTests(TestCase):
         self.assertEqual(task.target_role,'MANAGER')
         decide(manager,row,True,'Согласовано')
         row.refresh_from_db();self.assertEqual(row.status,'PEREVAKHTA')
+        with self.assertRaisesMessage(ValidationError,'Сначала заполните обязательные данные поездки'):arrive_hub(self.reviewer,row,day)
+        self.complete_trip_details(row)
         arrive_hub(self.reviewer,row,day)
         row.refresh_from_db();self.assertEqual(row.status,'AT_HUB')
         self.assertEqual(self.person.stays.get().departed_on,day)
@@ -229,7 +238,7 @@ class MovementReviewRequestTests(TestCase):
         row=MovementReviewRequest.objects.get(kind='ARRIVAL')
         self.assertEqual(row.status,'PENDING_APPROVAL');self.assertFalse(self.person.stays.exists())
         decide(manager,row,True)
-        arrive_hub(self.reviewer,row,day);row.refresh_from_db()
+        self.complete_trip_details(row);arrive_hub(self.reviewer,row,day);row.refresh_from_db()
         self.assertEqual(row.status,'AT_HUB');self.assertFalse(self.person.stays.exists())
         update_hub(self.reviewer,row,tickets_ready=True,clearance_document=SimpleUploadedFile('arrival-clearance.pdf',b'pdf'))
         leave_hub(self.reviewer,row,day);row.refresh_from_db()

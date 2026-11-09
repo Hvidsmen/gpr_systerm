@@ -365,6 +365,7 @@ def movement_review_accept(request,pk):
         .prefetch_related('workflow_events__actor'),
         pk=pk,company=request.user.company,
     )
+    user_role=role_code(request.user)
     workflow_action=request.POST.get('workflow_action') if request.method=='POST' else None
     if workflow_action:
         from .departure_workflow import arrive_camp,arrive_hub,leave_hub,resubmit,update_hub
@@ -378,11 +379,15 @@ def movement_review_accept(request,pk):
         except ValidationError as exc:messages.error(request,'; '.join(exc.messages))
         else:messages.success(request,{'resubmit':'Заявка повторно отправлена руководителю.','arrive_hub':'Прибытие в ОП Дудинка зафиксировано.','hub_documents':'Данные по билетам и обходному листу сохранены.','leave_hub':'Выезд из ОП Дудинка зафиксирован.','arrive_camp':'Фактический заезд в ВЖГ подтверждён. Заявка завершена.'}[workflow_action])
         return redirect('personnel:movement_review_accept',pk=row.pk)
+    from .departure_workflow import travel_details_complete
+    details_complete=travel_details_complete(row)
     if row.status=='CANCELLED' and request.method=='POST':
         messages.error(request,'Отменённую заявку нельзя редактировать.');return redirect('personnel:movement_review_accept',pk=row.pk)
-    edit_mode=row.status!='CANCELLED' and (row.status in {'OPEN','RETURNED'} or request.GET.get('edit')=='1' or request.method=='POST')
+    edit_mode=row.status!='CANCELLED' and (row.status in {'OPEN','RETURNED'} or row.status=='PEREVAKHTA' and not details_complete and user_role in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'} or request.GET.get('edit')=='1' or request.method=='POST')
+    complete_details=request.method=='POST' and request.POST.get('review_action')=='complete_details'
+    if complete_details and user_role not in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'}:raise PermissionDenied('Данные поездки заполняет перевахта.')
     confirm=request.method=='POST' and request.POST.get('review_action')=='confirm'
-    form=MovementReviewForm(request.POST if request.method=='POST' else None,instance=row,confirm=confirm)
+    form=MovementReviewForm(request.POST if request.method=='POST' else None,instance=row,confirm=confirm or complete_details)
     if request.method=='POST' and form.is_valid():
         with transaction.atomic():
             locked=MovementReviewRequest.objects.select_for_update().get(pk=row.pk,company=request.user.company)
@@ -401,7 +406,11 @@ def movement_review_accept(request,pk):
             if confirm:
                 locked.status='ACCEPTED';locked.reviewed_by=request.user;locked.reviewed_at=timezone.now()
             locked.save()
-        messages.success(request,'Заявка перевахты подтверждена.' if confirm else 'Данные заявки сохранены.')
+        if complete_details:
+            from .departure_workflow import log
+            log(locked,request.user,'Данные поездки заполнены')
+        messages.success(request,'Данные поездки заполнены. Можно переходить к фактическому маршруту.' if complete_details else 'Заявка перевахты подтверждена.' if confirm else 'Данные заявки сохранены.')
+        if complete_details:return redirect('personnel:movement_review_accept',pk=row.pk)
         if row.status=='ACCEPTED' and not confirm:return redirect('personnel:movement_review_accept',pk=row.pk)
         return redirect(reverse('personnel:movement_reviews')+'#movement-requests')
     from .models import CampObjectLink
@@ -411,10 +420,10 @@ def movement_review_accept(request,pk):
         current=object_id;seen=set()
         while current and current not in seen:
             seen.add(current);pairs.setdefault(str(current),set()).add(camp_id);current=tree.get(current)
-    user_role=role_code(request.user)
     can_cancel_request=user_role in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'} and row.status not in {'AT_HUB','EN_ROUTE','COMPLETED','CANCELLED'} and not row.event_id and not row.hub_arrived_on
     can_delete_request=user_role=='ADMIN' and row.status=='CANCELLED' and not row.event_id and not row.hub_arrived_on and not row.hub_departed_on and not row.final_arrived_on
-    return render(request,'personnel/movement_review.html',{'row':row,'form':form,'edit_mode':edit_mode,'workflow_today':timezone.localdate(),'can_manage_workflow':user_role in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'},'can_cancel_request':can_cancel_request,'can_delete_request':can_delete_request,'personnel_section':'reviews','project_camps':{key:sorted(value) for key,value in pairs.items()}})
+    can_manage_workflow=user_role in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'} and not (row.status=='PEREVAKHTA' and not details_complete)
+    return render(request,'personnel/movement_review.html',{'row':row,'form':form,'edit_mode':edit_mode,'travel_details_complete':details_complete,'workflow_today':timezone.localdate(),'can_manage_workflow':can_manage_workflow,'can_cancel_request':can_cancel_request,'can_delete_request':can_delete_request,'personnel_section':'reviews','project_camps':{key:sorted(value) for key,value in pairs.items()}})
 
 
 @login_required

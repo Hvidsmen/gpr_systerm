@@ -10,6 +10,13 @@ from apps.planning.task_services import ensure,event as task_event,state
 from .models import CampStay,HousingEvent,MovementReviewEvent,MovementReviewRequest
 
 
+def travel_details_complete(row):
+    required=(row.planning_position_name,row.position_name,row.construction_object_id,
+              row.from_camp_id if row.kind!='ARRIVAL' else row.to_camp_id,row.movement_date,
+              row.base_city,row.phone,row.request_number,row.travel_time,row.travel_status)
+    return all(required) and (row.kind!='ARRIVAL' or bool(row.employment_kind))
+
+
 def log(row,actor,action,comment=''):
     return MovementReviewEvent.objects.create(company=row.company,request=row,actor=actor,action=action,comment=comment.strip())
 
@@ -138,6 +145,7 @@ def resubmit(user,row):
 def arrive_hub(user,row,day):
     row=MovementReviewRequest.objects.select_for_update().select_related('person','from_camp').get(pk=row.pk,company=user.company)
     if row.status!='PEREVAKHTA':raise ValidationError('Прибытие в ОП Дудинка фиксируется после согласования.')
+    if not travel_details_complete(row):raise ValidationError('Сначала заполните обязательные данные поездки: город, телефон, номер заявки, дату, время и статус.')
     if day>timezone.localdate():raise ValidationError('Фактическое прибытие в ОП Дудинка нельзя отметить будущей датой. Дождитесь события или укажите уже наступившую дату.')
     if row.kind=='DEPARTURE':
         stay=CampStay.objects.select_for_update().filter(company=row.company,person=row.person,camp=row.from_camp,cancelled_at=None,departed_on=None).order_by('-arrived_on').first()
