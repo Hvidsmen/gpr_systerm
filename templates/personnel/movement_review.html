@@ -1,27 +1,66 @@
 {% extends 'base.html' %}{% load access %}
 {% block title %}Заявка перевахты{% endblock %}
 {% block content %}
+<style>
+.movement-summary{background:#f7fbfd;border:1px solid #d7e8f0;border-left:4px solid #0786a4;border-radius:.5rem;padding:1rem}
+.movement-route{font-size:1.05rem;font-weight:650;color:#16324a}
+.movement-meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem 2rem}
+.movement-field{min-width:0}.movement-field small{display:block;color:#667785;margin-bottom:.15rem}.movement-field strong,.movement-field span{overflow-wrap:anywhere}
+.movement-timeline{list-style:none;margin:0;padding:0 0 0 1.25rem}.movement-timeline li{position:relative;border-left:2px solid #b8d9c8;padding:0 0 1.15rem 1.35rem}.movement-timeline li:last-child{padding-bottom:0;border-left-color:transparent}.movement-timeline li::before{content:"";position:absolute;left:-.48rem;top:.15rem;width:.85rem;height:.85rem;border-radius:50%;background:#198754;border:3px solid #e7f5ed}
+.movement-event{background:#fff;border:1px solid #e2e8ec;border-radius:.45rem;padding:.75rem .9rem}.movement-event-time{color:#667785;font-size:.82rem}.movement-event-comment{color:#43515c;margin-top:.25rem}
+.movement-actions{position:relative}.movement-actions summary{list-style:none}.movement-actions summary::-webkit-details-marker{display:none}.movement-actions[open] summary{border-color:#0786a4}.movement-actions-menu{position:absolute;right:0;z-index:10;min-width:15rem;margin-top:.35rem;padding:.35rem;background:#fff;border:1px solid #d8e0e5;border-radius:.4rem;box-shadow:0 .4rem 1rem rgba(0,0,0,.12)}.movement-actions-menu a{display:block;padding:.55rem .7rem;border-radius:.3rem;text-decoration:none}.movement-actions-menu a:hover{background:#f1f6f8}
+@media(max-width:767.98px){.movement-meta{grid-template-columns:1fr}.movement-route{font-size:.98rem}}
+</style>
 <h1>Персонал</h1>{% include 'personnel/_personnel_sections.html' %}
 <p><a href="{% url 'personnel:movement_reviews' %}#movement-requests">← К заявкам перевахты</a></p>
 <div class="card card-body">
-<div class="d-flex justify-content-between flex-wrap gap-2"><div><h2 class="h4">{{ row.get_kind_display }} · {{ row.person.display_name }}</h2><p class="text-muted mb-0">Дата заявки: {{ row.movement_date|date:'d.m.Y' }} · {% if row.from_camp %}{{ row.from_camp }}{% else %}—{% endif %} → {% if row.to_camp %}{{ row.to_camp }}{% else %}МО{% endif %}</p></div><span class="badge {% if row.status == 'OPEN' %}bg-warning text-dark{% else %}bg-success{% endif %}">{{ row.get_status_display }}</span></div>
+<div class="movement-summary">
+  <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+    <div>
+      <div class="text-muted small mb-1">{{ row.get_kind_display }} сотрудника</div>
+      <h2 class="h4 mb-2">{{ row.person.display_name }}</h2>
+      <div class="movement-route">
+        {% if row.kind == 'ARRIVAL' %}{{ row.base_city|default:'МО' }} → ОП Дудинка → {{ row.to_camp|default:'ВЖГ' }}{% else %}{{ row.from_camp|default:'ВЖГ' }} → ОП Дудинка → {{ row.base_city|default:'МО' }}{% endif %}
+      </div>
+    </div>
+    <div class="text-end">
+      <span class="badge fs-6 {% if row.status == 'OPEN' or row.status == 'PENDING_APPROVAL' %}bg-warning text-dark{% elif row.status == 'RETURNED' %}bg-danger{% elif row.status == 'COMPLETED' or row.status == 'ACCEPTED' %}bg-success{% else %}bg-info text-dark{% endif %}">{{ row.get_status_display }}</span>
+      {% if row.status == 'COMPLETED' %}<div class="small text-success mt-2">{% if row.kind == 'DEPARTURE' %}Сотрудник выбыл из ОП Дудинка{% if row.hub_departed_on %} {{ row.hub_departed_on|date:'d.m.Y' }}{% endif %}{% else %}Сотрудник прибыл в ВЖГ{% if row.final_arrived_on %} {{ row.final_arrived_on|date:'d.m.Y' }}{% endif %}{% endif %}</div>{% endif %}
+    </div>
+  </div>
+</div>
 {% if edit_mode %}
 <form method="post" class="mt-3">{% csrf_token %}{% include 'forms/fields.html' with form=form %}<div class="d-flex flex-wrap gap-2"><button class="btn btn-outline-primary" name="review_action" value="save">{% if row.status == 'OPEN' %}Сохранить черновик{% else %}Сохранить изменения{% endif %}</button>{% if row.status == 'OPEN' %}<button class="btn btn-primary" name="review_action" value="confirm">Подтвердить заявку</button>{% else %}<a class="btn btn-outline-secondary" href="{% url 'personnel:movement_review_accept' row.pk %}">Отмена</a>{% endif %}</div></form>
 {{ project_camps|json_script:'movement-project-camps' }}<script>document.addEventListener('DOMContentLoaded',()=>{const project=document.querySelector('[name=construction_object]'),camp=document.querySelector('[name=camp]'),data=JSON.parse(document.getElementById('movement-project-camps').textContent),all=Array.from(camp.options);function refresh(){const selected=camp.value,allowed=new Set((data[project.value]||[]).map(String));camp.replaceChildren(...all.filter(option=>!option.value||allowed.has(option.value)));camp.value=Array.from(camp.options).some(option=>option.value===selected)?selected:'';camp.dispatchEvent(new Event('change',{bubbles:true}));}project.addEventListener('change',refresh);refresh();});</script>
 {% else %}
-<div class="mt-3"><a class="btn btn-outline-primary" href="?edit=1">Редактировать</a></div>
-<dl class="row mt-3"><dt class="col-sm-3">Должность ГПР/СМГ</dt><dd class="col-sm-9">{{ row.planning_position_name|default:'—' }}</dd><dt class="col-sm-3">Должность сотрудника</dt><dd class="col-sm-9">{{ row.position_name|default:'—' }}</dd><dt class="col-sm-3">Проект</dt><dd class="col-sm-9">{{ row.construction_object|default:'—' }}</dd><dt class="col-sm-3">ВЖГ</dt><dd class="col-sm-9">{% if row.kind == 'ARRIVAL' %}{{ row.to_camp|default:'—' }}{% else %}{{ row.from_camp|default:'—' }}{% endif %}</dd><dt class="col-sm-3">Дата {{ row.get_kind_display|lower }}а</dt><dd class="col-sm-9">{{ row.movement_date|date:'d.m.Y' }}</dd><dt class="col-sm-3">№ заявки</dt><dd class="col-sm-9">{{ row.request_number }}</dd><dt class="col-sm-3">Базовый город</dt><dd class="col-sm-9">{{ row.base_city }}</dd><dt class="col-sm-3">Телефон</dt><dd class="col-sm-9">{{ row.phone }}</dd><dt class="col-sm-3">Время</dt><dd class="col-sm-9">{{ row.travel_time|time:'H:i' }}</dd><dt class="col-sm-3">Статус поездки</dt><dd class="col-sm-9">{{ row.travel_status }}</dd><dt class="col-sm-3">Примечание</dt><dd class="col-sm-9">{{ row.note|default:'—' }}</dd></dl>
+<div class="d-flex justify-content-end mt-3">
+  <details class="movement-actions">
+    <summary class="btn btn-outline-primary">Действия <span aria-hidden="true">⌄</span></summary>
+    <div class="movement-actions-menu">
+      <a href="?edit=1">Редактировать данные заявки</a>
+      {% if row.clearance_document %}<a href="{{ row.clearance_document.url }}" target="_blank" rel="noopener">Открыть обходной лист</a>{% endif %}
+    </div>
+  </details>
+</div>
+<div class="movement-meta mt-3">
+  <div class="movement-field"><small>Должность ГПР/СМГ</small><strong>{{ row.planning_position_name|default:'—' }}</strong></div>
+  <div class="movement-field"><small>Должность сотрудника</small><span>{{ row.position_name|default:'—' }}</span></div>
+  <div class="movement-field"><small>Проект</small><span>{{ row.construction_object|default:'—' }}</span></div>
+  <div class="movement-field"><small>ВЖГ</small><span>{% if row.kind == 'ARRIVAL' %}{{ row.to_camp|default:'—' }}{% else %}{{ row.from_camp|default:'—' }}{% endif %}</span></div>
+  <div class="movement-field"><small>Плановая дата {{ row.get_kind_display|lower }}а</small><strong>{{ row.movement_date|date:'d.m.Y' }}</strong></div>
+  <div class="movement-field"><small>№ заявки</small><span>{{ row.request_number|default:'—' }}</span></div>
+  <div class="movement-field"><small>Базовый город</small><span>{{ row.base_city|default:'—' }}</span></div>
+  <div class="movement-field"><small>Телефон</small><span>{{ row.phone|default:'—' }}</span></div>
+  <div class="movement-field"><small>Время прилёта / вылета</small><span>{{ row.travel_time|time:'H:i'|default:'—' }}</span></div>
+  <div class="movement-field"><small>Текущее состояние</small><strong>{{ row.travel_status|default:row.get_status_display }}</strong></div>
+  <div class="movement-field"><small>Фактическое прибытие в ОП Дудинка</small><strong>{{ row.hub_arrived_on|date:'d.m.Y'|default:'—' }}</strong></div>
+  <div class="movement-field"><small>Фактический выезд из ОП Дудинка</small><strong>{{ row.hub_departed_on|date:'d.m.Y'|default:'—' }}</strong></div>
+  {% if row.kind == 'ARRIVAL' %}<div class="movement-field"><small>Фактическое прибытие в ВЖГ</small><strong>{{ row.final_arrived_on|date:'d.m.Y'|default:'—' }}</strong></div>{% endif %}
+  <div class="movement-field"><small>Примечание</small><span>{{ row.note|default:'—' }}</span></div>
+</div>
 {% endif %}
 {% if row.kind == 'DEPARTURE' or row.kind == 'ARRIVAL' %}
-<hr><h3 class="h5">Маршрут {% if row.kind == 'ARRIVAL' %}заезда{% else %}выезда{% endif %}</h3>
-<ol>
-  <li class="{% if row.status != 'PENDING_APPROVAL' and row.status != 'RETURNED' %}text-success{% endif %}">Согласование руководителем</li>
-  <li class="{% if row.status == 'AT_HUB' or row.status == 'COMPLETED' %}text-success{% endif %}">Перевахта и прибытие в ОП Дудинка</li>
-  <li class="{% if row.tickets_ready %}text-success{% endif %}">Билеты{% if row.tickets_ready %} оформлены{% endif %}</li>
-  <li class="{% if row.clearance_document %}text-success{% endif %}">Обходной лист{% if row.clearance_document %} прикреплён{% endif %}</li>
-  <li class="{% if row.hub_departed_on %}text-success{% endif %}">Выезд из ОП Дудинка{% if row.kind == 'ARRIVAL' %} в ВЖГ{% else %} и завершение{% endif %}</li>
-  {% if row.kind == 'ARRIVAL' %}<li class="{% if row.status == 'COMPLETED' %}text-success{% endif %}">Прибытие в ВЖГ и фактический заезд</li>{% endif %}
-</ol>
+<hr class="my-4"><h3 class="h5 mb-3">Маршрут {% if row.kind == 'ARRIVAL' %}заезда{% else %}выезда{% endif %}</h3>
 {% if row.approval_comment %}<div class="alert {% if row.status == 'RETURNED' %}alert-danger{% else %}alert-info{% endif %}"><strong>Комментарий руководителя:</strong> {{ row.approval_comment }}</div>{% endif %}
 {% if can_manage_workflow and row.status == 'RETURNED' %}<form method="post" class="my-3">{% csrf_token %}<button class="btn btn-primary" name="workflow_action" value="resubmit">Повторно отправить на согласование</button></form>{% endif %}
 {% if can_manage_workflow and row.status == 'PEREVAKHTA' %}<form method="post" class="card p-3 my-3">{% csrf_token %}<h4 class="h6">Прибытие в ОП Дудинка</h4><p><strong>Плановая дата по заявке:</strong> {{ row.movement_date|date:'d.m.Y' }}</p><p class="text-muted">Укажите уже наступившую фактическую дату. Будущую дату сохранить нельзя.{% if row.kind == 'DEPARTURE' %} На эту дату фиксируется фактический выезд сотрудника из ВЖГ.{% endif %}</p><label class="form-label" for="hub-arrived-on">Фактическая дата прибытия в ОП Дудинка</label><input id="hub-arrived-on" class="form-control mb-2" type="date" name="hub_arrived_on" max="{{ workflow_today|date:'Y-m-d' }}" required><button class="btn btn-primary" name="workflow_action" value="arrive_hub">Сотрудник прибыл в ОП Дудинка</button></form>{% endif %}
@@ -30,8 +69,14 @@
 <form method="post" class="card p-3 my-3">{% csrf_token %}<h4 class="h6">Фактический выезд из ОП Дудинка</h4><p><strong>Плановая дата по заявке:</strong> {{ row.movement_date|date:'d.m.Y' }}</p><p class="text-muted">Укажите уже наступившую фактическую дату. Будущую дату сохранить нельзя. {% if row.kind == 'ARRIVAL' %}После этого сотрудник находится в пути в ВЖГ. Фактический заезд будет оформлен отдельно по прибытии.{% else %}После этого сотрудник переходит на МО{% if row.departure_destination == 'DISMISSAL' %} и фиксируется увольнение{% endif %}, а заявка завершается.{% endif %}</p><label class="form-label" for="hub-departed-on">Фактическая дата выезда из ОП Дудинка</label><input id="hub-departed-on" class="form-control mb-2" type="date" name="hub_departed_on" min="{{ row.hub_arrived_on|date:'Y-m-d' }}" max="{{ workflow_today|date:'Y-m-d' }}" required><button class="btn btn-success" name="workflow_action" value="leave_hub" {% if not row.tickets_ready or not row.clearance_document %}disabled{% endif %}>Зафиксировать выезд из Дудинки</button></form>
 {% endif %}
 {% if can_manage_workflow and row.kind == 'ARRIVAL' and row.status == 'EN_ROUTE' %}<form method="post" class="card p-3 my-3">{% csrf_token %}<h4 class="h6">Прибытие в ВЖГ</h4><p class="text-muted">Только это действие создаёт фактический заезд и добавляет сотрудника в состав ВЖГ. Будущую дату сохранить нельзя.</p><label class="form-label" for="final-arrived-on">Фактическая дата прибытия в ВЖГ</label><input id="final-arrived-on" class="form-control mb-2" type="date" name="final_arrived_on" min="{{ row.hub_departed_on|date:'Y-m-d' }}" max="{{ workflow_today|date:'Y-m-d' }}" required><button class="btn btn-success" name="workflow_action" value="arrive_camp">Подтвердить фактический заезд</button></form>{% endif %}
-{% if row.hub_arrived_on %}<p>Прибыл в ОП Дудинка: {{ row.hub_arrived_on|date:'d.m.Y' }}{% if row.hub_departed_on %} · Выехал: {{ row.hub_departed_on|date:'d.m.Y' }}{% endif %}</p>{% endif %}
-<h3 class="h5 mt-4">История маршрута</h3>{% for event in row.workflow_events.all %}<div class="border rounded p-2 my-2"><small>{{ event.created_at|date:'d.m.Y H:i' }} · {{ event.actor|default:'Система' }}</small><div><strong>{{ event.action }}</strong>{% if event.comment %}<br>{{ event.comment|linebreaksbr }}{% endif %}</div></div>{% empty %}<p class="text-muted">Событий пока нет.</p>{% endfor %}
+<ol class="movement-timeline mt-3">
+{% for event in row.workflow_events.all %}
+  <li><div class="movement-event"><div class="d-flex justify-content-between flex-wrap gap-2"><strong>{{ event.action }}</strong><span class="movement-event-time">{{ event.created_at|date:'d.m.Y H:i' }}</span></div>{% if event.comment %}<div class="movement-event-comment">{{ event.comment|linebreaksbr }}</div>{% endif %}<div class="movement-event-time mt-1">Выполнил: {{ event.actor|default:'Система' }}</div></div></li>
+{% empty %}
+  <li><div class="movement-event text-muted">Маршрут ещё не начат.</div></li>
+{% endfor %}
+</ol>
+{% if row.status != 'COMPLETED' %}<div class="alert alert-light border mt-3 mb-0"><strong>Следующий шаг:</strong> {% if row.status == 'PENDING_APPROVAL' %}согласование руководителем{% elif row.status == 'RETURNED' %}исправление и повторная отправка{% elif row.status == 'PEREVAKHTA' %}зафиксировать прибытие в ОП Дудинка{% elif row.status == 'AT_HUB' %}{% if not row.tickets_ready %}оформить билеты{% elif not row.clearance_document %}прикрепить обходной лист{% else %}зафиксировать выезд из ОП Дудинка{% endif %}{% elif row.status == 'EN_ROUTE' %}зафиксировать прибытие в ВЖГ{% else %}обработать заявку{% endif %}.</div>{% endif %}
 {% endif %}
 </div>
 {% endblock %}

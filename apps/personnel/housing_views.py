@@ -335,7 +335,11 @@ def movement_reviews(request):
 def movement_review_accept(request,pk):
     from core.permissions import require_roles,role_code
     require_roles(request.user,{'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER','MANAGER'})
-    row=get_object_or_404(MovementReviewRequest.objects.select_related('person','from_camp','to_camp','event'),pk=pk,company=request.user.company)
+    row=get_object_or_404(
+        MovementReviewRequest.objects.select_related('person','from_camp','to_camp','event')
+        .prefetch_related('workflow_events__actor'),
+        pk=pk,company=request.user.company,
+    )
     workflow_action=request.POST.get('workflow_action') if request.method=='POST' else None
     if workflow_action:
         from .departure_workflow import arrive_camp,arrive_hub,leave_hub,resubmit,update_hub

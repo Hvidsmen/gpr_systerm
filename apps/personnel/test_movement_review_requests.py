@@ -93,6 +93,9 @@ class MovementReviewRequestTests(TestCase):
 
         accepted=self.client.get(reverse('personnel:movement_review_accept',args=[request_row.pk]))
         self.assertContains(accepted,'Редактировать')
+        self.assertContains(accepted,'ОП Дудинка')
+        self.assertContains(accepted,'Фактическое прибытие в ОП Дудинка')
+        self.assertContains(accepted,'movement-timeline')
         edit=self.client.get(reverse('personnel:movement_review_accept',args=[request_row.pk])+'?edit=1')
         self.assertContains(edit,'Сохранить изменения')
         response=self.client.post(reverse('personnel:movement_review_accept',args=[request_row.pk]),{
