@@ -45,19 +45,20 @@
  const kind=form.querySelector('[name=kind]'),target=form.querySelector('[name=target]'),employees=form.querySelector('[name=employees]'),destination=form.querySelector('[name=destination]'),camp=form.querySelector('[name=camp]');
  const presentByCamp=JSON.parse(employees.dataset.presentByCamp||'{}');
  const selectedHost=form.querySelector('[data-movement-selected]');
+ const departureReasons=new Map();
  function selectedPeople(){
   selectedHost.replaceChildren();const selected=[...employees.selectedOptions];const title=document.createElement('strong');title.textContent=selected.length?'Сотрудники в действии: '+selected.length:'Добавьте сотрудников через список выше';selectedHost.append(title);
-  const list=document.createElement('ul');list.className='movement-selected-list';for(const option of selected){const item=document.createElement('li');const name=document.createElement('span');name.textContent=option.textContent;item.append(name);if(form.dataset.personalMovement!=='1'){const remove=document.createElement('button');remove.type='button';remove.className='btn btn-sm btn-outline-secondary';remove.textContent='Убрать';remove.addEventListener('click',()=>{option.selected=false;employees.dispatchEvent(new Event('change',{bubbles:true}));});item.append(remove);}list.append(item);}selectedHost.append(list);
+  const list=document.createElement('ul');list.className='movement-selected-list';for(const option of selected){const item=document.createElement('li');const name=document.createElement('span');name.textContent=option.textContent;item.append(name);if(kind.value==='DEPARTURE'){const reason=document.createElement('select');reason.name='departure_destination_'+option.value;reason.className='form-select form-select-sm';reason.required=true;reason.setAttribute('aria-label','Причина выезда: '+option.textContent);for(const [value,label] of [['REST','На межвахтовый отдых'],['DISMISSAL','Увольнение']]){const choice=document.createElement('option');choice.value=value;choice.textContent=label;choice.selected=(departureReasons.get(option.value)||destination.value||'REST')===value;reason.append(choice);}reason.addEventListener('change',()=>departureReasons.set(option.value,reason.value));item.append(reason);}if(form.dataset.personalMovement!=='1'){const remove=document.createElement('button');remove.type='button';remove.className='btn btn-sm btn-outline-secondary';remove.textContent='Убрать';remove.addEventListener('click',()=>{option.selected=false;employees.dispatchEvent(new Event('change',{bubbles:true}));});item.append(remove);}list.append(item);}selectedHost.append(list);
  }
  employees.addEventListener('change',selectedPeople);selectedPeople();
  function fields(){
-  destination.closest('.app-form-field').hidden=kind.value!=='DEPARTURE';
-  target.closest('.app-form-field').hidden=!(kind.value==='TRANSFER'||kind.value==='DEPARTURE'&&destination.value==='CAMP');
+  destination.closest('.app-form-field').hidden=true;
+  target.closest('.app-form-field').hidden=kind.value!=='TRANSFER';
   const eligible=new Set((kind.value==='ARRIVAL'?employees.dataset.activeEmployees:(presentByCamp[camp.value]||[]).join(',')).split(','));
   for(const option of employees.options){option.disabled=!eligible.has(option.value);option.hidden=option.disabled;if(option.disabled&&form.dataset.personalMovement!=='1')option.selected=false;}
   for(const option of target.options){option.disabled=!!option.value&&option.value===camp.value;if(option.disabled)option.selected=false;}
   employees.dispatchEvent(new Event('change',{bubbles:true}));
  }
- kind.addEventListener('change',fields);destination.addEventListener('change',fields);camp.addEventListener('change',fields);fields();
+ kind.addEventListener('change',fields);camp.addEventListener('change',fields);fields();
  form.addEventListener('change',()=>{dirty=true;});form.addEventListener('input',e=>{if(e.target.name)dirty=true;});form.addEventListener('submit',()=>{submitting=true;});window.addEventListener('beforeunload',e=>{if(dirty&&!submitting){e.preventDefault();e.returnValue='';}});
 })();

@@ -199,8 +199,20 @@ def workspace(request, movements=False, movement_page='new'):
             direct=bool(form.cleaned_data.get('direct_fact'))
             operation=housing.move if direct else housing.request_moves
             options={'setup_direct':True} if direct else {'approval_batch':uuid4()}
-            saved,movement_exclusions=housing.process_moves_partially(operation,request.user,form.cleaned_data['kind'],camp,form.cleaned_data['date'],people,
-                employees=selected,target=form.cleaned_data.get('target'),comment=form.cleaned_data['comment'],snapshot=form.cleaned_data['snapshot'],departure_destination='DISMISSAL' if form.cleaned_data.get('destination')=='DISMISSAL' else 'REST',**options)
+            common={'target':form.cleaned_data.get('target'),'comment':form.cleaned_data['comment'],'snapshot':form.cleaned_data['snapshot'],**options}
+            if form.cleaned_data['kind']=='DEPARTURE':
+                saved=[];movement_exclusions=[]
+                for employee in selected:
+                    destination=request.POST.get(f'departure_destination_{employee.pk}','')
+                    if destination not in {'REST','DISMISSAL'}:
+                        raise ValidationError(f'{employee.display_name}: выберите причину выезда.')
+                    employee_people=[person for person in people if person.employee_id==employee.pk]
+                    part_saved,part_excluded=housing.process_moves_partially(operation,request.user,'DEPARTURE',camp,form.cleaned_data['date'],employee_people,
+                        employees=[employee],departure_destination=destination,**common)
+                    saved.extend(part_saved);movement_exclusions.extend(part_excluded)
+            else:
+                saved,movement_exclusions=housing.process_moves_partially(operation,request.user,form.cleaned_data['kind'],camp,form.cleaned_data['date'],people,
+                    employees=selected,departure_destination='REST',**common)
         except (ValidationError,IntegrityError) as exc:form.add_error(None,'; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Размещение изменилось одновременно с вашим вводом. Обновите список.')
         else:
             count=len(saved)

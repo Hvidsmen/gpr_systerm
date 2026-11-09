@@ -5,7 +5,7 @@ from django.contrib.staticfiles.testing import StaticLiveServerTestCase
 from django.test import TestCase
 from django.urls import reverse
 from .test_housing import HousingTests
-from .models import CampStay, HousingEvent, StaffingSlot
+from .models import CampStay, HousingEvent, MovementReviewRequest, StaffingSlot
 from . import housing
 
 
@@ -18,7 +18,10 @@ class MovementActionTests(TestCase):
         self.unassigned=StaffingSlot.objects.create(company=self.company,group=self.group,person=self.second_person,status='МО',pattern=self.pattern,arrival_date=self.day)
 
     def payload(self, kind, employee=None, camp=None, **extra):
-        return {'camp':(camp or self.a).pk,'kind':kind,'date':str(self.day),'employees':[employee or self.employee.pk], 'snapshot':housing.movement_snapshot(self.hr),**extra}
+        employee=employee or self.employee.pk
+        if kind=='DISMISSAL':kind='DEPARTURE';extra[f'departure_destination_{employee}']='DISMISSAL'
+        elif kind=='DEPARTURE':extra[f'departure_destination_{employee}']=extra.pop('destination','REST')
+        return {'camp':(camp or self.a).pk,'kind':kind,'date':str(self.day),'employees':[employee], 'snapshot':housing.movement_snapshot(self.hr),**extra}
 
     def test_unassigned_employee_has_arrival_button_and_must_choose_camp(self):
         page=self.client.get(self.url,{'date':str(self.day)})
@@ -60,6 +63,16 @@ class MovementActionTests(TestCase):
         response=self.client.post(self.url,self.payload('DEPARTURE',destination='DISMISSAL'))
         self.assertEqual(response.status_code,302)
         self.assertEqual(HousingEvent.objects.get(person=self.person).departure_destination,'DISMISSAL')
+
+    def test_each_departing_employee_has_own_reason(self):
+        CampStay.objects.create(company=self.company,person=self.second_person,camp=self.a,arrived_on=self.day,recorded_by=self.hr)
+        payload=self.payload('DEPARTURE')
+        payload['employees']=[self.employee.pk,self.second_employee.pk]
+        payload[f'departure_destination_{self.employee.pk}']='REST'
+        payload[f'departure_destination_{self.second_employee.pk}']='DISMISSAL'
+        self.assertEqual(self.client.post(self.url,payload).status_code,302)
+        reasons=dict(MovementReviewRequest.objects.values_list('person_id','departure_destination'))
+        self.assertEqual(reasons,{self.person.pk:'REST',self.second_person.pk:'DISMISSAL'})
 
     def test_dismissal_without_current_presence_does_not_create_exit(self):
         response=self.client.post(self.url,self.payload('DISMISSAL',employee=self.second_employee.pk))

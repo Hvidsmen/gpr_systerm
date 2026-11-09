@@ -129,11 +129,12 @@ class CampForm(StyledModelForm):
 
 class MovementForm(forms.Form):
     personal_scope=forms.CharField(required=False,widget=forms.HiddenInput)
-    kind=forms.ChoiceField(label='Действие',choices=[('ARRIVAL','Заезд'),('DEPARTURE','Выезд'),('TRANSFER','Перевод в другой ВЖГ'),('DISMISSAL','Выезд по увольнению')])
+    kind=forms.ChoiceField(label='Действие',choices=[('ARRIVAL','Заезд'),('DEPARTURE','Выезд'),('TRANSFER','Перевод в другой ВЖГ')])
     date=forms.DateField(label='Фактическая дата',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
     camp=forms.ModelChoiceField(label='ВЖГ заезда / исходный ВЖГ',queryset=None)
     employees=forms.ModelMultipleChoiceField(label='Сотрудники',queryset=None,widget=forms.SelectMultiple(attrs={'size':8,'data-personnel-searchable':''}))
-    destination=forms.ChoiceField(label='Куда / причина выезда',choices=[('REST','На межвахтовый отдых'),('CAMP','В другой ВЖГ'),('DISMISSAL','По увольнению')],initial='REST',required=False)
+    destination=forms.ChoiceField(label='Причина выезда',choices=[('REST','На межвахтовый отдых'),('DISMISSAL','Увольнение')],initial='REST',required=False,
+        help_text='При выборе нескольких сотрудников причина указывается отдельно для каждого ниже.')
     target=forms.ModelChoiceField(label='ВЖГ назначения',queryset=None,required=False)
     comment=forms.CharField(label='Комментарий',required=False,widget=forms.Textarea(attrs={'rows':2}),max_length=4000)
     direct_fact=forms.BooleanField(label='Временный режим: провести факт сразу, без заявки',required=False,
@@ -179,8 +180,6 @@ class MovementForm(forms.Form):
         if employees:
             if data.get('kind')=='ARRIVAL' and employees.filter(is_active=False).exists():
                 self.add_error('employees','Для заезда выберите активных сотрудников.')
-        if data.get('kind')=='DEPARTURE' and data.get('destination')=='CAMP':data['kind']='TRANSFER'
-        if data.get('kind')=='DISMISSAL':data['kind']='DEPARTURE';data['destination']='DISMISSAL'
         if data.get('kind')=='TRANSFER' and not data.get('target'):self.add_error('target','Выберите ВЖГ назначения.')
         return data
 
