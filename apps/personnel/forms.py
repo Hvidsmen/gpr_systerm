@@ -129,12 +129,10 @@ class CampForm(StyledModelForm):
 
 class MovementForm(forms.Form):
     personal_scope=forms.CharField(required=False,widget=forms.HiddenInput)
-    kind=forms.ChoiceField(label='Действие',choices=[('ARRIVAL','Заезд'),('DEPARTURE','Выезд'),('TRANSFER','Перевод в другой ВЖГ')])
+    kind=forms.ChoiceField(label='Вид заявки',choices=[('ARRIVAL','Заезд'),('DEPARTURE','Выезд'),('TRANSFER','Перевод в другой ВЖГ')])
     date=forms.DateField(label='Фактическая дата',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
     camp=forms.ModelChoiceField(label='ВЖГ заезда / исходный ВЖГ',queryset=None)
     employees=forms.ModelMultipleChoiceField(label='Сотрудники',queryset=None,widget=forms.SelectMultiple(attrs={'size':8,'data-personnel-searchable':''}))
-    destination=forms.ChoiceField(label='Причина выезда',choices=[('REST','На межвахтовый отдых'),('DISMISSAL','Увольнение')],initial='REST',required=False,
-        help_text='При выборе нескольких сотрудников причина указывается отдельно для каждого ниже.')
     target=forms.ModelChoiceField(label='ВЖГ назначения',queryset=None,required=False)
     comment=forms.CharField(label='Комментарий',required=False,widget=forms.Textarea(attrs={'rows':2}),max_length=4000)
     direct_fact=forms.BooleanField(label='Временный режим: провести факт сразу, без заявки',required=False,
