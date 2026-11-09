@@ -28,10 +28,8 @@
  function rowMessage(row,text,error=false){const target=row.querySelector('[data-autosave-row-state]');if(target){target.textContent=text;target.title=text;target.classList.toggle('text-danger',error);}row.classList.toggle('production-person-auto-failed',error);}
  function renderPendingDelete(row,deleted=Boolean(field(row,'DELETE')?.checked)){
   row.hidden=false;row.classList.toggle('production-row-pending-delete',deleted);
-  const button=row.querySelector('[data-person-remove],[data-work-remove]');if(!button)return;
-  button.textContent=deleted?'Вернуть':'Удалить';button.classList.toggle('btn-outline-danger',!deleted);button.classList.toggle('btn-outline-secondary',deleted);
-  if(deleted)button.disabled=false;
-  button.title=deleted?'Отменить удаление до сохранения':isPerson(row)?'Убрать сотрудника из факта за этот день':'Удалить работу из факта за этот день';
+  const remove=row.querySelector('[data-person-remove],[data-work-remove]'),restore=row.querySelector('[data-person-restore],[data-work-restore]');if(!remove||!restore)return;
+  remove.hidden=deleted||(!isPerson(row)&&row.dataset.planned==='1');restore.hidden=!deleted;
  }
  form.productionRenderPendingDelete=renderPendingDelete;
  function prefix(row){return field(row,'id').name.replace(/-id$/,'');}
@@ -176,7 +174,7 @@
    finally{clear.disabled=false;}
    return;
   }
-  const button=event.target.closest('[data-person-remove],[data-work-remove]');if(!button)return;
+  const button=event.target.closest('[data-person-remove],[data-work-remove],[data-person-restore],[data-work-restore]');if(!button)return;
   event.preventDefault();
   const row=button.closest('[data-production-person],[data-work-fact-row]');button.disabled=true;
   try{

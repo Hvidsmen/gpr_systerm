@@ -5,7 +5,7 @@
 <div class="production-person-employee"><span class="visually-hidden">{{ row.employee.label_tag }}</span>{{ row.employee }}{{ row.employee.errors }}</div>
 <div class="production-person-shift" title="Смена"><span class="visually-hidden">{{ row.shift.label_tag }}</span>{{ row.shift }}{{ row.shift.errors }}</div>
 {% if editable %}<div class="work-claim-bar production-person-claim" data-entry-claim><span class="small" data-label>Проверка записи…</span><button type="button" class="btn btn-sm btn-outline-primary" data-take hidden disabled>Резерв</button><button type="button" class="btn btn-sm btn-outline-primary" data-release hidden>Освободить</button></div>
-<div class="production-person-save-actions"><span class="small" data-autosave-row-state role="status"></span><button type="button" class="btn btn-sm btn-outline-danger" data-person-remove title="Убрать сотрудника из факта за этот день">Удалить</button></div>{% endif %}
+<div class="production-person-save-actions"><span class="small" data-autosave-row-state role="status"></span><button type="button" class="btn btn-sm btn-outline-danger" data-person-remove title="Убрать сотрудника из факта за этот день">Удалить</button><a href="#" class="btn btn-sm btn-outline-secondary" data-person-restore hidden>Вернуть</a></div>{% endif %}
 </div></div>
 <span class="small text-danger" data-error role="alert"></span>
 <details class="production-person-details"{% if row.planning_position.errors or row.activity.errors or row.DELETE.errors or row.work_targets.errors %} open{% endif %}>
