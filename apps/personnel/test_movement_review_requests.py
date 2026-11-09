@@ -47,6 +47,7 @@ class MovementReviewRequestTests(TestCase):
         self.assertEqual(request_row.site_object,self.site)
         self.assertEqual(request_row.site,self.site.name)
         self.assertEqual(request_row.phone,self.employee.phone)
+        self.assertEqual(request_row.travel_status,'Ожидается')
 
         self.client.force_login(self.reviewer)
         dispatcher_page=self.client.get(reverse('personnel:housing'))
@@ -108,6 +109,10 @@ class MovementReviewRequestTests(TestCase):
     def test_direct_hr_movement_does_not_create_dispatch_request(self):
         housing.move(self.reviewer,'ARRIVAL',self.camp,timezone.localdate(),[self.person])
         self.assertFalse(MovementReviewRequest.objects.exists())
+
+    def test_planning_position_falls_back_to_employee_position(self):
+        self.slot.cancelled_at=timezone.now();self.slot.save(update_fields=['cancelled_at','updated_at'])
+        self.assertEqual(housing.planning_position_name(self.person,timezone.localdate()),self.employee.display_position)
 
     def test_new_request_screen_creates_review_request_for_hr_role(self):
         self.client.force_login(self.reviewer);url=reverse('personnel:movements');day=timezone.localdate()

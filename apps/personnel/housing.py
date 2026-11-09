@@ -145,8 +145,9 @@ def planning_position_name(person,day):
     assignment=person.assignments.filter(cancelled_at=None,assigned_from__lte=day).filter(
         Q(assigned_until=None)|Q(assigned_until__gte=day),Q(replaced_on=None)|Q(replaced_on__gt=day)
     ).select_related('planning_position','group').order_by('-assigned_from','-pk').first()
-    if not assignment:return ''
-    return str(assignment.planning_position or assignment.group.position or '')
+    if assignment:return str(assignment.planning_position or assignment.group.position or '')
+    employee=person.employee if person.employee_id else None
+    return employee.display_position if employee else ''
 
 
 def request_object_pair(person,day,camp):
@@ -233,7 +234,7 @@ def request_moves(user,kind,camp,day,people,employees=(),target=None,comment='',
             departure_destination=departure_destination if kind=='DEPARTURE' else 'CAMP' if kind=='TRANSFER' else '',requested_by=user,
             employment_kind='TRANSFER' if kind=='TRANSFER' else 'STAFF',planning_position_name=planning_position_name(person,day),position_name=employee.display_position if employee else '',
             construction_object=construction_object,site_object=site_object,site=site_object.name if site_object else request_camp.name,phone=(employee.phone if employee else '') or person.phone,
-            travel_status='Прибыл' if kind=='ARRIVAL' else 'Убыл',note=comment))
+            travel_status='Ожидается',note=comment))
     for row in rows:row.save()
     return len(rows)
 
