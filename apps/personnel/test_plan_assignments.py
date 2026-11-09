@@ -24,6 +24,17 @@ class PlanAssignmentTests(TestCase):
 
     def assigned(self):return StaffingSlot.objects.get(planning_position=self.role)
 
+    def test_assignment_form_hides_end_date_and_schedule_and_has_clear_sections(self):
+        response=self.client.get(self.url)
+        self.assertEqual(response.status_code,200)
+        self.assertTrue(response.context['form']['assigned_until'].is_hidden)
+        self.assertTrue(response.context['form']['pattern'].is_hidden)
+        self.assertContains(response,'1. Сотрудник и должность')
+        self.assertContains(response,'2. Место назначения')
+        self.assertContains(response,'Начальное состояние сотрудника')
+        self.assertNotContains(response,'По дату включительно')
+        self.assertNotContains(response,'Без личного графика')
+
     def test_assign_any_employee_without_rewriting_hr_or_creating_arrival_and_repost_is_idempotent(self):
         before=(CampStay.objects.count(),HousingEvent.objects.count())
         original=self.second_employee.position_id

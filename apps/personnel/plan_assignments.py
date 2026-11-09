@@ -115,6 +115,10 @@ class AssignmentForm(forms.Form):
 
     def __init__(self,*args,company,row=None,**kwargs):
         super().__init__(*args,**kwargs)
+        # Эти значения сохраняются для совместимости со старыми назначениями,
+        # но больше не редактируются в форме назначения.
+        self.fields['assigned_until'].widget=forms.HiddenInput()
+        self.fields['pattern'].widget=forms.HiddenInput()
         self.company=company;self.row=row
         history=Person.objects.filter(company=company,employee_id=OuterRef('pk')).filter(Q(stays__isnull=False)|Q(housing_events__isnull=False))
         employees=Employee.objects.filter(company=company).exclude(personnel_card__dispatcher_removed_at__isnull=False)
