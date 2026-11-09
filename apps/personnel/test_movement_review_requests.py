@@ -276,7 +276,8 @@ class MovementReviewRequestTests(TestCase):
         self.assertEqual([row.pk for row in page.context['dispatcher_review_requests']],[newer.pk,older.pk])
         self.assertEqual([row.pk for row in page.context['excel_review_requests']],[imported.pk])
         sorted_page=self.client.get(reverse('personnel:movement_reviews'),{'sort':'movement_asc'})
-        self.assertEqual(sorted_page.context['review_sort'],'movement_asc');self.assertEqual([row.pk for row in sorted_page.context['dispatcher_review_requests']],[older.pk,newer.pk]);self.assertContains(sorted_page,'ФИО: А–Я')
+        self.assertEqual(sorted_page.context['review_sort'],'movement_asc');self.assertEqual([row.pk for row in sorted_page.context['dispatcher_review_requests']],[older.pk,newer.pk])
+        self.assertContains(sorted_page,'Дата поездки ↑');self.assertContains(sorted_page,'Создана')
 
     def test_visible_excel_sheets_create_review_requests_without_duplicates(self):
         from openpyxl import Workbook

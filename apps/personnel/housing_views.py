@@ -308,7 +308,7 @@ def review_request_context(request):
     from core.permissions import role_code
     tab='departure' if request.GET.get('kind')=='departure' else 'arrival'
     sort=request.GET.get('sort','created_desc')
-    sort_options=[('created_desc','Новые заявки сверху'),('created_asc','Старые заявки сверху'),('name_asc','ФИО: А–Я'),('name_desc','ФИО: Я–А'),('movement_asc','Дата заезда / выезда: ранние сверху'),('movement_desc','Дата заезда / выезда: поздние сверху')]
+    sort_options=[('created_desc','Новые заявки сверху'),('created_asc','Старые заявки сверху'),('name_asc','ФИО: А–Я'),('name_desc','ФИО: Я–А'),('position_asc','Должность: А–Я'),('position_desc','Должность: Я–А'),('project_asc','Проект: А–Я'),('project_desc','Проект: Я–А'),('movement_asc','Дата заезда / выезда: ранние сверху'),('movement_desc','Дата заезда / выезда: поздние сверху'),('status_asc','Статус: А–Я'),('status_desc','Статус: Я–А')]
     if sort not in dict(sort_options):sort='created_desc'
     raw_date=request.GET.get('date','').strip();filter_date=None
     if raw_date:
@@ -319,7 +319,9 @@ def review_request_context(request):
     if filter_date:qs=qs.filter(movement_date=filter_date)
     from django.db.models import Case,When,Value,IntegerField
     ordering={'created_desc':['-created_at','-pk'],'created_asc':['created_at','pk'],'name_asc':['person__full_name','pk'],'name_desc':['-person__full_name','-pk'],
-        'movement_asc':['movement_date','pk'],'movement_desc':['-movement_date','-pk']}[sort]
+        'position_asc':['planning_position_name','person__full_name','pk'],'position_desc':['-planning_position_name','person__full_name','pk'],
+        'project_asc':['construction_object__name','person__full_name','pk'],'project_desc':['-construction_object__name','person__full_name','pk'],
+        'movement_asc':['movement_date','pk'],'movement_desc':['-movement_date','-pk'],'status_asc':['status','pk'],'status_desc':['-status','-pk']}[sort]
     rows=list(qs.select_related('person__employee','from_camp','to_camp','requested_by','event').annotate(
         cancelled_order=Case(When(status='CANCELLED',then=Value(1)),default=Value(0),output_field=IntegerField()),
         open_order=Case(When(status='OPEN',then=Value(0)),default=Value(1),output_field=IntegerField())).order_by('cancelled_order','open_order',*ordering)[:1000])
