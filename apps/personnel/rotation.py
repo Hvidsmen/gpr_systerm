@@ -196,6 +196,10 @@ def rotation_rows(company,camps,day,*,query='',position=None,state='',include_un
         for person_id,stay in departures.items():people[person_id]=stay.person
     from .models import ScheduleChangeRequest
     pending_schedules={row.person_id:row for row in ScheduleChangeRequest.objects.filter(company=company,person_id__in=people,status='PENDING').select_related('requested_schedule')}
+    from .models import MovementReviewRequest
+    active_routes={}
+    for route in MovementReviewRequest.objects.filter(company=company,person_id__in=people,status__in=['PENDING_APPROVAL','RETURNED','PEREVAKHTA','AT_HUB','EN_ROUTE']).order_by('created_at','pk'):
+        active_routes[route.person_id]=route
     days=[day.replace(day=n) for n in range(1,monthrange(day.year,day.month)[1]+1)];rows=[]
     for person_id,person in people.items():
         active=current.get(person_id);previous=last.get(person_id);initial_exit=initial.get(person_id);assigned=by_person[person_id]
@@ -247,6 +251,9 @@ def rotation_rows(company,camps,day,*,query='',position=None,state='',include_un
             'actual_elsewhere':elsewhere.camp if elsewhere else None,
             'staff_position_label':str(employee.position) if employee and employee.position_id and (assignment_removed or slot and slot.planning_position_id and str(employee.position)!=role) else '',
             'state':status,'state_label':{'MV':'На вахте','MO':'Межвахтовый отдых','UNKNOWN':'Требует уточнения'}[status], 'verified':bool(active),'legacy_only':status=='MV' and not active,
+            'movement_route_status':active_routes[person_id].status if person_id in active_routes else '',
+            'movement_route_kind':active_routes[person_id].kind if person_id in active_routes else '',
+            'actual_rest_started':bool(not active and previous and previous.departed_on and previous.departed_on<=day),
             'arriving':arriving,'departing':departing,'departure_camp':departures[person_id].camp if person_id in departures else None,
             'schedule_info':description(schedule,day,schedule_stays.get(person_id,[])),
             'cycle_missing':not known_cycle,
@@ -300,10 +307,13 @@ def filter_position(rows,position):
 
 
 def status_indicator(row):
+    if row.get('movement_route_status')=='AT_HUB':return 'blue','В ОП Дудинка','Сотрудник прибыл в ОП Дудинка. Билеты и обходной лист оформляются параллельно.'
+    if row.get('movement_route_status')=='EN_ROUTE':return 'blue','В пути в ВЖГ','Сотрудник выехал из ОП Дудинка и ещё не прибыл в ВЖГ.'
     if row.get('departure_warning')=='overdue':return 'red','Выезд просрочен',STATUS_HELP['DEPARTURE_OVERDUE']
     if row.get('arrival_overdue'):return 'red','Заезд просрочен',STATUS_HELP['ARRIVAL_OVERDUE']
     if row.get('departure_warning')=='soon':return 'yellow','Ожидает выезда',STATUS_HELP['DEPARTURE_PENDING']
     if row.get('legacy_only'):return 'yellow','Заезд не оформлен','На вахте по начальным данным. Оформите фактический заезд, проверив дату и ВЖГ.'
+    if row.get('state')=='MO' and row.get('actual_rest_started'):return 'muted','Межвахтовый отдых',STATUS_HELP['MO']
     if row.get('today_code')=='ДП':return 'blue','В пути',STATUS_HELP['TRAVEL']
     if row.get('state')=='MV':return 'green','На вахте',STATUS_HELP['MV']
     if row.get('state')=='MO':return 'muted','Межвахтовый отдых',STATUS_HELP['MO']

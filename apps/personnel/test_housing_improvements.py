@@ -95,6 +95,8 @@ class HousingImprovementsTests(TestCase):
         self.assertEqual(status_indicator({'state':'MV','departure_warning':'overdue'})[:2],('red','Выезд просрочен'))
         self.assertEqual(status_indicator({'state':'MV'})[:2],('green','На вахте'))
         self.assertEqual(status_indicator({'state':'MO','arrival_overdue':True})[:2],('red','Заезд просрочен'))
+        self.assertEqual(status_indicator({'state':'MO','actual_rest_started':True,'today_code':'ДП'})[:2],('muted','Межвахтовый отдых'))
+        self.assertEqual(status_indicator({'state':'MO','movement_route_status':'AT_HUB','today_code':'ДП'})[:2],('blue','В ОП Дудинка'))
 
 
 import json,os,subprocess,shutil
