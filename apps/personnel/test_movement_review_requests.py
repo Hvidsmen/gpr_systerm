@@ -265,7 +265,7 @@ class MovementReviewRequestTests(TestCase):
 
     def test_parallel_return_preserves_other_approvals_and_resubmits_only_returner(self):
         from .departure_workflow import active_route_roles,decide,resubmit
-        day=timezone.localdate();housing.request_moves(self.personnel,'ARRIVAL',self.camp,day,[self.person])
+        day=timezone.localdate();batch=uuid4();housing.request_moves(self.personnel,'ARRIVAL',self.camp,day,[self.person],approval_batch=batch)
         row=MovementReviewRequest.objects.get();self.complete_trip_details(row)
         for code in ['MANAGER','SITE_CHIEF','PEREVAKHTA_SPECIALIST']:
             user=User.objects.create_user(username='route-'+code.lower(),company=self.company,role=Role.objects.get(code=code))
@@ -275,12 +275,14 @@ class MovementReviewRequestTests(TestCase):
         decide(approved,row,True);row.refresh_from_db();decide(returned,row,False,'Нужны медицинские данные');row.refresh_from_db()
         self.assertEqual(row.status,'RETURNED');self.assertEqual(row.approval_route['CHIEF_MECHANIC']['status'],'APPROVED')
         from apps.planning.task_services import visible
-        self.assertTrue(visible(returned).filter(key=f'personnel-movement-approval:{row.pk}').exists())
+        self.assertTrue(visible(returned).filter(key=f'personnel-movement-batch:{batch}').exists())
         self.client.force_login(returned)
-        task=visible(returned).get(key=f'personnel-movement-approval:{row.pk}')
+        task=visible(returned).get(key=f'personnel-movement-batch:{batch}')
         page=self.client.get(reverse('planning:task_detail',args=[task.pk]))
-        self.assertContains(page,'ЭТАПЫ СОГЛАСОВАНИЯ');self.assertContains(page,'Параллельное согласование: 1 из 6')
-        self.assertContains(page,'Главный механик: ✓ согласовано');self.assertContains(page,'Фельдшер: ! возвращено')
+        self.assertNotContains(page,'ЭТАПЫ СОГЛАСОВАНИЯ');self.assertContains(page,'Параллельные согласования: 1 из 6')
+        self.assertContains(page,'<details>',html=True)
+        self.assertContains(page,'Главный механик');self.assertContains(page,'Фельдшер')
+        self.assertContains(page,'✓ Согласовано');self.assertContains(page,'Возвращено')
         self.assertContains(page,'Нужны медицинские данные')
         resubmit(self.personnel,row);row.refresh_from_db()
         self.assertEqual(row.approval_route['PARAMEDIC']['status'],'PENDING')
