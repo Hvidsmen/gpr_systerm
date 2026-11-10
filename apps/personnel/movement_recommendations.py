@@ -4,6 +4,7 @@ from django.core import signing
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Q
+from django.utils import timezone
 from .models import Camp,MovementRecommendationOverride,MovementReviewRequest,Person
 from . import housing
 
@@ -108,15 +109,17 @@ def create_requests(user,tokens):
     count=0
     for token in dict.fromkeys(tokens):
         kind,person,camp,planned_on=decode(token,user.company)
-        lookup={'company':user.company,'person':person,'kind':kind,'movement_date':planned_on,
+        request_on=max(planned_on,timezone.localdate())
+        lookup={'company':user.company,'person':person,'kind':kind,'movement_date':request_on,
             'to_camp':camp if kind=='ARRIVAL' else None,'from_camp':camp if kind=='DEPARTURE' else None}
         if MovementReviewRequest.objects.filter(**lookup).exists():continue
         employee=person.employee
-        construction_object,site_object=housing.request_object_pair(person,planned_on,camp)
+        construction_object,site_object=housing.request_object_pair(person,request_on,camp)
         row=MovementReviewRequest.objects.create(**lookup,requested_by=user,approval_batch=batch,status='PENDING_APPROVAL',
-            employment_kind='STAFF',planning_position_name=housing.planning_position_name(person,planned_on),position_name=employee.display_position if employee else '',
+            employment_kind='STAFF',planning_position_name=housing.planning_position_name(person,request_on),position_name=employee.display_position if employee else '',
             construction_object=construction_object,site_object=site_object,site=site_object.name if site_object else camp.name,
-            phone=(employee.phone if employee else '') or person.phone,travel_status='Ожидается')
+            phone=(employee.phone if employee else '') or person.phone,travel_status='Ожидается',
+            note=f'Просроченная дата по графику: {planned_on:%d.%m.%Y}.' if planned_on<request_on else '')
         created.append(row)
         MovementRecommendationOverride.objects.update_or_create(company=user.company,person=person,camp=camp,kind=kind,planned_on=planned_on,
             defaults={'action':'EXCLUDE','recorded_by':user})

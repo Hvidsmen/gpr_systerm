@@ -68,6 +68,17 @@ class MovementRecommendationTests(TestCase):
         exclude(self.personnel_dispatcher,[recommendation['token']])
         self.assertEqual(build(self.company,self.day)['DEPARTURE'],[])
 
+    @patch('apps.personnel.rotation.rotation_rows')
+    def test_overdue_recommendation_creates_current_not_backdated_request(self,rotation_rows):
+        planned=self.day-timedelta(days=60)
+        rotation_rows.return_value=([{'person':self.second_person,'slot':self.slot,'camp':self.a,'state':'MO',
+            'planned_return':planned,'planned_departure_display':None}],[],{})
+        recommendation=build(self.company,self.day)['ARRIVAL'][0]
+        self.assertEqual(create_requests(self.personnel_dispatcher,[recommendation['token']]),1)
+        request=MovementReviewRequest.objects.get()
+        self.assertEqual(request.movement_date,timezone.localdate())
+        self.assertIn(planned.strftime('%d.%m.%Y'),request.note)
+
     @patch('apps.personnel.rotation.rotation_rows',return_value=([],[],{}))
     def test_manual_arrival_is_shared_and_actual_presence_hides_it(self,rotation_rows):
         planned=self.day+timedelta(days=2)
