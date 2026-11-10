@@ -61,9 +61,9 @@ class EmployeesImportTests(TestCase):
         position = Position.objects.create(company=self.company, code='position', name='Инженер')
         run = self.run_record()
         result = apply_employees(run, {'employees': [self.row(), self.row('2'*32, archived=1)]})
-        self.assertEqual((result['created'], result['archived']), (2, 1))
+        self.assertEqual((result['created'], result['archived'],result['linked_manual']), (1, 1,1))
         self.assertFalse(Employee.objects.get(company=self.company,zup_ref='2'*32).is_active)
-        employee = Employee.objects.get(company=self.company, zup_ref='1'*32)
+        employee = Employee.objects.get(company=self.company, zup_ref='1'*32);self.assertEqual(employee.pk,manual.pk)
         self.assertEqual(employee.position, position)
         self.assertEqual(employee.zup_department, 'Отдел')
         self.assertContains(self.client.get(reverse('resources:employee_list'), {'include_archived': '1'}), 'Уволен / в архиве ЗУП')
@@ -74,9 +74,9 @@ class EmployeesImportTests(TestCase):
         employee.refresh_from_db(); manual.refresh_from_db(); other.refresh_from_db()
         self.assertEqual(employee.last_name, 'Петров'); self.assertFalse(employee.is_active)
         self.assertEqual(employee.employee_number, '002'); self.assertIsNotNone(employee.zup_synced_at)
-        self.assertEqual(manual.last_name, 'Иванов'); self.assertFalse(manual.zup_ref)
+        self.assertEqual(manual.last_name, 'Петров'); self.assertEqual(manual.zup_ref,'1'*32)
         self.assertEqual(other.last_name, 'Иванов')
-        self.assertEqual(Employee.objects.filter(company=self.company).count(), 3)
+        self.assertEqual(Employee.objects.filter(company=self.company).count(), 2)
 
     def test_phone_is_imported_but_empty_zup_value_does_not_erase_manual_phone(self):
         run=self.run_record();apply_employees(run,{'employees':[self.row(phone='+7 900 111-22-33')]})

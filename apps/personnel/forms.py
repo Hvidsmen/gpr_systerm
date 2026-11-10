@@ -1,6 +1,7 @@
 from datetime import timedelta
 from django import forms
 from django.db.models import Q
+from apps.resources.models import Position
 from .models import BaseCity, Board, MovementReviewRequest, Person, StaffingGroup, StaffingSlot, ZupWorkSchedule
 
 
@@ -11,6 +12,18 @@ class StyledModelForm(forms.ModelForm):
             f.widget.attrs['class'] = 'form-select' if isinstance(f.widget, forms.Select) else 'form-control'
             if isinstance(f, forms.DateField): f.widget = forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date', 'class': 'form-control'})
             if isinstance(f.widget, forms.Textarea): f.widget.attrs['rows'] = 3
+
+
+class NewEmployeeRegistrationForm(forms.Form):
+    employee_number=forms.CharField(label='Табельный номер ЗУП',max_length=60)
+    position=forms.ModelChoiceField(label='Должность',queryset=Position.objects.none())
+    schedule=forms.ModelChoiceField(label='График работы',queryset=ZupWorkSchedule.objects.none())
+    phone=forms.CharField(label='Номер телефона',max_length=80)
+    def __init__(self,*args,company,initial=None,**kwargs):
+        super().__init__(*args,initial=initial,**kwargs)
+        self.fields['position'].queryset=Position.objects.filter(company=company).order_by('name')
+        self.fields['schedule'].queryset=ZupWorkSchedule.objects.filter(company=company,is_active=True).order_by('name')
+        for field in self.fields.values():field.widget.attrs['class']='form-select' if isinstance(field.widget,forms.Select) else 'form-control'
 
 
 class BoardForm(StyledModelForm):

@@ -16,7 +16,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 from .views import access,scoped
 from .models import Camp,CampObjectLink,CampStay,HousingEvent,MovementReviewRequest,Person,Board,StaffingGroup,StaffingSlot
-from .forms import CampForm,MovementForm,MovementRecommendationForm,MovementReviewForm,PersonScheduleForm,ZupScheduleChangeForm
+from .forms import CampForm,MovementForm,MovementRecommendationForm,MovementReviewForm,NewEmployeeRegistrationForm,PersonScheduleForm,ZupScheduleChangeForm
 from . import housing
 from .services import calendar_for,departure_days
 
@@ -403,7 +403,7 @@ def movement_review_accept(request,pk):
     user_role=role_code(request.user)
     workflow_action=request.POST.get('workflow_action') if request.method=='POST' else None
     if workflow_action:
-        from .departure_workflow import arrive_camp,arrive_hub,leave_hub,resubmit,update_hub
+        from .departure_workflow import arrive_camp,arrive_hub,leave_hub,register_new_employee,resubmit,update_hub
         try:
             if workflow_action=='resubmit':resubmit(request.user,row)
             elif workflow_action=='arrive_hub':arrive_hub(request.user,row,forms.DateField().clean(request.POST.get('hub_arrived_on')))
@@ -413,9 +413,13 @@ def movement_review_accept(request,pk):
                     planned_hub_arrival_date=planned_arrival)
             elif workflow_action=='leave_hub':leave_hub(request.user,row,forms.DateField().clean(request.POST.get('hub_departed_on')))
             elif workflow_action=='arrive_camp':arrive_camp(request.user,row,forms.DateField().clean(request.POST.get('final_arrived_on')))
+            elif workflow_action=='register_new_employee':
+                registration=NewEmployeeRegistrationForm(request.POST,company=request.user.company)
+                if not registration.is_valid():raise ValidationError('; '.join(error for errors in registration.errors.values() for error in errors))
+                register_new_employee(request.user,row,**registration.cleaned_data)
             else:raise ValidationError('Неизвестное действие по заявке.')
         except ValidationError as exc:messages.error(request,'; '.join(exc.messages))
-        else:messages.success(request,{'resubmit':'Заявка повторно отправлена руководителю.','arrive_hub':'Прибытие в ОП Дудинка зафиксировано.','hub_documents':'Данные по билетам и обходному листу сохранены.','leave_hub':'Выезд из ОП Дудинка зафиксирован.','arrive_camp':'Фактический заезд в ВЖГ подтверждён. Заявка завершена.'}[workflow_action])
+        else:messages.success(request,{'resubmit':'Заявка повторно отправлена руководителю.','arrive_hub':'Прибытие в ОП Дудинка зафиксировано.','hub_documents':'Данные по билетам и обходному листу сохранены.','leave_hub':'Выезд из ОП Дудинка зафиксирован.','arrive_camp':'Фактический заезд в ВЖГ подтверждён. Заявка завершена.','register_new_employee':'Сотрудник оформлен. Данные будут связаны с карточкой ЗУП при следующей синхронизации.'}[workflow_action])
         return redirect('personnel:movement_review_accept',pk=row.pk)
     from .departure_workflow import active_route_roles,approval_task_key,travel_details_complete
     details_complete=travel_details_complete(row)
@@ -476,8 +480,13 @@ def movement_review_accept(request,pk):
     can_cancel_request=user_role in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'} and not (user_role=='PERSONNEL_DISPATCHER' and row.has_approved_stage()) and row.status not in {'AT_HUB','EN_ROUTE','COMPLETED','CANCELLED'} and not row.event_id and not row.hub_arrived_on
     can_delete_request=user_role=='ADMIN' and row.status=='CANCELLED' and not row.event_id and not row.hub_arrived_on and not row.hub_departed_on and not row.final_arrived_on
     can_manage_workflow=user_role in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER','PEREVAKHTA_SPECIALIST'} and not (row.status=='PEREVAKHTA' and not details_complete)
+    needs_zup_registration=row.kind=='ARRIVAL' and row.employment_kind=='NEW' and row.status=='AT_HUB' and not row.person.employee_id
+    registration_form=NewEmployeeRegistrationForm(company=request.user.company,initial={'phone':row.phone}) if needs_zup_registration else None
+    can_register_employee=needs_zup_registration and user_role in {'ADMIN','HR_HEAD','PERSONNEL_SPECIALIST'}
     from .departure_workflow import route_summary
-    return render(request,'personnel/movement_review.html',{'row':row,'form':form,'edit_mode':edit_mode,'perevakhta_data_stage':perevakhta_data_stage,'travel_details_complete':details_complete,'approval_route_steps':route_summary(row),'workflow_today':timezone.localdate(),'can_manage_workflow':can_manage_workflow,'can_cancel_request':can_cancel_request,'can_delete_request':can_delete_request,'personnel_section':'reviews','project_camps':{key:sorted(value) for key,value in pairs.items()}})
+    return render(request,'personnel/movement_review.html',{'row':row,'form':form,'edit_mode':edit_mode,'perevakhta_data_stage':perevakhta_data_stage,'travel_details_complete':details_complete,'approval_route_steps':route_summary(row),'workflow_today':timezone.localdate(),'can_manage_workflow':can_manage_workflow,'can_cancel_request':can_cancel_request,'can_delete_request':can_delete_request,
+        'needs_zup_registration':needs_zup_registration,'can_register_employee':can_register_employee,'registration_form':registration_form,
+        'personnel_section':'reviews','project_camps':{key:sorted(value) for key,value in pairs.items()}})
 
 
 @login_required

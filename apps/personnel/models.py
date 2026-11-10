@@ -318,7 +318,9 @@ class MovementReviewRequest(PersonnelModel):
         if self.status=='PEREVAKHTA':
             if self.kind=='ARRIVAL' and not self.tickets_ready:return 'Ожидается покупка билетов'
             return 'Ожидается прибытие в ОП Дудинка'
-        if self.status=='AT_HUB':return 'В ОП Дудинка — ожидается обходной лист' if self.kind=='ARRIVAL' else 'В ОП Дудинка — билеты и обходной лист'
+        if self.status=='AT_HUB':
+            if self.kind=='ARRIVAL' and self.employment_kind=='NEW' and not self.person.employee_id:return 'В ОП Дудинка — оформление нового сотрудника в ЗУП'
+            return 'В ОП Дудинка — ожидается обходной лист' if self.kind=='ARRIVAL' else 'В ОП Дудинка — билеты и обходной лист'
         if self.status=='EN_ROUTE':return 'В пути в ВЖГ' if self.kind=='ARRIVAL' else 'В пути в базовый город'
         if self.status=='COMPLETED':return 'Прибыл в ВЖГ' if self.kind=='ARRIVAL' else 'Выбыл из ОП Дудинка'
         if self.status=='CANCELLED':return 'Отменена'

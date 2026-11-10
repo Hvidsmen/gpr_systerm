@@ -307,6 +307,7 @@ def apply_employees(run, report):
               'staffing_fallback':sum(not values['zup_position_name'] and bool(values['zup_card'].get('staffing_position')) for _,values in normalized),
               'incomplete_names':sum(not values['first_name'] or not values['last_name'] for _,values in normalized),
               'unnamed':sum(not any(values[name] for name in ['zup_full_name','first_name','last_name','middle_name']) for _,values in normalized)}
+    counts['linked_manual']=0
     counts['schedule_duplicates_merged']=schedule_duplicates_merged
     counts['gender']={'male':sum(v.get('gender')=='M' for _,v in normalized),'female':sum(v.get('gender')=='F' for _,v in normalized),'unresolved':sum('gender' not in v for _,v in normalized),'source':'ФизическоеЛицо.Пол'}
     counts['position_diagnostics'] = {'version': 1, 'employees': len(normalized),
@@ -328,13 +329,22 @@ def apply_employees(run, report):
         values['position'] = matches[0] if len(matches) == 1 else None
         employee = existing.get(ref)
         if employee is None:
-            employee = Employee(**source, zup_ref=ref, **values)
-            counts['created'] += 1
+            number=(values.get('employee_number') or '').strip()
+            manual=list(Employee.objects.select_for_update().filter(company_id=connection.company_id,zup_ref='',employee_number=number)[:2]) if number else []
+            if len(manual)==1:
+                employee=manual[0];employee.zup_server=source['zup_server'];employee.zup_database=source['zup_database'];employee.zup_ref=ref
+                if not values.get('phone'):values['phone']=employee.phone
+                counts['linked_manual']+=1;counts['updated']+=1
+            else:
+                employee = Employee(**source, zup_ref=ref, **values)
+                counts['created'] += 1
         else:
             changed = any(getattr(employee, key) != value for key, value in values.items())
             counts['updated' if changed else 'unchanged'] += 1
             for key, value in values.items():
                 setattr(employee, key, value)
+        if employee.pk and employee.zup_ref==ref:
+            for key,value in values.items():setattr(employee,key,value)
         employee.zup_synced_at = now
         employee.save()
     # The dispatching directory can predate the ZUP card and contain the

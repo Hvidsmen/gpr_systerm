@@ -7,6 +7,7 @@ from django.utils import timezone
 from core.permissions import require_roles
 from .models import (RecruitmentRequest, RecruitmentCandidate, ArrivalPreparation,
                      CandidateDocument, RecruitmentEvent, CampStay,MovementReviewRequest)
+from .models import Person
 
 DISPATCH = {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'}
 RECRUIT = {'ADMIN','HR_HEAD','RECRUITER'}
@@ -167,14 +168,15 @@ def prepare_arrival(user, pk, revision, values, *, confirm=False, workflow=False
     # A cancelled actual stay can be corrected without keeping an obsolete binding.
     if prep.actual_stay_id and prep.actual_stay.cancelled_at:prep.actual_stay=None;prep.status='EXPECTED'
     if workflow:
-        if not prep.employee_id or not prep.camp_id:raise ValidationError('Укажите оформленного сотрудника и ВЖГ. Кандидат сам по себе не является сотрудником.')
+        if not prep.camp_id:raise ValidationError('Укажите ВЖГ заезда.')
         if prep.movement_request_id:raise ValidationError('Заявка на заезд уже отправлена. Следите за её этапами в перевахте.')
         from . import housing
-        person=housing.person_for(prep.employee)
+        person=housing.person_for(prep.employee) if prep.employee_id else Person.objects.create(company=user.company,
+            full_name=prep.candidate.full_name,phone=prep.candidate.phone)
         request=MovementReviewRequest.objects.create(company=user.company,person=person,kind='ARRIVAL',movement_date=prep.expected_on,to_camp=prep.camp,
             requested_by=user,source='DISPATCHER',status='PENDING_APPROVAL',employment_kind='NEW',planning_position_name=row.position,
-            position_name=prep.employee.display_position,construction_object=row.construction_object,site_object=row.construction_object,
-            site=row.construction_object.name,phone=prep.employee.phone or prep.candidate.phone,travel_status='Ожидается',note=f'Кандидат из Магазина подбора. Заявка №{row.pk}. '+prep.notes)
+            position_name=prep.employee.display_position if prep.employee_id else row.position,construction_object=row.construction_object,site_object=row.construction_object,
+            site=row.construction_object.name,phone=(prep.employee.phone if prep.employee_id else '') or prep.candidate.phone,travel_status='Ожидается',note=f'Кандидат из Магазина подбора. Заявка №{row.pk}. '+prep.notes)
         prep.movement_request=request
         from .departure_workflow import create_approval,log
         create_approval(request);log(request,user,'Кандидат из Магазина подбора отправлен на согласование руководителю')

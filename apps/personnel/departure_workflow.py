@@ -7,7 +7,7 @@ from django.utils import timezone
 from core.permissions import role_code
 from apps.planning.models import WorkTask
 from apps.planning.task_services import ensure,event as task_event,state
-from .models import CampStay,HousingEvent,MovementRecommendationOverride,MovementReviewEvent,MovementReviewRequest
+from .models import CampStay,HousingEvent,MovementRecommendationOverride,MovementReviewEvent,MovementReviewRequest,Person
 
 ROUTE=[
     ('MANAGER','Руководитель проекта'),('SITE_CHIEF','Начальник участка'),
@@ -270,9 +270,35 @@ def update_hub(user,row,*,tickets_ready=False,clearance_document=None,planned_hu
 
 
 @transaction.atomic
+def register_new_employee(user,row,*,employee_number,position,schedule,phone):
+    from apps.resources.models import Employee
+    row=MovementReviewRequest.objects.select_for_update().select_related('person__employee').get(pk=row.pk,company=user.company)
+    if role_code(user) not in {'ADMIN','HR_HEAD','PERSONNEL_SPECIALIST'}:raise PermissionDenied('Оформление нового сотрудника выполняет специалист по персоналу.')
+    if row.kind!='ARRIVAL' or row.employment_kind!='NEW' or row.status!='AT_HUB':raise ValidationError('Оформление в ЗУП доступно после прибытия нового сотрудника в ОП Дудинка.')
+    if row.person.employee_id:return row.person.employee
+    number=employee_number.strip();phone=phone.strip()
+    if not number:raise ValidationError('Укажите табельный номер ЗУП.')
+    if Employee.objects.filter(company=row.company,employee_number=number).exists():raise ValidationError('Сотрудник с таким табельным номером уже существует.')
+    if position.company_id!=row.company_id or schedule.company_id!=row.company_id or not schedule.is_active:raise ValidationError('Выберите должность и действующий график своей компании.')
+    parts=row.person.display_name.split();last=parts[0] if parts else '';first=parts[1] if len(parts)>1 else '';middle=' '.join(parts[2:])
+    if not last or not first:raise ValidationError('Для создания сотрудника должны быть указаны фамилия и имя.')
+    employee=Employee.objects.create(company=row.company,last_name=last,first_name=first,middle_name=middle,
+        employee_number=number,position=position,phone=phone,zup_card={'schedule':schedule.name,'provisional_zup':True})
+    person=Person.objects.select_for_update().get(pk=row.person_id);person.employee=employee;person.employee_number=number;person.phone=phone
+    person.save(update_fields=['employee','employee_number','phone','updated_at'])
+    prep=getattr(row,'recruitment_arrival',None)
+    if prep:
+        prep.employee=employee;prep.revision+=1;prep.save(update_fields=['employee','revision','updated_at'])
+    row.phone=phone;row.position_name=employee.display_position;row.save(update_fields=['phone','position_name','updated_at'])
+    log(row,user,'Новый сотрудник оформлен в ЗУП',f'Табельный номер: {number}; должность: {position}; график: {schedule}; телефон: {phone}')
+    return employee
+
+
+@transaction.atomic
 def leave_hub(user,row,day):
     row=MovementReviewRequest.objects.select_for_update().select_related('person__employee').get(pk=row.pk,company=user.company)
     if row.status!='AT_HUB':raise ValidationError('Выезд из Дудинки фиксируется только для сотрудника в ОП Дудинка.')
+    if row.kind=='ARRIVAL' and row.employment_kind=='NEW' and not row.person.employee_id:raise ValidationError('Сначала завершите оформление нового сотрудника в ЗУП.')
     if not row.tickets_ready or not row.clearance_document:raise ValidationError('Перед выездом должны быть оформлены билеты и прикреплён обходной лист.')
     if day<row.hub_arrived_on:raise ValidationError('Фактический выезд из ОП Дудинка не может быть раньше прибытия в Дудинку.')
     row.hub_departed_on=day;row.status='EN_ROUTE' if row.kind=='ARRIVAL' else 'COMPLETED';row.travel_status='В пути в ВЖГ' if row.kind=='ARRIVAL' else 'Убыл из ОП Дудинка';row.reviewed_by=user;row.reviewed_at=timezone.now()

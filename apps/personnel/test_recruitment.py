@@ -71,6 +71,11 @@ class RecruitmentTests(TestCase):
         self.assertEqual(prep.movement_request.employment_kind,'NEW')
         self.assertTrue(WorkTask.objects.filter(key=f'personnel-movement-approval:{prep.movement_request_id}',target_role='MANAGER').exists())
         self.assertFalse(CampStay.objects.exists())
+    def test_new_candidate_can_start_arrival_without_existing_employee_card(self):
+        prep=self.preparation();values=self.arrival_values(employee=None)
+        prep=service.prepare_arrival(self.dispatch,prep.pk,prep.revision,values,workflow=True)
+        self.assertIsNone(prep.employee_id);self.assertIsNone(prep.movement_request.person.employee_id)
+        self.assertEqual(prep.movement_request.employment_kind,'NEW');self.assertEqual(prep.movement_request.phone,prep.candidate.phone)
     def test_common_pool_candidate_can_be_selected_for_vacancy(self):
         from .models import TalentPoolCandidate
         from .recruitment_forms import CandidateForm

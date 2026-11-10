@@ -416,6 +416,22 @@ class MovementReviewRequestTests(TestCase):
         arrive_camp(self.reviewer,row,day);row.refresh_from_db()
         self.assertEqual(row.status,'COMPLETED');self.assertEqual(self.person.stays.get().camp,self.camp)
 
+    def test_new_employee_is_registered_in_zup_stage_at_dudinka(self):
+        from .departure_workflow import leave_hub,register_new_employee
+        from .models import ZupWorkSchedule
+        person=Person.objects.create(company=self.company,full_name='Новый Работник Сергеевич',phone='89990001122')
+        row=MovementReviewRequest.objects.create(company=self.company,person=person,kind='ARRIVAL',movement_date=timezone.localdate(),
+            to_camp=self.camp,requested_by=self.personnel,status='AT_HUB',employment_kind='NEW',phone=person.phone,
+            hub_arrived_on=timezone.localdate(),tickets_ready=True)
+        schedule=ZupWorkSchedule.objects.create(company=self.company,name='Вахта 60/30',is_active=True)
+        specialist=User.objects.create_user(username='new-employee-specialist',company=self.company,role=Role.objects.get(code='PERSONNEL_SPECIALIST'))
+        self.client.force_login(specialist);page=self.client.get(reverse('personnel:movement_review_accept',args=[row.pk]))
+        self.assertContains(page,'Оформление нового сотрудника в ЗУП');self.assertContains(page,'Табельный номер ЗУП')
+        with self.assertRaisesMessage(ValidationError,'завершите оформление'):leave_hub(self.admin,row,timezone.localdate())
+        employee=register_new_employee(specialist,row,employee_number='NEW-001',position=self.position,schedule=schedule,phone='89990001122')
+        person.refresh_from_db();row.refresh_from_db();self.assertEqual(person.employee,employee);self.assertEqual(employee.employee_number,'NEW-001')
+        self.assertEqual(employee.zup_card['schedule'],'Вахта 60/30');self.assertEqual(row.position_name,self.position.name)
+
     def test_planning_position_falls_back_to_employee_position(self):
         self.slot.cancelled_at=timezone.now();self.slot.save(update_fields=['cancelled_at','updated_at'])
         self.assertEqual(housing.planning_position_name(self.person,timezone.localdate()),self.employee.display_position)
