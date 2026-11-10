@@ -1,4 +1,8 @@
 <div class="mt-2" style="min-width:28rem">
+  {% if row.show_travel_details %}<div class="d-flex justify-content-between align-items-center gap-2 border rounded p-2 mb-2 {% if row.travel_details_complete %}border-success bg-success bg-opacity-10{% else %}border-warning bg-warning bg-opacity-10{% endif %}">
+    <span><strong>{% if row.travel_details_complete %}Данные поездки заполнены{% else %}Данные поездки не заполнены{% endif %}</strong>{% if not row.travel_details_complete %}<span class="d-block small text-muted">Заполните обязательные поля перед параллельным согласованием.</span>{% endif %}</span>
+    <a class="btn btn-sm {% if row.travel_details_complete %}btn-outline-success{% else %}btn-primary{% endif %} text-nowrap" href="{% url 'personnel:movement_review_accept' row.pk %}{% if not row.travel_details_complete %}?edit=1{% endif %}">{% if row.travel_details_complete %}Открыть заявку{% else %}Открыть и заполнить заявку{% endif %}</a>
+  </div>{% endif %}
   <div class="d-flex flex-wrap gap-1 mb-2">
     {% for step in row.route_steps|slice:':3' %}
       <span class="badge rounded-pill {% if step.status == 'APPROVED' %}bg-success{% elif step.status == 'PENDING' %}bg-primary{% elif step.status == 'RETURNED' %}bg-danger{% else %}bg-light text-dark border{% endif %}" title="{{ step.actor }}{% if step.comment %} · {{ step.comment }}{% endif %}">

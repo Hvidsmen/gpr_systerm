@@ -191,6 +191,27 @@ class MovementReviewRequestTests(TestCase):
         rows[1].refresh_from_db();task.refresh_from_db()
         self.assertEqual(rows[1].status,'RETURNED');self.assertEqual(rows[1].approval_comment,'Перенести дату');self.assertEqual(task.status,'OPEN')
 
+    def test_perevakhta_batch_shows_trip_data_state_and_blocks_incomplete_row(self):
+        from apps.planning.models import WorkTask
+        from .departure_workflow import decide
+        day=timezone.localdate();housing.move(self.reviewer,'ARRIVAL',self.camp,day,[self.person])
+        batch=uuid4();housing.request_moves(self.personnel,'DEPARTURE',self.camp,day,[self.person],departure_destination='REST',approval_batch=batch)
+        row=MovementReviewRequest.objects.get(approval_batch=batch)
+        decide(self.admin,row,True);row.refresh_from_db()
+        decide(self.admin,row,True);row.refresh_from_db()
+        task=WorkTask.objects.get(key=f'personnel-movement-batch:{batch}')
+        self.client.force_login(self.admin);url=reverse('planning:task_detail',args=[task.pk])
+        page=self.client.get(url)
+        self.assertContains(page,'Данные поездки не заполнены')
+        self.assertContains(page,'Открыть и заполнить заявку')
+        checkbox=f'<input type="checkbox" name="selected" value="{row.pk}" data-movement-row'
+        self.assertNotContains(page,checkbox)
+        self.complete_trip_details(row)
+        page=self.client.get(url)
+        self.assertContains(page,'Данные поездки заполнены')
+        self.assertContains(page,'Открыть заявку')
+        self.assertContains(page,checkbox)
+
     def test_arrival_and_transfer_batches_also_create_single_approval_task(self):
         from apps.planning.models import WorkTask
         second_employee=Employee.objects.create(company=self.company,last_name='Сидоров',first_name='Семён',employee_number='review-3',position=self.position)
@@ -280,7 +301,7 @@ class MovementReviewRequestTests(TestCase):
         task=visible(returned).get(key=f'personnel-movement-batch:{batch}')
         page=self.client.get(reverse('planning:task_detail',args=[task.pk]))
         self.assertNotContains(page,'ЭТАПЫ СОГЛАСОВАНИЯ');self.assertContains(page,'Параллельные согласования: 1 из 6')
-        self.assertContains(page,'<details>',html=True)
+        self.assertContains(page,'<details>')
         self.assertContains(page,'Главный механик');self.assertContains(page,'Фельдшер')
         self.assertContains(page,'✓ Согласовано');self.assertContains(page,'Возвращено')
         self.assertContains(page,'Нужны медицинские данные')
