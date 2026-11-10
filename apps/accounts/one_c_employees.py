@@ -78,6 +78,7 @@ def phone_mapping(connection):
         report__has_key='positions_import').exclude(report__has_key='employees_import').order_by('-created_at').first()
     labels=(run.report.get('metadata_labels') or {}) if run else {}
     person_table='dbo._Reference383'
+    kind_tables=[table for table,label in labels.items() if 'видыконтактнойинформации' in re.sub(r'[^а-яa-z]','',str(label.get('name','')).casefold().replace('ё','е'))]
     candidates=[]
     for table,label in labels.items():
         name=str(label.get('name','')).casefold().replace('ё','е')
@@ -87,12 +88,18 @@ def phone_mapping(connection):
             wanted={value.casefold().replace('ё','е') for value in names}
             return [column for column,title in columns.items() if str(title).casefold().replace('ё','е') in wanted]
         object_columns=[column for column,targets in references.items() if person_table in targets and column in columns]
-        presentation=named('Представление','Номер телефона','Телефон')
-        kind=named('Вид','Вид контактной информации')
-        kind=[column for column in kind if len(references.get(column,[]))==1]
-        if len(object_columns)==1 and len(presentation)==1 and len(kind)==1:
+        if not object_columns:
+            object_columns=[column for column in named('Объект','Физическое лицо','Объект контактной информации') if column.endswith(('RRef','RRRef','_RRRef'))]
+        presentation=named('Представление','Представление контактной информации','Номер телефона','Телефон','Значение')
+        kind=named('Вид','Вид контактной информации','ВидКонтактнойИнформации')
+        kind=[column for column in kind if column.endswith(('RRef','RRRef','_RRRef'))]
+        if len(kind)==1:
+            targets=references.get(kind[0],[])
+            kind_table=targets[0] if len(targets)==1 else kind_tables[0] if len(kind_tables)==1 else None
+        else:kind_table=None
+        if len(object_columns)==1 and len(presentation)==1 and len(kind)==1 and kind_table:
             candidates.append({'contact_table':table,'object_column':object_columns[0],'presentation_column':presentation[0],
-                'kind_column':kind[0],'kind_table':references[kind[0]][0]})
+                'kind_column':kind[0],'kind_table':kind_table})
     return candidates[0] if len(candidates)==1 else None
 
 def card_values(item):

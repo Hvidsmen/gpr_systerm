@@ -93,6 +93,15 @@ class EmployeesImportTests(TestCase):
         self.assertEqual(phone_mapping(self.connection),{'contact_table':'dbo._InfoRg999','object_column':'_Fld1RRef',
             'presentation_column':'_Fld3','kind_column':'_Fld2RRef','kind_table':'dbo._Reference777'})
 
+    def test_phone_register_supports_composite_object_reference(self):
+        self.diagnostic.report['metadata_labels']={
+            'dbo._InfoRg998':{'name':'РегистрСведений.КонтактнаяИнформацияОбъектов',
+                'columns':{'_Fld10_RRRef':'Объект','_Fld11RRef':'Вид','_Fld12':'Представление'},'references':{}},
+            'dbo._Reference776':{'name':'Справочник.ВидыКонтактнойИнформации','columns':{}}}
+        self.diagnostic.save(update_fields=['report'])
+        self.assertEqual(phone_mapping(self.connection),{'contact_table':'dbo._InfoRg998','object_column':'_Fld10_RRRef',
+            'presentation_column':'_Fld12','kind_column':'_Fld11RRef','kind_table':'dbo._Reference776'})
+
     def test_zup_refresh_links_dispatch_card_and_imports_its_phone(self):
         person=Person.objects.create(company=self.company,full_name='Иванов Иван Иванович',employee_number='001',phone='+7 913 555-44-33')
         result=apply_employees(self.run_record(),{'employees':[self.row()]})
