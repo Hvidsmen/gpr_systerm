@@ -140,12 +140,12 @@ def check_route(user, match, method):
     if role == 'RECRUITER':
         require_roles(user, {'RECRUITER'})
         own_account = namespace == 'accounts' and (name in {'settings','logout','password_change','access_pending','impersonation_stop'} or name == 'user_detail' and match.kwargs.get('pk') == user.pk)
-        recruitment_routes = namespace == 'personnel' and name in {'recruitment_list','recruitment_detail','recruitment_candidate_create','recruitment_candidate_edit','recruitment_handoff','recruitment_document'}
+        recruitment_routes = namespace == 'personnel' and name in {'recruitment_list','recruitment_detail','recruitment_candidate_create','recruitment_candidate_edit','recruitment_handoff','recruitment_document','recruitment_pool','recruitment_pool_create','recruitment_pool_edit','recruitment_pool_import'}
         if own_account or recruitment_routes or namespace == 'dashboard' and name == 'index' and method in {'GET','HEAD'}:return
         raise PermissionDenied('Роль «Подбор персонала» работает с заявками и кандидатами.')
     if namespace == 'personnel' and name.startswith('recruitment_'):
         from apps.personnel.recruitment import READ, DISPATCH, RECRUIT
-        write_roles = DISPATCH if name in {'recruitment_create','recruitment_edit','recruitment_arrival'} else RECRUIT if name in {'recruitment_candidate_create','recruitment_candidate_edit','recruitment_handoff','recruitment_pool_create','recruitment_pool_edit'} else READ
+        write_roles = DISPATCH if name in {'recruitment_create','recruitment_edit','recruitment_arrival'} else RECRUIT if name in {'recruitment_candidate_create','recruitment_candidate_edit','recruitment_handoff','recruitment_pool_create','recruitment_pool_edit','recruitment_pool_import'} else READ
         require_roles(user, write_roles)
         return
     if role == FUEL_WAREHOUSE:

@@ -74,6 +74,7 @@ urlpatterns += [
     path('recruitment/', recruitment.request_list, name='recruitment_list'),
     path('recruitment/pool/',recruitment.pool_list,name='recruitment_pool'),
     path('recruitment/pool/add/',recruitment.pool_edit,name='recruitment_pool_create'),
+    path('recruitment/pool/import/',recruitment.pool_import,name='recruitment_pool_import'),
     path('recruitment/pool/<int:pk>/',recruitment.pool_edit,name='recruitment_pool_edit'),
     path('recruitment/create/', recruitment.request_edit, name='recruitment_create'),
     path('recruitment/<int:pk>/', recruitment.request_detail, name='recruitment_detail'),

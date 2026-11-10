@@ -1,4 +1,5 @@
 from datetime import timedelta
+from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -272,3 +273,18 @@ class RecruitmentTests(TestCase):
         service.cancel_request(self.dispatch,row.pk,row.revision,'Отмена потребности')
         self.client.force_login(self.dispatch);page=self.client.get(reverse('personnel:movements'))
         self.assertEqual(page.context['arrival_queue'].paginator.count,0)
+
+    def test_store_2026_import_creates_and_idempotently_updates_pool(self):
+        from openpyxl import Workbook
+        from .models import TalentPoolCandidate
+        from .talent_pool_import import HEADERS,import_sheet
+        workbook=Workbook();sheet=workbook.active;sheet.title='Магазин 2026';sheet.append(HEADERS)
+        sheet.append([1,'  Иванов   Иван Иванович ','Монтажник','КТП',None,'1234 567890',89991234567,None,None,None,None,None,'Уфа','готов',None,'Петров',None,'Комментарий','Иванов Иван Иванович'])
+        payload=BytesIO();workbook.save(payload);payload.seek(0)
+        self.assertEqual(import_sheet(self.recruiter,payload),{'created':1,'updated':0,'skipped':0})
+        row=TalentPoolCandidate.objects.get();self.assertEqual(row.full_name,'Иванов Иван Иванович');self.assertEqual(row.phone,'89991234567')
+        self.assertEqual(row.source_data['position'],'Монтажник');self.assertEqual(row.source_data['base_city'],'Уфа')
+        payload.seek(0);self.assertEqual(import_sheet(self.recruiter,payload),{'created':0,'updated':0,'skipped':1})
+        self.client.force_login(self.recruiter);page=self.client.get(reverse('personnel:recruitment_pool'))
+        self.assertContains(page,'Монтажник');self.assertContains(page,'КТП');self.assertContains(page,'Уфа')
+        self.assertContains(page,reverse('personnel:recruitment_pool_import'))

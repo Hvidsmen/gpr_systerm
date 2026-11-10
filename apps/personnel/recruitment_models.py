@@ -27,6 +27,7 @@ class TalentPoolCandidate(PersonnelModel):
     full_name=models.CharField('ФИО',max_length=250)
     phone=models.CharField('Телефон',max_length=80,blank=True)
     notes=models.TextField('Комментарий',blank=True)
+    source_data=models.JSONField('Данные источника',default=dict,blank=True)
     is_active=models.BooleanField('Доступен для вакансий',default=True)
     created_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='talent_pool_candidates')
     class Meta:ordering=['full_name','pk']

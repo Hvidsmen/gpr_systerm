@@ -10,7 +10,7 @@ from django.views.decorators.http import require_http_methods, require_POST, req
 from core.permissions import require_roles, role_code
 from .models import RecruitmentRequest, RecruitmentCandidate, ArrivalPreparation, CandidateDocument,TalentPoolCandidate
 from . import recruitment as service
-from .recruitment_forms import RequestForm, CandidateForm, ArrivalForm, RevisionForm, ReasonForm,TalentPoolForm
+from .recruitment_forms import RequestForm, CandidateForm, ArrivalForm, RevisionForm, ReasonForm,TalentPoolForm,TalentPoolImportForm
 
 
 def requests_for(user):
@@ -62,6 +62,21 @@ def pool_edit(request,pk=None):
     if request.method=='POST' and form.is_valid():
         saved=form.save();messages.success(request,'Кандидат сохранён в общем пуле.');return redirect('personnel:recruitment_pool')
     return render(request,'personnel/recruitment_form.html',{**context(request.user),'title':'Карточка кандидата общего пула','form':form})
+
+
+@login_required
+@require_http_methods(['GET','POST'])
+def pool_import(request):
+    require_roles(request.user,service.RECRUIT)
+    form=TalentPoolImportForm(request.POST if request.method=='POST' else None,request.FILES if request.method=='POST' else None)
+    if request.method=='POST' and form.is_valid():
+        from .talent_pool_import import import_sheet
+        try:result=import_sheet(request.user,form.cleaned_data['file'])
+        except ValidationError as exc:error(form,exc)
+        else:
+            messages.success(request,f"Лист «Магазин 2026» загружен: создано {result['created']}, обновлено {result['updated']}, пропущено {result['skipped']}.")
+            return redirect('personnel:recruitment_pool')
+    return render(request,'personnel/recruitment_form.html',{**context(request.user),'title':'Импорт магазина 2026','form':form})
 
 
 @login_required

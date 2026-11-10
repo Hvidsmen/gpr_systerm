@@ -69,6 +69,10 @@ class TalentPoolForm(forms.ModelForm):
         if not self.instance.pk:self.instance.created_by=user
 
 
+class TalentPoolImportForm(forms.Form):
+    file=forms.FileField(label='Файл Excel',help_text='Поддерживается XLSX. Будет прочитан лист «Магазин 2026».')
+
+
 class ArrivalForm(RevisionForm):
     expected_on=forms.DateField(label='Плановая дата заезда',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
     camp=forms.ModelChoiceField(label='ВЖГ',queryset=None,required=False)
