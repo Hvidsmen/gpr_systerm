@@ -80,10 +80,14 @@ class RecruitmentTests(TestCase):
         form=CandidateForm({'pool_candidate':pool.pk,'full_name':'','phone':'','status':'READY','ready_on':self.day,'notes':'','revision':0},company=self.company,request_row=row)
         self.assertEqual(form.initial['request_position'],row.position)
         self.assertEqual(form.fields['pool_candidate'].label_from_instance(pool),'Человек из пула — Монтажник · КТП')
+        self.assertEqual(form.pool_candidate_data[str(pool.pk)],{'full_name':'Человек из пула','phone':'555','notes':''})
         self.assertTrue(form.is_valid(),form.errors)
         candidate=service.save_candidate(self.recruiter,row.pk,form.cleaned_data)
         self.assertEqual(candidate.pool_candidate,pool);self.assertEqual(candidate.full_name,pool.full_name)
         self.assertTrue(pool.vacancy_candidates.filter(request=row).exists())
+        self.client.force_login(self.recruiter)
+        page=self.client.get(reverse('personnel:recruitment_candidate_create',args=[row.pk]))
+        self.assertContains(page,'candidate-pool-data');self.assertContains(page,'candidate.full_name')
     def test_handoff_and_confirmation_are_idempotent(self):
         prep=self.preparation();c=prep.candidate
         self.assertEqual(service.handoff(self.recruiter,c.pk,0).pk,prep.pk)

@@ -60,6 +60,8 @@ class CandidateForm(forms.ModelForm):
         self.fields['pool_candidate']=TalentPoolChoiceField(label=original.label,required=False,
             queryset=TalentPoolCandidate.objects.filter(company=company,is_active=True).order_by('full_name','pk'),
             empty_label='Новый человек — заполнить вручную')
+        self.pool_candidate_data={str(candidate.pk):{'full_name':candidate.full_name,'phone':candidate.phone or '',
+            'notes':candidate.notes or ''} for candidate in self.fields['pool_candidate'].queryset}
         self.initial['request_position']=request_row.position
         self.order_fields(['request_position','pool_candidate','full_name','phone','status','ready_on','notes','documents','revision'])
         self.fields['full_name'].required=False

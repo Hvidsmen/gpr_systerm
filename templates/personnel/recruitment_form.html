@@ -3,4 +3,23 @@
 {% block recruitment_content %}<p><a href="{% if row %}{% url 'personnel:recruitment_detail' row.pk %}{% else %}{% url 'personnel:recruitment_list' %}{% endif %}">← {% if row %}К заявке №{{ row.pk }}{% else %}К заявкам{% endif %}</a></p>
 <h2 class="h4">{{ title }}</h2>{% if row %}<p class="text-muted">{{ row.construction_object }} · {{ row.position }} · требуется {{ row.quantity }}</p>{% else %}<p class="text-muted">Укажите объект, должность, количество и срок. Специалист по подбору получит заявку в магазине подбора.</p>{% endif %}
 <form method="post" enctype="multipart/form-data" class="card card-body recruitment-form">{% csrf_token %}{% include 'forms/fields.html' with form=form %}<div class="recruitment-actions mt-3"><button class="btn btn-primary">Сохранить</button><a class="btn btn-outline-secondary" href="{% if row %}{% url 'personnel:recruitment_detail' row.pk %}{% else %}{% url 'personnel:recruitment_list' %}{% endif %}">Отмена</a></div></form>
+{% if form.pool_candidate_data %}{{ form.pool_candidate_data|json_script:'candidate-pool-data' }}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const select = document.getElementById('id_pool_candidate');
+  const dataNode = document.getElementById('candidate-pool-data');
+  if (!select || !dataNode) return;
+  const candidates = JSON.parse(dataNode.textContent);
+  select.addEventListener('change', function () {
+    const candidate = candidates[select.value];
+    if (!candidate) return;
+    const fullName = document.getElementById('id_full_name');
+    const phone = document.getElementById('id_phone');
+    const notes = document.getElementById('id_notes');
+    if (fullName) fullName.value = candidate.full_name || '';
+    if (phone) phone.value = candidate.phone || '';
+    if (notes) notes.value = candidate.notes || '';
+  });
+});
+</script>{% endif %}
 {% endblock %}
