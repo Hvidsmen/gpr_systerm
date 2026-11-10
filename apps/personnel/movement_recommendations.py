@@ -14,30 +14,35 @@ def _key(kind,person_id,camp_id,planned_on):
     return kind,int(person_id),int(camp_id),str(planned_on)
 
 
-def _row(kind,person,camp,planned_on,manual=False):
+def _row(kind,person,camp,planned_on,manual=False,roster=None):
     key=_key(kind,person.pk,camp.pk,planned_on)
+    roster=roster or {}
     return {'kind':kind,'person':person,'employee':person.employee,'camp':camp,'planned_on':planned_on,'manual':manual,
+        'rest_started':roster.get('last_departure') or roster.get('state_since'),'rest_days':roster.get('state_days'),
+        'schedule_label':roster.get('schedule_label',''),
         'token':signing.dumps(key,salt=TOKEN_SALT,compress=True)}
 
 
 def build(company,day,*,camps=None,rows=None):
     from .rotation import rotation_rows
     camps=list(camps) if camps is not None else list(Camp.objects.filter(company=company,is_active=True).order_by('name'))
-    end=day+timedelta(days=14);auto={}
+    end=day+timedelta(days=14);auto={};roster_context={}
     if rows is None and camps:
         rows=rotation_rows(company,camps,day,include_unassigned=True)[0]
     for row in rows or []:
         person=row.get('person');employee=person.employee if person and person.employee_id else None
         if not employee:continue
+        if row.get('camp'):roster_context[(person.pk,row['camp'].pk)]=row
+        if row.get('slot') and row['slot'].housing_camp_id:roster_context[(person.pk,row['slot'].housing_camp_id)]=row
         # A missed return remains actionable until an arrival request is
         # created or the employee actually arrives.
         if row.get('state')=='MO' and row.get('planned_return') and row['planned_return']<=end:
             camp=row['slot'].housing_camp if row.get('slot') and row['slot'].housing_camp_id else row.get('camp')
-            if camp:auto[_key('ARRIVAL',person.pk,camp.pk,row['planned_return'])]=_row('ARRIVAL',person,camp,row['planned_return'])
+            if camp:auto[_key('ARRIVAL',person.pk,camp.pk,row['planned_return'])]=_row('ARRIVAL',person,camp,row['planned_return'],roster=row)
         # An overdue departure remains actionable until the employee
         # actually leaves.  The upper bound is still the agreed 14 days.
         if row.get('state')=='MV' and row.get('planned_departure_display') and row['planned_departure_display']<=end and row.get('camp'):
-            planned=row['planned_departure_display'];auto[_key('DEPARTURE',person.pk,row['camp'].pk,planned)]=_row('DEPARTURE',person,row['camp'],planned)
+            planned=row['planned_departure_display'];auto[_key('DEPARTURE',person.pk,row['camp'].pk,planned)]=_row('DEPARTURE',person,row['camp'],planned,roster=row)
     present={(person_id,camp_id) for person_id,camp_id in housing.present_stays(company,day).values_list('person_id','camp_id')}
     recommendation_window=Q(planned_on__lte=end)
     camp_ids={camp.pk for camp in camps}
@@ -45,7 +50,7 @@ def build(company,day,*,camps=None,rows=None):
         key=_key(override.kind,override.person_id,override.camp_id,override.planned_on)
         if override.action=='EXCLUDE':auto.pop(key,None);continue
         eligible=(override.person_id,override.camp_id) not in present if override.kind=='ARRIVAL' else (override.person_id,override.camp_id) in present
-        if eligible:auto[key]=_row(override.kind,override.person,override.camp,override.planned_on,manual=True)
+        if eligible:auto[key]=_row(override.kind,override.person,override.camp,override.planned_on,manual=True,roster=roster_context.get((override.person_id,override.camp_id)))
     request_window=Q(movement_date__lte=end)
     for request in MovementReviewRequest.objects.filter(request_window,company=company).filter(Q(to_camp_id__in=camp_ids)|Q(from_camp_id__in=camp_ids)).exclude(status='CANCELLED'):
         camp_id=request.to_camp_id if request.kind=='ARRIVAL' else request.from_camp_id

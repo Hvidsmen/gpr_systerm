@@ -17,7 +17,8 @@ class MovementRecommendationTests(TestCase):
 
     def auto_rows(self):
         return [
-            {'person':self.second_person,'slot':self.slot,'camp':self.a,'state':'MO','planned_return':self.day+timedelta(days=3),'planned_departure_display':None},
+            {'person':self.second_person,'slot':self.slot,'camp':self.a,'state':'MO','planned_return':self.day+timedelta(days=3),'planned_departure_display':None,
+                'last_departure':self.day-timedelta(days=7),'state_days':8,'schedule_label':'Вахта 60/30'},
             {'person':self.person,'slot':self.slot,'camp':self.a,'state':'MV','planned_return':None,'planned_departure_display':self.day+timedelta(days=5)},
         ],[],{}
 
@@ -113,6 +114,9 @@ class MovementRecommendationTests(TestCase):
             response=self.client.get(reverse('personnel:'+route));self.assertEqual(response.status_code,200)
             self.assertContains(response,'data-recommendation-select-all',count=1)
             self.assertContains(response,'aria-label="Выбрать всех сотрудников"',count=1)
+        arrival=self.client.get(reverse('personnel:arrivals'))
+        self.assertContains(arrival,'Выход на МО');self.assertContains(arrival,'Дней на МО');self.assertContains(arrival,'График')
+        self.assertContains(arrival,(self.day-timedelta(days=7)).strftime('%d.%m.%Y'));self.assertContains(arrival,'Вахта 60/30')
 
     def test_personnel_dispatcher_can_submit_bulk_current_request_and_old_date_needs_reason(self):
         self.client.force_login(self.personnel_dispatcher);today=timezone.localdate();url=reverse('personnel:movements')
