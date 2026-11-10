@@ -142,7 +142,7 @@ def workspace(request, movements=False, movement_page='new'):
     if camp is None:return render(request,template,{**extra,'rotation_filter':selector,'camps':camps,'day':day,'no_camp_match':True})
     workflow_action=request.POST.get('workflow_action','move') if request.method=='POST' else ''
     setup_direct=request.method=='POST' and workflow_action=='move' and request.user.role.code=='PERSONNEL_DISPATCHER' and request.POST.get('direct_fact') in {'1','on','true'}
-    if request.method=='POST' and workflow_action=='move':
+    if setup_direct:
         try:
             housing.require_movement_day(request.user,day)
         except ValidationError as exc:raise PermissionDenied('; '.join(exc.messages))
@@ -163,6 +163,7 @@ def workspace(request, movements=False, movement_page='new'):
     if fixed_employee:
         get_object_or_404(Employee,company=request.user.company,pk=fixed_employee)
         personal_token=signing.dumps({'user':request.user.pk,'company':request.user.company_id,'employee':fixed_employee},salt='personnel-single-movement')
+    recommendation_prefill=request.session.pop('movement_recommendation_prefill',None) if request.method=='GET' and request.GET.get('from_recommendations')=='1' else None
     recommendation_day=timezone.localdate()
     recommendation_kind=request.POST.get('recommendation_kind','') if request.method=='POST' else ''
     arrival_recommendation_form=MovementRecommendationForm(request.POST if workflow_action=='recommendation_add' and recommendation_kind=='ARRIVAL' else None,
@@ -180,20 +181,37 @@ def workspace(request, movements=False, movement_page='new'):
                 messages.success(request,f'Рекомендации добавлены. Сотрудников: {count}.')
                 return redirect('personnel:arrivals' if recommendation_kind=='ARRIVAL' else 'personnel:departures')
     if request.method=='POST' and (workflow_action in {'recommendation_remove','recommendation_request'} or request.POST.get('request_one')):
-        from .movement_recommendations import create_requests,exclude
+        from .movement_recommendations import _date_field,decode,exclude
         tokens=[request.POST['request_one']] if request.POST.get('request_one') else request.POST.getlist('recommendations')
         action='recommendation_request' if workflow_action=='recommendation_request' or request.POST.get('request_one') else 'recommendation_remove'
-        try:count=create_requests(request.user,tokens,request.POST) if action=='recommendation_request' else exclude(request.user,tokens)
+        try:
+            if action=='recommendation_request':
+                decoded=[decode(token,request.user.company) for token in dict.fromkeys(tokens)]
+                if not decoded:raise ValidationError('Выберите хотя бы одного сотрудника.')
+                camps_found={camp.pk for _,_,camp,_ in decoded}
+                if len(camps_found)!=1:raise ValidationError('Для общей заявки выберите сотрудников одного ВЖГ.')
+                dates=[]
+                for route_kind,person,item_camp,planned_on in decoded:
+                    raw_date=request.POST.get(_date_field(route_kind,person.pk,item_camp.pk))
+                    selected_date=forms.DateField().clean(raw_date) if raw_date else max(planned_on,timezone.localdate())
+                    if selected_date<timezone.localdate():raise ValidationError(f'Дата поездки для {person.display_name} не может быть прошедшей.')
+                    dates.append(selected_date)
+                prefill_date=dates[0] if len(set(dates))==1 else timezone.localdate()
+                route_kind=decoded[0][0];item_camp=decoded[0][2]
+                request.session['movement_recommendation_prefill']={'kind':route_kind,'camp':item_camp.pk,'date':prefill_date.isoformat(),
+                    'employees':[person.employee_id for _,person,_,_ in decoded if person.employee_id],
+                    'scope':signing.dumps(tokens,salt='personnel-recommendation-draft',compress=True)}
+                params=urlencode({'action':route_kind,'camp':item_camp.pk,'date':prefill_date.isoformat(),'from_recommendations':'1'})
+                return redirect(reverse('personnel:movements')+'?'+params+'#movement')
+            count=exclude(request.user,tokens)
         except ValidationError as exc:messages.error(request,'; '.join(exc.messages))
         else:
-            if action=='recommendation_request' and request.POST.get('request_one') and count:
-                draft=MovementReviewRequest.objects.filter(company=request.user.company,requested_by=request.user,status='OPEN').order_by('-pk').first()
-                messages.info(request,'Черновик создан. Заполните данные и отправьте заявку на согласование.')
-                return redirect(reverse('personnel:movement_review_accept',args=[draft.pk])+'?edit=1')
-            messages.success(request,(f'Созданы черновики заявок: {count}. Откройте каждую заявку, заполните данные и подтвердите.' if action=='recommendation_request' else f'Из рекомендаций убрано сотрудников: {count}.'))
+            messages.success(request,f'Из рекомендаций убрано сотрудников: {count}.')
             return redirect('personnel:arrivals' if recommendation_kind!='DEPARTURE' else 'personnel:departures')
+    prefill_employees=recommendation_prefill.get('employees',[]) if recommendation_prefill else []
+    prefill_scope=recommendation_prefill.get('scope','') if recommendation_prefill else ''
     form=MovementForm(request.POST if request.method=='POST' and workflow_action=='move' else None,company=request.user.company,camp=camp,day=day,fixed_employee=fixed_employee,allow_direct=request.user.role.code=='PERSONNEL_DISPATCHER',
-        initial={'personal_scope':personal_token,'kind':kind,'date':day,'camp':None if request.GET.get('choose_camp')=='1' and kind=='ARRIVAL' else camp.pk,'snapshot':housing.movement_snapshot(request.user),'employees':[selected_employee] if selected_employee.isdigit() else []})
+        initial={'personal_scope':personal_token,'recommendation_scope':prefill_scope,'kind':kind,'date':day,'camp':None if request.GET.get('choose_camp')=='1' and kind=='ARRIVAL' else camp.pk,'snapshot':housing.movement_snapshot(request.user),'employees':prefill_employees or ([selected_employee] if selected_employee.isdigit() else [])})
     movement_exclusions=[]
     if request.method=='POST' and workflow_action=='move' and form.is_valid():
         try:
@@ -220,7 +238,13 @@ def workspace(request, movements=False, movement_page='new'):
         except (ValidationError,IntegrityError) as exc:form.add_error(None,'; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Размещение изменилось одновременно с вашим вводом. Обновите список.')
         else:
             count=len(saved)
-            messages.success(request,(f'Сохранено фактических перемещений: {count}.' if direct else f'Создано заявок в перевахту: {count}.')+f' Исключено: {len(movement_exclusions)}.')
+            if not direct and form.cleaned_data.get('recommendation_scope'):
+                try:recommendation_tokens=signing.loads(form.cleaned_data['recommendation_scope'],salt='personnel-recommendation-draft',max_age=12*3600)
+                except signing.BadSignature:recommendation_tokens=[]
+                if recommendation_tokens:
+                    from .movement_recommendations import exclude
+                    exclude(request.user,recommendation_tokens)
+            messages.success(request,(f'Сохранено фактических перемещений: {count}.' if direct else f'Создано заявок и отправлено на согласование: {count}.')+f' Исключено: {len(movement_exclusions)}.')
             for row in movement_exclusions:messages.warning(request,f'{row["employee"].display_name}: {row["reason"]}')
             from .rotation_calendar import cycle_definition,effective_schedule
             missing=0

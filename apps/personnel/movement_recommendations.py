@@ -108,7 +108,7 @@ def add(user,kind,employees,camp,planned_on):
 def create_requests(user,tokens,requested_dates=None):
     from uuid import uuid4
     from django import forms
-    from .departure_workflow import log
+    from .departure_workflow import create_approval,log
     batch=uuid4();created=[]
     count=0
     for token in dict.fromkeys(tokens):
@@ -122,7 +122,7 @@ def create_requests(user,tokens,requested_dates=None):
         if MovementReviewRequest.objects.filter(**lookup).exists():continue
         employee=person.employee
         construction_object,site_object=housing.request_object_pair(person,request_on,camp)
-        row=MovementReviewRequest.objects.create(**lookup,requested_by=user,approval_batch=batch,status='OPEN',
+        row=MovementReviewRequest.objects.create(**lookup,requested_by=user,approval_batch=batch,status='PENDING_APPROVAL',
             employment_kind='STAFF',planning_position_name=housing.planning_position_name(person,request_on),position_name=employee.display_position if employee else '',
             construction_object=construction_object,site_object=site_object,site=site_object.name if site_object else camp.name,
             phone=(employee.phone if employee else '') or person.phone,travel_status='Ожидается',
@@ -132,5 +132,5 @@ def create_requests(user,tokens,requested_dates=None):
             defaults={'action':'EXCLUDE','recorded_by':user})
         count+=1
     if not tokens:raise ValidationError('Выберите хотя бы одного сотрудника.')
-    for row in created:log(row,user,'Создан черновик из рекомендации')
+    for row in created:create_approval(row);log(row,user,'Отправлено на согласование руководителю')
     return count

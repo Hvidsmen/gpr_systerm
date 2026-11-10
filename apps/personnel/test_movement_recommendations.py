@@ -89,31 +89,23 @@ class MovementRecommendationTests(TestCase):
         self.assertEqual(MovementReviewRequest.objects.get().movement_date,chosen)
 
     @patch('apps.personnel.rotation.rotation_rows')
-    def test_single_recommendation_opens_draft_with_departure_reason(self,rotation_rows):
+    def test_single_recommendation_opens_common_form_and_starts_approval(self,rotation_rows):
         from apps.planning.models import WorkTask
         rotation_rows.return_value=self.auto_rows();recommendation=build(self.company,self.day)['DEPARTURE'][0]
         self.client.force_login(self.personnel_dispatcher)
         response=self.client.post(reverse('personnel:departures'),{'request_one':recommendation['token'],'recommendation_kind':'DEPARTURE',
             recommendation['date_field']:str(recommendation['request_on'])})
-        row=MovementReviewRequest.objects.get();self.assertEqual(row.status,'OPEN');self.assertFalse(WorkTask.objects.exists())
-        self.assertRedirects(response,reverse('personnel:movement_review_accept',args=[row.pk])+'?edit=1',fetch_redirect_response=False)
-        detail=self.client.get(response.url)
-        self.assertContains(detail,'name="departure_destination"');self.assertContains(detail,'На межвахтовый отдых');self.assertContains(detail,'Увольнение')
-
-    @patch('apps.personnel.rotation.rotation_rows')
-    def test_completed_recommendation_draft_starts_approval(self,rotation_rows):
-        from apps.planning.models import WorkTask
-        rotation_rows.return_value=self.auto_rows();recommendation=build(self.company,self.day)['DEPARTURE'][0]
-        create_requests(self.personnel_dispatcher,[recommendation['token']]);row=MovementReviewRequest.objects.get()
-        self.client.force_login(self.personnel_dispatcher);travel_on=timezone.localdate()+timedelta(days=2)
-        response=self.client.post(reverse('personnel:movement_review_accept',args=[row.pk]),{
-            'review_action':'confirm','planning_position_name':'Монтажник','position_name':'Монтажник','construction_object':self.obj.pk,
-            'camp':self.a.pk,'departure_destination':'DISMISSAL','movement_date':str(travel_on),'phone':'89990000000',
-            'base_city_choice':'','new_base_city':'Уфа','travel_time':'','planned_hub_departure_date':str(travel_on),
-            'planned_hub_departure_time':'','note':'По рекомендации'})
-        self.assertRedirects(response,reverse('personnel:my_movement_requests'),fetch_redirect_response=False)
-        row.refresh_from_db();self.assertEqual(row.status,'PENDING_APPROVAL');self.assertEqual(row.departure_destination,'DISMISSAL')
+        self.assertEqual(MovementReviewRequest.objects.count(),0);self.assertFalse(WorkTask.objects.exists())
+        page=self.client.get(response.url);form=page.context['form']
+        self.assertEqual(form.initial['kind'],'DEPARTURE');self.assertEqual(form.initial['camp'],self.a.pk)
+        self.assertEqual(list(form.initial['employees']),[self.employee.pk])
+        create=self.client.post(reverse('personnel:movements'),{'workflow_action':'move','kind':'DEPARTURE','date':str(recommendation['request_on']),
+            'camp':self.a.pk,'employees':[self.employee.pk],'target':'','comment':'','snapshot':form.initial['snapshot'],
+            'recommendation_scope':form.initial['recommendation_scope'],f'departure_destination_{self.employee.pk}':'REST'})
+        self.assertEqual(create.status_code,302)
+        row=MovementReviewRequest.objects.get();self.assertEqual(row.status,'PENDING_APPROVAL');self.assertEqual(row.departure_destination,'REST')
         self.assertTrue(WorkTask.objects.filter(key=f'personnel-movement-batch:{row.approval_batch}').exists())
+        self.assertRedirects(create,reverse('personnel:my_movement_requests'),fetch_redirect_response=False)
 
     @patch('apps.personnel.rotation.rotation_rows',return_value=([],[],{}))
     def test_manual_arrival_is_shared_and_actual_presence_hides_it(self,rotation_rows):
@@ -132,7 +124,7 @@ class MovementRecommendationTests(TestCase):
         request=MovementReviewRequest.objects.get()
         self.assertEqual((request.person,request.kind,request.to_camp,request.movement_date),(self.second_person,'ARRIVAL',self.a,row['planned_on']))
         self.assertEqual(request.phone,self.second_employee.phone)
-        self.assertEqual(request.status,'OPEN');self.assertIsNotNone(request.approval_batch)
+        self.assertEqual(request.status,'PENDING_APPROVAL');self.assertIsNotNone(request.approval_batch)
         self.assertEqual(build(self.company,self.day)['ARRIVAL'],[])
 
     def test_personnel_dispatcher_has_dispatch_and_rotation_workspaces(self):

@@ -129,6 +129,7 @@ class CampForm(StyledModelForm):
 
 class MovementForm(forms.Form):
     personal_scope=forms.CharField(required=False,widget=forms.HiddenInput)
+    recommendation_scope=forms.CharField(required=False,widget=forms.HiddenInput)
     kind=forms.ChoiceField(label='Вид заявки',choices=[('ARRIVAL','Заезд'),('DEPARTURE','Выезд'),('TRANSFER','Перевод в другой ВЖГ')])
     date=forms.DateField(label='Фактическая дата',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
     camp=forms.ModelChoiceField(label='ВЖГ заезда / исходный ВЖГ',queryset=None)
@@ -143,6 +144,7 @@ class MovementForm(forms.Form):
         from .housing import present_stays
         from apps.resources.models import Employee
         super().__init__(*args,**kwargs)
+        if allow_direct:self.fields['date'].label='Плановая дата поездки'
         self.fields['camp'].queryset=Camp.objects.filter(company=company).order_by('name','pk')
         self.initial.setdefault('camp',camp.pk)
         kind=self.data.get('kind',self.initial.get('kind','ARRIVAL'))

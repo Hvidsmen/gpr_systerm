@@ -215,7 +215,10 @@ def move(user,kind,camp,day,people,employees=(),target=None,comment='',snapshot=
 @transaction.atomic
 def request_moves(user,kind,camp,day,people,employees=(),target=None,comment='',snapshot=None,departure_destination='REST',approval_batch=None):
     if camp.company_id!=user.company_id or target and target.company_id!=user.company_id:raise ValidationError('ВЖГ другой компании.')
-    require_movement_day(user,day);require_backdate_comment(day,comment)
+    # A request contains a planned movement date, so it may be in the future.
+    # The fact-editing window applies only to today and historical dates.
+    if day<=timezone.localdate():
+        require_movement_day(user,day);require_backdate_comment(day,comment)
     if kind not in {'ARRIVAL','DEPARTURE','TRANSFER'}:raise ValidationError('Неизвестное действие.')
     if kind=='TRANSFER' and (not target or target.pk==camp.pk):raise ValidationError('Выберите другой ВЖГ для перевода.')
     selected={p.pk:p for p in people}
