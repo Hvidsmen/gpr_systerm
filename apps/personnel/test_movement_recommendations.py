@@ -45,6 +45,19 @@ class MovementRecommendationTests(TestCase):
         self.assertEqual(build(self.company,self.day)['DEPARTURE'],[])
 
     @patch('apps.personnel.rotation.rotation_rows')
+    def test_arrivals_include_overdue_and_fourteenth_day_but_not_day_fifteen(self,rotation_rows):
+        def row(person,planned):
+            return {'person':person,'slot':self.slot,'camp':self.a,'state':'MO','planned_return':planned,
+                'planned_departure_display':None}
+        rotation_rows.return_value=([row(self.person,self.day-timedelta(days=36)),
+            row(self.second_person,self.day+timedelta(days=14))],[],{})
+        result=build(self.company,self.day)
+        self.assertEqual([(item['person'],item['planned_on']) for item in result['ARRIVAL']],
+            [(self.person,self.day-timedelta(days=36)),(self.second_person,self.day+timedelta(days=14))])
+        rotation_rows.return_value=([row(self.person,self.day+timedelta(days=15))],[],{})
+        self.assertEqual(build(self.company,self.day)['ARRIVAL'],[])
+
+    @patch('apps.personnel.rotation.rotation_rows')
     def test_overdue_departure_stays_hidden_after_exclusion_or_request(self,rotation_rows):
         planned=self.day-timedelta(days=5)
         rotation_rows.return_value=([{'person':self.person,'slot':self.slot,'camp':self.a,'state':'MV',

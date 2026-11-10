@@ -29,7 +29,9 @@ def build(company,day,*,camps=None,rows=None):
     for row in rows or []:
         person=row.get('person');employee=person.employee if person and person.employee_id else None
         if not employee:continue
-        if row.get('state')=='MO' and row.get('planned_return') and day<=row['planned_return']<=end:
+        # A missed return remains actionable until an arrival request is
+        # created or the employee actually arrives.
+        if row.get('state')=='MO' and row.get('planned_return') and row['planned_return']<=end:
             camp=row['slot'].housing_camp if row.get('slot') and row['slot'].housing_camp_id else row.get('camp')
             if camp:auto[_key('ARRIVAL',person.pk,camp.pk,row['planned_return'])]=_row('ARRIVAL',person,camp,row['planned_return'])
         # An overdue departure remains actionable until the employee
@@ -37,14 +39,14 @@ def build(company,day,*,camps=None,rows=None):
         if row.get('state')=='MV' and row.get('planned_departure_display') and row['planned_departure_display']<=end and row.get('camp'):
             planned=row['planned_departure_display'];auto[_key('DEPARTURE',person.pk,row['camp'].pk,planned)]=_row('DEPARTURE',person,row['camp'],planned)
     present={(person_id,camp_id) for person_id,camp_id in housing.present_stays(company,day).values_list('person_id','camp_id')}
-    recommendation_window=Q(planned_on__range=(day,end))|Q(kind='DEPARTURE',planned_on__lt=day)
+    recommendation_window=Q(planned_on__lte=end)
     camp_ids={camp.pk for camp in camps}
     for override in MovementRecommendationOverride.objects.filter(recommendation_window,company=company,camp_id__in=camp_ids).select_related('person__employee','camp'):
         key=_key(override.kind,override.person_id,override.camp_id,override.planned_on)
         if override.action=='EXCLUDE':auto.pop(key,None);continue
         eligible=(override.person_id,override.camp_id) not in present if override.kind=='ARRIVAL' else (override.person_id,override.camp_id) in present
         if eligible:auto[key]=_row(override.kind,override.person,override.camp,override.planned_on,manual=True)
-    request_window=Q(movement_date__range=(day,end))|Q(kind='DEPARTURE',movement_date__lt=day)
+    request_window=Q(movement_date__lte=end)
     for request in MovementReviewRequest.objects.filter(request_window,company=company).filter(Q(to_camp_id__in=camp_ids)|Q(from_camp_id__in=camp_ids)).exclude(status='CANCELLED'):
         camp_id=request.to_camp_id if request.kind=='ARRIVAL' else request.from_camp_id
         if camp_id:auto.pop(_key(request.kind,request.person_id,camp_id,request.movement_date),None)
