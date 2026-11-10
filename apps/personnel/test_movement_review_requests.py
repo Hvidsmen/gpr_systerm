@@ -268,6 +268,15 @@ class MovementReviewRequestTests(TestCase):
         page=self.client.get(reverse('personnel:movement_review_accept',args=[row.pk])+'?edit=1')
         self.assertContains(page,f'value="{self.employee.phone}"')
 
+    def test_request_list_shows_workflow_stage_instead_of_legacy_travel_status(self):
+        row=MovementReviewRequest.objects.create(company=self.company,person=self.person,kind='DEPARTURE',movement_date=timezone.localdate(),
+            from_camp=self.camp,requested_by=self.personnel,status='PEREVAKHTA',travel_status='Ожидается')
+        self.assertEqual(row.workflow_status_label(),'Ожидается прибытие в ОП Дудинка')
+        self.client.force_login(self.reviewer)
+        page=self.client.get(reverse('personnel:movement_reviews')+'?kind=departure')
+        self.assertContains(page,'Ожидается прибытие в ОП Дудинка')
+        self.assertNotContains(page,'>Ожидается</span>')
+
     def test_personnel_phone_backfills_empty_employee_directory_phone(self):
         employee=Employee.objects.create(company=self.company,last_name='Телефонов',first_name='Пётр',employee_number='phone-sync',position=self.position,phone='')
         person=Person.objects.create(company=self.company,employee=employee,full_name=employee.display_name,employee_number=employee.employee_number,phone='+7 999 123-45-67')

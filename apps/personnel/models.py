@@ -304,6 +304,23 @@ class MovementReviewRequest(PersonnelModel):
         if self.source=='DISPATCHER' and not self.request_number:
             self.request_number=str(self.pk)
             type(self).objects.filter(pk=self.pk,request_number='').update(request_number=self.request_number)
+    def workflow_status_label(self):
+        if self.status=='PENDING_APPROVAL':
+            from .departure_workflow import PARALLEL,ROLE_LABELS,route_for
+            route=route_for(self);pending=[code for code,data in route.items() if data.get('status')=='PENDING']
+            if any(code in PARALLEL for code in pending):
+                approved=sum(route[code].get('status')=='APPROVED' for code in PARALLEL)
+                return f'Параллельное согласование: {approved} из {len(PARALLEL)}'
+            if pending:return 'Согласование: '+ROLE_LABELS[pending[0]]
+            return 'На согласовании'
+        if self.status=='RETURNED':return 'Возвращена на доработку'
+        if self.status=='PEREVAKHTA':return 'Ожидается прибытие в ОП Дудинка'
+        if self.status=='AT_HUB':return 'В ОП Дудинка — билеты и обходной лист'
+        if self.status=='EN_ROUTE':return 'В пути в ВЖГ' if self.kind=='ARRIVAL' else 'В пути в базовый город'
+        if self.status=='COMPLETED':return 'Прибыл в ВЖГ' if self.kind=='ARRIVAL' else 'Выбыл из ОП Дудинка'
+        if self.status=='CANCELLED':return 'Отменена'
+        if self.status=='ACCEPTED':return 'Принята'
+        return 'Ожидает обработки перевахтой'
     def clean(self):
         super().clean()
         for value in (self.event,self.person,self.from_camp,self.to_camp,self.requested_by,self.cancelled_by,self.construction_object,self.site_object):

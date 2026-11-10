@@ -58,7 +58,7 @@
   <div class="movement-field"><small>Базовый город</small><span>{{ row.base_city|default:'—' }}</span></div>
   <div class="movement-field"><small>Телефон</small><span>{{ row.phone|default:'—' }}</span></div>
   {% if row.kind == 'DEPARTURE' %}<div class="movement-field"><small>Плановый выезд из ОП Дудинка</small><strong>{{ row.planned_hub_departure_date|date:'d.m.Y'|default:'—' }}{% if row.planned_hub_departure_time %} · {{ row.planned_hub_departure_time|time:'H:i' }}{% endif %}</strong></div>{% elif not row.travel_time %}<div class="movement-field"><small>Время прибытия</small><span>—</span></div>{% endif %}
-  <div class="movement-field"><small>Текущее состояние</small><strong>{{ row.travel_status|default:row.get_status_display }}</strong></div>
+  <div class="movement-field"><small>Текущий этап</small><strong>{{ row.workflow_status_label }}</strong></div>
   <div class="movement-field"><small>Фактическое прибытие в ОП Дудинка</small><strong>{{ row.hub_arrived_on|date:'d.m.Y'|default:'—' }}</strong></div>
   <div class="movement-field"><small>Фактический выезд из ОП Дудинка</small><strong>{{ row.hub_departed_on|date:'d.m.Y'|default:'—' }}</strong></div>
   {% if row.kind == 'ARRIVAL' %}<div class="movement-field"><small>Фактическое прибытие в ВЖГ</small><strong>{{ row.final_arrived_on|date:'d.m.Y'|default:'—' }}</strong></div>{% endif %}
