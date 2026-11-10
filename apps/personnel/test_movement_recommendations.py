@@ -79,6 +79,15 @@ class MovementRecommendationTests(TestCase):
         self.assertEqual(request.movement_date,timezone.localdate())
         self.assertIn(planned.strftime('%d.%m.%Y'),request.note)
 
+    @patch('apps.personnel.rotation.rotation_rows')
+    def test_dispatcher_can_choose_request_date_from_recommendation(self,rotation_rows):
+        planned=self.day-timedelta(days=30);chosen=timezone.localdate()+timedelta(days=4)
+        rotation_rows.return_value=([{'person':self.second_person,'slot':self.slot,'camp':self.a,'state':'MO',
+            'planned_return':planned,'planned_departure_display':None}],[],{})
+        recommendation=build(self.company,self.day)['ARRIVAL'][0]
+        create_requests(self.personnel_dispatcher,[recommendation['token']],{recommendation['date_field']:str(chosen)})
+        self.assertEqual(MovementReviewRequest.objects.get().movement_date,chosen)
+
     @patch('apps.personnel.rotation.rotation_rows',return_value=([],[],{}))
     def test_manual_arrival_is_shared_and_actual_presence_hides_it(self,rotation_rows):
         planned=self.day+timedelta(days=2)

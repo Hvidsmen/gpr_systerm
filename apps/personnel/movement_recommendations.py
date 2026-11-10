@@ -14,11 +14,14 @@ TOKEN_SALT='personnel-movement-recommendation-v1'
 def _key(kind,person_id,camp_id,planned_on):
     return kind,int(person_id),int(camp_id),str(planned_on)
 
+def _date_field(kind,person_id,camp_id):return f'recommendation_date_{kind}_{person_id}_{camp_id}'
+
 
 def _row(kind,person,camp,planned_on,manual=False,roster=None):
     key=_key(kind,person.pk,camp.pk,planned_on)
     roster=roster or {}
     return {'kind':kind,'person':person,'employee':person.employee,'camp':camp,'planned_on':planned_on,'manual':manual,
+        'request_on':max(planned_on,timezone.localdate()),'date_field':_date_field(kind,person.pk,camp.pk),
         'rest_started':roster.get('last_departure') or roster.get('state_since'),'rest_days':roster.get('state_days'),
         'shift_started':roster.get('arrived_on') or roster.get('state_since'),'shift_days':roster.get('state_days'),
         'schedule_label':roster.get('schedule_label',''),
@@ -102,14 +105,18 @@ def add(user,kind,employees,camp,planned_on):
 
 
 @transaction.atomic
-def create_requests(user,tokens):
+def create_requests(user,tokens,requested_dates=None):
     from uuid import uuid4
+    from django import forms
     from .departure_workflow import create_approval,log
     batch=uuid4();created=[]
     count=0
     for token in dict.fromkeys(tokens):
         kind,person,camp,planned_on=decode(token,user.company)
-        request_on=max(planned_on,timezone.localdate())
+        default_on=max(planned_on,timezone.localdate())
+        raw_date=requested_dates.get(_date_field(kind,person.pk,camp.pk)) if requested_dates is not None else None
+        request_on=forms.DateField().clean(raw_date) if raw_date else default_on
+        if request_on<timezone.localdate():raise ValidationError(f'Дата поездки для {person.display_name} не может быть прошедшей.')
         lookup={'company':user.company,'person':person,'kind':kind,'movement_date':request_on,
             'to_camp':camp if kind=='ARRIVAL' else None,'from_camp':camp if kind=='DEPARTURE' else None}
         if MovementReviewRequest.objects.filter(**lookup).exists():continue

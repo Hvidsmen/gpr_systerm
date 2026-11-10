@@ -183,7 +183,7 @@ def workspace(request, movements=False, movement_page='new'):
         from .movement_recommendations import create_requests,exclude
         tokens=[request.POST['request_one']] if request.POST.get('request_one') else request.POST.getlist('recommendations')
         action='recommendation_request' if workflow_action=='recommendation_request' or request.POST.get('request_one') else 'recommendation_remove'
-        try:count=create_requests(request.user,tokens) if action=='recommendation_request' else exclude(request.user,tokens)
+        try:count=create_requests(request.user,tokens,request.POST) if action=='recommendation_request' else exclude(request.user,tokens)
         except ValidationError as exc:messages.error(request,'; '.join(exc.messages))
         else:
             messages.success(request,(f'Заявки оформлены и отправлены в перевахту. Сотрудников: {count}.' if action=='recommendation_request' else f'Из рекомендаций убрано сотрудников: {count}.'))
