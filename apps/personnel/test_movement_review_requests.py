@@ -171,6 +171,18 @@ class MovementReviewRequestTests(TestCase):
         self.client.post(reverse('personnel:movement_review_cancel',args=[row.pk]),{'reason':'Попытка отмены'})
         row.refresh_from_db();self.assertEqual(row.status,'AT_HUB')
 
+    def test_dispatcher_can_cancel_own_request_from_my_requests(self):
+        day=timezone.localdate();housing.request_moves(self.personnel,'ARRIVAL',self.camp,day,[self.person])
+        row=MovementReviewRequest.objects.get();self.client.force_login(self.personnel)
+        active=self.client.get(reverse('personnel:my_movement_requests'))
+        self.assertContains(active,'Отменить');self.assertNotContains(active,'>Удалить<')
+        cancelled=self.client.post(reverse('personnel:movement_review_cancel',args=[row.pk]),
+            {'reason':'Поездка больше не требуется','next':reverse('personnel:my_movement_requests')+'?scope=history'})
+        self.assertRedirects(cancelled,reverse('personnel:my_movement_requests')+'?scope=history',fetch_redirect_response=False)
+        history=self.client.get(reverse('personnel:my_movement_requests'),{'scope':'history'})
+        self.assertContains(history,'Поездка больше не требуется');self.assertNotContains(history,'>Удалить<')
+        self.assertTrue(MovementReviewRequest.objects.filter(pk=row.pk,status='CANCELLED').exists())
+
     def test_batch_request_creates_one_task_and_supports_individual_and_bulk_decisions(self):
         from apps.planning.models import WorkTask
         second_employee=Employee.objects.create(company=self.company,last_name='Петров',first_name='Пётр',employee_number='review-2',position=self.position)

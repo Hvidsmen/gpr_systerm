@@ -104,8 +104,11 @@ class MovementRecommendationTests(TestCase):
             'recommendation_scope':form.initial['recommendation_scope'],f'departure_destination_{self.employee.pk}':'REST'})
         self.assertEqual(create.status_code,302)
         row=MovementReviewRequest.objects.get();self.assertEqual(row.status,'PENDING_APPROVAL');self.assertEqual(row.departure_destination,'REST')
+        self.assertEqual(row.recommendation_planned_on,recommendation['planned_on'])
         self.assertTrue(WorkTask.objects.filter(key=f'personnel-movement-batch:{row.approval_batch}').exists())
         self.assertRedirects(create,reverse('personnel:my_movement_requests'),fetch_redirect_response=False)
+        self.client.post(reverse('personnel:movement_review_cancel',args=[row.pk]),{'reason':'Маршрут изменился'})
+        self.assertEqual([item['person'] for item in build(self.company,self.day)['DEPARTURE']],[self.person])
 
     @patch('apps.personnel.rotation.rotation_rows',return_value=([],[],{}))
     def test_manual_arrival_is_shared_and_actual_presence_hides_it(self,rotation_rows):

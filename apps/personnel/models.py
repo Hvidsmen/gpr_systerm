@@ -297,6 +297,7 @@ class MovementReviewRequest(PersonnelModel):
     cancellation_reason=models.TextField('Причина отмены',blank=True)
     cancelled_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,blank=True,related_name='+')
     cancelled_at=models.DateTimeField(null=True,blank=True)
+    recommendation_planned_on=models.DateField('Исходная дата рекомендации',null=True,blank=True)
     class Meta:
         ordering=['status','-movement_date','-pk']
     def save(self,*args,**kwargs):

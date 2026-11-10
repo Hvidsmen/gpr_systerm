@@ -242,7 +242,11 @@ def workspace(request, movements=False, movement_page='new'):
                 try:recommendation_tokens=signing.loads(form.cleaned_data['recommendation_scope'],salt='personnel-recommendation-draft',max_age=12*3600)
                 except signing.BadSignature:recommendation_tokens=[]
                 if recommendation_tokens:
-                    from .movement_recommendations import exclude
+                    from .movement_recommendations import decode,exclude
+                    for token in recommendation_tokens:
+                        origin_kind,origin_person,origin_camp,origin_day=decode(token,request.user.company)
+                        MovementReviewRequest.objects.filter(company=request.user.company,approval_batch=options['approval_batch'],
+                            person=origin_person,kind=origin_kind).update(recommendation_planned_on=origin_day)
                     exclude(request.user,recommendation_tokens)
             messages.success(request,(f'Сохранено фактических перемещений: {count}.' if direct else f'Создано заявок и отправлено на согласование: {count}.')+f' Исключено: {len(movement_exclusions)}.')
             for row in movement_exclusions:messages.warning(request,f'{row["employee"].display_name}: {row["reason"]}')
@@ -508,7 +512,10 @@ def movement_review_cancel(request,pk):
 @require_http_methods(['POST'])
 def movement_review_delete(request,pk):
     from .departure_workflow import delete_request
-    row=get_object_or_404(MovementReviewRequest,pk=pk,company=request.user.company)
+    from core.permissions import role_code
+    query=MovementReviewRequest.objects.filter(company=request.user.company)
+    if role_code(request.user)=='PERSONNEL_DISPATCHER':query=query.filter(requested_by=request.user)
+    row=get_object_or_404(query,pk=pk)
     try:delete_request(request.user,row)
     except ValidationError as exc:
         messages.error(request,'; '.join(exc.messages));return redirect('personnel:movement_review_accept',pk=pk)
@@ -713,6 +720,8 @@ def my_movement_requests(request):
     if search:query=query.filter(Q(person__full_name__icontains=search)|Q(request_number__icontains=search)|Q(base_city__icontains=search))
     grouped=OrderedDict()
     for row in query.order_by('-created_at','-pk')[:1000]:
+        row.can_cancel=row.status not in {'AT_HUB','EN_ROUTE','COMPLETED','CANCELLED'} and not row.event_id and not row.hub_arrived_on
+        row.can_delete=False
         key=str(row.approval_batch) if row.approval_batch else f'row-{row.pk}'
         group=grouped.setdefault(key,{'key':key,'is_batch':bool(row.approval_batch),'created_at':row.created_at,'kind':row.kind,'kind_label':row.get_kind_display(),'items':[]})
         group['items'].append(row)

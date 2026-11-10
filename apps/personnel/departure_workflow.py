@@ -7,7 +7,7 @@ from django.utils import timezone
 from core.permissions import role_code
 from apps.planning.models import WorkTask
 from apps.planning.task_services import ensure,event as task_event,state
-from .models import CampStay,HousingEvent,MovementReviewEvent,MovementReviewRequest
+from .models import CampStay,HousingEvent,MovementRecommendationOverride,MovementReviewEvent,MovementReviewRequest
 
 ROUTE=[
     ('MANAGER','Руководитель проекта'),('SITE_CHIEF','Начальник участка'),
@@ -95,6 +95,10 @@ def cancel_request(user,row,reason):
     if not reason:raise ValidationError('Укажите причину отмены заявки.')
     row.status='CANCELLED';row.cancellation_reason=reason;row.cancelled_by=user;row.cancelled_at=timezone.now();row.travel_status='Отменено'
     row.save(update_fields=['status','cancellation_reason','cancelled_by','cancelled_at','travel_status','updated_at'])
+    if row.recommendation_planned_on:
+        camp_id=row.to_camp_id if row.kind=='ARRIVAL' else row.from_camp_id
+        MovementRecommendationOverride.objects.filter(company=row.company,person=row.person,camp_id=camp_id,kind=row.kind,
+            planned_on=row.recommendation_planned_on,action='EXCLUDE').delete()
     log(row,user,'Заявка отменена',reason)
     task=sync_approval_task(row,user)
     if task and not approval_rows(row).exclude(status='CANCELLED').exists() and task.status!='SUPERSEDED':state(task,'SUPERSEDED',user,reason)
