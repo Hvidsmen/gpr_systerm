@@ -717,6 +717,7 @@ def my_movement_requests(request):
     access(request)
     from collections import OrderedDict
     from django.db.models import Prefetch
+    from django.core.paginator import Paginator
     from .models import MovementReviewEvent
     scope=request.GET.get('scope','active');scope=scope if scope in {'active','history','all'} else 'active'
     kind=request.GET.get('kind','');kind=kind if kind in {'ARRIVAL','DEPARTURE','TRANSFER'} else ''
@@ -731,11 +732,12 @@ def my_movement_requests(request):
     if kind:query=query.filter(kind=kind)
     search=request.GET.get('q','').strip()
     if search:query=query.filter(Q(person__full_name__icontains=search)|Q(request_number__icontains=search)|Q(base_city__icontains=search))
-    grouped=OrderedDict()
-    for row in query.order_by('-created_at','-pk')[:1000]:
+    grouped=OrderedDict();filtered_rows=[]
+    for row in query.order_by('-created_at','-pk'):
         if stage and row.workflow_stage_code()!=stage:continue
         row.can_cancel=not row.has_approved_stage() and row.status not in {'AT_HUB','EN_ROUTE','COMPLETED','CANCELLED'} and not row.event_id and not row.hub_arrived_on
         row.can_delete=False
+        filtered_rows.append(row)
         key=str(row.approval_batch) if row.approval_batch else f'row-{row.pk}'
         group=grouped.setdefault(key,{'key':key,'is_batch':bool(row.approval_batch),'created_at':row.created_at,'kind':row.kind,'kind_label':row.get_kind_display(),'items':[]})
         group['items'].append(row)
@@ -747,8 +749,9 @@ def my_movement_requests(request):
         elif statuses == {'CANCELLED'}:group['status']='Отменено';group['status_class']='bg-secondary'
         else:group['status']='В работе';group['status_class']='bg-info text-dark'
     active_count=MovementReviewRequest.objects.filter(company=request.user.company,requested_by=request.user).exclude(status__in=terminal).count()
+    history_page=Paginator(filtered_rows,50).get_page(request.GET.get('page')) if scope=='history' else None
     return render(request,'personnel/my_movement_requests.html',{'personnel_section':'movements','dispatcher_page':'requests','groups':list(grouped.values()),'scope':scope,'kind':kind,
-        'stage':stage,'stage_choices':stage_choices,'query':search,'active_request_count':active_count})
+        'stage':stage,'stage_choices':stage_choices,'query':search,'active_request_count':active_count,'history_page':history_page})
 
 
 @login_required

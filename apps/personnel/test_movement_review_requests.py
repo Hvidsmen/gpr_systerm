@@ -183,6 +183,23 @@ class MovementReviewRequestTests(TestCase):
         self.assertContains(history,'Поездка больше не требуется');self.assertNotContains(history,'>Удалить<')
         self.assertTrue(MovementReviewRequest.objects.filter(pk=row.pk,status='CANCELLED').exists())
 
+    def test_completed_requests_use_one_paginated_table(self):
+        day=timezone.localdate()
+        MovementReviewRequest.objects.bulk_create([
+            MovementReviewRequest(company=self.company,person=self.person,kind='ARRIVAL',movement_date=day,
+                to_camp=self.camp,requested_by=self.personnel,status='COMPLETED',request_number=f'history-{number}')
+            for number in range(51)
+        ])
+        self.client.force_login(self.personnel)
+        first=self.client.get(reverse('personnel:my_movement_requests'),{'scope':'history'})
+        self.assertContains(first,'Завершённые заявки',count=1)
+        self.assertContains(first,'Всего записей: 51')
+        self.assertEqual(len(first.context['history_page']),50)
+        self.assertContains(first,'page=2')
+        second=self.client.get(reverse('personnel:my_movement_requests'),{'scope':'history','page':2})
+        self.assertEqual(len(second.context['history_page']),1)
+        self.assertContains(second,'Назад')
+
     def test_dispatcher_cannot_cancel_after_first_approval(self):
         from .departure_workflow import decide
         day=timezone.localdate();housing.request_moves(self.personnel,'ARRIVAL',self.camp,day,[self.person])
