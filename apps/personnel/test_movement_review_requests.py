@@ -305,6 +305,11 @@ class MovementReviewRequestTests(TestCase):
         self.assertNotContains(page,'>Ожидается</span>')
         self.client.force_login(self.personnel);mine=self.client.get(reverse('personnel:my_movement_requests'))
         self.assertContains(mine,'Ожидается прибытие в ОП Дудинка');self.assertNotContains(mine,'<td>Ожидается</td>')
+        MovementReviewRequest.objects.create(company=self.company,person=self.person,kind='DEPARTURE',movement_date=timezone.localdate(),
+            from_camp=self.camp,requested_by=self.personnel,status='AT_HUB',travel_status='Ожидается')
+        filtered=self.client.get(reverse('personnel:my_movement_requests'),{'stage':'DUDINKA_ARRIVAL'})
+        filtered_ids=[item.pk for group in filtered.context['groups'] for item in group['items']]
+        self.assertEqual(filtered_ids,[row.pk]);self.assertContains(filtered,'<option value="DUDINKA_ARRIVAL" selected>')
 
     def test_personnel_phone_backfills_empty_employee_directory_phone(self):
         employee=Employee.objects.create(company=self.company,last_name='Телефонов',first_name='Пётр',employee_number='phone-sync',position=self.position,phone='')

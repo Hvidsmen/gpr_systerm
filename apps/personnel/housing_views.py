@@ -711,6 +711,10 @@ def my_movement_requests(request):
     from .models import MovementReviewEvent
     scope=request.GET.get('scope','active');scope=scope if scope in {'active','history','all'} else 'active'
     kind=request.GET.get('kind','');kind=kind if kind in {'ARRIVAL','DEPARTURE','TRANSFER'} else ''
+    stage_choices=[('APPROVAL','Согласование'),('PROCESSING','Обработка перевахтой'),('TICKETS','Покупка билетов'),
+        ('DUDINKA_ARRIVAL','Ожидается прибытие в ОП Дудинка'),('DUDINKA','В ОП Дудинка'),('EN_ROUTE','В пути'),
+        ('COMPLETED','Завершено'),('CANCELLED','Отменено')]
+    stage=request.GET.get('stage','');stage=stage if stage in dict(stage_choices) else ''
     query=MovementReviewRequest.objects.filter(company=request.user.company,requested_by=request.user).select_related('person','from_camp','to_camp','approved_by').prefetch_related(Prefetch('workflow_events',queryset=MovementReviewEvent.objects.select_related('actor')))
     terminal={'COMPLETED','CANCELLED','ACCEPTED'}
     if scope=='active':query=query.exclude(status__in=terminal)
@@ -720,6 +724,7 @@ def my_movement_requests(request):
     if search:query=query.filter(Q(person__full_name__icontains=search)|Q(request_number__icontains=search)|Q(base_city__icontains=search))
     grouped=OrderedDict()
     for row in query.order_by('-created_at','-pk')[:1000]:
+        if stage and row.workflow_stage_code()!=stage:continue
         row.can_cancel=not row.has_approved_stage() and row.status not in {'AT_HUB','EN_ROUTE','COMPLETED','CANCELLED'} and not row.event_id and not row.hub_arrived_on
         row.can_delete=False
         key=str(row.approval_batch) if row.approval_batch else f'row-{row.pk}'
@@ -733,7 +738,8 @@ def my_movement_requests(request):
         elif statuses == {'CANCELLED'}:group['status']='Отменено';group['status_class']='bg-secondary'
         else:group['status']='В работе';group['status_class']='bg-info text-dark'
     active_count=MovementReviewRequest.objects.filter(company=request.user.company,requested_by=request.user).exclude(status__in=terminal).count()
-    return render(request,'personnel/my_movement_requests.html',{'personnel_section':'movements','dispatcher_page':'requests','groups':list(grouped.values()),'scope':scope,'kind':kind,'query':search,'active_request_count':active_count})
+    return render(request,'personnel/my_movement_requests.html',{'personnel_section':'movements','dispatcher_page':'requests','groups':list(grouped.values()),'scope':scope,'kind':kind,
+        'stage':stage,'stage_choices':stage_choices,'query':search,'active_request_count':active_count})
 
 
 @login_required

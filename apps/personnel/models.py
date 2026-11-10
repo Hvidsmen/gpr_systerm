@@ -324,6 +324,15 @@ class MovementReviewRequest(PersonnelModel):
         if self.status=='CANCELLED':return 'Отменена'
         if self.status=='ACCEPTED':return 'Принята'
         return 'Ожидает обработки перевахтой'
+    def workflow_stage_code(self):
+        if self.status=='PENDING_APPROVAL':return 'APPROVAL'
+        if self.status=='RETURNED':return 'RETURNED'
+        if self.status=='PEREVAKHTA':return 'TICKETS' if self.kind=='ARRIVAL' and not self.tickets_ready else 'DUDINKA_ARRIVAL'
+        if self.status=='AT_HUB':return 'DUDINKA'
+        if self.status=='EN_ROUTE':return 'EN_ROUTE'
+        if self.status in {'COMPLETED','ACCEPTED'}:return 'COMPLETED'
+        if self.status=='CANCELLED':return 'CANCELLED'
+        return 'PROCESSING'
     def has_approved_stage(self):
         return any(data.get('status')=='APPROVED' for data in (self.approval_route or {}).values())
     def clean(self):
