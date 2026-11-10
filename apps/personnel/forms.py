@@ -208,11 +208,13 @@ class MovementReviewForm(StyledModelForm):
         help_text='Если нужного города ещё нет в списке, введите его здесь — он сразу добавится в справочник.')
     class Meta:
         model=MovementReviewRequest
-        fields=['employment_kind','planning_position_name','position_name','construction_object','movement_date','phone','request_number','travel_time','travel_status','note']
-        widgets={'movement_date':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}),'travel_time':forms.TimeInput(format='%H:%M',attrs={'type':'time'})}
+        fields=['employment_kind','planning_position_name','position_name','construction_object','movement_date','phone','request_number','travel_time','planned_hub_departure_date','planned_hub_departure_time','travel_status','note']
+        widgets={'movement_date':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}),'travel_time':forms.TimeInput(format='%H:%M',attrs={'type':'time'}),
+                 'planned_hub_departure_date':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}),'planned_hub_departure_time':forms.TimeInput(format='%H:%M',attrs={'type':'time'})}
     def __init__(self,*args,confirm=False,**kwargs):
         super().__init__(*args,**kwargs);self.confirm=confirm
-        self.fields['movement_date'].label='Дата заезда' if self.instance.kind=='ARRIVAL' else 'Дата выезда'
+        self.fields['movement_date'].label='Дата заезда' if self.instance.kind=='ARRIVAL' else 'Плановая дата выезда из ВЖГ'
+        self.fields['travel_time'].label='Время прибытия' if self.instance.kind=='ARRIVAL' else 'Плановое время выезда из ВЖГ'
         from apps.projects.models import ConstructionObject
         objects=ConstructionObject.objects.filter(company=self.instance.company).select_related('parent').order_by('name')
         self.fields['construction_object'].queryset=objects
@@ -236,7 +238,7 @@ class MovementReviewForm(StyledModelForm):
             self.fields['employment_kind'].required=False
             self.fields['employment_kind'].widget=forms.HiddenInput()
         if confirm:
-            required=['planning_position_name','position_name','construction_object','camp','movement_date','phone','request_number','travel_time','travel_status']
+            required=['planning_position_name','position_name','construction_object','camp','movement_date','phone','request_number','travel_time','planned_hub_departure_date','planned_hub_departure_time','travel_status']
             if self.instance.kind=='ARRIVAL':required.append('employment_kind')
             for name in required:self.fields[name].required=True
     def status_choices(self):
@@ -248,6 +250,8 @@ class MovementReviewForm(StyledModelForm):
         data=super().clean();new=' '.join((data.get('new_base_city') or '').split());selected=data.get('base_city_choice')
         if new and selected:self.add_error('new_base_city','Выберите город из списка или добавьте новый, но не оба варианта.')
         if self.confirm and not (new or selected):self.add_error('base_city_choice','Выберите базовый город или добавьте новый.')
+        if data.get('movement_date') and data.get('planned_hub_departure_date') and data['planned_hub_departure_date']<data['movement_date']:
+            self.add_error('planned_hub_departure_date','Выезд из ОП Дудинка не может быть запланирован раньше выезда из ВЖГ.')
         obj,camp=data.get('construction_object'),data.get('camp')
         if obj and camp:
             from apps.projects.models import ConstructionObject

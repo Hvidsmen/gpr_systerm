@@ -393,7 +393,8 @@ def movement_review_accept(request,pk):
             locked=MovementReviewRequest.objects.select_for_update().get(pk=row.pk,company=request.user.company)
             if locked.status=='ACCEPTED' and confirm:
                 messages.info(request,'Заявка уже подтверждена.');return redirect(reverse('personnel:movement_reviews')+'#movement-requests')
-            for name in form._meta.fields:setattr(locked,name,form.cleaned_data[name])
+            for name in form._meta.fields:
+                if name in form.cleaned_data:setattr(locked,name,form.cleaned_data[name])
             camp=form.cleaned_data.get('camp')
             if locked.kind=='ARRIVAL':locked.to_camp=camp
             else:locked.from_camp=camp

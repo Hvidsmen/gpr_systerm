@@ -271,6 +271,8 @@ class MovementReviewRequest(PersonnelModel):
     phone=models.CharField('Номер телефона',max_length=80,blank=True)
     request_number=models.CharField('№ заявки',max_length=50,blank=True)
     travel_time=models.TimeField('Время прилёта / вылета',null=True,blank=True)
+    planned_hub_departure_date=models.DateField('Плановая дата выезда из ОП Дудинка',null=True,blank=True)
+    planned_hub_departure_time=models.TimeField('Плановое время выезда из ОП Дудинка',null=True,blank=True)
     travel_status=models.CharField('Статус поездки',max_length=80,blank=True)
     note=models.TextField('Комментарий / примечание',blank=True)
     reviewed_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,blank=True,related_name='+')

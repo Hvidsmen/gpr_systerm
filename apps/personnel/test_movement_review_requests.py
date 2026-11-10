@@ -40,7 +40,8 @@ class MovementReviewRequestTests(TestCase):
         row.planning_position_name=row.planning_position_name or 'Должность СМГ';row.position_name=row.position_name or 'Должность сотрудника'
         row.construction_object=self.obj;row.base_city='Норильск';row.phone='8 900 000-00-00';row.request_number='123'
         row.travel_time='08:30';row.travel_status='Ожидается';row.employment_kind=row.employment_kind or 'STAFF'
-        row.save(update_fields=['planning_position_name','position_name','construction_object','base_city','phone','request_number','travel_time','travel_status','employment_kind','updated_at'])
+        row.planned_hub_departure_date=timezone.localdate();row.planned_hub_departure_time='12:30'
+        row.save(update_fields=['planning_position_name','position_name','construction_object','base_city','phone','request_number','travel_time','travel_status','employment_kind','planned_hub_departure_date','planned_hub_departure_time','updated_at'])
 
     def test_personnel_dispatcher_creates_request_and_rotation_accepts_it(self):
         event_count=self.person.housing_events.count()
@@ -86,6 +87,7 @@ class MovementReviewRequestTests(TestCase):
             'review_action':'confirm','employment_kind':'STAFF','planning_position_name':'Начальник участка по ГПР',
             'position_name':'Электромонтёр справочника','construction_object':self.obj.pk,'camp':self.camp.pk,'movement_date':changed_date.isoformat(),
             'base_city_choice':'','new_base_city':'Уфа','phone':'8 900 000-00-00','request_number':'302','travel_time':'08:45',
+            'planned_hub_departure_date':changed_date.isoformat(),'planned_hub_departure_time':'12:30',
             'travel_status':'Прибыл','note':'Рейс подтверждён',
         })
         self.assertRedirects(response,reverse('personnel:movement_reviews')+'#movement-requests',fetch_redirect_response=False)
@@ -113,6 +115,7 @@ class MovementReviewRequestTests(TestCase):
             'review_action':'save','employment_kind':'STAFF','planning_position_name':'Начальник участка по ГПР',
             'position_name':'Электромонтёр справочника','construction_object':self.obj.pk,'camp':self.camp.pk,'movement_date':changed_date.isoformat(),
             'base_city_choice':'','new_base_city':'Уфа','phone':'8 999 111-22-33','request_number':'302','travel_time':'08:45',
+            'planned_hub_departure_date':changed_date.isoformat(),'planned_hub_departure_time':'12:30',
             'travel_status':'Прибыл','note':'Данные исправлены',
         })
         self.assertRedirects(response,reverse('personnel:movement_review_accept',args=[request_row.pk]),fetch_redirect_response=False)
@@ -290,7 +293,7 @@ class MovementReviewRequestTests(TestCase):
         self.assertEqual([row.pk for row in page.context['excel_review_requests']],[imported.pk])
         sorted_page=self.client.get(reverse('personnel:movement_reviews'),{'sort':'movement_asc'})
         self.assertEqual(sorted_page.context['review_sort'],'movement_asc');self.assertEqual([row.pk for row in sorted_page.context['dispatcher_review_requests']],[older.pk,newer.pk])
-        self.assertContains(sorted_page,'Дата поездки ↑');self.assertContains(sorted_page,'Создана')
+        self.assertContains(sorted_page,'Дата заезда ↑');self.assertContains(sorted_page,'Создана')
 
     def test_visible_excel_sheets_create_review_requests_without_duplicates(self):
         from openpyxl import Workbook
