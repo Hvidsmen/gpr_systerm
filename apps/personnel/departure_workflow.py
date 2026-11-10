@@ -9,6 +9,45 @@ from apps.planning.models import WorkTask
 from apps.planning.task_services import ensure,event as task_event,state
 from .models import CampStay,HousingEvent,MovementReviewEvent,MovementReviewRequest
 
+ROUTE=[
+    ('MANAGER','Руководитель проекта'),('SITE_CHIEF','Начальник участка'),
+    ('PEREVAKHTA_SPECIALIST','Специалист перевахты'),
+    ('DUDINKA_HEAD','Руководитель ОП Дудинка'),
+    ('DUDINKA_SECURITY_DEPUTY','Заместитель руководителя ОП по безопасности'),
+    ('CHIEF_MECHANIC','Главный механик'),('PARAMEDIC','Фельдшер'),
+    ('PERSONNEL_SPECIALIST','Специалист по персоналу'),
+    ('LABOR_ECONOMIST','Эксперт по экономике труда и заработной плате'),
+]
+PARALLEL={code for code,_ in ROUTE[3:]}
+ROLE_LABELS=dict(ROUTE)
+
+def initial_route():
+    return {code:{'status':'PENDING' if code=='MANAGER' else 'WAITING','comment':'','actor':'','at':''} for code,_ in ROUTE}
+
+def route_for(row):
+    route=initial_route()
+    if not row.approval_route and row.status not in {'PENDING_APPROVAL','RETURNED'}:
+        for code in route:route[code]['status']='APPROVED'
+    route.update(row.approval_route or {})
+    return route
+
+def active_route_roles(row):
+    return {code for code,data in route_for(row).items() if data.get('status')=='PENDING'}
+
+def task_route_roles(task):
+    if not task.key.startswith(('personnel-movement-batch:','personnel-movement-approval:')):return set()
+    if task.key.startswith('personnel-movement-batch:'):
+        rows=MovementReviewRequest.objects.filter(company=task.company,approval_batch=task.key.split(':',1)[1])
+    else:rows=MovementReviewRequest.objects.filter(company=task.company,pk=task.key.rsplit(':',1)[1])
+    result=set()
+    for row in rows:
+        if row.status in {'PENDING_APPROVAL','RETURNED'}:result|=active_route_roles(row)
+    return result
+
+def route_summary(row):
+    route=route_for(row)
+    return [{'code':code,'label':label,'status':route[code]['status'],'comment':route[code].get('comment',''),'actor':route[code].get('actor','')} for code,label in ROUTE]
+
 
 def travel_details_complete(row):
     required=(row.planning_position_name,row.position_name,row.construction_object_id,
@@ -34,10 +73,16 @@ def approval_rows(row):
 def sync_approval_task(row,user=None):
     task=WorkTask.objects.filter(company=row.company,key=approval_task_key(row)).first()
     if not task:return None
-    pending=approval_rows(row).filter(status='PENDING_APPROVAL').count()
+    pending=approval_rows(row).filter(status__in=['PENDING_APPROVAL','RETURNED']).count()
     if pending:
         if task.status!='OPEN':task.status='OPEN';task.started_at=None;task.save(update_fields=['status','started_at','updated_at'])
-    elif task.status=='OPEN':state(task,'DONE',user,'Все сотрудники в заявке рассмотрены.')
+    elif task.status=='OPEN':state(task,'DONE',user,'Единый маршрут согласования завершён по всем сотрудникам.')
+    if pending:
+        roles=set()
+        for item in approval_rows(row).filter(status__in=['PENDING_APPROVAL','RETURNED']):roles|=active_route_roles(item)
+        target=next(iter(roles)) if len(roles)==1 else 'MOVEMENT_PARALLEL'
+        if task.target_role!=target or task.assigned_to_id:
+            task.target_role=target;task.assigned_to=None;task.save(update_fields=['target_role','assigned_to','updated_at'])
     return task
 
 
@@ -86,8 +131,13 @@ def create_approval(row):
                      f'Вид: {"Заезд" if row.kind=="ARRIVAL" else "Перевод" if row.kind=="TRANSFER" else "Выезд с увольнением" if row.departure_destination=="DISMISSAL" else "Выезд на межвахтовый отдых"}'),
         target_role='MANAGER',created_by=row.requested_by,due_date=timezone.localdate()+timedelta(days=1),
         construction_object=row.construction_object)
+    for item in rows:
+        if not item.approval_route:
+            item.approval_route=initial_route();item.save(update_fields=['approval_route','updated_at'])
     title=f'Согласовать {direction}: {count} сотрудник' if count==1 else f'Согласовать {direction}: {count} сотрудников'
-    description=f'{names}\nВЖГ: {(row.to_camp if row.kind in {"ARRIVAL","TRANSFER"} else row.from_camp) or "—"}\nПлановая дата: {row.movement_date:%d.%m.%Y}'
+    description=(f'{names}\nВЖГ: {(row.to_camp if row.kind in {"ARRIVAL","TRANSFER"} else row.from_camp) or "—"}\nПлановая дата: {row.movement_date:%d.%m.%Y}\n\n'
+                 'Маршрут: Руководитель проекта → Начальник участка → Специалист перевахты → '
+                 'параллельно: Руководитель ОП Дудинка, безопасность, главный механик, фельдшер, персонал, эксперт по труду и заработной плате.')
     if task.title!=title or task.description!=description:
         task.title=title;task.description=description;task.save(update_fields=['title','description','updated_at'])
     return task
@@ -96,30 +146,44 @@ def create_approval(row):
 @transaction.atomic
 def decide(user,row,approved,comment='',sync_task=True):
     row=MovementReviewRequest.objects.select_for_update().get(pk=row.pk,company=user.company)
-    if role_code(user) not in {'ADMIN','MANAGER'}:raise PermissionDenied('Согласование доступно руководителю проекта.')
-    if row.status!='PENDING_APPROVAL':raise ValidationError('Заявка уже обработана или находится на другом этапе.')
+    actor_role=role_code(user);route=route_for(row)
+    pending=active_route_roles(row)
+    if actor_role!='ADMIN' and actor_role not in pending:raise PermissionDenied('Сейчас решение ожидается от другого участника маршрута.')
+    if row.status not in {'PENDING_APPROVAL','RETURNED'}:raise ValidationError('Заявка уже обработана или находится на другом этапе.')
     if not approved and not comment.strip():raise ValidationError('При возврате укажите причину.')
-    row.status=('OPEN' if row.kind=='TRANSFER' else 'PEREVAKHTA') if approved else 'RETURNED';row.approved_by=user;row.approved_at=timezone.now();row.approval_comment=comment.strip()
-    row.save(update_fields=['status','approved_by','approved_at','approval_comment','updated_at'])
-    log(row,user,'Согласовано руководителем' if approved else 'Возвращено на доработку',comment)
+    step=actor_role if actor_role!='ADMIN' else next(iter(pending),None)
+    if not step:raise ValidationError('В маршруте нет этапа, ожидающего решения.')
+    if step=='PEREVAKHTA_SPECIALIST' and approved and not travel_details_complete(row):
+        raise ValidationError('Сначала заполните обязательные первичные данные поездки. Только после этого можно запустить параллельные согласования.')
+    route[step]={'status':'APPROVED' if approved else 'RETURNED','comment':comment.strip(),'actor':user.full_name,'at':timezone.now().isoformat()}
+    if approved:
+        if step=='MANAGER':route['SITE_CHIEF']['status']='PENDING'
+        elif step=='SITE_CHIEF':route['PEREVAKHTA_SPECIALIST']['status']='PENDING'
+        elif step=='PEREVAKHTA_SPECIALIST':
+            for code in PARALLEL:
+                if route[code]['status']=='WAITING':route[code]['status']='PENDING'
+    complete=all(route[code]['status']=='APPROVED' for code in PARALLEL)
+    row.status=('OPEN' if row.kind=='TRANSFER' else 'PEREVAKHTA') if complete else 'RETURNED' if not approved else 'PENDING_APPROVAL'
+    row.approval_route=route;row.approved_by=user if complete else None;row.approved_at=timezone.now() if complete else None;row.approval_comment=comment.strip()
+    row.save(update_fields=['status','approval_route','approved_by','approved_at','approval_comment','updated_at'])
+    log(row,user,('Согласовано: ' if approved else 'Возвращено: ')+ROLE_LABELS[step],comment)
     task=WorkTask.objects.filter(company=row.company,key=approval_task_key(row)).first()
     if task and sync_task:
-        if row.approval_batch:sync_approval_task(row,user)
-        else:state(task,'DONE' if approved else 'SUPERSEDED',user,comment)
+        sync_approval_task(row,user)
     return row
 
 
 @transaction.atomic
 def decide_many(user,task,ids,approved,comment='',all_pending=False):
-    if role_code(user) not in {'ADMIN','MANAGER'}:raise PermissionDenied('Согласование доступно руководителю проекта.')
+    if role_code(user)!='ADMIN' and role_code(user) not in task_route_roles(task):raise PermissionDenied('Сейчас решение ожидается от другой роли.')
     if not task.key.startswith('personnel-movement-batch:'):raise ValidationError('Это не пакетное согласование перевахты.')
     batch=task.key.split(':',1)[1]
-    query=MovementReviewRequest.objects.select_for_update().filter(company=user.company,approval_batch=batch,status='PENDING_APPROVAL')
+    query=MovementReviewRequest.objects.select_for_update().filter(company=user.company,approval_batch=batch,status__in=['PENDING_APPROVAL','RETURNED'])
     if not all_pending:
         selected={int(value) for value in ids if str(value).isdigit()}
         if not selected:raise ValidationError('Выберите хотя бы одного сотрудника.')
         query=query.filter(pk__in=selected)
-    rows=list(query.order_by('pk'))
+    rows=[row for row in query.order_by('pk') if role_code(user)=='ADMIN' or role_code(user) in active_route_roles(row)]
     if not rows:raise ValidationError('Выбранные заявки уже обработаны или недоступны.')
     if not approved and not comment.strip():raise ValidationError('При возврате укажите причину.')
     for row in rows:decide(user,row,approved,comment,sync_task=False)
@@ -133,13 +197,16 @@ def resubmit(user,row):
     row=MovementReviewRequest.objects.select_for_update().get(pk=row.pk,company=user.company)
     if row.status!='RETURNED':raise ValidationError('На повторное согласование можно отправить только возвращённую заявку.')
     if role_code(user) not in {'ADMIN','PERSONNEL_DISPATCHER','HR_HEAD'}:raise PermissionDenied
-    row.status='PENDING_APPROVAL';row.approved_by=None;row.approved_at=None;row.approval_comment=''
-    row.save(update_fields=['status','approved_by','approved_at','approval_comment','updated_at'])
+    route=route_for(row)
+    for code,data in route.items():
+        if data.get('status')=='RETURNED':data['status']='PENDING'
+    row.status='PENDING_APPROVAL';row.approval_route=route;row.approved_by=None;row.approved_at=None;row.approval_comment=''
+    row.save(update_fields=['status','approval_route','approved_by','approved_at','approval_comment','updated_at'])
     task=WorkTask.objects.filter(company=row.company,key=approval_task_key(row)).first()
     if task:
         task.status='OPEN';task.started_at=None;task.save(update_fields=['status','started_at','updated_at']);task_event(task,user,'Повторно отправлено на согласование')
     else:create_approval(row)
-    log(row,user,'Повторно отправлено на согласование')
+    log(row,user,'Повторно отправлено только вернувшим согласующим')
 
 
 @transaction.atomic

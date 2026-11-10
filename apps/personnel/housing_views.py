@@ -357,7 +357,7 @@ def movement_reviews(request):
 @require_http_methods(['GET','POST'])
 def movement_review_accept(request,pk):
     from core.permissions import require_roles,role_code
-    require_roles(request.user,{'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER','MANAGER'})
+    require_roles(request.user,{'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER','MANAGER','SITE_CHIEF','PEREVAKHTA_SPECIALIST','DUDINKA_HEAD','DUDINKA_SECURITY_DEPUTY','CHIEF_MECHANIC','PARAMEDIC','PERSONNEL_SPECIALIST','LABOR_ECONOMIST'})
     row_query=MovementReviewRequest.objects.select_related('person','from_camp','to_camp','event')
     if role_code(request.user)=='PERSONNEL_DISPATCHER':row_query=row_query.filter(requested_by=request.user)
     row=get_object_or_404(
@@ -383,9 +383,9 @@ def movement_review_accept(request,pk):
     details_complete=travel_details_complete(row)
     if row.status=='CANCELLED' and request.method=='POST':
         messages.error(request,'Отменённую заявку нельзя редактировать.');return redirect('personnel:movement_review_accept',pk=row.pk)
-    edit_mode=row.status!='CANCELLED' and (row.status in {'OPEN','RETURNED'} or row.status=='PEREVAKHTA' and not details_complete and user_role in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'} or request.GET.get('edit')=='1' or request.method=='POST')
+    edit_mode=row.status!='CANCELLED' and (row.status in {'OPEN','RETURNED'} or row.status in {'PENDING_APPROVAL','PEREVAKHTA'} and not details_complete and user_role in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER','PEREVAKHTA_SPECIALIST'} or request.GET.get('edit')=='1' or request.method=='POST')
     complete_details=request.method=='POST' and request.POST.get('review_action')=='complete_details'
-    if complete_details and user_role not in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'}:raise PermissionDenied('Данные поездки заполняет перевахта.')
+    if complete_details and user_role not in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER','PEREVAKHTA_SPECIALIST'}:raise PermissionDenied('Данные поездки заполняет перевахта.')
     confirm=request.method=='POST' and request.POST.get('review_action')=='confirm'
     form=MovementReviewForm(request.POST if request.method=='POST' else None,instance=row,confirm=confirm or complete_details)
     if request.method=='POST' and form.is_valid():
@@ -423,8 +423,9 @@ def movement_review_accept(request,pk):
             seen.add(current);pairs.setdefault(str(current),set()).add(camp_id);current=tree.get(current)
     can_cancel_request=user_role in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'} and row.status not in {'AT_HUB','EN_ROUTE','COMPLETED','CANCELLED'} and not row.event_id and not row.hub_arrived_on
     can_delete_request=user_role=='ADMIN' and row.status=='CANCELLED' and not row.event_id and not row.hub_arrived_on and not row.hub_departed_on and not row.final_arrived_on
-    can_manage_workflow=user_role in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'} and not (row.status=='PEREVAKHTA' and not details_complete)
-    return render(request,'personnel/movement_review.html',{'row':row,'form':form,'edit_mode':edit_mode,'travel_details_complete':details_complete,'workflow_today':timezone.localdate(),'can_manage_workflow':can_manage_workflow,'can_cancel_request':can_cancel_request,'can_delete_request':can_delete_request,'personnel_section':'reviews','project_camps':{key:sorted(value) for key,value in pairs.items()}})
+    can_manage_workflow=user_role in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER','PEREVAKHTA_SPECIALIST'} and not (row.status=='PEREVAKHTA' and not details_complete)
+    from .departure_workflow import route_summary
+    return render(request,'personnel/movement_review.html',{'row':row,'form':form,'edit_mode':edit_mode,'travel_details_complete':details_complete,'approval_route_steps':route_summary(row),'workflow_today':timezone.localdate(),'can_manage_workflow':can_manage_workflow,'can_cancel_request':can_cancel_request,'can_delete_request':can_delete_request,'personnel_section':'reviews','project_camps':{key:sorted(value) for key,value in pairs.items()}})
 
 
 @login_required
@@ -432,7 +433,7 @@ def movement_review_clearance(request,pk):
     """Download through Django because the Windows application server does not expose /media/."""
     from pathlib import Path
     from core.permissions import require_roles,role_code
-    require_roles(request.user,{'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER','MANAGER'})
+    require_roles(request.user,{'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER','MANAGER','PEREVAKHTA_SPECIALIST'})
     rows=MovementReviewRequest.objects.filter(pk=pk,company=request.user.company).exclude(clearance_document='')
     if role_code(request.user)=='PERSONNEL_DISPATCHER':rows=rows.filter(requested_by=request.user)
     row=get_object_or_404(rows)

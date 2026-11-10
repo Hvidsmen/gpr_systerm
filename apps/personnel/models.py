@@ -280,6 +280,7 @@ class MovementReviewRequest(PersonnelModel):
     approved_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,blank=True,related_name='+')
     approved_at=models.DateTimeField(null=True,blank=True)
     approval_comment=models.TextField('Комментарий согласования',blank=True)
+    approval_route=models.JSONField('Маршрут согласования',default=dict,blank=True)
     hub_arrived_on=models.DateField('Прибытие в ОП Дудинка',null=True,blank=True)
     hub_departed_on=models.DateField('Выезд из ОП Дудинка',null=True,blank=True)
     final_arrived_on=models.DateField('Прибытие в ВЖГ',null=True,blank=True)

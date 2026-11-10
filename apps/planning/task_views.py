@@ -132,7 +132,12 @@ class TaskDetail(View):
         movement_rows=[]
         if movement_batch:
             from apps.personnel.models import MovementReviewRequest
+            from apps.personnel.departure_workflow import active_route_roles,route_summary
             movement_rows=MovementReviewRequest.objects.filter(company=request.user.company,approval_batch=task.key.split(':',1)[1]).select_related('person','from_camp','to_camp').order_by('person__full_name','pk')
+            for row in movement_rows:
+                row.route_steps=route_summary(row)
+                row.can_route_decide=role_code(request.user)=='ADMIN' or role_code(request.user) in active_route_roles(row)
+                if row.can_route_decide and row.status=='RETURNED':row.status='PENDING_APPROVAL'
         return render(request,'planning/task_detail.html',{'submission_action_label':next_label,'task':task,'target_url':link(task),'movement_batch_approval':movement_batch,'movement_approval_rows':movement_rows,'personnel_departure_approval':task.key.startswith('personnel-movement-approval:'),'executor':role_code(request.user)!='OBSERVER' and service.is_executor(request.user,task),'author':role_code(request.user)!='OBSERVER' and task.created_by_id==request.user.pk,'events':task.events.select_related('actor'),'children':service.visible(request.user).filter(estimate_id=task.estimate_id,kind='REMARK') if task.kind=='ESTIMATE' and task.estimate_id else service.visible(request.user).filter(parent=task),'can_comment':role_code(request.user)!='OBSERVER','fact_completion_without_check':task.kind=='FACT' and task.assigned_to and role_code(task.assigned_to)=='DISPATCHER','fact_sections':[(key,LABELS[key]) for key in LABELS if key in required] if required else [('works','Работы'),('labor','Персонал'),('equipment','Техника'),('fuel','ГСМ')]})
     def post(self,request,pk):
         if role_code(request.user)=='OBSERVER':raise PermissionDenied

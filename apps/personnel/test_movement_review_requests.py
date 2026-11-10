@@ -43,6 +43,14 @@ class MovementReviewRequestTests(TestCase):
         row.planned_hub_departure_date=timezone.localdate();row.planned_hub_departure_time='12:30'
         row.save(update_fields=['planning_position_name','position_name','construction_object','base_city','phone','request_number','travel_time','travel_status','employment_kind','planned_hub_departure_date','planned_hub_departure_time','updated_at'])
 
+    def finish_approval(self,row):
+        from .departure_workflow import active_route_roles,decide
+        self.complete_trip_details(row)
+        while active_route_roles(row):
+            decide(self.admin,row,True)
+            row.refresh_from_db()
+        return row
+
     def test_personnel_dispatcher_creates_request_and_rotation_accepts_it(self):
         event_count=self.person.housing_events.count()
         housing.request_moves(self.personnel,'ARRIVAL',self.camp,timezone.localdate(),[self.person])
@@ -156,7 +164,7 @@ class MovementReviewRequestTests(TestCase):
         manager=User.objects.create_user(username='cancel-manager',company=self.company,role=Role.objects.get(code='MANAGER'))
         day=timezone.localdate();housing.move(self.reviewer,'ARRIVAL',self.camp,day,[self.person])
         housing.request_moves(self.personnel,'DEPARTURE',self.camp,day,[self.person],departure_destination='REST')
-        row=MovementReviewRequest.objects.get(kind='DEPARTURE');decide(manager,row,True);self.complete_trip_details(row);arrive_hub(self.reviewer,row,day)
+        row=MovementReviewRequest.objects.get(kind='DEPARTURE');self.finish_approval(row);arrive_hub(self.reviewer,row,day)
         self.client.force_login(self.reviewer)
         self.client.post(reverse('personnel:movement_review_cancel',args=[row.pk]),{'reason':'Попытка отмены'})
         row.refresh_from_db();self.assertEqual(row.status,'AT_HUB')
@@ -178,10 +186,10 @@ class MovementReviewRequestTests(TestCase):
         self.assertContains(page,'Согласовать выбранных');self.assertContains(page,'Не согласовать всех ожидающих')
         self.client.post(url,{'action':'movement_approve_selected','selected':[rows[0].pk]})
         rows[0].refresh_from_db();rows[1].refresh_from_db();task.refresh_from_db()
-        self.assertEqual(rows[0].status,'PEREVAKHTA');self.assertEqual(rows[1].status,'PENDING_APPROVAL');self.assertEqual(task.status,'OPEN')
+        self.assertEqual(rows[0].status,'PENDING_APPROVAL');self.assertEqual(rows[1].status,'PENDING_APPROVAL');self.assertEqual(task.status,'OPEN')
         self.client.post(url,{'action':'movement_reject_all','text':'Перенести дату'})
         rows[1].refresh_from_db();task.refresh_from_db()
-        self.assertEqual(rows[1].status,'RETURNED');self.assertEqual(rows[1].approval_comment,'Перенести дату');self.assertEqual(task.status,'DONE')
+        self.assertEqual(rows[1].status,'RETURNED');self.assertEqual(rows[1].approval_comment,'Перенести дату');self.assertEqual(task.status,'OPEN')
 
     def test_arrival_and_transfer_batches_also_create_single_approval_task(self):
         from apps.planning.models import WorkTask
@@ -195,7 +203,7 @@ class MovementReviewRequestTests(TestCase):
         target=Camp.objects.create(company=self.company,name='ВЖГ-2');housing.move(self.reviewer,'ARRIVAL',self.camp,day,[self.person,second])
         transfer_batch=uuid4();housing.request_moves(self.personnel,'TRANSFER',self.camp,day,[self.person,second],target=target,approval_batch=transfer_batch)
         task=WorkTask.objects.get(key=f'personnel-movement-batch:{transfer_batch}');self.assertEqual(MovementReviewRequest.objects.filter(approval_batch=transfer_batch,status='PENDING_APPROVAL').count(),2)
-        self.client.force_login(self.admin);self.client.post(reverse('planning:task_detail',args=[task.pk]),{'action':'movement_approve_all'})
+        for row in MovementReviewRequest.objects.filter(approval_batch=transfer_batch):self.finish_approval(row)
         self.assertEqual(set(MovementReviewRequest.objects.filter(approval_batch=transfer_batch).values_list('status',flat=True)),{'OPEN'})
 
     def test_dispatcher_sees_only_own_request_details(self):
@@ -215,10 +223,11 @@ class MovementReviewRequestTests(TestCase):
         self.assertEqual(row.status,'PENDING_APPROVAL')
         task=WorkTask.objects.get(key=f'personnel-movement-approval:{row.pk}')
         self.assertEqual(task.target_role,'MANAGER')
-        decide(manager,row,True,'Согласовано')
-        row.refresh_from_db();self.assertEqual(row.status,'PEREVAKHTA')
-        with self.assertRaisesMessage(ValidationError,'Сначала заполните обязательные данные поездки'):arrive_hub(self.reviewer,row,day)
-        self.complete_trip_details(row)
+        decide(manager,row,True,'Согласовано');row.refresh_from_db()
+        decide(self.admin,row,True);row.refresh_from_db()
+        with self.assertRaisesMessage(ValidationError,'Сначала заполните обязательные первичные данные'):decide(self.admin,row,True)
+        self.finish_approval(row)
+        self.assertEqual(row.status,'PEREVAKHTA')
         arrive_hub(self.reviewer,row,day)
         row.refresh_from_db();self.assertEqual(row.status,'AT_HUB')
         self.assertEqual(self.person.stays.get().departed_on,day)
@@ -231,7 +240,25 @@ class MovementReviewRequestTests(TestCase):
         self.assertIn('attachment;',download['Content-Disposition'])
         leave_hub(self.reviewer,row,day)
         row.refresh_from_db();self.assertEqual(row.status,'COMPLETED');self.assertEqual(row.hub_departed_on,day)
-        self.assertEqual(row.workflow_events.count(),6)
+        self.assertGreaterEqual(row.workflow_events.count(),14)
+
+    def test_parallel_return_preserves_other_approvals_and_resubmits_only_returner(self):
+        from .departure_workflow import active_route_roles,decide,resubmit
+        day=timezone.localdate();housing.request_moves(self.personnel,'ARRIVAL',self.camp,day,[self.person])
+        row=MovementReviewRequest.objects.get();self.complete_trip_details(row)
+        for code in ['MANAGER','SITE_CHIEF','PEREVAKHTA_SPECIALIST']:
+            user=User.objects.create_user(username='route-'+code.lower(),company=self.company,role=Role.objects.get(code=code))
+            decide(user,row,True);row.refresh_from_db()
+        approved=User.objects.create_user(username='route-mechanic',company=self.company,role=Role.objects.get(code='CHIEF_MECHANIC'))
+        returned=User.objects.create_user(username='route-paramedic',company=self.company,role=Role.objects.get(code='PARAMEDIC'))
+        decide(approved,row,True);row.refresh_from_db();decide(returned,row,False,'Нужны медицинские данные');row.refresh_from_db()
+        self.assertEqual(row.status,'RETURNED');self.assertEqual(row.approval_route['CHIEF_MECHANIC']['status'],'APPROVED')
+        from apps.planning.task_services import visible
+        self.assertTrue(visible(returned).filter(key=f'personnel-movement-approval:{row.pk}').exists())
+        resubmit(self.personnel,row);row.refresh_from_db()
+        self.assertEqual(row.approval_route['PARAMEDIC']['status'],'PENDING')
+        self.assertEqual(row.approval_route['CHIEF_MECHANIC']['status'],'APPROVED')
+        self.assertNotIn('CHIEF_MECHANIC',active_route_roles(row))
 
     def test_arrival_is_recorded_only_after_dudinka_and_reaching_camp(self):
         from .departure_workflow import arrive_camp,arrive_hub,decide,leave_hub,update_hub
@@ -240,8 +267,7 @@ class MovementReviewRequestTests(TestCase):
         housing.request_moves(self.personnel,'ARRIVAL',self.camp,day,[self.person])
         row=MovementReviewRequest.objects.get(kind='ARRIVAL')
         self.assertEqual(row.status,'PENDING_APPROVAL');self.assertFalse(self.person.stays.exists())
-        decide(manager,row,True)
-        self.complete_trip_details(row);arrive_hub(self.reviewer,row,day);row.refresh_from_db()
+        self.finish_approval(row);arrive_hub(self.reviewer,row,day);row.refresh_from_db()
         self.assertEqual(row.status,'AT_HUB');self.assertFalse(self.person.stays.exists())
         update_hub(self.reviewer,row,tickets_ready=True,clearance_document=SimpleUploadedFile('arrival-clearance.pdf',b'pdf'))
         leave_hub(self.reviewer,row,day);row.refresh_from_db()

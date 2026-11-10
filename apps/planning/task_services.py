@@ -18,7 +18,8 @@ def filter_scope(query, user, scope):
         return query.filter(created_by=user)
     if scope == 'all' and role_code(user) in {'ADMIN', 'OBSERVER'}:
         return query
-    return query.filter(Q(assigned_to=user) | Q(assigned_to__isnull=True, target_role=role_code(user)))
+    movement=Q(key__startswith='personnel-movement-') if role_code(user) in {'MANAGER','SITE_CHIEF','PEREVAKHTA_SPECIALIST','DUDINKA_HEAD','DUDINKA_SECURITY_DEPUTY','CHIEF_MECHANIC','PARAMEDIC','PERSONNEL_SPECIALIST','LABOR_ECONOMIST'} else Q(pk__in=[])
+    return query.filter(Q(assigned_to=user) | Q(assigned_to__isnull=True, target_role=role_code(user)) | movement)
 
 
 def filter_role(query, code):
@@ -98,11 +99,15 @@ def visible(user):
     if role_code(user)=='PLANNER':
         q=q.filter(Q(construction_object__in=user.assigned_objects.filter(company=user.company))|Q(construction_object__isnull=True))
     if role_code(user) not in {'ADMIN','OBSERVER'}:
-        q=q.filter(Q(assigned_to=user)|Q(created_by=user)|Q(assigned_to__isnull=True,target_role=role_code(user)))
+        movement=Q(key__startswith='personnel-movement-') if role_code(user) in {'MANAGER','SITE_CHIEF','PEREVAKHTA_SPECIALIST','DUDINKA_HEAD','DUDINKA_SECURITY_DEPUTY','CHIEF_MECHANIC','PARAMEDIC','PERSONNEL_SPECIALIST','LABOR_ECONOMIST'} else Q(pk__in=[])
+        q=q.filter(Q(assigned_to=user)|Q(created_by=user)|Q(assigned_to__isnull=True,target_role=role_code(user))|movement)
     return q
 
 
 def is_executor(user,task):
+    if task.key.startswith(('personnel-movement-batch:','personnel-movement-approval:')):
+        from apps.personnel.departure_workflow import task_route_roles
+        return role_code(user)=='ADMIN' or role_code(user) in task_route_roles(task)
     return task.assigned_to_id==user.pk or (not task.assigned_to_id and task.target_role==role_code(user)) or role_code(user)=='ADMIN'
 
 

@@ -1375,7 +1375,7 @@ class WorkTask(BaseCompanyModel):
 
     @property
     def role_label(self):
-        return {'MANAGER':'Руководитель проекта','PERSONNEL_CATALOG_MANAGER':'Ответственный за справочник сотрудников','EQUIPMENT_CATALOG_MANAGER':'Ответственный за справочник техники','ESTIMATOR':'Сметчик','PRODUCTION_HEAD':'Руководитель производства','HR_HEAD':'Руководитель кадровой службы','TECH_HEAD':'Руководитель технической службы','SECURITY_HEAD':'Служба безопасности','SBO_HEAD':'Служба СБО','CEO':'Генеральный директор'}.get(self.target_role,'Не назначен')
+        return {'MANAGER':'Руководитель проекта','SITE_CHIEF':'Начальник участка','PEREVAKHTA_SPECIALIST':'Специалист перевахты','MOVEMENT_PARALLEL':'Параллельное согласование','PERSONNEL_CATALOG_MANAGER':'Ответственный за справочник сотрудников','EQUIPMENT_CATALOG_MANAGER':'Ответственный за справочник техники','ESTIMATOR':'Сметчик','PRODUCTION_HEAD':'Руководитель производства','HR_HEAD':'Руководитель кадровой службы','TECH_HEAD':'Руководитель технической службы','SECURITY_HEAD':'Служба безопасности','SBO_HEAD':'Служба СБО','CEO':'Генеральный директор'}.get(self.target_role,'Не назначен')
 
     @property
     def overdue(self):
