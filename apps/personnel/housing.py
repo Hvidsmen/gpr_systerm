@@ -165,9 +165,11 @@ def request_object_pair(person,day,camp):
 
 @transaction.atomic
 @with_history_actor
-def move(user,kind,camp,day,people,employees=(),target=None,comment='',snapshot=None,departure_destination='REST',setup_direct=False):
+def move(user,kind,camp,day,people,employees=(),target=None,comment='',snapshot=None,departure_destination='REST',setup_direct=False,allow_future=False):
     if camp.company_id!=user.company_id or target and target.company_id!=user.company_id:raise ValidationError('ВЖГ другой компании.')
-    if setup_direct:
+    if allow_future:
+        pass
+    elif setup_direct:
         from core.permissions import role_code
         if role_code(user)!='PERSONNEL_DISPATCHER':raise ValidationError('Прямой ввод доступен только диспетчеру по персоналу.')
         require_movement_day(user,day)
@@ -195,7 +197,7 @@ def move(user,kind,camp,day,people,employees=(),target=None,comment='',snapshot=
     camp=locked_camps[camp.pk];target=locked_camps[target.pk] if target else None
     if kind=='ARRIVAL' and not camp.is_active or target and not target.is_active:raise ValidationError('Для заезда выберите действующий ВЖГ.')
     for person in locked:
-        if not setup_direct:require_movement_day(user,day)
+        if not setup_direct and not allow_future:require_movement_day(user,day)
         current=present_stays(user.company,day).filter(person=person).first()
         if kind=='ARRIVAL':
             if current:raise ValidationError(f'{person}: уже находится в {current.camp}. Используйте перевод.')
@@ -206,7 +208,7 @@ def move(user,kind,camp,day,people,employees=(),target=None,comment='',snapshot=
             stay=current
             if kind=='TRANSFER':stay=CampStay.objects.create(company=user.company,person=person,camp=target,arrived_on=day,comment=comment,recorded_by=user)
         HousingEvent.objects.create(company=user.company,person=person,date=day,kind=kind,departure_destination=departure_destination if kind=='DEPARTURE' else 'CAMP' if kind=='TRANSFER' else '',from_camp=camp if kind!='ARRIVAL' else None,to_camp=target if kind=='TRANSFER' else camp if kind=='ARRIVAL' else None,stay=stay,comment=comment,recorded_by=user)
-    if not setup_direct:require_movement_day(user,day)
+    if not setup_direct and not allow_future:require_movement_day(user,day)
     return len(locked)
 
 

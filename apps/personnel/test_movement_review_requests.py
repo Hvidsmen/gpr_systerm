@@ -117,7 +117,7 @@ class MovementReviewRequestTests(TestCase):
         accepted=self.client.get(reverse('personnel:movement_review_accept',args=[request_row.pk]))
         self.assertContains(accepted,'Редактировать')
         self.assertContains(accepted,'ОП Дудинка')
-        self.assertContains(accepted,'Фактическое прибытие в ОП Дудинка')
+        self.assertContains(accepted,'1. Прибытие в ОП Дудинка')
         self.assertContains(accepted,'movement-timeline')
         edit=self.client.get(reverse('personnel:movement_review_accept',args=[request_row.pk])+'?edit=1')
         self.assertContains(edit,'Сохранить изменения')
@@ -318,6 +318,17 @@ class MovementReviewRequestTests(TestCase):
         leave_hub(self.reviewer,row,day)
         row.refresh_from_db();self.assertEqual(row.status,'COMPLETED');self.assertEqual(row.hub_departed_on,day)
         self.assertGreaterEqual(row.workflow_events.count(),14)
+
+    def test_future_dates_are_allowed_for_actual_route_steps(self):
+        from .departure_workflow import arrive_camp,arrive_hub,leave_hub,update_hub
+        day=timezone.localdate();housing.request_moves(self.personnel,'ARRIVAL',self.camp,day,[self.person])
+        row=MovementReviewRequest.objects.get(kind='ARRIVAL');self.finish_approval(row)
+        hub_arrival=day+timedelta(days=2);hub_departure=day+timedelta(days=3);camp_arrival=day+timedelta(days=4)
+        arrive_hub(self.reviewer,row,hub_arrival);row.refresh_from_db();self.assertEqual(row.hub_arrived_on,hub_arrival)
+        update_hub(self.reviewer,row,tickets_ready=True,clearance_document=SimpleUploadedFile('future-clearance.pdf',b'pdf'))
+        leave_hub(self.reviewer,row,hub_departure);row.refresh_from_db();self.assertEqual(row.hub_departed_on,hub_departure)
+        arrive_camp(self.reviewer,row,camp_arrival);row.refresh_from_db()
+        self.assertEqual(row.final_arrived_on,camp_arrival);self.assertEqual(row.status,'COMPLETED')
 
     def test_parallel_return_preserves_other_approvals_and_resubmits_only_returner(self):
         from .departure_workflow import active_route_roles,decide,resubmit
