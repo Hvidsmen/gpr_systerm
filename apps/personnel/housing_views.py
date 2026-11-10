@@ -186,7 +186,11 @@ def workspace(request, movements=False, movement_page='new'):
         try:count=create_requests(request.user,tokens,request.POST) if action=='recommendation_request' else exclude(request.user,tokens)
         except ValidationError as exc:messages.error(request,'; '.join(exc.messages))
         else:
-            messages.success(request,(f'Заявки оформлены и отправлены в перевахту. Сотрудников: {count}.' if action=='recommendation_request' else f'Из рекомендаций убрано сотрудников: {count}.'))
+            if action=='recommendation_request' and request.POST.get('request_one') and count:
+                draft=MovementReviewRequest.objects.filter(company=request.user.company,requested_by=request.user,status='OPEN').order_by('-pk').first()
+                messages.info(request,'Черновик создан. Заполните данные и отправьте заявку на согласование.')
+                return redirect(reverse('personnel:movement_review_accept',args=[draft.pk])+'?edit=1')
+            messages.success(request,(f'Созданы черновики заявок: {count}. Откройте каждую заявку, заполните данные и подтвердите.' if action=='recommendation_request' else f'Из рекомендаций убрано сотрудников: {count}.'))
             return redirect('personnel:arrivals' if recommendation_kind!='DEPARTURE' else 'personnel:departures')
     form=MovementForm(request.POST if request.method=='POST' and workflow_action=='move' else None,company=request.user.company,camp=camp,day=day,fixed_employee=fixed_employee,allow_direct=request.user.role.code=='PERSONNEL_DISPATCHER',
         initial={'personal_scope':personal_token,'kind':kind,'date':day,'camp':None if request.GET.get('choose_camp')=='1' and kind=='ARRIVAL' else camp.pk,'snapshot':housing.movement_snapshot(request.user),'employees':[selected_employee] if selected_employee.isdigit() else []})
@@ -408,19 +412,28 @@ def movement_review_accept(request,pk):
                 from .models import BaseCity
                 selected_city=BaseCity.objects.filter(company=request.user.company,name__iexact=new_city).first() or BaseCity.objects.create(company=request.user.company,name=new_city)
             if selected_city:locked.base_city=selected_city.name
-            if confirm:
+            submit_own_draft=confirm and locked.status=='OPEN' and locked.source=='DISPATCHER' and locked.requested_by_id==request.user.pk
+            if submit_own_draft:
+                locked.status='PENDING_APPROVAL';locked.reviewed_by=request.user;locked.reviewed_at=timezone.now()
+            elif confirm:
                 locked.status='ACCEPTED';locked.reviewed_by=request.user;locked.reviewed_at=timezone.now()
             locked.save()
+        if submit_own_draft:
+            from .departure_workflow import create_approval,log
+            log(locked,request.user,'Черновик заполнен и подтверждён')
+            siblings=MovementReviewRequest.objects.filter(company=request.user.company,approval_batch=locked.approval_batch,status='OPEN') if locked.approval_batch else MovementReviewRequest.objects.none()
+            if not siblings.exists():create_approval(locked)
         if complete_details:
             from .departure_workflow import log
             log(locked,request.user,'Данные поездки заполнены')
-        messages.success(request,'Данные поездки заполнены. Можно переходить к фактическому маршруту.' if complete_details else 'Заявка перевахты подтверждена.' if confirm else 'Данные заявки сохранены.')
+        messages.success(request,'Данные поездки заполнены. Можно переходить к фактическому маршруту.' if complete_details else 'Заявка отправлена на согласование.' if submit_own_draft else 'Заявка перевахты подтверждена.' if confirm else 'Данные заявки сохранены.')
         if complete_details:
             from apps.planning.models import WorkTask
             task=WorkTask.objects.filter(company=request.user.company,key=approval_task_key(locked)).first()
             if task:return redirect('planning:task_detail',pk=task.pk)
             return redirect('personnel:movement_review_accept',pk=row.pk)
         if row.status=='ACCEPTED' and not confirm:return redirect('personnel:movement_review_accept',pk=row.pk)
+        if submit_own_draft:return redirect('personnel:my_movement_requests')
         return redirect(reverse('personnel:movement_reviews')+'#movement-requests')
     from .models import CampObjectLink
     from apps.projects.models import ConstructionObject

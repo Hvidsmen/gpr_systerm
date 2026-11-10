@@ -203,12 +203,13 @@ class MovementRecommendationForm(forms.Form):
 
 class MovementReviewForm(StyledModelForm):
     camp=forms.ModelChoiceField(label='ВЖГ',queryset=None,required=False,empty_label='Выберите ВЖГ')
+    departure_destination=forms.ChoiceField(label='Причина выезда',choices=[('REST','На межвахтовый отдых'),('DISMISSAL','Увольнение')],required=False)
     base_city_choice=forms.ModelChoiceField(label='Базовый город',queryset=BaseCity.objects.none(),required=False,empty_label='Выберите город')
     new_base_city=forms.CharField(label='Добавить новый базовый город',max_length=150,required=False,
         help_text='Если нужного города ещё нет в списке, введите его здесь — он сразу добавится в справочник.')
     class Meta:
         model=MovementReviewRequest
-        fields=['employment_kind','planning_position_name','position_name','construction_object','movement_date','phone','request_number','travel_time','planned_hub_departure_date','planned_hub_departure_time','note']
+        fields=['employment_kind','planning_position_name','position_name','construction_object','departure_destination','movement_date','phone','request_number','travel_time','planned_hub_departure_date','planned_hub_departure_time','note']
         widgets={'movement_date':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}),'travel_time':forms.TimeInput(format='%H:%M',attrs={'type':'time'}),
                  'planned_hub_departure_date':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}),'planned_hub_departure_time':forms.TimeInput(format='%H:%M',attrs={'type':'time'})}
     def __init__(self,*args,confirm=False,**kwargs):
@@ -245,6 +246,7 @@ class MovementReviewForm(StyledModelForm):
         if self.instance.kind!='ARRIVAL':
             self.fields['employment_kind'].required=False
             self.fields['employment_kind'].widget=forms.HiddenInput()
+        else:self.fields.pop('departure_destination')
         self.fields['planning_position_name'].group_heading='Сотрудник и назначение'
         self.fields['planning_position_name'].group_help='Проверьте должности, проект и обслуживающий ВЖГ.'
         self.fields['base_city_choice'].group_heading='Контакты и заявка'
@@ -257,12 +259,13 @@ class MovementReviewForm(StyledModelForm):
         if self.instance.kind=='ARRIVAL':
             self.fields['movement_date'].label='Плановая дата прибытия в ОП Дудинка'
             self.fields['travel_time'].label='Плановое время прибытия в ОП Дудинка'
-        self.order_fields(['employment_kind','planning_position_name','position_name','construction_object','camp',
+        self.order_fields(['employment_kind','planning_position_name','position_name','construction_object','camp','departure_destination',
             'base_city_choice','new_base_city','phone','request_number','movement_date','travel_time',
             'planned_hub_departure_date','planned_hub_departure_time','note'])
         if confirm:
             required=['planning_position_name','position_name','construction_object','camp','movement_date','phone','planned_hub_departure_date']
             if self.instance.kind=='ARRIVAL':required.append('employment_kind')
+            if self.instance.kind=='DEPARTURE':required.append('departure_destination')
             for name in required:self.fields[name].required=True
     def clean(self):
         data=super().clean();new=' '.join((data.get('new_base_city') or '').split());selected=data.get('base_city_choice')
