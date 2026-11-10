@@ -253,7 +253,7 @@ def workspace(request, movements=False, movement_page='new'):
                 if not (assigned and assigned.pattern_id and cycle_definition(assigned.pattern)):missing+=1
             if missing:messages.warning(request,f'У {missing} сотрудников цикл вахта/отдых не задан. Укажите его через «Изменить график»; прогноз для них пока не пересчитан.')
             if not movement_exclusions:
-                if not direct and request.user.role.code=='PERSONNEL_DISPATCHER':return redirect('personnel:my_movement_requests')
+                if not direct:return redirect('personnel:my_movement_requests')
                 return redirect((reverse('personnel:movements')+'?camp='+str(camp.pk)+'&date='+str(form.cleaned_data['date'])+'#movement') if request.resolver_match.url_name=='movements' else camp_url(camp)+'#roster')
             retry=request.POST.copy();retry.setlist('employees',[str(row['employee'].pk) for row in movement_exclusions]);retry['snapshot']=housing.movement_snapshot(request.user)
             form=MovementForm(retry,company=request.user.company,camp=camp,day=day,fixed_employee=fixed_employee,allow_direct=request.user.role.code=='PERSONNEL_DISPATCHER')

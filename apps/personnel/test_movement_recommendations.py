@@ -173,6 +173,13 @@ class MovementRecommendationTests(TestCase):
         self.assertEqual(response.status_code,200)
         self.assertContains(response,'комментарий-основание')
 
+    def test_admin_is_redirected_to_my_requests_after_creating_request(self):
+        self.client.force_login(self.admin);today=timezone.localdate();url=reverse('personnel:movements')
+        page=self.client.get(url,{'camp':self.a.pk})
+        response=self.client.post(url,{'workflow_action':'move','camp':self.a.pk,'kind':'ARRIVAL','date':today,
+            'employees':[self.second_employee.pk],'snapshot':page.context['form'].initial['snapshot']})
+        self.assertRedirects(response,reverse('personnel:my_movement_requests'),fetch_redirect_response=False)
+
     def test_personnel_dispatcher_can_temporarily_record_arrival_and_departure_without_requests(self):
         self.client.force_login(self.personnel_dispatcher);today=timezone.localdate();arrival=today-timedelta(days=5);url=reverse('personnel:movements')
         page=self.client.get(url,{'camp':self.a.pk})
