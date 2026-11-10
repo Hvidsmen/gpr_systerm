@@ -36,11 +36,11 @@ class MovementRecommendationTests(TestCase):
         def row(person,planned):
             return {'person':person,'slot':self.slot,'camp':self.a,'state':'MV','planned_return':None,
                 'planned_departure_display':planned}
-        rotation_rows.return_value=([row(self.person,self.day-timedelta(days=36)),
+        rotation_rows.return_value=([row(self.person,self.day-timedelta(days=365)),
             row(self.second_person,self.day+timedelta(days=14))],[],{})
         result=build(self.company,self.day)
         self.assertEqual([(item['person'],item['planned_on']) for item in result['DEPARTURE']],
-            [(self.person,self.day-timedelta(days=36)),(self.second_person,self.day+timedelta(days=14))])
+            [(self.person,self.day-timedelta(days=365)),(self.second_person,self.day+timedelta(days=14))])
         rotation_rows.return_value=([row(self.person,self.day+timedelta(days=15))],[],{})
         self.assertEqual(build(self.company,self.day)['DEPARTURE'],[])
 
