@@ -102,6 +102,16 @@ class EmployeesImportTests(TestCase):
         self.assertEqual(phone_mapping(self.connection),{'contact_table':'dbo._InfoRg998','object_column':'_Fld10_RRRef',
             'presentation_column':'_Fld12','kind_column':'_Fld11RRef','kind_table':'dbo._Reference776'})
 
+    def test_phone_is_resolved_from_physical_person_table_part(self):
+        self.diagnostic.report['metadata_labels']={
+            'dbo._Reference383_VT42':{'name':'Справочник.ФизическиеЛица.КонтактнаяИнформация',
+                'columns':{'_Fld20RRef':'Вид','_Fld21':'Представление'},'references':{},'owner_targets':['dbo._Reference383']},
+            'dbo._Reference776':{'name':'Справочник.ВидыКонтактнойИнформации','columns':{}}}
+        self.diagnostic.report['schema']=[{'schema':'dbo','table':'_Reference383_VT42','column':'_Reference383_IDRRef'}]
+        self.diagnostic.save(update_fields=['report'])
+        self.assertEqual(phone_mapping(self.connection),{'contact_table':'dbo._Reference383_VT42','object_column':'_Reference383_IDRRef',
+            'presentation_column':'_Fld21','kind_column':'_Fld20RRef','kind_table':'dbo._Reference776'})
+
     def test_zup_refresh_links_dispatch_card_and_imports_its_phone(self):
         person=Person.objects.create(company=self.company,full_name='Иванов Иван Иванович',employee_number='001',phone='+7 913 555-44-33')
         result=apply_employees(self.run_record(),{'employees':[self.row()]})

@@ -76,11 +76,11 @@ def process_queue():
                 command.append('-PositionsImport')
             employees_import=bool(run.report.get('employees_import'))
             if employees_import:
-                from .one_c_employees import source_confirmed,phone_mapping
+                from .one_c_employees import source_confirmed,phone_mapping,phone_mapping_hint
                 if not source_confirmed(run.connection):raise ValidationError('Сначала подтвердите структуру сотрудников диагностикой ЗУП.')
                 command.append('-EmployeesImport')
                 mapping=phone_mapping(run.connection)
-                if not mapping:raise ValidationError('Диагностика ЗУП не определила регистр «Контактная информация». Сначала повторно выполните диагностику структуры 1С, затем обновите сотрудников.')
+                if not mapping:raise ValidationError('Диагностика ЗУП не определила источник телефона. Найдено: '+phone_mapping_hint(run.connection))
                 directory=root/'.runtime/1c-diagnostics'/run.pk.hex;directory.mkdir(parents=True,exist_ok=True)
                 mapping_path=directory/'phone-mapping.json';mapping_path.write_text(json.dumps(mapping,ensure_ascii=False),encoding='utf-8')
                 command.extend(['-PhoneMappingPath',str(mapping_path)])

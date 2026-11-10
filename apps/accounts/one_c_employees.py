@@ -76,7 +76,10 @@ def phone_mapping(connection):
     """Resolve the verified ZUP contact-info register from decoded metadata."""
     run=connection.runs.filter(status='DONE',server=connection.server,database=connection.database).exclude(
         report__has_key='positions_import').exclude(report__has_key='employees_import').order_by('-created_at').first()
-    labels=(run.report.get('metadata_labels') or {}) if run else {}
+    report=run.report if run else {};labels=report.get('metadata_labels') or {}
+    schema={}
+    for field in report.get('schema') or []:
+        schema.setdefault(f"{field.get('schema')}.{field.get('table')}",set()).add(field.get('column'))
     person_table='dbo._Reference383'
     kind_tables=[table for table,label in labels.items() if 'видыконтактнойинформации' in re.sub(r'[^а-яa-z]','',str(label.get('name','')).casefold().replace('ё','е'))]
     candidates=[]
@@ -90,6 +93,9 @@ def phone_mapping(connection):
         object_columns=[column for column,targets in references.items() if person_table in targets and column in columns]
         if not object_columns:
             object_columns=[column for column in named('Объект','Физическое лицо','Объект контактной информации') if column.endswith(('RRef','RRRef','_RRRef'))]
+        if not object_columns and (person_table in (label.get('owner_targets') or []) or 'справочник.физическиелица' in name):
+            physical=schema.get(table,set())
+            object_columns=[column for column in physical if column in {'_Reference383_IDRRef','_OwnerIDRRef'} or column.endswith('_IDRRef')]
         presentation=named('Представление','Представление контактной информации','Номер телефона','Телефон','Значение')
         kind=named('Вид','Вид контактной информации','ВидКонтактнойИнформации')
         kind=[column for column in kind if column.endswith(('RRef','RRRef','_RRRef'))]
@@ -101,6 +107,18 @@ def phone_mapping(connection):
             candidates.append({'contact_table':table,'object_column':object_columns[0],'presentation_column':presentation[0],
                 'kind_column':kind[0],'kind_table':kind_table})
     return candidates[0] if len(candidates)==1 else None
+
+def phone_mapping_hint(connection):
+    run=connection.runs.filter(status='DONE',server=connection.server,database=connection.database).exclude(
+        report__has_key='positions_import').exclude(report__has_key='employees_import').order_by('-created_at').first()
+    labels=(run.report.get('metadata_labels') or {}) if run else {}
+    matches=[]
+    for table,label in labels.items():
+        name=str(label.get('name',''))
+        if 'контакт' in name.casefold():
+            fields=', '.join(sorted(set(map(str,(label.get('columns') or {}).values()))))
+            matches.append(f'{name} [{fields}]')
+    return '; '.join(matches[:5])[:1200] or 'объекты с названием «Контакт…» не найдены'
 
 def card_values(item):
     result = {}

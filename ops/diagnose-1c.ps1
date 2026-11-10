@@ -369,7 +369,7 @@ WHERE e.[_Marked]=0x00
             if($PhoneMappingPath -and (Test-Path -LiteralPath $PhoneMappingPath)){
                 $mapping=Get-Content -LiteralPath $PhoneMappingPath -Raw -Encoding UTF8 | ConvertFrom-Json
                 foreach($value in @($mapping.contact_table,$mapping.kind_table,$mapping.object_column,$mapping.kind_column,$mapping.presentation_column)){
-                    if($value -notmatch '^(dbo\.)?_[A-Za-z]+[0-9]+(?:RRef|RRRef|_RRRef|_S)?$'){throw 'Invalid phone metadata mapping.'}
+                    if($value -notmatch '^(dbo\.)?_[A-Za-z]+[0-9]+[A-Za-z0-9_]*$'){throw 'Invalid phone metadata mapping.'}
                 }
                 $contactParts=$mapping.contact_table.Split('.',2);$kindParts=$mapping.kind_table.Split('.',2)
                 $contact=(Quote-Identifier $contactParts[0])+'.'+(Quote-Identifier $contactParts[1])
