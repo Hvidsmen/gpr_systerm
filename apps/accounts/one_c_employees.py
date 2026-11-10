@@ -81,7 +81,8 @@ def phone_mapping(connection):
     for field in report.get('schema') or []:
         schema.setdefault(f"{field.get('schema')}.{field.get('table')}",set()).add(field.get('column'))
     person_table='dbo._Reference383'
-    kind_tables=[table for table,label in labels.items() if 'видыконтактнойинформации' in re.sub(r'[^а-яa-z]','',str(label.get('name','')).casefold().replace('ё','е'))]
+    kind_tables=[table for table,label in labels.items() if re.fullmatch(r'dbo\._Reference\d+',table) and
+        'видыконтактнойинформации' in re.sub(r'[^а-яa-z]','',str(label.get('name','')).casefold().replace('ё','е'))]
     candidates=[]
     for table,label in labels.items():
         name=str(label.get('name','')).casefold().replace('ё','е')
@@ -90,13 +91,18 @@ def phone_mapping(connection):
         def named(*names):
             wanted={value.casefold().replace('ё','е') for value in names}
             return [column for column,title in columns.items() if str(title).casefold().replace('ё','е') in wanted]
+        def preferred(*names):
+            for name in names:
+                result=named(name)
+                if len(result)==1:return result
+            return []
         object_columns=[column for column,targets in references.items() if person_table in targets and column in columns]
         if not object_columns:
             object_columns=[column for column in named('Объект','Физическое лицо','Объект контактной информации') if column.endswith(('RRef','RRRef','_RRRef'))]
         if not object_columns and (person_table in (label.get('owner_targets') or []) or 'справочник.физическиелица' in name):
             physical=schema.get(table,set())
             object_columns=[column for column in physical if column in {'_Reference383_IDRRef','_OwnerIDRRef'} or column.endswith('_IDRRef')]
-        presentation=named('Представление','Представление контактной информации','Номер телефона','Телефон','Значение')
+        presentation=preferred('Номер телефона','НомерТелефона','Представление','Представление контактной информации','Телефон','Значение')
         kind=named('Вид','Вид контактной информации','ВидКонтактнойИнформации')
         kind=[column for column in kind if column.endswith(('RRef','RRRef','_RRRef'))]
         if len(kind)==1:
@@ -113,12 +119,13 @@ def phone_mapping_hint(connection):
         report__has_key='positions_import').exclude(report__has_key='employees_import').order_by('-created_at').first()
     labels=(run.report.get('metadata_labels') or {}) if run else {}
     matches=[]
-    for table,label in labels.items():
+    ordered=sorted(labels.items(),key=lambda item:(0 if 'физическиелица' in str(item[1].get('name','')).casefold() else 1,item[0]))
+    for table,label in ordered:
         name=str(label.get('name',''))
         if 'контакт' in name.casefold():
             fields=', '.join(sorted(set(map(str,(label.get('columns') or {}).values()))))
             matches.append(f'{name} [{fields}]')
-    return '; '.join(matches[:5])[:1200] or 'объекты с названием «Контакт…» не найдены'
+    return '; '.join(matches[:8])[:2400] or 'объекты с названием «Контакт…» не найдены'
 
 def card_values(item):
     result = {}
