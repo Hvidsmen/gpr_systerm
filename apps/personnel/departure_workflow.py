@@ -213,6 +213,7 @@ def arrive_hub(user,row,day):
     row=MovementReviewRequest.objects.select_for_update().select_related('person','from_camp').get(pk=row.pk,company=user.company)
     if row.status!='PEREVAKHTA':raise ValidationError('Прибытие в ОП Дудинка фиксируется после согласования.')
     if not travel_details_complete(row):raise ValidationError('Сначала заполните обязательные данные поездки: город, телефон, номер заявки и обязательные даты.')
+    if row.kind=='ARRIVAL' and not row.tickets_ready:raise ValidationError('Перед заездом в ОП Дудинка отметьте покупку билетов.')
     if row.kind=='DEPARTURE':
         stay=CampStay.objects.select_for_update().filter(company=row.company,person=row.person,camp=row.from_camp,cancelled_at=None,departed_on=None).order_by('-arrived_on').first()
         if not stay:raise ValidationError('У сотрудника нет открытого размещения в указанном ВЖГ.')
@@ -228,7 +229,10 @@ def arrive_hub(user,row,day):
 @transaction.atomic
 def update_hub(user,row,*,tickets_ready=False,clearance_document=None):
     row=MovementReviewRequest.objects.select_for_update().get(pk=row.pk,company=user.company)
-    if row.status!='AT_HUB':raise ValidationError('Документы и билеты оформляются после прибытия в ОП Дудинка.')
+    buying_arrival_tickets=row.kind=='ARRIVAL' and row.status=='PEREVAKHTA'
+    if row.status!='AT_HUB' and not buying_arrival_tickets:raise ValidationError('Документы и билеты оформляются на соответствующем этапе маршрута.')
+    if buying_arrival_tickets and clearance_document:raise ValidationError('Обходной лист прикрепляется после прибытия сотрудника в ОП Дудинка.')
+    if buying_arrival_tickets and not tickets_ready:raise ValidationError('Отметьте, что билеты приобретены.')
     fields=['updated_at']
     if tickets_ready and not row.tickets_ready:
         row.tickets_ready=True;row.tickets_ready_at=timezone.now();fields+=['tickets_ready','tickets_ready_at'];log(row,user,'Билеты приобретены')
