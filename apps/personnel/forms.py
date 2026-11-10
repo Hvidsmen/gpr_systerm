@@ -213,6 +213,10 @@ class MovementReviewForm(StyledModelForm):
                  'planned_hub_departure_date':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}),'planned_hub_departure_time':forms.TimeInput(format='%H:%M',attrs={'type':'time'})}
     def __init__(self,*args,confirm=False,**kwargs):
         super().__init__(*args,**kwargs);self.confirm=confirm
+        if not self.instance.phone:
+            employee=self.instance.person.employee
+            directory_phone=(employee.phone if employee else '') or self.instance.person.phone
+            if directory_phone:self.initial['phone']=directory_phone
         self.fields['movement_date'].label='Дата заезда' if self.instance.kind=='ARRIVAL' else 'Плановая дата выезда из ВЖГ'
         self.fields['travel_time'].label='Время прибытия' if self.instance.kind=='ARRIVAL' else 'Плановое время выезда из ВЖГ'
         from apps.projects.models import ConstructionObject

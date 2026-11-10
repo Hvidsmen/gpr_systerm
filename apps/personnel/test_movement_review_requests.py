@@ -222,6 +222,17 @@ class MovementReviewRequestTests(TestCase):
         self.assertLess(content.index('name="travel_time"'),content.index('name="planned_hub_departure_date"'))
         self.assertLess(content.index('name="planned_hub_departure_date"'),content.index('name="planned_hub_departure_time"'))
 
+    def test_empty_existing_request_prefills_phone_from_employee_directory(self):
+        row=MovementReviewRequest.objects.create(company=self.company,person=self.person,kind='ARRIVAL',movement_date=timezone.localdate(),to_camp=self.camp,requested_by=self.personnel,phone='')
+        self.client.force_login(self.admin)
+        page=self.client.get(reverse('personnel:movement_review_accept',args=[row.pk])+'?edit=1')
+        self.assertContains(page,f'value="{self.employee.phone}"')
+
+    def test_personnel_phone_backfills_empty_employee_directory_phone(self):
+        employee=Employee.objects.create(company=self.company,last_name='Телефонов',first_name='Пётр',employee_number='phone-sync',position=self.position,phone='')
+        person=Person.objects.create(company=self.company,employee=employee,full_name=employee.display_name,employee_number=employee.employee_number,phone='+7 999 123-45-67')
+        employee.refresh_from_db();self.assertEqual(employee.phone,person.phone)
+
     def test_departure_goes_through_manager_dudinka_and_parallel_documents(self):
         from apps.planning.models import WorkTask
         from .departure_workflow import arrive_hub,decide,leave_hub,update_hub

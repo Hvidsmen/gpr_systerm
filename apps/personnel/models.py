@@ -42,6 +42,12 @@ class Person(PersonnelModel):
         if self.employee_id and self.employee.company_id != self.company_id: raise ValidationError({'employee':'Сотрудник другой компании.'})
         if self.schedule_slot_id and (self.schedule_slot.company_id != self.company_id or self.schedule_slot.person_id != self.pk): raise ValidationError({'schedule_slot':'Выберите строку графика этого сотрудника.'})
         if self.dispatcher_removed_by_id and self.dispatcher_removed_by.company_id != self.company_id:raise ValidationError({'dispatcher_removed_by':'Пользователь другой компании.'})
+    def save(self,*args,**kwargs):
+        result=super().save(*args,**kwargs)
+        if self.employee_id and self.phone:
+            from apps.resources.models import Employee
+            Employee.objects.filter(pk=self.employee_id,company_id=self.company_id,phone='').update(phone=self.phone)
+        return result
     @property
     def display_employee_number(self):return self.employee.employee_number if self.employee_id else self.employee_number
     @property
