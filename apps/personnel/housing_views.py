@@ -403,7 +403,10 @@ def movement_review_accept(request,pk):
         try:
             if workflow_action=='resubmit':resubmit(request.user,row)
             elif workflow_action=='arrive_hub':arrive_hub(request.user,row,forms.DateField().clean(request.POST.get('hub_arrived_on')))
-            elif workflow_action=='hub_documents':update_hub(request.user,row,tickets_ready=request.POST.get('tickets_ready')=='1',clearance_document=request.FILES.get('clearance_document'))
+            elif workflow_action=='hub_documents':
+                planned_arrival=forms.DateField().clean(request.POST.get('planned_hub_arrival_date')) if request.POST.get('planned_hub_arrival_date') else None
+                update_hub(request.user,row,tickets_ready=request.POST.get('tickets_ready')=='1',clearance_document=request.FILES.get('clearance_document'),
+                    planned_hub_arrival_date=planned_arrival)
             elif workflow_action=='leave_hub':leave_hub(request.user,row,forms.DateField().clean(request.POST.get('hub_departed_on')))
             elif workflow_action=='arrive_camp':arrive_camp(request.user,row,forms.DateField().clean(request.POST.get('final_arrived_on')))
             else:raise ValidationError('Неизвестное действие по заявке.')

@@ -333,6 +333,20 @@ class MovementReviewRequestTests(TestCase):
         arrive_camp(self.reviewer,row,camp_arrival);row.refresh_from_db()
         self.assertEqual(row.final_arrived_on,camp_arrival);self.assertEqual(row.status,'COMPLETED')
 
+    def test_ticket_purchase_can_change_planned_dudinka_arrival(self):
+        from .departure_workflow import update_hub
+        day=timezone.localdate();housing.request_moves(self.personnel,'ARRIVAL',self.camp,day,[self.person])
+        row=MovementReviewRequest.objects.get(kind='ARRIVAL');self.finish_approval(row)
+        changed=day+timedelta(days=2)
+        row.planned_hub_departure_date=day+timedelta(days=3);row.save(update_fields=['planned_hub_departure_date','updated_at'])
+        self.client.force_login(self.reviewer);page=self.client.get(reverse('personnel:movement_review_accept',args=[row.pk]))
+        self.assertContains(page,'name="planned_hub_arrival_date"');self.assertContains(page,'Плановая дата прибытия в ОП Дудинка')
+        update_hub(self.reviewer,row,tickets_ready=True,planned_hub_arrival_date=changed)
+        row.refresh_from_db();self.assertEqual(row.movement_date,changed);self.assertTrue(row.tickets_ready)
+        row.tickets_ready=False;row.save(update_fields=['tickets_ready','updated_at'])
+        with self.assertRaisesMessage(ValidationError,'не может быть позже планового выезда'):
+            update_hub(self.reviewer,row,tickets_ready=True,planned_hub_arrival_date=day+timedelta(days=4))
+
     def test_parallel_return_preserves_other_approvals_and_resubmits_only_returner(self):
         from .departure_workflow import active_route_roles,decide,resubmit
         day=timezone.localdate();batch=uuid4();housing.request_moves(self.personnel,'ARRIVAL',self.camp,day,[self.person],approval_batch=batch)

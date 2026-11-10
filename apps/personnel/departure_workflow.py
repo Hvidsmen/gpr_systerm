@@ -227,13 +227,20 @@ def arrive_hub(user,row,day):
 
 
 @transaction.atomic
-def update_hub(user,row,*,tickets_ready=False,clearance_document=None):
+def update_hub(user,row,*,tickets_ready=False,clearance_document=None,planned_hub_arrival_date=None):
     row=MovementReviewRequest.objects.select_for_update().get(pk=row.pk,company=user.company)
     buying_arrival_tickets=row.kind=='ARRIVAL' and row.status=='PEREVAKHTA'
     if row.status!='AT_HUB' and not buying_arrival_tickets:raise ValidationError('Документы и билеты оформляются на соответствующем этапе маршрута.')
     if buying_arrival_tickets and clearance_document:raise ValidationError('Обходной лист прикрепляется после прибытия сотрудника в ОП Дудинка.')
     if buying_arrival_tickets and not tickets_ready:raise ValidationError('Отметьте, что билеты приобретены.')
     fields=['updated_at']
+    if buying_arrival_tickets and planned_hub_arrival_date:
+        if row.planned_hub_departure_date and planned_hub_arrival_date>row.planned_hub_departure_date:
+            raise ValidationError('Плановое прибытие в ОП Дудинка не может быть позже планового выезда из ОП Дудинка.')
+        if row.movement_date!=planned_hub_arrival_date:
+            previous=row.movement_date
+            row.movement_date=planned_hub_arrival_date;fields.append('movement_date')
+            log(row,user,'Изменена плановая дата прибытия в ОП Дудинка',f'{previous:%d.%m.%Y} → {planned_hub_arrival_date:%d.%m.%Y}')
     if tickets_ready and not row.tickets_ready:
         row.tickets_ready=True;row.tickets_ready_at=timezone.now();fields+=['tickets_ready','tickets_ready_at'];log(row,user,'Билеты приобретены')
     if clearance_document:
