@@ -85,6 +85,14 @@ class MovementRecommendationTests(TestCase):
         self.assertContains(arrival,'Состав, назначения и графики')
         self.assertEqual(self.client.get(reverse('personnel:housing')).status_code,200)
 
+    @patch('apps.personnel.movement_recommendations.build')
+    def test_roster_navigation_counter_uses_company_wide_recommendations(self,recommendations):
+        recommendations.return_value={'ARRIVAL':[],'DEPARTURE':[{'person':self.person}]}
+        self.client.force_login(self.personnel_dispatcher)
+        roster=self.client.get(reverse('personnel:housing'),{'camp':self.a.pk})
+        self.assertEqual(roster.context['departure_recommendation_count'],1)
+        recommendations.assert_called_once_with(self.company,timezone.localdate())
+
     @patch('apps.personnel.rotation.rotation_rows')
     def test_recommendation_tables_have_select_all_checkbox(self,rotation_rows):
         rotation_rows.return_value=self.auto_rows();self.client.force_login(self.personnel_dispatcher)

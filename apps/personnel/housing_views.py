@@ -241,7 +241,6 @@ def workspace(request, movements=False, movement_page='new'):
     values=selector.cleaned_data
     selected_camp_list=list(selected_camps)
     rows,days,rotation_stats=rotation_rows(request.user.company,selected_camp_list,day,query=values.get('q',''),state=values.get('state',''),include_unassigned=not values.get('construction_object') and not values.get('camps'))
-    recommendation_rows=rows
     from .rotation import positions_in_rows,filter_position,rotation_stats as count_rotation
     available=positions_in_rows(request.user.company,rows)
     selector.fields['position'].queryset=available
@@ -294,7 +293,11 @@ def workspace(request, movements=False, movement_page='new'):
     from .lodging_views import summary_context
     plan_context.update(summary_context(request.user,camp,day,camps=selected_camps))
     from .movement_recommendations import build as build_recommendations
-    navigation_recommendations=build_recommendations(request.user.company,recommendation_day,camps=selected_camp_list,rows=recommendation_rows)
+    # Navigation links open company-wide recommendation pages without carrying
+    # the roster's current object/VZhG filters. Their counters must describe
+    # that same destination, otherwise a filtered roster can show 0 while the
+    # opened page immediately shows recommendations from another camp.
+    navigation_recommendations=build_recommendations(request.user.company,recommendation_day)
     return render(request,template,{**extra,**plan_context,'rotation_filter':selector,'rotation_stats':rotation_stats,'position_groups':position_groups,'selected_camps':selected_camps,
         'roster_view':roster_view,'roster_view_links':view_links,'roster_sections':roster_sections(position_groups,roster_view=='groups',request.user.company),
         'camp':camp,'camps':camps,'day':day,'rows':rows,'dates':days,'form':form,'query':values.get('q',''),
