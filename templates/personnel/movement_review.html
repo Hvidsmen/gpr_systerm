@@ -6,11 +6,12 @@
 .movement-route{font-size:1.05rem;font-weight:650;color:#16324a}
 .movement-meta{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.55rem 1.25rem;padding:.85rem 0}
 .movement-field{min-width:0}.movement-field small{display:block;color:#667785;margin-bottom:.15rem}.movement-field strong,.movement-field span{overflow-wrap:anywhere}
+.movement-route-dates{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem;margin:.35rem 0 1rem}.movement-date-stage{border:1px solid #d8e3e9;border-radius:.5rem;padding:.8rem 1rem;background:#f8fbfc}.movement-date-stage h4{font-size:.95rem;margin:0 0 .65rem;color:#16324a}.movement-date-values{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.65rem 1rem}.movement-date-values small{display:block;color:#667785;margin-bottom:.12rem}.movement-date-values strong{display:block}
 .movement-timeline{list-style:none;margin:0;padding:0 0 0 1.25rem}.movement-timeline li{position:relative;border-left:2px solid #b8d9c8;padding:0 0 1.15rem 1.35rem}.movement-timeline li:last-child{padding-bottom:0;border-left-color:transparent}.movement-timeline li::before{content:"";position:absolute;left:-.48rem;top:.15rem;width:.85rem;height:.85rem;border-radius:50%;background:#198754;border:3px solid #e7f5ed}
 .movement-event{background:#fff;border:1px solid #e2e8ec;border-radius:.45rem;padding:.75rem .9rem}.movement-event-time{color:#667785;font-size:.82rem}.movement-event-comment{color:#43515c;margin-top:.25rem}
 .movement-actions{position:relative}.movement-actions summary{list-style:none}.movement-actions summary::-webkit-details-marker{display:none}.movement-actions[open] summary{border-color:#0786a4}.movement-actions-menu{position:absolute;right:0;z-index:10;min-width:15rem;margin-top:.35rem;padding:.35rem;background:#fff;border:1px solid #d8e0e5;border-radius:.4rem;box-shadow:0 .4rem 1rem rgba(0,0,0,.12)}.movement-actions-menu a{display:block;padding:.55rem .7rem;border-radius:.3rem;text-decoration:none}.movement-actions-menu a:hover{background:#f1f6f8}
 .movement-steps{display:flex;align-items:flex-start;margin:1rem 0 1.15rem;padding:0;list-style:none;counter-reset:step}.movement-step{position:relative;flex:1;text-align:center;color:#71808c;font-size:.82rem;padding:2rem .35rem 0}.movement-step::before{counter-increment:step;content:counter(step);position:absolute;top:0;left:50%;transform:translateX(-50%);width:1.55rem;height:1.55rem;display:grid;place-items:center;border-radius:50%;background:#fff;border:2px solid #b8c6cf;font-weight:700;z-index:2}.movement-step::after{content:"";position:absolute;top:.72rem;left:-50%;width:100%;height:2px;background:#cfd9df}.movement-step:first-child::after{display:none}.movement-step.done{color:#176b45}.movement-step.done::before{content:"✓";background:#198754;border-color:#198754;color:#fff}.movement-step.done::after{background:#198754}.movement-step.current{color:#075f78;font-weight:700}.movement-step.current::before{background:#0786a4;border-color:#0786a4;color:#fff}.movement-history summary{cursor:pointer;color:#075f78;font-weight:650}
-@media(max-width:991.98px){.movement-meta{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:767.98px){.movement-meta{grid-template-columns:1fr}.movement-route{font-size:.98rem}.movement-steps{overflow-x:auto;align-items:stretch}.movement-step{min-width:8rem}}
+@media(max-width:991.98px){.movement-meta{grid-template-columns:repeat(2,minmax(0,1fr))}.movement-date-values{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:767.98px){.movement-meta,.movement-route-dates,.movement-date-values{grid-template-columns:1fr}.movement-route{font-size:.98rem}.movement-steps{overflow-x:auto;align-items:stretch}.movement-step{min-width:8rem}}
 </style>
 <h1>Персонал</h1>{% include 'personnel/_personnel_sections.html' %}
 <p><a href="{% url 'personnel:movement_reviews' %}#movement-requests">← К заявкам перевахты</a></p>
@@ -53,17 +54,34 @@
   <div class="movement-field"><small>Должность сотрудника</small><span>{{ row.position_name|default:'—' }}</span></div>
   <div class="movement-field"><small>Проект</small><span>{{ row.construction_object|default:'—' }}</span></div>
   <div class="movement-field"><small>ВЖГ</small><span>{% if row.kind == 'ARRIVAL' %}{{ row.to_camp|default:'—' }}{% else %}{{ row.from_camp|default:'—' }}{% endif %}</span></div>
-  <div class="movement-field"><small>{% if row.kind == 'DEPARTURE' %}Плановый выезд из ВЖГ{% else %}Плановая дата заезда{% endif %}</small><strong>{{ row.movement_date|date:'d.m.Y' }}{% if row.travel_time %} · {{ row.travel_time|time:'H:i' }}{% endif %}</strong></div>
   <div class="movement-field"><small>№ заявки</small><span>{{ row.request_number|default:'—' }}</span></div>
   <div class="movement-field"><small>Базовый город</small><span>{{ row.base_city|default:'—' }}</span></div>
   <div class="movement-field"><small>Телефон</small><span>{{ row.phone|default:'—' }}</span></div>
-  {% if row.kind == 'DEPARTURE' %}<div class="movement-field"><small>Плановый выезд из ОП Дудинка</small><strong>{{ row.planned_hub_departure_date|date:'d.m.Y'|default:'—' }}{% if row.planned_hub_departure_time %} · {{ row.planned_hub_departure_time|time:'H:i' }}{% endif %}</strong></div>{% elif not row.travel_time %}<div class="movement-field"><small>Время прибытия</small><span>—</span></div>{% endif %}
   <div class="movement-field"><small>Текущий этап</small><strong>{{ row.workflow_status_label }}</strong></div>
-  {% if row.kind == 'DEPARTURE' %}<div class="movement-field"><small>Фактический выезд из ВЖГ</small><strong>{{ row.hub_arrived_on|date:'d.m.Y'|default:'—' }}</strong></div>{% endif %}
-  <div class="movement-field"><small>Фактическое прибытие в ОП Дудинка</small><strong>{{ row.hub_arrived_on|date:'d.m.Y'|default:'—' }}</strong></div>
-  <div class="movement-field"><small>Фактический выезд из ОП Дудинка</small><strong>{{ row.hub_departed_on|date:'d.m.Y'|default:'—' }}</strong></div>
-  {% if row.kind == 'ARRIVAL' %}<div class="movement-field"><small>Фактическое прибытие в ВЖГ</small><strong>{{ row.final_arrived_on|date:'d.m.Y'|default:'—' }}</strong></div>{% endif %}
   <div class="movement-field"><small>Примечание</small><span>{{ row.note|default:'—' }}</span></div>
+</div>
+<div class="movement-route-dates" aria-label="Плановые и фактические даты маршрута">
+  {% if row.kind == 'DEPARTURE' %}
+  <section class="movement-date-stage"><h4>1. Выезд из ВЖГ</h4><div class="movement-date-values">
+    <div><small>План</small><strong>{{ row.movement_date|date:'d.m.Y' }}{% if row.travel_time %} · {{ row.travel_time|time:'H:i' }}{% endif %}</strong></div>
+    <div><small>Факт</small><strong>{{ row.hub_arrived_on|date:'d.m.Y'|default:'—' }}</strong></div>
+  </div></section>
+  <section class="movement-date-stage"><h4>2. ОП Дудинка</h4><div class="movement-date-values">
+    <div><small>Фактическое прибытие</small><strong>{{ row.hub_arrived_on|date:'d.m.Y'|default:'—' }}</strong></div>
+    <div><small>Плановый выезд</small><strong>{{ row.planned_hub_departure_date|date:'d.m.Y'|default:'—' }}{% if row.planned_hub_departure_time %} · {{ row.planned_hub_departure_time|time:'H:i' }}{% endif %}</strong></div>
+    <div><small>Фактический выезд</small><strong>{{ row.hub_departed_on|date:'d.m.Y'|default:'—' }}</strong></div>
+  </div></section>
+  {% else %}
+  <section class="movement-date-stage"><h4>1. Прибытие в ОП Дудинка</h4><div class="movement-date-values">
+    <div><small>План</small><strong>{{ row.movement_date|date:'d.m.Y' }}{% if row.travel_time %} · {{ row.travel_time|time:'H:i' }}{% endif %}</strong></div>
+    <div><small>Факт</small><strong>{{ row.hub_arrived_on|date:'d.m.Y'|default:'—' }}</strong></div>
+  </div></section>
+  <section class="movement-date-stage"><h4>2. Выезд из ОП Дудинка</h4><div class="movement-date-values">
+    <div><small>План</small><strong>{{ row.planned_hub_departure_date|date:'d.m.Y'|default:'—' }}{% if row.planned_hub_departure_time %} · {{ row.planned_hub_departure_time|time:'H:i' }}{% endif %}</strong></div>
+    <div><small>Факт</small><strong>{{ row.hub_departed_on|date:'d.m.Y'|default:'—' }}</strong></div>
+  </div></section>
+  <section class="movement-date-stage"><h4>3. Прибытие в ВЖГ</h4><div class="movement-date-values"><div><small>Факт</small><strong>{{ row.final_arrived_on|date:'d.m.Y'|default:'—' }}</strong></div></div></section>
+  {% endif %}
 </div>
 {% if row.status == 'CANCELLED' %}<div class="alert alert-secondary mt-3"><strong>Заявка отменена{% if row.cancelled_at %} {{ row.cancelled_at|date:'d.m.Y H:i' }}{% endif %}.</strong><br>{{ row.cancellation_reason }}{% if row.cancelled_by %}<div class="small mt-1">Отменил: {{ row.cancelled_by }}</div>{% endif %}</div>{% endif %}
 {% if can_cancel_request %}<details class="mt-3" id="cancel-request"><summary class="btn btn-outline-danger">Отменить заявку</summary><form method="post" action="{% url 'personnel:movement_review_cancel' row.pk %}" class="border rounded p-3 mt-2">{% csrf_token %}<label class="form-label" for="cancel-reason">Причина отмены</label><textarea id="cancel-reason" class="form-control mb-2" name="reason" required></textarea><button class="btn btn-danger">Подтвердить отмену</button></form></details>{% endif %}
