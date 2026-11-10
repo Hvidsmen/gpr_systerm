@@ -48,6 +48,24 @@ def route_summary(row):
     route=route_for(row)
     return [{'code':code,'label':label,'status':route[code]['status'],'comment':route[code].get('comment',''),'actor':route[code].get('actor','')} for code,label in ROUTE]
 
+def task_route_text(rows):
+    """Compact, explicit route shown inside the single task card."""
+    rows=list(rows);lines=['ЭТАПЫ СОГЛАСОВАНИЯ']
+    status_labels={'APPROVED':'✓ согласовано','PENDING':'→ ожидает решения','RETURNED':'! возвращено','WAITING':'○ ещё не начато'}
+    for row in rows:
+        route=route_for(row);lines.append('');lines.append(row.person.display_name)
+        for number,(code,label) in enumerate(ROUTE[:3],1):
+            data=route[code];suffix=f' · {data.get("actor")}' if data.get('actor') else ''
+            if data.get('comment'):suffix+=f' · {data["comment"]}'
+            lines.append(f'{number}. {label}: {status_labels[data["status"]]}{suffix}')
+        approved=sum(route[code]['status']=='APPROVED' for code in PARALLEL)
+        lines.append(f'Параллельное согласование: {approved} из {len(PARALLEL)}')
+        for code,label in ROUTE[3:]:
+            data=route[code];suffix=f' · {data.get("actor")}' if data.get('actor') else ''
+            if data.get('comment'):suffix+=f' · {data["comment"]}'
+            lines.append(f'— {label}: {status_labels[data["status"]]}{suffix}')
+    return '\n'.join(lines)
+
 
 def travel_details_complete(row):
     required=(row.planning_position_name,row.position_name,row.construction_object_id,

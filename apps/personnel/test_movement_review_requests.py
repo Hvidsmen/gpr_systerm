@@ -265,6 +265,12 @@ class MovementReviewRequestTests(TestCase):
         self.assertEqual(row.status,'RETURNED');self.assertEqual(row.approval_route['CHIEF_MECHANIC']['status'],'APPROVED')
         from apps.planning.task_services import visible
         self.assertTrue(visible(returned).filter(key=f'personnel-movement-approval:{row.pk}').exists())
+        self.client.force_login(returned)
+        task=visible(returned).get(key=f'personnel-movement-approval:{row.pk}')
+        page=self.client.get(reverse('planning:task_detail',args=[task.pk]))
+        self.assertContains(page,'ЭТАПЫ СОГЛАСОВАНИЯ');self.assertContains(page,'Параллельное согласование: 1 из 6')
+        self.assertContains(page,'Главный механик: ✓ согласовано');self.assertContains(page,'Фельдшер: ! возвращено')
+        self.assertContains(page,'Нужны медицинские данные')
         resubmit(self.personnel,row);row.refresh_from_db()
         self.assertEqual(row.approval_route['PARAMEDIC']['status'],'PENDING')
         self.assertEqual(row.approval_route['CHIEF_MECHANIC']['status'],'APPROVED')
