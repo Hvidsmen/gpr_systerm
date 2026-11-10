@@ -237,6 +237,21 @@ class MovementReviewForm(StyledModelForm):
         if self.instance.kind!='ARRIVAL':
             self.fields['employment_kind'].required=False
             self.fields['employment_kind'].widget=forms.HiddenInput()
+        self.fields['planning_position_name'].group_heading='Сотрудник и назначение'
+        self.fields['planning_position_name'].group_help='Проверьте должности, проект и обслуживающий ВЖГ.'
+        self.fields['base_city_choice'].group_heading='Контакты и заявка'
+        self.fields['base_city_choice'].group_help='Город назначения, телефон и номер заявки на поездку.'
+        self.fields['movement_date'].group_heading='1. '+('Прибытие в ОП Дудинка' if self.instance.kind=='ARRIVAL' else 'Выезд из ВЖГ')
+        self.fields['movement_date'].group_help='Плановые дата и время первого участка маршрута.'
+        self.fields['planned_hub_departure_date'].group_heading='2. Выезд из ОП Дудинка'
+        self.fields['planned_hub_departure_date'].group_help='Плановые дата и время второго участка маршрута.'
+        self.fields['travel_status'].group_heading='Статус и комментарий'
+        if self.instance.kind=='ARRIVAL':
+            self.fields['movement_date'].label='Плановая дата прибытия в ОП Дудинка'
+            self.fields['travel_time'].label='Плановое время прибытия в ОП Дудинка'
+        self.order_fields(['employment_kind','planning_position_name','position_name','construction_object','camp',
+            'base_city_choice','new_base_city','phone','request_number','movement_date','travel_time',
+            'planned_hub_departure_date','planned_hub_departure_time','travel_status','note'])
         if confirm:
             required=['planning_position_name','position_name','construction_object','camp','movement_date','phone','request_number','travel_time','planned_hub_departure_date','planned_hub_departure_time','travel_status']
             if self.instance.kind=='ARRIVAL':required.append('employment_kind')

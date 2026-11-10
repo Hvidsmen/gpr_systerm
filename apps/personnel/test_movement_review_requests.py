@@ -212,6 +212,16 @@ class MovementReviewRequestTests(TestCase):
         self.assertEqual(self.client.get(reverse('personnel:movement_review_accept',args=[row.pk])).status_code,404)
         self.assertNotContains(self.client.get(reverse('personnel:my_movement_requests')),self.person.display_name)
 
+    def test_trip_dates_and_times_are_grouped_by_route_stage(self):
+        day=timezone.localdate();housing.move(self.reviewer,'ARRIVAL',self.camp,day,[self.person])
+        housing.request_moves(self.personnel,'DEPARTURE',self.camp,day,[self.person],departure_destination='REST')
+        row=MovementReviewRequest.objects.get(kind='DEPARTURE');self.client.force_login(self.admin)
+        content=self.client.get(reverse('personnel:movement_review_accept',args=[row.pk])+'?edit=1').content.decode()
+        self.assertIn('1. Выезд из ВЖГ',content);self.assertIn('2. Выезд из ОП Дудинка',content)
+        self.assertLess(content.index('name="movement_date"'),content.index('name="travel_time"'))
+        self.assertLess(content.index('name="travel_time"'),content.index('name="planned_hub_departure_date"'))
+        self.assertLess(content.index('name="planned_hub_departure_date"'),content.index('name="planned_hub_departure_time"'))
+
     def test_departure_goes_through_manager_dudinka_and_parallel_documents(self):
         from apps.planning.models import WorkTask
         from .departure_workflow import arrive_hub,decide,leave_hub,update_hub
