@@ -208,7 +208,7 @@ class MovementReviewForm(StyledModelForm):
         help_text='Если нужного города ещё нет в списке, введите его здесь — он сразу добавится в справочник.')
     class Meta:
         model=MovementReviewRequest
-        fields=['employment_kind','planning_position_name','position_name','construction_object','movement_date','phone','request_number','travel_time','planned_hub_departure_date','planned_hub_departure_time','travel_status','note']
+        fields=['employment_kind','planning_position_name','position_name','construction_object','movement_date','phone','request_number','travel_time','planned_hub_departure_date','planned_hub_departure_time','note']
         widgets={'movement_date':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}),'travel_time':forms.TimeInput(format='%H:%M',attrs={'type':'time'}),
                  'planned_hub_departure_date':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}),'planned_hub_departure_time':forms.TimeInput(format='%H:%M',attrs={'type':'time'})}
     def __init__(self,*args,confirm=False,**kwargs):
@@ -237,7 +237,6 @@ class MovementReviewForm(StyledModelForm):
         current=BaseCity.objects.filter(company=self.instance.company,name__iexact=self.instance.base_city.strip()).first() if self.instance.base_city else None
         if current:self.initial['base_city_choice']=current.pk
         elif self.instance.base_city:self.initial['new_base_city']=self.instance.base_city
-        self.fields['travel_status'].widget=forms.Select(choices=self.status_choices())
         self.fields['request_number'].disabled=True
         self.fields['request_number'].required=False
         self.fields['request_number'].help_text='Присваивается системой автоматически.'
@@ -254,22 +253,17 @@ class MovementReviewForm(StyledModelForm):
         self.fields['movement_date'].group_help='Плановые дата и время первого участка маршрута.'
         self.fields['planned_hub_departure_date'].group_heading='2. Выезд из ОП Дудинка'
         self.fields['planned_hub_departure_date'].group_help='Плановые дата и время второго участка маршрута.'
-        self.fields['travel_status'].group_heading='Статус и комментарий'
+        self.fields['note'].group_heading='Комментарий'
         if self.instance.kind=='ARRIVAL':
             self.fields['movement_date'].label='Плановая дата прибытия в ОП Дудинка'
             self.fields['travel_time'].label='Плановое время прибытия в ОП Дудинка'
         self.order_fields(['employment_kind','planning_position_name','position_name','construction_object','camp',
             'base_city_choice','new_base_city','phone','request_number','movement_date','travel_time',
-            'planned_hub_departure_date','planned_hub_departure_time','travel_status','note'])
+            'planned_hub_departure_date','planned_hub_departure_time','note'])
         if confirm:
-            required=['planning_position_name','position_name','construction_object','camp','movement_date','phone','planned_hub_departure_date','travel_status']
+            required=['planning_position_name','position_name','construction_object','camp','movement_date','phone','planned_hub_departure_date']
             if self.instance.kind=='ARRIVAL':required.append('employment_kind')
             for name in required:self.fields[name].required=True
-    def status_choices(self):
-        values=[('','Выберите статус'),('Ожидается','Ожидается'),('Перенесён','Перенесён'),('Отменён','Отменён')]
-        values.insert(2,('Прибыл','Прибыл') if self.instance.kind=='ARRIVAL' else ('Убыл','Убыл'))
-        values.insert(3,('Не прибыл','Не прибыл') if self.instance.kind=='ARRIVAL' else ('Не выехал','Не выехал'))
-        return values
     def clean(self):
         data=super().clean();new=' '.join((data.get('new_base_city') or '').split());selected=data.get('base_city_choice')
         if new and selected:self.add_error('new_base_city','Выберите город из списка или добавьте новый, но не оба варианта.')

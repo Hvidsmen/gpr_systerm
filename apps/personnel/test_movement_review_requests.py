@@ -91,7 +91,7 @@ class MovementReviewRequestTests(TestCase):
         self.assertContains(detail,'Выберите проект')
         self.assertContains(detail,'Нефтепровод → КТП-1')
         self.assertContains(detail,'ВЖГ')
-        self.assertContains(detail,'Не прибыл')
+        self.assertNotContains(detail,'name="travel_status"')
         changed_date=timezone.localdate()+timedelta(days=2)
         response=self.client.post(reverse('personnel:movement_review_accept',args=[request_row.pk]),{
             'review_action':'confirm','employment_kind':'STAFF','planning_position_name':'Начальник участка по ГПР',
@@ -204,6 +204,8 @@ class MovementReviewRequestTests(TestCase):
         self.assertTrue(form.fields['request_number'].disabled)
         self.assertFalse(form.fields['travel_time'].required)
         self.assertFalse(form.fields['planned_hub_departure_time'].required)
+        self.assertNotIn('travel_status',form.fields)
+        row.travel_status='';row.save(update_fields=['travel_status','updated_at'])
         decide(self.admin,row,True);row.refresh_from_db()
         decide(self.admin,row,True);row.refresh_from_db()
         task=WorkTask.objects.get(key=f'personnel-movement-batch:{batch}')
