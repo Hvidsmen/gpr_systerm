@@ -19,6 +19,7 @@ def _row(kind,person,camp,planned_on,manual=False,roster=None):
     roster=roster or {}
     return {'kind':kind,'person':person,'employee':person.employee,'camp':camp,'planned_on':planned_on,'manual':manual,
         'rest_started':roster.get('last_departure') or roster.get('state_since'),'rest_days':roster.get('state_days'),
+        'shift_started':roster.get('arrived_on') or roster.get('state_since'),'shift_days':roster.get('state_days'),
         'schedule_label':roster.get('schedule_label',''),
         'token':signing.dumps(key,salt=TOKEN_SALT,compress=True)}
 

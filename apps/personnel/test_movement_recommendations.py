@@ -19,7 +19,8 @@ class MovementRecommendationTests(TestCase):
         return [
             {'person':self.second_person,'slot':self.slot,'camp':self.a,'state':'MO','planned_return':self.day+timedelta(days=3),'planned_departure_display':None,
                 'last_departure':self.day-timedelta(days=7),'state_days':8,'schedule_label':'Вахта 60/30'},
-            {'person':self.person,'slot':self.slot,'camp':self.a,'state':'MV','planned_return':None,'planned_departure_display':self.day+timedelta(days=5)},
+            {'person':self.person,'slot':self.slot,'camp':self.a,'state':'MV','planned_return':None,'planned_departure_display':self.day+timedelta(days=5),
+                'arrived_on':self.day-timedelta(days=20),'state_days':21,'schedule_label':'Вахта 60/30'},
         ],[],{}
 
     @patch('apps.personnel.rotation.rotation_rows')
@@ -117,6 +118,9 @@ class MovementRecommendationTests(TestCase):
         arrival=self.client.get(reverse('personnel:arrivals'))
         self.assertContains(arrival,'Выход на МО');self.assertContains(arrival,'Дней на МО');self.assertContains(arrival,'График')
         self.assertContains(arrival,(self.day-timedelta(days=7)).strftime('%d.%m.%Y'));self.assertContains(arrival,'Вахта 60/30')
+        departure=self.client.get(reverse('personnel:departures'))
+        self.assertContains(departure,'Дата заезда');self.assertContains(departure,'Дней на вахте');self.assertContains(departure,'График')
+        self.assertContains(departure,(self.day-timedelta(days=20)).strftime('%d.%m.%Y'));self.assertContains(departure,'21')
 
     def test_personnel_dispatcher_can_submit_bulk_current_request_and_old_date_needs_reason(self):
         self.client.force_login(self.personnel_dispatcher);today=timezone.localdate();url=reverse('personnel:movements')
