@@ -290,6 +290,8 @@ class MovementReviewRequestTests(TestCase):
         page=self.client.get(reverse('personnel:movement_reviews')+'?kind=departure')
         self.assertContains(page,'Ожидается прибытие в ОП Дудинка')
         self.assertNotContains(page,'>Ожидается</span>')
+        self.client.force_login(self.personnel);mine=self.client.get(reverse('personnel:my_movement_requests'))
+        self.assertContains(mine,'Ожидается прибытие в ОП Дудинка');self.assertNotContains(mine,'<td>Ожидается</td>')
 
     def test_personnel_phone_backfills_empty_employee_directory_phone(self):
         employee=Employee.objects.create(company=self.company,last_name='Телефонов',first_name='Пётр',employee_number='phone-sync',position=self.position,phone='')
