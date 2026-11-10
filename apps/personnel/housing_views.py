@@ -382,12 +382,13 @@ def movement_review_accept(request,pk):
         except ValidationError as exc:messages.error(request,'; '.join(exc.messages))
         else:messages.success(request,{'resubmit':'Заявка повторно отправлена руководителю.','arrive_hub':'Прибытие в ОП Дудинка зафиксировано.','hub_documents':'Данные по билетам и обходному листу сохранены.','leave_hub':'Выезд из ОП Дудинка зафиксирован.','arrive_camp':'Фактический заезд в ВЖГ подтверждён. Заявка завершена.'}[workflow_action])
         return redirect('personnel:movement_review_accept',pk=row.pk)
-    from .departure_workflow import travel_details_complete
+    from .departure_workflow import active_route_roles,approval_task_key,travel_details_complete
     details_complete=travel_details_complete(row)
+    perevakhta_data_stage='PEREVAKHTA_SPECIALIST' in active_route_roles(row) and user_role in {'ADMIN','HR_HEAD','PEREVAKHTA_SPECIALIST'}
     if row.status=='CANCELLED' and request.method=='POST':
         messages.error(request,'Отменённую заявку нельзя редактировать.');return redirect('personnel:movement_review_accept',pk=row.pk)
     edit_mode=row.status!='CANCELLED' and (row.status in {'OPEN','RETURNED'} or row.status in {'PENDING_APPROVAL','PEREVAKHTA'} and not details_complete and user_role in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER','PEREVAKHTA_SPECIALIST'} or request.GET.get('edit')=='1' or request.method=='POST')
-    complete_details=request.method=='POST' and request.POST.get('review_action')=='complete_details'
+    complete_details=request.method=='POST' and (request.POST.get('review_action')=='complete_details' or request.POST.get('review_action')=='save' and perevakhta_data_stage)
     if complete_details and user_role not in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER','PEREVAKHTA_SPECIALIST'}:raise PermissionDenied('Данные поездки заполняет перевахта.')
     confirm=request.method=='POST' and request.POST.get('review_action')=='confirm'
     form=MovementReviewForm(request.POST if request.method=='POST' else None,instance=row,confirm=confirm or complete_details)
@@ -414,7 +415,11 @@ def movement_review_accept(request,pk):
             from .departure_workflow import log
             log(locked,request.user,'Данные поездки заполнены')
         messages.success(request,'Данные поездки заполнены. Можно переходить к фактическому маршруту.' if complete_details else 'Заявка перевахты подтверждена.' if confirm else 'Данные заявки сохранены.')
-        if complete_details:return redirect('personnel:movement_review_accept',pk=row.pk)
+        if complete_details:
+            from apps.planning.models import WorkTask
+            task=WorkTask.objects.filter(company=request.user.company,key=approval_task_key(locked)).first()
+            if task:return redirect('planning:task_detail',pk=task.pk)
+            return redirect('personnel:movement_review_accept',pk=row.pk)
         if row.status=='ACCEPTED' and not confirm:return redirect('personnel:movement_review_accept',pk=row.pk)
         return redirect(reverse('personnel:movement_reviews')+'#movement-requests')
     from .models import CampObjectLink
@@ -428,7 +433,7 @@ def movement_review_accept(request,pk):
     can_delete_request=user_role=='ADMIN' and row.status=='CANCELLED' and not row.event_id and not row.hub_arrived_on and not row.hub_departed_on and not row.final_arrived_on
     can_manage_workflow=user_role in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER','PEREVAKHTA_SPECIALIST'} and not (row.status=='PEREVAKHTA' and not details_complete)
     from .departure_workflow import route_summary
-    return render(request,'personnel/movement_review.html',{'row':row,'form':form,'edit_mode':edit_mode,'travel_details_complete':details_complete,'approval_route_steps':route_summary(row),'workflow_today':timezone.localdate(),'can_manage_workflow':can_manage_workflow,'can_cancel_request':can_cancel_request,'can_delete_request':can_delete_request,'personnel_section':'reviews','project_camps':{key:sorted(value) for key,value in pairs.items()}})
+    return render(request,'personnel/movement_review.html',{'row':row,'form':form,'edit_mode':edit_mode,'perevakhta_data_stage':perevakhta_data_stage,'travel_details_complete':details_complete,'approval_route_steps':route_summary(row),'workflow_today':timezone.localdate(),'can_manage_workflow':can_manage_workflow,'can_cancel_request':can_cancel_request,'can_delete_request':can_delete_request,'personnel_section':'reviews','project_camps':{key:sorted(value) for key,value in pairs.items()}})
 
 
 @login_required

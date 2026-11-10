@@ -214,9 +214,18 @@ class MovementReviewRequestTests(TestCase):
         self.assertContains(page,'Открыть и заполнить заявку')
         checkbox=f'<input type="checkbox" name="selected" value="{row.pk}" data-movement-row'
         self.assertNotContains(page,checkbox)
-        self.complete_trip_details(row)
-        row.travel_time=None;row.planned_hub_departure_time=None
-        row.save(update_fields=['travel_time','planned_hub_departure_time','updated_at'])
+        detail_url=reverse('personnel:movement_review_accept',args=[row.pk])
+        incomplete=self.client.post(detail_url,{'review_action':'complete_details'})
+        self.assertEqual(incomplete.status_code,200)
+        self.assertContains(incomplete,'Обязательное поле')
+        saved=self.client.post(detail_url,{
+            'review_action':'complete_details','planning_position_name':'Должность СМГ','position_name':'Должность сотрудника',
+            'construction_object':self.obj.pk,'camp':self.camp.pk,'movement_date':day.isoformat(),
+            'base_city_choice':'','new_base_city':'Норильск','phone':'8 900 000-00-00',
+            'planned_hub_departure_date':day.isoformat(),'travel_status':'Ожидается','note':'',
+        })
+        self.assertRedirects(saved,url,fetch_redirect_response=False)
+        row.refresh_from_db();self.assertIsNone(row.travel_time);self.assertIsNone(row.planned_hub_departure_time)
         page=self.client.get(url)
         self.assertContains(page,'Данные поездки заполнены')
         self.assertContains(page,'Открыть заявку')
