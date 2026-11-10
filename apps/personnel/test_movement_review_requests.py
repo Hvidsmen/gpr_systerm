@@ -202,6 +202,7 @@ class MovementReviewRequestTests(TestCase):
         task=WorkTask.objects.get(key=f'personnel-movement-batch:{batch}')
         self.client.force_login(self.admin);url=reverse('planning:task_detail',args=[task.pk])
         page=self.client.get(url)
+        self.assertNotContains(page,'data-task-description')
         self.assertContains(page,'Данные поездки не заполнены')
         self.assertContains(page,'Открыть и заполнить заявку')
         checkbox=f'<input type="checkbox" name="selected" value="{row.pk}" data-movement-row'
