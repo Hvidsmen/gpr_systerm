@@ -362,7 +362,7 @@ def review_request_context(request):
         open_order=Case(When(status='OPEN',then=Value(0)),default=Value(1),output_field=IntegerField())).order_by('cancelled_order','open_order',*ordering)[:1000])
     user_role=role_code(request.user)
     for row in rows:
-        row.can_cancel=user_role in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'} and row.status not in {'AT_HUB','EN_ROUTE','COMPLETED','CANCELLED'} and not row.event_id and not row.hub_arrived_on
+        row.can_cancel=user_role in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'} and not (user_role=='PERSONNEL_DISPATCHER' and row.has_approved_stage()) and row.status not in {'AT_HUB','EN_ROUTE','COMPLETED','CANCELLED'} and not row.event_id and not row.hub_arrived_on
         row.can_delete=user_role=='ADMIN' and row.status=='CANCELLED' and not row.event_id and not row.hub_arrived_on and not row.hub_departed_on and not row.final_arrived_on
     dispatcher_rows=[row for row in rows if row.source=='DISPATCHER'];excel_rows=[row for row in rows if row.source=='EXCEL']
     return {'personnel_section':'reviews','movement_review_requests':rows,'dispatcher_review_requests':dispatcher_rows,'excel_review_requests':excel_rows,'review_tab':tab,'review_arrival':tab=='arrival','review_date':raw_date,'review_sort':sort,'review_sort_options':sort_options,
@@ -473,7 +473,7 @@ def movement_review_accept(request,pk):
         current=object_id;seen=set()
         while current and current not in seen:
             seen.add(current);pairs.setdefault(str(current),set()).add(camp_id);current=tree.get(current)
-    can_cancel_request=user_role in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'} and row.status not in {'AT_HUB','EN_ROUTE','COMPLETED','CANCELLED'} and not row.event_id and not row.hub_arrived_on
+    can_cancel_request=user_role in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'} and not (user_role=='PERSONNEL_DISPATCHER' and row.has_approved_stage()) and row.status not in {'AT_HUB','EN_ROUTE','COMPLETED','CANCELLED'} and not row.event_id and not row.hub_arrived_on
     can_delete_request=user_role=='ADMIN' and row.status=='CANCELLED' and not row.event_id and not row.hub_arrived_on and not row.hub_departed_on and not row.final_arrived_on
     can_manage_workflow=user_role in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER','PEREVAKHTA_SPECIALIST'} and not (row.status=='PEREVAKHTA' and not details_complete)
     from .departure_workflow import route_summary
@@ -720,7 +720,7 @@ def my_movement_requests(request):
     if search:query=query.filter(Q(person__full_name__icontains=search)|Q(request_number__icontains=search)|Q(base_city__icontains=search))
     grouped=OrderedDict()
     for row in query.order_by('-created_at','-pk')[:1000]:
-        row.can_cancel=row.status not in {'AT_HUB','EN_ROUTE','COMPLETED','CANCELLED'} and not row.event_id and not row.hub_arrived_on
+        row.can_cancel=not row.has_approved_stage() and row.status not in {'AT_HUB','EN_ROUTE','COMPLETED','CANCELLED'} and not row.event_id and not row.hub_arrived_on
         row.can_delete=False
         key=str(row.approval_batch) if row.approval_batch else f'row-{row.pk}'
         group=grouped.setdefault(key,{'key':key,'is_batch':bool(row.approval_batch),'created_at':row.created_at,'kind':row.kind,'kind_label':row.get_kind_display(),'items':[]})

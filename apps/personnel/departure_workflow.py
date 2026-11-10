@@ -88,7 +88,10 @@ def sync_approval_task(row,user=None):
 @transaction.atomic
 def cancel_request(user,row,reason):
     row=MovementReviewRequest.objects.select_for_update().get(pk=row.pk,company=user.company)
-    if role_code(user) not in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'}:raise PermissionDenied('Отмена заявки недоступна для вашей роли.')
+    role=role_code(user)
+    if role not in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'}:raise PermissionDenied('Отмена заявки недоступна для вашей роли.')
+    if role=='PERSONNEL_DISPATCHER' and row.has_approved_stage():
+        raise ValidationError('Диспетчер может отменить заявку только до первого согласования.')
     if row.status in {'AT_HUB','EN_ROUTE','COMPLETED','CANCELLED'} or row.event_id or row.hub_arrived_on:
         raise ValidationError('Заявку нельзя отменить после начала фактического маршрута или повторно.')
     reason=reason.strip()

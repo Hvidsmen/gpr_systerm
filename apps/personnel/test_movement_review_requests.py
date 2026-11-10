@@ -183,6 +183,17 @@ class MovementReviewRequestTests(TestCase):
         self.assertContains(history,'Поездка больше не требуется');self.assertNotContains(history,'>Удалить<')
         self.assertTrue(MovementReviewRequest.objects.filter(pk=row.pk,status='CANCELLED').exists())
 
+    def test_dispatcher_cannot_cancel_after_first_approval(self):
+        from .departure_workflow import decide
+        day=timezone.localdate();housing.request_moves(self.personnel,'ARRIVAL',self.camp,day,[self.person])
+        row=MovementReviewRequest.objects.get();manager=User.objects.create_user(username='first-approval-manager',company=self.company,role=Role.objects.get(code='MANAGER'))
+        decide(manager,row,True,'Первый этап согласован');row.refresh_from_db();self.assertTrue(row.has_approved_stage())
+        self.client.force_login(self.personnel);page=self.client.get(reverse('personnel:my_movement_requests'))
+        self.assertNotContains(page,'>Отменить<')
+        response=self.client.post(reverse('personnel:movement_review_cancel',args=[row.pk]),{'reason':'Передумали'})
+        self.assertEqual(response.status_code,302);row.refresh_from_db();self.assertEqual(row.status,'PENDING_APPROVAL')
+        detail=self.client.get(reverse('personnel:movement_review_accept',args=[row.pk]));self.assertNotContains(detail,'Отменить заявку')
+
     def test_batch_request_creates_one_task_and_supports_individual_and_bulk_decisions(self):
         from apps.planning.models import WorkTask
         second_employee=Employee.objects.create(company=self.company,last_name='Петров',first_name='Пётр',employee_number='review-2',position=self.position)

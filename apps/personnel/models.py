@@ -324,6 +324,8 @@ class MovementReviewRequest(PersonnelModel):
         if self.status=='CANCELLED':return 'Отменена'
         if self.status=='ACCEPTED':return 'Принята'
         return 'Ожидает обработки перевахтой'
+    def has_approved_stage(self):
+        return any(data.get('status')=='APPROVED' for data in (self.approval_route or {}).values())
     def clean(self):
         super().clean()
         for value in (self.event,self.person,self.from_camp,self.to_camp,self.requested_by,self.cancelled_by,self.construction_object,self.site_object):
