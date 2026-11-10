@@ -9,7 +9,7 @@ from apps.resources.models import Employee, Position
 from apps.personnel.models import Person
 from .models import Company, User, Role, OneCConnection, OneCDiagnosticRun
 from .one_c import enqueue, process_queue
-from .one_c_employees import EXPECTED, source_confirmed, apply_employees
+from .one_c_employees import EXPECTED, source_confirmed, apply_employees,phone_mapping
 
 
 def diagnostic():
@@ -19,6 +19,9 @@ def diagnostic():
         for col in set(fields) | {'_IDRRef', '_Description', '_Marked', '_Code', '_RecorderRRef', '_LineNo'}:
             schema.append({'schema': 'dbo', 'table': table, 'column': col, 'type': 'binary'})
     schema.append({'schema': 'dbo', 'table': '_YearOffset', 'column': 'Offset', 'type': 'int'})
+    labels['dbo._InfoRg999']={'name':'РегистрСведений.КонтактнаяИнформация',
+        'columns':{'_Fld1RRef':'Объект','_Fld2RRef':'Вид','_Fld3':'Представление'},
+        'references':{'_Fld1RRef':['dbo._Reference383'],'_Fld2RRef':['dbo._Reference777']}}
     return {'metadata_labels': labels, 'schema': schema}
 
 
@@ -74,6 +77,21 @@ class EmployeesImportTests(TestCase):
         self.assertEqual(manual.last_name, 'Иванов'); self.assertFalse(manual.zup_ref)
         self.assertEqual(other.last_name, 'Иванов')
         self.assertEqual(Employee.objects.filter(company=self.company).count(), 3)
+
+    def test_phone_is_imported_but_empty_zup_value_does_not_erase_manual_phone(self):
+        run=self.run_record();apply_employees(run,{'employees':[self.row(phone='+7 900 111-22-33')]})
+        employee=Employee.objects.get(company=self.company,zup_ref='1'*32);self.assertEqual(employee.phone,'+7 900 111-22-33')
+        apply_employees(run,{'employees':[self.row(phone='')]});employee.refresh_from_db()
+        self.assertEqual(employee.phone,'+7 900 111-22-33')
+
+    def test_phone_contact_register_is_resolved_from_verified_metadata(self):
+        self.diagnostic.report['metadata_labels']['dbo._InfoRg999']={
+            'name':'РегистрСведений.КонтактнаяИнформация',
+            'columns':{'_Fld1RRef':'Объект','_Fld2RRef':'Вид','_Fld3':'Представление'},
+            'references':{'_Fld1RRef':['dbo._Reference383'],'_Fld2RRef':['dbo._Reference777']}}
+        self.diagnostic.save(update_fields=['report'])
+        self.assertEqual(phone_mapping(self.connection),{'contact_table':'dbo._InfoRg999','object_column':'_Fld1RRef',
+            'presentation_column':'_Fld3','kind_column':'_Fld2RRef','kind_table':'dbo._Reference777'})
 
     def test_zup_refresh_links_dispatch_card_and_imports_its_phone(self):
         person=Person.objects.create(company=self.company,full_name='Иванов Иван Иванович',employee_number='001',phone='+7 913 555-44-33')
@@ -224,7 +242,8 @@ class EmployeesImportTests(TestCase):
         self.assertGreater(query_at,open_at)
         self.assertIn("if($EmployeesImport){$arguments+=' -EmployeesImport'}",script[:open_at])
         self.assertNotIn('SELECT TOP (200001)',script[:open_at])
-        self.assertIn("employees_card_version=7;gender_source='ФизическоеЛицо.Пол'",script[query_at:])
+        self.assertIn("employees_card_version=8;gender_source='ФизическоеЛицо.Пол'",script[query_at:])
+        self.assertIn("phone_source='ФизическоеЛицо.КонтактнаяИнформация'",script[query_at:])
         self.assertIn('schedule_catalog=$scheduleCatalogue',script[query_at:])
         self.assertIn("NULLIF(LTRIM(RTRIM(p.[_Fld31265])),N'')",script[query_at:])
         self.assertIn("NULLIF(LTRIM(RTRIM(p.[_Description])),N'')",script[query_at:])
@@ -330,7 +349,7 @@ class EmployeesImportTests(TestCase):
             path = Path(directory)/'.runtime/1c-diagnostics'/run.pk.hex
             path.mkdir(parents=True)
             (path/'status.json').write_text(json.dumps({'ok': True}))
-            (path/'report.json').write_text(json.dumps({'employees_import': True, 'employees_card_version': 7, 'employees': [self.row()]}))
+            (path/'report.json').write_text(json.dumps({'employees_import': True, 'employees_card_version': 8, 'employees': [self.row()]}))
             from pathlib import PosixPath
             with override_settings(CONFIG_DIR=directory), patch('apps.accounts.one_c.os.name', 'nt'), patch('apps.accounts.one_c.Path', PosixPath), patch('apps.accounts.one_c.subprocess.CREATE_NO_WINDOW', 0, create=True), patch('apps.accounts.one_c.subprocess.run') as execute:
                 process_queue()

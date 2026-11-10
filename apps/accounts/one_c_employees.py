@@ -72,6 +72,29 @@ CARD_NUMBERS = {'fte', 'tariff_rate', 'combined_tariff_rate', 'payroll_fund'}
 
 POSITION_STATES = {'job', 'staffing', 'ambiguous', 'no_staffing_assignment', 'no_position_link', 'missing_job_record', 'empty_job_name'}
 
+def phone_mapping(connection):
+    """Resolve the verified ZUP contact-info register from decoded metadata."""
+    run=connection.runs.filter(status='DONE',server=connection.server,database=connection.database).exclude(
+        report__has_key='positions_import').exclude(report__has_key='employees_import').order_by('-created_at').first()
+    labels=(run.report.get('metadata_labels') or {}) if run else {}
+    person_table='dbo._Reference383'
+    candidates=[]
+    for table,label in labels.items():
+        name=str(label.get('name','')).casefold().replace('ё','е')
+        if 'контактн' not in name or 'информац' not in name:continue
+        columns=label.get('columns') or {};references=label.get('references') or {}
+        def named(*names):
+            wanted={value.casefold().replace('ё','е') for value in names}
+            return [column for column,title in columns.items() if str(title).casefold().replace('ё','е') in wanted]
+        object_columns=[column for column,targets in references.items() if person_table in targets and column in columns]
+        presentation=named('Представление','Номер телефона','Телефон')
+        kind=named('Вид','Вид контактной информации')
+        kind=[column for column in kind if len(references.get(column,[]))==1]
+        if len(object_columns)==1 and len(presentation)==1 and len(kind)==1:
+            candidates.append({'contact_table':table,'object_column':object_columns[0],'presentation_column':presentation[0],
+                'kind_column':kind[0],'kind_table':references[kind[0]][0]})
+    return candidates[0] if len(candidates)==1 else None
+
 def card_values(item):
     result = {}
     for key, limit in CARD_TEXT.items():
@@ -188,6 +211,11 @@ def apply_employees(run, report):
             if not isinstance(value, str) or len(value.strip()) > Employee._meta.get_field(target).max_length:
                 raise ValidationError('Некорректные или слишком длинные данные сотрудника. Изменения не внесены.')
             values[target] = value.strip()
+        phone=item.get('phone')
+        if phone not in (None,''):
+            if not isinstance(phone,str) or len(phone.strip())>Employee._meta.get_field('phone').max_length:
+                raise ValidationError('Некорректный телефон сотрудника из ЗУП. Изменения не внесены.')
+            if phone.strip():values['phone']=phone.strip()
         if item.get('archived') not in (0, 1, False, True):
             raise ValidationError('Некорректный признак архива сотрудника.')
         from .one_c_gender import import_gender

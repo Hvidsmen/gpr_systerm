@@ -76,9 +76,14 @@ def process_queue():
                 command.append('-PositionsImport')
             employees_import=bool(run.report.get('employees_import'))
             if employees_import:
-                from .one_c_employees import source_confirmed
+                from .one_c_employees import source_confirmed,phone_mapping
                 if not source_confirmed(run.connection):raise ValidationError('Сначала подтвердите структуру сотрудников диагностикой ЗУП.')
                 command.append('-EmployeesImport')
+                mapping=phone_mapping(run.connection)
+                if not mapping:raise ValidationError('Диагностика ЗУП не определила регистр «Контактная информация». Сначала повторно выполните диагностику структуры 1С, затем обновите сотрудников.')
+                directory=root/'.runtime/1c-diagnostics'/run.pk.hex;directory.mkdir(parents=True,exist_ok=True)
+                mapping_path=directory/'phone-mapping.json';mapping_path.write_text(json.dumps(mapping,ensure_ascii=False),encoding='utf-8')
+                command.extend(['-PhoneMappingPath',str(mapping_path)])
             if run.trust_certificate:command.append('-TrustServerCertificate')
             subprocess.run(command,timeout=900,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,check=False,creationflags=subprocess.CREATE_NO_WINDOW)
             directory=root/'.runtime/1c-diagnostics'/run.pk.hex
@@ -92,7 +97,7 @@ def process_queue():
                 run.report={'positions_import':True,'positions_result':result,'position_source':run.report.get('position_source',{}),'position_flags':run.report.get('position_flags',[])}
             if employees_import:
                 if run.report.get('employees_import') is not True:raise ValidationError('Обработчик 1С выполнил другое задание вместо загрузки сотрудников. Обновите проект и фоновый портал, затем повторите запуск. Изменения не внесены.')
-                if run.report.get('employees_card_version') != 7:raise ValidationError('Обработчик 1С вернул прежний формат списка без справочника графиков. Обновите проект и фоновый портал, затем повторите загрузку. Изменения не внесены.')
+                if run.report.get('employees_card_version') != 8:raise ValidationError('Обработчик 1С вернул прежний формат списка без телефонов. Обновите проект и фоновый портал, затем повторите загрузку. Изменения не внесены.')
                 from .one_c_employees import apply_employees
                 result=apply_employees(run,run.report)
                 run.report={'employees_import':True,'employees_result':result}

@@ -9,6 +9,7 @@ param(
     [switch]$MetadataOnly,
     [switch]$PositionsImport,
     [switch]$EmployeesImport,
+    [string]$PhoneMappingPath='',
     [ValidatePattern('^[a-f0-9]{32}$')][string]$RunId=([guid]::NewGuid().ToString('N')),
     [ValidateRange(1,10000)][int]$SampleLimit=5000
 )
@@ -123,6 +124,7 @@ try {
             if($MetadataOnly){$arguments+=' -MetadataOnly'}
             if($PositionsImport){$arguments+=' -PositionsImport'}
             if($EmployeesImport){$arguments+=' -EmployeesImport'}
+            if($PhoneMappingPath){$arguments+=' -PhoneMappingPath "'+$PhoneMappingPath+'"'}
             if($PythonPath){$arguments+=' -PythonPath "'+$PythonPath+'"'}
             if($TrustServerCertificate){$arguments+=' -TrustServerCertificate'}
             $action=New-ScheduledTaskAction -Execute (Join-Path $PSHOME 'powershell.exe') -Argument $arguments -WorkingDirectory $Root
@@ -178,6 +180,7 @@ try {
             $positionCatalogue=@(Query $connection "SELECT COUNT_BIG(*) AS position_rows,COALESCE(SUM(CASE WHEN NULLIF(LTRIM(RTRIM([_Description])),N'') IS NOT NULL THEN 1 ELSE 0 END),0) AS position_named FROM [dbo].[_Reference92]")
             $employees=@(Query $connection @'
 SELECT TOP (200001) CONVERT(varchar(32), e.[_IDRRef], 2) AS source_id,
+ CONVERT(varchar(32), p.[_IDRRef], 2) AS person_ref,
  e.[_Code] AS employee_number,
  COALESCE(NULLIF(LTRIM(RTRIM(p.[_Fld31265])),N''),NULLIF(LTRIM(RTRIM(p.[_Description])),N''),NULLIF(LTRIM(RTRIM(e.[_Description])),N''),N'') AS full_name,
  p.[_Fld31276] AS last_name, p.[_Fld31277] AS first_name, p.[_Fld31278] AS middle_name,
@@ -362,6 +365,21 @@ OUTER APPLY (
 ) pay
 WHERE e.[_Marked]=0x00
 '@ @{'@dateOffset'=$dateOffset;'@storedNow'=$storedNow} 180)
+            $phoneByPerson=@{}
+            if($PhoneMappingPath -and (Test-Path -LiteralPath $PhoneMappingPath)){
+                $mapping=Get-Content -LiteralPath $PhoneMappingPath -Raw -Encoding UTF8 | ConvertFrom-Json
+                foreach($value in @($mapping.contact_table,$mapping.kind_table,$mapping.object_column,$mapping.kind_column,$mapping.presentation_column)){
+                    if($value -notmatch '^(dbo\.)?_[A-Za-z]+[0-9]+(?:RRef|RRRef|_RRRef|_S)?$'){throw 'Invalid phone metadata mapping.'}
+                }
+                $contactParts=$mapping.contact_table.Split('.',2);$kindParts=$mapping.kind_table.Split('.',2)
+                $contact=(Quote-Identifier $contactParts[0])+'.'+(Quote-Identifier $contactParts[1])
+                $kind=(Quote-Identifier $kindParts[0])+'.'+(Quote-Identifier $kindParts[1])
+                $objectColumn=Quote-Identifier $mapping.object_column;$kindColumn=Quote-Identifier $mapping.kind_column;$presentation=Quote-Identifier $mapping.presentation_column
+                $phoneSql='WITH phones AS (SELECT CONVERT(varchar(32),c.'+$objectColumn+',2) AS person_ref,LTRIM(RTRIM(c.'+$presentation+')) AS phone,'+
+                    'ROW_NUMBER() OVER(PARTITION BY c.'+$objectColumn+' ORDER BY CASE WHEN LOWER(k.[_Description]) LIKE N''%мобил%'' THEN 0 WHEN LOWER(k.[_Description]) LIKE N''%рабоч%'' THEN 1 ELSE 2 END,k.[_Description]) AS priority '+
+                    'FROM '+$contact+' c JOIN '+$kind+' k ON k.[_IDRRef]=c.'+$kindColumn+' WHERE LOWER(k.[_Description]) LIKE N''%телефон%'' AND NULLIF(LTRIM(RTRIM(c.'+$presentation+')),N'''') IS NOT NULL) SELECT person_ref,phone FROM phones WHERE priority=1'
+                foreach($phoneRow in @(Query $connection $phoneSql @{} 90)){$phoneByPerson[$phoneRow.person_ref]=$phoneRow.phone}
+            }
             # Read only the named sex enumeration metadata. Never infer from
             # employee names, patronymics or _EnumOrder.
             $genderMap=@{};$genderResolved=$false
@@ -387,9 +405,12 @@ WHERE s.name='dbo' AND t.name IN ('Params','Config','_Enum817')
                 $gender='';if($genderResolved -and $employee.gender_ref -and $genderMap.ContainsKey($employee.gender_ref)){$gender=$genderMap[$employee.gender_ref]}
                 $employee | Add-Member -NotePropertyName gender -NotePropertyValue $gender
                 $employee.PSObject.Properties.Remove('gender_ref')
+                $phone='';if($employee.person_ref -and $phoneByPerson.ContainsKey($employee.person_ref)){$phone=$phoneByPerson[$employee.person_ref]}
+                $employee | Add-Member -NotePropertyName phone -NotePropertyValue $phone
+                $employee.PSObject.Properties.Remove('person_ref')
             }
             $scheduleCatalogue=@(Query $connection "SELECT CONVERT(varchar(32),[_IDRRef],2) AS ref,[_Description] AS name,CONVERT(varchar(20),[_Marked],1) AS marked FROM [dbo].[_Reference75] WHERE NULLIF(LTRIM(RTRIM([_Description])),N'') IS NOT NULL")
-            Write-Json $reportPath @{employees_import=$true;employees_card_version=7;gender_source='ФизическоеЛицо.Пол';gender_resolved=$genderResolved;position_catalog=$positionCatalogue[0];schedule_catalog=$scheduleCatalogue;employees=@($employees)}
+            Write-Json $reportPath @{employees_import=$true;employees_card_version=8;gender_source='ФизическоеЛицо.Пол';gender_resolved=$genderResolved;phone_source='ФизическоеЛицо.КонтактнаяИнформация';position_catalog=$positionCatalogue[0];schedule_catalog=$scheduleCatalogue;employees=@($employees)}
             Write-Json $statusPath @{ok=$true;report=$reportPath}
             return
         }
