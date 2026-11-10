@@ -32,6 +32,7 @@ def route_for(row):
     return route
 
 def active_route_roles(row):
+    if row.status not in {'PENDING_APPROVAL','RETURNED'}:return set()
     return {code for code,data in route_for(row).items() if data.get('status')=='PENDING'}
 
 def task_route_roles(task):
@@ -59,6 +60,12 @@ def travel_details_complete(row):
 def log(row,actor,action,comment=''):
     return MovementReviewEvent.objects.create(company=row.company,request=row,actor=actor,action=action,comment=comment.strip())
 
+def restore_recommendation(row):
+    if not row.recommendation_planned_on:return
+    camp_id=row.to_camp_id if row.kind=='ARRIVAL' else row.from_camp_id
+    MovementRecommendationOverride.objects.filter(company=row.company,person=row.person,camp_id=camp_id,kind=row.kind,
+        planned_on=row.recommendation_planned_on,action='EXCLUDE').delete()
+
 
 def approval_task_key(row):
     return f'personnel-movement-batch:{row.approval_batch}' if row.approval_batch else f'personnel-movement-approval:{row.pk}'
@@ -75,7 +82,9 @@ def sync_approval_task(row,user=None):
     pending=approval_rows(row).filter(status__in=['PENDING_APPROVAL','RETURNED']).count()
     if pending:
         if task.status!='OPEN':task.status='OPEN';task.started_at=None;task.save(update_fields=['status','started_at','updated_at'])
-    elif task.status=='OPEN':state(task,'DONE',user,'Единый маршрут согласования завершён по всем сотрудникам.')
+    elif task.status=='OPEN':
+        if approval_rows(row).exclude(status='CANCELLED').exists():state(task,'DONE',user,'Единый маршрут согласования завершён по всем сотрудникам.')
+        else:state(task,'SUPERSEDED',user,'Все заявки сотрудников отменены.')
     if pending:
         roles=set()
         for item in approval_rows(row).filter(status__in=['PENDING_APPROVAL','RETURNED']):roles|=active_route_roles(item)
@@ -98,10 +107,7 @@ def cancel_request(user,row,reason):
     if not reason:raise ValidationError('Укажите причину отмены заявки.')
     row.status='CANCELLED';row.cancellation_reason=reason;row.cancelled_by=user;row.cancelled_at=timezone.now();row.travel_status='Отменено'
     row.save(update_fields=['status','cancellation_reason','cancelled_by','cancelled_at','travel_status','updated_at'])
-    if row.recommendation_planned_on:
-        camp_id=row.to_camp_id if row.kind=='ARRIVAL' else row.from_camp_id
-        MovementRecommendationOverride.objects.filter(company=row.company,person=row.person,camp_id=camp_id,kind=row.kind,
-            planned_on=row.recommendation_planned_on,action='EXCLUDE').delete()
+    restore_recommendation(row)
     log(row,user,'Заявка отменена',reason)
     task=sync_approval_task(row,user)
     if task and not approval_rows(row).exclude(status='CANCELLED').exists() and task.status!='SUPERSEDED':state(task,'SUPERSEDED',user,reason)
@@ -161,7 +167,7 @@ def decide(user,row,approved,comment='',sync_task=True):
     if not step:raise ValidationError('В маршруте нет этапа, ожидающего решения.')
     if step=='PEREVAKHTA_SPECIALIST' and approved and not travel_details_complete(row):
         raise ValidationError('Сначала заполните обязательные первичные данные поездки. Только после этого можно запустить параллельные согласования.')
-    route[step]={'status':'APPROVED' if approved else 'RETURNED','comment':comment.strip(),'actor':user.full_name,'at':timezone.now().isoformat()}
+    route[step]={'status':'APPROVED' if approved else 'CANCELLED','comment':comment.strip(),'actor':user.full_name,'at':timezone.now().isoformat()}
     if approved:
         if step=='MANAGER':route['SITE_CHIEF']['status']='PENDING'
         elif step=='SITE_CHIEF':route['PEREVAKHTA_SPECIALIST']['status']='PENDING'
@@ -169,10 +175,17 @@ def decide(user,row,approved,comment='',sync_task=True):
             for code in PARALLEL:
                 if route[code]['status']=='WAITING':route[code]['status']='PENDING'
     complete=all(route[code]['status']=='APPROVED' for code in PARALLEL)
-    row.status=('OPEN' if row.kind=='TRANSFER' else 'PEREVAKHTA') if complete else 'RETURNED' if not approved else 'PENDING_APPROVAL'
+    row.status=('OPEN' if row.kind=='TRANSFER' else 'PEREVAKHTA') if complete else 'CANCELLED' if not approved else 'PENDING_APPROVAL'
     row.approval_route=route;row.approved_by=user if complete else None;row.approved_at=timezone.now() if complete else None;row.approval_comment=comment.strip()
-    row.save(update_fields=['status','approval_route','approved_by','approved_at','approval_comment','updated_at'])
-    log(row,user,('Согласовано: ' if approved else 'Возвращено: ')+ROLE_LABELS[step],comment)
+    fields=['status','approval_route','approved_by','approved_at','approval_comment','updated_at']
+    if not approved:
+        role_label=ROLE_LABELS[step];actor=user.full_name or user.username
+        row.cancellation_reason=f'Отменено согласующим: {role_label} — {actor}. Причина: {comment.strip()}'
+        row.cancelled_by=user;row.cancelled_at=timezone.now();row.travel_status='Отменено согласующим'
+        fields+=['cancellation_reason','cancelled_by','cancelled_at','travel_status']
+    row.save(update_fields=fields)
+    if not approved:restore_recommendation(row)
+    log(row,user,('Согласовано: ' if approved else 'Отменено согласующим: ')+ROLE_LABELS[step],comment)
     task=WorkTask.objects.filter(company=row.company,key=approval_task_key(row)).first()
     if task and sync_task:
         sync_approval_task(row,user)

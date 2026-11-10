@@ -5,8 +5,8 @@
   </div>{% endif %}
   <div class="d-flex flex-wrap gap-1 mb-2">
     {% for step in row.route_steps|slice:':3' %}
-      <span class="badge rounded-pill {% if step.status == 'APPROVED' %}bg-success{% elif step.status == 'PENDING' %}bg-primary{% elif step.status == 'RETURNED' %}bg-danger{% else %}bg-light text-dark border{% endif %}" title="{{ step.actor }}{% if step.comment %} · {{ step.comment }}{% endif %}">
-        {{ forloop.counter }}. {{ step.label }} · {% if step.status == 'APPROVED' %}готово{% elif step.status == 'PENDING' %}ожидает{% elif step.status == 'RETURNED' %}возвращено{% else %}позже{% endif %}
+      <span class="badge rounded-pill {% if step.status == 'APPROVED' %}bg-success{% elif step.status == 'PENDING' %}bg-primary{% elif step.status == 'RETURNED' or step.status == 'CANCELLED' %}bg-danger{% else %}bg-light text-dark border{% endif %}" title="{{ step.actor }}{% if step.comment %} · {{ step.comment }}{% endif %}">
+        {{ forloop.counter }}. {{ step.label }} · {% if step.status == 'APPROVED' %}готово{% elif step.status == 'PENDING' %}ожидает{% elif step.status == 'RETURNED' or step.status == 'CANCELLED' %}отменено{% else %}позже{% endif %}
       </span>
     {% endfor %}
   </div>
@@ -16,8 +16,8 @@
       {% for step in row.route_steps|slice:'3:' %}
         <div class="d-flex justify-content-between gap-3 py-1{% if not forloop.last %} border-bottom{% endif %}">
           <span>{{ step.label }}</span>
-          <span class="text-nowrap {% if step.status == 'APPROVED' %}text-success{% elif step.status == 'RETURNED' %}text-danger{% elif step.status == 'PENDING' %}text-primary{% else %}text-muted{% endif %}">
-            {% if step.status == 'APPROVED' %}✓ Согласовано{% elif step.status == 'PENDING' %}Ожидает{% elif step.status == 'RETURNED' %}Возвращено{% else %}Позже{% endif %}
+          <span class="text-nowrap {% if step.status == 'APPROVED' %}text-success{% elif step.status == 'RETURNED' or step.status == 'CANCELLED' %}text-danger{% elif step.status == 'PENDING' %}text-primary{% else %}text-muted{% endif %}">
+            {% if step.status == 'APPROVED' %}✓ Согласовано{% elif step.status == 'PENDING' %}Ожидает{% elif step.status == 'RETURNED' or step.status == 'CANCELLED' %}Отменено{% else %}Позже{% endif %}
           </span>
         </div>
         {% if step.actor or step.comment %}<div class="small text-muted pb-1">{{ step.actor }}{% if step.comment %} · {{ step.comment }}{% endif %}</div>{% endif %}

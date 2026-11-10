@@ -34,7 +34,7 @@
 </div>
 {% if row.kind == 'DEPARTURE' or row.kind == 'ARRIVAL' %}
 <div class="mt-3"><h3 class="h6 mb-2">Единое согласование</h3><div class="d-flex flex-wrap gap-2">
-{% for step in approval_route_steps %}<span class="badge rounded-pill {% if step.status == 'APPROVED' %}bg-success{% elif step.status == 'RETURNED' %}bg-danger{% elif step.status == 'PENDING' %}bg-primary{% else %}bg-light text-dark border{% endif %}" title="{{ step.comment }}{% if step.actor %} · {{ step.actor }}{% endif %}">{{ forloop.counter }}. {{ step.label }}</span>{% endfor %}
+{% for step in approval_route_steps %}<span class="badge rounded-pill {% if step.status == 'APPROVED' %}bg-success{% elif step.status == 'RETURNED' or step.status == 'CANCELLED' %}bg-danger{% elif step.status == 'PENDING' %}bg-primary{% else %}bg-light text-dark border{% endif %}" title="{{ step.comment }}{% if step.actor %} · {{ step.actor }}{% endif %}">{{ forloop.counter }}. {{ step.label }}</span>{% endfor %}
 </div><p class="small text-muted mt-2 mb-0">Этапы 1–3 идут последовательно. Этапы 4–9 запускаются специалистом перевахты после заполнения данных и согласуются параллельно.</p></div>
 <ol class="movement-steps" aria-label="Этапы маршрута">
   <li class="movement-step {% if row.status != 'PENDING_APPROVAL' and row.status != 'RETURNED' %}done{% else %}current{% endif %}">Согласование</li>

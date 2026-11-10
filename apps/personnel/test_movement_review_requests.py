@@ -213,8 +213,10 @@ class MovementReviewRequestTests(TestCase):
         rows[0].refresh_from_db();rows[1].refresh_from_db();task.refresh_from_db()
         self.assertEqual(rows[0].status,'PENDING_APPROVAL');self.assertEqual(rows[1].status,'PENDING_APPROVAL');self.assertEqual(task.status,'OPEN')
         self.client.post(url,{'action':'movement_reject_all','text':'Перенести дату'})
-        rows[1].refresh_from_db();task.refresh_from_db()
-        self.assertEqual(rows[1].status,'RETURNED');self.assertEqual(rows[1].approval_comment,'Перенести дату');self.assertEqual(task.status,'OPEN')
+        rows[0].refresh_from_db();rows[1].refresh_from_db();task.refresh_from_db()
+        self.assertEqual(rows[0].status,'CANCELLED');self.assertEqual(rows[1].status,'CANCELLED')
+        self.assertEqual(rows[1].approval_comment,'Перенести дату');self.assertIn('Отменено согласующим',rows[1].cancellation_reason)
+        self.assertEqual(task.status,'SUPERSEDED')
 
     def test_perevakhta_batch_shows_trip_data_state_and_blocks_incomplete_row(self):
         from apps.planning.models import WorkTask
@@ -374,7 +376,7 @@ class MovementReviewRequestTests(TestCase):
         with self.assertRaisesMessage(ValidationError,'не может быть позже планового выезда'):
             update_hub(self.reviewer,row,tickets_ready=True,planned_hub_arrival_date=day+timedelta(days=4))
 
-    def test_parallel_return_preserves_other_approvals_and_resubmits_only_returner(self):
+    def test_parallel_rejection_cancels_person_and_preserves_approval_history(self):
         from .departure_workflow import active_route_roles,decide,resubmit
         day=timezone.localdate();batch=uuid4();housing.request_moves(self.personnel,'ARRIVAL',self.camp,day,[self.person],approval_batch=batch)
         row=MovementReviewRequest.objects.get();self.complete_trip_details(row)
@@ -384,21 +386,13 @@ class MovementReviewRequestTests(TestCase):
         approved=User.objects.create_user(username='route-mechanic',company=self.company,role=Role.objects.get(code='CHIEF_MECHANIC'))
         returned=User.objects.create_user(username='route-paramedic',company=self.company,role=Role.objects.get(code='PARAMEDIC'))
         decide(approved,row,True);row.refresh_from_db();decide(returned,row,False,'Нужны медицинские данные');row.refresh_from_db()
-        self.assertEqual(row.status,'RETURNED');self.assertEqual(row.approval_route['CHIEF_MECHANIC']['status'],'APPROVED')
-        from apps.planning.task_services import visible
-        self.assertTrue(visible(returned).filter(key=f'personnel-movement-batch:{batch}').exists())
-        self.client.force_login(returned)
-        task=visible(returned).get(key=f'personnel-movement-batch:{batch}')
-        page=self.client.get(reverse('planning:task_detail',args=[task.pk]))
-        self.assertNotContains(page,'ЭТАПЫ СОГЛАСОВАНИЯ');self.assertContains(page,'Параллельные согласования: 1 из 6')
-        self.assertContains(page,'<details>')
-        self.assertContains(page,'Главный механик');self.assertContains(page,'Фельдшер')
-        self.assertContains(page,'✓ Согласовано');self.assertContains(page,'Возвращено')
-        self.assertContains(page,'Нужны медицинские данные')
-        resubmit(self.personnel,row);row.refresh_from_db()
-        self.assertEqual(row.approval_route['PARAMEDIC']['status'],'PENDING')
-        self.assertEqual(row.approval_route['CHIEF_MECHANIC']['status'],'APPROVED')
-        self.assertNotIn('CHIEF_MECHANIC',active_route_roles(row))
+        self.assertEqual(row.status,'CANCELLED');self.assertEqual(row.approval_route['CHIEF_MECHANIC']['status'],'APPROVED')
+        self.assertEqual(row.approval_route['PARAMEDIC']['status'],'CANCELLED');self.assertEqual(row.cancelled_by,returned)
+        self.assertIn('Фельдшер',row.cancellation_reason);self.assertIn(returned.full_name or returned.username,row.cancellation_reason)
+        self.assertIn('Нужны медицинские данные',row.cancellation_reason);self.assertEqual(active_route_roles(row),set())
+        self.client.force_login(self.personnel);history=self.client.get(reverse('personnel:my_movement_requests'),{'scope':'history'})
+        self.assertContains(history,'Отменено согласующим');self.assertContains(history,'Фельдшер');self.assertContains(history,'Нужны медицинские данные')
+        with self.assertRaisesMessage(ValidationError,'только возвращённую'):resubmit(self.personnel,row)
 
     def test_arrival_is_recorded_only_after_dudinka_and_reaching_camp(self):
         from .departure_workflow import arrive_camp,arrive_hub,decide,leave_hub,update_hub
