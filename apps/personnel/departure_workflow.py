@@ -233,6 +233,7 @@ def update_hub(user,row,*,tickets_ready=False,clearance_document=None,planned_hu
     if row.status!='AT_HUB' and not buying_arrival_tickets:raise ValidationError('Документы и билеты оформляются на соответствующем этапе маршрута.')
     if buying_arrival_tickets and clearance_document:raise ValidationError('Обходной лист прикрепляется после прибытия сотрудника в ОП Дудинка.')
     if buying_arrival_tickets and not tickets_ready:raise ValidationError('Отметьте, что билеты приобретены.')
+    if buying_arrival_tickets and not planned_hub_arrival_date:raise ValidationError('Укажите дату прибытия в ОП Дудинка по купленному билету.')
     fields=['updated_at']
     if buying_arrival_tickets and planned_hub_arrival_date:
         if row.planned_hub_departure_date and planned_hub_arrival_date>row.planned_hub_departure_date:
