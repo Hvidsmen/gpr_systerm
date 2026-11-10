@@ -333,6 +333,9 @@ class MovementReviewRequest(PersonnelModel):
         if self.status in {'COMPLETED','ACCEPTED'}:return 'COMPLETED'
         if self.status=='CANCELLED':return 'CANCELLED'
         return 'PROCESSING'
+    def departure_reason_label(self):
+        if self.kind!='DEPARTURE':return '—'
+        return {'REST':'Межвахтовый отдых','DISMISSAL':'Увольнение'}.get(self.departure_destination,'Не указана')
     def has_approved_stage(self):
         return any(data.get('status')=='APPROVED' for data in (self.approval_route or {}).values())
     def clean(self):

@@ -63,6 +63,7 @@
   <div class="movement-field"><small>Базовый город</small><span>{{ row.base_city|default:'—' }}</span></div>
   <div class="movement-field"><small>Телефон</small><span>{{ row.phone|default:'—' }}</span></div>
   <div class="movement-field"><small>Текущий этап</small><strong>{{ row.workflow_status_label }}</strong></div>
+  {% if row.kind == 'DEPARTURE' %}<div class="movement-field"><small>Причина выезда</small><strong{% if row.departure_destination == 'DISMISSAL' %} class="text-danger"{% endif %}>{{ row.departure_reason_label }}</strong></div>{% endif %}
   <div class="movement-field"><small>Примечание</small><span>{{ row.note|default:'—' }}</span></div>
 </div>
 <div class="movement-route-dates" aria-label="Плановые и фактические даты маршрута">
