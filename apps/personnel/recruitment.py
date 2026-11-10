@@ -143,7 +143,8 @@ def handoff(user, candidate_id, revision):
     existing=ArrivalPreparation.objects.filter(candidate=c).first()
     if existing:return existing
     if c.revision!=revision:raise ValidationError('Кандидата уже изменили. Обновите страницу.')
-    if c.status!='READY' or not c.ready_on:raise ValidationError('Передать можно только готового кандидата с датой готовности.')
+    if c.status in {'REJECTED','WITHDRAWN','TRANSFERRED'} or not c.ready_on:
+        raise ValidationError('Для оформления заезда укажите дату готовности кандидата. Отказанного кандидата передать нельзя.')
     prep=ArrivalPreparation.objects.create(company=user.company,candidate=c,expected_on=max(c.ready_on,row.required_on),handed_by=user)
     c.status='TRANSFERRED';c.revision+=1;c.save();touch(row)
     audit(user,row,'Передан диспетчеру для подготовки заезда.',c)

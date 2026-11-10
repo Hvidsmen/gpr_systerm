@@ -143,9 +143,11 @@ def candidate_handoff(request,pk):
     c=get_object_or_404(RecruitmentCandidate,company=request.user.company,pk=pk)
     form=RevisionForm(request.POST)
     if form.is_valid():
-        try:service.handoff(request.user,pk,form.cleaned_data['revision'])
+        try:prep=service.handoff(request.user,pk,form.cleaned_data['revision'])
         except (ValidationError,IntegrityError) as exc:messages.error(request,'; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Данные изменились. Обновите страницу.')
-        else:messages.success(request,'Кандидат передан диспетчеру. Фактический заезд пока не подтверждён.')
+        else:
+            messages.success(request,'Создана подготовка заезда. Заполните ВЖГ и плановую дату, затем отправьте заявку на согласование.')
+            if role_code(request.user) in service.DISPATCH:return redirect('personnel:recruitment_arrival',pk=prep.pk)
     else:messages.error(request,'Форма передачи устарела. Обновите страницу.')
     return redirect('personnel:recruitment_detail',pk=c.request_id)
 
@@ -178,5 +180,8 @@ def arrival_edit(request,pk):
                 else:raise ValidationError('Неизвестное действие.')
             except (ValidationError,IntegrityError) as exc:error(bound,exc)
             else:
-                messages.success(request,'Заезд отправлен руководителю на согласование.' if action=='submit' else 'Заезд подтверждён.' if action=='confirm' else 'Подготовка заезда сохранена.');return redirect('personnel:movements')
+                messages.success(request,'Заезд отправлен руководителю на согласование.' if action=='submit' else 'Заезд подтверждён.' if action=='confirm' else 'Подготовка заезда сохранена.')
+                if action=='submit':return redirect('personnel:my_movement_requests')
+                if action=='confirm':return redirect('personnel:movements')
+                return redirect('personnel:recruitment_arrival',pk=pk)
     return render(request,'personnel/recruitment_arrival.html',{**context(request.user),'personnel_section':'movements','prep':prep,'form':form,'cancel_form':cancel_form})

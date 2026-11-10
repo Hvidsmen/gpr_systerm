@@ -71,6 +71,20 @@ class RecruitmentTests(TestCase):
         self.assertEqual(prep.movement_request.employment_kind,'NEW')
         self.assertTrue(WorkTask.objects.filter(key=f'personnel-movement-approval:{prep.movement_request_id}',target_role='MANAGER').exists())
         self.assertFalse(CampStay.objects.exists())
+    def test_new_candidate_with_ready_date_can_be_opened_for_arrival_by_dispatcher(self):
+        row=self.row();service.take_request(self.recruiter,row.pk,row.revision)
+        candidate=service.save_candidate(self.recruiter,row.pk,{
+            'pool_candidate':None,'full_name':'Новый кандидат','phone':'89990000000','status':'NEW',
+            'ready_on':self.day,'notes':'','documents':[]},revision=0,files=[])
+        self.client.force_login(self.dispatch)
+        # Admin/dispatcher with recruitment access gets a direct, visible route into preparation.
+        self.dispatch.role=Role.objects.get(code='ADMIN');self.dispatch.save(update_fields=['role'])
+        page=self.client.get(reverse('personnel:recruitment_detail',args=[row.pk]))
+        self.assertContains(page,'Как оформить заезд');self.assertContains(page,'Оформить заезд')
+        response=self.client.post(reverse('personnel:recruitment_handoff',args=[candidate.pk]),{'revision':candidate.revision})
+        prep=ArrivalPreparation.objects.get(candidate=candidate)
+        self.assertRedirects(response,reverse('personnel:recruitment_arrival',args=[prep.pk]),fetch_redirect_response=False)
+        candidate.refresh_from_db();self.assertEqual(candidate.status,'TRANSFERRED')
     def test_new_candidate_can_start_arrival_without_existing_employee_card(self):
         prep=self.preparation();values=self.arrival_values(employee=None)
         prep=service.prepare_arrival(self.dispatch,prep.pk,prep.revision,values,workflow=True)
