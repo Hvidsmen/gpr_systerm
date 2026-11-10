@@ -93,6 +93,8 @@ def link_people(company):
         # Import and manual linking serialize within company, without touching source employee fields.
         from apps.accounts.models import Company
         Company.objects.select_for_update().get(pk=company.pk)
+        for employee_id,phone in Person.objects.filter(company=company,employee__isnull=False).exclude(phone='').values_list('employee_id','phone'):
+            Employee.objects.filter(pk=employee_id,company=company,phone='').update(phone=phone)
         for person in Person.objects.select_for_update().filter(company=company,employee=None):
             employee=matching_employee(person)
             if employee:

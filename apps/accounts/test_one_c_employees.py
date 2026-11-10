@@ -6,6 +6,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.core.exceptions import ValidationError
 from apps.resources.models import Employee, Position
+from apps.personnel.models import Person
 from .models import Company, User, Role, OneCConnection, OneCDiagnosticRun
 from .one_c import enqueue, process_queue
 from .one_c_employees import EXPECTED, source_confirmed, apply_employees
@@ -73,6 +74,13 @@ class EmployeesImportTests(TestCase):
         self.assertEqual(manual.last_name, 'Иванов'); self.assertFalse(manual.zup_ref)
         self.assertEqual(other.last_name, 'Иванов')
         self.assertEqual(Employee.objects.filter(company=self.company).count(), 3)
+
+    def test_zup_refresh_links_dispatch_card_and_imports_its_phone(self):
+        person=Person.objects.create(company=self.company,full_name='Иванов Иван Иванович',employee_number='001',phone='+7 913 555-44-33')
+        result=apply_employees(self.run_record(),{'employees':[self.row()]})
+        employee=Employee.objects.get(company=self.company,zup_ref='1'*32);person.refresh_from_db()
+        self.assertEqual(result['personnel_cards_linked'],1)
+        self.assertEqual(person.employee,employee);self.assertEqual(employee.phone,person.phone)
 
     def test_full_name_only_and_archived_records_do_not_abort_import(self):
         run=self.run_record()

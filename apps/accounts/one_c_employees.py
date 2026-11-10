@@ -277,6 +277,11 @@ def apply_employees(run, report):
                 setattr(employee, key, value)
         employee.zup_synced_at = now
         employee.save()
+    # The dispatching directory can predate the ZUP card and contain the
+    # employee's phone. Reconcile identities after every ZUP refresh so the
+    # main employee card and subsequent movement requests receive it.
+    from apps.personnel.housing import link_people
+    counts['personnel_cards_linked']=link_people(connection.company)
     from apps.personnel.schedule_changes import reconcile_company
     counts['schedule_changes_applied']=reconcile_company(connection.company)
     from apps.audit.models import AuditLog
