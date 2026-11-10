@@ -51,8 +51,8 @@ def route_summary(row):
 def travel_details_complete(row):
     required=(row.planning_position_name,row.position_name,row.construction_object_id,
               row.from_camp_id if row.kind!='ARRIVAL' else row.to_camp_id,row.movement_date,
-              row.base_city,row.phone,row.request_number,row.travel_time,row.travel_status)
-    required+= (row.planned_hub_departure_date,row.planned_hub_departure_time)
+              row.base_city,row.phone,row.request_number,row.travel_status)
+    required+= (row.planned_hub_departure_date,)
     return all(required) and (row.kind!='ARRIVAL' or bool(row.employment_kind))
 
 

@@ -55,6 +55,8 @@ class MovementReviewRequestTests(TestCase):
         event_count=self.person.housing_events.count()
         housing.request_moves(self.personnel,'ARRIVAL',self.camp,timezone.localdate(),[self.person])
         request_row=MovementReviewRequest.objects.get()
+        automatic_number=request_row.request_number
+        self.assertEqual(automatic_number,str(request_row.pk))
         self.assertEqual(request_row.person,self.person)
         self.assertEqual(request_row.kind,'ARRIVAL')
         self.assertIsNone(request_row.event)
@@ -103,7 +105,7 @@ class MovementReviewRequestTests(TestCase):
         self.assertEqual(request_row.status,'ACCEPTED')
         self.assertEqual(request_row.reviewed_by,self.reviewer)
         self.assertIsNotNone(request_row.reviewed_at)
-        self.assertEqual(request_row.request_number,'302')
+        self.assertEqual(request_row.request_number,automatic_number)
         self.assertEqual(request_row.base_city,'Уфа')
         self.assertEqual(request_row.movement_date,changed_date)
         self.assertEqual(request_row.construction_object,self.obj)
@@ -197,6 +199,11 @@ class MovementReviewRequestTests(TestCase):
         day=timezone.localdate();housing.move(self.reviewer,'ARRIVAL',self.camp,day,[self.person])
         batch=uuid4();housing.request_moves(self.personnel,'DEPARTURE',self.camp,day,[self.person],departure_destination='REST',approval_batch=batch)
         row=MovementReviewRequest.objects.get(approval_batch=batch)
+        from .forms import MovementReviewForm
+        form=MovementReviewForm(instance=row,confirm=True)
+        self.assertTrue(form.fields['request_number'].disabled)
+        self.assertFalse(form.fields['travel_time'].required)
+        self.assertFalse(form.fields['planned_hub_departure_time'].required)
         decide(self.admin,row,True);row.refresh_from_db()
         decide(self.admin,row,True);row.refresh_from_db()
         task=WorkTask.objects.get(key=f'personnel-movement-batch:{batch}')
@@ -208,6 +215,8 @@ class MovementReviewRequestTests(TestCase):
         checkbox=f'<input type="checkbox" name="selected" value="{row.pk}" data-movement-row'
         self.assertNotContains(page,checkbox)
         self.complete_trip_details(row)
+        row.travel_time=None;row.planned_hub_departure_time=None
+        row.save(update_fields=['travel_time','planned_hub_departure_time','updated_at'])
         page=self.client.get(url)
         self.assertContains(page,'Данные поездки заполнены')
         self.assertContains(page,'Открыть заявку')

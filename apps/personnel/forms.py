@@ -238,13 +238,18 @@ class MovementReviewForm(StyledModelForm):
         if current:self.initial['base_city_choice']=current.pk
         elif self.instance.base_city:self.initial['new_base_city']=self.instance.base_city
         self.fields['travel_status'].widget=forms.Select(choices=self.status_choices())
+        self.fields['request_number'].disabled=True
+        self.fields['request_number'].required=False
+        self.fields['request_number'].help_text='Присваивается системой автоматически.'
+        self.fields['travel_time'].required=False
+        self.fields['planned_hub_departure_time'].required=False
         if self.instance.kind!='ARRIVAL':
             self.fields['employment_kind'].required=False
             self.fields['employment_kind'].widget=forms.HiddenInput()
         self.fields['planning_position_name'].group_heading='Сотрудник и назначение'
         self.fields['planning_position_name'].group_help='Проверьте должности, проект и обслуживающий ВЖГ.'
         self.fields['base_city_choice'].group_heading='Контакты и заявка'
-        self.fields['base_city_choice'].group_help='Город назначения, телефон и номер заявки на поездку.'
+        self.fields['base_city_choice'].group_help='Город назначения и телефон. Номер заявки присваивается автоматически.'
         self.fields['movement_date'].group_heading='1. '+('Прибытие в ОП Дудинка' if self.instance.kind=='ARRIVAL' else 'Выезд из ВЖГ')
         self.fields['movement_date'].group_help='Плановые дата и время первого участка маршрута.'
         self.fields['planned_hub_departure_date'].group_heading='2. Выезд из ОП Дудинка'
@@ -257,7 +262,7 @@ class MovementReviewForm(StyledModelForm):
             'base_city_choice','new_base_city','phone','request_number','movement_date','travel_time',
             'planned_hub_departure_date','planned_hub_departure_time','travel_status','note'])
         if confirm:
-            required=['planning_position_name','position_name','construction_object','camp','movement_date','phone','request_number','travel_time','planned_hub_departure_date','planned_hub_departure_time','travel_status']
+            required=['planning_position_name','position_name','construction_object','camp','movement_date','phone','planned_hub_departure_date','travel_status']
             if self.instance.kind=='ARRIVAL':required.append('employment_kind')
             for name in required:self.fields[name].required=True
     def status_choices(self):

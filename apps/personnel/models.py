@@ -299,6 +299,11 @@ class MovementReviewRequest(PersonnelModel):
     cancelled_at=models.DateTimeField(null=True,blank=True)
     class Meta:
         ordering=['status','-movement_date','-pk']
+    def save(self,*args,**kwargs):
+        super().save(*args,**kwargs)
+        if self.source=='DISPATCHER' and not self.request_number:
+            self.request_number=str(self.pk)
+            type(self).objects.filter(pk=self.pk,request_number='').update(request_number=self.request_number)
     def clean(self):
         super().clean()
         for value in (self.event,self.person,self.from_camp,self.to_camp,self.requested_by,self.cancelled_by,self.construction_object,self.site_object):
