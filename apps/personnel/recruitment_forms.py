@@ -37,7 +37,15 @@ class DocumentsField(forms.FileField):
         return files
 
 
+class TalentPoolChoiceField(forms.ModelChoiceField):
+    def label_from_instance(self,candidate):
+        position=(candidate.source_data or {}).get('position') or 'должность не указана'
+        site=(candidate.source_data or {}).get('construction_site') or ''
+        return f'{candidate.full_name} — {position}' + (f' · {site}' if site else '')
+
+
 class CandidateForm(forms.ModelForm):
+    request_position=forms.CharField(label='Должность по заявке',disabled=True,required=False)
     revision = forms.IntegerField(min_value=0, widget=forms.HiddenInput, initial=0)
     documents = DocumentsField(label='Резюме и документы', required=False, widget=MultipleFiles,
         help_text='До 10 файлов, каждый до 10 МБ: PDF, DOC, DOCX, TXT, JPG, PNG. Скачивание доступно только участникам процесса.')
@@ -48,8 +56,12 @@ class CandidateForm(forms.ModelForm):
     def __init__(self,*args,company,request_row,**kwargs):
         super().__init__(*args,**kwargs)
         self.instance.company=company;self.instance.request=request_row
-        self.fields['pool_candidate'].queryset=TalentPoolCandidate.objects.filter(company=company,is_active=True).order_by('full_name','pk')
-        self.fields['pool_candidate'].required=False;self.fields['pool_candidate'].empty_label='Новый человек — заполнить вручную'
+        original=self.fields['pool_candidate']
+        self.fields['pool_candidate']=TalentPoolChoiceField(label=original.label,required=False,
+            queryset=TalentPoolCandidate.objects.filter(company=company,is_active=True).order_by('full_name','pk'),
+            empty_label='Новый человек — заполнить вручную')
+        self.initial['request_position']=request_row.position
+        self.order_fields(['request_position','pool_candidate','full_name','phone','status','ready_on','notes','documents','revision'])
         self.fields['full_name'].required=False
         self.fields['status'].choices=[(v,l) for v,l in RecruitmentCandidate.STATES if v!='TRANSFERRED']
         if self.instance.pk:self.initial['revision']=self.instance.revision

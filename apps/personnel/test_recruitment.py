@@ -75,8 +75,11 @@ class RecruitmentTests(TestCase):
         from .models import TalentPoolCandidate
         from .recruitment_forms import CandidateForm
         row=self.row();service.take_request(self.recruiter,row.pk,row.revision)
-        pool=TalentPoolCandidate.objects.create(company=self.company,full_name='Человек из пула',phone='555',created_by=self.recruiter)
+        pool=TalentPoolCandidate.objects.create(company=self.company,full_name='Человек из пула',phone='555',created_by=self.recruiter,
+            source_data={'position':'Монтажник','construction_site':'КТП'})
         form=CandidateForm({'pool_candidate':pool.pk,'full_name':'','phone':'','status':'READY','ready_on':self.day,'notes':'','revision':0},company=self.company,request_row=row)
+        self.assertEqual(form.initial['request_position'],row.position)
+        self.assertEqual(form.fields['pool_candidate'].label_from_instance(pool),'Человек из пула — Монтажник · КТП')
         self.assertTrue(form.is_valid(),form.errors)
         candidate=service.save_candidate(self.recruiter,row.pk,form.cleaned_data)
         self.assertEqual(candidate.pool_candidate,pool);self.assertEqual(candidate.full_name,pool.full_name)
