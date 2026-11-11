@@ -65,3 +65,10 @@
 /* Current personnel composition has no date control. */
 .housing-rotation-current .housing-filter-main{grid-template-columns:minmax(140px,1fr) minmax(150px,1fr) minmax(190px,1.4fr)}
 @media(max-width:1050px){.housing-rotation-current .housing-filter-main{grid-template-columns:repeat(2,minmax(0,1fr))}.housing-rotation-current .housing-filter-q{grid-column:1/-1}}
+
+/* Keep recruitment compact, but place it after the current employees. */
+.housing-position-group[open]{display:flex;flex-direction:column}
+.housing-position-group[open]>.housing-position-header{order:1}
+.housing-position-group[open]>.table-responsive,
+.housing-position-group[open]>.housing-position-empty{order:2}
+.housing-position-group[open]>.border-bottom.bg-light.px-3.py-2{order:3;border-top:1px solid #dee2e6;border-bottom:0!important}

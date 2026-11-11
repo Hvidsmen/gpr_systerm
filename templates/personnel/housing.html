@@ -1,6 +1,6 @@
 {% extends 'base.html' %}{% load static calendar_tags access %}
 {% block title %}Персонал{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'personnel/lodging.css' %}?v=20261028-1"><link rel="stylesheet" href="{% static 'personnel/housing.css' %}?v=20261104-current-day">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'personnel/lodging.css' %}?v=20261028-1"><link rel="stylesheet" href="{% static 'personnel/housing.css' %}?v=20261111-recruitment-order">{% endblock %}
 {% block content %}<span hidden data-movement-destination="{% url 'personnel:movements' %}"></span>
 <div class="fact-page-heading"><h1>Персонал</h1>{% include 'core/_fact_help.html' with guide_slug='rotation' guide_label='Персонал' %}</div><p class="text-muted">Сотрудники на вахте и межвахтовом отдыхе, индивидуальные графики и открытые вакансии. Можно выбрать объект с субобъектами и несколько ВЖГ.</p>
 {% include 'personnel/_housing_nav.html' %}<h2 class="h4">Диспетчерская</h2>
