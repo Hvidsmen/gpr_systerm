@@ -96,6 +96,14 @@ class RecruitmentTests(TestCase):
         batch=batches.pop()
         self.assertEqual(WorkTask.objects.filter(key=f'personnel-movement-batch:{batch}').count(),1)
         self.assertFalse(RecruitmentCandidate.objects.filter(pk__in=[candidate.pk for candidate in candidates],arrival__movement_request__isnull=True).exists())
+    @patch('apps.personnel.movement_recommendations.build')
+    def test_new_employee_tab_keeps_arrival_and_departure_navigation_counts(self,build):
+        build.return_value={'ARRIVAL':[object(),object()],'DEPARTURE':[object()]}
+        self.client.force_login(self.dispatch)
+        response=self.client.get(reverse('personnel:new_employee_arrivals'))
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(response.context['arrival_recommendation_count'],2)
+        self.assertEqual(response.context['departure_recommendation_count'],1)
     def test_new_candidate_with_ready_date_can_be_opened_for_arrival_by_dispatcher(self):
         row=self.row();service.take_request(self.recruiter,row.pk,row.revision)
         candidate=service.save_candidate(self.recruiter,row.pk,{

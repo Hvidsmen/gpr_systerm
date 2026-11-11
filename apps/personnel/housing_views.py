@@ -722,7 +722,16 @@ def movement_context(request):
     from django.core.paginator import Paginator
     rows=ArrivalPreparation.objects.filter(company=request.user.company,candidate__request__cancelled_at__isnull=True,status__in=['EXPECTED','ARRIVED']).filter(Q(actual_stay__isnull=True)|Q(actual_stay__cancelled_at__isnull=False)).select_related('candidate__request__construction_object','camp','employee','actual_stay').order_by('expected_on','pk')
     return {'personnel_section':'movements','arrival_queue':Paginator(rows,25).get_page(request.GET.get('arrivals_page')),
-        'new_employee_recommendation_count':len(recruitment_dispatch_data(request.user.company)['new_arrival_recommendations'])}
+        'new_employee_recommendation_count':len(recruitment_dispatch_data(request.user.company)['new_arrival_recommendations']),
+        **movement_recommendation_counts(request.user.company)}
+
+
+def movement_recommendation_counts(company):
+    """Company-wide counters shown consistently in the dispatcher navigation."""
+    from .movement_recommendations import build
+    recommendations=build(company,timezone.localdate())
+    return {'arrival_recommendation_count':len(recommendations['ARRIVAL']),
+        'departure_recommendation_count':len(recommendations['DEPARTURE'])}
 
 
 def recruitment_dispatch_data(company):
@@ -751,7 +760,8 @@ def movements(request):
 def new_employee_arrivals(request):
     movement_access(request)
     return render(request,'personnel/new_employee_arrivals.html',{
-        'personnel_section':'movements','dispatcher_page':'new_employees',**recruitment_dispatch_data(request.user.company)})
+        'personnel_section':'movements','dispatcher_page':'new_employees',**movement_recommendation_counts(request.user.company),
+        **recruitment_dispatch_data(request.user.company)})
 
 
 @login_required
@@ -792,7 +802,7 @@ def my_movement_requests(request):
         else:group['status']='В работе';group['status_class']='bg-info text-dark'
     active_count=MovementReviewRequest.objects.filter(company=request.user.company,requested_by=request.user).exclude(status__in=terminal).count()
     history_page=Paginator(filtered_rows,50).get_page(request.GET.get('page')) if scope=='history' else None
-    return render(request,'personnel/my_movement_requests.html',{'personnel_section':'movements','dispatcher_page':'requests','groups':list(grouped.values()),'scope':scope,'kind':kind,
+    return render(request,'personnel/my_movement_requests.html',{'personnel_section':'movements','dispatcher_page':'requests',**movement_recommendation_counts(request.user.company),'groups':list(grouped.values()),'scope':scope,'kind':kind,
         'stage':stage,'stage_choices':stage_choices,'query':search,'active_request_count':active_count,'history_page':history_page})
 
 
