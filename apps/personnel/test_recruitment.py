@@ -36,12 +36,18 @@ class RecruitmentTests(TestCase):
         cls.foreign_employee=Employee.objects.create(company=cls.other,last_name='Чужой',first_name='Сотрудник')
     def values(self,**extra):
         return {'construction_object':self.obj,'position':'Монтажник','quantity':2,'required_on':self.day,'requirements':'Удостоверение',**extra}
+    def setUp(self):
+        self._candidate_sequence=0
     def row(self):
         return service.save_request(self.dispatch,self.values())
     def candidate(self,row=None,**extra):
         row=row or self.row()
         service.take_request(self.recruiter,row.pk,row.revision)
-        return service.save_candidate(self.recruiter,row.pk,{'full_name':'Кандидат Новый','phone':'123','status':'READY','ready_on':self.day,'notes':'Согласован',**extra})
+        self._candidate_sequence+=1
+        return service.save_candidate(self.recruiter,row.pk,{
+            'full_name':f'Кандидат Новый {self._candidate_sequence}',
+            'phone':f'123{self._candidate_sequence}',
+            'status':'READY','ready_on':self.day,'notes':'Согласован',**extra})
     def preparation(self):
         c=self.candidate();return service.handoff(self.recruiter,c.pk,c.revision)
     def arrival_values(self,**extra):
@@ -82,6 +88,27 @@ class RecruitmentTests(TestCase):
         prep.movement_request.refresh_from_db()
         self.assertEqual(prep.movement_request.approval_route['MANAGER']['status'],'APPROVED')
         self.assertFalse(CampStay.objects.exists())
+    def test_rejected_arrival_returns_candidate_to_recommendations(self):
+        from .departure_workflow import decide
+        prep=self.preparation();prep=service.prepare_arrival(self.dispatch,prep.pk,prep.revision,self.arrival_values(),workflow=True)
+        manager=User.objects.create_user(username='reject-recruitment-manager',company=self.company,role=Role.objects.get(code='MANAGER'))
+        decide(manager,prep.movement_request,False,'Перенести заезд')
+        prep.refresh_from_db();prep.candidate.refresh_from_db()
+        self.assertIsNone(prep.movement_request_id);self.assertEqual(prep.candidate.status,'READY')
+        self.client.force_login(self.dispatch)
+        self.assertContains(self.client.get(reverse('personnel:new_employee_arrivals')),prep.candidate.full_name)
+    def test_manual_duplicate_is_blocked_across_active_requests(self):
+        first=self.candidate();second_request=self.row();service.take_request(self.recruiter,second_request.pk,second_request.revision)
+        with self.assertRaisesMessage(ValidationError,'уже участвует'):
+            service.save_candidate(self.recruiter,second_request.pk,{'pool_candidate':None,'full_name':first.full_name,
+                'phone':first.phone,'status':'READY','ready_on':self.day,'notes':'','documents':[]},revision=0,files=[])
+    def test_whole_bulk_draft_can_be_cancelled_and_releases_candidates(self):
+        row=service.save_request(self.dispatch,self.values(quantity=1));candidate=self.candidate(row)
+        batch,preparations=service.bulk_prepare_arrivals(self.dispatch,[candidate.pk])
+        self.assertTrue(preparations[0].movement_request_id)
+        service.cancel_bulk_arrival_draft(self.dispatch,batch,'Изменился план')
+        preparations[0].refresh_from_db();candidate.refresh_from_db()
+        self.assertIsNone(preparations[0].movement_request_id);self.assertEqual(candidate.status,'READY')
     def test_dispatcher_can_create_one_arrival_batch_from_selected_candidates(self):
         from apps.planning.models import WorkTask
         row=self.row();service.take_request(self.recruiter,row.pk,row.revision)
@@ -254,8 +281,8 @@ class RecruitmentTests(TestCase):
     def test_duplicate_candidate_cannot_be_added_to_same_request(self):
         row=self.row();first=self.candidate(row)
         with self.assertRaisesMessage(ValidationError,'уже добавлен в эту заявку'):
-            service.save_candidate(self.recruiter,row.pk,{'pool_candidate':None,'full_name':'  кандидат   новый ',
-                'phone':'(1) 2-3','status':'READY','ready_on':self.day,'notes':''})
+            service.save_candidate(self.recruiter,row.pk,{'pool_candidate':None,'full_name':f'  {first.full_name.lower()}  ',
+                'phone':first.phone,'status':'READY','ready_on':self.day,'notes':''})
         self.assertEqual(row.candidates.count(),1);self.assertEqual(row.candidates.get(),first)
     def test_only_assigned_recruiter_can_work_request(self):
         row=self.row();service.take_request(self.recruiter,row.pk,row.revision)
@@ -324,8 +351,8 @@ class RecruitmentTests(TestCase):
             self.assertFalse(RecruitmentCandidate.objects.exists());self.assertFalse([p for p in Path(root).rglob('*') if p.is_file()])
     def test_three_actual_sections_and_request_prefill(self):
         self.client.force_login(self.dispatch)
-        for route,title in [('housing','Ведение персонала'),('movements','Новая заявка'),('recruitment_list','Магазин подбора')]:
-            page=self.client.get(reverse('personnel:'+route));self.assertContains(page,'data-personnel-sections');self.assertContains(page,title)
+        for route,title in [('housing','Диспетчерская'),('movements','Новая заявка'),('recruitment_list','Магазин подбора')]:
+            page=self.client.get(reverse('personnel:'+route));self.assertNotContains(page,'data-personnel-sections');self.assertContains(page,title)
         page=self.client.get(reverse('personnel:housing'));self.assertNotContains(page,'data-movement-form')
         page=self.client.get(reverse('personnel:movements'));self.assertContains(page,'data-movement-form');self.assertNotContains(page,'data-roster-grid')
         page=self.client.get(reverse('personnel:recruitment_create'),{'position':'Сварщик','construction_object':self.obj.pk})

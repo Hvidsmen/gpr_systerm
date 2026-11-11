@@ -419,6 +419,16 @@ def movement_review_accept(request,pk):
         pk=pk,company=request.user.company,
     )
     user_role=role_code(request.user)
+    from .departure_workflow import active_route_roles,route_for
+    route=route_for(row);own_route=route.get(user_role,{}).get('status') not in {None,'WAITING'}
+    functional_access=(user_role=='PEREVAKHTA_SPECIALIST' and row.status in {'PEREVAKHTA','AT_HUB','EN_ROUTE'} or
+        user_role=='PERSONNEL_SPECIALIST' and row.kind=='ARRIVAL' and row.employment_kind=='NEW' and row.status=='AT_HUB')
+    allowed=(user_role in {'ADMIN','HR_HEAD'} or row.requested_by_id==request.user.pk or own_route or
+        user_role in active_route_roles(row) or functional_access)
+    if not allowed:raise PermissionDenied('Эта заявка не находится на вашем этапе и недоступна для просмотра.')
+    if row.status=='OPEN' and row.approval_batch and hasattr(row,'recruitment_arrival'):
+        if request.method=='POST':raise PermissionDenied('Строки пакетного черновика редактируются только общей формой.')
+        return redirect('personnel:recruitment_arrival_bulk_edit',batch=row.approval_batch)
     workflow_action=request.POST.get('workflow_action') if request.method=='POST' else None
     if workflow_action:
         from .departure_workflow import arrive_camp,arrive_hub,leave_hub,register_new_employee,resubmit,update_hub
@@ -439,7 +449,7 @@ def movement_review_accept(request,pk):
         except ValidationError as exc:messages.error(request,'; '.join(exc.messages))
         else:messages.success(request,{'resubmit':'Заявка повторно отправлена руководителю.','arrive_hub':'Прибытие в ОП Дудинка зафиксировано.','hub_documents':'Данные по билетам и обходному листу сохранены.','leave_hub':'Выезд из ОП Дудинка зафиксирован.','arrive_camp':'Фактический заезд в ВЖГ подтверждён. Заявка завершена.','register_new_employee':'Сотрудник оформлен. Данные будут связаны с карточкой ЗУП при следующей синхронизации.'}[workflow_action])
         return redirect('personnel:movement_review_accept',pk=row.pk)
-    from .departure_workflow import active_route_roles,approval_task_key,travel_details_complete
+    from .departure_workflow import approval_task_key,travel_details_complete
     details_complete=travel_details_complete(row)
     perevakhta_data_stage='PEREVAKHTA_SPECIALIST' in active_route_roles(row) and user_role in {'ADMIN','HR_HEAD','PEREVAKHTA_SPECIALIST'}
     if row.status=='CANCELLED' and request.method=='POST':
@@ -497,7 +507,8 @@ def movement_review_accept(request,pk):
             seen.add(current);pairs.setdefault(str(current),set()).add(camp_id);current=tree.get(current)
     can_cancel_request=user_role in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'} and not (user_role=='PERSONNEL_DISPATCHER' and row.has_approved_stage()) and row.status not in {'AT_HUB','EN_ROUTE','COMPLETED','CANCELLED'} and not row.event_id and not row.hub_arrived_on
     can_delete_request=user_role=='ADMIN' and row.status=='CANCELLED' and not row.event_id and not row.hub_arrived_on and not row.hub_departed_on and not row.final_arrived_on
-    can_manage_workflow=user_role in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER','PEREVAKHTA_SPECIALIST'} and not (row.status=='PEREVAKHTA' and not details_complete)
+    can_manage_workflow=(user_role in {'ADMIN','HR_HEAD','PEREVAKHTA_SPECIALIST'} or
+        user_role=='PERSONNEL_DISPATCHER' and row.kind=='ARRIVAL' and row.status=='EN_ROUTE') and not (row.status=='PEREVAKHTA' and not details_complete)
     needs_zup_registration=row.kind=='ARRIVAL' and row.employment_kind=='NEW' and row.status=='AT_HUB' and not row.person.employee_id
     registration_form=NewEmployeeRegistrationForm(company=request.user.company,initial={'phone':row.phone}) if needs_zup_registration else None
     can_register_employee=needs_zup_registration and user_role in {'ADMIN','HR_HEAD','PERSONNEL_SPECIALIST'}

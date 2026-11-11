@@ -61,10 +61,18 @@ def log(row,actor,action,comment=''):
     return MovementReviewEvent.objects.create(company=row.company,request=row,actor=actor,action=action,comment=comment.strip())
 
 def restore_recommendation(row):
-    if not row.recommendation_planned_on:return
-    camp_id=row.to_camp_id if row.kind=='ARRIVAL' else row.from_camp_id
-    MovementRecommendationOverride.objects.filter(company=row.company,person=row.person,camp_id=camp_id,kind=row.kind,
-        planned_on=row.recommendation_planned_on,action='EXCLUDE').delete()
+    if row.recommendation_planned_on:
+        camp_id=row.to_camp_id if row.kind=='ARRIVAL' else row.from_camp_id
+        MovementRecommendationOverride.objects.filter(company=row.company,person=row.person,camp_id=camp_id,kind=row.kind,
+            planned_on=row.recommendation_planned_on,action='EXCLUDE').delete()
+    # A cancelled/rejected recruitment movement must release the candidate.
+    # Keep the cancelled movement itself as history, but detach the reusable preparation.
+    prep=ArrivalPreparation.objects.select_for_update().filter(movement_request=row,status='EXPECTED').select_related('candidate').first()
+    if prep:
+        prep.movement_request=None;prep.revision+=1;prep.save(update_fields=['movement_request','revision','updated_at'])
+        candidate=prep.candidate
+        if candidate.status=='TRANSFERRED':
+            candidate.status='READY';candidate.revision+=1;candidate.save(update_fields=['status','revision','updated_at'])
 
 
 def approval_task_key(row):
@@ -101,6 +109,8 @@ def cancel_request(user,row,reason):
     if role not in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'}:raise PermissionDenied('Отмена заявки недоступна для вашей роли.')
     if role=='PERSONNEL_DISPATCHER' and row.has_approved_stage():
         raise ValidationError('Диспетчер может отменить заявку только до первого согласования.')
+    if row.status=='OPEN' and row.approval_batch and ArrivalPreparation.objects.filter(movement_request=row).exists():
+        raise ValidationError('Пакетный черновик отменяется целиком через форму пакета.')
     if row.status in {'AT_HUB','EN_ROUTE','COMPLETED','CANCELLED'} or row.event_id or row.hub_arrived_on:
         raise ValidationError('Заявку нельзя отменить после начала фактического маршрута или повторно.')
     reason=reason.strip()
@@ -136,8 +146,9 @@ def create_approval(row):
     direction={'ARRIVAL':'заезд','DEPARTURE':'выезд','TRANSFER':'перевод'}[row.kind]
     rows=approval_rows(row).select_related('person','from_camp','to_camp').order_by('pk');count=rows.count()
     names='\n'.join(f'• {item.person.display_name}' for item in rows[:30])
+    package=f'Пакет {str(row.approval_batch)[:8]} · ' if row.approval_batch else ''
     task=ensure(row.company,approval_task_key(row),kind='APPROVAL',
-        title=f'Согласовать {direction}: {count} сотрудник' if count==1 else f'Согласовать {direction}: {count} сотрудников',
+        title=package+(f'Согласовать {direction}: {count} сотрудник' if count==1 else f'Согласовать {direction}: {count} сотрудников'),
         description=(f'{names}\nВЖГ: {(row.to_camp if row.kind in {"ARRIVAL","TRANSFER"} else row.from_camp) or "—"}\n'
                      f'Плановая дата: {row.movement_date:%d.%m.%Y}\n'
                      f'Вид: {"Заезд" if row.kind=="ARRIVAL" else "Перевод" if row.kind=="TRANSFER" else "Выезд с увольнением" if row.departure_destination=="DISMISSAL" else "Выезд на межвахтовый отдых"}'),
@@ -146,7 +157,7 @@ def create_approval(row):
     for item in rows:
         if not item.approval_route:
             item.approval_route=initial_route();item.save(update_fields=['approval_route','updated_at'])
-    title=f'Согласовать {direction}: {count} сотрудник' if count==1 else f'Согласовать {direction}: {count} сотрудников'
+    title=package+(f'Согласовать {direction}: {count} сотрудник' if count==1 else f'Согласовать {direction}: {count} сотрудников')
     description=(f'{names}\nВЖГ: {(row.to_camp if row.kind in {"ARRIVAL","TRANSFER"} else row.from_camp) or "—"}\nПлановая дата: {row.movement_date:%d.%m.%Y}\n\n'
                  'Маршрут: Руководитель проекта → Начальник участка → Специалист перевахты → '
                  'параллельно: Руководитель ОП Дудинка, безопасность, главный механик, фельдшер, персонал, эксперт по труду и заработной плате.')
@@ -233,6 +244,7 @@ def resubmit(user,row):
 
 @transaction.atomic
 def arrive_hub(user,row,day):
+    if role_code(user) not in {'ADMIN','HR_HEAD','PEREVAKHTA_SPECIALIST'}:raise PermissionDenied('Прибытие в ОП Дудинка фиксирует специалист перевахты.')
     row=MovementReviewRequest.objects.select_for_update().select_related('person','from_camp').get(pk=row.pk,company=user.company)
     if row.status!='PEREVAKHTA':raise ValidationError('Прибытие в ОП Дудинка фиксируется после согласования.')
     if not travel_details_complete(row):raise ValidationError('Сначала заполните обязательные данные поездки: город, телефон, номер заявки и обязательные даты.')
@@ -251,6 +263,7 @@ def arrive_hub(user,row,day):
 
 @transaction.atomic
 def update_hub(user,row,*,tickets_ready=False,clearance_document=None,planned_hub_arrival_date=None):
+    if role_code(user) not in {'ADMIN','HR_HEAD','PEREVAKHTA_SPECIALIST'}:raise PermissionDenied('Билеты и документы оформляет специалист перевахты.')
     row=MovementReviewRequest.objects.select_for_update().get(pk=row.pk,company=user.company)
     buying_arrival_tickets=row.kind=='ARRIVAL' and row.status=='PEREVAKHTA'
     if row.status!='AT_HUB' and not buying_arrival_tickets:raise ValidationError('Документы и билеты оформляются на соответствующем этапе маршрута.')
@@ -299,6 +312,7 @@ def register_new_employee(user,row,*,employee_number,position,schedule,phone):
 
 @transaction.atomic
 def leave_hub(user,row,day):
+    if role_code(user) not in {'ADMIN','HR_HEAD','PEREVAKHTA_SPECIALIST'}:raise PermissionDenied('Выезд из ОП Дудинка фиксирует специалист перевахты.')
     row=MovementReviewRequest.objects.select_for_update().select_related('person__employee').get(pk=row.pk,company=user.company)
     if row.status!='AT_HUB':raise ValidationError('Выезд из Дудинки фиксируется только для сотрудника в ОП Дудинка.')
     if row.kind=='ARRIVAL' and row.employment_kind=='NEW' and not row.person.employee_id:raise ValidationError('Сначала завершите оформление нового сотрудника в ЗУП.')
@@ -313,6 +327,7 @@ def leave_hub(user,row,day):
 
 @transaction.atomic
 def arrive_camp(user,row,day):
+    if role_code(user) not in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'}:raise PermissionDenied('Прибытие в ВЖГ фиксирует диспетчер по персоналу.')
     row=MovementReviewRequest.objects.select_for_update().select_related('person__employee','to_camp').get(pk=row.pk,company=user.company)
     if row.kind!='ARRIVAL' or row.status!='EN_ROUTE':raise ValidationError('Фактический заезд доступен после отправления сотрудника из ОП Дудинка.')
     if day<row.hub_departed_on:raise ValidationError('Фактическое прибытие в ВЖГ не может быть раньше выезда из ОП Дудинка.')

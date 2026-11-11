@@ -2,7 +2,7 @@
 {% block title %}Пакетный заезд · черновик{% endblock %}
 {% block recruitment_content %}
 <p><a href="{% url 'personnel:new_employee_arrivals' %}">← Новые сотрудники</a></p>
-<div class="d-flex justify-content-between align-items-start gap-2 mb-3"><div><h2 class="h4 mb-1">Пакетная заявка на заезд</h2><p class="text-muted mb-0">Черновик · {{ rows|length }} сотрудников. Руководители увидят заявку только после отправки.</p></div><span class="badge {% if submitted %}bg-success{% else %}bg-secondary{% endif %}">{% if submitted %}Отправлена{% else %}Черновик{% endif %}</span></div>
+<div class="d-flex justify-content-between align-items-start gap-2 mb-3"><div><h2 class="h4 mb-1">Пакет №{{ batch|stringformat:'s'|slice:':8' }} · заезд</h2><p class="text-muted mb-0">{{ rows|length }} сотрудников. Руководители увидят заявку только после отправки.</p></div><span class="badge {% if submitted %}bg-success{% else %}bg-secondary{% endif %}">{% if submitted %}Отправлена{% else %}Черновик{% endif %}</span></div>
 <form method="post">{% csrf_token %}
   {% if common_form.non_field_errors %}<div class="alert alert-danger">{{ common_form.non_field_errors }}</div>{% endif %}
   <div class="card card-body mb-3"><h3 class="h6">Общие данные для всех сотрудников</h3><div class="row g-3"><div class="col-md-6"><label class="form-label" for="{{ common_form.construction_object.id_for_label }}">{{ common_form.construction_object.label }}</label>{{ common_form.construction_object }}{{ common_form.construction_object.errors }}</div><div class="col-md-6"><label class="form-label" for="{{ common_form.camp.id_for_label }}">{{ common_form.camp.label }}</label>{{ common_form.camp }}{{ common_form.camp.errors }}</div></div></div>
@@ -11,4 +11,7 @@
   </tbody></table></div></div>
   {% if not submitted %}<div class="d-flex flex-wrap gap-2 mt-3"><button class="btn btn-outline-primary" name="action" value="save">Сохранить черновик</button><button class="btn btn-primary" name="action" value="submit">Отправить пакет на согласование</button></div>{% endif %}
 </form>
+{% if not submitted %}<details class="card card-body mt-3"><summary class="text-danger">Отменить весь черновик</summary><form method="post" class="mt-3">{% csrf_token %}<label class="form-label" for="bulk-cancel-reason">Причина отмены</label><textarea class="form-control mb-2" id="bulk-cancel-reason" name="reason" required></textarea><button class="btn btn-outline-danger" name="action" value="cancel">Отменить черновик и вернуть сотрудников в рекомендации</button></form></details>{% endif %}
+{{ project_camps|json_script:'bulk-project-camps' }}
+<script>(()=>{const project=document.getElementById('{{ common_form.construction_object.id_for_label }}'),camp=document.getElementById('{{ common_form.camp.id_for_label }}'),mapping=JSON.parse(document.getElementById('bulk-project-camps').textContent);if(!project||!camp)return;const filter=()=>{const allowed=new Set((mapping[project.value]||[]).map(String));[...camp.options].forEach(option=>{if(!option.value)return;option.hidden=!allowed.has(option.value);option.disabled=!allowed.has(option.value)});if(camp.value&&!allowed.has(camp.value))camp.value=''};project.addEventListener('change',filter);filter()})();</script>
 {% endblock %}

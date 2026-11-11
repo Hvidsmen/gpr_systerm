@@ -177,6 +177,12 @@ def bulk_arrival_edit(request,batch):
     if not rows:raise Http404('Черновик пакетной заявки не найден.')
     submitted=any(row.status!='OPEN' for row in rows)
     action=request.POST.get('action') if request.method=='POST' else ''
+    if request.method=='POST' and action=='cancel' and not submitted:
+        try:service.cancel_bulk_arrival_draft(request.user,batch,request.POST.get('reason',''))
+        except ValidationError as exc:messages.error(request,'; '.join(exc.messages))
+        else:
+            messages.success(request,'Пакетный черновик отменён. Сотрудники возвращены в рекомендации.')
+            return redirect('personnel:new_employee_arrivals')
     confirm=action=='submit'
     initial_object=rows[0].construction_object_id if len({row.construction_object_id for row in rows})==1 else None
     initial_camp=rows[0].to_camp_id if len({row.to_camp_id for row in rows})==1 else None
@@ -187,7 +193,7 @@ def bulk_arrival_edit(request,batch):
         initial={'planning_position_name':row.planning_position_name,'position_name':row.position_name,'base_city':row.base_city,
             'phone':row.phone,'movement_date':row.movement_date,'planned_hub_departure_date':row.planned_hub_departure_date,'note':row.note}
         row_forms.append((row,BulkArrivalRowForm(request.POST if request.method=='POST' else None,prefix=f'row-{row.pk}',required=confirm,initial=initial)))
-    if request.method=='POST' and not submitted:
+    if request.method=='POST' and action!='cancel' and not submitted:
         valid=common.is_valid() and all(form.is_valid() for _,form in row_forms)
         if valid:
             try:service.save_bulk_arrival_draft(request.user,batch,common.cleaned_data['construction_object'],common.cleaned_data['camp'],
@@ -197,8 +203,17 @@ def bulk_arrival_edit(request,batch):
                 messages.success(request,'Пакетная заявка отправлена на согласование.' if confirm else 'Черновик сохранён.')
                 if confirm:return redirect('personnel:my_movement_requests')
                 return redirect('personnel:recruitment_arrival_bulk_edit',batch=batch)
+    from apps.projects.models import ConstructionObject
+    from .models import CampObjectLink
+    objects=list(ConstructionObject.objects.filter(company=request.user.company).values_list('pk','parent_id'))
+    parents=dict(objects);project_camps={str(pk):set() for pk,_ in objects}
+    for object_id,camp_id in CampObjectLink.objects.filter(company=request.user.company,camp__is_active=True).values_list('construction_object_id','camp_id'):
+        current=object_id;seen=set()
+        while current and current not in seen:
+            seen.add(current);project_camps.setdefault(str(current),set()).add(camp_id);current=parents.get(current)
     return render(request,'personnel/recruitment_arrival_bulk.html',{**context(request.user),'personnel_section':'movements',
-        'batch':batch,'rows':rows,'common_form':common,'row_forms':row_forms,'submitted':submitted})
+        'batch':batch,'rows':rows,'common_form':common,'row_forms':row_forms,'submitted':submitted,
+        'project_camps':{key:sorted(value) for key,value in project_camps.items()}})
 
 
 @login_required

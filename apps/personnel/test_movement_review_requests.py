@@ -6,7 +6,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.core.exceptions import ValidationError
+from django.core.exceptions import ValidationError,PermissionDenied
 
 from apps.accounts.models import Company, Role, User
 from apps.projects.models import ConstructionObject, Project
@@ -42,6 +42,22 @@ class MovementReviewRequestTests(TestCase):
         row.travel_time='08:30';row.travel_status='Ожидается';row.employment_kind=row.employment_kind or 'STAFF'
         row.planned_hub_departure_date=timezone.localdate();row.planned_hub_departure_time='12:30'
         row.save(update_fields=['planning_position_name','position_name','construction_object','base_city','phone','request_number','travel_time','travel_status','employment_kind','planned_hub_departure_date','planned_hub_departure_time','updated_at'])
+
+    def test_approver_cannot_execute_perevakhta_or_dispatcher_facts(self):
+        from .departure_workflow import arrive_camp,arrive_hub
+        manager=User.objects.create_user(username='facts-manager',company=self.company,role=Role.objects.get(code='MANAGER'))
+        day=timezone.localdate();housing.request_moves(self.personnel,'ARRIVAL',self.camp,day,[self.person])
+        row=MovementReviewRequest.objects.get();row.status='PEREVAKHTA';row.tickets_ready=True;row.save(update_fields=['status','tickets_ready','updated_at'])
+        self.complete_trip_details(row)
+        with self.assertRaises(PermissionDenied):arrive_hub(manager,row,day)
+        row.status='EN_ROUTE';row.hub_departed_on=day;row.save(update_fields=['status','hub_departed_on','updated_at'])
+        with self.assertRaises(PermissionDenied):arrive_camp(manager,row,day)
+
+    def test_future_approver_cannot_open_request_before_own_stage(self):
+        site_chief=User.objects.create_user(username='future-site-chief',company=self.company,role=Role.objects.get(code='SITE_CHIEF'))
+        housing.request_moves(self.personnel,'ARRIVAL',self.camp,timezone.localdate(),[self.person])
+        row=MovementReviewRequest.objects.get();self.client.force_login(site_chief)
+        self.assertEqual(self.client.get(reverse('personnel:movement_review_accept',args=[row.pk])).status_code,403)
 
     def finish_approval(self,row):
         from .departure_workflow import active_route_roles,decide
@@ -267,6 +283,7 @@ class MovementReviewRequestTests(TestCase):
         saved=self.client.post(detail_url,{
             'review_action':'complete_details','planning_position_name':'Должность СМГ','position_name':'Должность сотрудника',
             'construction_object':self.obj.pk,'camp':self.camp.pk,'movement_date':day.isoformat(),
+            'departure_destination':'REST',
             'base_city_choice':'','new_base_city':'Норильск','phone':'8 900 000-00-00',
             'planned_hub_departure_date':day.isoformat(),'travel_status':'Ожидается','note':'',
         })

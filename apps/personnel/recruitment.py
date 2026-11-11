@@ -143,6 +143,22 @@ def save_candidate(user, request_id, values, pk=None, revision=None, files=()):
                 same_identity=identity[0] and normalized_candidate_identity(existing.full_name,existing.phone)==identity
                 if same_pool or same_identity:
                     raise ValidationError(f'Кандидат {existing.full_name} уже добавлен в эту заявку.')
+            # Manual entry must not bypass the pool lock or recreate a person
+            # who is already travelling/arrived through another request.
+            if identity[0] and identity[1]:
+                possible=RecruitmentCandidate.objects.filter(company=user.company).exclude(pk=c.pk).select_related(
+                    'request','arrival__actual_stay','arrival__movement_request')
+                for existing in possible:
+                    if normalized_candidate_identity(existing.full_name,existing.phone)!=identity:continue
+                    active_request=not existing.request.cancelled_at and not existing.request.completed_at and existing.status not in {'REJECTED','WITHDRAWN'}
+                    prep=getattr(existing,'arrival',None)
+                    active_arrival=bool(prep and (prep.actually_arrived or prep.movement_request_id and prep.movement_request.status!='CANCELLED'))
+                    if active_request or active_arrival:
+                        raise ValidationError(f'{existing.full_name} уже участвует в действующей заявке или оформлен на заезд.')
+                from apps.resources.models import Employee
+                for employee in Employee.objects.filter(company=user.company,is_active=True):
+                    if normalized_candidate_identity(employee.display_name,employee.phone)==identity:
+                        raise ValidationError(f'{employee.display_name} уже является действующим сотрудником компании.')
             c.revision+=1;c.save()
             for file in files:
                 doc=CandidateDocument(company=user.company,candidate=c,uploaded_by=user,original_name=Path(file.name.replace('\\','/')).name[:255],size=file.size)
@@ -282,6 +298,22 @@ def save_bulk_arrival_draft(user,batch,construction_object,camp,row_values,submi
         from .departure_workflow import create_approval,log
         for row in requests:
             create_approval(row);log(row,user,'Пакетная заявка на заезд отправлена на согласование')
+    return requests
+
+
+@transaction.atomic
+def cancel_bulk_arrival_draft(user,batch,reason):
+    serialize(user,DISPATCH);reason=reason.strip()
+    if not reason:raise ValidationError('Укажите причину отмены черновика.')
+    requests=list(MovementReviewRequest.objects.select_for_update().filter(company=user.company,requested_by=user,
+        approval_batch=batch,kind='ARRIVAL').order_by('pk'))
+    if not requests:raise ValidationError('Черновик пакетной заявки не найден.')
+    if any(row.status!='OPEN' for row in requests):raise ValidationError('Отменить можно только неотправленный черновик.')
+    from .departure_workflow import log,restore_recommendation
+    for row in requests:
+        row.status='CANCELLED';row.cancellation_reason=reason;row.cancelled_by=user;row.cancelled_at=timezone.now();row.travel_status='Черновик отменён'
+        row.save(update_fields=['status','cancellation_reason','cancelled_by','cancelled_at','travel_status','updated_at'])
+        restore_recommendation(row);log(row,user,'Пакетный черновик отменён',reason)
     return requests
 
 
