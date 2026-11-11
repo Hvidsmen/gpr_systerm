@@ -317,6 +317,7 @@ class MovementReviewRequest(PersonnelModel):
             self.request_number=str(self.pk)
             type(self).objects.filter(pk=self.pk,request_number='').update(request_number=self.request_number)
     def workflow_status_label(self):
+        if self.source=='EXCEL' and self.status=='COMPLETED':return f'Завершена по Excel: {self.travel_status or "Прибыл / убыл"}'
         if self.status=='OPEN' and self.source=='DISPATCHER':return 'Черновик диспетчера'
         if self.status=='PENDING_APPROVAL':
             from .departure_workflow import PARALLEL,ROLE_LABELS,route_for

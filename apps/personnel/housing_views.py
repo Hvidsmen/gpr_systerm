@@ -389,12 +389,14 @@ def review_request_context(request):
     for row in rows:
         row.can_cancel=user_role in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'} and not (user_role=='PERSONNEL_DISPATCHER' and row.has_approved_stage()) and row.status not in {'AT_HUB','EN_ROUTE','COMPLETED','CANCELLED'} and not row.event_id and not row.hub_arrived_on
         row.can_delete=user_role=='ADMIN' and row.status=='CANCELLED' and not row.event_id and not row.hub_arrived_on and not row.hub_departed_on and not row.final_arrived_on
-    dispatcher_rows=[row for row in rows if row.source=='DISPATCHER'];excel_rows=[row for row in rows if row.source=='EXCEL']
+    dispatcher_rows=[row for row in rows if row.source=='DISPATCHER']
+    excel_rows=[row for row in rows if row.source=='EXCEL' and row.status not in {'COMPLETED','ACCEPTED','CANCELLED'}]
+    excel_history=[row for row in rows if row.source=='EXCEL' and row.status in {'COMPLETED','ACCEPTED','CANCELLED'}]
     counts=base.aggregate(
         arrival=Count('pk',filter=Q(kind='ARRIVAL')&~Q(status='CANCELLED')),
         departure=Count('pk',filter=~Q(kind='ARRIVAL')&~Q(status='CANCELLED')),
         opened=Count('pk',filter=Q(status='OPEN')))
-    return {'personnel_section':'reviews','movement_review_requests':rows,'dispatcher_review_requests':dispatcher_rows,'excel_review_requests':excel_rows,'review_tab':tab,'review_arrival':tab=='arrival','review_date':raw_date,'review_sort':sort,'review_sort_options':sort_options,
+    return {'personnel_section':'reviews','movement_review_requests':rows,'dispatcher_review_requests':dispatcher_rows,'excel_review_requests':excel_rows,'excel_history_requests':excel_history,'review_tab':tab,'review_arrival':tab=='arrival','review_date':raw_date,'review_sort':sort,'review_sort_options':sort_options,
         'arrival_review_requests':rows if tab=='arrival' else [],'departure_review_requests':rows if tab=='departure' else [],
         'arrival_review_count':counts['arrival'],'departure_review_count':counts['departure'],
         'movement_review_open_count':counts['opened']}
@@ -412,7 +414,7 @@ def movement_reviews(request):
             try:
                 from .movement_excel_import import apply
                 result=apply(request.user,uploaded.read())
-                messages.success(request,f"Импорт завершён. Создано заявок: {result['created']}; повторов пропущено: {result['duplicates']}; не сопоставлено: {len(result['unmatched'])}.")
+                messages.success(request,f"Импорт завершён. Создано заявок: {result['created']}; сразу в историю: {result['archived']}; повторов пропущено: {result['duplicates']}; не сопоставлено: {len(result['unmatched'])}.")
             except ValidationError as exc:messages.error(request,'; '.join(exc.messages))
     return render(request,'personnel/movement_reviews.html',{**review_request_context(request),'movement_import_result':result})
 

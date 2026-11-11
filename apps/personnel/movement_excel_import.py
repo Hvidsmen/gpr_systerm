@@ -55,6 +55,12 @@ def employment(raw):
     return 'STAFF' if text else ''
 
 
+def completed_status(raw):
+    """Statuses maintained as completed in the source workbook."""
+    text=normalized(raw)
+    return text in {'прибыл','убыл'} or text.startswith('прибыл ') or text.startswith('убыл ')
+
+
 def parse(raw):
     if len(raw)>12*1024*1024:raise ValidationError('Файл больше 12 МБ.')
     try:
@@ -117,7 +123,7 @@ def apply(user,raw):
     objects={}
     for obj in ConstructionObject.objects.filter(company=company).select_related('parent'):
         objects.setdefault(normalized(obj.name),[]).append(obj)
-    result={'created':0,'duplicates':0,'unmatched':[],'invalid':[],'ignored_sheets':ignored,'total':len(parsed)}
+    result={'created':0,'archived':0,'duplicates':0,'unmatched':[],'invalid':[],'ignored_sheets':ignored,'total':len(parsed)}
     for data in parsed:
         if data.get('error'):
             result['invalid'].append(f"{data['sheet']}, строка {data['row']}: {data['error']}");continue
@@ -139,13 +145,15 @@ def apply(user,raw):
         from .models import CampObjectLink
         camp_ids=list(CampObjectLink.objects.filter(company=company,construction_object=site_object,camp__is_active=True).values_list('camp_id',flat=True).distinct()) if site_object else []
         camp_id=camp_ids[0] if len(camp_ids)==1 else None
-        row=MovementReviewRequest(**lookup,requested_by=user,source='EXCEL',status='OPEN',employment_kind=data['employment_kind'],
+        archived=completed_status(data['travel_status'])
+        row=MovementReviewRequest(**lookup,requested_by=user,source='EXCEL',status='COMPLETED' if archived else 'OPEN',employment_kind=data['employment_kind'],
             planning_position_name=data['planning_position_name'],position_name=employee.display_position if employee else '',
             construction_object=site_object.parent if site_object and site_object.parent_id else site_object,site_object=site_object,
             site=data['site'],base_city=data['base_city'],phone=data['phone'] or ((employee.phone if employee else '') or person.phone),
             to_camp_id=camp_id if data['kind']=='ARRIVAL' else None,from_camp_id=camp_id if data['kind']!='ARRIVAL' else None,
             travel_time=data['travel_time'],travel_status=data['travel_status'] or ('Ожидается'),note=data['note'])
         row.full_clean();row.save();result['created']+=1
+        if archived:result['archived']+=1
     from apps.audit.models import AuditLog
     AuditLog.objects.create(user=user,action='CREATE',entity_type='personnel.MovementReviewRequest',entity_id='',
         new_value={key:(len(value) if isinstance(value,list) else value) for key,value in result.items()},
