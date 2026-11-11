@@ -76,11 +76,42 @@ class CandidateForm(forms.ModelForm):
 
 
 class TalentPoolForm(forms.ModelForm):
+    position=forms.CharField(label='Должность',required=False)
+    construction_site=forms.CharField(label='Строительный участок',required=False)
+    birth_date=forms.DateField(label='Дата рождения',required=False,widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
+    passport=forms.CharField(label='Серия и номер паспорта',required=False)
+    manager_approval=forms.CharField(label='Согласование непосредственного руководителя',required=False)
+    security_approval=forms.CharField(label='Согласование СБ',required=False)
+    skzi_until=forms.DateField(label='СКЗИ действует до',required=False,widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
+    medical_exam=forms.CharField(label='Медицинский осмотр',required=False)
+    pass_documents=forms.CharField(label='Документы направлены на пропуск',required=False)
+    base_city=forms.CharField(label='Базовый город',required=False)
+    readiness=forms.CharField(label='Готовность к заезду',required=False)
+    dudinka_arrival=forms.DateField(label='Дата прибытия в Дудинку',required=False,widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
+    responsible_hr=forms.CharField(label='Ответственный HR',required=False)
+    agency=forms.CharField(label='Название агентства',required=False)
+    source_fields=('position','construction_site','birth_date','passport','manager_approval','security_approval','skzi_until',
+        'medical_exam','pass_documents','base_city','readiness','dudinka_arrival','responsible_hr','agency')
     class Meta:
         model=TalentPoolCandidate;fields=['full_name','phone','notes','is_active'];widgets={'notes':forms.Textarea(attrs={'rows':3})}
     def __init__(self,*args,company,user,**kwargs):
         super().__init__(*args,**kwargs);self.instance.company=company
         if not self.instance.pk:self.instance.created_by=user
+        source=self.instance.source_data or {}
+        for field in self.source_fields:
+            if field not in self.initial:self.initial[field]=source.get(field,'')
+        self.order_fields(['full_name','position','construction_site','phone','birth_date','passport','base_city','readiness',
+            'dudinka_arrival','manager_approval','security_approval','skzi_until','medical_exam','pass_documents',
+            'responsible_hr','agency','notes','is_active'])
+    def save(self,commit=True):
+        instance=super().save(commit=False);source=dict(instance.source_data or {})
+        for field in self.source_fields:
+            value=self.cleaned_data.get(field)
+            source[field]=value.isoformat() if hasattr(value,'isoformat') else (value or '').strip()
+        source['full_name']=instance.full_name;source['phone']=instance.phone;source['notes']=instance.notes
+        instance.source_data=source
+        if commit:instance.save()
+        return instance
 
 
 class TalentPoolImportForm(forms.Form):

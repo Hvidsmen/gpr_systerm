@@ -327,3 +327,18 @@ class RecruitmentTests(TestCase):
         self.client.force_login(self.recruiter);page=self.client.get(reverse('personnel:recruitment_pool'))
         self.assertContains(page,'Монтажник');self.assertContains(page,'КТП');self.assertContains(page,'Уфа')
         self.assertContains(page,reverse('personnel:recruitment_pool_import'))
+    def test_manual_pool_card_saves_store_fields(self):
+        from .models import TalentPoolCandidate
+        self.client.force_login(self.recruiter)
+        response=self.client.post(reverse('personnel:recruitment_pool_create'),{
+            'full_name':'Ручной Кандидат','position':'Электромонтажник','construction_site':'КТП-2','phone':'89990001122',
+            'birth_date':'1990-02-03','passport':'1234 567890','base_city':'Уфа','readiness':'Готов с 20 ноября',
+            'dudinka_arrival':'2026-11-21','manager_approval':'Согласован','security_approval':'Проверен',
+            'skzi_until':'2027-01-01','medical_exam':'Пройден','pass_documents':'Направлены',
+            'responsible_hr':'Петрова','agency':'Агентство','notes':'Комментарий','is_active':'on'})
+        self.assertRedirects(response,reverse('personnel:recruitment_pool'),fetch_redirect_response=False)
+        row=TalentPoolCandidate.objects.get(full_name='Ручной Кандидат')
+        self.assertEqual(row.source_data['position'],'Электромонтажник');self.assertEqual(row.source_data['construction_site'],'КТП-2')
+        self.assertEqual(row.source_data['birth_date'],'1990-02-03');self.assertEqual(row.source_data['base_city'],'Уфа')
+        page=self.client.get(reverse('personnel:recruitment_pool'))
+        self.assertContains(page,'Электромонтажник');self.assertContains(page,'Все данные кандидата')
