@@ -69,7 +69,11 @@ class RecruitmentTests(TestCase):
         self.assertIsNotNone(prep.movement_request_id)
         self.assertEqual(prep.movement_request.status,'PENDING_APPROVAL')
         self.assertEqual(prep.movement_request.employment_kind,'NEW')
-        self.assertTrue(WorkTask.objects.filter(key=f'personnel-movement-approval:{prep.movement_request_id}',target_role='MANAGER').exists())
+        task=WorkTask.objects.get(key=f'personnel-movement-approval:{prep.movement_request_id}',target_role='MANAGER')
+        manager=User.objects.create_user(username='recruitment-manager',company=self.company,role=Role.objects.get(code='MANAGER'))
+        self.client.force_login(manager)
+        self.assertRedirects(self.client.get(reverse('planning:task_detail',args=[task.pk])),
+            reverse('personnel:movement_review_accept',args=[prep.movement_request_id]),fetch_redirect_response=False)
         self.assertFalse(CampStay.objects.exists())
     def test_new_candidate_with_ready_date_can_be_opened_for_arrival_by_dispatcher(self):
         row=self.row();service.take_request(self.recruiter,row.pk,row.revision)

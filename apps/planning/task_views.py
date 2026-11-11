@@ -122,6 +122,8 @@ class TaskCreate(View):
 class TaskDetail(View):
     def get(self,request,pk):
         task=get_object_or_404(service.visible(request.user).select_related('assigned_to','created_by','construction_object','work'),pk=pk)
+        if task.key.startswith('personnel-movement-approval:'):
+            return redirect('personnel:movement_review_accept',pk=int(task.key.rsplit(':',1)[1]))
         return self.show(request,task)
     def show(self,request,task):
         from .daily_schedule_approval import next_action
