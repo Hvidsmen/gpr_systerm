@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+{% block title %}Администрирование персонала{% endblock %}
+{% block content %}
+<h1>Персонал</h1>
+<p><a href="{% url 'personnel:housing' %}">← В диспетчерскую</a></p>
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3"><div><h2 class="h4">Администрирование персонала</h2><p class="text-muted mb-0">Очистка демонстрационных данных только вашей компании. Справочники сотрудников, проекты, ВЖГ и фактическая история размещения не удаляются.</p></div><span class="badge bg-danger">Только администратор</span></div>
+<div class="alert alert-warning"><strong>Действия необратимы.</strong> Перед очисткой убедитесь, что эти данные больше не нужны для демонстрации.</div>
+<div class="row g-3">
+{% include 'personnel/_admin_cleanup_card.html' with action='pool' title='Пул кандидатов' count=cleanup_counts.pool description='Удаляет всех людей из общего пула. Кандидаты в существующих заявках отвязываются от пула.' %}
+{% include 'personnel/_admin_cleanup_card.html' with action='requests' title='Все заявки персонала' count=cleanup_counts.requests description='Удаляет заявки на подбор, кандидатов заявок, заявки заезда/выезда, рекомендации и заявки изменения графика. Фактические перемещения сохраняются.' %}
+{% include 'personnel/_admin_cleanup_card.html' with action='assignments' title='Все назначения сотрудников' count=cleanup_counts.assignments description='Снимает сотрудников со всех штатных строк и очищает данные назначений. Сами штатные строки, должности и сотрудники остаются.' %}
+</div>
+{% endblock %}

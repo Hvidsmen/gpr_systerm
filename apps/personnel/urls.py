@@ -1,7 +1,9 @@
 from django.urls import path
 from . import views, housing_views, plan_assignments
+from .admin_cleanup import cleanup as admin_cleanup
 app_name='personnel'
 urlpatterns=[
+    path('administration/',admin_cleanup,name='admin_cleanup'),
     path('assignments/create/',plan_assignments.edit,name='plan_assignment_create'),
     path('assignments/<int:pk>/',plan_assignments.edit,name='plan_assignment_edit'),
     path('assignments/<int:pk>/change/',plan_assignments.change,name='plan_assignment_change'),
