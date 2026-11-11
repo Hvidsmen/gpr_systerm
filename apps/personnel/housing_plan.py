@@ -15,11 +15,23 @@ def add_month(month,offset):
     return date(number//12,number%12+1,1)
 
 
-def monthly_plan(user,camp,day,*,camps=None):
+def monthly_plan(user,camp,day,*,camps=None,construction_object=None):
     months=[add_month(day.replace(day=1),offset) for offset in range(5)]
     end=add_month(months[-1],1)-timedelta(days=1)
     selected=camps if camps is not None else [camp]
-    linked=list(ConstructionObject.objects.filter(company=user.company,housing_camps__in=selected).distinct().order_by('name','pk'))
+    linked_query=ConstructionObject.objects.filter(company=user.company,housing_camps__in=selected)
+    if construction_object:
+        # A camp may serve several independent projects (for example OP
+        # Dudinka).  The camp limits the location, while the selected project
+        # limits whose plan is shown.
+        scope={construction_object.pk};pairs=list(ConstructionObject.objects.filter(
+            company=user.company,project=construction_object.project).values_list('pk','parent_id'))
+        while True:
+            children={pk for pk,parent_id in pairs if parent_id in scope}
+            if children<=scope:break
+            scope.update(children)
+        linked_query=linked_query.filter(pk__in=scope)
+    linked=list(linked_query.distinct().order_by('name','pk'))
     catalogue={obj.pk:obj for obj in ConstructionObject.objects.filter(company=user.company)}
     paths={};objects={}
     for obj in linked:

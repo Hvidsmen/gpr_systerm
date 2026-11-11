@@ -28,6 +28,19 @@ class HousingPlanTests(TestCase):
         group=result['housing_plan_groups'][0];self.assertEqual(group['object'],self.parent);self.assertEqual(group['kind'],'ГПР')
         self.assertEqual(group['rows'][0]['values'],[Decimal(10)]*5)
         self.assertEqual(set(group['used_for']),{self.obj.name,self.obj2.name})
+
+    def test_shared_camp_does_not_mix_plans_from_another_project(self):
+        from apps.projects.models import Project
+        from .models import CampObjectLink
+        other_project=Project.objects.create(company=self.company,name='Мостовые переходы')
+        bridge=ConstructionObject.objects.create(company=self.company,project=other_project,name='Мостовые переходы')
+        CampObjectLink.objects.create(company=self.company,camp=self.a,construction_object=bridge)
+        GlobalPlanVersion.objects.create(company=self.company,construction_object=bridge,start_date=self.month,
+            end_date=add_month(self.month,5)-timedelta(days=1),version_number=1,status='APPROVED',snapshot=self.gpr.snapshot)
+        ktp=monthly_plan(self.hr,self.a,self.day,construction_object=self.parent)
+        self.assertEqual({group['object'].project_id for group in ktp['housing_plan_groups']},{self.project.pk})
+        bridges=monthly_plan(self.hr,self.a,self.day,construction_object=bridge)
+        self.assertEqual({group['object'].project_id for group in bridges['housing_plan_groups']},{other_project.pk})
     def test_partial_child_smg_and_parent_gpr_are_separate_without_combined_total(self):
         smg=DailySchedule.objects.create(company=self.company,construction_object=self.obj,month=self.month,status='APPLIED',revision=1,created_by=self.hr)
         DailyScheduleEntry.objects.create(schedule=smg,key='labor:test',kind='labor',label='Монтажник',rows=[{'date':str(self.month+timedelta(days=n)),'brigade_id':self.brigade,'planned_count':'3'} for n in range(monthrange(self.month.year,self.month.month)[1])])

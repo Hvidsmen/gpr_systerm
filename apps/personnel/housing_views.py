@@ -315,7 +315,7 @@ def workspace(request, movements=False, movement_page='new'):
         return render(request,'personnel/_rotation_calendar.html',{'rows':calendar_page.object_list,'day':day,'calendar_start':calendar_start,'calendar_end':calendar_end,'calendar_dates':calendar_dates,'calendar_months':calendar_months,'calendar_page':calendar_page,'calendar_query':calendar_params.urlencode()})
     events=HousingEvent.objects.filter(company=request.user.company).filter(Q(from_camp__in=selected_camps)|Q(to_camp__in=selected_camps)).select_related('person','from_camp','to_camp','recorded_by')[:50]
     from .housing_plan import monthly_plan,position_headers
-    plan_context=monthly_plan(request.user,camp,day,camps=selected_camps)
+    plan_context=monthly_plan(request.user,camp,day,camps=selected_camps,construction_object=values.get('construction_object'))
     position_groups=position_headers(request.user.company,rows,plan_context,query=values.get('q',''),position=values.get('position'),state=values.get('state',''))
     def normalized_position(value):return ' '.join(str(value).split()).casefold()
     recruitment_by_position={}
