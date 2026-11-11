@@ -51,6 +51,7 @@
 </ol>
 {% endif %}
 {% if edit_mode %}
+{% if row.source == 'EXCEL' %}<div class="alert alert-secondary mt-3"><strong>Участок из Excel (оригинал):</strong> {{ row.site|default:'Не указан' }}<div class="small mt-1">Исходное значение не изменяется. По нему проверьте и выберите ниже правильные проект и ВЖГ.</div></div>{% endif %}
 {% if row.status == 'PEREVAKHTA' and not travel_details_complete or perevakhta_data_stage and not travel_details_complete %}<div class="alert alert-warning mt-3 mb-0"><strong>Заполните данные поездки.</strong> Все обязательные поля должны быть заполнены до запуска параллельных согласований.</div>{% endif %}<form method="post" class="mt-3">{% csrf_token %}{% include 'forms/fields.html' with form=form %}<div class="d-flex flex-wrap gap-2">{% if row.status == 'PEREVAKHTA' or perevakhta_data_stage %}<button class="btn btn-primary" name="review_action" value="complete_details">Сохранить данные поездки</button>{% else %}<button class="btn btn-outline-primary" name="review_action" value="save">{% if row.status == 'OPEN' %}Сохранить черновик{% else %}Сохранить изменения{% endif %}</button>{% if row.status == 'OPEN' %}<button class="btn btn-primary" name="review_action" value="confirm">Подтвердить заявку</button>{% endif %}{% endif %}{% if row.status != 'OPEN' %}<a class="btn btn-outline-secondary" href="{% url 'personnel:movement_review_accept' row.pk %}">Отмена</a>{% endif %}</div></form>
 {{ project_camps|json_script:'movement-project-camps' }}<script>document.addEventListener('DOMContentLoaded',()=>{const project=document.querySelector('[name=construction_object]'),camp=document.querySelector('[name=camp]'),data=JSON.parse(document.getElementById('movement-project-camps').textContent),all=Array.from(camp.options);function refresh(){const selected=camp.value,allowed=new Set((data[project.value]||[]).map(String));camp.replaceChildren(...all.filter(option=>!option.value||allowed.has(option.value)));camp.value=Array.from(camp.options).some(option=>option.value===selected)?selected:'';camp.dispatchEvent(new Event('change',{bubbles:true}));}project.addEventListener('change',refresh);refresh();});</script>
 {% else %}
@@ -58,6 +59,7 @@
   <div class="movement-field"><small>Должность ГПР/СМГ</small><strong>{{ row.planning_position_name|default:'—' }}</strong></div>
   <div class="movement-field"><small>Должность сотрудника</small><span>{{ row.position_name|default:'—' }}</span></div>
   <div class="movement-field"><small>Проект</small><span>{{ row.construction_object|default:'—' }}</span></div>
+  {% if row.source == 'EXCEL' %}<div class="movement-field"><small>Участок из Excel (оригинал)</small><strong>{{ row.site|default:'—' }}</strong></div>{% endif %}
   <div class="movement-field"><small>ВЖГ</small><span>{% if row.kind == 'ARRIVAL' %}{{ row.to_camp|default:'—' }}{% else %}{{ row.from_camp|default:'—' }}{% endif %}</span></div>
   <div class="movement-field"><small>№ заявки</small><span>{{ row.request_number|default:'—' }}</span></div>
   <div class="movement-field"><small>Базовый город</small><span>{{ row.base_city|default:'—' }}</span></div>

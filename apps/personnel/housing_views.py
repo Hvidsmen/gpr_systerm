@@ -487,15 +487,23 @@ def movement_review_accept(request,pk):
             camp=form.cleaned_data.get('camp')
             if locked.kind=='ARRIVAL':locked.to_camp=camp
             else:locked.from_camp=camp
-            if locked.site_object_id:locked.site=locked.site_object.name
+            # ``site`` is the literal value imported from the workbook.  It is
+            # evidence for the perevakhta operator and must not be overwritten
+            # when the operator selects the normalized project and WJG.
+            if locked.source!='EXCEL' and locked.site_object_id:locked.site=locked.site_object.name
             selected_city=form.cleaned_data.get('base_city_choice');new_city=form.cleaned_data.get('new_base_city','')
             if new_city:
                 from .models import BaseCity
                 selected_city=BaseCity.objects.filter(company=request.user.company,name__iexact=new_city).first() or BaseCity.objects.create(company=request.user.company,name=new_city)
             if selected_city:locked.base_city=selected_city.name
             submit_own_draft=confirm and locked.status=='OPEN' and locked.source=='DISPATCHER' and locked.requested_by_id==request.user.pk
+            accept_excel=confirm and locked.status=='OPEN' and locked.source=='EXCEL'
             if submit_own_draft:
                 locked.status='PENDING_APPROVAL';locked.reviewed_by=request.user;locked.reviewed_at=timezone.now()
+            elif accept_excel:
+                # Excel rows are approved outside the portal.  Once checked,
+                # they enter the same factual route at the perevakhta stage.
+                locked.status='PEREVAKHTA';locked.reviewed_by=request.user;locked.reviewed_at=timezone.now()
             elif confirm:
                 locked.status='ACCEPTED';locked.reviewed_by=request.user;locked.reviewed_at=timezone.now()
             locked.save()
@@ -504,10 +512,13 @@ def movement_review_accept(request,pk):
             log(locked,request.user,'Черновик заполнен и подтверждён')
             siblings=MovementReviewRequest.objects.filter(company=request.user.company,approval_batch=locked.approval_batch,status='OPEN') if locked.approval_batch else MovementReviewRequest.objects.none()
             if not siblings.exists():create_approval(locked)
+        elif accept_excel:
+            from .departure_workflow import log
+            log(locked,request.user,'Excel-заявка проверена','Согласование пройдено вне портала. Передано специалисту перевахты.')
         if complete_details:
             from .departure_workflow import log
             log(locked,request.user,'Данные поездки заполнены')
-        messages.success(request,'Данные поездки заполнены. Можно переходить к фактическому маршруту.' if complete_details else 'Заявка отправлена на согласование.' if submit_own_draft else 'Заявка перевахты подтверждена.' if confirm else 'Данные заявки сохранены.')
+        messages.success(request,'Данные поездки заполнены. Можно переходить к фактическому маршруту.' if complete_details else 'Заявка отправлена на согласование.' if submit_own_draft else 'Excel-заявка проверена и передана в перевахту.' if accept_excel else 'Заявка перевахты подтверждена.' if confirm else 'Данные заявки сохранены.')
         if complete_details:
             from apps.planning.models import WorkTask
             task=WorkTask.objects.filter(company=request.user.company,key=approval_task_key(locked)).first()
