@@ -72,8 +72,15 @@ class RecruitmentTests(TestCase):
         task=WorkTask.objects.get(key=f'personnel-movement-approval:{prep.movement_request_id}',target_role='MANAGER')
         manager=User.objects.create_user(username='recruitment-manager',company=self.company,role=Role.objects.get(code='MANAGER'))
         self.client.force_login(manager)
-        self.assertRedirects(self.client.get(reverse('planning:task_detail',args=[task.pk])),
-            reverse('personnel:movement_review_accept',args=[prep.movement_request_id]),fetch_redirect_response=False)
+        task_page=self.client.get(reverse('planning:task_detail',args=[task.pk]))
+        self.assertEqual(task_page.status_code,200)
+        self.assertContains(task_page,'Сотрудники в заявке')
+        self.assertContains(task_page,prep.movement_request.person.display_name)
+        self.assertContains(task_page,'Согласовать выбранных')
+        self.client.post(reverse('planning:task_detail',args=[task.pk]),{
+            'action':'movement_approve_selected','selected':[prep.movement_request_id]})
+        prep.movement_request.refresh_from_db()
+        self.assertEqual(prep.movement_request.approval_route['MANAGER']['status'],'APPROVED')
         self.assertFalse(CampStay.objects.exists())
     def test_dispatcher_can_create_one_arrival_batch_from_selected_candidates(self):
         from apps.planning.models import WorkTask

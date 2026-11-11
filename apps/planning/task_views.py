@@ -30,9 +30,7 @@ class CreateForm(forms.Form):
 
 
 def link(task):
-    if task.key.startswith('personnel-movement-batch:'):return None
-    if task.key.startswith('personnel-movement-approval:'):
-        return reverse('personnel:movement_review_accept',args=[int(task.key.rsplit(':',1)[1])])
+    if task.key.startswith(('personnel-movement-batch:','personnel-movement-approval:')):return None
     if task.key.startswith('zup-schedule-change:'):
         from apps.personnel.models import ScheduleChangeRequest
         row=ScheduleChangeRequest.objects.filter(company=task.company,task_key=task.key).first()
@@ -122,21 +120,22 @@ class TaskCreate(View):
 class TaskDetail(View):
     def get(self,request,pk):
         task=get_object_or_404(service.visible(request.user).select_related('assigned_to','created_by','construction_object','work'),pk=pk)
-        if task.key.startswith('personnel-movement-approval:'):
-            return redirect('personnel:movement_review_accept',pk=int(task.key.rsplit(':',1)[1]))
         return self.show(request,task)
     def show(self,request,task):
         from .daily_schedule_approval import next_action
         from apps.production.dispatch import LABELS,required_fact_sections
         required=required_fact_sections(task.assigned_to)
         next_label=('Открыть актуализацию СМГ' if task.schedule_id else 'Создать актуализацию СМГ') if task.key.startswith('smg-update:') else next_action(task.schedule) if task.kind=='SUBMISSION' and task.schedule_id else ''
-        movement_batch=task.key.startswith('personnel-movement-batch:')
+        movement_batch=task.key.startswith(('personnel-movement-batch:','personnel-movement-approval:'))
         movement_rows=[]
         if movement_batch:
             from apps.personnel.models import MovementReviewRequest
             from apps.personnel.departure_workflow import active_route_roles,route_summary,travel_details_complete
             from django.template.loader import render_to_string
-            movement_rows=MovementReviewRequest.objects.filter(company=request.user.company,approval_batch=task.key.split(':',1)[1]).select_related('person','from_camp','to_camp').order_by('person__full_name','pk')
+            movement_rows=MovementReviewRequest.objects.filter(company=request.user.company)
+            if task.key.startswith('personnel-movement-batch:'):movement_rows=movement_rows.filter(approval_batch=task.key.split(':',1)[1])
+            else:movement_rows=movement_rows.filter(pk=task.key.rsplit(':',1)[1])
+            movement_rows=movement_rows.select_related('person','from_camp','to_camp').order_by('person__full_name','pk')
             for row in movement_rows:
                 row.route_steps=route_summary(row)
                 row.route_parallel_approved=sum(step['status']=='APPROVED' for step in row.route_steps[3:])

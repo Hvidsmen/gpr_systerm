@@ -195,9 +195,12 @@ def decide(user,row,approved,comment='',sync_task=True):
 @transaction.atomic
 def decide_many(user,task,ids,approved,comment='',all_pending=False):
     if role_code(user)!='ADMIN' and role_code(user) not in task_route_roles(task):raise PermissionDenied('Сейчас решение ожидается от другой роли.')
-    if not task.key.startswith('personnel-movement-batch:'):raise ValidationError('Это не пакетное согласование перевахты.')
-    batch=task.key.split(':',1)[1]
-    query=MovementReviewRequest.objects.select_for_update().filter(company=user.company,approval_batch=batch,status__in=['PENDING_APPROVAL','RETURNED'])
+    query=MovementReviewRequest.objects.select_for_update().filter(company=user.company,status__in=['PENDING_APPROVAL','RETURNED'])
+    if task.key.startswith('personnel-movement-batch:'):
+        query=query.filter(approval_batch=task.key.split(':',1)[1])
+    elif task.key.startswith('personnel-movement-approval:'):
+        query=query.filter(pk=task.key.rsplit(':',1)[1])
+    else:raise ValidationError('Это не согласование заезда или выезда.')
     if not all_pending:
         selected={int(value) for value in ids if str(value).isdigit()}
         if not selected:raise ValidationError('Выберите хотя бы одного сотрудника.')
