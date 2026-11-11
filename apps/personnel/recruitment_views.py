@@ -155,6 +155,19 @@ def candidate_handoff(request,pk):
 
 
 @login_required
+@require_POST
+def bulk_arrival_handoff(request):
+    require_roles(request.user,service.DISPATCH)
+    try:
+        batch,preparations=service.bulk_prepare_arrivals(request.user,request.POST.getlist('selected'))
+    except (ValidationError,IntegrityError) as exc:
+        messages.error(request,'; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Данные изменились. Обновите страницу.')
+        return redirect('personnel:new_employee_arrivals')
+    messages.success(request,f'Создана единая заявка на заезд: {len(preparations)} сотрудников.')
+    return redirect('personnel:my_movement_requests')
+
+
+@login_required
 @require_GET
 def document_download(request,pk):
     require_roles(request.user,service.READ)

@@ -1,5 +1,6 @@
 """Company-scoped transitions. Company serialization also works with SQLite."""
 from pathlib import Path
+from uuid import uuid4
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import F
@@ -174,7 +175,7 @@ def handoff(user, candidate_id, revision):
 
 
 @transaction.atomic
-def prepare_arrival(user, pk, revision, values, *, confirm=False, workflow=False):
+def prepare_arrival(user, pk, revision, values, *, confirm=False, workflow=False, approval_batch=None):
     serialize(user,DISPATCH)
     prep=ArrivalPreparation.objects.get(company=user.company,pk=pk)
     row=current(user,prep.candidate.request_id)
@@ -199,7 +200,8 @@ def prepare_arrival(user, pk, revision, values, *, confirm=False, workflow=False
         request=MovementReviewRequest.objects.create(company=user.company,person=person,kind='ARRIVAL',movement_date=prep.expected_on,to_camp=prep.camp,
             requested_by=user,source='DISPATCHER',status='PENDING_APPROVAL',employment_kind='NEW',planning_position_name=row.position,
             position_name=prep.employee.display_position if prep.employee_id else row.position,construction_object=row.construction_object,site_object=row.construction_object,
-            site=row.construction_object.name,phone=(prep.employee.phone if prep.employee_id else '') or prep.candidate.phone,travel_status='Ожидается',note=f'Кандидат из Магазина подбора. Заявка №{row.pk}. '+prep.notes)
+            site=row.construction_object.name,phone=(prep.employee.phone if prep.employee_id else '') or prep.candidate.phone,travel_status='Ожидается',
+            approval_batch=approval_batch,note=f'Кандидат из Магазина подбора. Заявка №{row.pk}. '+prep.notes)
         prep.movement_request=request
         from .departure_workflow import create_approval,log
         create_approval(request);log(request,user,'Кандидат из Магазина подбора отправлен на согласование руководителю')
@@ -221,6 +223,34 @@ def prepare_arrival(user, pk, revision, values, *, confirm=False, workflow=False
     prep.revision+=1;prep.save();touch(row)
     audit(user,row,'Заезд отправлен на согласование руководителю.' if workflow else 'Фактический заезд подтверждён.' if confirm else 'Подготовка заезда обновлена.',prep.candidate)
     return prep
+
+
+@transaction.atomic
+def bulk_prepare_arrivals(user, candidate_ids):
+    """Create one approval batch from several ready recruitment candidates."""
+    serialize(user,DISPATCH)
+    try:ids=list(dict.fromkeys(int(value) for value in candidate_ids))
+    except (TypeError,ValueError):raise ValidationError('Некорректный список кандидатов.')
+    if not ids:raise ValidationError('Выберите хотя бы одного кандидата.')
+    candidates=list(RecruitmentCandidate.objects.select_for_update().select_related(
+        'request__construction_object','arrival__camp','arrival__employee').filter(company=user.company,pk__in=ids))
+    if len(candidates)!=len(ids):raise ValidationError('Один из выбранных кандидатов больше недоступен.')
+    by_id={candidate.pk:candidate for candidate in candidates};batch=uuid4();prepared=[]
+    for candidate_id in ids:
+        candidate=by_id[candidate_id]
+        if candidate.status in {'REJECTED','WITHDRAWN'} or not candidate.ready_on:
+            raise ValidationError(f'{candidate.full_name}: кандидат не готов к оформлению заезда.')
+        prep=handoff(user,candidate.pk,candidate.revision)
+        if prep.movement_request_id:raise ValidationError(f'{candidate.full_name}: заявка на заезд уже создана.')
+        camp=prep.camp
+        if not camp:
+            camps=list(allowed_camps(user.company,candidate.request.construction_object)[:2])
+            if len(camps)!=1:
+                raise ValidationError(f'{candidate.full_name}: нельзя однозначно определить ВЖГ. Оформите заезд отдельно.')
+            camp=camps[0]
+        values={'expected_on':prep.expected_on,'camp':camp,'employee':prep.employee,'notes':prep.notes,'actual_on':None}
+        prepared.append(prepare_arrival(user,prep.pk,prep.revision,values,workflow=True,approval_batch=batch))
+    return batch,prepared
 
 
 @transaction.atomic

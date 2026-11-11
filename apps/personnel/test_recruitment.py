@@ -75,6 +75,27 @@ class RecruitmentTests(TestCase):
         self.assertRedirects(self.client.get(reverse('planning:task_detail',args=[task.pk])),
             reverse('personnel:movement_review_accept',args=[prep.movement_request_id]),fetch_redirect_response=False)
         self.assertFalse(CampStay.objects.exists())
+    def test_dispatcher_can_create_one_arrival_batch_from_selected_candidates(self):
+        from apps.planning.models import WorkTask
+        row=self.row();service.take_request(self.recruiter,row.pk,row.revision)
+        candidates=[]
+        for number in (1,2):
+            candidates.append(service.save_candidate(self.recruiter,row.pk,{
+                'pool_candidate':None,'full_name':f'Новый кандидат {number}','phone':f'8999000000{number}',
+                'status':'READY','ready_on':self.day,'notes':'','documents':[]},revision=0,files=[]))
+        self.client.force_login(self.dispatch)
+        page=self.client.get(reverse('personnel:new_employee_arrivals'))
+        self.assertContains(page,'Оформить выбранных одной заявкой')
+        response=self.client.post(reverse('personnel:recruitment_arrival_bulk'),{
+            'selected':[candidate.pk for candidate in candidates]})
+        self.assertRedirects(response,reverse('personnel:my_movement_requests'),fetch_redirect_response=False)
+        preparations=list(ArrivalPreparation.objects.filter(candidate__in=candidates).select_related('movement_request'))
+        self.assertEqual(len(preparations),2)
+        batches={prep.movement_request.approval_batch for prep in preparations}
+        self.assertEqual(len(batches),1);self.assertNotIn(None,batches)
+        batch=batches.pop()
+        self.assertEqual(WorkTask.objects.filter(key=f'personnel-movement-batch:{batch}').count(),1)
+        self.assertFalse(RecruitmentCandidate.objects.filter(pk__in=[candidate.pk for candidate in candidates],arrival__movement_request__isnull=True).exists())
     def test_new_candidate_with_ready_date_can_be_opened_for_arrival_by_dispatcher(self):
         row=self.row();service.take_request(self.recruiter,row.pk,row.revision)
         candidate=service.save_candidate(self.recruiter,row.pk,{
