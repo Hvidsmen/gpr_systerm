@@ -127,17 +127,7 @@ def workspace(request, movements=False, movement_page='new'):
     template = 'personnel/housing_movements.html' if movements else 'personnel/housing.html'
     extra = {**movement_context(request),'dispatcher_page':movement_page,'movement_page':movement_page} if movements else {'personnel_section':'management','personnel_today_only':True}
     if not movements:
-        from django.db.models import Prefetch
-        from .models import RecruitmentRequest,RecruitmentCandidate
-        candidates=RecruitmentCandidate.objects.select_related('request','arrival__movement_request','arrival__camp').order_by('created_at','pk')
-        recruitment_requests=list(RecruitmentRequest.objects.filter(company=request.user.company,cancelled_at__isnull=True).select_related(
-            'construction_object','assigned_to').prefetch_related(Prefetch('candidates',queryset=candidates)).order_by('required_on','pk'))
-        for recruitment in recruitment_requests:
-            recruitment.arrival_started_count=sum(1 for candidate in recruitment.candidates.all()
-                if getattr(candidate,'arrival',None) and candidate.arrival.status!='CANCELLED')
-        extra['recruitment_requests']=recruitment_requests
-        extra['new_arrival_recommendations']=[candidate for row in recruitment_requests for candidate in row.candidates.all()
-            if candidate.ready_on and candidate.status not in {'REJECTED','WITHDRAWN'} and not getattr(getattr(candidate,'arrival',None),'movement_request_id',None)]
+        extra.update(recruitment_dispatch_data(request.user.company))
     from .rotation import RotationFilter,normalize_rotation_filter_data,rotation_project_camps,rotation_rows
     extra['rotation_project_camps']=rotation_project_camps(request.user.company)
     raw=(request.GET if request.method=='GET' else request.POST).copy()
@@ -715,13 +705,37 @@ def movement_context(request):
     from .models import ArrivalPreparation
     from django.core.paginator import Paginator
     rows=ArrivalPreparation.objects.filter(company=request.user.company,candidate__request__cancelled_at__isnull=True,status__in=['EXPECTED','ARRIVED']).filter(Q(actual_stay__isnull=True)|Q(actual_stay__cancelled_at__isnull=False)).select_related('candidate__request__construction_object','camp','employee','actual_stay').order_by('expected_on','pk')
-    return {'personnel_section':'movements','arrival_queue':Paginator(rows,25).get_page(request.GET.get('arrivals_page'))}
+    return {'personnel_section':'movements','arrival_queue':Paginator(rows,25).get_page(request.GET.get('arrivals_page')),
+        'new_employee_recommendation_count':len(recruitment_dispatch_data(request.user.company)['new_arrival_recommendations'])}
+
+
+def recruitment_dispatch_data(company):
+    from django.db.models import Prefetch
+    from .models import RecruitmentRequest,RecruitmentCandidate
+    candidates=RecruitmentCandidate.objects.select_related('request','arrival__movement_request','arrival__camp').order_by('created_at','pk')
+    requests=list(RecruitmentRequest.objects.filter(company=company,cancelled_at__isnull=True).select_related(
+        'construction_object','assigned_to').prefetch_related(Prefetch('candidates',queryset=candidates)).order_by('required_on','pk'))
+    for row in requests:
+        row.arrival_started_count=sum(1 for candidate in row.candidates.all()
+            if getattr(candidate,'arrival',None) and candidate.arrival.status!='CANCELLED')
+    recommendations=[candidate for row in requests for candidate in row.candidates.all()
+        if candidate.ready_on and candidate.status not in {'REJECTED','WITHDRAWN'} and not getattr(getattr(candidate,'arrival',None),'movement_request_id',None)]
+    return {'recruitment_requests':requests,'new_arrival_recommendations':recommendations,
+        'new_employee_recommendation_count':len(recommendations)}
 
 
 @login_required
 @require_http_methods(['GET','POST'])
 def movements(request):
     return workspace(request,movements=True,movement_page='new')
+
+
+@login_required
+@require_http_methods(['GET'])
+def new_employee_arrivals(request):
+    movement_access(request)
+    return render(request,'personnel/new_employee_arrivals.html',{
+        'personnel_section':'movements','dispatcher_page':'new_employees',**recruitment_dispatch_data(request.user.company)})
 
 
 @login_required

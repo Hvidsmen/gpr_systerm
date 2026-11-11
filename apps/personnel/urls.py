@@ -69,6 +69,7 @@ from . import recruitment_views as recruitment
 urlpatterns += [
     path('movements/arrivals/', housing_views.arrivals, name='arrivals'),
     path('movements/departures/', housing_views.departures, name='departures'),
+    path('movements/new-employees/',housing_views.new_employee_arrivals,name='new_employee_arrivals'),
     path('movements/', housing_views.movements, name='movements'),
     path('movements/my-requests/',housing_views.my_movement_requests,name='my_movement_requests'),
     path('recruitment/', recruitment.request_list, name='recruitment_list'),
