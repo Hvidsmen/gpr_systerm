@@ -227,13 +227,13 @@ def prepare_arrival(user, pk, revision, values, *, confirm=False, workflow=False
 
 @transaction.atomic
 def bulk_prepare_arrivals(user, candidate_ids):
-    """Create one approval batch from several ready recruitment candidates."""
+    """Create a persistent draft; approval starts only after the dispatcher fills it."""
     serialize(user,DISPATCH)
     try:ids=list(dict.fromkeys(int(value) for value in candidate_ids))
     except (TypeError,ValueError):raise ValidationError('Некорректный список кандидатов.')
     if not ids:raise ValidationError('Выберите хотя бы одного кандидата.')
     candidates=list(RecruitmentCandidate.objects.select_for_update().select_related(
-        'request__construction_object','arrival__camp','arrival__employee').filter(company=user.company,pk__in=ids))
+        'request__construction_object','arrival__camp','arrival__employee','pool_candidate').filter(company=user.company,pk__in=ids))
     if len(candidates)!=len(ids):raise ValidationError('Один из выбранных кандидатов больше недоступен.')
     by_id={candidate.pk:candidate for candidate in candidates};batch=uuid4();prepared=[]
     for candidate_id in ids:
@@ -242,15 +242,47 @@ def bulk_prepare_arrivals(user, candidate_ids):
             raise ValidationError(f'{candidate.full_name}: кандидат не готов к оформлению заезда.')
         prep=handoff(user,candidate.pk,candidate.revision)
         if prep.movement_request_id:raise ValidationError(f'{candidate.full_name}: заявка на заезд уже создана.')
-        camp=prep.camp
-        if not camp:
-            camps=list(allowed_camps(user.company,candidate.request.construction_object)[:2])
-            if len(camps)!=1:
-                raise ValidationError(f'{candidate.full_name}: нельзя однозначно определить ВЖГ. Оформите заезд отдельно.')
-            camp=camps[0]
-        values={'expected_on':prep.expected_on,'camp':camp,'employee':prep.employee,'notes':prep.notes,'actual_on':None}
-        prepared.append(prepare_arrival(user,prep.pk,prep.revision,values,workflow=True,approval_batch=batch))
+        row=candidate.request
+        from . import housing
+        person=housing.person_for(prep.employee) if prep.employee_id else Person.objects.create(company=user.company,
+            full_name=candidate.full_name,phone=candidate.phone)
+        source=candidate.pool_candidate.source_data if candidate.pool_candidate_id else {}
+        request=MovementReviewRequest.objects.create(company=user.company,person=person,kind='ARRIVAL',movement_date=prep.expected_on,
+            to_camp=prep.camp,requested_by=user,source='DISPATCHER',status='OPEN',employment_kind='NEW',approval_batch=batch,
+            planning_position_name=row.position,position_name=row.position,construction_object=row.construction_object,
+            site_object=row.construction_object,site=row.construction_object.name,base_city=source.get('base_city',''),
+            phone=(prep.employee.phone if prep.employee_id else '') or candidate.phone,travel_status='Черновик',
+            note=f'Кандидат из Магазина подбора. Заявка №{row.pk}. '+prep.notes)
+        prep.movement_request=request;prep.save(update_fields=['movement_request','updated_at']);prepared.append(prep)
+        audit(user,row,'Создан черновик пакетной заявки на заезд.',candidate)
     return batch,prepared
+
+
+@transaction.atomic
+def save_bulk_arrival_draft(user,batch,construction_object,camp,row_values,submit=False):
+    serialize(user,DISPATCH)
+    requests=list(MovementReviewRequest.objects.select_for_update().filter(company=user.company,requested_by=user,
+        approval_batch=batch,kind='ARRIVAL').select_related('person').order_by('pk'))
+    if not requests:raise ValidationError('Черновик пакетной заявки не найден.')
+    if any(row.status!='OPEN' for row in requests):raise ValidationError('Заявка уже отправлена на согласование.')
+    if construction_object and camp and not allowed_camps(user.company,construction_object).filter(pk=camp.pk).exists():
+        raise ValidationError('Выбранный ВЖГ не относится к указанному проекту.')
+    for row in requests:
+        values=row_values[row.pk]
+        row.construction_object=construction_object;row.site_object=construction_object
+        row.site=construction_object.name if construction_object else ''
+        row.to_camp=camp;row.planning_position_name=values.get('planning_position_name','')
+        row.position_name=values.get('position_name','');row.base_city=values.get('base_city','')
+        row.phone=values.get('phone','');row.movement_date=values.get('movement_date') or row.movement_date
+        row.planned_hub_departure_date=values.get('planned_hub_departure_date');row.note=values.get('note','')
+        row.travel_status='Ожидается' if submit else 'Черновик';row.status='PENDING_APPROVAL' if submit else 'OPEN'
+        row.save()
+        ArrivalPreparation.objects.filter(movement_request=row).update(camp=camp,expected_on=row.movement_date)
+    if submit:
+        from .departure_workflow import create_approval,log
+        for row in requests:
+            create_approval(row);log(row,user,'Пакетная заявка на заезд отправлена на согласование')
+    return requests
 
 
 @transaction.atomic

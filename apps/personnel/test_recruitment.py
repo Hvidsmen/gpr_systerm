@@ -95,13 +95,30 @@ class RecruitmentTests(TestCase):
         self.assertContains(page,'Оформить выбранных одной заявкой')
         response=self.client.post(reverse('personnel:recruitment_arrival_bulk'),{
             'selected':[candidate.pk for candidate in candidates]})
-        self.assertRedirects(response,reverse('personnel:my_movement_requests'),fetch_redirect_response=False)
         preparations=list(ArrivalPreparation.objects.filter(candidate__in=candidates).select_related('movement_request'))
         self.assertEqual(len(preparations),2)
         batches={prep.movement_request.approval_batch for prep in preparations}
         self.assertEqual(len(batches),1);self.assertNotIn(None,batches)
         batch=batches.pop()
+        self.assertRedirects(response,reverse('personnel:recruitment_arrival_bulk_edit',args=[batch]),fetch_redirect_response=False)
+        self.assertEqual(WorkTask.objects.filter(key=f'personnel-movement-batch:{batch}').count(),0)
+        draft=self.client.get(reverse('personnel:recruitment_arrival_bulk_edit',args=[batch]))
+        self.assertContains(draft,'Общие данные для всех сотрудников');self.assertContains(draft,'Сохранить черновик')
+        mine=self.client.get(reverse('personnel:my_movement_requests'))
+        self.assertContains(mine,'Черновик');self.assertContains(mine,'Продолжить заполнение')
+        payload={'action':'submit','construction_object':self.obj.pk,'camp':self.camp.pk}
+        for prep in preparations:
+            request_id=prep.movement_request_id
+            payload.update({f'row-{request_id}-planning_position_name':'Монтажник',f'row-{request_id}-position_name':'Монтажник',
+                f'row-{request_id}-base_city':'Уфа',f'row-{request_id}-phone':prep.candidate.phone,
+                f'row-{request_id}-movement_date':self.day.isoformat(),f'row-{request_id}-planned_hub_departure_date':self.day.isoformat(),
+                f'row-{request_id}-note':''})
+        submitted=self.client.post(reverse('personnel:recruitment_arrival_bulk_edit',args=[batch]),payload)
+        self.assertRedirects(submitted,reverse('personnel:my_movement_requests'),fetch_redirect_response=False)
         self.assertEqual(WorkTask.objects.filter(key=f'personnel-movement-batch:{batch}').count(),1)
+        for prep in preparations:
+            prep.movement_request.refresh_from_db();self.assertEqual(prep.movement_request.status,'PENDING_APPROVAL')
+            self.assertEqual(prep.movement_request.to_camp,self.camp);self.assertEqual(prep.movement_request.construction_object,self.obj)
         self.assertFalse(RecruitmentCandidate.objects.filter(pk__in=[candidate.pk for candidate in candidates],arrival__movement_request__isnull=True).exists())
     @patch('apps.personnel.movement_recommendations.build')
     def test_new_employee_tab_keeps_arrival_and_departure_navigation_counts(self,build):

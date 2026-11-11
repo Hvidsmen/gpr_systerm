@@ -8,9 +8,10 @@ from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_http_methods, require_POST, require_GET
 from core.permissions import require_roles, role_code
-from .models import RecruitmentRequest, RecruitmentCandidate, ArrivalPreparation, CandidateDocument,TalentPoolCandidate
+from .models import RecruitmentRequest,RecruitmentCandidate,ArrivalPreparation,CandidateDocument,TalentPoolCandidate,MovementReviewRequest
 from . import recruitment as service
-from .recruitment_forms import RequestForm, CandidateForm, ArrivalForm, RevisionForm, ReasonForm,TalentPoolForm,TalentPoolImportForm
+from .recruitment_forms import (RequestForm,CandidateForm,ArrivalForm,RevisionForm,ReasonForm,TalentPoolForm,
+    TalentPoolImportForm,BulkArrivalCommonForm,BulkArrivalRowForm)
 
 
 def requests_for(user):
@@ -163,8 +164,41 @@ def bulk_arrival_handoff(request):
     except (ValidationError,IntegrityError) as exc:
         messages.error(request,'; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Данные изменились. Обновите страницу.')
         return redirect('personnel:new_employee_arrivals')
-    messages.success(request,f'Создана единая заявка на заезд: {len(preparations)} сотрудников.')
-    return redirect('personnel:my_movement_requests')
+    messages.success(request,f'Создан черновик пакетной заявки: {len(preparations)} сотрудников. Заполните обязательные данные.')
+    return redirect('personnel:recruitment_arrival_bulk_edit',batch=batch)
+
+
+@login_required
+@require_http_methods(['GET','POST'])
+def bulk_arrival_edit(request,batch):
+    require_roles(request.user,service.DISPATCH)
+    rows=list(MovementReviewRequest.objects.filter(company=request.user.company,requested_by=request.user,
+        approval_batch=batch,kind='ARRIVAL').select_related('person','construction_object','to_camp').order_by('person__full_name','pk'))
+    if not rows:raise Http404('Черновик пакетной заявки не найден.')
+    submitted=any(row.status!='OPEN' for row in rows)
+    action=request.POST.get('action') if request.method=='POST' else ''
+    confirm=action=='submit'
+    initial_object=rows[0].construction_object_id if len({row.construction_object_id for row in rows})==1 else None
+    initial_camp=rows[0].to_camp_id if len({row.to_camp_id for row in rows})==1 else None
+    common=BulkArrivalCommonForm(request.POST if request.method=='POST' else None,company=request.user.company,required=confirm,
+        initial={'construction_object':initial_object,'camp':initial_camp})
+    row_forms=[]
+    for row in rows:
+        initial={'planning_position_name':row.planning_position_name,'position_name':row.position_name,'base_city':row.base_city,
+            'phone':row.phone,'movement_date':row.movement_date,'planned_hub_departure_date':row.planned_hub_departure_date,'note':row.note}
+        row_forms.append((row,BulkArrivalRowForm(request.POST if request.method=='POST' else None,prefix=f'row-{row.pk}',required=confirm,initial=initial)))
+    if request.method=='POST' and not submitted:
+        valid=common.is_valid() and all(form.is_valid() for _,form in row_forms)
+        if valid:
+            try:service.save_bulk_arrival_draft(request.user,batch,common.cleaned_data['construction_object'],common.cleaned_data['camp'],
+                {row.pk:form.cleaned_data for row,form in row_forms},submit=confirm)
+            except (ValidationError,IntegrityError) as exc:messages.error(request,'; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Данные изменились. Обновите страницу.')
+            else:
+                messages.success(request,'Пакетная заявка отправлена на согласование.' if confirm else 'Черновик сохранён.')
+                if confirm:return redirect('personnel:my_movement_requests')
+                return redirect('personnel:recruitment_arrival_bulk_edit',batch=batch)
+    return render(request,'personnel/recruitment_arrival_bulk.html',{**context(request.user),'personnel_section':'movements',
+        'batch':batch,'rows':rows,'common_form':common,'row_forms':row_forms,'submitted':submitted})
 
 
 @login_required

@@ -795,7 +795,9 @@ def my_movement_requests(request):
         group['items'].append(row)
     for group in grouped.values():
         statuses={row.status for row in group['items']}
-        if 'RETURNED' in statuses:group['status']='Требует доработки';group['status_class']='bg-danger'
+        group['is_draft']=group['is_batch'] and group['kind']=='ARRIVAL' and statuses=={'OPEN'}
+        if group['is_draft']:group['status']='Черновик';group['status_class']='bg-secondary'
+        elif 'RETURNED' in statuses:group['status']='Требует доработки';group['status_class']='bg-danger'
         elif 'PENDING_APPROVAL' in statuses:group['status']='На согласовании';group['status_class']='bg-warning text-dark'
         elif statuses <= {'COMPLETED','ACCEPTED'}:group['status']='Завершено';group['status_class']='bg-success'
         elif statuses == {'CANCELLED'}:group['status']='Отменено';group['status_class']='bg-secondary'

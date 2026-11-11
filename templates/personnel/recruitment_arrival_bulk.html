@@ -1,0 +1,14 @@
+{% extends 'personnel/recruitment_base.html' %}
+{% block title %}Пакетный заезд · черновик{% endblock %}
+{% block recruitment_content %}
+<p><a href="{% url 'personnel:new_employee_arrivals' %}">← Новые сотрудники</a></p>
+<div class="d-flex justify-content-between align-items-start gap-2 mb-3"><div><h2 class="h4 mb-1">Пакетная заявка на заезд</h2><p class="text-muted mb-0">Черновик · {{ rows|length }} сотрудников. Руководители увидят заявку только после отправки.</p></div><span class="badge {% if submitted %}bg-success{% else %}bg-secondary{% endif %}">{% if submitted %}Отправлена{% else %}Черновик{% endif %}</span></div>
+<form method="post">{% csrf_token %}
+  {% if common_form.non_field_errors %}<div class="alert alert-danger">{{ common_form.non_field_errors }}</div>{% endif %}
+  <div class="card card-body mb-3"><h3 class="h6">Общие данные для всех сотрудников</h3><div class="row g-3"><div class="col-md-6"><label class="form-label" for="{{ common_form.construction_object.id_for_label }}">{{ common_form.construction_object.label }}</label>{{ common_form.construction_object }}{{ common_form.construction_object.errors }}</div><div class="col-md-6"><label class="form-label" for="{{ common_form.camp.id_for_label }}">{{ common_form.camp.label }}</label>{{ common_form.camp }}{{ common_form.camp.errors }}</div></div></div>
+  <div class="card card-body"><h3 class="h6">Сотрудники</h3><div class="table-responsive"><table class="table table-sm align-middle"><thead><tr><th>Сотрудник</th><th>Должность по заявке</th><th>Должность сотрудника</th><th>Базовый город</th><th>Телефон</th><th>Прибытие в ОП Дудинка</th><th>Выезд из ОП Дудинка</th><th>Комментарий</th></tr></thead><tbody>
+  {% for row, form in row_forms %}<tr><td style="min-width:13rem"><strong>{{ row.person.display_name }}</strong><small class="d-block text-muted">№ {{ row.request_number }}</small>{% if form.non_field_errors %}<div class="text-danger small">{{ form.non_field_errors }}</div>{% endif %}</td><td style="min-width:13rem">{{ form.planning_position_name }}{{ form.planning_position_name.errors }}</td><td style="min-width:13rem">{{ form.position_name }}{{ form.position_name.errors }}</td><td style="min-width:11rem">{{ form.base_city }}{{ form.base_city.errors }}</td><td style="min-width:11rem">{{ form.phone }}{{ form.phone.errors }}</td><td style="min-width:11rem">{{ form.movement_date }}{{ form.movement_date.errors }}</td><td style="min-width:11rem">{{ form.planned_hub_departure_date }}{{ form.planned_hub_departure_date.errors }}</td><td style="min-width:14rem">{{ form.note }}{{ form.note.errors }}</td></tr>{% endfor %}
+  </tbody></table></div></div>
+  {% if not submitted %}<div class="d-flex flex-wrap gap-2 mt-3"><button class="btn btn-outline-primary" name="action" value="save">Сохранить черновик</button><button class="btn btn-primary" name="action" value="submit">Отправить пакет на согласование</button></div>{% endif %}
+</form>
+{% endblock %}

@@ -2,7 +2,7 @@ from django import forms
 from django.utils import timezone
 from apps.projects.models import ConstructionObject
 from apps.resources.models import Employee
-from .models import RecruitmentRequest, RecruitmentCandidate,TalentPoolCandidate
+from .models import RecruitmentRequest, RecruitmentCandidate,TalentPoolCandidate,Camp
 from .recruitment import allowed_camps, validate_documents
 
 
@@ -154,3 +154,35 @@ class ArrivalForm(RevisionForm):
             camp=preparation.camp_id or (automatic_camp.pk if automatic_camp else None),employee=preparation.employee_id,
             notes=preparation.notes,actual_on=timezone.localdate())
         self.order_fields(['candidate_name','project_name','expected_on','camp','employee','notes','actual_on','revision'])
+
+
+class BulkArrivalCommonForm(forms.Form):
+    construction_object=forms.ModelChoiceField(label='Проект',queryset=ConstructionObject.objects.none(),required=False)
+    camp=forms.ModelChoiceField(label='ВЖГ',queryset=Camp.objects.none(),required=False)
+    def __init__(self,*args,company,required=False,**kwargs):
+        super().__init__(*args,**kwargs)
+        self.fields['construction_object'].queryset=ConstructionObject.objects.filter(company=company).order_by('name','pk')
+        self.fields['camp'].queryset=Camp.objects.filter(company=company,is_active=True).order_by('name','pk')
+        self.fields['construction_object'].required=required;self.fields['camp'].required=required
+        for field in self.fields.values():field.widget.attrs['class']='form-select'
+
+
+class BulkArrivalRowForm(forms.Form):
+    planning_position_name=forms.CharField(label='Должность по заявке',max_length=250,required=False)
+    position_name=forms.CharField(label='Должность сотрудника',max_length=250,required=False)
+    base_city=forms.CharField(label='Базовый город',max_length=150,required=False)
+    phone=forms.CharField(label='Телефон',max_length=80,required=False)
+    movement_date=forms.DateField(label='Прибытие в ОП Дудинка',required=False,widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
+    planned_hub_departure_date=forms.DateField(label='Выезд из ОП Дудинка',required=False,widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
+    note=forms.CharField(label='Комментарий',required=False,max_length=2000)
+    def __init__(self,*args,required=False,**kwargs):
+        super().__init__(*args,**kwargs)
+        if required:
+            for name in ('planning_position_name','position_name','base_city','phone','movement_date','planned_hub_departure_date'):
+                self.fields[name].required=True
+        for field in self.fields.values():field.widget.attrs['class']='form-control form-control-sm'
+    def clean(self):
+        data=super().clean()
+        if data.get('movement_date') and data.get('planned_hub_departure_date') and data['planned_hub_departure_date']<data['movement_date']:
+            self.add_error('planned_hub_departure_date','Не может быть раньше прибытия в ОП Дудинка.')
+        return data

@@ -84,6 +84,7 @@ urlpatterns += [
     path('recruitment/<int:request_pk>/candidates/<int:pk>/', recruitment.candidate_edit, name='recruitment_candidate_edit'),
     path('recruitment/candidates/<int:pk>/handoff/', recruitment.candidate_handoff, name='recruitment_handoff'),
     path('recruitment/arrivals/bulk/',recruitment.bulk_arrival_handoff,name='recruitment_arrival_bulk'),
+    path('recruitment/arrivals/bulk/<uuid:batch>/',recruitment.bulk_arrival_edit,name='recruitment_arrival_bulk_edit'),
     path('recruitment/documents/<int:pk>/', recruitment.document_download, name='recruitment_document'),
     path('recruitment/arrivals/<int:pk>/', recruitment.arrival_edit, name='recruitment_arrival'),
 ]
