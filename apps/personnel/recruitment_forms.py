@@ -133,7 +133,6 @@ class TalentPoolImportForm(forms.Form):
 class ArrivalForm(RevisionForm):
     candidate_name=forms.CharField(label='ФИО кандидата',disabled=True)
     project_name=forms.CharField(label='Проект',disabled=True)
-    construction_object_name=forms.CharField(label='Объект / участок',disabled=True)
     expected_on=forms.DateField(label='Плановая дата заезда',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
     camp=forms.ModelChoiceField(label='ВЖГ',queryset=None,required=False)
     employee=forms.ModelChoiceField(label='Оформленный сотрудник',queryset=None,required=False,
@@ -148,8 +147,10 @@ class ArrivalForm(RevisionForm):
         self.fields['employee'].widget.attrs['data-personnel-searchable']='1'
         automatic_camp=camps.first() if not preparation.camp_id and camps.count()==1 else None
         request_object=preparation.candidate.request.construction_object
-        self.initial.update(candidate_name=preparation.candidate.full_name,project_name=request_object.project.name,
-            construction_object_name=request_object.name,revision=preparation.revision,expected_on=preparation.expected_on,
+        # Кадры называют проектом объект назначения (КТП, КТП-1), а не
+        # верхнеуровневую сущность Project (например, «Ямал»).
+        self.initial.update(candidate_name=preparation.candidate.full_name,project_name=request_object.name,
+            revision=preparation.revision,expected_on=preparation.expected_on,
             camp=preparation.camp_id or (automatic_camp.pk if automatic_camp else None),employee=preparation.employee_id,
             notes=preparation.notes,actual_on=timezone.localdate())
-        self.order_fields(['candidate_name','project_name','construction_object_name','expected_on','camp','employee','notes','actual_on','revision'])
+        self.order_fields(['candidate_name','project_name','expected_on','camp','employee','notes','actual_on','revision'])
