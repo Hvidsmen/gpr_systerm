@@ -42,6 +42,18 @@ class RotationTests(TestCase):
         CampStay.objects.create(company=self.company,person=self.person,camp=self.b,arrived_on=self.day)
         rows,_,stats=rotation_rows(self.company,[self.a],self.day);self.assertEqual(len(rows),0)
         rows,_,stats=rotation_rows(self.company,[self.a,self.b],self.day);self.assertEqual(len(rows),1)
+    def test_future_confirmed_arrival_is_visible_but_not_counted_on_shift(self):
+        employee=Employee.objects.create(company=self.company,last_name='Будущий',first_name='Сотрудник',employee_number='FUTURE-1')
+        person=Person.objects.create(company=self.company,employee=employee,full_name=employee.display_name,employee_number=employee.employee_number)
+        arrival=self.day+timedelta(days=19)
+        CampStay.objects.create(company=self.company,person=person,camp=self.a,arrived_on=arrival)
+        rows,_,stats=rotation_rows(self.company,[self.a],self.day)
+        row=next(item for item in rows if item.get('person')==person)
+        self.assertTrue(row['future_arrival']);self.assertEqual(row['planned_arrival'],arrival)
+        self.assertFalse(row['verified']);self.assertNotEqual(row['state'],'MV')
+        self.assertEqual(stats['on_shift'],1);self.assertEqual(stats['present'],1)
+        page=self.client.get(reverse('personnel:housing'),{'camp':self.a.pk,'date':str(self.day)})
+        self.assertContains(page,'Будущий Сотрудник');self.assertContains(page,f'Ожидается заезд {arrival:%d.%m.%Y}')
     def test_selected_camps_and_rotation_export_are_scoped(self):
         StaffingSlot.objects.create(company=self.company,group=self.group,person=self.second_person,housing_camp=self.b,status='МО')
         data={'camps':[self.a.pk],'construction_object':self.obj.pk,'date':str(self.day)}

@@ -180,6 +180,10 @@ def rotation_rows(company,camps,day,*,query='',position=None,state='',include_un
     for slot in relevant:
         if slot.person_id:by_person[slot.person_id].append(slot)
     all_stays=list(CampStay.objects.filter(company=company,person__dispatcher_removed_at=None,cancelled_at=None,arrived_on__lte=day).select_related('camp','person__employee__position__planning_mapping__brigade__group','person__schedule_slot__group__board').prefetch_related('person__schedule_slot__pattern').order_by('-arrived_on','-pk'))
+    future_stays={}
+    for stay in CampStay.objects.filter(company=company,person__dispatcher_removed_at=None,cancelled_at=None,arrived_on__gt=day,
+            camp_id__in=camp_ids).select_related('camp','person__employee__position__planning_mapping__brigade__group','person__schedule_slot__group__board').order_by('arrived_on','pk'):
+        future_stays.setdefault(stay.person_id,stay)
     current={};last={};departures={}
     for stay in all_stays:
         last.setdefault(stay.person_id,stay)
@@ -192,6 +196,7 @@ def rotation_rows(company,camps,day,*,query='',position=None,state='',include_un
         if event.from_camp_id in camp_ids:people[person_id]=event.person
     for person_id,stay in {**last,**current}.items():
         if stay.camp_id in camp_ids:people[person_id]=stay.person
+    for person_id,stay in future_stays.items():people.setdefault(person_id,stay.person)
     if state=='DEPARTING':
         for person_id,stay in departures.items():people[person_id]=stay.person
     from .models import ScheduleChangeRequest
@@ -202,7 +207,7 @@ def rotation_rows(company,camps,day,*,query='',position=None,state='',include_un
         active_routes[route.person_id]=route
     days=[day.replace(day=n) for n in range(1,monthrange(day.year,day.month)[1]+1)];rows=[]
     for person_id,person in people.items():
-        active=current.get(person_id);previous=last.get(person_id);initial_exit=initial.get(person_id);assigned=by_person[person_id]
+        active=current.get(person_id);previous=last.get(person_id);future=future_stays.get(person_id);initial_exit=initial.get(person_id);assigned=by_person[person_id]
         elsewhere=None
         if active and active.camp_id not in camp_ids and not (state=='DEPARTING' and person_id in departures):
             if any(slot.planning_position_id for slot in assigned):
@@ -214,7 +219,7 @@ def rotation_rows(company,camps,day,*,query='',position=None,state='',include_un
         slot=max(planned,key=lambda slot:(slot.assigned_from or date.min,slot.pk)) if planned else housing.schedule_slot(person,assignments)
         display_slot=slot or (assigned[0] if assigned else None)
         status='MV' if active else 'MO' if previous and previous.departed_on and previous.departed_on<=day else 'MO' if initial_exit else 'MV' if any(s.status=='МВ' for s in assigned) else 'MO' if any(s.status=='МО' for s in assigned) else 'UNKNOWN'
-        camp=active.camp if active else initial_exit.from_camp if initial_exit and not previous else slot_camp(display_slot) if display_slot else previous.camp if previous else None
+        camp=active.camp if active else future.camp if future else initial_exit.from_camp if initial_exit and not previous else slot_camp(display_slot) if display_slot else previous.camp if previous else None
         personal=housing.schedule_slot(person,assignments)
         graph_slot=personal if personal and personal.pattern_id else slot
         schedule=effective_schedule(graph_slot,person)
@@ -254,7 +259,8 @@ def rotation_rows(company,camps,day,*,query='',position=None,state='',include_un
             'movement_route_status':active_routes[person_id].status if person_id in active_routes else '',
             'movement_route_kind':active_routes[person_id].kind if person_id in active_routes else '',
             'actual_rest_started':bool(not active and previous and previous.departed_on and previous.departed_on<=day),
-            'arriving':arriving,'departing':departing,'departure_camp':departures[person_id].camp if person_id in departures else None,
+            'arriving':arriving,'future_arrival':bool(future),'planned_arrival':future.arrived_on if future else None,
+            'departing':departing,'departure_camp':departures[person_id].camp if person_id in departures else None,
             'schedule_info':description(schedule,day,schedule_stays.get(person_id,[])),
             'cycle_missing':not known_cycle,
             'schedule_cycle_label':f"{known_cycle['on_days']}/{known_cycle['off_days']}" if known_cycle else '',
@@ -309,6 +315,7 @@ def filter_position(rows,position):
 def status_indicator(row):
     if row.get('movement_route_status')=='AT_HUB':return 'blue','В ОП Дудинка','Сотрудник прибыл в ОП Дудинка. Билеты и обходной лист оформляются параллельно.'
     if row.get('movement_route_status')=='EN_ROUTE':return 'blue','В пути в ВЖГ','Сотрудник выехал из ОП Дудинка и ещё не прибыл в ВЖГ.'
+    if row.get('future_arrival'):return 'blue',f"Ожидается заезд {row['planned_arrival'].strftime('%d.%m.%Y')}",'Заезд подтверждён будущей датой. До этой даты сотрудник не входит в фактическую численность ВЖГ.'
     if row.get('departure_warning')=='overdue':return 'red','Выезд просрочен',STATUS_HELP['DEPARTURE_OVERDUE']
     if row.get('arrival_overdue'):return 'red','Заезд просрочен',STATUS_HELP['ARRIVAL_OVERDUE']
     if row.get('departure_warning')=='soon':return 'yellow','Ожидает выезда',STATUS_HELP['DEPARTURE_PENDING']
