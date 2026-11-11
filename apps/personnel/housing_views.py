@@ -419,6 +419,13 @@ def movement_review_accept(request,pk):
         pk=pk,company=request.user.company,
     )
     user_role=role_code(request.user)
+    back=request.GET.get('back','')
+    if back=='mine':back_url=reverse('personnel:my_movement_requests');back_label='В мои заявки'
+    elif back=='task' and request.GET.get('task','').isdigit():back_url=reverse('planning:task_detail',args=[request.GET['task']]);back_label='К заданию'
+    else:back_url=reverse('personnel:movement_reviews')+'#movement-requests';back_label='К заявкам перевахты'
+    referer=request.META.get('HTTP_REFERER','')
+    if back=='' and '/planning/tasks/' in referer and referer.startswith(request.build_absolute_uri('/')):
+        back_url=referer;back_label='К заданию'
     from .departure_workflow import active_route_roles,route_for
     route=route_for(row);own_route=route.get(user_role,{}).get('status') not in {None,'WAITING'}
     functional_access=(user_role=='PEREVAKHTA_SPECIALIST' and row.status in {'PEREVAKHTA','AT_HUB','EN_ROUTE'} or
@@ -515,7 +522,8 @@ def movement_review_accept(request,pk):
     from .departure_workflow import route_summary
     return render(request,'personnel/movement_review.html',{'row':row,'form':form,'edit_mode':edit_mode,'perevakhta_data_stage':perevakhta_data_stage,'travel_details_complete':details_complete,'approval_route_steps':route_summary(row),'workflow_today':timezone.localdate(),'can_manage_workflow':can_manage_workflow,'can_cancel_request':can_cancel_request,'can_delete_request':can_delete_request,
         'needs_zup_registration':needs_zup_registration,'can_register_employee':can_register_employee,'registration_form':registration_form,
-        'personnel_section':'reviews','project_camps':{key:sorted(value) for key,value in pairs.items()}})
+        'personnel_section':'reviews','project_camps':{key:sorted(value) for key,value in pairs.items()},
+        'back_url':back_url,'back_label':back_label})
 
 
 @login_required
@@ -784,7 +792,7 @@ def my_movement_requests(request):
     from .models import MovementReviewEvent
     scope=request.GET.get('scope','active');scope=scope if scope in {'active','history','all'} else 'active'
     kind=request.GET.get('kind','');kind=kind if kind in {'ARRIVAL','DEPARTURE','TRANSFER'} else ''
-    stage_choices=[('APPROVAL','Согласование'),('PROCESSING','Обработка перевахтой'),('TICKETS','Покупка билетов'),
+    stage_choices=[('ACTION_REQUIRED','Требует моего действия'),('APPROVAL','Согласование'),('PROCESSING','Обработка перевахтой'),('TICKETS','Покупка билетов'),
         ('DUDINKA_ARRIVAL','Ожидается прибытие в ОП Дудинка'),('DUDINKA','В ОП Дудинка'),('EN_ROUTE','В пути'),
         ('COMPLETED','Завершено'),('CANCELLED','Отменено')]
     stage=request.GET.get('stage','');stage=stage if stage in dict(stage_choices) else ''
@@ -797,7 +805,9 @@ def my_movement_requests(request):
     if search:query=query.filter(Q(person__full_name__icontains=search)|Q(request_number__icontains=search)|Q(base_city__icontains=search))
     grouped=OrderedDict();filtered_rows=[]
     for row in query.order_by('-created_at','-pk'):
-        if stage and row.workflow_stage_code()!=stage:continue
+        needs_action=row.status in {'OPEN','RETURNED'} or row.status=='EN_ROUTE' and row.kind=='ARRIVAL'
+        if stage=='ACTION_REQUIRED' and not needs_action:continue
+        if stage and stage!='ACTION_REQUIRED' and row.workflow_stage_code()!=stage:continue
         row.can_cancel=not row.has_approved_stage() and row.status not in {'AT_HUB','EN_ROUTE','COMPLETED','CANCELLED'} and not row.event_id and not row.hub_arrived_on
         row.can_delete=False
         filtered_rows.append(row)

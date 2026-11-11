@@ -327,6 +327,26 @@ class MovementReviewRequest(PersonnelModel):
         if self.status=='CANCELLED':return 'Отменена'
         if self.status=='ACCEPTED':return 'Принята'
         return 'Ожидает обработки перевахтой'
+    def route_label(self):
+        if self.kind=='ARRIVAL':
+            origin=self.base_city or 'Базовый город не указан'
+            return f'{origin} → ОП Дудинка → {self.to_camp or "ВЖГ не указан"}'
+        destination=self.base_city or ('Увольнение' if self.departure_destination=='DISMISSAL' else 'МО')
+        return f'{self.from_camp or "ВЖГ не указан"} → ОП Дудинка → {destination}'
+    def next_action_label(self):
+        if self.status=='OPEN':return 'Диспетчер: заполнить и отправить черновик'
+        if self.status=='PENDING_APPROVAL':return self.workflow_status_label()
+        if self.status=='RETURNED':return 'Диспетчер: исправить заявку и повторно отправить'
+        if self.status=='PEREVAKHTA':
+            return 'Специалист перевахты: приобрести билеты и уточнить дату' if self.kind=='ARRIVAL' and not self.tickets_ready else 'Специалист перевахты: зафиксировать прибытие в ОП Дудинка'
+        if self.status=='AT_HUB':
+            if self.kind=='ARRIVAL' and self.employment_kind=='NEW' and not self.person.employee_id:return 'Специалист по персоналу: оформить сотрудника в ЗУП'
+            if not self.clearance_document:return 'Специалист перевахты: прикрепить обходной лист'
+            return 'Специалист перевахты: зафиксировать выезд из ОП Дудинка'
+        if self.status=='EN_ROUTE' and self.kind=='ARRIVAL':return 'Диспетчер: подтвердить прибытие в ВЖГ'
+        if self.status in {'COMPLETED','ACCEPTED'}:return 'Маршрут завершён'
+        if self.status=='CANCELLED':return 'Заявка отменена'
+        return self.workflow_status_label()
     def workflow_stage_code(self):
         if self.status=='PENDING_APPROVAL':return 'APPROVAL'
         if self.status=='RETURNED':return 'RETURNED'

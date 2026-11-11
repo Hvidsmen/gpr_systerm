@@ -60,6 +60,9 @@ def travel_details_complete(row):
 def log(row,actor,action,comment=''):
     return MovementReviewEvent.objects.create(company=row.company,request=row,actor=actor,action=action,comment=comment.strip())
 
+def validate_fact_day(day):
+    if day>timezone.localdate():raise ValidationError('Фактическая дата не может быть в будущем.')
+
 def restore_recommendation(row):
     if row.recommendation_planned_on:
         camp_id=row.to_camp_id if row.kind=='ARRIVAL' else row.from_camp_id
@@ -246,6 +249,7 @@ def resubmit(user,row):
 def arrive_hub(user,row,day):
     if role_code(user) not in {'ADMIN','HR_HEAD','PEREVAKHTA_SPECIALIST'}:raise PermissionDenied('Прибытие в ОП Дудинка фиксирует специалист перевахты.')
     row=MovementReviewRequest.objects.select_for_update().select_related('person','from_camp').get(pk=row.pk,company=user.company)
+    validate_fact_day(day)
     if row.status!='PEREVAKHTA':raise ValidationError('Прибытие в ОП Дудинка фиксируется после согласования.')
     if not travel_details_complete(row):raise ValidationError('Сначала заполните обязательные данные поездки: город, телефон, номер заявки и обязательные даты.')
     if row.kind=='ARRIVAL' and not row.tickets_ready:raise ValidationError('Перед заездом в ОП Дудинка отметьте покупку билетов.')
@@ -314,6 +318,7 @@ def register_new_employee(user,row,*,employee_number,position,schedule,phone):
 def leave_hub(user,row,day):
     if role_code(user) not in {'ADMIN','HR_HEAD','PEREVAKHTA_SPECIALIST'}:raise PermissionDenied('Выезд из ОП Дудинка фиксирует специалист перевахты.')
     row=MovementReviewRequest.objects.select_for_update().select_related('person__employee').get(pk=row.pk,company=user.company)
+    validate_fact_day(day)
     if row.status!='AT_HUB':raise ValidationError('Выезд из Дудинки фиксируется только для сотрудника в ОП Дудинка.')
     if row.kind=='ARRIVAL' and row.employment_kind=='NEW' and not row.person.employee_id:raise ValidationError('Сначала завершите оформление нового сотрудника в ЗУП.')
     if not row.tickets_ready or not row.clearance_document:raise ValidationError('Перед выездом должны быть оформлены билеты и прикреплён обходной лист.')
@@ -329,10 +334,11 @@ def leave_hub(user,row,day):
 def arrive_camp(user,row,day):
     if role_code(user) not in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'}:raise PermissionDenied('Прибытие в ВЖГ фиксирует диспетчер по персоналу.')
     row=MovementReviewRequest.objects.select_for_update().select_related('person__employee','to_camp').get(pk=row.pk,company=user.company)
+    validate_fact_day(day)
     if row.kind!='ARRIVAL' or row.status!='EN_ROUTE':raise ValidationError('Фактический заезд доступен после отправления сотрудника из ОП Дудинка.')
     if day<row.hub_departed_on:raise ValidationError('Фактическое прибытие в ВЖГ не может быть раньше выезда из ОП Дудинка.')
     from . import housing
-    housing.move(user,'ARRIVAL',row.to_camp,day,[row.person],comment=f'Заявка на заезд №{row.pk}. Прибытие через ОП Дудинка.',allow_future=True)
+    housing.move(user,'ARRIVAL',row.to_camp,day,[row.person],comment=f'Заявка на заезд №{row.pk}. Прибытие через ОП Дудинка.')
     event=HousingEvent.objects.filter(company=row.company,person=row.person,kind='ARRIVAL',date=day,to_camp=row.to_camp).order_by('-pk').first()
     row.event=event;row.final_arrived_on=day;row.status='COMPLETED';row.travel_status='Прибыл в ВЖГ';row.reviewed_by=user;row.reviewed_at=timezone.now()
     row.save(update_fields=['event','final_arrived_on','status','travel_status','reviewed_by','reviewed_at','updated_at'])

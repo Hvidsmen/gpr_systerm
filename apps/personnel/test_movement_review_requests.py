@@ -387,20 +387,21 @@ class MovementReviewRequestTests(TestCase):
         row.refresh_from_db();self.assertEqual(row.status,'COMPLETED');self.assertEqual(row.hub_departed_on,day)
         self.assertGreaterEqual(row.workflow_events.count(),14)
 
-    def test_future_dates_are_allowed_for_actual_route_steps(self):
+    def test_future_dates_are_rejected_for_actual_route_steps(self):
         from .departure_workflow import arrive_camp,arrive_hub,leave_hub,update_hub
         day=timezone.localdate();housing.request_moves(self.personnel,'ARRIVAL',self.camp,day,[self.person])
         row=MovementReviewRequest.objects.get(kind='ARRIVAL');self.finish_approval(row)
         hub_arrival=day+timedelta(days=2);hub_departure=day+timedelta(days=3);camp_arrival=day+timedelta(days=4)
         row.planned_hub_departure_date=hub_departure;row.save(update_fields=['planned_hub_departure_date','updated_at'])
-        with self.assertRaisesMessage(ValidationError,'отметьте покупку билетов'):arrive_hub(self.reviewer,row,hub_arrival)
+        with self.assertRaisesMessage(ValidationError,'не может быть в будущем'):arrive_hub(self.reviewer,row,hub_arrival)
         update_hub(self.reviewer,row,tickets_ready=True,planned_hub_arrival_date=hub_arrival)
         with self.assertRaisesMessage(ValidationError,'после прибытия сотрудника'):update_hub(self.reviewer,row,clearance_document=SimpleUploadedFile('too-early.pdf',b'pdf'))
-        arrive_hub(self.reviewer,row,hub_arrival);row.refresh_from_db();self.assertEqual(row.hub_arrived_on,hub_arrival)
-        update_hub(self.reviewer,row,clearance_document=SimpleUploadedFile('future-clearance.pdf',b'pdf'))
-        leave_hub(self.reviewer,row,hub_departure);row.refresh_from_db();self.assertEqual(row.hub_departed_on,hub_departure)
-        arrive_camp(self.reviewer,row,camp_arrival);row.refresh_from_db()
-        self.assertEqual(row.final_arrived_on,camp_arrival);self.assertEqual(row.status,'COMPLETED')
+        with self.assertRaisesMessage(ValidationError,'не может быть в будущем'):arrive_hub(self.reviewer,row,hub_arrival)
+        row.status='AT_HUB';row.hub_arrived_on=day;row.tickets_ready=True
+        row.clearance_document=SimpleUploadedFile('clearance.pdf',b'pdf');row.save()
+        with self.assertRaisesMessage(ValidationError,'не может быть в будущем'):leave_hub(self.reviewer,row,hub_departure)
+        row.status='EN_ROUTE';row.hub_departed_on=day;row.save(update_fields=['status','hub_departed_on','updated_at'])
+        with self.assertRaisesMessage(ValidationError,'не может быть в будущем'):arrive_camp(self.reviewer,row,camp_arrival)
 
     def test_ticket_purchase_can_change_planned_dudinka_arrival(self):
         from .departure_workflow import update_hub

@@ -192,7 +192,12 @@ def bulk_arrival_edit(request,batch):
     for row in rows:
         initial={'planning_position_name':row.planning_position_name,'position_name':row.position_name,'base_city':row.base_city,
             'phone':row.phone,'movement_date':row.movement_date,'planned_hub_departure_date':row.planned_hub_departure_date,'note':row.note}
-        row_forms.append((row,BulkArrivalRowForm(request.POST if request.method=='POST' else None,prefix=f'row-{row.pk}',required=confirm,initial=initial)))
+        form=BulkArrivalRowForm(request.POST if request.method=='POST' else None,prefix=f'row-{row.pk}',required=confirm,initial=initial)
+        if submitted:
+            for field in form.fields.values():field.disabled=True
+        row_forms.append((row,form))
+    if submitted:
+        for field in common.fields.values():field.disabled=True
     if request.method=='POST' and action!='cancel' and not submitted:
         valid=common.is_valid() and all(form.is_valid() for _,form in row_forms)
         if valid:
@@ -211,9 +216,11 @@ def bulk_arrival_edit(request,batch):
         current=object_id;seen=set()
         while current and current not in seen:
             seen.add(current);project_camps.setdefault(str(current),set()).add(camp_id);current=parents.get(current)
+    from apps.planning.models import WorkTask
+    approval_task=WorkTask.objects.filter(company=request.user.company,key=f'personnel-movement-batch:{batch}').first()
     return render(request,'personnel/recruitment_arrival_bulk.html',{**context(request.user),'personnel_section':'movements',
         'batch':batch,'rows':rows,'common_form':common,'row_forms':row_forms,'submitted':submitted,
-        'project_camps':{key:sorted(value) for key,value in project_camps.items()}})
+        'project_camps':{key:sorted(value) for key,value in project_camps.items()},'approval_task':approval_task})
 
 
 @login_required
