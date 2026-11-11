@@ -316,6 +316,22 @@ def workspace(request, movements=False, movement_page='new'):
     from .housing_plan import monthly_plan,position_headers
     plan_context=monthly_plan(request.user,camp,day,camps=selected_camps)
     position_groups=position_headers(request.user.company,rows,plan_context,query=values.get('q',''),position=values.get('position'),state=values.get('state',''))
+    def normalized_position(value):return ' '.join(str(value).split()).casefold()
+    recruitment_by_position={}
+    for recruitment in extra.get('recruitment_requests',[]):
+        recruitment_by_position.setdefault(normalized_position(recruitment.position),[]).append(recruitment)
+    existing_positions={normalized_position(group['name']) for group in position_groups}
+    for key,recruitments in recruitment_by_position.items():
+        if key in existing_positions:continue
+        label=recruitments[0].position
+        if values.get('position') and normalized_position(values['position'].name)!=key:continue
+        if values.get('q') and values['q'].casefold() not in label.casefold() and not any(
+            values['q'].casefold() in candidate.full_name.casefold() for recruitment in recruitments for candidate in recruitment.candidates.all()):continue
+        position_groups.append({'name':label,'rows':[],'plans':[],'labor_group':'Без группы','assignment_initial':{},
+            'people':0,'working':0,'on_shift':0,'travelling':0,'rest':0,'vacancies':0,'no_schedule':0,'unknown':0,
+            'uid':len(position_groups)+1})
+    for group in position_groups:
+        group['recruitment_requests']=recruitment_by_position.get(normalized_position(group['name']),[])
     from .housing_plan import roster_sections
     roster_view='groups' if raw.get('roster_view')=='groups' else 'positions'
     view_links=[]
