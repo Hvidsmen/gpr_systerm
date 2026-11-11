@@ -327,5 +327,8 @@ def arrive_camp(user,row,day):
             actual_stay__cancelled_at__isnull=True).count()
         if arrived>=recruitment.quantity and not recruitment.completed_at:
             recruitment.completed_at=timezone.now();recruitment.save(update_fields=['completed_at','updated_at'])
+        if prep.candidate.pool_candidate_id and prep.candidate.pool_candidate.is_active:
+            prep.candidate.pool_candidate.is_active=False
+            prep.candidate.pool_candidate.save(update_fields=['is_active','updated_at'])
         touch(recruitment);audit(user,recruitment,'Фактический заезд в ВЖГ подтверждён.',prep.candidate)
     log(row,user,'Прибыл в ВЖГ','Фактический заезд зафиксирован. Заявка завершена.')

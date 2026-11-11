@@ -130,6 +130,12 @@ def save_candidate(user, request_id, values, pk=None, revision=None, files=()):
             validate_documents(files)
             c.pool_candidate=values.get('pool_candidate')
             for field in ('full_name','phone','status','ready_on','notes'):setattr(c,field,values[field])
+            if c.pool_candidate_id:
+                if not c.pool_candidate.is_active:raise ValidationError('Этот кандидат уже недоступен в общем пуле.')
+                occupied=RecruitmentCandidate.objects.filter(company=user.company,pool_candidate=c.pool_candidate,
+                    status__in=['NEW','SCREENING','READY','TRANSFERRED'],request__cancelled_at__isnull=True,
+                    request__completed_at__isnull=True).exclude(pk=c.pk).exists()
+                if occupied:raise ValidationError(f'Кандидат {c.pool_candidate.full_name} уже участвует в другой действующей заявке.')
             identity=normalized_candidate_identity(c.full_name,c.phone)
             for existing in RecruitmentCandidate.objects.filter(company=user.company,request=row).exclude(pk=c.pk):
                 same_pool=c.pool_candidate_id and existing.pool_candidate_id==c.pool_candidate_id

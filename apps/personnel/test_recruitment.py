@@ -109,7 +109,11 @@ class RecruitmentTests(TestCase):
             service.handoff(self.dispatch,second.pk,second.revision)
     def test_request_closes_when_required_employee_arrives(self):
         from .departure_workflow import arrive_camp
+        from .models import TalentPoolCandidate
+        from .recruitment_forms import CandidateForm
         row=service.save_request(self.dispatch,self.values(quantity=1));candidate=self.candidate(row)
+        pool=TalentPoolCandidate.objects.create(company=self.company,full_name=candidate.full_name,phone=candidate.phone,created_by=self.recruiter)
+        candidate.pool_candidate=pool;candidate.save(update_fields=['pool_candidate','updated_at'])
         prep=service.handoff(self.recruiter,candidate.pk,candidate.revision)
         prep=service.prepare_arrival(self.dispatch,prep.pk,prep.revision,self.arrival_values(),workflow=True)
         movement=prep.movement_request;movement.status='EN_ROUTE';movement.hub_departed_on=self.day
@@ -117,6 +121,9 @@ class RecruitmentTests(TestCase):
         admin=User.objects.create_user(username='arrival-completion-admin',company=self.company,role=Role.objects.get(code='ADMIN'))
         arrive_camp(admin,movement,self.day+timedelta(days=1));row.refresh_from_db()
         self.assertIsNotNone(row.completed_at)
+        pool.refresh_from_db();self.assertFalse(pool.is_active)
+        another=service.save_request(self.dispatch,self.values(position='Другая должность'))
+        self.assertNotIn(pool,CandidateForm(company=self.company,request_row=another).fields['pool_candidate'].queryset)
         self.client.force_login(self.dispatch)
         active=self.client.get(reverse('personnel:recruitment_list'))
         self.assertNotContains(active,f'№{row.pk} ·')
@@ -144,9 +151,15 @@ class RecruitmentTests(TestCase):
         candidate=service.save_candidate(self.recruiter,row.pk,form.cleaned_data)
         self.assertEqual(candidate.pool_candidate,pool);self.assertEqual(candidate.full_name,pool.full_name)
         self.assertTrue(pool.vacancy_candidates.filter(request=row).exists())
+        another=self.row();service.take_request(self.recruiter,another.pk,another.revision)
+        second_form=CandidateForm(company=self.company,request_row=another)
+        self.assertNotIn(pool,second_form.fields['pool_candidate'].queryset)
+        with self.assertRaisesMessage(ValidationError,'уже участвует в другой действующей заявке'):
+            service.save_candidate(self.recruiter,another.pk,{'pool_candidate':pool,'full_name':pool.full_name,
+                'phone':pool.phone,'status':'READY','ready_on':self.day,'notes':''})
         self.client.force_login(self.recruiter)
         page=self.client.get(reverse('personnel:recruitment_candidate_create',args=[row.pk]))
-        self.assertContains(page,'candidate-pool-data');self.assertContains(page,'candidate.full_name')
+        self.assertNotContains(page,f'<option value="{pool.pk}">')
     def test_handoff_and_confirmation_are_idempotent(self):
         prep=self.preparation();c=prep.candidate
         self.assertEqual(service.handoff(self.recruiter,c.pk,0).pk,prep.pk)
