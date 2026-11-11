@@ -185,6 +185,12 @@ class RecruitmentTests(TestCase):
         c.refresh_from_db();prep=service.handoff(self.recruiter,c.pk,c.revision)
         service.prepare_arrival(self.dispatch,prep.pk,prep.revision,self.arrival_values())
         self.assertValidation(service.prepare_arrival,self.dispatch,prep.pk,prep.revision,self.arrival_values())
+    def test_duplicate_candidate_cannot_be_added_to_same_request(self):
+        row=self.row();first=self.candidate(row)
+        with self.assertRaisesMessage(ValidationError,'уже добавлен в эту заявку'):
+            service.save_candidate(self.recruiter,row.pk,{'pool_candidate':None,'full_name':'  кандидат   новый ',
+                'phone':'(1) 2-3','status':'READY','ready_on':self.day,'notes':''})
+        self.assertEqual(row.candidates.count(),1);self.assertEqual(row.candidates.get(),first)
     def test_only_assigned_recruiter_can_work_request(self):
         row=self.row();service.take_request(self.recruiter,row.pk,row.revision)
         row.refresh_from_db();self.assertValidation(service.take_request,self.recruiter2,row.pk,row.revision)
@@ -369,3 +375,7 @@ class RecruitmentTests(TestCase):
         self.assertEqual(row.source_data['birth_date'],'1990-02-03');self.assertEqual(row.source_data['base_city'],'Уфа')
         page=self.client.get(reverse('personnel:recruitment_pool'))
         self.assertContains(page,'Электромонтажник');self.assertContains(page,'Все данные кандидата')
+        duplicate=self.client.post(reverse('personnel:recruitment_pool_create'),{
+            'full_name':'  ручной   кандидат ','phone':'8 (999) 000-11-22','notes':'Повтор','is_active':'on'})
+        self.assertEqual(duplicate.status_code,200);self.assertContains(duplicate,'Такой кандидат уже есть в общем пуле')
+        self.assertEqual(TalentPoolCandidate.objects.filter(company=self.company).count(),1)

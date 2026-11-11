@@ -112,6 +112,15 @@ class TalentPoolForm(forms.ModelForm):
         instance.source_data=source
         if commit:instance.save()
         return instance
+    def clean(self):
+        data=super().clean()
+        from .recruitment import normalized_candidate_identity
+        identity=normalized_candidate_identity(data.get('full_name'),data.get('phone'))
+        if identity[0]:
+            for existing in TalentPoolCandidate.objects.filter(company=self.instance.company).exclude(pk=self.instance.pk):
+                if normalized_candidate_identity(existing.full_name,existing.phone)==identity:
+                    raise forms.ValidationError(f'Такой кандидат уже есть в общем пуле: {existing.full_name}.')
+        return data
 
 
 class TalentPoolImportForm(forms.Form):

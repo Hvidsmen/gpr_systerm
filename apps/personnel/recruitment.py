@@ -111,6 +111,12 @@ def validate_documents(files):
         if not file.size or file.size>10*1024*1024:raise ValidationError('Размер каждого файла — от 1 байта до 10 МБ.')
 
 
+def normalized_candidate_identity(full_name,phone):
+    name=' '.join((full_name or '').split()).casefold()
+    digits=''.join(character for character in (phone or '') if character.isdigit())
+    return name,digits
+
+
 def save_candidate(user, request_id, values, pk=None, revision=None, files=()):
     # Cleanup private blobs even if the enclosing DB operation rolls back.
     written=[]
@@ -124,6 +130,12 @@ def save_candidate(user, request_id, values, pk=None, revision=None, files=()):
             validate_documents(files)
             c.pool_candidate=values.get('pool_candidate')
             for field in ('full_name','phone','status','ready_on','notes'):setattr(c,field,values[field])
+            identity=normalized_candidate_identity(c.full_name,c.phone)
+            for existing in RecruitmentCandidate.objects.filter(company=user.company,request=row).exclude(pk=c.pk):
+                same_pool=c.pool_candidate_id and existing.pool_candidate_id==c.pool_candidate_id
+                same_identity=identity[0] and normalized_candidate_identity(existing.full_name,existing.phone)==identity
+                if same_pool or same_identity:
+                    raise ValidationError(f'Кандидат {existing.full_name} уже добавлен в эту заявку.')
             c.revision+=1;c.save()
             for file in files:
                 doc=CandidateDocument(company=user.company,candidate=c,uploaded_by=user,original_name=Path(file.name.replace('\\','/')).name[:255],size=file.size)
