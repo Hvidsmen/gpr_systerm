@@ -91,6 +91,9 @@ class RecruitmentTests(TestCase):
         response=self.client.post(reverse('personnel:recruitment_handoff',args=[candidate.pk]),{'revision':candidate.revision})
         prep=ArrivalPreparation.objects.get(candidate=candidate)
         self.assertRedirects(response,reverse('personnel:recruitment_arrival',args=[prep.pk]),fetch_redirect_response=False)
+        arrival=self.client.get(reverse('personnel:recruitment_arrival',args=[prep.pk]))
+        self.assertContains(arrival,'ФИО кандидата');self.assertContains(arrival,'value="Новый кандидат"')
+        self.assertContains(arrival,f'<option value="{self.camp.pk}" selected>')
         candidate.refresh_from_db();self.assertEqual(candidate.status,'TRANSFERRED')
     def test_arrival_preparations_cannot_exceed_requested_quantity(self):
         row=service.save_request(self.dispatch,self.values(quantity=1));first=self.candidate(row);service.handoff(self.recruiter,first.pk,first.revision)

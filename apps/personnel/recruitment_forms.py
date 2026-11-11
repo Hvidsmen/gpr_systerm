@@ -119,6 +119,7 @@ class TalentPoolImportForm(forms.Form):
 
 
 class ArrivalForm(RevisionForm):
+    candidate_name=forms.CharField(label='ФИО кандидата',disabled=True)
     expected_on=forms.DateField(label='Плановая дата заезда',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
     camp=forms.ModelChoiceField(label='ВЖГ',queryset=None,required=False)
     employee=forms.ModelChoiceField(label='Оформленный сотрудник',queryset=None,required=False,
@@ -127,7 +128,12 @@ class ArrivalForm(RevisionForm):
     notes=forms.CharField(label='Комментарий к заезду',required=False,widget=forms.Textarea(attrs={'rows':3}))
     def __init__(self,*args,company,preparation,**kwargs):
         super().__init__(*args,**kwargs)
-        self.fields['camp'].queryset=allowed_camps(company,preparation.candidate.request.construction_object).order_by('name')
+        camps=allowed_camps(company,preparation.candidate.request.construction_object).order_by('name')
+        self.fields['camp'].queryset=camps
         self.fields['employee'].queryset=Employee.objects.filter(company=company,is_active=True).order_by('last_name','first_name','pk')
         self.fields['employee'].widget.attrs['data-personnel-searchable']='1'
-        self.initial.update(revision=preparation.revision,expected_on=preparation.expected_on,camp=preparation.camp_id,employee=preparation.employee_id,notes=preparation.notes,actual_on=timezone.localdate())
+        automatic_camp=camps.first() if not preparation.camp_id and camps.count()==1 else None
+        self.initial.update(candidate_name=preparation.candidate.full_name,revision=preparation.revision,expected_on=preparation.expected_on,
+            camp=preparation.camp_id or (automatic_camp.pk if automatic_camp else None),employee=preparation.employee_id,
+            notes=preparation.notes,actual_on=timezone.localdate())
+        self.order_fields(['candidate_name','expected_on','camp','employee','notes','actual_on','revision'])
