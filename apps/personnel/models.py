@@ -229,6 +229,10 @@ class HousingEvent(ActualHistoryMixin, PersonnelModel):
     recorded_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,blank=True,related_name='+')
     class Meta:
         ordering=['-date','-pk']
+        indexes=[
+            models.Index(fields=['company','person','date','kind'],name='housing_event_person_day'),
+            models.Index(fields=['company','kind','date'],name='housing_event_kind_day'),
+        ]
     def clean(self):
         super().clean()
         for name in ('person','from_camp','to_camp','stay'):
@@ -300,6 +304,13 @@ class MovementReviewRequest(PersonnelModel):
     recommendation_planned_on=models.DateField('Исходная дата рекомендации',null=True,blank=True)
     class Meta:
         ordering=['status','-movement_date','-pk']
+        indexes=[
+            models.Index(fields=['company','requested_by','status'],name='movement_author_status'),
+            models.Index(fields=['company','status','kind'],name='movement_status_kind'),
+            models.Index(fields=['company','person','status'],name='movement_person_status'),
+            models.Index(fields=['company','movement_date'],name='movement_company_day'),
+            models.Index(fields=['company','approval_batch','status'],name='movement_batch_status'),
+        ]
     def save(self,*args,**kwargs):
         super().save(*args,**kwargs)
         if self.source=='DISPATCHER' and not self.request_number:
@@ -376,7 +387,9 @@ class MovementReviewEvent(PersonnelModel):
     actor=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,blank=True,related_name='+')
     action=models.CharField(max_length=120)
     comment=models.TextField(blank=True)
-    class Meta:ordering=['created_at','pk']
+    class Meta:
+        ordering=['created_at','pk']
+        indexes=[models.Index(fields=['request','created_at'],name='movement_event_timeline')]
     def clean(self):
         super().clean()
         if self.request.company_id!=self.company_id or self.actor_id and self.actor.company_id!=self.company_id:raise ValidationError('Событие другой компании.')

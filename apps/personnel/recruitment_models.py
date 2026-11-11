@@ -64,12 +64,16 @@ class RecruitmentCandidate(PersonnelModel):
     pool_candidate=models.ForeignKey(TalentPoolCandidate,on_delete=models.PROTECT,null=True,blank=True,related_name='vacancy_candidates',verbose_name='Кандидат из пула')
     full_name = models.CharField('ФИО кандидата', max_length=250)
     phone = models.CharField('Телефон', max_length=80, blank=True)
+    normalized_name=models.CharField(max_length=250,blank=True,editable=False)
+    normalized_phone=models.CharField(max_length=32,blank=True,editable=False)
     status = models.CharField('Статус', max_length=16, choices=STATES, default='NEW')
     ready_on = models.DateField('Готов к заезду с', null=True, blank=True)
     notes = models.TextField('Комментарий по кандидату', blank=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='recruitment_candidates')
     revision = models.PositiveIntegerField(default=0)
-    class Meta:ordering = ['created_at','pk']
+    class Meta:
+        ordering = ['created_at','pk']
+        indexes=[models.Index(fields=['company','normalized_name','normalized_phone'],name='candidate_identity')]
     def __str__(self):return self.full_name
     def clean(self):
         super().clean()
@@ -77,6 +81,10 @@ class RecruitmentCandidate(PersonnelModel):
         if self.pool_candidate_id and self.pool_candidate.company_id!=self.company_id:raise ValidationError('Кандидат общего пула другой компании.')
         if self.created_by_id and self.created_by.company_id != self.company_id:raise ValidationError('Автор другой компании.')
         if self.status in {'READY','TRANSFERRED'} and not self.ready_on:raise ValidationError({'ready_on':'Укажите дату готовности.'})
+    def save(self,*args,**kwargs):
+        self.normalized_name=' '.join((self.full_name or '').split()).casefold()
+        self.normalized_phone=''.join(character for character in (self.phone or '') if character.isdigit())
+        return super().save(*args,**kwargs)
 
 
 class ArrivalPreparation(PersonnelModel):

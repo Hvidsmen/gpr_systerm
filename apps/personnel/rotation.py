@@ -164,7 +164,6 @@ def rotation_stats(rows):
 
 def rotation_rows(company,camps,day,*,query='',position=None,state='',include_unassigned=False):
     from .rotation_calendar import stays_by_person,anchor_for,description,cycle_definition,effective_schedule,schedule_label
-    schedule_stays=stays_by_person(company)
     camp_ids={camp.pk for camp in camps};camp_names={camp.name.strip().casefold():camp for camp in camps}
     from .plan_assignments import active_on
     slots=list(StaffingSlot.objects.filter(company=company).filter(Q(person=None)|Q(person__dispatcher_removed_at=None)).filter(active_on(day)).select_related('group__board','housing_camp','planning_position__group','construction_object','person__employee__position__planning_mapping__brigade__group','person__schedule_slot').prefetch_related('pattern','person__schedule_slot__pattern'))
@@ -179,7 +178,15 @@ def rotation_rows(company,camps,day,*,query='',position=None,state='',include_un
     by_person=defaultdict(list)
     for slot in relevant:
         if slot.person_id:by_person[slot.person_id].append(slot)
-    all_stays=list(CampStay.objects.filter(company=company,person__dispatcher_removed_at=None,cancelled_at=None,arrived_on__lte=day).select_related('camp','person__employee__position__planning_mapping__brigade__group','person__schedule_slot__group__board').prefetch_related('person__schedule_slot__pattern').order_by('-arrived_on','-pk'))
+    from django.db.models import OuterRef,Subquery
+    latest_stay=CampStay.objects.filter(company=company,person_id=OuterRef('person_id'),person__dispatcher_removed_at=None,
+        cancelled_at=None,arrived_on__lte=day).order_by('-arrived_on','-pk').values('pk')[:1]
+    # Keep the latest state per person plus departures from the selected camps
+    # on the requested day: the latter remain visible even after a same-day
+    # transfer created a newer stay in another camp.
+    all_stays=list(CampStay.objects.filter(company=company,person__dispatcher_removed_at=None,cancelled_at=None,arrived_on__lte=day).filter(
+        Q(pk=Subquery(latest_stay))|Q(camp_id__in=camp_ids,departed_on=day)
+    ).select_related('camp','person__employee__position__planning_mapping__brigade__group','person__schedule_slot__group__board').prefetch_related('person__schedule_slot__pattern').order_by('-arrived_on','-pk'))
     future_stays={}
     for stay in CampStay.objects.filter(company=company,person__dispatcher_removed_at=None,cancelled_at=None,arrived_on__gt=day,
             camp_id__in=camp_ids).select_related('camp','person__employee__position__planning_mapping__brigade__group','person__schedule_slot__group__board').order_by('arrived_on','pk'):
@@ -199,6 +206,9 @@ def rotation_rows(company,camps,day,*,query='',position=None,state='',include_un
     for person_id,stay in future_stays.items():people.setdefault(person_id,stay.person)
     if state=='DEPARTING':
         for person_id,stay in departures.items():people[person_id]=stay.person
+    # Full movement history is needed only for people that survived the camp,
+    # assignment and state preselection above.
+    schedule_stays=stays_by_person(company,people.keys())
     from .models import ScheduleChangeRequest
     pending_schedules={row.person_id:row for row in ScheduleChangeRequest.objects.filter(company=company,person_id__in=people,status='PENDING').select_related('requested_schedule')}
     from .models import MovementReviewRequest

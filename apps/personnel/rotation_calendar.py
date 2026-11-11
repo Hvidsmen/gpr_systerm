@@ -108,13 +108,17 @@ def _cycle_definition(pattern):
     return {'on_days':on,'off_days':off,'codes':codes}
 
 
-def stays_by_person(company):
+def stays_by_person(company,person_ids=None):
     from .models import CampStay
     grouped=defaultdict(list)
-    for stay in CampStay.objects.filter(company=company,cancelled_at=None).order_by('arrived_on','pk'):
+    stays=CampStay.objects.filter(company=company,cancelled_at=None)
+    if person_ids is not None:stays=stays.filter(person_id__in=person_ids)
+    for stay in stays.order_by('arrived_on','pk'):
         grouped[stay.person_id].append(stay)
     from .models import HousingEvent
-    for event in HousingEvent.objects.filter(company=company,kind='DEPARTURE',stay=None):
+    events=HousingEvent.objects.filter(company=company,kind='DEPARTURE',stay=None)
+    if person_ids is not None:events=events.filter(person_id__in=person_ids)
+    for event in events:
         grouped[event.person_id].append(SimpleNamespace(initial_departure_date=event.date,arrived_on=event.date,departed_on=event.date,cancelled_at=None,pk=event.pk))
     return grouped
 

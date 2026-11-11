@@ -146,10 +146,9 @@ def save_candidate(user, request_id, values, pk=None, revision=None, files=()):
             # Manual entry must not bypass the pool lock or recreate a person
             # who is already travelling/arrived through another request.
             if identity[0] and identity[1]:
-                possible=RecruitmentCandidate.objects.filter(company=user.company).exclude(pk=c.pk).select_related(
+                possible=RecruitmentCandidate.objects.filter(company=user.company,normalized_name=identity[0],normalized_phone=identity[1]).exclude(pk=c.pk).select_related(
                     'request','arrival__actual_stay','arrival__movement_request')
                 for existing in possible:
-                    if normalized_candidate_identity(existing.full_name,existing.phone)!=identity:continue
                     active_request=not existing.request.cancelled_at and not existing.request.completed_at and existing.status not in {'REJECTED','WITHDRAWN'}
                     prep=getattr(existing,'arrival',None)
                     active_arrival=bool(prep and (prep.actually_arrived or prep.movement_request_id and prep.movement_request.status!='CANCELLED'))

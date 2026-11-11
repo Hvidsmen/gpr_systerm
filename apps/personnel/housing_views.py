@@ -8,7 +8,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError,PermissionDenied
 from core.fact_edit_window import can_edit_fact_day,require_fact_day,window_context
 from django.db import transaction,IntegrityError
-from django.db.models import Q
+from django.db.models import Count,Q
 from django.http import FileResponse,HttpResponse,Http404
 from django.shortcuts import get_object_or_404,redirect,render
 from django.urls import reverse
@@ -126,6 +126,7 @@ def workspace(request, movements=False, movement_page='new'):
     day=selected_day(request) if movements else timezone.localdate()
     template = 'personnel/housing_movements.html' if movements else 'personnel/housing.html'
     extra = {**movement_context(request),'dispatcher_page':movement_page,'movement_page':movement_page} if movements else {'personnel_section':'management','personnel_today_only':True}
+    prepared_recommendations=extra.pop('_movement_recommendations',None)
     if not movements:
         extra.update(recruitment_dispatch_data(request.user.company))
     from .rotation import RotationFilter,normalize_rotation_filter_data,rotation_project_camps,rotation_rows
@@ -265,7 +266,7 @@ def workspace(request, movements=False, movement_page='new'):
             form=MovementForm(retry,company=request.user.company,camp=camp,day=day,fixed_employee=fixed_employee,allow_direct=request.user.role.code=='PERSONNEL_DISPATCHER')
     if movements:
         from .movement_recommendations import build
-        recommendations=build(request.user.company,recommendation_day)
+        recommendations=prepared_recommendations or build(request.user.company,recommendation_day)
         events=HousingEvent.objects.filter(company=request.user.company).filter(Q(from_camp__in=selected_camps)|Q(to_camp__in=selected_camps)).select_related('person','from_camp','to_camp','recorded_by')[:50]
         return render(request,template,{**extra,'rotation_filter':selector,'day':day,'camp':camp,'camps':camps,'selected_camps':selected_camps,'form':form,'events':events,
             'movement_exclusions':movement_exclusions,
@@ -333,11 +334,15 @@ def workspace(request, movements=False, movement_page='new'):
     for group in position_groups:
         group['recruitment_requests']=recruitment_by_position.get(normalized_position(group['name']),[])
     from .housing_plan import roster_sections
+    from django.core.paginator import Paginator
     roster_view='groups' if raw.get('roster_view')=='groups' else 'positions'
     view_links=[]
     for value,label in [('positions','По должностям'),('groups','По группам должностей')]:
         params=roster_params.copy();params['roster_view']=value
         view_links.append({'value':value,'label':label,'url':'?'+params.urlencode()+'#roster'})
+    sections=roster_sections(position_groups,roster_view=='groups',request.user.company)
+    roster_page=Paginator(sections,12).get_page(request.GET.get('roster_page'))
+    roster_page_params=roster_params.copy();roster_page_params.pop('roster_page',None)
     from apps.projects.models import ConstructionObject
     objects=ConstructionObject.objects.filter(company=request.user.company,housing_camps__in=selected_camps).distinct()
     from .lodging_views import summary_context
@@ -348,12 +353,14 @@ def workspace(request, movements=False, movement_page='new'):
     # that same destination, otherwise a filtered roster can show 0 while the
     # opened page immediately shows recommendations from another camp.
     navigation_recommendations=build_recommendations(request.user.company,recommendation_day)
+    people_counts=Person.objects.filter(company=request.user.company).aggregate(
+        unknown=Count('pk',filter=Q(stays__isnull=True,housing_events__isnull=True),distinct=True),
+        unlinked=Count('pk',filter=Q(employee=None),distinct=True))
     return render(request,template,{**extra,**plan_context,'rotation_filter':selector,'rotation_stats':rotation_stats,'position_groups':position_groups,'selected_camps':selected_camps,
-        'roster_view':roster_view,'roster_view_links':view_links,'roster_sections':roster_sections(position_groups,roster_view=='groups',request.user.company),
+        'roster_view':roster_view,'roster_view_links':view_links,'roster_sections':roster_page.object_list,'roster_page':roster_page,'roster_page_query':roster_page_params.urlencode(),
         'camp':camp,'camps':camps,'day':day,'rows':rows,'dates':days,'form':form,'query':values.get('q',''),
         'roster_query':roster_params.urlencode(),'rotation_calendar_url':rotation_calendar_url,'calendar_dates':calendar_dates,'calendar_months':calendar_months,'calendar_start':calendar_start,'calendar_end':calendar_end,'events':events,'total':rotation_stats['people'],'objects':objects,
-        'unknown_count':Person.objects.filter(company=request.user.company,stays__isnull=True,housing_events__isnull=True).count(),
-        'unlinked_count':Person.objects.filter(company=request.user.company,employee=None).count(),
+        'unknown_count':people_counts['unknown'],'unlinked_count':people_counts['unlinked'],
         'arrival_recommendation_count':len(navigation_recommendations['ARRIVAL']),'departure_recommendation_count':len(navigation_recommendations['DEPARTURE']),**window_context(request.user,day)})
 
 
@@ -383,10 +390,14 @@ def review_request_context(request):
         row.can_cancel=user_role in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'} and not (user_role=='PERSONNEL_DISPATCHER' and row.has_approved_stage()) and row.status not in {'AT_HUB','EN_ROUTE','COMPLETED','CANCELLED'} and not row.event_id and not row.hub_arrived_on
         row.can_delete=user_role=='ADMIN' and row.status=='CANCELLED' and not row.event_id and not row.hub_arrived_on and not row.hub_departed_on and not row.final_arrived_on
     dispatcher_rows=[row for row in rows if row.source=='DISPATCHER'];excel_rows=[row for row in rows if row.source=='EXCEL']
+    counts=base.aggregate(
+        arrival=Count('pk',filter=Q(kind='ARRIVAL')&~Q(status='CANCELLED')),
+        departure=Count('pk',filter=~Q(kind='ARRIVAL')&~Q(status='CANCELLED')),
+        opened=Count('pk',filter=Q(status='OPEN')))
     return {'personnel_section':'reviews','movement_review_requests':rows,'dispatcher_review_requests':dispatcher_rows,'excel_review_requests':excel_rows,'review_tab':tab,'review_arrival':tab=='arrival','review_date':raw_date,'review_sort':sort,'review_sort_options':sort_options,
         'arrival_review_requests':rows if tab=='arrival' else [],'departure_review_requests':rows if tab=='departure' else [],
-        'arrival_review_count':base.filter(kind='ARRIVAL').exclude(status='CANCELLED').count(),'departure_review_count':base.exclude(kind='ARRIVAL').exclude(status='CANCELLED').count(),
-        'movement_review_open_count':base.filter(status='OPEN').count()}
+        'arrival_review_count':counts['arrival'],'departure_review_count':counts['departure'],
+        'movement_review_open_count':counts['opened']}
 
 
 @login_required
@@ -740,9 +751,14 @@ def movement_context(request):
     from .models import ArrivalPreparation
     from django.core.paginator import Paginator
     rows=ArrivalPreparation.objects.filter(company=request.user.company,candidate__request__cancelled_at__isnull=True,status__in=['EXPECTED','ARRIVED']).filter(Q(actual_stay__isnull=True)|Q(actual_stay__cancelled_at__isnull=False)).select_related('candidate__request__construction_object','camp','employee','actual_stay').order_by('expected_on','pk')
+    recruitment_data=recruitment_dispatch_data(request.user.company)
+    from .movement_recommendations import build
+    recommendations=build(request.user.company,timezone.localdate())
     return {'personnel_section':'movements','arrival_queue':Paginator(rows,25).get_page(request.GET.get('arrivals_page')),
-        'new_employee_recommendation_count':len(recruitment_dispatch_data(request.user.company)['new_arrival_recommendations']),
-        **movement_recommendation_counts(request.user.company)}
+        'new_employee_recommendation_count':len(recruitment_data['new_arrival_recommendations']),
+        'arrival_recommendation_count':len(recommendations['ARRIVAL']),
+        'departure_recommendation_count':len(recommendations['DEPARTURE']),
+        '_movement_recommendations':recommendations}
 
 
 def movement_recommendation_counts(company):
@@ -796,18 +812,36 @@ def my_movement_requests(request):
         ('DUDINKA_ARRIVAL','Ожидается прибытие в ОП Дудинка'),('DUDINKA','В ОП Дудинка'),('EN_ROUTE','В пути'),
         ('COMPLETED','Завершено'),('CANCELLED','Отменено')]
     stage=request.GET.get('stage','');stage=stage if stage in dict(stage_choices) else ''
-    query=MovementReviewRequest.objects.filter(company=request.user.company,requested_by=request.user).select_related('person','from_camp','to_camp','approved_by').prefetch_related(Prefetch('workflow_events',queryset=MovementReviewEvent.objects.select_related('actor')))
+    query=MovementReviewRequest.objects.filter(company=request.user.company,requested_by=request.user)
     terminal={'COMPLETED','CANCELLED','ACCEPTED'}
     if scope=='active':query=query.exclude(status__in=terminal)
     elif scope=='history':query=query.filter(status__in=terminal)
     if kind:query=query.filter(kind=kind)
     search=request.GET.get('q','').strip()
     if search:query=query.filter(Q(person__full_name__icontains=search)|Q(request_number__icontains=search)|Q(base_city__icontains=search))
+    stage_filters={
+        'ACTION_REQUIRED':Q(status__in=['OPEN','RETURNED'])|Q(status='EN_ROUTE',kind='ARRIVAL'),
+        'APPROVAL':Q(status='PENDING_APPROVAL'),'PROCESSING':Q(status='OPEN'),
+        'TICKETS':Q(status='PEREVAKHTA',kind='ARRIVAL',tickets_ready=False),
+        'DUDINKA_ARRIVAL':Q(status='PEREVAKHTA')&~Q(kind='ARRIVAL',tickets_ready=False),
+        'DUDINKA':Q(status='AT_HUB'),'EN_ROUTE':Q(status='EN_ROUTE'),
+        'COMPLETED':Q(status__in=['COMPLETED','ACCEPTED']),'CANCELLED':Q(status='CANCELLED'),
+    }
+    if stage:query=query.filter(stage_filters[stage])
+    query=query.select_related('person__employee','from_camp','to_camp','approved_by').order_by('-created_at','-pk')
+    if scope=='history':
+        history_page=Paginator(query,50).get_page(request.GET.get('page'))
+        page_ids=[row.pk for row in history_page.object_list]
+        events_by_request={}
+        for event in MovementReviewEvent.objects.filter(request_id__in=page_ids).select_related('actor').order_by('created_at','pk'):
+            events_by_request.setdefault(event.request_id,[]).append(event)
+        for row in history_page.object_list:row.page_events=events_by_request.get(row.pk,[])
+        rows_for_groups=[]
+    else:
+        rows_for_groups=list(query.prefetch_related(Prefetch('workflow_events',queryset=MovementReviewEvent.objects.select_related('actor'))))
+        history_page=None
     grouped=OrderedDict();filtered_rows=[]
-    for row in query.order_by('-created_at','-pk'):
-        needs_action=row.status in {'OPEN','RETURNED'} or row.status=='EN_ROUTE' and row.kind=='ARRIVAL'
-        if stage=='ACTION_REQUIRED' and not needs_action:continue
-        if stage and stage!='ACTION_REQUIRED' and row.workflow_stage_code()!=stage:continue
+    for row in rows_for_groups:
         row.can_cancel=not row.has_approved_stage() and row.status not in {'AT_HUB','EN_ROUTE','COMPLETED','CANCELLED'} and not row.event_id and not row.hub_arrived_on
         row.can_delete=False
         filtered_rows.append(row)
@@ -824,7 +858,6 @@ def my_movement_requests(request):
         elif statuses == {'CANCELLED'}:group['status']='Отменено';group['status_class']='bg-secondary'
         else:group['status']='В работе';group['status_class']='bg-info text-dark'
     active_count=MovementReviewRequest.objects.filter(company=request.user.company,requested_by=request.user).exclude(status__in=terminal).count()
-    history_page=Paginator(filtered_rows,50).get_page(request.GET.get('page')) if scope=='history' else None
     return render(request,'personnel/my_movement_requests.html',{'personnel_section':'movements','dispatcher_page':'requests',**movement_recommendation_counts(request.user.company),'groups':list(grouped.values()),'scope':scope,'kind':kind,
         'stage':stage,'stage_choices':stage_choices,'query':search,'active_request_count':active_count,'history_page':history_page})
 
