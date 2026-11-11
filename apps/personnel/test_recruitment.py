@@ -81,10 +81,20 @@ class RecruitmentTests(TestCase):
         self.dispatch.role=Role.objects.get(code='ADMIN');self.dispatch.save(update_fields=['role'])
         page=self.client.get(reverse('personnel:recruitment_detail',args=[row.pk]))
         self.assertContains(page,'Как оформить заезд');self.assertContains(page,'Оформить заезд')
+        dispatcher=self.client.get(reverse('personnel:housing'))
+        self.assertContains(dispatcher,'Заявки на подбор');self.assertContains(dispatcher,'Новый кандидат')
+        self.assertContains(dispatcher,'Рекомендации: заезд новых сотрудников')
+        self.assertContains(dispatcher,'Можно оформлять');self.assertContains(dispatcher,'Оформить заезд')
         response=self.client.post(reverse('personnel:recruitment_handoff',args=[candidate.pk]),{'revision':candidate.revision})
         prep=ArrivalPreparation.objects.get(candidate=candidate)
         self.assertRedirects(response,reverse('personnel:recruitment_arrival',args=[prep.pk]),fetch_redirect_response=False)
         candidate.refresh_from_db();self.assertEqual(candidate.status,'TRANSFERRED')
+    def test_arrival_preparations_cannot_exceed_requested_quantity(self):
+        row=service.save_request(self.dispatch,self.values(quantity=1));first=self.candidate(row);service.handoff(self.recruiter,first.pk,first.revision)
+        second=RecruitmentCandidate.objects.create(company=self.company,request=row,full_name='Резервный кандидат',
+            status='READY',ready_on=self.day,created_by=self.recruiter)
+        with self.assertRaisesMessage(ValidationError,'уже оформлено требуемое количество'):
+            service.handoff(self.dispatch,second.pk,second.revision)
     def test_new_candidate_can_start_arrival_without_existing_employee_card(self):
         prep=self.preparation();values=self.arrival_values(employee=None)
         prep=service.prepare_arrival(self.dispatch,prep.pk,prep.revision,values,workflow=True)

@@ -126,6 +126,18 @@ def workspace(request, movements=False, movement_page='new'):
     day=selected_day(request) if movements else timezone.localdate()
     template = 'personnel/housing_movements.html' if movements else 'personnel/housing.html'
     extra = {**movement_context(request),'dispatcher_page':movement_page,'movement_page':movement_page} if movements else {'personnel_section':'management','personnel_today_only':True}
+    if not movements:
+        from django.db.models import Prefetch
+        from .models import RecruitmentRequest,RecruitmentCandidate
+        candidates=RecruitmentCandidate.objects.select_related('request','arrival__movement_request','arrival__camp').order_by('created_at','pk')
+        recruitment_requests=list(RecruitmentRequest.objects.filter(company=request.user.company,cancelled_at__isnull=True).select_related(
+            'construction_object','assigned_to').prefetch_related(Prefetch('candidates',queryset=candidates)).order_by('required_on','pk'))
+        for recruitment in recruitment_requests:
+            recruitment.arrival_started_count=sum(1 for candidate in recruitment.candidates.all()
+                if getattr(candidate,'arrival',None) and candidate.arrival.status!='CANCELLED')
+        extra['recruitment_requests']=recruitment_requests
+        extra['new_arrival_recommendations']=[candidate for row in recruitment_requests for candidate in row.candidates.all()
+            if candidate.ready_on and candidate.status not in {'REJECTED','WITHDRAWN'} and not getattr(getattr(candidate,'arrival',None),'movement_request_id',None)]
     from .rotation import RotationFilter,normalize_rotation_filter_data,rotation_project_camps,rotation_rows
     extra['rotation_project_camps']=rotation_project_camps(request.user.company)
     raw=(request.GET if request.method=='GET' else request.POST).copy()

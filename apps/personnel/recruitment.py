@@ -136,7 +136,7 @@ def save_candidate(user, request_id, values, pk=None, revision=None, files=()):
 
 @transaction.atomic
 def handoff(user, candidate_id, revision):
-    serialize(user,RECRUIT)
+    serialize(user,RECRUIT|DISPATCH)
     c=RecruitmentCandidate.objects.get(company=user.company,pk=candidate_id)
     row=current(user,c.request_id);owned(user,row)
     c=RecruitmentCandidate.objects.select_for_update().get(pk=c.pk)
@@ -145,6 +145,9 @@ def handoff(user, candidate_id, revision):
     if c.revision!=revision:raise ValidationError('Кандидата уже изменили. Обновите страницу.')
     if c.status in {'REJECTED','WITHDRAWN','TRANSFERRED'} or not c.ready_on:
         raise ValidationError('Для оформления заезда укажите дату готовности кандидата. Отказанного кандидата передать нельзя.')
+    active_preparations=ArrivalPreparation.objects.filter(candidate__request=row).exclude(status='CANCELLED').count()
+    if active_preparations>=row.quantity:
+        raise ValidationError(f'По заявке уже оформлено требуемое количество сотрудников: {row.quantity}. Остальных кандидатов оставьте в резерве.')
     prep=ArrivalPreparation.objects.create(company=user.company,candidate=c,expected_on=max(c.ready_on,row.required_on),handed_by=user)
     c.status='TRANSFERRED';c.revision+=1;c.save();touch(row)
     audit(user,row,'Передан диспетчеру для подготовки заезда.',c)

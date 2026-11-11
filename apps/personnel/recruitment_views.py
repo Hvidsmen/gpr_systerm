@@ -139,7 +139,7 @@ def candidate_edit(request,request_pk,pk=None):
 @login_required
 @require_POST
 def candidate_handoff(request,pk):
-    require_roles(request.user,service.RECRUIT)
+    require_roles(request.user,service.RECRUIT|service.DISPATCH)
     c=get_object_or_404(RecruitmentCandidate,company=request.user.company,pk=pk)
     form=RevisionForm(request.POST)
     if form.is_valid():
