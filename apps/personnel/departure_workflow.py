@@ -7,7 +7,7 @@ from django.utils import timezone
 from core.permissions import role_code
 from apps.planning.models import WorkTask
 from apps.planning.task_services import ensure,event as task_event,state
-from .models import CampStay,HousingEvent,MovementRecommendationOverride,MovementReviewEvent,MovementReviewRequest,Person
+from .models import ArrivalPreparation,CampStay,HousingEvent,MovementRecommendationOverride,MovementReviewEvent,MovementReviewRequest,Person
 
 ROUTE=[
     ('MANAGER','Руководитель проекта'),('SITE_CHIEF','Начальник участка'),
@@ -322,5 +322,10 @@ def arrive_camp(user,row,day):
     if prep:
         prep.actual_stay=event.stay;prep.status='ARRIVED';prep.revision+=1;prep.save(update_fields=['actual_stay','status','revision','updated_at'])
         from .recruitment import audit,touch
-        touch(prep.candidate.request);audit(user,prep.candidate.request,'Фактический заезд в ВЖГ подтверждён.',prep.candidate)
+        recruitment=prep.candidate.request
+        arrived=ArrivalPreparation.objects.filter(candidate__request=recruitment,status='ARRIVED',actual_stay__isnull=False,
+            actual_stay__cancelled_at__isnull=True).count()
+        if arrived>=recruitment.quantity and not recruitment.completed_at:
+            recruitment.completed_at=timezone.now();recruitment.save(update_fields=['completed_at','updated_at'])
+        touch(recruitment);audit(user,recruitment,'Фактический заезд в ВЖГ подтверждён.',prep.candidate)
     log(row,user,'Прибыл в ВЖГ','Фактический заезд зафиксирован. Заявка завершена.')

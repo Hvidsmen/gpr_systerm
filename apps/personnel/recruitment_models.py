@@ -43,6 +43,7 @@ class RecruitmentRequest(PersonnelModel):
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='recruitment_requests')
     assigned_to = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='recruitment_assignments', null=True, blank=True)
     cancelled_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
     revision = models.PositiveIntegerField(default=0)
     class Meta:
         ordering = ['required_on', 'pk']

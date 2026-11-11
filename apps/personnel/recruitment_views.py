@@ -36,7 +36,8 @@ def request_list(request):
     if request.GET.get('mine')=='1':rows=rows.filter(assigned_to=request.user)
     state=request.GET.get('state','active')
     if state=='cancelled':rows=rows.filter(cancelled_at__isnull=False)
-    elif state!='all':rows=rows.filter(cancelled_at__isnull=True)
+    elif state=='completed':rows=rows.filter(completed_at__isnull=False)
+    elif state!='all':rows=rows.filter(cancelled_at__isnull=True,completed_at__isnull=True)
     page=Paginator(rows,30).get_page(request.GET.get('page'))
     for row in page:row.progress=service.progress(row)
     params=request.GET.copy();params.pop('page',None)
@@ -114,8 +115,9 @@ def request_detail(request,pk):
         if action=='take':form=bound
         else:cancel_form=bound
     role=role_code(request.user)
-    return render(request,'personnel/recruitment_detail.html',{**context(request.user),'row':row,'progress':service.progress(row),'form':form,'cancel_form':cancel_form,
-        'can_manage_candidates':role in service.RECRUIT and (role!='RECRUITER' or row.assigned_to_id==request.user.pk),
+    return render(request,'personnel/recruitment_detail.html',{**context(request.user),'can_dispatch':role in service.DISPATCH and not row.completed_at,
+        'row':row,'progress':service.progress(row),'form':form,'cancel_form':cancel_form,
+        'can_manage_candidates':not row.completed_at and role in service.RECRUIT and (role!='RECRUITER' or row.assigned_to_id==request.user.pk),
         'events':row.events.select_related('actor','candidate')[:100]})
 
 

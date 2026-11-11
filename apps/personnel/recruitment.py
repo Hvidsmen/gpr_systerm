@@ -24,6 +24,7 @@ def current(user, pk, revision=None):
     row = RecruitmentRequest.objects.select_for_update().get(company=user.company, pk=pk)
     if revision is not None and row.revision != revision:raise ValidationError('Заявка уже изменена. Обновите страницу.')
     if row.cancelled_at:raise ValidationError('Заявка отменена.')
+    if row.completed_at:raise ValidationError('Заявка выполнена. Требуемое количество сотрудников уже прибыло.')
     return row
 
 
@@ -55,7 +56,7 @@ def progress(row):
         prep=getattr(c,'arrival',None)
         if prep and prep.actually_arrived:arrived.append(c)
         if c.status in {'READY','TRANSFERRED'} and not (prep and prep.status=='CANCELLED'):ready.append(c)
-    state=('Отменена' if row.cancelled_at else 'Выполнена' if len(arrived)>=row.quantity else
+    state=('Отменена' if row.cancelled_at else 'Выполнена' if row.completed_at or len(arrived)>=row.quantity else
            'Кандидаты готовы' if len(ready)>=row.quantity else 'В работе' if row.assigned_to_id or candidates else 'Новая')
     return {'required':row.quantity,'shortlisted':len(shortlisted),'ready':len(ready),'arrived':len(arrived),'label':state}
 

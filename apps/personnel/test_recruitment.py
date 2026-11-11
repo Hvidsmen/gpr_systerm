@@ -107,6 +107,24 @@ class RecruitmentTests(TestCase):
             status='READY',ready_on=self.day,created_by=self.recruiter)
         with self.assertRaisesMessage(ValidationError,'уже оформлено требуемое количество'):
             service.handoff(self.dispatch,second.pk,second.revision)
+    def test_request_closes_when_required_employee_arrives(self):
+        from .departure_workflow import arrive_camp
+        row=service.save_request(self.dispatch,self.values(quantity=1));candidate=self.candidate(row)
+        prep=service.handoff(self.recruiter,candidate.pk,candidate.revision)
+        prep=service.prepare_arrival(self.dispatch,prep.pk,prep.revision,self.arrival_values(),workflow=True)
+        movement=prep.movement_request;movement.status='EN_ROUTE';movement.hub_departed_on=self.day
+        movement.save(update_fields=['status','hub_departed_on','updated_at'])
+        admin=User.objects.create_user(username='arrival-completion-admin',company=self.company,role=Role.objects.get(code='ADMIN'))
+        arrive_camp(admin,movement,self.day+timedelta(days=1));row.refresh_from_db()
+        self.assertIsNotNone(row.completed_at)
+        self.client.force_login(self.dispatch)
+        active=self.client.get(reverse('personnel:recruitment_list'))
+        self.assertNotContains(active,f'№{row.pk} ·')
+        completed=self.client.get(reverse('personnel:recruitment_list'),{'state':'completed'})
+        self.assertContains(completed,f'№{row.pk} ·');self.assertContains(completed,'Выполнена')
+        with self.assertRaisesMessage(ValidationError,'Заявка выполнена'):
+            service.handoff(self.dispatch,RecruitmentCandidate.objects.create(company=self.company,request=row,
+                full_name='Резерв',status='READY',ready_on=self.day,created_by=self.recruiter).pk,0)
     def test_new_candidate_can_start_arrival_without_existing_employee_card(self):
         prep=self.preparation();values=self.arrival_values(employee=None)
         prep=service.prepare_arrival(self.dispatch,prep.pk,prep.revision,values,workflow=True)
