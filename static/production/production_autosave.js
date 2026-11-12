@@ -26,6 +26,7 @@
  const dirty=()=>rows().filter(row=>row.dataset.entryDirty||row.dataset.personDirty||row.dataset.autoPending);
  function message(text,error=false){lastMessage=text;lastError=error;if(!error&&text==='Все изменения сохранены'&&Number(form.dataset.linksRejected||0)>0)text='Данные сохранены; часть связей требует проверки';if(!error&&text==='Все изменения сохранены'&&Number(form.dataset.linksPending||0)>0)text='Данные сохранены; связи ожидают отправки';state.textContent=text;state.classList.toggle('text-danger',error);state.classList.toggle('fact-state-saving',!error&&text==='Сохранение…');state.classList.toggle('fact-state-saved',!error&&text==='Все изменения сохранены');state.classList.toggle('fact-state-pending',!error&&text.includes('изменения')&&text!=='Все изменения сохранены');retry.hidden=!error;}
  function rowMessage(row,text,error=false){const target=row.querySelector('[data-autosave-row-state]');if(target){target.textContent=text;target.title=text;target.classList.toggle('text-danger',error);}row.classList.toggle('production-person-auto-failed',error);}
+ function keepNewRowsVisible(){const url=new URL(location.href);let changed=false;for(const row of rows().filter(item=>item.dataset.newPinned)){const id=field(row,'id')?.value;if(!id)continue;const kind=row.dataset.newPinned,note=row.querySelector('[data-new-row-note]');if(note)note.textContent=(kind==='person'?'Новый сотрудник':'Новая работа')+' · сохранено · закреплено до перехода';url.searchParams.set(kind==='person'?'focus_person':'focus_work',id);changed=true;}if(changed)history.replaceState(null,'',url);}
  function renderPendingDelete(row,deleted=Boolean(field(row,'DELETE')?.checked)){
   row.hidden=false;row.classList.toggle('production-row-pending-delete',deleted);
   const remove=row.querySelector('[data-person-remove],[data-work-remove]'),restore=row.querySelector('[data-person-restore],[data-work-restore]');if(!remove||!restore)return;
@@ -119,7 +120,7 @@
    else{row.dataset.autoPending='1';pending=true;storeDraft(row);rowMessage(row,'Есть изменения');}
   }
   form.productionStatus.update(`Сохранено записей: ${changed.length} из ${changed.length}`,changed.length,changed.length);
-  reindex();if(result.report){if(form.productionApplyReport)form.productionApplyReport(result.report);else form.dispatchEvent(new CustomEvent('production-report-update',{detail:result.report}));}form.dispatchEvent(new Event('production-autosave-committed'));
+  reindex();keepNewRowsVisible();if(result.report){if(form.productionApplyReport)form.productionApplyReport(result.report);else form.dispatchEvent(new CustomEvent('production-report-update',{detail:result.report}));}form.dispatchEvent(new Event('production-autosave-committed'));
   message(pending?'Есть изменения…':'Все изменения сохранены');
  }
  async function flush(){

@@ -6,6 +6,7 @@ from apps.resources.models import Employee
 from apps.works.models import ProjectWork
 from apps.planning.models import DailyScheduleEntry
 from .dispatch_models import EmployeeActivity
+from .models import DailyFact
 from . import test_dispatch as fixtures
 
 
@@ -55,6 +56,18 @@ class ProductionEmployeeSearchPaginationTests(TestCase):
         works=next(group for group in third.context['groups'] if group['prefix']=='works')
         self.assertEqual(len(works['formset']),5)
         self.assertContains(third,'Страница 3 из 3')
+
+    def test_new_saved_rows_can_be_focused_on_their_server_page(self):
+        person=EmployeeActivity.objects.order_by('pk').last()
+        people=self.client.get(reverse('production:fact_day_workspace'),{'construction_object':self.obj.pk,'date':self.day,'section':'works','focus_person':person.pk})
+        self.assertEqual(people.context['people_page'].number,3)
+        works=list(ProjectWork.objects.filter(section=self.work.section).order_by('pk')[:101])
+        DailyFact.objects.bulk_create([DailyFact(company=self.company,date=self.day,project_work=work,actual_quantity=1,reported_by=self.users['DISPATCHER']) for work in works])
+        focus=DailyFact.objects.order_by('pk').last()
+        page=self.client.get(reverse('production:fact_day_workspace'),{'construction_object':self.obj.pk,'date':self.day,'section':'works','focus_work':focus.pk})
+        self.assertEqual(page.context['work_page'].number,2)
+        formset=next(group for group in page.context['groups'] if group['prefix']=='works')['formset']
+        self.assertTrue(any(form.instance.pk==focus.pk for form in formset))
 
     def test_search_rejects_an_object_outside_user_scope(self):
         response=self.client.get(reverse('production:production_employee_search'),{'construction_object':self.other.pk,'date':self.day})

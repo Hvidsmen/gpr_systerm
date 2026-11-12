@@ -408,6 +408,9 @@ class DispatcherDayView(CompanyRequiredMixin,View):
             people_page=None
             if prefix=='labor' and section=='works':
                 page_number=(request.POST if bound else request.GET).get('people_page',1)
+                focus_person=(request.GET.get('focus_person') or '') if not bound else ''
+                if focus_person.isdigit() and qs.filter(pk=int(focus_person)).exists():
+                    page_number=max(1,(qs.filter(pk__lte=int(focus_person)).count()+99)//100)
                 people_page=Paginator(qs.order_by('pk'),100).get_page(page_number)
                 qs=people_page.object_list
                 employee_ids=set(qs.values_list('employee_id',flat=True))
@@ -424,6 +427,9 @@ class DispatcherDayView(CompanyRequiredMixin,View):
                 initial=[{'project_work':row['work'],'work_item':row['item'],'actual_quantity':None} for row in catalogue if (row['work'],row['item']) in activity_keys and (row['work'],row['item']) not in existing and row['work'] in available]
                 page_number=(request.POST if bound else request.GET).get('work_page',1)
                 saved_ids=list(qs.order_by('pk').values_list('pk',flat=True))
+                focus_work=(request.GET.get('focus_work') or '') if not bound else ''
+                if focus_work.isdigit() and int(focus_work) in saved_ids:
+                    page_number=max(1,(saved_ids.index(int(focus_work))+100)//100)
                 descriptors=[('saved',pk) for pk in saved_ids]+[('initial',index) for index in range(len(initial))]
                 work_page=Paginator(descriptors,100).get_page(page_number)
                 visible_saved=[value for kind,value in work_page.object_list if kind=='saved']
