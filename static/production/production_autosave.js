@@ -50,6 +50,21 @@
   if(row){delete row.dataset.autoRejected;row.dataset.autoPending='1';rowMessage(row,field(row,'DELETE')?.checked?'Будет удалено':'Не сохранено');storeDraft(row);}
   pending=true;failed=false;retryAttempt=0;message('Есть несохранённые изменения');clearTimeout(timer);
  }
+ function uuid(){
+  if(crypto.randomUUID)return crypto.randomUUID();
+  const bytes=crypto.getRandomValues(new Uint8Array(16));bytes[6]=(bytes[6]&15)|64;bytes[8]=(bytes[8]&63)|128;
+  const value=[...bytes].map(item=>item.toString(16).padStart(2,'0')).join('');return `${value.slice(0,8)}-${value.slice(8,12)}-${value.slice(12,16)}-${value.slice(16,20)}-${value.slice(20)}`;
+ }
+ function compactValues(row){
+  const grouped=new Map();
+  for(const input of row.querySelectorAll('input[name],select[name],textarea[name]')){
+   const name=suffix(input);if(['id','person_editing','work_editing'].includes(name))continue;
+   if((input.type==='checkbox'||input.type==='radio')&&!input.checked){if(!grouped.has(name))grouped.set(name,[]);continue;}
+   const selected=input.tagName==='SELECT'&&input.multiple?[...input.selectedOptions].map(option=>option.value):[input.value];
+   grouped.set(name,[...(grouped.get(name)||[]),...selected]);
+  }
+  const values={};for(const [name,items] of grouped)values[name]=items.length>1?items:(items[0]??'');return values;
+ }
  async function save(selected){
   const changed=selected||dirty();
   form.productionStatus.start(`Сохраняем текущую вкладку · записей: ${changed.length}`,changed.length);
@@ -65,15 +80,15 @@
    else if(!isPerson(row)&&field(row,'project_work')?.value)await form.productionClaimRow(row);
   }
   const sent=new Map(changed.map(row=>[prefix(row),{row,stamp:fingerprint(row),capture:capture(row)}]));
-  const body=new FormData(form);body.set('autosave','1');body.set('action','save');
-  for(const row of rows()){
-   if(!sent.has(prefix(row))){for(const input of row.querySelectorAll('[name]'))if(!input.name.endsWith('-id'))body.delete(input.name);body.set(field(row,isPerson(row)?'person_editing':'work_editing').name,'0');continue;}
-   const editing=field(row,isPerson(row)?'person_editing':'work_editing')?.value==='1';
-   if(editing)for(const name of isPerson(row)?['employee','shift']:['project_work','work_item']){const input=field(row,name);if(input)body.set(input.name,input.value);}
-  }
+  const retained=changed.map(row=>row.dataset.batchId).filter(Boolean),batchId=retained.length&&retained.every(value=>value===retained[0])?retained[0]:uuid();
+  changed.forEach(row=>row.dataset.batchId=batchId);
+  const body=JSON.stringify({batch_id:batchId,actor_id:Number(form.dataset.userId),company_id:Number(form.dataset.companyId),
+   construction_object:form.elements.construction_object.value,date:form.elements.date.value,session:form.productionSession?.scope.session||'',
+   rows:changed.map(row=>({kind:isPerson(row)?'labor':'works',prefix:prefix(row),id:field(row,'id')?.value||null,
+    version:row.dataset.entryVersion||null,values:compactValues(row)}))});
   changed.forEach(row=>rowMessage(row,'Сохранение…'));message('Сохранение…');
   const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),30000);let response;
-  try{response=await fetch(form.getAttribute('action')||location.href,{method:'POST',credentials:'same-origin',signal:controller.signal,headers:{'X-CSRFToken':form.querySelector('[name=csrfmiddlewaretoken]').value},body});}
+  try{response=await fetch(form.dataset.batchSaveUrl,{method:'POST',credentials:'same-origin',signal:controller.signal,headers:{'Content-Type':'application/json','X-CSRFToken':form.querySelector('[name=csrfmiddlewaretoken]').value},body});}
   catch(error){form.productionForgetClaims?.(changed);if(error.name==='AbortError'){error=new Error('Сервер отвечает долго. Ввод остался в форме; повторим сохранение.');error.retryable=true;}throw error;}
   finally{clearTimeout(timeout);}
   if(!(response.headers.get('content-type')||'').includes('application/json')){const error=new Error('Не удалось сохранить изменения. Проверьте доступ к порталу и повторите сохранение.');error.retryable=response.status>=500||response.status===429;throw error;}
@@ -86,13 +101,14 @@
   // may rebuild rows afterwards; they must not be marked dirty again merely
   // because the original page was rendered from a POST.
   form.dataset.productionBound='0';
-  for(const name of ['production_snapshot','revision','labor_revision'])form.elements.namedItem(name).value=result[name];
+  for(const name of ['revision','labor_revision'])if(result[name]!==undefined)form.elements.namedItem(name).value=result[name];
   for(const entry of result.rows){
    const item=sent.get(entry.prefix);if(!item)continue;
    const row=item.row;
    if(entry.deleted){if(isPerson(row))form.productionLinks?.cancelPerson(Number(field(row,'id').value));else form.productionLinks?.cancelWork(Number(field(row,'id').value));removeDraft(row);try{await form.productionReleaseRow(row);}catch{}row.remove();continue;}
    if(!isPerson(row)&&Number(field(row,'actual_quantity').value.replace(',','.'))===0)form.productionLinks?.cancelWork(Number(entry.id));
    field(row,'id').value=entry.id;
+   row.dataset.entryVersion=entry.version||'';delete row.dataset.batchId;
    if(!isPerson(row))row.dataset.factId=String(entry.id);
    if(isPerson(row)){const employee=field(row,'employee');if(employee.selectedOptions.length===1&&employee.options.length>1)employee.replaceChildren(employee.selectedOptions[0].cloneNode(true));}
    row.dataset.entryOriginal=JSON.stringify(item.capture.map(input=>input.name.endsWith('-id')?{...input,value:String(entry.id)}:input));
@@ -103,7 +119,7 @@
    else{row.dataset.autoPending='1';pending=true;storeDraft(row);rowMessage(row,'Есть изменения');}
   }
   form.productionStatus.update(`Сохранено записей: ${changed.length} из ${changed.length}`,changed.length,changed.length);
-  reindex();if(form.productionApplyReport)form.productionApplyReport(result.report);else form.dispatchEvent(new CustomEvent('production-report-update',{detail:result.report}));form.dispatchEvent(new Event('production-autosave-committed'));
+  reindex();if(result.report){if(form.productionApplyReport)form.productionApplyReport(result.report);else form.dispatchEvent(new CustomEvent('production-report-update',{detail:result.report}));}form.dispatchEvent(new Event('production-autosave-committed'));
   message(pending?'Есть изменения…':'Все изменения сохранены');
  }
  async function flush(){
@@ -113,7 +129,7 @@
   running=(async()=>{
    while(pending||dirty().length){
     pending=false;const changed=dirty(),deletions=changed.filter(row=>field(row,'DELETE')?.checked),people=changed.filter(isPerson);
-    const selected=(deletions.length?deletions:people.length?people:changed).slice(0,25);
+    const selected=(deletions.length?deletions:people.length?people:changed).slice(0,10);
     try{await save(selected);failed=false;retryAttempt=0;}catch(error){failed=true;retryAttempt++;selected.forEach(row=>{if(field(row,'DELETE')?.checked)row.hidden=false;rowMessage(row,row.querySelector('[data-error]')?.textContent||error.message,true);});message(error.message,true);form.productionStatus.error(error.message);if(error.status===409||form.dataset.authChanged==='1'||retryAttempt>=2)form.productionRecovery.reload();else if(navigator.onLine===false)form.productionRecovery.offline();break;}}
    if(!failed&&form.productionCrewDraft?.pending){
     form.productionStatus.start(`Сохраняем состав бригад · изменений: ${form.productionCrewDraft.pending}`,form.productionCrewDraft.pending);
@@ -130,7 +146,7 @@
  }
  async function flushPeople(){
   clearTimeout(timer);if(running)await running;
-  const selected=dirty().filter(isPerson);if(!selected.length){if(dirty().length)timer=setTimeout(()=>flush(),700);return true;}
+  const selected=dirty().filter(isPerson).slice(0,10);if(!selected.length){if(dirty().length)timer=setTimeout(()=>flush(),700);return true;}
   running=(async()=>{try{await save(selected);return true;}catch(error){selected.forEach(row=>rowMessage(row,error.message,true));message(error.message,true);return false;}})();
   try{return await running;}finally{running=null;if(dirty().length){message('Сотрудники обработаны. Есть несохранённые изменения. Нажмите «Сохранить».');pending=true;clearTimeout(timer);}}
  }

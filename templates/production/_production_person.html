@@ -1,4 +1,4 @@
-<div class="production-person production-person-compact border rounded mb-2" data-production-person>
+<div class="production-person production-person-compact border rounded mb-2" data-production-person data-entry-version="{{ row.instance.updated_at|date:'c' }}">
 {% for field in row.hidden_fields %}{{ field }}{{ field.errors }}{% endfor %}<div class="text-danger">{{ row.non_field_errors }}</div>
 <div hidden>{{ row.work_mode }}{{ row.work_mode.errors }}</div>
 <div class="production-person-main-scroll"><div class="production-person-line">

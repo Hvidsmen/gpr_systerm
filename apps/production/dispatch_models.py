@@ -275,3 +275,16 @@ class ProductionLinkReceipt(BaseCompanyModel):
     result=models.JSONField(default=dict)
     class Meta:
         indexes=[models.Index(fields=['company','created_at'],name='prod_link_receipt_age')]
+
+
+class ProductionBatchReceipt(BaseCompanyModel):
+    """Completed compact saves, retained so a timed-out request is safe to repeat."""
+    id=models.UUIDField(primary_key=True,editable=False)
+    construction_object=models.ForeignKey('projects.ConstructionObject',on_delete=models.CASCADE)
+    date=models.DateField()
+    user=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.CASCADE)
+    digest=models.CharField(max_length=64)
+    result=models.JSONField(default=dict)
+
+    class Meta:
+        indexes=[models.Index(fields=['company','created_at'],name='prod_batch_receipt_age')]
