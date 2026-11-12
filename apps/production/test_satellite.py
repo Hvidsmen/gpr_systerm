@@ -16,20 +16,24 @@ class SatelliteProfileTests(TestCase):
     setUpTestData=classmethod(ProductionCollaborationTests.setUpTestData.__func__)
     def test_representative_day_profile(self):
         user=self.users['DISPATCHER'];self.client.force_login(user)
-        employees=[Employee.objects.create(company=self.company,last_name=f'Сотрудник {i:03}',first_name='Тест',employee_number=f'SAT-{i}',position=self.employee.position) for i in range(300)]
-        for employee in employees[:120]:EmployeeActivity.objects.create(company=self.company,construction_object=self.obj,date=self.day,employee=employee,position=employee.position,entry_direction='works',assignment_reviewed=False,reported_by=user)
-        for n in range(40):
-            work=ProjectWork.objects.create(company=self.company,section=self.work.section,name=f'Работа {n:02}',unit='м')
-            DailyFact.objects.create(company=self.company,date=self.day,project_work=work,actual_quantity=5,reported_by=user)
+        employee_count=int(os.environ.get('SATELLITE_EMPLOYEES',300));people_count=int(os.environ.get('SATELLITE_PEOPLE',120));work_count=int(os.environ.get('SATELLITE_WORKS',40))
+        employees=[Employee(company=self.company,last_name=f'Сотрудник {i:05}',first_name='Тест',employee_number=f'SAT-{i}',position=self.employee.position) for i in range(employee_count)]
+        Employee.objects.bulk_create(employees)
+        EmployeeActivity.objects.bulk_create([EmployeeActivity(company=self.company,construction_object=self.obj,date=self.day,employee=employee,position=employee.position,entry_direction='works',assignment_reviewed=False,reported_by=user) for employee in employees[:people_count]])
+        works=[ProjectWork(company=self.company,section=self.work.section,code=f'SAT-{n}',name=f'Работа {n:04}',unit='м') for n in range(work_count)]
+        ProjectWork.objects.bulk_create(works)
+        DailyFact.objects.bulk_create([DailyFact(company=self.company,date=self.day,project_work=work,actual_quantity=5,reported_by=user) for work in works])
         scope={'actor_id':user.pk,'company_id':self.company.pk,'construction_object':self.obj.pk,'date':str(self.day),'session':str(uuid4()),'reset_epoch':0}
         started=time.perf_counter()
         with CaptureQueriesContext(connection) as queries:page=self.client.get(self.url,{**scope,'section':'works'})
-        result={'people':120,'employees':300,'works':40,'html_bytes':len(page.content),'employee_option_count':page.content.count(b'<option value='),'page_queries':len(queries),'page_seconds':round(time.perf_counter()-started,3)}
+        result={'people':people_count,'employees':employee_count,'works':work_count,'html_bytes':len(page.content),'employee_option_count':page.content.count(b'<option value='),'page_queries':len(queries),'page_seconds':round(time.perf_counter()-started,3)}
         snap=page.context['production_snapshot'];person=EmployeeActivity.objects.first();fact=DailyFact.objects.first()
         baseline=os.environ.get('SATELLITE_PROFILE')=='baseline'
         for name,route,payload in [('live','production_live',{**scope,'production_snapshot':snap}),('link','production_links',{**scope,'activity':person.pk,'fact':fact.pk,'action':'add'})]:
             if not baseline:
-                if name=='live':payload['protocol']='compact-v1'
+                if name=='live':
+                    payload.update(protocol='compact-v1',visible_people=list(EmployeeActivity.objects.order_by('pk').values_list('pk',flat=True)[:100]),visible_works=list(DailyFact.objects.order_by('pk').values_list('pk',flat=True)[:100]))
+                    payload['visible_claims']=[f'employee:{employee}:{shift}' for employee,shift in EmployeeActivity.objects.order_by('pk').values_list('employee_id','shift')[:100]]
                 else:payload={**scope,'protocol':'queued-v1','commands':[{'id':str(uuid4()),'activity':person.pk,'fact':fact.pk,'action':'add'}]}
             started=time.perf_counter()
             with CaptureQueriesContext(connection) as queries:response=self.client.post(reverse('production:'+route),payload,content_type='application/json')
@@ -41,8 +45,10 @@ class SatelliteProfileTests(TestCase):
             result['idle_live_bytes']=len(reply.content);result['idle_live_queries']=len(queries);result['idle_request_bytes']=len(json.dumps(idle).encode())
             compressed=self.client.get(self.url,{**scope,'section':'works'},HTTP_ACCEPT_ENCODING='gzip');result['html_gzip_bytes']=len(compressed.content)
             legacy={**scope,'production_snapshot':snap};old=self.client.post(reverse('production:production_live'),legacy,content_type='application/json').json();legacy['digest']=old['digest'];old_idle=self.client.post(reverse('production:production_live'),legacy,content_type='application/json');result['legacy_idle_live_bytes']=len(old_idle.content);result['legacy_idle_request_bytes']=len(json.dumps(legacy).encode())
-            self.assertLess(result['html_gzip_bytes'],150000)
-            self.assertLess(result['html_bytes'],2000000);self.assertLess(result['page_queries'],250);self.assertLess(result['link_bytes'],2000);self.assertLess(result['idle_live_bytes'],1024)
+            if employee_count==300 and people_count==120 and work_count==40:
+                self.assertLess(result['html_gzip_bytes'],150000)
+                self.assertLess(result['html_bytes'],2000000);self.assertLess(result['page_queries'],250)
+            self.assertLess(result['link_bytes'],2000);self.assertLess(result['idle_live_bytes'],1024)
         result['poll_request_bytes']=len(json.dumps({**scope,'production_snapshot':snap}).encode())
         label=os.environ.get('SATELLITE_PROFILE','current');Path('/tmp/satellite-profile-'+label+'.json').write_text(json.dumps(result,indent=2));print('SATELLITE_PROFILE',json.dumps(result))
 

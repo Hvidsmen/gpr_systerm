@@ -253,14 +253,19 @@ def sync_links(form):
         link.full_clean();link.save()
 
 
-def report_data(obj,day):
+def report_data(obj,day,work_ids=None,people_ids=None):
+    """Build all report rows, or only the editor rows requested by id."""
     works=[]
-    for row in DailyFact.objects.filter(company=obj.company,project_work__section__construction_object=obj,date=day).select_related('reported_by'):
+    work_rows=DailyFact.objects.filter(company=obj.company,project_work__section__construction_object=obj,date=day)
+    if work_ids is not None:work_rows=work_rows.filter(pk__in=work_ids)
+    for row in work_rows.select_related('reported_by'):
         works.append({**{name:getattr(row,name) for name in ('id','project_work_id','work_item_id','operational_name','operational_unit','actual_quantity','actuation_type','actuation_reason','actuation_reason_ids','comment')},
             'reported_by__username':row.reported_by.username if row.reported_by_id else None,
             'owner':(row.reported_by.get_full_name() or row.reported_by.username) if row.reported_by_id else 'Общий ввод'})
     people=[]
-    for row in EmployeeActivity.objects.filter(company=obj.company,construction_object=obj,date=day).select_related(
+    people_rows=EmployeeActivity.objects.filter(company=obj.company,construction_object=obj,date=day)
+    if people_ids is not None:people_rows=people_rows.filter(pk__in=people_ids)
+    for row in people_rows.select_related(
             'employee__position__planning_mapping__brigade__group','position__planning_mapping__brigade__group','planning_position__planning_mapping__brigade__group','reported_by').prefetch_related(Prefetch('work_links',to_attr='_prefetched_work_links')):
         role=row.planning_position or row.position
         mapping=getattr(role,'planning_mapping',None) if role else None

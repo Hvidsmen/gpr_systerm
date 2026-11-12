@@ -39,7 +39,14 @@
   document.getElementById('production-graph-saved').textContent=JSON.stringify(report.works);
   form.dispatchEvent(new CustomEvent('production-report-update',{detail:report}));
  }
- function merge(report){canonical=report;digest='';publish();}
+ function merge(report,scope='full'){
+  if(scope==='visible'){
+   const works=new Map(canonical.works.map(row=>[Number(row.id),row])),people=new Map(canonical.people.map(row=>[Number(row.id),row]));
+   for(const row of report.works)works.set(Number(row.id),row);for(const row of report.people)people.set(Number(row.id),row);
+   canonical={works:[...works.values()],people:[...people.values()]};
+  }else canonical=report;
+  digest='';publish();
+ }
  form.productionApplyReport=merge;
  outbox=new window.ProductionLinksOutbox(form,{digest:()=>digest,ackDigest:value=>{digest=value;},changed:()=>{lastActivity=Date.now();published='';publish();},people:(people,removed)=>{
   const byId=new Map(canonical.people.map(p=>[Number(p.id),p]));for(const person of people){const row=rows().find(item=>item.matches('[data-production-person]')&&Number(field(item,'id')?.value)===Number(person.id)),current=byId.get(Number(person.id)),currentRevision=Number(row?.dataset.linksRevision||current?.links_revision||0);if(Number(person.links_revision)<currentRevision)continue;if(current)byId.set(Number(person.id),{...current,...person});if(row){row.dataset.linksRevision=person.links_revision;row.dataset.pendingLinks=0;setValues(row,{work_targets:person.targets,work_mode:person.general?'general':person.reviewed?'works':'pending',general:person.general},true);}}
@@ -64,7 +71,7 @@
     }
    }
    window.productionAutoSave.reindex();form.elements.namedItem('production_snapshot').value=data.production_snapshot;
-   merge(data.report);form.dispatchEvent(new Event('production-live-applied'));if(data.claims)form.productionSetClaims(data.claims);
+   merge(data.report,data.report_scope);form.dispatchEvent(new Event('production-live-applied'));if(data.claims)form.productionSetClaims(data.claims);
   }finally{form.productionApplying=false;}
  }
  let presenceStamp='';
@@ -83,7 +90,7 @@
   if(!force&&lastSync&&Date.now()-lastSync<2500){schedule();return false;}
   polling=true;const original=snapshot(),saving=window.productionAutoSave.running,started=performance.now();
   const keep=rows().filter(r=>r.dataset.entryDirty||r.dataset.personDirty||r.dataset.autoPending||field(r,r.matches('[data-production-person]')?'person_editing':'work_editing')?.value==='1').flatMap(form.productionKeysOf);
-  const snapshotKey=original.split(':').at(-1),visiblePeople=rows().filter(r=>r.matches('[data-production-person]')).map(r=>field(r,'id')?.value).filter(Boolean),body={...scope,protocol:'compact-v1',step,digest,claims_digest:claimsDigest,users_digest:usersDigest,keep,snapshot_key:snapshotKey,people_page:Number(form.elements.people_page?.value||1),people_page_size:Number(form.elements.people_page_size?.value||100),visible_people:visiblePeople};
+  const snapshotKey=original.split(':').at(-1),visiblePeople=rows().filter(r=>r.matches('[data-production-person]')).map(r=>field(r,'id')?.value).filter(Boolean),visibleWorks=rows().filter(r=>r.matches('[data-work-fact-row]')).map(r=>field(r,'id')?.value).filter(Boolean),visibleClaims=[...new Set(rows().flatMap(form.productionKeysOf))],body={...scope,protocol:'compact-v1',step,digest,claims_digest:claimsDigest,users_digest:usersDigest,keep,snapshot_key:snapshotKey,people_page:Number(form.elements.people_page?.value||1),people_page_size:Number(form.elements.people_page_size?.value||100),work_page:Number(form.elements.work_page?.value||1),work_page_size:Number(form.elements.work_page_size?.value||100),visible_people:visiblePeople,visible_works:visibleWorks,visible_claims:visibleClaims};
   if(!knownSnapshots.has(snapshotKey))body.production_snapshot=original;
   const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),25000);
   try{

@@ -148,7 +148,10 @@ def links(request):
 
 def canonical_rows(obj,day,report):
     rows={'works':[],'labor':[]}
-    for fact in DailyFact.objects.filter(company=obj.company,date=day,project_work__section__construction_object=obj):
+    work_ids={work['id'] for work in report['works']}
+    work_rows=DailyFact.objects.filter(company=obj.company,date=day,project_work__section__construction_object=obj)
+    if report.get('_scope')=='visible':work_rows=work_rows.filter(pk__in=work_ids)
+    for fact in work_rows:
         values={name:str(value) if value is not None else '' for name,value in {
             'id':fact.pk,'project_work':fact.project_work_id,'work_item':fact.work_item_id,'operational_name':fact.operational_name,'operational_unit':fact.operational_unit,'actual_quantity':format(fact.actual_quantity.normalize(),'f'),
             'actuation_type':fact.actuation_type,'actuation_reason':fact.actuation_reason,'comment':fact.comment}.items()}
@@ -157,7 +160,9 @@ def canonical_rows(obj,day,report):
         values['DELETE']=False
         rows['works'].append({'id':fact.pk,'key':f'operational:{fact.pk}' if fact.operational_key else token(fact.project_work_id,fact.work_item_id),'version':fact.updated_at.isoformat(),'values':values})
     people={p['id']:p for p in report['people']}
-    for person in EmployeeActivity.objects.filter(company=obj.company,construction_object=obj,date=day,entry_direction='works'):
+    people_rows=EmployeeActivity.objects.filter(company=obj.company,construction_object=obj,date=day,entry_direction='works')
+    if report.get('_scope')=='visible':people_rows=people_rows.filter(pk__in=people)
+    for person in people_rows:
         values={name:str(value) if value is not None else '' for name,value in {
             'id':person.pk,'employee':person.employee_id,'shift':person.shift,'work':person.work_id,'work_item':person.work_item_id,
             'equipment':person.equipment_id,'activity':person.activity,'planning_position':person.planning_position_id}.items()}
@@ -210,6 +215,9 @@ def live(request):
             for model in (WorkFactClaim,EmployeeFactClaim):
                 model.objects.filter(company=obj.company,construction_object=obj,date=day,dispatcher=request.user,session_key=session,expires_at__gt=now).update(expires_at=now+TTL)
             claims=status_rows(request.user,obj,day,session)
+            if data.get('protocol')=='compact-v1':
+                visible_claims={str(key) for key in data.get('visible_claims',[]) if isinstance(key,str)}
+                if visible_claims:claims=[claim for claim in claims if claim['key'] in visible_claims or claim.get('mine')]
             editing_ids=set(WorkFactClaim.objects.filter(company=obj.company,construction_object=obj,date=day,expires_at__gt=now).values_list('dispatcher_id',flat=True))
             editing_ids.update(EmployeeFactClaim.objects.filter(company=obj.company,construction_object=obj,date=day,expires_at__gt=now).values_list('dispatcher_id',flat=True))
             active={}

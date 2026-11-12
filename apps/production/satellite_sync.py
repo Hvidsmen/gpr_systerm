@@ -52,13 +52,24 @@ def response_data(user,obj,day,session,data,users,claims):
     stamp=state_stamp(obj,day)
     result.update(digest=stamp,snapshot_key=token)
     if data.get('digest')!=stamp:
-        report=report_data(obj,day);rows=canonical_rows(obj,day,report)
-        try:people_page=max(1,int(data.get('people_page',1)));people_page_size=min(100,max(10,int(data.get('people_page_size',50))))
+        visible_people={int(pk) for pk in data.get('visible_people',[]) if str(pk).isdigit()}
+        visible_works={int(pk) for pk in data.get('visible_works',[]) if str(pk).isdigit()}
+        try:people_page=max(1,int(data.get('people_page',1)));people_page_size=min(100,max(10,int(data.get('people_page_size',100))))
         except (TypeError,ValueError):people_page,people_page_size=1,100
-        start=(people_page-1)*people_page_size;visible={int(pk) for pk in data.get('visible_people',[]) if str(pk).isdigit()}
-        page_ids={row['id'] for row in rows['labor'][start:start+people_page_size]}
-        rows['labor']=[row for row in rows['labor'] if row['id'] in page_ids|visible]
-        result['people_page']={'number':people_page,'size':people_page_size,'total':len(report['people'])}
+        people_query=EmployeeActivity.objects.filter(company=obj.company,construction_object=obj,date=day).order_by('pk')
+        people_total=people_query.count()
+        if not visible_people:
+            start=(people_page-1)*people_page_size
+            visible_people=set(people_query.values_list('pk',flat=True)[start:start+people_page_size])
+        # The relationship graph explicitly requests the full graph. Normal
+        # polling only returns the 100 rows currently open in the browser.
+        full_report=int(data.get('step',1))==4
+        report=report_data(obj,day,work_ids=None if full_report else visible_works,people_ids=None if full_report else visible_people)
+        report['_scope']='full' if full_report else 'visible'
+        rows=canonical_rows(obj,day,report)
+        report.pop('_scope',None)
+        result['report_scope']='full' if full_report else 'visible'
+        result['people_page']={'number':people_page,'size':people_page_size,'total':people_total}
         fresh=rebase(user,obj,day,signed,rows,set(data.get('keep',[])))
         result.update(report=report,rows=rows,production_snapshot=fresh,snapshot_key=remember(user,obj,day,session,fresh))
         from .actuation_models import ActuationReason

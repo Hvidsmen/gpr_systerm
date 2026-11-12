@@ -3,6 +3,8 @@ from django.test import TestCase
 from django.urls import reverse
 
 from apps.resources.models import Employee
+from apps.works.models import ProjectWork
+from apps.planning.models import DailyScheduleEntry
 from .dispatch_models import EmployeeActivity
 from . import test_dispatch as fixtures
 
@@ -14,6 +16,9 @@ class ProductionEmployeeSearchPaginationTests(TestCase):
         employees=[Employee(company=cls.company,last_name=f'Массовый{index:03}',first_name='Сотрудник',employee_number=f'T-{index:03}',position=cls.employee.position) for index in range(205)]
         Employee.objects.bulk_create(employees)
         EmployeeActivity.objects.bulk_create([EmployeeActivity(company=cls.company,construction_object=cls.obj,date=cls.day,employee=employee,position=employee.position,entry_direction='works',reported_by=cls.users['DISPATCHER']) for employee in employees])
+        works=[ProjectWork(company=cls.company,section=cls.work.section,code=f'MASS-{index:03}',name=f'Массовая работа {index:03}',unit='m') for index in range(204)]
+        ProjectWork.objects.bulk_create(works)
+        DailyScheduleEntry.objects.bulk_create([DailyScheduleEntry(schedule=cls.schedule,key=f'work:{work.pk}',kind='work',label=work.name,metadata={'id':work.pk,'kind':'SIMPLE'},rows=[{'date':str(cls.day),'item_id':None,'quantity':'1'}]) for work in works])
 
     def setUp(self):self.client.force_login(self.users['DISPATCHER'])
 
@@ -38,6 +43,18 @@ class ProductionEmployeeSearchPaginationTests(TestCase):
         self.assertEqual(len(result['items']),50);self.assertEqual(result['total'],205);self.assertTrue(result['has_next'])
         exact=self.client.get(url,{'construction_object':self.obj.pk,'date':self.day,'q':'T-204'}).json()
         self.assertEqual([item['number'] for item in exact['items']],['T-204'])
+
+    def test_daily_works_are_rendered_in_server_pages_of_one_hundred(self):
+        first=self.client.get(reverse('production:fact_day_workspace'),{'construction_object':self.obj.pk,'date':self.day,'section':'works'})
+        self.assertEqual(first.status_code,200)
+        works=next(group for group in first.context['groups'] if group['prefix']=='works')
+        self.assertEqual(first.context['work_page'].paginator.per_page,100)
+        self.assertEqual(first.context['work_page'].paginator.count,205)
+        self.assertEqual(len(works['formset']),100)
+        third=self.client.get(reverse('production:fact_day_workspace'),{'construction_object':self.obj.pk,'date':self.day,'section':'works','work_page':3})
+        works=next(group for group in third.context['groups'] if group['prefix']=='works')
+        self.assertEqual(len(works['formset']),5)
+        self.assertContains(third,'Страница 3 из 3')
 
     def test_search_rejects_an_object_outside_user_scope(self):
         response=self.client.get(reverse('production:production_employee_search'),{'construction_object':self.other.pk,'date':self.day})

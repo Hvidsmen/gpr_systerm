@@ -422,6 +422,16 @@ class DispatcherDayView(CompanyRequiredMixin,View):
                 existing=set(DailyFact.objects.filter(company=obj.company,project_work__section__construction_object=obj,date=day).values_list('project_work_id','work_item_id'))
                 available=set(ProjectWork.objects.filter(company=obj.company,section__construction_object=obj,merged_source__isnull=True).values_list('pk',flat=True))
                 initial=[{'project_work':row['work'],'work_item':row['item'],'actual_quantity':None} for row in catalogue if (row['work'],row['item']) in activity_keys and (row['work'],row['item']) not in existing and row['work'] in available]
+                page_number=(request.POST if bound else request.GET).get('work_page',1)
+                saved_ids=list(qs.order_by('pk').values_list('pk',flat=True))
+                descriptors=[('saved',pk) for pk in saved_ids]+[('initial',index) for index in range(len(initial))]
+                work_page=Paginator(descriptors,100).get_page(page_number)
+                visible_saved=[value for kind,value in work_page.object_list if kind=='saved']
+                visible_initial=[value for kind,value in work_page.object_list if kind=='initial']
+                qs=qs.filter(pk__in=visible_saved).order_by('pk')
+                initial=[initial[index] for index in visible_initial]
+                context['work_page']=work_page
+                context['work_page_size']=100
             carried_day=None
             if prefix=='labor' and section!='works' and context['editable'] and not qs.exists() and not (section=='works' and context['production_reset_epoch']) and (status.revision==0 or own_entry and (not context.get('my_production_entry') or not context['my_production_entry'].roster_started)):
                 carried_day,initial=previous_people(obj,day,production=section=='works',user=request.user if own_entry else None)
@@ -432,6 +442,7 @@ class DispatcherDayView(CompanyRequiredMixin,View):
                 existing=set(qs.values_list('equipment_id','shift'))
                 initial=[row['values'] for key,row in equipment_baselines.items() if key not in existing]
             extra=len(initial)+1
+            if prefix=='works':extra=len(initial)
             if prefix=='equipment' and (equipment_baselines or existing):extra=len(initial)
             factory=modelformset_factory(model,form=form,formset=ScopedSet,extra=extra,can_delete=True,max_num=2000,absolute_max=2000)
             formset=factory(data,prefix=prefix,queryset=qs if qs.query.is_sliced else qs.order_by('pk'),initial=initial,form_kwargs={'user':request.user,'obj':obj,'day':day,'work_plan':work_plan,'equipment_baselines':equipment_baselines,'day_resource_plan':resource_plan,'activity_work_keys':activity_keys,'activity_choices':catalogue,'employee_pool':employee_pool,'planned_positions':planned_positions})
@@ -504,7 +515,9 @@ class DispatcherDayView(CompanyRequiredMixin,View):
         if section=='works':
             from . import entry_concurrency
             from .production_entry import report_data
-            report=report_data(obj,day)
+            work_ids={row.instance.pk for group in groups if group['prefix']=='works' for row in group['formset'] if row.instance.pk}
+            people_ids={row.instance.pk for group in groups if group['prefix']=='labor' for row in group['formset'] if row.instance.pk}
+            report=report_data(obj,day,work_ids=work_ids,people_ids=people_ids)
             context['production_graph_saved']=report['works']
             context['production_report_people']=report['people']
             context['production_snapshot']=request.POST.get('production_snapshot','') if bound else entry_concurrency.snapshot(request.user,obj,day,groups)
