@@ -80,7 +80,8 @@ def save_batch(request):
     inherit_parent_works(obj,request.user)
     work_plan,_=plans(obj,day);catalogue=work_catalogue(obj)
     activity_keys=candidate_keys(obj,day,work_plan,catalogue,user=request.user if role_code(request.user)=='DISPATCHER' else None)
-    pool=prepare_employee_pool(obj,day);planned_positions=plan_positions(obj,day)
+    employee_ids={int(item['values'].get('employee')) for item in rows if item.get('kind')=='labor' and str(item.get('values',{}).get('employee','')).isdigit()}
+    pool=prepare_employee_pool(obj,day,employee_ids);planned_positions=plan_positions(obj,day)
     common={'user':request.user,'obj':obj,'day':day,'work_plan':work_plan,'activity_work_keys':activity_keys,
         'activity_choices':catalogue,'employee_pool':pool,'planned_positions':planned_positions}
     prepared=[];errors=[]

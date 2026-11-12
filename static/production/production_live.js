@@ -83,7 +83,7 @@
   if(!force&&lastSync&&Date.now()-lastSync<2500){schedule();return false;}
   polling=true;const original=snapshot(),saving=window.productionAutoSave.running,started=performance.now();
   const keep=rows().filter(r=>r.dataset.entryDirty||r.dataset.personDirty||r.dataset.autoPending||field(r,r.matches('[data-production-person]')?'person_editing':'work_editing')?.value==='1').flatMap(form.productionKeysOf);
-  const snapshotKey=original.split(':').at(-1),body={...scope,protocol:'compact-v1',step,digest,claims_digest:claimsDigest,users_digest:usersDigest,keep,snapshot_key:snapshotKey};
+  const snapshotKey=original.split(':').at(-1),visiblePeople=rows().filter(r=>r.matches('[data-production-person]')).map(r=>field(r,'id')?.value).filter(Boolean),body={...scope,protocol:'compact-v1',step,digest,claims_digest:claimsDigest,users_digest:usersDigest,keep,snapshot_key:snapshotKey,people_page:Number(form.elements.people_page?.value||1),people_page_size:Number(form.elements.people_page_size?.value||100),visible_people:visiblePeople};
   if(!knownSnapshots.has(snapshotKey))body.production_snapshot=original;
   const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),25000);
   try{

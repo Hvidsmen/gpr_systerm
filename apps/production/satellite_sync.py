@@ -53,6 +53,12 @@ def response_data(user,obj,day,session,data,users,claims):
     result.update(digest=stamp,snapshot_key=token)
     if data.get('digest')!=stamp:
         report=report_data(obj,day);rows=canonical_rows(obj,day,report)
+        try:people_page=max(1,int(data.get('people_page',1)));people_page_size=min(100,max(10,int(data.get('people_page_size',50))))
+        except (TypeError,ValueError):people_page,people_page_size=1,100
+        start=(people_page-1)*people_page_size;visible={int(pk) for pk in data.get('visible_people',[]) if str(pk).isdigit()}
+        page_ids={row['id'] for row in rows['labor'][start:start+people_page_size]}
+        rows['labor']=[row for row in rows['labor'] if row['id'] in page_ids|visible]
+        result['people_page']={'number':people_page,'size':people_page_size,'total':len(report['people'])}
         fresh=rebase(user,obj,day,signed,rows,set(data.get('keep',[])))
         result.update(report=report,rows=rows,production_snapshot=fresh,snapshot_key=remember(user,obj,day,session,fresh))
         from .actuation_models import ActuationReason

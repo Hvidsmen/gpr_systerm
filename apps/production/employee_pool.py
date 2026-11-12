@@ -20,16 +20,19 @@ def labor_direction():
     return Q(entry_direction='labor')|(Q(entry_direction='')&(Q(reported_by__role__code='PERSONNEL_DISPATCHER')|(Q(**{GENERAL_PATH:True})&~Q(reported_by__role__code='DISPATCHER'))))
 
 
-def prepare(obj,day):
-    employees=list(Employee.objects.filter(company=obj.company,is_active=True).select_related('position__planning_mapping__brigade__group').order_by('last_name','first_name','middle_name','employee_number','pk'))
-    stays={s.person.employee_id:s for s in present_stays(obj.company,day).filter(person__employee__company=obj.company).exclude(person__employee=None).select_related('camp','person__employee')}
+def prepare(obj,day,employee_ids=None):
+    employees_query=Employee.objects.filter(company=obj.company,is_active=True)
+    if employee_ids is not None:employees_query=employees_query.filter(pk__in=employee_ids)
+    employees=list(employees_query.select_related('position__planning_mapping__brigade__group').order_by('last_name','first_name','middle_name','employee_number','pk'))
+    ids={employee.pk for employee in employees}
+    stays={s.person.employee_id:s for s in present_stays(obj.company,day).filter(person__employee_id__in=ids).exclude(person__employee=None).select_related('camp','person__employee')}
     linked=set(obj.camp_links.filter(company=obj.company).values_list('camp_id',flat=True))
     # Closed actual stays take precedence over an undated legacy table status.
     last={}
-    for stay in CampStay.objects.filter(company=obj.company,cancelled_at=None,arrived_on__lte=day,person__employee__isnull=False).select_related('person').order_by('-arrived_on','-pk'):
+    for stay in CampStay.objects.filter(company=obj.company,cancelled_at=None,arrived_on__lte=day,person__employee_id__in=ids).select_related('person').order_by('-arrived_on','-pk'):
         last.setdefault(stay.person.employee_id,stay)
     legacy={}
-    for slot in StaffingSlot.objects.filter(company=obj.company,person__employee__isnull=False).values('person__employee_id','status'):
+    for slot in StaffingSlot.objects.filter(company=obj.company,person__employee_id__in=ids).values('person__employee_id','status'):
         legacy.setdefault(slot['person__employee_id'],set()).add(slot['status'])
     from apps.resources.group_order import employee_order
     employees.sort(key=employee_order)

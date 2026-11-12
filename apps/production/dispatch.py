@@ -9,6 +9,7 @@ from django.core.exceptions import ValidationError, PermissionDenied
 from django.db import transaction, IntegrityError
 from django.db.models import Prefetch, Q
 from django.forms import BaseModelFormSet, modelformset_factory
+from django.core.paginator import Paginator
 from django.shortcuts import render, redirect
 from django.http import JsonResponse
 from django.urls import reverse
@@ -245,7 +246,12 @@ class FuelForm(ScopeFormMixin,forms.ModelForm):
 class ScopedSet(BaseModelFormSet):
     def add_fields(self,form,index):
         super().add_fields(form,index)
-        form.fields['id'].queryset=self.get_queryset()
+        queryset=self.get_queryset()
+        if queryset.query.is_sliced:
+            if not hasattr(self,'_page_id_queryset'):
+                self._page_id_queryset=self.model.objects.filter(pk__in=list(queryset.values_list('pk',flat=True)))
+            queryset=self._page_id_queryset
+        form.fields['id'].queryset=queryset
 
     def clean(self):
         super().clean()
@@ -383,10 +389,9 @@ class DispatcherDayView(CompanyRequiredMixin,View):
         data=request.POST.copy() if bound else None
 
         from .employee_pool import prepare as prepare_employee_pool,labor_direction
-        employee_pool=prepare_employee_pool(obj,day) if section=='works' else None
+        employee_pool=None
         from .production_positions import plan_positions
         planned_positions=plan_positions(obj,day) if section=='works' else None
-        if employee_pool:context['production_employee_locations']=employee_pool['locations']
         if section=='fuel':
             if bound:raise PermissionDenied('Учёт ГСМ ведётся по ВЖГ.')
             return redirect('production:camp_fuel')
@@ -400,6 +405,18 @@ class DispatcherDayView(CompanyRequiredMixin,View):
             if prefix=='labor':
                 qs=qs.select_related('employee__position__planning_mapping__brigade__group','position','planning_position').prefetch_related(Prefetch('work_links',to_attr='_prefetched_work_links'))
                 if section=='works':qs=qs.exclude(labor_direction())
+            people_page=None
+            if prefix=='labor' and section=='works':
+                page_number=(request.POST if bound else request.GET).get('people_page',1)
+                people_page=Paginator(qs.order_by('pk'),100).get_page(page_number)
+                qs=people_page.object_list
+                employee_ids=set(qs.values_list('employee_id',flat=True))
+                if bound:
+                    employee_ids.update(int(value) for key,value in request.POST.items() if key.startswith('labor-') and key.endswith('-employee') and str(value).isdigit())
+                employee_pool=prepare_employee_pool(obj,day,employee_ids)
+                context['production_employee_locations']=employee_pool['locations']
+                context['people_page']=people_page
+                context['people_page_size']=100
             initial=[]
             if prefix=='works':
                 existing=set(DailyFact.objects.filter(company=obj.company,project_work__section__construction_object=obj,date=day).values_list('project_work_id','work_item_id'))
@@ -417,7 +434,7 @@ class DispatcherDayView(CompanyRequiredMixin,View):
             extra=len(initial)+1
             if prefix=='equipment' and (equipment_baselines or existing):extra=len(initial)
             factory=modelformset_factory(model,form=form,formset=ScopedSet,extra=extra,can_delete=True,max_num=2000,absolute_max=2000)
-            formset=factory(data,prefix=prefix,queryset=qs.order_by('pk'),initial=initial,form_kwargs={'user':request.user,'obj':obj,'day':day,'work_plan':work_plan,'equipment_baselines':equipment_baselines,'day_resource_plan':resource_plan,'activity_work_keys':activity_keys,'activity_choices':catalogue,'employee_pool':employee_pool,'planned_positions':planned_positions})
+            formset=factory(data,prefix=prefix,queryset=qs if qs.query.is_sliced else qs.order_by('pk'),initial=initial,form_kwargs={'user':request.user,'obj':obj,'day':day,'work_plan':work_plan,'equipment_baselines':equipment_baselines,'day_resource_plan':resource_plan,'activity_work_keys':activity_keys,'activity_choices':catalogue,'employee_pool':employee_pool,'planned_positions':planned_positions})
             if prefix=='equipment':
                 for row in formset:
                     try:key=(int(row.initial.get('equipment') or row['equipment'].value()),int(row.initial.get('shift') or row['shift'].value() or 1))
@@ -456,6 +473,7 @@ class DispatcherDayView(CompanyRequiredMixin,View):
                 from apps.resources.group_order import machine_order
                 ordered_rows.sort(key=lambda row:(not bool(row.baseline or row.instance.pk),machine_order(row.baseline['assignment'].equipment if row.baseline else row.instance.equipment) if row.baseline or row.instance.pk else ()))
             groups.append({'prefix':prefix,'formset':formset,'ordered_rows':ordered_rows,'carried_day':carried_day,
+                'page':people_page,
                 **({'work_groups':work_groups,'work_extra':work_extra} if prefix=='works' else {})})
         records={r.section:r for r in FactSectionDay.objects.filter(company=obj.company,construction_object=obj,date=day)}
         context['revision']=request.POST.get('revision','') if bound else status.revision
