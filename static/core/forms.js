@@ -275,6 +275,11 @@
         item.append(text);
         item.addEventListener('click', () => {
           if (this.disabled() || item.disabled) return;
+          if (option.dataset.existingPerson) {
+            this.select.dispatchEvent(new CustomEvent('search-select-existing', {bubbles:true, detail:{row:option.dataset.existingPerson}}));
+            this.close();
+            return;
+          }
           if (this.select.multiple) option.selected = !option.selected;
           else this.select.selectedIndex = option.index;
           this.changed();
