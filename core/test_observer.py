@@ -12,7 +12,7 @@ class ObserverPermissionTests(TestCase):
         self.user = User.objects.create_user(username='observer', company=Company.objects.create(name='Observer company'), role=self.role)
 
     def test_can_view_business_sections_and_exports(self):
-        for namespace, name in [('dashboard','index'), ('dashboard','revenue'), ('planning','workspace_list'),('planning','workspace_edit'), ('planning','global_detail'), ('planning','journal_plan_list'), ('planning','report_matrix'), ('rotation','plan_detail'), ('production','fact_day_workspace'), ('projects','project_list'), ('works','work_list'), ('resources','brigade_list'), ('planning','workspace_excel_export')]:
+        for namespace, name in [('dashboard','index'), ('dashboard','revenue'), ('planning','workspace_list'),('planning','workspace_edit'), ('planning','global_detail'), ('planning','journal_plan_list'), ('planning','report_matrix'), ('rotation','plan_detail'), ('production','fact_day_workspace'), ('production','equipment_report'), ('production','smg_period_detail'), ('production','smg_period_export'), ('projects','project_list'), ('works','work_list'), ('resources','brigade_list'), ('planning','workspace_excel_export')]:
             check_route(self.user, SimpleNamespace(namespace=namespace, url_name=name, kwargs={}), 'GET')
 
     def test_all_write_methods_and_mutation_pages_are_denied(self):
