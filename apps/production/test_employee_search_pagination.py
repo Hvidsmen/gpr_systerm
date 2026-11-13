@@ -57,6 +57,23 @@ class ProductionEmployeeSearchPaginationTests(TestCase):
         self.assertEqual(len(works['formset']),5)
         self.assertContains(third,'Страница 3 из 3')
 
+    def test_work_search_runs_before_pagination_and_keeps_query(self):
+        exact=self.client.get(reverse('production:fact_day_workspace'),{
+            'construction_object':self.obj.pk,'date':self.day,'section':'works',
+            'work_q':'Массовая работа 203','entry_step':1,
+        })
+        self.assertEqual(exact.status_code,200)
+        self.assertEqual(exact.context['work_query'],'Массовая работа 203')
+        self.assertEqual(exact.context['work_page'].paginator.count,1)
+        self.assertContains(exact,'Массовая работа 203')
+        broad=self.client.get(reverse('production:fact_day_workspace'),{
+            'construction_object':self.obj.pk,'date':self.day,'section':'works',
+            'work_q':'Массовая','work_page':2,'entry_step':1,
+        })
+        self.assertEqual(broad.context['work_page'].paginator.count,204)
+        self.assertEqual(broad.context['work_page'].number,2)
+        self.assertContains(broad,'work_q=%D0%9C%D0%B0%D1%81%D1%81%D0%BE%D0%B2%D0%B0%D1%8F')
+
     def test_new_saved_rows_can_be_focused_on_their_server_page(self):
         person=EmployeeActivity.objects.order_by('pk').last()
         people=self.client.get(reverse('production:fact_day_workspace'),{'construction_object':self.obj.pk,'date':self.day,'section':'works','focus_person':person.pk})

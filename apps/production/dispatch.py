@@ -425,8 +425,18 @@ class DispatcherDayView(CompanyRequiredMixin,View):
                 existing=set(DailyFact.objects.filter(company=obj.company,project_work__section__construction_object=obj,date=day).values_list('project_work_id','work_item_id'))
                 available=set(ProjectWork.objects.filter(company=obj.company,section__construction_object=obj,merged_source__isnull=True).values_list('pk',flat=True))
                 initial=[{'project_work':row['work'],'work_item':row['item'],'actual_quantity':None} for row in catalogue if (row['work'],row['item']) in activity_keys and (row['work'],row['item']) not in existing and row['work'] in available]
-                page_number=(request.POST if bound else request.GET).get('work_page',1)
-                saved_ids=list(qs.order_by('pk').values_list('pk',flat=True))
+                source=request.POST if bound else request.GET
+                work_query=' '.join(source.get('work_q','').split())[:200]
+                terms=[term.casefold() for term in work_query.split()]
+                labels={(row['work'],row['item']):row['label'] for row in catalogue}
+                saved_rows=list(qs.order_by('pk').values_list('pk','project_work_id','work_item_id','operational_name'))
+                if terms:
+                    saved_rows=[row for row in saved_rows if all(term in (' '.join(filter(None,[labels.get((row[1],row[2]),''),row[3] or '']))).casefold() for term in terms)]
+                    initial=[row for row in initial if all(term in labels.get((row['project_work'],row['work_item']),'').casefold() for term in terms)]
+                saved_ids=[row[0] for row in saved_rows]
+                context['work_query']=work_query
+                context['work_search_active']=bool(terms)
+                page_number=source.get('work_page',1)
                 focus_work=(request.GET.get('focus_work') or '') if not bound else ''
                 if focus_work.isdigit() and int(focus_work) in saved_ids:
                     page_number=max(1,(saved_ids.index(int(focus_work))+100)//100)
