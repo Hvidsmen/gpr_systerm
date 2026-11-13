@@ -103,7 +103,7 @@
     const item=sent.get(duplicate.prefix),row=item?.row;
     if(duplicate.code==='operational_duplicate'&&row&&confirm('Такая прочая работа уже существует.\n\nНажмите «ОК», чтобы всё равно создать отдельную запись.\nНажмите «Отмена», чтобы открыть существующую работу.')){row.dataset.allowOperationalDuplicate='1';delete row.dataset.batchId;return save(changed);}
     if(row){removeDraft(row);row.remove();reindex();}
-    const target=new URL(location.href);target.searchParams.set('focus_work',duplicate.existing_id);location.href=target;return;
+    const target=new URL(location.href);target.searchParams.set('focus_work',duplicate.existing_id);form.dataset.safeNavigation='1';location.href=target;return;
    }
    for(const issue of result.errors||[]){const item=sent.get(issue.prefix);if(!item)continue;if(issue.version)item.row.dataset.entryVersion=issue.version;const text=issue.message||Object.values(issue.fields||{}).flat().join(' ');const target=item.row.querySelector('[data-error]');if(target)target.textContent=text;rowMessage(item.row,text,true);}
    const error=new Error(result.error||'Изменения не сохранены.');error.status=response.status;error.retryable=response.status>=500||response.status===429||Boolean(result.error?.includes('Резерв')&&result.error?.includes('истёк'));if(error.retryable)form.productionForgetClaims?.(changed);throw error;
@@ -220,5 +220,5 @@
   }catch(error){row.hidden=false;rowMessage(row,error.message,true);message(error.message,true);}finally{if(row.isConnected)row.classList.remove('production-row-auto-deleting');button.disabled=false;}
  });
  form.addEventListener('submit',event=>{event.preventDefault();flush();},true);
- window.addEventListener('beforeunload',event=>{if(running||pending||dirty().length){event.preventDefault();event.returnValue='';}});
+ window.addEventListener('beforeunload',event=>{if(form.dataset.safeNavigation==='1')return;if(running||pending||dirty().length){event.preventDefault();event.returnValue='';}});
 })();
