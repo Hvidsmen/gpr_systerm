@@ -159,7 +159,7 @@
   try{return await running;}finally{running=null;if(dirty().length){message('Сотрудники обработаны. Есть несохранённые изменения. Нажмите «Сохранить».');pending=true;clearTimeout(timer);}}
  }
  form.addEventListener('production-links-state',event=>{if(event.detail.pending)message(`Есть несохранённые связи: ${event.detail.pending}. Нажмите «Сохранить».`);else if(lastMessage)message(lastMessage,lastError);});
- window.productionAutoSave={whenIdle:()=>running||Promise.resolve(true),flush,flushPeople,reindex,fingerprint,capture,get running(){return Boolean(running);},get pending(){return pending||Boolean(running)||dirty().length>0||Boolean(form.productionCrewDraft?.pending)||Boolean(form.productionLinks?.pending);}};
+ window.productionAutoSave={whenIdle:()=>running||Promise.resolve(true),flush,flushPeople,reindex,fingerprint,capture,discardDraft:removeDraft,get running(){return Boolean(running);},get pending(){return pending||Boolean(running)||dirty().length>0||Boolean(form.productionCrewDraft?.pending)||Boolean(form.productionLinks?.pending);}};
  const relevant=event=>{
   if(form.productionApplying||(form.dataset.peopleBulkBusy==='1'||form.dataset.personShiftBusy==='1')||event.target.closest('[data-actuation-ui]'))return;
   const row=event.target.closest('[data-production-person],[data-work-fact-row]');
