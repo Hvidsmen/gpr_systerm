@@ -47,6 +47,22 @@ class ProductionEmployeeSearchPaginationTests(TestCase):
         self.assertIn('Массовый204 Сотрудник',exact['items'][0]['label'])
         self.assertIn('T-204',exact['items'][0]['label'])
 
+    def test_employee_search_orders_by_smg_position_then_vjg_and_excludes_added_shift(self):
+        from apps.resources.models import Brigade
+        from apps.resources.position_catalog import position_for
+        matching=Employee.objects.create(company=self.company,last_name='Ааа',first_name='Подходящий',employee_number='SORT-1',position=self.employee.position)
+        other_position=position_for(Brigade.objects.create(company=self.company,name='Другая должность'))
+        other=Employee.objects.create(company=self.company,last_name='Ббб',first_name='Другой',employee_number='SORT-2',position=other_position)
+        used=Employee.objects.create(company=self.company,last_name='Ввв',first_name='Уже добавлен',employee_number='SORT-3',position=self.employee.position)
+        EmployeeActivity.objects.create(company=self.company,construction_object=self.obj,date=self.day,employee=used,position=used.position,shift=1,entry_direction='works',reported_by=self.users['DISPATCHER'])
+        result=self.client.get(reverse('production:production_employee_search'),{
+            'construction_object':self.obj.pk,'date':self.day,'position':self.employee.position_id,'shift':1,
+        }).json()
+        ids=[item['id'] for item in result['items']]
+        self.assertNotIn(used.pk,ids)
+        self.assertLess(ids.index(self.employee.pk),ids.index(matching.pk))
+        self.assertLess(ids.index(matching.pk),ids.index(other.pk))
+
     def test_inline_employee_field_uses_the_same_full_server_search(self):
         response=self.page()
         labor=next(group for group in response.context['groups'] if group['prefix']=='labor')

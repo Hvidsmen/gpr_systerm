@@ -1,11 +1,13 @@
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
-from django.db.models import Q
+from django.db.models import Q,Case,When,Value,IntegerField,Exists,OuterRef
 from django.http import JsonResponse
 from django.views.decorators.http import require_GET
 
 from core.permissions import FACT_ROLES, require_roles
 from apps.resources.models import Employee
+from apps.personnel.models import CampStay
+from .dispatch_models import EmployeeActivity
 from .forms import ObjectDateForm
 from .employee_pool import prepare
 
@@ -22,9 +24,16 @@ def search(request):
     for term in terms:
         query=query.filter(Q(last_name__icontains=term)|Q(first_name__icontains=term)|Q(middle_name__icontains=term)|
             Q(employee_number__icontains=term)|Q(position__name__icontains=term)|Q(personnel_card__stays__camp__name__icontains=term))
-    position=request.GET.get('position')
-    if position and position.isdigit():query=query.filter(position_id=position)
-    query=query.distinct().order_by('last_name','first_name','middle_name','employee_number','pk')
+    position=request.GET.get('position');shift=request.GET.get('shift')
+    if shift and shift.isdigit() and 1<=int(shift)<=24:
+        query=query.exclude(pk__in=EmployeeActivity.objects.filter(company=obj.company,date=day,shift=int(shift)).values('employee_id'))
+    present=CampStay.objects.filter(company=obj.company,cancelled_at=None,arrived_on__lte=day,person__employee_id=OuterRef('pk')).filter(Q(departed_on=None)|Q(departed_on__gt=day))
+    linked=present.filter(camp__object_links__company=obj.company,camp__object_links__construction_object=obj)
+    query=query.annotate(
+        _smg_priority=Case(When(position_id=int(position),then=Value(0)),default=Value(1),output_field=IntegerField()) if position and position.isdigit() else Value(0,output_field=IntegerField()),
+        _linked_vjg=Exists(linked),_any_vjg=Exists(present),
+    ).annotate(_vjg_priority=Case(When(_linked_vjg=True,then=Value(0)),When(_any_vjg=True,then=Value(1)),default=Value(2),output_field=IntegerField()))
+    query=query.distinct().order_by('_smg_priority','_vjg_priority','last_name','first_name','middle_name','employee_number','pk')
     page=Paginator(query,50).get_page(request.GET.get('page'))
     pool=prepare(obj,day,[employee.pk for employee in page.object_list])
     locations=pool['locations']
