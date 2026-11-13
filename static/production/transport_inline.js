@@ -1,7 +1,7 @@
 (()=>{
  'use strict';const root=document.querySelector('[data-transport-board]');if(!root||root.dataset.editable!=='1')return;
  const token=root.querySelector('[name=csrfmiddlewaretoken]').value,locks=window.transportBoardLocks,session=locks?.session;
- const rows=[...root.querySelectorAll('[data-transport-row]')];let people=null,active=null,activeReservation=null;
+ const rows=[...root.querySelectorAll('[data-transport-row]')];let active=null,activeReservation=null;
  function updateCounts(row,result){
   const changes=new Map();function add(key,value){changes.set(key,(changes.get(key)||0)+value);}
   add(row.dataset.status||'EMPTY',-1);add(result.status||'EMPTY',1);add(row.dataset.condition||'UNKNOWN',-1);add(result.condition||'UNKNOWN',1);
@@ -35,10 +35,6 @@
    row.classList.remove('transport-cell-failed');say(row,'Сохранено');queueMicrotask(()=>root.dispatchEvent(new CustomEvent('transport:row-saved',{detail:{row,field:field.dataset.detailField,...result}})));
   }catch(error){field.value=field.dataset.saved;field.dispatchEvent(new Event('input',{bubbles:true}));row.classList.add('transport-cell-failed');say(row,error.message,true);}finally{row.classList.remove('transport-cell-saving');}});
  });
- // Employee choices are loaded once, when a picker is first opened, rather than
- // repeating the whole employee catalogue in every machine row's HTML.
- function loadPeople(e){const shell=e.target.closest('.search-select-shell'),select=shell?.previousElementSibling;if(select?.hasAttribute('data-transport-employees')&&!select.dataset.loaded){select.dataset.loaded='1';people??=fetch(root.dataset.employeeUrl).then(r=>{if(!r.ok)throw new Error('Не удалось загрузить сотрудников.');return r.json();});people.then(data=>{const current=select.value;for(const option of data.options)if(![...select.options].some(o=>o.value===String(option.id)))select.add(new Option(option.name,String(option.id)));select.value=current;}).catch(error=>{delete select.dataset.loaded;say(select.closest('tr'),error.message,true);});}}
- root.addEventListener('pointerdown',loadPeople,true);root.addEventListener('focusin',loadPeople,true);
  const statusDialog=root.querySelector('[data-status-dialog]'),statusForm=statusDialog.querySelector('form');let target=null;
  root.querySelectorAll('[data-status-kind]').forEach(select=>{const button=document.createElement('button');button.type='button';button.className='btn btn-sm btn-outline-primary';button.textContent='+';button.setAttribute('aria-label','Добавить значение в справочник');select.closest('.transport-detail-control').append(button);button.addEventListener('click',()=>{target=select;statusForm.reset();statusForm.querySelector('[data-status-error]').textContent='';statusDialog.showModal();});});
  root.querySelectorAll('[data-close-inline-dialog]').forEach(button=>button.addEventListener('click',()=>button.closest('dialog').close()));

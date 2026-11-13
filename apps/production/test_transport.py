@@ -46,6 +46,15 @@ class TransportTests(TestCase):
         self.assertFalse(EquipmentActivity.objects.exists())
         self.assertEqual(EquipmentDayRecord.objects.get().status,'WORKED')
 
+    def test_movement_equipment_picker_searches_on_server(self):
+        Equipment.objects.bulk_create([Equipment(company=self.company,type=self.type,name=f'Поисковая машина {index:03}',inventory_number=f'SRV-{index:03}',vin=f'VIN-SRV-{index:03}') for index in range(75)])
+        self.client.force_login(self.operator);url=reverse('production:transport_equipment_choices')
+        first=self.client.get(url,{'camp':self.camp.pk,'date':str(self.day),'kind':'ARRIVAL','q':'Поисковая','page':1})
+        self.assertEqual(first.status_code,200,first.content)
+        self.assertEqual(len(first.json()['items']),50);self.assertEqual(first.json()['total'],75)
+        exact=self.client.get(url,{'camp':self.camp.pk,'date':str(self.day),'kind':'ARRIVAL','q':'SRV-074'}).json()
+        self.assertEqual(len(exact['items']),1);self.assertIn('SRV-074',exact['items'][0]['text'])
+
     def test_movement_has_half_open_dates_and_preserves_history(self):
         self.receive();day=self.day+timedelta(days=1)
         service.move(self.operator,self.camp,day,[self.machine.pk],'TRANSFER',target=self.target,signed=self.sign(day=day))

@@ -8,10 +8,8 @@
   const token=form.querySelector('[name=csrfmiddlewaretoken]').value;
   const sessionField=form.elements.session,session=sessionField.value||([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g,c=>(c^crypto.getRandomValues(new Uint8Array(1))[0]&15>>c/4).toString(16));sessionField.value=session;
   const field=name=>form.elements[name], wrapper=name=>form.querySelector(`[data-transport-field="${name}"]`);
-  const machineOptions=[...field('equipment').options].map(option=>({value:option.value,label:option.textContent}));
   const rows=[...root.querySelectorAll('[data-transport-row]')],checks=[...root.querySelectorAll('[data-select-machine]')];
   let reserved=[],submitting=false,pending=false;
-  const arrivalIds=JSON.parse(document.getElementById('transport-arrival-ids').textContent).map(String);
   const titles={ARRIVAL:'Оформить приезд',DAY:'Отметить работу за день',CONDITION:'Изменить техническое состояние',TRANSFER:'Перевести в другой ВЖГ',DEPARTURE:'Оформить выезд',WRITEOFF:'Списать технику'};
   const selected=()=>checks.filter(c=>c.checked).map(c=>c.value);
   const error=(message,inside=false)=>{const box=root.querySelector(inside?'[data-dialog-error]':'[data-transport-error]');box.textContent=message;box.hidden=!message;};
@@ -40,8 +38,8 @@
   }
   async function open(action,ids=[]){
     error('');error('',true);field('action').value=action;field('repeat').checked=false;field('target').value='';field('comment').value='';field('condition').value='READY';field('status').value='WORKED';
-    field('equipment').replaceChildren(...machineOptions.filter(option=>action==='ARRIVAL'?arrivalIds.includes(option.value):ids.includes(option.value)).map(option=>new Option(option.label,option.value,false,ids.includes(option.value))));
-    form.querySelector('[data-machine-search]').value='';
+    field('equipment').replaceChildren(...ids.map(id=>{const row=rows.find(item=>item.dataset.transportRow===id);return new Option(row?.dataset.machineLabel||('Техника №'+id),id,true,true);}));
+    field('equipment').dispatchEvent(new Event('remote-search-refresh'));
     if(ids.length===1&&action==='DAY'){
       const row=rows.find(r=>r.dataset.transportRow===ids[0]);field('status').value=row.dataset.status||'WORKED';field('target').value=row.dataset.target;field('comment').value=row.dataset.comment||'';
     }
@@ -54,7 +52,6 @@
   dialog.addEventListener('close',()=>{if(!submitting){claim('release',reserved).catch(()=>{});reserved=[];}});
   field('equipment').addEventListener('change',()=>reserve([...field('equipment').selectedOptions].map(o=>o.value)).catch(()=>{}));
   field('status').addEventListener('change',showFields);field('repeat').addEventListener('change',showFields);
-  form.querySelector('[data-machine-search]').addEventListener('input',e=>{const terms=e.target.value.toLocaleLowerCase().split(/\s+/).filter(Boolean);for(const option of field('equipment').options)option.hidden=option.disabled||(!option.selected&&!terms.every(t=>option.textContent.toLocaleLowerCase().includes(t)));});
   form.addEventListener('submit',async e=>{if(submitting)return;e.preventDefault();if(pending)return;const ids=[...field('equipment').selectedOptions].map(o=>o.value);try{await reserve(ids);submitting=true;form.querySelector('[type=submit]').disabled=true;HTMLFormElement.prototype.submit.call(form);}catch(_){}});
   async function poll(){
     try{if(reserved.length&&dialog.open)await claim('renew',reserved);const ids=rows.map(r=>r.dataset.transportRow),owners={};for(let i=0;i<ids.length;i+=100)Object.assign(owners,await claim('status',ids.slice(i,i+100)));root.querySelectorAll('[data-lock-owner]').forEach(el=>{const lock=owners[el.dataset.lockOwner];el.textContent=lock?(lock.mine?'Вы редактируете':`Редактирует: ${lock.owner}`):'';});}catch(e){if(dialog.open)error(e.message,true);}

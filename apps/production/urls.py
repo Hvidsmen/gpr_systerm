@@ -405,6 +405,7 @@ from . import transport_views
 urlpatterns += [
     path('transport/', transport_views.board, name='transport_board'),
     path('transport/claims/', transport_views.claims, name='transport_claims'),
+    path('transport/equipment-options/', transport_views.equipment_choices, name='transport_equipment_choices'),
     path('transport/create/', transport_views.create_machine, name='transport_create'),
     path('transport/<int:pk>/history/', transport_views.history, name='transport_history'),
 ]

@@ -1,5 +1,6 @@
 from django import forms
 from django.db.models import Q
+from django.urls import reverse
 from apps.resources.models import Employee
 from .transport_details_models import EquipmentDayDetails,EquipmentServiceStatus,DETAIL_FIELDS
 
@@ -28,6 +29,7 @@ class DetailsForm(forms.ModelForm):
                 employee=getattr(self.instance,name,None) if retained and self.initial.get(name) is not None else None
                 field.choices=[('','Не выбран'),*([(employee.pk,field.label_from_instance(employee))] if employee else [])]
                 field.widget.attrs['data-transport-employees']='1'
+                field.widget.attrs['data-remote-search-url']=reverse('production:transport_employee_choices')
         for name,kind in STATUS_FIELDS.items():
             self.fields[name].queryset=EquipmentServiceStatus.objects.filter(company=company,kind=kind).filter(Q(is_active=True)|Q(pk=getattr(self.instance,name+'_id',None)))
             if status_catalogue is not None:

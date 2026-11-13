@@ -8,6 +8,8 @@ from django.forms.models import model_to_dict
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.http import require_POST,require_GET
+from django.core.paginator import Paginator
+from django.db.models import Q
 from core.fact_edit_window import require_fact_day
 from core.fact_history import with_history_actor
 from core.permissions import require_roles
@@ -31,7 +33,12 @@ def choices(request):
     require_roles(request.user,transport.OPERATORS)
     from apps.resources.group_order import ordered
     employees=ordered(Employee.objects.filter(company=request.user.company,is_active=True).select_related('position__planning_mapping__brigade__group'),group_path='position__planning_mapping__brigade__group',within=('position__name','last_name','first_name','pk'))
-    return JsonResponse({'options':[{'id':e.pk,'name':e.display_name+(' · № '+e.employee_number if e.employee_number else '')+(' · '+str(e.position) if e.position_id else '')} for e in employees]})
+    terms=' '.join(request.GET.get('q','').split())[:150].split()
+    for term in terms:
+        employees=employees.filter(Q(last_name__icontains=term)|Q(first_name__icontains=term)|Q(middle_name__icontains=term)|Q(employee_number__icontains=term)|Q(position__name__icontains=term))
+    page=Paginator(employees,50).get_page(request.GET.get('page'))
+    return JsonResponse({'items':[{'id':e.pk,'text':e.display_name+(' · № '+e.employee_number if e.employee_number else '')+(' · '+str(e.position) if e.position_id else '')} for e in page.object_list],
+        'page':page.number,'pages':page.paginator.num_pages,'total':page.paginator.count})
 
 
 @login_required

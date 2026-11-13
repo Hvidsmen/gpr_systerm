@@ -42,6 +42,15 @@ class TransportInlineTests(TestCase):
         self.assertEqual(set(form.fields['parts_stage'].queryset.values_list('kind',flat=True)),{'PARTS'})
         self.assertIsNone(parse_date('12.05.26 или 13.05.26'))
         self.assertEqual(str(parse_date('30.09.25 г.')),'2025-09-30')
+
+    def test_driver_picker_searches_on_server_in_pages_of_fifty(self):
+        Employee.objects.bulk_create([Employee(company=self.company,last_name=f'Водитель{index:03}',first_name='Тест',employee_number=f'DRV-{index:03}') for index in range(75)])
+        url=reverse('production:transport_employee_choices')
+        first=self.client.get(url,{'q':'Водитель','page':1})
+        self.assertEqual(first.status_code,200,first.content)
+        self.assertEqual(len(first.json()['items']),50);self.assertGreaterEqual(first.json()['total'],75)
+        exact=self.client.get(url,{'q':'DRV-074'}).json()
+        self.assertEqual([row['text'].split(' · ')[0] for row in exact['items']],['Водитель074 Тест'])
     def test_inline_api_quick_status_and_board_do_not_navigate(self):
         url=reverse('production:transport_cell');data={'camp':self.camp.pk,'date':str(self.day),'equipment':self.machine.pk,'field':'defects','value':'Поломка','signed':transport.snapshot(self.operator,self.camp,self.day),'session':self.session}
         response=self.client.post(url,data,content_type='application/json');self.assertEqual(response.status_code,200)

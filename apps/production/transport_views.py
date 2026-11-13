@@ -7,6 +7,7 @@ from django import forms
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError,PermissionDenied
+from django.core.paginator import Paginator
 from core.fact_edit_window import can_edit_fact_day,require_fact_day,window_context
 from django.db import transaction
 from django.db.models import Q, F
@@ -86,8 +87,15 @@ class ActionForm(forms.Form):
     session = forms.UUIDField(widget=forms.HiddenInput,required=False)
     def __init__(self,*args,user,camp,day,current=(),load_targets=True,**kwargs):
         super().__init__(*args,**kwargs)
-        self.fields['equipment'].queryset=Equipment.objects.filter(company=user.company).select_related('type__parent').order_by('type__name','plate_number','inventory_number','pk')
+        full_equipment=Equipment.objects.filter(company=user.company).select_related('type__parent').order_by('type__name','plate_number','inventory_number','pk')
+        selected=[]
+        if self.is_bound:
+            raw=self.data.getlist(self.add_prefix('equipment')) if hasattr(self.data,'getlist') else self.data.get(self.add_prefix('equipment'),[])
+            if not isinstance(raw,(list,tuple)):raw=[raw]
+            selected=[value for value in raw if str(value).isdigit()]
+        self.fields['equipment'].queryset=full_equipment.filter(pk__in=selected)
         self.fields['equipment'].label_from_instance=lambda e:f'{e.plate_number or e.inventory_number or e.vin} · {e.type.parent.name if e.type.parent_id else e.type.name} · {e.name}'
+        self.fields['equipment'].widget.attrs.update({'data-remote-search-url':reverse('production:transport_equipment_choices'),'data-remote-kind-field':'action','data-remote-camp-field':'camp','data-remote-date-field':'date'})
         self.fields['target_camp'].queryset=service.camps_for(user).filter(is_active=True).exclude(pk=camp.pk)
         self.resource_plans={}
         options,self.targets=target_choices(user,camp,day,current,resource_plans=self.resource_plans) if load_targets else ([('','Без привязки к объекту и работе')],{'':(None,None,None)})
@@ -102,6 +110,29 @@ class ActionForm(forms.Form):
         if data.get('action')=='DAY' and not data.get('status'):self.add_error('status','Выберите отметку за день.')
         if data.get('action')=='CONDITION' and not data.get('condition'):self.add_error('condition','Выберите состояние.')
         return data
+
+
+@login_required
+@require_GET
+def equipment_choices(request):
+    require_roles(request.user,service.OPERATORS)
+    selector=Selector({'camp':request.GET.get('camp'),'date':request.GET.get('date')},user=request.user)
+    if not selector.is_valid():return JsonResponse({'error':'Выберите доступный ВЖГ и дату.'},status=400)
+    camp,day=selector.cleaned_data['camp'],selector.cleaned_data['date'];service.authorize(request.user,camp,False)
+    query=Equipment.objects.filter(company=request.user.company,is_active=True).select_related('type__parent')
+    action=request.GET.get('kind')
+    if action=='ARRIVAL':
+        occupied=service.present(request.user.company,day).values('equipment_id')
+        disposed=EquipmentTransportEvent.objects.filter(company=request.user.company,kind='WRITEOFF',cancelled_at=None,date__lte=day).values('equipment_id')
+        query=query.exclude(pk__in=occupied).exclude(pk__in=disposed)
+    else:
+        query=query.filter(pk__in=service.present(request.user.company,day).filter(camp=camp).values('equipment_id'))
+    for term in ' '.join(request.GET.get('q','').split())[:150].split():
+        query=query.filter(Q(name__icontains=term)|Q(plate_number__icontains=term)|Q(inventory_number__icontains=term)|Q(vin__icontains=term)|Q(brand_model__icontains=term)|Q(type__name__icontains=term)|Q(type__parent__name__icontains=term))
+    page=Paginator(query.order_by('type__name','plate_number','inventory_number','pk'),50).get_page(request.GET.get('page'))
+    def label(machine):return f'{machine.plate_number or machine.inventory_number or machine.vin} · {machine.type.parent.name if machine.type.parent_id else machine.type.name} · {machine.name}'
+    return JsonResponse({'items':[{'id':machine.pk,'text':label(machine)} for machine in page.object_list],
+        'page':page.number,'pages':page.paginator.num_pages,'total':page.paginator.count})
 
 
 def _rows(user, camp, day, *, include_external=False):
@@ -271,9 +302,6 @@ def board(request):
         total=len(rows),unknown=sum(r['condition'] not in {'READY','REPAIR','SCRAP'} for r in rows),ready=sum(r['condition']=='READY' for r in rows),worked=sum(r['status']=='WORKED' for r in rows),idle=sum(r['status']=='IDLE' for r in rows),
         missing=sum(not r['status'] for r in rows),repair=sum(r['condition']=='REPAIR' for r in rows),scrap=sum(r['condition']=='SCRAP' for r in rows),
         query=urlencode({'camp':camp.pk,'date':str(day),'view':day_view}),export_query=urlencode({'camp':camp.pk,'date':str(day),'q':data['q'],'condition':data['condition'],'use':data['use'],'tab':tab,'view':day_view}),error_open=request.method=='POST',can_create=role_code(request.user) in service.OPERATORS)
-    occupied=service.present(request.user.company,day).values('equipment_id')
-    disposed=EquipmentTransportEvent.objects.filter(company=request.user.company,kind='WRITEOFF',cancelled_at=None).values('equipment_id')
-    context['arrival_ids']=list(Equipment.objects.filter(company=request.user.company,is_active=True).exclude(pk__in=occupied).exclude(pk__in=disposed).values_list('pk',flat=True)) if tab=='state' else []
     if tab!='day':
         from apps.resources.transport_import_models import TransportImportRow
         context['import_errors']=TransportImportRow.objects.filter(company=request.user.company,status='PENDING',batch__applied_at__isnull=False).count()
