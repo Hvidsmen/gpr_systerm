@@ -44,9 +44,17 @@
  const originalOptionState=new WeakMap();
  function refreshPeople(){
   const records=personRows(),used=new Map();
-  for(const row of records){if(deleted(row))continue;const key=keyOf(row);if(key)used.set(key,(used.get(key)||0)+1);}
+  for(const row of records){if(deleted(row))continue;const key=keyOf(row);if(key){if(!used.has(key))used.set(key,[]);used.get(key).push(row);}}
   for(const row of records){const employee=field(row,'employee'),shift=Number(field(row,'shift').value);
-   for(const option of employee.options){if(!originalOptionState.has(option))originalOptionState.set(option,option.disabled);const blocked=originalOptionState.get(option)||Boolean(option.value&&option.value!==employee.value&&used.has(`employee:${option.value}:${shift}`));if(option.disabled!==blocked)option.disabled=blocked;}
+   for(const option of employee.options){
+    if(!originalOptionState.has(option))originalOptionState.set(option,option.disabled);
+    const existing=option.value&&option.value!==employee.value?used.get(`employee:${option.value}:${shift}`)?.[0]:null;
+    if(!option.dataset.baseEmployeeLabel)option.dataset.baseEmployeeLabel=option.textContent.replace(/ · уже добавлен в смену — открыть строку$/,'');
+    option.textContent=option.dataset.baseEmployeeLabel+(existing?' · уже добавлен в смену — открыть строку':'');
+    // Keep a duplicate result clickable: selecting it focuses the existing
+    // row below instead of silently showing an unexplained grey option.
+    const blocked=originalOptionState.get(option);if(option.disabled!==blocked)option.disabled=blocked;
+   }
    if(duplicate(row)){row.dataset.duplicatePerson='1';row.querySelector('[data-error]').textContent=duplicateText;}
    else if(row.dataset.duplicatePerson){delete row.dataset.duplicatePerson;if(row.querySelector('[data-error]').textContent===duplicateText)row.querySelector('[data-error]').textContent='';}
   }
@@ -57,8 +65,8 @@
   if(workRow&&event.target===field(workRow,'project_work'))filterWorkItems(workRow);
   const row=event.target.closest('[data-production-person]');if(!row)return;
   if(event.target!==field(row,'employee')&&event.target!==field(row,'shift'))return;
-  const conflict=personRows().some(other=>other!==row&&!deleted(other)&&!deleted(row)&&keyOf(other)&&keyOf(other)===keyOf(row));
-  if(conflict){field(row,'employee').value=row.dataset.acceptedEmployee||'';field(row,'shift').value=row.dataset.acceptedShift||'1';row.querySelector('[data-error]').textContent=duplicateText;}
+  const conflict=personRows().find(other=>other!==row&&!deleted(other)&&!deleted(row)&&keyOf(other)&&keyOf(other)===keyOf(row));
+  if(conflict){field(row,'employee').value=row.dataset.acceptedEmployee||'';field(row,'shift').value=row.dataset.acceptedShift||'1';row.querySelector('[data-error]').textContent=duplicateText;conflict.scrollIntoView({behavior:'smooth',block:'center'});conflict.classList.add('production-person-focus');setTimeout(()=>conflict.classList.remove('production-person-focus'),2200);field(conflict,'employee')?.nextElementSibling?.querySelector('button')?.focus({preventScroll:true});}
   else if(event.target===field(row,'shift')&&field(row,'employee').value&&field(row,'shift').value!==row.dataset.acceptedShift&&!row.dataset.shiftApplying){
    event.stopImmediatePropagation();changeShift(row,field(row,'shift').value);return;
   }
