@@ -35,7 +35,11 @@ def _query_data(values):
     data['collaborative']='1'
     for name,value in values.items():
         key='row-'+name
-        if isinstance(value,list):data.setlist(key,[str(item) for item in value])
+        # Older long-lived browser tabs encoded an unchecked checkbox group as
+        # an empty string.  Treat it as the empty selection so a harmless
+        # quantity edit is not rejected by ModelMultipleChoiceField.
+        if name=='actuation_reasons' and value in ('',None):data.setlist(key,[])
+        elif isinstance(value,list):data.setlist(key,[str(item) for item in value])
         elif value is not None:data[key]=str(value)
     return data
 

@@ -45,6 +45,12 @@ class ProductionBatchSaveTests(TestCase):
         self.assertEqual(DailyFact.objects.get().actual_quantity,7)
         self.assertEqual(EmployeeActivity.objects.get().employee,self.employee)
 
+    def test_legacy_empty_actuation_reasons_do_not_block_quantity_save(self):
+        row=self.work_row();row['values']['actuation_reasons']=''
+        response=self.request([row])
+        self.assertEqual(response.status_code,200,response.content)
+        self.assertEqual(DailyFact.objects.get().actual_quantity,7)
+
     def test_lost_response_can_repeat_same_batch_without_duplicates(self):
         batch_id=uuid4();rows=[self.work_row()]
         first=self.request(rows,batch_id)
