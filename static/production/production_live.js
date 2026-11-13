@@ -3,6 +3,7 @@
  'use strict';const form=document.querySelector('[data-production-form]');if(!form||form.dataset.readonly==='1')return;
  const {scope,csrf}=form.productionSession,field=(row,name)=>row.querySelector(`[name$="-${name}"]`),rows=()=>[...form.querySelectorAll('[data-work-fact-row],[data-production-person]')];
  let reasonOptions=new Map();
+ const employeeLocations=JSON.parse(document.getElementById('production-employee-locations')?.textContent||'{}'),employeeLabels=new Map(Object.entries(employeeLocations).map(([id,row])=>[id,{name:row.name,position:row.position_label}]));
  let step=Number(form.dataset.initialStep||1),reportScope='visible',forceFull=false,digest='',claimsDigest='',usersDigest='',polling=false,closed=false,timer=null,failures=0,slow=false,lastActivity=Date.now(),lastSync=0,published='';
  const knownSnapshots=new Set();let outbox=null;
  let canonical={works:JSON.parse(document.getElementById('production-graph-saved').textContent),people:JSON.parse(document.getElementById('production-report-people').textContent)};
@@ -23,7 +24,10 @@
     row.querySelectorAll('input[name$="-actuation_reasons"]').forEach(input=>input.checked=selected.includes(input.value));continue;
    }
    const input=field(row,name);if(!input)continue;
-   if(input.tagName==='SELECT'&&value&&!Array.from(input.options).some(o=>o.value===String(value)))input.add(new Option(String(value),String(value)));
+   if(input.tagName==='SELECT'&&value&&!Array.from(input.options).some(o=>o.value===String(value))){
+    const employee=name==='employee'?employeeLabels.get(String(value)):null;
+    input.add(new Option(employee?`${employee.name} · ${employee.position||'Должность не указана'}`:String(value),String(value)));
+   }
    if(input.type==='checkbox')input.checked=Boolean(value);else input.value=value??'';
   }
  }
@@ -54,6 +58,7 @@
  }});
  form.productionLinks=outbox;
  function apply(data){
+  for(const person of data.report?.people||[])employeeLabels.set(String(person.employee),{name:person.name,position:person.position||person.staff_position});
   const keep=new Set(rows().filter(r=>r.dataset.entryDirty||r.dataset.personDirty||r.dataset.autoPending||field(r,r.matches('[data-production-person]')?'person_editing':'work_editing')?.value==='1').flatMap(form.productionKeysOf));
   form.productionApplying=true;
   reasonOptions=new Map((data.reason_options||[]).map(r=>[String(r.id),r]));
@@ -110,7 +115,7 @@
   }catch{failures++;slow=true;if(navigator.onLine===false)form.productionRecovery?.offline();else if(failures>=3)form.productionRecovery?.reload();return false;}finally{clearTimeout(timeout);polling=false;schedule();}
  }
  form.productionRefresh=()=>poll(true);
- form.productionRefreshFull=async()=>{forceFull=true;try{return await poll(true);}finally{forceFull=false;}};
+ form.productionRefreshFull=async()=>{forceFull=true;try{for(let attempt=0;attempt<8;attempt++){if(reportScope==='full')return true;await poll(true);if(reportScope==='full')return true;await new Promise(resolve=>setTimeout(resolve,250+attempt*100));}return false;}finally{forceFull=false;}};
  form.productionChangeLinks=async(row,operation)=>{
   if(!field(row,'id')?.value){if(!await window.productionAutoSave.flush())throw new Error('Сначала исправьте ошибки сохранения сотрудника.');}
   lastActivity=Date.now();return outbox.enqueue(row,operation);

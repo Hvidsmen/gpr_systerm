@@ -64,7 +64,10 @@
    const selected=input.tagName==='SELECT'&&input.multiple?[...input.selectedOptions].map(option=>option.value):[input.value];
    grouped.set(name,[...(grouped.get(name)||[]),...selected]);
   }
-  const values={};for(const [name,items] of grouped)values[name]=items.length>1?items:(items[0]??'');return values;
+  // An unchecked checkbox group is an empty list, not a single empty-string
+  // choice.  Sending "" made an untouched actuation-reasons field fail
+  // validation when the user edited only the work quantity.
+  const values={};for(const [name,items] of grouped)values[name]=items.length>1?items:items.length===1?items[0]:[];return values;
  }
  async function save(selected){
   const changed=selected||dirty();
