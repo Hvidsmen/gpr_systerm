@@ -21,8 +21,8 @@ class WorkFilterBrowserTests(StaticLiveServerTestCase):
             DailyFact.objects.create(company=self.company,project_work=package,work_item=item,date=self.day,actual_quantity=1,reported_by=self.users['DISPATCHER'],outside_smg=True)
             objects.append((complex_object,package,item))
         save_object=ComplexObject.objects.create(company=self.company,section=self.work.section,construction_object=self.obj,name='УЗА 34')
-        save_work=ProjectWork.objects.create(company=self.company,section=self.work.section,complex_object=save_object,name='Новая работа',kind='COMPOSITE',unit='компл')
-        save_item=ProjectWorkItem.objects.create(company=self.company,project_work=save_work,name='Новая операция',unit='шт',quantity_per_unit=1)
+        save_work=ProjectWork.objects.create(company=self.company,section=self.work.section,complex_object=save_object,name='Устройство периметрального ограждения',kind='COMPOSITE',unit='компл',is_legacy_structure=True)
+        save_item=ProjectWorkItem.objects.create(company=self.company,project_work=save_work,name='Устройство периметрального ограждения',unit='м.п',quantity_per_unit=1)
         self.client.force_login(self.users['DISPATCHER'])
         config={'base':self.live_server_url,'chromium':shutil.which('chromium'),'cookie':self.client.cookies['sessionid'].value,
             'path':f'{self.url}?construction_object={self.obj.pk}&date={self.day}&section=works','complex':objects[1][0].pk,'work':objects[1][1].pk,

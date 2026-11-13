@@ -99,6 +99,7 @@
         this.search.focus();
       });
       select.addEventListener('change', () => this.sync());
+      select.addEventListener('work-options-updated', () => this.sync());
       select.addEventListener('focus', () => this.button.focus());
       select.addEventListener('invalid', event => {
         event.preventDefault();

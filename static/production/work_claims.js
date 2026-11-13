@@ -2,6 +2,7 @@
  'use strict';
  const form=document.querySelector('[data-production-form]');if(!form)return;
  const catalogue=JSON.parse(document.getElementById('production-work-choices')?.textContent||'[]');
+ const workKinds=new Map(JSON.parse(document.getElementById('production-work-meta')?.textContent||'[]').map(row=>[String(row.id),row.kind]));
  const compositeWorks=new Set(catalogue.filter(row=>row.kind==='COMPOSITE').map(row=>String(row.work)));
  const itemOwners=new Map(catalogue.filter(row=>row.item).map(row=>[String(row.item),String(row.work)]));
  // randomUUID is restricted to secure contexts; getRandomValues also works on HTTP.
@@ -19,7 +20,8 @@
   if(person(row))return field(row,'employee')?.value?`employee:${field(row,'employee').value}:${Number(field(row,'shift').value)}`:'';
   const work=field(row,'project_work')?.value,item=field(row,'work_item')?.value;
   if(work&&field(row,'operational_name')?.value.trim())return `operational:${row.dataset.factId||field(row,'operational_name').name}`;
-  if(!work||compositeWorks.has(String(work))&&!item||item&&itemOwners.get(String(item))!==String(work))return '';
+  const composite=compositeWorks.has(String(work))||workKinds.get(String(work))==='COMPOSITE';
+  if(!work||composite&&!item||item&&itemOwners.get(String(item))!==String(work))return '';
   return item?`item:${work}:${item}`:`work:${work}`;
  };
  const personRows=()=>rows().filter(person),deleted=row=>Boolean(field(row,'DELETE')?.checked);
@@ -147,7 +149,7 @@
  form.productionValidatePeople=()=>{refreshPeople();const repeated=personRows().find(duplicate);if(repeated){repeated.querySelector('[data-error]').textContent=duplicateText;throw new Error(duplicateText);}};
  const acquiring=new Map();
  form.productionClaimRow=async row=>{
-  if(duplicate(row))throw new Error(duplicateText);const key=keyOf(row);if(!key)return;
+  if(duplicate(row))throw new Error(duplicateText);const key=keyOf(row);if(!key){if(!person(row)&&field(row,'project_work')?.value&&(compositeWorks.has(String(field(row,'project_work').value))||workKinds.get(String(field(row,'project_work').value))==='COMPOSITE'))throw new Error('Выберите работу в составе выбранного комплекса.');return;}
   if(key.startsWith('operational:')){claims.set(key,{key,state:'editing',mine:true,own:true,owner:'Вы'});row.querySelector('[data-error]').textContent='';render(row);row.dataset.entryDirty='1';changed();return;}
   if(!claims.get(key)?.mine){
    if(!acquiring.has(key)){generation++;acquiring.set(key,request('take',key).then(data=>{claims.set(key,data.claim);}).finally(()=>acquiring.delete(key)));}
