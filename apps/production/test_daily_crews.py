@@ -68,6 +68,9 @@ class DailyCrewTests(TestCase):
         self.assertIn("if([3,4].includes(event.detail))load()",source)
         self.assertIn("form.productionLoadCrews=load",source)
         self.assertIn("form.productionCrewDraft={flush,undo",source)
+        self.assertIn('same.length<15',source)
+        self.assertIn("action:'bulk_move',activities:same.map",source)
+        self.assertIn('operations.splice(0,source._sourceCount||1)',source)
 
     def test_deleting_crew_removes_only_crew_origin_links(self):
         crew=ProductionDailyCrew.objects.create(company=self.company,construction_object=self.obj,date=self.day,shift=1,number=1,reported_by=self.user)
