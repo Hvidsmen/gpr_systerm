@@ -7,6 +7,7 @@ from .dispatch_models import EmployeeActivity, ProductionBatchReceipt
 from .models import DailyFact
 from . import test_production_entry as fixtures
 from apps.works.models import ComplexObject, ProjectWork
+from apps.projects.models import ConstructionObject
 
 
 class ProductionBatchSaveTests(TestCase):
@@ -114,6 +115,15 @@ class ProductionBatchSaveTests(TestCase):
         issue=blocked.json()['errors'][0]
         self.assertEqual((issue['code'],issue['existing_id']),('existing_person',saved['id']))
         self.assertNotIn('Employee activity',blocked.json()['error'])
+
+    def test_person_on_other_object_returns_exact_location(self):
+        other=ConstructionObject.objects.create(company=self.company,project=self.obj.project,name='Другой объект')
+        activity=EmployeeActivity.objects.create(company=self.company,construction_object=other,date=self.day,employee=self.employee,position=self.employee.position,shift=1)
+        blocked=self.request([self.person_row()])
+        self.assertEqual(blocked.status_code,409,blocked.content)
+        issue=blocked.json()['errors'][0]
+        self.assertEqual((issue['code'],issue['construction_object'],issue['existing_id']),('person_other_object',other.pk,activity.pk))
+        self.assertEqual((issue['date'],issue['shift']),(self.day.isoformat(),1))
 
     def test_stale_row_version_does_not_overwrite_newer_value(self):
         created=self.request([self.work_row()]).json()['rows'][0]

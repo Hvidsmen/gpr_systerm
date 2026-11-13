@@ -302,6 +302,7 @@ class WorkEntryPresentationTests(TestCase):
         self.assertIn("['existing_work','existing_person','operational_duplicate'].includes(issue.code)",autosave)
         self.assertIn("form.dataset.safeNavigation='1';location.href=target",autosave)
         self.assertIn("if(form.dataset.safeNavigation==='1')return",autosave)
+        self.assertIn("Открыть запись · ${issue.construction_object_name}",autosave)
         entry=(Path(__file__).resolve().parents[2]/'static/production/work_entry.js').read_text(encoding='utf-8')
         self.assertIn("savedSelection=Boolean(row.dataset.workToken||row.dataset.operationalName)",entry)
         self.assertIn("savedSelection?'':'Заполните объём работы.'",entry)

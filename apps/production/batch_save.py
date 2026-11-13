@@ -152,7 +152,8 @@ def save_batch(request):
                                 issue={'prefix':item.get('prefix',''),'message':message,'code':'existing_person','existing_id':duplicate.pk}
                             else:
                                 message=f'Этот сотрудник уже указан в выбранную смену на объекте «{duplicate.construction_object}». Сначала исправьте запись на том объекте.'
-                                issue={'prefix':item.get('prefix',''),'message':message,'code':'person_other_object'}
+                                issue={'prefix':item.get('prefix',''),'message':message,'code':'person_other_object','existing_id':duplicate.pk,
+                                    'construction_object':duplicate.construction_object_id,'construction_object_name':str(duplicate.construction_object),'date':day.isoformat(),'shift':duplicate.shift}
                             return JsonResponse({'error':message,'errors':[issue]},status=409)
                 form_class=WorkForm if kind=='works' else ProductionPersonForm
                 form=form_class(_query_data(item['values']),instance=instance,prefix='row',**common)
