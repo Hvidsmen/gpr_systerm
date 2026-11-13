@@ -299,7 +299,7 @@ class WorkEntryPresentationTests(TestCase):
         autosave=(Path(__file__).resolve().parents[2]/'static/production/production_autosave.js').read_text(encoding='utf-8')
         self.assertIn("if(issue.version)item.row.dataset.entryVersion=issue.version",autosave)
         self.assertIn("allow_duplicate_operational:row.dataset.allowOperationalDuplicate==='1'",autosave)
-        self.assertIn("['existing_work','operational_duplicate'].includes(issue.code)",autosave)
+        self.assertIn("['existing_work','existing_person','operational_duplicate'].includes(issue.code)",autosave)
         self.assertIn("form.dataset.safeNavigation='1';location.href=target",autosave)
         self.assertIn("if(form.dataset.safeNavigation==='1')return",autosave)
         entry=(Path(__file__).resolve().parents[2]/'static/production/work_entry.js').read_text(encoding='utf-8')

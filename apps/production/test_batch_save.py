@@ -104,6 +104,17 @@ class ProductionBatchSaveTests(TestCase):
         self.assertEqual(confirmed.status_code,200,confirmed.content)
         self.assertEqual(DailyFact.objects.filter(operational_key__isnull=False).count(),2)
 
+    def test_existing_person_returns_row_to_open_instead_of_model_error(self):
+        first=self.request([self.person_row()])
+        self.assertEqual(first.status_code,200,first.content)
+        saved=first.json()['rows'][0]
+        duplicate=self.person_row('labor-504')
+        blocked=self.request([duplicate])
+        self.assertEqual(blocked.status_code,409,blocked.content)
+        issue=blocked.json()['errors'][0]
+        self.assertEqual((issue['code'],issue['existing_id']),('existing_person',saved['id']))
+        self.assertNotIn('Employee activity',blocked.json()['error'])
+
     def test_stale_row_version_does_not_overwrite_newer_value(self):
         created=self.request([self.work_row()]).json()['rows'][0]
         fact=DailyFact.objects.get();fact.actual_quantity=9;fact.save()

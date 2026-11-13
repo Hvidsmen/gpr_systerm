@@ -98,12 +98,12 @@
   if(!(response.headers.get('content-type')||'').includes('application/json')){const error=new Error('Не удалось сохранить изменения. Проверьте доступ к порталу и повторите сохранение.');error.retryable=response.status>=500||response.status===429;throw error;}
   const result=await response.json();
   if(!response.ok){
-   const duplicate=(result.errors||[]).find(issue=>['existing_work','operational_duplicate'].includes(issue.code));
+   const duplicate=(result.errors||[]).find(issue=>['existing_work','existing_person','operational_duplicate'].includes(issue.code));
    if(duplicate){
     const item=sent.get(duplicate.prefix),row=item?.row;
     if(duplicate.code==='operational_duplicate'&&row&&confirm('Такая прочая работа уже существует.\n\nНажмите «ОК», чтобы всё равно создать отдельную запись.\nНажмите «Отмена», чтобы открыть существующую работу.')){row.dataset.allowOperationalDuplicate='1';delete row.dataset.batchId;return save(changed);}
     if(row){removeDraft(row);row.remove();reindex();}
-    const target=new URL(location.href);target.searchParams.set('focus_work',duplicate.existing_id);form.dataset.safeNavigation='1';location.href=target;return;
+    const target=new URL(location.href);target.searchParams.set(duplicate.code==='existing_person'?'focus_person':'focus_work',duplicate.existing_id);form.dataset.safeNavigation='1';location.href=target;return;
    }
    for(const issue of result.errors||[]){const item=sent.get(issue.prefix);if(!item)continue;if(issue.version)item.row.dataset.entryVersion=issue.version;const text=issue.message||Object.values(issue.fields||{}).flat().join(' ');const target=item.row.querySelector('[data-error]');if(target)target.textContent=text;rowMessage(item.row,text,true);}
    const error=new Error(result.error||'Изменения не сохранены.');error.status=response.status;error.retryable=response.status>=500||response.status===429||Boolean(result.error?.includes('Резерв')&&result.error?.includes('истёк'));if(error.retryable)form.productionForgetClaims?.(changed);throw error;

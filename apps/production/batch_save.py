@@ -142,6 +142,18 @@ def save_batch(request):
                         if duplicate:
                             message='Прочая работа с таким названием и единицей уже добавлена. Откройте её или подтвердите создание отдельной записи.'
                             return JsonResponse({'error':message,'errors':[{'prefix':item.get('prefix',''),'message':message,'code':'operational_duplicate','existing_id':duplicate.pk}]},status=409)
+                elif kind=='labor':
+                    values=item['values'];employee_id=str(values.get('employee') or '');shift=str(values.get('shift') or '')
+                    if employee_id.isdigit() and shift.isdigit():
+                        duplicate=EmployeeActivity.objects.select_for_update().filter(company=obj.company,date=day,employee_id=int(employee_id),shift=int(shift)).select_related('construction_object').first()
+                        if duplicate:
+                            if duplicate.construction_object_id==obj.pk:
+                                message='Этот сотрудник уже добавлен в выбранную смену. Откройте существующую строку.'
+                                issue={'prefix':item.get('prefix',''),'message':message,'code':'existing_person','existing_id':duplicate.pk}
+                            else:
+                                message=f'Этот сотрудник уже указан в выбранную смену на объекте «{duplicate.construction_object}». Сначала исправьте запись на том объекте.'
+                                issue={'prefix':item.get('prefix',''),'message':message,'code':'person_other_object'}
+                            return JsonResponse({'error':message,'errors':[issue]},status=409)
                 form_class=WorkForm if kind=='works' else ProductionPersonForm
                 form=form_class(_query_data(item['values']),instance=instance,prefix='row',**common)
                 form.fields['DELETE']=forms.BooleanField(required=False)
