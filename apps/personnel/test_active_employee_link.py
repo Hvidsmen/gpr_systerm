@@ -22,7 +22,9 @@ class ActiveEmployeeLinkTests(TestCase):
         form=PersonForm(instance=self.person)
         self.assertEqual(list(form.fields['employee'].queryset),[self.active])
         response=self.client.get(reverse('personnel:person_edit',args=[self.person.pk]))
-        self.assertContains(response,'09943');self.assertNotContains(response,'04094');self.assertNotContains(response,'Foreign')
+        self.assertContains(response,'data-remote-search-url');self.assertNotContains(response,'04094');self.assertNotContains(response,'Foreign')
+        search=self.client.get(reverse('personnel:employee_search'),{'q':'09943'}).json()
+        self.assertEqual([row['id'] for row in search['items']],[self.active.pk])
         self.assertNotIn(foreign,form.fields['employee'].queryset)
 
     def test_post_cannot_create_archived_link_and_active_link_saves(self):

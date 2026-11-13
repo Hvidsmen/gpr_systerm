@@ -17,6 +17,7 @@ from .models import Board, Person, StaffingGroup, StaffingSlot, ShiftPattern, Ca
 from core.fact_history import history_actor
 from . import housing
 from .views import access
+from .employee_widgets import RemoteEmployeeSelect
 
 REMOVED_ASSIGNMENT_SCHEDULE_COMMENT='График сохранён при удалении назначения.'
 
@@ -34,7 +35,7 @@ def active_on(day):
     return Q(cancelled_at=None) & (Q(assigned_from=None)|Q(assigned_from__lte=day)) & (Q(assigned_until=None)|Q(assigned_until__gte=day)) & (Q(replaced_on=None)|Q(replaced_on__gt=day))
 
 
-class InitialEmployeeSelect(forms.Select):
+class InitialEmployeeSelect(RemoteEmployeeSelect):
     def create_option(self,name,value,label,selected,index,subindex=None,attrs=None):
         option=super().create_option(name,value,label,selected,index,subindex,attrs)
         if hasattr(value,'instance') and value.instance.has_personnel_history:

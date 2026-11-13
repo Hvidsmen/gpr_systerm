@@ -10,6 +10,11 @@
   class SearchSelect {
     constructor(select) {
       this.select = select;
+      this.remoteUrl = select.dataset.remoteSearchUrl || '';
+      this.remotePage = 1;
+      this.remotePages = 1;
+      this.remoteTimer = null;
+      this.remoteSequence = 0;
       this.compact = select.hasAttribute('data-compact-select') && !select.multiple;
       this.limit = 100;
       this.shell = document.createElement('div');
@@ -65,7 +70,27 @@
       this.button.addEventListener('keydown', event => {
         if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {event.preventDefault(); this.open();}
       });
-      this.search.addEventListener('input', () => {this.limit = 100; this.render();});
+      this.search.addEventListener('input', () => {
+        this.limit = 100;
+        if (this.remoteUrl) {
+          clearTimeout(this.remoteTimer);
+          this.remoteTimer = setTimeout(() => this.loadRemote(1), 250);
+        } else this.render();
+      });
+      select.addEventListener('remote-search-refresh', () => {if (this.isOpen) this.loadRemote(1);});
+      if (this.remoteUrl) {
+        const form = select.form;
+        const contextFields = ['kind', 'camp', 'date'].map(key => {
+          const name = select.dataset['remote' + key[0].toUpperCase() + key.slice(1) + 'Field'];
+          return name && form?.elements.namedItem(name);
+        }).filter(Boolean);
+        contextFields.forEach(field => field.addEventListener('change', () => {
+          if (!select.disabled) [...select.options].forEach(option => {option.selected = false;});
+          [...select.options].forEach(option => {if (option.value) option.remove();});
+          this.changed();
+          if (this.isOpen) this.loadRemote(1);
+        }));
+      }
       this.popup.addEventListener('keydown', event => this.keydown(event));
       this.clear.addEventListener('click', () => {
         if (this.disabled()) return;
@@ -126,6 +151,7 @@
       this.popup.hidden = false;
       this.button.setAttribute('aria-expanded', 'true');
       this.render(); this.position();
+      if (this.remoteUrl) this.loadRemote(1);
       const focus = this.compact ? (this.options.querySelector('[aria-selected="true"]:not(:disabled)') || this.options.querySelector('[role="option"]:not(:disabled)')) : this.search;
       focus?.focus({preventScroll:true});
     }
@@ -156,6 +182,48 @@
       this.select.dispatchEvent(new Event('input', {bubbles:true}));
       this.select.dispatchEvent(new Event('change', {bubbles:true}));
       this.sync();
+    }
+    async loadRemote(page) {
+      const sequence = ++this.remoteSequence;
+      const url = new URL(this.remoteUrl, window.location.href);
+      url.searchParams.set('q', this.search.value.trim());
+      url.searchParams.set('page', String(page));
+      if (this.select.dataset.remoteIncludeArchived === 'true') url.searchParams.set('active', '0');
+      if (this.select.dataset.remoteScope) url.searchParams.set('scope', this.select.dataset.remoteScope);
+      const form = this.select.form;
+      for (const key of ['kind', 'camp', 'date']) {
+        const fieldName = this.select.dataset['remote' + key[0].toUpperCase() + key.slice(1) + 'Field'];
+        const field = fieldName && form?.elements.namedItem(fieldName);
+        if (field?.value) url.searchParams.set(key, field.value);
+      }
+      this.search.setAttribute('aria-busy', 'true');
+      try {
+        const response = await fetch(url, {headers:{'X-Requested-With':'XMLHttpRequest'}});
+        if (!response.ok) throw new Error('search failed');
+        const payload = await response.json();
+        if (sequence !== this.remoteSequence) return;
+        const selected = new Map([...this.select.selectedOptions].map(option => [String(option.value), option]));
+        if (page === 1) [...this.select.options].forEach(option => {if (!option.selected && option.value) option.remove();});
+        (payload.items || []).forEach(item => {
+          const value = String(item.id);
+          let option = [...this.select.options].find(row => String(row.value) === value);
+          if (!option) {option = document.createElement('option'); option.value = value; this.select.append(option);}
+          option.textContent = item.text;
+          option.selected = selected.has(value);
+        });
+        this.remotePage = Number(payload.page || page);
+        this.remotePages = Number(payload.pages || this.remotePage);
+        this.render();
+      } catch (error) {
+        if (sequence === this.remoteSequence) {
+          this.options.replaceChildren();
+          const message = document.createElement('div'); message.className = 'search-select-empty';
+          message.setAttribute('role', 'alert'); message.textContent = 'Не удалось загрузить сотрудников. Повторите поиск.';
+          this.options.append(message);
+        }
+      } finally {
+        if (sequence === this.remoteSequence) this.search.removeAttribute('aria-busy');
+      }
     }
     render() {
       const focusedIndex = this.compact && this.options.contains(document.activeElement) ? document.activeElement.dataset.optionIndex : null;
@@ -221,6 +289,12 @@
         const more = document.createElement('button'); more.type = 'button'; more.className = 'search-select-more';
         more.textContent = `Показать ещё · найдено ${options.length}`;
         more.addEventListener('click', () => {this.limit += 100; this.render();}); this.options.append(more);
+      }
+      if (this.remoteUrl && this.remotePage < this.remotePages) {
+        const more = document.createElement('button'); more.type = 'button'; more.className = 'search-select-more';
+        more.textContent = 'Показать ещё 50';
+        more.addEventListener('click', () => this.loadRemote(this.remotePage + 1));
+        this.options.append(more);
       }
       this.position();
       if (focusedIndex != null) this.options.querySelector(`[data-option-index="${focusedIndex}"]:not(:disabled)`)?.focus({preventScroll:true});

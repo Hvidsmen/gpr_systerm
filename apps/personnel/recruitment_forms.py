@@ -4,6 +4,7 @@ from apps.projects.models import ConstructionObject
 from apps.resources.models import Employee
 from .models import RecruitmentRequest, RecruitmentCandidate,TalentPoolCandidate,Camp
 from .recruitment import allowed_camps, validate_documents
+from .employee_widgets import RemoteEmployeeSelect
 
 
 class RevisionForm(forms.Form):
@@ -135,7 +136,7 @@ class ArrivalForm(RevisionForm):
     project_name=forms.CharField(label='Проект',disabled=True)
     expected_on=forms.DateField(label='Плановая дата заезда',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
     camp=forms.ModelChoiceField(label='ВЖГ',queryset=None,required=False)
-    employee=forms.ModelChoiceField(label='Оформленный сотрудник',queryset=None,required=False,
+    employee=forms.ModelChoiceField(label='Оформленный сотрудник',queryset=None,required=False,widget=RemoteEmployeeSelect,
         help_text='Выберите сотрудника после оформления и появления в реестре. Совпадение ФИО само по себе не связывает кандидата с сотрудником.')
     actual_on=forms.DateField(required=False,widget=forms.HiddenInput())
     notes=forms.CharField(label='Комментарий к заезду',required=False,widget=forms.Textarea(attrs={'rows':3}))

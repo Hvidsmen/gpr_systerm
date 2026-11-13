@@ -3,6 +3,7 @@ from django import forms
 from django.db.models import Q
 from apps.resources.models import Position
 from .models import BaseCity, Board, MovementReviewRequest, Person, StaffingGroup, StaffingSlot, ZupWorkSchedule
+from .employee_widgets import RemoteEmployeeSelect, RemoteEmployeeSelectMultiple
 
 
 class StyledModelForm(forms.ModelForm):
@@ -41,6 +42,7 @@ class PersonForm(StyledModelForm):
         from apps.resources.models import Employee
         from django.db.models import Q
         current=self.instance.employee_id if self.instance.pk else None
+        self.fields['employee'].widget=RemoteEmployeeSelect()
         self.fields['employee'].queryset=Employee.objects.filter(company=self.instance.company).filter(Q(is_active=True)|Q(pk=current)).select_related('position').order_by('last_name','first_name','middle_name','employee_number','pk')
         self.fields['employee'].label_from_instance=lambda e:e.display_name+(' · № '+e.employee_number if e.employee_number else '')+(' · '+str(e.position) if e.position_id else '')+(' · Архивный, сохранённая связь' if not e.is_active else '')
         self.fields['full_name'].required=False
@@ -146,7 +148,10 @@ class MovementForm(forms.Form):
     kind=forms.ChoiceField(label='Вид заявки',choices=[('ARRIVAL','Заезд'),('DEPARTURE','Выезд'),('TRANSFER','Перевод в другой ВЖГ')])
     date=forms.DateField(label='Фактическая дата',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
     camp=forms.ModelChoiceField(label='ВЖГ заезда / исходный ВЖГ',queryset=None)
-    employees=forms.ModelMultipleChoiceField(label='Сотрудники',queryset=None,widget=forms.SelectMultiple(attrs={'size':8,'data-personnel-searchable':''}))
+    employees=forms.ModelMultipleChoiceField(label='Сотрудники',queryset=None,widget=RemoteEmployeeSelectMultiple(attrs={
+        'size':8,'data-personnel-searchable':'','data-remote-scope':'movement',
+        'data-remote-kind-field':'kind','data-remote-camp-field':'camp','data-remote-date-field':'date',
+    }))
     target=forms.ModelChoiceField(label='ВЖГ назначения',queryset=None,required=False)
     comment=forms.CharField(label='Комментарий',required=False,widget=forms.Textarea(attrs={'rows':2}),max_length=4000)
     direct_fact=forms.BooleanField(label='Временный режим: провести факт сразу, без заявки',required=False,
@@ -198,7 +203,7 @@ class MovementForm(forms.Form):
 
 
 class MovementRecommendationForm(forms.Form):
-    employees=forms.ModelMultipleChoiceField(label='Сотрудники',queryset=None,widget=forms.SelectMultiple(attrs={'size':6,'data-personnel-searchable':''}))
+    employees=forms.ModelMultipleChoiceField(label='Сотрудники',queryset=None,widget=RemoteEmployeeSelectMultiple(attrs={'size':6,'data-personnel-searchable':''}))
     camp=forms.ModelChoiceField(label='ВЖГ',queryset=None)
     planned_on=forms.DateField(label='Рекомендуемая дата',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
     def __init__(self,*args,company,day,kind,**kwargs):

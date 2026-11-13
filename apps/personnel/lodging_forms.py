@@ -3,6 +3,7 @@ from django.db.models import Q
 from apps.resources.models import Employee
 from .models import Camp,LodgingBuilding,LodgingBed,LodgingStay
 from . import lodging
+from .employee_widgets import RemoteEmployeeSelect
 
 
 class StyledForm(forms.Form):
@@ -22,7 +23,7 @@ class LodgingFilter(StyledForm):
 
 class LodgingMovementForm(StyledForm):
     kind=forms.ChoiceField(label='Действие',choices=[('CHECKIN','Заселить'),('MOVE','Переселить'),('CHECKOUT','Выселить'),('UPDATE','Изменить сведения')])
-    employee=forms.ModelChoiceField(label='Сотрудник',queryset=Employee.objects.none())
+    employee=forms.ModelChoiceField(label='Сотрудник',queryset=Employee.objects.none(),widget=RemoteEmployeeSelect(attrs={'data-remote-include-archived':'true'}))
     bed=forms.ModelChoiceField(label='Новое место',queryset=LodgingBed.objects.none(),required=False)
     date=forms.DateField(label='Фактическая дата',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
     planned_departure=forms.DateField(label='Плановая дата выселения',required=False,help_text='Необязательно. Ожидаемая дата; место освобождается только после оформления выселения.',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
