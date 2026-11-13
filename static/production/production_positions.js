@@ -1,6 +1,6 @@
 (()=>{
  'use strict';const source=document.getElementById('position-plan-saved');if(!source)return;
- let saved=JSON.parse(source.textContent);const staff=JSON.parse(document.getElementById('position-employee-roles').textContent),locations=JSON.parse(document.getElementById('production-employee-locations')?.textContent||'{}'),host=document.querySelector('[data-rows=labor]');
+ let saved=JSON.parse(source.textContent);const staff=JSON.parse(document.getElementById('position-employee-roles').textContent),locations=JSON.parse(document.getElementById('production-employee-locations')?.textContent||'{}'),host=document.querySelector('[data-rows=labor]'),form=host.closest('form'),template=document.getElementById('empty-labor');
  const field=(row,name)=>row.querySelector(`[name$="-${name}"]`),containers=new Map([...host.querySelectorAll('[data-position-people]')].map(el=>[el.dataset.positionPeople,el]));
  const number=new Intl.NumberFormat('ru-RU',{maximumFractionDigits:2});
  const positionStorageKey=`production-position-filter:${host.closest('form').elements.construction_object?.value||''}:${host.closest('form').elements.date?.value||''}`;let quickPosition=sessionStorage.getItem(positionStorageKey)||'all';
@@ -22,6 +22,12 @@
  function updateUnplanned(){
   for(const details of unplannedGroups.values()){let total=0;details.querySelectorAll('[data-unplanned-rows]').forEach(target=>{const count=target.querySelectorAll(':scope > [data-production-person]').length,totalLabel=target.parentElement.querySelector('[data-unplanned-position-label]'),text=`${target.parentElement.dataset.unplannedPosition} · Людей: ${count}`;target.parentElement.hidden=count===0;total+=count;if(totalLabel&&totalLabel.textContent!==text)totalLabel.textContent=text;});details.hidden=total===0;const label=details.querySelector('[data-unplanned-group-label]'),text=`${details.dataset.unplannedGroup} · Людей: ${total}`;if(label&&label.textContent!==text)label.textContent=text;}
  }
+ function ensureEmptyPersonRow(){
+  if(form.dataset.readonly==='1'||!template)return;
+  const empty=[...host.querySelectorAll('[data-production-person]')].some(row=>!field(row,'id')?.value&&!field(row,'employee')?.value&&!field(row,'DELETE')?.checked);if(empty)return;
+  const total=form.elements.namedItem('labor-TOTAL_FORMS'),index=Number(total.value),piece=document.createElement('template');piece.innerHTML=template.innerHTML.replaceAll('__prefix__',index);const row=piece.content.firstElementChild;
+  total.value=index+1;(containers.get('')||host).append(row);row.dispatchEvent(new Event('change',{bubbles:true}));
+ }
  function refresh(){
   const records=new Map(saved.map(row=>[String(row.id),row])),extras=[];
   host.querySelectorAll('[data-production-person]').forEach(row=>{
@@ -36,6 +42,7 @@
   host.querySelectorAll('[data-position-plan]').forEach(row=>{const actual=people.get(row.dataset.positionPlan)?.size||0,required=Number(row.dataset.planCount),need=Math.max(0,required-actual);write(row.querySelector('[data-position-assigned]'),actual);write(row.querySelector('[data-position-remaining]'),need);row.dataset.positionActual=actual;row.dataset.positionRemaining=need;row.hidden=quickPosition==='deficit'?need===0:quickPosition==='assigned'?actual===0:quickPosition==='empty'?actual>0:false;plan+=required;remaining+=need;});
   host.querySelectorAll('[data-position-group]').forEach(group=>{let groupPlan=0,groupRemaining=0;const groupPeople=new Set();group.querySelectorAll('[data-position-plan]').forEach(role=>{const required=Number(role.dataset.planCount),assigned=people.get(role.dataset.positionPlan)||new Set();groupPlan+=required;groupRemaining+=Math.max(0,required-assigned.size);assigned.forEach(employee=>groupPeople.add(employee));});group.hidden=[...group.querySelectorAll('[data-position-plan]')].every(role=>role.hidden);write(group.querySelector('[data-position-group-plan]'),groupPlan);write(group.querySelector('[data-position-group-assigned]'),groupPeople.size);write(group.querySelector('[data-position-group-remaining]'),groupRemaining);});
   for(const [key,value] of Object.entries({plan,assigned:unique.size,remaining,unplanned:unplanned.size}))write(host.querySelector(`[data-position-total="${key}"]`),value);
+  ensureEmptyPersonRow();
  }
  document.addEventListener('click',event=>{const button=event.target.closest('[data-position-groups-toggle]');if(!button)return;host.querySelectorAll('[data-position-group],[data-unplanned-group]').forEach(group=>group.open=button.dataset.positionGroupsToggle==='open');});
  document.querySelectorAll('[data-position-quick]').forEach(button=>{const active=button.dataset.positionQuick===quickPosition;button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));});
@@ -44,5 +51,5 @@
  new MutationObserver(records=>{if(records.some(record=>[...record.addedNodes,...record.removedNodes].some(node=>node.nodeType===1&&(node.matches('[data-production-person]')||node.querySelector('[data-production-person]')))))scheduleRefresh();}).observe(host,{childList:true,subtree:true});
  host.closest('form').addEventListener('production-report-update',event=>{saved=event.detail.people.map(row=>({id:row.id,employee:row.employee,role:row.role}));scheduleRefresh();});
  const start=()=>refresh();
- if(window.productionPerformance)host.closest('form').addEventListener('production-background-ready',start,{once:true});else start();
+ if(window.productionPerformance)form.addEventListener('production-background-ready',start,{once:true});else start();
 })();

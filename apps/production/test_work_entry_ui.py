@@ -421,6 +421,8 @@ class WorkEntryPresentationTests(TestCase):
         self.assertIn("fetch(url+'?'",picker)
         self.assertIn("function unplannedTarget(employee)",positions)
         self.assertIn("info.staff_group||'Без группы'",positions)
+        self.assertIn('function ensureEmptyPersonRow()',positions)
+        self.assertIn("total.value=index+1;(containers.get('')||host).append(row)",positions)
 
     def test_plan_changes_with_selected_day_and_previous_fact_excludes_this_day(self):
         DailyFact.objects.create(company=self.company, project_work=self.package, work_item=self.camera, date=self.day-timedelta(days=2), actual_quantity=3)
