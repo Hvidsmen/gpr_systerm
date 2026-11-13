@@ -233,6 +233,7 @@ class WorkEntryPresentationTests(TestCase):
         self.assertIn('уже добавлен в смену — открыть строку',claims)
         self.assertIn("conflict.scrollIntoView({behavior:'smooth',block:'center'})",claims)
         self.assertIn("option.dataset.existingPerson=existing?.id||''",claims)
+        self.assertIn("if(duplicate(row)&&take)return",claims)
         forms=(Path(__file__).resolve().parents[2]/'static/core/forms.js').read_text(encoding='utf-8')
         self.assertIn("new CustomEvent('search-select-existing'",forms)
         self.assertIn('production-recovery-advice',source)
