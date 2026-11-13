@@ -66,6 +66,15 @@ class ProductionBatchSaveTests(TestCase):
         self.assertEqual(DailyFact.objects.count(),1)
         self.assertEqual(ProductionBatchReceipt.objects.filter(pk=batch_id).count(),1)
 
+    def test_new_row_for_existing_work_updates_fact_instead_of_creating_duplicate(self):
+        first=self.request([self.work_row()]).json()['rows'][0]
+        changed=self.work_row();changed['values']['actual_quantity']='11'
+        response=self.request([changed])
+        self.assertEqual(response.status_code,200,response.content)
+        self.assertEqual(response.json()['rows'][0]['id'],first['id'])
+        self.assertEqual(DailyFact.objects.count(),1)
+        self.assertEqual(DailyFact.objects.get().actual_quantity,11)
+
     def test_batch_is_limited_and_key_cannot_be_reused_for_other_data(self):
         oversized=self.request([self.work_row(str(index)) for index in range(16)])
         self.assertEqual(oversized.status_code,400,oversized.content)

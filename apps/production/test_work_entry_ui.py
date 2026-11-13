@@ -237,6 +237,8 @@ class WorkEntryPresentationTests(TestCase):
         self.assertIn("window.productionAutoSave?.discardDraft(row)",claims)
         self.assertIn("const workKinds=new Map",claims)
         self.assertIn("workKinds.get(String(work))==='COMPOSITE'",claims)
+        self.assertIn("Эта работа уже добавлена за выбранный день",claims)
+        self.assertIn("focusExistingWork(workRow,conflict)",claims)
         self.assertIn("field(row,'employee').value=''",claims)
         self.assertIn("discardDraft:removeDraft",source)
         picker=(Path(__file__).resolve().parents[2]/'static/production/people_picker.js').read_text(encoding='utf-8')

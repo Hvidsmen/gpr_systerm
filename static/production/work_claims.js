@@ -25,6 +25,14 @@
   return item?`item:${work}:${item}`:`work:${work}`;
  };
  const personRows=()=>rows().filter(person),deleted=row=>Boolean(field(row,'DELETE')?.checked);
+ const existingWork=row=>{const key=keyOf(row);return key&&!person(row)&&rows().find(other=>other!==row&&!person(other)&&!deleted(other)&&keyOf(other)===key);};
+ function focusExistingWork(row,conflict){
+  window.productionAutoSave?.discardDraft(row);row.remove();window.productionAutoSave?.reindex();
+  let group=conflict.closest('details');while(group){group.open=true;group=group.parentElement.closest('details');}
+  conflict.querySelector('[data-error]').textContent='Эта работа уже добавлена за выбранный день. Измените объём в этой строке.';
+  conflict.classList.add('production-new-row-focus');conflict.scrollIntoView({behavior:'smooth',block:'center'});
+  setTimeout(()=>conflict.classList.remove('production-new-row-focus'),2200);field(conflict,'actual_quantity')?.focus({preventScroll:true});
+ }
  const samePerson=row=>person(row)&&keyOf(row)&&personRows().filter(other=>!deleted(other)&&keyOf(other)===keyOf(row));
  function duplicate(row){
   if(!person(row)||deleted(row))return false;
@@ -67,6 +75,7 @@
  form.addEventListener('change',event=>{
   const workRow=event.target.closest('[data-work-fact-row]');
   if(workRow&&event.target===field(workRow,'project_work'))filterWorkItems(workRow);
+  if(workRow&&!field(workRow,'id')?.value&&(event.target===field(workRow,'project_work')||event.target===field(workRow,'work_item'))){const conflict=existingWork(workRow);if(conflict){event.preventDefault();event.stopImmediatePropagation();focusExistingWork(workRow,conflict);return;}}
   const row=event.target.closest('[data-production-person]');if(!row)return;
   if(event.target!==field(row,'employee')&&event.target!==field(row,'shift'))return;
   const conflict=personRows().find(other=>other!==row&&!deleted(other)&&!deleted(row)&&keyOf(other)&&keyOf(other)===keyOf(row));

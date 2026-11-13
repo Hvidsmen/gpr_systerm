@@ -115,6 +115,18 @@ def save_batch(request):
                     expected=item.get('version')
                     if expected and instance.updated_at.isoformat()!=expected:
                         raise ValidationError('Эту строку уже изменили в другой вкладке. Обновите данные; введённый черновик сохранён в браузере.')
+                elif kind=='works':
+                    # Adding an already existing work means editing its daily
+                    # fact, including when that fact is on another UI page.
+                    # Never attempt a second INSERT and leak a database
+                    # constraint name to the dispatcher.
+                    values=item['values'];work_id=str(values.get('project_work') or '')
+                    item_id=str(values.get('work_item') or '');operational=(values.get('operational_name') or '').strip()
+                    if work_id.isdigit() and not operational:
+                        existing=DailyFact.objects.select_for_update().filter(company=obj.company,date=day,project_work_id=int(work_id),project_work__section__construction_object=obj)
+                        if item_id.isdigit():existing=existing.filter(work_item_id=int(item_id))
+                        else:existing=existing.filter(work_item=None,operational_key=None)
+                        instance=existing.first()
                 form_class=WorkForm if kind=='works' else ProductionPersonForm
                 form=form_class(_query_data(item['values']),instance=instance,prefix='row',**common)
                 form.fields['DELETE']=forms.BooleanField(required=False)
@@ -152,5 +164,8 @@ def save_batch(request):
             ProductionBatchReceipt.objects.create(id=batch_id,company=obj.company,construction_object=obj,date=day,user=request.user,digest=digest,result=result)
             return JsonResponse(result)
     except IntegrityError:
-        return _error('Повтор записи: сотрудник уже учтён в эту дату и смену. Обновите список и проверьте строки.',409)
-    except ValidationError as exc:return _error('; '.join(exc.messages),409)
+        return _error('Такая запись уже существует. Обновите данные и измените существующую строку.',409)
+    except ValidationError as exc:
+        message='; '.join(exc.messages)
+        if 'unique_item_fact' in message or 'unique_simple_fact' in message:message='Такая работа уже добавлена за этот день. Измените существующую строку.'
+        return _error(message,409)
