@@ -1,8 +1,10 @@
 """Work candidates and employee assignments reused by the production dispatcher."""
 from copy import copy
+from urllib.parse import urlencode
 from django.db import transaction
 from django import forms
 from django.db.models import Max, Prefetch, Q
+from django.urls import reverse
 from apps.works.models import ProjectWork
 from apps.resources.models import Position
 from .dispatch_models import EmployeeActivity, EmployeeWorkLink
@@ -184,6 +186,9 @@ class ProductionPersonForm(PersonForm):
             if not options:options=[(self.instance.employee_id,self.instance.employee.display_name)]
             self.fields['employee'].widget.choices=options
         self.fields['employee'].help_text='Все активные сотрудники. Сначала — ВЖГ этого объекта, затем другие ВЖГ и сотрудники без оформленного нахождения.'
+        self.fields['employee'].widget.attrs['data-remote-search-url']=reverse('production:production_employee_search')+'?'+urlencode({
+            'construction_object':self.obj.pk,'date':self.day.isoformat(),
+        })
         if self.instance.pk and self.instance.shift not in {1,2}:
             self.fields['shift'].choices=[*self.fields['shift'].choices,(self.instance.shift,f'Смена {self.instance.shift} (ранее)')]
         self.initial.setdefault('work_targets',[])

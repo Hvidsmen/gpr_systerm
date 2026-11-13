@@ -45,6 +45,16 @@ class ProductionEmployeeSearchPaginationTests(TestCase):
         exact=self.client.get(url,{'construction_object':self.obj.pk,'date':self.day,'q':'T-204'}).json()
         self.assertEqual([item['number'] for item in exact['items']],['T-204'])
 
+    def test_inline_employee_field_uses_the_same_full_server_search(self):
+        response=self.page()
+        labor=next(group for group in response.context['groups'] if group['prefix']=='labor')
+        field=labor['formset'].empty_form.fields['employee']
+        url=field.widget.attrs['data-remote-search-url']
+        self.assertIn(reverse('production:production_employee_search'),url)
+        self.assertIn(f'construction_object={self.obj.pk}',url)
+        self.assertIn(f'date={self.day.isoformat()}',url)
+        self.assertContains(response,'data-remote-search-url')
+
     def test_daily_works_are_rendered_in_server_pages_of_one_hundred(self):
         first=self.client.get(reverse('production:fact_day_workspace'),{'construction_object':self.obj.pk,'date':self.day,'section':'works'})
         self.assertEqual(first.status_code,200)
