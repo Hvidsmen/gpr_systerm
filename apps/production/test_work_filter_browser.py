@@ -25,7 +25,7 @@ class WorkFilterBrowserTests(StaticLiveServerTestCase):
         save_item=ProjectWorkItem.objects.create(company=self.company,project_work=save_work,name='Устройство периметрального ограждения',unit='м.п',quantity_per_unit=1)
         self.client.force_login(self.users['DISPATCHER'])
         config={'base':self.live_server_url,'chromium':shutil.which('chromium'),'cookie':self.client.cookies['sessionid'].value,
-            'path':f'{self.url}?construction_object={self.obj.pk}&date={self.day}&section=works','complex':objects[1][0].pk,'work':objects[1][1].pk,
+            'path':f'{self.url}?construction_object={self.obj.pk}&date={self.day}&section=works','complex':objects[1][0].pk,'work':objects[1][1].pk,'item':objects[1][2].pk,
             'saveComplex':save_object.pk,'saveWork':save_work.pk,'saveItem':save_item.pk,
             'otherWork':objects[0][1].pk}
         result=subprocess.run(['node',str(Path(__file__).resolve().parents[2]/'tests/browser/work_filter.js')],capture_output=True,text=True,env={**os.environ,'WORK_FILTER_CONFIG':json.dumps(config)},timeout=120)

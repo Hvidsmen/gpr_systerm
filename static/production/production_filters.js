@@ -8,16 +8,26 @@
  const groupOf=row=>row.closest('[data-position-group]')?.dataset.positionGroup||employeeLocations[field(row,'employee')?.value]?.staff_group||'Без группы плана';
  let refreshPending=false;
  function scheduleRefresh(){if(refreshPending)return;refreshPending=true;requestAnimationFrame(()=>{refreshPending=false;refresh();});}
- function widget(host,label,options){return window.graphMultiselect.create(host,label,options,scheduleRefresh);}
+ function widget(host,label,options,onchange=scheduleRefresh){return window.graphMultiselect.create(host,label,options,onchange);}
  const options=values=>[...new Map(values.filter(v=>v.value).map(v=>[String(v.value),{value:String(v.value),label:v.label}])).values()].sort((a,b)=>a.label.localeCompare(b.label,'ru'));
- const filterStorageKey=`production-work-filter:${form.elements.construction_object?.value||''}:${form.elements.date?.value||''}`;let quickWork=sessionStorage.getItem(filterStorageKey)||'all';const filters={};
+ const filterStorageKey=`production-work-filter:${form.elements.construction_object?.value||''}:${form.elements.date?.value||''}`;let quickWork=sessionStorage.getItem(filterStorageKey)||'all';const filters={},filterData={};
+ function cascadeWorkFilters(kind){
+  const f=filters[kind],data=filterData[kind];if(!f?.object||!data)return scheduleRefresh();
+  const objects=f.object.values(),allowedObject=value=>!objects.length||objects.includes(String(value));
+  f.package.setOptions(options(data.meta.filter(w=>w.kind==='COMPOSITE'&&allowedObject(w.complex_object_id)).map(w=>({value:w.id,label:w.name}))));
+  const packages=f.package.values(),allowedPackage=value=>!packages.length||packages.includes(String(value));
+  f.work.setOptions(options(data.choices.filter(w=>(w.kind==='COMPOSITE'||w.kind==='OPERATIONAL')&&allowedObject(w.complex_id)&&allowedPackage(w.work)).map(w=>({value:w.token,label:w.title||w.label}))));
+  scheduleRefresh();
+ }
  for(const kind of ['works','people','graph']){
   const host=document.querySelector(`[data-production-filters="${kind}"]`);if(!host)continue;
   filters[kind]={};
   if(kind!=='people'){
-   filters[kind].object=widget(host,'Комплексные объекты',options(workMeta.filter(w=>w.complex_object_id).map(w=>({value:w.complex_object_id,label:w.complex_object__name}))));
-   filters[kind].package=widget(host,'Комплексы работ',options(workMeta.filter(w=>w.kind==='COMPOSITE').map(w=>({value:w.id,label:w.name}))));
-   filters[kind].work=widget(host,'Работы в составе комплекса',options(choices.map(w=>({value:w.token,label:w.title||w.label}))));
+   filterData[kind]={choices,meta:workMeta};const cascade=()=>cascadeWorkFilters(kind);
+   filters[kind].object=widget(host,'Комплексные объекты',options(workMeta.filter(w=>w.complex_object_id).map(w=>({value:w.complex_object_id,label:w.complex_object__name}))),cascade);
+   filters[kind].package=widget(host,'Комплексы работ',[],cascade);
+   filters[kind].work=widget(host,'Работы в составе комплекса',[],scheduleRefresh);
+   cascadeWorkFilters(kind);
   }
   if(kind!=='works'){
    filters[kind].group=widget(host,'Группы должностей',[]);filters[kind].role=widget(host,'Должности',[]);filters[kind].employee=widget(host,'Люди',[]);
@@ -40,7 +50,7 @@
  function syncPeople(){const people=[...form.querySelectorAll('[data-production-person]')].filter(r=>field(r,'employee')?.value&&!field(r,'DELETE')?.checked),roles=options(people.map(row=>({value:roleOf(row),label:roleName(row)||field(row,'employee').selectedOptions[0]?.textContent.split(' · ')[2]||'Без должности'}))),groups=[...form.querySelectorAll('[data-position-group]')].map(g=>({value:g.dataset.positionGroup,label:g.dataset.positionGroup})),employees=options(people.map(row=>({value:field(row,'employee').value,label:field(row,'employee').selectedOptions[0]?.textContent.split(' · ')[0]||''})));
   for(const f of Object.values(filters)){if(f.employee){f.group.setOptions(groups);f.role.setOptions(roles);f.employee.setOptions(employees);}}
  }
- function syncGraph(works,rows){const f=filters.graph;if(!f)return;f.object.setOptions(options(works.filter(w=>w.complex_id).map(w=>({value:w.complex_id,label:w.complex||w.object||'Комплексный объект'}))));f.package.setOptions(options(works.filter(w=>w.kind==='COMPOSITE'||w.kind==='OPERATIONAL').map(w=>({value:w.work,label:w.package||w.label}))));f.work.setOptions(options(works.map(w=>({value:w.token,label:w.title||w.label}))));f.group.setOptions(options(rows.map(row=>({value:groupOf(row),label:groupOf(row)}))));f.role.setOptions(options(rows.map(row=>({value:roleOf(row),label:roleName(row)||'Без должности'}))));f.employee.setOptions(options(rows.map(row=>({value:field(row,'employee').value,label:field(row,'employee').selectedOptions[0]?.textContent.split(' · ')[0]||''}))));
+ function syncGraph(works,rows){const f=filters.graph;if(!f)return;filterData.graph={choices:works,meta:works.map(w=>({id:w.work,name:w.package||w.label,kind:w.kind,complex_object_id:w.complex_id}))};f.object.setOptions(options(works.filter(w=>w.complex_id).map(w=>({value:w.complex_id,label:w.complex||w.object||'Комплексный объект'}))));cascadeWorkFilters('graph');f.group.setOptions(options(rows.map(row=>({value:groupOf(row),label:groupOf(row)}))));f.role.setOptions(options(rows.map(row=>({value:roleOf(row),label:roleName(row)||'Без должности'}))));f.employee.setOptions(options(rows.map(row=>({value:field(row,'employee').value,label:field(row,'employee').selectedOptions[0]?.textContent.split(' · ')[0]||''}))));
  }
  function refresh(){
   const query=(document.querySelector('[data-work-search]')?.value||'').toLocaleLowerCase('ru').trim();
@@ -54,7 +64,7 @@
  form.productionFilters={workMatches,personMatches,syncGraph};
  document.querySelector('[data-work-search]')?.addEventListener('input',scheduleRefresh);
  document.querySelectorAll('[data-work-quick]').forEach(button=>{const active=button.dataset.workQuick===quickWork;button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));button.addEventListener('click',()=>{quickWork=button.dataset.workQuick;sessionStorage.setItem(filterStorageKey,quickWork);document.querySelectorAll('[data-work-quick]').forEach(candidate=>{const selected=candidate===button;candidate.classList.toggle('active',selected);candidate.setAttribute('aria-pressed',String(selected));});scheduleRefresh();});});
- form.addEventListener('production-work-created',event=>{choices.push(event.detail);catalogue.set(event.detail.token,event.detail);for(const f of Object.values(filters))if(f.work)f.work.setOptions(options(choices.map(w=>({value:w.token,label:w.title||w.label}))));scheduleRefresh();});
+ form.addEventListener('production-work-created',event=>{choices.push(event.detail);catalogue.set(event.detail.token,event.detail);cascadeWorkFilters('works');scheduleRefresh();});
  form.addEventListener('production-report-update',()=>{syncPeople();scheduleRefresh();});form.addEventListener('production-live-applied',()=>{syncPeople();scheduleRefresh();});form.addEventListener('change',event=>{if(event.target.closest('[data-production-person]')){syncPeople();scheduleRefresh();}else if(event.target.closest('[data-work-fact-row]'))scheduleRefresh();});
  refresh();form.addEventListener('production-background-ready',()=>{syncPeople();scheduleRefresh();},{once:true});
 })();

@@ -287,6 +287,8 @@ class WorkEntryPresentationTests(TestCase):
         self.assertIn("field(row,'complex_object_filter')?.value||meta.complex_object_id",filters)
         self.assertIn("workMatches(key,'works',w)",filters)
         self.assertIn("function syncGraph(works,rows)",filters)
+        self.assertIn("function cascadeWorkFilters(kind)",filters)
+        self.assertIn("allowedObject(w.complex_id)&&allowedPackage(w.work)",filters)
         self.assertIn("form.productionFilters={workMatches,personMatches,syncGraph}",filters)
         entry=(Path(__file__).resolve().parents[2]/'static/production/work_entry.js').read_text(encoding='utf-8')
         self.assertIn("savedSelection=Boolean(row.dataset.workToken||row.dataset.operationalName)",entry)
