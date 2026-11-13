@@ -13,7 +13,7 @@
 {% for row in group.roles %}<section class="border rounded p-3 mb-3" data-position-plan="{{ row.id }}" data-plan-count="{{ row.plan }}">
 <div class="d-flex justify-content-between gap-2 flex-wrap mb-2"><h4 class="h6 mb-0">{{ row.name }}</h4><span class="small">План {{ row.plan }} · Назначено <strong data-position-assigned>{{ row.actual }}</strong> · Ещё требуется <strong data-position-remaining>{{ row.remaining }}</strong></span></div>
 <div data-position-people="{{ row.id }}"></div>
-{% if editable %}<button type="button" class="btn btn-sm btn-outline-primary" data-add-for-position="{{ row.id }}">Назначить сотрудника</button> <button type="button" class="btn btn-sm btn-outline-primary" data-person-bulk-position="{{ row.id }}">Выбрать сотрудников</button>{% endif %}
+{% if editable %}<button type="button" class="btn btn-sm btn-outline-primary" data-person-bulk-position="{{ row.id }}">Выбрать сотрудников</button>{% endif %}
 </section>{% empty %}<p>В применённом СМГ на эту дату должности не запланированы. Можно внести фактически работавших сотрудников.</p>{% endfor %}</details>{% endfor %}
 <section class="border rounded p-3 mb-3" data-unplanned-people><h4 class="h6">Другие сотрудники / без должности СМГ</h4><p class="small text-muted">Сотрудники сгруппированы по группе и должности штатного расписания. Это не назначает им должность СМГ и не меняет кадровые данные.</p><div data-position-people=""></div><div data-unplanned-groups></div></section>
 <p class="small text-muted mb-0" data-position-plan-note>Итоги учитывают сохранённый факт всех диспетчеров и несохранённые изменения текущей формы. Изменения сохраняются автоматически.</p>

@@ -358,6 +358,16 @@ class WorkEntryPresentationTests(TestCase):
         self.assertIn('window.productionPerformance=',metrics)
         positions=(root/'production_positions.js').read_text(encoding='utf-8')
         self.assertIn("addEventListener('production-background-ready',start",positions)
+
+    def test_position_assignment_uses_full_server_employee_search(self):
+        root=Path(__file__).resolve().parents[2]
+        template=(root/'templates/production/_position_plan.html').read_text(encoding='utf-8')
+        positions=(root/'static/production/production_positions.js').read_text(encoding='utf-8')
+        picker=(root/'static/production/people_picker.js').read_text(encoding='utf-8')
+        self.assertIn('data-person-bulk-position',template)
+        self.assertNotIn('data-add-for-position',template)
+        self.assertNotIn("closest('[data-add-for-position]')",positions)
+        self.assertIn("fetch(url+'?'",picker)
         self.assertIn("function unplannedTarget(employee)",positions)
         self.assertIn("info.staff_group||'Без группы'",positions)
 
