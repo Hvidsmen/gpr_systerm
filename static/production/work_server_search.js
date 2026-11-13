@@ -4,6 +4,7 @@
  if(!input)return;
  const current=new URL(location.href).searchParams.get('work_q')||'';
  input.value=current;
+ const quick=new URL(location.href).searchParams.get('work_filter')||'all';
  const actions=document.createElement('div');actions.className='d-flex gap-2 mt-2';
  const submit=document.createElement('button');submit.type='button';submit.className='btn btn-sm btn-primary';submit.textContent='Найти во всех работах';
  const clear=document.createElement('button');clear.type='button';clear.className='btn btn-sm btn-outline-secondary';clear.textContent='Сбросить';clear.hidden=!current;
@@ -17,4 +18,5 @@
  input.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();open(input.value.trim());}});
  actions.append(submit,clear);
  input.parentElement.insertBefore(actions,input.parentElement.querySelector('[data-production-filters="works"]'));
+ document.querySelectorAll('[data-work-quick]').forEach(button=>{const active=button.dataset.workQuick===quick;button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));button.addEventListener('click',event=>{event.preventDefault();event.stopImmediatePropagation();const url=new URL(location.href);url.searchParams.set('work_filter',button.dataset.workQuick);url.searchParams.set('work_page','1');url.searchParams.set('entry_step','1');location.assign(url);},true);});
 })();

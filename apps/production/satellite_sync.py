@@ -51,7 +51,12 @@ def response_data(user,obj,day,session,data,users,claims):
         return result
     stamp=state_stamp(obj,day)
     result.update(digest=stamp,snapshot_key=token)
-    if data.get('digest')!=stamp:
+    full_report=int(data.get('step',1))==4
+    requested_scope='full' if full_report else 'visible'
+    # A step change changes the required scope even when no database row has
+    # changed since the previous poll.  Without this check the relationship
+    # graph kept the 100 rows received for the paged editor.
+    if data.get('digest')!=stamp or (data.get('report_scope') is not None and data.get('report_scope')!=requested_scope):
         visible_people={int(pk) for pk in data.get('visible_people',[]) if str(pk).isdigit()}
         visible_works={int(pk) for pk in data.get('visible_works',[]) if str(pk).isdigit()}
         try:people_page=max(1,int(data.get('people_page',1)));people_page_size=min(100,max(10,int(data.get('people_page_size',100))))
@@ -63,7 +68,6 @@ def response_data(user,obj,day,session,data,users,claims):
             visible_people=set(people_query.values_list('pk',flat=True)[start:start+people_page_size])
         # The relationship graph explicitly requests the full graph. Normal
         # polling only returns the 100 rows currently open in the browser.
-        full_report=int(data.get('step',1))==4
         report=report_data(obj,day,work_ids=None if full_report else visible_works,people_ids=None if full_report else visible_people)
         report['_scope']='full' if full_report else 'visible'
         rows=canonical_rows(obj,day,report)

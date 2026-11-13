@@ -74,6 +74,29 @@ class ProductionEmployeeSearchPaginationTests(TestCase):
         self.assertEqual(broad.context['work_page'].number,2)
         self.assertContains(broad,'work_q=%D0%9C%D0%B0%D1%81%D1%81%D0%BE%D0%B2%D0%B0%D1%8F')
 
+    def test_quick_work_filters_run_before_pagination(self):
+        work=ProjectWork.objects.get(code='MASS-203')
+        DailyFact.objects.create(company=self.company,date=self.day,project_work=work,actual_quantity=3,reported_by=self.users['DISPATCHER'])
+        actual=self.client.get(reverse('production:fact_day_workspace'),{
+            'construction_object':self.obj.pk,'date':self.day,'section':'works','work_filter':'actual',
+        })
+        self.assertEqual(actual.context['work_page'].paginator.count,1)
+        self.assertContains(actual,'Массовая работа 203')
+        empty=self.client.get(reverse('production:fact_day_workspace'),{
+            'construction_object':self.obj.pk,'date':self.day,'section':'works','work_filter':'empty','work_page':2,
+        })
+        self.assertGreater(empty.context['work_page'].paginator.count,100)
+        self.assertEqual(empty.context['work_page'].number,2)
+
+    def test_day_summary_counts_all_pages(self):
+        response=self.client.get(reverse('production:production_day_summary'),{
+            'construction_object':self.obj.pk,'date':self.day,
+        })
+        self.assertEqual(response.status_code,200,response.content)
+        result=response.json()
+        self.assertEqual(result['employees'],205)
+        self.assertGreater(result['missing'],100)
+
     def test_new_saved_rows_can_be_focused_on_their_server_page(self):
         person=EmployeeActivity.objects.order_by('pk').last()
         people=self.client.get(reverse('production:fact_day_workspace'),{'construction_object':self.obj.pk,'date':self.day,'section':'works','focus_person':person.pk})
@@ -99,3 +122,16 @@ class ProductionEmployeeSearchPaginationTests(TestCase):
         },content_type='application/json')
         self.assertEqual(response.status_code,200,response.content)
         self.assertEqual(len(response.json()['rows']['labor']),100)
+
+    def test_graph_forces_full_scope_even_when_digest_is_unchanged(self):
+        opened=self.page(1);session=str(uuid4())
+        base={'actor_id':self.users['DISPATCHER'].pk,'company_id':self.company.pk,'construction_object':self.obj.pk,
+            'date':str(self.day),'session':session,'protocol':'compact-v1','reset_epoch':0,
+            'production_snapshot':opened.context['production_snapshot'],'people_page':1,'people_page_size':100,
+            'report_scope':'visible','step':2}
+        first=self.client.post(reverse('production:production_live'),base,content_type='application/json').json()
+        full=self.client.post(reverse('production:production_live'),{**base,'production_snapshot':None,
+            'snapshot_key':first['snapshot_key'],'digest':first['digest'],'report_scope':'visible','step':4},content_type='application/json')
+        self.assertEqual(full.status_code,200,full.content)
+        self.assertEqual(full.json()['report_scope'],'full')
+        self.assertEqual(len(full.json()['report']['people']),205)

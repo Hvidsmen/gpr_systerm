@@ -7,7 +7,7 @@ from django import forms
 from django.contrib import messages
 from django.core.exceptions import ValidationError, PermissionDenied
 from django.db import transaction, IntegrityError
-from django.db.models import Prefetch, Q
+from django.db.models import Prefetch, Q, Sum
 from django.forms import BaseModelFormSet, modelformset_factory
 from django.core.paginator import Paginator
 from django.shortcuts import render, redirect
@@ -427,14 +427,37 @@ class DispatcherDayView(CompanyRequiredMixin,View):
                 initial=[{'project_work':row['work'],'work_item':row['item'],'actual_quantity':None} for row in catalogue if (row['work'],row['item']) in activity_keys and (row['work'],row['item']) not in existing and row['work'] in available]
                 source=request.POST if bound else request.GET
                 work_query=' '.join(source.get('work_q','').split())[:200]
+                work_filter=source.get('work_filter','all')
+                if work_filter not in {'all','day-plan','actual','empty','unplanned','deviation'}:work_filter='all'
                 terms=[term.casefold() for term in work_query.split()]
                 labels={(row['work'],row['item']):row['label'] for row in catalogue}
                 saved_rows=list(qs.order_by('pk').values_list('pk','project_work_id','work_item_id','operational_name'))
                 if terms:
                     saved_rows=[row for row in saved_rows if all(term in (' '.join(filter(None,[labels.get((row[1],row[2]),''),row[3] or '']))).casefold() for term in terms)]
                     initial=[row for row in initial if all(term in labels.get((row['project_work'],row['work_item']),'').casefold() for term in terms)]
+                if work_filter!='all':
+                    saved_keys={row[0]:(row[1],row[2]) for row in saved_rows}
+                    if work_filter=='day-plan':
+                        allowed={key for key,value in work_plan.items() if value>0}
+                        saved_rows=[row for row in saved_rows if saved_keys[row[0]] in allowed]
+                        initial=[row for row in initial if (row['project_work'],row['work_item']) in allowed]
+                    elif work_filter=='actual':
+                        initial=[]
+                    elif work_filter=='empty':
+                        saved_rows=[]
+                    elif work_filter=='unplanned':
+                        saved_rows=[row for row in saved_rows if saved_keys[row[0]] not in work_plan]
+                        initial=[row for row in initial if (row['project_work'],row['work_item']) not in work_plan]
+                    elif work_filter=='deviation':
+                        from .work_entry_ui import plan_before
+                        accumulated=plan_before(obj,day)
+                        previous={(row['project_work_id'],row['work_item_id']):row['quantity'] for row in DailyFact.objects.filter(company=obj.company,project_work__section__construction_object=obj,date__lt=day).values('project_work_id','work_item_id').annotate(quantity=Sum('actual_quantity'))}
+                        deviated={key for key,plan in accumulated.items() if plan>0 and previous.get(key,Decimal(0))!=plan}
+                        saved_rows=[row for row in saved_rows if saved_keys[row[0]] in deviated]
+                        initial=[row for row in initial if (row['project_work'],row['work_item']) in deviated]
                 saved_ids=[row[0] for row in saved_rows]
                 context['work_query']=work_query
+                context['work_filter']=work_filter
                 context['work_search_active']=bool(terms)
                 page_number=source.get('work_page',1)
                 focus_work=(request.GET.get('focus_work') or '') if not bound else ''

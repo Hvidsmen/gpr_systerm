@@ -3,7 +3,7 @@
  'use strict';const form=document.querySelector('[data-production-form]');if(!form||form.dataset.readonly==='1')return;
  const {scope,csrf}=form.productionSession,field=(row,name)=>row.querySelector(`[name$="-${name}"]`),rows=()=>[...form.querySelectorAll('[data-work-fact-row],[data-production-person]')];
  let reasonOptions=new Map();
- let step=Number(form.dataset.initialStep||1),digest='',claimsDigest='',usersDigest='',polling=false,closed=false,timer=null,failures=0,slow=false,lastActivity=Date.now(),lastSync=0,published='';
+ let step=Number(form.dataset.initialStep||1),reportScope='visible',forceFull=false,digest='',claimsDigest='',usersDigest='',polling=false,closed=false,timer=null,failures=0,slow=false,lastActivity=Date.now(),lastSync=0,published='';
  const knownSnapshots=new Set();let outbox=null;
  let canonical={works:JSON.parse(document.getElementById('production-graph-saved').textContent),people:JSON.parse(document.getElementById('production-report-people').textContent)};
  const factToken=work=>work.operational_name?`operational:${work.id}`:work.work_item_id?`item:${work.project_work_id}:${work.work_item_id}`:`work:${work.project_work_id}`;
@@ -71,7 +71,7 @@
     }
    }
    window.productionAutoSave.reindex();form.elements.namedItem('production_snapshot').value=data.production_snapshot;
-   merge(data.report,data.report_scope);form.dispatchEvent(new Event('production-live-applied'));if(data.claims)form.productionSetClaims(data.claims);
+   reportScope=data.report_scope||reportScope;merge(data.report,data.report_scope);form.dispatchEvent(new Event('production-live-applied'));if(data.claims)form.productionSetClaims(data.claims);
   }finally{form.productionApplying=false;}
  }
  let presenceStamp='';
@@ -90,7 +90,7 @@
   if(!force&&lastSync&&Date.now()-lastSync<2500){schedule();return false;}
   polling=true;const original=snapshot(),saving=window.productionAutoSave.running,started=performance.now();
   const keep=rows().filter(r=>r.dataset.entryDirty||r.dataset.personDirty||r.dataset.autoPending||field(r,r.matches('[data-production-person]')?'person_editing':'work_editing')?.value==='1').flatMap(form.productionKeysOf);
-  const snapshotKey=original.split(':').at(-1),visiblePeople=rows().filter(r=>r.matches('[data-production-person]')).map(r=>field(r,'id')?.value).filter(Boolean),visibleWorks=rows().filter(r=>r.matches('[data-work-fact-row]')).map(r=>field(r,'id')?.value).filter(Boolean),visibleClaims=[...new Set(rows().flatMap(form.productionKeysOf))],body={...scope,protocol:'compact-v1',step,digest,claims_digest:claimsDigest,users_digest:usersDigest,keep,snapshot_key:snapshotKey,people_page:Number(form.elements.people_page?.value||1),people_page_size:Number(form.elements.people_page_size?.value||100),work_page:Number(form.elements.work_page?.value||1),work_page_size:Number(form.elements.work_page_size?.value||100),visible_people:visiblePeople,visible_works:visibleWorks,visible_claims:visibleClaims};
+  const snapshotKey=original.split(':').at(-1),visiblePeople=rows().filter(r=>r.matches('[data-production-person]')).map(r=>field(r,'id')?.value).filter(Boolean),visibleWorks=rows().filter(r=>r.matches('[data-work-fact-row]')).map(r=>field(r,'id')?.value).filter(Boolean),visibleClaims=[...new Set(rows().flatMap(form.productionKeysOf))],body={...scope,protocol:'compact-v1',step:forceFull?4:step,report_scope:reportScope,digest,claims_digest:claimsDigest,users_digest:usersDigest,keep,snapshot_key:snapshotKey,people_page:Number(form.elements.people_page?.value||1),people_page_size:Number(form.elements.people_page_size?.value||100),work_page:Number(form.elements.work_page?.value||1),work_page_size:Number(form.elements.work_page_size?.value||100),visible_people:visiblePeople,visible_works:visibleWorks,visible_claims:visibleClaims};
   if(!knownSnapshots.has(snapshotKey))body.production_snapshot=original;
   const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),25000);
   try{
@@ -110,6 +110,7 @@
   }catch{failures++;slow=true;if(navigator.onLine===false)form.productionRecovery?.offline();else if(failures>=3)form.productionRecovery?.reload();return false;}finally{clearTimeout(timeout);polling=false;schedule();}
  }
  form.productionRefresh=()=>poll(true);
+ form.productionRefreshFull=async()=>{forceFull=true;try{return await poll(true);}finally{forceFull=false;}};
  form.productionChangeLinks=async(row,operation)=>{
   if(!field(row,'id')?.value){if(!await window.productionAutoSave.flush())throw new Error('Сначала исправьте ошибки сохранения сотрудника.');}
   lastActivity=Date.now();return outbox.enqueue(row,operation);
