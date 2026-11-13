@@ -10,13 +10,21 @@
  function scheduleRefresh(){if(refreshPending)return;refreshPending=true;requestAnimationFrame(()=>{refreshPending=false;refresh();});}
  function widget(host,label,options,onchange=scheduleRefresh){return window.graphMultiselect.create(host,label,options,onchange);}
  const options=values=>[...new Map(values.filter(v=>v.value).map(v=>[String(v.value),{value:String(v.value),label:v.label}])).values()].sort((a,b)=>a.label.localeCompare(b.label,'ru'));
- const filterStorageKey=`production-work-filter:${form.elements.construction_object?.value||''}:${form.elements.date?.value||''}`;let quickWork=sessionStorage.getItem(filterStorageKey)||'all';const filters={},filterData={};
+ const filterStorageKey=`production-work-filter:${form.elements.construction_object?.value||''}:${form.elements.date?.value||''}`;let quickWork=sessionStorage.getItem(filterStorageKey)||'all';const filters={},filterData={},peopleData={};
  function cascadeWorkFilters(kind){
   const f=filters[kind],data=filterData[kind];if(!f?.object||!data)return scheduleRefresh();
   const objects=f.object.values(),allowedObject=value=>!objects.length||objects.includes(String(value));
   f.package.setOptions(options(data.meta.filter(w=>w.kind==='COMPOSITE'&&allowedObject(w.complex_object_id)).map(w=>({value:w.id,label:w.name}))));
   const packages=f.package.values(),allowedPackage=value=>!packages.length||packages.includes(String(value));
   f.work.setOptions(options(data.choices.filter(w=>(w.kind==='COMPOSITE'||w.kind==='OPERATIONAL')&&allowedObject(w.complex_id)&&allowedPackage(w.work)).map(w=>({value:w.token,label:w.title||w.label}))));
+  scheduleRefresh();
+ }
+ function cascadePeopleFilters(kind){
+  const f=filters[kind],rows=peopleData[kind];if(!f?.group||!rows)return scheduleRefresh();
+  const groups=f.group.values(),allowedGroup=row=>!groups.length||groups.includes(String(groupOf(row)));
+  f.role.setOptions(options(rows.filter(allowedGroup).map(row=>({value:roleOf(row),label:roleName(row)||'Без должности'}))));
+  const roles=f.role.values(),allowedRole=row=>!roles.length||roles.includes(String(roleOf(row)));
+  f.employee.setOptions(options(rows.filter(row=>allowedGroup(row)&&allowedRole(row)).map(row=>({value:field(row,'employee').value,label:field(row,'employee').selectedOptions[0]?.textContent.split(' · ')[0]||''}))));
   scheduleRefresh();
  }
  for(const kind of ['works','people','graph']){
@@ -30,7 +38,7 @@
    cascadeWorkFilters(kind);
   }
   if(kind!=='works'){
-   filters[kind].group=widget(host,'Группы должностей',[]);filters[kind].role=widget(host,'Должности',[]);filters[kind].employee=widget(host,'Люди',[]);
+   const cascade=()=>cascadePeopleFilters(kind);filters[kind].group=widget(host,'Группы должностей',[],cascade);filters[kind].role=widget(host,'Должности',[],cascade);filters[kind].employee=widget(host,'Люди',[],scheduleRefresh);
   }
  }
  function selected(widget,value){const values=widget?.values()||[];return !values.length||values.includes(String(value));}
@@ -47,10 +55,10 @@
   if(quickWork==='deviation')return deviation!==null&&deviation!==0;
   return true;
  }
- function syncPeople(){const people=[...form.querySelectorAll('[data-production-person]')].filter(r=>field(r,'employee')?.value&&!field(r,'DELETE')?.checked),roles=options(people.map(row=>({value:roleOf(row),label:roleName(row)||field(row,'employee').selectedOptions[0]?.textContent.split(' · ')[2]||'Без должности'}))),groups=[...form.querySelectorAll('[data-position-group]')].map(g=>({value:g.dataset.positionGroup,label:g.dataset.positionGroup})),employees=options(people.map(row=>({value:field(row,'employee').value,label:field(row,'employee').selectedOptions[0]?.textContent.split(' · ')[0]||''})));
-  for(const f of Object.values(filters)){if(f.employee){f.group.setOptions(groups);f.role.setOptions(roles);f.employee.setOptions(employees);}}
+ function syncPeople(){const people=[...form.querySelectorAll('[data-production-person]')].filter(r=>field(r,'employee')?.value&&!field(r,'DELETE')?.checked),groups=options(people.map(row=>({value:groupOf(row),label:groupOf(row)})));
+  for(const [kind,f] of Object.entries(filters)){if(f.employee){peopleData[kind]=people;f.group.setOptions(groups);cascadePeopleFilters(kind);}}
  }
- function syncGraph(works,rows){const f=filters.graph;if(!f)return;filterData.graph={choices:works,meta:works.map(w=>({id:w.work,name:w.package||w.label,kind:w.kind,complex_object_id:w.complex_id}))};f.object.setOptions(options(works.filter(w=>w.complex_id).map(w=>({value:w.complex_id,label:w.complex||w.object||'Комплексный объект'}))));cascadeWorkFilters('graph');f.group.setOptions(options(rows.map(row=>({value:groupOf(row),label:groupOf(row)}))));f.role.setOptions(options(rows.map(row=>({value:roleOf(row),label:roleName(row)||'Без должности'}))));f.employee.setOptions(options(rows.map(row=>({value:field(row,'employee').value,label:field(row,'employee').selectedOptions[0]?.textContent.split(' · ')[0]||''}))));
+ function syncGraph(works,rows){const f=filters.graph;if(!f)return;filterData.graph={choices:works,meta:works.map(w=>({id:w.work,name:w.package||w.label,kind:w.kind,complex_object_id:w.complex_id}))};f.object.setOptions(options(works.filter(w=>w.complex_id).map(w=>({value:w.complex_id,label:w.complex||w.object||'Комплексный объект'}))));cascadeWorkFilters('graph');peopleData.graph=rows;f.group.setOptions(options(rows.map(row=>({value:groupOf(row),label:groupOf(row)}))));cascadePeopleFilters('graph');
  }
  function refresh(){
   const query=(document.querySelector('[data-work-search]')?.value||'').toLocaleLowerCase('ru').trim();
