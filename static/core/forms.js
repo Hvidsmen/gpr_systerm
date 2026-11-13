@@ -80,7 +80,7 @@
       select.addEventListener('remote-search-refresh', () => {if (this.isOpen) this.loadRemote(1);});
       if (this.remoteUrl) {
         const form = select.form;
-        const contextFields = ['kind', 'camp', 'date'].map(key => {
+        const contextFields = ['kind', 'camp', 'date', 'shift'].map(key => {
           const name = select.dataset['remote' + key[0].toUpperCase() + key.slice(1) + 'Field'];
           return name && form?.elements.namedItem(name);
         }).filter(Boolean);
@@ -192,7 +192,7 @@
       if (this.select.dataset.remoteIncludeArchived === 'true') url.searchParams.set('active', '0');
       if (this.select.dataset.remoteScope) url.searchParams.set('scope', this.select.dataset.remoteScope);
       const form = this.select.form;
-      for (const key of ['kind', 'camp', 'date']) {
+      for (const key of ['kind', 'camp', 'date', 'shift']) {
         const fieldName = this.select.dataset['remote' + key[0].toUpperCase() + key.slice(1) + 'Field'];
         const field = fieldName && form?.elements.namedItem(fieldName);
         if (field?.value) url.searchParams.set(key, field.value);

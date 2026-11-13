@@ -74,6 +74,7 @@ class ProductionEmployeeSearchPaginationTests(TestCase):
         self.assertIn(reverse('production:production_employee_search'),url)
         self.assertIn(f'construction_object={self.obj.pk}',url)
         self.assertIn(f'date={self.day.isoformat()}',url)
+        self.assertEqual(field.widget.attrs['data-remote-shift-field'],'labor-__prefix__-shift')
         self.assertContains(response,'data-remote-search-url')
 
     def test_daily_works_are_rendered_in_server_pages_of_one_hundred(self):

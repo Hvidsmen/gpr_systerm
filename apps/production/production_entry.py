@@ -189,6 +189,7 @@ class ProductionPersonForm(PersonForm):
         self.fields['employee'].widget.attrs['data-remote-search-url']=reverse('production:production_employee_search')+'?'+urlencode({
             'construction_object':self.obj.pk,'date':self.day.isoformat(),
         })
+        self.fields['employee'].widget.attrs['data-remote-shift-field']=self.add_prefix('shift')
         if self.instance.pk and self.instance.shift not in {1,2}:
             self.fields['shift'].choices=[*self.fields['shift'].choices,(self.instance.shift,f'Смена {self.instance.shift} (ранее)')]
         self.initial.setdefault('work_targets',[])
