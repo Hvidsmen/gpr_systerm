@@ -26,6 +26,10 @@ from .models import DailyFact
 MAX_ROWS=15
 
 
+def _normalized_operational(value):
+    return ' '.join(str(value or '').casefold().split())
+
+
 def _error(message,status=400,errors=None):
     return JsonResponse({'error':message,'errors':errors or []},status=status)
 
@@ -128,6 +132,16 @@ def save_batch(request):
                         if item_id.isdigit():existing=existing.filter(work_item_id=int(item_id))
                         else:existing=existing.filter(work_item=None,operational_key=None)
                         instance=existing.first()
+                        if instance:
+                            message='Эта работа уже добавлена за выбранный день. Откройте существующую строку и измените объём в ней.'
+                            return JsonResponse({'error':message,'errors':[{'prefix':item.get('prefix',''),'message':message,'code':'existing_work','existing_id':instance.pk}]},status=409)
+                    elif work_id.isdigit() and operational and not item.get('allow_duplicate_operational'):
+                        normalized_name=_normalized_operational(operational);normalized_unit=_normalized_operational(values.get('operational_unit'))
+                        candidates=DailyFact.objects.select_for_update().filter(company=obj.company,date=day,project_work__section__construction_object=obj,operational_key__isnull=False)
+                        duplicate=next((fact for fact in candidates if _normalized_operational(fact.operational_name)==normalized_name and _normalized_operational(fact.operational_unit)==normalized_unit),None)
+                        if duplicate:
+                            message='Прочая работа с таким названием и единицей уже добавлена. Откройте её или подтвердите создание отдельной записи.'
+                            return JsonResponse({'error':message,'errors':[{'prefix':item.get('prefix',''),'message':message,'code':'operational_duplicate','existing_id':duplicate.pk}]},status=409)
                 form_class=WorkForm if kind=='works' else ProductionPersonForm
                 form=form_class(_query_data(item['values']),instance=instance,prefix='row',**common)
                 form.fields['DELETE']=forms.BooleanField(required=False)

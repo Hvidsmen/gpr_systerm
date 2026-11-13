@@ -6,6 +6,7 @@ from django.urls import reverse
 from .dispatch_models import EmployeeActivity, ProductionBatchReceipt
 from .models import DailyFact
 from . import test_production_entry as fixtures
+from apps.works.models import ComplexObject, ProjectWork
 
 
 class ProductionBatchSaveTests(TestCase):
@@ -34,6 +35,10 @@ class ProductionBatchSaveTests(TestCase):
             'work':'','work_item':'','general':'','equipment':'','activity':'',
             'person_claim_token':'','DELETE':'',
         }}
+
+    def operational_row(self,work,prefix='works-901'):
+        row=self.work_row(prefix);row['values'].update(project_work=str(work.pk),operational_name='  Уборка   мусора ',operational_unit=' РЕЙС ')
+        return row
 
     def test_compact_batch_saves_only_supplied_rows_without_report(self):
         response=self.request([self.work_row(),self.person_row()])
@@ -66,14 +71,15 @@ class ProductionBatchSaveTests(TestCase):
         self.assertEqual(DailyFact.objects.count(),1)
         self.assertEqual(ProductionBatchReceipt.objects.filter(pk=batch_id).count(),1)
 
-    def test_new_row_for_existing_work_updates_fact_instead_of_creating_duplicate(self):
+    def test_new_row_for_existing_work_opens_fact_instead_of_creating_duplicate(self):
         first=self.request([self.work_row()]).json()['rows'][0]
         changed=self.work_row();changed['values']['actual_quantity']='11'
         response=self.request([changed])
-        self.assertEqual(response.status_code,200,response.content)
-        self.assertEqual(response.json()['rows'][0]['id'],first['id'])
+        self.assertEqual(response.status_code,409,response.content)
+        issue=response.json()['errors'][0]
+        self.assertEqual((issue['code'],issue['existing_id']),('existing_work',first['id']))
         self.assertEqual(DailyFact.objects.count(),1)
-        self.assertEqual(DailyFact.objects.get().actual_quantity,11)
+        self.assertEqual(DailyFact.objects.get().actual_quantity,7)
 
     def test_batch_is_limited_and_key_cannot_be_reused_for_other_data(self):
         oversized=self.request([self.work_row(str(index)) for index in range(16)])
@@ -82,6 +88,21 @@ class ProductionBatchSaveTests(TestCase):
         changed=self.work_row();changed['values']['actual_quantity']='8'
         self.assertEqual(self.request([changed],batch_id).status_code,409)
         self.assertEqual(DailyFact.objects.get().actual_quantity,7)
+
+    def test_operational_duplicate_requires_explicit_confirmation(self):
+        complex_object=ComplexObject.objects.create(company=self.company,construction_object=self.obj,section=self.work.section,name='Прочее',allow_dispatcher_work_items=True)
+        package=ProjectWork.objects.create(company=self.company,section=self.work.section,complex_object=complex_object,name='Прочее',kind='COMPOSITE',unit='компл')
+        first=self.request([self.operational_row(package)])
+        self.assertEqual(first.status_code,200,first.content)
+        duplicate=self.operational_row(package);duplicate['values'].update(operational_name='уборка мусора',operational_unit='рейс')
+        blocked=self.request([duplicate])
+        self.assertEqual(blocked.status_code,409,blocked.content)
+        issue=blocked.json()['errors'][0]
+        self.assertEqual(issue['code'],'operational_duplicate')
+        duplicate['allow_duplicate_operational']=True
+        confirmed=self.request([duplicate])
+        self.assertEqual(confirmed.status_code,200,confirmed.content)
+        self.assertEqual(DailyFact.objects.filter(operational_key__isnull=False).count(),2)
 
     def test_stale_row_version_does_not_overwrite_newer_value(self):
         created=self.request([self.work_row()]).json()['rows'][0]

@@ -298,6 +298,8 @@ class WorkEntryPresentationTests(TestCase):
         self.assertIn("row.dataset.factId=String(record.id)",live)
         autosave=(Path(__file__).resolve().parents[2]/'static/production/production_autosave.js').read_text(encoding='utf-8')
         self.assertIn("if(issue.version)item.row.dataset.entryVersion=issue.version",autosave)
+        self.assertIn("allow_duplicate_operational:row.dataset.allowOperationalDuplicate==='1'",autosave)
+        self.assertIn("['existing_work','operational_duplicate'].includes(issue.code)",autosave)
         entry=(Path(__file__).resolve().parents[2]/'static/production/work_entry.js').read_text(encoding='utf-8')
         self.assertIn("savedSelection=Boolean(row.dataset.workToken||row.dataset.operationalName)",entry)
         self.assertIn("savedSelection?'':'Заполните объём работы.'",entry)
