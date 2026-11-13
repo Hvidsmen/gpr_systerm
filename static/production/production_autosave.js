@@ -76,7 +76,7 @@
   for(const row of changed){
    if(!isPerson(row)&&!field(row,'DELETE')?.checked&&field(row,'actual_quantity')?.value===''){
     const error=new Error('Введите фактический объём работы или 0. Пустое поле не сохраняется.');
-    row.querySelector('[data-error]').textContent=error.message;throw error;
+    const quantity=field(row,'actual_quantity');quantity.setAttribute('aria-invalid','true');row.querySelector('[data-error]').textContent=error.message;throw error;
    }
   }
   for(const row of changed){
@@ -163,7 +163,7 @@
  const relevant=event=>{
   if(form.productionApplying||(form.dataset.peopleBulkBusy==='1'||form.dataset.personShiftBusy==='1')||event.target.closest('[data-actuation-ui]'))return;
   const row=event.target.closest('[data-production-person],[data-work-fact-row]');
-  if(row){renderPendingDelete(row);if(row.dataset.autoSavedStamp===fingerprint(row)&&!row.dataset.autoPending){delete row.dataset.entryDirty;delete row.dataset.personDirty;return;}if(isPerson(row)&&!field(row,'employee').value&&!field(row,'id').value)return;if(!isPerson(row)&&!field(row,'project_work')?.value)return;schedule(row);}
+  if(row){if(event.target.matches('[name$="-actual_quantity"]')&&event.target.value!=='')event.target.removeAttribute('aria-invalid');renderPendingDelete(row);if(row.dataset.autoSavedStamp===fingerprint(row)&&!row.dataset.autoPending){delete row.dataset.entryDirty;delete row.dataset.personDirty;return;}if(isPerson(row)&&!field(row,'employee').value&&!field(row,'id').value)return;if(!isPerson(row)&&!field(row,'project_work')?.value)return;schedule(row);}
  };
  form.addEventListener('production-claims-change',()=>{if(!form.productionApplying&&form.dataset.peopleBulkBusy!=='1'&&form.dataset.personShiftBusy!=='1'&&!running&&!pending&&dirty().length)schedule();});
  // Capture edits before row widgets, filters or live-sync handlers can react.

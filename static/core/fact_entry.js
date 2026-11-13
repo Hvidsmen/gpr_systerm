@@ -13,12 +13,13 @@
  const box=document.querySelector('[data-fact-error-summary]'),list=box.querySelector('[data-fact-error-list]');let errorTimer,renderedErrors=null;
  const errorSelector='.errorlist,[data-error],.app-form-errors';
  function reveal(node){
-  const step=node.closest('[data-entry-step]');if(step)step.closest('form').querySelector('[data-step="'+step.dataset.entryStep+'"]')?.click();
+  const row=node.closest('[data-work-fact-row],[data-production-person]');if(row)row.hidden=false;
+  const step=node.closest('[data-entry-step]');if(step){const form=step.closest('form');form.dispatchEvent(new CustomEvent('production-show-step',{detail:Number(step.dataset.entryStep)}));if(step.hidden)form.querySelector('[data-step="'+step.dataset.entryStep+'"]')?.click();}
   const panel=node.closest('[data-housing-panel]');if(panel)document.querySelector('[data-housing-tab="'+panel.dataset.housingPanel+'"]')?.click();
   for(let p=node.parentElement;p;p=p.parentElement)if(p.tagName==='DETAILS')p.open=true;
   const group=node.closest('.app-form-field,.production-work-field,.production-work-card,[data-production-person],.lodging-movement-fields>div')||node.parentElement;
   const input=group.querySelector('[aria-invalid=true]:not([type=hidden]):not(:disabled)')||group.querySelector('[name$="-actual_quantity"]:not(:disabled)')||group.querySelector('input:not([type=hidden]):not(:disabled),select:not(:disabled),textarea:not(:disabled)');
-  const target=input||node;target.scrollIntoView({block:'center',behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'instant':'smooth'});if(!target.hasAttribute('tabindex')&&!input)target.tabIndex=-1;target.focus({preventScroll:true});
+  const target=input||node;requestAnimationFrame(()=>{target.scrollIntoView({block:'center',behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'instant':'smooth'});if(!target.hasAttribute('tabindex')&&!input)target.tabIndex=-1;target.focus({preventScroll:true});row?.classList.add('production-new-row-focus');setTimeout(()=>row?.classList.remove('production-new-row-focus'),2200);});
  }
  function errors(){
   const entries=[],seen=new Set();
@@ -36,7 +37,7 @@
  }
  const scheduleErrors=()=>{clearTimeout(errorTimer);errorTimer=setTimeout(errors,120);};
  for(const form of forms){new MutationObserver(scheduleErrors).observe(form,{childList:true,subtree:true,characterData:true});form.addEventListener('change',scheduleErrors);}
- document.querySelectorAll('[data-fact-error-jump]').forEach(button=>button.addEventListener('click',()=>{errors();box.scrollIntoView({block:'center'});list.querySelector('button')?.focus({preventScroll:true});}));errors();
+ document.querySelectorAll('[data-fact-error-jump]').forEach(button=>button.addEventListener('click',()=>{errors();const first=[...forms].flatMap(form=>[...form.querySelectorAll(errorSelector)]).find(node=>node.textContent.trim()&&!node.querySelector(errorSelector)&&!node.closest('[data-work-fact-row],[data-production-person]')?.querySelector('[name$="-DELETE"]:checked'));if(first)reveal(first);else box.scrollIntoView({block:'center'});}));errors();
  for(const form of document.querySelectorAll('[data-fact-manual]')){
   const original=fingerprint(form),state=document.createElement('span');state.className='fact-manual-state';state.setAttribute('role','status');state.dataset.factManualState='';let submitting=false;
   const submit=form.querySelector('button[type=submit],button:not([type])');if(!submit)continue;const actions=submit.closest('footer,.fact-save-actions,.d-flex')||submit.parentElement;actions.append(state);
