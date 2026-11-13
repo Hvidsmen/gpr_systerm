@@ -31,5 +31,6 @@ def search(request):
     items=[]
     for employee in page.object_list:
         info=locations[str(employee.pk)]
-        items.append({'id':employee.pk,**info})
+        label=' · '.join(filter(None,[employee.display_name,'№ '+employee.employee_number if employee.employee_number else '',employee.display_position or 'Должность не указана',info['text']]))
+        items.append({'id':employee.pk,'label':label,**info})
     return JsonResponse({'items':items,'page':page.number,'pages':page.paginator.num_pages,'total':page.paginator.count,'has_next':page.has_next()})

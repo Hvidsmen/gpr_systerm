@@ -208,7 +208,7 @@
           const value = String(item.id);
           let option = [...this.select.options].find(row => String(row.value) === value);
           if (!option) {option = document.createElement('option'); option.value = value; this.select.append(option);}
-          option.textContent = item.text;
+          option.textContent = item.label || item.text;
           option.selected = selected.has(value);
         });
         this.remotePage = Number(payload.page || page);

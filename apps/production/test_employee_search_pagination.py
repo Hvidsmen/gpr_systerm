@@ -44,6 +44,8 @@ class ProductionEmployeeSearchPaginationTests(TestCase):
         self.assertEqual(len(result['items']),50);self.assertEqual(result['total'],205);self.assertTrue(result['has_next'])
         exact=self.client.get(url,{'construction_object':self.obj.pk,'date':self.day,'q':'T-204'}).json()
         self.assertEqual([item['number'] for item in exact['items']],['T-204'])
+        self.assertIn('Массовый204 Сотрудник',exact['items'][0]['label'])
+        self.assertIn('T-204',exact['items'][0]['label'])
 
     def test_inline_employee_field_uses_the_same_full_server_search(self):
         response=self.page()
