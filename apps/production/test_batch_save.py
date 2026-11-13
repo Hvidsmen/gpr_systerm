@@ -51,6 +51,11 @@ class ProductionBatchSaveTests(TestCase):
         self.assertEqual(response.status_code,200,response.content)
         self.assertEqual(DailyFact.objects.get().actual_quantity,7)
 
+    def test_empty_batch_after_completed_autosave_is_a_safe_noop(self):
+        response=self.request([])
+        self.assertEqual(response.status_code,200,response.content)
+        self.assertEqual(response.json(),{'rows':[],'report_dirty':False,'noop':True})
+
     def test_lost_response_can_repeat_same_batch_without_duplicates(self):
         batch_id=uuid4();rows=[self.work_row()]
         first=self.request(rows,batch_id)

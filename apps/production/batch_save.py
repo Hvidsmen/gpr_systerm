@@ -62,7 +62,10 @@ def save_batch(request):
     if not selector.is_valid():return _error('Выберите доступный объект и корректную дату.')
     obj=selector.cleaned_data['construction_object'];day=selector.cleaned_data['date']
     rows=data.get('rows')
-    if not isinstance(rows,list) or not 1<=len(rows)<=MAX_ROWS:return _error(f'За один запрос можно сохранить от 1 до {MAX_ROWS} строк.')
+    if not isinstance(rows,list) or len(rows)>MAX_ROWS:return _error(f'За один запрос можно сохранить не более {MAX_ROWS} строк.')
+    # Ctrl+S may race with an autosave that has just completed. A zero-row
+    # request is a harmless synchronization no-op, not a validation error.
+    if not rows:return JsonResponse({'rows':[],'report_dirty':False,'noop':True})
     try:batch_id=UUID(str(data.get('batch_id')))
     except (TypeError,ValueError,AttributeError):return _error('Не указан идентификатор безопасного повтора.')
     canonical=json.dumps({'object':obj.pk,'date':day.isoformat(),'rows':rows},ensure_ascii=False,sort_keys=True,separators=(',',':'))

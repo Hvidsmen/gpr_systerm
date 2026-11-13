@@ -221,6 +221,7 @@ class WorkEntryPresentationTests(TestCase):
         self.assertIn("event.code==='KeyS'",source)
         self.assertIn('event.stopPropagation()',source)
         self.assertIn("if(running){pending=true;const current=running;await current",source)
+        self.assertIn("if(!changed.length)break",source)
         self.assertIn('production-operation-progress',source)
         self.assertIn('Открываем выбранный объект и день',source)
         self.assertIn('yds-production-draft-v1',source)

@@ -133,6 +133,10 @@
   running=(async()=>{
    while(pending||dirty().length){
     pending=false;const changed=dirty(),deletions=changed.filter(row=>field(row,'DELETE')?.checked),people=changed.filter(isPerson);
+    // Autosave can finish immediately before Ctrl+S. Do not turn the stale
+    // pending flag into an invalid empty batch; crew/link drafts are flushed
+    // by the stages below this loop.
+    if(!changed.length)break;
     const selected=(deletions.length?deletions:people.length?people:changed).slice(0,10);
     try{await save(selected);failed=false;retryAttempt=0;}catch(error){failed=true;retryAttempt++;selected.forEach(row=>{if(field(row,'DELETE')?.checked)row.hidden=false;rowMessage(row,row.querySelector('[data-error]')?.textContent||error.message,true);});message(error.message,true);form.productionStatus.error(error.message);if(error.status===409||form.dataset.authChanged==='1'||retryAttempt>=2)form.productionRecovery.reload();else if(navigator.onLine===false)form.productionRecovery.offline();break;}}
    if(!failed&&form.productionCrewDraft?.pending){
