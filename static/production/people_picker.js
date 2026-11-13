@@ -19,5 +19,30 @@
  document.addEventListener('click',event=>{const global=event.target.closest('[data-person-bulk-open]'),target=event.target.closest('[data-person-bulk-position]');if(global||target)open(target?.dataset.personBulkPosition||'');});
  search.addEventListener('input',schedule);search.addEventListener('keydown',event=>{if(event.key==='Enter')event.preventDefault();});location.addEventListener('change',render);shift.addEventListener('change',render);previous.addEventListener('click',()=>load(page-1));next.addEventListener('click',()=>load(page+1));
  dialog.querySelector('[data-people-select]').addEventListener('click',()=>{for(const person of visibleItems())if(availability(person.id).available)selected.set(String(person.id),person);render();});dialog.querySelector('[data-people-clear]').addEventListener('click',()=>{selected.clear();render();});dialog.querySelectorAll('[data-people-close]').forEach(button=>button.addEventListener('click',()=>{if(!busy)dialog.close();}));dialog.addEventListener('cancel',event=>{if(busy)event.preventDefault();});form.addEventListener('production-claims-change',()=>{if(dialog.open)render();});form.addEventListener('production-live-applied',()=>{if(dialog.open)render();});
- apply.addEventListener('click',async()=>{if(busy||!selected.size)return;const chosen=[...selected.values()],shiftValue=String(Number(shift.value)),positionValue=position.value,staged=[];let saving=false;busy=true;lock(true);error.textContent='';result.textContent='Сохраняем выбранных сотрудников небольшими пакетами.';try{if(!await window.productionAutoSave.flushPeople())throw new Error('Сначала исправьте ошибки сохранения сотрудников в текущей форме.');form.dataset.peopleBulkBusy='1';form.productionApplying=true;await form.productionClaimPeople(chosen.map(person=>({employee:person.id,shift:Number(shiftValue)})));const fragment=document.createDocumentFragment(),totalForms=form.elements.namedItem('labor-TOTAL_FORMS');let index=Number(totalForms.value);for(const person of chosen){const state=availability(person.id);if(!state.available)throw new Error(person.name+': '+state.label);const piece=document.createElement('template');piece.innerHTML=template.innerHTML.replaceAll('__prefix__',index++);const row=piece.content.firstElementChild,employee=field(row,'employee');if(![...employee.options].some(option=>String(option.value)===String(person.id)))employee.add(new Option(`${person.name} · ${person.position_label||'Должность не указана'}`,person.id));employee.value=person.id;field(row,'shift').value=shiftValue;field(row,'planning_position').value=positionValue;row.dataset.personDirty='1';row.dataset.entryDirty='1';pin(row);staged.push(row);fragment.append(row);}totalForms.value=index;const first=host.querySelector('[data-production-person]');if(first)first.before(fragment);else host.append(fragment);form.productionApplying=false;form.dispatchEvent(new Event('production-people-bulk-staged'));saving=true;const saved=await window.productionAutoSave.flushPeople();if(!saved||staged.some(row=>!field(row,'id')?.value))throw new Error('Некоторые сотрудники не сохранены. Проверьте строки и повторите отправку.');result.textContent=`Добавлено: ${staged.length}. Новые строки закреплены сверху текущей страницы.`;dialog.close();}catch(failure){if(!saving){for(const row of staged){try{await form.productionReleaseRow(row);}catch{}row.remove();}window.productionAutoSave.reindex();error.textContent=failure.message;}else{result.textContent=failure.message;dialog.close();}}finally{form.productionApplying=false;delete form.dataset.peopleBulkBusy;busy=false;lock(false);if(dialog.open)render();form.productionRefresh?.();}});
+ apply.addEventListener('click',async()=>{
+  if(busy||!selected.size)return;
+  const chosen=[...selected.values()],shiftValue=String(Number(shift.value)),positionValue=position.value,staged=[];let drafted=false;
+  busy=true;lock(true);error.textContent='';result.textContent='Добавляем сотрудников в черновик…';
+  try{
+   form.dataset.peopleBulkBusy='1';form.productionApplying=true;
+   await form.productionClaimPeople(chosen.map(person=>({employee:person.id,shift:Number(shiftValue)})));
+   const fragment=document.createDocumentFragment(),totalForms=form.elements.namedItem('labor-TOTAL_FORMS');let index=Number(totalForms.value);
+   for(const person of chosen){
+    const state=availability(person.id);if(!state.available)throw new Error(person.name+': '+state.label);
+    const piece=document.createElement('template');piece.innerHTML=template.innerHTML.replaceAll('__prefix__',index++);
+    const row=piece.content.firstElementChild,employee=field(row,'employee');
+    if(![...employee.options].some(option=>String(option.value)===String(person.id)))employee.add(new Option(`${person.name} · ${person.position_label||'Должность не указана'}`,person.id));
+    employee.value=person.id;field(row,'shift').value=shiftValue;field(row,'planning_position').value=positionValue;row.dataset.personDirty='1';row.dataset.entryDirty='1';pin(row);staged.push(row);fragment.append(row);
+   }
+   totalForms.value=index;const first=host.querySelector('[data-production-person]');if(first)first.before(fragment);else host.append(fragment);
+   form.productionApplying=false;form.dispatchEvent(new Event('production-people-bulk-staged'));drafted=true;
+   result.textContent=`Добавлено в черновик: ${staged.length}. Нажмите «Сохранить», когда закончите добавление.`;dialog.close();
+  }catch(failure){
+   for(const row of staged){try{await form.productionReleaseRow(row);}catch{}row.remove();}
+   window.productionAutoSave.reindex();error.textContent=failure.message;
+  }finally{
+   form.productionApplying=false;delete form.dataset.peopleBulkBusy;busy=false;lock(false);
+   if(drafted)form.dispatchEvent(new Event('production-autosave-all'));if(dialog.open)render();
+  }
+ });
 })();

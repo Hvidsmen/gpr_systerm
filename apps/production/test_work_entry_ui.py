@@ -243,6 +243,8 @@ class WorkEntryPresentationTests(TestCase):
         self.assertIn("discardDraft:removeDraft",source)
         picker=(Path(__file__).resolve().parents[2]/'static/production/people_picker.js').read_text(encoding='utf-8')
         self.assertNotIn("params.set('position',position.value)",picker)
+        self.assertNotIn('productionAutoSave.flushPeople()',picker)
+        self.assertIn('Добавлено в черновик',picker)
         forms=(Path(__file__).resolve().parents[2]/'static/core/forms.js').read_text(encoding='utf-8')
         self.assertIn("new CustomEvent('search-select-existing'",forms)
         graph=(Path(__file__).resolve().parents[2]/'static/production/employee_graph.js').read_text(encoding='utf-8')
