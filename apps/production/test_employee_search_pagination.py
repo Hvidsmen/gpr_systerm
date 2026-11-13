@@ -62,6 +62,9 @@ class ProductionEmployeeSearchPaginationTests(TestCase):
         self.assertNotIn(used.pk,ids)
         self.assertLess(ids.index(self.employee.pk),ids.index(matching.pk))
         self.assertLess(ids.index(matching.pk),ids.index(other.pk))
+        positions=[item['position_label'] for item in result['items']]
+        first_other=positions.index(str(other_position))
+        self.assertTrue(all(label==str(self.employee.position) for label in positions[:first_other]))
 
     def test_inline_employee_field_uses_the_same_full_server_search(self):
         response=self.page()

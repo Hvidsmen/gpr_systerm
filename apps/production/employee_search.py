@@ -31,9 +31,10 @@ def search(request):
     linked=present.filter(camp__object_links__company=obj.company,camp__object_links__construction_object=obj)
     query=query.annotate(
         _smg_priority=Case(When(position_id=int(position),then=Value(0)),default=Value(1),output_field=IntegerField()) if position and position.isdigit() else Value(0,output_field=IntegerField()),
+        _smg_missing=Case(When(position__planning_mapping__isnull=False,then=Value(0)),default=Value(1),output_field=IntegerField()),
         _linked_vjg=Exists(linked),_any_vjg=Exists(present),
     ).annotate(_vjg_priority=Case(When(_linked_vjg=True,then=Value(0)),When(_any_vjg=True,then=Value(1)),default=Value(2),output_field=IntegerField()))
-    query=query.distinct().order_by('_smg_priority','_vjg_priority','last_name','first_name','middle_name','employee_number','pk')
+    query=query.distinct().order_by('_smg_priority','_smg_missing','position__planning_mapping__brigade__name','_vjg_priority','last_name','first_name','middle_name','employee_number','pk')
     page=Paginator(query,50).get_page(request.GET.get('page'))
     pool=prepare(obj,day,[employee.pk for employee in page.object_list])
     locations=pool['locations']
