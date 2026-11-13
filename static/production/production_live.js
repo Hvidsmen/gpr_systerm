@@ -71,6 +71,8 @@
      let row=rows().find(r=>r.matches(selector)&&(field(r,'id')?.value===String(record.id)||form.productionKeyOf(r)===record.key));
      if(!row){const index=Number(form.elements.namedItem(kind+'-TOTAL_FORMS').value);host.insertAdjacentHTML('beforeend',document.getElementById('empty-'+kind).innerHTML.replaceAll('__prefix__',index));row=host.lastElementChild;form.elements.namedItem(kind+'-TOTAL_FORMS').value=index+1;}
      setValues(row,record.values);
+     row.dataset.entryVersion=record.version||'';
+     if(kind==='works')row.dataset.factId=String(record.id);
      delete row.dataset.entryDirty;delete row.dataset.personDirty;delete row.dataset.autoPending;
      row.dataset.entryOriginal=JSON.stringify(window.productionAutoSave.capture(row));row.dataset.autoSavedStamp=window.productionAutoSave.fingerprint(row);
     }
