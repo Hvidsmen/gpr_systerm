@@ -89,4 +89,11 @@ class ProductionBatchSaveTests(TestCase):
         row=self.work_row();row.update(id=fact.pk,version=created['version']);row['values']['actual_quantity']='2'
         response=self.request([row])
         self.assertEqual(response.status_code,409,response.content)
+        conflict=response.json()['errors'][0]
+        self.assertEqual(conflict['prefix'],row['prefix'])
+        self.assertEqual(conflict['version'],fact.updated_at.isoformat())
         fact.refresh_from_db();self.assertEqual(fact.actual_quantity,9)
+        row['version']=conflict['version']
+        retry=self.request([row])
+        self.assertEqual(retry.status_code,200,retry.content)
+        fact.refresh_from_db();self.assertEqual(fact.actual_quantity,2)

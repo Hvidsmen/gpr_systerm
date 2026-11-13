@@ -296,6 +296,8 @@ class WorkEntryPresentationTests(TestCase):
         live=(Path(__file__).resolve().parents[2]/'static/production/production_live.js').read_text(encoding='utf-8')
         self.assertIn("row.dataset.entryVersion=record.version||''",live)
         self.assertIn("row.dataset.factId=String(record.id)",live)
+        autosave=(Path(__file__).resolve().parents[2]/'static/production/production_autosave.js').read_text(encoding='utf-8')
+        self.assertIn("if(issue.version)item.row.dataset.entryVersion=issue.version",autosave)
         entry=(Path(__file__).resolve().parents[2]/'static/production/work_entry.js').read_text(encoding='utf-8')
         self.assertIn("savedSelection=Boolean(row.dataset.workToken||row.dataset.operationalName)",entry)
         self.assertIn("savedSelection?'':'Заполните объём работы.'",entry)

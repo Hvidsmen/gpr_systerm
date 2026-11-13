@@ -98,7 +98,7 @@
   if(!(response.headers.get('content-type')||'').includes('application/json')){const error=new Error('Не удалось сохранить изменения. Проверьте доступ к порталу и повторите сохранение.');error.retryable=response.status>=500||response.status===429;throw error;}
   const result=await response.json();
   if(!response.ok){
-   for(const issue of result.errors||[]){const item=sent.get(issue.prefix);if(!item)continue;const text=issue.message||Object.values(issue.fields||{}).flat().join(' ');const target=item.row.querySelector('[data-error]');if(target)target.textContent=text;rowMessage(item.row,text,true);}
+   for(const issue of result.errors||[]){const item=sent.get(issue.prefix);if(!item)continue;if(issue.version)item.row.dataset.entryVersion=issue.version;const text=issue.message||Object.values(issue.fields||{}).flat().join(' ');const target=item.row.querySelector('[data-error]');if(target)target.textContent=text;rowMessage(item.row,text,true);}
    const error=new Error(result.error||'Изменения не сохранены.');error.status=response.status;error.retryable=response.status>=500||response.status===429||Boolean(result.error?.includes('Резерв')&&result.error?.includes('истёк'));if(error.retryable)form.productionForgetClaims?.(changed);throw error;
   }
   // A successful autosave resolves the server-bound form state. Live updates

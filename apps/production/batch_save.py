@@ -114,7 +114,8 @@ def save_batch(request):
                     if not instance:raise ValidationError('Сохранённая строка уже удалена или относится к другому объекту.')
                     expected=item.get('version')
                     if expected and instance.updated_at.isoformat()!=expected:
-                        raise ValidationError('Эту строку уже изменили в другой вкладке. Обновите данные; введённый черновик сохранён в браузере.')
+                        message='Строка изменилась после открытия формы. Проверьте восстановленный черновик и нажмите «Повторить сохранение», чтобы применить его к актуальной записи.'
+                        return JsonResponse({'error':message,'errors':[{'prefix':item.get('prefix',''),'message':message,'version':instance.updated_at.isoformat()}]},status=409)
                 elif kind=='works':
                     # Adding an already existing work means editing its daily
                     # fact, including when that fact is on another UI page.
