@@ -256,6 +256,8 @@ class WorkEntryPresentationTests(TestCase):
         self.assertIn("data-added-work-area",template)
         self.assertIn("document.querySelector('[data-new-work-rows]').append(row)",template)
         self.assertIn("target.append(row);area.hidden=false",template)
+        self.assertIn('data-unplanned-people',template)
+        self.assertIn('data-person-bulk-open>Добавить сотрудника',template)
         self.assertIn("row.scrollIntoView({behavior:'smooth',block:'nearest'})",template)
         self.assertIn("production-autosave-committed",template)
         self.assertIn("production-new-row-focus",template)
