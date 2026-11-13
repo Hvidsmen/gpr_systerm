@@ -180,5 +180,5 @@
   rows().forEach(row=>{if(claims.get(keyOf(row))?.mine){for(const name of person(row)?['employee','shift']:['project_work','work_item']){const input=field(row,name);if(input)input.disabled=false;}}});submitting=true;
  });
  window.addEventListener('beforeunload',e=>{if(!submitting&&rows().some(r=>r.dataset.entryDirty||r.dataset.personDirty)){e.preventDefault();e.returnValue='';}});
- form.querySelectorAll('[data-rows]').forEach(host=>new MutationObserver(wire).observe(host,{childList:true}));wire();refreshPeople();rows().forEach(render);
+ new MutationObserver(wire).observe(form,{childList:true,subtree:true});wire();refreshPeople();rows().forEach(render);
 })();

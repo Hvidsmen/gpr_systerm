@@ -1,7 +1,7 @@
 const {chromium}=require('playwright'),assert=require('node:assert/strict');
 (async()=>{const c=JSON.parse(process.env.WORK_FILTER_CONFIG),browser=await chromium.launch({executablePath:c.chromium,headless:true,args:['--no-sandbox']});try{
  const context=await browser.newContext();await context.addCookies([{name:'sessionid',value:c.cookie,url:c.base}]);const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto(c.base+c.path);await page.getByRole('button',{name:'Добавить работу вне СМГ'}).click();const row=page.locator('[data-work-fact-row]').last();
+ await page.goto(c.base+c.path);await page.getByRole('button',{name:'Добавить работу вне СМГ'}).click();const row=page.locator('[data-new-work-rows] [data-work-fact-row]').last();await row.waitFor();await page.waitForFunction(()=>{const row=document.querySelector('[data-new-work-rows] [data-work-fact-row]'),rect=row?.getBoundingClientRect();return Boolean(row?.classList.contains('production-new-row-focus')&&rect&&rect.top<innerHeight&&rect.bottom>0&&row.contains(document.activeElement));});
  await row.locator('[name$="-complex_object_filter"]').selectOption(String(c.complex));
  const options=await row.locator('[name$="-project_work"] option').evaluateAll(rows=>rows.map(row=>({value:row.value,text:row.textContent})));
  console.log(JSON.stringify({location:await row.locator('[name$="-complex_object_filter"]').inputValue(),options,errors}));
@@ -10,5 +10,6 @@ const {chromium}=require('playwright'),assert=require('node:assert/strict');
  const objectFilter=page.locator('.production-top-filters .rg-multi').filter({hasText:'Комплексные объекты'});await objectFilter.locator('summary').click();await objectFilter.getByText('УЗА 33',{exact:true}).click();
  const states=await page.locator('[data-work-package]').evaluateAll(rows=>rows.map(row=>({label:row.querySelector(':scope > summary strong')?.textContent.trim(),hidden:row.hidden})));
  assert(states.some(row=>row.label==='УЗА 33'&&!row.hidden),JSON.stringify(states));assert(states.some(row=>row.label==='УЗА 32'&&row.hidden),JSON.stringify(states));
+ await page.getByRole('button',{name:'Добавить работу вне СМГ'}).click();assert.equal(await page.locator('[data-new-work-rows] [data-work-fact-row]').count(),2);await page.waitForFunction(()=>{const rows=document.querySelectorAll('[data-new-work-rows] [data-work-fact-row]'),row=rows[rows.length-1],rect=row?.getBoundingClientRect();return Boolean(row?.classList.contains('production-new-row-focus')&&rect&&rect.top<innerHeight&&rect.bottom>0&&row.contains(document.activeElement));});
  console.log('PASS: complex object strictly filters a new searchable work row and legacy work remains selectable.');
  }finally{await browser.close();}})().catch(error=>{console.error(error);process.exit(1);});

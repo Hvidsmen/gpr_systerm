@@ -12,6 +12,7 @@
   const source = document.getElementById('production-work-choices');
   const host = document.querySelector('[data-rows="works"]');
   if (!source || !host) return;
+  const form=host.closest('form');
   const choices = JSON.parse(source.textContent);
   const catalogue = new Map(choices.map(choice => [choice.token, choice.display]));
   const itemOwners = new Map(choices.filter(choice => choice.item).map(choice => [String(choice.item), String(choice.work)]));
@@ -87,22 +88,22 @@
       try{
         const response=await fetch(creatorConfig.dataset.url,{method:'POST',headers:{'X-CSRFToken':form.querySelector('[name=csrfmiddlewaretoken]').value},body});const data=await response.json();if(!response.ok)throw new Error(data.error||'Не удалось создать работу.');
         const choice=data.choice;choices.push(choice);catalogue.set(choice.token,choice.display);itemOwners.set(String(choice.item),String(choice.work));
-        host.querySelectorAll('[name$="-work_item"]').forEach(select=>{if(!Array.from(select.options).some(option=>option.value===String(choice.item)))select.add(new Option(choice.label,choice.item));});
-        item.value=String(choice.item);name.value='';if(data.unit){host.querySelectorAll('[data-dispatcher-item-unit]').forEach(select=>{if(!Array.from(select.options).some(option=>option.value===data.unit.symbol))select.add(new Option(data.unit.label,data.unit.symbol),select.querySelector('option[value="__new__"]'));});}unit.value='';unitSymbol.value='';unitName.value='';newUnit.hidden=true;fields.hidden=true;status.textContent='Работа создана и выбрана.';item.dispatchEvent(new Event('change',{bubbles:true}));
+        form.querySelectorAll('[name$="-work_item"]').forEach(select=>{if(!Array.from(select.options).some(option=>option.value===String(choice.item)))select.add(new Option(choice.label,choice.item));});
+        item.value=String(choice.item);name.value='';if(data.unit){form.querySelectorAll('[data-dispatcher-item-unit]').forEach(select=>{if(!Array.from(select.options).some(option=>option.value===data.unit.symbol))select.add(new Option(data.unit.label,data.unit.symbol),select.querySelector('option[value="__new__"]'));});}unit.value='';unitSymbol.value='';unitName.value='';newUnit.hidden=true;fields.hidden=true;status.textContent='Работа создана и выбрана.';item.dispatchEvent(new Event('change',{bubbles:true}));
         form.dispatchEvent(new CustomEvent('production-work-created',{detail:choice}));
       }catch(error){status.className='small text-danger';status.textContent=error.message;}
     });
   }
   let allPending=false,totalsPending=false;
-  function refreshAll(){host.querySelectorAll('[data-work-fact-row]').forEach(row=>{setupCreator(row);refresh(row);});}
+  function refreshAll(){form.querySelectorAll('[data-work-fact-row]').forEach(row=>{setupCreator(row);refresh(row);});}
   function scheduleAll(){if(allPending)return;allPending=true;requestAnimationFrame(()=>{allPending=false;refreshAll();});}
   function refreshGroupTotals(){
     host.querySelectorAll('[data-work-group-total]').forEach(total=>{const group=total.closest('[data-work-object]');let value=0;group.querySelectorAll('[data-work-fact-row]').forEach(row=>{const deleted=row.querySelector('[name$="-DELETE"]');const input=row.querySelector('[name$="-actual_quantity"]');if(!deleted?.checked&&input?.value.trim()){const parsed=Number(input.value.replace(',','.'));if(Number.isFinite(parsed))value+=parsed;}});total.querySelector('[data-work-group-actual]').textContent=number.format(value);});
   }
   function scheduleTotals(){if(totalsPending)return;totalsPending=true;requestAnimationFrame(()=>{totalsPending=false;refreshGroupTotals();});}
-  refreshAll();refreshGroupTotals();host.closest('form').addEventListener('production-live-applied',()=>{scheduleAll();scheduleTotals();});
+  refreshAll();refreshGroupTotals();form.addEventListener('production-live-applied',()=>{scheduleAll();scheduleTotals();});
   host.addEventListener('input',event=>{if(event.target.matches('[name$="-actual_quantity"]'))scheduleTotals();});
-  host.addEventListener('change', event => {
+  form.addEventListener('change', event => {
     const row = event.target.closest('[data-work-fact-row]');
     if (row){refresh(row);scheduleTotals();}
     else if(event.target===host)scheduleAll();
@@ -113,5 +114,5 @@
       if(node.matches?.('[data-work-fact-row]')){setupCreator(node);refresh(node);}
       node.querySelectorAll?.('[data-work-fact-row]').forEach(row=>{setupCreator(row);refresh(row);});
     }
-  }).observe(host,{childList:true,subtree:true});
+  }).observe(form,{childList:true,subtree:true});
 })();
