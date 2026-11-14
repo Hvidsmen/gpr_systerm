@@ -263,6 +263,8 @@ class WorkEntryPresentationTests(TestCase):
         self.assertIn("token.startsWith('work:')||token.startsWith('item:')",source)
         self.assertIn('const saveableDirty=()=>dirty().filter(row=>!incompleteNewWork(row))',source)
         self.assertIn('const deferredWorks=()=>dirty().filter(incompleteNewWork)',source)
+        self.assertIn('function explainDeferredWork(row)',source)
+        self.assertIn('Черновик не сохранён. Как исправить:',source)
         self.assertIn('while(pending||saveableDirty().length)',source)
         self.assertIn('незавершённых работ в черновике',source)
         self.assertIn('function actionableIssueText(issue,row)',source)

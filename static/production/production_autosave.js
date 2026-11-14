@@ -44,6 +44,12 @@
  const dirty=()=>rows().filter(row=>row.dataset.entryDirty||row.dataset.personDirty||row.dataset.autoPending);
  const saveableDirty=()=>dirty().filter(row=>!incompleteNewWork(row));
  const deferredWorks=()=>dirty().filter(incompleteNewWork);
+ function explainDeferredWork(row){
+  const work=field(row,'project_work')?.value||'',name=field(row,'operational_name')?.value.trim()||'',unit=field(row,'operational_unit')?.value.trim()||'';
+  const instruction=!work?'выберите комплекс и работу либо удалите строку':name||unit?'заполните название и единицу измерения прочей работы либо удалите строку':'выберите работу в составе комплекса либо удалите строку';
+  rowMessage(row,'Черновик не сохранён. Как исправить: '+instruction+'.');
+  const error=row.querySelector('[data-error]');if(error)error.textContent='';
+ }
  function message(text,error=false){lastMessage=text;lastError=error;if(!error&&text==='Все изменения сохранены'&&Number(form.dataset.linksRejected||0)>0)text='Данные сохранены; часть связей требует проверки';if(!error&&text==='Все изменения сохранены'&&Number(form.dataset.linksPending||0)>0)text='Данные сохранены; связи ожидают отправки';state.textContent=text;state.classList.toggle('text-danger',error);state.classList.toggle('fact-state-saving',!error&&text==='Сохранение…');state.classList.toggle('fact-state-saved',!error&&text==='Все изменения сохранены');state.classList.toggle('fact-state-pending',!error&&text.includes('изменения')&&text!=='Все изменения сохранены');retry.hidden=!error;}
  function rowMessage(row,text,error=false){const target=row.querySelector('[data-autosave-row-state]');if(target){target.textContent=text;target.title=text;target.classList.toggle('text-danger',error);}row.classList.toggle('production-person-auto-failed',error);}
  function issueInstruction(issue,row){
@@ -208,7 +214,7 @@
     form.productionStatus.start(`Сохраняем связи · изменений: ${form.productionLinks.pending}`,form.productionLinks.pending);
     try{if(!await form.productionLinks.flush())throw new Error('Связи не сохранены. Проверьте статус над вкладками и повторите сохранение.');summarySaved('links');}catch(error){failed=true;summaryFailed(['links'],error);message(error.message,true);form.productionStatus.error('Связи не сохранены');}
    }
-   if(!failed){const deferred=deferredWorks().length;message(deferred?`Корректные строки сохранены · незавершённых работ в черновике: ${deferred}`:'Все изменения сохранены');form.productionStatus.done(deferred?'Корректные строки сохранены; незавершённая работа осталась в черновике':'Изменения и связи сохранены');form.productionRecovery.clear();}
+   if(!failed){const deferredRows=deferredWorks(),deferred=deferredRows.length;deferredRows.forEach(explainDeferredWork);message(deferred?`Корректные строки сохранены · незавершённых работ в черновике: ${deferred}`:'Все изменения сохранены');form.productionStatus.done(deferred?'Корректные строки сохранены; незавершённая работа осталась в черновике':'Изменения и связи сохранены');form.productionRecovery.clear();}
    finishSummary();
    return !failed;
   })();
