@@ -131,6 +131,15 @@ class ProductionBatchSaveTests(TestCase):
         self.assertEqual(response.status_code,200,response.content)
         self.assertEqual(set(EmployeeActivity.objects.filter(employee=self.employee).values_list('shift',flat=True)),{1,2})
 
+    def test_person_deletion_ignores_obsolete_work_target(self):
+        person=EmployeeActivity.objects.create(company=self.company,construction_object=self.obj,date=self.day,employee=self.employee,
+            position=self.employee.position,shift=1,entry_direction='works',reported_by=self.users['DISPATCHER'])
+        row=self.person_row();row.update(id=person.pk,version=person.updated_at.isoformat())
+        row['values'].update(DELETE='on',work_mode='works',work_targets=['work:999999'])
+        response=self.request([row])
+        self.assertEqual(response.status_code,200,response.content)
+        self.assertFalse(EmployeeActivity.objects.filter(pk=person.pk).exists())
+
     def test_person_on_other_object_returns_exact_location(self):
         other=ConstructionObject.objects.create(company=self.company,project=self.obj.project,name='Другой объект')
         activity=EmployeeActivity.objects.create(company=self.company,construction_object=other,date=self.day,employee=self.employee,position=self.employee.position,shift=1)

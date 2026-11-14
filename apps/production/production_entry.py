@@ -195,6 +195,14 @@ class ProductionPersonForm(PersonForm):
         self.initial.setdefault('work_targets',[])
         self.initial.setdefault('work_mode','pending')
         self.fields['work_targets'].choices=[(row['token'],row['label']) for row in self.activity_choices if (row['work'],row['item']) in self.activity_work_keys]
+        # A row marked for deletion must not be blocked by an obsolete work
+        # token left from an older plan or browser draft. Relations are not
+        # saved during deletion, so normalize them before field validation.
+        delete_value=self.data.get(self.add_prefix('DELETE')) if self.is_bound else None
+        if delete_value not in (None,'','0','false','False',False):
+            self.data=self.data.copy();self.data[self.add_prefix('work_mode')]='pending'
+            self.data.setlist(self.add_prefix('work_targets'),[])
+            for name in ('work','work_item','general'):self.data[self.add_prefix(name)]=''
         if self.instance.pk:
             self.initial['work_targets']=[token(w,i) for w,i in targets(self.instance)]
             self.initial['work_mode']=('general' if self.instance.general else 'works') if self.instance.assignment_reviewed else 'pending'
