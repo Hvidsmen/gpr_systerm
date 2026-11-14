@@ -199,10 +199,7 @@ class ProductionPersonForm(PersonForm):
         # token left from an older plan or browser draft. Relations are not
         # saved during deletion, so normalize them before field validation.
         delete_value=self.data.get(self.add_prefix('DELETE')) if self.is_bound else None
-        if delete_value not in (None,'','0','false','False',False):
-            self.data=self.data.copy();self.data[self.add_prefix('work_mode')]='pending'
-            self.data.setlist(self.add_prefix('work_targets'),[])
-            for name in ('work','work_item','general'):self.data[self.add_prefix(name)]=''
+        deleting=delete_value not in (None,'','0','false','False',False)
         if self.instance.pk:
             self.initial['work_targets']=[token(w,i) for w,i in targets(self.instance)]
             self.initial['work_mode']=('general' if self.instance.general else 'works') if self.instance.assignment_reviewed else 'pending'
@@ -212,6 +209,13 @@ class ProductionPersonForm(PersonForm):
             selected=targets(self.instance) if self.instance.pk else []
             self.data.setlist(self.add_prefix('work_targets'),[token(w,i) for w,i in selected])
             self.data[self.add_prefix('work_mode')]=('general' if self.instance.general else 'works' if self.instance.assignment_reviewed and selected else 'pending') if self.instance.pk else 'pending'
+        # Collaborative mode restores the saved links above. Deletion must be
+        # normalized afterwards so those restored legacy tokens are not
+        # validated for a row that is about to be removed.
+        if deleting:
+            self.data=self.data.copy();self.data[self.add_prefix('work_mode')]='pending'
+            self.data.setlist(self.add_prefix('work_targets'),[])
+            for name in ('work','work_item','general'):self.data[self.add_prefix(name)]=''
         for name in ['work','work_item','general','equipment']:
             self.fields[name].widget=forms.HiddenInput()
         self.fields['activity'].label='Комментарий о работе'
