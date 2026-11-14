@@ -57,15 +57,9 @@
   for(const row of records){if(deleted(row))continue;const key=keyOf(row);if(key){if(!used.has(key))used.set(key,[]);used.get(key).push(row);}}
   for(const row of records){const employee=field(row,'employee'),shift=Number(field(row,'shift').value);
    for(const option of employee.options){
-    if(!originalOptionState.has(option))originalOptionState.set(option,option.disabled);
+    if(!originalOptionState.has(option))originalOptionState.set(option,{disabled:option.disabled,hidden:option.hidden});
     const existing=option.value&&option.value!==employee.value?used.get(`employee:${option.value}:${shift}`)?.[0]:null;
-    if(!option.dataset.baseEmployeeLabel)option.dataset.baseEmployeeLabel=option.textContent.replace(/ · уже добавлен в смену — открыть строку$/,'');
-    option.textContent=option.dataset.baseEmployeeLabel+(existing?' · уже добавлен в смену — открыть строку':'');
-    if(existing&&!existing.id)existing.id='production-person-'+field(existing,'employee').name.replace(/[^a-zA-Z0-9_-]/g,'-');
-    option.dataset.existingPerson=existing?.id||'';
-    // Keep a duplicate result clickable: selecting it focuses the existing
-    // row below instead of silently showing an unexplained grey option.
-    const blocked=originalOptionState.get(option);if(option.disabled!==blocked)option.disabled=blocked;
+    const base=originalOptionState.get(option);option.disabled=base.disabled;option.hidden=base.hidden||Boolean(existing);
    }
    if(duplicate(row)){row.dataset.duplicatePerson='1';row.dataset.entryDirty='1';row.querySelector('[data-error]').textContent=duplicateText;}
    else if(row.dataset.duplicatePerson){delete row.dataset.duplicatePerson;if(row.querySelector('[data-error]').textContent===duplicateText)row.querySelector('[data-error]').textContent='';}
@@ -85,7 +79,7 @@
   }
   else{row.dataset.acceptedEmployee=field(row,'employee').value;row.dataset.acceptedShift=field(row,'shift').value;if(row.querySelector('[data-error]').textContent===duplicateText)row.querySelector('[data-error]').textContent='';}
  },true);
- form.addEventListener('search-select-existing',event=>{const conflict=document.getElementById(event.detail?.row||'');if(!conflict)return;conflict.scrollIntoView({behavior:'smooth',block:'center'});conflict.classList.add('production-person-focus');setTimeout(()=>conflict.classList.remove('production-person-focus'),2200);field(conflict,'employee')?.nextElementSibling?.querySelector('button')?.focus({preventScroll:true});});
+ form.addEventListener('remote-search-loaded',event=>{if(event.target.name?.endsWith('-employee'))refreshPeople();});
  form.addEventListener('input',event=>{if(event.target.closest('[data-production-person]')&&event.target.name?.endsWith('-shift'))event.stopImmediatePropagation();},true);
  const controls=row=>[...row.querySelectorAll(person(row)?'[name$="-work_mode"],[name$="-planning_position"],[name$="-activity"],[name$="-DELETE"]':'[name$="-operational_name"],[name$="-operational_unit"],[name$="-actual_quantity"],[name$="-comment"],[name$="-actuation_type"],[name$="-actuation_reason"],[name$="-actuation_reasons"],[name$="-DELETE"]')];
  async function request(action,key,extra={}){

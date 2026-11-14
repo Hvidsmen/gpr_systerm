@@ -151,8 +151,15 @@
       this.limit = 100;
       this.popup.hidden = false;
       this.button.setAttribute('aria-expanded', 'true');
-      this.render(); this.position();
-      if (this.remoteUrl) this.loadRemote(1);
+      if (this.remoteUrl) {
+        // Server-side options depend on context fields such as the selected
+        // shift.  Never expose the broad choices rendered with the empty form
+        // while the contextual request is still in flight.
+        [...this.select.options].forEach(option => {if (!option.selected && option.value) option.remove();});
+        this.options.replaceChildren();
+        const loading = document.createElement('div'); loading.className = 'search-select-empty'; loading.textContent = 'Загрузка…';
+        this.options.append(loading); this.position(); this.loadRemote(1);
+      } else {this.render(); this.position();}
       const focus = this.compact ? (this.options.querySelector('[aria-selected="true"]:not(:disabled)') || this.options.querySelector('[role="option"]:not(:disabled)')) : this.search;
       focus?.focus({preventScroll:true});
     }
@@ -214,6 +221,7 @@
         });
         this.remotePage = Number(payload.page || page);
         this.remotePages = Number(payload.pages || this.remotePage);
+        this.select.dispatchEvent(new CustomEvent('remote-search-loaded', {bubbles:true}));
         this.render();
       } catch (error) {
         if (sequence === this.remoteSequence) {
@@ -276,11 +284,6 @@
         item.append(text);
         item.addEventListener('click', () => {
           if (this.disabled() || item.disabled) return;
-          if (option.dataset.existingPerson) {
-            this.select.dispatchEvent(new CustomEvent('search-select-existing', {bubbles:true, detail:{row:option.dataset.existingPerson}}));
-            this.close();
-            return;
-          }
           if (this.select.multiple) option.selected = !option.selected;
           else this.select.selectedIndex = option.index;
           this.changed();
