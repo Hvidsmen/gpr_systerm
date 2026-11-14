@@ -89,10 +89,18 @@
  form.addEventListener('input',event=>{if(event.target.closest('[data-production-person]')&&event.target.name?.endsWith('-shift'))event.stopImmediatePropagation();},true);
  const controls=row=>[...row.querySelectorAll(person(row)?'[name$="-work_mode"],[name$="-planning_position"],[name$="-activity"],[name$="-DELETE"]':'[name$="-operational_name"],[name$="-operational_unit"],[name$="-actual_quantity"],[name$="-comment"],[name$="-actuation_type"],[name$="-actuation_reason"],[name$="-actuation_reasons"],[name$="-DELETE"]')];
  async function request(action,key,extra={}){
-  const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),20000);
-  try{const response=await fetch(url,{method:'POST',credentials:'same-origin',signal:controller.signal,headers:{'Content-Type':'application/json','X-CSRFToken':csrf},body:JSON.stringify({...scope,action,key,...extra})});const data=(response.headers.get('content-type')||'').includes('application/json')?await response.json():{};if(!response.ok){if(data.auth_changed)form.dataset.authChanged='1';if(data.claim)claims.set(data.claim.key,data.claim);const error=new Error(data.error||'Не удалось проверить резерв.');error.status=response.status;error.retryable=response.status>=500||response.status===429;throw error;}return data;}
-  catch(error){if(error.name==='AbortError'){error=new Error('Сервер отвечает долго. Ввод остался в форме; повторим сохранение.');error.retryable=true;}throw error;}
-  finally{clearTimeout(timeout);}
+  let lastError;
+  for(let attempt=0;attempt<2;attempt++){
+   const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),20000);
+   try{const response=await fetch(url,{method:'POST',credentials:'same-origin',signal:controller.signal,headers:{'Content-Type':'application/json','X-CSRFToken':csrf},body:JSON.stringify({...scope,action,key,...extra})});const data=(response.headers.get('content-type')||'').includes('application/json')?await response.json():{};if(!response.ok){if(data.auth_changed)form.dataset.authChanged='1';if(data.claim)claims.set(data.claim.key,data.claim);const error=new Error(data.error||'Не удалось проверить резерв.');error.status=response.status;error.retryable=response.status>=500||response.status===429;throw error;}return data;}
+   catch(error){
+    if(error.name==='AbortError'){error=new Error('Сервер отвечает долго. Ввод остался в форме.');error.retryable=true;}
+    else if(error instanceof TypeError){error=new Error('Не удалось связаться с сервером. Изменения остались в форме.');error.retryable=true;}
+    lastError=error;if(!error.retryable||attempt>0||navigator.onLine===false)throw error;await new Promise(resolve=>setTimeout(resolve,600));
+   }
+   finally{clearTimeout(timeout);}
+  }
+  throw lastError;
  }
 
  function render(row){
@@ -108,7 +116,7 @@
   // Employee identity stays fixed; shift changes reserve source and destination.
   for(const name of person(row)?['employee','shift']:['project_work','work_item']){const input=field(row,name);if(input)input.disabled=person(row)&&name==='shift' ? blocked||form.dataset.personShiftBusy==='1' : blocked||Boolean(keyOf(row)&&(mine||row.dataset.entryDirty||person(row)&&field(row,'id')?.value));}
   const take=bar.querySelector('[data-take]'),release=bar.querySelector('[data-release]');take.hidden=true;take.disabled=repeated||!keyOf(row)||Boolean(claim&& !mine&& (claim.state==='editing'||!claim.own));release.hidden=!row.dataset.entryDirty||mine;release.textContent=row.dataset.entryDirty?'Отменить изменения':'Освободить';
-  bar.querySelector('[data-label]').textContent=repeated?'Повтор':mine?'Ваш резерв':claim?.state==='editing'?'Резерв: '+claim.owner+(claim.own?' · другая вкладка':''):claim?.state==='saved'?(claim.own?'Внёс: '+claim.owner+' · можно исправить':'Уже учтено: '+claim.owner+(claim.other_object?' · другой объект':' · только просмотр')):row.dataset.entryDirty?'Восстанавливаем резерв…':keyOf(row)?'Запись свободна':field(row,'id')?.value?'Запись сохранена':person(row)?'Выберите сотрудника и смену':'Заполните объём работы';
+  bar.querySelector('[data-label]').textContent=repeated?'Повтор':mine?'Ваш резерв':claim?.state==='editing'?'Резерв: '+claim.owner+(claim.own?' · другая вкладка':''):claim?.state==='saved'?(claim.own?'Внёс: '+claim.owner+' · можно исправить':'Уже учтено: '+claim.owner+(claim.other_object?' · другой объект':' · только просмотр')):row.dataset.entryDirty?(row.dataset.claimRetry?'Нужно повторить сохранение':'Восстанавливаем резерв…'):keyOf(row)?'Запись свободна':field(row,'id')?.value?'Запись сохранена':person(row)?'Выберите сотрудника и смену':'Заполните объём работы';
   if(person(row))bar.querySelector('[data-label]').title=bar.querySelector('[data-label]').textContent;
  }
  async function changeShift(row,desired){
@@ -152,19 +160,19 @@
   catch(error){for(let i=0;i<acquired.length;i+=100)try{await request('release_many',null,{keys:acquired.slice(i,i+100)});for(const key of acquired.slice(i,i+100))claims.delete(key);}catch{}throw error;}
   changed();
  };
- form.productionForgetClaims=selected=>{for(const row of selected)for(const key of keysOf(row))if(claims.get(key)?.mine)claims.delete(key);changed();};
+ form.productionForgetClaims=(selected,needsRetry=false)=>{for(const row of selected){if(needsRetry)row.dataset.claimRetry='1';for(const key of keysOf(row))if(claims.get(key)?.mine)claims.delete(key);}changed();};
  form.addEventListener('production-people-bulk-staged',()=>{wire();changed();});
 
  form.productionValidatePeople=()=>{refreshPeople();const repeated=personRows().find(duplicate);if(repeated){repeated.querySelector('[data-error]').textContent=duplicateText;throw new Error(duplicateText);}};
  const acquiring=new Map();
  form.productionClaimRow=async row=>{
   if(duplicate(row))throw new Error(duplicateText);const key=keyOf(row);if(!key){if(!person(row)&&field(row,'project_work')?.value&&(compositeWorks.has(String(field(row,'project_work').value))||workKinds.get(String(field(row,'project_work').value))==='COMPOSITE'))throw new Error('Выберите работу в составе выбранного комплекса.');return;}
-  if(key.startsWith('operational:')){claims.set(key,{key,state:'editing',mine:true,own:true,owner:'Вы'});row.querySelector('[data-error]').textContent='';render(row);row.dataset.entryDirty='1';changed();return;}
+  if(key.startsWith('operational:')){delete row.dataset.claimRetry;claims.set(key,{key,state:'editing',mine:true,own:true,owner:'Вы'});row.querySelector('[data-error]').textContent='';render(row);row.dataset.entryDirty='1';changed();return;}
   if(!claims.get(key)?.mine){
    if(!acquiring.has(key)){generation++;acquiring.set(key,request('take',key).then(data=>{claims.set(key,data.claim);}).finally(()=>acquiring.delete(key)));}
-   await acquiring.get(key);
+   try{await acquiring.get(key);}catch(error){row.dataset.claimRetry='1';render(row);throw error;}
   }
-  row.querySelector('[data-error]').textContent='';
+  delete row.dataset.claimRetry;row.querySelector('[data-error]').textContent='';
   render(row);row.dataset.entryDirty='1';changed();lastActivity=Date.now();
  };
  form.productionSetClaims=values=>{for(const row of personRows())if(!row.dataset.entryDirty&&!row.dataset.personDirty&&!row.dataset.autoPending){row.dataset.acceptedShift=field(row,'shift').value;row.dataset.entryKey=keyOf(row);}claims=new Map(values.map(c=>[c.key,c]));wire();changed();};

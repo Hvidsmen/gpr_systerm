@@ -102,10 +102,17 @@
    rows:changed.map(row=>({kind:isPerson(row)?'labor':'works',prefix:prefix(row),id:field(row,'id')?.value||null,
     version:row.dataset.entryVersion||null,allow_duplicate_operational:row.dataset.allowOperationalDuplicate==='1',values:compactValues(row)}))});
   changed.forEach(row=>rowMessage(row,'Сохранение…'));message('Сохранение…');
-  const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),30000);let response;
-  try{response=await fetch(form.dataset.batchSaveUrl,{method:'POST',credentials:'same-origin',signal:controller.signal,headers:{'Content-Type':'application/json','X-CSRFToken':form.querySelector('[name=csrfmiddlewaretoken]').value},body});}
-  catch(error){form.productionForgetClaims?.(changed);if(error.name==='AbortError'){error=new Error('Сервер отвечает долго. Ввод остался в форме; повторим сохранение.');error.retryable=true;}throw error;}
-  finally{clearTimeout(timeout);}
+  let response,lastNetworkError;
+  for(let attempt=0;attempt<2;attempt++){
+   const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),30000);
+   try{response=await fetch(form.dataset.batchSaveUrl,{method:'POST',credentials:'same-origin',signal:controller.signal,headers:{'Content-Type':'application/json','X-CSRFToken':form.querySelector('[name=csrfmiddlewaretoken]').value},body});break;}
+   catch(error){
+    lastNetworkError=new Error(error.name==='AbortError'?'Сервер отвечает долго. Ввод остался в форме.':'Не удалось связаться с сервером. Ввод сохранён в браузере. Нажмите «Повторить сохранение».');lastNetworkError.retryable=true;
+    if(attempt===0&&navigator.onLine!==false){await new Promise(resolve=>setTimeout(resolve,600));continue;}
+   }
+   finally{clearTimeout(timeout);}
+  }
+  if(!response){form.productionForgetClaims?.(changed,true);throw lastNetworkError;}
   if(!(response.headers.get('content-type')||'').includes('application/json')){const error=new Error('Не удалось сохранить изменения. Проверьте доступ к порталу и повторите сохранение.');error.retryable=response.status>=500||response.status===429;throw error;}
   const result=await response.json();
   if(!response.ok){
