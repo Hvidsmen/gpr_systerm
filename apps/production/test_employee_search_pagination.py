@@ -47,6 +47,14 @@ class ProductionEmployeeSearchPaginationTests(TestCase):
         self.assertIn('Массовый204 Сотрудник',exact['items'][0]['label'])
         self.assertIn('T-204',exact['items'][0]['label'])
 
+    def test_employee_search_matches_lowercase_cyrillic_zup_name(self):
+        kargin=Employee.objects.create(company=self.company,zup_full_name='Каргин Андрей Александрович',
+            zup_ref='a'*32,position=self.employee.position)
+        result=self.client.get(reverse('production:production_employee_search'),{
+            'construction_object':self.obj.pk,'date':self.day,'q':'карг','shift':2,
+        }).json()
+        self.assertIn(kargin.pk,[item['id'] for item in result['items']])
+
     def test_employee_search_orders_by_smg_position_then_vjg_and_excludes_added_shift(self):
         from apps.resources.models import Brigade
         from apps.resources.position_catalog import position_for
@@ -71,7 +79,7 @@ class ProductionEmployeeSearchPaginationTests(TestCase):
             position=self.employee.position,shift=1,entry_direction='works',reported_by=self.users['DISPATCHER'])
         self.employee.is_active=False;self.employee.save(update_fields=['is_active'])
         url=reverse('production:production_employee_search')
-        night=self.client.get(url,{'construction_object':self.obj.pk,'date':self.day,'q':self.employee.last_name,'shift':2}).json()
+        night=self.client.get(url,{'construction_object':self.obj.pk,'date':self.day,'q':self.employee.last_name.lower(),'shift':2}).json()
         self.assertIn(self.employee.pk,[item['id'] for item in night['items']])
         self.assertIn('архив',next(item['text'] for item in night['items'] if item['id']==self.employee.pk))
         self.assertEqual(night['blocked'],[])

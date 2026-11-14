@@ -1,5 +1,8 @@
+import re
+
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
+from django.db import connections
 from django.db.models import Q,Case,When,Value,IntegerField,Exists,OuterRef
 from django.http import JsonResponse
 from django.views.decorators.http import require_GET
@@ -20,9 +23,14 @@ def search(request):
     obj=selector.cleaned_data['construction_object'];day=selector.cleaned_data['date']
     query=eligible_employees(obj,day).select_related('position')
     terms=[term for term in request.GET.get('q','').strip().split() if term][:6]
+    lookup='iregex' if connections[query.db].vendor=='sqlite' else 'icontains'
     for term in terms:
-        query=query.filter(Q(last_name__icontains=term)|Q(first_name__icontains=term)|Q(middle_name__icontains=term)|
-            Q(employee_number__icontains=term)|Q(position__name__icontains=term)|Q(personnel_card__stays__camp__name__icontains=term))
+        value=re.escape(term) if lookup=='iregex' else term
+        match=Q()
+        for field in ('zup_full_name','last_name','first_name','middle_name','employee_number','position__name',
+                'zup_position_name','zup_department','personnel_card__stays__camp__name'):
+            match|=Q(**{f'{field}__{lookup}':value})
+        query=query.filter(match)
     position=request.GET.get('position');shift=request.GET.get('shift');blocked=[]
     if shift and shift.isdigit() and 1<=int(shift)<=24:
         occupied=EmployeeActivity.objects.filter(company=obj.company,date=day,shift=int(shift),employee__in=query).select_related('employee','construction_object').order_by('employee__last_name','employee__first_name','pk')
