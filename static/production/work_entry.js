@@ -61,10 +61,11 @@
     const heading = row.querySelector('[data-work-heading]');
     if (!heading) return;
     if (!display) {
+      row.classList.remove('production-work-card-ready');
       if (work?.tagName === 'SELECT') heading.hidden = true;
       return;
     }
-    heading.hidden = false;row.dataset.planned=display.has_plan?'1':'0';const remove=row.querySelector('[data-work-remove]');if(remove)remove.hidden=display.has_plan;
+    row.classList.add('production-work-card-ready');heading.hidden = false;row.dataset.planned=display.has_plan?'1':'0';const remove=row.querySelector('[data-work-remove]');if(remove)remove.hidden=display.has_plan;
     row.querySelector('[data-work-title]').textContent = display.title;
     row.querySelector('[data-work-path]').textContent = display.path;
     row.querySelector('[data-work-unplanned]').hidden = display.has_plan;
