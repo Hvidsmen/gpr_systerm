@@ -24,24 +24,21 @@ def daily_rows(row, dates):
         row['daily_rows'].append(dict(metrics,date=day))
 
 
-def peak_daily_totals(row):
-    """Peak daily resource counts; group peaks use daily sums, not summed row peaks."""
-    for field in ['plan', 'actual']:
-        days=[day for day in row['daily'].values() if day.get(field) is not None]
-        row[field]=max((day[field] for day in days),default=None)
+def selected_daily_totals(row, selected_day):
+    """Use one report date for resource summaries while retaining the month matrix."""
+    values=row.get('daily',{}).get(selected_day.isoformat(),{})
+    for field in ['plan','actual']:
+        row[field]=values.get(field)
         if 'row_count' in row:
-            row[field+'_count']=max((day.get(field+'_count',1) for day in days
-                if day[field]==row[field]),default=0)
-    complete=all(row.get(field+'_count',1)==row.get('row_count',1)
-        for field in ['plan','actual'])
+            row[field+'_count']=values.get(field+'_count',0)
+    complete=all(row.get(field+'_count',1)==row.get('row_count',1) for field in ['plan','actual'])
     plan,actual=row['plan'],row['actual']
     known=complete and plan is not None and actual is not None
     row['deviation']=actual-plan if known else None
     row['percent']=actual/plan*100 if known and plan>0 else None
     if 'row_count' in row:
-        for day in row['daily_rows']:
-            # Keep the group's original coverage and missing comparisons.
-            day.update(row['daily'].get(day['date'].isoformat(),{}))
+        for daily in row['daily_rows']:
+            daily.update(row['daily'].get(daily['date'].isoformat(),{}))
     return row
 
 

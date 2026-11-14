@@ -162,10 +162,10 @@ class SmgPeriodReportTests(TestCase):
         # Unassigned camp-only use cannot become an object actual.
         EquipmentDayRecord.objects.create(company=self.company, equipment=self.machine,
             camp=self.housing_camp, date=self.start+timedelta(days=1), status='WORKED')
-        report = build(self.obj, self.selected)
+        report = build(self.obj, self.start)
         rows = {r['label']: r for r in report['equipment']}
-        self.assertEqual((rows[target.name]['plan'], rows[target.name]['actual']), (3, 1))
-        self.assertEqual(rows[self.type.name]['actual'], 0)
+        self.assertEqual((rows[target.name]['plan'], rows[target.name]['actual']), (2, 1))
+        self.assertIsNone(rows[self.type.name]['actual'])
 
     def test_labor_unique_person_per_day_and_no_projected_double_count(self):
         self.entry('labor', [{'date': str(self.start), 'brigade_id': self.brigade.pk, 'planned_count': '2'},
@@ -177,8 +177,8 @@ class SmgPeriodReportTests(TestCase):
             date=self.start, actual_workers=1)
         LaborFact.objects.create(company=self.company, construction_object=self.obj, brigade=self.brigade,
             date=self.later, actual_workers=2)
-        row = build(self.obj, self.selected)['labor'][0]
-        self.assertEqual((row['plan'], row['actual']), (3, 2))
+        row = build(self.obj, self.start)['labor'][0]
+        self.assertEqual((row['plan'], row['actual']), (2, 1))
         self.assertEqual(row['unit'], 'чел.')
 
     def test_fuel_object_plan_separate_from_shared_camp_total_no_legacy_double_count(self):

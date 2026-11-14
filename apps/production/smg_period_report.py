@@ -14,7 +14,7 @@ from apps.personnel.models import Camp
 from .models import DailyFact, EmployeeActivity, EquipmentActivity, LaborFact, EquipmentFact
 from .transport_models import EquipmentDayRecord
 from .camp_fuel_models import CampFuelDay
-from .report_grouping import resource_groups, work_groups, daily_rows, peak_daily_totals, totals
+from .report_grouping import resource_groups, work_groups, daily_rows, selected_daily_totals, totals
 from apps.resources.group_order import NONE, labor_group_order, equipment_group_order, position_group
 
 
@@ -288,16 +288,18 @@ def build(obj, day, schedule_id=None, *, day_only=False, equipment_only=False, i
             row.update(group='Техника вне СМГ',group_id='non-smg',group_order=NONE)
     dates=[start+timedelta(days=i) for i in range((end-start).days+1)]
     for row in works_finished+labor_finished+equipment_finished:daily_rows(row,dates)
-    for row in labor_finished+equipment_finished:peak_daily_totals(row)
+    for row in labor_finished+equipment_finished:selected_daily_totals(row,day)
     labor_total=totals(labor_finished,dates)
     for actual_day,employees in all_labor.items():
         values=labor_total['daily'].setdefault(actual_day.isoformat(),{'plan':None,'actual':None,'unit':labor_unit})
         values['actual']=Decimal(len(employees))
-    daily_rows(labor_total,dates);peak_daily_totals(labor_total)
-    equipment_total=totals(equipment_finished,dates);peak_daily_totals(equipment_total)
+    daily_rows(labor_total,dates);selected_daily_totals(labor_total,day)
+    equipment_total=totals(equipment_finished,dates);selected_daily_totals(equipment_total,day)
     labor_grouped=resource_groups(labor_finished,dates)
     equipment_grouped=resource_groups(equipment_finished,dates)
-    for group in labor_grouped+equipment_grouped:peak_daily_totals(group['total'])
+    for group in labor_grouped+equipment_grouped:
+        selected_daily_totals(group['total'],day)
+        for subgroup in group.get('subgroups',[]):selected_daily_totals(subgroup['total'],day)
     return dict(work_groups=work_groups(works_finished,dates),labor_groups=labor_grouped,equipment_groups=equipment_grouped,
         object=obj, start=start, end=end, day=day, schedule=schedule,equipment_only=equipment_only,day_only=day_only,include_fuel=include_fuel,
         period_days=(end-start).days+1, works=works_finished, labor=labor_finished,

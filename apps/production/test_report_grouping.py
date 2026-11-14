@@ -1,4 +1,5 @@
 from datetime import timedelta
+from pathlib import Path
 from decimal import Decimal
 from io import BytesIO
 from openpyxl import load_workbook
@@ -73,14 +74,14 @@ class ReportGroupingTests(TestCase):
         self.assertEqual(sum(row['plan'] or 0 for row in days.values()),work['total']['plan'])
 
     def test_resource_catalogue_groups_and_root_category(self):
-        report=build(self.obj,self.selected)
+        report=build(self.obj,self.start)
         self.assertEqual(report['labor_groups'][0]['label'],self.staff_group.name)
         self.assertEqual(report['equipment_groups'][0]['label'],self.category.name)
         self.assertEqual(report['equipment_groups'][0]['total']['actual'],1)
 
     def test_people_without_explicit_smg_position_use_staffing_hierarchy(self):
         EmployeeActivity.objects.create(company=self.company, construction_object=self.obj,
-            employee=self.employee, position=self.employee.position, date=self.start, shift=1)
+            employee=self.employee, position=self.employee.position, date=self.selected, shift=1)
         EmployeeActivity.objects.create(company=self.company, construction_object=self.obj,
             employee=self.employee, position=self.employee.position, planning_position=self.employee.position,
             date=self.later, shift=1)
@@ -92,14 +93,14 @@ class ReportGroupingTests(TestCase):
         self.assertNotIn('people',row)
         smg_group=next(group for group in report['labor_groups'] if group['label']==self.staff_group.name)
         smg_row=next(row for row in smg_group['rows'] if row['label']==self.brigade.name)
-        self.assertEqual(smg_row['actual'],1)
+        self.assertIsNone(smg_row['actual'])
         self.assertEqual(report['labor_total']['actual'],1)
         self.client.force_login(self.users['DISPATCHER'])
         response=self.client.get(reverse('production:smg_period_detail'),
             {'construction_object':self.obj.pk,'date':self.selected})
         self.assertContains(response,'Люди без должностей СМГ')
         self.assertNotContains(response,self.employee.display_name)
-        self.assertContains(response,'Максимум сотрудников за день')
+        self.assertContains(response,f'Итого сотрудников на {self.selected:%d.%m.%Y}')
         self.assertContains(response,'План:')
         self.assertNotContains(response,'Позиций:')
 
@@ -107,7 +108,7 @@ class ReportGroupingTests(TestCase):
         equipment_type=EquipmentType.objects.create(company=self.company,name='Внеплановый погрузчик',category=self.category)
         machine=Equipment.objects.create(company=self.company,type=equipment_type,plate_number='OUT-1',name='Погрузчик')
         EquipmentActivity.objects.create(company=self.company,construction_object=self.obj,
-            equipment=machine,date=self.start,shift=1,state='WORKING')
+            equipment=machine,date=self.selected,shift=1,state='WORKING')
         report=build(self.obj,self.selected)
         group=next(group for group in report['equipment_groups'] if group['label']=='Техника вне СМГ')
         subgroup=next(group for group in group['subgroups'] if group['label']==self.category.name)
@@ -117,7 +118,7 @@ class ReportGroupingTests(TestCase):
         response=self.client.get(reverse('production:smg_period_detail'),
             {'construction_object':self.obj.pk,'date':self.selected})
         self.assertContains(response,'Техника вне СМГ')
-        self.assertContains(response,'Максимум техники за день')
+        self.assertContains(response,f'Итого техники на {self.selected:%d.%m.%Y}')
 
     def test_custom_group_order_and_ungrouped_last(self):
         first=EquipmentCategory.objects.create(company=self.company,name='Я — первая',sort_order=1)
@@ -174,6 +175,7 @@ class ReportGroupingTests(TestCase):
         self.assertIsNone(camera[1][6])
         self.assertContains(detailed,'data-report-day-grid',count=3)
         self.assertContains(detailed,'data-report-top-scroll',count=3)
+        self.assertContains(detailed,'data-report-current-day',count=3)
         self.assertContains(detailed,'class="report-day-metric"')
         self.assertContains(detailed,'<thead>',count=5)  # Three separate directions plus two fuel tables.
         self.assertContains(detailed,'role="tab"',count=4)
@@ -182,6 +184,8 @@ class ReportGroupingTests(TestCase):
         blocks=day_matrix(build(self.obj,self.selected))['blocks']
         self.assertEqual({row['direction'] for row in blocks},{'works','equipment','labor'})
         self.assertTrue(all(row['direction']=='works' for row in blocks if row.get('label')=='Установка камеры'))
+        tabs=(Path(__file__).resolve().parents[2]/'static/production/period_tabs.js').read_text(encoding='utf-8')
+        self.assertIn('current.offsetLeft+current.offsetWidth-grid.clientWidth',tabs)
 
 
     def test_day_excel_work_totals_and_grouped_equipment(self):

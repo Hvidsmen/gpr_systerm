@@ -8,6 +8,7 @@
    state.top.hidden=grid.scrollWidth<=grid.clientWidth+1;
    state.top.style.width=grid.clientWidth+'px';
    state.top.firstElementChild.style.width=grid.scrollWidth+'px';
+   if(!state.positioned){const current=grid.querySelector('[data-report-current-day]');if(current)grid.scrollLeft=Math.max(0,current.offsetLeft+current.offsetWidth-grid.clientWidth);state.positioned=true;}
    state.top.scrollLeft=grid.scrollLeft;
   });
  }
@@ -18,7 +19,7 @@
    top.addEventListener('scroll',()=>{if(grid.scrollLeft!==top.scrollLeft)grid.scrollLeft=top.scrollLeft;},{passive:true});
    grid.addEventListener('scroll',()=>{if(top.scrollLeft!==grid.scrollLeft)top.scrollLeft=grid.scrollLeft;},{passive:true});
    const observer=new ResizeObserver(sizeScrolls);observer.observe(grid);observer.observe(grid.querySelector('table'));
-   scrolls.set(grid,{top,observer});
+   scrolls.set(grid,{top,observer,positioned:false});
   });
   sizeScrolls();
  }
