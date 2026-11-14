@@ -1,0 +1,7 @@
+<div class="smg-period-total-summary" data-resource-total="{{ direction }}" role="group" aria-label="{{ total_label }}">
+  <p>{{ total_label }} · {% if day_only %}за {{ day|date:'d.m.Y' }}{% else %}на {{ day|date:'d.m.Y' }}{% endif %}</p>
+  <div class="smg-period-total-cards">
+    <div class="smg-period-total-card"><span>План</span><strong>{% if total.plan != None %}{{ total.plan|floatformat:'-3' }} {{ unit }}{% else %}—{% endif %}</strong></div>
+    <div class="smg-period-total-card"><span>Факт</span><strong>{% if total.actual != None %}{{ total.actual|floatformat:'-3' }} {{ unit }}{% else %}—{% endif %}</strong></div>
+  </div>
+</div>

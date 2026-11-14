@@ -1,6 +1,13 @@
 <section id="smg-period-fuel" class="smg-period-section">
   <h3>ГСМ</h3>
   <p class="alert alert-info">План относится к выбранному объекту. Факт склада учитывается по ВЖГ и может включать несколько объектов. Поэтому отклонение и процент выполнения по ГСМ не рассчитываются.</p>
+  <div class="smg-period-total-summary" data-resource-total="fuel" role="group" aria-label="Итого ГСМ">
+    <p>Итого ГСМ · {% if day_only %}за {{ day|date:'d.m.Y' }}{% else %}за период{% endif %}</p>
+    <div class="smg-period-total-cards">
+      <div class="smg-period-total-card"><span>План объекта</span><strong>{% if fuel_total.plan != None %}{{ fuel_total.plan|floatformat:'-3' }} л{% else %}—{% endif %}</strong></div>
+      <div class="smg-period-total-card"><span>Факт расхода ВЖГ</span><strong>{% if warehouse_total.actual != None %}{{ warehouse_total.actual|floatformat:'-3' }} м³{% else %}—{% endif %}</strong></div>
+    </div>
+  </div>
   <h4 class="h6">План ГСМ объекта {% if day_only %}за день{% else %}за период{% endif %}</h4>
   <p class="small text-muted">Единица в СМГ — литры. Складской факт ниже показан в м³. Автоматическое преобразование плановых чисел не выполняется.</p>
   <div class="table-responsive"><table class="table table-sm smg-period-table"><thead><tr><th scope="col">ГСМ</th><th scope="col">Ед.</th><th scope="col">План СМГ</th></tr></thead><tbody>

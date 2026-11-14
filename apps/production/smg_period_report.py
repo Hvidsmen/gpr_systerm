@@ -71,6 +71,11 @@ def finish(rows):
     return sorted(result, key=lambda r: (r['context'].casefold(), r['label'].casefold(), r['unit']))
 
 
+def sum_present(rows, field):
+    values = [row[field] for row in rows if row.get(field) is not None]
+    return sum(values, Decimal(0)) if values else None
+
+
 def build(obj, day, schedule_id=None, *, day_only=False, equipment_only=False, include_fuel=True):
     start, end = bounds(day.replace(day=1))
     schedules = DailySchedule.objects.filter(company=obj.company, construction_object=obj, month=day.replace(day=1))
@@ -282,6 +287,7 @@ def build(obj, day, schedule_id=None, *, day_only=False, equipment_only=False, i
             actual=sum((r.actual_liters for r in records), Decimal(0)) if records else None))
 
     works_finished, labor_finished, equipment_finished = finish(work_rows), finish(labor_rows), finish(equipment_rows)
+    fuel_finished = finish(fuel_rows)
     for row in equipment_finished:
         if row['plan'] is None and row['actual'] is not None:
             row['subgroup']=row.get('group') or 'Без группы'
@@ -305,4 +311,5 @@ def build(obj, day, schedule_id=None, *, day_only=False, equipment_only=False, i
         period_days=(end-start).days+1, works=works_finished, labor=labor_finished,
         operational_matches=sorted(operational_matches,key=lambda fact:(fact['date'],fact['name'],fact['id'])),
         labor_total=labor_total,equipment=equipment_finished,equipment_total=equipment_total,
-        fuel=finish(fuel_rows), warehouse=warehouse)
+        fuel=fuel_finished, fuel_total={'plan':sum_present(fuel_finished,'plan')}, warehouse=warehouse,
+        warehouse_total={'received':sum_present(warehouse,'received'),'actual':sum_present(warehouse,'actual')})

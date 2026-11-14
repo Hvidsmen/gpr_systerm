@@ -153,6 +153,8 @@ class ReportGroupingTests(TestCase):
         self.assertNotContains(normal,'production-report-days')
         detailed=self.client.get(reverse('production:smg_period_detail'),{**query,'by_day':'1'})
         self.assertContains(detailed,'production-report-days')
+        self.assertContains(detailed,'data-resource-total="labor"')
+        self.assertContains(detailed,'data-resource-total="equipment"')
         self.assertContains(detailed,'data-report-expand',count=3)
         self.assertContains(detailed,'data-report-collapse',count=3)
         self.assertContains(detailed,self.later.strftime('%d.%m.%Y'))
