@@ -83,6 +83,7 @@ class SmgPeriodReportTests(TestCase):
         self.assertContains(response,'data-report-comment-toggle=')
         self.assertContains(response,'aria-expanded="false"')
         self.assertContains(response,'data-report-comment=')
+        self.assertRegex(response.content.decode(),r'data-report-comment="[^"]+" hidden')
         self.assertNotContains(response,'<summary>Комментарий')
 
     def test_operational_work_outside_smg_is_included(self):

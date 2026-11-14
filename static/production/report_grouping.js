@@ -10,6 +10,10 @@
   button.title=expanded?'Скрыть комментарий':'Показать комментарий';
   table.querySelectorAll('[data-report-comment]').forEach(row=>{if(row.dataset.reportComment===button.dataset.reportCommentToggle)row.hidden=!expanded;});
  }
+ function collapseComments(scope=document){
+  scope.querySelectorAll('[data-report-comment-toggle]').forEach(button=>{button.setAttribute('aria-expanded','false');button.title='Показать комментарий';});
+  scope.querySelectorAll('[data-report-comment]').forEach(row=>{row.hidden=true;});
+ }
  document.addEventListener('click',event=>{
   const bulk=event.target.closest('[data-report-expand], [data-report-collapse]');
   if(bulk){
@@ -47,5 +51,7 @@
   const values=entries.map(row=>Number(String(row.quantity).replace(',','.')));
   return values.every(Number.isFinite)?new Intl.NumberFormat('ru-RU',{maximumFractionDigits:6}).format(values.reduce((sum,n)=>sum+n,0)):'—';
  }
- window.productionReportGroups={workTree,quantity};
+ collapseComments();
+ document.addEventListener('production-report-loaded',event=>collapseComments(event.target),true);
+ window.productionReportGroups={workTree,quantity,collapseComments};
 })();
