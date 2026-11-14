@@ -122,6 +122,15 @@ class ProductionBatchSaveTests(TestCase):
         self.assertEqual((issue['code'],issue['existing_id']),('existing_person',saved['id']))
         self.assertNotIn('Employee activity',blocked.json()['error'])
 
+    def test_employee_already_recorded_for_day_can_be_added_to_other_shift_after_archiving(self):
+        EmployeeActivity.objects.create(company=self.company,construction_object=self.obj,date=self.day,employee=self.employee,
+            position=self.employee.position,shift=1,entry_direction='works',reported_by=self.users['DISPATCHER'])
+        self.employee.is_active=False;self.employee.save(update_fields=['is_active'])
+        row=self.person_row();row['values']['shift']='2'
+        response=self.request([row])
+        self.assertEqual(response.status_code,200,response.content)
+        self.assertEqual(set(EmployeeActivity.objects.filter(employee=self.employee).values_list('shift',flat=True)),{1,2})
+
     def test_person_on_other_object_returns_exact_location(self):
         other=ConstructionObject.objects.create(company=self.company,project=self.obj.project,name='Другой объект')
         activity=EmployeeActivity.objects.create(company=self.company,construction_object=other,date=self.day,employee=self.employee,position=self.employee.position,shift=1)

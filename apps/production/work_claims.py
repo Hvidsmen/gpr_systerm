@@ -85,7 +85,8 @@ def check_form_claims(user,obj,day,groups):
                 # Lock employee before inspecting a reservation, including across objects.
                 employee=Employee.objects.select_for_update().get(pk=employee.pk,company=obj.company)
                 retained=form.instance.pk and EmployeeActivity.objects.filter(pk=form.instance.pk,employee=employee,date=day,construction_object=obj,shift=shift).exists()
-                if not employee.is_active and not retained and not form.cleaned_data.get('DELETE'):raise ValidationError('Для нового ввода выберите активного сотрудника.')
+                from .employee_pool import can_add_employee
+                if not can_add_employee(employee,obj,day) and not retained and not form.cleaned_data.get('DELETE'):raise ValidationError('Для нового ввода выберите активного сотрудника.')
                 claim=EmployeeFactClaim.objects.filter(company=obj.company,date=day,employee=employee,shift=shift,expires_at__gt=now).select_related('dispatcher').first()
                 supplied=form.cleaned_data.get('person_claim_token','')
                 if claim and (claim.dispatcher_id!=user.pk or str(claim.session_key)!=supplied or claim.construction_object_id!=obj.pk):
@@ -223,7 +224,8 @@ def employee_claim(user,obj,day,session,action,parts):
         saved=EmployeeActivity.objects.filter(company=obj.company,date=day,employee=employee,shift=shift).first()
         if saved and (saved.construction_object_id!=obj.pk or not can_edit_person(user,saved)):
             return JsonResponse({'error':'Этот сотрудник за эту смену уже учтён другим диспетчером или на другом объекте.'},status=409)
-        if not employee.is_active and not saved:return JsonResponse({'error':'Сотрудник неактивен.'},status=400)
+        from .employee_pool import can_add_employee
+        if not can_add_employee(employee,obj,day) and not saved:return JsonResponse({'error':'Сотрудник неактивен.'},status=400)
         if action=='renew' and (not mine or row.expires_at<=now):return JsonResponse({'error':'Резерв сотрудника истёк. Возьмите его снова.'},status=409)
         if row is None:row=EmployeeFactClaim(company=obj.company,date=day,employee=employee,shift=shift)
         row.construction_object=obj;row.dispatcher=user;row.session_key=session;row.expires_at=now+TTL;row.save()

@@ -5,11 +5,10 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_GET
 
 from core.permissions import FACT_ROLES, require_roles
-from apps.resources.models import Employee
 from apps.personnel.models import CampStay
 from .dispatch_models import EmployeeActivity
 from .forms import ObjectDateForm
-from .employee_pool import prepare
+from .employee_pool import prepare,eligible_employees
 
 
 @login_required
@@ -19,7 +18,7 @@ def search(request):
     selector=ObjectDateForm(request.GET,user=request.user)
     if not selector.is_valid():return JsonResponse({'error':'Выберите доступный объект и корректную дату.'},status=400)
     obj=selector.cleaned_data['construction_object'];day=selector.cleaned_data['date']
-    query=Employee.objects.filter(company=obj.company,is_active=True).select_related('position')
+    query=eligible_employees(obj,day).select_related('position')
     terms=[term for term in request.GET.get('q','').strip().split() if term][:6]
     for term in terms:
         query=query.filter(Q(last_name__icontains=term)|Q(first_name__icontains=term)|Q(middle_name__icontains=term)|

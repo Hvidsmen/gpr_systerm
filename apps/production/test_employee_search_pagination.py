@@ -69,9 +69,11 @@ class ProductionEmployeeSearchPaginationTests(TestCase):
     def test_employee_added_to_day_is_available_at_night_and_blocked_location_is_reported(self):
         day=EmployeeActivity.objects.create(company=self.company,construction_object=self.obj,date=self.day,employee=self.employee,
             position=self.employee.position,shift=1,entry_direction='works',reported_by=self.users['DISPATCHER'])
+        self.employee.is_active=False;self.employee.save(update_fields=['is_active'])
         url=reverse('production:production_employee_search')
         night=self.client.get(url,{'construction_object':self.obj.pk,'date':self.day,'q':self.employee.last_name,'shift':2}).json()
         self.assertIn(self.employee.pk,[item['id'] for item in night['items']])
+        self.assertIn('архив',next(item['text'] for item in night['items'] if item['id']==self.employee.pk))
         self.assertEqual(night['blocked'],[])
         same_shift=self.client.get(url,{'construction_object':self.obj.pk,'date':self.day,'q':self.employee.last_name,'shift':1}).json()
         self.assertNotIn(self.employee.pk,[item['id'] for item in same_shift['items']])

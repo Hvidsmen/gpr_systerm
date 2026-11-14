@@ -185,7 +185,7 @@ class ProductionPersonForm(PersonForm):
             options=[(value,label) for _,group in pool['groups'] for value,label in group if str(value)==chosen]
             if not options:options=[(self.instance.employee_id,self.instance.employee.display_name)]
             self.fields['employee'].widget.choices=options
-        self.fields['employee'].help_text='Все активные сотрудники. Сначала — ВЖГ этого объекта, затем другие ВЖГ и сотрудники без оформленного нахождения.'
+        self.fields['employee'].help_text='Активные сотрудники и сотрудники, уже внесённые в факт этого дня. Сначала — ВЖГ этого объекта, затем другие ВЖГ и без оформленного нахождения.'
         self.fields['employee'].widget.attrs['data-remote-search-url']=reverse('production:production_employee_search')+'?'+urlencode({
             'construction_object':self.obj.pk,'date':self.day.isoformat(),
         })

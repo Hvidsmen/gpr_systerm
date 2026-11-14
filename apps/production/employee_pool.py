@@ -1,10 +1,21 @@
-"""All active employees; dated camp presence affects presentation, not eligibility."""
+"""Eligible employees; dated camp presence affects presentation, not eligibility."""
 from django.db.models import Q
 from apps.resources.models import Employee
 from apps.personnel.models import CampStay,StaffingSlot
 from apps.personnel.housing import present_stays
+from .dispatch_models import EmployeeActivity
 
 GENERAL_PATH='employee__position__planning_mapping__brigade__group__is_general_staff'
+
+
+def eligible_employees(obj,day):
+    """Active staff plus anyone already recorded on this fact day."""
+    recorded=EmployeeActivity.objects.filter(company=obj.company,date=day).values('employee_id')
+    return Employee.objects.filter(company=obj.company).filter(Q(is_active=True)|Q(pk__in=recorded))
+
+
+def can_add_employee(employee,obj,day):
+    return employee.is_active or EmployeeActivity.objects.filter(company=obj.company,date=day,employee=employee).exists()
 
 
 def activity_direction(row):
@@ -21,7 +32,7 @@ def labor_direction():
 
 
 def prepare(obj,day,employee_ids=None):
-    employees_query=Employee.objects.filter(company=obj.company,is_active=True)
+    employees_query=eligible_employees(obj,day)
     if employee_ids is not None:employees_query=employees_query.filter(pk__in=employee_ids)
     employees=list(employees_query.select_related('position__planning_mapping__brigade__group').order_by('last_name','first_name','middle_name','employee_number','pk'))
     ids={employee.pk for employee in employees}
@@ -43,8 +54,8 @@ def prepare(obj,day,employee_ids=None):
         staffing_group=(mapping.brigade.group.name if mapping and mapping.brigade.group_id else 'Без группы')
         group=0 if stay and stay.camp_id in linked else 1 if stay else 2
         rest=bool(not stay and (previous and previous.departed_on and previous.departed_on<=day or not previous and legacy.get(employee.pk)=={'МО'}))
-        text=('ВЖГ: '+stay.camp.name) if stay else 'Нахождение в ВЖГ не оформлено'+(' · межвахтовый отдых' if rest else '')
-        locations[str(employee.pk)]={'text':text,'camp':stay.camp.name if stay else '', 'camp_id':stay.camp_id if stay else None,'group':group,'rest':rest,'position':employee.position_id,'name':employee.display_name,'number':employee.employee_number,'position_label':employee.display_position,'staff_group':staffing_group}
+        text=(('ВЖГ: '+stay.camp.name) if stay else 'Нахождение в ВЖГ не оформлено'+(' · межвахтовый отдых' if rest else ''))+(' · архив — уже есть в факте дня' if not employee.is_active else '')
+        locations[str(employee.pk)]={'text':text,'camp':stay.camp.name if stay else '', 'camp_id':stay.camp_id if stay else None,'group':group,'rest':rest,'archived':not employee.is_active,'position':employee.position_id,'name':employee.display_name,'number':employee.employee_number,'position_label':employee.display_position,'staff_group':staffing_group}
         label=' · '.join(filter(None,[employee.display_name,'№ '+employee.employee_number if employee.employee_number else '',employee.display_position or 'Должность не указана',text]))
         groups[group].append((employee.pk,label))
     return {'locations':locations,'groups':[(label,values) for label,values in zip(['ВЖГ, связанные с объектом','Другие ВЖГ','Без оформленного нахождения в ВЖГ'],groups) if values]}

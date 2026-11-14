@@ -90,7 +90,10 @@ class ScopeFormMixin:
         for name in ['employee','equipment']:
             if name in self.fields:
                 retained=[key[0] for key in self.equipment_baselines] if name=='equipment' else []
-                self.fields[name].queryset=self.fields[name].queryset.filter(Q(is_active=True)|Q(pk=getattr(self.instance,name+'_id',None))|Q(pk__in=retained))
+                if name=='employee':
+                    from .employee_pool import eligible_employees
+                    self.fields[name].queryset=self.fields[name].queryset.filter(Q(pk__in=eligible_employees(obj,day))|Q(pk=getattr(self.instance,name+'_id',None)))
+                else:self.fields[name].queryset=self.fields[name].queryset.filter(Q(is_active=True)|Q(pk=getattr(self.instance,name+'_id',None))|Q(pk__in=retained))
         for field in self.fields.values():field.widget.attrs.setdefault('class','form-control')
 
 class WorkForm(ScopeFormMixin,DailyFactForm):
