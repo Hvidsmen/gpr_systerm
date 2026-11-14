@@ -18,10 +18,16 @@ def plan_positions(obj,day):
 def context(obj,day):
     from apps.resources.models import Employee
     roles=plan_positions(obj,day);counts=defaultdict(set);saved=[]
-    for row in EmployeeActivity.objects.filter(company=obj.company,construction_object=obj,date=day).select_related('position','planning_position'):
+    rows=EmployeeActivity.objects.filter(company=obj.company,construction_object=obj,date=day).select_related(
+        'position','planning_position','employee__position__planning_mapping__brigade__group')
+    for row in rows:
         role=row.planning_position_id or row.position_id
         if role:counts[role].add(row.employee_id)
-        saved.append({'id':row.pk,'employee':row.employee_id,'role':role})
+        staff_position=row.employee.position
+        mapping=getattr(staff_position,'planning_mapping',None) if staff_position else None
+        staff_group=mapping.brigade.group.name if mapping and mapping.brigade.group_id else 'Без группы'
+        saved.append({'id':row.pk,'employee':row.employee_id,'role':role,
+            'staff_group':staff_group,'staff_position':row.employee.display_position or 'Должность не указана'})
     from django.db.models import Q
     employees=Employee.objects.filter(company=obj.company).filter(Q(is_active=True)|Q(pk__in=[row['employee'] for row in saved])).values_list('pk','position_id')
     totals={'plan':sum(count for _,count in roles.values()),'assigned':len({row['employee'] for row in saved}),'remaining':sum(max(0,count-len(counts[pk])) for pk,(_,count) in roles.items()),'unplanned':len({row['employee'] for row in saved if row['role'] not in roles})}
