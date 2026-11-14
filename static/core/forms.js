@@ -217,6 +217,9 @@
           let option = [...this.select.options].find(row => String(row.value) === value);
           if (!option) {option = document.createElement('option'); option.value = value; this.select.append(option);}
           option.textContent = item.label || item.text;
+          if (Object.hasOwn(item, 'staff_group')) option.dataset.employeeStaffGroup = item.staff_group || 'Без группы';
+          if (Object.hasOwn(item, 'position_label')) option.dataset.employeePositionLabel = item.position_label || 'Должность не указана';
+          if (Object.hasOwn(item, 'position')) option.dataset.employeePosition = item.position || '';
           option.selected = selected.has(value);
         });
         this.remotePage = Number(payload.page || page);

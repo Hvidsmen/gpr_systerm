@@ -31,6 +31,7 @@
     const state=availability(person.id);if(!state.available)throw new Error(person.name+': '+state.label);
     const piece=document.createElement('template');piece.innerHTML=template.innerHTML.replaceAll('__prefix__',index++);
     const row=piece.content.firstElementChild,employee=field(row,'employee');
+    form.productionRememberEmployee?.(person);row.dataset.staffGroup=person.staff_group||'Без группы';row.dataset.staffPosition=person.position_label||'Должность не указана';
     if(![...employee.options].some(option=>String(option.value)===String(person.id)))employee.add(new Option(`${person.name} · ${person.position_label||'Должность не указана'}`,person.id));
     employee.value=person.id;field(row,'shift').value=shiftValue;field(row,'planning_position').value=positionValue;row.dataset.personDirty='1';row.dataset.entryDirty='1';pin(row);staged.push(row);fragment.append(row);
    }

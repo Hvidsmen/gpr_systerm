@@ -45,6 +45,7 @@ class ProductionEmployeeSearchPaginationTests(TestCase):
         response=self.client.get(url,{'construction_object':self.obj.pk,'date':self.day,'q':'Массовый','page':1})
         self.assertEqual(response.status_code,200,response.content);result=response.json()
         self.assertEqual(len(result['items']),50);self.assertEqual(result['total'],205);self.assertTrue(result['has_next'])
+        self.assertIn('staff_group',result['items'][0]);self.assertIn('position_label',result['items'][0])
         exact=self.client.get(url,{'construction_object':self.obj.pk,'date':self.day,'q':'T-204'}).json()
         self.assertEqual([item['number'] for item in exact['items']],['T-204'])
         self.assertIn('Массовый204 Сотрудник',exact['items'][0]['label'])
