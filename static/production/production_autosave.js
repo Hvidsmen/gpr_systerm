@@ -79,7 +79,7 @@
   // validation when the user edited only the work quantity.
   const values={};for(const [name,items] of grouped)values[name]=items.length>1?items:items.length===1?items[0]:[];return values;
  }
- async function save(selected,batchResetRetry=false){
+ async function save(selected,batchResetRetry=false,versionRetryCount=0){
   const changed=selected||dirty();
   if(changed.some(row=>!isPerson(row)))summarySaving('works');if(changed.some(isPerson))summarySaving('people');
   form.productionStatus.start(`Сохраняем текущую вкладку · записей: ${changed.length}`,changed.length);
@@ -118,6 +118,13 @@
   if(!response.ok){
    changed.forEach(row=>delete row.dataset.batchId);
    if(!batchResetRetry&&result.error?.includes('Идентификатор повтора уже использован'))return save(changed,true);
+   const issues=result.errors||[];
+   for(const issue of issues){const item=sent.get(issue.prefix);if(issue.version&&item)item.row.dataset.entryVersion=issue.version;}
+   // The user has already explicitly marked these rows for deletion.  A
+   // stale version contains no field edits to merge, so retry once per row
+   // with the current server version instead of asking for another click.
+   const staleDeletes=response.status===409&&issues.length&&issues.every(issue=>issue.version&&sent.get(issue.prefix)&&field(sent.get(issue.prefix).row,'DELETE')?.checked);
+   if(staleDeletes&&versionRetryCount<changed.length)return save(changed,batchResetRetry,versionRetryCount+1);
    const duplicate=(result.errors||[]).find(issue=>['existing_work','existing_person','operational_duplicate'].includes(issue.code));
    if(duplicate){
     const item=sent.get(duplicate.prefix),row=item?.row;
