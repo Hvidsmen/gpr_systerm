@@ -4,7 +4,7 @@
  const field=(row,name)=>row.querySelector(`[name$="-${name}"]`),containers=new Map([...host.querySelectorAll('[data-position-people]')].map(el=>[el.dataset.positionPeople,el]));
  const number=new Intl.NumberFormat('ru-RU',{maximumFractionDigits:2});
  const positionStorageKey=`production-position-filter:${host.closest('form').elements.construction_object?.value||''}:${host.closest('form').elements.date?.value||''}`;let quickPosition=sessionStorage.getItem(positionStorageKey)||'all';
- let refreshPending=false;
+ let refreshPending=false,lastAddedRow=null,lastAddedId='';
  function scheduleRefresh(){if(refreshPending)return;refreshPending=true;requestAnimationFrame(()=>{refreshPending=false;refresh();});}
  function write(el,value){const text=number.format(value);if(el.textContent!==text)el.textContent=text;}
  function prioritizeEmployees(row,role){
@@ -28,6 +28,12 @@
   const total=form.elements.namedItem('labor-TOTAL_FORMS'),index=Number(total.value),piece=document.createElement('template');piece.innerHTML=template.innerHTML.replaceAll('__prefix__',index);const row=piece.content.firstElementChild;
   total.value=index+1;(containers.get('')||host).append(row);row.dispatchEvent(new Event('change',{bubbles:true}));
  }
+ function markAdded(row){
+  if(field(row,'id')?.value||!field(row,'employee')?.value)return;lastAddedRow=row;lastAddedId='';row.dataset.newPinned='person';let note=row.querySelector('[data-new-row-note]');if(!note){note=document.createElement('div');note.className='production-new-row-note';note.dataset.newRowNote='';row.prepend(note);}note.textContent='Сотрудник добавлен в черновик · нажмите «Сохранить»';row.classList.add('production-new-row-focus');requestAnimationFrame(()=>requestAnimationFrame(()=>{row.scrollIntoView({behavior:'smooth',block:'center'});setTimeout(()=>row.classList.remove('production-new-row-focus'),2200);}));
+ }
+ function updateAddedLink(){
+  host.querySelectorAll('[data-last-person-link]').forEach(link=>link.remove());if(!lastAddedRow?.isConnected&&!lastAddedId)return;const empty=[...host.querySelectorAll('[data-production-person]')].find(row=>!field(row,'id')?.value&&!field(row,'employee')?.value&&!field(row,'DELETE')?.checked);if(!empty)return;const target=empty.querySelector('.production-person-employee'),link=document.createElement('a'),url=new URL(location.href);if(lastAddedId){url.searchParams.set('entry_step','2');url.searchParams.set('focus_person',lastAddedId);}link.href=lastAddedId?url:'#';link.className='btn btn-link btn-sm p-0 mt-1';link.dataset.lastPersonLink='';link.textContent='Сотрудник добавлен — открыть';link.addEventListener('click',event=>{if(!lastAddedRow?.isConnected){if(!lastAddedId)event.preventDefault();return;}event.preventDefault();lastAddedRow.scrollIntoView({behavior:'smooth',block:'center'});lastAddedRow.classList.add('production-new-row-focus');setTimeout(()=>lastAddedRow?.classList.remove('production-new-row-focus'),2200);});target?.append(link);
+ }
  function refresh(){
   const records=new Map(saved.map(row=>[String(row.id),row])),extras=[];
   host.querySelectorAll('[data-production-person]').forEach(row=>{
@@ -42,12 +48,16 @@
   host.querySelectorAll('[data-position-plan]').forEach(row=>{const actual=people.get(row.dataset.positionPlan)?.size||0,required=Number(row.dataset.planCount),need=Math.max(0,required-actual);write(row.querySelector('[data-position-assigned]'),actual);write(row.querySelector('[data-position-remaining]'),need);row.dataset.positionActual=actual;row.dataset.positionRemaining=need;row.hidden=quickPosition==='deficit'?need===0:quickPosition==='assigned'?actual===0:quickPosition==='empty'?actual>0:false;plan+=required;remaining+=need;});
   host.querySelectorAll('[data-position-group]').forEach(group=>{let groupPlan=0,groupRemaining=0;const groupPeople=new Set();group.querySelectorAll('[data-position-plan]').forEach(role=>{const required=Number(role.dataset.planCount),assigned=people.get(role.dataset.positionPlan)||new Set();groupPlan+=required;groupRemaining+=Math.max(0,required-assigned.size);assigned.forEach(employee=>groupPeople.add(employee));});group.hidden=[...group.querySelectorAll('[data-position-plan]')].every(role=>role.hidden);write(group.querySelector('[data-position-group-plan]'),groupPlan);write(group.querySelector('[data-position-group-assigned]'),groupPeople.size);write(group.querySelector('[data-position-group-remaining]'),groupRemaining);});
   for(const [key,value] of Object.entries({plan,assigned:unique.size,remaining,unplanned:unplanned.size}))write(host.querySelector(`[data-position-total="${key}"]`),value);
+  write(host.querySelector('[data-unplanned-total]'),unplanned.size);
   ensureEmptyPersonRow();
+  updateAddedLink();
  }
  document.addEventListener('click',event=>{const button=event.target.closest('[data-position-groups-toggle]');if(!button)return;host.querySelectorAll('[data-position-group],[data-unplanned-group]').forEach(group=>group.open=button.dataset.positionGroupsToggle==='open');});
  document.querySelectorAll('[data-position-quick]').forEach(button=>{const active=button.dataset.positionQuick===quickPosition;button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));});
  document.addEventListener('click',event=>{const button=event.target.closest('[data-position-quick]');if(!button)return;quickPosition=button.dataset.positionQuick;sessionStorage.setItem(positionStorageKey,quickPosition);document.querySelectorAll('[data-position-quick]').forEach(candidate=>{const active=candidate===button;candidate.classList.toggle('active',active);candidate.setAttribute('aria-pressed',String(active));});scheduleRefresh();});
- host.addEventListener('change',event=>{const row=event.target.closest('[data-production-person]');if(row&&event.target===field(row,'planning_position'))delete row.dataset.requestedPosition;scheduleRefresh();});
+ host.addEventListener('change',event=>{const row=event.target.closest('[data-production-person]');if(row&&event.target===field(row,'planning_position'))delete row.dataset.requestedPosition;if(row&&event.target===field(row,'employee'))markAdded(row);scheduleRefresh();});
+ form.addEventListener('production-people-bulk-staged',event=>{lastAddedRow=event.detail?.rows?.at(-1)||lastAddedRow;lastAddedId='';scheduleRefresh();});
+ form.addEventListener('production-autosave-committed',()=>{if(lastAddedRow){lastAddedId=field(lastAddedRow,'id')?.value||lastAddedId;scheduleRefresh();}});
  new MutationObserver(records=>{if(records.some(record=>[...record.addedNodes,...record.removedNodes].some(node=>node.nodeType===1&&(node.matches('[data-production-person]')||node.querySelector('[data-production-person]')))))scheduleRefresh();}).observe(host,{childList:true,subtree:true});
  host.closest('form').addEventListener('production-report-update',event=>{saved=event.detail.people.map(row=>({id:row.id,employee:row.employee,role:row.role}));scheduleRefresh();});
  const start=()=>refresh();
