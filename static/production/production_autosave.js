@@ -9,6 +9,16 @@
  progress.className='production-operation-progress';progress.hidden=true;progressTrack.max=100;progress.append(progressLabel,progressTrack);form.querySelector('.production-save-footer')?.prepend(progress);
  function progressState(kind,label,done=0,total=0){clearTimeout(progressTimer);progress.hidden=false;progress.dataset.state=kind;progressLabel.textContent=label;if(total)progressTrack.value=Math.round(done/total*100);else progressTrack.removeAttribute('value');progressTrack.classList.toggle('is-indeterminate',!total);if(kind==='done')progressTimer=setTimeout(()=>{progress.hidden=true;},2500);}
  form.productionStatus={start:(label,total=0)=>progressState('loading',label,0,total),update:(label,done,total)=>progressState('loading',label,done,total),done:label=>progressState('done',label,1,1),error:label=>progressState('error',label,1,1)};
+ const summary=document.createElement('section'),summaryTitle=document.createElement('strong'),summaryItems=document.createElement('div'),summaryLabels={works:'Работы',people:'Сотрудники',crews:'Бригады',links:'Связи'};let summaryData=null;
+ summary.className='production-save-summary';summary.hidden=true;summary.setAttribute('role','status');summary.setAttribute('aria-live','polite');summary.append(summaryTitle,summaryItems);form.querySelector('.production-save-footer')?.before(summary);
+ function renderSummary(){if(!summaryData)return;summary.hidden=false;summaryTitle.textContent=summaryData.failed?'Сохранение завершено с ошибкой':'Результат сохранения';summaryItems.replaceChildren();for(const kind of ['works','people','crews','links']){const item=document.createElement('span'),record=summaryData[kind];item.className='production-save-summary-item is-'+record.status;item.textContent=summaryLabels[kind]+' — '+(record.text||'без изменений');summaryItems.append(item);}}
+ function beginSummary(){const changed=dirty(),works=changed.filter(row=>!isPerson(row)).length,people=changed.filter(isPerson).length,crews=Number(form.productionCrewDraft?.pending||0),links=Number(form.productionLinks?.pending||0);summaryData={failed:false,works:{total:works,saved:0,status:works?'pending':'idle',text:works?'ожидает: '+works:'без изменений'},people:{total:people,saved:0,status:people?'pending':'idle',text:people?'ожидает: '+people:'без изменений'},crews:{total:crews,saved:0,status:crews?'pending':'idle',text:crews?'ожидает: '+crews:'без изменений'},links:{total:links,saved:0,status:links?'pending':'idle',text:links?'ожидает: '+links:'без изменений'}};renderSummary();}
+ function summarySaving(kind,total=null){if(!summaryData)return;const record=summaryData[kind];if(total!==null)record.total=Math.max(record.total,Number(total||0));if(!record.total)return;record.status='saving';record.text='сохраняется';renderSummary();}
+ function summarySavedRows(changed){if(!summaryData)return;for(const kind of ['works','people']){const count=changed.filter(row=>(kind==='people')===isPerson(row)).length;if(!count)continue;const record=summaryData[kind];record.saved+=count;record.status=record.saved>=record.total?'saved':'pending';record.text=record.saved>=record.total?'сохранено: '+record.saved:`сохранено ${record.saved} из ${record.total}`;}renderSummary();}
+ function summarySaved(kind){if(!summaryData)return;const record=summaryData[kind];record.saved=record.total;record.status='saved';record.text='сохранено: '+record.total;renderSummary();}
+ function summaryFailed(kinds,error){if(!summaryData)return;summaryData.failed=true;for(const kind of kinds){const record=summaryData[kind];record.status='error';record.text='ошибка: '+error.message;}renderSummary();}
+ function finishSummary(){if(!summaryData)return;for(const [kind,count] of Object.entries({works:dirty().filter(row=>!isPerson(row)).length,people:dirty().filter(isPerson).length,crews:Number(form.productionCrewDraft?.pending||0),links:Number(form.productionLinks?.pending||0)})){const record=summaryData[kind];if(count&&record.status!=='error'){record.status='pending';record.text='осталось: '+count;}else if(!count&&record.total&&record.status!=='error'){record.status='saved';record.text='сохранено: '+record.total;}}renderSummary();}
+ form.productionSaveSummary={begin:beginSummary,finish:finishSummary};
  document.querySelector('[data-fact-selector]')?.addEventListener('submit',()=>progressState('loading','Открываем выбранный объект и день…'));
  const rows=()=>[...form.querySelectorAll('[data-production-person],[data-work-fact-row]')];
  const field=(row,name)=>row.querySelector(`[name$="-${name}"]`),isPerson=row=>row.hasAttribute('data-production-person');
@@ -71,6 +81,7 @@
  }
  async function save(selected){
   const changed=selected||dirty();
+  if(changed.some(row=>!isPerson(row)))summarySaving('works');if(changed.some(isPerson))summarySaving('people');
   form.productionStatus.start(`Сохраняем текущую вкладку · записей: ${changed.length}`,changed.length);
   if(changed.some(row=>isPerson(row)&&!field(row,'DELETE')?.checked))form.productionValidatePeople();
   for(const row of changed){
@@ -130,6 +141,7 @@
    else{row.dataset.autoPending='1';pending=true;storeDraft(row);rowMessage(row,'Есть изменения');}
   }
   form.productionStatus.update(`Сохранено записей: ${changed.length} из ${changed.length}`,changed.length,changed.length);
+  summarySavedRows(changed);
   reindex();keepNewRowsVisible();if(result.report){if(form.productionApplyReport)form.productionApplyReport(result.report);else form.dispatchEvent(new CustomEvent('production-report-update',{detail:result.report}));}form.dispatchEvent(new Event('production-autosave-committed'));
   message(pending?'Есть изменения…':'Все изменения сохранены');
  }
@@ -137,6 +149,7 @@
   if((form.dataset.peopleBulkBusy==='1'||form.dataset.personShiftBusy==='1')){clearTimeout(timer);timer=setTimeout(()=>flush(),700);return false;}
   if(form.dataset.resetRequired==='1'){clearTimeout(timer);message('Производственная часть сброшена администратором. Обновите форму.',true);form.productionRecovery.reload('Производственный день был сброшен. Черновик сохранён отдельно. Перезагрузите страницу и проверьте данные перед повторным сохранением.');return false;}
   clearTimeout(timer);if(running){pending=true;const current=running;await current;return new Promise(resolve=>setTimeout(()=>resolve(flush()),0));}
+  beginSummary();
   running=(async()=>{
    while(pending||dirty().length){
     pending=false;const changed=dirty(),deletions=changed.filter(row=>field(row,'DELETE')?.checked),people=changed.filter(isPerson);
@@ -145,16 +158,19 @@
     // by the stages below this loop.
     if(!changed.length)break;
     const selected=(deletions.length?deletions:people.length?people:changed).slice(0,10);
-    try{await save(selected);failed=false;retryAttempt=0;}catch(error){failed=true;retryAttempt++;selected.forEach(row=>{if(field(row,'DELETE')?.checked)row.hidden=false;rowMessage(row,row.querySelector('[data-error]')?.textContent||error.message,true);});message(error.message,true);form.productionStatus.error(error.message);if(error.status===409||form.dataset.authChanged==='1'||retryAttempt>=2)form.productionRecovery.reload();else if(navigator.onLine===false)form.productionRecovery.offline();break;}}
+    try{await save(selected);failed=false;retryAttempt=0;}catch(error){failed=true;retryAttempt++;summaryFailed([...new Set(selected.map(row=>isPerson(row)?'people':'works'))],error);selected.forEach(row=>{if(field(row,'DELETE')?.checked)row.hidden=false;rowMessage(row,row.querySelector('[data-error]')?.textContent||error.message,true);});message(error.message,true);form.productionStatus.error(error.message);if(error.status===409||form.dataset.authChanged==='1'||retryAttempt>=2)form.productionRecovery.reload();else if(navigator.onLine===false)form.productionRecovery.offline();break;}}
    if(!failed&&form.productionCrewDraft?.pending){
+    summarySaving('crews',form.productionCrewDraft.pending);
     form.productionStatus.start(`Сохраняем состав бригад · изменений: ${form.productionCrewDraft.pending}`,form.productionCrewDraft.pending);
-    try{await form.productionCrewDraft.flush();}catch(error){failed=true;message(error.message,true);form.productionStatus.error(error.message);}
+    try{await form.productionCrewDraft.flush();summarySaved('crews');}catch(error){failed=true;summaryFailed(['crews'],error);message(error.message,true);form.productionStatus.error(error.message);}
    }
    if(!failed&&form.productionLinks?.pending){
+    summarySaving('links',form.productionLinks.pending);
     form.productionStatus.start(`Сохраняем связи · изменений: ${form.productionLinks.pending}`,form.productionLinks.pending);
-    if(!await form.productionLinks.flush()){failed=true;message('Связи не сохранены. Проверьте статус над вкладками и повторите сохранение.',true);form.productionStatus.error('Связи не сохранены');}
+    try{if(!await form.productionLinks.flush())throw new Error('Связи не сохранены. Проверьте статус над вкладками и повторите сохранение.');summarySaved('links');}catch(error){failed=true;summaryFailed(['links'],error);message(error.message,true);form.productionStatus.error('Связи не сохранены');}
    }
    if(!failed){message('Все изменения сохранены');form.productionStatus.done('Изменения и связи сохранены');form.productionRecovery.clear();}
+   finishSummary();
    return !failed;
   })();
   try{return await running;}finally{running=null;if(pending&&dirty().length)message('Есть несохранённые изменения');}
