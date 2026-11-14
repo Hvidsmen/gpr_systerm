@@ -10,12 +10,9 @@
  form.addEventListener('production-show-step',event=>showStep(Number(event.detail||1)));
  async function navigate(next){
   if(window.productionAutoSave?.pending&&!await window.productionAutoSave.flush()){
-   // Validation must never trap the user on another tab. Open the panel that
-   // contains the first error so the draft can be corrected or cancelled.
-   const error=[...form.querySelectorAll('[data-error]')].find(node=>node.textContent.trim()),panel=error?.closest('[data-entry-step]');
-   showStep(Number(panel?.dataset.entryStep||next));
-   let group=error?.closest('details');while(group){group.open=true;group=group.parentElement.closest('details');}
-   requestAnimationFrame(()=>error?.closest('[data-production-person],[data-work-fact-row]')?.scrollIntoView({behavior:'smooth',block:'center'}));
+   // Keep the validation warning, but never trap the user on its tab. The
+   // shared fact error summary returns to the exact row when needed.
+   showStep(next);
    return;
   }
   const label=({1:'Работы',2:'Люди',3:'Бригады',4:'Связи',5:'Сводный отчёт',6:'План / факт СМГ'})[next]||'вкладку';form.productionStatus?.start('Загружаем вкладку «'+label+'»…');showStep(next);if(next===4)await form.productionRefreshFull?.();if(![5,6].includes(next))form.productionStatus?.done('Вкладка «'+label+'» загружена');
