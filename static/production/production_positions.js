@@ -60,6 +60,6 @@
  form.addEventListener('production-autosave-committed',()=>{if(lastAddedRow){lastAddedId=field(lastAddedRow,'id')?.value||lastAddedId;scheduleRefresh();}});
  new MutationObserver(records=>{if(records.some(record=>[...record.addedNodes,...record.removedNodes].some(node=>node.nodeType===1&&(node.matches('[data-production-person]')||node.querySelector('[data-production-person]')))))scheduleRefresh();}).observe(host,{childList:true,subtree:true});
  host.closest('form').addEventListener('production-report-update',event=>{saved=event.detail.people.map(row=>({id:row.id,employee:row.employee,role:row.role}));scheduleRefresh();});
- const start=()=>refresh();
- if(window.productionPerformance)form.addEventListener('production-background-ready',start,{once:true});else start();
+ let started=false;const start=()=>{if(started)return;started=true;refresh();};
+ if(!window.productionPerformance||form.dataset.backgroundReady==='1')start();else{form.addEventListener('production-background-ready',start,{once:true});setTimeout(start,1700);}
 })();

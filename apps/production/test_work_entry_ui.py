@@ -458,9 +458,13 @@ class WorkEntryPresentationTests(TestCase):
         self.assertIn("option.value===savedWork",works)
         self.assertIn("work.tagName!=='SELECT'",works)
         self.assertIn("form.dispatchEvent(new Event('production-background-ready'))",metrics)
+        self.assertIn("form.dataset.backgroundReady='1'",metrics)
         self.assertIn('window.productionPerformance=',metrics)
         positions=(root/'production_positions.js').read_text(encoding='utf-8')
+        self.assertIn("form.dataset.backgroundReady==='1'",positions)
         self.assertIn("addEventListener('production-background-ready',start",positions)
+        self.assertIn('setTimeout(start,1700)',positions)
+        self.assertIn("form.dataset.backgroundReady==='1'",filters)
 
     def test_position_assignment_uses_full_server_employee_search(self):
         root=Path(__file__).resolve().parents[2]
