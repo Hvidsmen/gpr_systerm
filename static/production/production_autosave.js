@@ -85,9 +85,9 @@
   form.productionStatus.start(`Сохраняем текущую вкладку · записей: ${changed.length}`,changed.length);
   if(changed.some(row=>isPerson(row)&&!field(row,'DELETE')?.checked))form.productionValidatePeople();
   for(const row of changed){
-   if(!isPerson(row)&&!field(row,'DELETE')?.checked&&field(row,'actual_quantity')?.value===''){
-    const error=new Error('Введите фактический объём работы или 0. Пустое поле не сохраняется.');
-    const quantity=field(row,'actual_quantity');quantity.setAttribute('aria-invalid','true');row.querySelector('[data-error]').textContent=error.message;throw error;
+   if(!isPerson(row)&&!field(row,'DELETE')?.checked&&field(row,'actual_quantity')?.value.trim()===''){
+    const quantity=field(row,'actual_quantity');quantity.value='0';quantity.removeAttribute('aria-invalid');
+    const error=row.querySelector('[data-error]');if(error)error.textContent='';
    }
   }
   for(const row of changed){

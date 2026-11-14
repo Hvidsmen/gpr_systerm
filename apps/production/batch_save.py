@@ -70,6 +70,13 @@ def save_batch(request):
     # Ctrl+S may race with an autosave that has just completed. A zero-row
     # request is a harmless synchronization no-op, not a validation error.
     if not rows:return JsonResponse({'rows':[],'report_dirty':False,'noop':True})
+    # An empty quantity in the day editor means that the selected work was not
+    # performed. Persist it as an explicit zero instead of leaving the work
+    # only in a browser draft. Deleted rows keep their original payload.
+    for item in rows:
+        if not isinstance(item,dict) or item.get('kind')!='works' or not isinstance(item.get('values'),dict):continue
+        values=item['values']
+        if not values.get('DELETE') and str(values.get('actual_quantity') or '').strip()=='':values['actual_quantity']='0'
     try:batch_id=UUID(str(data.get('batch_id')))
     except (TypeError,ValueError,AttributeError):return _error('Не указан идентификатор безопасного повтора.')
     canonical=json.dumps({'object':obj.pk,'date':day.isoformat(),'rows':rows},ensure_ascii=False,sort_keys=True,separators=(',',':'))

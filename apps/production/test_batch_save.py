@@ -57,6 +57,12 @@ class ProductionBatchSaveTests(TestCase):
         self.assertEqual(response.status_code,200,response.content)
         self.assertEqual(DailyFact.objects.get().actual_quantity,7)
 
+    def test_blank_work_quantity_is_saved_as_zero(self):
+        row=self.work_row();row['values']['actual_quantity']=''
+        response=self.request([row])
+        self.assertEqual(response.status_code,200,response.content)
+        self.assertEqual(DailyFact.objects.get().actual_quantity,0)
+
     def test_empty_batch_after_completed_autosave_is_a_safe_noop(self):
         response=self.request([])
         self.assertEqual(response.status_code,200,response.content)

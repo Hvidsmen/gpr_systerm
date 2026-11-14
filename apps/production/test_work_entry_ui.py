@@ -311,6 +311,8 @@ class WorkEntryPresentationTests(TestCase):
         self.assertIn("summaryLabels={works:'Работы',people:'Сотрудники',crews:'Бригады',links:'Связи'}",autosave)
         self.assertIn('function finishSummary()',autosave)
         self.assertIn("form.productionSaveSummary={begin:beginSummary,finish:finishSummary}",autosave)
+        self.assertIn("quantity.value='0';quantity.removeAttribute('aria-invalid')",autosave)
+        self.assertNotIn('Пустое поле не сохраняется',autosave)
         people_picker_template=(Path(__file__).resolve().parents[2]/'templates/production/_people_picker.html').read_text(encoding='utf-8')
         self.assertIn('Сотрудники добавятся в черновик',people_picker_template)
         self.assertNotIn('Сотрудники сохранятся автоматически',people_picker_template)
