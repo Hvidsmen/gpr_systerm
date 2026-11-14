@@ -67,6 +67,7 @@ class DailyCrewTests(TestCase):
         source=(Path(__file__).resolve().parents[2]/'static/production/production_crews.js').read_text(encoding='utf-8')
         self.assertIn("if([3,4].includes(event.detail))load()",source)
         self.assertIn("form.productionLoadCrews=load",source)
+        self.assertIn("form.dispatchEvent(new CustomEvent('production-crews-update',{detail:data}))",source)
         self.assertIn("form.productionCrewDraft={flush,undo",source)
         self.assertIn('same.length<15',source)
         self.assertIn("action:'bulk_move',activities:same.map",source)
