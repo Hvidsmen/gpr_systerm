@@ -79,7 +79,7 @@
   // validation when the user edited only the work quantity.
   const values={};for(const [name,items] of grouped)values[name]=items.length>1?items:items.length===1?items[0]:[];return values;
  }
- async function save(selected){
+ async function save(selected,batchResetRetry=false){
   const changed=selected||dirty();
   if(changed.some(row=>!isPerson(row)))summarySaving('works');if(changed.some(isPerson))summarySaving('people');
   form.productionStatus.start(`Сохраняем текущую вкладку · записей: ${changed.length}`,changed.length);
@@ -116,6 +116,8 @@
   if(!(response.headers.get('content-type')||'').includes('application/json')){const error=new Error('Не удалось сохранить изменения. Проверьте доступ к порталу и повторите сохранение.');error.retryable=response.status>=500||response.status===429;throw error;}
   const result=await response.json();
   if(!response.ok){
+   changed.forEach(row=>delete row.dataset.batchId);
+   if(!batchResetRetry&&result.error?.includes('Идентификатор повтора уже использован'))return save(changed,true);
    const duplicate=(result.errors||[]).find(issue=>['existing_work','existing_person','operational_duplicate'].includes(issue.code));
    if(duplicate){
     const item=sent.get(duplicate.prefix),row=item?.row;

@@ -319,6 +319,8 @@ class WorkEntryPresentationTests(TestCase):
         self.assertIn('for(let attempt=0;attempt<2;attempt++)',autosave)
         self.assertIn('form.productionForgetClaims?.(changed,true)',autosave)
         self.assertNotIn('Failed to fetch',autosave)
+        self.assertIn('changed.forEach(row=>delete row.dataset.batchId)',autosave)
+        self.assertIn("return save(changed,true)",autosave)
         people_picker_template=(Path(__file__).resolve().parents[2]/'templates/production/_people_picker.html').read_text(encoding='utf-8')
         self.assertIn('Сотрудники добавятся в черновик',people_picker_template)
         self.assertNotIn('Сотрудники сохранятся автоматически',people_picker_template)
