@@ -24,9 +24,13 @@ def search(request):
     for term in terms:
         query=query.filter(Q(last_name__icontains=term)|Q(first_name__icontains=term)|Q(middle_name__icontains=term)|
             Q(employee_number__icontains=term)|Q(position__name__icontains=term)|Q(personnel_card__stays__camp__name__icontains=term))
-    position=request.GET.get('position');shift=request.GET.get('shift')
+    position=request.GET.get('position');shift=request.GET.get('shift');blocked=[]
     if shift and shift.isdigit() and 1<=int(shift)<=24:
-        query=query.exclude(pk__in=EmployeeActivity.objects.filter(company=obj.company,date=day,shift=int(shift)).values('employee_id'))
+        occupied=EmployeeActivity.objects.filter(company=obj.company,date=day,shift=int(shift),employee__in=query).select_related('employee','construction_object').order_by('employee__last_name','employee__first_name','pk')
+        if terms:
+            blocked=[{'id':row.employee_id,'name':row.employee.display_name,'activity':row.pk,'construction_object':row.construction_object_id,
+                'construction_object_name':str(row.construction_object),'shift':row.shift} for row in occupied[:10]]
+        query=query.exclude(pk__in=occupied.values('employee_id'))
     present=CampStay.objects.filter(company=obj.company,cancelled_at=None,arrived_on__lte=day,person__employee_id=OuterRef('pk')).filter(Q(departed_on=None)|Q(departed_on__gt=day))
     linked=present.filter(camp__object_links__company=obj.company,camp__object_links__construction_object=obj)
     query=query.annotate(
@@ -43,4 +47,4 @@ def search(request):
         info=locations[str(employee.pk)]
         label=' · '.join(filter(None,[employee.display_name,'№ '+employee.employee_number if employee.employee_number else '',employee.display_position or 'Должность не указана',info['text']]))
         items.append({'id':employee.pk,'label':label,**info})
-    return JsonResponse({'items':items,'page':page.number,'pages':page.paginator.num_pages,'total':page.paginator.count,'has_next':page.has_next()})
+    return JsonResponse({'items':items,'blocked':blocked,'page':page.number,'pages':page.paginator.num_pages,'total':page.paginator.count,'has_next':page.has_next()})

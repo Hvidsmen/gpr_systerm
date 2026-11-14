@@ -66,6 +66,17 @@ class ProductionEmployeeSearchPaginationTests(TestCase):
         first_other=positions.index(str(other_position))
         self.assertTrue(all(label==str(self.employee.position) for label in positions[:first_other]))
 
+    def test_employee_added_to_day_is_available_at_night_and_blocked_location_is_reported(self):
+        day=EmployeeActivity.objects.create(company=self.company,construction_object=self.obj,date=self.day,employee=self.employee,
+            position=self.employee.position,shift=1,entry_direction='works',reported_by=self.users['DISPATCHER'])
+        url=reverse('production:production_employee_search')
+        night=self.client.get(url,{'construction_object':self.obj.pk,'date':self.day,'q':self.employee.last_name,'shift':2}).json()
+        self.assertIn(self.employee.pk,[item['id'] for item in night['items']])
+        self.assertEqual(night['blocked'],[])
+        same_shift=self.client.get(url,{'construction_object':self.obj.pk,'date':self.day,'q':self.employee.last_name,'shift':1}).json()
+        self.assertNotIn(self.employee.pk,[item['id'] for item in same_shift['items']])
+        self.assertEqual(same_shift['blocked'][0]['activity'],day.pk)
+
     def test_inline_employee_field_uses_the_same_full_server_search(self):
         response=self.page()
         labor=next(group for group in response.context['groups'] if group['prefix']=='labor')

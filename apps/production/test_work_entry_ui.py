@@ -243,6 +243,8 @@ class WorkEntryPresentationTests(TestCase):
         self.assertIn("discardDraft:removeDraft",source)
         picker=(Path(__file__).resolve().parents[2]/'static/production/people_picker.js').read_text(encoding='utf-8')
         self.assertIn('position:position.value,shift:shift.value',picker)
+        self.assertIn('blocked=data.blocked||[]',picker)
+        self.assertIn("target.searchParams.set('focus_person',record.activity)",picker)
         forms=(Path(__file__).resolve().parents[2]/'static/core/forms.js').read_text(encoding='utf-8')
         self.assertIn("['kind', 'camp', 'date', 'shift']",forms)
         self.assertIn('availability(item.id,present).available',picker)
