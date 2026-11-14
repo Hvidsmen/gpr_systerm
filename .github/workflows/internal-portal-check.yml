@@ -1,0 +1,78 @@
+name: Internal TEST portal check
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/staging-portal-20261102
+
+permissions:
+  contents: read
+
+concurrency:
+  group: internal-test-portal
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    name: Open TEST portal from the internal network
+    runs-on: [self-hosted, Windows, X64, gpr-internal]
+    timeout-minutes: 15
+    env:
+      INTERNAL_TEST_BASE_URL: ${{ secrets.INTERNAL_TEST_BASE_URL }}
+      INTERNAL_TEST_USERNAME: ${{ secrets.INTERNAL_TEST_USERNAME }}
+      INTERNAL_TEST_PASSWORD: ${{ secrets.INTERNAL_TEST_PASSWORD }}
+      INTERNAL_TEST_EXPECTED_MARKER: 'ТЕСТОВЫЙ ПОРТАЛ'
+      INTERNAL_TEST_RESULTS_DIR: ${{ runner.temp }}\gpr-internal-results-${{ github.run_id }}-${{ github.run_attempt }}
+      PLAYWRIGHT_BROWSERS_PATH: ${{ runner.tool_cache }}\gpr-playwright
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          clean: true
+
+      - name: Validate private TEST configuration
+        shell: powershell
+        run: |
+          foreach ($name in @('INTERNAL_TEST_BASE_URL', 'INTERNAL_TEST_USERNAME', 'INTERNAL_TEST_PASSWORD')) {
+            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+              throw "Repository secret $name is not configured."
+            }
+          }
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: ops/internal-test-agent/package-lock.json
+
+      - name: Install the browser test runtime
+        working-directory: ops/internal-test-agent
+        shell: powershell
+        run: |
+          npm ci --no-audit --no-fund
+          npx playwright install chromium
+
+      - name: Check TEST portal and capture screenshots
+        working-directory: ops/internal-test-agent
+        shell: powershell
+        run: npm test
+
+      - name: Add the readable result to the run summary
+        if: always()
+        shell: powershell
+        run: |
+          $summary = Join-Path $env:INTERNAL_TEST_RESULTS_DIR 'summary.md'
+          if (Test-Path -LiteralPath $summary) {
+            Get-Content -LiteralPath $summary -Raw | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+          } else {
+            '## Internal TEST portal check`n`nThe check stopped before a report was created.' | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+          }
+
+      - name: Upload screenshots and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: internal-test-portal-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.INTERNAL_TEST_RESULTS_DIR }}
+          if-no-files-found: warn
+          retention-days: 14

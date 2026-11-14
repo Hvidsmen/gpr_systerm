@@ -35,7 +35,7 @@ jobs:
         shell: powershell
         run: |
           $failed = $false
-          foreach ($scriptName in @('bootstrap-staging.ps1', 'install-staging.ps1', 'control-staging.ps1', 'repair-staging.ps1', 'clear-staging-personnel.ps1')) {
+          foreach ($scriptName in @('bootstrap-staging.ps1', 'install-staging.ps1', 'control-staging.ps1', 'repair-staging.ps1', 'clear-staging-personnel.ps1', 'install-internal-test-agent.ps1')) {
             $tokens = $null
             $parseErrors = $null
             [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path "ops/$scriptName").Path, [ref]$tokens, [ref]$parseErrors)
