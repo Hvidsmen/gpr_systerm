@@ -1,0 +1,24 @@
+{% if run.error_help %}
+<div class="alert alert-danger mb-2" role="alert">
+  <strong>{{ run.error_help.title }}</strong>
+  <p class="mb-2">Задание работает от {{ run.error_help.account_kind }} <strong>{{ run.error_help.account }}</strong>. У неё нет доступа к базе <strong>{{ run.error_help.database }}</strong> на сервере <strong>{{ run.error_help.server }}</strong>.</p>
+  {% if run.error_help.machine_account %}
+  <ol class="mb-2 ps-3">
+    <li>Окончание <strong>$</strong> означает, что портал запущен от SYSTEM и SQL видит учётную запись компьютера. Если до переноса использовался доменный пользователь, права SQL менять не надо.</li>
+    <li>На сервере портала запустите от администратора <strong>SET_GPR_PORTAL_ACCOUNT.cmd</strong> и укажите прежнего доменного пользователя. Пароль сохранит только Планировщик Windows.</li>
+    <li>После перезапуска портала нажмите «Запустить сейчас». Оба справочника используют одну учётную запись.</li>
+  </ol>
+  <details class="mb-1"><summary>Только если SYSTEM выбран намеренно: команда для администратора SQL</summary><pre class="mt-2 mb-0 p-2 border rounded bg-body" style="white-space:pre-wrap;overflow-wrap:anywhere">{{ run.error_help.sql }}</pre></details>
+  {% else %}
+  <ol class="mb-2 ps-3">
+    <li>Проверьте, что в Планировщике Windows для задания «YDS Portal» указана ожидаемая доменная учётная запись.</li>
+    <li>Если учётная запись верна, администратор SQL должен создать для неё Windows login и пользователя базы, затем выдать только права CONNECT и SELECT.</li>
+    <li>После исправления нажмите «Запустить сейчас».</li>
+  </ol>
+  <details class="mb-1"><summary>Команда для администратора SQL</summary><pre class="mt-2 mb-0 p-2 border rounded bg-body" style="white-space:pre-wrap;overflow-wrap:anywhere">{{ run.error_help.sql }}</pre></details>
+  {% endif %}
+  <details><summary>Технический текст ошибки</summary><div class="mt-1" style="white-space:pre-wrap;overflow-wrap:anywhere">{{ run.error }}</div></details>
+</div>
+{% elif run.error %}
+<p class="text-danger mb-1" style="white-space:pre-wrap;overflow-wrap:anywhere">{{ run.error }}</p>
+{% endif %}

@@ -1,4 +1,5 @@
 """Administrator's company-scoped queue and history of 1C jobs."""
+import re
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.shortcuts import render
@@ -12,6 +13,49 @@ from .models import OneCDiagnosticRun, OneCConnection
 from .one_c_schedules import WEEKDAYS
 
 KINDS = [('diagnostic', 'Диагностика структуры'), ('metadata', 'Чтение названий'), ('positions', 'Загрузка должностей'), ('employees', 'Загрузка сотрудников')]
+
+
+def _sql_identifier(value):
+    return '[' + str(value).replace(']', ']]') + ']'
+
+
+def _sql_literal(value):
+    return "N'" + str(value).replace("'", "''") + "'"
+
+
+def error_help(error, server='', database=''):
+    """Return actionable, read-only SQL guidance for a rejected Windows login."""
+    if not error:
+        return None
+    patterns = (
+        r'При входе в систему пользователя\s+["«]?([^"»\r\n]+?)["»]?\s+произошла ошибка',
+        r"Login failed for user\s+'([^'\r\n]+)'",
+    )
+    account = next((match.group(1).strip() for pattern in patterns
+                    if (match := re.search(pattern, str(error), re.IGNORECASE))), '')
+    if not account:
+        return None
+    account_kind = 'учётной записи компьютера' if account.endswith('$') else 'учётной записи Windows'
+    login = _sql_identifier(account)
+    literal = _sql_literal(account)
+    target = _sql_identifier(database)
+    sql = '\n'.join((
+        'USE [master];',
+        f'IF SUSER_ID({literal}) IS NULL CREATE LOGIN {login} FROM WINDOWS;',
+        f'USE {target};',
+        f'IF USER_ID({literal}) IS NULL CREATE USER {login} FOR LOGIN {login};',
+        f'GRANT CONNECT TO {login};',
+        f'GRANT SELECT TO {login};',
+    ))
+    return {
+        'title': 'SQL Server отклонил вход фонового обработчика.',
+        'account': account,
+        'account_kind': account_kind,
+        'machine_account': account.endswith('$'),
+        'server': server,
+        'database': database,
+        'sql': sql,
+    }
 
 
 class PositionScheduleForm(forms.Form):
@@ -114,6 +158,8 @@ def jobs(request):
     import_jobs=[]
     for item in CATALOGUES:
         kind=item['kind'];last=last_run(connection,kind)
+        if last:
+            last.error_help=error_help(last.error,last.server,last.database)
         interval=getattr(connection,kind+'_interval_minutes')
         next_run = scheduled_deadline(connection, kind, now, last)
         import_jobs.append({**item,'ready':readiness[kind],'form':schedule_forms[kind],'interval':interval,
@@ -140,6 +186,7 @@ def jobs(request):
     page = Paginator(query, 50).get_page(request.GET.get('page'))
     for run in page:
         run.kind_label = 'Загрузка сотрудников' if run.report.get('employees_import') else 'Загрузка должностей' if run.report.get('positions_import') else 'Чтение названий' if run.report.get('metadata_only') else 'Диагностика структуры'
+        run.error_help=error_help(run.error,run.server,run.database)
     params = request.GET.copy()
     params.pop('page', None)
     return render(request, 'accounts/one_c_jobs.html', {'page': page, 'pending': pending, 'statuses': statuses,

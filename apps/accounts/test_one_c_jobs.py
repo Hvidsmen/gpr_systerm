@@ -1,6 +1,7 @@
 from django.test import TestCase
 from django.urls import reverse
 from .models import Company, Role, User, OneCConnection, OneCDiagnosticRun
+from .one_c_jobs import error_help
 
 
 class OneCJobTests(TestCase):
@@ -52,3 +53,26 @@ class OneCJobTests(TestCase):
         response=self.client.get(self.url)
         self.assertContains(response,'Данные не загружены')
         self.assertContains(response,reverse('resources:brigade_list'))
+
+    def test_windows_machine_login_failure_has_actionable_read_only_help(self):
+        error = ('Исключение при вызове "Open" с "0" аргументами: '
+                 '"При входе в систему пользователя "YAMALGAZPROM\\MSK-DB2$" произошла ошибка."')
+        run = OneCDiagnosticRun.objects.create(connection=self.connection, server=self.connection.server,
+            database=self.connection.database, report={'employees_import': True}, status='ERROR', error=error)
+        response = self.client.get(self.url)
+        self.assertContains(response, 'SQL Server отклонил вход фонового обработчика')
+        self.assertContains(response, 'YAMALGAZPROM\\MSK-DB2$')
+        self.assertContains(response, 'SET_GPR_PORTAL_ACCOUNT.cmd')
+        self.assertContains(response, 'права SQL менять не надо')
+        self.assertContains(response, 'CREATE LOGIN [YAMALGAZPROM\\MSK-DB2$] FROM WINDOWS')
+        self.assertContains(response, f'USE [{self.connection.database}]')
+        self.assertContains(response, 'Технический текст ошибки')
+        self.assertEqual(run, response.context['import_jobs'][0]['last'])
+
+    def test_login_help_quotes_sql_names_and_ignores_other_errors(self):
+        help_text = error_help("Login failed for user 'DOMAIN\\portal]host$'", 'sql', "zup]archive")
+        self.assertEqual(help_text['account'], 'DOMAIN\\portal]host$')
+        self.assertTrue(help_text['machine_account'])
+        self.assertIn('[DOMAIN\\portal]]host$]', help_text['sql'])
+        self.assertIn('USE [zup]]archive]', help_text['sql'])
+        self.assertIsNone(error_help('Network path was not found', 'sql', 'zup'))
