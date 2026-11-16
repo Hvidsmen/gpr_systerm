@@ -80,13 +80,16 @@
       select.addEventListener('remote-search-refresh', () => {if (this.isOpen) this.loadRemote(1);});
       if (this.remoteUrl) {
         const form = select.form;
+        const preserveSelection = new Set((select.dataset.remotePreserveSelectionFields || '').split(',').map(value => value.trim()).filter(Boolean));
         const contextFields = ['kind', 'camp', 'date', 'shift'].map(key => {
           const name = select.dataset['remote' + key[0].toUpperCase() + key.slice(1) + 'Field'];
-          return name && form?.elements.namedItem(name);
+          const field = name && form?.elements.namedItem(name);
+          return field ? {key, field} : null;
         }).filter(Boolean);
-        contextFields.forEach(field => field.addEventListener('change', () => {
-          if (!select.disabled) [...select.options].forEach(option => {option.selected = false;});
-          [...select.options].forEach(option => {if (option.value) option.remove();});
+        contextFields.forEach(({key, field}) => field.addEventListener('change', () => {
+          const preserve = preserveSelection.has(key);
+          if (!preserve && !select.disabled) [...select.options].forEach(option => {option.selected = false;});
+          [...select.options].forEach(option => {if (option.value && (!preserve || !option.selected)) option.remove();});
           this.changed();
           if (this.isOpen) this.loadRemote(1);
         }));

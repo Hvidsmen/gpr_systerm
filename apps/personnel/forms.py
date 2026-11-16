@@ -151,6 +151,7 @@ class MovementForm(forms.Form):
     employees=forms.ModelMultipleChoiceField(label='Сотрудники',queryset=None,widget=RemoteEmployeeSelectMultiple(attrs={
         'size':8,'data-personnel-searchable':'','data-remote-scope':'movement',
         'data-remote-kind-field':'kind','data-remote-camp-field':'camp','data-remote-date-field':'date',
+        'data-remote-preserve-selection-fields':'date',
     }))
     target=forms.ModelChoiceField(label='ВЖГ назначения',queryset=None,required=False)
     comment=forms.CharField(label='Комментарий',required=False,widget=forms.Textarea(attrs={'rows':2}),max_length=4000)

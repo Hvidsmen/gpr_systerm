@@ -255,9 +255,13 @@ class MovementRecommendationTests(TestCase):
             day=timezone.localdate(),allow_direct=True)
         self.assertEqual(planned.fields['date'].label,'Плановая дата выезда')
         self.assertEqual(actual.fields['date'].label,'Фактическая дата выезда')
+        self.assertEqual(planned.fields['employees'].widget.attrs['data-remote-preserve-selection-fields'],'date')
         script=(Path(__file__).resolve().parents[2]/'static/personnel/housing.js').read_text(encoding='utf-8')
         self.assertIn("{ARRIVAL:'заезда',DEPARTURE:'выезда',TRANSFER:'перевода'}",script)
         self.assertIn("(direct&&direct.checked)?'Фактическая':'Плановая'",script)
+        forms=(Path(__file__).resolve().parents[2]/'static/core/forms.js').read_text(encoding='utf-8')
+        self.assertIn('remotePreserveSelectionFields',forms)
+        self.assertIn("const preserve = preserveSelection.has(key)",forms)
 
     def test_personnel_dispatcher_can_temporarily_record_arrival_and_departure_without_requests(self):
         self.client.force_login(self.personnel_dispatcher);today=timezone.localdate();arrival=today-timedelta(days=5);url=reverse('personnel:movements')
