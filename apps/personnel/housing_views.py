@@ -480,7 +480,9 @@ def movement_review_accept(request,pk):
             elif workflow_action=='arrive_hub':arrive_hub(request.user,row,forms.DateField().clean(request.POST.get('hub_arrived_on')))
             elif workflow_action=='hub_documents':
                 planned_arrival=forms.DateField().clean(request.POST.get('planned_hub_arrival_date')) if request.POST.get('planned_hub_arrival_date') else None
-                update_hub(request.user,row,tickets_ready=request.POST.get('tickets_ready')=='1',clearance_ready=request.POST.get('clearance_ready')=='1',clearance_document=request.FILES.get('clearance_document'),
+                ticket_cost=forms.DecimalField(required=False,min_value=0,max_digits=12,decimal_places=2).clean(request.POST.get('ticket_cost'))
+                update_hub(request.user,row,tickets_ready=request.POST.get('tickets_ready')=='1',ticket_cost=ticket_cost,ticket_document=request.FILES.get('ticket_document'),
+                    clearance_ready=request.POST.get('clearance_ready')=='1',clearance_document=request.FILES.get('clearance_document'),
                     planned_hub_arrival_date=planned_arrival)
             elif workflow_action=='leave_hub':leave_hub(request.user,row,forms.DateField().clean(request.POST.get('hub_departed_on')))
             elif workflow_action=='arrive_camp':arrive_camp(request.user,row,forms.DateField().clean(request.POST.get('final_arrived_on')))
@@ -571,6 +573,20 @@ def movement_review_accept(request,pk):
         'needs_zup_registration':needs_zup_registration,'can_register_employee':can_register_employee,'registration_form':registration_form,
         'personnel_section':'reviews','project_camps':{key:sorted(value) for key,value in pairs.items()},
         'back_url':back_url,'back_label':back_label})
+
+
+@login_required
+def movement_review_ticket(request,pk):
+    """Download through Django because the Windows application server does not expose /media/."""
+    from pathlib import Path
+    from core.permissions import require_roles,role_code
+    require_roles(request.user,{'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER','MANAGER','PEREVAKHTA_SPECIALIST'})
+    rows=MovementReviewRequest.objects.filter(pk=pk,company=request.user.company).exclude(ticket_document='')
+    if role_code(request.user)=='PERSONNEL_DISPATCHER':rows=rows.filter(requested_by=request.user)
+    row=get_object_or_404(rows)
+    try:stream=row.ticket_document.storage.open(row.ticket_document.name,'rb')
+    except (FileNotFoundError,OSError):raise Http404('Файл билета не найден в хранилище.')
+    return FileResponse(stream,as_attachment=True,filename=Path(row.ticket_document.name).name,content_type='application/octet-stream')
 
 
 @login_required

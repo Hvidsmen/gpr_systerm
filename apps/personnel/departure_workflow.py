@@ -265,7 +265,7 @@ def arrive_hub(user,row,day):
 
 
 @transaction.atomic
-def update_hub(user,row,*,tickets_ready=False,clearance_ready=False,clearance_document=None,planned_hub_arrival_date=None):
+def update_hub(user,row,*,tickets_ready=False,ticket_cost=None,ticket_document=None,clearance_ready=False,clearance_document=None,planned_hub_arrival_date=None):
     if role_code(user) not in {'ADMIN','HR_HEAD','PEREVAKHTA_SPECIALIST'}:raise PermissionDenied('Билеты и документы оформляет специалист перевахты.')
     row=MovementReviewRequest.objects.select_for_update().get(pk=row.pk,company=user.company)
     buying_arrival_tickets=row.kind=='ARRIVAL' and row.status=='PEREVAKHTA'
@@ -281,6 +281,10 @@ def update_hub(user,row,*,tickets_ready=False,clearance_ready=False,clearance_do
             log(row,user,'Изменена плановая дата прибытия в ОП Дудинка',f'{previous:%d.%m.%Y} → {planned_hub_arrival_date:%d.%m.%Y}')
     if tickets_ready and not row.tickets_ready:
         row.tickets_ready=True;row.tickets_ready_at=timezone.now();fields+=['tickets_ready','tickets_ready_at'];log(row,user,'Билеты приобретены')
+    if ticket_cost is not None and row.ticket_cost!=ticket_cost:
+        row.ticket_cost=ticket_cost;fields.append('ticket_cost');log(row,user,'Указана стоимость билета',f'{ticket_cost:.2f} руб.')
+    if ticket_document:
+        row.ticket_document=ticket_document;row.ticket_uploaded_at=timezone.now();fields+=['ticket_document','ticket_uploaded_at'];log(row,user,'Прикреплён файл билета',ticket_document.name)
     if (clearance_ready or clearance_document) and not row.clearance_ready:
         row.clearance_ready=True;fields.append('clearance_ready');log(row,user,'Обходной лист имеется')
     if clearance_document:

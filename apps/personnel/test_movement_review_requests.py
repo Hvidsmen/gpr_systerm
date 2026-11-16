@@ -1,4 +1,5 @@
 from datetime import timedelta
+from decimal import Decimal
 from io import BytesIO
 from uuid import uuid4
 
@@ -379,12 +380,18 @@ class MovementReviewRequestTests(TestCase):
         self.assertContains(detail,'1. Выезд из ВЖГ')
         self.assertContains(detail,'2. ОП Дудинка')
         self.assertContains(detail,day.strftime('%d.%m.%Y'))
-        self.assertContains(detail,'name="clearance_ready"');self.assertContains(detail,'Прикрепить файл (необязательно)')
+        self.assertContains(detail,'name="ticket_cost"');self.assertContains(detail,'name="ticket_document"')
+        self.assertContains(detail,'name="clearance_ready"');self.assertContains(detail,'Прикрепить обходной лист (необязательно)')
         response=self.client.post(reverse('personnel:movement_review_accept',args=[row.pk]),{
             'workflow_action':'hub_documents','tickets_ready':'1','clearance_ready':'1',
+            'ticket_cost':'12345.67','ticket_document':SimpleUploadedFile('departure-ticket.pdf',b'ticket'),
         })
         self.assertRedirects(response,reverse('personnel:movement_review_accept',args=[row.pk]),fetch_redirect_response=False)
         row.refresh_from_db();self.assertTrue(row.tickets_ready);self.assertTrue(row.clearance_ready);self.assertFalse(row.clearance_document)
+        self.assertEqual(row.ticket_cost,Decimal('12345.67'));self.assertTrue(row.ticket_document)
+        download=self.client.get(reverse('personnel:movement_review_ticket',args=[row.pk]))
+        self.assertEqual(download.status_code,200);self.assertEqual(b''.join(download.streaming_content),b'ticket')
+        self.assertIn('attachment;',download['Content-Disposition'])
         leave_hub(self.reviewer,row,day)
         row.refresh_from_db();self.assertEqual(row.status,'COMPLETED');self.assertEqual(row.hub_departed_on,day)
         self.assertGreaterEqual(row.workflow_events.count(),14)
@@ -413,10 +420,16 @@ class MovementReviewRequestTests(TestCase):
         row.planned_hub_departure_date=day+timedelta(days=3);row.save(update_fields=['planned_hub_departure_date','updated_at'])
         self.client.force_login(self.reviewer);page=self.client.get(reverse('personnel:movement_review_accept',args=[row.pk]))
         self.assertContains(page,'name="planned_hub_arrival_date"');self.assertContains(page,'Дата прибытия в ОП Дудинка по билету')
+        self.assertContains(page,'name="ticket_cost"');self.assertContains(page,'name="ticket_document"')
         self.assertNotContains(page,f'value="{day.isoformat()}"')
         self.assertNotContains(page,f'max="{(day+timedelta(days=3)).isoformat()}"')
-        update_hub(self.reviewer,row,tickets_ready=True,planned_hub_arrival_date=changed)
+        response=self.client.post(reverse('personnel:movement_review_accept',args=[row.pk]),{
+            'workflow_action':'hub_documents','tickets_ready':'1','planned_hub_arrival_date':changed.isoformat(),
+            'ticket_cost':'4567.80','ticket_document':SimpleUploadedFile('arrival-ticket.pdf',b'arrival-ticket'),
+        })
+        self.assertRedirects(response,reverse('personnel:movement_review_accept',args=[row.pk]),fetch_redirect_response=False)
         row.refresh_from_db();self.assertEqual(row.movement_date,changed);self.assertEqual(row.requested_movement_date,day);self.assertTrue(row.tickets_ready)
+        self.assertEqual(row.ticket_cost,Decimal('4567.80'));self.assertTrue(row.ticket_document)
         detail=self.client.get(reverse('personnel:movement_review_accept',args=[row.pk]))
         self.assertContains(detail,'Плановая дата заезда, указанная диспетчером')
         self.assertContains(detail,'План диспетчера')
