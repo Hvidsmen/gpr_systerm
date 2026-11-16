@@ -240,9 +240,24 @@ class MovementRecommendationTests(TestCase):
     def test_admin_is_redirected_to_my_requests_after_creating_request(self):
         self.client.force_login(self.admin);today=timezone.localdate();url=reverse('personnel:movements')
         page=self.client.get(url,{'camp':self.a.pk})
+        self.assertEqual(page.context['form'].fields['date'].label,'Плановая дата заезда')
+        self.assertContains(page,'Плановая дата заезда')
         response=self.client.post(url,{'workflow_action':'move','camp':self.a.pk,'kind':'ARRIVAL','date':today,
             'employees':[self.second_employee.pk],'snapshot':page.context['form'].initial['snapshot']})
         self.assertRedirects(response,reverse('personnel:my_movement_requests'),fetch_redirect_response=False)
+
+    def test_movement_date_label_follows_kind_and_direct_fact_mode(self):
+        from pathlib import Path
+        from .forms import MovementForm
+        planned=MovementForm(company=self.company,camp=self.a,day=timezone.localdate(),allow_direct=True,
+            initial={'kind':'DEPARTURE'})
+        actual=MovementForm({'kind':'DEPARTURE','direct_fact':'on'},company=self.company,camp=self.a,
+            day=timezone.localdate(),allow_direct=True)
+        self.assertEqual(planned.fields['date'].label,'Плановая дата выезда')
+        self.assertEqual(actual.fields['date'].label,'Фактическая дата выезда')
+        script=(Path(__file__).resolve().parents[2]/'static/personnel/housing.js').read_text(encoding='utf-8')
+        self.assertIn("{ARRIVAL:'заезда',DEPARTURE:'выезда',TRANSFER:'перевода'}",script)
+        self.assertIn("(direct&&direct.checked)?'Фактическая':'Плановая'",script)
 
     def test_personnel_dispatcher_can_temporarily_record_arrival_and_departure_without_requests(self):
         self.client.force_login(self.personnel_dispatcher);today=timezone.localdate();arrival=today-timedelta(days=5);url=reverse('personnel:movements')

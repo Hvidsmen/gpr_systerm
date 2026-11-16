@@ -42,7 +42,7 @@
  document.querySelectorAll('[data-recommendation-select-all]').forEach(toggle=>{const recommendationForm=toggle.closest('form'),rows=[...recommendationForm.querySelectorAll('input[name="recommendations"]')];const sync=()=>{const selected=rows.filter(input=>input.checked).length;toggle.checked=Boolean(rows.length)&&selected===rows.length;toggle.indeterminate=selected>0&&selected<rows.length;};toggle.addEventListener('change',()=>{rows.forEach(input=>input.checked=toggle.checked);sync();});rows.forEach(input=>input.addEventListener('change',sync));sync();});
  if(!form)return;
  form.querySelectorAll('[data-personnel-searchable]').forEach(select=>{const count=document.createElement('div');count.className='housing-count';count.setAttribute('aria-live','polite');select.after(count);const update=()=>{count.textContent='Выбрано: '+select.selectedOptions.length;};select.addEventListener('change',update);update();});
- const kind=form.querySelector('[name=kind]'),target=form.querySelector('[name=target]'),employees=form.querySelector('[name=employees]'),camp=form.querySelector('[name=camp]'),direct=form.querySelector('[name=direct_fact]'),submit=form.querySelector('[type=submit]');
+ const kind=form.querySelector('[name=kind]'),date=form.querySelector('[name=date]'),target=form.querySelector('[name=target]'),employees=form.querySelector('[name=employees]'),camp=form.querySelector('[name=camp]'),direct=form.querySelector('[name=direct_fact]'),submit=form.querySelector('[type=submit]');
  const presentByCamp=JSON.parse(employees.dataset.presentByCamp||'{}');
  const selectedHost=form.querySelector('[data-movement-selected]');
  const departureReasons=new Map();
@@ -53,6 +53,7 @@
  employees.addEventListener('change',selectedPeople);selectedPeople();
  function fields(){
   target.closest('.app-form-field').hidden=kind.value!=='TRANSFER';
+  const suffix={ARRIVAL:'заезда',DEPARTURE:'выезда',TRANSFER:'перевода'}[kind.value]||'поездки';if(date?.labels?.[0])date.labels[0].textContent=((direct&&direct.checked)?'Фактическая':'Плановая')+' дата '+suffix;
   const eligible=new Set((kind.value==='ARRIVAL'?employees.dataset.activeEmployees:(presentByCamp[camp.value]||[]).join(',')).split(','));
   for(const option of employees.options){option.disabled=!eligible.has(option.value);option.hidden=option.disabled;if(option.disabled&&form.dataset.personalMovement!=='1')option.selected=false;}
   for(const option of target.options){option.disabled=!!option.value&&option.value===camp.value;if(option.disabled)option.selected=false;}
@@ -60,6 +61,6 @@
  }
  kind.addEventListener('change',fields);camp.addEventListener('change',fields);fields();
  function submitLabel(){if(submit)submit.textContent=direct&&direct.checked?'Провести факт':'Создать заявки';}
- if(direct)direct.addEventListener('change',submitLabel);submitLabel();
+ if(direct)direct.addEventListener('change',()=>{submitLabel();fields();});submitLabel();
  form.addEventListener('change',()=>{dirty=true;});form.addEventListener('input',e=>{if(e.target.name)dirty=true;});form.addEventListener('submit',()=>{submitting=true;});window.addEventListener('beforeunload',e=>{if(dirty&&!submitting){e.preventDefault();e.returnValue='';}});
 })();
