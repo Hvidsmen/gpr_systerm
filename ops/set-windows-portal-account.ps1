@@ -9,6 +9,7 @@ $Root=(Resolve-Path -LiteralPath $Root).Path
 $identity=[Security.Principal.WindowsIdentity]::GetCurrent()
 $admin=New-Object Security.Principal.WindowsPrincipal($identity)
 if(-not $admin.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){throw 'Запустите SET_GPR_PORTAL_ACCOUNT.cmd от имени администратора.'}
+$userWasSpecified=-not [string]::IsNullOrWhiteSpace($User)
 if([string]::IsNullOrWhiteSpace($User)){$User=$identity.Name}
 if($User -notmatch '^[^\\]+\\[^\\]+$'){throw 'Укажите доменную учётную запись в формате DOMAIN\user.'}
 
@@ -17,14 +18,50 @@ $task=Get-ScheduledTask -TaskName $taskName -ErrorAction Stop
 if(-not $task.Settings.Enabled){throw 'Задание YDS Portal отключено. Сначала выясните причину и включите его; изменения не внесены.'}
 $currentPrincipal=[string]$task.Principal.UserId
 $currentSid=try{(New-Object Security.Principal.NTAccount($currentPrincipal)).Translate([Security.Principal.SecurityIdentifier]).Value}catch{$currentPrincipal}
-if($currentSid -ne 'S-1-5-18' -and $currentPrincipal -notin @('SYSTEM','NT AUTHORITY\SYSTEM')){
-    throw "Задание уже работает не от SYSTEM, а от $currentPrincipal. Чтобы не потерять сохранённый Планировщиком пароль, измените его в свойствах задания YDS Portal."
-}
+if(-not $userWasSpecified -and $currentSid -ne 'S-1-5-18' -and $currentPrincipal -notin @('SYSTEM','NT AUTHORITY\SYSTEM')){$User=$currentPrincipal}
 $runtime=Join-Path $Root '.runtime'
 $installed=Join-Path $runtime 'installed.json'
 if(-not (Test-Path -LiteralPath $installed)){throw 'Фоновый портал в этой папке не установлен.'}
+$config=Get-Content -LiteralPath $installed -Raw | ConvertFrom-Json
 $action=@($task.Actions)[0]
 if(-not $action -or [IO.Path]::GetFullPath([string]$action.WorkingDirectory).TrimEnd('\') -ne $Root.TrimEnd('\')){throw 'Задание YDS Portal относится к другой папке. Изменения не внесены.'}
+$targetSid=try{(New-Object Security.Principal.NTAccount($User)).Translate([Security.Principal.SecurityIdentifier]).Value}catch{throw "Не удалось найти доменную учётную запись $User."}
+
+function Resolve-PortalPath([string]$Value){
+    if([IO.Path]::IsPathRooted($Value)){return [IO.Path]::GetFullPath($Value)}
+    return [IO.Path]::GetFullPath((Join-Path $Root $Value))
+}
+function Grant-PortalFileAccess([string]$Sid){
+    $database=Resolve-PortalPath ([string]$config.database)
+    $databaseDirectory=Split-Path -Parent $database
+    $media=Resolve-PortalPath ([string]$config.media)
+    & icacls.exe $runtime /grant "*${Sid}:(OI)(CI)F" | Out-Null
+    if($LASTEXITCODE -ne 0){throw 'Не удалось выдать учётной записи доступ к рабочим файлам портала.'}
+    & icacls.exe $databaseDirectory /grant "*${Sid}:(OI)(CI)M" | Out-Null
+    if($LASTEXITCODE -ne 0){throw 'Не удалось выдать учётной записи доступ к базе портала.'}
+    if(Test-Path -LiteralPath $media){
+        & icacls.exe $media /grant "*${Sid}:(OI)(CI)M" | Out-Null
+        if($LASTEXITCODE -ne 0){throw 'Не удалось выдать учётной записи доступ к файлам вложений.'}
+    }
+    $environmentFile=Join-Path $Root '.env'
+    if(Test-Path -LiteralPath $environmentFile){
+        & icacls.exe $environmentFile /grant "*${Sid}:R" | Out-Null
+        if($LASTEXITCODE -ne 0){throw 'Не удалось выдать учётной записи доступ к настройкам портала.'}
+    }
+}
+
+$isSystem=$currentSid -eq 'S-1-5-18' -or $currentPrincipal -in @('SYSTEM','NT AUTHORITY\SYSTEM')
+if(-not $isSystem){
+    if($currentSid -ne $targetSid){
+        throw "Задание уже работает не от SYSTEM, а от $currentPrincipal. Чтобы не потерять сохранённый Планировщиком пароль, изменения не внесены."
+    }
+    Grant-PortalFileAccess $targetSid
+    if($task.State -notin @('Running','Queued')){Start-ScheduledTask -TaskName $taskName}
+    Write-Host ''
+    Write-Host "ГОТОВО. Права $currentPrincipal на базу, вложения и рабочие файлы портала восстановлены." -ForegroundColor Green
+    Write-Host 'Пароль повторно вводить не требуется. Откройте портал и повторите сохранение.'
+    exit 0
+}
 
 Write-Host "Сейчас YDS Portal работает от: $($task.Principal.UserId)" -ForegroundColor Cyan
 Write-Host "Новая учётная запись: $User"
@@ -37,12 +74,9 @@ if([string]::IsNullOrEmpty($password)){throw 'Пустой пароль не д�
 
 $backup=Export-ScheduledTask -TaskName $taskName
 $wasRunning=$task.State -in @('Running','Queued')
-$config=Get-Content -LiteralPath $installed -Raw | ConvertFrom-Json
 $port=[int]$config.port
 try{
-    $targetSid=(New-Object Security.Principal.NTAccount($User)).Translate([Security.Principal.SecurityIdentifier]).Value
-    & icacls.exe $runtime /grant "*${targetSid}:(OI)(CI)F" | Out-Null
-    if($LASTEXITCODE -ne 0){throw 'Не удалось выдать новой учётной записи доступ к рабочим файлам портала.'}
+    Grant-PortalFileAccess $targetSid
     if($wasRunning){
         New-Item -ItemType File -Force (Join-Path $runtime 'supervisor.stop') | Out-Null
         for($attempt=0;$attempt -lt 130;$attempt++){

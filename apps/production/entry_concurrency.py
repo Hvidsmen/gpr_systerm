@@ -1,8 +1,11 @@
 """Signed row baselines: concurrent dispatchers may merge changes to different rows."""
+import logging
+import time
 from decimal import Decimal, InvalidOperation
 from django import forms
 from django.core import signing
 from django.core.exceptions import ValidationError
+from django.http import HttpResponse, JsonResponse
 
 SALT='production-dispatcher-rows-v1'
 
@@ -133,12 +136,31 @@ from functools import wraps
 from threading import RLock
 from django.db import connection
 _sqlite_mutex=RLock()
+logger=logging.getLogger(__name__)
+
+
+def _busy_response(args):
+    request=args[0] if args else None
+    message='Сейчас завершается другая операция производственного факта. Подождите несколько секунд и повторите сохранение.'
+    wants_json=request is not None and (request.method!='GET' or 'application/json' in request.headers.get('Accept',''))
+    response=JsonResponse({'ok':False,'retryable':True,'message':message},status=429) if wants_json else HttpResponse(message,status=503,content_type='text/plain; charset=utf-8')
+    response['Retry-After']='2'
+    return response
 
 
 def sqlite_serialized(function):
     @wraps(function)
     def wrapped(*args,**kwargs):
         if connection.vendor=='sqlite':
-            with _sqlite_mutex:return function(*args,**kwargs)
+            waiting_started=time.monotonic()
+            acquired=_sqlite_mutex.acquire(timeout=1)
+            if not acquired:return _busy_response(args)
+            try:return function(*args,**kwargs)
+            finally:
+                elapsed=time.monotonic()-waiting_started
+                _sqlite_mutex.release()
+                if elapsed>=5:
+                    request=args[0] if args else None
+                    logger.warning('Slow serialized production request: %.1fs %s',elapsed,getattr(request,'path',''))
         return function(*args,**kwargs)
     return wrapped
