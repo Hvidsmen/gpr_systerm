@@ -264,6 +264,7 @@ class MovementReviewRequest(PersonnelModel):
     person=models.ForeignKey(Person,on_delete=models.PROTECT,related_name='movement_review_requests')
     kind=models.CharField('Действие',max_length=12,choices=HousingEvent.KINDS)
     movement_date=models.DateField('Дата заезда / выезда')
+    requested_movement_date=models.DateField('Плановая дата, указанная в заявке',null=True,blank=True,editable=False)
     from_camp=models.ForeignKey(Camp,on_delete=models.PROTECT,null=True,blank=True,related_name='+')
     to_camp=models.ForeignKey(Camp,on_delete=models.PROTECT,null=True,blank=True,related_name='+')
     departure_destination=models.CharField(max_length=10,blank=True)
@@ -312,10 +313,21 @@ class MovementReviewRequest(PersonnelModel):
             models.Index(fields=['company','approval_batch','status'],name='movement_batch_status'),
         ]
     def save(self,*args,**kwargs):
+        if self.requested_movement_date is None and self.movement_date:
+            self.requested_movement_date=self.movement_date
+            if kwargs.get('update_fields') is not None:
+                kwargs['update_fields']=set(kwargs['update_fields'])|{'requested_movement_date'}
         super().save(*args,**kwargs)
         if self.source=='DISPATCHER' and not self.request_number:
             self.request_number=str(self.pk)
             type(self).objects.filter(pk=self.pk,request_number='').update(request_number=self.request_number)
+    def requested_movement_date_label(self):
+        if self.source=='EXCEL':return 'Исходная плановая дата из Excel'
+        return {
+            'ARRIVAL':'Плановая дата заезда, указанная диспетчером',
+            'DEPARTURE':'Плановая дата выезда, указанная диспетчером',
+            'TRANSFER':'Плановая дата перевода, указанная диспетчером',
+        }.get(self.kind,'Плановая дата, указанная диспетчером')
     def workflow_status_label(self):
         if self.source=='EXCEL' and self.status=='COMPLETED':return f'Завершена по Excel: {self.travel_status or "Прибыл / убыл"}'
         if self.status=='OPEN' and self.source=='DISPATCHER':return 'Черновик диспетчера'

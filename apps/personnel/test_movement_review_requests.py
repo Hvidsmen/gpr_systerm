@@ -86,6 +86,7 @@ class MovementReviewRequestTests(TestCase):
         self.assertEqual(request_row.site,self.site.name)
         self.assertEqual(request_row.phone,self.employee.phone)
         self.assertEqual(request_row.travel_status,'Ожидается')
+        self.assertEqual(request_row.requested_movement_date,timezone.localdate())
 
         self.client.force_login(self.reviewer)
         dispatcher_page=self.client.get(reverse('personnel:housing'))
@@ -124,6 +125,7 @@ class MovementReviewRequestTests(TestCase):
         self.assertEqual(request_row.request_number,automatic_number)
         self.assertEqual(request_row.base_city,'Уфа')
         self.assertEqual(request_row.movement_date,changed_date)
+        self.assertEqual(request_row.requested_movement_date,timezone.localdate())
         self.assertEqual(request_row.construction_object,self.obj)
         self.assertEqual(request_row.to_camp,self.camp)
         self.assertTrue(BaseCity.objects.filter(company=self.company,name='Уфа').exists())
@@ -406,14 +408,19 @@ class MovementReviewRequestTests(TestCase):
     def test_ticket_purchase_can_change_planned_dudinka_arrival(self):
         from .departure_workflow import update_hub
         day=timezone.localdate();housing.request_moves(self.personnel,'ARRIVAL',self.camp,day,[self.person])
-        row=MovementReviewRequest.objects.get(kind='ARRIVAL');self.finish_approval(row)
+        row=MovementReviewRequest.objects.get(kind='ARRIVAL');self.assertEqual(row.requested_movement_date,day);self.finish_approval(row)
         changed=day+timedelta(days=2)
         row.planned_hub_departure_date=day+timedelta(days=3);row.save(update_fields=['planned_hub_departure_date','updated_at'])
         self.client.force_login(self.reviewer);page=self.client.get(reverse('personnel:movement_review_accept',args=[row.pk]))
         self.assertContains(page,'name="planned_hub_arrival_date"');self.assertContains(page,'Дата прибытия в ОП Дудинка по билету')
         self.assertNotContains(page,f'value="{day.isoformat()}"')
         update_hub(self.reviewer,row,tickets_ready=True,planned_hub_arrival_date=changed)
-        row.refresh_from_db();self.assertEqual(row.movement_date,changed);self.assertTrue(row.tickets_ready)
+        row.refresh_from_db();self.assertEqual(row.movement_date,changed);self.assertEqual(row.requested_movement_date,day);self.assertTrue(row.tickets_ready)
+        detail=self.client.get(reverse('personnel:movement_review_accept',args=[row.pk]))
+        self.assertContains(detail,'Плановая дата заезда, указанная диспетчером')
+        self.assertContains(detail,'План диспетчера')
+        queue=self.client.get(reverse('personnel:movement_reviews'),{'kind':'arrival'})
+        self.assertContains(queue,'Заезд в ВЖГ / ОП Дудинка');self.assertContains(queue,'ОП Дудинка:')
         row.tickets_ready=False;row.save(update_fields=['tickets_ready','updated_at'])
         with self.assertRaisesMessage(ValidationError,'не может быть позже планового выезда'):
             update_hub(self.reviewer,row,tickets_ready=True,planned_hub_arrival_date=day+timedelta(days=4))
