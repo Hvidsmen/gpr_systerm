@@ -20,6 +20,7 @@ import uuid
 import zipfile
 
 REPOSITORY='Hvidsmen/gpr_systerm'
+CONTROL_FILES=('SET_GPR_PORTAL_ACCOUNT.cmd','ops/set-windows-portal-account.ps1')
 TASK='YDS Portal'
 RUNTIME_HISTORY=5
 MIN_UPDATE_FREE_BYTES=1024*1024*1024
@@ -166,6 +167,16 @@ class RecoveryRequired(RuntimeError):
 def atomic_copy(source,target):
     target=Path(target);temp=target.with_name(target.name+'.'+uuid.uuid4().hex+'.tmp')
     shutil.copy2(source,temp);os.replace(temp,target)
+
+
+def publish_control_files(root,code):
+    """Expose reviewed server-maintenance launchers beside the persistent install."""
+    root=Path(root);code=Path(code)
+    for relative in CONTROL_FILES:
+        source=code/relative;target=root/relative
+        if not source.is_file():raise RuntimeError('Release is missing control file: '+relative)
+        target.parent.mkdir(parents=True,exist_ok=True)
+        atomic_copy(source,target)
 
 
 def recover_database_switch(root):
@@ -452,6 +463,7 @@ def update(root,process,current):
         update_stage(root,'candidate')
         probe,port=launch(root,candidate,probe=True);healthy(probe,port);stop_process(root,probe,probe=True);probe=None
         atomic_copy(Path(candidate['code'])/'ops/windows_runtime.py',runtime/'bootstrap.py')
+        publish_control_files(root,candidate['code'])
         atomic_json(runtime/'current.json',candidate)
     except Exception:
         stop_process(root,probe,probe=True)

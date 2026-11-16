@@ -1,4 +1,5 @@
 import io
+import importlib
 import json
 import os
 from pathlib import Path
@@ -6,7 +7,7 @@ import sqlite3
 import tempfile
 from unittest.mock import patch, Mock
 import zipfile
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, override_settings
 from ops import windows_runtime as runtime
 
 
@@ -72,11 +73,26 @@ class WindowsRuntimeTests(SimpleTestCase):
     def test_success_commits_release_before_public_start(self):
         current={'sha':'old','code':str(self.root),'python':'python'}
         code=self.root/'release';(code/'ops').mkdir(parents=True);(code/'ops/windows_runtime.py').write_text('new bootstrap')
+        (code/'SET_GPR_PORTAL_ACCOUNT.cmd').write_text('new launcher')
+        (code/'ops/set-windows-portal-account.ps1').write_text('new account tool')
         candidate={'sha':'b'*40,'code':str(code),'python':'python-new'}
         with patch.object(runtime,'stage_update',return_value=candidate),patch.object(runtime,'stop_process'),patch.object(runtime,'run'),patch.object(runtime,'healthy'),patch.object(runtime,'launch',return_value=(Mock(),8001)):
             _,result,message=runtime.update(self.root,Mock(),current)
         self.assertEqual(result,candidate);self.assertEqual(runtime.read_json(self.state/'current.json'),candidate)
         self.assertEqual((self.state/'bootstrap.py').read_text(),'new bootstrap')
+        self.assertEqual((self.root/'SET_GPR_PORTAL_ACCOUNT.cmd').read_text(),'new launcher')
+        self.assertEqual((self.root/'ops/set-windows-portal-account.ps1').read_text(),'new account tool')
+
+    def test_bridge_migration_exposes_tool_during_first_immutable_update(self):
+        migration=importlib.import_module('apps.accounts.migrations.0031_publish_portal_account_tool')
+        code=self.root/'immutable-release';(code/'ops').mkdir(parents=True)
+        (code/'SET_GPR_PORTAL_ACCOUNT.cmd').write_text('bridge launcher')
+        (code/'ops/set-windows-portal-account.ps1').write_text('bridge tool')
+        persistent=self.root/'persistent';persistent.mkdir()
+        with override_settings(BASE_DIR=code,CONFIG_DIR=persistent):
+            migration.publish_tool(None,None,platform_name='nt')
+        self.assertEqual((persistent/'SET_GPR_PORTAL_ACCOUNT.cmd').read_text(),'bridge launcher')
+        self.assertEqual((persistent/'ops/set-windows-portal-account.ps1').read_text(),'bridge tool')
 
     def test_singleton_rejects_second_owner(self):
         with runtime.singleton(self.state/'test.lock'):
