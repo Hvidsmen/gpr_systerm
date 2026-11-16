@@ -276,8 +276,6 @@ def update_hub(user,row,*,tickets_ready=False,clearance_document=None,planned_hu
     if buying_arrival_tickets and not planned_hub_arrival_date:raise ValidationError('Укажите дату прибытия в ОП Дудинка по купленному билету.')
     fields=['updated_at']
     if buying_arrival_tickets and planned_hub_arrival_date:
-        if row.planned_hub_departure_date and planned_hub_arrival_date>row.planned_hub_departure_date:
-            raise ValidationError('Плановое прибытие в ОП Дудинка не может быть позже планового выезда из ОП Дудинка.')
         if row.movement_date!=planned_hub_arrival_date:
             previous=row.movement_date
             row.movement_date=planned_hub_arrival_date;fields.append('movement_date')

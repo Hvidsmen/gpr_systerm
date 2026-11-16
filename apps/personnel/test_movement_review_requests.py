@@ -414,6 +414,7 @@ class MovementReviewRequestTests(TestCase):
         self.client.force_login(self.reviewer);page=self.client.get(reverse('personnel:movement_review_accept',args=[row.pk]))
         self.assertContains(page,'name="planned_hub_arrival_date"');self.assertContains(page,'Дата прибытия в ОП Дудинка по билету')
         self.assertNotContains(page,f'value="{day.isoformat()}"')
+        self.assertNotContains(page,f'max="{(day+timedelta(days=3)).isoformat()}"')
         update_hub(self.reviewer,row,tickets_ready=True,planned_hub_arrival_date=changed)
         row.refresh_from_db();self.assertEqual(row.movement_date,changed);self.assertEqual(row.requested_movement_date,day);self.assertTrue(row.tickets_ready)
         detail=self.client.get(reverse('personnel:movement_review_accept',args=[row.pk]))
@@ -422,8 +423,9 @@ class MovementReviewRequestTests(TestCase):
         queue=self.client.get(reverse('personnel:movement_reviews'),{'kind':'arrival'})
         self.assertContains(queue,'Заезд в ВЖГ / ОП Дудинка');self.assertContains(queue,'ОП Дудинка:')
         row.tickets_ready=False;row.save(update_fields=['tickets_ready','updated_at'])
-        with self.assertRaisesMessage(ValidationError,'не может быть позже планового выезда'):
-            update_hub(self.reviewer,row,tickets_ready=True,planned_hub_arrival_date=day+timedelta(days=4))
+        later=day+timedelta(days=4)
+        update_hub(self.reviewer,row,tickets_ready=True,planned_hub_arrival_date=later)
+        row.refresh_from_db();self.assertEqual(row.movement_date,later);self.assertTrue(row.tickets_ready)
 
     def test_parallel_rejection_cancels_person_and_preserves_approval_history(self):
         from .departure_workflow import active_route_roles,decide,resubmit
@@ -518,7 +520,7 @@ class MovementReviewRequestTests(TestCase):
         self.assertEqual([row.pk for row in page.context['excel_review_requests']],[imported.pk])
         sorted_page=self.client.get(reverse('personnel:movement_reviews'),{'sort':'movement_asc'})
         self.assertEqual(sorted_page.context['review_sort'],'movement_asc');self.assertEqual([row.pk for row in sorted_page.context['dispatcher_review_requests']],[older.pk,newer.pk])
-        self.assertContains(sorted_page,'Дата заезда ↑');self.assertContains(sorted_page,'Создана')
+        self.assertContains(sorted_page,'Заезд в ВЖГ / ОП Дудинка ↑');self.assertContains(sorted_page,'Создана')
 
     def test_visible_excel_sheets_create_review_requests_without_duplicates(self):
         from openpyxl import Workbook
