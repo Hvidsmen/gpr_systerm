@@ -331,11 +331,9 @@ def leave_hub(user,row,day):
 def arrive_camp(user,row,day):
     if role_code(user) not in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'}:raise PermissionDenied('Прибытие в ВЖГ фиксирует диспетчер по персоналу.')
     row=MovementReviewRequest.objects.select_for_update().select_related('person__employee','to_camp').get(pk=row.pk,company=user.company)
-    validate_fact_day(day)
     if row.kind!='ARRIVAL' or row.status!='EN_ROUTE':raise ValidationError('Фактический заезд доступен после отправления сотрудника из ОП Дудинка.')
-    if day<row.hub_departed_on:raise ValidationError('Фактическое прибытие в ВЖГ не может быть раньше выезда из ОП Дудинка.')
     from . import housing
-    housing.move(user,'ARRIVAL',row.to_camp,day,[row.person],comment=f'Заявка на заезд №{row.pk}. Прибытие через ОП Дудинка.')
+    housing.move(user,'ARRIVAL',row.to_camp,day,[row.person],comment=f'Заявка на заезд №{row.pk}. Прибытие через ОП Дудинка.',allow_future=True)
     event=HousingEvent.objects.filter(company=row.company,person=row.person,kind='ARRIVAL',date=day,to_camp=row.to_camp).order_by('-pk').first()
     row.event=event;row.final_arrived_on=day;row.status='COMPLETED';row.travel_status='Прибыл в ВЖГ';row.reviewed_by=user;row.reviewed_at=timezone.now()
     row.save(update_fields=['event','final_arrived_on','status','travel_status','reviewed_by','reviewed_at','updated_at'])

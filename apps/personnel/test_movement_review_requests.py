@@ -389,7 +389,7 @@ class MovementReviewRequestTests(TestCase):
         row.refresh_from_db();self.assertEqual(row.status,'COMPLETED');self.assertEqual(row.hub_departed_on,day)
         self.assertGreaterEqual(row.workflow_events.count(),14)
 
-    def test_dudinka_fact_dates_allow_any_day_but_future_camp_arrival_is_rejected(self):
+    def test_all_route_fact_dates_allow_any_day(self):
         from .departure_workflow import arrive_camp,arrive_hub,leave_hub,update_hub
         day=timezone.localdate();housing.request_moves(self.personnel,'ARRIVAL',self.camp,day,[self.person])
         row=MovementReviewRequest.objects.get(kind='ARRIVAL');self.finish_approval(row)
@@ -401,7 +401,9 @@ class MovementReviewRequestTests(TestCase):
         update_hub(self.reviewer,row,clearance_document=SimpleUploadedFile('clearance.pdf',b'pdf'))
         unrestricted_departure=day+timedelta(days=1)
         leave_hub(self.reviewer,row,unrestricted_departure);row.refresh_from_db();self.assertEqual(row.hub_departed_on,unrestricted_departure)
-        with self.assertRaisesMessage(ValidationError,'не может быть в будущем'):arrive_camp(self.reviewer,row,camp_arrival)
+        arrive_camp(self.reviewer,row,camp_arrival);row.refresh_from_db()
+        self.assertEqual(row.final_arrived_on,camp_arrival);self.assertEqual(row.status,'COMPLETED')
+        self.assertEqual(self.person.stays.get().arrived_on,camp_arrival)
 
     def test_ticket_purchase_can_change_planned_dudinka_arrival(self):
         from .departure_workflow import update_hub
