@@ -126,12 +126,15 @@ def workspace(request, movements=False, movement_page='new'):
     day=selected_day(request) if movements else timezone.localdate()
     template = 'personnel/housing_movements.html' if movements else 'personnel/housing.html'
     extra = {**movement_context(request),'dispatcher_page':movement_page,'movement_page':movement_page} if movements else {'personnel_section':'management','personnel_today_only':True}
-    prepared_recommendations=extra.pop('_movement_recommendations',None)
+    prepared_recommendations=None
     if not movements:
         extra.update(recruitment_dispatch_data(request.user.company))
     from .rotation import RotationFilter,normalize_rotation_filter_data,rotation_project_camps,rotation_rows
     extra['rotation_project_camps']=rotation_project_camps(request.user.company)
-    raw=(request.GET if request.method=='GET' else request.POST).copy()
+    raw=request.GET.copy()
+    if request.method=='POST':
+        for name in ['construction_object','camps','camp','date','q','position','state']:
+            if name in request.POST:raw.setlist(name,request.POST.getlist(name))
     raw['date']=str(day)
     raw=normalize_rotation_filter_data(raw,request.user.company)
     selector=RotationFilter(raw,company=request.user.company)
@@ -139,6 +142,16 @@ def workspace(request, movements=False, movement_page='new'):
         if raw.get('camp'):raise Http404('ВЖГ не найден.')
         return render(request,template,{**extra,'rotation_filter':selector,'day':day},status=400)
     selected_camps=selector.selected_camps(request.user.company)
+    extra['rotation_filter']=selector
+    scope_pairs=[('construction_object',selector.cleaned_data['construction_object'].pk),
+        *[('camps',selected.pk) for selected in selected_camps]]
+    dispatcher_scope_query=urlencode(scope_pairs)
+    extra['dispatcher_scope_query']=dispatcher_scope_query
+    if movements:
+        from .movement_recommendations import build as build_recommendations
+        prepared_recommendations=build_recommendations(request.user.company,timezone.localdate(),camps=selected_camps)
+        extra.update(arrival_recommendation_count=len(prepared_recommendations['ARRIVAL']),
+            departure_recommendation_count=len(prepared_recommendations['DEPARTURE']))
     camps=(Camp.objects.filter(company=request.user.company) if movements else scoped(request,Camp)).order_by('name')
     camp_id=(request.POST if request.method=='POST' else request.GET).get('camp')
     camp=get_object_or_404(camps,pk=camp_id) if camp_id else selected_camps.first()
@@ -173,6 +186,11 @@ def workspace(request, movements=False, movement_page='new'):
         company=request.user.company,day=recommendation_day,kind='ARRIVAL',prefix='arrival')
     departure_recommendation_form=MovementRecommendationForm(request.POST if workflow_action=='recommendation_add' and recommendation_kind=='DEPARTURE' else None,
         company=request.user.company,day=recommendation_day,kind='DEPARTURE',prefix='departure')
+    selected_camp_ids=[selected.pk for selected in selected_camps]
+    arrival_recommendation_form.fields['camp'].queryset=arrival_recommendation_form.fields['camp'].queryset.filter(pk__in=selected_camp_ids)
+    departure_recommendation_form.fields['camp'].queryset=departure_recommendation_form.fields['camp'].queryset.filter(pk__in=selected_camp_ids)
+    def recommendation_redirect(name):
+        return redirect(reverse('personnel:'+name)+'?'+dispatcher_scope_query)
     if request.method=='POST' and workflow_action=='recommendation_add':
         recommendation_form=arrival_recommendation_form if recommendation_kind=='ARRIVAL' else departure_recommendation_form if recommendation_kind=='DEPARTURE' else None
         if recommendation_form is None:messages.error(request,'Неизвестное направление рекомендации.')
@@ -182,7 +200,7 @@ def workspace(request, movements=False, movement_page='new'):
             except ValidationError as exc:recommendation_form.add_error(None,'; '.join(exc.messages))
             else:
                 messages.success(request,f'Рекомендации добавлены. Сотрудников: {count}.')
-                return redirect('personnel:arrivals' if recommendation_kind=='ARRIVAL' else 'personnel:departures')
+                return recommendation_redirect('arrivals' if recommendation_kind=='ARRIVAL' else 'departures')
     if request.method=='POST' and (workflow_action in {'recommendation_remove','recommendation_request'} or request.POST.get('request_one')):
         from .movement_recommendations import _date_field,decode,exclude
         tokens=[request.POST['request_one']] if request.POST.get('request_one') else request.POST.getlist('recommendations')
@@ -216,7 +234,7 @@ def workspace(request, movements=False, movement_page='new'):
         except ValidationError as exc:messages.error(request,'; '.join(exc.messages))
         else:
             messages.success(request,f'Из рекомендаций убрано сотрудников: {count}.')
-            return redirect('personnel:arrivals' if recommendation_kind!='DEPARTURE' else 'personnel:departures')
+            return recommendation_redirect('arrivals' if recommendation_kind!='DEPARTURE' else 'departures')
     prefill_employees=recommendation_prefill.get('employees',[]) if recommendation_prefill else []
     prefill_scope=recommendation_prefill.get('scope','') if recommendation_prefill else ''
     form=MovementForm(request.POST if request.method=='POST' and workflow_action=='move' else None,company=request.user.company,camp=camp,day=day,fixed_employee=fixed_employee,allow_direct=request.user.role.code=='PERSONNEL_DISPATCHER',
@@ -272,7 +290,7 @@ def workspace(request, movements=False, movement_page='new'):
             form=MovementForm(retry,company=request.user.company,camp=camp,day=day,fixed_employee=fixed_employee,allow_direct=request.user.role.code=='PERSONNEL_DISPATCHER')
     if movements:
         from .movement_recommendations import build
-        recommendations=prepared_recommendations or build(request.user.company,recommendation_day)
+        recommendations=prepared_recommendations or build(request.user.company,recommendation_day,camps=selected_camps)
         events=HousingEvent.objects.filter(company=request.user.company).filter(Q(from_camp__in=selected_camps)|Q(to_camp__in=selected_camps)).select_related('person','from_camp','to_camp','recorded_by')[:50]
         return render(request,template,{**extra,'rotation_filter':selector,'day':day,'camp':camp,'camps':camps,'selected_camps':selected_camps,'form':form,'events':events,
             'movement_exclusions':movement_exclusions,
@@ -354,16 +372,15 @@ def workspace(request, movements=False, movement_page='new'):
     from .lodging_views import summary_context
     plan_context.update(summary_context(request.user,camp,day,camps=selected_camps))
     from .movement_recommendations import build as build_recommendations
-    # Navigation links open company-wide recommendation pages without carrying
-    # the roster's current object/VZhG filters. Their counters must describe
-    # that same destination, otherwise a filtered roster can show 0 while the
-    # opened page immediately shows recommendations from another camp.
-    navigation_recommendations=build_recommendations(request.user.company,recommendation_day)
+    # Recommendation tabs keep the roster's current project/VZhG scope.  Their
+    # counters must describe that same destination so the number in navigation
+    # matches the rows shown after the user opens a tab.
+    navigation_recommendations=build_recommendations(request.user.company,recommendation_day,camps=selected_camps)
     people_counts=Person.objects.filter(company=request.user.company).aggregate(
         unknown=Count('pk',filter=Q(stays__isnull=True,housing_events__isnull=True),distinct=True),
         unlinked=Count('pk',filter=Q(employee=None),distinct=True))
     return render(request,template,{**extra,**plan_context,'rotation_filter':selector,'rotation_stats':rotation_stats,'position_groups':position_groups,'selected_camps':selected_camps,
-        'roster_view':roster_view,'roster_view_links':view_links,'roster_sections':roster_page.object_list,'roster_page':roster_page,'roster_page_query':roster_page_params.urlencode(),
+        'roster_view':roster_view,'roster_view_links':view_links,'roster_sections':roster_page.object_list,'roster_page':roster_page,'roster_page_query':roster_page_params.urlencode(),'dispatcher_scope_query':dispatcher_scope_query,
         'camp':camp,'camps':camps,'day':day,'rows':rows,'dates':days,'form':form,'query':values.get('q',''),
         'roster_query':roster_params.urlencode(),'rotation_calendar_url':rotation_calendar_url,'calendar_dates':calendar_dates,'calendar_months':calendar_months,'calendar_start':calendar_start,'calendar_end':calendar_end,'events':events,'total':rotation_stats['people'],'objects':objects,
         'unknown_count':people_counts['unknown'],'unlinked_count':people_counts['unlinked'],
@@ -771,13 +788,8 @@ def movement_context(request):
     from django.core.paginator import Paginator
     rows=ArrivalPreparation.objects.filter(company=request.user.company,candidate__request__cancelled_at__isnull=True,status__in=['EXPECTED','ARRIVED']).filter(Q(actual_stay__isnull=True)|Q(actual_stay__cancelled_at__isnull=False)).select_related('candidate__request__construction_object','camp','employee','actual_stay').order_by('expected_on','pk')
     recruitment_data=recruitment_dispatch_data(request.user.company)
-    from .movement_recommendations import build
-    recommendations=build(request.user.company,timezone.localdate())
     return {'personnel_section':'movements','arrival_queue':Paginator(rows,25).get_page(request.GET.get('arrivals_page')),
-        'new_employee_recommendation_count':len(recruitment_data['new_arrival_recommendations']),
-        'arrival_recommendation_count':len(recommendations['ARRIVAL']),
-        'departure_recommendation_count':len(recommendations['DEPARTURE']),
-        '_movement_recommendations':recommendations}
+        'new_employee_recommendation_count':len(recruitment_data['new_arrival_recommendations'])}
 
 
 def movement_recommendation_counts(company):

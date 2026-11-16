@@ -4,9 +4,9 @@
 {% block content %}
 <h1>Персонал</h1>{% include 'personnel/_personnel_sections.html' %}
 {% include 'personnel/_dispatcher_nav.html' %}
-{% if movement_page == 'arrival' %}<div class="recruitment-heading"><div><h2 class="h4">Заезд</h2><p class="text-muted">Рекомендации к заезду на ближайшие 14 дней.</p></div></div>
+{% if movement_page == 'arrival' %}{% include 'personnel/_recommendation_filters.html' %}<div class="recruitment-heading"><div><h2 class="h4">Заезд</h2><p class="text-muted">Рекомендации к заезду на ближайшие 14 дней.</p></div></div>
 {% include 'personnel/_movement_recommendation.html' with kind='ARRIVAL' title='Рекомендации к заезду' help_text='Сотрудники на межвахтовом отдыхе, которым по графику нужно заехать в ближайшие 14 дней.' rows=arrival_recommendations add_form=arrival_recommendation_form %}
-{% elif movement_page == 'departure' %}<div class="recruitment-heading"><div><h2 class="h4">Выезд</h2><p class="text-muted">Просроченные и предстоящие выезды на ближайшие 14 дней.</p></div></div>
+{% elif movement_page == 'departure' %}{% include 'personnel/_recommendation_filters.html' %}<div class="recruitment-heading"><div><h2 class="h4">Выезд</h2><p class="text-muted">Просроченные и предстоящие выезды на ближайшие 14 дней.</p></div></div>
 {% include 'personnel/_movement_recommendation.html' with kind='DEPARTURE' title='Рекомендации к выезду' help_text='Сотрудники на вахте с просроченным выездом или выездом по графику в ближайшие 14 дней.' rows=departure_recommendations add_form=departure_recommendation_form %}
 {% else %}<div class="recruitment-heading"><div><h2 class="h4">Новая заявка</h2><p class="text-muted">Заезд или выезд вручную.</p></div></div>
 {% if camp %}{% include 'core/_fact_context.html' with scope_list=selected_camps can_edit=fact_day_editable save_mode='rotation' %}

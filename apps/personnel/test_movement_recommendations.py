@@ -175,12 +175,41 @@ class MovementRecommendationTests(TestCase):
         self.assertEqual(self.client.get(reverse('personnel:housing')).status_code,200)
 
     @patch('apps.personnel.movement_recommendations.build')
-    def test_roster_navigation_counter_uses_company_wide_recommendations(self,recommendations):
+    def test_roster_navigation_counter_uses_selected_camps(self,recommendations):
         recommendations.return_value={'ARRIVAL':[],'DEPARTURE':[{'person':self.person}]}
         self.client.force_login(self.personnel_dispatcher)
         roster=self.client.get(reverse('personnel:housing'),{'camp':self.a.pk})
         self.assertEqual(roster.context['departure_recommendation_count'],1)
-        recommendations.assert_called_once_with(self.company,timezone.localdate())
+        recommendations.assert_called_once()
+        self.assertEqual(list(recommendations.call_args.kwargs['camps']),[self.a])
+        self.assertIn(f'camps={self.a.pk}',roster.context['dispatcher_scope_query'])
+
+    @patch('apps.personnel.rotation.rotation_rows')
+    def test_recommendation_tabs_filter_by_project_and_camps_and_keep_scope_after_action(self,rotation_rows):
+        planned=timezone.localdate()+timedelta(days=3)
+        def selected_rows(company,camps,day,**kwargs):
+            people={self.a.pk:self.person,self.b.pk:self.second_person}
+            return ([{'person':people[camp.pk],'slot':None,'camp':camp,'state':'MO','planned_return':planned,
+                'planned_departure_display':None} for camp in camps],[],{})
+        rotation_rows.side_effect=selected_rows
+        self.client.force_login(self.personnel_dispatcher)
+        query={'construction_object':self.obj.pk,'camps':[self.a.pk]}
+        response=self.client.get(reverse('personnel:arrivals'),query)
+        self.assertContains(response,'Фильтры рекомендаций')
+        self.assertContains(response,self.person.display_name)
+        self.assertNotContains(response,self.second_person.display_name)
+        self.assertEqual(list(response.context['selected_camps']),[self.a])
+        self.assertEqual(response.context['arrival_recommendation_count'],1)
+        combined=self.client.get(reverse('personnel:arrivals'),{'construction_object':self.obj2.pk,'camps':[self.a.pk,self.b.pk]})
+        self.assertContains(combined,self.person.display_name)
+        self.assertContains(combined,self.second_person.display_name)
+        self.assertEqual(combined.context['arrival_recommendation_count'],2)
+        recommendation=response.context['arrival_recommendations'][0]
+        action_url=reverse('personnel:arrivals')+'?'+response.context['dispatcher_scope_query']
+        removed=self.client.post(action_url,{'workflow_action':'recommendation_remove','recommendation_kind':'ARRIVAL',
+            'recommendations':[recommendation['token']]})
+        self.assertEqual(removed.status_code,302)
+        self.assertIn(f'camps={self.a.pk}',removed.url)
 
     @patch('apps.personnel.rotation.rotation_rows')
     def test_recommendation_tables_have_select_all_checkbox(self,rotation_rows):
