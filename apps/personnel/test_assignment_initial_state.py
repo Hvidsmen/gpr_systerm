@@ -3,6 +3,7 @@ from unittest.mock import patch
 from django.core.exceptions import ValidationError
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 from apps.resources.models import Brigade
 from .models import StaffingSlot,CampStay,HousingEvent,ShiftPattern
 from .rotation import rotation_rows
@@ -24,7 +25,7 @@ class AssignmentInitialStateTests(TestCase):
 
     def assigned(self):return StaffingSlot.objects.get(planning_position=self.role)
 
-    def roster_row(self):return next(row for row in rotation_rows(self.company,[self.a],self.day)[0] if row['person'].employee_id==self.second_employee.pk)
+    def roster_row(self,day=None):return next(row for row in rotation_rows(self.company,[self.a],day or self.day)[0] if row['person'].employee_id==self.second_employee.pk)
 
     def test_backdated_on_shift_is_actual_once_and_has_actor_and_day_count(self):
         past=self.day-timedelta(days=100)
@@ -62,9 +63,10 @@ class AssignmentInitialStateTests(TestCase):
             self.assertFalse(StaffingSlot.objects.filter(planning_position=self.role).exists())
         self.assertFalse(HousingEvent.objects.filter(person=self.second_person).exists())
 
-    def test_initial_state_date_cannot_follow_assignment_start(self):
+    def test_submitted_assignment_start_cannot_backdate_new_assignment(self):
         response=self.post('MV',self.day,assigned_from=str(self.day-timedelta(days=1)))
-        self.assertEqual(response.status_code,200);self.assertTrue(response.context['initial_form'].errors)
+        self.assertEqual(response.status_code,302)
+        self.assertEqual(self.assigned().assigned_from,timezone.localdate())
 
     def test_existing_matching_actual_status_is_accepted_without_duplicate(self):
         before=(CampStay.objects.count(),HousingEvent.objects.count())
@@ -104,12 +106,12 @@ class AssignmentInitialStateTests(TestCase):
         pattern=ShiftPattern.objects.create(company=self.company,board=self.board,name='60/30',on_days=60,off_days=30,cycle_codes=['10']*60+['МО']*30)
         arrival=self.day-timedelta(days=20)
         self.assertEqual(self.post('MV',arrival,pattern=pattern.pk).status_code,302)
-        self.assertEqual(self.roster_row()['planned_departure_display'],arrival+timedelta(days=60))
-        self.assertEqual(self.roster_row()['schedule_label'],'60/30')
+        self.assertEqual(self.roster_row(timezone.localdate())['planned_departure_display'],arrival+timedelta(days=60))
+        self.assertEqual(self.roster_row(timezone.localdate())['schedule_label'],'60/30')
 
     def test_rest_cycle_is_anchored_to_departure_without_fake_arrival(self):
         pattern=ShiftPattern.objects.create(company=self.company,board=self.board,name='60/30',on_days=60,off_days=30,cycle_codes=['10']*60+['МО']*30)
         departure=self.day-timedelta(days=10)
         self.assertEqual(self.post('MO',departure=departure,pattern=pattern.pk).status_code,302)
-        row=self.roster_row();self.assertEqual(row['planned_return'],departure+timedelta(days=30));self.assertEqual(row['state_days'],11)
+        row=self.roster_row(timezone.localdate());self.assertEqual(row['planned_return'],departure+timedelta(days=30));self.assertEqual(row['state_days'],12)
         self.assertFalse(CampStay.objects.filter(person=self.assigned().person).exists())

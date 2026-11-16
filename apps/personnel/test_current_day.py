@@ -63,13 +63,13 @@ class CurrentPersonnelDayTests(TestCase):
         content=render_to_string('core/_fact_context.html',{'day':self.today,'can_edit':True,'save_mode':'auto'})
         self.assertIn('data-fact-shortcuts',content);self.assertIn('>Вчера</button>',content)
 
-    def test_assignment_dates_are_preserved_but_return_opens_current_composition(self):
+    def test_assignment_date_is_creation_day_and_return_opens_current_composition(self):
         from apps.resources.models import Brigade
         role=Brigade.objects.create(company=self.company,name='Начальник участка')
         start=self.day-timedelta(days=15)
-        response=self.client.post(reverse('personnel:plan_assignment_create'),{'employee':self.second_employee.pk,'planning_position':role.pk,'construction_object':self.obj.pk,'housing_camp':self.a.pk,'assigned_from':str(start)})
+        response=self.client.post(reverse('personnel:plan_assignment_create'),{'employee':self.second_employee.pk,'planning_position':role.pk,'construction_object':self.obj.pk,'housing_camp':self.a.pk,'assigned_from':str(start),'initial-state':'MO','initial-departure_date':str(self.day)})
         self.assertEqual(response.status_code,302);self.assertNotIn('date',parse_qs(urlsplit(response.url).query))
-        self.assertEqual(StaffingSlot.objects.get(planning_position=role).assigned_from,start)
+        self.assertEqual(StaffingSlot.objects.get(planning_position=role).assigned_from,self.today)
         page=self.client.get(response.url);self.assertEqual(page.context['day'],self.today)
 
     def test_invalid_non_date_filter_still_shows_errors_without_date_control(self):

@@ -2,6 +2,7 @@ from datetime import timedelta
 from decimal import Decimal
 from django.test import TestCase, Client
 from django.urls import reverse
+from django.utils import timezone
 from apps.accounts.models import Company, User, Role
 from apps.resources.models import Brigade, Employee
 from apps.projects.models import ConstructionObject
@@ -29,11 +30,21 @@ class PlanAssignmentTests(TestCase):
         self.assertEqual(response.status_code,200)
         self.assertTrue(response.context['form']['assigned_until'].is_hidden)
         self.assertTrue(response.context['form']['pattern'].is_hidden)
+        self.assertTrue(response.context['form']['assigned_from'].is_hidden)
         self.assertContains(response,'1. Сотрудник и должность')
         self.assertContains(response,'2. Место назначения')
-        self.assertContains(response,'Начальное состояние сотрудника')
+        self.assertContains(response,'Текущий статус сотрудника')
         self.assertNotContains(response,'По дату включительно')
         self.assertNotContains(response,'Без личного графика')
+        self.assertNotContains(response,'Дата начала назначения')
+
+    def test_create_uses_today_and_ignores_submitted_start_date(self):
+        requested=timezone.localdate()+timedelta(days=30)
+        page=self.client.get(self.url,{'assigned_from':str(requested)})
+        self.assertEqual(page.context['form']['assigned_from'].value(),timezone.localdate())
+        response=self.client.post(self.url,{**self.data,'assigned_from':str(requested),'initial-state':'MO','initial-departure_date':str(self.day)})
+        self.assertEqual(response.status_code,302)
+        self.assertEqual(self.assigned().assigned_from,timezone.localdate())
 
     def test_assign_any_employee_without_rewriting_hr_or_creating_arrival_and_repost_is_idempotent(self):
         before=(CampStay.objects.count(),HousingEvent.objects.count())
@@ -80,8 +91,8 @@ class PlanAssignmentTests(TestCase):
     def test_archived_employee_can_have_an_existing_assignment_closed(self):
         self.client.post(self.url,self.data);slot=self.assigned()
         self.second_employee.is_active=False;self.second_employee.save()
-        response=self.client.post(reverse('personnel:plan_assignment_edit',args=[slot.pk]),{**self.data,'assigned_until':str(self.day),'version':slot.updated_at.isoformat()})
-        self.assertEqual(response.status_code,302);slot.refresh_from_db();self.assertEqual(slot.assigned_until,self.day)
+        response=self.client.post(reverse('personnel:plan_assignment_edit',args=[slot.pk]),{**self.data,'assigned_until':str(timezone.localdate()),'version':slot.updated_at.isoformat()})
+        self.assertEqual(response.status_code,302);slot.refresh_from_db();self.assertEqual(slot.assigned_until,timezone.localdate())
 
     def test_assignment_is_visible_when_employee_is_actually_in_another_camp(self):
         self.client.post(self.url,self.data);slot=self.assigned()
@@ -128,11 +139,12 @@ class PlanAssignmentTests(TestCase):
         self.assertEqual(str(response.context['form']['employee'].value()),str(self.second_employee.pk))
 
     def test_edit_uses_version_and_preserves_employee_identity(self):
-        self.client.post(self.url,self.data);slot=self.assigned()
+        self.client.post(self.url,{**self.data,'initial-state':'MO','initial-departure_date':str(self.day)});slot=self.assigned()
+        original_start=slot.assigned_from
         url=reverse('personnel:plan_assignment_edit',args=[slot.pk])
         version=slot.updated_at.isoformat()
-        self.assertEqual(self.client.post(url,{**self.data,'assigned_until':str(self.day+timedelta(days=2)),'version':version,'employee':self.employee.pk}).status_code,302)
-        slot.refresh_from_db();self.assertEqual(slot.person.employee_id,self.second_employee.pk)
+        self.assertEqual(self.client.post(url,{**self.data,'assigned_from':str(original_start+timedelta(days=30)),'assigned_until':str(self.day+timedelta(days=2)),'version':version,'employee':self.employee.pk}).status_code,302)
+        slot.refresh_from_db();self.assertEqual(slot.person.employee_id,self.second_employee.pk);self.assertEqual(slot.assigned_from,original_start)
         response=self.client.post(url,{**self.data,'version':version})
         self.assertContains(response,'изменено другим пользователем')
 

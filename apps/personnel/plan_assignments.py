@@ -303,9 +303,15 @@ def edit(request,pk=None):
     access(request)
     row=get_object_or_404(StaffingSlot.objects.select_related('person'),company=request.user.company,pk=pk,planning_position__isnull=False) if pk else None
     historical=bool(row and (row.replaced_on or row.cancelled_at))
-    initial={key:request.GET[key] for key in ('employee','planning_position','construction_object','housing_camp','assigned_from') if key in request.GET}
-    initial.setdefault('assigned_from',timezone.localdate())
-    form=AssignmentForm(request.POST if request.method=='POST' else None,company=request.user.company,row=row,initial=initial)
+    initial={key:request.GET[key] for key in ('employee','planning_position','construction_object','housing_camp') if key in request.GET}
+    assignment_date=row.assigned_from if row else timezone.localdate()
+    initial['assigned_from']=assignment_date
+    form_data=None
+    if request.method=='POST':
+        form_data=request.POST.copy()
+        form_data['assigned_from']=assignment_date.isoformat()
+    form=AssignmentForm(form_data,company=request.user.company,row=row,initial=initial)
+    form.fields['assigned_from'].widget=forms.HiddenInput()
     initial_form=InitialStateForm(request.POST if request.method=='POST' else None,prefix='initial') if not historical and (row is None or not row.initial_movement_id) else None
     if request.method=='POST':
         valid=form.is_valid()
