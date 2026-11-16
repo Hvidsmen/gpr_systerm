@@ -249,7 +249,6 @@ def resubmit(user,row):
 def arrive_hub(user,row,day):
     if role_code(user) not in {'ADMIN','HR_HEAD','PEREVAKHTA_SPECIALIST'}:raise PermissionDenied('Прибытие в ОП Дудинка фиксирует специалист перевахты.')
     row=MovementReviewRequest.objects.select_for_update().select_related('person','from_camp').get(pk=row.pk,company=user.company)
-    validate_fact_day(day)
     if row.status!='PEREVAKHTA':raise ValidationError('Прибытие в ОП Дудинка фиксируется после согласования.')
     if not travel_details_complete(row):raise ValidationError('Сначала заполните обязательные данные поездки: город, телефон, номер заявки и обязательные даты.')
     if row.kind=='ARRIVAL' and not row.tickets_ready:raise ValidationError('Перед заездом в ОП Дудинка отметьте покупку билетов.')
@@ -316,11 +315,9 @@ def register_new_employee(user,row,*,employee_number,position,schedule,phone):
 def leave_hub(user,row,day):
     if role_code(user) not in {'ADMIN','HR_HEAD','PEREVAKHTA_SPECIALIST'}:raise PermissionDenied('Выезд из ОП Дудинка фиксирует специалист перевахты.')
     row=MovementReviewRequest.objects.select_for_update().select_related('person__employee').get(pk=row.pk,company=user.company)
-    validate_fact_day(day)
     if row.status!='AT_HUB':raise ValidationError('Выезд из Дудинки фиксируется только для сотрудника в ОП Дудинка.')
     if row.kind=='ARRIVAL' and row.employment_kind=='NEW' and not row.person.employee_id:raise ValidationError('Сначала завершите оформление нового сотрудника в ЗУП.')
     if not row.tickets_ready or not row.clearance_document:raise ValidationError('Перед выездом должны быть оформлены билеты и прикреплён обходной лист.')
-    if day<row.hub_arrived_on:raise ValidationError('Фактический выезд из ОП Дудинка не может быть раньше прибытия в Дудинку.')
     row.hub_departed_on=day;row.status='EN_ROUTE' if row.kind=='ARRIVAL' else 'COMPLETED';row.travel_status='В пути в ВЖГ' if row.kind=='ARRIVAL' else 'Убыл из ОП Дудинка';row.reviewed_by=user;row.reviewed_at=timezone.now()
     row.save(update_fields=['hub_departed_on','status','travel_status','reviewed_by','reviewed_at','updated_at'])
     if row.departure_destination=='DISMISSAL' and row.person.employee_id:
