@@ -265,12 +265,12 @@ def arrive_hub(user,row,day):
 
 
 @transaction.atomic
-def update_hub(user,row,*,tickets_ready=False,clearance_document=None,planned_hub_arrival_date=None):
+def update_hub(user,row,*,tickets_ready=False,clearance_ready=False,clearance_document=None,planned_hub_arrival_date=None):
     if role_code(user) not in {'ADMIN','HR_HEAD','PEREVAKHTA_SPECIALIST'}:raise PermissionDenied('Билеты и документы оформляет специалист перевахты.')
     row=MovementReviewRequest.objects.select_for_update().get(pk=row.pk,company=user.company)
     buying_arrival_tickets=row.kind=='ARRIVAL' and row.status=='PEREVAKHTA'
     if row.status!='AT_HUB' and not buying_arrival_tickets:raise ValidationError('Документы и билеты оформляются на соответствующем этапе маршрута.')
-    if buying_arrival_tickets and clearance_document:raise ValidationError('Обходной лист прикрепляется после прибытия сотрудника в ОП Дудинка.')
+    if buying_arrival_tickets and (clearance_ready or clearance_document):raise ValidationError('Наличие обходного листа подтверждается после прибытия сотрудника в ОП Дудинка.')
     if buying_arrival_tickets and not tickets_ready:raise ValidationError('Отметьте, что билеты приобретены.')
     if buying_arrival_tickets and not planned_hub_arrival_date:raise ValidationError('Укажите дату прибытия в ОП Дудинка по купленному билету.')
     fields=['updated_at']
@@ -281,6 +281,8 @@ def update_hub(user,row,*,tickets_ready=False,clearance_document=None,planned_hu
             log(row,user,'Изменена плановая дата прибытия в ОП Дудинка',f'{previous:%d.%m.%Y} → {planned_hub_arrival_date:%d.%m.%Y}')
     if tickets_ready and not row.tickets_ready:
         row.tickets_ready=True;row.tickets_ready_at=timezone.now();fields+=['tickets_ready','tickets_ready_at'];log(row,user,'Билеты приобретены')
+    if (clearance_ready or clearance_document) and not row.clearance_ready:
+        row.clearance_ready=True;fields.append('clearance_ready');log(row,user,'Обходной лист имеется')
     if clearance_document:
         row.clearance_document=clearance_document;row.clearance_uploaded_at=timezone.now();fields+=['clearance_document','clearance_uploaded_at'];log(row,user,'Прикреплён обходной лист',clearance_document.name)
     row.save(update_fields=fields)
@@ -317,7 +319,7 @@ def leave_hub(user,row,day):
     row=MovementReviewRequest.objects.select_for_update().select_related('person__employee').get(pk=row.pk,company=user.company)
     if row.status!='AT_HUB':raise ValidationError('Выезд из Дудинки фиксируется только для сотрудника в ОП Дудинка.')
     if row.kind=='ARRIVAL' and row.employment_kind=='NEW' and not row.person.employee_id:raise ValidationError('Сначала завершите оформление нового сотрудника в ЗУП.')
-    if not row.tickets_ready or not row.clearance_document:raise ValidationError('Перед выездом должны быть оформлены билеты и прикреплён обходной лист.')
+    if not row.tickets_ready or not row.clearance_ready:raise ValidationError('Перед выездом должны быть оформлены билеты и подтверждено наличие обходного листа.')
     row.hub_departed_on=day;row.status='EN_ROUTE' if row.kind=='ARRIVAL' else 'COMPLETED';row.travel_status='В пути в ВЖГ' if row.kind=='ARRIVAL' else 'Убыл из ОП Дудинка';row.reviewed_by=user;row.reviewed_at=timezone.now()
     row.save(update_fields=['hub_departed_on','status','travel_status','reviewed_by','reviewed_at','updated_at'])
     if row.departure_destination=='DISMISSAL' and row.person.employee_id:

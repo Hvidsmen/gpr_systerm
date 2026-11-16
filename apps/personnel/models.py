@@ -297,6 +297,7 @@ class MovementReviewRequest(PersonnelModel):
     final_arrived_on=models.DateField('Прибытие в ВЖГ',null=True,blank=True)
     tickets_ready=models.BooleanField('Билеты приобретены',default=False)
     tickets_ready_at=models.DateTimeField(null=True,blank=True)
+    clearance_ready=models.BooleanField('Обходной лист имеется',default=False)
     clearance_document=models.FileField('Обходной лист',upload_to='personnel/clearance/%Y/%m/',blank=True)
     clearance_uploaded_at=models.DateTimeField(null=True,blank=True)
     cancellation_reason=models.TextField('Причина отмены',blank=True)
@@ -317,6 +318,10 @@ class MovementReviewRequest(PersonnelModel):
             self.requested_movement_date=self.movement_date
             if kwargs.get('update_fields') is not None:
                 kwargs['update_fields']=set(kwargs['update_fields'])|{'requested_movement_date'}
+        if self.clearance_document and not self.clearance_ready:
+            self.clearance_ready=True
+            if kwargs.get('update_fields') is not None:
+                kwargs['update_fields']=set(kwargs['update_fields'])|{'clearance_ready'}
         super().save(*args,**kwargs)
         if self.source=='DISPATCHER' and not self.request_number:
             self.request_number=str(self.pk)
@@ -345,7 +350,8 @@ class MovementReviewRequest(PersonnelModel):
             return 'Ожидается прибытие в ОП Дудинка'
         if self.status=='AT_HUB':
             if self.kind=='ARRIVAL' and self.employment_kind=='NEW' and not self.person.employee_id:return 'В ОП Дудинка — оформление нового сотрудника в ЗУП'
-            return 'В ОП Дудинка — ожидается обходной лист' if self.kind=='ARRIVAL' else 'В ОП Дудинка — билеты и обходной лист'
+            if not self.clearance_ready:return 'В ОП Дудинка — ожидается обходной лист' if self.kind=='ARRIVAL' else 'В ОП Дудинка — билеты и обходной лист'
+            return 'В ОП Дудинка — документы готовы'
         if self.status=='EN_ROUTE':return 'В пути в ВЖГ' if self.kind=='ARRIVAL' else 'В пути в базовый город'
         if self.status=='COMPLETED':return 'Прибыл в ВЖГ' if self.kind=='ARRIVAL' else 'Выбыл из ОП Дудинка'
         if self.status=='CANCELLED':return 'Отменена'
@@ -365,7 +371,7 @@ class MovementReviewRequest(PersonnelModel):
             return 'Специалист перевахты: приобрести билеты и уточнить дату' if self.kind=='ARRIVAL' and not self.tickets_ready else 'Специалист перевахты: зафиксировать прибытие в ОП Дудинка'
         if self.status=='AT_HUB':
             if self.kind=='ARRIVAL' and self.employment_kind=='NEW' and not self.person.employee_id:return 'Специалист по персоналу: оформить сотрудника в ЗУП'
-            if not self.clearance_document:return 'Специалист перевахты: прикрепить обходной лист'
+            if not self.clearance_ready:return 'Специалист перевахты: подтвердить наличие обходного листа'
             return 'Специалист перевахты: зафиксировать выезд из ОП Дудинка'
         if self.status=='EN_ROUTE' and self.kind=='ARRIVAL':return 'Диспетчер: подтвердить прибытие в ВЖГ'
         if self.status in {'COMPLETED','ACCEPTED'}:return 'Маршрут завершён'
