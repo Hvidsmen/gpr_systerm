@@ -27,6 +27,14 @@ class ProductionCopyTests(TestCase):
         row=EmployeeActivity.objects.get(date=self.day);self.assertEqual(row.shift,2);self.assertFalse(row.assignment_reviewed);self.assertIsNone(row.work_id);self.assertEqual(row.reported_by,self.user)
         self.assertEqual(LaborFact.objects.get(date=self.day).actual_workers,1);self.assertFalse(DailyFact.objects.filter(date=self.day).exists())
         repeated=self.copy().json();self.assertEqual((repeated['added'],repeated['already_present'],repeated['source_count']),(0,1,1));self.assertEqual(EmployeeActivity.objects.filter(date=self.day).count(),1)
+
+    def test_people_copy_report_includes_staff_group_for_immediate_browser_grouping(self):
+        EmployeeActivity.objects.create(company=self.company,construction_object=self.obj,date=self.previous,
+            employee=self.cook,position=self.cook.position,shift=1,entry_direction='works',reported_by=self.user)
+        response=self.copy();self.assertEqual(response.status_code,200,response.content)
+        copied=next(row for row in response.json()['report']['people'] if row['employee']==self.cook.pk)
+        self.assertEqual(copied['staff_group'],self.general_group.name)
+        self.assertEqual(copied['staff_position'],self.cook.display_position)
     def test_links_copy_only_to_existing_people_and_current_facts_and_keep_existing_relations(self):
         self.assertEqual(self.copy('links').json()['added'],0);self.copy()
         row=EmployeeActivity.objects.get(date=self.day)

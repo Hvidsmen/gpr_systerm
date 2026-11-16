@@ -288,8 +288,12 @@ def report_data(obj,day,work_ids=None,people_ids=None):
         role=row.planning_position or row.position
         mapping=getattr(role,'planning_mapping',None) if role else None
         group=mapping.brigade.group if mapping and mapping.brigade.group_id else None
+        staff_position=row.employee.position
+        staff_mapping=getattr(staff_position,'planning_mapping',None) if staff_position else None
+        staff_group=staff_mapping.brigade.group if staff_mapping and staff_mapping.brigade.group_id else None
         from apps.resources.group_order import labor_group_order
-        people.append({'group_order':labor_group_order(group)[0],'group':group.name if group else 'Без группы плана','id':row.pk,'employee':row.employee_id,'name':row.employee.display_name,'position':str(row.planning_position or row.position or ''),'staff_position':str(row.position or ''),
+        people.append({'group_order':labor_group_order(group)[0],'group':group.name if group else 'Без группы плана','id':row.pk,'employee':row.employee_id,'name':row.employee.display_name,'position':str(row.planning_position or row.position or ''),
+            'staff_group':staff_group.name if staff_group else 'Без группы','staff_position':row.employee.display_position or 'Должность не указана',
             'role':row.planning_position_id or row.position_id,'shift':row.shift,'general':row.general,'reviewed':row.assignment_reviewed,'constant':is_general_employee(row.employee),
             'links_revision':row.links_revision,'direction':row.entry_direction,'targets':target_tokens(row),
             'owner':(row.reported_by.get_full_name() or row.reported_by.username) if row.reported_by_id else 'Общий ввод'})

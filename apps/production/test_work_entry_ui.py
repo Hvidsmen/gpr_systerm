@@ -492,6 +492,8 @@ class WorkEntryPresentationTests(TestCase):
         self.assertIn("write(host.querySelector('[data-unplanned-visible]')",positions)
         self.assertIn('· Показано ${number.format(visible.size)} из ${number.format(total)}',positions)
         self.assertIn("info.staff_group||'Без группы'",positions)
+        self.assertIn('staffGroup=row.staff_group||old.staff_group',positions)
+        self.assertIn('visible.dataset.staffGroup=staffGroup',positions)
         self.assertIn('function ensureEmptyPersonRow()',positions)
         self.assertIn("total.value=index+1;(containers.get('')||host).append(row)",positions)
 
