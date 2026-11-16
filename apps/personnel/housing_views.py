@@ -192,7 +192,13 @@ def workspace(request, movements=False, movement_page='new'):
                 decoded=[decode(token,request.user.company) for token in dict.fromkeys(tokens)]
                 if not decoded:raise ValidationError('Выберите хотя бы одного сотрудника.')
                 camps_found={camp.pk for _,_,camp,_ in decoded}
-                if len(camps_found)!=1:raise ValidationError('Для общей заявки выберите сотрудников одного ВЖГ.')
+                kinds_found={route_kind for route_kind,_,_,_ in decoded}
+                if len(kinds_found)!=1:raise ValidationError('В одном пакете выберите только заезд или только выезд.')
+                if len(camps_found)>1:
+                    from .movement_recommendations import create_requests
+                    count=create_requests(request.user,tokens,request.POST)
+                    messages.success(request,f'Создан единый пакет заявок: сотрудников {count}, ВЖГ {len(camps_found)}. Заявки разделены по своим ВЖГ и датам.')
+                    return redirect('personnel:my_movement_requests')
                 dates=[]
                 for route_kind,person,item_camp,planned_on in decoded:
                     raw_date=request.POST.get(_date_field(route_kind,person.pk,item_camp.pk))

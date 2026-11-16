@@ -125,7 +125,8 @@ def create_requests(user,tokens,requested_dates=None):
         row=MovementReviewRequest.objects.create(**lookup,requested_by=user,approval_batch=batch,status='PENDING_APPROVAL',
             employment_kind='STAFF',planning_position_name=housing.planning_position_name(person,request_on),position_name=employee.display_position if employee else '',
             construction_object=construction_object,site_object=site_object,site=site_object.name if site_object else camp.name,
-            phone=(employee.phone if employee else '') or person.phone,travel_status='Ожидается',
+            phone=(employee.phone if employee else '') or person.phone,travel_status='Ожидается',recommendation_planned_on=planned_on,
+            departure_destination='REST' if kind=='DEPARTURE' else '',
             note=f'Просроченная дата по графику: {planned_on:%d.%m.%Y}.' if planned_on<request_on else '')
         created.append(row)
         MovementRecommendationOverride.objects.update_or_create(company=user.company,person=person,camp=camp,kind=kind,planned_on=planned_on,

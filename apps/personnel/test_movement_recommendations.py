@@ -89,6 +89,17 @@ class MovementRecommendationTests(TestCase):
         self.assertEqual(MovementReviewRequest.objects.get().movement_date,chosen)
 
     @patch('apps.personnel.rotation.rotation_rows')
+    def test_recommended_departure_defaults_to_rest_and_keeps_source_date(self,rotation_rows):
+        planned=timezone.localdate()+timedelta(days=2)
+        rotation_rows.return_value=([{'person':self.person,'slot':self.slot,'camp':self.a,'state':'MV',
+            'planned_return':None,'planned_departure_display':planned}],[],{})
+        recommendation=build(self.company,timezone.localdate())['DEPARTURE'][0]
+        create_requests(self.personnel_dispatcher,[recommendation['token']])
+        request=MovementReviewRequest.objects.get()
+        self.assertEqual(request.departure_destination,'REST')
+        self.assertEqual(request.recommendation_planned_on,planned)
+
+    @patch('apps.personnel.rotation.rotation_rows')
     def test_single_recommendation_opens_common_form_and_starts_approval(self,rotation_rows):
         from apps.planning.models import WorkTask
         rotation_rows.return_value=self.auto_rows();recommendation=build(self.company,self.day)['DEPARTURE'][0]
@@ -109,6 +120,27 @@ class MovementRecommendationTests(TestCase):
         self.assertRedirects(create,reverse('personnel:my_movement_requests'),fetch_redirect_response=False)
         self.client.post(reverse('personnel:movement_review_cancel',args=[row.pk]),{'reason':'Маршрут изменился'})
         self.assertEqual([item['person'] for item in build(self.company,self.day)['DEPARTURE']],[self.person])
+
+    @patch('apps.personnel.rotation.rotation_rows')
+    def test_selected_recommendations_from_multiple_camps_create_one_grouped_batch(self,rotation_rows):
+        from apps.planning.models import WorkTask
+        planned=timezone.localdate()+timedelta(days=3)
+        rotation_rows.return_value=([
+            {'person':self.person,'slot':None,'camp':self.a,'state':'MO','planned_return':planned,'planned_departure_display':None},
+            {'person':self.second_person,'slot':None,'camp':self.b,'state':'MO','planned_return':planned,'planned_departure_display':None},
+        ],[],{})
+        recommendations=build(self.company,timezone.localdate())['ARRIVAL']
+        self.client.force_login(self.personnel_dispatcher)
+        payload={'workflow_action':'recommendation_request','recommendation_kind':'ARRIVAL','recommendations':[row['token'] for row in recommendations]}
+        payload.update({row['date_field']:str(row['request_on']) for row in recommendations})
+        response=self.client.post(reverse('personnel:arrivals'),payload)
+        self.assertRedirects(response,reverse('personnel:my_movement_requests'),fetch_redirect_response=False)
+        requests=list(MovementReviewRequest.objects.order_by('pk'))
+        self.assertEqual(len(requests),2)
+        self.assertEqual({row.to_camp for row in requests},{self.a,self.b})
+        self.assertEqual(len({row.approval_batch for row in requests}),1)
+        self.assertEqual({row.recommendation_planned_on for row in requests},{planned})
+        self.assertEqual(WorkTask.objects.filter(key=f'personnel-movement-batch:{requests[0].approval_batch}').count(),1)
 
     @patch('apps.personnel.rotation.rotation_rows',return_value=([],[],{}))
     def test_manual_arrival_is_shared_and_actual_presence_hides_it(self,rotation_rows):
@@ -193,7 +225,8 @@ class MovementRecommendationTests(TestCase):
         self.assertFalse(MovementReviewRequest.objects.exists())
 
         page=self.client.get(url,{'camp':self.a.pk})
-        data.update(kind='DEPARTURE',date=today,snapshot=page.context['form'].initial['snapshot'])
+        data.update(kind='DEPARTURE',date=today,snapshot=page.context['form'].initial['snapshot'],
+            **{f'departure_destination_{self.second_employee.pk}':'REST'})
         self.assertEqual(self.client.post(url,data).status_code,302)
         self.assertTrue(self.second_person.stays.filter(camp=self.a,arrived_on=arrival,departed_on=today).exists())
         self.assertEqual(list(self.second_person.housing_events.values_list('kind','date')),[('DEPARTURE',today),('ARRIVAL',arrival)])
