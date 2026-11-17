@@ -3,7 +3,7 @@ from tempfile import TemporaryDirectory
 from django.core.exceptions import ImproperlyConfigured
 from django.test import SimpleTestCase
 from config.database import database_settings
-from config.mssql import integrated_connection_string
+from config.mssql import integrated_connection_string,available_sql_server_driver
 
 
 class DatabaseSettingsTests(SimpleTestCase):
@@ -30,3 +30,9 @@ class DatabaseSettingsTests(SimpleTestCase):
         value=integrated_connection_string('MSK-DB2','YDS_PORTAL')
         self.assertIn('Trusted_Connection=yes',value);self.assertIn('Encrypt=yes',value)
         self.assertIn('SERVER={MSK-DB2}',value);self.assertIn('DATABASE={YDS_PORTAL}',value)
+
+    def test_readiness_prefers_driver_18_and_falls_back_to_installed_17(self):
+        both=['SQL Server','ODBC Driver 17 for SQL Server','ODBC Driver 18 for SQL Server']
+        self.assertEqual(available_sql_server_driver(both),'ODBC Driver 18 for SQL Server')
+        self.assertEqual(available_sql_server_driver(both[:-1]),'ODBC Driver 17 for SQL Server')
+        self.assertEqual(available_sql_server_driver(both,'ODBC Driver 17 for SQL Server'),'ODBC Driver 17 for SQL Server')

@@ -10,3 +10,12 @@ def integrated_connection_string(server,database,driver='ODBC Driver 18 for SQL 
            f'DATABASE={odbc_value(database)}','Trusted_Connection=yes','Encrypt=yes']
     if trust_certificate:parts.append('TrustServerCertificate=yes')
     return ';'.join(parts)+';'
+
+
+def available_sql_server_driver(installed,requested=''):
+    installed=list(installed)
+    if requested:
+        return requested if requested in installed else ''
+    for candidate in ('ODBC Driver 18 for SQL Server','ODBC Driver 17 for SQL Server'):
+        if candidate in installed:return candidate
+    return ''
