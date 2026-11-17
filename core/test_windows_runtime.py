@@ -124,6 +124,17 @@ class WindowsRuntimeTests(SimpleTestCase):
         self.assertEqual((persistent/'PREPARE_GPR_MSSQL_COPY.cmd').read_text(),'fixed launcher')
         self.assertEqual((persistent/'ops/prepare-mssql-copy.ps1').read_text(),'fixed logging')
 
+    def test_mssql_copy_file_sharing_fix_republishes_tool(self):
+        migration=importlib.import_module('apps.accounts.migrations.0035_republish_mssql_copy_file_sharing_fix')
+        code=self.root/'immutable-release';(code/'ops').mkdir(parents=True)
+        (code/'PREPARE_GPR_MSSQL_COPY.cmd').write_text('fixed launcher')
+        (code/'ops/prepare-mssql-copy.ps1').write_text('safe reader')
+        persistent=self.root/'persistent';persistent.mkdir()
+        with override_settings(BASE_DIR=code,CONFIG_DIR=persistent):
+            migration.publish_tool(None,None,platform_name='nt')
+        self.assertEqual((persistent/'PREPARE_GPR_MSSQL_COPY.cmd').read_text(),'fixed launcher')
+        self.assertEqual((persistent/'ops/prepare-mssql-copy.ps1').read_text(),'safe reader')
+
     def test_bridge_migration_exposes_tool_during_first_immutable_update(self):
         migration=importlib.import_module('apps.accounts.migrations.0031_publish_portal_account_tool')
         code=self.root/'immutable-release';(code/'ops').mkdir(parents=True)

@@ -41,20 +41,17 @@ try{
     $arguments=@($manage,'prepare_mssql_copy','--target','mssql','--output',$destination)
     $process=Start-Process -FilePath $python -ArgumentList $arguments -NoNewWindow -PassThru `
         -RedirectStandardOutput $stdoutLog -RedirectStandardError $stderrLog
-    $shown=0
+    $elapsed=0
     while(-not $process.HasExited){
-        Start-Sleep -Milliseconds 500
+        Start-Sleep -Seconds 1
+        $elapsed++
         $process.Refresh()
-        if(Test-Path -LiteralPath $stdoutLog){
-            $lines=[IO.File]::ReadAllLines($stdoutLog,$utf8)
-            while($shown -lt $lines.Length){Write-Host $lines[$shown];$shown++}
-        }
+        if(($elapsed % 10) -eq 0){Write-Host "Подготовка выполняется: $elapsed сек. Не закрывайте окно." -ForegroundColor Cyan}
     }
-    $process.WaitForExit();$result=$process.ExitCode
+    $process.WaitForExit();$result=$process.ExitCode;Start-Sleep -Milliseconds 200
     $stdout=if(Test-Path -LiteralPath $stdoutLog){[IO.File]::ReadAllText($stdoutLog,$utf8)}else{''}
     $stderr=if(Test-Path -LiteralPath $stderrLog){[IO.File]::ReadAllText($stderrLog,$utf8)}else{''}
-    $lines=if(Test-Path -LiteralPath $stdoutLog){[IO.File]::ReadAllLines($stdoutLog,$utf8)}else{@()}
-    while($shown -lt $lines.Length){Write-Host $lines[$shown];$shown++}
+    if($stdout){Write-Host $stdout}
     if($stderr){Write-Host $stderr -ForegroundColor Red}
     [IO.File]::WriteAllText($log,$stdout+$(if($stderr){[Environment]::NewLine+'--- STDERR ---'+[Environment]::NewLine+$stderr}else{''}),$utf8)
     Remove-Item -LiteralPath $stdoutLog,$stderrLog -Force -ErrorAction SilentlyContinue
