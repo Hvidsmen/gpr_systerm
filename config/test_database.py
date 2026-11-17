@@ -20,6 +20,8 @@ class DatabaseSettingsTests(SimpleTestCase):
         self.assertEqual(settings['Trusted_Connection'],'yes')
         self.assertNotIn('USER',settings);self.assertNotIn('PASSWORD',settings)
         self.assertIn('TrustServerCertificate=yes',settings['OPTIONS']['extra_params'])
+        self.assertEqual(settings['OPTIONS']['connection_timeout'],10)
+        self.assertEqual(settings['OPTIONS']['query_timeout'],120)
 
     def test_mssql_defaults_to_confirmed_windows_driver(self):
         settings=database_settings(Path('.'),{'DJANGO_DB_ENGINE':'mssql','MSSQL_HOST':'MSK-DB2','MSSQL_NAME':'YDS_PORTAL'})

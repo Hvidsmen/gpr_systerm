@@ -13,6 +13,12 @@ if(-not (Test-Path -LiteralPath $python) -or -not (Test-Path -LiteralPath $manag
 $identity=[Security.Principal.WindowsIdentity]::GetCurrent().Name
 if($identity -ine 'YAMALGAZPROM\dvivanov'){throw "Запустите файл от YAMALGAZPROM\dvivanov. Сейчас используется $identity."}
 $destination=Join-Path $runtime ('mssql-copy\'+[DateTime]::UtcNow.ToString('yyyyMMdd-HHmmss'))
+$logDirectory=Join-Path $runtime 'mssql-copy-logs'
+New-Item -ItemType Directory -Force -Path $logDirectory | Out-Null
+$log=Join-Path $logDirectory ([DateTime]::UtcNow.ToString('yyyyMMdd-HHmmss')+'.log')
+$lockPath=Join-Path $runtime 'mssql-copy.lock'
+try{$lock=[IO.File]::Open($lockPath,[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)}
+catch{throw 'Подготовка MSSQL уже запущена в другом окне. Дождитесь её завершения или закройте прежний процесс.'}
 $env:GPR_CONFIG_DIR=$Root
 $env:DJANGO_DB_ENGINE='sqlite'
 $env:DJANGO_DB_PATH=[string]$installed.database
@@ -23,5 +29,11 @@ $env:MSSQL_TRUST_SERVER_CERTIFICATE='true'
 $env:DJANGO_SECRET_KEY=(Get-Content -LiteralPath (Join-Path $runtime 'secret.key') -Raw).Trim()
 $env:DJANGO_DEBUG='0';$env:DJANGO_SECURE_SSL_REDIRECT='0';$env:DJANGO_COOKIE_SECURE='0'
 Write-Host 'Создаётся проверочная копия. Рабочий портал продолжает работать с SQLite.' -ForegroundColor Cyan
-& $python $manage prepare_mssql_copy --target mssql --output $destination
-if($LASTEXITCODE -ne 0){throw 'Подготовка копии MSSQL не завершена. Рабочая SQLite-база не изменялась.'}
+Write-Host "Журнал: $log" -ForegroundColor Cyan
+try{
+    & $python $manage prepare_mssql_copy --target mssql --output $destination 2>&1 | Tee-Object -FilePath $log
+    $result=$LASTEXITCODE
+    if($result -ne 0){throw "Подготовка копии MSSQL не завершена. Рабочая SQLite-база не изменялась. Журнал: $log"}
+}finally{
+    if($lock){$lock.Dispose()}
+}
