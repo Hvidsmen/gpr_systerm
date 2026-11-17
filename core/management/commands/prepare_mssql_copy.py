@@ -28,6 +28,14 @@ def compare_databases(source,target):
     return report,errors
 
 
+def dump_fixture(source,fixture):
+    """Serialize through an explicitly UTF-8 stream on localized Windows."""
+    with fixture.open('w',encoding='utf-8',newline='') as stream:
+        call_command('dumpdata',database=source,exclude=sorted(EXCLUDED_MODELS),
+                     use_natural_foreign_keys=True,use_natural_primary_keys=False,
+                     use_base_manager=True,stdout=stream,verbosity=1)
+
+
 def activate_copy_connections(snapshot,target):
     """Make MSSQL default so imperfect legacy data migrations cannot hit SQLite."""
     source_settings=connections['default'].settings_dict.copy()
@@ -89,9 +97,7 @@ class Command(BaseCommand):
         # production rows. django_migrations itself is retained by flush.
         call_command('flush',database=target,interactive=False,verbosity=0)
         self.stdout.write('Выгружаем данные из неизменяемого снимка…')
-        call_command('dumpdata',database=source,exclude=sorted(EXCLUDED_MODELS),
-                     use_natural_foreign_keys=True,use_natural_primary_keys=False,
-                     use_base_manager=True,output=str(fixture),verbosity=1)
+        dump_fixture(source,fixture)
         self.stdout.write('Загружаем данные в MSSQL…')
         call_command('loaddata',str(fixture),database=target,verbosity=1)
         report,errors=compare_databases(source,target)

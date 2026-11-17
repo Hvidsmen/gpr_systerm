@@ -1,10 +1,12 @@
 from io import StringIO
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from django.core.management.base import CommandError
 from django.test import SimpleTestCase
 
-from core.management.commands.prepare_mssql_copy import Command
+from core.management.commands.prepare_mssql_copy import Command,dump_fixture
 
 
 class PrepareMssqlCopyTests(SimpleTestCase):
@@ -17,3 +19,14 @@ class PrepareMssqlCopyTests(SimpleTestCase):
         self.assertIn('ПОЛНАЯ ОШИБКА ПОДГОТОВКИ MSSQL',log)
         self.assertIn('ValueError: SQL failure',log)
         self.assertIn('Рабочая SQLite-база не изменялась',log)
+
+    def test_fixture_is_written_as_utf8_on_non_utf8_windows_locale(self):
+        with TemporaryDirectory() as directory:
+            fixture=Path(directory)/'portal-data.json'
+            def serialize(command,**options):
+                self.assertEqual(command,'dumpdata')
+                self.assertNotIn('output',options)
+                options['stdout'].write('{"employee":"Øстров"}')
+            with patch('core.management.commands.prepare_mssql_copy.call_command',side_effect=serialize):
+                dump_fixture('source_snapshot',fixture)
+            self.assertEqual(fixture.read_bytes(),'{"employee":"Øстров"}'.encode('utf-8'))
