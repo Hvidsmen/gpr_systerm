@@ -1,6 +1,8 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from django.core.exceptions import ImproperlyConfigured
+from django.apps import apps
+from django.db.models import UniqueConstraint
 from django.test import SimpleTestCase
 from config.database import database_settings
 from config.mssql import integrated_connection_string,available_sql_server_driver
@@ -63,3 +65,15 @@ class DatabaseSettingsTests(SimpleTestCase):
         self.assertIn("WHERE [plate_number] > ''",sql)
         self.assertIn("WHERE [zup_ref] > ''",sql)
         self.assertIn("WHERE [employee_number] > ''",sql)
+
+    def test_nullable_columns_never_use_unfiltered_composite_uniqueness(self):
+        unsafe=[]
+        for model in apps.get_models():
+            for fields in model._meta.unique_together:
+                if any(model._meta.get_field(field).null for field in fields):
+                    unsafe.append(f'{model._meta.label}: unique_together {fields}')
+            for constraint in model._meta.constraints:
+                if isinstance(constraint,UniqueConstraint) and not constraint.condition:
+                    if any(model._meta.get_field(field).null for field in constraint.fields):
+                        unsafe.append(f'{model._meta.label}: {constraint.name}')
+        self.assertEqual(unsafe,[])

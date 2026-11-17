@@ -46,4 +46,4 @@ class UserInvitation(BaseTimestampedModel):
     sent_at=models.DateTimeField(null=True,blank=True)
     class Meta:
         ordering=['created_at','id']
-        constraints=[models.UniqueConstraint(fields=['batch','recipient'],name='unique_batch_invitation_recipient')]
+        constraints=[models.UniqueConstraint(fields=['batch','recipient'],condition=models.Q(recipient__isnull=False),name='unique_batch_invitation_recipient')]

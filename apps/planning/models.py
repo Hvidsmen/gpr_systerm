@@ -282,7 +282,7 @@ class DailyBaseline(BaseCompanyModel):
         verbose_name = _("базовый план")
         verbose_name_plural = _("базовые планы")
         ordering = ["date"]
-        unique_together = [["project_work", "work_item", "date"]]
+        constraints = [models.UniqueConstraint(fields=['project_work','work_item','date'],condition=models.Q(work_item__isnull=False),name='unique_item_daily_baseline')]
 
     def __str__(self):
         return f"{self.date} - {self.baseline_quantity}"
@@ -506,7 +506,7 @@ class PlanningWorkspace(BaseCompanyModel):
                                    related_name='subobject_smg_workspaces', verbose_name='Версия ГПР макрообъекта')
 
     class Meta:
-        constraints = [models.UniqueConstraint(fields=['parent_gpr', 'construction_object', 'start_date'], name='unique_gpr_subobject_smg_month')]
+        constraints = [models.UniqueConstraint(fields=['parent_gpr', 'construction_object', 'start_date'], condition=models.Q(parent_gpr__isnull=False), name='unique_gpr_subobject_smg_month')]
         ordering = ["-created_at"]
         verbose_name = "Рабочее пространство планирования"
         verbose_name_plural = "Рабочие пространства планирования"
@@ -1303,7 +1303,7 @@ class CarryoverReviewTask(BaseCompanyModel):
     corrected_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
-        constraints = [models.UniqueConstraint(fields=['version','source_version','month'], name='unique_carryover_review_task'), models.UniqueConstraint(fields=['version','month'],condition=models.Q(source_version__isnull=True),name='unique_macro_carryover_review_task')]
+        constraints = [models.UniqueConstraint(fields=['version','source_version','month'],condition=models.Q(source_version__isnull=False),name='unique_carryover_review_task'), models.UniqueConstraint(fields=['version','month'],condition=models.Q(source_version__isnull=True),name='unique_macro_carryover_review_task')]
 
 
 class EstimateReviewTask(BaseCompanyModel):

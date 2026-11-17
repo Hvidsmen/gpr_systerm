@@ -62,5 +62,5 @@ class ActuationDocument(ActualHistoryMixin,BaseCompanyModel):
     removed_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,blank=True,related_name='removed_actuation_documents')
     class Meta:
         ordering=['created_at','pk']
-        constraints=[models.UniqueConstraint(fields=['company','fact','batch_token','ordinal'],name='unique_actuation_document_upload')]
+        constraints=[models.UniqueConstraint(fields=['company','fact','batch_token','ordinal'],condition=models.Q(fact__isnull=False),name='unique_actuation_document_upload')]
     def __str__(self):return self.original_name

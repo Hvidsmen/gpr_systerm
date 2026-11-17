@@ -44,7 +44,7 @@ class Migration(migrations.Migration):
             ],
             options={
                 'ordering': ['created_at', 'pk'],
-                'constraints': [models.UniqueConstraint(fields=('company', 'fact', 'batch_token', 'ordinal'), name='unique_actuation_document_upload')],
+                'constraints': [models.UniqueConstraint(condition=models.Q(('fact__isnull', False)), fields=('company', 'fact', 'batch_token', 'ordinal'), name='unique_actuation_document_upload')],
             },
         ),
         migrations.CreateModel(

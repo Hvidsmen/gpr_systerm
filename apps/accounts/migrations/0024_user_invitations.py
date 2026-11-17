@@ -80,7 +80,7 @@ class Migration(migrations.Migration):
             ],
             options={
                 'ordering': ['created_at', 'id'],
-                'constraints': [models.UniqueConstraint(fields=('batch', 'recipient'), name='unique_batch_invitation_recipient')],
+                'constraints': [models.UniqueConstraint(condition=models.Q(('recipient__isnull', False)), fields=('batch', 'recipient'), name='unique_batch_invitation_recipient')],
             },
         ),
     ]

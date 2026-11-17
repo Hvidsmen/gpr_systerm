@@ -30,7 +30,7 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name='planningworkspace',
-            constraint=models.UniqueConstraint(fields=('parent_gpr', 'construction_object', 'start_date'), name='unique_gpr_subobject_smg_month'),
+            constraint=models.UniqueConstraint(condition=models.Q(('parent_gpr__isnull', False)), fields=('parent_gpr', 'construction_object', 'start_date'), name='unique_gpr_subobject_smg_month'),
         ),
         migrations.AddField(
             model_name='smgworkmapping',

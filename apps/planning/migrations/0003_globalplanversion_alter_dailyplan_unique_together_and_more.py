@@ -46,6 +46,14 @@ class Migration(migrations.Migration):
             name='work_item',
             field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='baselines', to='works.projectworkitem', verbose_name='элемент работы'),
         ),
+        migrations.AlterUniqueTogether(
+            name='dailybaseline',
+            unique_together=set(),
+        ),
+        migrations.AddConstraint(
+            model_name='dailybaseline',
+            constraint=models.UniqueConstraint(condition=models.Q(('work_item__isnull', False)), fields=('project_work', 'work_item', 'date'), name='unique_item_daily_baseline'),
+        ),
         migrations.AlterField(
             model_name='dailyplan',
             name='work_item',

@@ -55,7 +55,7 @@ class Migration(migrations.Migration):
                 ('version', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='carryover_tasks', to='planning.globalplanversion')),
             ],
             options={
-                'constraints': [models.UniqueConstraint(fields=('version', 'source_version', 'month'), name='unique_carryover_review_task')],
+                'constraints': [models.UniqueConstraint(condition=models.Q(('source_version__isnull', False)), fields=('version', 'source_version', 'month'), name='unique_carryover_review_task')],
             },
         ),
     ]
