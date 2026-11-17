@@ -243,6 +243,17 @@ class WindowsRuntimeTests(SimpleTestCase):
         self.assertEqual((persistent/'SWITCH_GPR_TO_MSSQL.cmd').read_text(),'launcher')
         self.assertEqual((persistent/'ops/switch-to-mssql.ps1').read_text(),'retry ignored task starts')
 
+    def test_mssql_cutover_resume_fix_republishes_tool(self):
+        migration=importlib.import_module('apps.accounts.migrations.0041_republish_mssql_cutover_resume_fix')
+        code=self.root/'code';persistent=self.root/'persistent';(code/'ops').mkdir(parents=True);(persistent/'ops').mkdir(parents=True)
+        (code/'SWITCH_GPR_TO_MSSQL.cmd').write_text('launcher')
+        (code/'ops/switch-to-mssql.ps1').write_text('structured cutover result')
+        (persistent/'SWITCH_GPR_TO_MSSQL.cmd').write_text('old launcher')
+        (persistent/'ops/switch-to-mssql.ps1').write_text('unreliable exit code')
+        with override_settings(CONFIG_DIR=persistent,BASE_DIR=code):migration.publish_tool(None,None,platform_name='nt')
+        self.assertEqual((persistent/'SWITCH_GPR_TO_MSSQL.cmd').read_text(),'launcher')
+        self.assertEqual((persistent/'ops/switch-to-mssql.ps1').read_text(),'structured cutover result')
+
     def test_bridge_migration_exposes_tool_during_first_immutable_update(self):
         migration=importlib.import_module('apps.accounts.migrations.0031_publish_portal_account_tool')
         code=self.root/'immutable-release';(code/'ops').mkdir(parents=True)

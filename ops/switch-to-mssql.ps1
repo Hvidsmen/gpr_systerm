@@ -83,32 +83,72 @@ function Start-PortalAndWait{
     }
     return $false
 }
+function Test-CutoverActivated([string]$output){
+    $journalPath=Join-Path $output 'cutover.json'
+    $verificationPath=Join-Path $output 'verification.json'
+    if(-not (Test-Path -LiteralPath $journalPath) -or -not (Test-Path -LiteralPath $verificationPath)){return $false}
+    try{
+        $activeConfig=Get-Content -LiteralPath $installedPath -Raw | ConvertFrom-Json
+        $cutover=Get-Content -LiteralPath $journalPath -Raw | ConvertFrom-Json
+        $verification=Get-Content -LiteralPath $verificationPath -Raw | ConvertFrom-Json
+        $targetIsMssql=([string]$cutover.target_config.database_engine -ieq 'mssql')
+        $activeIsMssql=([string]$activeConfig.database_engine -ieq 'mssql')
+        $notRolledBack=(-not $cutover.PSObject.Properties['rolled_back']) -or (-not [bool]$cutover.rolled_back)
+        $verified=(-not $verification.PSObject.Properties['errors']) -or (@($verification.errors).Count -eq 0)
+        return $targetIsMssql -and $activeIsMssql -and $notRolledBack -and $verified
+    }catch{return $false}
+}
 
 $activated=$false
 try{
     Write-Host 'Останавливаем портал и ждём завершения текущих запросов…' -ForegroundColor Cyan
     Stop-PortalGracefully
-    Write-Host 'Создаём свежую MSSQL-копию и сверяем все модели…' -ForegroundColor Cyan
-    Write-Host "Журнал: $log" -ForegroundColor Cyan
-    $stdoutLog=$log+'.stdout';$stderrLog=$log+'.stderr'
-    # Driver 17 is the command default. Do not pass its spaced name through
-    # Windows PowerShell 5 Start-Process, which would split it into arguments.
-    $arguments=@($manage,'cutover_mssql','prepare','--output',$destination,'--server','MSK-DB2','--database','YDS_PORTAL')
-    $process=Start-Process -FilePath $python -ArgumentList $arguments -NoNewWindow -PassThru -RedirectStandardOutput $stdoutLog -RedirectStandardError $stderrLog
-    $elapsed=0
-    while(-not $process.HasExited){
-        Start-Sleep -Seconds 1;$elapsed++;$process.Refresh()
-        if(($elapsed % 10) -eq 0){Write-Host "Перенос выполняется: $elapsed сек. Не закрывайте окно." -ForegroundColor Cyan}
+    $prepared=$false
+    $reuseRoot=Join-Path $runtime 'mssql-cutover'
+    $reuse=Get-ChildItem -LiteralPath $reuseRoot -Directory -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Where-Object {(Test-Path -LiteralPath (Join-Path $_.FullName 'cutover.json')) -and (Test-Path -LiteralPath (Join-Path $_.FullName 'verification.json'))} | Select-Object -First 1
+    if($reuse){
+        Write-Host 'Проверяем, можно ли продолжить из уже сверенной MSSQL-копии без повторного переноса…' -ForegroundColor Cyan
+        $resumeStdout=$log+'.resume.stdout';$resumeStderr=$log+'.resume.stderr'
+        $resumeArguments=@($manage,'cutover_mssql','resume','--output',$reuse.FullName)
+        $resumeProcess=Start-Process -FilePath $python -ArgumentList $resumeArguments -NoNewWindow -PassThru -RedirectStandardOutput $resumeStdout -RedirectStandardError $resumeStderr
+        while(-not $resumeProcess.HasExited){Start-Sleep -Milliseconds 500;$resumeProcess.Refresh()}
+        $resumeProcess.WaitForExit();Start-Sleep -Milliseconds 200
+        $resumeText=if(Test-Path -LiteralPath $resumeStdout){[IO.File]::ReadAllText($resumeStdout,$utf8)}else{''}
+        $resumeError=if(Test-Path -LiteralPath $resumeStderr){[IO.File]::ReadAllText($resumeStderr,$utf8)}else{''}
+        Remove-Item -LiteralPath $resumeStdout,$resumeStderr -Force -ErrorAction SilentlyContinue
+        $prepared=Test-CutoverActivated $reuse.FullName
+        if($prepared){
+            $activated=$true
+            $destination=$reuse.FullName
+            Write-Host $resumeText -ForegroundColor Green
+        }else{
+            if($resumeError){Add-Content -LiteralPath $log -Value $resumeError -Encoding UTF8}
+            Write-Host 'SQLite изменилась после прошлой проверки — будет создана свежая копия.' -ForegroundColor Yellow
+        }
     }
-    $process.WaitForExit();$result=$process.ExitCode;Start-Sleep -Milliseconds 200
-    $stdout=if(Test-Path -LiteralPath $stdoutLog){[IO.File]::ReadAllText($stdoutLog,$utf8)}else{''}
-    $stderr=if(Test-Path -LiteralPath $stderrLog){[IO.File]::ReadAllText($stderrLog,$utf8)}else{''}
-    [IO.File]::WriteAllText($log,$stdout+$(if($stderr){[Environment]::NewLine+'--- STDERR ---'+[Environment]::NewLine+$stderr}else{''}),$utf8)
-    Remove-Item -LiteralPath $stdoutLog,$stderrLog -Force -ErrorAction SilentlyContinue
-    if($stdout){Write-Host $stdout};if($stderr){Write-Host $stderr -ForegroundColor Red}
-    $after=Get-Content -LiteralPath $installedPath -Raw | ConvertFrom-Json
-    $activated=$after.database_engine -and [string]$after.database_engine -ieq 'mssql'
-    if($result -ne 0 -or -not $activated){throw "Свежая копия или сверка не завершена. Журнал: $log"}
+    if(-not $prepared){
+        Write-Host 'Создаём свежую MSSQL-копию и сверяем все модели…' -ForegroundColor Cyan
+        Write-Host "Журнал: $log" -ForegroundColor Cyan
+        $stdoutLog=$log+'.stdout';$stderrLog=$log+'.stderr'
+        # Driver 17 is the command default. Do not pass its spaced name through
+        # Windows PowerShell 5 Start-Process, which would split it into arguments.
+        $arguments=@($manage,'cutover_mssql','prepare','--output',$destination,'--server','MSK-DB2','--database','YDS_PORTAL')
+        $process=Start-Process -FilePath $python -ArgumentList $arguments -NoNewWindow -PassThru -RedirectStandardOutput $stdoutLog -RedirectStandardError $stderrLog
+        $elapsed=0
+        while(-not $process.HasExited){
+            Start-Sleep -Seconds 1;$elapsed++;$process.Refresh()
+            if(($elapsed % 10) -eq 0){Write-Host "Перенос выполняется: $elapsed сек. Не закрывайте окно." -ForegroundColor Cyan}
+        }
+        $process.WaitForExit();Start-Sleep -Milliseconds 200
+        $stdout=if(Test-Path -LiteralPath $stdoutLog){[IO.File]::ReadAllText($stdoutLog,$utf8)}else{''}
+        $stderr=if(Test-Path -LiteralPath $stderrLog){[IO.File]::ReadAllText($stderrLog,$utf8)}else{''}
+        [IO.File]::WriteAllText($log,$stdout+$(if($stderr){[Environment]::NewLine+'--- STDERR ---'+[Environment]::NewLine+$stderr}else{''}),$utf8)
+        Remove-Item -LiteralPath $stdoutLog,$stderrLog -Force -ErrorAction SilentlyContinue
+        if($stdout){Write-Host $stdout};if($stderr){Write-Host $stderr -ForegroundColor Red}
+        $prepared=Test-CutoverActivated $destination
+        $activated=$prepared
+        if(-not $prepared){throw "Свежая копия или сверка не завершена. Журнал: $log"}
+    }
     Write-Host 'Запускаем портал на MSSQL…' -ForegroundColor Cyan
     if(-not (Start-PortalAndWait)){throw 'Портал не прошёл проверку запуска на MSSQL.'}
     Write-Host ''

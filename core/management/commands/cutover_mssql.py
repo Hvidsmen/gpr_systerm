@@ -1,4 +1,5 @@
 """Build the final fresh MSSQL copy and atomically select it for the Windows runtime."""
+import hashlib
 import json
 from pathlib import Path
 
@@ -8,6 +9,7 @@ from django.core.management.base import BaseCommand,CommandError
 from django.db import connections
 
 from config.mssql import PORTAL_COLLATION,available_sql_server_driver,integrated_connection_string
+from core.management.commands.prepare_mssql_copy import dump_fixture
 
 
 EXPECTED_LOGIN=r'YAMALGAZPROM\dvivanov'
@@ -21,6 +23,13 @@ def atomic_json(path,value):
 
 def quote_identifier(value):
     return '['+str(value).replace(']',']]')+']'
+
+
+def file_digest(path):
+    digest=hashlib.sha256()
+    with Path(path).open('rb') as source:
+        for chunk in iter(lambda:source.read(1024*1024),b''):digest.update(chunk)
+    return digest.hexdigest()
 
 
 def recreate_database(server,database,driver,expected_login=EXPECTED_LOGIN):
@@ -46,7 +55,7 @@ class Command(BaseCommand):
     help='Во время остановки портала создать свежую MSSQL-копию и выбрать её рабочей.'
 
     def add_arguments(self,parser):
-        parser.add_argument('operation',choices=['prepare','rollback'])
+        parser.add_argument('operation',choices=['prepare','resume','rollback'])
         parser.add_argument('--output',required=True)
         parser.add_argument('--server',default='MSK-DB2')
         parser.add_argument('--database',default='YDS_PORTAL')
@@ -61,6 +70,22 @@ class Command(BaseCommand):
             atomic_json(config_path,data['previous_config'])
             atomic_json(journal,{**data,'rolled_back':True})
             self.stdout.write(self.style.SUCCESS('Настройка портала возвращена на SQLite.'))
+            return
+        if options['operation']=='resume':
+            try:data=json.loads(journal.read_text(encoding='utf-8'))
+            except (OSError,ValueError) as exc:raise CommandError('Не найден журнал проверенной MSSQL-копии.') from exc
+            fixture=output/'portal-data.json';verification=output/'verification.json';current=output/'resume-current.json'
+            try:report=json.loads(verification.read_text(encoding='utf-8'))
+            except (OSError,ValueError) as exc:raise CommandError('Не найден успешный отчёт сверки MSSQL.') from exc
+            if report.get('errors'):raise CommandError('Сохранённая MSSQL-копия содержит расхождения и не может быть активирована.')
+            try:
+                dump_fixture('default',current)
+                if not fixture.is_file() or file_digest(current)!=file_digest(fixture):
+                    raise CommandError('Рабочая SQLite изменилась после проверенной копии; требуется свежий перенос.')
+            finally:current.unlink(missing_ok=True)
+            atomic_json(config_path,data['target_config'])
+            atomic_json(journal,{**data,'rolled_back':False,'resumed':True})
+            self.stdout.write(self.style.SUCCESS('Текущие данные не изменились; выбрана уже проверенная MSSQL-копия.'))
             return
         try:previous=json.loads(config_path.read_text(encoding='utf-8'))
         except (OSError,ValueError) as exc:raise CommandError('Не удалось прочитать установленную конфигурацию портала.') from exc

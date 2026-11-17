@@ -42,15 +42,35 @@ class PrepareMssqlCopyTests(SimpleTestCase):
             root=Path(directory);runtime=root/'.runtime';runtime.mkdir();source=root/'db.sqlite3';source.touch()
             installed=runtime/'installed.json';installed.write_text('{"database":"'+str(source).replace('\\','\\\\')+'","media":"media","port":8001,"hosts":[]}',encoding='utf-8')
             output=runtime/'mssql-cutover'/'run'
-            def verified_copy(*args,**kwargs):output.mkdir(parents=True)
+            def verified_copy(*args,**kwargs):
+                output.mkdir(parents=True);(output/'portal-data.json').write_bytes(b'fixture')
+                (output/'verification.json').write_text('{"errors":[]}',encoding='utf-8')
+            def unchanged_fixture(database,path):Path(path).write_bytes(b'fixture')
             command=CutoverCommand()
-            with override_settings(CONFIG_DIR=root),patch('core.management.commands.cutover_mssql.recreate_database',return_value='ODBC Driver 17 for SQL Server'),patch('core.management.commands.cutover_mssql.call_command',side_effect=verified_copy):
+            with override_settings(CONFIG_DIR=root),patch('core.management.commands.cutover_mssql.recreate_database',return_value='ODBC Driver 17 for SQL Server'),patch('core.management.commands.cutover_mssql.call_command',side_effect=verified_copy),patch('core.management.commands.cutover_mssql.dump_fixture',side_effect=unchanged_fixture):
                 command.handle(operation='prepare',output=str(output),server='MSK-DB2',database='YDS_PORTAL',driver='ODBC Driver 17 for SQL Server')
                 active=json.loads(installed.read_text(encoding='utf-8'))
                 self.assertEqual(active['database_engine'],'mssql');self.assertEqual(active['sqlite_database'],str(source))
                 command.handle(operation='rollback',output=str(output),server='MSK-DB2',database='YDS_PORTAL',driver='ODBC Driver 17 for SQL Server')
-            restored=json.loads(installed.read_text(encoding='utf-8'))
-            self.assertNotIn('database_engine',restored);self.assertEqual(restored['database'],str(source))
+                restored=json.loads(installed.read_text(encoding='utf-8'))
+                self.assertNotIn('database_engine',restored);self.assertEqual(restored['database'],str(source))
+                command.handle(operation='resume',output=str(output),server='MSK-DB2',database='YDS_PORTAL',driver='ODBC Driver 17 for SQL Server')
+            resumed=json.loads(installed.read_text(encoding='utf-8'));self.assertEqual(resumed['database_engine'],'mssql')
+
+    def test_cutover_refuses_to_resume_when_live_sqlite_changed(self):
+        with TemporaryDirectory() as directory:
+            root=Path(directory);runtime=root/'.runtime';runtime.mkdir();source=root/'db.sqlite3';source.touch()
+            previous={'database':str(source),'media':'media','port':8001,'hosts':[]}
+            target={**previous,'database_engine':'mssql','sqlite_database':str(source),'mssql':{'host':'MSK-DB2','name':'YDS_PORTAL'}}
+            installed=runtime/'installed.json';installed.write_text(json.dumps(previous),encoding='utf-8')
+            output=runtime/'mssql-cutover'/'run';output.mkdir(parents=True)
+            (output/'portal-data.json').write_bytes(b'old fixture')
+            (output/'verification.json').write_text('{"errors":[]}',encoding='utf-8')
+            (output/'cutover.json').write_text(json.dumps({'previous_config':previous,'target_config':target,'rolled_back':True}),encoding='utf-8')
+            with override_settings(CONFIG_DIR=root),patch('core.management.commands.cutover_mssql.dump_fixture',side_effect=lambda database,path:Path(path).write_bytes(b'changed fixture')):
+                with self.assertRaisesMessage(CommandError,'SQLite изменилась'):
+                    CutoverCommand().handle(operation='resume',output=str(output),server='MSK-DB2',database='YDS_PORTAL',driver='ODBC Driver 17 for SQL Server')
+            self.assertEqual(json.loads(installed.read_text(encoding='utf-8')),previous)
 
     def test_prefixed_estimate_fingerprint_fits_mssql_schema(self):
         value='works-v1:'+'a'*64
