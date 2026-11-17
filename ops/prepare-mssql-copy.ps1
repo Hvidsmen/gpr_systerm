@@ -28,12 +28,20 @@ $env:MSSQL_DRIVER='ODBC Driver 17 for SQL Server'
 $env:MSSQL_TRUST_SERVER_CERTIFICATE='true'
 $env:DJANGO_SECRET_KEY=(Get-Content -LiteralPath (Join-Path $runtime 'secret.key') -Raw).Trim()
 $env:DJANGO_DEBUG='0';$env:DJANGO_SECURE_SSL_REDIRECT='0';$env:DJANGO_COOKIE_SECURE='0'
+$utf8=New-Object Text.UTF8Encoding($false)
+[Console]::OutputEncoding=$utf8;$OutputEncoding=$utf8;$env:PYTHONIOENCODING='utf-8'
 Write-Host 'Создаётся проверочная копия. Рабочий портал продолжает работать с SQLite.' -ForegroundColor Cyan
 Write-Host "Журнал: $log" -ForegroundColor Cyan
 try{
-    & $python $manage prepare_mssql_copy --target mssql --output $destination 2>&1 | Tee-Object -FilePath $log
+    $ErrorActionPreference='Continue'
+    & $python $manage prepare_mssql_copy --target mssql --output $destination 2>&1 | ForEach-Object {
+        $line=$_.ToString();Write-Host $line
+        [IO.File]::AppendAllText($log,$line+[Environment]::NewLine,$utf8)
+    }
     $result=$LASTEXITCODE
+    $ErrorActionPreference='Stop'
     if($result -ne 0){throw "Подготовка копии MSSQL не завершена. Рабочая SQLite-база не изменялась. Журнал: $log"}
 }finally{
+    $ErrorActionPreference='Stop'
     if($lock){$lock.Dispose()}
 }
