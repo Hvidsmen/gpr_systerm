@@ -1,5 +1,6 @@
 """Create and restore the protected SQL Server backup used by portal updates."""
 import json
+import ntpath
 from pathlib import Path
 
 from django.core.management.base import BaseCommand,CommandError
@@ -41,9 +42,10 @@ class Command(BaseCommand):
     def create(self,metadata):
         details=connection_details();database=details['database']
         with connection.cursor() as cursor:
-            cursor.execute("SELECT CONVERT(nvarchar(4000),SERVERPROPERTY('InstanceDefaultBackupPath')),SUSER_SNAME()")
-            backup_directory,login=cursor.fetchone()
-            if not backup_directory:raise CommandError('SQL Server не сообщил каталог резервных копий.')
+            cursor.execute("SELECT TOP (1) CONVERT(nvarchar(4000),physical_name),SUSER_SNAME() FROM sys.database_files WHERE type=0 ORDER BY file_id")
+            data_file,login=cursor.fetchone()
+            backup_directory=ntpath.dirname(str(data_file or ''))
+            if not backup_directory:raise CommandError('SQL Server не сообщил расположение файла рабочей базы.')
             separator='' if str(backup_directory).endswith(('\\','/')) else '\\'
             backup_path=str(backup_directory)+separator+database+'_yds_portal_update.bak'
             cursor.execute(f'BACKUP DATABASE {quote_identifier(database)} TO DISK = %s WITH COPY_ONLY, INIT, CHECKSUM',[backup_path])

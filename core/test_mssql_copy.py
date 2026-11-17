@@ -21,10 +21,10 @@ class PrepareMssqlCopyTests(SimpleTestCase):
             metadata=Path(directory)/'backup.json';database=MagicMock()
             database.settings_dict={'HOST':'MSK-DB2','NAME':'YDS_PORTAL','OPTIONS':{'driver':'ODBC Driver 17 for SQL Server','extra_params':'TrustServerCertificate=yes'}}
             cursor=database.cursor.return_value.__enter__.return_value
-            cursor.fetchone.return_value=(r'C:\SQLBackups','YAMALGAZPROM\\dvivanov')
+            cursor.fetchone.return_value=(r'C:\SQLData\YDS_PORTAL.mdf','YAMALGAZPROM\\dvivanov')
             with patch('core.management.commands.mssql_backup.connection',database):BackupCommand().create(metadata)
             saved=json.loads(metadata.read_text(encoding='utf-8'))
-            self.assertEqual(saved['backup_path'],r'C:\SQLBackups\YDS_PORTAL_yds_portal_update.bak')
+            self.assertEqual(saved['backup_path'],r'C:\SQLData\YDS_PORTAL_yds_portal_update.bak')
             statements=' '.join(call.args[0] for call in cursor.execute.call_args_list)
             self.assertIn('BACKUP DATABASE [YDS_PORTAL]',statements);self.assertIn('RESTORE VERIFYONLY',statements)
 
