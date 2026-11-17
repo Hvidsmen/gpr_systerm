@@ -41,15 +41,22 @@ class Command(BaseCommand):
 
     def create(self,metadata):
         details=connection_details();database=details['database']
-        with connection.cursor() as cursor:
+        try:import pyodbc
+        except ImportError as exc:raise CommandError('Не установлен pyodbc.') from exc
+        sql=pyodbc.connect(integrated_connection_string(details['server'],database,details['driver'],details['trust_certificate']),timeout=15,autocommit=True)
+        try:
+            cursor=sql.cursor()
             cursor.execute("SELECT TOP (1) CONVERT(nvarchar(4000),physical_name),SUSER_SNAME() FROM sys.database_files WHERE type=0 ORDER BY file_id")
             data_file,login=cursor.fetchone()
             backup_directory=ntpath.dirname(str(data_file or ''))
             if not backup_directory:raise CommandError('SQL Server не сообщил расположение файла рабочей базы.')
             separator='' if str(backup_directory).endswith(('\\','/')) else '\\'
             backup_path=str(backup_directory)+separator+database+'_yds_portal_update.bak'
-            cursor.execute(f'BACKUP DATABASE {quote_identifier(database)} TO DISK = %s WITH COPY_ONLY, INIT, CHECKSUM',[backup_path])
-            cursor.execute('RESTORE VERIFYONLY FROM DISK = %s WITH CHECKSUM',[backup_path])
+            cursor.execute(f'BACKUP DATABASE {quote_identifier(database)} TO DISK = ? WITH COPY_ONLY, INIT, CHECKSUM',backup_path)
+            while cursor.nextset():pass
+            cursor.execute('RESTORE VERIFYONLY FROM DISK = ? WITH CHECKSUM',backup_path)
+            while cursor.nextset():pass
+        finally:sql.close()
         metadata.parent.mkdir(parents=True,exist_ok=True)
         atomic_json(metadata,{**details,'backup_path':backup_path,'login':str(login)})
         self.stdout.write(self.style.SUCCESS('Резервная копия MSSQL создана и проверена.'))
