@@ -1,17 +1,57 @@
 from io import StringIO
+import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock,patch
 
 from django.core.management.base import CommandError
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase,override_settings
 
 from apps.planning.models import EstimateReviewTask
+from core.management.commands.cutover_mssql import Command as CutoverCommand
+from core.management.commands.mssql_backup import Command as BackupCommand
 from core.management.commands.prepare_mssql_copy import Command,dump_fixture,require_target_collation
 from core.fixture_loading import fixture_loading,is_loading_fixture
 
 
 class PrepareMssqlCopyTests(SimpleTestCase):
+    def test_mssql_backup_uses_server_backup_directory_and_writes_metadata(self):
+        with TemporaryDirectory() as directory:
+            metadata=Path(directory)/'backup.json';database=MagicMock()
+            database.settings_dict={'HOST':'MSK-DB2','NAME':'YDS_PORTAL','OPTIONS':{'driver':'ODBC Driver 17 for SQL Server','extra_params':'TrustServerCertificate=yes'}}
+            cursor=database.cursor.return_value.__enter__.return_value
+            cursor.fetchone.return_value=(r'C:\SQLBackups','YAMALGAZPROM\\dvivanov')
+            with patch('core.management.commands.mssql_backup.connection',database):BackupCommand().create(metadata)
+            saved=json.loads(metadata.read_text(encoding='utf-8'))
+            self.assertEqual(saved['backup_path'],r'C:\SQLBackups\YDS_PORTAL_yds_portal_update.bak')
+            statements=' '.join(call.args[0] for call in cursor.execute.call_args_list)
+            self.assertIn('BACKUP DATABASE [YDS_PORTAL]',statements);self.assertIn('RESTORE VERIFYONLY',statements)
+
+    def test_mssql_restore_uses_master_and_returns_database_to_multi_user(self):
+        with TemporaryDirectory() as directory:
+            metadata=Path(directory)/'backup.json'
+            metadata.write_text(json.dumps({'server':'MSK-DB2','database':'YDS_PORTAL','backup_path':r'C:\SQLBackups\portal.bak'}),encoding='utf-8')
+            database=MagicMock();database.settings_dict={'HOST':'MSK-DB2','NAME':'YDS_PORTAL','OPTIONS':{'driver':'ODBC Driver 17 for SQL Server','extra_params':'TrustServerCertificate=yes'}}
+            master=MagicMock();pyodbc=MagicMock();pyodbc.connect.return_value=master
+            with patch('core.management.commands.mssql_backup.connection',database),patch.dict('sys.modules',{'pyodbc':pyodbc}):BackupCommand().restore(metadata)
+            statements=' '.join(call.args[0] for call in master.cursor.return_value.execute.call_args_list)
+            self.assertIn('SET SINGLE_USER',statements);self.assertIn('RESTORE DATABASE',statements);self.assertIn('SET MULTI_USER',statements)
+
+    def test_cutover_activates_verified_target_and_can_restore_sqlite_config(self):
+        with TemporaryDirectory() as directory:
+            root=Path(directory);runtime=root/'.runtime';runtime.mkdir();source=root/'db.sqlite3';source.touch()
+            installed=runtime/'installed.json';installed.write_text('{"database":"'+str(source).replace('\\','\\\\')+'","media":"media","port":8001,"hosts":[]}',encoding='utf-8')
+            output=runtime/'mssql-cutover'/'run'
+            def verified_copy(*args,**kwargs):output.mkdir(parents=True)
+            command=CutoverCommand()
+            with override_settings(CONFIG_DIR=root),patch('core.management.commands.cutover_mssql.recreate_database',return_value='ODBC Driver 17 for SQL Server'),patch('core.management.commands.cutover_mssql.call_command',side_effect=verified_copy):
+                command.handle(operation='prepare',output=str(output),server='MSK-DB2',database='YDS_PORTAL',driver='ODBC Driver 17 for SQL Server')
+                active=json.loads(installed.read_text(encoding='utf-8'))
+                self.assertEqual(active['database_engine'],'mssql');self.assertEqual(active['sqlite_database'],str(source))
+                command.handle(operation='rollback',output=str(output),server='MSK-DB2',database='YDS_PORTAL',driver='ODBC Driver 17 for SQL Server')
+            restored=json.loads(installed.read_text(encoding='utf-8'))
+            self.assertNotIn('database_engine',restored);self.assertEqual(restored['database'],str(source))
+
     def test_prefixed_estimate_fingerprint_fits_mssql_schema(self):
         value='works-v1:'+'a'*64
         self.assertLessEqual(len(value),EstimateReviewTask._meta.get_field('fingerprint').max_length)

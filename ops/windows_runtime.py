@@ -22,7 +22,8 @@ import zipfile
 REPOSITORY='Hvidsmen/gpr_systerm'
 CONTROL_FILES=('SET_GPR_PORTAL_ACCOUNT.cmd','ops/set-windows-portal-account.ps1',
                'CHECK_GPR_MSSQL.cmd','ops/check-mssql.ps1',
-               'PREPARE_GPR_MSSQL_COPY.cmd','ops/prepare-mssql-copy.ps1')
+               'PREPARE_GPR_MSSQL_COPY.cmd','ops/prepare-mssql-copy.ps1',
+               'SWITCH_GPR_TO_MSSQL.cmd','ops/switch-to-mssql.ps1')
 TASK='YDS Portal'
 RUNTIME_HISTORY=5
 MIN_UPDATE_FREE_BYTES=1024*1024*1024
@@ -50,12 +51,24 @@ def python_at(directory):
     return str(Path(directory)/('Scripts/python.exe' if os.name=='nt' else 'bin/python'))
 
 
+def database_engine(config):
+    return str(config.get('database_engine','sqlite')).strip().casefold()
+
+
 def environment(root,config):
     from dotenv import dotenv_values
     env={**os.environ,**{k:v for k,v in dotenv_values(root/'.env').items() if v is not None}}
-    env.update(GPR_CONFIG_DIR=str(root),DJANGO_DB_PATH=config['database'],DJANGO_MEDIA_ROOT=config['media'],
+    env.update(GPR_CONFIG_DIR=str(root),DJANGO_MEDIA_ROOT=config['media'],
                DJANGO_DEBUG='0',DJANGO_SECURE_SSL_REDIRECT='0',DJANGO_COOKIE_SECURE='0',
                DJANGO_SECRET_KEY=(root/'.runtime/secret.key').read_text().strip(),PYTHONUNBUFFERED='1')
+    if database_engine(config)=='mssql':
+        database=config.get('mssql') or {}
+        env.update(DJANGO_DB_ENGINE='mssql',MSSQL_HOST=str(database.get('host','')),
+                   MSSQL_NAME=str(database.get('name','')),MSSQL_PORT=str(database.get('port','')),
+                   MSSQL_DRIVER=str(database.get('driver','ODBC Driver 17 for SQL Server')),
+                   MSSQL_TRUST_SERVER_CERTIFICATE='true' if database.get('trust_server_certificate',True) else 'false')
+    else:
+        env.update(DJANGO_DB_ENGINE='sqlite',DJANGO_DB_PATH=config['database'])
     hosts=env.get('DJANGO_ALLOWED_HOSTS','').split(',')+['127.0.0.1','localhost',socket.gethostname()]+config.get('hosts',[])
     env['DJANGO_ALLOWED_HOSTS']=','.join(sorted({h.strip() for h in hosts if h.strip() and h.strip()!='*'}))
     return env
@@ -140,7 +153,15 @@ def run(args,cwd,env):
         subprocess.run(args,cwd=str(cwd),env=env,stdout=output,stderr=subprocess.STDOUT,check=True,timeout=1800)
 
 
-def backup_database(config,runtime):
+def backup_database(config,runtime,current=None):
+    if database_engine(config)=='mssql':
+        if not current:raise RuntimeError('Active application version is required to back up MSSQL.')
+        destination=runtime/'backups'/datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S-%f')
+        destination.mkdir(parents=True)
+        metadata=destination/'mssql-backup.json'
+        run([current['python'],'manage.py','mssql_backup','create','--metadata',str(metadata)],current['code'],environment(runtime.parent,config))
+        if not metadata.is_file():raise RuntimeError('MSSQL backup metadata was not created.')
+        return metadata
     source=Path(config['database'])
     if not source.is_file():raise RuntimeError('Configured database does not exist; refusing to create a new one.')
     destination=runtime/'backups'/datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S-%f')
@@ -155,7 +176,11 @@ def backup_database(config,runtime):
     return destination/'database.sqlite3'
 
 
-def restore_database(config,backup):
+def restore_database(config,backup,current=None,root=None):
+    if database_engine(config)=='mssql':
+        if not current or root is None:raise RuntimeError('Active application version and root are required to restore MSSQL.')
+        run([current['python'],'manage.py','mssql_backup','restore','--metadata',str(backup)],current['code'],environment(Path(root),config))
+        return
     destination=Path(config['database'])
     # Called only with all managed app processes stopped, before public activation.
     for suffix in ['-wal','-shm']:
@@ -199,6 +224,7 @@ def switch_database(root,target):
     from dotenv import set_key
     runtime=root/'.runtime';config=read_json(runtime/'installed.json')
     if not config:raise RuntimeError('Background installation was not found.')
+    if database_engine(config)!='sqlite':raise RuntimeError('This command switches SQLite files only; the portal is configured for MSSQL.')
     target=target if target.is_absolute() else root/target
     target=target.resolve()
     if not target.is_file():raise RuntimeError('Selected database does not exist.')
@@ -246,6 +272,7 @@ def switch_database(root,target):
 def create_clean_database(root,target,keep_objects):
     runtime=root/'.runtime'
     config=read_json(runtime/'installed.json')
+    if config and database_engine(config)!='sqlite':raise RuntimeError('A new SQLite database cannot be selected while the portal uses MSSQL.')
     target=(target if target.is_absolute() else root/target).resolve()
     if not config or target.exists():raise RuntimeError('Choose a new database filename; existing databases are never replaced.')
     if read_json(runtime/'status.json',{}).get('state')=='updating' or (runtime/'update.request').exists():raise RuntimeError('Wait for the current update to finish.')
@@ -275,7 +302,7 @@ def recover_update(root):
     current=read_json(runtime/'current.json',{})
     if current.get('sha')!=journal['candidate']['sha']:
         config=read_json(runtime/'installed.json')
-        restore_database(config,Path(journal['backup']))
+        restore_database(config,Path(journal['backup']),journal['previous'],root)
         prior=Path(journal['backup']).parent/'bootstrap.py'
         if prior.exists():atomic_copy(prior,runtime/'bootstrap.py')
         atomic_json(runtime/'current.json',journal['previous'])
@@ -473,7 +500,7 @@ def update(root,process,current):
     update_stage(root,'stopping')
     stop_process(root,process)
     update_stage(root,'backup')
-    backup=backup_database(config,runtime)
+    backup=backup_database(config,runtime,current)
     atomic_json(runtime/'transaction.json',{'previous':current,'candidate':candidate,'backup':str(backup)})
     probe=None
     try:

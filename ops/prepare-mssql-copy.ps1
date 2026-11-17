@@ -8,6 +8,7 @@ $Root=(Resolve-Path -LiteralPath $Root).Path
 $runtime=Join-Path $Root '.runtime'
 $current=Get-Content -LiteralPath (Join-Path $runtime 'current.json') -Raw | ConvertFrom-Json
 $installed=Get-Content -LiteralPath (Join-Path $runtime 'installed.json') -Raw | ConvertFrom-Json
+if($installed.database_engine -and [string]$installed.database_engine -ieq 'mssql'){throw 'Портал уже работает на MSSQL. Повторная подготовка уничтожила бы рабочие данные и запрещена.'}
 $python=[string]$current.python;$manage=Join-Path ([string]$current.code) 'manage.py'
 if(-not (Test-Path -LiteralPath $python) -or -not (Test-Path -LiteralPath $manage)){throw 'Активная версия портала не найдена. Сначала выполните обновление.'}
 $identity=[Security.Principal.WindowsIdentity]::GetCurrent().Name

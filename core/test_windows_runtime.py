@@ -31,6 +31,23 @@ class WindowsRuntimeTests(SimpleTestCase):
         self.assertIn('192.168.70.9',env['DJANGO_ALLOWED_HOSTS']);self.assertIn('127.0.0.1',env['DJANGO_ALLOWED_HOSTS'])
         self.assertEqual(env['DJANGO_COOKIE_SECURE'],'0')
 
+    def test_environment_uses_persistent_mssql_configuration_over_env_file(self):
+        (self.root/'.env').write_text('DJANGO_DB_ENGINE=sqlite\nDJANGO_DB_PATH=wrong.sqlite3\n')
+        config={**self.config,'database_engine':'mssql','mssql':{'host':'MSK-DB2','name':'YDS_PORTAL','port':'','driver':'ODBC Driver 17 for SQL Server','trust_server_certificate':True}}
+        env=runtime.environment(self.root,config)
+        self.assertEqual(env['DJANGO_DB_ENGINE'],'mssql');self.assertEqual(env['MSSQL_HOST'],'MSK-DB2')
+        self.assertEqual(env['MSSQL_NAME'],'YDS_PORTAL');self.assertEqual(env['MSSQL_DRIVER'],'ODBC Driver 17 for SQL Server')
+
+    def test_mssql_update_backup_and_restore_use_active_release_command(self):
+        config={**self.config,'database_engine':'mssql','mssql':{'host':'MSK-DB2','name':'YDS_PORTAL','driver':'ODBC Driver 17 for SQL Server'}}
+        current={'python':'release-python','code':str(self.root/'release')}
+        def create_metadata(args,cwd,env):Path(args[-1]).write_text('{}')
+        with patch.object(runtime,'run',side_effect=create_metadata) as run:
+            backup=runtime.backup_database(config,self.state,current)
+            runtime.restore_database(config,backup,current,self.root)
+        self.assertEqual(run.call_count,2);self.assertEqual(run.call_args_list[0].args[0][2:5],['mssql_backup','create','--metadata'])
+        self.assertEqual(run.call_args_list[1].args[0][2:5],['mssql_backup','restore','--metadata'])
+
     def test_backup_is_consistent_and_restores_database_without_touching_media(self):
         media=self.root/'media';media.mkdir();(media/'file.txt').write_text('keep')
         backup=runtime.backup_database(self.config,self.state)
@@ -83,6 +100,17 @@ class WindowsRuntimeTests(SimpleTestCase):
             launch.assert_called_once_with(self.root,current)
         with sqlite3.connect(self.database) as db:self.assertEqual(db.execute('SELECT value FROM marker').fetchone()[0],'before')
 
+    def test_mssql_migration_failure_invokes_native_restore_before_old_start(self):
+        config={**self.config,'database_engine':'mssql','mssql':{'host':'MSK-DB2','name':'YDS_PORTAL','driver':'ODBC Driver 17 for SQL Server'}}
+        runtime.atomic_json(self.state/'installed.json',config)
+        current={'sha':'old','code':str(self.root),'python':'python'}
+        candidate={'sha':'e'*40,'code':str(self.root/'release'),'python':'new-python'}
+        backup=self.state/'backups/run/mssql-backup.json';backup.parent.mkdir(parents=True);backup.write_text('{}')
+        with patch.object(runtime,'stage_update',return_value=candidate),patch.object(runtime,'stop_process'),patch.object(runtime,'backup_database',return_value=backup),patch.object(runtime,'run',side_effect=RuntimeError('migration failed')),patch.object(runtime,'restore_database') as restore,patch.object(runtime,'launch',return_value=(Mock(),8001)):
+            _,result,message=runtime.update(self.root,Mock(),current)
+        self.assertEqual(result,current);self.assertTrue(message.startswith('Update failed'))
+        restore.assert_called_once_with(config,backup,current,self.root)
+
     def test_success_commits_release_before_public_start(self):
         current={'sha':'old','code':str(self.root),'python':'python'}
         code=self.root/'release';(code/'ops').mkdir(parents=True);(code/'ops/windows_runtime.py').write_text('new bootstrap')
@@ -92,6 +120,8 @@ class WindowsRuntimeTests(SimpleTestCase):
         (code/'ops/check-mssql.ps1').write_text('mssql check')
         (code/'PREPARE_GPR_MSSQL_COPY.cmd').write_text('copy launcher')
         (code/'ops/prepare-mssql-copy.ps1').write_text('copy tool')
+        (code/'SWITCH_GPR_TO_MSSQL.cmd').write_text('cutover launcher')
+        (code/'ops/switch-to-mssql.ps1').write_text('cutover tool')
         candidate={'sha':'b'*40,'code':str(code),'python':'python-new'}
         with patch.object(runtime,'stage_update',return_value=candidate),patch.object(runtime,'stop_process'),patch.object(runtime,'run'),patch.object(runtime,'healthy'),patch.object(runtime,'launch',return_value=(Mock(),8001)):
             _,result,message=runtime.update(self.root,Mock(),current)
@@ -103,6 +133,8 @@ class WindowsRuntimeTests(SimpleTestCase):
         self.assertEqual((self.root/'ops/check-mssql.ps1').read_text(),'mssql check')
         self.assertEqual((self.root/'PREPARE_GPR_MSSQL_COPY.cmd').read_text(),'copy launcher')
         self.assertEqual((self.root/'ops/prepare-mssql-copy.ps1').read_text(),'copy tool')
+        self.assertEqual((self.root/'SWITCH_GPR_TO_MSSQL.cmd').read_text(),'cutover launcher')
+        self.assertEqual((self.root/'ops/switch-to-mssql.ps1').read_text(),'cutover tool')
 
     def test_mssql_bridge_migration_exposes_tool_on_its_first_update(self):
         migration=importlib.import_module('apps.accounts.migrations.0032_publish_mssql_check')
@@ -147,6 +179,17 @@ class WindowsRuntimeTests(SimpleTestCase):
             migration.publish_tool(None,None,platform_name='nt')
         self.assertEqual((persistent/'PREPARE_GPR_MSSQL_COPY.cmd').read_text(),'fixed launcher')
         self.assertEqual((persistent/'ops/prepare-mssql-copy.ps1').read_text(),'safe reader')
+
+    def test_mssql_cutover_bridge_exposes_tool_on_its_first_update(self):
+        migration=importlib.import_module('apps.accounts.migrations.0036_publish_mssql_cutover_tool')
+        code=self.root/'immutable-release';(code/'ops').mkdir(parents=True)
+        (code/'SWITCH_GPR_TO_MSSQL.cmd').write_text('cutover launcher')
+        (code/'ops/switch-to-mssql.ps1').write_text('cutover tool')
+        persistent=self.root/'persistent';persistent.mkdir()
+        with override_settings(BASE_DIR=code,CONFIG_DIR=persistent):
+            migration.publish_tool(None,None,platform_name='nt')
+        self.assertEqual((persistent/'SWITCH_GPR_TO_MSSQL.cmd').read_text(),'cutover launcher')
+        self.assertEqual((persistent/'ops/switch-to-mssql.ps1').read_text(),'cutover tool')
 
     def test_bridge_migration_exposes_tool_during_first_immutable_update(self):
         migration=importlib.import_module('apps.accounts.migrations.0031_publish_portal_account_tool')
