@@ -4,6 +4,9 @@ from django.core.exceptions import ImproperlyConfigured
 from django.test import SimpleTestCase
 from config.database import database_settings
 from config.mssql import integrated_connection_string,available_sql_server_driver
+from mssql.base import DatabaseWrapper
+from apps.personnel.models import Person
+from apps.resources.models import Employee,Equipment
 
 
 class DatabaseSettingsTests(SimpleTestCase):
@@ -42,3 +45,21 @@ class DatabaseSettingsTests(SimpleTestCase):
         self.assertEqual(available_sql_server_driver(both),'ODBC Driver 18 for SQL Server')
         self.assertEqual(available_sql_server_driver(both[:-1]),'ODBC Driver 17 for SQL Server')
         self.assertEqual(available_sql_server_driver(both,'ODBC Driver 17 for SQL Server'),'ODBC Driver 17 for SQL Server')
+
+    def test_filtered_nonempty_unique_indexes_use_sql_server_supported_predicates(self):
+        values={'ENGINE':'mssql','NAME':'test','HOST':'server','PORT':'','USER':'','PASSWORD':'',
+                'OPTIONS':{'driver':'ODBC Driver 17 for SQL Server'},'TIME_ZONE':None,
+                'CONN_HEALTH_CHECKS':False,'CONN_MAX_AGE':0,'AUTOCOMMIT':True,
+                'ATOMIC_REQUESTS':False,'TEST':{}}
+        connection=DatabaseWrapper(values,'mssql-test')
+        editor=connection.schema_editor(collect_sql=True,atomic=False)
+        statements=[]
+        for model in (Equipment,Employee,Person):
+            for constraint in model._meta.constraints:
+                if getattr(constraint,'condition',None) is not None:
+                    statements.append(str(constraint.create_sql(model,editor)))
+        sql='\n'.join(statements)
+        self.assertNotIn(' WHERE NOT ',sql)
+        self.assertIn("WHERE [plate_number] > ''",sql)
+        self.assertIn("WHERE [zup_ref] > ''",sql)
+        self.assertIn("WHERE [employee_number] > ''",sql)

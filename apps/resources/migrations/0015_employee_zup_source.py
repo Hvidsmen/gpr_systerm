@@ -53,6 +53,6 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name='employee',
-            constraint=models.UniqueConstraint(condition=models.Q(('zup_ref', ''), _negated=True), fields=('company', 'zup_server', 'zup_database', 'zup_ref'), name='unique_employee_zup_source'),
+            constraint=models.UniqueConstraint(condition=models.Q(('zup_ref__gt', '')), fields=('company', 'zup_server', 'zup_database', 'zup_ref'), name='unique_employee_zup_source'),
         ),
     ]

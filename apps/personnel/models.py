@@ -36,7 +36,7 @@ class Person(PersonnelModel):
     dispatcher_removal_reason=models.TextField('Причина удаления из диспетчерской',blank=True)
     class Meta:
         ordering = ['full_name', 'pk']
-        constraints = [models.UniqueConstraint(fields=['company', 'employee_number'], condition=~models.Q(employee_number=''), name='personnel_unique_employee_number')]
+        constraints = [models.UniqueConstraint(fields=['company', 'employee_number'], condition=models.Q(employee_number__gt=''), name='personnel_unique_employee_number')]
     def clean(self):
         super().clean()
         if self.employee_id and self.employee.company_id != self.company_id: raise ValidationError({'employee':'Сотрудник другой компании.'})

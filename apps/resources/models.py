@@ -80,7 +80,7 @@ class Employee(BaseCompanyModel):
         verbose_name = _('сотрудник')
         verbose_name_plural = _('сотрудники')
         ordering = ['last_name', 'first_name']
-        constraints = [models.UniqueConstraint(fields=['company', 'zup_server', 'zup_database', 'zup_ref'], condition=~models.Q(zup_ref=''), name='unique_employee_zup_source')]
+        constraints = [models.UniqueConstraint(fields=['company', 'zup_server', 'zup_database', 'zup_ref'], condition=models.Q(zup_ref__gt=''), name='unique_employee_zup_source')]
 
     def __str__(self):
         return self.display_name
@@ -297,7 +297,7 @@ class Equipment(BaseCompanyModel):
         verbose_name = _('техника')
         verbose_name_plural = _('техника')
         ordering = ['plate_number']
-        constraints = [models.UniqueConstraint(fields=['company','plate_number'],condition=~models.Q(plate_number=''),name='unique_nonempty_equipment_plate'),models.UniqueConstraint(fields=['company','import_key'],condition=~models.Q(import_key=''),name='unique_equipment_import_key')]
+        constraints = [models.UniqueConstraint(fields=['company','plate_number'],condition=models.Q(plate_number__gt=''),name='unique_nonempty_equipment_plate'),models.UniqueConstraint(fields=['company','import_key'],condition=models.Q(import_key__gt=''),name='unique_equipment_import_key')]
 
     def clean(self):
         super().clean()

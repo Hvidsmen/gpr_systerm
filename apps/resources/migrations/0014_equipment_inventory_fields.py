@@ -73,10 +73,10 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name='equipment',
-            constraint=models.UniqueConstraint(condition=models.Q(('plate_number', ''), _negated=True), fields=('company', 'plate_number'), name='unique_nonempty_equipment_plate'),
+            constraint=models.UniqueConstraint(condition=models.Q(('plate_number__gt', '')), fields=('company', 'plate_number'), name='unique_nonempty_equipment_plate'),
         ),
         migrations.AddConstraint(
             model_name='equipment',
-            constraint=models.UniqueConstraint(condition=models.Q(('import_key', ''), _negated=True), fields=('company', 'import_key'), name='unique_equipment_import_key'),
+            constraint=models.UniqueConstraint(condition=models.Q(('import_key__gt', '')), fields=('company', 'import_key'), name='unique_equipment_import_key'),
         ),
     ]

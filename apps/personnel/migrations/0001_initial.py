@@ -102,6 +102,6 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name='person',
-            constraint=models.UniqueConstraint(condition=models.Q(('employee_number', ''), _negated=True), fields=('company', 'employee_number'), name='personnel_unique_employee_number'),
+            constraint=models.UniqueConstraint(condition=models.Q(('employee_number__gt', '')), fields=('company', 'employee_number'), name='personnel_unique_employee_number'),
         ),
     ]
