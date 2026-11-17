@@ -1,3 +1,4 @@
+import importlib
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from django.core.exceptions import ImproperlyConfigured
@@ -77,3 +78,10 @@ class DatabaseSettingsTests(SimpleTestCase):
                     if any(model._meta.get_field(field).null for field in constraint.fields):
                         unsafe.append(f'{model._meta.label}: {constraint.name}')
         self.assertEqual(unsafe,[])
+
+    def test_carryover_unique_index_is_added_after_field_becomes_nullable(self):
+        migration=importlib.import_module('apps.planning.migrations.0029_alter_carryoverreviewtask_source_version_and_more').Migration
+        self.assertEqual(type(migration.operations[0]).__name__,'AlterField')
+        self.assertEqual(migration.operations[0].name,'source_version')
+        self.assertEqual(type(migration.operations[1]).__name__,'AddConstraint')
+        self.assertEqual(migration.operations[1].constraint.name,'unique_carryover_review_task')

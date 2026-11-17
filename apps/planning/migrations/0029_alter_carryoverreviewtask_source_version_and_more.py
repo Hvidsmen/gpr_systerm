@@ -21,6 +21,10 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name='carryoverreviewtask',
+            constraint=models.UniqueConstraint(condition=models.Q(('source_version__isnull', False)), fields=('version', 'source_version', 'month'), name='unique_carryover_review_task'),
+        ),
+        migrations.AddConstraint(
+            model_name='carryoverreviewtask',
             constraint=models.UniqueConstraint(condition=models.Q(('source_version__isnull', True)), fields=('version', 'month'), name='unique_macro_carryover_review_task'),
         ),
     ]
