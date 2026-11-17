@@ -71,13 +71,14 @@ function Stop-PortalGracefully{
     throw 'Портал не завершил текущие запросы за 150 секунд. Переключение не начиналось.'
 }
 function Start-PortalAndWait{
-    Start-ScheduledTask -TaskName 'YDS Portal'
     $observedRunning=$false
-    for($attempt=0;$attempt -lt 120;$attempt++){
+    for($attempt=0;$attempt -lt 180;$attempt++){
         if(Test-PortalReady ([int]$installed.port)){return $true}
         $state=(Get-ScheduledTask -TaskName 'YDS Portal').State
         if($state -in @('Running','Queued')){$observedRunning=$true}
-        elseif($observedRunning -or $attempt -ge 30){return $false}
+        elseif($observedRunning){return $false}
+        elseif(($attempt % 3) -eq 0){Start-ScheduledTask -TaskName 'YDS Portal' -ErrorAction SilentlyContinue}
+        if(-not $observedRunning -and $attempt -ge 60){return $false}
         Start-Sleep -Seconds 1
     }
     return $false
