@@ -18,7 +18,7 @@ $env:DJANGO_DB_ENGINE='sqlite'
 $env:DJANGO_DB_PATH=[string]$installed.database
 $env:MSSQL_HOST='MSK-DB2'
 $env:MSSQL_NAME='YDS_PORTAL'
-$env:MSSQL_DRIVER=''
+$env:MSSQL_DRIVER='ODBC Driver 17 for SQL Server'
 $env:MSSQL_TRUST_SERVER_CERTIFICATE='true'
 $env:DJANGO_SECRET_KEY=(Get-Content -LiteralPath (Join-Path $runtime 'secret.key') -Raw).Trim()
 $env:DJANGO_DEBUG='0';$env:DJANGO_SECURE_SSL_REDIRECT='0';$env:DJANGO_COOKIE_SECURE='0'

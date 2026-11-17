@@ -22,9 +22,8 @@ def database_settings(base_dir, environment=None):
                 'OPTIONS':connection_options()}
     if engine not in {'mssql','sqlserver'}:
         raise ImproperlyConfigured('DJANGO_DB_ENGINE должен быть sqlite или mssql.')
-    options={'unicode_results':True}
-    driver=environment.get('MSSQL_DRIVER','').strip()
-    if driver:options['driver']=driver
+    options={'unicode_results':True,
+             'driver':environment.get('MSSQL_DRIVER','ODBC Driver 17 for SQL Server').strip() or 'ODBC Driver 17 for SQL Server'}
     if environment.get('MSSQL_TRUST_SERVER_CERTIFICATE','true').strip().casefold() in {'1','true','yes','on'}:
         options['extra_params']='TrustServerCertificate=yes'
     return {'ENGINE':'mssql','NAME':_required(environment,'MSSQL_NAME'),
