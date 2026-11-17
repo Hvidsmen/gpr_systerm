@@ -30,18 +30,35 @@ $env:DJANGO_SECRET_KEY=(Get-Content -LiteralPath (Join-Path $runtime 'secret.key
 $env:DJANGO_DEBUG='0';$env:DJANGO_SECURE_SSL_REDIRECT='0';$env:DJANGO_COOKIE_SECURE='0'
 $utf8=New-Object Text.UTF8Encoding($false)
 [Console]::OutputEncoding=$utf8;$OutputEncoding=$utf8;$env:PYTHONIOENCODING='utf-8'
+$env:PYTHONUNBUFFERED='1'
 Write-Host 'Создаётся проверочная копия. Рабочий портал продолжает работать с SQLite.' -ForegroundColor Cyan
 Write-Host "Журнал: $log" -ForegroundColor Cyan
 try{
-    $ErrorActionPreference='Continue'
-    & $python $manage prepare_mssql_copy --target mssql --output $destination 2>&1 | ForEach-Object {
-        $line=$_.ToString();Write-Host $line
-        [IO.File]::AppendAllText($log,$line+[Environment]::NewLine,$utf8)
+    # Redirect the two native streams at process level. Windows PowerShell 5
+    # otherwise converts Python stderr to NativeCommandError and can retain
+    # only the first line of a traceback.
+    $stdoutLog=$log+'.stdout';$stderrLog=$log+'.stderr'
+    $arguments=@($manage,'prepare_mssql_copy','--target','mssql','--output',$destination)
+    $process=Start-Process -FilePath $python -ArgumentList $arguments -NoNewWindow -PassThru `
+        -RedirectStandardOutput $stdoutLog -RedirectStandardError $stderrLog
+    $shown=0
+    while(-not $process.HasExited){
+        Start-Sleep -Milliseconds 500
+        $process.Refresh()
+        if(Test-Path -LiteralPath $stdoutLog){
+            $lines=[IO.File]::ReadAllLines($stdoutLog,$utf8)
+            while($shown -lt $lines.Length){Write-Host $lines[$shown];$shown++}
+        }
     }
-    $result=$LASTEXITCODE
-    $ErrorActionPreference='Stop'
+    $process.WaitForExit();$result=$process.ExitCode
+    $stdout=if(Test-Path -LiteralPath $stdoutLog){[IO.File]::ReadAllText($stdoutLog,$utf8)}else{''}
+    $stderr=if(Test-Path -LiteralPath $stderrLog){[IO.File]::ReadAllText($stderrLog,$utf8)}else{''}
+    $lines=if(Test-Path -LiteralPath $stdoutLog){[IO.File]::ReadAllLines($stdoutLog,$utf8)}else{@()}
+    while($shown -lt $lines.Length){Write-Host $lines[$shown];$shown++}
+    if($stderr){Write-Host $stderr -ForegroundColor Red}
+    [IO.File]::WriteAllText($log,$stdout+$(if($stderr){[Environment]::NewLine+'--- STDERR ---'+[Environment]::NewLine+$stderr}else{''}),$utf8)
+    Remove-Item -LiteralPath $stdoutLog,$stderrLog -Force -ErrorAction SilentlyContinue
     if($result -ne 0){throw "Подготовка копии MSSQL не завершена. Рабочая SQLite-база не изменялась. Журнал: $log"}
 }finally{
-    $ErrorActionPreference='Stop'
     if($lock){$lock.Dispose()}
 }

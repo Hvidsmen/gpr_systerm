@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 import sqlite3
+import traceback
 from django.apps import apps
 from django.core.management import call_command
 from django.core.management.base import BaseCommand,CommandError
@@ -53,6 +54,21 @@ class Command(BaseCommand):
         parser.add_argument('--output',required=True)
 
     def handle(self,*args,**options):
+        try:
+            return self._handle(*args,**options)
+        except Exception as error:
+            # Windows PowerShell 5 may turn a native stderr stream into a
+            # single NativeCommandError record.  Put the complete traceback
+            # on stdout as well so the operator's log always contains the
+            # actual database error.
+            self.stdout.write('\nПОЛНАЯ ОШИБКА ПОДГОТОВКИ MSSQL:')
+            traceback.print_exc(file=self.stdout)
+            self.stdout.write('Рабочая SQLite-база не изменялась.')
+            if isinstance(error,CommandError):
+                raise
+            raise CommandError('Подготовка копии MSSQL завершилась ошибкой. Полный текст указан выше.') from error
+
+    def _handle(self,*args,**options):
         source='default';target=options['target'];output=Path(options['output']).resolve()
         if target not in connections:raise CommandError(f'Подключение {target} не настроено.')
         if connections[source].vendor!='sqlite':raise CommandError('Исходная рабочая база должна быть SQLite.')
