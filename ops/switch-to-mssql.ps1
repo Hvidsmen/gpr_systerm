@@ -88,7 +88,9 @@ try{
     Write-Host 'Создаём свежую MSSQL-копию и сверяем все модели…' -ForegroundColor Cyan
     Write-Host "Журнал: $log" -ForegroundColor Cyan
     $stdoutLog=$log+'.stdout';$stderrLog=$log+'.stderr'
-    $arguments=@($manage,'cutover_mssql','prepare','--output',$destination,'--server','MSK-DB2','--database','YDS_PORTAL','--driver','ODBC Driver 17 for SQL Server')
+    # Driver 17 is the command default. Do not pass its spaced name through
+    # Windows PowerShell 5 Start-Process, which would split it into arguments.
+    $arguments=@($manage,'cutover_mssql','prepare','--output',$destination,'--server','MSK-DB2','--database','YDS_PORTAL')
     $process=Start-Process -FilePath $python -ArgumentList $arguments -NoNewWindow -PassThru -RedirectStandardOutput $stdoutLog -RedirectStandardError $stderrLog
     $elapsed=0
     while(-not $process.HasExited){
