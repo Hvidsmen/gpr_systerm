@@ -127,11 +127,13 @@ class User(AbstractUser):
 from django.core.exceptions import ValidationError
 from django.db.models.signals import m2m_changed, pre_save
 from django.dispatch import receiver
+from core.fixture_loading import is_loading_fixture
 
 
 @receiver(m2m_changed, sender=User.production_additional_objects.through)
 @receiver(m2m_changed, sender=User.assigned_objects.through)
 def validate_object_assignments(sender, instance, action, reverse, pk_set, **kwargs):
+    if is_loading_fixture():return
     if action != 'pre_add':
         return
     if reverse:
@@ -144,13 +146,15 @@ def validate_object_assignments(sender, instance, action, reverse, pk_set, **kwa
 
 
 @receiver(pre_save, sender=User)
-def protect_assignment_company(sender, instance, **kwargs):
+def protect_assignment_company(sender, instance, raw=False, **kwargs):
+    if raw:return
     if instance.pk and (instance.assigned_objects.exclude(company_id=instance.company_id).exists() or instance.production_additional_objects.exclude(company_id=instance.company_id).exists()):
         raise ValidationError('Перед сменой компании удалите назначения строительных объектов.')
 
 
 @receiver(m2m_changed,sender=User.assigned_objects.through)
 def reset_daily_task_subscriptions(sender,instance,action,reverse,**kwargs):
+    if is_loading_fixture():return
     if action not in {'post_remove','post_clear'} or reverse:return
     from apps.planning.models import DailyTaskCursor,WorkTask
     from apps.planning.task_services import state

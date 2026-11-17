@@ -8,6 +8,7 @@ from django.db.models.signals import post_save, m2m_changed, pre_save
 from django.dispatch import receiver
 from django.shortcuts import get_object_or_404, redirect, render
 from core.permissions import require_roles, ROLES
+from core.fixture_loading import is_loading_fixture
 from .models import AccessGroup, User
 
 
@@ -24,7 +25,8 @@ def apply_group(user):
 
 
 @receiver(pre_save, sender=User)
-def validate_user_group(sender, instance, **kwargs):
+def validate_user_group(sender, instance, raw=False, **kwargs):
+    if raw:return
     if instance.access_group_id:
         group = instance.access_group
         if group.company_id != instance.company_id or instance.is_superuser or instance.is_staff:
@@ -33,13 +35,15 @@ def validate_user_group(sender, instance, **kwargs):
 
 
 @receiver(post_save, sender=User)
-def sync_user_group(sender, instance, **kwargs):
+def sync_user_group(sender, instance, raw=False, **kwargs):
+    if raw:return
     if instance.access_group_id:
         apply_group(instance)
 
 
 @receiver(post_save, sender=AccessGroup)
-def sync_group_role(sender, instance, **kwargs):
+def sync_group_role(sender, instance, raw=False, **kwargs):
+    if raw:return
     for user in instance.members.all():
         apply_group(user)
 
@@ -47,6 +51,7 @@ def sync_group_role(sender, instance, **kwargs):
 @receiver(m2m_changed, sender=AccessGroup.production_additional_objects.through)
 @receiver(m2m_changed, sender=AccessGroup.assigned_objects.through)
 def sync_group_objects(sender, instance, action, reverse, pk_set, **kwargs):
+    if is_loading_fixture():return
     if reverse:
         if action.startswith('pre_'):
             raise ValidationError('Изменяйте объекты через группу доступа.')
@@ -183,7 +188,8 @@ def map_directory_group(user, identity):
 
 
 @receiver(pre_save, sender=AccessGroup)
-def protect_group(sender, instance, **kwargs):
+def protect_group(sender, instance, raw=False, **kwargs):
+    if raw:return
     if instance.role.code == 'ADMIN':
         raise ValidationError('Права администратора назначаются индивидуально.')
     if instance.pk:

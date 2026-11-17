@@ -6,12 +6,11 @@ from .catalogs import DEFAULT_UNITS
 
 
 @receiver(post_save, sender=Company)
-def seed_company_units(sender, instance, created, **kwargs):
-    if created:
-        MeasurementUnit.objects.using(kwargs.get("using", "default")).bulk_create([
-            MeasurementUnit(company=instance, symbol=symbol, name=name)
-            for symbol, name in DEFAULT_UNITS
-        ], ignore_conflicts=True)
+def seed_company_units(sender, instance, created, raw=False, **kwargs):
+    if raw or not created:return
+    units=MeasurementUnit.objects.using(kwargs.get("using", "default"))
+    for symbol,name in DEFAULT_UNITS:
+        units.get_or_create(company=instance,symbol=symbol,defaults={'name':name})
 
 
 def canonical_unit_on_save(sender,instance,raw=False,using='default',**kwargs):

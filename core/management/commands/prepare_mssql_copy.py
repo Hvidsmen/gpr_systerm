@@ -7,6 +7,7 @@ from django.apps import apps
 from django.core.management import call_command
 from django.core.management.base import BaseCommand,CommandError
 from django.db import connections
+from core.fixture_loading import fixture_loading
 
 
 EXCLUDED_MODELS={'contenttypes.contenttype','auth.permission','sessions.session'}
@@ -99,7 +100,8 @@ class Command(BaseCommand):
         self.stdout.write('Выгружаем данные из неизменяемого снимка…')
         dump_fixture(source,fixture)
         self.stdout.write('Загружаем данные в MSSQL…')
-        call_command('loaddata',str(fixture),database=target,verbosity=1)
+        with fixture_loading():
+            call_command('loaddata',str(fixture),database=target,verbosity=1)
         report,errors=compare_databases(source,target)
         report_path.write_text(json.dumps({'source':str(source_path),'snapshot':str(snapshot),'target':target,
                                            'models':report,'errors':errors},ensure_ascii=False,indent=2),encoding='utf-8')

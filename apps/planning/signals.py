@@ -3,10 +3,12 @@ from django.db.models.signals import m2m_changed
 from django.dispatch import receiver
 from .models import GlobalPlanVersion, GlobalPlanReview, GlobalPlanDecision
 from .deletion_context import version_deletion_authorized
+from core.fixture_loading import is_loading_fixture
 
 
 @receiver(m2m_changed, sender=GlobalPlanVersion.source_versions.through)
 def protect_global_sources(sender, instance, action, reverse, pk_set, **kwargs):
+    if is_loading_fixture():return
     if action not in ("pre_add", "pre_remove", "pre_clear"):
         return
     if reverse:

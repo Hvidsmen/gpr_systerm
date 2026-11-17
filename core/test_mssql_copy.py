@@ -7,9 +7,15 @@ from django.core.management.base import CommandError
 from django.test import SimpleTestCase
 
 from core.management.commands.prepare_mssql_copy import Command,dump_fixture
+from core.fixture_loading import fixture_loading,is_loading_fixture
 
 
 class PrepareMssqlCopyTests(SimpleTestCase):
+    def test_fixture_loading_context_is_scoped(self):
+        self.assertFalse(is_loading_fixture())
+        with fixture_loading():self.assertTrue(is_loading_fixture())
+        self.assertFalse(is_loading_fixture())
+
     def test_complete_traceback_is_duplicated_to_stdout(self):
         output=StringIO();command=Command(stdout=output)
         with patch.object(command,'_handle',side_effect=ValueError('SQL failure')):

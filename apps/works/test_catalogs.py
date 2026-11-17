@@ -5,6 +5,8 @@ from apps.accounts.models import Company, Role, User
 from apps.projects.models import Project, ConstructionObject, Section
 from .models import ProjectWork, WorkGroup, MeasurementUnit
 from .forms import ProjectWorkForm
+from .signals import seed_company_units
+from .catalogs import DEFAULT_UNITS
 
 
 class WorkCatalogTests(TestCase):
@@ -34,6 +36,14 @@ class WorkCatalogTests(TestCase):
         work=form.save()
         self.assertIsNone(work.work_group)
         self.assertEqual(work.unit,'м')
+
+    def test_fixture_company_save_does_not_seed_units_and_normal_save_is_portable(self):
+        company=Company.objects.create(name='Fixture company')
+        MeasurementUnit.objects.filter(company=company).delete()
+        seed_company_units(Company,company,created=True,raw=True,using='default')
+        self.assertFalse(MeasurementUnit.objects.filter(company=company).exists())
+        seed_company_units(Company,company,created=True,raw=False,using='default')
+        self.assertEqual(MeasurementUnit.objects.filter(company=company).count(),len(DEFAULT_UNITS))
 
     def test_quick_group_and_unit_creation_can_be_used_without_reloading(self):
         response=self.client.post(reverse('works:group_create'),{'name':'Земляные работы'})
