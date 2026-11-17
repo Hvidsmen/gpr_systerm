@@ -1,6 +1,9 @@
 """Small dependency-free helpers used before the portal switches to MSSQL."""
 
 
+PORTAL_COLLATION='Latin1_General_100_BIN2'
+
+
 def odbc_value(value):
     return '{'+str(value).replace('}','}}')+'}'
 

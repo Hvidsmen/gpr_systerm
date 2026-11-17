@@ -1,16 +1,25 @@
 from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest.mock import patch
+from unittest.mock import MagicMock,patch
 
 from django.core.management.base import CommandError
 from django.test import SimpleTestCase
 
-from core.management.commands.prepare_mssql_copy import Command,dump_fixture
+from core.management.commands.prepare_mssql_copy import Command,dump_fixture,require_target_collation
 from core.fixture_loading import fixture_loading,is_loading_fixture
 
 
 class PrepareMssqlCopyTests(SimpleTestCase):
+    def test_target_requires_binary_collation_before_any_copy(self):
+        connection=MagicMock()
+        cursor=connection.cursor.return_value.__enter__.return_value
+        cursor.fetchone.return_value=('Cyrillic_General_CI_AS',)
+        with self.assertRaisesMessage(CommandError,'Latin1_General_100_BIN2'):
+            require_target_collation(connection)
+        cursor.fetchone.return_value=('Latin1_General_100_BIN2',)
+        self.assertEqual(require_target_collation(connection),'Latin1_General_100_BIN2')
+
     def test_fixture_loading_context_is_scoped(self):
         self.assertFalse(is_loading_fixture())
         with fixture_loading():self.assertTrue(is_loading_fixture())

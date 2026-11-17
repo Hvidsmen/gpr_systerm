@@ -8,9 +8,23 @@ from django.core.management import call_command
 from django.core.management.base import BaseCommand,CommandError
 from django.db import connections
 from core.fixture_loading import fixture_loading
+from config.mssql import PORTAL_COLLATION
 
 
 EXCLUDED_MODELS={'contenttypes.contenttype','auth.permission','sessions.session'}
+
+
+def require_target_collation(connection):
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT CONVERT(nvarchar(128),DATABASEPROPERTYEX(DB_NAME(),'Collation'))")
+        current=str(cursor.fetchone()[0])
+    if current.casefold()!=PORTAL_COLLATION.casefold():
+        raise CommandError(
+            f'База YDS_PORTAL использует сортировку {current}, а нужна {PORTAL_COLLATION}. '
+            'Пересоздайте пустую базу командой: '
+            f'CREATE DATABASE [YDS_PORTAL] COLLATE {PORTAL_COLLATION};'
+        )
+    return current
 
 
 def model_identity(database,model):
@@ -84,6 +98,7 @@ class Command(BaseCommand):
         if connections[target].vendor not in {'microsoft','mssql'}:raise CommandError('Целевая база должна быть Microsoft SQL Server.')
         tables=connections[target].introspection.table_names()
         if tables:raise CommandError('YDS_PORTAL уже содержит таблицы. Подготовка остановлена без удаления данных: '+', '.join(tables[:10]))
+        require_target_collation(connections[target])
         output.mkdir(parents=True,exist_ok=False)
         snapshot=output/'source.sqlite3';fixture=output/'portal-data.json';report_path=output/'verification.json'
         source_path=Path(connections[source].settings_dict['NAME']).resolve()

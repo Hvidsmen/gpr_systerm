@@ -1,5 +1,5 @@
 from django.core.management.base import BaseCommand,CommandError
-from config.mssql import integrated_connection_string,available_sql_server_driver
+from config.mssql import PORTAL_COLLATION,integrated_connection_string,available_sql_server_driver
 
 
 class Command(BaseCommand):
@@ -22,7 +22,7 @@ class Command(BaseCommand):
         try:
             connection=pyodbc.connect(integrated_connection_string(options['server'],options['database'],driver),timeout=10,autocommit=True)
             with connection:
-                row=connection.cursor().execute("SELECT DB_NAME(),SUSER_SNAME(),CONVERT(varchar(128),SERVERPROPERTY('ProductVersion')),IS_ROLEMEMBER('db_owner')").fetchone()
+                row=connection.cursor().execute("SELECT DB_NAME(),SUSER_SNAME(),CONVERT(varchar(128),SERVERPROPERTY('ProductVersion')),IS_ROLEMEMBER('db_owner'),CONVERT(nvarchar(128),DATABASEPROPERTYEX(DB_NAME(),'Collation'))").fetchone()
                 connection.cursor().execute('SELECT TOP (1) 1 FROM sys.tables').fetchone()
         except pyodbc.Error as exc:
             raise CommandError('MSSQL недоступен либо у Windows-учётной записи нет доступа к базе. '+str(exc)) from exc
@@ -32,5 +32,7 @@ class Command(BaseCommand):
             raise CommandError(f'Подключение выполнено как {row[1]}, ожидалась учётная запись {options["expected_login"]}.')
         if row[3]!=1:
             raise CommandError(f'У {row[1]} нет роли db_owner в базе {row[0]}; миграции портала выполнять нельзя.')
-        self.stdout.write(self.style.SUCCESS(f'ГОТОВО: сервер {options["server"]}; база {row[0]}; вход {row[1]}; SQL Server {row[2]}; драйвер {driver}.'))
+        if str(row[4]).casefold()!=PORTAL_COLLATION.casefold():
+            raise CommandError(f'У базы сортировка {row[4]}, а нужна {PORTAL_COLLATION}. Пересоздайте пустую базу: CREATE DATABASE [YDS_PORTAL] COLLATE {PORTAL_COLLATION};')
+        self.stdout.write(self.style.SUCCESS(f'ГОТОВО: сервер {options["server"]}; база {row[0]}; вход {row[1]}; SQL Server {row[2]}; драйвер {driver}; сортировка {row[4]}.'))
         self.stdout.write('Рабочая база портала не переключалась.')
