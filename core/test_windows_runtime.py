@@ -217,6 +217,19 @@ class WindowsRuntimeTests(SimpleTestCase):
         self.assertEqual((persistent/'SWITCH_GPR_TO_MSSQL.cmd').read_text(),'launcher')
         self.assertEqual((persistent/'ops/switch-to-mssql.ps1').read_text(),'driver default')
 
+    def test_mssql_cutover_start_wait_fix_republishes_tool(self):
+        migration=importlib.import_module('apps.accounts.migrations.0039_republish_mssql_cutover_start_wait_fix')
+        code=self.root/'immutable-release';(code/'ops').mkdir(parents=True)
+        (code/'SWITCH_GPR_TO_MSSQL.cmd').write_text('launcher')
+        (code/'ops/switch-to-mssql.ps1').write_text('startup grace period')
+        persistent=self.root/'persistent';(persistent/'ops').mkdir(parents=True)
+        (persistent/'SWITCH_GPR_TO_MSSQL.cmd').write_text('old launcher')
+        (persistent/'ops/switch-to-mssql.ps1').write_text('immediate ready failure')
+        with override_settings(BASE_DIR=code,CONFIG_DIR=persistent):
+            migration.publish_tool(None,None,platform_name='nt')
+        self.assertEqual((persistent/'SWITCH_GPR_TO_MSSQL.cmd').read_text(),'launcher')
+        self.assertEqual((persistent/'ops/switch-to-mssql.ps1').read_text(),'startup grace period')
+
     def test_bridge_migration_exposes_tool_during_first_immutable_update(self):
         migration=importlib.import_module('apps.accounts.migrations.0031_publish_portal_account_tool')
         code=self.root/'immutable-release';(code/'ops').mkdir(parents=True)
