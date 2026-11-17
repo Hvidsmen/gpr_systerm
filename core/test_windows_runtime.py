@@ -75,6 +75,8 @@ class WindowsRuntimeTests(SimpleTestCase):
         code=self.root/'release';(code/'ops').mkdir(parents=True);(code/'ops/windows_runtime.py').write_text('new bootstrap')
         (code/'SET_GPR_PORTAL_ACCOUNT.cmd').write_text('new launcher')
         (code/'ops/set-windows-portal-account.ps1').write_text('new account tool')
+        (code/'CHECK_GPR_MSSQL.cmd').write_text('mssql launcher')
+        (code/'ops/check-mssql.ps1').write_text('mssql check')
         candidate={'sha':'b'*40,'code':str(code),'python':'python-new'}
         with patch.object(runtime,'stage_update',return_value=candidate),patch.object(runtime,'stop_process'),patch.object(runtime,'run'),patch.object(runtime,'healthy'),patch.object(runtime,'launch',return_value=(Mock(),8001)):
             _,result,message=runtime.update(self.root,Mock(),current)
@@ -82,6 +84,19 @@ class WindowsRuntimeTests(SimpleTestCase):
         self.assertEqual((self.state/'bootstrap.py').read_text(),'new bootstrap')
         self.assertEqual((self.root/'SET_GPR_PORTAL_ACCOUNT.cmd').read_text(),'new launcher')
         self.assertEqual((self.root/'ops/set-windows-portal-account.ps1').read_text(),'new account tool')
+        self.assertEqual((self.root/'CHECK_GPR_MSSQL.cmd').read_text(),'mssql launcher')
+        self.assertEqual((self.root/'ops/check-mssql.ps1').read_text(),'mssql check')
+
+    def test_mssql_bridge_migration_exposes_tool_on_its_first_update(self):
+        migration=importlib.import_module('apps.accounts.migrations.0032_publish_mssql_check')
+        code=self.root/'immutable-release';(code/'ops').mkdir(parents=True)
+        (code/'CHECK_GPR_MSSQL.cmd').write_text('bridge launcher')
+        (code/'ops/check-mssql.ps1').write_text('bridge check')
+        persistent=self.root/'persistent';persistent.mkdir()
+        with override_settings(BASE_DIR=code,CONFIG_DIR=persistent):
+            migration.publish_tool(None,None,platform_name='nt')
+        self.assertEqual((persistent/'CHECK_GPR_MSSQL.cmd').read_text(),'bridge launcher')
+        self.assertEqual((persistent/'ops/check-mssql.ps1').read_text(),'bridge check')
 
     def test_bridge_migration_exposes_tool_during_first_immutable_update(self):
         migration=importlib.import_module('apps.accounts.migrations.0031_publish_portal_account_tool')
