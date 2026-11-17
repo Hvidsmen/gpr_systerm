@@ -8,7 +8,9 @@ $Root=(Resolve-Path -LiteralPath $Root).Path
 $identity=[Security.Principal.WindowsIdentity]::GetCurrent()
 $admin=New-Object Security.Principal.WindowsPrincipal($identity)
 if(-not $admin.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){throw 'Запустите SWITCH_GPR_TO_MSSQL.cmd от имени администратора.'}
-if($identity.Name -ine 'YAMALGAZPROM\dvivanov'){throw "Запустите переключение от YAMALGAZPROM\dvivanov. Сейчас используется $($identity.Name)."}
+$requiredAccount='YAMALGAZPROM\dvivanov'
+$requiredSid=(New-Object Security.Principal.NTAccount($requiredAccount)).Translate([Security.Principal.SecurityIdentifier]).Value
+if($identity.User.Value -ne $requiredSid){throw "Запустите переключение от $requiredAccount. Сейчас используется $($identity.Name)."}
 
 $runtime=Join-Path $Root '.runtime'
 $installedPath=Join-Path $runtime 'installed.json'
@@ -22,7 +24,9 @@ if(-not (Test-Path -LiteralPath $python) -or -not (Test-Path -LiteralPath $manag
 
 $server=Get-ScheduledTask -TaskName 'YDS Portal' -ErrorAction Stop
 $taskIdentity=[string]$server.Principal.UserId
-if($taskIdentity -ine 'YAMALGAZPROM\dvivanov'){throw "Задание YDS Portal работает от $taskIdentity, а для MSSQL требуется YAMALGAZPROM\dvivanov."}
+$taskAccount=if($taskIdentity.Contains('\')){$taskIdentity}else{'YAMALGAZPROM\'+$taskIdentity}
+$taskSid=try{(New-Object Security.Principal.NTAccount($taskAccount)).Translate([Security.Principal.SecurityIdentifier]).Value}catch{throw "Не удалось определить Windows-учётную запись задания YDS Portal: $taskIdentity."}
+if($taskSid -ne $requiredSid){throw "Задание YDS Portal работает от $taskIdentity, а для MSSQL требуется $requiredAccount."}
 $updater=Get-ScheduledTask -TaskName 'YDS Portal Update' -ErrorAction Stop
 if($updater.State -in @('Running','Queued')){throw 'Сейчас выполняется обновление портала. Дождитесь его окончания.'}
 $statusPath=Join-Path $runtime 'status.json'
