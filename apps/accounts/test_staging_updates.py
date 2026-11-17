@@ -84,14 +84,13 @@ class StagingUpdateViewTests(TestCase):
             self.assertFalse(response.context['update']['can_refresh'])
             self.assertContains(response,'один раз перезапустите задание')
 
-    def test_mssql_test_keeps_code_updates_but_disables_unsafe_sqlite_refresh(self):
+    def test_mssql_test_enables_safe_database_refresh(self):
         self.refresh_ready();self.config.update(database_engine='mssql',mssql={'host':'MSK-DB2','name':'YDS_PORTAL_TEST'})
         atomic_json(self.root/'staging.json',self.config)
         with singleton(self.root/'.runtime/staging-supervisor.lock'):
             response=self.client.get(self.url)
-            self.assertFalse(response.context['update']['can_refresh'])
-            self.assertTrue(response.context['update']['refresh_blocked_mssql'])
-            self.assertContains(response,'автоматическая полная замена данных временно отключена')
+            self.assertTrue(response.context['update']['can_refresh'])
+            self.assertContains(response,'Перед заменой YDS_PORTAL_TEST создаётся резервная копия MSSQL')
 
     def test_page_and_status_use_only_test_state_and_never_production_enqueue(self):
         self.latest()

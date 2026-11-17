@@ -174,13 +174,12 @@ def state(root):
     features = read_json(runtime(root) / 'staging-supervisor.json', {}).get('features', [])
     from ops.staging import database_engine
     from ops.staging_refresh import generation
-    refresh_supported='refresh-data' in features and database_engine(current)=='sqlite'
+    refresh_supported='refresh-data' in features
     return {**progress_summary(job, phase), 'version': current['revision'], 'available': available, 'checked_at': latest.get('checked_at'),
             'branch': BRANCH, 'ready': ready and phase != 'recovery', 'busy': busy, 'state': phase,
             'operation': job.get('kind', 'update'), 'data_generation': generation(current),
             'data_refreshed_at': current.get('data_refreshed_at'),
             'refresh_supported': refresh_supported,
-            'refresh_blocked_mssql': database_engine(current)=='mssql',
             'can_refresh': ready and not busy and phase != 'recovery' and refresh_supported,
             'message': message, 'stage': detail or STAGES.get(phase, ''),
             'can_update': ready and not busy and phase != 'recovery' and bool(available) and

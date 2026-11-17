@@ -25,11 +25,85 @@ def owner_hash(root, state):
     return row[0]
 
 
+def refresh_mssql(root, state, *, progress=lambda phase: None):
+    """Refresh TEST MSSQL and its files, restoring the backup on any failure."""
+    import json
+    runtime = staging.private_path(root, '.runtime')
+    identifier = uuid.uuid4().hex
+    backup = staging.private_path(root, '.runtime/backups/' + identifier)
+    pending = staging.private_path(root, '.runtime/refresh/' + identifier)
+    data = staging.private_path(root, 'data')
+    backup.mkdir(parents=True)
+    pending.mkdir(parents=True)
+    (pending / 'data').mkdir()
+    journal = runtime / 'staging-refresh-transaction.json'
+    database_backup = None
+    old_moved = new_moved = False
+    try:
+        progress('backing_up')
+        database_backup = staging.backup_database(root, state, backup)
+        shutil.copy2(root / 'secret.key', backup / 'secret.key')
+        progress('copying')
+        staging.copy_files(state['source']['media'], pending / 'data/media')
+        staging.copy_files(state['source']['actuation'], pending / 'data/private_uploads/actuation')
+        fallback = data / 'db.sqlite3'
+        if fallback.is_file():
+            shutil.copy2(fallback, pending / 'data/db.sqlite3')
+        refreshed_at = datetime.now(timezone.utc).isoformat()
+        # Publish recovery information before the first write to YDS_PORTAL_TEST.
+        atomic_json(journal, {'backup': str(backup), 'pending': str(pending),
+                              'revision': state['revision'], 'database': str(database_backup)})
+        progress('sanitizing')
+        staging.run_manage(root, ['refresh_staging_mssql', '--output', str(pending / 'database')],
+                           code=Path(state['code']), python=state['python'])
+        result = json.loads((pending / 'database/result.json').read_text(encoding='utf-8'))
+        refreshed = {**state, 'owner_id': result['owner_id'], 'company_id': result['company_id'],
+                     'data_generation': identifier, 'data_refreshed_at': refreshed_at}
+        progress('swapping')
+        data.rename(backup / 'data')
+        old_moved = True
+        (pending / 'data').rename(data)
+        new_moved = True
+        atomic_json(root / 'staging.json', refreshed)
+        journal.unlink()
+        retain_directories(runtime / 'backups')
+        return refreshed
+    except Exception:
+        rollback_failed = False
+        try:
+            # The command may fail after flushing the target; a journal means
+            # that YDS_PORTAL_TEST must be restored even without result.json.
+            if database_backup is not None and journal.exists():
+                staging.restore_database(root, state, database_backup)
+            if old_moved:
+                if new_moved and data.exists():
+                    data.rename(pending / 'failed-data')
+                (backup / 'data').rename(data)
+            atomic_json(root / 'staging.json', state)
+            journal.unlink(missing_ok=True)
+        except Exception:
+            rollback_failed = True
+            atomic_json(runtime / 'staging-recovery.json',
+                        {'backup': str(backup), 'reason': 'mssql-refresh-rollback-failed'})
+        if rollback_failed:
+            raise RuntimeError('Не удалось автоматически восстановить тестовую MSSQL; требуется проверка резервной копии.')
+        raise
+    finally:
+        log = pending / '.runtime/prepare.log'
+        if log.exists():
+            try:
+                with (runtime / 'prepare.log').open('ab') as output:
+                    output.write(b'\n--- Acceptance MSSQL data refresh ---\n')
+                    output.write(log.read_bytes())
+            except OSError:
+                logging.exception('Could not append acceptance MSSQL refresh diagnostics')
+        if not journal.exists() and not (runtime / 'staging-recovery.json').exists():
+            shutil.rmtree(pending, ignore_errors=True)
+
+
 def refresh(root, *, expected_generation, expected_revision, owner_id, progress=lambda phase: None):
     root = Path(root).resolve()
     state = staging.manifest(root)
-    if staging.database_engine(state)!='sqlite':
-        raise RuntimeError('Замена данных теста из рабочего портала временно недоступна после перехода теста на MSSQL.')
     runtime = staging.private_path(root, '.runtime')
     if (runtime / 'staging-recovery.json').exists() or (runtime / 'staging-refresh-transaction.json').exists():
         raise RuntimeError('Сначала проверьте восстановление предыдущей операции теста.')
@@ -37,6 +111,10 @@ def refresh(root, *, expected_generation, expected_revision, owner_id, progress=
         if (generation(state) != expected_generation or state['revision'] != expected_revision or
                 state['owner_id'] != owner_id):
             raise ValueError('Тестовые данные или версия изменились. Подтвердите обновление данных заново.')
+        if staging.database_engine(state) == 'mssql':
+            return refresh_mssql(root, state, progress=progress)
+        if staging.database_engine(state) != 'sqlite':
+            raise RuntimeError('Неподдерживаемый тип тестовой базы.')
         password_hash = owner_hash(root, state)
         identifier = uuid.uuid4().hex
         backup = staging.private_path(root, '.runtime/backups/' + identifier)

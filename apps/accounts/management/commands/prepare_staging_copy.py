@@ -7,6 +7,44 @@ from django.db import connection, transaction
 from django.db.models import Q
 
 
+def sanitize_database(encoded, owner_id=None, company_id=None):
+    """Remove production credentials/integrations from the selected TEST DB."""
+    from apps.accounts.models import (User, Role, OneCConnection, CompanyMailSettings,
+                                      InvitationBatch, UserInvitation)
+    from apps.accounts.training_models import TrainingCopy, TrainingTicketUse
+    state = settings.STAGING_CONFIG
+    owner_id = owner_id or state['owner_id']
+    company_id = company_id or state['company_id']
+    if connection.vendor == 'sqlite':
+        with connection.cursor() as cursor:
+            cursor.execute('PRAGMA secure_delete=ON')
+    with transaction.atomic():
+        owner = User.objects.get(pk=owner_id, company_id=company_id, archived_at=None)
+        admins = User.objects.filter(Q(role__code='ADMIN') | Q(is_superuser=True),
+            is_active=True, archived_at__isnull=True, company__isnull=False)
+        admin_ids = list(admins.values_list('pk', flat=True))
+        local_hashes = list(admins.filter(auth_source='LOCAL').values_list('pk', 'password'))
+        # Keep working local passwords only for administrators. Directory
+        # passwords are verified in AD, never copied or stored as plaintext.
+        User.objects.all().update(password=make_password(None), is_superuser=False, is_staff=False)
+        User.objects.filter(pk__in=admin_ids).update(role=Role.objects.get(code='ADMIN'))
+        for pk, existing_hash in local_hashes:
+            User.objects.filter(pk=pk).update(password=existing_hash)
+        User.objects.filter(pk=owner.pk).update(password=encoded, role=Role.objects.get(code='ADMIN'),
+            is_active=True, auth_source='LOCAL', access_group=None, access_group_from_ad=False)
+        Session.objects.all().delete()
+        TrainingTicketUse.objects.all().delete()
+        OneCConnection.objects.all().delete()
+        CompanyMailSettings.objects.all().update(password_encrypted='', host='', username='', from_email='')
+        InvitationBatch.objects.all().update(paused=True)
+        UserInvitation.objects.exclude(status__in=['SENT', 'CANCELLED']).update(status='CANCELLED')
+        TrainingCopy.objects.all().update(enabled=False, state='STOPPED')
+    if connection.vendor == 'sqlite':
+        with connection.cursor() as cursor:
+            cursor.execute('VACUUM')
+            cursor.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+
+
 class Command(BaseCommand):
     help = 'Sanitize an isolated acceptance DB and set a separate owner password from stdin.'
 
@@ -24,32 +62,6 @@ class Command(BaseCommand):
                 identify_hasher(password)
             except ValueError:raise CommandError('Нужен действующий хеш отдельного тестового пароля.')
             encoded = password
-        else:
-            encoded = make_password(password)
-        from apps.accounts.models import User, Role, OneCConnection, CompanyMailSettings, InvitationBatch, UserInvitation
-        from apps.accounts.training_models import TrainingCopy, TrainingTicketUse
-        with connection.cursor() as cursor:cursor.execute('PRAGMA secure_delete=ON')
-        state = settings.STAGING_CONFIG
-        with transaction.atomic():
-            owner = User.objects.get(pk=state['owner_id'], company_id=state['company_id'], archived_at=None)
-            admins = User.objects.filter(Q(role__code='ADMIN') | Q(is_superuser=True),
-                is_active=True, archived_at__isnull=True, company__isnull=False)
-            admin_ids = list(admins.values_list('pk', flat=True))
-            local_hashes = list(admins.filter(auth_source='LOCAL').values_list('pk', 'password'))
-            # Keep working local passwords only for administrators. Directory
-            # passwords are verified in AD, never copied or stored as plaintext.
-            User.objects.all().update(password=make_password(None), is_superuser=False, is_staff=False)
-            User.objects.filter(pk__in=admin_ids).update(role=Role.objects.get(code='ADMIN'))
-            for pk, existing_hash in local_hashes:
-                User.objects.filter(pk=pk).update(password=existing_hash)
-            User.objects.filter(pk=owner.pk).update(password=encoded, role=Role.objects.get(code='ADMIN'),
-                is_active=True, auth_source='LOCAL', access_group=None, access_group_from_ad=False)
-            Session.objects.all().delete(); TrainingTicketUse.objects.all().delete()
-            OneCConnection.objects.all().delete()
-            CompanyMailSettings.objects.all().update(password_encrypted='', host='', username='', from_email='')
-            InvitationBatch.objects.all().update(paused=True)
-            UserInvitation.objects.exclude(status__in=['SENT', 'CANCELLED']).update(status='CANCELLED')
-            TrainingCopy.objects.all().update(enabled=False, state='STOPPED')
-        with connection.cursor() as cursor:
-            cursor.execute('VACUUM'); cursor.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+        else:encoded = make_password(password)
+        sanitize_database(encoded)
         self.stdout.write('Тестовая база подготовлена. Хеши локальных паролей администраторов сохранены; пароли остальных пользователей, сессии и подключения очищены.')

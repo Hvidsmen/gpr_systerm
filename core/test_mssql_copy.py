@@ -4,6 +4,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock,patch
 
+from django.contrib.auth.hashers import make_password
 from django.core.management.base import CommandError
 from django.test import SimpleTestCase,override_settings
 
@@ -12,10 +13,39 @@ from core.management.commands.cutover_mssql import Command as CutoverCommand
 from core.management.commands.cutover_staging_mssql import Command as StagingCutoverCommand
 from core.management.commands.mssql_backup import Command as BackupCommand
 from core.management.commands.prepare_mssql_copy import Command,dump_fixture,require_target_collation
+from core.management.commands.refresh_staging_mssql import Command as RefreshStagingCommand
 from core.fixture_loading import fixture_loading,is_loading_fixture
 
 
 class PrepareMssqlCopyTests(SimpleTestCase):
+    def test_staging_mssql_refresh_reads_production_and_writes_only_test_database(self):
+        with TemporaryDirectory() as directory:
+            output=Path(directory)/'refresh'
+            source=MagicMock(vendor='mssql',settings_dict={'HOST':'MSK-DB2','NAME':'YDS_PORTAL'})
+            target=MagicMock(vendor='mssql',settings_dict={'HOST':'MSK-DB2','NAME':'YDS_PORTAL_TEST'})
+            target_query=MagicMock();target_query.get.return_value=MagicMock(password=make_password('test-password'))
+            source_query=MagicMock();source_query.filter.return_value.values_list.return_value=[(7,8,'admin','')]
+            def using(alias):return source_query if alias=='production_mssql' else target_query
+            def dump(alias,path):
+                self.assertEqual(alias,'production_mssql');Path(path).write_text('[]',encoding='utf-8')
+            with override_settings(STAGING_MODE=True,STAGING_CONFIG={'owner_id':1,'company_id':2,'owner_login':'admin'}),\
+                    patch('core.management.commands.refresh_staging_mssql.connections',
+                          {'production_mssql':source,'default':target}),\
+                    patch('core.management.commands.refresh_staging_mssql.User.objects.using',side_effect=using),\
+                    patch('core.management.commands.refresh_staging_mssql.dump_fixture',side_effect=dump),\
+                    patch('core.management.commands.refresh_staging_mssql.call_command') as django_command,\
+                    patch('core.management.commands.refresh_staging_mssql.compare_databases',
+                          return_value=({'accounts.user':{'source':1,'target':1}},[])),\
+                    patch('core.management.commands.refresh_staging_mssql.sanitize_database') as sanitize:
+                RefreshStagingCommand().handle(output=str(output))
+            self.assertEqual(django_command.call_args_list[0].args[0],'flush')
+            self.assertEqual(django_command.call_args_list[0].kwargs['database'],'default')
+            self.assertEqual(django_command.call_args_list[1].args[0],'loaddata')
+            sanitize.assert_called_once()
+            self.assertEqual(sanitize.call_args.kwargs,{'owner_id':7,'company_id':8})
+            result=json.loads((output/'result.json').read_text(encoding='utf-8'))
+            self.assertEqual((result['owner_id'],result['company_id']),(7,8))
+
     def test_mssql_backup_uses_server_backup_directory_and_writes_metadata(self):
         with TemporaryDirectory() as directory:
             metadata=Path(directory)/'backup.json';database=MagicMock();pyodbc=MagicMock();sql=pyodbc.connect.return_value

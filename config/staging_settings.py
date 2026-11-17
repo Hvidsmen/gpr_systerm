@@ -1,4 +1,5 @@
 """Permanent acceptance environment, separate from production and training."""
+import json
 import os
 from pathlib import Path
 from ops.staging import manifest, private_path
@@ -20,6 +21,28 @@ os.environ.update(**_database_environment,
                   DJANGO_DEBUG='0', DJANGO_SECURE_SSL_REDIRECT='0', DJANGO_COOKIE_SECURE='0',
                   DJANGO_ALLOWED_HOSTS=','.join(sorted(set(STAGING_CONFIG['hosts']) | {'localhost', '127.0.0.1'})))
 from config.settings import *
+
+# The acceptance refresh command reads production through this dedicated
+# alias.  It is never selected as default and no normal request uses it.
+_source_root = STAGING_CONFIG.get('source_config_dir')
+if _source_root:
+    try:
+        _source_config = json.loads((Path(_source_root) / '.runtime' / 'installed.json').read_text(encoding='utf-8-sig'))
+    except (OSError, ValueError):
+        _source_config = {}
+    _source_engine = str(_source_config.get('database_engine', 'sqlite')).casefold()
+    _source_mssql = _source_config.get('mssql') or {}
+    if _source_engine == 'mssql' and str(_source_mssql.get('name', '')).casefold() == 'yds_portal':
+        from config.database import database_settings
+        _source_environment = {
+            'DJANGO_DB_ENGINE': 'mssql', 'MSSQL_HOST': str(_source_mssql.get('host', '')),
+            'MSSQL_NAME': str(_source_mssql.get('name', '')), 'MSSQL_PORT': str(_source_mssql.get('port', '')),
+            'MSSQL_DRIVER': str(_source_mssql.get('driver', 'ODBC Driver 17 for SQL Server')),
+            'MSSQL_TRUST_SERVER_CERTIFICATE':
+                'true' if _source_mssql.get('trust_server_certificate', True) else 'false',
+            'MSSQL_CONN_MAX_AGE': '0',
+        }
+        DATABASES['production_mssql'] = database_settings(BASE_DIR, _source_environment)
 
 STAGING_MODE = True
 # Explicit owner preference for this isolated environment; production settings stay separate.

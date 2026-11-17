@@ -1,5 +1,6 @@
 from contextlib import closing
 import hashlib
+import json
 from pathlib import Path
 import sqlite3
 import sys
@@ -144,3 +145,43 @@ class StagingDataRefreshTests(SimpleTestCase):
             with self.assertRaises(ValueError):self.refresh()
             copy.assert_not_called()
         self.assert_old_data()
+
+    def test_mssql_refresh_backs_up_replaces_files_and_publishes_new_identity(self):
+        self.state.update(database_engine='mssql',
+                          mssql={'host':'MSK-DB2','name':'YDS_PORTAL_TEST'})
+        atomic_json(self.root/'staging.json', self.state)
+        calls=[]
+        def backup(root,state,folder):
+            metadata=Path(folder)/'mssql-backup.json';metadata.write_text('{}');return metadata
+        def manage(root,command,**kwargs):
+            calls.append(command)
+            output=Path(command[command.index('--output')+1]);output.mkdir()
+            (output/'result.json').write_text(json.dumps({'owner_id':1,'company_id':10}),encoding='utf-8')
+        with patch.object(staging,'backup_database',side_effect=backup),patch.object(staging,'run_manage',side_effect=manage):
+            result=staging_refresh.refresh(self.root,expected_generation=self.state['instance'],
+                expected_revision=self.state['revision'],owner_id=99)
+        self.assertEqual((result['owner_id'],result['company_id']),(1,10))
+        self.assertEqual(calls[0][0],'refresh_staging_mssql')
+        self.assertEqual((self.root/'data/media/doc.txt').read_text(),'production document')
+        self.assertEqual((self.root/'data/private_uploads/actuation/act.txt').read_text(),'production act')
+        backup_dir=next((self.root/'.runtime/backups').iterdir())
+        self.assertTrue((backup_dir/'mssql-backup.json').is_file())
+        self.assertEqual((backup_dir/'data/media/doc.txt').read_text(),'test document')
+        self.assertFalse((self.root/'.runtime/staging-refresh-transaction.json').exists())
+
+    def test_failed_mssql_load_restores_database_and_keeps_old_files(self):
+        self.state.update(database_engine='mssql',
+                          mssql={'host':'MSK-DB2','name':'YDS_PORTAL_TEST'})
+        atomic_json(self.root/'staging.json', self.state)
+        restored=[]
+        def backup(root,state,folder):
+            metadata=Path(folder)/'mssql-backup.json';metadata.write_text('{}');return metadata
+        with patch.object(staging,'backup_database',side_effect=backup),\
+                patch.object(staging,'run_manage',side_effect=RuntimeError('synthetic MSSQL load failure')),\
+                patch.object(staging,'restore_database',side_effect=lambda root,state,path:restored.append(path)):
+            with self.assertRaises(RuntimeError):
+                staging_refresh.refresh(self.root,expected_generation=self.state['instance'],
+                    expected_revision=self.state['revision'],owner_id=99)
+        self.assertEqual(len(restored),1)
+        self.assert_old_data()
+        self.assertFalse((self.root/'.runtime/staging-refresh-transaction.json').exists())
