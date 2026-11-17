@@ -86,6 +86,18 @@ class StagingPreflightTests(TestCase):
         self.assertEqual(self.value(),'before preparation');self.assertEqual(staging.manifest(self.root)['revision'],self.old)
         self.assertFalse((self.root/'.runtime/releases'/self.new).exists());self.assertEqual(list((self.root/'.runtime').glob('candidate-*.json')),[])
 
+    def test_mssql_backup_and_restore_use_selected_test_release(self):
+        state={**staging.manifest(self.root),'database_engine':'mssql','mssql':{'host':'MSK-DB2','name':'YDS_PORTAL_TEST'}}
+        folder=self.root/'.runtime/backups/mssql'
+        def management(root,command,**kwargs):
+            if command[1]=='create':Path(command[-1]).write_text('{}')
+        with patch.object(staging,'run_manage',side_effect=management) as run:
+            backup=staging.backup_database(self.root,state,folder)
+            staging.restore_database(self.root,state,backup)
+        self.assertEqual(backup,folder/'mssql-backup.json');self.assertEqual(run.call_count,2)
+        self.assertEqual(run.call_args_list[0].args[1][:2],['mssql_backup','create'])
+        self.assertEqual(run.call_args_list[1].args[1][:2],['mssql_backup','restore'])
+
     def test_detail_is_available_through_normal_status_before_stop(self):
         job=self.job()
         with singleton(self.root/'.runtime/staging-supervisor.lock'):

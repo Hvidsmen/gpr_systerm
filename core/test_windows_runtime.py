@@ -122,6 +122,8 @@ class WindowsRuntimeTests(SimpleTestCase):
         (code/'ops/prepare-mssql-copy.ps1').write_text('copy tool')
         (code/'SWITCH_GPR_TO_MSSQL.cmd').write_text('cutover launcher')
         (code/'ops/switch-to-mssql.ps1').write_text('cutover tool')
+        (code/'SWITCH_GPR_TEST_TO_MSSQL.cmd').write_text('test cutover launcher')
+        (code/'ops/switch-test-to-mssql.ps1').write_text('test cutover tool')
         candidate={'sha':'b'*40,'code':str(code),'python':'python-new'}
         with patch.object(runtime,'stage_update',return_value=candidate),patch.object(runtime,'stop_process'),patch.object(runtime,'run'),patch.object(runtime,'healthy'),patch.object(runtime,'launch',return_value=(Mock(),8001)):
             _,result,message=runtime.update(self.root,Mock(),current)
@@ -135,6 +137,8 @@ class WindowsRuntimeTests(SimpleTestCase):
         self.assertEqual((self.root/'ops/prepare-mssql-copy.ps1').read_text(),'copy tool')
         self.assertEqual((self.root/'SWITCH_GPR_TO_MSSQL.cmd').read_text(),'cutover launcher')
         self.assertEqual((self.root/'ops/switch-to-mssql.ps1').read_text(),'cutover tool')
+        self.assertEqual((self.root/'SWITCH_GPR_TEST_TO_MSSQL.cmd').read_text(),'test cutover launcher')
+        self.assertEqual((self.root/'ops/switch-test-to-mssql.ps1').read_text(),'test cutover tool')
 
     def test_mssql_bridge_migration_exposes_tool_on_its_first_update(self):
         migration=importlib.import_module('apps.accounts.migrations.0032_publish_mssql_check')

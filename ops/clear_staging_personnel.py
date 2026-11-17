@@ -25,6 +25,8 @@ def runtime(root):
     sys.path.insert(0, str(code))
     from ops import staging, staging_updates
     config = staging.manifest(root)
+    if staging.database_engine(config)!='sqlite':
+        raise ValueError('Очистка персонала этим SQLite-инструментом недоступна для тестовой MSSQL.')
     for marker in ('staging-recovery.json', 'staging-refresh-transaction.json'):
         if (root/'.runtime'/marker).exists():
             raise ValueError('Pending TEST database recovery; nothing cleared.')

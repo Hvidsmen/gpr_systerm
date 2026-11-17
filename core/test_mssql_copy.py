@@ -9,6 +9,7 @@ from django.test import SimpleTestCase,override_settings
 
 from apps.planning.models import EstimateReviewTask
 from core.management.commands.cutover_mssql import Command as CutoverCommand
+from core.management.commands.cutover_staging_mssql import Command as StagingCutoverCommand
 from core.management.commands.mssql_backup import Command as BackupCommand
 from core.management.commands.prepare_mssql_copy import Command,dump_fixture,require_target_collation
 from core.fixture_loading import fixture_loading,is_loading_fixture
@@ -71,6 +72,24 @@ class PrepareMssqlCopyTests(SimpleTestCase):
                 with self.assertRaisesMessage(CommandError,'SQLite изменилась'):
                     CutoverCommand().handle(operation='resume',output=str(output),server='MSK-DB2',database='YDS_PORTAL',driver='ODBC Driver 17 for SQL Server')
             self.assertEqual(json.loads(installed.read_text(encoding='utf-8')),previous)
+
+    def test_staging_cutover_uses_only_separate_test_database_and_can_rollback(self):
+        with TemporaryDirectory() as directory:
+            root=Path(directory);(root/'data').mkdir();(root/'data/db.sqlite3').touch()
+            output=root/'.runtime/mssql-cutover/run'
+            previous={'kind':'gpr-acceptance-v1','instance':'11111111-1111-4111-8111-111111111111',
+                      'owner_id':1,'company_id':1,'owner_login':'admin','port':8002,'hosts':['127.0.0.1'],
+                      'code':str(root),'python':'python','static':'staticfiles','source':{'database':str(root/'source.sqlite3'),'media':str(root/'source-media'),'actuation':str(root/'source-private')}}
+            config=root/'staging.json';config.write_text(json.dumps(previous),encoding='utf-8')
+            def verified_copy(*args,**kwargs):
+                output.mkdir(parents=True);(output/'verification.json').write_text('{"errors":[]}',encoding='utf-8')
+            database_connections=MagicMock();database_connections.__contains__.side_effect=lambda alias:alias=='mssql';database_connections.__getitem__.return_value.vendor='sqlite'
+            with override_settings(CONFIG_DIR=root,STAGING_MODE=True),patch('core.management.commands.cutover_staging_mssql.connections',database_connections),patch('core.management.commands.cutover_staging_mssql.recreate_database',return_value='ODBC Driver 17 for SQL Server'),patch('core.management.commands.cutover_staging_mssql.call_command',side_effect=verified_copy):
+                command=StagingCutoverCommand()
+                command.handle(operation='prepare',output=str(output),server='MSK-DB2',database='YDS_PORTAL_TEST',driver='ODBC Driver 17 for SQL Server')
+                active=json.loads(config.read_text(encoding='utf-8'));self.assertEqual(active['mssql']['name'],'YDS_PORTAL_TEST')
+                command.handle(operation='rollback',output=str(output),server='MSK-DB2',database='YDS_PORTAL_TEST',driver='ODBC Driver 17 for SQL Server')
+            self.assertEqual(json.loads(config.read_text(encoding='utf-8')),previous)
 
     def test_prefixed_estimate_fingerprint_fits_mssql_schema(self):
         value='works-v1:'+'a'*64

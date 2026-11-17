@@ -28,6 +28,8 @@ def owner_hash(root, state):
 def refresh(root, *, expected_generation, expected_revision, owner_id, progress=lambda phase: None):
     root = Path(root).resolve()
     state = staging.manifest(root)
+    if staging.database_engine(state)!='sqlite':
+        raise RuntimeError('Замена данных теста из рабочего портала временно недоступна после перехода теста на MSSQL.')
     runtime = staging.private_path(root, '.runtime')
     if (runtime / 'staging-recovery.json').exists() or (runtime / 'staging-refresh-transaction.json').exists():
         raise RuntimeError('Сначала проверьте восстановление предыдущей операции теста.')

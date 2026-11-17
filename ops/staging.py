@@ -66,7 +66,17 @@ def manifest(root, candidate=None):
         disjoint(root, data['source'][name])
     if data.get('source_config_dir'):
         disjoint(root, data['source_config_dir'])
+    engine=str(data.get('database_engine','sqlite')).casefold()
+    if engine not in {'sqlite','mssql'}:raise ValueError('Тестовый портал поддерживает только SQLite или MSSQL.')
+    if engine=='mssql':
+        database=data.get('mssql') or {}
+        if not database.get('host') or str(database.get('name','')).casefold()!='yds_portal_test':
+            raise ValueError('Тестовый MSSQL должен использовать отдельную базу YDS_PORTAL_TEST.')
     return data
+
+
+def database_engine(state):
+    return str(state.get('database_engine','sqlite')).strip().casefold()
 
 
 def environment(root, candidate=None):
@@ -101,6 +111,26 @@ def snapshot(source, target):
             live.backup(copy, pages=256, progress=progress, sleep=.05)
             if copy.execute('PRAGMA integrity_check').fetchone()[0] != 'ok':
                 raise RuntimeError('Снимок не прошёл проверку SQLite.')
+
+
+def backup_database(root,state,folder):
+    folder=Path(folder);folder.mkdir(parents=True,exist_ok=True)
+    atomic_json(folder/'staging.json',state)
+    if database_engine(state)=='sqlite':
+        target=folder/'database.sqlite3';snapshot(Path(root)/'data/db.sqlite3',target);return target
+    metadata=folder/'mssql-backup.json'
+    run_manage(root,['mssql_backup','create','--metadata',str(metadata)],code=Path(state['code']),python=state['python'])
+    if not metadata.is_file():raise RuntimeError('Не создано описание резервной копии тестовой MSSQL.')
+    return metadata
+
+
+def restore_database(root,state,backup):
+    backup=Path(backup)
+    if database_engine(state)=='sqlite':
+        target=Path(root)/'data/db.sqlite3'
+        for suffix in ('-wal','-shm'):Path(str(target)+suffix).unlink(missing_ok=True)
+        shutil.copy2(backup,target);return
+    run_manage(root,['mssql_backup','restore','--metadata',str(backup)],code=Path(state['code']),python=state['python'])
 
 
 def copy_files(source, target):
@@ -323,8 +353,7 @@ def update(root, archive, revision, *, prepared=None, progress=lambda label:None
         backup=private_path(root,'.runtime/backups/'+uuid.uuid4().hex);backup.mkdir(parents=True)
         try:
             progress('Резервная копия последних тестовых данных')
-            snapshot(root/'data/db.sqlite3',backup/'database.sqlite3')
-            atomic_json(backup/'staging.json',previous)
+            database_backup=backup_database(root,previous,backup)
             try:
                 for command,label in [(['migrate','--noinput'],'Применение миграций тестовой базы'),
                                       (['collectstatic','--noinput'],'Подготовка статических файлов')]:
@@ -334,8 +363,7 @@ def update(root, archive, revision, *, prepared=None, progress=lambda label:None
             except Exception:
                 # The complete backup was taken after HTTP stopped, so no user writes are lost.
                 try:
-                    for suffix in ['-wal','-shm']:Path(str(root/'data/db.sqlite3')+suffix).unlink(missing_ok=True)
-                    shutil.copy2(backup/'database.sqlite3',root/'data/db.sqlite3')
+                    restore_database(root,previous,database_backup)
                 except Exception:
                     atomic_json(runtime/'staging-recovery.json',{'backup':str(backup),'revision':previous['revision']})
                     raise
