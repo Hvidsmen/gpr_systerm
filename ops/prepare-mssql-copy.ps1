@@ -1,0 +1,27 @@
+﻿# Build a verified MSSQL trial copy while production keeps using SQLite.
+[CmdletBinding()]
+param([string]$Root='')
+$ErrorActionPreference='Stop'
+
+if([string]::IsNullOrWhiteSpace($Root)){$Root=Join-Path $PSScriptRoot '..'}
+$Root=(Resolve-Path -LiteralPath $Root).Path
+$runtime=Join-Path $Root '.runtime'
+$current=Get-Content -LiteralPath (Join-Path $runtime 'current.json') -Raw | ConvertFrom-Json
+$installed=Get-Content -LiteralPath (Join-Path $runtime 'installed.json') -Raw | ConvertFrom-Json
+$python=[string]$current.python;$manage=Join-Path ([string]$current.code) 'manage.py'
+if(-not (Test-Path -LiteralPath $python) -or -not (Test-Path -LiteralPath $manage)){throw 'Активная версия портала не найдена. Сначала выполните обновление.'}
+$identity=[Security.Principal.WindowsIdentity]::GetCurrent().Name
+if($identity -ine 'YAMALGAZPROM\dvivanov'){throw "Запустите файл от YAMALGAZPROM\dvivanov. Сейчас используется $identity."}
+$destination=Join-Path $runtime ('mssql-copy\'+[DateTime]::UtcNow.ToString('yyyyMMdd-HHmmss'))
+$env:GPR_CONFIG_DIR=$Root
+$env:DJANGO_DB_ENGINE='sqlite'
+$env:DJANGO_DB_PATH=[string]$installed.database
+$env:MSSQL_HOST='MSK-DB2'
+$env:MSSQL_NAME='YDS_PORTAL'
+$env:MSSQL_DRIVER=''
+$env:MSSQL_TRUST_SERVER_CERTIFICATE='true'
+$env:DJANGO_SECRET_KEY=(Get-Content -LiteralPath (Join-Path $runtime 'secret.key') -Raw).Trim()
+$env:DJANGO_DEBUG='0';$env:DJANGO_SECURE_SSL_REDIRECT='0';$env:DJANGO_COOKIE_SECURE='0'
+Write-Host 'Создаётся проверочная копия. Рабочий портал продолжает работать с SQLite.' -ForegroundColor Cyan
+& $python $manage prepare_mssql_copy --target mssql --output $destination
+if($LASTEXITCODE -ne 0){throw 'Подготовка копии MSSQL не завершена. Рабочая SQLite-база не изменялась.'}

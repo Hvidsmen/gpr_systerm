@@ -94,6 +94,9 @@ WSGI_APPLICATION = 'config.wsgi.application'
 from config.database import database_settings
 
 DATABASES = {'default': database_settings(BASE_DIR)}
+if DATABASES['default']['ENGINE']!='mssql' and (os.environ.get('MSSQL_HOST') or os.environ.get('MSSQL_NAME')):
+    mssql_environment={**os.environ,'DJANGO_DB_ENGINE':'mssql'}
+    DATABASES['mssql']=database_settings(BASE_DIR,mssql_environment)
 
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},

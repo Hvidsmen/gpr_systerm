@@ -77,6 +77,8 @@ class WindowsRuntimeTests(SimpleTestCase):
         (code/'ops/set-windows-portal-account.ps1').write_text('new account tool')
         (code/'CHECK_GPR_MSSQL.cmd').write_text('mssql launcher')
         (code/'ops/check-mssql.ps1').write_text('mssql check')
+        (code/'PREPARE_GPR_MSSQL_COPY.cmd').write_text('copy launcher')
+        (code/'ops/prepare-mssql-copy.ps1').write_text('copy tool')
         candidate={'sha':'b'*40,'code':str(code),'python':'python-new'}
         with patch.object(runtime,'stage_update',return_value=candidate),patch.object(runtime,'stop_process'),patch.object(runtime,'run'),patch.object(runtime,'healthy'),patch.object(runtime,'launch',return_value=(Mock(),8001)):
             _,result,message=runtime.update(self.root,Mock(),current)
@@ -86,6 +88,8 @@ class WindowsRuntimeTests(SimpleTestCase):
         self.assertEqual((self.root/'ops/set-windows-portal-account.ps1').read_text(),'new account tool')
         self.assertEqual((self.root/'CHECK_GPR_MSSQL.cmd').read_text(),'mssql launcher')
         self.assertEqual((self.root/'ops/check-mssql.ps1').read_text(),'mssql check')
+        self.assertEqual((self.root/'PREPARE_GPR_MSSQL_COPY.cmd').read_text(),'copy launcher')
+        self.assertEqual((self.root/'ops/prepare-mssql-copy.ps1').read_text(),'copy tool')
 
     def test_mssql_bridge_migration_exposes_tool_on_its_first_update(self):
         migration=importlib.import_module('apps.accounts.migrations.0032_publish_mssql_check')
@@ -97,6 +101,17 @@ class WindowsRuntimeTests(SimpleTestCase):
             migration.publish_tool(None,None,platform_name='nt')
         self.assertEqual((persistent/'CHECK_GPR_MSSQL.cmd').read_text(),'bridge launcher')
         self.assertEqual((persistent/'ops/check-mssql.ps1').read_text(),'bridge check')
+
+    def test_mssql_copy_bridge_exposes_tool_on_its_first_update(self):
+        migration=importlib.import_module('apps.accounts.migrations.0033_publish_mssql_copy_tool')
+        code=self.root/'immutable-release';(code/'ops').mkdir(parents=True)
+        (code/'PREPARE_GPR_MSSQL_COPY.cmd').write_text('bridge launcher')
+        (code/'ops/prepare-mssql-copy.ps1').write_text('bridge copy')
+        persistent=self.root/'persistent';persistent.mkdir()
+        with override_settings(BASE_DIR=code,CONFIG_DIR=persistent):
+            migration.publish_tool(None,None,platform_name='nt')
+        self.assertEqual((persistent/'PREPARE_GPR_MSSQL_COPY.cmd').read_text(),'bridge launcher')
+        self.assertEqual((persistent/'ops/prepare-mssql-copy.ps1').read_text(),'bridge copy')
 
     def test_bridge_migration_exposes_tool_during_first_immutable_update(self):
         migration=importlib.import_module('apps.accounts.migrations.0031_publish_portal_account_tool')

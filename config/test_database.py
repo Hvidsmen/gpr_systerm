@@ -21,6 +21,10 @@ class DatabaseSettingsTests(SimpleTestCase):
         self.assertNotIn('USER',settings);self.assertNotIn('PASSWORD',settings)
         self.assertIn('TrustServerCertificate=yes',settings['OPTIONS']['extra_params'])
 
+    def test_mssql_driver_can_be_left_for_backend_auto_detection(self):
+        settings=database_settings(Path('.'),{'DJANGO_DB_ENGINE':'mssql','MSSQL_HOST':'MSK-DB2','MSSQL_NAME':'YDS_PORTAL'})
+        self.assertNotIn('driver',settings['OPTIONS'])
+
     def test_mssql_requires_server_and_database(self):
         for values in ({'DJANGO_DB_ENGINE':'mssql','MSSQL_NAME':'YDS_PORTAL'},
                        {'DJANGO_DB_ENGINE':'mssql','MSSQL_HOST':'MSK-DB2'}):
