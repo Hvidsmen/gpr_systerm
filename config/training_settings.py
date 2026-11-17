@@ -1,4 +1,6 @@
 """A separate process, never a request-scoped database switch."""
+import os
+os.environ['DJANGO_DB_ENGINE']='sqlite'
 from config.settings import *
 from django.core.exceptions import ImproperlyConfigured
 from uuid import UUID

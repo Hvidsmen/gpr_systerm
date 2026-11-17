@@ -7,7 +7,7 @@ if not os.environ.get('GPR_CONFIG_DIR'):
     raise RuntimeError('Для тестового процесса нужна отдельная папка GPR_CONFIG_DIR.')
 _staging_root = Path(os.environ['GPR_CONFIG_DIR']).resolve()
 STAGING_CONFIG = manifest(_staging_root, os.environ.get('GPR_STAGING_CANDIDATE'))
-os.environ.update(DJANGO_DB_PATH=str(private_path(_staging_root, 'data/db.sqlite3')),
+os.environ.update(DJANGO_DB_ENGINE='sqlite',DJANGO_DB_PATH=str(private_path(_staging_root, 'data/db.sqlite3')),
                   DJANGO_SECRET_KEY=private_path(_staging_root, 'secret.key').read_text().strip(),
                   DJANGO_DEBUG='0', DJANGO_SECURE_SSL_REDIRECT='0', DJANGO_COOKIE_SECURE='0',
                   DJANGO_ALLOWED_HOSTS=','.join(sorted(set(STAGING_CONFIG['hosts']) | {'localhost', '127.0.0.1'})))

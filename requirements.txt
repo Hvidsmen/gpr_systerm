@@ -1,4 +1,6 @@
 Django>=5.2,<6.0
+mssql-django>=1.8,<2
+pyodbc>=5.2,<6
 psycopg2-binary>=2.9,<3
 Pillow>=10.0,<13
 python-dotenv>=1.2,<2

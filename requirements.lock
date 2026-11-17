@@ -1,5 +1,8 @@
 asgiref==3.12.1
 Django==5.2.18
+mssql-django==1.8.0
+pyodbc==5.5.0
+pytz==2026.6
 pillow==12.3.0
 psycopg2-binary==2.9.13
 python-dotenv==1.2.4
