@@ -1312,7 +1312,8 @@ class EstimateReviewTask(BaseCompanyModel):
     assigned_to = models.ForeignKey('accounts.User', on_delete=models.PROTECT, related_name='estimate_reviews')
     created_by = models.ForeignKey('accounts.User', on_delete=models.PROTECT, related_name='requested_estimate_reviews')
     status = models.CharField(max_length=12, default='OPEN', choices=[('OPEN','На проверке'),('APPROVED','Проверено'),('REJECTED','На доработке')])
-    fingerprint = models.CharField(max_length=64, blank=True)
+    # Some approval fingerprints include a version prefix before the SHA-256.
+    fingerprint = models.CharField(max_length=128, blank=True)
     decisions = models.JSONField(default=dict, blank=True)
     comment = models.TextField(blank=True)
     approved_at = models.DateTimeField(null=True, blank=True)

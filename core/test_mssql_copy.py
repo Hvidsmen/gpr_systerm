@@ -6,11 +6,16 @@ from unittest.mock import MagicMock,patch
 from django.core.management.base import CommandError
 from django.test import SimpleTestCase
 
+from apps.planning.models import EstimateReviewTask
 from core.management.commands.prepare_mssql_copy import Command,dump_fixture,require_target_collation
 from core.fixture_loading import fixture_loading,is_loading_fixture
 
 
 class PrepareMssqlCopyTests(SimpleTestCase):
+    def test_prefixed_estimate_fingerprint_fits_mssql_schema(self):
+        value='works-v1:'+'a'*64
+        self.assertLessEqual(len(value),EstimateReviewTask._meta.get_field('fingerprint').max_length)
+
     def test_target_requires_binary_collation_before_any_copy(self):
         connection=MagicMock()
         cursor=connection.cursor.return_value.__enter__.return_value
