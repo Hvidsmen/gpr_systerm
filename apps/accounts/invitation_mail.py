@@ -81,7 +81,7 @@ def connection(cfg):
     return backend
 
 
-def sender(cfg):return formataddr(('ЯДС ОС',cfg['from_email']))
+def sender(cfg):return formataddr(('Портал ЯДС ОС',cfg['from_email']))
 
 
 class MailSettingsForm(forms.ModelForm):

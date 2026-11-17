@@ -1,6 +1,8 @@
 from uuid import uuid4
 from datetime import timedelta
 from unittest.mock import patch,MagicMock
+from email.header import decode_header,make_header
+from email.utils import parseaddr
 import smtplib,socket,ssl
 from django.test import TestCase,override_settings
 from django.urls import reverse
@@ -43,6 +45,10 @@ class InvitationTests(TestCase):
             message=next(m for m in mail.outbox if m.to==[item.recipient_email])
             self.assertEqual(message.body,item.body);self.assertEqual(message.alternatives[0].content,item.html_body)
         self.assertEqual(invitations.counts(batch)['sent'],2)
+    def test_sender_display_name_is_portal_brand(self):
+        encoded_name,address=parseaddr(invitation_mail.sender({'from_email':'sender@example.org'}))
+        self.assertEqual(str(make_header(decode_header(encoded_name))),'Портал ЯДС ОС')
+        self.assertEqual(address,'sender@example.org')
     def test_invalid_recipients_are_explained_and_excluded(self):
         local=User.objects.create_user(username='local-invite',company=self.company,role=self.user.role)
         no_mail=self.person('empty',email='');no_mail.ldap_guid=None;no_mail.save()
