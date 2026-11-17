@@ -26,6 +26,7 @@ CONTROL_FILES=('SET_GPR_PORTAL_ACCOUNT.cmd','ops/set-windows-portal-account.ps1'
 TASK='YDS Portal'
 RUNTIME_HISTORY=5
 MIN_UPDATE_FREE_BYTES=1024*1024*1024
+UPDATE_DOWNLOAD_ATTEMPTS=3
 
 
 class InsufficientDiskSpace(RuntimeError):
@@ -406,6 +407,29 @@ def extract_archive(archive,destination):
         if not (destination/required).is_file():raise RuntimeError('Incomplete application archive.')
 
 
+def download_update_archive(url,headers,archive,attempts=UPDATE_DOWNLOAD_ATTEMPTS):
+    """Download atomically and retry transiently interrupted GitHub responses."""
+    archive=Path(archive);partial=archive.with_name(archive.name+'.part')
+    archive.unlink(missing_ok=True);partial.unlink(missing_ok=True)
+    for attempt in range(1,attempts+1):
+        try:
+            with urlopen(Request(url,headers=headers),timeout=120) as response,open(partial,'wb') as output:
+                size=0
+                while True:
+                    chunk=response.read(1024*1024)
+                    if not chunk:break
+                    size+=len(chunk)
+                    if size>100_000_000:raise RuntimeError('Update download exceeds the size limit.')
+                    output.write(chunk)
+            os.replace(partial,archive)
+            return
+        except Exception as exc:
+            partial.unlink(missing_ok=True);archive.unlink(missing_ok=True)
+            if isinstance(exc,RuntimeError) or attempt==attempts:raise
+            logging.warning('Update archive download attempt %s/%s failed: %s',attempt,attempts,exc)
+            time.sleep(min(5,attempt*2))
+
+
 def update_stage(root,stage):
     path=root/'.runtime/status.json';status=read_json(path,{})
     if status.get('state')=='updating':
@@ -429,14 +453,7 @@ def stage_update(root,config,current):
     destination.mkdir(parents=True)
     update_stage(root,'downloading')
     archive=root/'.runtime/update.zip'
-    with urlopen(Request(endpoint+'/zipball/'+sha,headers=headers),timeout=120) as response,open(archive,'wb') as output:
-        size=0
-        while True:
-            chunk=response.read(1024*1024)
-            if not chunk:break
-            size+=len(chunk)
-            if size>100_000_000:raise RuntimeError('Update download exceeds the size limit.')
-            output.write(chunk)
+    download_update_archive(endpoint+'/zipball/'+sha,headers,archive)
     extract_archive(archive,destination);archive.unlink(missing_ok=True)
     update_stage(root,'dependencies')
     venv=root/'.runtime/venvs'/sha

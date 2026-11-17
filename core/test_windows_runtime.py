@@ -1,11 +1,12 @@
 import io
+from http.client import IncompleteRead
 import importlib
 import json
 import os
 from pathlib import Path
 import sqlite3
 import tempfile
-from unittest.mock import patch, Mock
+from unittest.mock import patch, Mock, MagicMock
 import zipfile
 from django.test import SimpleTestCase, override_settings
 from ops import windows_runtime as runtime
@@ -51,6 +52,18 @@ class WindowsRuntimeTests(SimpleTestCase):
             for name in ['manage.py','requirements.txt','ops/windows_runtime.py']:zipped.writestr('repo/'+name,'content')
         runtime.extract_archive(archive,self.root/'release')
         self.assertTrue((self.root/'release/ops/windows_runtime.py').is_file())
+
+    def test_interrupted_update_download_retries_and_replaces_partial_file(self):
+        archive=self.state/'update.zip';partial=archive.with_name('update.zip.part')
+        archive.write_bytes(b'stale');partial.write_bytes(b'partial')
+        interrupted=MagicMock()
+        interrupted.__enter__.return_value=interrupted;interrupted.__exit__.return_value=False
+        interrupted.read.side_effect=IncompleteRead(b'broken',5)
+        complete=io.BytesIO(b'complete archive')
+        with patch.object(runtime,'urlopen',side_effect=[interrupted,complete]) as opening,patch.object(runtime.time,'sleep') as sleep:
+            runtime.download_update_archive('https://example.invalid/archive',{},archive)
+        self.assertEqual(archive.read_bytes(),b'complete archive')
+        self.assertFalse(partial.exists());self.assertEqual(opening.call_count,2);sleep.assert_called_once_with(2)
 
     def test_download_failure_does_not_stop_the_current_server(self):
         process=Mock();current={'sha':'old'}
