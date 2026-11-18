@@ -13,6 +13,7 @@ from .recruitment_models import POOL_UNAVAILABLE_STAGES,RECRUITMENT_SYSTEM_STAGE
 
 DISPATCH = {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'}
 RECRUIT = {'ADMIN','HR_HEAD','RECRUITER'}
+ASSIGN = {'ADMIN','HR_HEAD'}
 READ = DISPATCH | RECRUIT
 EDITABLE_CANDIDATE_STAGES={value for value,_ in RecruitmentCandidate.STATES}-RECRUITMENT_SYSTEM_STAGES
 ACTIVE_CANDIDATE_STAGES={value for value,_ in RecruitmentCandidate.STATES}-RECRUITMENT_TERMINAL_STAGES-{'RESERVE','ARRIVED'}
@@ -90,18 +91,25 @@ def save_request(user, values, pk=None, revision=None):
 
 
 @transaction.atomic
-def take_request(user, pk, revision):
-    serialize(user,RECRUIT);row=current(user,pk,revision)
-    if row.assigned_to_id and row.assigned_to_id!=user.pk:raise ValidationError('Заявку уже взял другой специалист.')
-    row.assigned_to=user;row.save(update_fields=['assigned_to','updated_at']);touch(row)
-    audit(user,row,'Заявка взята в работу.')
+def assign_request(user,pk,recruiter,revision):
+    serialize(user,ASSIGN);row=current(user,pk,revision)
+    from core.permissions import role_code
+    if (not recruiter or recruiter.company_id!=user.company_id or not recruiter.is_active or recruiter.archived_at or
+            role_code(recruiter)!='RECRUITER'):
+        raise ValidationError('Выберите действующего пользователя с ролью «Подбор персонала».')
+    previous=row.assigned_to
+    row.assigned_to=recruiter;row.save(update_fields=['assigned_to','updated_at']);touch(row)
+    description=f'Назначен ответственный рекрутер: {recruiter.get_full_name() or recruiter.username}.'
+    if previous and previous.pk!=recruiter.pk:
+        description=f'Ответственный рекрутер изменён: {previous.get_full_name() or previous.username} → {recruiter.get_full_name() or recruiter.username}.'
+    audit(user,row,description)
     return row
 
 
 def owned(user,row):
     from core.permissions import role_code
-    if role_code(user)=='RECRUITER' and row.assigned_to_id!=user.pk:
-        raise ValidationError('Сначала возьмите заявку в работу. Чужую заявку ведёт назначенный специалист.')
+    if role_code(user) in {'RECRUITER','HR_HEAD'} and row.assigned_to_id!=user.pk:
+        raise ValidationError('Заявку ведёт назначенный ответственный рекрутер.')
 
 
 @transaction.atomic

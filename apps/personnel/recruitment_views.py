@@ -12,7 +12,7 @@ from .models import (RecruitmentRequest,RecruitmentCandidate,ArrivalPreparation,
     TalentPoolStageEvent,MovementReviewRequest)
 from . import recruitment as service
 from .recruitment_forms import (RequestForm,CandidateForm,ArrivalForm,RevisionForm,ReasonForm,TalentPoolForm,
-    TalentPoolImportForm,BulkArrivalCommonForm,BulkArrivalRowForm)
+    TalentPoolImportForm,BulkArrivalCommonForm,BulkArrivalRowForm,RecruiterAssignmentForm)
 from .recruitment_models import POOL_UNAVAILABLE_STAGES, RECRUITMENT_TERMINAL_STAGES
 
 
@@ -183,24 +183,31 @@ def request_edit(request,pk=None):
 def request_detail(request,pk):
     require_roles(request.user,service.READ)
     row=get_object_or_404(requests_for(request.user),pk=pk)
-    form=RevisionForm(initial={'revision':row.revision});cancel_form=ReasonForm(initial={'revision':row.revision})
+    assignment_form=RecruiterAssignmentForm(initial={'revision':row.revision},company=request.user.company,current=row.assigned_to)
+    cancel_form=ReasonForm(initial={'revision':row.revision})
     if request.method=='POST':
         action=request.POST.get('action')
-        require_roles(request.user,service.RECRUIT if action=='take' else service.DISPATCH)
-        bound=RevisionForm(request.POST) if action=='take' else ReasonForm(request.POST)
+        if action=='assign':
+            require_roles(request.user,service.ASSIGN)
+            bound=RecruiterAssignmentForm(request.POST,company=request.user.company,current=row.assigned_to)
+        elif action=='cancel':
+            require_roles(request.user,service.DISPATCH)
+            bound=ReasonForm(request.POST)
+        else:
+            raise PermissionDenied('Неизвестное действие.')
         if bound.is_valid():
             try:
-                if action=='take':service.take_request(request.user,pk,bound.cleaned_data['revision'])
-                elif action=='cancel':service.cancel_request(request.user,pk,bound.cleaned_data['revision'],bound.cleaned_data['reason'])
-                else:raise ValidationError('Неизвестное действие.')
+                if action=='assign':service.assign_request(request.user,pk,bound.cleaned_data['recruiter'],bound.cleaned_data['revision'])
+                else:service.cancel_request(request.user,pk,bound.cleaned_data['revision'],bound.cleaned_data['reason'])
             except (ValidationError,IntegrityError) as exc:error(bound,exc)
             else:return redirect('personnel:recruitment_detail',pk=pk)
-        if action=='take':form=bound
+        if action=='assign':assignment_form=bound
         else:cancel_form=bound
     role=role_code(request.user)
     return render(request,'personnel/recruitment_detail.html',{**context(request.user),'can_dispatch':role in service.DISPATCH and not row.completed_at,
-        'row':row,'progress':service.progress(row),'form':form,'cancel_form':cancel_form,
-        'can_manage_candidates':not row.completed_at and role in service.RECRUIT and (role!='RECRUITER' or row.assigned_to_id==request.user.pk),
+        'row':row,'progress':service.progress(row),'assignment_form':assignment_form,'cancel_form':cancel_form,
+        'can_assign_recruiter':role in service.ASSIGN and not row.completed_at and not row.cancelled_at,
+        'can_manage_candidates':not row.completed_at and (role=='ADMIN' or role=='RECRUITER' and row.assigned_to_id==request.user.pk),
         'events':row.events.select_related('actor','candidate')[:100]})
 
 

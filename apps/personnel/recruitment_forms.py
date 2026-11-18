@@ -4,6 +4,7 @@ from django.utils import timezone
 from django.utils.html import format_html
 from apps.projects.models import ConstructionObject
 from apps.resources.models import Employee,Position
+from apps.accounts.models import User
 from .models import BaseCity,RecruitmentRequest, RecruitmentCandidate,RecruitmentSpecialist,TalentPoolCandidate,Camp
 from .recruitment_models import POOL_UNAVAILABLE_STAGES,RECRUITMENT_SYSTEM_STAGES,RECRUITMENT_TERMINAL_STAGES
 from .recruitment import allowed_camps, validate_documents
@@ -16,6 +17,15 @@ class RevisionForm(forms.Form):
 
 class ReasonForm(RevisionForm):
     reason = forms.CharField(label='Причина отмены', max_length=2000, widget=forms.Textarea(attrs={'rows':2}))
+
+
+class RecruiterAssignmentForm(RevisionForm):
+    recruiter=forms.ModelChoiceField(label='Ответственный рекрутер',queryset=User.objects.none(),empty_label='Выберите рекрутера',widget=forms.Select(attrs={'class':'form-select'}))
+    def __init__(self,*args,company,current=None,**kwargs):
+        super().__init__(*args,**kwargs)
+        rows=User.objects.filter(company=company,is_active=True,archived_at__isnull=True,role__code='RECRUITER')
+        self.fields['recruiter'].queryset=rows.order_by('last_name','first_name','username','pk')
+        if current and rows.filter(pk=current.pk).exists():self.initial['recruiter']=current.pk
 
 
 class RequestForm(forms.ModelForm):

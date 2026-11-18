@@ -31,9 +31,11 @@ class RecruitmentTests(TestCase):
         cls.foreign_camp=Camp.objects.create(company=cls.other,name='Чужой ВЖГ')
         cls.day=timezone.localdate()-timedelta(days=1)
         cls.dispatch=User.objects.create_user(username='dispatch-recruit',company=cls.company,role=Role.objects.get(code='PERSONNEL_DISPATCHER'))
+        cls.hr_head=User.objects.create_user(username='hr-head-recruit',first_name='Ирина',last_name='Руководитель',company=cls.company,role=Role.objects.get(code='HR_HEAD'))
         cls.recruiter=User.objects.create_user(username='recruiter',company=cls.company,role=Role.objects.get(code='RECRUITER'))
         cls.recruiter2=User.objects.create_user(username='recruiter2',company=cls.company,role=Role.objects.get(code='RECRUITER'))
         cls.foreign=User.objects.create_user(username='recruit-foreign',company=cls.other,role=Role.objects.get(code='RECRUITER'))
+        cls.foreign_hr_head=User.objects.create_user(username='hr-head-foreign',company=cls.other,role=Role.objects.get(code='HR_HEAD'))
         cls.employee=Employee.objects.create(company=cls.company,last_name='Оформленный',first_name='Сотрудник',employee_number='R-001')
         cls.foreign_employee=Employee.objects.create(company=cls.other,last_name='Чужой',first_name='Сотрудник')
     def values(self,**extra):
@@ -44,7 +46,7 @@ class RecruitmentTests(TestCase):
         return service.save_request(self.dispatch,self.values())
     def candidate(self,row=None,**extra):
         row=row or self.row()
-        service.take_request(self.recruiter,row.pk,row.revision)
+        service.assign_request(self.hr_head,row.pk,self.recruiter,row.revision)
         self._candidate_sequence+=1
         return service.save_candidate(self.recruiter,row.pk,{
             'full_name':f'Кандидат Новый {self._candidate_sequence}',
@@ -103,7 +105,7 @@ class RecruitmentTests(TestCase):
         self.client.force_login(self.dispatch)
         self.assertContains(self.client.get(reverse('personnel:new_employee_arrivals')),prep.candidate.full_name)
     def test_manual_duplicate_is_blocked_across_active_requests(self):
-        first=self.candidate();second_request=self.row();service.take_request(self.recruiter,second_request.pk,second_request.revision)
+        first=self.candidate();second_request=self.row();service.assign_request(self.hr_head,second_request.pk,self.recruiter,second_request.revision)
         with self.assertRaisesMessage(ValidationError,'уже участвует'):
             service.save_candidate(self.recruiter,second_request.pk,{'pool_candidate':None,'full_name':first.full_name,
                 'phone':first.phone,'status':'READY','ready_on':self.day,'notes':'','documents':[]},revision=0,files=[])
@@ -116,7 +118,7 @@ class RecruitmentTests(TestCase):
         self.assertIsNone(preparations[0].movement_request_id);self.assertEqual(candidate.status,'READY')
     def test_dispatcher_can_create_one_arrival_batch_from_selected_candidates(self):
         from apps.planning.models import WorkTask
-        row=self.row();service.take_request(self.recruiter,row.pk,row.revision)
+        row=self.row();service.assign_request(self.hr_head,row.pk,self.recruiter,row.revision)
         candidates=[]
         for number in (1,2):
             candidates.append(service.save_candidate(self.recruiter,row.pk,{
@@ -161,7 +163,7 @@ class RecruitmentTests(TestCase):
         self.assertEqual(response.context['arrival_recommendation_count'],2)
         self.assertEqual(response.context['departure_recommendation_count'],1)
     def test_new_candidate_with_ready_date_can_be_opened_for_arrival_by_dispatcher(self):
-        row=self.row();service.take_request(self.recruiter,row.pk,row.revision)
+        row=self.row();service.assign_request(self.hr_head,row.pk,self.recruiter,row.revision)
         candidate=service.save_candidate(self.recruiter,row.pk,{
             'pool_candidate':None,'full_name':'Новый кандидат','phone':'89990000000','status':'NEW',
             'ready_on':self.day,'notes':'','documents':[]},revision=0,files=[])
@@ -225,7 +227,7 @@ class RecruitmentTests(TestCase):
     def test_common_pool_candidate_can_be_selected_for_vacancy(self):
         from .models import TalentPoolCandidate
         from .recruitment_forms import CandidateForm
-        row=self.row();service.take_request(self.recruiter,row.pk,row.revision)
+        row=self.row();service.assign_request(self.hr_head,row.pk,self.recruiter,row.revision)
         pool=TalentPoolCandidate.objects.create(company=self.company,full_name='Человек из пула',phone='555',created_by=self.recruiter,
             source_data={'position':'Монтажник','construction_site':'КТП'})
         form=CandidateForm({'pool_candidate':pool.pk,'full_name':'','phone':'','status':'READY','ready_on':self.day,'notes':'','revision':0},company=self.company,request_row=row)
@@ -236,7 +238,7 @@ class RecruitmentTests(TestCase):
         candidate=service.save_candidate(self.recruiter,row.pk,form.cleaned_data)
         self.assertEqual(candidate.pool_candidate,pool);self.assertEqual(candidate.full_name,pool.full_name)
         self.assertTrue(pool.vacancy_candidates.filter(request=row).exists())
-        another=self.row();service.take_request(self.recruiter,another.pk,another.revision)
+        another=self.row();service.assign_request(self.hr_head,another.pk,self.recruiter,another.revision)
         second_form=CandidateForm(company=self.company,request_row=another)
         self.assertNotIn(pool,second_form.fields['pool_candidate'].queryset)
         with self.assertRaisesMessage(ValidationError,'уже участвует в другой действующей заявке'):
@@ -290,14 +292,33 @@ class RecruitmentTests(TestCase):
                 'phone':first.phone,'status':'READY','ready_on':self.day,'notes':''})
         self.assertEqual(row.candidates.count(),1);self.assertEqual(row.candidates.get(),first)
     def test_only_assigned_recruiter_can_work_request(self):
-        row=self.row();service.take_request(self.recruiter,row.pk,row.revision)
-        row.refresh_from_db();self.assertValidation(service.take_request,self.recruiter2,row.pk,row.revision)
+        row=self.row();service.assign_request(self.hr_head,row.pk,self.recruiter,row.revision)
+        row.refresh_from_db()
         self.assertValidation(service.save_candidate,self.recruiter2,row.pk,{'full_name':'Чужой','phone':'','status':'NEW','ready_on':None,'notes':''})
         self.assertFalse(RecruitmentCandidate.objects.exists())
+    def test_hr_head_assigns_and_reassigns_responsible_recruiter(self):
+        from .models import RecruitmentEvent
+        row=self.row();url=reverse('personnel:recruitment_detail',args=[row.pk])
+        self.client.force_login(self.recruiter)
+        page=self.client.get(url)
+        self.assertNotContains(page,'Взять в работу');self.assertNotContains(page,'name="recruiter"',html=False)
+        self.assertEqual(self.client.post(url,{'action':'assign','revision':row.revision,'recruiter':self.recruiter.pk}).status_code,403)
+        self.client.force_login(self.hr_head)
+        page=self.client.get(url)
+        self.assertContains(page,'Ответственный рекрутер');self.assertContains(page,'name="recruiter"',html=False)
+        response=self.client.post(url,{'action':'assign','revision':row.revision,'recruiter':self.recruiter.pk})
+        self.assertRedirects(response,url);row.refresh_from_db();self.assertEqual(row.assigned_to,self.recruiter)
+        self.assertTrue(RecruitmentEvent.objects.filter(request=row,description__contains='Назначен ответственный рекрутер').exists())
+        self.client.force_login(self.recruiter);self.assertContains(self.client.get(url),'Добавить кандидата')
+        self.client.force_login(self.hr_head)
+        self.client.post(url,{'action':'assign','revision':row.revision,'recruiter':self.recruiter2.pk})
+        row.refresh_from_db();self.assertEqual(row.assigned_to,self.recruiter2)
+        self.assertTrue(RecruitmentEvent.objects.filter(request=row,description__contains='Ответственный рекрутер изменён').exists())
+        self.client.force_login(self.recruiter);self.assertNotContains(self.client.get(url),'Добавить кандидата')
     def test_role_separation_in_services(self):
         with self.assertRaises(PermissionDenied):service.save_request(self.recruiter,self.values())
         row=self.row()
-        with self.assertRaises(PermissionDenied):service.take_request(self.dispatch,row.pk,row.revision)
+        with self.assertRaises(PermissionDenied):service.assign_request(self.dispatch,row.pk,self.recruiter,row.revision)
         prep=self.preparation()
         with self.assertRaises(PermissionDenied):service.prepare_arrival(self.recruiter,prep.pk,prep.revision,self.arrival_values(),confirm=True)
     def test_readiness_required_and_handed_candidate_immutable(self):
@@ -335,9 +356,9 @@ class RecruitmentTests(TestCase):
         foreign_obj=ConstructionObject.objects.create(company=self.other,project=Project.objects.create(company=self.other,name='Чужой'),name='Чужой')
         self.assertValidation(service.save_request,self.dispatch,self.values(construction_object=foreign_obj))
         row=self.row()
-        with self.assertRaises(RecruitmentRequest.DoesNotExist):service.take_request(self.foreign,row.pk,row.revision)
+        with self.assertRaises(RecruitmentRequest.DoesNotExist):service.assign_request(self.foreign_hr_head,row.pk,self.foreign,row.revision)
     def test_private_documents_download_scope_and_upload_validation(self):
-        row=self.row();service.take_request(self.recruiter,row.pk,row.revision)
+        row=self.row();service.assign_request(self.hr_head,row.pk,self.recruiter,row.revision)
         values={'full_name':'С резюме','phone':'','status':'NEW','ready_on':None,'notes':''}
         with TemporaryDirectory() as root,override_settings(ACTUATION_FILES_ROOT=root):
             c=service.save_candidate(self.recruiter,row.pk,values,files=[SimpleUploadedFile('resume.pdf',b'%PDF-private'),SimpleUploadedFile('info.txt',b'info')])
@@ -349,7 +370,7 @@ class RecruitmentTests(TestCase):
             self.assertValidation(service.save_candidate,self.recruiter,row.pk,values,files=[SimpleUploadedFile('run.exe',b'x')])
             self.assertEqual(RecruitmentCandidate.objects.count(),1)
     def test_upload_failure_cleans_files_and_rolls_back_candidate(self):
-        row=self.row();service.take_request(self.recruiter,row.pk,row.revision)
+        row=self.row();service.assign_request(self.hr_head,row.pk,self.recruiter,row.revision)
         with TemporaryDirectory() as root,override_settings(ACTUATION_FILES_ROOT=root):
             with patch.object(CandidateDocument,'save',side_effect=ValidationError('Отказ')):
                 self.assertValidation(service.save_candidate,self.recruiter,row.pk,{'full_name':'X','phone':'','status':'NEW','ready_on':None,'notes':''},files=[SimpleUploadedFile('a.pdf',b'x')])
@@ -388,8 +409,9 @@ class RecruitmentTests(TestCase):
         self.client.force_login(self.dispatch)
         response=self.client.post(reverse('personnel:recruitment_create'),{'construction_object':self.obj.pk,'position_ref':self.position.pk,'quantity':1,'required_on':str(self.day),'requirements':'','revision':0})
         row=RecruitmentRequest.objects.get();self.assertRedirects(response,reverse('personnel:recruitment_detail',args=[row.pk]))
+        self.client.force_login(self.hr_head)
+        self.client.post(reverse('personnel:recruitment_detail',args=[row.pk]),{'action':'assign','recruiter':self.recruiter.pk,'revision':row.revision})
         self.client.force_login(self.recruiter)
-        self.client.post(reverse('personnel:recruitment_detail',args=[row.pk]),{'action':'take','revision':row.revision})
         response=self.client.post(reverse('personnel:recruitment_candidate_create',args=[row.pk]),{'full_name':'Новый кандидат','phone':'','status':'READY','ready_on':str(self.day),'notes':'','revision':0})
         self.assertEqual(response.status_code,302);c=RecruitmentCandidate.objects.get()
         self.client.post(reverse('personnel:recruitment_handoff',args=[c.pk]),{'revision':c.revision})
@@ -606,7 +628,7 @@ class RecruitmentTests(TestCase):
         event=TalentPoolStageEvent.objects.get(candidate=pool)
         self.assertEqual((event.from_stage,event.to_stage),('REJECTED','SCREENING'));self.assertEqual(event.actor,self.recruiter)
         self.assertEqual(event.note,'Рассматриваем повторно')
-        vacancy=self.row();service.take_request(self.recruiter,vacancy.pk,vacancy.revision)
+        vacancy=self.row();service.assign_request(self.hr_head,vacancy.pk,self.recruiter,vacancy.revision)
         self.assertIn(pool,CandidateForm(company=self.company,request_row=vacancy).fields['pool_candidate'].queryset)
         card=self.client.get(reverse('personnel:recruitment_candidate_card',args=[pool.pk]))
         self.assertContains(card,'Отказ работодателя → На рассмотрении');self.assertContains(card,'Рассматриваем повторно')

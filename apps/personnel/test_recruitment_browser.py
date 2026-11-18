@@ -17,9 +17,11 @@ class RecruitmentBrowserTests(StaticLiveServerTestCase):
         RecruitmentTests.setUpTestData.__func__(type(self))
         before=Employee.objects.count()
         self.client.force_login(self.dispatch);dispatcher_cookie=self.client.cookies['sessionid'].value
+        head_client=Client();head_client.force_login(self.hr_head);head_cookie=head_client.cookies['sessionid'].value
         recruit_client=Client();recruit_client.force_login(self.recruiter);recruiter_cookie=recruit_client.cookies['sessionid'].value
-        config={'base':self.live_server_url,'chromium':shutil.which('chromium'),'dispatch_cookie':dispatcher_cookie,'recruit_cookie':recruiter_cookie,
-            'object':self.obj.pk,'camp':self.camp.pk,'employee':self.employee.pk,'day':str(self.day)}
+        config={'base':self.live_server_url,'chromium':shutil.which('chromium'),'dispatch_cookie':dispatcher_cookie,'head_cookie':head_cookie,
+            'recruit_cookie':recruiter_cookie,'recruiter':self.recruiter.pk,'object':self.obj.pk,'position':self.position.pk,
+            'camp':self.camp.pk,'employee':self.employee.pk,'day':str(self.day)}
         result=subprocess.run(['node',str(Path(__file__).resolve().parents[2]/'tests/browser/recruitment.js')],capture_output=True,text=True,env=dict(os.environ,RECRUITMENT_CONFIG=json.dumps(config)),timeout=120)
         self.assertEqual(result.returncode,0,result.stdout+'\n'+result.stderr)
         self.assertEqual(Employee.objects.count(),before)
