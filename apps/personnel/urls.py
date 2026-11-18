@@ -82,6 +82,7 @@ urlpatterns += [
     path('recruitment/pool/import/',recruitment.pool_import,name='recruitment_pool_import'),
     path('recruitment/pool/<int:pk>/',recruitment.pool_edit,name='recruitment_pool_edit'),
     path('recruitment/candidates/<int:pk>/',recruitment.candidate_card,name='recruitment_candidate_card'),
+    path('recruitment/candidates/<int:pk>/stage/',recruitment.candidate_stage_update,name='recruitment_candidate_stage'),
     path('recruitment/create/', recruitment.request_edit, name='recruitment_create'),
     path('recruitment/<int:pk>/', recruitment.request_detail, name='recruitment_detail'),
     path('recruitment/<int:pk>/edit/', recruitment.request_edit, name='recruitment_edit'),

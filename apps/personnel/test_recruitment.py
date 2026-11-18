@@ -491,11 +491,35 @@ class RecruitmentTests(TestCase):
         shop=self.client.get(reverse('personnel:recruitment_list'))
         self.assertContains(shop,'Кандидаты по этапам');self.assertContains(shop,'План найма · заявки на подбор')
         self.assertContains(shop,'Согласование руководителя');self.assertContains(shop,reverse('personnel:recruitment_candidate_card',args=[pool.pk]))
+        self.assertContains(shop,reverse('personnel:recruitment_candidate_stage',args=[pool.pk]))
+        self.assertContains(shop,'data-candidate-stage-form')
         card=self.client.get(reverse('personnel:recruitment_candidate_card',args=[pool.pk]))
         self.assertContains(card,pool.full_name);self.assertContains(card,'История воронки')
         self.assertContains(card,f'Заявка №{candidate.request_id}');self.assertContains(card,'Кандидат: Согласование руководителя.')
         rejected=self.client.get(reverse('personnel:recruitment_list'),{'candidate_stage':'rejected'})
         self.assertNotContains(rejected,pool.full_name)
+
+    def test_recruiter_changes_pool_stage_inline_in_both_directions(self):
+        from .models import TalentPoolStageEvent
+        candidate=self.candidate(status='MANAGER_APPROVAL',ready_on=None);pool=candidate.pool_candidate
+        self.client.force_login(self.recruiter)
+        url=reverse('personnel:recruitment_candidate_stage',args=[pool.pk])
+        response=self.client.post(url,{'stage':'REJECTED','note':'Не прошёл проверку'})
+        self.assertEqual(response.status_code,200);self.assertEqual(response.json()['stage'],'REJECTED')
+        pool.refresh_from_db();self.assertEqual(pool.stage,'REJECTED');self.assertFalse(pool.is_active)
+        event=TalentPoolStageEvent.objects.get(candidate=pool)
+        self.assertEqual((event.from_stage,event.to_stage,event.note),('MANAGER_APPROVAL','REJECTED','Не прошёл проверку'))
+        response=self.client.post(url,{'stage':'SCREENING','note':'Повторное рассмотрение'})
+        self.assertEqual(response.status_code,200)
+        pool.refresh_from_db();self.assertEqual(pool.stage,'SCREENING');self.assertTrue(pool.is_active)
+        self.assertEqual(TalentPoolStageEvent.objects.filter(candidate=pool).count(),2)
+
+    def test_inline_pool_stage_rejects_unknown_stage(self):
+        candidate=self.candidate(status='NEW',ready_on=None);pool=candidate.pool_candidate
+        self.client.force_login(self.recruiter)
+        response=self.client.post(reverse('personnel:recruitment_candidate_stage',args=[pool.pk]),{'stage':'UNKNOWN'})
+        self.assertEqual(response.status_code,400)
+        pool.refresh_from_db();self.assertEqual(pool.stage,'NEW')
     def test_manual_pool_card_saves_store_fields(self):
         from .models import TalentPoolCandidate
         self.client.force_login(self.recruiter)

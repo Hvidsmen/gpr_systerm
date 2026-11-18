@@ -4,7 +4,7 @@ from django.core.exceptions import ValidationError, PermissionDenied
 from django.core.paginator import Paginator
 from django.db import IntegrityError,transaction
 from django.db.models import Q, Prefetch
-from django.http import FileResponse, Http404
+from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_http_methods, require_POST, require_GET
 from core.permissions import require_roles, role_code
@@ -13,7 +13,7 @@ from .models import (RecruitmentRequest,RecruitmentCandidate,ArrivalPreparation,
 from . import recruitment as service
 from .recruitment_forms import (RequestForm,CandidateForm,ArrivalForm,RevisionForm,ReasonForm,TalentPoolForm,
     TalentPoolImportForm,BulkArrivalCommonForm,BulkArrivalRowForm)
-from .recruitment_models import RECRUITMENT_TERMINAL_STAGES
+from .recruitment_models import POOL_UNAVAILABLE_STAGES, RECRUITMENT_TERMINAL_STAGES
 
 
 FUNNEL_GROUPS=[
@@ -69,7 +69,7 @@ def request_list(request):
     params=request.GET.copy();params.pop('page',None)
     return render(request,'personnel/recruitment_list.html',{**context(request.user),'page':page,'filter_query':query,'filter_state':state,
         'pagination_query':params.urlencode(),'candidate_page':candidate_page,'funnel_groups':groups,'candidate_stage':selected_group,
-        'candidate_total':candidate_total})
+        'candidate_total':candidate_total,'candidate_stage_choices':TalentPoolCandidate._meta.get_field('stage').choices})
 
 
 @login_required
@@ -102,6 +102,25 @@ def candidate_card(request,pk):
     return render(request,'personnel/recruitment_candidate_card.html',{**context(request.user),'row':row,'events':events,
         'source_events':source_events,'source_applications':source_applications,'stage_events':stage_events,
         'has_applications':bool(row.vacancy_candidates.all())})
+
+
+@login_required
+@require_POST
+def candidate_stage_update(request,pk):
+    require_roles(request.user,service.RECRUIT)
+    choices=dict(TalentPoolCandidate._meta.get_field('stage').choices)
+    stage=request.POST.get('stage','')
+    if stage not in choices:return JsonResponse({'error':'Выберите этап воронки.'},status=400)
+    note=request.POST.get('note','').strip()
+    with transaction.atomic():
+        row=get_object_or_404(TalentPoolCandidate.objects.select_for_update(),company=request.user.company,pk=pk)
+        previous=row.stage
+        if previous!=stage:
+            row.stage=stage;row.is_active=stage not in POOL_UNAVAILABLE_STAGES
+            row.save(update_fields=['stage','is_active','updated_at'])
+            TalentPoolStageEvent.objects.create(company=request.user.company,candidate=row,from_stage=previous,
+                to_stage=stage,actor=request.user,note=note)
+    return JsonResponse({'id':row.pk,'stage':row.stage,'stage_label':row.get_stage_display()})
 
 
 @login_required
