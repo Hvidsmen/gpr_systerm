@@ -5,6 +5,11 @@
     if(!node)return;
     node.textContent=message||'';node.classList.toggle('d-none',!message);
   }
+  function setPositionOpen(row,open){
+    const people=row.nextElementSibling;
+    if(!people||!people.classList.contains('position-people-row'))return;
+    row.setAttribute('aria-expanded',String(open));people.hidden=!open;
+  }
   async function replaceFunnel(url,push){
     const current=funnel();if(!current)return;
     current.setAttribute('aria-busy','true');error('');
@@ -24,12 +29,19 @@
     const detailsAction=event.target.closest('[data-position-details-action]');
     if(detailsAction){
       const open=detailsAction.dataset.positionDetailsAction==='expand';
-      funnel()?.querySelectorAll('.position-people-row details').forEach(function(details){details.open=open;});
+      funnel()?.querySelectorAll('[data-position-toggle]').forEach(function(row){setPositionOpen(row,open);});
       return;
     }
+    const positionRow=event.target.closest('[data-position-toggle]');
+    if(positionRow){setPositionOpen(positionRow,positionRow.getAttribute('aria-expanded')!=='true');return;}
     const link=event.target.closest('[data-recruitment-stage-link]');
     if(!link||event.button!==0||event.ctrlKey||event.metaKey||event.shiftKey||event.altKey)return;
     event.preventDefault();replaceFunnel(link.href,true);
+  });
+  document.addEventListener('keydown',function(event){
+    const row=event.target.closest('[data-position-toggle]');
+    if(!row||(event.key!=='Enter'&&event.key!==' '))return;
+    event.preventDefault();setPositionOpen(row,row.getAttribute('aria-expanded')!=='true');
   });
   document.addEventListener('submit',async function(event){
     const form=event.target.closest('[data-candidate-stage-form]');if(!form)return;

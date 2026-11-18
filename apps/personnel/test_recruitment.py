@@ -555,6 +555,7 @@ class RecruitmentTests(TestCase):
         self.assertEqual((shop.context['candidate_position_count'],groups['work']['position_count'],groups['rejected']['position_count']),(2,1,1))
         self.assertContains(shop,'План и воронка по должностям');self.assertContains(shop,'Последняя заявка:')
         self.assertContains(shop,'data-position-details-action="expand"',html=False);self.assertContains(shop,'data-position-details-action="collapse"',html=False)
+        self.assertContains(shop,'data-position-toggle',html=False);self.assertContains(shop,'aria-expanded="true"',html=False)
         self.assertContains(shop,f'№{candidate.request_id} · Монтажник · {self.obj}')
         self.assertContains(shop,'Не прикреплён к заявке');self.assertNotContains(shop,'План найма: 1')
         pool=self.client.get(reverse('personnel:recruitment_pool'))
@@ -564,7 +565,7 @@ class RecruitmentTests(TestCase):
         rejected_summary={row['position']:row for row in rejected.context['position_summary']}
         self.assertNotIn('Монтажник',rejected_summary)
         self.assertEqual([person['full_name'] for person in rejected_summary['Водитель']['visible_people']],[unattached.full_name])
-        self.assertContains(rejected,'Люди по должности:');self.assertContains(rejected,unattached.full_name)
+        self.assertContains(rejected,'data-position-toggle',html=False);self.assertContains(rejected,unattached.full_name)
 
     def test_recruiter_changes_pool_stage_inline_in_both_directions(self):
         from .models import TalentPoolStageEvent
