@@ -7,7 +7,7 @@
 <section class="card card-body mb-3"><h3 class="h5">Карточка кандидата</h3><dl class="candidate-profile-grid">
 <div><dt>Телефон</dt><dd>{{ row.phone|default:'—' }}</dd></div><div><dt>Должность</dt><dd>{{ row.source_data.position|default:'—' }}</dd></div>
 <div><dt>Участок</dt><dd>{{ row.source_data.construction_site|default:'—' }}</dd></div><div><dt>Дата рождения</dt><dd>{{ row.source_data.birth_date|default:'—' }}</dd></div>
-<div><dt>Базовый город</dt><dd>{{ row.source_data.base_city|default:'—' }}</dd></div><div><dt>Ответственный HR</dt><dd>{{ row.source_data.responsible_hr|default:'—' }}</dd></div>
+<div><dt>Базовый город</dt><dd>{{ row.source_data.base_city|default:'—' }}</dd></div><div><dt>Ответственный HR</dt><dd>{% firstof row.responsible_hr row.source_data.responsible_hr '—' %}</dd></div>
 <div><dt>Готовность</dt><dd>{{ row.source_data.readiness|default:'—' }}</dd></div><div><dt>Источник</dt><dd>{% firstof row.source_data.source_sheet row.source_data.origin "Ручной ввод" %}</dd></div>
 </dl>{% if row.notes %}<p class="candidate-card-note mb-0"><strong>Комментарий:</strong> {{ row.notes }}</p>{% endif %}</section>
 

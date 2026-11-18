@@ -439,4 +439,4 @@ from .lodging_models import LodgingBuilding,LodgingBed,LodgingStay,LodgingEvent,
 from .lodging_import_models import LodgingImportBatch,LodgingImportRow
 
 from .recruitment_models import (RecruitmentRequest,RecruitmentCandidate,ArrivalPreparation,CandidateDocument,
-    RecruitmentEvent,TalentPoolCandidate,TalentPoolStageEvent)
+    RecruitmentEvent,RecruitmentSpecialist,TalentPoolCandidate,TalentPoolStageEvent)

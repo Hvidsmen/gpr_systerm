@@ -192,7 +192,7 @@ class RecruitmentTests(TestCase):
             service.handoff(self.dispatch,second.pk,second.revision)
     def test_request_closes_when_required_employee_arrives(self):
         from .departure_workflow import arrive_camp
-        from .models import TalentPoolCandidate
+        from .models import RecruitmentSpecialist,TalentPoolCandidate
         from .recruitment_forms import CandidateForm
         row=service.save_request(self.dispatch,self.values(quantity=1));candidate=self.candidate(row)
         pool=candidate.pool_candidate
@@ -443,7 +443,7 @@ class RecruitmentTests(TestCase):
 
     def test_store_2026_import_creates_and_idempotently_updates_pool(self):
         from openpyxl import Workbook
-        from .models import TalentPoolCandidate
+        from .models import RecruitmentSpecialist,TalentPoolCandidate
         from .talent_pool_import import HEADERS,import_sheet
         workbook=Workbook();sheet=workbook.active;sheet.title='Магазин 2026';sheet.append(HEADERS)
         sheet.append([1,'  Иванов   Иван Иванович ','Монтажник','КТП',None,'1234 567890',89991234567,None,None,None,None,None,'Уфа','готов',None,'Петров',None,'Комментарий','Иванов Иван Иванович'])
@@ -451,6 +451,8 @@ class RecruitmentTests(TestCase):
         self.assertEqual(import_sheet(self.recruiter,payload),{'created':1,'updated':0,'skipped':0})
         row=TalentPoolCandidate.objects.get();self.assertEqual(row.full_name,'Иванов Иван Иванович');self.assertEqual(row.phone,'89991234567')
         self.assertEqual(row.stage,'SELECTED')
+        self.assertEqual(row.responsible_hr.name,'Петров')
+        self.assertEqual(RecruitmentSpecialist.objects.count(),1)
         self.assertEqual(row.source_data['position'],'Монтажник');self.assertEqual(row.source_data['base_city'],'Уфа')
         payload.seek(0);self.assertEqual(import_sheet(self.recruiter,payload),{'created':0,'updated':0,'skipped':1})
         self.client.force_login(self.recruiter);page=self.client.get(reverse('personnel:recruitment_pool'))
@@ -459,7 +461,7 @@ class RecruitmentTests(TestCase):
     def test_workbook_import_unifies_all_funnel_sheets_and_history(self):
         from datetime import datetime
         from openpyxl import Workbook
-        from .models import TalentPoolCandidate
+        from .models import RecruitmentSpecialist,TalentPoolCandidate
         from .talent_pool_import import HEADERS,PLAN_KEYS,import_sheet
         workbook=Workbook();store=workbook.active;store.title='Магазин 2026';store.append(HEADERS)
         store.append([1,'Единый Кандидат','Монтажник','КТП','1990-01-01','1234 567890','89990000001','Согласован',
@@ -478,6 +480,7 @@ class RecruitmentTests(TestCase):
         self.assertEqual(import_sheet(self.recruiter,payload),{'created':2,'updated':0,'skipped':0})
         unified=TalentPoolCandidate.objects.get(full_name='Единый Кандидат')
         self.assertEqual(unified.stage,'TRANSFERRED');self.assertEqual(len(unified.source_data['funnel_sources']),3)
+        self.assertEqual(unified.responsible_hr.name,'Рекрутер');self.assertEqual(RecruitmentSpecialist.objects.count(),1)
         self.assertEqual(TalentPoolCandidate.objects.get(full_name='Другой Кандидат').stage,'REJECTED')
         payload.seek(0);self.assertEqual(import_sheet(self.recruiter,payload),{'created':0,'updated':0,'skipped':2})
         self.client.force_login(self.recruiter)
@@ -521,18 +524,23 @@ class RecruitmentTests(TestCase):
         self.assertEqual(response.status_code,400)
         pool.refresh_from_db();self.assertEqual(pool.stage,'NEW')
     def test_manual_pool_card_saves_store_fields(self):
-        from .models import TalentPoolCandidate
+        from .models import RecruitmentSpecialist,TalentPoolCandidate
+        specialist=RecruitmentSpecialist.objects.create(company=self.company,name='Петрова',user=self.recruiter)
         self.client.force_login(self.recruiter)
+        form_page=self.client.get(reverse('personnel:recruitment_pool_create'))
+        self.assertContains(form_page,'<select name="responsible_hr"',html=False)
+        self.assertContains(form_page,'Петрова')
         response=self.client.post(reverse('personnel:recruitment_pool_create'),{
             'full_name':'Ручной Кандидат','position':'Электромонтажник','construction_site':'КТП-2','phone':'89990001122',
             'birth_date':'1990-02-03','passport':'1234 567890','base_city':'Уфа','readiness':'Готов с 20 ноября',
             'dudinka_arrival':'2026-11-21','manager_approval':'Согласован','security_approval':'Проверен',
             'skzi_until':'2027-01-01','medical_exam':'Пройден','pass_documents':'Направлены',
-            'responsible_hr':'Петрова','agency':'Агентство','stage':'NEW','notes':'Комментарий'})
+            'responsible_hr':specialist.pk,'agency':'Агентство','stage':'NEW','notes':'Комментарий'})
         self.assertRedirects(response,reverse('personnel:recruitment_pool'),fetch_redirect_response=False)
         row=TalentPoolCandidate.objects.get(full_name='Ручной Кандидат')
         self.assertEqual(row.source_data['position'],'Электромонтажник');self.assertEqual(row.source_data['construction_site'],'КТП-2')
         self.assertEqual(row.source_data['birth_date'],'1990-02-03');self.assertEqual(row.source_data['base_city'],'Уфа')
+        self.assertEqual(row.responsible_hr,specialist);self.assertEqual(row.source_data['responsible_hr'],'Петрова')
         page=self.client.get(reverse('personnel:recruitment_pool'))
         self.assertContains(page,'Электромонтажник');self.assertContains(page,'Все данные кандидата')
         duplicate=self.client.post(reverse('personnel:recruitment_pool_create'),{

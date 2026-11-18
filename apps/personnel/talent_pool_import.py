@@ -3,7 +3,7 @@ from collections import defaultdict
 from datetime import date,datetime,time
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from .models import TalentPoolCandidate
+from .models import RecruitmentSpecialist,TalentPoolCandidate
 from .recruitment_models import POOL_UNAVAILABLE_STAGES,RECRUITMENT_STAGES
 
 STORE_SHEET='Магазин 2026'
@@ -47,6 +47,13 @@ def _text(value):
 def _name(value):return ' '.join(_text(value).split())
 def _phone(value):return ''.join(character for character in _text(value) if character.isdigit())
 def _valid_name(value):return bool(value and value.casefold() not in {'вакансия','фио кандидата','#ref!','#n/a','нет'})
+
+
+def _specialist(company,name):
+    name=_name(name)
+    if not name:return None
+    existing=RecruitmentSpecialist.objects.filter(company=company,name__iexact=name).first()
+    return existing or RecruitmentSpecialist.objects.create(company=company,name=name)
 
 
 def _latest_date(data,keys):
@@ -142,7 +149,7 @@ def import_sheet(user,file):
     grouped=defaultdict(list)
     for record in _records(workbook):grouped[record['data']['full_name'].casefold()].append(record)
     existing=defaultdict(list)
-    rows=TalentPoolCandidate.objects.select_for_update().filter(company=user.company).prefetch_related('vacancy_candidates')
+    rows=TalentPoolCandidate.objects.select_for_update().filter(company=user.company).select_related('responsible_hr').prefetch_related('vacancy_candidates')
     for row in rows:existing[_name(row.full_name).casefold()].append(row)
     created=updated=skipped=0
     for key,records in grouped.items():
@@ -164,7 +171,8 @@ def import_sheet(user,file):
         phone_value=profile.get('phone') or (row.phone if row else '')
         notes=profile.get('notes') or current['details'] or (row.notes if row else '')
         active=row.is_active if operational else stage not in POOL_UNAVAILABLE_STAGES
-        defaults={'phone':phone_value,'notes':notes,'source_data':source,'stage':stage,'is_active':active}
+        responsible_hr=_specialist(user.company,source.get('responsible_hr')) if source.get('responsible_hr') else (row.responsible_hr if row else None)
+        defaults={'phone':phone_value,'notes':notes,'source_data':source,'stage':stage,'is_active':active,'responsible_hr':responsible_hr}
         if row:
             changed=[]
             for field,value in defaults.items():

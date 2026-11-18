@@ -3,7 +3,7 @@ from django.db.models import Q
 from django.utils import timezone
 from apps.projects.models import ConstructionObject
 from apps.resources.models import Employee
-from .models import RecruitmentRequest, RecruitmentCandidate,TalentPoolCandidate,Camp
+from .models import RecruitmentRequest, RecruitmentCandidate,RecruitmentSpecialist,TalentPoolCandidate,Camp
 from .recruitment_models import POOL_UNAVAILABLE_STAGES,RECRUITMENT_SYSTEM_STAGES,RECRUITMENT_TERMINAL_STAGES
 from .recruitment import allowed_camps, validate_documents
 from .employee_widgets import RemoteEmployeeSelect
@@ -102,15 +102,21 @@ class TalentPoolForm(forms.ModelForm):
     base_city=forms.CharField(label='Базовый город',required=False)
     readiness=forms.CharField(label='Готовность к заезду',required=False)
     dudinka_arrival=forms.DateField(label='Дата прибытия в Дудинку',required=False,widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
-    responsible_hr=forms.CharField(label='Ответственный HR',required=False)
+    responsible_hr=forms.ModelChoiceField(label='Ответственный HR',required=False,
+        queryset=RecruitmentSpecialist.objects.none(),empty_label='Не назначен')
     agency=forms.CharField(label='Название агентства',required=False)
     source_fields=('position','construction_site','birth_date','passport','manager_approval','security_approval','skzi_until',
-        'medical_exam','pass_documents','base_city','readiness','dudinka_arrival','responsible_hr','agency')
+        'medical_exam','pass_documents','base_city','readiness','dudinka_arrival','agency')
     class Meta:
-        model=TalentPoolCandidate;fields=['full_name','phone','stage','notes'];widgets={'notes':forms.Textarea(attrs={'rows':3})}
+        model=TalentPoolCandidate;fields=['full_name','phone','stage','responsible_hr','notes'];widgets={'notes':forms.Textarea(attrs={'rows':3})}
     def __init__(self,*args,company,user,**kwargs):
         super().__init__(*args,**kwargs);self.instance.company=company
         if not self.instance.pk:self.instance.created_by=user
+        specialists=RecruitmentSpecialist.objects.filter(company=company,is_active=True)
+        if self.instance.responsible_hr_id:
+            specialists=RecruitmentSpecialist.objects.filter(company=company).filter(
+                Q(is_active=True)|Q(pk=self.instance.responsible_hr_id))
+        self.fields['responsible_hr'].queryset=specialists.order_by('name','pk')
         source=self.instance.source_data or {}
         for field in self.source_fields:
             if field not in self.initial:self.initial[field]=source.get(field,'')
@@ -122,6 +128,7 @@ class TalentPoolForm(forms.ModelForm):
         for field in self.source_fields:
             value=self.cleaned_data.get(field)
             source[field]=value.isoformat() if hasattr(value,'isoformat') else (value or '').strip()
+        source['responsible_hr']=instance.responsible_hr.name if instance.responsible_hr_id else ''
         source['full_name']=instance.full_name;source['phone']=instance.phone;source['notes']=instance.notes
         instance.source_data=source;instance.is_active=instance.stage not in POOL_UNAVAILABLE_STAGES
         if commit:instance.save()

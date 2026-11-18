@@ -46,16 +46,38 @@ def resume_storage():return RecruitmentStorage()
 def resume_path(instance, filename):return f'{instance.company_id}/{uuid4().hex}'
 
 
+class RecruitmentSpecialist(PersonnelModel):
+    name=models.CharField('Ответственный HR',max_length=250)
+    user=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,blank=True,
+        related_name='recruitment_specialist_profiles',verbose_name='Пользователь портала')
+    is_active=models.BooleanField('Доступен для выбора',default=True)
+    class Meta:
+        ordering=['name','pk']
+        constraints=[models.UniqueConstraint(fields=['company','name'],name='personnel_unique_recruitment_specialist')]
+    def __str__(self):return self.name
+    def clean(self):
+        super().clean()
+        self.name=' '.join((self.name or '').split())
+        if not self.name:raise ValidationError({'name':'Укажите ФИО или краткое имя HR.'})
+        if self.user_id and self.user.company_id!=self.company_id:raise ValidationError({'user':'Пользователь другой компании.'})
+
+
 class TalentPoolCandidate(PersonnelModel):
     full_name=models.CharField('ФИО',max_length=250)
     phone=models.CharField('Телефон',max_length=80,blank=True)
     notes=models.TextField('Комментарий',blank=True)
     source_data=models.JSONField('Данные источника',default=dict,blank=True)
+    responsible_hr=models.ForeignKey(RecruitmentSpecialist,on_delete=models.SET_NULL,null=True,blank=True,
+        related_name='candidates',verbose_name='Ответственный HR')
     stage=models.CharField('Этап воронки',max_length=24,choices=RECRUITMENT_STAGES,default='NEW')
     is_active=models.BooleanField('Доступен для вакансий',default=True)
     created_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='talent_pool_candidates')
     class Meta:ordering=['full_name','pk']
     def __str__(self):return self.full_name
+    def clean(self):
+        super().clean()
+        if self.responsible_hr_id and self.responsible_hr.company_id!=self.company_id:
+            raise ValidationError({'responsible_hr':'Выберите HR своей компании.'})
     @property
     def source_application_count(self):
         return sum(1 for event in (self.source_data or {}).get('funnel_sources',[]) if event.get('sheet')=='План найма')
