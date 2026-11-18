@@ -389,6 +389,7 @@ def workspace(request, movements=False, movement_page='new'):
 
 def review_request_context(request):
     from core.permissions import role_code
+    from apps.projects.models import Project
     tab='departure' if request.GET.get('kind')=='departure' else 'arrival'
     sort=request.GET.get('sort','created_desc')
     sort_options=[('created_desc','Новые заявки сверху'),('created_asc','Старые заявки сверху'),('name_asc','ФИО: А–Я'),('name_desc','ФИО: Я–А'),('position_asc','Должность: А–Я'),('position_desc','Должность: Я–А'),('project_asc','Проект: А–Я'),('project_desc','Проект: Я–А'),('movement_asc','Дата заезда / выезда: ранние сверху'),('movement_desc','Дата заезда / выезда: поздние сверху'),('status_asc','Статус: А–Я'),('status_desc','Статус: Я–А')]
@@ -397,15 +398,31 @@ def review_request_context(request):
     if raw_date:
         try:filter_date=forms.DateField().clean(raw_date)
         except ValidationError:raw_date=''
+    query=' '.join(request.GET.get('q','').split())
+    raw_project=request.GET.get('project','').strip();project_id=int(raw_project) if raw_project.isdigit() else None
+    raw_camp=request.GET.get('camp','').strip();camp_id=int(raw_camp) if raw_camp.isdigit() else None
+    statuses=dict(MovementReviewRequest.STATUSES);status=request.GET.get('status','').strip()
+    if status not in statuses:status=''
+    sources=dict(MovementReviewRequest.SOURCES);source=request.GET.get('source','').strip()
+    if source not in sources:source=''
     base=MovementReviewRequest.objects.filter(company=request.user.company)
     qs=base.filter(kind='ARRIVAL') if tab=='arrival' else base.exclude(kind='ARRIVAL')
     if filter_date:qs=qs.filter(movement_date=filter_date)
+    if query:
+        qs=qs.filter(Q(person__full_name__icontains=query)|Q(person__employee__last_name__icontains=query)|
+            Q(person__employee__first_name__icontains=query)|Q(person__employee__middle_name__icontains=query)|
+            Q(planning_position_name__icontains=query)|Q(position_name__icontains=query)|Q(site__icontains=query)|
+            Q(base_city__icontains=query)|Q(phone__icontains=query)|Q(request_number__icontains=query)|Q(note__icontains=query))
+    if project_id:qs=qs.filter(Q(construction_object__project_id=project_id)|Q(site_object__project_id=project_id))
+    if camp_id:qs=qs.filter(to_camp_id=camp_id) if tab=='arrival' else qs.filter(from_camp_id=camp_id)
+    if status:qs=qs.filter(status=status)
+    if source:qs=qs.filter(source=source)
     from django.db.models import Case,When,Value,IntegerField
     ordering={'created_desc':['-created_at','-pk'],'created_asc':['created_at','pk'],'name_asc':['person__full_name','pk'],'name_desc':['-person__full_name','-pk'],
         'position_asc':['planning_position_name','person__full_name','pk'],'position_desc':['-planning_position_name','person__full_name','pk'],
         'project_asc':['construction_object__name','person__full_name','pk'],'project_desc':['-construction_object__name','person__full_name','pk'],
         'movement_asc':['movement_date','pk'],'movement_desc':['-movement_date','-pk'],'status_asc':['status','pk'],'status_desc':['-status','-pk']}[sort]
-    rows=list(qs.select_related('person__employee','from_camp','to_camp','requested_by','event').annotate(
+    rows=list(qs.select_related('person__employee','from_camp','to_camp','construction_object__project','site_object__project','requested_by','event').annotate(
         cancelled_order=Case(When(status='CANCELLED',then=Value(1)),default=Value(0),output_field=IntegerField()),
         open_order=Case(When(status='OPEN',then=Value(0)),default=Value(1),output_field=IntegerField())).order_by('cancelled_order','open_order',*ordering)[:1000])
     user_role=role_code(request.user)
@@ -419,7 +436,15 @@ def review_request_context(request):
         arrival=Count('pk',filter=Q(kind='ARRIVAL')&~Q(status='CANCELLED')),
         departure=Count('pk',filter=~Q(kind='ARRIVAL')&~Q(status='CANCELLED')),
         opened=Count('pk',filter=Q(status='OPEN')))
+    filter_values={'q':query,'date':raw_date,'project':raw_project if project_id else '',
+        'camp':raw_camp if camp_id else '','status':status,'source':source}
+    filter_query=urlencode({key:value for key,value in filter_values.items() if value})
     return {'personnel_section':'reviews','movement_review_requests':rows,'dispatcher_review_requests':dispatcher_rows,'excel_review_requests':excel_rows,'excel_history_requests':excel_history,'review_tab':tab,'review_arrival':tab=='arrival','review_date':raw_date,'review_sort':sort,'review_sort_options':sort_options,
+        'review_query':query,'review_project':project_id,'review_camp':camp_id,'review_status':status,'review_source':source,
+        'review_projects':Project.objects.filter(company=request.user.company).order_by('name','pk'),
+        'review_camps':Camp.objects.filter(company=request.user.company).order_by('name','pk'),
+        'review_statuses':MovementReviewRequest.STATUSES,'review_sources':MovementReviewRequest.SOURCES,
+        'review_filter_query':filter_query,'review_has_filters':bool(filter_query),
         'arrival_review_requests':rows if tab=='arrival' else [],'departure_review_requests':rows if tab=='departure' else [],
         'arrival_review_count':counts['arrival'],'departure_review_count':counts['departure'],
         'movement_review_open_count':counts['opened']}

@@ -523,6 +523,29 @@ class MovementReviewRequestTests(TestCase):
         page=self.client.get(url,{'kind':'departure','date':first.isoformat()})
         self.assertNotContains(page,f'housing/movement-requests/{departure.pk}/')
 
+    def test_review_filters_apply_to_arrival_and_departure_lists(self):
+        day=timezone.localdate()
+        other_project=Project.objects.create(company=self.company,name='Другой проект')
+        other_object=ConstructionObject.objects.create(company=self.company,project=other_project,name='Другой объект')
+        other_camp=Camp.objects.create(company=self.company,name='ВЖГ-2')
+        arrival=MovementReviewRequest.objects.create(company=self.company,person=self.person,kind='ARRIVAL',movement_date=day,
+            to_camp=self.camp,construction_object=self.obj,requested_by=self.personnel,request_number='FIND-42')
+        MovementReviewRequest.objects.create(company=self.company,person=self.person,kind='ARRIVAL',movement_date=day,
+            to_camp=other_camp,construction_object=other_object,requested_by=self.reviewer,source='EXCEL',status='PEREVAKHTA')
+        departure=MovementReviewRequest.objects.create(company=self.company,person=self.person,kind='DEPARTURE',movement_date=day,
+            from_camp=self.camp,construction_object=self.obj,requested_by=self.reviewer,source='EXCEL',status='PEREVAKHTA')
+        self.client.force_login(self.reviewer);url=reverse('personnel:movement_reviews')
+        page=self.client.get(url,{'q':'FIND-42','project':self.project.pk,'camp':self.camp.pk,
+            'status':'OPEN','source':'DISPATCHER'})
+        self.assertEqual([row.pk for row in page.context['dispatcher_review_requests']],[arrival.pk])
+        self.assertEqual(page.context['excel_review_requests'],[])
+        self.assertContains(page,'Фильтры заявок перевахты');self.assertContains(page,'Все проекты');self.assertContains(page,'Все ВЖГ')
+        self.assertContains(page,f'q=FIND-42&amp;project={self.project.pk}')
+        page=self.client.get(url,{'kind':'departure','project':self.project.pk,'camp':self.camp.pk,
+            'status':'PEREVAKHTA','source':'EXCEL'})
+        self.assertEqual([row.pk for row in page.context['excel_review_requests']],[departure.pk])
+        self.assertEqual(page.context['dispatcher_review_requests'],[])
+
     def test_dispatcher_and_excel_requests_are_separate_and_newest_first(self):
         day=timezone.localdate()
         older=MovementReviewRequest.objects.create(company=self.company,person=self.person,kind='ARRIVAL',movement_date=day,to_camp=self.camp,requested_by=self.personnel)
