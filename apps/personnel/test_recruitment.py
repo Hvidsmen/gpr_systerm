@@ -536,6 +536,28 @@ class RecruitmentTests(TestCase):
         rejected=self.client.get(reverse('personnel:recruitment_list'),{'candidate_stage':'rejected'})
         self.assertNotContains(rejected,pool.full_name)
 
+    def test_shop_compares_position_plan_with_every_funnel_tab_and_exact_request(self):
+        from .models import TalentPoolCandidate
+        candidate=self.candidate(status='MANAGER_APPROVAL',ready_on=None)
+        driver=Position.objects.create(company=self.company,name='Водитель',code='driver-summary')
+        unattached=TalentPoolCandidate.objects.create(company=self.company,full_name='Кандидат без заявки',position=driver,
+            stage='REJECTED',is_active=False,created_by=self.recruiter,
+            source_data={'funnel_sources':[{'sheet':'План найма'}]})
+        self.client.force_login(self.recruiter)
+        shop=self.client.get(reverse('personnel:recruitment_list'))
+        summary={row['position']:row for row in shop.context['position_summary']}
+        montage=summary['Монтажник'];self.assertEqual((montage['request_count'],montage['required'],montage['candidate_count']),(1,2,1))
+        self.assertEqual(montage['counts']['work'],1);self.assertEqual(montage['counts']['rejected'],0)
+        self.assertEqual(summary['Водитель']['counts']['rejected'],1)
+        groups={row['value']:row for row in shop.context['funnel_groups']}
+        self.assertEqual((shop.context['candidate_position_count'],groups['work']['position_count'],groups['rejected']['position_count']),(2,1,1))
+        self.assertContains(shop,'План и воронка по должностям');self.assertContains(shop,'Последняя заявка:')
+        self.assertContains(shop,f'№{candidate.request_id} · Монтажник · {self.obj}')
+        self.assertContains(shop,'Не прикреплён к заявке');self.assertNotContains(shop,'План найма: 1')
+        pool=self.client.get(reverse('personnel:recruitment_pool'))
+        self.assertContains(pool,f'№{candidate.request_id} · Монтажник · {self.obj}');self.assertContains(pool,'Не прикреплён')
+        self.assertContains(pool,unattached.full_name)
+
     def test_recruiter_changes_pool_stage_inline_in_both_directions(self):
         from .models import TalentPoolStageEvent
         candidate=self.candidate(status='MANAGER_APPROVAL',ready_on=None);pool=candidate.pool_candidate

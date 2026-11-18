@@ -26,6 +26,46 @@ FUNNEL_GROUPS=[
 ]
 
 
+def _position_name(value):return ' '.join((value or '').split())
+
+
+def _position_funnel_summary(candidate_rows,request_rows,application_rows):
+    """Compare the vacancy plan with one current funnel card per person."""
+    result={};canonical_by_name={};latest_application={}
+    def ensure(key,label):
+        if key not in result:
+            result[key]={'position':label or 'Должность не указана','request_count':0,'required':0,'candidate_count':0,
+                'counts':{value:0 for value,_,_ in FUNNEL_GROUPS}}
+        return result[key]
+    for row in request_rows:
+        label=_position_name(row['position_ref__name'] or row['position'])
+        key=('position',row['position_ref_id']) if row['position_ref_id'] else ('name',label.casefold())
+        if label:canonical_by_name.setdefault(label.casefold(),key)
+        item=ensure(key,label);item['request_count']+=1;item['required']+=row['quantity']
+    for row in application_rows:latest_application.setdefault(row['pool_candidate_id'],row)
+    group_positions={value:set() for value,_,_ in FUNNEL_GROUPS};all_positions=set()
+    for row in candidate_rows:
+        application=latest_application.get(row['pk'])
+        if application:
+            position_id=application['request__position_ref_id'];label=_position_name(application['request__position_ref__name'] or application['request__position'])
+        else:
+            position_id=row['position_id'];label=_position_name(row['position__name'] or (row['source_data'] or {}).get('position',''))
+        key=('position',position_id) if position_id else canonical_by_name.get(label.casefold(),('name',label.casefold()))
+        item=ensure(key,label);item['candidate_count']+=1
+        if label:all_positions.add(key)
+        for value,_,stages in FUNNEL_GROUPS:
+            if row['stage'] in stages:
+                item['counts'][value]+=1
+                if label:group_positions[value].add(key)
+                break
+    rows=[]
+    for item in result.values():
+        item['groups']=[{'value':value,'count':item['counts'][value]} for value,_,_ in FUNNEL_GROUPS]
+        rows.append(item)
+    rows.sort(key=lambda item:(item['position']=='Должность не указана',item['position'].casefold()))
+    return rows,len(all_positions),{value:len(keys) for value,keys in group_positions.items()}
+
+
 def requests_for(user):
     return RecruitmentRequest.objects.filter(company=user.company).select_related('construction_object','assigned_to','created_by').prefetch_related(
         Prefetch('candidates',queryset=RecruitmentCandidate.objects.select_related('arrival__actual_stay').prefetch_related('documents')))
@@ -51,6 +91,7 @@ def request_list(request):
     if state=='cancelled':rows=rows.filter(cancelled_at__isnull=False)
     elif state=='completed':rows=rows.filter(completed_at__isnull=False)
     elif state!='all':rows=rows.filter(cancelled_at__isnull=True,completed_at__isnull=True)
+    plan_rows=list(rows.values('position_ref_id','position_ref__name','position','quantity'))
     page=Paginator(rows,30).get_page(request.GET.get('page'))
     for row in page:row.progress=service.progress(row)
     applications=RecruitmentCandidate.objects.select_related('request__construction_object','arrival__movement_request').order_by('-created_at','-pk')
@@ -59,27 +100,35 @@ def request_list(request):
         Prefetch('vacancy_candidates',queryset=applications))
     if query:candidates=candidates.filter(Q(full_name__icontains=query)|Q(phone__icontains=query)|
         Q(vacancy_candidates__request__position__icontains=query)|Q(vacancy_candidates__request__construction_object__name__icontains=query)).distinct()
-    candidate_total=candidates.count()
+    candidate_rows=list(candidates.values('pk','stage','position_id','position__name','source_data'))
+    candidate_ids=[row['pk'] for row in candidate_rows]
+    application_rows=list(RecruitmentCandidate.objects.filter(company=request.user.company,pool_candidate_id__in=candidate_ids).order_by(
+        'pool_candidate_id','-created_at','-pk').values('pool_candidate_id','request__position_ref_id','request__position_ref__name','request__position'))
+    position_summary,candidate_position_count,group_position_counts=_position_funnel_summary(candidate_rows,plan_rows,application_rows)
+    candidate_total=len(candidate_rows)
     selected_group=request.GET.get('candidate_stage','')
     groups=[]
     for value,label,stages in FUNNEL_GROUPS:
-        groups.append({'value':value,'label':label,'count':candidates.filter(stage__in=stages).count(),'active':selected_group==value})
+        groups.append({'value':value,'label':label,'count':sum(row['stage'] in stages for row in candidate_rows),
+            'position_count':group_position_counts[value],'active':selected_group==value})
     selected_stages=next((stages for value,_,stages in FUNNEL_GROUPS if value==selected_group),None)
     if selected_stages is not None:candidates=candidates.filter(stage__in=selected_stages)
     candidate_page=Paginator(candidates.order_by('-updated_at','full_name','pk'),30).get_page(request.GET.get('candidate_page'))
     params=request.GET.copy();params.pop('page',None)
     return render(request,'personnel/recruitment_list.html',{**context(request.user),'page':page,'filter_query':query,'filter_state':state,
         'pagination_query':params.urlencode(),'candidate_page':candidate_page,'funnel_groups':groups,'candidate_stage':selected_group,
-        'candidate_total':candidate_total,'candidate_stage_choices':TalentPoolCandidate._meta.get_field('stage').choices})
+        'candidate_total':candidate_total,'candidate_position_count':candidate_position_count,'position_summary':position_summary,
+        'candidate_stage_choices':TalentPoolCandidate._meta.get_field('stage').choices})
 
 
 @login_required
 @require_GET
 def pool_list(request):
     require_roles(request.user,service.READ)
+    applications=RecruitmentCandidate.objects.select_related('request__construction_object','arrival__movement_request').order_by('-created_at','-pk')
     rows=TalentPoolCandidate.objects.filter(company=request.user.company).select_related(
         'position','construction_object','camp','base_city','responsible_hr').prefetch_related(
-            'vacancy_candidates__request','vacancy_candidates__arrival__movement_request')
+            Prefetch('vacancy_candidates',queryset=applications))
     query=request.GET.get('q','').strip()
     if query:rows=rows.filter(Q(full_name__icontains=query)|Q(phone__icontains=query))
     stage=request.GET.get('stage','')
