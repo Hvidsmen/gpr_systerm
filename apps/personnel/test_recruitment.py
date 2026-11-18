@@ -585,6 +585,7 @@ class RecruitmentTests(TestCase):
         self.assertContains(page,reverse('personnel:recruitment_requests'))
         self.client.force_login(self.recruiter)
         recruiter_page=self.client.get(reverse('personnel:recruitment_list'))
+        self.assertContains(recruiter_page,'recruitment-section-tab-pool',html=False)
         self.assertNotContains(recruiter_page,'Готовы к заезду')
         self.assertNotContains(recruiter_page,'Создать заявку')
 
