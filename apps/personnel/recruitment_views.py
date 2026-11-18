@@ -90,8 +90,9 @@ def error(form,exc):form.add_error(None,'; '.join(exc.messages) if isinstance(ex
 
 @login_required
 @require_GET
-def request_list(request):
+def request_list(request,recruitment_page='bank'):
     require_roles(request.user,service.READ)
+    recruitment_page='requests' if recruitment_page=='requests' else 'bank'
     def selected_ids(name):
         return sorted({int(value) for value in request.GET.getlist(name) if value.isdigit()})
     selected_position_ids=selected_ids('position');selected_camp_ids=selected_ids('camp')
@@ -159,6 +160,7 @@ def request_list(request):
             seen.add(parent_id);parent=objects_by_id[parent_id];names.append(parent.name);parent_id=parent.parent_id
         object_options.append({'pk':row.pk,'label':f'{row.project.name} → {" → ".join(reversed(names))}'})
     return render(request,'personnel/recruitment_list.html',{**context(request.user),'page':page,'filter_query':query,'filter_state':state,
+        'recruitment_page':recruitment_page,
         'pagination_query':params.urlencode(),'candidate_page':candidate_page,'funnel_groups':groups,'candidate_stage':selected_group,
         'candidate_total':candidate_total,'candidate_position_count':candidate_position_count,'position_summary':position_summary,
         'candidate_stage_choices':TalentPoolCandidate._meta.get_field('stage').choices,'position_options':position_options,

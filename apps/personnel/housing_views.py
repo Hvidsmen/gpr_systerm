@@ -898,8 +898,12 @@ def movements(request):
 @require_http_methods(['GET'])
 def new_employee_arrivals(request):
     movement_access(request)
+    from core.permissions import role_code
+    from . import recruitment as recruitment_service
+    role=role_code(request.user)
     return render(request,'personnel/new_employee_arrivals.html',{
-        'personnel_section':'movements','dispatcher_page':'new_employees',**movement_recommendation_counts(request.user.company),
+        'personnel_section':'movements','dispatcher_page':'new_employees','can_dispatch':role in recruitment_service.DISPATCH,
+        'can_recruit':role in recruitment_service.RECRUIT,**movement_recommendation_counts(request.user.company),
         **recruitment_dispatch_data(request.user.company)})
 
 

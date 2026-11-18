@@ -1,7 +1,7 @@
 {% extends 'personnel/recruitment_base.html' %}
 {% block title %}Заявка на подбор №{{ row.pk }}{% endblock %}
 {% block recruitment_content %}
-<p><a href="{% url 'personnel:recruitment_list' %}">← Все заявки</a></p>
+<p><a href="{% url 'personnel:recruitment_requests' %}">← Все заявки</a></p>
 <div class="recruitment-heading"><div><h2 class="h4">Заявка №{{ row.pk }} · {{ row.position }}</h2><p>{{ row.construction_object }} · нужны к <strong>{{ row.required_on|date:'d.m.Y' }}</strong> · <span class="recruitment-status">{{ progress.label }}</span></p></div><div class="recruitment-actions">{% if can_dispatch and not row.cancelled_at %}<a class="btn btn-outline-primary" href="{% url 'personnel:recruitment_edit' row.pk %}">Изменить заявку</a>{% endif %}</div></div>
 {% if can_assign_recruiter %}<form method="post" class="recruitment-assignment-form card card-body mb-3">{% csrf_token %}{{ assignment_form.revision }}<div><label for="{{ assignment_form.recruiter.id_for_label }}" class="form-label">{{ assignment_form.recruiter.label }}</label>{{ assignment_form.recruiter }}</div><button class="btn btn-primary" name="action" value="assign">{% if row.assigned_to_id %}Переназначить{% else %}Назначить{% endif %}</button></form>{% endif %}
 {% if assignment_form.errors %}<div class="alert alert-danger">{{ assignment_form.errors }}</div>{% endif %}

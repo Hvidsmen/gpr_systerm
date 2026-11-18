@@ -212,9 +212,9 @@ class RecruitmentTests(TestCase):
         another=service.save_request(self.dispatch,self.values(position_ref=other_position))
         self.assertNotIn(pool,CandidateForm(company=self.company,request_row=another).fields['pool_candidate'].queryset)
         self.client.force_login(self.dispatch)
-        active=self.client.get(reverse('personnel:recruitment_list'))
+        active=self.client.get(reverse('personnel:recruitment_requests'))
         self.assertNotContains(active,f'№{row.pk} · {row.construction_object}')
-        completed=self.client.get(reverse('personnel:recruitment_list'),{'state':'completed'})
+        completed=self.client.get(reverse('personnel:recruitment_requests'),{'state':'completed'})
         self.assertContains(completed,f'№{row.pk} ·');self.assertContains(completed,'Выполнена')
         with self.assertRaisesMessage(ValidationError,'Заявка выполнена'):
             service.handoff(self.dispatch,RecruitmentCandidate.objects.create(company=self.company,request=row,
@@ -309,12 +309,13 @@ class RecruitmentTests(TestCase):
         response=self.client.post(url,{'action':'assign','revision':row.revision,'recruiter':self.recruiter.pk})
         self.assertRedirects(response,url);row.refresh_from_db();self.assertEqual(row.assigned_to,self.recruiter)
         self.assertTrue(RecruitmentEvent.objects.filter(request=row,description__contains='Назначен ответственный рекрутер').exists())
-        self.client.force_login(self.recruiter);self.assertContains(self.client.get(url),'Добавить кандидата')
+        candidate_create_url=reverse('personnel:recruitment_candidate_create',args=[row.pk])
+        self.client.force_login(self.recruiter);self.assertContains(self.client.get(url),candidate_create_url)
         self.client.force_login(self.hr_head)
         self.client.post(url,{'action':'assign','revision':row.revision,'recruiter':self.recruiter2.pk})
         row.refresh_from_db();self.assertEqual(row.assigned_to,self.recruiter2)
         self.assertTrue(RecruitmentEvent.objects.filter(request=row,description__contains='Ответственный рекрутер изменён').exists())
-        self.client.force_login(self.recruiter);self.assertNotContains(self.client.get(url),'Добавить кандидата')
+        self.client.force_login(self.recruiter);self.assertNotContains(self.client.get(url),candidate_create_url)
     def test_role_separation_in_services(self):
         with self.assertRaises(PermissionDenied):service.save_request(self.recruiter,self.values())
         row=self.row()
@@ -377,7 +378,7 @@ class RecruitmentTests(TestCase):
             self.assertFalse(RecruitmentCandidate.objects.exists());self.assertFalse([p for p in Path(root).rglob('*') if p.is_file()])
     def test_three_actual_sections_and_request_prefill(self):
         self.client.force_login(self.dispatch)
-        for route,title in [('housing','Диспетчерская'),('movements','Новая заявка'),('recruitment_list','Магазин подбора')]:
+        for route,title in [('housing','Диспетчерская'),('movements','Новая заявка'),('recruitment_list','Банк сотрудников')]:
             page=self.client.get(reverse('personnel:'+route));self.assertNotContains(page,'data-personnel-sections');self.assertContains(page,title)
         page=self.client.get(reverse('personnel:housing'));self.assertNotContains(page,'data-movement-form')
         page=self.client.get(reverse('personnel:movements'));self.assertContains(page,'data-movement-form');self.assertNotContains(page,'data-roster-grid')
@@ -388,7 +389,8 @@ class RecruitmentTests(TestCase):
     def test_recruiter_landing_menu_and_direct_route_restrictions(self):
         self.client.force_login(self.recruiter)
         self.assertRedirects(self.client.get(reverse('dashboard:index')),reverse('personnel:recruitment_list'))
-        page=self.client.get(reverse('personnel:recruitment_list'));self.assertContains(page,'Магазин подбора');self.assertNotContains(page,'data-paths="/personnel/" hidden')
+        page=self.client.get(reverse('personnel:recruitment_list'));self.assertContains(page,'Банк сотрудников');self.assertNotContains(page,'data-paths="/personnel/" hidden')
+        self.assertEqual(self.client.get(reverse('personnel:recruitment_requests')).status_code,200)
         sidebar=page.content.decode().split('<aside class="sidebar"',1)[1].split('</aside>',1)[0]
         for text in ('Справочники','Внесение факта','Обзор','Мои задания'):self.assertNotIn(text,sidebar)
         for route in ['personnel:housing','personnel:movements','resources:employee_list','production:fact_day_workspace','accounts:user_list','planning:workspace_list','personnel:recruitment_create']:
@@ -522,19 +524,36 @@ class RecruitmentTests(TestCase):
         pool=candidate.pool_candidate
         self.client.force_login(self.recruiter)
         shop=self.client.get(reverse('personnel:recruitment_list'))
-        self.assertContains(shop,'Кандидаты по этапам');self.assertContains(shop,'План найма · заявки на подбор')
-        self.assertContains(shop,'href="#recruitment-requests"')
-        self.assertContains(shop,'id="recruitment-requests"')
+        self.assertContains(shop,'Банк сотрудников');self.assertContains(shop,'Кандидаты по этапам')
+        self.assertNotContains(shop,'План найма · заявки на подбор')
+        self.assertContains(shop,reverse('personnel:recruitment_requests'))
+        self.assertNotContains(shop,'href="#recruitment-requests"')
         self.assertContains(shop,reverse('personnel:recruitment_pool_create'))
         self.assertContains(shop,'Добавить кандидата')
         self.assertContains(shop,'Согласование руководителя');self.assertContains(shop,reverse('personnel:recruitment_candidate_card',args=[pool.pk]))
         self.assertContains(shop,reverse('personnel:recruitment_candidate_stage',args=[pool.pk]))
         self.assertContains(shop,'data-candidate-stage-form')
+        requests=self.client.get(reverse('personnel:recruitment_requests'))
+        self.assertContains(requests,'Заявки на подбор');self.assertContains(requests,'План найма · заявки на подбор')
+        self.assertNotContains(requests,'Кандидаты по этапам')
+        self.assertNotContains(requests,'id="recruitment-requests"')
         card=self.client.get(reverse('personnel:recruitment_candidate_card',args=[pool.pk]))
         self.assertContains(card,pool.full_name);self.assertContains(card,'История воронки')
         self.assertContains(card,f'Заявка №{candidate.request_id}');self.assertContains(card,'Кандидат: Согласование руководителя.')
         rejected=self.client.get(reverse('personnel:recruitment_list'),{'candidate_stage':'rejected'})
         self.assertNotContains(rejected,pool.full_name)
+
+    def test_recruitment_tabs_show_available_workspaces_and_actions(self):
+        self.client.force_login(self.hr_head)
+        page=self.client.get(reverse('personnel:recruitment_list'))
+        for label in ('Заявки на подбор','Готовы к заезду','Банк сотрудников','Добавить кандидата','Создать заявку','Пул кандидатов'):
+            self.assertContains(page,label)
+        self.assertContains(page,reverse('personnel:new_employee_arrivals'))
+        self.assertContains(page,reverse('personnel:recruitment_requests'))
+        self.client.force_login(self.recruiter)
+        recruiter_page=self.client.get(reverse('personnel:recruitment_list'))
+        self.assertNotContains(recruiter_page,'Готовы к заезду')
+        self.assertNotContains(recruiter_page,'Создать заявку')
 
     def test_shop_compares_position_plan_with_every_funnel_tab_and_exact_request(self):
         from .models import TalentPoolCandidate

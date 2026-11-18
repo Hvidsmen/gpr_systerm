@@ -77,6 +77,7 @@ urlpatterns += [
     path('movements/', housing_views.movements, name='movements'),
     path('movements/my-requests/',housing_views.my_movement_requests,name='my_movement_requests'),
     path('recruitment/', recruitment.request_list, name='recruitment_list'),
+    path('recruitment/requests/', recruitment.request_list, {'recruitment_page':'requests'}, name='recruitment_requests'),
     path('recruitment/pool/',recruitment.pool_list,name='recruitment_pool'),
     path('recruitment/pool/add/',recruitment.pool_edit,name='recruitment_pool_create'),
     path('recruitment/pool/import/',recruitment.pool_import,name='recruitment_pool_import'),

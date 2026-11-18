@@ -1,0 +1,10 @@
+{% with route=request.resolver_match.url_name %}
+<nav class="recruitment-section-tabs" aria-label="Разделы подбора персонала">
+  <a class="recruitment-section-tab{% if route == 'recruitment_requests' or route == 'recruitment_detail' or route == 'recruitment_edit' %} active{% endif %}" href="{% url 'personnel:recruitment_requests' %}"{% if route == 'recruitment_requests' %} aria-current="page"{% endif %}>Заявки на подбор</a>
+  {% if can_dispatch %}<a class="recruitment-section-tab{% if route == 'new_employee_arrivals' or route == 'recruitment_arrival_bulk' or route == 'recruitment_arrival_bulk_edit' or route == 'recruitment_arrival' %} active{% endif %}" href="{% url 'personnel:new_employee_arrivals' %}"{% if route == 'new_employee_arrivals' %} aria-current="page"{% endif %}>Готовы к заезду</a>{% endif %}
+  <a class="recruitment-section-tab{% if route == 'recruitment_list' or route == 'recruitment_candidate_card' or route == 'recruitment_candidate_inline' or route == 'recruitment_candidate_stage' %} active{% endif %}" href="{% url 'personnel:recruitment_list' %}"{% if route == 'recruitment_list' %} aria-current="page"{% endif %}>Банк сотрудников</a>
+  {% if can_recruit %}<a class="recruitment-section-tab recruitment-section-tab-action{% if route == 'recruitment_pool_create' %} active{% endif %}" href="{% url 'personnel:recruitment_pool_create' %}"{% if route == 'recruitment_pool_create' %} aria-current="page"{% endif %}>Добавить кандидата</a>{% endif %}
+  {% if can_dispatch %}<a class="recruitment-section-tab recruitment-section-tab-action{% if route == 'recruitment_create' %} active{% endif %}" href="{% url 'personnel:recruitment_create' %}"{% if route == 'recruitment_create' %} aria-current="page"{% endif %}>Создать заявку</a>{% endif %}
+  <a class="recruitment-section-tab{% if route == 'recruitment_pool' or route == 'recruitment_pool_edit' or route == 'recruitment_pool_import' %} active{% endif %}" href="{% url 'personnel:recruitment_pool' %}"{% if route == 'recruitment_pool' %} aria-current="page"{% endif %}>Пул кандидатов</a>
+</nav>
+{% endwith %}

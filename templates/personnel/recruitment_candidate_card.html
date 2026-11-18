@@ -1,7 +1,7 @@
 {% extends 'personnel/recruitment_base.html' %}
 {% block title %}{{ row.full_name }} · подбор{% endblock %}
 {% block recruitment_content %}
-<p><a href="{% url 'personnel:recruitment_list' %}">← В магазин подбора</a></p>
+<p><a href="{% url 'personnel:recruitment_list' %}">← В банк сотрудников</a></p>
 <div class="recruitment-heading candidate-card-heading"><div><h2 class="h4 mb-1">{{ row.full_name }}</h2><span class="recruitment-status recruitment-stage-{{ row.stage|lower }}">{{ row.get_stage_display }}</span></div>{% if can_recruit %}<a class="btn btn-outline-primary" href="{% url 'personnel:recruitment_pool_edit' row.pk %}">Изменить этап и карточку</a>{% endif %}</div>
 
 <section class="card card-body mb-3"><h3 class="h5">Карточка кандидата</h3><dl class="candidate-profile-grid">
