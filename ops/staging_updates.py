@@ -171,10 +171,16 @@ def state(root):
         available = ''
     if phase == 'idle' and ready and available and available != current['revision']:
         message = 'Доступна новая тестовая версия. Можно обновить портал.'
-    features = read_json(runtime(root) / 'staging-supervisor.json', {}).get('features', [])
+    supervisor = read_json(runtime(root) / 'staging-supervisor.json', {})
+    features = supervisor.get('features', [])
     from ops.staging import database_engine
     from ops.staging_refresh import generation
-    refresh_supported='refresh-data' in features
+    refresh_supported=('refresh-data' in features and
+                       supervisor.get('revision') == current['revision'])
+    if ('refresh-data' in features and supervisor.get('revision') != current['revision']
+            and phase not in BUSY and phase != 'recovery'):
+        message = ('Фоновый обработчик работает на предыдущей версии. '
+                   'Один раз перезапустите задание «YDS Portal Test».')
     return {**progress_summary(job, phase), 'version': current['revision'], 'available': available, 'checked_at': latest.get('checked_at'),
             'branch': BRANCH, 'ready': ready and phase != 'recovery', 'busy': busy, 'state': phase,
             'operation': job.get('kind', 'update'), 'data_generation': generation(current),
@@ -243,6 +249,16 @@ def start_http(root):
     env['GPR_STAGING_PARENT_PIPE'] = '1'
     return subprocess.Popen([current['python'], str(Path(current['code']) / 'ops/staging.py'),
                              'http', '--root', str(root)], env=env, stdin=subprocess.PIPE)
+
+
+def restart_supervisor(root):
+    """Overlay the stale supervisor with the newly selected TEST release."""
+    from ops.staging import manifest, environment
+    current = manifest(root)
+    env = environment(root)
+    env['GPR_STAGING_PARENT_PIPE'] = '1'
+    os.execve(current['python'], [current['python'], str(Path(current['code']) / 'ops/staging.py'),
+                                 'serve', '--root', str(Path(root).resolve())], env)
 
 
 def stop_http(child, *, graceful_timeout=115, terminate_timeout=15, kill_timeout=15):
@@ -322,6 +338,13 @@ def process_job(root, child, job, parent_gone):
         stopped = False
         wait_http(root, child, parent_gone)
         progress('done')
+        # The supervisor imported code before this update. On Windows replace
+        # it with the selected release so subsequent data refreshes cannot run
+        # through stale safety rules. The persistent parent pipe is retained.
+        if os.name == 'nt':
+            stopped = True
+            stop_http(child)
+            restart_supervisor(root)  # does not return on success
     except Exception:
         logging.exception('Acceptance web update failed')
         recovery = (runtime(root) / 'staging-recovery.json').exists()
@@ -382,6 +405,7 @@ def process_refresh(root, child, job, parent_gone):
 
 def supervise(root, parent_gone):
     """The scheduled test launcher stays alive while its HTTP child restarts."""
+    from ops.staging import manifest
     root = Path(root).resolve()
     stop = runtime(root) / 'server.stop'
     with singleton(runtime(root) / 'staging-supervisor.lock'):
@@ -393,7 +417,9 @@ def supervise(root, parent_gone):
             raise RuntimeError('Проверьте восстановление тестовой базы перед повторным запуском.')
         if previous.get('state') in BUSY - {'queued'}:
             atomic_json(runtime(root) / 'staging-update.json', {**previous, 'state': 'error'})
-        atomic_json(runtime(root) / 'staging-supervisor.json', {'pid': os.getpid(), 'features': ['refresh-data']})
+        atomic_json(runtime(root) / 'staging-supervisor.json',
+                    {'pid': os.getpid(), 'features': ['refresh-data'],
+                     'revision': manifest(root)['revision']})
         child = start_http(root)
         try:
             wait_http(root, child, parent_gone)

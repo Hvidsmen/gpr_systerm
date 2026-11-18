@@ -45,7 +45,8 @@ class StagingUpdateViewTests(TestCase):
             from_revision='a'*40, branch=staging_updates.BRANCH, checked_at=staging_updates.now()))
 
     def refresh_ready(self):
-        atomic_json(self.root / '.runtime/staging-supervisor.json', {'features':['refresh-data']})
+        atomic_json(self.root / '.runtime/staging-supervisor.json',
+                    {'features':['refresh-data'],'revision':self.config['revision']})
 
     def test_refresh_requires_confirmation_and_uses_same_queue_as_code_updates(self):
         self.refresh_ready();self.latest()
@@ -83,6 +84,14 @@ class StagingUpdateViewTests(TestCase):
             response=self.client.get(self.url)
             self.assertFalse(response.context['update']['can_refresh'])
             self.assertContains(response,'один раз перезапустите задание')
+
+    def test_stale_supervisor_revision_needs_restart_before_refresh(self):
+        atomic_json(self.root / '.runtime/staging-supervisor.json',
+                    {'features':['refresh-data'],'revision':'0'*40})
+        with singleton(self.root / '.runtime/staging-supervisor.lock'):
+            response=self.client.get(self.url)
+            self.assertFalse(response.context['update']['can_refresh'])
+            self.assertContains(response,'Фоновый обработчик работает на предыдущей версии')
 
     def test_mssql_test_enables_safe_database_refresh(self):
         self.refresh_ready();self.config.update(database_engine='mssql',mssql={'host':'MSK-DB2','name':'YDS_PORTAL_TEST'})
