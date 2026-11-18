@@ -76,6 +76,8 @@ def restore_recommendation(row):
         candidate=prep.candidate
         if candidate.status=='TRANSFERRED':
             candidate.status='READY';candidate.revision+=1;candidate.save(update_fields=['status','revision','updated_at'])
+            from .recruitment import sync_pool_candidate
+            sync_pool_candidate(candidate)
 
 
 def approval_task_key(row):
@@ -198,6 +200,14 @@ def decide(user,row,approved,comment='',sync_task=True):
         row.cancelled_by=user;row.cancelled_at=timezone.now();row.travel_status='Отменено согласующим'
         fields+=['cancellation_reason','cancelled_by','cancelled_at','travel_status']
     row.save(update_fields=fields)
+    if complete and row.kind=='ARRIVAL':
+        prep=ArrivalPreparation.objects.select_for_update().filter(movement_request=row,status='EXPECTED').select_related(
+            'candidate__pool_candidate','candidate__request__construction_object').first()
+        if prep:
+            candidate=prep.candidate;candidate.status='ARRIVAL_APPROVED';candidate.revision+=1
+            candidate.save(update_fields=['status','revision','updated_at'])
+            from .recruitment import sync_pool_candidate
+            sync_pool_candidate(candidate)
     if not approved:restore_recommendation(row)
     log(row,user,('Согласовано: ' if approved else 'Отменено согласующим: ')+ROLE_LABELS[step],comment)
     task=WorkTask.objects.filter(company=row.company,key=approval_task_key(row)).first()
@@ -350,8 +360,9 @@ def arrive_camp(user,row,day):
             actual_stay__cancelled_at__isnull=True).count()
         if arrived>=recruitment.quantity and not recruitment.completed_at:
             recruitment.completed_at=timezone.now();recruitment.save(update_fields=['completed_at','updated_at'])
-        if prep.candidate.pool_candidate_id and prep.candidate.pool_candidate.is_active:
-            prep.candidate.pool_candidate.is_active=False
-            prep.candidate.pool_candidate.save(update_fields=['is_active','updated_at'])
+        candidate=prep.candidate;candidate.status='ARRIVED';candidate.revision+=1
+        candidate.save(update_fields=['status','revision','updated_at'])
+        from .recruitment import sync_pool_candidate
+        sync_pool_candidate(candidate)
         touch(recruitment);audit(user,recruitment,'Фактический заезд в ВЖГ подтверждён.',prep.candidate)
     log(row,user,'Прибыл в ВЖГ','Фактический заезд зафиксирован. Заявка завершена.')

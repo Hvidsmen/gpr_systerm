@@ -8,6 +8,28 @@ from django.db import models
 from .models import PersonnelModel
 
 
+RECRUITMENT_STAGES = [
+    ('NEW','Новый'),
+    ('SCREENING','На рассмотрении'),
+    ('HR_INTERVIEW','Собеседование HR'),
+    ('MANAGER_APPROVAL','Согласование руководителя'),
+    ('SECURITY_CHECK','Проверка СБ'),
+    ('MEDICAL_DOCUMENTS','Медосмотр и документы'),
+    ('SELECTED','Отобран'),
+    ('READY','Готов к заезду'),
+    ('TRANSFERRED','Поставлен на заезд'),
+    ('ARRIVAL_APPROVED','Заезд согласован'),
+    ('ARRIVED','Заехал'),
+    ('RESERVE','Резерв'),
+    ('REJECTED','Отказ работодателя'),
+    ('WITHDRAWN','Отказ кандидата'),
+    ('NOT_REQUIRED','Не потребовался'),
+    ('NO_SHOW','Не заехал'),
+]
+RECRUITMENT_TERMINAL_STAGES={'REJECTED','WITHDRAWN','NOT_REQUIRED','NO_SHOW'}
+RECRUITMENT_SYSTEM_STAGES={'TRANSFERRED','ARRIVAL_APPROVED','ARRIVED'}
+
+
 class RecruitmentStorage(FileSystemStorage):
     @property
     def base_location(self):
@@ -28,10 +50,14 @@ class TalentPoolCandidate(PersonnelModel):
     phone=models.CharField('Телефон',max_length=80,blank=True)
     notes=models.TextField('Комментарий',blank=True)
     source_data=models.JSONField('Данные источника',default=dict,blank=True)
+    stage=models.CharField('Этап воронки',max_length=24,choices=RECRUITMENT_STAGES,default='NEW')
     is_active=models.BooleanField('Доступен для вакансий',default=True)
     created_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='talent_pool_candidates')
     class Meta:ordering=['full_name','pk']
     def __str__(self):return self.full_name
+    @property
+    def source_application_count(self):
+        return sum(1 for event in (self.source_data or {}).get('funnel_sources',[]) if event.get('sheet')=='План найма')
 
 
 class RecruitmentRequest(PersonnelModel):
@@ -58,15 +84,14 @@ class RecruitmentRequest(PersonnelModel):
 
 
 class RecruitmentCandidate(PersonnelModel):
-    STATES = [('NEW','Новый'), ('SCREENING','На рассмотрении'), ('READY','Готов к заезду'),
-              ('TRANSFERRED','Передан диспетчеру'), ('REJECTED','Не подошёл'), ('WITHDRAWN','Отказался')]
+    STATES = RECRUITMENT_STAGES
     request = models.ForeignKey(RecruitmentRequest, on_delete=models.PROTECT, related_name='candidates')
     pool_candidate=models.ForeignKey(TalentPoolCandidate,on_delete=models.PROTECT,null=True,blank=True,related_name='vacancy_candidates',verbose_name='Кандидат из пула')
     full_name = models.CharField('ФИО кандидата', max_length=250)
     phone = models.CharField('Телефон', max_length=80, blank=True)
     normalized_name=models.CharField(max_length=250,blank=True,editable=False)
     normalized_phone=models.CharField(max_length=32,blank=True,editable=False)
-    status = models.CharField('Статус', max_length=16, choices=STATES, default='NEW')
+    status = models.CharField('Статус', max_length=24, choices=STATES, default='NEW')
     ready_on = models.DateField('Готов к заезду с', null=True, blank=True)
     notes = models.TextField('Комментарий по кандидату', blank=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='recruitment_candidates')
@@ -75,12 +100,14 @@ class RecruitmentCandidate(PersonnelModel):
         ordering = ['created_at','pk']
         indexes=[models.Index(fields=['company','normalized_name','normalized_phone'],name='candidate_identity')]
     def __str__(self):return self.full_name
+    @property
+    def can_handoff(self):return bool(self.ready_on and self.status not in RECRUITMENT_TERMINAL_STAGES|RECRUITMENT_SYSTEM_STAGES)
     def clean(self):
         super().clean()
         if self.request_id and self.request.company_id != self.company_id:raise ValidationError('Заявка другой компании.')
         if self.pool_candidate_id and self.pool_candidate.company_id!=self.company_id:raise ValidationError('Кандидат общего пула другой компании.')
         if self.created_by_id and self.created_by.company_id != self.company_id:raise ValidationError('Автор другой компании.')
-        if self.status in {'READY','TRANSFERRED'} and not self.ready_on:raise ValidationError({'ready_on':'Укажите дату готовности.'})
+        if self.status in {'READY','TRANSFERRED','ARRIVAL_APPROVED','ARRIVED'} and not self.ready_on:raise ValidationError({'ready_on':'Укажите дату готовности.'})
     def save(self,*args,**kwargs):
         self.normalized_name=' '.join((self.full_name or '').split()).casefold()
         self.normalized_phone=''.join(character for character in (self.phone or '') if character.isdigit())

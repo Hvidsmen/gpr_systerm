@@ -58,13 +58,16 @@ class RecruitmentTests(TestCase):
     def test_complete_flow_counts_and_no_automatic_employee_or_fact(self):
         row=self.row();self.assertEqual(service.progress(row),{'required':2,'shortlisted':0,'ready':0,'arrived':0,'label':'Новая'})
         before=Employee.objects.count();c=self.candidate(row)
+        self.assertIsNotNone(c.pool_candidate_id);self.assertEqual(c.pool_candidate.stage,'READY')
         self.assertEqual(Employee.objects.count(),before);self.assertFalse(Person.objects.exists());self.assertFalse(CampStay.objects.exists())
         prep=service.handoff(self.recruiter,c.pk,c.revision)
+        c.pool_candidate.refresh_from_db();self.assertEqual(c.pool_candidate.stage,'TRANSFERRED')
         self.assertEqual(service.progress(RecruitmentRequest.objects.get(pk=row.pk))['ready'],1)
         self.assertFalse(CampStay.objects.exists())
         prep=service.prepare_arrival(self.dispatch,prep.pk,prep.revision,self.arrival_values())
         self.assertFalse(CampStay.objects.exists());self.assertFalse(Person.objects.exists())
         prep=service.prepare_arrival(self.dispatch,prep.pk,prep.revision,self.arrival_values(),confirm=True)
+        c.pool_candidate.refresh_from_db();self.assertEqual(c.pool_candidate.stage,'ARRIVED');self.assertFalse(c.pool_candidate.is_active)
         self.assertTrue(prep.actually_arrived);self.assertEqual(prep.actual_stay.person.employee_id,self.employee.pk)
         self.assertEqual(HousingEvent.objects.get().kind,'ARRIVAL');self.assertEqual(service.progress(RecruitmentRequest.objects.get(pk=row.pk))['arrived'],1)
         self.assertEqual(Employee.objects.count(),before)
@@ -192,8 +195,7 @@ class RecruitmentTests(TestCase):
         from .models import TalentPoolCandidate
         from .recruitment_forms import CandidateForm
         row=service.save_request(self.dispatch,self.values(quantity=1));candidate=self.candidate(row)
-        pool=TalentPoolCandidate.objects.create(company=self.company,full_name=candidate.full_name,phone=candidate.phone,created_by=self.recruiter)
-        candidate.pool_candidate=pool;candidate.save(update_fields=['pool_candidate','updated_at'])
+        pool=candidate.pool_candidate
         prep=service.handoff(self.recruiter,candidate.pk,candidate.revision)
         prep=service.prepare_arrival(self.dispatch,prep.pk,prep.revision,self.arrival_values(),workflow=True)
         movement=prep.movement_request;movement.status='EN_ROUTE';movement.hub_departed_on=self.day
@@ -206,7 +208,7 @@ class RecruitmentTests(TestCase):
         self.assertNotIn(pool,CandidateForm(company=self.company,request_row=another).fields['pool_candidate'].queryset)
         self.client.force_login(self.dispatch)
         active=self.client.get(reverse('personnel:recruitment_list'))
-        self.assertNotContains(active,f'№{row.pk} ·')
+        self.assertNotContains(active,f'№{row.pk} · {row.construction_object}')
         completed=self.client.get(reverse('personnel:recruitment_list'),{'state':'completed'})
         self.assertContains(completed,f'№{row.pk} ·');self.assertContains(completed,'Выполнена')
         with self.assertRaisesMessage(ValidationError,'Заявка выполнена'):
@@ -225,7 +227,7 @@ class RecruitmentTests(TestCase):
             source_data={'position':'Монтажник','construction_site':'КТП'})
         form=CandidateForm({'pool_candidate':pool.pk,'full_name':'','phone':'','status':'READY','ready_on':self.day,'notes':'','revision':0},company=self.company,request_row=row)
         self.assertEqual(form.initial['request_position'],row.position)
-        self.assertEqual(form.fields['pool_candidate'].label_from_instance(pool),'Человек из пула — Монтажник · КТП')
+        self.assertEqual(form.fields['pool_candidate'].label_from_instance(pool),'Человек из пула — Монтажник · Новый · КТП')
         self.assertEqual(form.pool_candidate_data[str(pool.pk)],{'full_name':'Человек из пула','phone':'555','notes':''})
         self.assertTrue(form.is_valid(),form.errors)
         candidate=service.save_candidate(self.recruiter,row.pk,form.cleaned_data)
@@ -448,11 +450,52 @@ class RecruitmentTests(TestCase):
         payload=BytesIO();workbook.save(payload);payload.seek(0)
         self.assertEqual(import_sheet(self.recruiter,payload),{'created':1,'updated':0,'skipped':0})
         row=TalentPoolCandidate.objects.get();self.assertEqual(row.full_name,'Иванов Иван Иванович');self.assertEqual(row.phone,'89991234567')
+        self.assertEqual(row.stage,'SELECTED')
         self.assertEqual(row.source_data['position'],'Монтажник');self.assertEqual(row.source_data['base_city'],'Уфа')
         payload.seek(0);self.assertEqual(import_sheet(self.recruiter,payload),{'created':0,'updated':0,'skipped':1})
         self.client.force_login(self.recruiter);page=self.client.get(reverse('personnel:recruitment_pool'))
         self.assertContains(page,'Монтажник');self.assertContains(page,'КТП');self.assertContains(page,'Уфа')
         self.assertContains(page,reverse('personnel:recruitment_pool_import'))
+    def test_workbook_import_unifies_all_funnel_sheets_and_history(self):
+        from datetime import datetime
+        from openpyxl import Workbook
+        from .models import TalentPoolCandidate
+        from .talent_pool_import import HEADERS,PLAN_KEYS,import_sheet
+        workbook=Workbook();store=workbook.active;store.title='Магазин 2026';store.append(HEADERS)
+        store.append([1,'Единый Кандидат','Монтажник','КТП','1990-01-01','1234 567890','89990000001','Согласован',
+            '2026-08-20','',datetime(2026,8,21),'2026-08-21','Уфа','готов','','Рекрутер','','','Единый Кандидат'])
+        plan=workbook.create_sheet('План найма');plan.append([]);plan.append([]);plan.append([]);plan.append([])
+        plan_headers=[f'Колонка {index}' for index in range(len(PLAN_KEYS))];plan_headers[7]='Должность';plan_headers[13]='ФИО кандидата';plan.append(plan_headers)
+        plan_row=['']*len(PLAN_KEYS);plan_row[2]='КТП';plan_row[7]='Монтажник';plan_row[13]='Единый Кандидат'
+        plan_row[14]='89990000001';plan_row[26]=datetime(2026,8,20);plan_row[29]=datetime(2026,8,22);plan.append(plan_row)
+        transferred=workbook.create_sheet('Поставлены на заезд 2026');transferred.append(HEADERS)
+        transferred.append([1,'Единый Кандидат','Монтажник','КТП','1990-01-01','1234 567890','89990000001','Согласован',
+            '2026-08-20','',datetime(2026,8,21),datetime(2026,8,23),'Уфа','готов','','Рекрутер','','','Единый Кандидат'])
+        rejected=workbook.create_sheet('Отказники');rejected.append(['№','ФИО'])
+        rejected.append([1,'Другой Кандидат','Водитель','89990000002','Руководитель',datetime(2026,8,19),'',
+            datetime(2026,8,20),datetime(2026,8,21),'','Омск','Не прошёл проверку','','Рекрутер','','Отказ работодателя'])
+        payload=BytesIO();workbook.save(payload);payload.seek(0)
+        self.assertEqual(import_sheet(self.recruiter,payload),{'created':2,'updated':0,'skipped':0})
+        unified=TalentPoolCandidate.objects.get(full_name='Единый Кандидат')
+        self.assertEqual(unified.stage,'TRANSFERRED');self.assertEqual(len(unified.source_data['funnel_sources']),3)
+        self.assertEqual(TalentPoolCandidate.objects.get(full_name='Другой Кандидат').stage,'REJECTED')
+        payload.seek(0);self.assertEqual(import_sheet(self.recruiter,payload),{'created':0,'updated':0,'skipped':2})
+        self.client.force_login(self.recruiter)
+        card=self.client.get(reverse('personnel:recruitment_candidate_card',args=[unified.pk]))
+        self.assertContains(card,'План найма');self.assertContains(card,'Поставлены на заезд 2026')
+        self.assertContains(card,'Excel · строка 6');self.assertContains(card,'Поставлен на заезд')
+    def test_shop_shows_full_funnel_and_unified_candidate_card(self):
+        candidate=self.candidate(status='MANAGER_APPROVAL',ready_on=None)
+        pool=candidate.pool_candidate
+        self.client.force_login(self.recruiter)
+        shop=self.client.get(reverse('personnel:recruitment_list'))
+        self.assertContains(shop,'Кандидаты по этапам');self.assertContains(shop,'План найма · заявки на подбор')
+        self.assertContains(shop,'Согласование руководителя');self.assertContains(shop,reverse('personnel:recruitment_candidate_card',args=[pool.pk]))
+        card=self.client.get(reverse('personnel:recruitment_candidate_card',args=[pool.pk]))
+        self.assertContains(card,pool.full_name);self.assertContains(card,'История воронки')
+        self.assertContains(card,f'Заявка №{candidate.request_id}');self.assertContains(card,'Кандидат: Согласование руководителя.')
+        rejected=self.client.get(reverse('personnel:recruitment_list'),{'candidate_stage':'rejected'})
+        self.assertNotContains(rejected,pool.full_name)
     def test_manual_pool_card_saves_store_fields(self):
         from .models import TalentPoolCandidate
         self.client.force_login(self.recruiter)

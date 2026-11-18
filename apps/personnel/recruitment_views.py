@@ -12,6 +12,17 @@ from .models import RecruitmentRequest,RecruitmentCandidate,ArrivalPreparation,C
 from . import recruitment as service
 from .recruitment_forms import (RequestForm,CandidateForm,ArrivalForm,RevisionForm,ReasonForm,TalentPoolForm,
     TalentPoolImportForm,BulkArrivalCommonForm,BulkArrivalRowForm)
+from .recruitment_models import RECRUITMENT_TERMINAL_STAGES
+
+
+FUNNEL_GROUPS=[
+    ('work','В работе',{'NEW','SCREENING','HR_INTERVIEW','MANAGER_APPROVAL','SECURITY_CHECK','MEDICAL_DOCUMENTS'}),
+    ('selected','Отобраны',{'SELECTED','READY','RESERVE'}),
+    ('transferred','Поставлены на заезд',{'TRANSFERRED'}),
+    ('approved','Не заехали',{'ARRIVAL_APPROVED'}),
+    ('arrived','Заехали',{'ARRIVED'}),
+    ('rejected','Отказники',RECRUITMENT_TERMINAL_STAGES),
+]
 
 
 def requests_for(user):
@@ -41,8 +52,23 @@ def request_list(request):
     elif state!='all':rows=rows.filter(cancelled_at__isnull=True,completed_at__isnull=True)
     page=Paginator(rows,30).get_page(request.GET.get('page'))
     for row in page:row.progress=service.progress(row)
+    applications=RecruitmentCandidate.objects.select_related('request__construction_object','arrival__movement_request').order_by('-created_at','-pk')
+    candidates=TalentPoolCandidate.objects.filter(company=request.user.company).prefetch_related(
+        Prefetch('vacancy_candidates',queryset=applications))
+    if query:candidates=candidates.filter(Q(full_name__icontains=query)|Q(phone__icontains=query)|
+        Q(vacancy_candidates__request__position__icontains=query)|Q(vacancy_candidates__request__construction_object__name__icontains=query)).distinct()
+    candidate_total=candidates.count()
+    selected_group=request.GET.get('candidate_stage','')
+    groups=[]
+    for value,label,stages in FUNNEL_GROUPS:
+        groups.append({'value':value,'label':label,'count':candidates.filter(stage__in=stages).count(),'active':selected_group==value})
+    selected_stages=next((stages for value,_,stages in FUNNEL_GROUPS if value==selected_group),None)
+    if selected_stages is not None:candidates=candidates.filter(stage__in=selected_stages)
+    candidate_page=Paginator(candidates.order_by('-updated_at','full_name','pk'),30).get_page(request.GET.get('candidate_page'))
     params=request.GET.copy();params.pop('page',None)
-    return render(request,'personnel/recruitment_list.html',{**context(request.user),'page':page,'filter_query':query,'filter_state':state,'pagination_query':params.urlencode()})
+    return render(request,'personnel/recruitment_list.html',{**context(request.user),'page':page,'filter_query':query,'filter_state':state,
+        'pagination_query':params.urlencode(),'candidate_page':candidate_page,'funnel_groups':groups,'candidate_stage':selected_group,
+        'candidate_total':candidate_total})
 
 
 @login_required
@@ -52,7 +78,28 @@ def pool_list(request):
     rows=TalentPoolCandidate.objects.filter(company=request.user.company).prefetch_related('vacancy_candidates__request')
     query=request.GET.get('q','').strip()
     if query:rows=rows.filter(Q(full_name__icontains=query)|Q(phone__icontains=query))
-    return render(request,'personnel/recruitment_pool.html',{**context(request.user),'rows':rows,'query':query})
+    stage=request.GET.get('stage','')
+    if stage in dict(TalentPoolCandidate._meta.get_field('stage').choices):rows=rows.filter(stage=stage)
+    return render(request,'personnel/recruitment_pool.html',{**context(request.user),'rows':rows,'query':query,'stage':stage,
+        'stage_choices':TalentPoolCandidate._meta.get_field('stage').choices})
+
+
+@login_required
+@require_GET
+def candidate_card(request,pk):
+    require_roles(request.user,service.READ)
+    applications=RecruitmentCandidate.objects.select_related(
+        'request__construction_object','request__assigned_to','arrival__movement_request','arrival__actual_stay').prefetch_related('documents').order_by('-created_at','-pk')
+    row=get_object_or_404(TalentPoolCandidate.objects.filter(company=request.user.company).prefetch_related(
+        Prefetch('vacancy_candidates',queryset=applications)),pk=pk)
+    from .models import RecruitmentEvent
+    events=RecruitmentEvent.objects.filter(company=request.user.company,candidate__pool_candidate=row).select_related(
+        'request__construction_object','candidate','actor').order_by('-created_at','-pk')[:200]
+    source_events=(row.source_data or {}).get('funnel_sources',[])
+    source_applications=[event for event in source_events if event.get('sheet')=='План найма']
+    return render(request,'personnel/recruitment_candidate_card.html',{**context(request.user),'row':row,'events':events,
+        'source_events':source_events,'source_applications':source_applications,
+        'has_applications':bool(row.vacancy_candidates.all())})
 
 
 @login_required
@@ -76,9 +123,9 @@ def pool_import(request):
         try:result=import_sheet(request.user,form.cleaned_data['file'])
         except ValidationError as exc:error(form,exc)
         else:
-            messages.success(request,f"Лист «Магазин 2026» загружен: создано {result['created']}, обновлено {result['updated']}, пропущено {result['skipped']}.")
+            messages.success(request,f"Воронка загружена: создано карточек {result['created']}, обновлено {result['updated']}, без изменений {result['skipped']}.")
             return redirect('personnel:recruitment_pool')
-    return render(request,'personnel/recruitment_form.html',{**context(request.user),'title':'Импорт магазина 2026','form':form})
+    return render(request,'personnel/recruitment_form.html',{**context(request.user),'title':'Импорт воронки подбора','form':form})
 
 
 @login_required

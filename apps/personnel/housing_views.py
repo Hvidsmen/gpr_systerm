@@ -883,7 +883,7 @@ def recruitment_dispatch_data(company):
         row.arrival_started_count=sum(1 for candidate in row.candidates.all()
             if getattr(candidate,'arrival',None) and candidate.arrival.status!='CANCELLED')
     recommendations=[candidate for row in requests for candidate in row.candidates.all()
-        if candidate.ready_on and candidate.status not in {'REJECTED','WITHDRAWN'} and not getattr(getattr(candidate,'arrival',None),'movement_request_id',None)]
+        if candidate.can_handoff and not getattr(getattr(candidate,'arrival',None),'movement_request_id',None)]
     return {'recruitment_requests':requests,'new_arrival_recommendations':recommendations,
         'new_employee_recommendation_count':len(recommendations)}
 

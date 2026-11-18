@@ -7,12 +7,15 @@ from django.db.models import F
 from django.utils import timezone
 from core.permissions import require_roles
 from .models import (RecruitmentRequest, RecruitmentCandidate, ArrivalPreparation,
-                     CandidateDocument, RecruitmentEvent, CampStay,MovementReviewRequest)
+                     CandidateDocument, RecruitmentEvent, CampStay,MovementReviewRequest,TalentPoolCandidate)
 from .models import Person
+from .recruitment_models import RECRUITMENT_SYSTEM_STAGES,RECRUITMENT_TERMINAL_STAGES
 
 DISPATCH = {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'}
 RECRUIT = {'ADMIN','HR_HEAD','RECRUITER'}
 READ = DISPATCH | RECRUIT
+EDITABLE_CANDIDATE_STAGES={value for value,_ in RecruitmentCandidate.STATES}-RECRUITMENT_SYSTEM_STAGES
+ACTIVE_CANDIDATE_STAGES={value for value,_ in RecruitmentCandidate.STATES}-RECRUITMENT_TERMINAL_STAGES-{'RESERVE','ARRIVED'}
 
 
 def serialize(user, roles):
@@ -51,12 +54,12 @@ def allowed_camps(company, obj):
 
 def progress(row):
     candidates=list(row.candidates.all())
-    shortlisted=[c for c in candidates if c.status not in {'REJECTED','WITHDRAWN'}]
+    shortlisted=[c for c in candidates if c.status not in RECRUITMENT_TERMINAL_STAGES|{'RESERVE'}]
     ready=[];arrived=[]
     for c in shortlisted:
         prep=getattr(c,'arrival',None)
         if prep and prep.actually_arrived:arrived.append(c)
-        if c.status in {'READY','TRANSFERRED'} and not (prep and prep.status=='CANCELLED'):ready.append(c)
+        if c.status in {'READY','TRANSFERRED','ARRIVAL_APPROVED','ARRIVED'} and not (prep and prep.status=='CANCELLED'):ready.append(c)
     state=('Отменена' if row.cancelled_at else 'Выполнена' if row.completed_at or len(arrived)>=row.quantity else
            'Кандидаты готовы' if len(ready)>=row.quantity else 'В работе' if row.assigned_to_id or candidates else 'Новая')
     return {'required':row.quantity,'shortlisted':len(shortlisted),'ready':len(ready),'arrived':len(arrived),'label':state}
@@ -118,6 +121,38 @@ def normalized_candidate_identity(full_name,phone):
     return name,digits
 
 
+def ensure_pool_candidate(user,row,candidate,chosen=None):
+    """Every vacancy application points to one durable candidate card."""
+    if chosen:return chosen
+    identity=normalized_candidate_identity(candidate.full_name,candidate.phone)
+    matches=[]
+    for pool in TalentPoolCandidate.objects.select_for_update().filter(company=user.company):
+        pool_identity=normalized_candidate_identity(pool.full_name,pool.phone)
+        if pool_identity==identity or identity[0] and not identity[1] and pool_identity[0]==identity[0]:matches.append(pool)
+    if len(matches)>1:raise ValidationError('Найдено несколько карточек с таким ФИО. Выберите кандидата из пула вручную.')
+    if matches:return matches[0]
+    return TalentPoolCandidate.objects.create(company=user.company,full_name=candidate.full_name,phone=candidate.phone,
+        notes='',stage=candidate.status,created_by=user,source_data={
+            'position':row.position,'construction_site':row.construction_object.name,'origin':'recruitment',
+        })
+
+
+def sync_pool_candidate(candidate,stage=None):
+    if not candidate.pool_candidate_id:return
+    pool=candidate.pool_candidate;stage=stage or candidate.status
+    pool.stage=stage
+    pool.full_name=candidate.full_name
+    if candidate.phone:pool.phone=candidate.phone
+    if not pool.notes and candidate.notes:pool.notes=candidate.notes
+    pool.is_active=stage not in RECRUITMENT_TERMINAL_STAGES|{'ARRIVED'}
+    source=dict(pool.source_data or {})
+    source.setdefault('position',candidate.request.position)
+    source.setdefault('construction_site',candidate.request.construction_object.name)
+    source['funnel_stage']=stage
+    pool.source_data=source
+    pool.save(update_fields=['stage','full_name','phone','notes','is_active','source_data','updated_at'])
+
+
 def save_candidate(user, request_id, values, pk=None, revision=None, files=()):
     # Cleanup private blobs even if the enclosing DB operation rolls back.
     written=[]
@@ -127,15 +162,15 @@ def save_candidate(user, request_id, values, pk=None, revision=None, files=()):
             c=RecruitmentCandidate.objects.select_for_update().get(company=user.company,request=row,pk=pk) if pk else RecruitmentCandidate(company=user.company,request=row,created_by=user)
             if pk and c.revision!=revision:raise ValidationError('Кандидата уже изменили. Обновите страницу.')
             if pk and ArrivalPreparation.objects.filter(candidate=c).exists():raise ValidationError('Кандидат уже передан. Изменения заезда оформляет диспетчер.')
-            if values['status'] not in {'NEW','SCREENING','READY','REJECTED','WITHDRAWN'}:raise ValidationError('Недопустимый статус кандидата.')
+            if values['status'] not in EDITABLE_CANDIDATE_STAGES:raise ValidationError('Недопустимый статус кандидата.')
             validate_documents(files)
-            c.pool_candidate=values.get('pool_candidate')
             for field in ('full_name','phone','status','ready_on','notes'):setattr(c,field,values[field])
+            c.pool_candidate=ensure_pool_candidate(user,row,c,values.get('pool_candidate'))
             if c.pool_candidate_id:
-                if not c.pool_candidate.is_active:raise ValidationError('Этот кандидат уже недоступен в общем пуле.')
+                if not c.pool_candidate.is_active and not pk:raise ValidationError('Этот кандидат уже недоступен в общем пуле.')
                 occupied=RecruitmentCandidate.objects.filter(company=user.company,pool_candidate=c.pool_candidate,
-                    status__in=['NEW','SCREENING','READY','TRANSFERRED'],request__cancelled_at__isnull=True,
-                    request__completed_at__isnull=True).exclude(pk=c.pk).exists()
+                    status__in=ACTIVE_CANDIDATE_STAGES,request__cancelled_at__isnull=True,
+                    request__completed_at__isnull=True).exclude(pk=c.pk).exclude(request=row).exists()
                 if occupied:raise ValidationError(f'Кандидат {c.pool_candidate.full_name} уже участвует в другой действующей заявке.')
             identity=normalized_candidate_identity(c.full_name,c.phone)
             for existing in RecruitmentCandidate.objects.filter(company=user.company,request=row).exclude(pk=c.pk):
@@ -149,7 +184,7 @@ def save_candidate(user, request_id, values, pk=None, revision=None, files=()):
                 possible=RecruitmentCandidate.objects.filter(company=user.company,normalized_name=identity[0],normalized_phone=identity[1]).exclude(pk=c.pk).select_related(
                     'request','arrival__actual_stay','arrival__movement_request')
                 for existing in possible:
-                    active_request=not existing.request.cancelled_at and not existing.request.completed_at and existing.status not in {'REJECTED','WITHDRAWN'}
+                    active_request=not existing.request.cancelled_at and not existing.request.completed_at and existing.status in ACTIVE_CANDIDATE_STAGES
                     prep=getattr(existing,'arrival',None)
                     active_arrival=bool(prep and (prep.actually_arrived or prep.movement_request_id and prep.movement_request.status!='CANCELLED'))
                     if active_request or active_arrival:
@@ -158,7 +193,7 @@ def save_candidate(user, request_id, values, pk=None, revision=None, files=()):
                 for employee in Employee.objects.filter(company=user.company,is_active=True):
                     if normalized_candidate_identity(employee.display_name,employee.phone)==identity:
                         raise ValidationError(f'{employee.display_name} уже является действующим сотрудником компании.')
-            c.revision+=1;c.save()
+            c.revision+=1;c.save();sync_pool_candidate(c)
             for file in files:
                 doc=CandidateDocument(company=user.company,candidate=c,uploaded_by=user,original_name=Path(file.name.replace('\\','/')).name[:255],size=file.size)
                 doc.file.save(file.name,file,save=False);written.append(doc.file);doc.save()
@@ -178,13 +213,13 @@ def handoff(user, candidate_id, revision):
     existing=ArrivalPreparation.objects.filter(candidate=c).first()
     if existing:return existing
     if c.revision!=revision:raise ValidationError('Кандидата уже изменили. Обновите страницу.')
-    if c.status in {'REJECTED','WITHDRAWN','TRANSFERRED'} or not c.ready_on:
+    if c.status in RECRUITMENT_TERMINAL_STAGES|{'TRANSFERRED','ARRIVAL_APPROVED','ARRIVED'} or not c.ready_on:
         raise ValidationError('Для оформления заезда укажите дату готовности кандидата. Отказанного кандидата передать нельзя.')
     active_preparations=ArrivalPreparation.objects.filter(candidate__request=row).exclude(status='CANCELLED').count()
     if active_preparations>=row.quantity:
         raise ValidationError(f'По заявке уже оформлено требуемое количество сотрудников: {row.quantity}. Остальных кандидатов оставьте в резерве.')
     prep=ArrivalPreparation.objects.create(company=user.company,candidate=c,expected_on=max(c.ready_on,row.required_on),handed_by=user)
-    c.status='TRANSFERRED';c.revision+=1;c.save();touch(row)
+    c.status='TRANSFERRED';c.revision+=1;c.save();sync_pool_candidate(c);touch(row)
     audit(user,row,'Передан диспетчеру для подготовки заезда.',c)
     return prep
 
@@ -235,6 +270,9 @@ def prepare_arrival(user, pk, revision, values, *, confirm=False, workflow=False
             housing.move(user,'ARRIVAL',prep.camp,day,[],employees=[prep.employee],comment=f'Заявка на подбор №{row.pk}. '+prep.notes)
             existing=CampStay.objects.get(company=user.company,person__employee=prep.employee,camp=prep.camp,arrived_on=day,cancelled_at__isnull=True)
         prep.actual_stay=existing;prep.status='ARRIVED'
+        candidate=RecruitmentCandidate.objects.select_for_update().select_related('pool_candidate','request__construction_object').get(pk=prep.candidate_id)
+        candidate.status='ARRIVED';candidate.revision+=1;candidate.save(update_fields=['status','revision','updated_at'])
+        sync_pool_candidate(candidate)
     prep.revision+=1;prep.save();touch(row)
     audit(user,row,'Заезд отправлен на согласование руководителю.' if workflow else 'Фактический заезд подтверждён.' if confirm else 'Подготовка заезда обновлена.',prep.candidate)
     return prep
@@ -253,7 +291,7 @@ def bulk_prepare_arrivals(user, candidate_ids):
     by_id={candidate.pk:candidate for candidate in candidates};batch=uuid4();prepared=[]
     for candidate_id in ids:
         candidate=by_id[candidate_id]
-        if candidate.status in {'REJECTED','WITHDRAWN'} or not candidate.ready_on:
+        if candidate.status in RECRUITMENT_TERMINAL_STAGES or not candidate.ready_on:
             raise ValidationError(f'{candidate.full_name}: кандидат не готов к оформлению заезда.')
         prep=handoff(user,candidate.pk,candidate.revision)
         if prep.movement_request_id:raise ValidationError(f'{candidate.full_name}: заявка на заезд уже создана.')
@@ -326,6 +364,6 @@ def cancel_preparation(user, pk, revision, reason):
     if not reason.strip():raise ValidationError('Укажите причину отмены заезда.')
     prep.status='CANCELLED';prep.revision+=1;prep.save();touch(row)
     candidate=RecruitmentCandidate.objects.select_for_update().get(pk=prep.candidate_id)
-    candidate.status='WITHDRAWN';candidate.revision+=1;candidate.save()
+    candidate.status='WITHDRAWN';candidate.revision+=1;candidate.save();sync_pool_candidate(candidate)
     audit(user,row,'Подготовка заезда отменена: '+reason.strip(),prep.candidate)
     return prep

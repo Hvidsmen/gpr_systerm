@@ -3,6 +3,7 @@ from django.utils import timezone
 from apps.projects.models import ConstructionObject
 from apps.resources.models import Employee
 from .models import RecruitmentRequest, RecruitmentCandidate,TalentPoolCandidate,Camp
+from .recruitment_models import RECRUITMENT_SYSTEM_STAGES,RECRUITMENT_TERMINAL_STAGES
 from .recruitment import allowed_camps, validate_documents
 from .employee_widgets import RemoteEmployeeSelect
 
@@ -42,7 +43,7 @@ class TalentPoolChoiceField(forms.ModelChoiceField):
     def label_from_instance(self,candidate):
         position=(candidate.source_data or {}).get('position') or 'должность не указана'
         site=(candidate.source_data or {}).get('construction_site') or ''
-        return f'{candidate.full_name} — {position}' + (f' · {site}' if site else '')
+        return f'{candidate.full_name} — {position} · {candidate.get_stage_display()}' + (f' · {site}' if site else '')
 
 
 class CandidateForm(forms.ModelForm):
@@ -60,7 +61,7 @@ class CandidateForm(forms.ModelForm):
         original=self.fields['pool_candidate']
         self.fields['pool_candidate']=TalentPoolChoiceField(label=original.label,required=False,
             queryset=TalentPoolCandidate.objects.filter(company=company,is_active=True).exclude(
-                vacancy_candidates__status__in=['NEW','SCREENING','READY','TRANSFERRED'],
+                vacancy_candidates__status__in=[value for value,_ in RecruitmentCandidate.STATES if value not in RECRUITMENT_TERMINAL_STAGES|{'RESERVE','ARRIVED'}],
                 vacancy_candidates__request__cancelled_at__isnull=True,
                 vacancy_candidates__request__completed_at__isnull=True).distinct().order_by('full_name','pk'),
             empty_label='Новый человек — заполнить вручную')
@@ -69,12 +70,14 @@ class CandidateForm(forms.ModelForm):
         self.initial['request_position']=request_row.position
         self.order_fields(['request_position','pool_candidate','full_name','phone','status','ready_on','notes','documents','revision'])
         self.fields['full_name'].required=False
-        self.fields['status'].choices=[(v,l) for v,l in RecruitmentCandidate.STATES if v!='TRANSFERRED']
+        self.fields['status'].choices=[(v,l) for v,l in RecruitmentCandidate.STATES if v not in RECRUITMENT_SYSTEM_STAGES]
         if self.instance.pk:self.initial['revision']=self.instance.revision
     def clean(self):
         data=super().clean();pool=data.get('pool_candidate')
         if pool:
             data['full_name']=pool.full_name;data['phone']=pool.phone or data.get('phone','');data['notes']=data.get('notes') or pool.notes
+            if not self.instance.pk and data.get('status')=='NEW' and pool.stage not in RECRUITMENT_SYSTEM_STAGES|RECRUITMENT_TERMINAL_STAGES:
+                data['status']=pool.stage
         if not (data.get('full_name') or '').strip():self.add_error('full_name','Выберите человека из пула или укажите ФИО.')
         return data
 
@@ -128,7 +131,7 @@ class TalentPoolForm(forms.ModelForm):
 
 
 class TalentPoolImportForm(forms.Form):
-    file=forms.FileField(label='Файл Excel',help_text='Поддерживается XLSX. Будет прочитан лист «Магазин 2026».')
+    file=forms.FileField(label='Файл Excel',help_text='Поддерживается XLSX. Будут собраны единые карточки из пяти листов воронки.')
 
 
 class ArrivalForm(RevisionForm):
