@@ -26,25 +26,66 @@ class PrepareMssqlCopyTests(SimpleTestCase):
             target_query=MagicMock();target_query.get.return_value=MagicMock(password=make_password('test-password'))
             source_query=MagicMock();source_query.filter.return_value.values_list.return_value=[(7,8,'admin','')]
             def using(alias):return source_query if alias=='production_mssql' else target_query
-            def dump(alias,path):
-                self.assertEqual(alias,'production_mssql');Path(path).write_text('[]',encoding='utf-8')
             with override_settings(STAGING_MODE=True,STAGING_CONFIG={'owner_id':1,'company_id':2,'owner_login':'admin'}),\
                     patch('core.management.commands.refresh_staging_mssql.connections',
                           {'production_mssql':source,'default':target}),\
                     patch('core.management.commands.refresh_staging_mssql.User.objects.using',side_effect=using),\
-                    patch('core.management.commands.refresh_staging_mssql.dump_fixture',side_effect=dump),\
+                    patch('core.management.commands.refresh_staging_mssql.native_refresh_database',
+                          return_value=r'C:\SQLData\YDS_PORTAL_yds_test_refresh.bak') as native_refresh,\
                     patch('core.management.commands.refresh_staging_mssql.call_command') as django_command,\
                     patch('core.management.commands.refresh_staging_mssql.compare_databases',
                           return_value=({'accounts.user':{'source':1,'target':1}},[])),\
                     patch('core.management.commands.refresh_staging_mssql.sanitize_database') as sanitize:
                 RefreshStagingCommand().handle(output=str(output))
-            self.assertEqual(django_command.call_args_list[0].args[0],'flush')
+            native_refresh.assert_called_once_with(source,target)
+            self.assertEqual(django_command.call_args_list[0].args[0],'migrate')
             self.assertEqual(django_command.call_args_list[0].kwargs['database'],'default')
-            self.assertEqual(django_command.call_args_list[1].args[0],'loaddata')
             sanitize.assert_called_once()
             self.assertEqual(sanitize.call_args.kwargs,{'owner_id':7,'company_id':8})
             result=json.loads((output/'result.json').read_text(encoding='utf-8'))
             self.assertEqual((result['owner_id'],result['company_id']),(7,8))
+
+    def test_native_refresh_maps_production_files_to_existing_test_paths(self):
+        from core.management.commands.refresh_staging_mssql import restore_moves
+        moves=restore_moves(
+            [('D','YDS_PORTAL'),('D','YDS_PORTAL_extra'),('L','YDS_PORTAL_log')],
+            [(0,r'C:\SQLData\YDS_PORTAL_TEST.mdf'),(0,r'C:\SQLData\YDS_PORTAL_TEST_2.ndf'),
+             (1,r'C:\SQLData\YDS_PORTAL_TEST_log.ldf')])
+        self.assertEqual(moves,[
+            ('YDS_PORTAL',r'C:\SQLData\YDS_PORTAL_TEST.mdf'),
+            ('YDS_PORTAL_extra',r'C:\SQLData\YDS_PORTAL_TEST_2.ndf'),
+            ('YDS_PORTAL_log',r'C:\SQLData\YDS_PORTAL_TEST_log.ldf')])
+
+    def test_native_refresh_refuses_different_file_layouts(self):
+        from core.management.commands.refresh_staging_mssql import restore_moves
+        with self.assertRaisesMessage(CommandError,'Состав файлов'):
+            restore_moves([('D','production'),('L','production_log')],[(0,'test.mdf')])
+
+    def test_native_refresh_uses_verified_backup_and_moves_files(self):
+        from core.management.commands.refresh_staging_mssql import native_refresh_database
+        source=MagicMock(settings_dict={'HOST':'MSK-DB2','NAME':'YDS_PORTAL',
+            'OPTIONS':{'driver':'ODBC Driver 17 for SQL Server','extra_params':'TrustServerCertificate=yes'}})
+        target=MagicMock(settings_dict={'HOST':'MSK-DB2','NAME':'YDS_PORTAL_TEST',
+            'OPTIONS':{'driver':'ODBC Driver 17 for SQL Server','extra_params':'TrustServerCertificate=yes'}})
+        pyodbc=MagicMock();master=pyodbc.connect.return_value;cursor=master.cursor.return_value
+        cursor.fetchall.side_effect=[
+            [(0,r'C:\SQLData\YDS_PORTAL_TEST.mdf'),(1,r'C:\SQLData\YDS_PORTAL_TEST_log.ldf')],
+            [('YDS_PORTAL','D'),('YDS_PORTAL_log','L')]]
+        cursor.fetchone.return_value=(r'C:\SQLData\YDS_PORTAL.mdf',)
+        cursor.description=[('LogicalName',),('Type',)]
+        cursor.nextset.return_value=False
+        with patch.dict('sys.modules',{'pyodbc':pyodbc}),\
+                patch('core.management.commands.refresh_staging_mssql.connections.close_all') as close_all:
+            backup=native_refresh_database(source,target)
+        self.assertEqual(backup,r'C:\SQLData\YDS_PORTAL_yds_test_refresh.bak')
+        close_all.assert_called_once()
+        statements=' '.join(call.args[0] for call in cursor.execute.call_args_list)
+        self.assertIn('BACKUP DATABASE [YDS_PORTAL]',statements)
+        self.assertIn('RESTORE VERIFYONLY',statements)
+        self.assertIn('RESTORE DATABASE [YDS_PORTAL_TEST]',statements)
+        self.assertIn("MOVE N'YDS_PORTAL' TO N'C:\\SQLData\\YDS_PORTAL_TEST.mdf'",statements)
+        self.assertIn('SET MULTI_USER',statements)
+        master.close.assert_called_once()
 
     def test_mssql_backup_uses_server_backup_directory_and_writes_metadata(self):
         with TemporaryDirectory() as directory:
