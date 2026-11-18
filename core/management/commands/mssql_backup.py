@@ -74,7 +74,24 @@ class Command(BaseCommand):
         try:
             cursor=master.cursor()
             cursor.execute(f'ALTER DATABASE {identifier} SET SINGLE_USER WITH ROLLBACK IMMEDIATE')
-            try:cursor.execute(f'RESTORE DATABASE {identifier} FROM DISK = ? WITH REPLACE, CHECKSUM',str(data['backup_path']))
-            finally:cursor.execute(f'ALTER DATABASE {identifier} SET MULTI_USER')
+            while cursor.nextset():pass
+            try:
+                cursor.execute(f'RESTORE DATABASE {identifier} FROM DISK = ? WITH REPLACE, CHECKSUM, RECOVERY',
+                               str(data['backup_path']))
+                # A RESTORE emits multiple status results. Drain all of them
+                # before changing access mode, otherwise SQL Server can still
+                # report the database as RESTORING.
+                while cursor.nextset():pass
+            except BaseException:
+                # Preserve the original RESTORE error instead of masking it
+                # with a secondary MULTI_USER failure.
+                try:
+                    cursor.execute(f'ALTER DATABASE {identifier} SET MULTI_USER')
+                    while cursor.nextset():pass
+                except BaseException:
+                    pass
+                raise
+            cursor.execute(f'ALTER DATABASE {identifier} SET MULTI_USER')
+            while cursor.nextset():pass
         finally:master.close()
         self.stdout.write(self.style.SUCCESS('Рабочая MSSQL восстановлена из резервной копии.'))

@@ -29,6 +29,11 @@ class DatabaseSettingsTests(SimpleTestCase):
         self.assertEqual(settings['OPTIONS']['connection_timeout'],10)
         self.assertEqual(settings['OPTIONS']['query_timeout'],120)
 
+    def test_mssql_query_timeout_can_be_extended_for_controlled_bulk_copy(self):
+        settings=database_settings(Path('.'),{'DJANGO_DB_ENGINE':'mssql','MSSQL_HOST':'MSK-DB2',
+            'MSSQL_NAME':'YDS_PORTAL_TEST','MSSQL_QUERY_TIMEOUT':'900'})
+        self.assertEqual(settings['OPTIONS']['query_timeout'],900)
+
     def test_mssql_defaults_to_confirmed_windows_driver(self):
         settings=database_settings(Path('.'),{'DJANGO_DB_ENGINE':'mssql','MSSQL_HOST':'MSK-DB2','MSSQL_NAME':'YDS_PORTAL'})
         self.assertEqual(settings['OPTIONS']['driver'],'ODBC Driver 17 for SQL Server')

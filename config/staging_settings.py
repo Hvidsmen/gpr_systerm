@@ -15,6 +15,7 @@ if _engine == 'mssql':
     _database_environment = {'DJANGO_DB_ENGINE':'mssql','MSSQL_HOST':str(_mssql.get('host','')),
         'MSSQL_NAME':str(_mssql.get('name','')),'MSSQL_PORT':str(_mssql.get('port','')),
         'MSSQL_DRIVER':str(_mssql.get('driver','ODBC Driver 17 for SQL Server')),
+        'MSSQL_QUERY_TIMEOUT':'900',
         'MSSQL_TRUST_SERVER_CERTIFICATE':'true' if _mssql.get('trust_server_certificate',True) else 'false'}
 os.environ.update(**_database_environment,
                   DJANGO_SECRET_KEY=private_path(_staging_root, 'secret.key').read_text().strip(),
@@ -40,7 +41,7 @@ if _source_root:
             'MSSQL_DRIVER': str(_source_mssql.get('driver', 'ODBC Driver 17 for SQL Server')),
             'MSSQL_TRUST_SERVER_CERTIFICATE':
                 'true' if _source_mssql.get('trust_server_certificate', True) else 'false',
-            'MSSQL_CONN_MAX_AGE': '0',
+            'MSSQL_CONN_MAX_AGE': '0', 'MSSQL_QUERY_TIMEOUT': '900',
         }
         DATABASES['production_mssql'] = database_settings(BASE_DIR, _source_environment)
 

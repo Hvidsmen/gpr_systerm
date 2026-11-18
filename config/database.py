@@ -22,7 +22,8 @@ def database_settings(base_dir, environment=None):
                 'OPTIONS':connection_options()}
     if engine not in {'mssql','sqlserver'}:
         raise ImproperlyConfigured('DJANGO_DB_ENGINE должен быть sqlite или mssql.')
-    options={'unicode_results':True,'connection_timeout':10,'query_timeout':120,
+    options={'unicode_results':True,'connection_timeout':10,
+             'query_timeout':int(environment.get('MSSQL_QUERY_TIMEOUT','120')),
              'driver':environment.get('MSSQL_DRIVER','ODBC Driver 17 for SQL Server').strip() or 'ODBC Driver 17 for SQL Server'}
     if environment.get('MSSQL_TRUST_SERVER_CERTIFICATE','true').strip().casefold() in {'1','true','yes','on'}:
         options['extra_params']='TrustServerCertificate=yes'

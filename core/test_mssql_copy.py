@@ -66,9 +66,23 @@ class PrepareMssqlCopyTests(SimpleTestCase):
             metadata.write_text(json.dumps({'server':'MSK-DB2','database':'YDS_PORTAL','backup_path':r'C:\SQLBackups\portal.bak'}),encoding='utf-8')
             database=MagicMock();database.settings_dict={'HOST':'MSK-DB2','NAME':'YDS_PORTAL','OPTIONS':{'driver':'ODBC Driver 17 for SQL Server','extra_params':'TrustServerCertificate=yes'}}
             master=MagicMock();pyodbc=MagicMock();pyodbc.connect.return_value=master
+            master.cursor.return_value.nextset.return_value=False
             with patch('core.management.commands.mssql_backup.connection',database),patch.dict('sys.modules',{'pyodbc':pyodbc}):BackupCommand().restore(metadata)
             statements=' '.join(call.args[0] for call in master.cursor.return_value.execute.call_args_list)
             self.assertIn('SET SINGLE_USER',statements);self.assertIn('RESTORE DATABASE',statements);self.assertIn('SET MULTI_USER',statements)
+
+    def test_mssql_restore_waits_for_recovery_before_multi_user(self):
+        with TemporaryDirectory() as directory:
+            metadata=Path(directory)/'backup.json'
+            metadata.write_text(json.dumps({'server':'MSK-DB2','database':'YDS_PORTAL_TEST','backup_path':r'C:\SQLData\test.bak'}),encoding='utf-8')
+            database=MagicMock();database.settings_dict={'HOST':'MSK-DB2','NAME':'YDS_PORTAL_TEST','OPTIONS':{'driver':'ODBC Driver 17 for SQL Server'}}
+            master=MagicMock();cursor=master.cursor.return_value;cursor.nextset.return_value=False
+            pyodbc=MagicMock();pyodbc.connect.return_value=master
+            with patch('core.management.commands.mssql_backup.connection',database),patch.dict('sys.modules',{'pyodbc':pyodbc}):
+                BackupCommand().restore(metadata)
+            actions=[call.args[0] for call in cursor.execute.call_args_list]
+            self.assertEqual(sum('SET MULTI_USER' in sql for sql in actions),1)
+            self.assertIn('RECOVERY',next(sql for sql in actions if sql.startswith('RESTORE DATABASE')))
 
     def test_cutover_activates_verified_target_and_can_restore_sqlite_config(self):
         with TemporaryDirectory() as directory:
