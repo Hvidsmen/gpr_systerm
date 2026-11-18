@@ -106,13 +106,16 @@ class RotationTests(TestCase):
         self.assertContains(page,'Состав персонала');self.assertContains(page,'Назначено сотрудников');self.assertContains(page,'Открытых вакансий')
         for key in ['working','travelling','people','on_shift','rest','vacancies','arriving','departing','no_schedule']:
             self.assertEqual(sum(g[key] for g in page.context['position_groups']),page.context['rotation_stats'][key])
-        self.assertContains(page,'data-position-fact-value="working">0</dd>',html=False)
+        self.assertContains(page,'data-position-summary-value="assigned">2</strong>',html=False)
+        self.assertContains(page,'data-position-summary-value="vacancies">1</strong>',html=False)
         self.assertContains(page,'data-rotation-total="people">2</strong>',html=False)
         self.assertContains(page,'data-summary-completion>—</strong>',html=False)
         filtered=self.client.get(reverse('personnel:housing'),{'camp':self.a.pk,'date':str(self.day),'state':'TRAVEL'})
         self.assertEqual(filtered.context['rotation_stats']['people'],1);self.assertEqual(filtered.context['position_groups'][0]['travelling'],1)
         self.assertEqual(filtered.context['housing_summary']['assigned'],2)
         self.assertEqual(filtered.context['housing_summary']['on_shift'],1)
+        self.assertEqual(filtered.context['position_groups'][0]['summary']['assigned'],2)
+        self.assertEqual(filtered.context['position_groups'][0]['summary']['on_shift'],1)
 
     def test_calendar_work_codes_count_people_and_ignore_rest_zero_and_blank(self):
         for code,working,travel,missing in [('МВ',1,0,0),('10',1,0,0),(8.5,1,0,0),('0',0,0,0),(0,0,0,0),('В',0,0,0),('МО',0,0,0),(' дп ',0,1,0),('',0,0,1)]:

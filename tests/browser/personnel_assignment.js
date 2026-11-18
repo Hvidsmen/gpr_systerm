@@ -21,7 +21,7 @@ const {chromium}=require('playwright'),assert=require('node:assert/strict');
   await page.getByRole('button',{name:'Назначить сотрудника',exact:true}).click();
   await page.waitForURL(url=>url.pathname.endsWith('/housing/')&&url.hash==='#roster');
   assert((await group().innerText()).includes(c.name));
-  assert.equal(await group().locator('[data-position-fact-value=on_shift]').innerText(),'0');
+  assert.equal(await group().locator('[data-position-summary-value=on-shift]').innerText(),'0');
   assert.equal(await group().locator('.housing-position-counts b').innerText(),'1');
   await page.setViewportSize({width:1440,height:950});await group().scrollIntoViewIfNeeded();await page.screenshot({path:'/tmp/personnel-assignment-roster.png',animations:'disabled'});
   await group().getByRole('link',{name:'Назначение',exact:true}).click();

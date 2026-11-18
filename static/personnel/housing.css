@@ -67,6 +67,11 @@
 @media(max-width:1050px){.housing-metric-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:600px){.housing-metric-cards,.housing-gpr-cards{grid-template-columns:1fr}.housing-metric-card{min-height:94px}.housing-gpr-card>strong{font-size:20px}}
 
+/* The same personnel summary, scoped to one position. */
+.housing-position-summary{display:grid;grid-template-columns:repeat(8,minmax(72px,1fr));gap:5px;margin-top:7px}.housing-position-summary>div{display:flex;align-items:baseline;justify-content:space-between;gap:6px;min-width:0;padding:5px 7px;border:1px solid #d9e5ed;border-radius:5px;background:#f8fbfd}.housing-position-summary span{font-size:10px;font-weight:400;color:#5b7183;white-space:nowrap}.housing-position-summary strong{font-size:14px;color:#176d84;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.housing-position-summary .housing-position-summary-accent{border-color:#a9d2c2;background:#f1f9f5}.housing-position-summary .housing-position-summary-accent strong{color:#237b55}.housing-position-gpr{display:flex;align-items:baseline;flex-wrap:wrap;gap:5px 12px;margin-top:5px;font-size:11px;font-weight:400}.housing-position-gpr-label{color:#5b7183}.housing-position-gpr>span:not(.housing-position-gpr-label){display:inline-flex;align-items:baseline;gap:5px}.housing-position-gpr small{color:#6d8191;font-size:10px}.housing-position-gpr strong{color:#295f78;font-size:12px;font-variant-numeric:tabular-nums}.housing-position-summary+.housing-position-gpr+.housing-position-plan-peaks{margin-top:4px}.housing-position-plan-peaks .housing-plan-peak-toggle>span:first-child{font-size:10px;font-weight:400}
+@media(max-width:1150px){.housing-position-summary{grid-template-columns:repeat(4,minmax(90px,1fr))}}
+@media(max-width:700px){.housing-position-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.housing-position-summary>div{padding:5px 6px}}
+
 /* Current personnel composition has no date control. */
 .housing-rotation-current .housing-filter-main{grid-template-columns:minmax(140px,1fr) minmax(150px,1fr) minmax(190px,1.4fr)}
 @media(max-width:1050px){.housing-rotation-current .housing-filter-main{grid-template-columns:repeat(2,minmax(0,1fr))}.housing-rotation-current .housing-filter-q{grid-column:1/-1}}

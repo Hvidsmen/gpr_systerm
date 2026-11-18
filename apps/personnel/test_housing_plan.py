@@ -97,7 +97,17 @@ class HousingPlanTests(TestCase):
         self.assertEqual(plans['СМГ']['months'][0]['value'],3);self.assertEqual(plans['ГПР']['months'][0]['value'],10)
         self.assertEqual(plans['СМГ']['peak'],3);self.assertEqual(plans['СМГ']['shortage'],2)
         self.assertEqual(plans['ГПР']['peak'],10);self.assertEqual(plans['ГПР']['shortage'],9)
+        summary=groups[0]['summary']
+        self.assertEqual(summary['assigned'],2);self.assertEqual(summary['current_smg'],3)
+        self.assertEqual(summary['on_shift'],1);self.assertEqual(summary['completion'],Decimal('100')/3)
+        self.assertEqual(summary['rest'],1);self.assertEqual([item['value'] for item in summary['future_gpr']],[10,10,10])
         self.assertEqual(sorted(s['current_total'] for s in context['housing_plan_groups']),[3,10]);self.assertNotIn('housing_plan_totals',context)
+
+        self.client.force_login(self.hr)
+        response=self.client.get(reverse('personnel:housing'),{'camp':self.a.pk})
+        self.assertContains(response,'data-position-summary-value="current-smg">3</strong>',html=False)
+        self.assertContains(response,'data-position-summary-value="completion">33,3%</strong>',html=False)
+        self.assertContains(response,'data-position-summary-gpr=',html=False,count=3)
 
     def test_planned_position_without_people_is_visible_without_fabricating_a_vacancy(self):
         from .housing_plan import position_headers

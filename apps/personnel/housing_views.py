@@ -351,6 +351,10 @@ def workspace(request, movements=False, movement_page='new'):
     plan_context=monthly_plan(request.user,camp,day,camps=selected_camps,construction_object=values.get('construction_object'))
     position_groups=position_headers(request.user.company,rows,plan_context,query=values.get('q',''),position=values.get('position'),state=values.get('state',''))
     summary_position_groups=position_headers(request.user.company,summary_rows,plan_context,query=values.get('q',''),position=values.get('position'))
+    def normalized_position(value):return ' '.join(str(value).split()).casefold()
+    summary_by_position={normalized_position(group['name']):group['summary'] for group in summary_position_groups}
+    for group in position_groups:
+        group['summary']=summary_by_position.get(normalized_position(group['name']),group['summary'])
     plan_context['housing_summary']=summary_metrics(summary_stats,summary_position_groups,plan_context['housing_plan_months'])
     plan_context['housing_summary_stats']=summary_stats
     def summary_url(state=''):
@@ -368,7 +372,6 @@ def workspace(request, movements=False, movement_page='new'):
         'departing':summary_url('DEPARTING'),
         'rest':summary_url('MO'),
     }
-    def normalized_position(value):return ' '.join(str(value).split()).casefold()
     recruitment_by_position={}
     for recruitment in extra.get('recruitment_requests',[]):
         recruitment_by_position.setdefault(normalized_position(recruitment.position),[]).append(recruitment)
@@ -379,9 +382,11 @@ def workspace(request, movements=False, movement_page='new'):
         if values.get('position') and normalized_position(values['position'].name)!=key:continue
         if values.get('q') and values['q'].casefold() not in label.casefold() and not any(
             values['q'].casefold() in candidate.full_name.casefold() for recruitment in recruitments for candidate in recruitment.candidates.all()):continue
-        position_groups.append({'name':label,'rows':[],'plans':[],'labor_group':'Без группы','assignment_initial':{},
+        empty_group={'name':label,'rows':[],'plans':[],'labor_group':'Без группы','assignment_initial':{},
             'people':0,'working':0,'on_shift':0,'travelling':0,'rest':0,'vacancies':0,'arriving':0,'departing':0,'no_schedule':0,'unknown':0,
-            'uid':len(position_groups)+1})
+            'uid':len(position_groups)+1}
+        empty_group['summary']=summary_metrics(empty_group,[empty_group],plan_context['housing_plan_months'])
+        position_groups.append(empty_group)
     for group in position_groups:
         group['recruitment_requests']=recruitment_by_position.get(normalized_position(group['name']),[])
     from .housing_plan import roster_sections

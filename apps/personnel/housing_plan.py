@@ -204,7 +204,9 @@ def position_headers(company,rows,plan_context,*,query='',position=None,state=''
                 group['assignment_initial']={'planning_position':assigned['planning_position_id'],'construction_object':assigned['assignment_object'].pk,'housing_camp':assigned['slot'].housing_camp_id}
             elif brigade:group['assignment_initial']={'planning_position':brigade.pk}
     output.sort(key=lambda group:(labor_group_order(group['labor_group']),normalized(group['name'])))
-    for index,group in enumerate(output):group['uid']=index+1
+    for index,group in enumerate(output):
+        group['uid']=index+1
+        group['summary']=summary_metrics(group,[group],months)
     return output
 
 

@@ -16,7 +16,7 @@ const {chromium}=require('playwright'),assert=require('node:assert/strict');
   await page.getByRole('button',{name:'Назначить сотрудника',exact:true}).click();await page.waitForURL(u=>u.pathname.endsWith('/housing/')&&u.hash==='#roster');
   const mv=()=>group().locator('tr[data-housing-person]').filter({hasText:c.mv_name});
   assert.equal(await mv().locator('[data-housing-state-days]').getAttribute('data-housing-state-days'),'21');
-  assert.equal(await group().locator('[data-position-fact-value=on_shift]').innerText(),'1');
+  assert.equal(await group().locator('[data-position-summary-value=on-shift]').innerText(),'1');
   await mv().getByRole('link',{name:'Назначение',exact:true}).click();assert.equal(await page.locator('[data-assignment-initial]').count(),0);
   await page.goto(c.base+c.path);await group().getByRole('link',{name:'Назначить сотрудника',exact:true}).click();
   await chooseEmployee(c.existing_name);assert(await page.locator('#id_initial-state + .search-select-shell button').isDisabled());assert(await page.locator('[data-initial-existing]').isVisible());
@@ -26,7 +26,7 @@ const {chromium}=require('playwright'),assert=require('node:assert/strict');
   await page.getByRole('button',{name:'Назначить сотрудника',exact:true}).click();await page.waitForURL(u=>u.pathname.endsWith('/housing/')&&u.hash==='#roster');
   const mo=group().locator('tr[data-housing-person]').filter({hasText:c.mo_name});
   assert.equal(await mo.locator('[data-housing-state-days]').getAttribute('data-housing-state-days'),'11');assert.equal(await mo.locator('[data-label="Фактический заезд"]').innerText(),'—');
-  assert.equal(await group().locator('[data-position-fact-value=on_shift]').innerText(),'1');assert.equal(await group().locator('[data-position-fact-value=rest]').innerText(),'1');
+  assert.equal(await group().locator('[data-position-summary-value=on-shift]').innerText(),'1');assert.equal(await group().locator('[data-position-summary-value=rest]').innerText(),'1');
   await page.setViewportSize({width:1440,height:1000});await group().scrollIntoViewIfNeeded();await page.screenshot({path:'/tmp/assignment-initial-roster.png',animations:'disabled'});
   assert.deepEqual(errors,[]);console.log('PASS: initial MV with arrival and 21-day count; MO without invented arrival and 11-day rest; known-history employee blocked; edit hides initialized state; desktop/mobile; no page errors.');
  }finally{await browser.close();}
