@@ -368,16 +368,32 @@ def serve(root,code,port,probe=False):
     thread=threading.Thread(target=server.run,daemon=True);thread.start()
     training_stop=threading.Event()
     training_thread=None
+    training_supervise=None
+    training_restart_at=0
     if not probe:
         from apps.accounts.training_runtime import supervise as training_supervise
-        training_thread=threading.Thread(target=training_supervise,args=(training_stop,),daemon=True)
-        training_thread.start()
+        training_thread=start_training_supervisor(training_supervise,training_stop)
     stop=root/'.runtime'/('probe.stop' if probe else 'server.stop')
-    while thread.is_alive() and not stop.exists():time.sleep(.5)
+    while thread.is_alive() and not stop.exists():
+        if training_supervise is not None and not training_thread.is_alive() and time.monotonic()>=training_restart_at:
+            logging.error('Training supervisor exited; restarting in the portal worker.')
+            training_thread=start_training_supervisor(training_supervise,training_stop)
+            training_restart_at=time.monotonic()+5
+        time.sleep(.5)
     training_stop.set()
     server.close();server.task_dispatcher.shutdown(timeout=90);thread.join(timeout=10)
     if training_thread:training_thread.join(timeout=100)
     if not stop.exists():raise RuntimeError('HTTP server exited unexpectedly.')
+
+
+def start_training_supervisor(target,stop):
+    """Start the in-process training manager without letting one crash kill monitoring."""
+    def guarded():
+        try:target(stop)
+        except Exception:logging.exception('Training supervisor crashed.')
+    worker=threading.Thread(target=guarded,daemon=True,name='training-supervisor')
+    worker.start()
+    return worker
 
 
 def launch(root,current,probe=False):

@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import sqlite3
 import tempfile
+import threading
 from unittest.mock import patch, Mock, MagicMock
 import zipfile
 from django.test import SimpleTestCase, override_settings
@@ -37,6 +38,18 @@ class WindowsRuntimeTests(SimpleTestCase):
         env=runtime.environment(self.root,config)
         self.assertEqual(env['DJANGO_DB_ENGINE'],'mssql');self.assertEqual(env['MSSQL_HOST'],'MSK-DB2')
         self.assertEqual(env['MSSQL_NAME'],'YDS_PORTAL');self.assertEqual(env['MSSQL_DRIVER'],'ODBC Driver 17 for SQL Server')
+
+    def test_training_supervisor_failure_is_contained_for_worker_restart(self):
+        stop=threading.Event();called=[]
+        def failed(received):
+            called.append(received)
+            raise RuntimeError('synthetic training startup failure')
+        with self.assertLogs(level='ERROR') as logs:
+            worker=runtime.start_training_supervisor(failed,stop)
+            worker.join(timeout=2)
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(called,[stop])
+        self.assertIn('Training supervisor crashed',logs.output[0])
 
     def test_mssql_update_backup_and_restore_use_active_release_command(self):
         config={**self.config,'database_engine':'mssql','mssql':{'host':'MSK-DB2','name':'YDS_PORTAL','driver':'ODBC Driver 17 for SQL Server'}}
