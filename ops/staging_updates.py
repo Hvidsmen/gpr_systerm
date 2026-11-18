@@ -355,13 +355,12 @@ def process_job(root, child, job, parent_gone):
         stopped = False
         wait_http(root, child, parent_gone)
         progress('done')
-        # The supervisor imported code before this update. On Windows release
-        # its lock and hand control to the selected release without letting the
-        # scheduled task (and its parent pipe) finish.
-        if needs_supervisor_handoff():
-            stopped = True
-            stop_http(child)
-            return SUPERVISOR_RESTART
+        # Keep the verified HTTP child alive under the already running
+        # supervisor.  A Windows process-tree handoff can make Task Scheduler
+        # consider the persistent task finished even though the release was
+        # installed successfully, leaving port 8002 down.  The supervisor code
+        # itself is refreshed on the next ordinary task restart; serving the
+        # selected release does not require stopping this healthy child.
     except Exception:
         logging.exception('Acceptance web update failed')
         recovery = (runtime(root) / 'staging-recovery.json').exists()

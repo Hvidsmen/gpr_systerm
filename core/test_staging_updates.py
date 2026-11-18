@@ -71,7 +71,7 @@ class StagingWebRuntimeTests(SimpleTestCase):
         self.assertEqual(json.loads((self.root/'.runtime/staging-update.json').read_text())['state'],'done')
         self.assertFalse(archive.exists())
 
-    def test_windows_update_requests_supervisor_handoff_after_verified_start(self):
+    def test_windows_update_keeps_verified_http_child_under_existing_supervisor(self):
         archive=self.root/'download.zip';archive.write_bytes(b'synthetic archive')
         old,new=Mock(),Mock()
         with patch.object(updates,'download',return_value=archive),\
@@ -80,8 +80,8 @@ class StagingWebRuntimeTests(SimpleTestCase):
                 patch.object(updates,'start_http',return_value=new),patch.object(updates,'wait_http'),\
                 patch.object(updates,'needs_supervisor_handoff',return_value=True):
             result=updates.process_job(self.root,old,self.job(),self.event)
-        self.assertIs(result,updates.SUPERVISOR_RESTART)
-        self.assertEqual([call.args[0] for call in stop.call_args_list],[old,new])
+        self.assertIs(result,new)
+        self.assertEqual([call.args[0] for call in stop.call_args_list],[old])
 
     def test_supervisor_bridge_respawns_current_release_on_handoff_exit(self):
         first=Mock();first.poll.return_value=updates.SUPERVISOR_RESTART_EXIT
