@@ -6,7 +6,8 @@ from django.db import transaction
 from apps.projects.models import ConstructionObject
 from apps.resources.models import Position
 from .models import BaseCity,RecruitmentSpecialist,TalentPoolCandidate
-from .recruitment_models import POOL_UNAVAILABLE_STAGES,RECRUITMENT_STAGES
+from .recruitment_models import (POOL_UNAVAILABLE_STAGES,RECRUITMENT_STAGES,
+    normalize_recruitment_specialist_name)
 
 STORE_SHEET='Магазин 2026'
 PLAN_SHEET='План найма'
@@ -52,7 +53,7 @@ def _valid_name(value):return bool(value and value.casefold() not in {'вака�
 
 
 def _specialist(company,name):
-    name=_name(name)
+    name=normalize_recruitment_specialist_name(name)
     if not name:return None
     existing=RecruitmentSpecialist.objects.filter(company=company,name__iexact=name).first()
     return existing or RecruitmentSpecialist.objects.create(company=company,name=name)
@@ -106,6 +107,7 @@ def _rejected_stage(data):
 
 
 def _record(sheet,row_number,data,stage,date_keys):
+    data={**data,'responsible_hr':normalize_recruitment_specialist_name(data.get('responsible_hr'))}
     details=next((data.get(key,'') for key in ('rejection','notes','readiness','customer_approval','security_result') if data.get(key)), '')
     return {'sheet':sheet,'row':row_number,'stage':stage,'stage_label':STAGE_LABELS[stage],'event_date':_latest_date(data,date_keys),
         'position':data.get('position',''),'construction_site':data.get('construction_site',''),
@@ -190,7 +192,8 @@ def import_sheet(user,file):
         for record in sorted(records,key=lambda item:(item['event_date'],SOURCE_SHEETS.index(item['sheet']),item['row'])):
             profile.update({field:value for field,value in record['data'].items() if field in PROFILE_KEYS and value})
         source=dict(row.source_data or {}) if row else {}
-        source.update(profile);source.update({'full_name':name,'source_sheet':current['sheet'],'funnel_stage':current['stage'],
+        source.update(profile);source['responsible_hr']=normalize_recruitment_specialist_name(source.get('responsible_hr'))
+        source.update({'full_name':name,'source_sheet':current['sheet'],'funnel_stage':current['stage'],
             'funnel_sources':sorted(records,key=lambda item:(item['event_date'],item['sheet'],item['row']),reverse=True)})
         operational=bool(row and list(row.vacancy_candidates.all()))
         stage=row.stage if operational else current['stage']

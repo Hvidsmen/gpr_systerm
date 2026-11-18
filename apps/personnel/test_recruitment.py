@@ -488,6 +488,39 @@ class RecruitmentTests(TestCase):
         self.client.force_login(self.recruiter);page=self.client.get(reverse('personnel:recruitment_pool'))
         self.assertContains(page,'Монтажник');self.assertContains(page,'КТП');self.assertContains(page,'Уфа')
         self.assertContains(page,reverse('personnel:recruitment_pool_import'))
+    def test_import_discards_dates_and_excel_errors_from_responsible_hr(self):
+        from datetime import date
+        from openpyxl import Workbook
+        from .models import RecruitmentSpecialist,TalentPoolCandidate
+        from .talent_pool_import import HEADERS,import_sheet
+        workbook=Workbook();sheet=workbook.active;sheet.title='Магазин 2026';sheet.append(HEADERS)
+        for number,name,responsible in ((1,'Кандидат с датой',date(2026,1,30)),(2,'Кандидат с ошибкой','#REF!')):
+            values=['']*len(HEADERS)
+            values[0]=number;values[1]=name;values[2]='Монтажник';values[3]='КТП';values[15]=responsible
+            sheet.append(values)
+        payload=BytesIO();workbook.save(payload);payload.seek(0)
+        self.assertEqual(import_sheet(self.recruiter,payload),{'created':2,'updated':0,'skipped':0})
+        self.assertFalse(RecruitmentSpecialist.objects.exists())
+        for candidate in TalentPoolCandidate.objects.all():
+            self.assertIsNone(candidate.responsible_hr)
+            self.assertEqual(candidate.source_data['responsible_hr'],'')
+            self.assertEqual(candidate.source_data['funnel_sources'][0]['data']['responsible_hr'],'')
+    def test_cleanup_migration_removes_existing_invalid_responsible_hr_values(self):
+        from importlib import import_module
+        from django.apps import apps
+        from .models import RecruitmentSpecialist,TalentPoolCandidate
+        specialist=RecruitmentSpecialist(company=self.company,name='2026-02-12')
+        RecruitmentSpecialist.objects.bulk_create([specialist])
+        candidate=TalentPoolCandidate.objects.create(company=self.company,full_name='Кандидат с мусором',
+            responsible_hr=specialist,created_by=self.recruiter,
+            source_data={'responsible_hr':'2026-02-12','funnel_sources':[{'data':{'responsible_hr':'#REF!'}}]})
+        migration=import_module('apps.personnel.migrations.0050_cleanup_invalid_recruitment_specialists')
+        migration.clean_invalid_specialists(apps,None)
+        candidate.refresh_from_db()
+        self.assertIsNone(candidate.responsible_hr)
+        self.assertEqual(candidate.source_data['responsible_hr'],'')
+        self.assertEqual(candidate.source_data['funnel_sources'][0]['data']['responsible_hr'],'')
+        self.assertFalse(RecruitmentSpecialist.objects.exists())
     def test_workbook_import_unifies_all_funnel_sheets_and_history(self):
         from datetime import datetime
         from openpyxl import Workbook

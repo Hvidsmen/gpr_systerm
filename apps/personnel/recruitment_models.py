@@ -1,4 +1,5 @@
 """Recruitment requests and candidates; neither is a production employee."""
+import re
 from pathlib import Path
 from uuid import uuid4
 from django.conf import settings
@@ -31,6 +32,21 @@ RECRUITMENT_TERMINAL_STAGES={'REJECTED','WITHDRAWN','NOT_REQUIRED','NO_SHOW'}
 RECRUITMENT_SYSTEM_STAGES={'TRANSFERRED','ARRIVAL_APPROVED','ARRIVED'}
 POOL_UNAVAILABLE_STAGES=RECRUITMENT_TERMINAL_STAGES|RECRUITMENT_SYSTEM_STAGES
 
+INVALID_RECRUITMENT_SPECIALIST_NAMES={'нет','не назначен','ответственный hr','фио','nan','none','null'}
+RECRUITMENT_SPECIALIST_DATE_RE=re.compile(
+    r'(?:\d{4}[-./]\d{1,2}[-./]\d{1,2}|\d{1,2}[-./]\d{1,2}[-./]\d{4})(?:[ t]\d{1,2}:\d{2}(?::\d{2})?)?'
+)
+
+
+def normalize_recruitment_specialist_name(value):
+    """Return a human HR name, discarding spreadsheet errors, dates and placeholders."""
+    name=' '.join(str(value or '').split())
+    folded=name.casefold()
+    if (not name or folded in INVALID_RECRUITMENT_SPECIALIST_NAMES or name.startswith('#')
+            or RECRUITMENT_SPECIALIST_DATE_RE.fullmatch(name) or not any(character.isalpha() for character in name)):
+        return ''
+    return name
+
 
 class RecruitmentStorage(FileSystemStorage):
     @property
@@ -58,8 +74,8 @@ class RecruitmentSpecialist(PersonnelModel):
     def __str__(self):return self.name
     def clean(self):
         super().clean()
-        self.name=' '.join((self.name or '').split())
-        if not self.name:raise ValidationError({'name':'Укажите ФИО или краткое имя HR.'})
+        self.name=normalize_recruitment_specialist_name(self.name)
+        if not self.name:raise ValidationError({'name':'Укажите корректное ФИО или краткое имя HR.'})
         if self.user_id and self.user.company_id!=self.company_id:raise ValidationError({'user':'Пользователь другой компании.'})
 
 
