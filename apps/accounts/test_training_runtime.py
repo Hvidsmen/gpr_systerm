@@ -5,9 +5,10 @@ from datetime import datetime, timezone as dt_timezone, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch, MagicMock
+from django.core.management.base import CommandError
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
-from .training_runtime import child_environment, snapshot, copy_files, Manager
+from .training_runtime import child_environment, snapshot, copy_files, prepare_database, Manager
 from .models import TrainingCopy
 
 
@@ -60,6 +61,40 @@ class TrainingStorageTests(SimpleTestCase):
                 with self.assertRaises(ImproperlyConfigured):root()
         with override_settings(TRAINING_ROOT=Path('relative-training')):
             with self.assertRaises(ImproperlyConfigured):root()
+
+    def test_mssql_source_is_exported_for_isolated_sqlite_builder(self):
+        generation=self.path/'generation';generation.mkdir()
+        source=MagicMock();source.vendor='microsoft'
+        with patch('apps.accounts.training_runtime.connections',{'default':source}),\
+                patch('core.management.commands.prepare_mssql_copy.dump_fixture') as dump:
+            dump.side_effect=lambda _alias,target:target.write_text('[]')
+            command,fixture=prepare_database(self.path,generation)
+        self.assertEqual(command,['build_training_copy','--fixture',str(generation/'portal-data.json')])
+        self.assertEqual(fixture,generation/'portal-data.json')
+        dump.assert_called_once_with('default',generation/'portal-data.json')
+
+    def test_unsupported_source_database_is_rejected(self):
+        source=MagicMock();source.vendor='postgresql'
+        with patch('apps.accounts.training_runtime.connections',{'default':source}):
+            with self.assertRaisesMessage(RuntimeError,'SQLite или Microsoft SQL Server'):
+                prepare_database(self.path,self.path/'generation')
+
+    def test_training_fixture_builder_runs_only_inside_its_generation(self):
+        from apps.accounts.management.commands.build_training_copy import Command
+        fixture=self.path/'portal-data.json';fixture.write_text('[]')
+        database=MagicMock();database.vendor='sqlite'
+        with override_settings(TRAINING_MODE=True,CONFIG_DIR=self.path),\
+                patch('apps.accounts.management.commands.build_training_copy.connection',database),\
+                patch('apps.accounts.management.commands.build_training_copy.call_command') as call:
+            Command().handle(fixture=str(fixture))
+        self.assertEqual([item.args[0] for item in call.call_args_list],
+            ['migrate','flush','loaddata','prepare_training_copy'])
+        outside=self.path.parent/'outside-training-fixture.json';outside.write_text('[]')
+        self.addCleanup(outside.unlink,missing_ok=True)
+        with override_settings(TRAINING_MODE=True,CONFIG_DIR=self.path),\
+                patch('apps.accounts.management.commands.build_training_copy.connection',database):
+            with self.assertRaisesMessage(CommandError,'внутри создаваемой учебной копии'):
+                Command().handle(fixture=str(outside))
 
 
 class TrainingScheduleTests(TestCase):

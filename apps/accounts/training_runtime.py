@@ -60,6 +60,28 @@ def snapshot(source, target):
                 raise RuntimeError('Учебный снимок не прошёл проверку SQLite.')
 
 
+def prepare_database(control, generation):
+    """Create a private SQLite database and return its preparation command."""
+    control=Path(control).resolve();generation=Path(generation).resolve()
+    if generation.parent != control:
+        raise RuntimeError('Учебная база должна создаваться внутри папки своей группы.')
+    source = connections['default']
+    target = generation / 'db.sqlite3'
+    if source.vendor == 'sqlite':
+        snapshot(source.settings_dict['NAME'], target)
+        return ['prepare_training_copy'], None
+    if source.vendor in {'microsoft', 'mssql'}:
+        from core.management.commands.prepare_mssql_copy import dump_fixture
+        fixture = generation / 'portal-data.json'
+        # The production connection is read-only for this operation. The
+        # fixture is loaded by a separate process that receives no MSSQL,
+        # LDAP, SMTP or update credentials.
+        dump_fixture('default', fixture)
+        fixture.chmod(0o600)
+        return ['build_training_copy', '--fixture', str(fixture)], fixture
+    raise RuntimeError('Основная база должна использовать SQLite или Microsoft SQL Server.')
+
+
 def copy_files(source, target):
     source = Path(source).resolve(); target = Path(target).resolve()
     if not source.exists():
@@ -136,14 +158,17 @@ class Manager:
         TrainingCopy.objects.filter(pk=group.pk).update(state='RESETTING',error='')
         activated = False
         try:
-            source = connections['default'].settings_dict
-            if source['ENGINE'] != 'django.db.backends.sqlite3':
-                raise RuntimeError('Автоматические учебные копии поддерживают SQLite.')
-            snapshot(source['NAME'],generation/'db.sqlite3')
+            preparation, sensitive_fixture = prepare_database(control, generation)
             copy_files(settings.MEDIA_ROOT,generation/'media')
             copy_files(settings.ACTUATION_FILES_ROOT,generation/'private_uploads'/'actuation')
-            result = subprocess.run([sys.executable,str(Path(settings.BASE_DIR)/'manage.py'),'prepare_training_copy'],
-                cwd=settings.BASE_DIR,env=child_environment(control,generation),capture_output=True,text=True,timeout=180)
+            try:
+                result = subprocess.run([sys.executable,str(Path(settings.BASE_DIR)/'manage.py'),*preparation],
+                    cwd=settings.BASE_DIR,env=child_environment(control,generation),capture_output=True,text=True,timeout=900)
+            finally:
+                # The fixture temporarily contains production password hashes
+                # and encrypted settings. Never retain it after the isolated
+                # database process has consumed it (or failed).
+                if sensitive_fixture is not None:sensitive_fixture.unlink(missing_ok=True)
             rotate_output(control/'prepare.log')
             with (control/'prepare.log').open('a',encoding='utf-8') as output:
                 output.write(result.stdout+result.stderr)
