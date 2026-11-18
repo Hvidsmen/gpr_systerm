@@ -105,7 +105,17 @@ class StagingUpdateViewTests(TestCase):
         with singleton(self.root / '.runtime/staging-supervisor.lock'):
             response=self.client.get(self.url)
             self.assertFalse(response.context['update']['can_refresh'])
-            self.assertContains(response,'Фоновый обработчик работает на предыдущей версии')
+            self.assertContains(response,'Портал работает на новой версии')
+
+    def test_stale_supervisor_does_not_mask_a_real_update_error(self):
+        atomic_json(self.root / '.runtime/staging-supervisor.json',
+                    {'features':['refresh-data'],'revision':'0'*40})
+        atomic_json(self.root / '.runtime/staging-update.json',
+                    {'state':'error','failed_stage':'preparing','finished_at':'2026-11-18T01:00:00Z'})
+        with singleton(self.root / '.runtime/staging-supervisor.lock'):
+            response=self.client.get(self.url)
+            self.assertContains(response,'Подготовка новой версии не завершена')
+            self.assertNotContains(response,'Портал работает на новой версии')
 
     def test_mssql_test_enables_safe_database_refresh(self):
         self.refresh_ready();self.config.update(database_engine='mssql',mssql={'host':'MSK-DB2','name':'YDS_PORTAL_TEST'})

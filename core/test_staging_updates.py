@@ -83,6 +83,32 @@ class StagingWebRuntimeTests(SimpleTestCase):
         self.assertIs(result,new)
         self.assertEqual([call.args[0] for call in stop.call_args_list],[old])
 
+    def test_healthy_selected_worker_completes_only_interrupted_final_update(self):
+        self.current.update(revision='b'*40)
+        response=Mock(status=200,headers={'X-Portal-Environment':'staging','X-Portal-Version':('b'*12)})
+        response.__enter__=Mock(return_value=response);response.__exit__=Mock(return_value=False)
+        opener=Mock();opener.open.return_value=response
+        job={**self.job(),'state':'error','failed_stage':'applying'}
+        atomic_json(self.root/'.runtime/staging-update.json',job)
+        with patch.object(updates,'build_opener',return_value=opener):
+            self.assertTrue(updates.reconcile_installed_update(self.root))
+        stored=json.loads((self.root/'.runtime/staging-update.json').read_text())
+        self.assertEqual(stored['state'],'done');self.assertNotIn('failed_stage',stored)
+
+    def test_worker_reconciliation_never_hides_unsafe_or_unrelated_failure(self):
+        self.current.update(revision='b'*40)
+        for job in [
+                {**self.job(),'state':'error','failed_stage':'stopping'},
+                {**self.job(),'state':'error','failed_stage':'applying','revision':'c'*40},
+                {**self.job(),'state':'error','failed_stage':'applying','kind':'refresh'}]:
+            atomic_json(self.root/'.runtime/staging-update.json',job)
+            with patch.object(updates,'build_opener') as probe:
+                self.assertFalse(updates.reconcile_installed_update(self.root))
+            probe.assert_not_called()
+        atomic_json(self.root/'.runtime/staging-recovery.json',{'reason':'synthetic'})
+        atomic_json(self.root/'.runtime/staging-update.json',{**self.job(),'state':'starting'})
+        self.assertFalse(updates.reconcile_installed_update(self.root))
+
     def test_supervisor_bridge_respawns_current_release_on_handoff_exit(self):
         first=Mock();first.poll.return_value=updates.SUPERVISOR_RESTART_EXIT
         first.returncode=updates.SUPERVISOR_RESTART_EXIT;first.stdin=BytesIO()

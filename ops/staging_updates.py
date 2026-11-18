@@ -180,9 +180,9 @@ def state(root):
     refresh_supported=('refresh-data' in features and
                        supervisor.get('revision') == current['revision'])
     if ('refresh-data' in features and supervisor.get('revision') != current['revision']
-            and phase not in BUSY and phase != 'recovery'):
-        message = ('Фоновый обработчик работает на предыдущей версии. '
-                   'Один раз перезапустите задание «YDS Portal Test».')
+            and phase in {'idle','done'}):
+        message = ('Портал работает на новой версии, но фоновый обработчик ещё не перезапущен. '
+                   'Один раз перезапустите задание «YDS Portal Test», чтобы включить обновление данных.')
     return {**progress_summary(job, phase), 'version': current['revision'], 'available': available, 'checked_at': latest.get('checked_at'),
             'branch': BRANCH, 'ready': ready and phase != 'recovery', 'busy': busy, 'state': phase,
             'operation': job.get('kind', 'update'), 'data_generation': generation(current),
@@ -251,6 +251,42 @@ def start_http(root):
     env['GPR_STAGING_PARENT_PIPE'] = '1'
     return subprocess.Popen([current['python'], str(Path(current['code']) / 'ops/staging.py'),
                              'http', '--root', str(root)], env=env, stdin=subprocess.PIPE)
+
+
+def reconcile_installed_update(root, *, timeout=5):
+    """Finish a code-update journal when the selected release proves it is healthy.
+
+    On Windows Task Scheduler can lose the old supervisor after the manifest has
+    been published and the new HTTP worker has started.  The worker is the only
+    process that can safely prove the selected release is actually serving, so
+    it completes only that narrow interrupted state.  Database recovery markers
+    and failures before the manifest switch are never changed here.
+    """
+    from ops.staging import manifest
+    root=Path(root).resolve();current=manifest(root);folder=runtime(root)
+    if any((folder/name).exists() for name in ('staging-recovery.json','staging-refresh-transaction.json')):
+        return False
+    with singleton(folder/'staging-update-reconcile.lock'):
+        job=read_json(folder/'staging-update.json',{})
+        allowed=(job.get('state')=='starting' or
+                 job.get('state')=='error' and job.get('failed_stage') in {'applying','starting'})
+        if (not allowed or job.get('kind','update')!='update' or job.get('branch')!=BRANCH or
+                job.get('revision')!=current['revision'] or job.get('owner_id')!=current['owner_id']):
+            return False
+        opener=build_opener(ProxyHandler({}));deadline=time.monotonic()+timeout
+        while time.monotonic()<deadline:
+            try:
+                with opener.open(f"http://127.0.0.1:{current['port']}/accounts/login/",timeout=1) as response:
+                    healthy=(response.status==200 and response.headers.get('X-Portal-Environment')=='staging' and
+                             response.headers.get('X-Portal-Version')==current['revision'][:12])
+                if healthy:
+                    job.pop('failed_stage',None);job.pop('failed_detail',None)
+                    record_progress(root,job,'done')
+                    return True
+            except OSError:
+                pass
+            time.sleep(.1)
+    return False
 
 
 def needs_supervisor_handoff():

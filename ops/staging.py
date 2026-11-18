@@ -285,6 +285,14 @@ def serve_http(root):
             threading.Thread(target=monitor_parent, daemon=True).start()
         atomic_json(runtime / 'status.json', {'state': 'running', 'revision': state['revision'], 'port': state['port']})
         try:
+            # If Task Scheduler dropped the old supervisor after publishing this
+            # release, the healthy replacement worker can safely finish the
+            # interrupted update journal itself.
+            from ops.staging_updates import reconcile_installed_update
+            reconcile_installed_update(root)
+        except Exception:
+            logging.exception('Could not reconcile the installed TEST update journal; HTTP remains available.')
+        try:
             while thread.is_alive() and not stop.exists() and not parent_gone.is_set():thread.join(.5)
         finally:
             server.close(); server.task_dispatcher.shutdown(timeout=90); thread.join(timeout=10)
