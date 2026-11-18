@@ -71,14 +71,29 @@ class StagingWebRuntimeTests(SimpleTestCase):
         self.assertEqual(json.loads((self.root/'.runtime/staging-update.json').read_text())['state'],'done')
         self.assertFalse(archive.exists())
 
-    def test_supervisor_handoff_executes_selected_release_with_isolated_environment(self):
+    def test_windows_update_requests_supervisor_handoff_after_verified_start(self):
+        archive=self.root/'download.zip';archive.write_bytes(b'synthetic archive')
+        old,new=Mock(),Mock()
+        with patch.object(updates,'download',return_value=archive),\
+                patch.object(staging,'prepare_update',return_value=self.prepared()),\
+                patch.object(updates,'stop_http') as stop,patch.object(staging,'update'),\
+                patch.object(updates,'start_http',return_value=new),patch.object(updates,'wait_http'),\
+                patch.object(updates,'needs_supervisor_handoff',return_value=True):
+            result=updates.process_job(self.root,old,self.job(),self.event)
+        self.assertIs(result,updates.SUPERVISOR_RESTART)
+        self.assertEqual([call.args[0] for call in stop.call_args_list],[old,new])
+
+    def test_supervisor_bridge_respawns_current_release_on_handoff_exit(self):
+        first=Mock();first.poll.return_value=updates.SUPERVISOR_RESTART_EXIT
+        first.returncode=updates.SUPERVISOR_RESTART_EXIT;first.stdin=BytesIO()
+        second=Mock();second.poll.return_value=0;second.returncode=0;second.stdin=BytesIO()
         environment={'PATH':'synthetic'}
-        with patch.object(staging,'environment',return_value=environment),patch.object(updates.os,'execve') as execute:
-            updates.restart_supervisor(self.root)
+        with patch.object(staging,'environment',return_value=environment),\
+                patch.object(updates.subprocess,'Popen',side_effect=[first,second]) as launch:
+            updates.bridge_supervisor(self.root,self.event)
+        self.assertEqual(launch.call_count,2)
         self.assertEqual(environment['GPR_STAGING_PARENT_PIPE'],'1')
-        self.assertEqual(execute.call_args.args[0],'python')
-        self.assertEqual(execute.call_args.args[1],
-                         ['python',str(self.root/'ops/staging.py'),'serve','--root',str(self.root)])
+        self.assertEqual(environment['GPR_STAGING_HANDOFF_PARENT'],'1')
 
     def test_failed_migration_restarts_restored_version_and_cleans_only_new_candidate(self):
         archive=self.root/'download.zip';archive.touch();release=self.root/'.runtime/releases'/('b'*40)

@@ -241,13 +241,18 @@ def serve(root):
         finally:
             if child.stdin:child.stdin.close()
         return
-    from ops.staging_updates import supervise
+    from ops.staging_updates import SUPERVISOR_RESTART_EXIT,bridge_supervisor,supervise
     parent_gone = threading.Event()
     if os.environ.get('GPR_STAGING_PARENT_PIPE') == '1':
         def monitor_parent():
             sys.stdin.buffer.read(1); parent_gone.set()
         threading.Thread(target=monitor_parent, daemon=True).start()
-    supervise(root, parent_gone)
+    if supervise(root,parent_gone):
+        # A smart bridge can respawn the newly selected release while the
+        # Task Scheduler continues tracking one persistent process tree.
+        if os.environ.get('GPR_STAGING_HANDOFF_PARENT')=='1':
+            sys.exit(SUPERVISOR_RESTART_EXIT)
+        bridge_supervisor(root,parent_gone)
 
 
 def serve_http(root):

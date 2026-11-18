@@ -15,6 +15,8 @@ from ops.windows_runtime import atomic_json, read_json, singleton
 
 REPOSITORY = 'Hvidsmen/gpr_systerm'
 BRANCH = 'codex/staging-portal-20261102'
+SUPERVISOR_RESTART = object()
+SUPERVISOR_RESTART_EXIT = 75
 BUSY = {'queued', 'downloading', 'preparing', 'stopping', 'applying', 'starting', 'backing_up', 'copying', 'sanitizing', 'swapping'}
 STAGES = {'queued': 'Задание принято', 'downloading': 'Скачивание выбранной версии',
           'preparing': 'Подготовка и проверка версии; тест продолжает работать',
@@ -251,14 +253,29 @@ def start_http(root):
                              'http', '--root', str(root)], env=env, stdin=subprocess.PIPE)
 
 
-def restart_supervisor(root):
-    """Overlay the stale supervisor with the newly selected TEST release."""
+def needs_supervisor_handoff():
+    return os.name == 'nt'
+
+
+def bridge_supervisor(root, parent_gone):
+    """Keep the scheduled task alive while selected releases replace its worker."""
     from ops.staging import manifest, environment
-    current = manifest(root)
-    env = environment(root)
-    env['GPR_STAGING_PARENT_PIPE'] = '1'
-    os.execve(current['python'], [current['python'], str(Path(current['code']) / 'ops/staging.py'),
-                                 'serve', '--root', str(Path(root).resolve())], env)
+    root=Path(root).resolve();stop=runtime(root)/'server.stop'
+    while not parent_gone.is_set() and not stop.exists():
+        current=manifest(root);env=environment(root)
+        env.update(GPR_STAGING_PARENT_PIPE='1',GPR_STAGING_HANDOFF_PARENT='1')
+        child=subprocess.Popen([current['python'],str(Path(current['code'])/'ops/staging.py'),
+                                'serve','--root',str(root)],env=env,stdin=subprocess.PIPE)
+        while child.poll() is None and not parent_gone.is_set() and not stop.exists():
+            parent_gone.wait(.25)
+        if child.poll() is None:
+            stop_http(child,graceful_timeout=150)
+            return
+        code=child.returncode
+        if child.stdin and not child.stdin.closed:child.stdin.close()
+        if code==SUPERVISOR_RESTART_EXIT:continue
+        if code:raise RuntimeError(f'Обработчик тестового портала завершился с кодом {code}.')
+        return
 
 
 def stop_http(child, *, graceful_timeout=115, terminate_timeout=15, kill_timeout=15):
@@ -338,13 +355,13 @@ def process_job(root, child, job, parent_gone):
         stopped = False
         wait_http(root, child, parent_gone)
         progress('done')
-        # The supervisor imported code before this update. On Windows replace
-        # it with the selected release so subsequent data refreshes cannot run
-        # through stale safety rules. The persistent parent pipe is retained.
-        if os.name == 'nt':
+        # The supervisor imported code before this update. On Windows release
+        # its lock and hand control to the selected release without letting the
+        # scheduled task (and its parent pipe) finish.
+        if needs_supervisor_handoff():
             stopped = True
             stop_http(child)
-            restart_supervisor(root)  # does not return on success
+            return SUPERVISOR_RESTART
     except Exception:
         logging.exception('Acceptance web update failed')
         recovery = (runtime(root) / 'staging-recovery.json').exists()
@@ -408,6 +425,7 @@ def supervise(root, parent_gone):
     from ops.staging import manifest
     root = Path(root).resolve()
     stop = runtime(root) / 'server.stop'
+    restart=False
     with singleton(runtime(root) / 'staging-supervisor.lock'):
         stop.unlink(missing_ok=True)
         previous = read_json(runtime(root) / 'staging-update.json', {})
@@ -428,10 +446,14 @@ def supervise(root, parent_gone):
                     raise RuntimeError('HTTP-процесс теста завершился.')
                 job = read_json(runtime(root) / 'staging-update.json', {})
                 if job.get('state') == 'queued':
-                    child = (process_refresh if job.get('kind') == 'refresh' else process_job)(root, child, job, parent_gone)
+                    result=(process_refresh if job.get('kind') == 'refresh' else process_job)(root,child,job,parent_gone)
+                    if result is SUPERVISOR_RESTART:
+                        child=None;restart=True;break
+                    child=result
                 parent_gone.wait(.5)
         finally:
             try:
-                stop_http(child)
+                if child is not None:stop_http(child)
             finally:
                 (runtime(root) / 'staging-supervisor.json').unlink(missing_ok=True)
+    return restart
