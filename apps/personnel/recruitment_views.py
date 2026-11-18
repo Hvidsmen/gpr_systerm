@@ -8,8 +8,10 @@ from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_http_methods, require_POST, require_GET
 from core.permissions import require_roles, role_code
+from apps.projects.models import ConstructionObject
+from apps.resources.models import Position
 from .models import (RecruitmentRequest,RecruitmentCandidate,ArrivalPreparation,CandidateDocument,TalentPoolCandidate,
-    TalentPoolStageEvent,MovementReviewRequest)
+    TalentPoolStageEvent,MovementReviewRequest,Camp)
 from . import recruitment as service
 from .recruitment_forms import (RequestForm,CandidateForm,ArrivalForm,RevisionForm,ReasonForm,TalentPoolForm,
     TalentPoolImportForm,BulkArrivalCommonForm,BulkArrivalRowForm,RecruiterAssignmentForm)
@@ -90,9 +92,18 @@ def error(form,exc):form.add_error(None,'; '.join(exc.messages) if isinstance(ex
 @require_GET
 def request_list(request):
     require_roles(request.user,service.READ)
+    def selected_ids(name):
+        return sorted({int(value) for value in request.GET.getlist(name) if value.isdigit()})
+    selected_position_ids=selected_ids('position');selected_camp_ids=selected_ids('camp')
+    selected_object_ids=selected_ids('project')
     rows=requests_for(request.user)
     query=request.GET.get('q','').strip()
     if query:rows=rows.filter(Q(position__icontains=query)|Q(construction_object__name__icontains=query)|Q(candidates__full_name__icontains=query)).distinct()
+    if selected_position_ids:
+        rows=rows.filter(Q(position_ref_id__in=selected_position_ids)|Q(candidates__pool_candidate__position_id__in=selected_position_ids)).distinct()
+    if selected_object_ids:
+        rows=rows.filter(Q(construction_object_id__in=selected_object_ids)|Q(candidates__pool_candidate__construction_object_id__in=selected_object_ids)).distinct()
+    if selected_camp_ids:rows=rows.filter(candidates__pool_candidate__camp_id__in=selected_camp_ids).distinct()
     if request.GET.get('mine')=='1':rows=rows.filter(assigned_to=request.user)
     state=request.GET.get('state','active')
     if state=='cancelled':rows=rows.filter(cancelled_at__isnull=False)
@@ -107,6 +118,13 @@ def request_list(request):
         Prefetch('vacancy_candidates',queryset=applications))
     if query:candidates=candidates.filter(Q(full_name__icontains=query)|Q(phone__icontains=query)|
         Q(vacancy_candidates__request__position__icontains=query)|Q(vacancy_candidates__request__construction_object__name__icontains=query)).distinct()
+    if selected_position_ids:
+        candidates=candidates.filter(Q(position_id__in=selected_position_ids)|
+            Q(vacancy_candidates__request__position_ref_id__in=selected_position_ids)).distinct()
+    if selected_object_ids:
+        candidates=candidates.filter(Q(construction_object_id__in=selected_object_ids)|
+            Q(vacancy_candidates__request__construction_object_id__in=selected_object_ids)).distinct()
+    if selected_camp_ids:candidates=candidates.filter(camp_id__in=selected_camp_ids)
     candidate_rows=list(candidates.values('pk','full_name','stage','position_id','position__name','construction_object__name','source_data'))
     candidate_ids=[row['pk'] for row in candidate_rows]
     application_rows=list(RecruitmentCandidate.objects.filter(company=request.user.company,pool_candidate_id__in=candidate_ids).order_by(
@@ -130,10 +148,22 @@ def request_list(request):
     if selected_stages is not None:candidates=candidates.filter(stage__in=selected_stages)
     candidate_page=Paginator(candidates.order_by('-updated_at','full_name','pk'),30).get_page(request.GET.get('candidate_page'))
     params=request.GET.copy();params.pop('page',None)
+    funnel_params=request.GET.copy();funnel_params.pop('candidate_stage',None);funnel_params.pop('candidate_page',None);funnel_params.pop('page',None)
+    position_options=Position.objects.filter(company=request.user.company).order_by('name','pk')
+    camp_options=Camp.objects.filter(company=request.user.company).order_by('name','pk')
+    object_rows=list(ConstructionObject.objects.filter(company=request.user.company).select_related('project','parent').order_by('project__name','name','pk'))
+    objects_by_id={row.pk:row for row in object_rows};object_options=[]
+    for row in object_rows:
+        names=[row.name];parent_id=row.parent_id;seen={row.pk}
+        while parent_id and parent_id not in seen and parent_id in objects_by_id:
+            seen.add(parent_id);parent=objects_by_id[parent_id];names.append(parent.name);parent_id=parent.parent_id
+        object_options.append({'pk':row.pk,'label':f'{row.project.name} → {" → ".join(reversed(names))}'})
     return render(request,'personnel/recruitment_list.html',{**context(request.user),'page':page,'filter_query':query,'filter_state':state,
         'pagination_query':params.urlencode(),'candidate_page':candidate_page,'funnel_groups':groups,'candidate_stage':selected_group,
         'candidate_total':candidate_total,'candidate_position_count':candidate_position_count,'position_summary':position_summary,
-        'candidate_stage_choices':TalentPoolCandidate._meta.get_field('stage').choices})
+        'candidate_stage_choices':TalentPoolCandidate._meta.get_field('stage').choices,'position_options':position_options,
+        'camp_options':camp_options,'object_options':object_options,'selected_position_ids':selected_position_ids,
+        'selected_camp_ids':selected_camp_ids,'selected_object_ids':selected_object_ids,'funnel_query':funnel_params.urlencode()})
 
 
 @login_required

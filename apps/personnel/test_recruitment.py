@@ -571,6 +571,33 @@ class RecruitmentTests(TestCase):
         self.assertEqual([person['full_name'] for person in rejected_summary['Водитель']['visible_people']],[unattached.full_name])
         self.assertContains(rejected,'data-position-toggle',html=False);self.assertContains(rejected,unattached.full_name)
 
+    def test_shop_filters_candidates_by_multiple_positions_camps_and_projects(self):
+        first=self.candidate(status='SCREENING',ready_on=None);first.pool_candidate.camp=self.camp
+        first.pool_candidate.save(update_fields=['camp','updated_at'])
+        driver=Position.objects.create(company=self.company,name='Водитель фильтра',code='driver-filter')
+        second_object=ConstructionObject.objects.create(company=self.company,project=self.project,name='Второй объект фильтра')
+        second_camp=Camp.objects.create(company=self.company,name='Второй ВЖГ фильтра')
+        second_request=service.save_request(self.dispatch,self.values(construction_object=second_object,
+            position_ref=driver,position=driver.name,quantity=1))
+        second=self.candidate(second_request,status='SCREENING',ready_on=None);second.pool_candidate.camp=second_camp
+        second.pool_candidate.save(update_fields=['camp','updated_at'])
+        self.client.force_login(self.recruiter);url=reverse('personnel:recruitment_list')
+        response=self.client.get(url,{'position':[self.position.pk,driver.pk],'camp':[self.camp.pk,second_camp.pk],
+            'project':[self.obj.pk,second_object.pk]})
+        self.assertEqual(response.context['candidate_total'],2)
+        self.assertEqual(response.context['selected_position_ids'],sorted([self.position.pk,driver.pk]))
+        self.assertContains(response,'name="position" multiple',html=False)
+        self.assertContains(response,'name="camp" multiple',html=False)
+        self.assertContains(response,'name="project" multiple',html=False)
+        self.assertContains(response,'Проект → КТП');self.assertContains(response,'Второй объект фильтра')
+        self.assertContains(response,f'position={self.position.pk}&amp;position={driver.pk}',html=False)
+        only_first=self.client.get(url,{'position':[self.position.pk],'camp':[self.camp.pk],'project':[self.obj.pk]})
+        self.assertEqual(only_first.context['candidate_total'],1)
+        self.assertContains(only_first,first.full_name);self.assertNotContains(only_first,second.full_name)
+        only_second=self.client.get(url,{'position':[driver.pk],'camp':[second_camp.pk],'project':[second_object.pk]})
+        self.assertEqual(only_second.context['candidate_total'],1)
+        self.assertContains(only_second,second.full_name);self.assertNotContains(only_second,first.full_name)
+
     def test_full_candidate_card_can_be_loaded_and_saved_inline(self):
         from .models import TalentPoolStageEvent
         candidate=self.candidate(status='MANAGER_APPROVAL',ready_on=None);pool=candidate.pool_candidate
