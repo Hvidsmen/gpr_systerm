@@ -581,13 +581,29 @@ class RecruitmentTests(TestCase):
         page=self.client.get(reverse('personnel:recruitment_list'))
         for label in ('Заявки на подбор','Готовы к заезду','Банк сотрудников','Добавить кандидата','Создать заявку','Пул кандидатов'):
             self.assertContains(page,label)
-        self.assertContains(page,reverse('personnel:new_employee_arrivals'))
+        self.assertContains(page,reverse('personnel:recruitment_ready'))
+        self.assertNotContains(page,f'href="{reverse("personnel:new_employee_arrivals")}"',html=False)
         self.assertContains(page,reverse('personnel:recruitment_requests'))
         self.client.force_login(self.recruiter)
         recruiter_page=self.client.get(reverse('personnel:recruitment_list'))
         self.assertContains(recruiter_page,'recruitment-section-tab-pool',html=False)
-        self.assertNotContains(recruiter_page,'Готовы к заезду')
+        self.assertContains(recruiter_page,reverse('personnel:recruitment_ready'))
         self.assertNotContains(recruiter_page,'Создать заявку')
+
+    def test_ready_for_arrival_tab_filters_by_pool_card_checkbox(self):
+        from .models import TalentPoolCandidate
+        ready=TalentPoolCandidate.objects.create(company=self.company,full_name='Готовый к заезду',stage='SCREENING',
+            position=self.position,construction_object=self.obj,ready_for_arrival=True,ready_for_arrival_on=self.day,
+            created_by=self.recruiter)
+        waiting=TalentPoolCandidate.objects.create(company=self.company,full_name='Ещё не готов',stage='SCREENING',
+            position=self.position,construction_object=self.obj,created_by=self.recruiter)
+        self.client.force_login(self.recruiter)
+        page=self.client.get(reverse('personnel:recruitment_ready'))
+        self.assertEqual(page.status_code,200);self.assertEqual(page.context['recruitment_page'],'ready')
+        self.assertEqual(page.context['candidate_total'],1)
+        self.assertContains(page,'Карточки банка сотрудников, в которых установлен флажок «Готов к заезду»')
+        self.assertContains(page,ready.full_name);self.assertNotContains(page,waiting.full_name)
+        self.assertContains(page,'Все готовые');self.assertContains(page,'data-candidate-inline-target',html=False)
 
     def test_shop_compares_position_plan_with_every_funnel_tab_and_exact_request(self):
         from .models import TalentPoolCandidate

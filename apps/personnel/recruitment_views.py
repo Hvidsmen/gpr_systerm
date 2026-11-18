@@ -125,7 +125,7 @@ def specialist_edit(request,pk=None):
 @require_GET
 def request_list(request,recruitment_page='bank'):
     require_roles(request.user,service.READ)
-    recruitment_page='requests' if recruitment_page=='requests' else 'bank'
+    recruitment_page=recruitment_page if recruitment_page in {'requests','ready'} else 'bank'
     def selected_ids(name):
         return sorted({int(value) for value in request.GET.getlist(name) if value.isdigit()})
     selected_position_ids=selected_ids('position');selected_camp_ids=selected_ids('camp')
@@ -159,8 +159,12 @@ def request_list(request,recruitment_page='bank'):
         candidates=candidates.filter(Q(construction_object_id__in=selected_object_ids)|
             Q(vacancy_candidates__request__construction_object_id__in=selected_object_ids)).distinct()
     if selected_camp_ids:candidates=candidates.filter(camp_id__in=selected_camp_ids)
+    if recruitment_page=='ready':candidates=candidates.filter(ready_for_arrival=True)
     candidate_rows=list(candidates.values('pk','full_name','stage','position_id','position__name','construction_object__name','source_data'))
     candidate_ids=[row['pk'] for row in candidate_rows]
+    if recruitment_page=='ready':
+        plan_rows=list(rows.filter(candidates__pool_candidate_id__in=candidate_ids).distinct().values(
+            'position_ref_id','position_ref__name','position','quantity'))
     application_rows=list(RecruitmentCandidate.objects.filter(company=request.user.company,pool_candidate_id__in=candidate_ids).order_by(
         'pool_candidate_id','-created_at','-pk').values('pool_candidate_id','request_id','request__position_ref_id','request__position_ref__name',
             'request__position','request__construction_object__name'))
