@@ -493,6 +493,8 @@ class RecruitmentTests(TestCase):
         self.client.force_login(self.recruiter)
         shop=self.client.get(reverse('personnel:recruitment_list'))
         self.assertContains(shop,'Кандидаты по этапам');self.assertContains(shop,'План найма · заявки на подбор')
+        self.assertContains(shop,'href="#recruitment-requests"')
+        self.assertContains(shop,'id="recruitment-requests"')
         self.assertContains(shop,'Согласование руководителя');self.assertContains(shop,reverse('personnel:recruitment_candidate_card',args=[pool.pk]))
         self.assertContains(shop,reverse('personnel:recruitment_candidate_stage',args=[pool.pk]))
         self.assertContains(shop,'data-candidate-stage-form')
