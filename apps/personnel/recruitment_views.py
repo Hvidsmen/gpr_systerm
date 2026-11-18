@@ -173,6 +173,30 @@ def candidate_card(request,pk):
 
 
 @login_required
+@require_http_methods(['GET','POST'])
+def candidate_inline(request,pk):
+    require_roles(request.user,service.READ)
+    row=get_object_or_404(TalentPoolCandidate,company=request.user.company,pk=pk)
+    can_edit=role_code(request.user) in service.RECRUIT
+    if request.method=='POST':require_roles(request.user,service.RECRUIT)
+    previous_stage=row.stage
+    form=TalentPoolForm(request.POST if request.method=='POST' else None,company=request.user.company,user=request.user,instance=row)
+    saved=False
+    if request.method=='POST' and form.is_valid():
+        with transaction.atomic():
+            row=form.save()
+            if previous_stage!=row.stage:
+                TalentPoolStageEvent.objects.create(company=request.user.company,candidate=row,from_stage=previous_stage,
+                    to_stage=row.stage,actor=request.user,note=form.cleaned_data.get('stage_reason','').strip())
+        saved=True;form=TalentPoolForm(company=request.user.company,user=request.user,instance=row)
+    if not can_edit:
+        for field in form.fields.values():field.disabled=True
+    status=422 if request.method=='POST' and not saved else 200
+    return render(request,'personnel/_recruitment_candidate_inline.html',{
+        'row':row,'form':form,'can_edit':can_edit,'saved':saved},status=status)
+
+
+@login_required
 @require_POST
 def candidate_stage_update(request,pk):
     require_roles(request.user,service.RECRUIT)

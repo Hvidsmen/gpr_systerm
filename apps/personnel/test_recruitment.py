@@ -556,6 +556,8 @@ class RecruitmentTests(TestCase):
         self.assertContains(shop,'План и воронка по должностям');self.assertContains(shop,'Последняя заявка:')
         self.assertContains(shop,'data-position-details-action="expand"',html=False);self.assertContains(shop,'data-position-details-action="collapse"',html=False)
         self.assertContains(shop,'data-position-toggle',html=False);self.assertContains(shop,'aria-expanded="true"',html=False)
+        self.assertContains(shop,'data-candidate-inline-toggle',html=False)
+        self.assertContains(shop,reverse('personnel:recruitment_candidate_inline',args=[candidate.pool_candidate_id]))
         self.assertContains(shop,f'№{candidate.request_id} · Монтажник · {self.obj}')
         self.assertContains(shop,'Не прикреплён к заявке');self.assertNotContains(shop,'План найма: 1')
         pool=self.client.get(reverse('personnel:recruitment_pool'))
@@ -566,6 +568,50 @@ class RecruitmentTests(TestCase):
         self.assertNotIn('Монтажник',rejected_summary)
         self.assertEqual([person['full_name'] for person in rejected_summary['Водитель']['visible_people']],[unattached.full_name])
         self.assertContains(rejected,'data-position-toggle',html=False);self.assertContains(rejected,unattached.full_name)
+
+    def test_full_candidate_card_can_be_loaded_and_saved_inline(self):
+        from .models import TalentPoolStageEvent
+        candidate=self.candidate(status='MANAGER_APPROVAL',ready_on=None);pool=candidate.pool_candidate
+        self.client.force_login(self.recruiter)
+        url=reverse('personnel:recruitment_candidate_inline',args=[pool.pk])
+        response=self.client.get(url)
+        self.assertEqual(response.status_code,200)
+        self.assertContains(response,'data-candidate-inline-form',html=False)
+        self.assertContains(response,'name="passport"',html=False)
+        self.assertContains(response,'name="position"',html=False)
+        self.assertContains(response,'name="construction_object"',html=False)
+        self.assertContains(response,'name="responsible_hr"',html=False)
+        self.assertContains(response,'Сохранить карточку')
+        response=self.client.post(url,{
+            'full_name':'Изменённый кандидат','stage':'SCREENING','stage_reason':'Повторная проверка',
+            'position':self.position.pk,'construction_object':self.obj.pk,'camp':self.camp.pk,
+            'phone':'89990000000','birth_date':'1990-02-03','passport':'1234 567890',
+            'base_city':self.base_city.pk,'new_base_city':'','ready_for_arrival_on':'',
+            'manager_approved_on':'','security_approved_on':'','medical_exam_on':'','skzi_until':'',
+            'pass_documents':'','responsible_hr':'','agency':'','notes':'Изменено на главной'})
+        self.assertEqual(response.status_code,200);self.assertContains(response,'Карточка сохранена.')
+        pool.refresh_from_db()
+        self.assertEqual((pool.full_name,pool.stage,pool.phone, pool.notes),
+            ('Изменённый кандидат','SCREENING','89990000000','Изменено на главной'))
+        self.assertEqual(pool.position,self.position);self.assertEqual(pool.construction_object,self.obj)
+        event=TalentPoolStageEvent.objects.get(candidate=pool)
+        self.assertEqual((event.from_stage,event.to_stage,event.note),
+            ('MANAGER_APPROVAL','SCREENING','Повторная проверка'))
+
+    def test_inline_candidate_card_is_read_only_outside_recruitment_role_and_company_scoped(self):
+        from .models import TalentPoolCandidate
+        candidate=self.candidate(status='NEW',ready_on=None);pool=candidate.pool_candidate
+        url=reverse('personnel:recruitment_candidate_inline',args=[pool.pk])
+        self.client.force_login(self.dispatch)
+        response=self.client.get(url)
+        self.assertEqual(response.status_code,200);self.assertNotContains(response,'Сохранить карточку')
+        self.assertContains(response,'disabled',html=False)
+        self.assertEqual(self.client.post(url,{'full_name':'Нельзя изменить'}).status_code,403)
+        foreign_pool=TalentPoolCandidate.objects.create(company=self.other,full_name='Чужой кандидат',
+            position=Position.objects.create(company=self.other,name='Чужая должность',code='foreign-inline'),
+            construction_object=ConstructionObject.objects.create(company=self.other,project=Project.objects.create(
+                company=self.other,name='Чужой проект'),name='Чужой объект'),created_by=self.foreign)
+        self.assertEqual(self.client.get(reverse('personnel:recruitment_candidate_inline',args=[foreign_pool.pk])).status_code,404)
 
     def test_recruiter_changes_pool_stage_inline_in_both_directions(self):
         from .models import TalentPoolStageEvent

@@ -140,7 +140,7 @@ def check_route(user, match, method):
     if role == 'RECRUITER':
         require_roles(user, {'RECRUITER'})
         own_account = namespace == 'accounts' and (name in {'settings','logout','password_change','access_pending','impersonation_stop'} or name == 'user_detail' and match.kwargs.get('pk') == user.pk)
-        recruitment_routes = namespace == 'personnel' and name in {'recruitment_list','recruitment_detail','recruitment_candidate_create','recruitment_candidate_edit','recruitment_candidate_card','recruitment_candidate_stage','recruitment_handoff','recruitment_document','recruitment_pool','recruitment_pool_create','recruitment_pool_edit','recruitment_pool_import'}
+        recruitment_routes = namespace == 'personnel' and name in {'recruitment_list','recruitment_detail','recruitment_candidate_create','recruitment_candidate_edit','recruitment_candidate_card','recruitment_candidate_inline','recruitment_candidate_stage','recruitment_handoff','recruitment_document','recruitment_pool','recruitment_pool_create','recruitment_pool_edit','recruitment_pool_import'}
         if own_account or recruitment_routes or namespace == 'dashboard' and name == 'index' and method in {'GET','HEAD'}:return
         raise PermissionDenied('Роль «Подбор персонала» работает с заявками и кандидатами.')
     if namespace == 'personnel' and name.startswith('recruitment_'):
