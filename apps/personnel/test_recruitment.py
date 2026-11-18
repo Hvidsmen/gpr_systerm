@@ -548,6 +548,8 @@ class RecruitmentTests(TestCase):
         summary={row['position']:row for row in shop.context['position_summary']}
         montage=summary['Монтажник'];self.assertEqual((montage['request_count'],montage['required'],montage['candidate_count']),(1,2,1))
         self.assertEqual(montage['counts']['work'],1);self.assertEqual(montage['counts']['rejected'],0)
+        self.assertEqual([(person['pk'],person['full_name'],person['request_id']) for person in montage['visible_people']],
+            [(candidate.pool_candidate_id,candidate.full_name,candidate.request_id)])
         self.assertEqual(summary['Водитель']['counts']['rejected'],1)
         groups={row['value']:row for row in shop.context['funnel_groups']}
         self.assertEqual((shop.context['candidate_position_count'],groups['work']['position_count'],groups['rejected']['position_count']),(2,1,1))
@@ -557,6 +559,11 @@ class RecruitmentTests(TestCase):
         pool=self.client.get(reverse('personnel:recruitment_pool'))
         self.assertContains(pool,f'№{candidate.request_id} · Монтажник · {self.obj}');self.assertContains(pool,'Не прикреплён')
         self.assertContains(pool,unattached.full_name)
+        rejected=self.client.get(reverse('personnel:recruitment_list'),{'candidate_stage':'rejected'})
+        rejected_summary={row['position']:row for row in rejected.context['position_summary']}
+        self.assertNotIn('Монтажник',rejected_summary)
+        self.assertEqual([person['full_name'] for person in rejected_summary['Водитель']['visible_people']],[unattached.full_name])
+        self.assertContains(rejected,'Люди по должности:');self.assertContains(rejected,unattached.full_name)
 
     def test_recruiter_changes_pool_stage_inline_in_both_directions(self):
         from .models import TalentPoolStageEvent

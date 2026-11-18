@@ -31,11 +31,11 @@ def _position_name(value):return ' '.join((value or '').split())
 
 def _position_funnel_summary(candidate_rows,request_rows,application_rows):
     """Compare the vacancy plan with one current funnel card per person."""
-    result={};canonical_by_name={};latest_application={}
+    result={};canonical_by_name={};latest_application={};stage_labels=dict(TalentPoolCandidate._meta.get_field('stage').choices)
     def ensure(key,label):
         if key not in result:
             result[key]={'position':label or 'Должность не указана','request_count':0,'required':0,'candidate_count':0,
-                'counts':{value:0 for value,_,_ in FUNNEL_GROUPS}}
+                'counts':{value:0 for value,_,_ in FUNNEL_GROUPS},'people':[]}
         return result[key]
     for row in request_rows:
         label=_position_name(row['position_ref__name'] or row['position'])
@@ -52,6 +52,12 @@ def _position_funnel_summary(candidate_rows,request_rows,application_rows):
             position_id=row['position_id'];label=_position_name(row['position__name'] or (row['source_data'] or {}).get('position',''))
         key=('position',position_id) if position_id else canonical_by_name.get(label.casefold(),('name',label.casefold()))
         item=ensure(key,label);item['candidate_count']+=1
+        item['people'].append({'pk':row['pk'],'full_name':row['full_name'],'stage':row['stage'],'stage_label':stage_labels[row['stage']],
+            'construction_object':(application['request__construction_object__name'] if application else
+                row['construction_object__name'] or (row['source_data'] or {}).get('construction_site','')),
+            'request_id':application['request_id'] if application else None,
+            'request_position':application['request__position'] if application else '',
+            'request_object':application['request__construction_object__name'] if application else ''})
         if label:all_positions.add(key)
         for value,_,stages in FUNNEL_GROUPS:
             if row['stage'] in stages:
@@ -61,6 +67,7 @@ def _position_funnel_summary(candidate_rows,request_rows,application_rows):
     rows=[]
     for item in result.values():
         item['groups']=[{'value':value,'count':item['counts'][value]} for value,_,_ in FUNNEL_GROUPS]
+        item['people'].sort(key=lambda person:person['full_name'].casefold())
         rows.append(item)
     rows.sort(key=lambda item:(item['position']=='Должность не указана',item['position'].casefold()))
     return rows,len(all_positions),{value:len(keys) for value,keys in group_positions.items()}
@@ -100,18 +107,26 @@ def request_list(request):
         Prefetch('vacancy_candidates',queryset=applications))
     if query:candidates=candidates.filter(Q(full_name__icontains=query)|Q(phone__icontains=query)|
         Q(vacancy_candidates__request__position__icontains=query)|Q(vacancy_candidates__request__construction_object__name__icontains=query)).distinct()
-    candidate_rows=list(candidates.values('pk','stage','position_id','position__name','source_data'))
+    candidate_rows=list(candidates.values('pk','full_name','stage','position_id','position__name','construction_object__name','source_data'))
     candidate_ids=[row['pk'] for row in candidate_rows]
     application_rows=list(RecruitmentCandidate.objects.filter(company=request.user.company,pool_candidate_id__in=candidate_ids).order_by(
-        'pool_candidate_id','-created_at','-pk').values('pool_candidate_id','request__position_ref_id','request__position_ref__name','request__position'))
+        'pool_candidate_id','-created_at','-pk').values('pool_candidate_id','request_id','request__position_ref_id','request__position_ref__name',
+            'request__position','request__construction_object__name'))
     position_summary,candidate_position_count,group_position_counts=_position_funnel_summary(candidate_rows,plan_rows,application_rows)
     candidate_total=len(candidate_rows)
     selected_group=request.GET.get('candidate_stage','')
+    selected_stages=next((stages for value,_,stages in FUNNEL_GROUPS if value==selected_group),None)
+    opened_people=False
+    for position in position_summary:
+        position['visible_people']=[person for person in position['people'] if selected_stages is None or person['stage'] in selected_stages]
+        position['visible_count']=len(position['visible_people'])
+        position['open_people']=bool(position['visible_people']) and not opened_people
+        if position['open_people']:opened_people=True
+    if selected_stages is not None:position_summary=[position for position in position_summary if position['visible_people']]
     groups=[]
     for value,label,stages in FUNNEL_GROUPS:
         groups.append({'value':value,'label':label,'count':sum(row['stage'] in stages for row in candidate_rows),
             'position_count':group_position_counts[value],'active':selected_group==value})
-    selected_stages=next((stages for value,_,stages in FUNNEL_GROUPS if value==selected_group),None)
     if selected_stages is not None:candidates=candidates.filter(stage__in=selected_stages)
     candidate_page=Paginator(candidates.order_by('-updated_at','full_name','pk'),30).get_page(request.GET.get('candidate_page'))
     params=request.GET.copy();params.pop('page',None)
