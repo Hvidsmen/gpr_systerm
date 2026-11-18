@@ -65,6 +65,20 @@ class StagingUpdateViewTests(TestCase):
             self.assertEqual(json.loads((self.root/'.runtime/staging-update.json').read_text())['id'],job['id'])
         self.assertFalse((self.root/'.runtime/update.request').exists())
 
+    def test_ajax_refresh_is_accepted_without_redirect_before_http_stops(self):
+        self.refresh_ready()
+        with singleton(self.root/'.runtime/staging-supervisor.lock'):
+            token=self.client.get(self.url).context['refresh_token']
+            response=self.client.post(self.url,{'action':'refresh','refresh_token':token,'confirm_replace':'yes'},
+                                      HTTP_X_REQUESTED_WITH='XMLHttpRequest',HTTP_ACCEPT='application/json')
+        self.assertEqual(response.status_code,202)
+        payload=response.json()
+        self.assertTrue(payload['ok'])
+        self.assertEqual(payload['status']['operation'],'refresh')
+        self.assertEqual(payload['status']['state'],'queued')
+        self.assertEqual(payload['status']['stage_total'],7)
+        self.assertNotIn('Location',response)
+
     def test_refresh_rejects_tampered_wrong_instance_and_replayed_generation(self):
         self.refresh_ready()
         with singleton(self.root / '.runtime/staging-supervisor.lock'):
@@ -185,8 +199,9 @@ class StagingUpdateViewTests(TestCase):
             job.update(state='done',finished_at='2026-11-04T07:02:05+00:00');atomic_json(self.root/'.runtime/staging-update.json',job)
             status=self.client.get(self.status_url).json();self.assertEqual(status['progress'],100);self.assertEqual(status['elapsed_seconds'],125)
             self.assertTrue(all(step['state']=='complete' for step in status['steps']))
-            page=self.client.get(self.url);self.assertContains(page,'data-test-progress');self.assertContains(page,'staging-update-initial');self.assertContains(page,'20261104-progress')
+            page=self.client.get(self.url);self.assertContains(page,'data-test-progress');self.assertContains(page,'staging-update-initial');self.assertContains(page,'20261118-maintenance')
             self.assertContains(page,'Полоса показывает завершённые этапы')
+            self.assertContains(page,'Замена данных может занять до 15 минут')
 
     def test_data_refresh_uses_seven_stages_and_old_launcher_metadata_works(self):
         job={'kind':'refresh','state':'starting','created_at':'2026-11-04T07:00:00Z','updated_at':'2026-11-04T07:00:20Z'}

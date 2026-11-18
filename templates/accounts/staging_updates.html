@@ -1,6 +1,6 @@
 {% extends 'base.html' %}{% load static %}
 {% block title %}Обновление тестового портала — ЯДС ОС{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'accounts/staging_updates.css' %}?v=20261104-progress">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'accounts/staging_updates.css' %}?v=20261118-maintenance">{% endblock %}
 {% block content %}
 <h1>Обновление тестового портала</h1>
 <p>Здесь можно отдельно обновить версию портала или заменить тестовые данные свежей копией рабочих.</p>
@@ -36,10 +36,10 @@
       <label class="form-check mb-3"><input class="form-check-input" type="checkbox" name="confirm_replace" value="yes" required data-test-confirm><span class="form-check-label">Подтверждаю замену тестовой базы и документов свежими рабочими данными.</span></label>
       <button class="btn btn-outline-danger" data-refresh-allowed="{% if update.can_refresh %}true{% else %}false{% endif %}" disabled>Обновить данные с основного портала</button>
     </form>
-    <p class="small text-muted mt-3 mb-0">Тест временно остановится. Перед заменой YDS_PORTAL_TEST создаётся резервная копия MSSQL. После завершения войдите заново с прежним тестовым паролем. YDS_PORTAL используется только как источник чтения.</p>
+    <p class="small text-muted mt-3 mb-0">Тест временно остановится. Замена данных может занять до 15 минут; в это время страница продолжит ждать запуск автоматически. Не перезапускайте задание «YDS Portal Test» и не запускайте обновление повторно. Перед заменой YDS_PORTAL_TEST создаётся резервная копия MSSQL. После завершения войдите заново с прежним тестовым паролем. YDS_PORTAL используется только как источник чтения.</p>
     <a class="btn btn-outline-primary mt-2" href="{% url 'accounts:login' %}" data-test-login hidden>Войти в тестовый портал</a>
   </section>
 </section>
 <p class="small text-muted mt-3">Источник: тестовая ветка <code>{{ update.branch }}</code>. Рабочий портал на порту 8001 продолжает работать.</p>
 {% endblock %}
-{% block extra_js %}{{ update|json_script:'staging-update-initial' }}<script src="{% static 'accounts/staging_updates.js' %}?v=20261104-progress" defer></script>{% endblock %}
+{% block extra_js %}{{ update|json_script:'staging-update-initial' }}<script src="{% static 'accounts/staging_updates.js' %}?v=20261118-maintenance" defer></script>{% endblock %}

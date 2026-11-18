@@ -28,18 +28,21 @@ def owner_root(request):
 def updates(request):
     root = owner_root(request)
     if request.method == 'POST':
+        ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+        response_message = ''
+        response_status = 202
         try:
             action = request.POST.get('action')
             if action == 'check':
                 updater.check_release(root)
-                messages.success(request, 'Проверка тестовой ветки завершена.')
+                response_message = 'Проверка тестовой ветки завершена.'
             elif action == 'update':
                 selected = signing.loads(request.POST.get('version_token', ''), salt=SALT, max_age=3600)
                 if selected['instance'] != settings.STAGING_CONFIG['instance']:
                     raise ValueError('Выбранная версия относится к другой тестовой установке.')
                 updater.enqueue(root, revision=selected['revision'], from_revision=selected['from_revision'],
                                 owner_id=request.user.pk)
-                messages.success(request, 'Обновление тестового портала принято. Можно закрыть страницу.')
+                response_message = 'Обновление тестового портала принято. Можно закрыть страницу.'
             elif action == 'refresh':
                 if request.POST.get('confirm_replace') != 'yes':
                     raise ValueError('Подтвердите замену тестовой базы и документов.')
@@ -48,16 +51,25 @@ def updates(request):
                     raise ValueError('Подтверждение относится к другой тестовой установке.')
                 updater.enqueue_refresh(root, from_revision=selected['revision'],
                                         data_generation=selected['data_generation'], owner_id=request.user.pk)
-                messages.success(request, 'Обновление данных принято. После завершения войдите с прежним тестовым паролем.')
+                response_message = 'Обновление данных принято. После завершения войдите с прежним тестовым паролем.'
             else:
                 raise ValueError('Выберите действие на странице обновления теста.')
         except (signing.BadSignature, KeyError, TypeError):
-            messages.error(request, 'Выбор версии устарел. Повторите проверку обновлений.')
+            response_message = 'Выбор версии устарел. Повторите проверку обновлений.'
+            response_status = 400
         except ValueError as exc:
-            messages.error(request, str(exc))
+            response_message = str(exc)
+            response_status = 400
         except Exception:
             logging.exception('Acceptance update request failed')
-            messages.error(request, 'Не удалось связаться с GitHub или обработчиком теста. Повторите попытку; журнал — .runtime/server.log.')
+            response_message = 'Не удалось связаться с GitHub или обработчиком теста. Повторите попытку; журнал — .runtime/server.log.'
+            response_status = 503
+        if ajax:
+            payload = {'ok': response_status < 400, 'message': response_message}
+            if response_status < 400:
+                payload['status'] = updater.state(root)
+            return JsonResponse(payload, status=response_status)
+        (messages.success if response_status < 400 else messages.error)(request, response_message)
         return redirect('accounts:portal_updates')
     status = updater.state(root)
     token = signing.dumps({'instance': settings.STAGING_CONFIG['instance'], 'revision': status['available'],

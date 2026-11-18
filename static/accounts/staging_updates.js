@@ -29,7 +29,7 @@
     }
   }
   function renderProgress(status) {
-    box.classList.remove('is-unconfirmed');
+    box.classList.remove('is-unconfirmed','is-maintenance');
     panel.querySelector('[data-test-stage-time-caption]').textContent = 'На этапе:';
     const value = Math.max(0, Math.min(100, Number(status.progress)||0));
     track.setAttribute('aria-valuenow', String(value));
@@ -53,19 +53,48 @@
   }
   function unavailable(text, auth = false) {
     confirmed = false;
+    const maintenance = !auth && wasActive && last.busy;
     panel.querySelector('[data-test-stage-time-caption]').textContent = 'Последний известный этап:';
-    box.classList.add('is-unconfirmed');bar.classList.remove('progress-bar-animated');
-    track.setAttribute('aria-valuetext','Последний подтверждённый этап; текущее состояние недоступно.');
+    box.classList.add('is-unconfirmed');
+    if (maintenance) {
+      box.classList.add('is-maintenance');
+      bar.className = 'progress-bar progress-bar-striped progress-bar-animated';
+      bar.style.width = '100%';
+      track.removeAttribute('aria-valuenow');
+      track.setAttribute('aria-valuetext','Тестовый портал временно остановлен; обновление продолжается в фоне.');
+    } else {
+      box.classList.remove('is-maintenance');bar.classList.remove('progress-bar-animated');
+      track.setAttribute('aria-valuetext','Последний подтверждённый этап; текущее состояние недоступно.');
+    }
     panel.querySelector('[data-test-step]').textContent = last.stage_number ? `Последний подтверждённый этап: ${last.stage_number} из ${last.stage_total}` : 'Состояние не подтверждено';
-    message.className = 'alert alert-warning';message.textContent = text;
-    connection.textContent = auth ? 'Состояние не подтверждено. Войдите владельцем теста и откройте обновление заново.' : 'Связь с тестовым порталом потеряна. Ждём его запуска и повторяем проверку автоматически; полоса не продвигается без ответа сервера.';
+    message.className = 'alert alert-warning';
+    message.textContent = maintenance
+      ? 'Тестовый портал временно остановлен для безопасного обновления. Операция идёт в фоне и может занять до 15 минут. Не перезапускайте задание и не запускайте обновление повторно.'
+      : text;
+    connection.textContent = auth ? 'Состояние не подтверждено. Войдите владельцем теста и откройте обновление заново.' : maintenance ? 'Страница сама повторяет проверку и обновится после запуска теста.' : 'Связь с тестовым порталом потеряна. Ждём его запуска и повторяем проверку автоматически.';
     check.disabled = update.disabled = refresh.disabled = true;
     if (auth) {login.hidden = false;stopped = true;}
   }
   confirm.addEventListener('change', () => {refresh.disabled = !confirmed || !last.can_refresh || !panel.querySelector('[name="refresh_token"]').value || !confirm.checked;});
-  panel.querySelectorAll('form').forEach(form => form.addEventListener('submit', () => {
+  panel.querySelectorAll('form').forEach(form => form.addEventListener('submit', async event => {
     check.disabled = update.disabled = refresh.disabled = true;
     message.textContent = form.hasAttribute('data-test-check') ? 'Проверяем тестовую ветку…' : 'Передаём задание серверу…';
+    if (form.hasAttribute('data-test-check')) return;
+    event.preventDefault();
+    const operation = form.hasAttribute('data-test-refresh') ? 'refresh' : 'update';
+    last = {...last, operation, busy:true};wasActive = true;
+    try {
+      const response = await fetch(location.href,{method:'POST',body:new FormData(form),credentials:'same-origin',cache:'no-store',headers:{'Accept':'application/json','X-Requested-With':'XMLHttpRequest'}});
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) throw new Error(payload.message || 'Задание не принято.');
+      if (payload.status) {last=payload.status;receivedAt=performance.now();renderProgress(last);}
+      message.className='alert alert-info';message.textContent=payload.message;
+      connection.textContent='Задание принято. Страница сама дождётся запуска теста.';
+      clearTimeout(timer);timer=setTimeout(poll,500);
+    } catch (error) {
+      message.className='alert alert-danger';message.textContent=error.message || 'Не удалось передать задание.';
+      clearTimeout(timer);timer=setTimeout(poll,1000);
+    }
   }));
   async function poll() {
     if (running || stopped) return;
