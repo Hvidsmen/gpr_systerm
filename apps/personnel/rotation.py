@@ -156,6 +156,8 @@ def rotation_stats(rows):
     people=[row for row in rows if row.get('person')]
     return {'people':len(people),'present':sum(bool(row.get('verified')) for row in people),
         'on_shift':sum(row['state']=='MV' for row in people),'rest':sum(row['state']=='MO' for row in people),
+        'arriving':sum(bool(row.get('arriving')) for row in people),
+        'departing':sum(bool(row.get('departing')) for row in people),
         'working':sum(is_work(_day_code(row)) for row in people),
         'travelling':sum(_day_code(row)=='ДП' for row in people),
         'no_schedule':sum(not _day_code(row) for row in people),

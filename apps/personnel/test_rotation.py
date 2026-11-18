@@ -99,16 +99,20 @@ class RotationTests(TestCase):
         self.assertEqual(len(rows),1);self.assertEqual(stats['on_shift'],1);self.assertEqual(stats['present'],1)
         self.assertEqual(stats['working'],0);self.assertEqual(stats['no_schedule'],1)
 
-    def test_header_fact_and_total_cards_use_same_filtered_rows_without_plan(self):
+    def test_header_fact_and_summary_cards_use_same_filtered_rows_without_plan(self):
         StaffingSlot.objects.create(company=self.company,group=self.group,person=self.second_person,housing_camp=self.a,status='МО',calendar={str(self.day):'ДП'})
         StaffingSlot.objects.create(company=self.company,group=self.group,housing_camp=self.a,pattern=self.pattern)
         page=self.client.get(reverse('personnel:housing'),{'camp':self.a.pk,'date':str(self.day)})
-        self.assertContains(page,'План и факт');self.assertContains(page,'В работе');self.assertContains(page,'В пути')
-        for key in ['working','travelling','people','on_shift','rest','vacancies','no_schedule']:
+        self.assertContains(page,'Состав персонала');self.assertContains(page,'Назначено сотрудников');self.assertContains(page,'Открытых вакансий')
+        for key in ['working','travelling','people','on_shift','rest','vacancies','arriving','departing','no_schedule']:
             self.assertEqual(sum(g[key] for g in page.context['position_groups']),page.context['rotation_stats'][key])
         self.assertContains(page,'data-position-fact-value="working">0</dd>',html=False)
+        self.assertContains(page,'data-rotation-total="people">2</strong>',html=False)
+        self.assertContains(page,'data-summary-completion>—</strong>',html=False)
         filtered=self.client.get(reverse('personnel:housing'),{'camp':self.a.pk,'date':str(self.day),'state':'TRAVEL'})
         self.assertEqual(filtered.context['rotation_stats']['people'],1);self.assertEqual(filtered.context['position_groups'][0]['travelling'],1)
+        self.assertEqual(filtered.context['housing_summary']['assigned'],2)
+        self.assertEqual(filtered.context['housing_summary']['on_shift'],1)
 
     def test_calendar_work_codes_count_people_and_ignore_rest_zero_and_blank(self):
         for code,working,travel,missing in [('МВ',1,0,0),('10',1,0,0),(8.5,1,0,0),('0',0,0,0),(0,0,0,0),('В',0,0,0),('МО',0,0,0),(' дп ',0,1,0),('',0,0,1)]:
@@ -126,12 +130,12 @@ class RotationTests(TestCase):
 
     def test_actual_arrivals_departures_and_transfers_are_scoped_to_selected_day(self):
         CampStay.objects.create(company=self.company,person=self.second_person,camp=self.a,arrived_on=self.day)
-        rows,_,_=rotation_rows(self.company,[self.a],self.day,state='ARRIVING')
-        self.assertEqual([r['person'].pk for r in rows],[self.second_person.pk])
+        rows,_,stats=rotation_rows(self.company,[self.a],self.day,state='ARRIVING')
+        self.assertEqual([r['person'].pk for r in rows],[self.second_person.pk]);self.assertEqual(stats['arriving'],1)
         self.stay.departed_on=self.day;self.stay.save()
         CampStay.objects.create(company=self.company,person=self.person,camp=self.b,arrived_on=self.day)
-        rows,_,_=rotation_rows(self.company,[self.a],self.day,state='DEPARTING')
-        self.assertEqual([r['person'].pk for r in rows],[self.person.pk]);self.assertEqual(rows[0]['departure_camp'],self.a)
+        rows,_,stats=rotation_rows(self.company,[self.a],self.day,state='DEPARTING')
+        self.assertEqual([r['person'].pk for r in rows],[self.person.pk]);self.assertEqual(rows[0]['departure_camp'],self.a);self.assertEqual(stats['departing'],1)
         self.assertEqual(rotation_rows(self.company,[self.a],self.day+timedelta(days=1),state='DEPARTING')[0],[])
 
     def test_departure_critical_filters_have_explicit_fourteen_day_boundary(self):

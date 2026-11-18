@@ -208,6 +208,33 @@ def position_headers(company,rows,plan_context,*,query='',position=None,state=''
     return output
 
 
+def summary_metrics(stats,position_groups,months):
+    """Build dashboard totals without treating a staffing plan as vacancies."""
+    plans=[plan for group in position_groups for plan in group.get('plans',[])]
+
+    def total(kind,index):
+        values=[]
+        for plan in plans:
+            if plan.get('kind')!=kind or index>=len(plan.get('months',[])):continue
+            value=plan['months'][index].get('value')
+            if value is not None:values.append(value)
+        return sum(values,Decimal(0)) if values else None
+
+    current_smg=total('СМГ',0)
+    completion=Decimal(stats['on_shift'])*Decimal(100)/current_smg if current_smg not in (None,0) else None
+    return {
+        'assigned':stats['people'],
+        'current_smg':current_smg,
+        'on_shift':stats['on_shift'],
+        'completion':completion,
+        'vacancies':stats['vacancies'],
+        'arriving':stats['arriving'],
+        'departing':stats['departing'],
+        'rest':stats['rest'],
+        'future_gpr':[{'month':month,'value':total('ГПР',index)} for index,month in enumerate(months[1:4],start=1)],
+    }
+
+
 def roster_sections(position_groups,grouped=False,company=None):
     """Regroup the same filtered positions without duplicating people or plans."""
     from .rotation import rotation_stats

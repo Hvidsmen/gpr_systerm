@@ -307,6 +307,15 @@ def workspace(request, movements=False, movement_page='new'):
         values['position']=None;selector.data=selector.data.copy();selector.data['position']=''
         messages.info(request,'Фильтр должности сброшен: её нет в текущей выборке.')
     rows=filter_position(rows,values.get('position'));rotation_stats=count_rotation(rows)
+    if values.get('state'):
+        summary_rows,_,summary_stats=rotation_rows(request.user.company,selected_camp_list,day,query=values.get('q',''),include_unassigned=not values.get('construction_object') and not values.get('camps'))
+        summary_rows=filter_position(summary_rows,values.get('position'));summary_stats=count_rotation(summary_rows)
+    else:
+        summary_rows=rows;summary_stats=rotation_stats.copy()
+    # Same-day transfers out are absent from the current-camp roster but still
+    # belong in the selected day's departures card.
+    departing_rows,_,_=rotation_rows(request.user.company,selected_camp_list,day,query=values.get('q',''),state='DEPARTING',include_unassigned=not values.get('construction_object') and not values.get('camps'))
+    summary_stats['departing']=len(filter_position(departing_rows,values.get('position')))
     from .rotation import status_indicator
     for row in rows:row['status_tone'],row['status_caption'],row['status_help']=status_indicator(row)
     # The calendar is a forecast through the end of the following year.
@@ -338,9 +347,27 @@ def workspace(request, movements=False, movement_page='new'):
             row['calendar_codes']=[values_calendar.get(str(current),'') for current in calendar_dates]
         return render(request,'personnel/_rotation_calendar.html',{'rows':calendar_page.object_list,'day':day,'calendar_start':calendar_start,'calendar_end':calendar_end,'calendar_dates':calendar_dates,'calendar_months':calendar_months,'calendar_page':calendar_page,'calendar_query':calendar_params.urlencode()})
     events=HousingEvent.objects.filter(company=request.user.company).filter(Q(from_camp__in=selected_camps)|Q(to_camp__in=selected_camps)).select_related('person','from_camp','to_camp','recorded_by')[:50]
-    from .housing_plan import monthly_plan,position_headers
+    from .housing_plan import monthly_plan,position_headers,summary_metrics
     plan_context=monthly_plan(request.user,camp,day,camps=selected_camps,construction_object=values.get('construction_object'))
     position_groups=position_headers(request.user.company,rows,plan_context,query=values.get('q',''),position=values.get('position'),state=values.get('state',''))
+    summary_position_groups=position_headers(request.user.company,summary_rows,plan_context,query=values.get('q',''),position=values.get('position'))
+    plan_context['housing_summary']=summary_metrics(summary_stats,summary_position_groups,plan_context['housing_plan_months'])
+    plan_context['housing_summary_stats']=summary_stats
+    def summary_url(state=''):
+        params=request.GET.copy()
+        for key in ['calendar_fragment','calendar_page','calendar_person','roster_page']:params.pop(key,None)
+        if state:params['state']=state
+        else:params.pop('state',None)
+        query=params.urlencode()
+        return ('?'+query if query else request.path)+'#roster'
+    plan_context['housing_summary_links']={
+        'assigned':summary_url(),
+        'on_shift':summary_url('MV'),
+        'vacancies':summary_url('VACANCY'),
+        'arriving':summary_url('ARRIVING'),
+        'departing':summary_url('DEPARTING'),
+        'rest':summary_url('MO'),
+    }
     def normalized_position(value):return ' '.join(str(value).split()).casefold()
     recruitment_by_position={}
     for recruitment in extra.get('recruitment_requests',[]):
@@ -353,7 +380,7 @@ def workspace(request, movements=False, movement_page='new'):
         if values.get('q') and values['q'].casefold() not in label.casefold() and not any(
             values['q'].casefold() in candidate.full_name.casefold() for recruitment in recruitments for candidate in recruitment.candidates.all()):continue
         position_groups.append({'name':label,'rows':[],'plans':[],'labor_group':'Без группы','assignment_initial':{},
-            'people':0,'working':0,'on_shift':0,'travelling':0,'rest':0,'vacancies':0,'no_schedule':0,'unknown':0,
+            'people':0,'working':0,'on_shift':0,'travelling':0,'rest':0,'vacancies':0,'arriving':0,'departing':0,'no_schedule':0,'unknown':0,
             'uid':len(position_groups)+1})
     for group in position_groups:
         group['recruitment_requests']=recruitment_by_position.get(normalized_position(group['name']),[])

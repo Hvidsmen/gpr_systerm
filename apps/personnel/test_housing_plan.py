@@ -2,6 +2,7 @@ from calendar import monthrange
 from datetime import timedelta
 from decimal import Decimal
 from django.test import TestCase
+from django.urls import reverse
 from apps.planning.models import GlobalPlanVersion,DailySchedule,DailyScheduleEntry
 from apps.projects.models import ConstructionObject
 from .test_housing import HousingTests
@@ -49,6 +50,33 @@ class HousingPlanTests(TestCase):
         self.assertEqual(groups[self.obj.pk,'СМГ']['rows'][0]['values'][0],3)
         self.assertEqual(groups[self.parent.pk,'ГПР']['rows'][0]['values'][0],10)
         self.assertIsNone(groups[self.obj.pk,'СМГ']['rows'][0]['values'][1])
+
+    def test_summary_cards_use_current_smg_future_gpr_and_actual_vacancies(self):
+        from .models import StaffingSlot
+        self.client.force_login(self.hr)
+        smg=DailySchedule.objects.create(company=self.company,construction_object=self.obj,month=self.month,status='APPLIED',revision=1,created_by=self.hr)
+        DailyScheduleEntry.objects.create(schedule=smg,key='labor:summary',kind='labor',label='Монтажник',rows=[{'date':str(self.month+timedelta(days=n)),'brigade_id':self.brigade,'planned_count':'2'} for n in range(monthrange(self.month.year,self.month.month)[1])])
+        StaffingSlot.objects.create(company=self.company,group=self.group,housing_camp=self.a)
+        response=self.client.get(reverse('personnel:housing'),{'camp':self.a.pk})
+        self.assertEqual(response.status_code,200)
+        summary=response.context['housing_summary']
+        self.assertEqual(summary['assigned'],1);self.assertEqual(summary['current_smg'],2)
+        self.assertEqual(summary['on_shift'],1);self.assertEqual(summary['completion'],50)
+        self.assertEqual(summary['vacancies'],1)
+        self.assertEqual([item['value'] for item in summary['future_gpr']],[10,10,10])
+        self.assertContains(response,'data-summary-current-smg>2</strong>',html=False)
+        self.assertContains(response,'data-summary-completion>50%</strong>',html=False)
+        self.assertContains(response,'План ГПР на три следующих месяца')
+
+    def test_summary_completion_is_missing_when_smg_is_zero_or_absent(self):
+        from .housing_plan import summary_metrics
+        months=[add_month(self.month,index) for index in range(5)]
+        stats={'people':1,'on_shift':1,'vacancies':0,'arriving':0,'departing':0,'rest':0}
+        empty=summary_metrics(stats,[],months)
+        self.assertIsNone(empty['current_smg']);self.assertIsNone(empty['completion'])
+        group={'plans':[{'kind':'СМГ','months':[{'value':Decimal(0)}]*5}]}
+        zero=summary_metrics(stats,[group],months)
+        self.assertEqual(zero['current_smg'],0);self.assertIsNone(zero['completion'])
     def test_unknown_plan_is_not_zero_and_december_crosses_year(self):
         self.b.objects_served.remove(self.obj2)
         result=monthly_plan(self.hr,self.b,self.day)
