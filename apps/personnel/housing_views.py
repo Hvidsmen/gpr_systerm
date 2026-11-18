@@ -145,11 +145,17 @@ def workspace(request, movements=False, movement_page='new'):
     extra['rotation_filter']=selector
     scope_pairs=[('construction_object',selector.cleaned_data['construction_object'].pk),
         *[('camps',selected.pk) for selected in selected_camps]]
+    if selector.cleaned_data.get('q'):scope_pairs.append(('q',selector.cleaned_data['q']))
+    if selector.cleaned_data.get('position'):scope_pairs.append(('position',selector.cleaned_data['position'].pk))
     dispatcher_scope_query=urlencode(scope_pairs)
     extra['dispatcher_scope_query']=dispatcher_scope_query
     if movements:
         from .movement_recommendations import build as build_recommendations
-        prepared_recommendations=build_recommendations(request.user.company,timezone.localdate(),camps=selected_camps)
+        recommendation_rows=rotation_rows(request.user.company,list(selected_camps),timezone.localdate(),
+            query=selector.cleaned_data.get('q',''),position=selector.cleaned_data.get('position'),include_unassigned=True)[0]
+        prepared_recommendations=filter_recommendations(
+            build_recommendations(request.user.company,timezone.localdate(),camps=selected_camps,rows=recommendation_rows),
+            selector.cleaned_data.get('q',''),selector.cleaned_data.get('position'))
         extra.update(arrival_recommendation_count=len(prepared_recommendations['ARRIVAL']),
             departure_recommendation_count=len(prepared_recommendations['DEPARTURE']))
     camps=(Camp.objects.filter(company=request.user.company) if movements else scoped(request,Camp)).order_by('name')
@@ -865,6 +871,51 @@ def movement_context(request):
         'new_employee_recommendation_count':len(recruitment_data['new_arrival_recommendations'])}
 
 
+def dispatcher_filter_context(request):
+    """Common project, camp, employee and position filters for dispatcher lists."""
+    from apps.projects.models import ConstructionObject
+    from apps.resources.models import Position
+    project_value=request.GET.get('project','').strip()
+    position_value=request.GET.get('position','').strip()
+    camp_values=request.GET.getlist('camp')
+    project=ConstructionObject.objects.filter(company=request.user.company,pk=project_value).first() if project_value.isdigit() else None
+    position=Position.objects.filter(company=request.user.company,pk=position_value).first() if position_value.isdigit() else None
+    camps=list(Camp.objects.filter(company=request.user.company,pk__in=[value for value in camp_values if value.isdigit()]).order_by('name','pk'))
+    query=' '.join(request.GET.get('q','').split())
+    project_ids=[]
+    if project:
+        project_ids=[project.pk]
+        pairs=list(ConstructionObject.objects.filter(company=request.user.company,project=project.project).values_list('pk','parent_id'))
+        while True:
+            children=[pk for pk,parent_id in pairs if parent_id in project_ids and pk not in project_ids]
+            if not children:break
+            project_ids.extend(children)
+    selected_camp_ids=[camp.pk for camp in camps]
+    return {
+        'dispatcher_filter_query':query,'dispatcher_filter_project':project,'dispatcher_filter_project_ids':project_ids,
+        'dispatcher_filter_position':position,'dispatcher_filter_camps':camps,'dispatcher_filter_camp_ids':selected_camp_ids,
+        'dispatcher_project_options':ConstructionObject.objects.filter(company=request.user.company).select_related('project').order_by('project__name','name','pk'),
+        'dispatcher_camp_options':Camp.objects.filter(company=request.user.company,is_active=True).order_by('name','pk'),
+        'dispatcher_position_options':Position.objects.filter(company=request.user.company).order_by('name','pk'),
+    }
+
+
+def filter_recommendations(recommendations,query='',position=None):
+    """Apply the employee and directory-position part of dispatcher filters."""
+    terms=query.casefold().split()
+    result={}
+    for kind,rows in recommendations.items():
+        filtered=[]
+        for row in rows:
+            person=row['person'];employee=row.get('employee')
+            haystack=' '.join(filter(None,[person.display_name,person.display_employee_number,getattr(employee,'phone','')])).casefold()
+            if terms and not all(term in haystack for term in terms):continue
+            if position and (not employee or employee.position_id!=position.pk):continue
+            filtered.append(row)
+        result[kind]=filtered
+    return result
+
+
 def movement_recommendation_counts(company):
     """Company-wide counters shown consistently in the dispatcher navigation."""
     from .movement_recommendations import build
@@ -876,7 +927,7 @@ def movement_recommendation_counts(company):
 def recruitment_dispatch_data(company):
     from django.db.models import Prefetch
     from .models import RecruitmentRequest,RecruitmentCandidate
-    candidates=RecruitmentCandidate.objects.select_related('request','arrival__movement_request','arrival__camp').order_by('created_at','pk')
+    candidates=RecruitmentCandidate.objects.select_related('request__construction_object','request__position_ref','pool_candidate__camp','arrival__movement_request','arrival__camp').order_by('created_at','pk')
     requests=list(RecruitmentRequest.objects.filter(company=company,cancelled_at__isnull=True,completed_at__isnull=True).select_related(
         'construction_object','assigned_to').prefetch_related(Prefetch('candidates',queryset=candidates)).order_by('required_on','pk'))
     for row in requests:
@@ -900,11 +951,24 @@ def new_employee_arrivals(request):
     movement_access(request)
     from core.permissions import role_code
     from . import recruitment as recruitment_service
-    role=role_code(request.user)
+    role=role_code(request.user);filters=dispatcher_filter_context(request)
+    data=recruitment_dispatch_data(request.user.company)
+    recommendations=[];terms=filters['dispatcher_filter_query'].casefold().split()
+    for candidate in data['new_arrival_recommendations']:
+        request_row=candidate.request;pool=candidate.pool_candidate
+        arrival=getattr(candidate,'arrival',None)
+        camp_id=(pool.camp_id if pool and pool.camp_id else arrival.camp_id if arrival else None)
+        if filters['dispatcher_filter_project_ids'] and request_row.construction_object_id not in filters['dispatcher_filter_project_ids']:continue
+        if filters['dispatcher_filter_camp_ids'] and camp_id not in filters['dispatcher_filter_camp_ids']:continue
+        if filters['dispatcher_filter_position'] and not (request_row.position_ref_id==filters['dispatcher_filter_position'].pk or request_row.position.strip().casefold()==filters['dispatcher_filter_position'].name.strip().casefold()):continue
+        haystack=f'{candidate.full_name} {candidate.phone}'.casefold()
+        if terms and not all(term in haystack for term in terms):continue
+        recommendations.append(candidate)
+    data['new_arrival_recommendations']=recommendations;data['new_employee_recommendation_count']=len(recommendations)
     return render(request,'personnel/new_employee_arrivals.html',{
         'personnel_section':'movements','dispatcher_page':'new_employees','can_dispatch':role in recruitment_service.DISPATCH,
         'can_recruit':role in recruitment_service.RECRUIT,**movement_recommendation_counts(request.user.company),
-        **recruitment_dispatch_data(request.user.company)})
+        **data,**filters})
 
 
 @login_required
@@ -920,13 +984,21 @@ def my_movement_requests(request):
         ('DUDINKA_ARRIVAL','Ожидается прибытие в ОП Дудинка'),('DUDINKA','В ОП Дудинка'),('EN_ROUTE','В пути'),
         ('COMPLETED','Завершено'),('CANCELLED','Отменено')]
     stage=request.GET.get('stage','');stage=stage if stage in dict(stage_choices) else ''
+    filters=dispatcher_filter_context(request)
     query=MovementReviewRequest.objects.filter(company=request.user.company,requested_by=request.user)
     terminal={'COMPLETED','CANCELLED','ACCEPTED'}
     if scope=='active':query=query.exclude(status__in=terminal)
     elif scope=='history':query=query.filter(status__in=terminal)
     if kind:query=query.filter(kind=kind)
-    search=request.GET.get('q','').strip()
+    search=filters['dispatcher_filter_query']
     if search:query=query.filter(Q(person__full_name__icontains=search)|Q(request_number__icontains=search)|Q(base_city__icontains=search))
+    if filters['dispatcher_filter_project_ids']:
+        query=query.filter(Q(construction_object_id__in=filters['dispatcher_filter_project_ids'])|Q(site_object_id__in=filters['dispatcher_filter_project_ids']))
+    if filters['dispatcher_filter_camp_ids']:
+        query=query.filter(Q(to_camp_id__in=filters['dispatcher_filter_camp_ids'])|Q(from_camp_id__in=filters['dispatcher_filter_camp_ids']))
+    if filters['dispatcher_filter_position']:
+        position_name=filters['dispatcher_filter_position'].name
+        query=query.filter(Q(planning_position_name__iexact=position_name)|Q(position_name__iexact=position_name))
     stage_filters={
         'ACTION_REQUIRED':Q(status__in=['OPEN','RETURNED'])|Q(status='EN_ROUTE',kind='ARRIVAL'),
         'APPROVAL':Q(status='PENDING_APPROVAL'),'PROCESSING':Q(status='OPEN'),
@@ -966,8 +1038,15 @@ def my_movement_requests(request):
         elif statuses == {'CANCELLED'}:group['status']='Отменено';group['status_class']='bg-secondary'
         else:group['status']='В работе';group['status_class']='bg-info text-dark'
     active_count=MovementReviewRequest.objects.filter(company=request.user.company,requested_by=request.user).exclude(status__in=terminal).count()
+    filter_pairs=[]
+    if search:filter_pairs.append(('q',search))
+    if filters['dispatcher_filter_project']:filter_pairs.append(('project',filters['dispatcher_filter_project'].pk))
+    filter_pairs.extend(('camp',pk) for pk in filters['dispatcher_filter_camp_ids'])
+    if filters['dispatcher_filter_position']:filter_pairs.append(('position',filters['dispatcher_filter_position'].pk))
+    if kind:filter_pairs.append(('kind',kind))
+    if stage:filter_pairs.append(('stage',stage))
     return render(request,'personnel/my_movement_requests.html',{'personnel_section':'movements','dispatcher_page':'requests',**movement_recommendation_counts(request.user.company),'groups':list(grouped.values()),'scope':scope,'kind':kind,
-        'stage':stage,'stage_choices':stage_choices,'query':search,'active_request_count':active_count,'history_page':history_page})
+        'stage':stage,'stage_choices':stage_choices,'query':search,'movement_filter_query':urlencode(filter_pairs),'active_request_count':active_count,'history_page':history_page,**filters})
 
 
 @login_required

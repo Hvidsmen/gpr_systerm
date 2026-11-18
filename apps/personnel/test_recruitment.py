@@ -154,6 +154,26 @@ class RecruitmentTests(TestCase):
             prep.movement_request.refresh_from_db();self.assertEqual(prep.movement_request.status,'PENDING_APPROVAL')
             self.assertEqual(prep.movement_request.to_camp,self.camp);self.assertEqual(prep.movement_request.construction_object,self.obj)
         self.assertFalse(RecruitmentCandidate.objects.filter(pk__in=[candidate.pk for candidate in candidates],arrival__movement_request__isnull=True).exists())
+
+    def test_new_employee_arrivals_filter_by_project_camp_employee_and_position(self):
+        first=self.candidate();first.pool_candidate.camp=self.camp;first.pool_candidate.save(update_fields=['camp','updated_at'])
+        other_project=Project.objects.create(company=self.company,name='Другой проект')
+        other_object=ConstructionObject.objects.create(company=self.company,project=other_project,name='Другой объект')
+        other_position=Position.objects.create(company=self.company,name='Сварщик',code='welder')
+        other_camp=Camp.objects.create(company=self.company,name='ВЖГ другого проекта')
+        CampObjectLink.objects.create(company=self.company,camp=other_camp,construction_object=other_object)
+        other_request=service.save_request(self.dispatch,self.values(construction_object=other_object,position_ref=other_position,position=other_position.name))
+        second=self.candidate(other_request);second.pool_candidate.camp=other_camp;second.pool_candidate.save(update_fields=['camp','updated_at'])
+        self.client.force_login(self.dispatch)
+        response=self.client.get(reverse('personnel:new_employee_arrivals'),{
+            'project':self.obj.pk,'camp':[self.camp.pk],'q':first.full_name.split()[0],'position':self.position.pk})
+        self.assertEqual(response.status_code,200)
+        self.assertContains(response,'Фильтры новых сотрудников')
+        self.assertContains(response,first.full_name)
+        self.assertNotContains(response,second.full_name)
+        self.assertEqual(response.context['new_employee_recommendation_count'],1)
+        self.assertEqual(response.context['dispatcher_filter_camp_ids'],[self.camp.pk])
+
     @patch('apps.personnel.movement_recommendations.build')
     def test_new_employee_tab_keeps_arrival_and_departure_navigation_counts(self,build):
         build.return_value={'ARRIVAL':[object(),object()],'DEPARTURE':[object()]}

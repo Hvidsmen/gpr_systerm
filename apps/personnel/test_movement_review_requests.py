@@ -256,6 +256,33 @@ class MovementReviewRequestTests(TestCase):
         self.assertEqual(rows[1].approval_comment,'Перенести дату');self.assertIn('Отменено согласующим',rows[1].cancellation_reason)
         self.assertEqual(task.status,'SUPERSEDED')
 
+    def test_my_requests_filter_by_project_camp_employee_and_position(self):
+        day=timezone.localdate()
+        first=MovementReviewRequest.objects.create(company=self.company,person=self.person,kind='ARRIVAL',movement_date=day,
+            to_camp=self.camp,requested_by=self.personnel,status='PENDING_APPROVAL',construction_object=self.obj,
+            planning_position_name=self.position.name,position_name=self.position.name)
+        other_project=Project.objects.create(company=self.company,name='Другой проект заявок')
+        other_object=ConstructionObject.objects.create(company=self.company,project=other_project,name='Другой объект заявок')
+        other_camp=Camp.objects.create(company=self.company,name='Другой ВЖГ заявок')
+        CampObjectLink.objects.create(company=self.company,camp=other_camp,construction_object=other_object)
+        other_position=Position.objects.create(company=self.company,name='Сварщик заявок')
+        other_employee=Employee.objects.create(company=self.company,last_name='Петров',first_name='Пётр',employee_number='review-filter-2',position=other_position)
+        other_person=Person.objects.create(company=self.company,employee=other_employee,full_name=other_employee.display_name,employee_number=other_employee.employee_number)
+        second=MovementReviewRequest.objects.create(company=self.company,person=other_person,kind='ARRIVAL',movement_date=day,
+            to_camp=other_camp,requested_by=self.personnel,status='PENDING_APPROVAL',construction_object=other_object,
+            planning_position_name=other_position.name,position_name=other_position.name)
+        self.client.force_login(self.personnel)
+        response=self.client.get(reverse('personnel:my_movement_requests'),{
+            'project':self.obj.pk,'camp':[self.camp.pk],'q':'Иванов','position':self.position.pk})
+        self.assertEqual(response.status_code,200)
+        self.assertContains(response,'Фильтры моих заявок')
+        self.assertContains(response,self.person.display_name)
+        self.assertNotContains(response,other_person.display_name)
+        visible=[row for group in response.context['groups'] for row in group['items']]
+        self.assertEqual(visible,[first]);self.assertNotIn(second,visible)
+        self.assertIn(f'project={self.obj.pk}',response.context['movement_filter_query'])
+        self.assertIn(f'camp={self.camp.pk}',response.context['movement_filter_query'])
+
     def test_perevakhta_batch_shows_trip_data_state_and_blocks_incomplete_row(self):
         from apps.planning.models import WorkTask
         from .departure_workflow import decide

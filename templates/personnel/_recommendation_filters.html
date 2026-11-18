@@ -2,9 +2,11 @@
 {{ rotation_project_camps|json_script:"rotation-project-camps" }}
 <form method="get" action="{{ request.path }}" class="card card-body mb-3" aria-label="Фильтры рекомендаций" data-rotation-filter>
 <div class="row g-3 align-items-end">
-<div class="col-lg-5"><div class="app-form-label">{{ rotation_filter.construction_object.label_tag }}</div>{{ rotation_filter.construction_object }}{% if rotation_filter.construction_object.errors %}<div class="app-form-errors" role="alert">{{ rotation_filter.construction_object.errors }}</div>{% endif %}</div>
-<div class="col-lg-5"><div class="app-form-label">{{ rotation_filter.camps.label_tag }}</div>{{ rotation_filter.camps }}{% if rotation_filter.camps.errors %}<div class="app-form-errors" role="alert">{{ rotation_filter.camps.errors }}</div>{% endif %}</div>
-<div class="col-lg-2 d-flex gap-2"><button class="btn btn-primary" type="submit">Показать</button><a class="btn btn-outline-secondary" href="{{ request.path }}">Сбросить</a></div>
+<div class="col-lg-3 col-md-6"><div class="app-form-label">{{ rotation_filter.construction_object.label_tag }}</div>{{ rotation_filter.construction_object }}{% if rotation_filter.construction_object.errors %}<div class="app-form-errors" role="alert">{{ rotation_filter.construction_object.errors }}</div>{% endif %}</div>
+<div class="col-lg-3 col-md-6"><div class="app-form-label">{{ rotation_filter.camps.label_tag }}</div>{{ rotation_filter.camps }}{% if rotation_filter.camps.errors %}<div class="app-form-errors" role="alert">{{ rotation_filter.camps.errors }}</div>{% endif %}</div>
+<div class="col-lg-3 col-md-6"><div class="app-form-label">{{ rotation_filter.q.label_tag }}</div>{{ rotation_filter.q }}{% if rotation_filter.q.errors %}<div class="app-form-errors" role="alert">{{ rotation_filter.q.errors }}</div>{% endif %}</div>
+<div class="col-lg-3 col-md-6"><div class="app-form-label">{{ rotation_filter.position.label_tag }}</div>{{ rotation_filter.position }}{% if rotation_filter.position.errors %}<div class="app-form-errors" role="alert">{{ rotation_filter.position.errors }}</div>{% endif %}</div>
+<div class="col-12 d-flex gap-2 justify-content-end"><button class="btn btn-primary" type="submit">Показать</button><a class="btn btn-outline-secondary" href="{{ request.path }}">Сбросить</a></div>
 </div>
-<p class="small text-muted mb-0 mt-2">Показаны рекомендации только по выбранным ВЖГ. Можно выбрать несколько ВЖГ одного проекта.</p>
+<p class="small text-muted mb-0 mt-2">Показаны рекомендации по выбранным проекту, ВЖГ, сотруднику и должности. Можно выбрать несколько ВЖГ одного проекта.</p>
 </form>

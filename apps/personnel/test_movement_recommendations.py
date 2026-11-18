@@ -212,6 +212,21 @@ class MovementRecommendationTests(TestCase):
         self.assertIn(f'camps={self.a.pk}',removed.url)
 
     @patch('apps.personnel.rotation.rotation_rows')
+    def test_arrival_recommendations_filter_by_employee_and_position(self,rotation_rows):
+        rotation_rows.return_value=self.auto_rows();self.client.force_login(self.personnel_dispatcher)
+        response=self.client.get(reverse('personnel:arrivals'),{
+            'construction_object':self.obj.pk,'camps':[self.a.pk],'q':'Петров','position':self.position.pk})
+        self.assertEqual(response.status_code,200)
+        self.assertContains(response,'Фильтры рекомендаций')
+        self.assertContains(response,'Сотрудник')
+        self.assertContains(response,'Должность')
+        self.assertContains(response,self.second_person.display_name)
+        self.assertNotContains(response,self.person.display_name)
+        self.assertEqual(response.context['arrival_recommendation_count'],1)
+        self.assertIn('q=%D0%9F%D0%B5%D1%82%D1%80%D0%BE%D0%B2',response.context['dispatcher_scope_query'])
+        self.assertIn(f'position={self.position.pk}',response.context['dispatcher_scope_query'])
+
+    @patch('apps.personnel.rotation.rotation_rows')
     def test_recommendation_tables_have_select_all_checkbox(self,rotation_rows):
         rotation_rows.return_value=self.auto_rows();self.client.force_login(self.personnel_dispatcher)
         for route in ('arrivals','departures'):
