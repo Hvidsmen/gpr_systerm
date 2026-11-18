@@ -554,6 +554,7 @@ class RecruitmentTests(TestCase):
         groups={row['value']:row for row in shop.context['funnel_groups']}
         self.assertEqual((shop.context['candidate_position_count'],groups['work']['position_count'],groups['rejected']['position_count']),(2,1,1))
         self.assertContains(shop,'План и воронка по должностям');self.assertContains(shop,'Последняя заявка:')
+        self.assertContains(shop,'data-position-details-action="expand"',html=False);self.assertContains(shop,'data-position-details-action="collapse"',html=False)
         self.assertContains(shop,f'№{candidate.request_id} · Монтажник · {self.obj}')
         self.assertContains(shop,'Не прикреплён к заявке');self.assertNotContains(shop,'План найма: 1')
         pool=self.client.get(reverse('personnel:recruitment_pool'))

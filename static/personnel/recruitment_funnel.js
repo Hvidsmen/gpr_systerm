@@ -21,6 +21,12 @@
     }
   }
   document.addEventListener('click',function(event){
+    const detailsAction=event.target.closest('[data-position-details-action]');
+    if(detailsAction){
+      const open=detailsAction.dataset.positionDetailsAction==='expand';
+      funnel()?.querySelectorAll('.position-people-row details').forEach(function(details){details.open=open;});
+      return;
+    }
     const link=event.target.closest('[data-recruitment-stage-link]');
     if(!link||event.button!==0||event.ctrlKey||event.metaKey||event.shiftKey||event.altKey)return;
     event.preventDefault();replaceFunnel(link.href,true);
