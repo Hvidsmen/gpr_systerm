@@ -6,5 +6,6 @@
   {% if can_recruit %}<a class="recruitment-section-tab recruitment-section-tab-action{% if route == 'recruitment_pool_create' %} active{% endif %}" href="{% url 'personnel:recruitment_pool_create' %}"{% if route == 'recruitment_pool_create' %} aria-current="page"{% endif %}>Добавить кандидата</a>{% endif %}
   {% if can_dispatch %}<a class="recruitment-section-tab recruitment-section-tab-action{% if route == 'recruitment_create' %} active{% endif %}" href="{% url 'personnel:recruitment_create' %}"{% if route == 'recruitment_create' %} aria-current="page"{% endif %}>Создать заявку</a>{% endif %}
   <a class="recruitment-section-tab{% if route == 'recruitment_pool' or route == 'recruitment_pool_edit' or route == 'recruitment_pool_import' %} active{% endif %}" href="{% url 'personnel:recruitment_pool' %}"{% if route == 'recruitment_pool' %} aria-current="page"{% endif %}>Пул кандидатов</a>
+  <a class="recruitment-section-tab{% if route == 'recruitment_specialists' or route == 'recruitment_specialist_create' or route == 'recruitment_specialist_edit' %} active{% endif %}" href="{% url 'personnel:recruitment_specialists' %}"{% if route == 'recruitment_specialists' %} aria-current="page"{% endif %}>Рекрутеры</a>
 </nav>
 {% endwith %}

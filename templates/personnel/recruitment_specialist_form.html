@@ -1,0 +1,7 @@
+{% extends 'personnel/recruitment_base.html' %}
+{% block title %}{% if row.pk %}Изменить рекрутера{% else %}Новый рекрутер{% endif %}{% endblock %}
+{% block recruitment_content %}
+<p><a href="{% url 'personnel:recruitment_specialists' %}">← В справочник рекрутеров</a></p>
+<h2 class="h4">{% if row.pk %}Изменить рекрутера{% else %}Новый рекрутер{% endif %}</h2>
+<div class="card p-3" style="max-width:850px"><form method="post">{% csrf_token %}{% include 'forms/fields.html' with form=form %}<div class="d-flex gap-2"><button class="btn btn-primary" type="submit">Сохранить</button><a class="btn btn-outline-secondary" href="{% url 'personnel:recruitment_specialists' %}">Отмена</a></div></form></div>
+{% endblock %}

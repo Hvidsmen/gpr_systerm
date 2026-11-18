@@ -28,6 +28,29 @@ class RecruiterAssignmentForm(RevisionForm):
         if current and rows.filter(pk=current.pk).exists():self.initial['recruiter']=current.pk
 
 
+class RecruitmentSpecialistForm(forms.ModelForm):
+    class Meta:
+        model=RecruitmentSpecialist
+        fields=['name','user','is_active']
+    def __init__(self,*args,company,**kwargs):
+        super().__init__(*args,**kwargs);self.instance.company=company
+        users=User.objects.filter(company=company,is_active=True,archived_at__isnull=True,role__code='RECRUITER')
+        if self.instance.user_id:
+            users=User.objects.filter(company=company).filter(Q(pk=self.instance.user_id)|Q(
+                is_active=True,archived_at__isnull=True,role__code='RECRUITER'))
+        self.fields['user'].queryset=users.select_related('role').order_by('last_name','first_name','username','pk')
+        self.fields['user'].empty_label='Не связан с пользователем'
+        self.fields['user'].help_text='Необязательно. Свяжите запись с учётной записью, имеющей роль «Подбор персонала».'
+        self.fields['is_active'].help_text='Неактивный рекрутер остаётся в истории, но не предлагается в новых карточках кандидатов.'
+        self.fields['user'].label_from_instance=lambda user:user.get_full_name() or user.username
+    def clean_name(self):
+        name=' '.join((self.cleaned_data.get('name') or '').split())
+        existing=RecruitmentSpecialist.objects.filter(company=self.instance.company).exclude(pk=self.instance.pk).values_list('name',flat=True)
+        if any(value.casefold()==name.casefold() for value in existing):
+            raise forms.ValidationError('Такой рекрутер уже есть в справочнике.')
+        return name
+
+
 class RequestForm(forms.ModelForm):
     revision = forms.IntegerField(min_value=0, widget=forms.HiddenInput, initial=0)
     class Meta:

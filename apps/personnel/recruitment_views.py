@@ -3,18 +3,18 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError, PermissionDenied
 from django.core.paginator import Paginator
 from django.db import IntegrityError,transaction
-from django.db.models import Q, Prefetch
+from django.db.models import Count,Q, Prefetch
 from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_http_methods, require_POST, require_GET
 from core.permissions import require_roles, role_code
 from apps.projects.models import ConstructionObject
 from apps.resources.models import Position
-from .models import (RecruitmentRequest,RecruitmentCandidate,ArrivalPreparation,CandidateDocument,TalentPoolCandidate,
-    TalentPoolStageEvent,MovementReviewRequest,Camp)
+from .models import (RecruitmentRequest,RecruitmentCandidate,RecruitmentSpecialist,ArrivalPreparation,CandidateDocument,
+    TalentPoolCandidate,TalentPoolStageEvent,MovementReviewRequest,Camp)
 from . import recruitment as service
 from .recruitment_forms import (RequestForm,CandidateForm,ArrivalForm,RevisionForm,ReasonForm,TalentPoolForm,
-    TalentPoolImportForm,BulkArrivalCommonForm,BulkArrivalRowForm,RecruiterAssignmentForm)
+    TalentPoolImportForm,BulkArrivalCommonForm,BulkArrivalRowForm,RecruiterAssignmentForm,RecruitmentSpecialistForm)
 from .recruitment_models import POOL_UNAVAILABLE_STAGES, RECRUITMENT_TERMINAL_STAGES
 
 
@@ -86,6 +86,39 @@ def context(user):
 
 
 def error(form,exc):form.add_error(None,'; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Данные изменились одновременно с вашим вводом. Обновите страницу.')
+
+
+@login_required
+@require_GET
+def specialist_list(request):
+    require_roles(request.user,service.READ)
+    rows=RecruitmentSpecialist.objects.filter(company=request.user.company).select_related('user').annotate(
+        candidate_count=Count('candidates',distinct=True))
+    query=request.GET.get('q','').strip()
+    if query:
+        rows=rows.filter(Q(name__icontains=query)|Q(user__username__icontains=query)|
+            Q(user__first_name__icontains=query)|Q(user__last_name__icontains=query))
+    state=request.GET.get('state','all')
+    if state=='active':rows=rows.filter(is_active=True)
+    elif state=='inactive':rows=rows.filter(is_active=False)
+    return render(request,'personnel/recruitment_specialists.html',{**context(request.user),'rows':rows,
+        'query':query,'state':state,'can_manage_specialists':role_code(request.user) in service.ASSIGN})
+
+
+@login_required
+@require_http_methods(['GET','POST'])
+def specialist_edit(request,pk=None):
+    require_roles(request.user,service.ASSIGN)
+    queryset=RecruitmentSpecialist.objects.filter(company=request.user.company)
+    row=get_object_or_404(queryset,pk=pk) if pk else RecruitmentSpecialist(company=request.user.company)
+    form=RecruitmentSpecialistForm(request.POST if request.method=='POST' else None,company=request.user.company,instance=row)
+    if request.method=='POST' and form.is_valid():
+        try:form.save()
+        except IntegrityError:form.add_error('name','Такой рекрутер уже есть в справочнике.')
+        else:
+            messages.success(request,'Рекрутер сохранён в справочнике.')
+            return redirect('personnel:recruitment_specialists')
+    return render(request,'personnel/recruitment_specialist_form.html',{**context(request.user),'form':form,'row':row})
 
 
 @login_required
