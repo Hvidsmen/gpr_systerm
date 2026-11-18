@@ -5,6 +5,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.files.storage import FileSystemStorage
 from django.db import models
+from django.utils.functional import cached_property
 from .models import PersonnelModel
 
 
@@ -67,6 +68,22 @@ class TalentPoolCandidate(PersonnelModel):
     phone=models.CharField('Телефон',max_length=80,blank=True)
     notes=models.TextField('Комментарий',blank=True)
     source_data=models.JSONField('Данные источника',default=dict,blank=True)
+    position=models.ForeignKey('resources.Position',on_delete=models.SET_NULL,null=True,blank=True,
+        related_name='talent_pool_candidates',verbose_name='Должность')
+    construction_object=models.ForeignKey('projects.ConstructionObject',on_delete=models.SET_NULL,null=True,blank=True,
+        related_name='talent_pool_candidates',verbose_name='Объект / проект')
+    camp=models.ForeignKey('personnel.Camp',on_delete=models.SET_NULL,null=True,blank=True,
+        related_name='talent_pool_candidates',verbose_name='ВЖГ')
+    base_city=models.ForeignKey('personnel.BaseCity',on_delete=models.SET_NULL,null=True,blank=True,
+        related_name='talent_pool_candidates',verbose_name='Базовый город')
+    ready_for_arrival=models.BooleanField('Готов к заезду',default=False)
+    ready_for_arrival_on=models.DateField('Дата готовности к заезду',null=True,blank=True)
+    manager_approved=models.BooleanField('Согласован непосредственным руководителем',default=False)
+    manager_approved_on=models.DateField('Дата согласования руководителем',null=True,blank=True)
+    security_approved=models.BooleanField('Согласован СБ',default=False)
+    security_approved_on=models.DateField('Дата согласования СБ',null=True,blank=True)
+    medical_exam_passed=models.BooleanField('Медицинский осмотр пройден',default=False)
+    medical_exam_on=models.DateField('Дата медицинского осмотра',null=True,blank=True)
     responsible_hr=models.ForeignKey(RecruitmentSpecialist,on_delete=models.SET_NULL,null=True,blank=True,
         related_name='candidates',verbose_name='Ответственный HR')
     stage=models.CharField('Этап воронки',max_length=24,choices=RECRUITMENT_STAGES,default='NEW')
@@ -76,8 +93,31 @@ class TalentPoolCandidate(PersonnelModel):
     def __str__(self):return self.full_name
     def clean(self):
         super().clean()
-        if self.responsible_hr_id and self.responsible_hr.company_id!=self.company_id:
-            raise ValidationError({'responsible_hr':'Выберите HR своей компании.'})
+        for field in ('responsible_hr','position','construction_object','camp','base_city'):
+            value=getattr(self,field,None)
+            if value and value.company_id!=self.company_id:raise ValidationError({field:'Выберите значение своей компании.'})
+        pairs=(('ready_for_arrival','ready_for_arrival_on'),('manager_approved','manager_approved_on'),
+            ('security_approved','security_approved_on'),('medical_exam_passed','medical_exam_on'))
+        errors={date_field:'Укажите дату подтверждения.' for flag,date_field in pairs if getattr(self,flag) and not getattr(self,date_field)}
+        errors.update({date_field:'Сначала установите соответствующий флажок.' for flag,date_field in pairs if not getattr(self,flag) and getattr(self,date_field)})
+        if errors:raise ValidationError(errors)
+    @cached_property
+    def dudinka_arrival(self):
+        rows=getattr(self,'_prefetched_objects_cache',{}).get('vacancy_candidates')
+        if rows is None:rows=self.vacancy_candidates.select_related('arrival__movement_request').all()
+        requests=[]
+        for row in rows:
+            arrival=getattr(row,'arrival',None);movement=getattr(arrival,'movement_request',None) if arrival else None
+            if movement and movement.kind=='ARRIVAL' and movement.status!='CANCELLED':requests.append(movement)
+        actual=[row for row in requests if row.hub_arrived_on]
+        if actual:
+            row=max(actual,key=lambda item:(item.hub_arrived_on,item.pk))
+            return {'date':row.hub_arrived_on,'actual':True}
+        planned=[row for row in requests if row.tickets_ready and row.movement_date]
+        if planned:
+            row=max(planned,key=lambda item:(item.movement_date,item.pk))
+            return {'date':row.movement_date,'actual':False}
+        return None
     @property
     def source_application_count(self):
         return sum(1 for event in (self.source_data or {}).get('funnel_sources',[]) if event.get('sheet')=='План найма')

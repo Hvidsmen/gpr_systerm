@@ -1,9 +1,10 @@
 from django import forms
 from django.db.models import Q
 from django.utils import timezone
+from django.utils.html import format_html
 from apps.projects.models import ConstructionObject
-from apps.resources.models import Employee
-from .models import RecruitmentRequest, RecruitmentCandidate,RecruitmentSpecialist,TalentPoolCandidate,Camp
+from apps.resources.models import Employee,Position
+from .models import BaseCity,RecruitmentRequest, RecruitmentCandidate,RecruitmentSpecialist,TalentPoolCandidate,Camp
 from .recruitment_models import POOL_UNAVAILABLE_STAGES,RECRUITMENT_SYSTEM_STAGES,RECRUITMENT_TERMINAL_STAGES
 from .recruitment import allowed_camps, validate_documents
 from .employee_widgets import RemoteEmployeeSelect
@@ -90,28 +91,49 @@ class CandidateForm(forms.ModelForm):
 class TalentPoolForm(forms.ModelForm):
     stage_reason=forms.CharField(label='Причина изменения этапа',required=False,widget=forms.Textarea(attrs={'rows':2}),
         help_text='Например: повторно направлен на рассмотрение после прежнего отказа.')
-    position=forms.CharField(label='Должность',required=False)
-    construction_site=forms.CharField(label='Строительный участок',required=False)
     birth_date=forms.DateField(label='Дата рождения',required=False,widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
     passport=forms.CharField(label='Серия и номер паспорта',required=False)
-    manager_approval=forms.CharField(label='Согласование непосредственного руководителя',required=False)
-    security_approval=forms.CharField(label='Согласование СБ',required=False)
     skzi_until=forms.DateField(label='СКЗИ действует до',required=False,widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
-    medical_exam=forms.CharField(label='Медицинский осмотр',required=False)
     pass_documents=forms.CharField(label='Документы направлены на пропуск',required=False)
-    base_city=forms.CharField(label='Базовый город',required=False)
-    readiness=forms.CharField(label='Готовность к заезду',required=False)
-    dudinka_arrival=forms.DateField(label='Дата прибытия в Дудинку',required=False,widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
+    new_base_city=forms.CharField(label='Добавить базовый город',required=False,max_length=150,
+        help_text='Заполните, только если нужного города нет в справочнике.')
+    dudinka_arrival=forms.CharField(label='Прибытие в ОП Дудинка',required=False,disabled=True,
+        help_text='Заполняется автоматически из заявки на заезд: по билету, затем заменяется фактической датой.')
     responsible_hr=forms.ModelChoiceField(label='Ответственный HR',required=False,
         queryset=RecruitmentSpecialist.objects.none(),empty_label='Не назначен')
     agency=forms.CharField(label='Название агентства',required=False)
-    source_fields=('position','construction_site','birth_date','passport','manager_approval','security_approval','skzi_until',
-        'medical_exam','pass_documents','base_city','readiness','dudinka_arrival','agency')
+    source_fields=('birth_date','passport','skzi_until','pass_documents','agency')
     class Meta:
-        model=TalentPoolCandidate;fields=['full_name','phone','stage','responsible_hr','notes'];widgets={'notes':forms.Textarea(attrs={'rows':3})}
+        model=TalentPoolCandidate
+        fields=['full_name','stage','position','construction_object','camp','phone','base_city','ready_for_arrival','ready_for_arrival_on',
+            'manager_approved','manager_approved_on','security_approved','security_approved_on','medical_exam_passed','medical_exam_on',
+            'responsible_hr','notes']
+        widgets={'notes':forms.Textarea(attrs={'rows':3}),
+            'ready_for_arrival_on':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}),
+            'manager_approved_on':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}),
+            'security_approved_on':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}),
+            'medical_exam_on':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'})}
     def __init__(self,*args,company,user,**kwargs):
         super().__init__(*args,**kwargs);self.instance.company=company
         if not self.instance.pk:self.instance.created_by=user
+        self.fields['position'].queryset=Position.objects.filter(company=company).order_by('name','pk')
+        self.fields['position'].empty_label='Выберите должность';self.fields['position'].required=True
+        objects=ConstructionObject.objects.filter(company=company).select_related('parent').order_by('name','pk')
+        self.fields['construction_object'].queryset=objects;self.fields['construction_object'].empty_label='Выберите объект / проект';self.fields['construction_object'].required=True
+        self.fields['construction_object'].label='Строительный участок / объект'
+        by_id={row.pk:row for row in objects}
+        def object_label(row):
+            names=[row.name];seen={row.pk};parent=row.parent_id
+            while parent and parent not in seen and parent in by_id:
+                seen.add(parent);names.append(by_id[parent].name);parent=by_id[parent].parent_id
+            return ' → '.join(reversed(names))
+        self.fields['construction_object'].label_from_instance=object_label
+        camps=Camp.objects.filter(company=company,is_active=True)
+        if self.instance.camp_id:camps=Camp.objects.filter(company=company).filter(Q(is_active=True)|Q(pk=self.instance.camp_id))
+        self.fields['camp'].queryset=camps.order_by('name','pk');self.fields['camp'].empty_label='Не выбран'
+        self.fields['camp'].required=False;self.fields['camp'].help_text='Необязательно. Выберите ВЖГ, если он уже известен.'
+        self.fields['base_city'].queryset=BaseCity.objects.filter(company=company).order_by('name','pk')
+        self.fields['base_city'].empty_label='Выберите базовый город';self.fields['base_city'].required=False
         specialists=RecruitmentSpecialist.objects.filter(company=company,is_active=True)
         if self.instance.responsible_hr_id:
             specialists=RecruitmentSpecialist.objects.filter(company=company).filter(
@@ -120,14 +142,44 @@ class TalentPoolForm(forms.ModelForm):
         source=self.instance.source_data or {}
         for field in self.source_fields:
             if field not in self.initial:self.initial[field]=source.get(field,'')
-        self.order_fields(['full_name','stage','stage_reason','position','construction_site','phone','birth_date','passport','base_city','readiness',
-            'dudinka_arrival','manager_approval','security_approval','skzi_until','medical_exam','pass_documents',
+        raw_position=(source.get('position') or '').strip()
+        if raw_position and not self.instance.position_id:
+            self.fields['position'].help_text=format_html('В Excel указано: <strong>{}</strong>. Значение не найдено однозначно — выберите должность из справочника.',raw_position)
+        raw_object=(source.get('construction_site') or '').strip()
+        if raw_object and not self.instance.construction_object_id:
+            self.fields['construction_object'].help_text=format_html('В Excel указано: <strong>{}</strong>. Выберите соответствующий объект портала.',raw_object)
+        raw_city=(source.get('base_city') or '').strip()
+        if raw_city and not self.instance.base_city_id:
+            self.initial['new_base_city']=raw_city
+            self.fields['new_base_city'].help_text=format_html('В Excel указано: <strong>{}</strong>. Проверьте название — при сохранении город добавится в справочник.',raw_city)
+        arrival=self.instance.dudinka_arrival if self.instance.pk else None
+        if arrival:self.initial['dudinka_arrival']=f"{arrival['date'].strftime('%d.%m.%Y')} · {'факт' if arrival['actual'] else 'по купленному билету'}"
+        legacy_hints=(('ready_for_arrival','readiness','Готовность в Excel'),('manager_approved','manager_approval','Согласование руководителя в Excel'),
+            ('security_approved','security_approval','Согласование СБ в Excel'),('medical_exam_passed','medical_exam','Медосмотр в Excel'))
+        for field,source_key,label in legacy_hints:
+            raw=(source.get(source_key) or '').strip()
+            if raw and not self.initial.get(field) and not getattr(self.instance,field,False):
+                self.fields[field].help_text=format_html('{}: <strong>{}</strong>. Подтвердите флажком и датой.',label,raw)
+        self.order_fields(['full_name','stage','stage_reason','position','construction_object','camp','phone','birth_date','passport',
+            'base_city','new_base_city','ready_for_arrival','ready_for_arrival_on','dudinka_arrival','manager_approved','manager_approved_on',
+            'security_approved','security_approved_on','skzi_until','medical_exam_passed','medical_exam_on','pass_documents',
             'responsible_hr','agency','notes'])
     def save(self,commit=True):
         instance=super().save(commit=False);source=dict(instance.source_data or {})
+        new_city=self.cleaned_data.get('new_base_city','')
+        if new_city:
+            instance.base_city=BaseCity.objects.filter(company=instance.company,name__iexact=new_city).first()
+            if instance.base_city is None:instance.base_city=BaseCity.objects.create(company=instance.company,name=new_city)
         for field in self.source_fields:
             value=self.cleaned_data.get(field)
             source[field]=value.isoformat() if hasattr(value,'isoformat') else (value or '').strip()
+        source['position']=instance.position.name if instance.position_id else source.get('position','')
+        source['construction_site']=instance.construction_object.name if instance.construction_object_id else source.get('construction_site','')
+        source['base_city']=instance.base_city.name if instance.base_city_id else source.get('base_city','')
+        source['readiness']=instance.ready_for_arrival_on.isoformat() if instance.ready_for_arrival else source.get('readiness','')
+        source['manager_approval']=instance.manager_approved_on.isoformat() if instance.manager_approved else source.get('manager_approval','')
+        source['security_approval']=instance.security_approved_on.isoformat() if instance.security_approved else source.get('security_approval','')
+        source['medical_exam']=instance.medical_exam_on.isoformat() if instance.medical_exam_passed else source.get('medical_exam','')
         source['responsible_hr']=instance.responsible_hr.name if instance.responsible_hr_id else ''
         source['full_name']=instance.full_name;source['phone']=instance.phone;source['notes']=instance.notes
         instance.source_data=source;instance.is_active=instance.stage not in POOL_UNAVAILABLE_STAGES
@@ -135,6 +187,17 @@ class TalentPoolForm(forms.ModelForm):
         return instance
     def clean(self):
         data=super().clean()
+        new_city=' '.join((data.get('new_base_city') or '').split());selected_city=data.get('base_city')
+        if new_city and selected_city:self.add_error('new_base_city','Выберите город из списка или добавьте новый, но не оба варианта.')
+        data['new_base_city']=new_city
+        pairs=(('ready_for_arrival','ready_for_arrival_on'),('manager_approved','manager_approved_on'),
+            ('security_approved','security_approved_on'),('medical_exam_passed','medical_exam_on'))
+        for flag,date_field in pairs:
+            if data.get(flag) and not data.get(date_field):self.add_error(date_field,'Укажите дату подтверждения.')
+            if data.get(date_field) and not data.get(flag):self.add_error(flag,'Установите флажок для указанной даты.')
+        obj,camp=data.get('construction_object'),data.get('camp')
+        if obj and camp and not allowed_camps(self.instance.company,obj).filter(pk=camp.pk).exists():
+            self.add_error('camp','Выберите ВЖГ, связанный с указанным объектом.')
         from .recruitment import normalized_candidate_identity
         identity=normalized_candidate_identity(data.get('full_name'),data.get('phone'))
         if identity[0]:

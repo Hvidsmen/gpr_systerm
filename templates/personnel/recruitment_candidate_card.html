@@ -5,10 +5,13 @@
 <div class="recruitment-heading candidate-card-heading"><div><h2 class="h4 mb-1">{{ row.full_name }}</h2><span class="recruitment-status recruitment-stage-{{ row.stage|lower }}">{{ row.get_stage_display }}</span></div>{% if can_recruit %}<a class="btn btn-outline-primary" href="{% url 'personnel:recruitment_pool_edit' row.pk %}">Изменить этап и карточку</a>{% endif %}</div>
 
 <section class="card card-body mb-3"><h3 class="h5">Карточка кандидата</h3><dl class="candidate-profile-grid">
-<div><dt>Телефон</dt><dd>{{ row.phone|default:'—' }}</dd></div><div><dt>Должность</dt><dd>{{ row.source_data.position|default:'—' }}</dd></div>
-<div><dt>Участок</dt><dd>{{ row.source_data.construction_site|default:'—' }}</dd></div><div><dt>Дата рождения</dt><dd>{{ row.source_data.birth_date|default:'—' }}</dd></div>
-<div><dt>Базовый город</dt><dd>{{ row.source_data.base_city|default:'—' }}</dd></div><div><dt>Ответственный HR</dt><dd>{% firstof row.responsible_hr row.source_data.responsible_hr '—' %}</dd></div>
-<div><dt>Готовность</dt><dd>{{ row.source_data.readiness|default:'—' }}</dd></div><div><dt>Источник</dt><dd>{% firstof row.source_data.source_sheet row.source_data.origin "Ручной ввод" %}</dd></div>
+<div><dt>Телефон</dt><dd>{{ row.phone|default:'—' }}</dd></div><div><dt>Должность</dt><dd>{% firstof row.position row.source_data.position '—' %}</dd></div>
+<div><dt>Объект / участок</dt><dd>{% firstof row.construction_object row.source_data.construction_site '—' %}</dd></div><div><dt>ВЖГ</dt><dd>{{ row.camp|default:'—' }}</dd></div>
+<div><dt>Дата рождения</dt><dd>{{ row.source_data.birth_date|default:'—' }}</dd></div><div><dt>Базовый город</dt><dd>{% firstof row.base_city row.source_data.base_city '—' %}</dd></div>
+<div><dt>Ответственный HR</dt><dd>{% firstof row.responsible_hr row.source_data.responsible_hr '—' %}</dd></div><div><dt>Готовность к заезду</dt><dd>{% if row.ready_for_arrival %}Да · {{ row.ready_for_arrival_on|date:'d.m.Y' }}{% else %}Не подтверждена{% endif %}</dd></div>
+<div><dt>Руководитель</dt><dd>{% if row.manager_approved %}Согласовано · {{ row.manager_approved_on|date:'d.m.Y' }}{% else %}Не согласовано{% endif %}</dd></div><div><dt>СБ</dt><dd>{% if row.security_approved %}Согласовано · {{ row.security_approved_on|date:'d.m.Y' }}{% else %}Не согласовано{% endif %}</dd></div>
+<div><dt>Медосмотр</dt><dd>{% if row.medical_exam_passed %}Пройден · {{ row.medical_exam_on|date:'d.m.Y' }}{% else %}Не подтверждён{% endif %}</dd></div><div><dt>Прибытие в ОП Дудинка</dt><dd>{% if row.dudinka_arrival %}{{ row.dudinka_arrival.date|date:'d.m.Y' }} · {% if row.dudinka_arrival.actual %}факт{% else %}по билету{% endif %}{% else %}Ещё не определено{% endif %}</dd></div>
+<div><dt>Источник</dt><dd>{% firstof row.source_data.source_sheet row.source_data.origin "Ручной ввод" %}</dd></div>
 </dl>{% if row.notes %}<p class="candidate-card-note mb-0"><strong>Комментарий:</strong> {{ row.notes }}</p>{% endif %}</section>
 
 <section class="card card-body mb-3"><div class="recruitment-heading mb-2"><h3 class="h5 mb-0">Заявки и вакансии</h3></div><div class="table-responsive"><table class="table recruitment-table"><thead><tr><th>Заявка</th><th>Объект / должность</th><th>Этап</th><th>Готовность</th><th>Заезд</th><th>Ответственный</th></tr></thead><tbody>

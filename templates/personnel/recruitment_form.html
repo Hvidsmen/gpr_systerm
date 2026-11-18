@@ -22,4 +22,27 @@ document.addEventListener('DOMContentLoaded', function () {
   });
 });
 </script>{% endif %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  [
+    ['id_ready_for_arrival', 'id_ready_for_arrival_on'],
+    ['id_manager_approved', 'id_manager_approved_on'],
+    ['id_security_approved', 'id_security_approved_on'],
+    ['id_medical_exam_passed', 'id_medical_exam_on']
+  ].forEach(function (ids) {
+    const flag = document.getElementById(ids[0]);
+    const date = document.getElementById(ids[1]);
+    if (!flag || !date) return;
+    const sync = function () { date.required = flag.checked; };
+    flag.addEventListener('change', sync);
+    sync();
+  });
+  const city = document.getElementById('id_base_city');
+  const newCity = document.getElementById('id_new_base_city');
+  if (city && newCity) {
+    city.addEventListener('change', function () { if (city.value) newCity.value = ''; });
+    newCity.addEventListener('input', function () { if (newCity.value.trim()) city.value = ''; });
+  }
+});
+</script>
 {% endblock %}

@@ -10,9 +10,9 @@ from django.urls import reverse
 from django.utils import timezone
 from apps.accounts.models import Company, Role, User
 from apps.projects.models import Project, ConstructionObject
-from apps.resources.models import Employee
+from apps.resources.models import Employee,Position
 from .models import (Camp, CampObjectLink, CampStay, Person, RecruitmentRequest,
-                     RecruitmentCandidate, ArrivalPreparation, CandidateDocument, HousingEvent)
+                     RecruitmentCandidate, ArrivalPreparation, CandidateDocument, HousingEvent,BaseCity)
 from . import recruitment as service
 
 
@@ -23,6 +23,8 @@ class RecruitmentTests(TestCase):
         cls.other=Company.objects.create(name='Другая компания')
         cls.project=Project.objects.create(company=cls.company,name='Проект')
         cls.obj=ConstructionObject.objects.create(company=cls.company,project=cls.project,name='КТП')
+        cls.position=Position.objects.create(company=cls.company,name='Монтажник',code='montazhnik')
+        cls.base_city=BaseCity.objects.create(company=cls.company,name='Уфа')
         cls.camp=Camp.objects.create(company=cls.company,name='ВЖГ')
         CampObjectLink.objects.create(company=cls.company,camp=cls.camp,construction_object=cls.obj)
         cls.unlinked=Camp.objects.create(company=cls.company,name='Другой ВЖГ')
@@ -453,6 +455,7 @@ class RecruitmentTests(TestCase):
         self.assertEqual(row.stage,'SELECTED')
         self.assertEqual(row.responsible_hr.name,'Петров')
         self.assertEqual(RecruitmentSpecialist.objects.count(),1)
+        self.assertEqual(row.position,self.position);self.assertEqual(row.construction_object,self.obj);self.assertEqual(row.base_city,self.base_city)
         self.assertEqual(row.source_data['position'],'Монтажник');self.assertEqual(row.source_data['base_city'],'Уфа')
         payload.seek(0);self.assertEqual(import_sheet(self.recruiter,payload),{'created':0,'updated':0,'skipped':1})
         self.client.force_login(self.recruiter);page=self.client.get(reverse('personnel:recruitment_pool'))
@@ -481,6 +484,8 @@ class RecruitmentTests(TestCase):
         unified=TalentPoolCandidate.objects.get(full_name='Единый Кандидат')
         self.assertEqual(unified.stage,'TRANSFERRED');self.assertEqual(len(unified.source_data['funnel_sources']),3)
         self.assertEqual(unified.responsible_hr.name,'Рекрутер');self.assertEqual(RecruitmentSpecialist.objects.count(),1)
+        self.assertEqual(unified.position,self.position);self.assertEqual(unified.construction_object,self.obj);self.assertEqual(unified.base_city,self.base_city)
+        self.assertTrue(unified.security_approved);self.assertTrue(unified.medical_exam_passed)
         self.assertEqual(TalentPoolCandidate.objects.get(full_name='Другой Кандидат').stage,'REJECTED')
         payload.seek(0);self.assertEqual(import_sheet(self.recruiter,payload),{'created':0,'updated':0,'skipped':2})
         self.client.force_login(self.recruiter)
@@ -530,27 +535,60 @@ class RecruitmentTests(TestCase):
     def test_manual_pool_card_saves_store_fields(self):
         from .models import RecruitmentSpecialist,TalentPoolCandidate
         specialist=RecruitmentSpecialist.objects.create(company=self.company,name='Петрова',user=self.recruiter)
+        position=Position.objects.create(company=self.company,name='Электромонтажник',code='elektromontazhnik')
         self.client.force_login(self.recruiter)
         form_page=self.client.get(reverse('personnel:recruitment_pool_create'))
         self.assertContains(form_page,'<select name="responsible_hr"',html=False)
         self.assertContains(form_page,'Петрова')
         response=self.client.post(reverse('personnel:recruitment_pool_create'),{
-            'full_name':'Ручной Кандидат','position':'Электромонтажник','construction_site':'КТП-2','phone':'89990001122',
-            'birth_date':'1990-02-03','passport':'1234 567890','base_city':'Уфа','readiness':'Готов с 20 ноября',
-            'dudinka_arrival':'2026-11-21','manager_approval':'Согласован','security_approval':'Проверен',
-            'skzi_until':'2027-01-01','medical_exam':'Пройден','pass_documents':'Направлены',
+            'full_name':'Ручной Кандидат','position':position.pk,'construction_object':self.obj.pk,'camp':self.camp.pk,'phone':'89990001122',
+            'birth_date':'1990-02-03','passport':'1234 567890','base_city':self.base_city.pk,'new_base_city':'',
+            'ready_for_arrival':'1','ready_for_arrival_on':'2026-11-20','manager_approved':'1','manager_approved_on':'2026-11-18',
+            'security_approved':'1','security_approved_on':'2026-11-19','medical_exam_passed':'1','medical_exam_on':'2026-11-19',
+            'skzi_until':'2027-01-01','pass_documents':'Направлены',
             'responsible_hr':specialist.pk,'agency':'Агентство','stage':'NEW','notes':'Комментарий'})
         self.assertRedirects(response,reverse('personnel:recruitment_pool'),fetch_redirect_response=False)
         row=TalentPoolCandidate.objects.get(full_name='Ручной Кандидат')
-        self.assertEqual(row.source_data['position'],'Электромонтажник');self.assertEqual(row.source_data['construction_site'],'КТП-2')
+        self.assertEqual(row.position,position);self.assertEqual(row.construction_object,self.obj);self.assertEqual(row.camp,self.camp)
+        self.assertEqual(row.source_data['position'],'Электромонтажник');self.assertEqual(row.source_data['construction_site'],'КТП')
         self.assertEqual(row.source_data['birth_date'],'1990-02-03');self.assertEqual(row.source_data['base_city'],'Уфа')
         self.assertEqual(row.responsible_hr,specialist);self.assertEqual(row.source_data['responsible_hr'],'Петрова')
+        self.assertTrue(row.ready_for_arrival);self.assertEqual(row.ready_for_arrival_on.isoformat(),'2026-11-20')
+        self.assertTrue(row.manager_approved);self.assertTrue(row.security_approved);self.assertTrue(row.medical_exam_passed)
         page=self.client.get(reverse('personnel:recruitment_pool'))
         self.assertContains(page,'Электромонтажник');self.assertContains(page,'Все данные кандидата')
         duplicate=self.client.post(reverse('personnel:recruitment_pool_create'),{
             'full_name':'  ручной   кандидат ','phone':'8 (999) 000-11-22','stage':'NEW','notes':'Повтор'})
         self.assertEqual(duplicate.status_code,200);self.assertContains(duplicate,'Такой кандидат уже есть в общем пуле')
         self.assertEqual(TalentPoolCandidate.objects.filter(company=self.company).count(),1)
+
+    def test_pool_confirmation_flags_require_dates_and_can_add_base_city(self):
+        from .models import TalentPoolCandidate
+        pool=TalentPoolCandidate.objects.create(company=self.company,full_name='Проверка дат',stage='SCREENING',
+            created_by=self.recruiter,position=self.position,construction_object=self.obj)
+        self.client.force_login(self.recruiter);url=reverse('personnel:recruitment_pool_edit',args=[pool.pk])
+        response=self.client.post(url,{'full_name':pool.full_name,'stage':'SCREENING','position':self.position.pk,
+            'construction_object':self.obj.pk,'new_base_city':'Норильск','ready_for_arrival':'1','phone':'','notes':''})
+        self.assertEqual(response.status_code,200);self.assertContains(response,'Укажите дату подтверждения.')
+        response=self.client.post(url,{'full_name':pool.full_name,'stage':'SCREENING','position':self.position.pk,
+            'construction_object':self.obj.pk,'new_base_city':'Норильск','ready_for_arrival':'1',
+            'ready_for_arrival_on':'2026-11-20','phone':'','notes':''})
+        self.assertRedirects(response,reverse('personnel:recruitment_pool'),fetch_redirect_response=False)
+        pool.refresh_from_db();self.assertEqual(pool.base_city.name,'Норильск');self.assertTrue(pool.ready_for_arrival)
+
+    def test_dudinka_arrival_is_read_from_ticket_then_actual_movement(self):
+        candidate=self.candidate(status='READY',ready_on=self.day);prep=service.handoff(self.recruiter,candidate.pk,candidate.revision)
+        prep=service.prepare_arrival(self.dispatch,prep.pk,prep.revision,self.arrival_values(),workflow=True)
+        movement=prep.movement_request;movement.tickets_ready=True;movement.movement_date=self.day
+        movement.save(update_fields=['tickets_ready','movement_date','updated_at'])
+        pool=type(candidate.pool_candidate).objects.get(pk=candidate.pool_candidate_id)
+        self.assertEqual(pool.dudinka_arrival,{'date':self.day,'actual':False})
+        movement.hub_arrived_on=self.day+timedelta(days=1);movement.save(update_fields=['hub_arrived_on','updated_at'])
+        pool=type(pool).objects.get(pk=pool.pk)
+        self.assertEqual(pool.dudinka_arrival,{'date':self.day+timedelta(days=1),'actual':True})
+        self.client.force_login(self.recruiter)
+        card=self.client.get(reverse('personnel:recruitment_candidate_card',args=[pool.pk]))
+        self.assertContains(card,'факт')
     def test_rejected_candidate_can_return_to_any_funnel_stage(self):
         from .models import TalentPoolCandidate,TalentPoolStageEvent
         from .recruitment_forms import CandidateForm
@@ -558,7 +596,8 @@ class RecruitmentTests(TestCase):
             stage='REJECTED',is_active=False,created_by=self.recruiter)
         self.client.force_login(self.recruiter)
         response=self.client.post(reverse('personnel:recruitment_pool_edit',args=[pool.pk]),{
-            'full_name':pool.full_name,'phone':pool.phone,'stage':'SCREENING','stage_reason':'Рассматриваем повторно','notes':''})
+            'full_name':pool.full_name,'phone':pool.phone,'stage':'SCREENING','stage_reason':'Рассматриваем повторно',
+            'position':self.position.pk,'construction_object':self.obj.pk,'notes':''})
         self.assertRedirects(response,reverse('personnel:recruitment_pool'),fetch_redirect_response=False)
         pool.refresh_from_db();self.assertEqual(pool.stage,'SCREENING');self.assertTrue(pool.is_active)
         event=TalentPoolStageEvent.objects.get(candidate=pool)

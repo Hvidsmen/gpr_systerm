@@ -3,7 +3,9 @@ from collections import defaultdict
 from datetime import date,datetime,time
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from .models import RecruitmentSpecialist,TalentPoolCandidate
+from apps.projects.models import ConstructionObject
+from apps.resources.models import Position
+from .models import BaseCity,RecruitmentSpecialist,TalentPoolCandidate
 from .recruitment_models import POOL_UNAVAILABLE_STAGES,RECRUITMENT_STAGES
 
 STORE_SHEET='Магазин 2026'
@@ -54,6 +56,29 @@ def _specialist(company,name):
     if not name:return None
     existing=RecruitmentSpecialist.objects.filter(company=company,name__iexact=name).first()
     return existing or RecruitmentSpecialist.objects.create(company=company,name=name)
+
+
+def _catalogue_match(model,company,name):
+    name=_name(name)
+    if not name:return None
+    matches=list(model.objects.filter(company=company,name__iexact=name)[:2])
+    return matches[0] if len(matches)==1 else None
+
+
+def _date(value):
+    text=_text(value)[:10]
+    for pattern in ('%Y-%m-%d','%d.%m.%Y'):
+        try:return datetime.strptime(text,pattern).date()
+        except ValueError:pass
+    return None
+
+
+def _profile_date(source,*keys):
+    values=[_date(source.get(key)) for key in keys]
+    for event in source.get('funnel_sources',[]):
+        values.extend(_date((event.get('data') or {}).get(key)) for key in keys)
+    values=[value for value in values if value]
+    return max(values) if values else None
 
 
 def _latest_date(data,keys):
@@ -149,7 +174,8 @@ def import_sheet(user,file):
     grouped=defaultdict(list)
     for record in _records(workbook):grouped[record['data']['full_name'].casefold()].append(record)
     existing=defaultdict(list)
-    rows=TalentPoolCandidate.objects.select_for_update().filter(company=user.company).select_related('responsible_hr').prefetch_related('vacancy_candidates')
+    rows=TalentPoolCandidate.objects.select_for_update().filter(company=user.company).select_related(
+        'responsible_hr','position','construction_object','base_city').prefetch_related('vacancy_candidates')
     for row in rows:existing[_name(row.full_name).casefold()].append(row)
     created=updated=skipped=0
     for key,records in grouped.items():
@@ -172,7 +198,20 @@ def import_sheet(user,file):
         notes=profile.get('notes') or current['details'] or (row.notes if row else '')
         active=row.is_active if operational else stage not in POOL_UNAVAILABLE_STAGES
         responsible_hr=_specialist(user.company,source.get('responsible_hr')) if source.get('responsible_hr') else (row.responsible_hr if row else None)
-        defaults={'phone':phone_value,'notes':notes,'source_data':source,'stage':stage,'is_active':active,'responsible_hr':responsible_hr}
+        position=(row.position if row and row.position_id else _catalogue_match(Position,user.company,source.get('position')))
+        construction_object=(row.construction_object if row and row.construction_object_id else
+            _catalogue_match(ConstructionObject,user.company,source.get('construction_site')))
+        base_city=(row.base_city if row and row.base_city_id else _catalogue_match(BaseCity,user.company,source.get('base_city')))
+        ready_on=(row.ready_for_arrival_on if row and row.ready_for_arrival_on else _profile_date(source,'ready_for_arrival_on','planned_mobilization','readiness'))
+        manager_on=(row.manager_approved_on if row and row.manager_approved_on else _profile_date(source,'manager_approved_on','manager_approval','customer_approval'))
+        security_on=(row.security_approved_on if row and row.security_approved_on else _profile_date(source,'security_approved_on','security_approval','security_result'))
+        medical_on=(row.medical_exam_on if row and row.medical_exam_on else _profile_date(source,'medical_exam_on','medical_exam','medical_result'))
+        defaults={'phone':phone_value,'notes':notes,'source_data':source,'stage':stage,'is_active':active,'responsible_hr':responsible_hr,
+            'position':position,'construction_object':construction_object,'base_city':base_city,
+            'ready_for_arrival':bool(ready_on),'ready_for_arrival_on':ready_on,
+            'manager_approved':bool(manager_on),'manager_approved_on':manager_on,
+            'security_approved':bool(security_on),'security_approved_on':security_on,
+            'medical_exam_passed':bool(medical_on),'medical_exam_on':medical_on}
         if row:
             changed=[]
             for field,value in defaults.items():

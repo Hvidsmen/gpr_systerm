@@ -131,8 +131,11 @@ def ensure_pool_candidate(user,row,candidate,chosen=None):
         if pool_identity==identity or identity[0] and not identity[1] and pool_identity[0]==identity[0]:matches.append(pool)
     if len(matches)>1:raise ValidationError('Найдено несколько карточек с таким ФИО. Выберите кандидата из пула вручную.')
     if matches:return matches[0]
+    from apps.resources.models import Position
+    positions=list(Position.objects.filter(company=user.company,name__iexact=row.position)[:2])
     return TalentPoolCandidate.objects.create(company=user.company,full_name=candidate.full_name,phone=candidate.phone,
-        notes='',stage=candidate.status,created_by=user,source_data={
+        notes='',stage=candidate.status,created_by=user,position=positions[0] if len(positions)==1 else None,
+        construction_object=row.construction_object,ready_for_arrival=bool(candidate.ready_on),ready_for_arrival_on=candidate.ready_on,source_data={
             'position':row.position,'construction_site':row.construction_object.name,'origin':'recruitment',
         })
 
@@ -150,7 +153,17 @@ def sync_pool_candidate(candidate,stage=None):
     source.setdefault('construction_site',candidate.request.construction_object.name)
     source['funnel_stage']=stage
     pool.source_data=source
-    pool.save(update_fields=['stage','full_name','phone','notes','is_active','source_data','updated_at'])
+    if not pool.construction_object_id:pool.construction_object=candidate.request.construction_object
+    if not pool.position_id:
+        from apps.resources.models import Position
+        positions=list(Position.objects.filter(company=candidate.company,name__iexact=candidate.request.position)[:2])
+        if len(positions)==1:pool.position=positions[0]
+    if candidate.ready_on:
+        pool.ready_for_arrival=True;pool.ready_for_arrival_on=candidate.ready_on
+    arrival=getattr(candidate,'arrival',None)
+    if arrival and arrival.camp_id:pool.camp=arrival.camp
+    pool.save(update_fields=['stage','full_name','phone','notes','is_active','source_data','construction_object','position',
+        'ready_for_arrival','ready_for_arrival_on','camp','updated_at'])
 
 
 def save_candidate(user, request_id, values, pk=None, revision=None, files=()):
@@ -250,7 +263,8 @@ def prepare_arrival(user, pk, revision, values, *, confirm=False, workflow=False
         request=MovementReviewRequest.objects.create(company=user.company,person=person,kind='ARRIVAL',movement_date=prep.expected_on,to_camp=prep.camp,
             requested_by=user,source='DISPATCHER',status='PENDING_APPROVAL',employment_kind='NEW',planning_position_name=row.position,
             position_name=prep.employee.display_position if prep.employee_id else row.position,construction_object=row.construction_object,site_object=row.construction_object,
-            site=row.construction_object.name,phone=(prep.employee.phone if prep.employee_id else '') or prep.candidate.phone,travel_status='Ожидается',
+            site=row.construction_object.name,base_city=(prep.candidate.pool_candidate.base_city.name if prep.candidate.pool_candidate_id and prep.candidate.pool_candidate.base_city_id else ''),
+            phone=(prep.employee.phone if prep.employee_id else '') or prep.candidate.phone,travel_status='Ожидается',
             approval_batch=approval_batch,note=f'Кандидат из Магазина подбора. Заявка №{row.pk}. '+prep.notes)
         prep.movement_request=request
         from .departure_workflow import create_approval,log
@@ -300,10 +314,11 @@ def bulk_prepare_arrivals(user, candidate_ids):
         person=housing.person_for(prep.employee) if prep.employee_id else Person.objects.create(company=user.company,
             full_name=candidate.full_name,phone=candidate.phone)
         source=candidate.pool_candidate.source_data if candidate.pool_candidate_id else {}
+        base_city=candidate.pool_candidate.base_city.name if candidate.pool_candidate_id and candidate.pool_candidate.base_city_id else source.get('base_city','')
         request=MovementReviewRequest.objects.create(company=user.company,person=person,kind='ARRIVAL',movement_date=prep.expected_on,
             to_camp=prep.camp,requested_by=user,source='DISPATCHER',status='OPEN',employment_kind='NEW',approval_batch=batch,
             planning_position_name=row.position,position_name=row.position,construction_object=row.construction_object,
-            site_object=row.construction_object,site=row.construction_object.name,base_city=source.get('base_city',''),
+            site_object=row.construction_object,site=row.construction_object.name,base_city=base_city,
             phone=(prep.employee.phone if prep.employee_id else '') or candidate.phone,travel_status='Черновик',
             note=f'Кандидат из Магазина подбора. Заявка №{row.pk}. '+prep.notes)
         prep.movement_request=request;prep.save(update_fields=['movement_request','updated_at']);prepared.append(prep)

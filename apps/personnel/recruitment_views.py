@@ -54,7 +54,8 @@ def request_list(request):
     page=Paginator(rows,30).get_page(request.GET.get('page'))
     for row in page:row.progress=service.progress(row)
     applications=RecruitmentCandidate.objects.select_related('request__construction_object','arrival__movement_request').order_by('-created_at','-pk')
-    candidates=TalentPoolCandidate.objects.filter(company=request.user.company).prefetch_related(
+    candidates=TalentPoolCandidate.objects.filter(company=request.user.company).select_related(
+        'position','construction_object','camp','base_city','responsible_hr').prefetch_related(
         Prefetch('vacancy_candidates',queryset=applications))
     if query:candidates=candidates.filter(Q(full_name__icontains=query)|Q(phone__icontains=query)|
         Q(vacancy_candidates__request__position__icontains=query)|Q(vacancy_candidates__request__construction_object__name__icontains=query)).distinct()
@@ -76,7 +77,9 @@ def request_list(request):
 @require_GET
 def pool_list(request):
     require_roles(request.user,service.READ)
-    rows=TalentPoolCandidate.objects.filter(company=request.user.company).select_related('responsible_hr').prefetch_related('vacancy_candidates__request')
+    rows=TalentPoolCandidate.objects.filter(company=request.user.company).select_related(
+        'position','construction_object','camp','base_city','responsible_hr').prefetch_related(
+            'vacancy_candidates__request','vacancy_candidates__arrival__movement_request')
     query=request.GET.get('q','').strip()
     if query:rows=rows.filter(Q(full_name__icontains=query)|Q(phone__icontains=query))
     stage=request.GET.get('stage','')
@@ -91,7 +94,8 @@ def candidate_card(request,pk):
     require_roles(request.user,service.READ)
     applications=RecruitmentCandidate.objects.select_related(
         'request__construction_object','request__assigned_to','arrival__movement_request','arrival__actual_stay').prefetch_related('documents').order_by('-created_at','-pk')
-    row=get_object_or_404(TalentPoolCandidate.objects.filter(company=request.user.company).select_related('responsible_hr').prefetch_related(
+    row=get_object_or_404(TalentPoolCandidate.objects.filter(company=request.user.company).select_related(
+        'position','construction_object','camp','base_city','responsible_hr').prefetch_related(
         Prefetch('vacancy_candidates',queryset=applications)),pk=pk)
     from .models import RecruitmentEvent
     events=RecruitmentEvent.objects.filter(company=request.user.company,candidate__pool_candidate=row).select_related(
