@@ -2,13 +2,14 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError, PermissionDenied
 from django.core.paginator import Paginator
-from django.db import IntegrityError
+from django.db import IntegrityError,transaction
 from django.db.models import Q, Prefetch
 from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_http_methods, require_POST, require_GET
 from core.permissions import require_roles, role_code
-from .models import RecruitmentRequest,RecruitmentCandidate,ArrivalPreparation,CandidateDocument,TalentPoolCandidate,MovementReviewRequest
+from .models import (RecruitmentRequest,RecruitmentCandidate,ArrivalPreparation,CandidateDocument,TalentPoolCandidate,
+    TalentPoolStageEvent,MovementReviewRequest)
 from . import recruitment as service
 from .recruitment_forms import (RequestForm,CandidateForm,ArrivalForm,RevisionForm,ReasonForm,TalentPoolForm,
     TalentPoolImportForm,BulkArrivalCommonForm,BulkArrivalRowForm)
@@ -97,8 +98,9 @@ def candidate_card(request,pk):
         'request__construction_object','candidate','actor').order_by('-created_at','-pk')[:200]
     source_events=(row.source_data or {}).get('funnel_sources',[])
     source_applications=[event for event in source_events if event.get('sheet')=='План найма']
+    stage_events=row.stage_events.select_related('actor')[:200]
     return render(request,'personnel/recruitment_candidate_card.html',{**context(request.user),'row':row,'events':events,
-        'source_events':source_events,'source_applications':source_applications,
+        'source_events':source_events,'source_applications':source_applications,'stage_events':stage_events,
         'has_applications':bool(row.vacancy_candidates.all())})
 
 
@@ -107,9 +109,15 @@ def candidate_card(request,pk):
 def pool_edit(request,pk=None):
     require_roles(request.user,service.RECRUIT)
     row=get_object_or_404(TalentPoolCandidate,company=request.user.company,pk=pk) if pk else None
+    previous_stage=row.stage if row else None
     form=TalentPoolForm(request.POST if request.method=='POST' else None,company=request.user.company,user=request.user,instance=row)
     if request.method=='POST' and form.is_valid():
-        saved=form.save();messages.success(request,'Кандидат сохранён в общем пуле.');return redirect('personnel:recruitment_pool')
+        with transaction.atomic():
+            saved=form.save()
+            if previous_stage and previous_stage!=saved.stage:
+                TalentPoolStageEvent.objects.create(company=request.user.company,candidate=saved,from_stage=previous_stage,
+                    to_stage=saved.stage,actor=request.user,note=form.cleaned_data.get('stage_reason','').strip())
+        messages.success(request,'Кандидат сохранён в общем пуле.');return redirect('personnel:recruitment_pool')
     return render(request,'personnel/recruitment_form.html',{**context(request.user),'title':'Карточка кандидата общего пула','form':form})
 
 

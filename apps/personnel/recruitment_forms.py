@@ -1,9 +1,10 @@
 from django import forms
+from django.db.models import Q
 from django.utils import timezone
 from apps.projects.models import ConstructionObject
 from apps.resources.models import Employee
 from .models import RecruitmentRequest, RecruitmentCandidate,TalentPoolCandidate,Camp
-from .recruitment_models import RECRUITMENT_SYSTEM_STAGES,RECRUITMENT_TERMINAL_STAGES
+from .recruitment_models import POOL_UNAVAILABLE_STAGES,RECRUITMENT_SYSTEM_STAGES,RECRUITMENT_TERMINAL_STAGES
 from .recruitment import allowed_camps, validate_documents
 from .employee_widgets import RemoteEmployeeSelect
 
@@ -59,11 +60,15 @@ class CandidateForm(forms.ModelForm):
         super().__init__(*args,**kwargs)
         self.instance.company=company;self.instance.request=request_row
         original=self.fields['pool_candidate']
-        self.fields['pool_candidate']=TalentPoolChoiceField(label=original.label,required=False,
-            queryset=TalentPoolCandidate.objects.filter(company=company,is_active=True).exclude(
+        pool_queryset=TalentPoolCandidate.objects.filter(company=company,is_active=True).exclude(
                 vacancy_candidates__status__in=[value for value,_ in RecruitmentCandidate.STATES if value not in RECRUITMENT_TERMINAL_STAGES|{'RESERVE','ARRIVED'}],
                 vacancy_candidates__request__cancelled_at__isnull=True,
-                vacancy_candidates__request__completed_at__isnull=True).distinct().order_by('full_name','pk'),
+                vacancy_candidates__request__completed_at__isnull=True).distinct()
+        if self.instance.pool_candidate_id:
+            pool_queryset=TalentPoolCandidate.objects.filter(company=company).filter(
+                Q(pk=self.instance.pool_candidate_id)|Q(pk__in=pool_queryset.values('pk'))).distinct()
+        self.fields['pool_candidate']=TalentPoolChoiceField(label=original.label,required=False,
+            queryset=pool_queryset.order_by('full_name','pk'),
             empty_label='Новый человек — заполнить вручную')
         self.pool_candidate_data={str(candidate.pk):{'full_name':candidate.full_name,'phone':candidate.phone or '',
             'notes':candidate.notes or ''} for candidate in self.fields['pool_candidate'].queryset}
@@ -83,6 +88,8 @@ class CandidateForm(forms.ModelForm):
 
 
 class TalentPoolForm(forms.ModelForm):
+    stage_reason=forms.CharField(label='Причина изменения этапа',required=False,widget=forms.Textarea(attrs={'rows':2}),
+        help_text='Например: повторно направлен на рассмотрение после прежнего отказа.')
     position=forms.CharField(label='Должность',required=False)
     construction_site=forms.CharField(label='Строительный участок',required=False)
     birth_date=forms.DateField(label='Дата рождения',required=False,widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
@@ -100,23 +107,23 @@ class TalentPoolForm(forms.ModelForm):
     source_fields=('position','construction_site','birth_date','passport','manager_approval','security_approval','skzi_until',
         'medical_exam','pass_documents','base_city','readiness','dudinka_arrival','responsible_hr','agency')
     class Meta:
-        model=TalentPoolCandidate;fields=['full_name','phone','notes','is_active'];widgets={'notes':forms.Textarea(attrs={'rows':3})}
+        model=TalentPoolCandidate;fields=['full_name','phone','stage','notes'];widgets={'notes':forms.Textarea(attrs={'rows':3})}
     def __init__(self,*args,company,user,**kwargs):
         super().__init__(*args,**kwargs);self.instance.company=company
         if not self.instance.pk:self.instance.created_by=user
         source=self.instance.source_data or {}
         for field in self.source_fields:
             if field not in self.initial:self.initial[field]=source.get(field,'')
-        self.order_fields(['full_name','position','construction_site','phone','birth_date','passport','base_city','readiness',
+        self.order_fields(['full_name','stage','stage_reason','position','construction_site','phone','birth_date','passport','base_city','readiness',
             'dudinka_arrival','manager_approval','security_approval','skzi_until','medical_exam','pass_documents',
-            'responsible_hr','agency','notes','is_active'])
+            'responsible_hr','agency','notes'])
     def save(self,commit=True):
         instance=super().save(commit=False);source=dict(instance.source_data or {})
         for field in self.source_fields:
             value=self.cleaned_data.get(field)
             source[field]=value.isoformat() if hasattr(value,'isoformat') else (value or '').strip()
         source['full_name']=instance.full_name;source['phone']=instance.phone;source['notes']=instance.notes
-        instance.source_data=source
+        instance.source_data=source;instance.is_active=instance.stage not in POOL_UNAVAILABLE_STAGES
         if commit:instance.save()
         return instance
     def clean(self):

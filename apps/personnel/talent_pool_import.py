@@ -4,7 +4,7 @@ from datetime import date,datetime,time
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from .models import TalentPoolCandidate
-from .recruitment_models import RECRUITMENT_STAGES,RECRUITMENT_TERMINAL_STAGES
+from .recruitment_models import POOL_UNAVAILABLE_STAGES,RECRUITMENT_STAGES
 
 STORE_SHEET='Магазин 2026'
 PLAN_SHEET='План найма'
@@ -163,7 +163,7 @@ def import_sheet(user,file):
         stage=row.stage if operational else current['stage']
         phone_value=profile.get('phone') or (row.phone if row else '')
         notes=profile.get('notes') or current['details'] or (row.notes if row else '')
-        active=row.is_active if operational else stage not in RECRUITMENT_TERMINAL_STAGES|{'ARRIVED'}
+        active=row.is_active if operational else stage not in POOL_UNAVAILABLE_STAGES
         defaults={'phone':phone_value,'notes':notes,'source_data':source,'stage':stage,'is_active':active}
         if row:
             changed=[]

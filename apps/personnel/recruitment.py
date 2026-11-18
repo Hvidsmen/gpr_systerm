@@ -9,7 +9,7 @@ from core.permissions import require_roles
 from .models import (RecruitmentRequest, RecruitmentCandidate, ArrivalPreparation,
                      CandidateDocument, RecruitmentEvent, CampStay,MovementReviewRequest,TalentPoolCandidate)
 from .models import Person
-from .recruitment_models import RECRUITMENT_SYSTEM_STAGES,RECRUITMENT_TERMINAL_STAGES
+from .recruitment_models import POOL_UNAVAILABLE_STAGES,RECRUITMENT_SYSTEM_STAGES,RECRUITMENT_TERMINAL_STAGES
 
 DISPATCH = {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'}
 RECRUIT = {'ADMIN','HR_HEAD','RECRUITER'}
@@ -144,7 +144,7 @@ def sync_pool_candidate(candidate,stage=None):
     pool.full_name=candidate.full_name
     if candidate.phone:pool.phone=candidate.phone
     if not pool.notes and candidate.notes:pool.notes=candidate.notes
-    pool.is_active=stage not in RECRUITMENT_TERMINAL_STAGES|{'ARRIVED'}
+    pool.is_active=stage not in POOL_UNAVAILABLE_STAGES
     source=dict(pool.source_data or {})
     source.setdefault('position',candidate.request.position)
     source.setdefault('construction_site',candidate.request.construction_object.name)

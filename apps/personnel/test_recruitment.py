@@ -504,7 +504,7 @@ class RecruitmentTests(TestCase):
             'birth_date':'1990-02-03','passport':'1234 567890','base_city':'Уфа','readiness':'Готов с 20 ноября',
             'dudinka_arrival':'2026-11-21','manager_approval':'Согласован','security_approval':'Проверен',
             'skzi_until':'2027-01-01','medical_exam':'Пройден','pass_documents':'Направлены',
-            'responsible_hr':'Петрова','agency':'Агентство','notes':'Комментарий','is_active':'on'})
+            'responsible_hr':'Петрова','agency':'Агентство','stage':'NEW','notes':'Комментарий'})
         self.assertRedirects(response,reverse('personnel:recruitment_pool'),fetch_redirect_response=False)
         row=TalentPoolCandidate.objects.get(full_name='Ручной Кандидат')
         self.assertEqual(row.source_data['position'],'Электромонтажник');self.assertEqual(row.source_data['construction_site'],'КТП-2')
@@ -512,6 +512,31 @@ class RecruitmentTests(TestCase):
         page=self.client.get(reverse('personnel:recruitment_pool'))
         self.assertContains(page,'Электромонтажник');self.assertContains(page,'Все данные кандидата')
         duplicate=self.client.post(reverse('personnel:recruitment_pool_create'),{
-            'full_name':'  ручной   кандидат ','phone':'8 (999) 000-11-22','notes':'Повтор','is_active':'on'})
+            'full_name':'  ручной   кандидат ','phone':'8 (999) 000-11-22','stage':'NEW','notes':'Повтор'})
         self.assertEqual(duplicate.status_code,200);self.assertContains(duplicate,'Такой кандидат уже есть в общем пуле')
         self.assertEqual(TalentPoolCandidate.objects.filter(company=self.company).count(),1)
+    def test_rejected_candidate_can_return_to_any_funnel_stage(self):
+        from .models import TalentPoolCandidate,TalentPoolStageEvent
+        from .recruitment_forms import CandidateForm
+        pool=TalentPoolCandidate.objects.create(company=self.company,full_name='Вернувшийся Кандидат',phone='89995554433',
+            stage='REJECTED',is_active=False,created_by=self.recruiter)
+        self.client.force_login(self.recruiter)
+        response=self.client.post(reverse('personnel:recruitment_pool_edit',args=[pool.pk]),{
+            'full_name':pool.full_name,'phone':pool.phone,'stage':'SCREENING','stage_reason':'Рассматриваем повторно','notes':''})
+        self.assertRedirects(response,reverse('personnel:recruitment_pool'),fetch_redirect_response=False)
+        pool.refresh_from_db();self.assertEqual(pool.stage,'SCREENING');self.assertTrue(pool.is_active)
+        event=TalentPoolStageEvent.objects.get(candidate=pool)
+        self.assertEqual((event.from_stage,event.to_stage),('REJECTED','SCREENING'));self.assertEqual(event.actor,self.recruiter)
+        self.assertEqual(event.note,'Рассматриваем повторно')
+        vacancy=self.row();service.take_request(self.recruiter,vacancy.pk,vacancy.revision)
+        self.assertIn(pool,CandidateForm(company=self.company,request_row=vacancy).fields['pool_candidate'].queryset)
+        card=self.client.get(reverse('personnel:recruitment_candidate_card',args=[pool.pk]))
+        self.assertContains(card,'Отказ работодателя → На рассмотрении');self.assertContains(card,'Рассматриваем повторно')
+    def test_rejected_application_can_be_moved_back_to_review(self):
+        candidate=self.candidate(status='REJECTED',ready_on=None)
+        pool=candidate.pool_candidate;pool.refresh_from_db();self.assertFalse(pool.is_active)
+        updated=service.save_candidate(self.recruiter,candidate.request_id,{
+            'pool_candidate':pool,'full_name':candidate.full_name,'phone':candidate.phone,'status':'HR_INTERVIEW',
+            'ready_on':None,'notes':'Повторное собеседование'},candidate.pk,candidate.revision)
+        pool.refresh_from_db();self.assertEqual(updated.status,'HR_INTERVIEW');self.assertEqual(pool.stage,'HR_INTERVIEW')
+        self.assertTrue(pool.is_active)

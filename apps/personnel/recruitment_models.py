@@ -28,6 +28,7 @@ RECRUITMENT_STAGES = [
 ]
 RECRUITMENT_TERMINAL_STAGES={'REJECTED','WITHDRAWN','NOT_REQUIRED','NO_SHOW'}
 RECRUITMENT_SYSTEM_STAGES={'TRANSFERRED','ARRIVAL_APPROVED','ARRIVED'}
+POOL_UNAVAILABLE_STAGES=RECRUITMENT_TERMINAL_STAGES|RECRUITMENT_SYSTEM_STAGES
 
 
 class RecruitmentStorage(FileSystemStorage):
@@ -58,6 +59,19 @@ class TalentPoolCandidate(PersonnelModel):
     @property
     def source_application_count(self):
         return sum(1 for event in (self.source_data or {}).get('funnel_sources',[]) if event.get('sheet')=='План найма')
+
+
+class TalentPoolStageEvent(PersonnelModel):
+    candidate=models.ForeignKey(TalentPoolCandidate,on_delete=models.CASCADE,related_name='stage_events')
+    from_stage=models.CharField('Предыдущий этап',max_length=24,choices=RECRUITMENT_STAGES)
+    to_stage=models.CharField('Новый этап',max_length=24,choices=RECRUITMENT_STAGES)
+    actor=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='talent_pool_stage_events')
+    note=models.TextField('Комментарий',blank=True)
+    class Meta:ordering=['-created_at','-pk']
+    def clean(self):
+        super().clean()
+        if self.candidate_id and self.candidate.company_id!=self.company_id:raise ValidationError('Кандидат другой компании.')
+        if self.actor_id and self.actor.company_id!=self.company_id:raise ValidationError('Автор другой компании.')
 
 
 class RecruitmentRequest(PersonnelModel):
