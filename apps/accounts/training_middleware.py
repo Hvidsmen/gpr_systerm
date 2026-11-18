@@ -9,7 +9,7 @@ class TrainingGuard:
     blocked = {'register','login','password_change','add_from_ad','ad_group_search','one_c',
         'one_c_jobs','one_c_report','one_c_table','portal_updates','portal_update_status',
         'user_invite','user_invite_bulk','invitation_list','invitation_detail','invitation_status',
-        'invitation_settings','training_list','training_edit','training_reset','training_enter',
+        'invitation_settings','training_list','training_edit','training_reset','training_invite','training_enter',
         'impersonation_start','impersonation_stop','impersonation_history'}
 
     def __init__(self, get_response):

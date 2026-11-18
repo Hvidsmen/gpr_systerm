@@ -73,7 +73,27 @@ def groups(request, pk=None):
         group.may_enter = training.permitted(request.user, group)
         group.participant_url = urljoin(settings.PORTAL_PUBLIC_URL or request.build_absolute_uri('/'), reverse('accounts:training_enter',args=[group.pk]))
     runs = [] if copy is None else copy.runs.order_by('-started_at')[:10]
-    return render(request, 'accounts/training_list.html', {'copies':copies,'form':form,'editing':copy,'runs':runs,'next_reset':training.next_reset(timezone.now())})
+    invite_members=[] if copy is None else copy.members.filter(company=request.user.company,is_active=True,archived_at=None).order_by('last_name','first_name','username')
+    return render(request, 'accounts/training_list.html', {'copies':copies,'form':form,'editing':copy,
+        'invite_members':invite_members,'runs':runs,'next_reset':training.next_reset(timezone.now())})
+
+
+@login_required
+@require_POST
+def invite(request,pk):
+    require_roles(request.user,{'ADMIN'})
+    copy=get_object_or_404(TrainingCopy,pk=pk,company=request.user.company)
+    selected=request.POST.get('recipient','')
+    if selected=='all':ids=list(copy.members.values_list('pk',flat=True))
+    elif selected.isdecimal():ids=[int(selected)]
+    else:
+        messages.error(request,'Выберите одного участника или отправку всей группе.')
+        return redirect('accounts:training_edit',pk=copy.pk)
+    from . import invitations
+    try:batch=invitations.prepare_training(request.user,copy,ids)
+    except ValidationError as exc:
+        messages.error(request,' '.join(exc.messages));return redirect('accounts:training_edit',pk=copy.pk)
+    return redirect('accounts:invitation_detail',pk=batch.pk)
 
 
 @login_required

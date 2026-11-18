@@ -37,6 +37,27 @@ def blocked_reason(user):
     return ''
 
 
+def training_blocked_reason(user,group):
+    if group is None or not group.enabled:return 'Учебная группа отключена или удалена.'
+    if user.archived_at or not user.is_active:return 'Учётная запись отключена или находится в архиве.'
+    if user.company_id!=group.company_id or not group.members.filter(pk=user.pk).exists():
+        return 'Сотрудник больше не является участником учебной группы.'
+    try:validate_email(user.email)
+    except ValidationError:return 'В карточке отсутствует корректный адрес электронной почты.'
+    return ''
+
+
+def expected_url(batch,cfg):
+    if batch.kind=='TRAINING':
+        if not batch.training_copy_id:return ''
+        return urljoin(cfg['portal_url'],reverse('accounts:training_enter',args=[batch.training_copy_id]).lstrip('/'))
+    return cfg['portal_url']
+
+
+def current_blocked_reason(batch,user):
+    return training_blocked_reason(user,batch.training_copy) if batch.kind=='TRAINING' else blocked_reason(user)
+
+
 def message_context(user,portal_url):
     from core.instructions_content import GUIDES
     guide=next((g for g in GUIDES if g['kind']=='role' and g.get('role')==user.role.code),None)
@@ -86,6 +107,33 @@ def prepare(actor,ids):
     return batch
 
 
+def prepare_training(actor,group,ids):
+    require_roles(actor,{'ADMIN'})
+    if not actor.company_id or group.company_id!=actor.company_id:raise PermissionDenied('Недоступная учебная группа.')
+    ids=set(ids)
+    if not 1<=len(ids)<=MAX_RECIPIENTS:raise ValidationError('Выберите хотя бы одного участника.')
+    users=list(group.members.filter(company=actor.company,pk__in=ids).select_related('role').order_by('last_name','first_name','pk'))
+    if len(users)!=len(ids):raise PermissionDenied('Выбор содержит пользователей, не входящих в учебную группу.')
+    try:cfg=invitation_mail.configuration(actor.company);base_url=cfg['portal_url']
+    except ValidationError:base_url=invitation_mail.portal_address(settings.PORTAL_PUBLIC_URL)
+    portal_url=urljoin(base_url,reverse('accounts:training_enter',args=[group.pk]).lstrip('/'))
+    with transaction.atomic():
+        batch=InvitationBatch.objects.create(company=actor.company,created_by=actor,kind='TRAINING',
+            training_copy=group,portal_url=portal_url)
+        entries=[]
+        for user in users:
+            reason=training_blocked_reason(user,group)
+            context={'full_name':user.full_name,'group_name':group.name,'portal_url':portal_url} if not reason else None
+            entries.append(UserInvitation(batch=batch,recipient=user,full_name=user.full_name[:350],
+                recipient_email=user.email,windows_login='',role_name='',fingerprint=fingerprint(user),
+                status='BLOCKED' if reason else 'DRAFT',error=reason,
+                subject=f'Приглашение в учебную копию «{group.name}»' if context else '',
+                body=render_to_string('accounts/email/training_invitation.txt',context) if context else '',
+                html_body=render_to_string('accounts/email/training_invitation.html',context) if context else ''))
+        UserInvitation.objects.bulk_create(entries)
+    return batch
+
+
 def confirm(actor,batch):
     require_roles(actor,{'ADMIN'})
     from apps.audit.models import AuditLog
@@ -95,14 +143,14 @@ def confirm(actor,batch):
         if batch.confirmed_at:return batch
         cfg,error=invitation_mail.ready(actor.company)
         if error:raise ValidationError(error)
-        if cfg['portal_url']!=batch.portal_url:raise ValidationError('Адрес портала изменился после предпросмотра. Подготовьте приглашения заново.')
+        if expected_url(batch,cfg)!=batch.portal_url:raise ValidationError('Адрес портала изменился после предпросмотра. Подготовьте приглашения заново.')
         items=list(batch.items.filter(status='DRAFT').select_related('recipient__role'))
         if not items:raise ValidationError('Нет получателей, готовых к отправке. Исправьте указанные замечания.')
         for item in items:
-            if not item.recipient or item.recipient.company_id!=actor.company_id or fingerprint(item.recipient)!=item.fingerprint or blocked_reason(item.recipient):raise ValidationError('Данные получателей изменились после предпросмотра. Подготовьте приглашения заново.')
+            if not item.recipient or item.recipient.company_id!=actor.company_id or fingerprint(item.recipient)!=item.fingerprint or current_blocked_reason(batch,item.recipient):raise ValidationError('Данные получателей изменились после предпросмотра. Подготовьте приглашения заново.')
         batch.items.filter(status='DRAFT').update(status='QUEUED')
         batch.confirmed_at=timezone.now();batch.last_error='';batch.save(update_fields=['confirmed_at','last_error','updated_at'])
-        AuditLog.objects.create(user=actor,action='CREATE',entity_type='accounts.InvitationBatch',entity_id=str(batch.pk),new_value={'company_id':actor.company_id,'recipients':len(items),'portal_url':batch.portal_url},comment='Подтверждена отправка приглашений на портал')
+        AuditLog.objects.create(user=actor,action='CREATE',entity_type='accounts.InvitationBatch',entity_id=str(batch.pk),new_value={'company_id':actor.company_id,'recipients':len(items),'portal_url':batch.portal_url,'kind':batch.kind},comment='Подтверждена отправка приглашений')
         transaction.on_commit(lambda:kick())
     return batch
 
@@ -130,7 +178,7 @@ def drain(limit=50,seconds=30):
     """Claim each message once. Interrupted/inconclusive sends are never retried silently."""
     start=time.monotonic();sent=0
     UserInvitation.objects.filter(status='SENDING',started_at__lt=timezone.now()-timedelta(minutes=10)).update(status='UNKNOWN',error='Отправка прервана. Проверьте почтовый ящик перед повторным приглашением.')
-    candidates=list(UserInvitation.objects.filter(status='QUEUED',batch__confirmed_at__isnull=False,batch__paused=False).filter(Q(batch__retry_after__isnull=True)|Q(batch__retry_after__lte=timezone.now())).select_related('batch__company').order_by('created_at','id')[:limit])
+    candidates=list(UserInvitation.objects.filter(status='QUEUED',batch__confirmed_at__isnull=False,batch__paused=False).filter(Q(batch__retry_after__isnull=True)|Q(batch__retry_after__lte=timezone.now())).select_related('batch__company','batch__training_copy').order_by('created_at','id')[:limit])
     connections={}
     try:
         for candidate in candidates:
@@ -149,12 +197,12 @@ def drain(limit=50,seconds=30):
             if bundle is None:continue
             claimed=UserInvitation.objects.filter(pk=candidate.pk,status='QUEUED').update(status='SENDING',started_at=timezone.now(),attempts=F('attempts')+1)
             if not claimed:continue
-            item=UserInvitation.objects.select_related('recipient__role','batch').get(pk=candidate.pk)
+            item=UserInvitation.objects.select_related('recipient__role','batch__training_copy').get(pk=candidate.pk)
             recipient=item.recipient
-            if not recipient or recipient.company_id!=company.pk or fingerprint(recipient)!=item.fingerprint or blocked_reason(recipient):
+            if not recipient or recipient.company_id!=company.pk or fingerprint(recipient)!=item.fingerprint or current_blocked_reason(item.batch,recipient):
                 UserInvitation.objects.filter(pk=item.pk,status='SENDING').update(status='CANCELLED',error='Данные пользователя изменились. Подготовьте приглашение заново.');continue
             conn,cfg=bundle
-            if cfg['portal_url']!=item.batch.portal_url:
+            if expected_url(item.batch,cfg)!=item.batch.portal_url:
                 UserInvitation.objects.filter(pk=item.pk,status='SENDING').update(status='CANCELLED',error='Адрес портала изменился. Подготовьте приглашение заново.');continue
             try:
                 message=EmailMultiAlternatives(item.subject,item.body,invitation_mail.sender(cfg),[item.recipient_email],connection=conn,headers={'Message-ID':'<portal-invitation-'+str(item.pk)+'@'+cfg['from_email'].rsplit('@',1)[-1]+'>'})

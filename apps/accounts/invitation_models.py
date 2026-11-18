@@ -16,9 +16,12 @@ class CompanyMailSettings(BaseTimestampedModel):
     updated_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,blank=True,related_name='+')
 
 class InvitationBatch(BaseTimestampedModel):
+    KINDS=[('PORTAL','Основной портал'),('TRAINING','Учебная копия')]
     id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
     company=models.ForeignKey('accounts.Company',on_delete=models.CASCADE)
     created_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,related_name='invitation_batches')
+    kind=models.CharField(max_length=12,choices=KINDS,default='PORTAL')
+    training_copy=models.ForeignKey('accounts.TrainingCopy',on_delete=models.SET_NULL,null=True,blank=True,related_name='invitation_batches')
     portal_url=models.URLField()
     confirmed_at=models.DateTimeField(null=True,blank=True)
     last_error=models.CharField(max_length=1000,blank=True)

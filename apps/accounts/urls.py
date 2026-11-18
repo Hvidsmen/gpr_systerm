@@ -21,6 +21,7 @@ urlpatterns = [
     path('training/consume/',training_views.consume,name='training_consume'),
     path('training/<uuid:pk>/',training_views.groups,name='training_edit'),
     path('training/<uuid:pk>/reset/',training_views.reset,name='training_reset'),
+    path('training/<uuid:pk>/invite/',training_views.invite,name='training_invite'),
     path('training/<uuid:pk>/enter/',training_views.enter,name='training_enter'),
     path('users/invitations/',invitation_views.history,name='invitation_list'),
     path('users/invitations/prepare/',invitation_views.prepare,name='user_invite_bulk'),

@@ -45,6 +45,31 @@ class InvitationTests(TestCase):
             message=next(m for m in mail.outbox if m.to==[item.recipient_email])
             self.assertEqual(message.body,item.body);self.assertEqual(message.alternatives[0].content,item.html_body)
         self.assertEqual(invitations.counts(batch)['sent'],2)
+
+    def test_training_invitation_uses_same_reviewed_mail_queue(self):
+        from .models import TrainingCopy
+        group=TrainingCopy.objects.create(company=self.company,name='Руководители',port=8101,created_by=self.admin)
+        group.members.add(self.user)
+        batch=invitations.prepare_training(self.admin,group,[self.user.pk])
+        item=batch.items.get()
+        self.assertEqual(batch.kind,'TRAINING')
+        self.assertEqual(batch.training_copy,group)
+        self.assertIn(str(group.pk),batch.portal_url)
+        self.assertIn('Руководители',item.body)
+        self.assertNotIn('Пароль:',item.body)
+        self.confirm(batch)
+        self.assertEqual(invitations.drain(),1)
+        self.assertEqual(mail.outbox[0].to,[self.user.email])
+        self.assertIn('учебную копию',mail.outbox[0].subject)
+
+    def test_training_invitation_is_cancelled_if_membership_was_removed(self):
+        from .models import TrainingCopy
+        group=TrainingCopy.objects.create(company=self.company,name='Руководители',port=8101,created_by=self.admin)
+        group.members.add(self.user)
+        batch=invitations.prepare_training(self.admin,group,[self.user.pk])
+        self.confirm(batch);group.members.clear()
+        self.assertEqual(invitations.drain(),0)
+        self.assertEqual(batch.items.get().status,'CANCELLED')
     def test_sender_display_name_is_portal_brand(self):
         encoded_name,address=parseaddr(invitation_mail.sender({'from_email':'sender@example.org'}))
         self.assertEqual(str(make_header(decode_header(encoded_name))),'Портал ЯДС ОС')

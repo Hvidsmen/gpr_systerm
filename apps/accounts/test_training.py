@@ -88,6 +88,25 @@ class TrainingTests(TestCase):
         self.assertEqual(self.client.post(url,{'confirm':'yes'}).status_code,302)
         self.copy.refresh_from_db();self.assertIsNotNone(self.copy.requested_at)
 
+    def test_invitation_button_prepares_one_recipient_or_the_whole_group(self):
+        from .models import InvitationBatch
+        User.objects.filter(pk=self.member.pk).update(email='trainee@example.org')
+        second=User.objects.create_user(username='second-trainee',email='second@example.org',
+            company=self.company,role=Role.objects.get(code='DISPATCHER'))
+        self.copy.members.add(second)
+        self.client.force_login(self.admin)
+        page=self.client.get(reverse('accounts:training_edit',args=[self.copy.pk]))
+        self.assertContains(page,'Отправить приглашение')
+        response=self.client.post(reverse('accounts:training_invite',args=[self.copy.pk]),
+            {'recipient':str(self.member.pk)})
+        self.assertEqual(response.status_code,302)
+        self.assertEqual(InvitationBatch.objects.get().items.count(),1)
+        response=self.client.post(reverse('accounts:training_invite',args=[self.copy.pk]),{'recipient':'all'})
+        self.assertEqual(response.status_code,302)
+        batch=InvitationBatch.objects.order_by('-created_at').first()
+        self.assertEqual(batch.items.count(),2)
+        self.assertEqual(set(batch.items.values_list('recipient_id',flat=True)),{self.member.pk,second.pk})
+
     def test_moscow_schedule_before_at_and_after_seven(self):
         before=datetime(2026,11,1,3,59,tzinfo=dt_timezone.utc)
         at=before+timedelta(minutes=1)
