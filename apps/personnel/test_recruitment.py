@@ -556,7 +556,9 @@ class RecruitmentTests(TestCase):
         self.assertContains(shop,'План и воронка по должностям');self.assertContains(shop,'Последняя заявка:')
         self.assertContains(shop,'data-position-details-action="expand"',html=False);self.assertContains(shop,'data-position-details-action="collapse"',html=False)
         self.assertContains(shop,'data-position-toggle',html=False);self.assertContains(shop,'aria-expanded="true"',html=False)
-        self.assertContains(shop,'data-candidate-inline-toggle',html=False)
+        self.assertContains(shop,'data-candidate-inline-target',html=False)
+        self.assertContains(shop,'data-candidate-inline-row',html=False)
+        self.assertNotContains(shop,'data-candidate-inline-toggle',html=False)
         self.assertContains(shop,reverse('personnel:recruitment_candidate_inline',args=[candidate.pool_candidate_id]))
         self.assertContains(shop,f'№{candidate.request_id} · Монтажник · {self.obj}')
         self.assertContains(shop,'Не прикреплён к заявке');self.assertNotContains(shop,'План найма: 1')
@@ -581,7 +583,9 @@ class RecruitmentTests(TestCase):
         self.assertContains(response,'name="position"',html=False)
         self.assertContains(response,'name="construction_object"',html=False)
         self.assertContains(response,'name="responsible_hr"',html=False)
-        self.assertContains(response,'Сохранить карточку')
+        self.assertContains(response,'candidate-inline-compact-grid',html=False)
+        self.assertNotContains(response,'Свернуть')
+        self.assertContains(response,'>Сохранить<',html=False)
         response=self.client.post(url,{
             'full_name':'Изменённый кандидат','stage':'SCREENING','stage_reason':'Повторная проверка',
             'position':self.position.pk,'construction_object':self.obj.pk,'camp':self.camp.pk,

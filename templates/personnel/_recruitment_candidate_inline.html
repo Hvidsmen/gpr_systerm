@@ -1,5 +1,41 @@
 <section class="candidate-inline-card" data-candidate-inline-card="{{ row.pk }}"{% if saved %} data-save-success="true"{% endif %}>
-<div class="recruitment-heading mb-2"><div><h4 class="h6 mb-1">{{ row.full_name }}</h4><span class="recruitment-status recruitment-stage-{{ row.stage|lower }}">{{ row.get_stage_display }}</span></div><div class="recruitment-actions"><a class="btn btn-sm btn-outline-secondary" href="{% url 'personnel:recruitment_candidate_card' row.pk %}">Открыть отдельно</a><button class="btn btn-sm btn-outline-secondary" type="button" data-candidate-inline-close>Свернуть</button></div></div>
-{% if saved %}<div class="alert alert-success py-2" role="status">Карточка сохранена.</div>{% endif %}
-<form method="post" action="{% url 'personnel:recruitment_candidate_inline' row.pk %}" data-candidate-inline-form data-candidate-id="{{ row.pk }}">{% csrf_token %}{% include 'forms/fields.html' with form=form %}{% if can_edit %}<div class="recruitment-actions"><button class="btn btn-primary" type="submit">Сохранить карточку</button><span class="small" role="status" data-candidate-inline-status></span></div>{% else %}<p class="small text-muted mb-0">Для изменения карточки нужна роль подбора персонала.</p>{% endif %}</form>
+<form method="post" action="{% url 'personnel:recruitment_candidate_inline' row.pk %}" data-candidate-inline-form data-candidate-id="{{ row.pk }}">
+{% csrf_token %}
+<div class="candidate-inline-toolbar">
+  <div class="candidate-inline-identity"><strong>{{ row.full_name }}</strong><span class="recruitment-status recruitment-stage-{{ row.stage|lower }}">{{ row.get_stage_display }}</span></div>
+  <div class="recruitment-actions"><span class="small" role="status" data-candidate-inline-status>{% if saved %}Карточка сохранена.{% endif %}</span><a class="btn btn-sm btn-outline-secondary" href="{% url 'personnel:recruitment_candidate_card' row.pk %}">Открыть отдельно</a>{% if can_edit %}<button class="btn btn-primary btn-sm" type="submit">Сохранить</button>{% endif %}</div>
+</div>
+{% if form.non_field_errors %}<div class="app-form-errors candidate-inline-errors" role="alert">{{ form.non_field_errors }}</div>{% endif %}
+<div class="candidate-inline-compact-grid">
+  {% include 'personnel/_recruitment_inline_field.html' with field=form.full_name span='candidate-span-2' %}
+  {% include 'personnel/_recruitment_inline_field.html' with field=form.stage span='candidate-span-2' %}
+  {% include 'personnel/_recruitment_inline_field.html' with field=form.stage_reason span='candidate-span-2' %}
+  {% include 'personnel/_recruitment_inline_field.html' with field=form.position span='candidate-span-2' %}
+  {% include 'personnel/_recruitment_inline_field.html' with field=form.construction_object span='candidate-span-2' %}
+  {% include 'personnel/_recruitment_inline_field.html' with field=form.camp span='candidate-span-1' %}
+  {% include 'personnel/_recruitment_inline_field.html' with field=form.phone span='candidate-span-1' %}
+  {% include 'personnel/_recruitment_inline_field.html' with field=form.birth_date span='candidate-span-1' %}
+  {% include 'personnel/_recruitment_inline_field.html' with field=form.passport span='candidate-span-2' %}
+
+  <div class="candidate-compact-field candidate-span-3{% if form.base_city.errors or form.new_base_city.errors %} app-field-invalid{% endif %}">
+    <span class="candidate-compact-label">Базовый город / новый город</span><div class="candidate-compact-dual">{{ form.base_city }}{{ form.new_base_city }}</div>
+    {% if form.base_city.errors %}<div class="app-form-errors" role="alert">{{ form.base_city.errors }}</div>{% endif %}{% if form.new_base_city.errors %}<div class="app-form-errors" role="alert">{{ form.new_base_city.errors }}</div>{% endif %}
+    {% if form.new_base_city.help_text %}<div class="candidate-compact-help">{{ form.new_base_city.help_text|safe }}</div>{% endif %}
+  </div>
+  <div class="candidate-compact-field candidate-span-2{% if form.ready_for_arrival.errors or form.ready_for_arrival_on.errors %} app-field-invalid{% endif %}">
+    <span class="candidate-compact-label">Готовность к заезду</span><div class="candidate-compact-check-date"><span>{{ form.ready_for_arrival }} <label for="{{ form.ready_for_arrival.id_for_label }}">Да</label></span>{{ form.ready_for_arrival_on }}</div>
+    {% if form.ready_for_arrival.errors %}<div class="app-form-errors" role="alert">{{ form.ready_for_arrival.errors }}</div>{% endif %}{% if form.ready_for_arrival_on.errors %}<div class="app-form-errors" role="alert">{{ form.ready_for_arrival_on.errors }}</div>{% endif %}
+  </div>
+  {% include 'personnel/_recruitment_inline_field.html' with field=form.dudinka_arrival span='candidate-span-1' %}
+  <div class="candidate-compact-field candidate-span-1{% if form.manager_approved.errors or form.manager_approved_on.errors %} app-field-invalid{% endif %}"><span class="candidate-compact-label">Руководитель</span><div class="candidate-compact-check-date"><span>{{ form.manager_approved }} <label for="{{ form.manager_approved.id_for_label }}">Да</label></span>{{ form.manager_approved_on }}</div>{% if form.manager_approved.errors %}<div class="app-form-errors" role="alert">{{ form.manager_approved.errors }}</div>{% endif %}{% if form.manager_approved_on.errors %}<div class="app-form-errors" role="alert">{{ form.manager_approved_on.errors }}</div>{% endif %}</div>
+  <div class="candidate-compact-field candidate-span-1{% if form.security_approved.errors or form.security_approved_on.errors %} app-field-invalid{% endif %}"><span class="candidate-compact-label">СБ</span><div class="candidate-compact-check-date"><span>{{ form.security_approved }} <label for="{{ form.security_approved.id_for_label }}">Да</label></span>{{ form.security_approved_on }}</div>{% if form.security_approved.errors %}<div class="app-form-errors" role="alert">{{ form.security_approved.errors }}</div>{% endif %}{% if form.security_approved_on.errors %}<div class="app-form-errors" role="alert">{{ form.security_approved_on.errors }}</div>{% endif %}</div>
+  {% include 'personnel/_recruitment_inline_field.html' with field=form.skzi_until span='candidate-span-1' %}
+  <div class="candidate-compact-field candidate-span-1{% if form.medical_exam_passed.errors or form.medical_exam_on.errors %} app-field-invalid{% endif %}"><span class="candidate-compact-label">Медосмотр</span><div class="candidate-compact-check-date"><span>{{ form.medical_exam_passed }} <label for="{{ form.medical_exam_passed.id_for_label }}">Да</label></span>{{ form.medical_exam_on }}</div>{% if form.medical_exam_passed.errors %}<div class="app-form-errors" role="alert">{{ form.medical_exam_passed.errors }}</div>{% endif %}{% if form.medical_exam_on.errors %}<div class="app-form-errors" role="alert">{{ form.medical_exam_on.errors }}</div>{% endif %}</div>
+  {% include 'personnel/_recruitment_inline_field.html' with field=form.pass_documents span='candidate-span-1' %}
+  {% include 'personnel/_recruitment_inline_field.html' with field=form.responsible_hr span='candidate-span-1' %}
+  {% include 'personnel/_recruitment_inline_field.html' with field=form.agency span='candidate-span-1' %}
+  {% include 'personnel/_recruitment_inline_field.html' with field=form.notes span='candidate-span-2' %}
+</div>
+{% if not can_edit %}<p class="small text-muted mb-0">Для изменения карточки нужна роль подбора персонала.</p>{% endif %}
+</form>
 </section>

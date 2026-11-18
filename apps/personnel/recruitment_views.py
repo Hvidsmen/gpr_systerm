@@ -180,7 +180,8 @@ def candidate_inline(request,pk):
     can_edit=role_code(request.user) in service.RECRUIT
     if request.method=='POST':require_roles(request.user,service.RECRUIT)
     previous_stage=row.stage
-    form=TalentPoolForm(request.POST if request.method=='POST' else None,company=request.user.company,user=request.user,instance=row)
+    form=TalentPoolForm(request.POST if request.method=='POST' else None,company=request.user.company,user=request.user,
+        instance=row,auto_id=f'id_candidate_{row.pk}_%s')
     saved=False
     if request.method=='POST' and form.is_valid():
         with transaction.atomic():
@@ -188,7 +189,8 @@ def candidate_inline(request,pk):
             if previous_stage!=row.stage:
                 TalentPoolStageEvent.objects.create(company=request.user.company,candidate=row,from_stage=previous_stage,
                     to_stage=row.stage,actor=request.user,note=form.cleaned_data.get('stage_reason','').strip())
-        saved=True;form=TalentPoolForm(company=request.user.company,user=request.user,instance=row)
+        saved=True;form=TalentPoolForm(company=request.user.company,user=request.user,instance=row,
+            auto_id=f'id_candidate_{row.pk}_%s')
     if not can_edit:
         for field in form.fields.values():field.disabled=True
     status=422 if request.method=='POST' and not saved else 200

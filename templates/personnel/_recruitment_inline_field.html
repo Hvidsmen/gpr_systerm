@@ -1,0 +1,5 @@
+<div class="candidate-compact-field {{ span }}{% if field.errors %} app-field-invalid{% endif %}">
+  <label class="candidate-compact-label" for="{{ field.id_for_label }}">{{ field.label }}{% if field.field.required %} <span class="app-required" aria-hidden="true">*</span>{% endif %}</label>{{ field }}
+  {% if field.errors %}<div class="app-form-errors" role="alert">{{ field.errors }}</div>{% endif %}
+  {% if field.help_text %}<div class="candidate-compact-help">{{ field.help_text|safe }}</div>{% endif %}
+</div>
