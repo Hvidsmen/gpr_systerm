@@ -37,7 +37,7 @@ class RecruitmentTests(TestCase):
         cls.employee=Employee.objects.create(company=cls.company,last_name='Оформленный',first_name='Сотрудник',employee_number='R-001')
         cls.foreign_employee=Employee.objects.create(company=cls.other,last_name='Чужой',first_name='Сотрудник')
     def values(self,**extra):
-        return {'construction_object':self.obj,'position':'Монтажник','quantity':2,'required_on':self.day,'requirements':'Удостоверение',**extra}
+        return {'construction_object':self.obj,'position_ref':self.position,'position':'Монтажник','quantity':2,'required_on':self.day,'requirements':'Удостоверение',**extra}
     def setUp(self):
         self._candidate_sequence=0
     def row(self):
@@ -206,7 +206,8 @@ class RecruitmentTests(TestCase):
         arrive_camp(admin,movement,self.day+timedelta(days=1));row.refresh_from_db()
         self.assertIsNotNone(row.completed_at)
         pool.refresh_from_db();self.assertFalse(pool.is_active)
-        another=service.save_request(self.dispatch,self.values(position='Другая должность'))
+        other_position=Position.objects.create(company=self.company,name='Другая должность',code='drugaya')
+        another=service.save_request(self.dispatch,self.values(position_ref=other_position))
         self.assertNotIn(pool,CandidateForm(company=self.company,request_row=another).fields['pool_candidate'].queryset)
         self.client.force_login(self.dispatch)
         active=self.client.get(reverse('personnel:recruitment_list'))
@@ -359,8 +360,10 @@ class RecruitmentTests(TestCase):
             page=self.client.get(reverse('personnel:'+route));self.assertNotContains(page,'data-personnel-sections');self.assertContains(page,title)
         page=self.client.get(reverse('personnel:housing'));self.assertNotContains(page,'data-movement-form')
         page=self.client.get(reverse('personnel:movements'));self.assertContains(page,'data-movement-form');self.assertNotContains(page,'data-roster-grid')
+        welder=Position.objects.create(company=self.company,name='Сварщик',code='svarshchik')
         page=self.client.get(reverse('personnel:recruitment_create'),{'position':'Сварщик','construction_object':self.obj.pk})
-        self.assertEqual(page.context['form'].initial['position'],'Сварщик');self.assertEqual(int(page.context['form'].initial['construction_object']),self.obj.pk)
+        self.assertEqual(page.context['form'].initial['position_ref'],welder.pk);self.assertEqual(int(page.context['form'].initial['construction_object']),self.obj.pk)
+        self.assertContains(page,'<select name="position_ref"',html=False)
     def test_recruiter_landing_menu_and_direct_route_restrictions(self):
         self.client.force_login(self.recruiter)
         self.assertRedirects(self.client.get(reverse('dashboard:index')),reverse('personnel:recruitment_list'))
@@ -383,7 +386,7 @@ class RecruitmentTests(TestCase):
             self.assertEqual(getattr(self.client,method)(reverse('personnel:'+route,args=args),data).status_code,404)
     def test_http_request_candidate_handoff_arrival(self):
         self.client.force_login(self.dispatch)
-        response=self.client.post(reverse('personnel:recruitment_create'),{'construction_object':self.obj.pk,'position':'Монтажник','quantity':1,'required_on':str(self.day),'requirements':'','revision':0})
+        response=self.client.post(reverse('personnel:recruitment_create'),{'construction_object':self.obj.pk,'position_ref':self.position.pk,'quantity':1,'required_on':str(self.day),'requirements':'','revision':0})
         row=RecruitmentRequest.objects.get();self.assertRedirects(response,reverse('personnel:recruitment_detail',args=[row.pk]))
         self.client.force_login(self.recruiter)
         self.client.post(reverse('personnel:recruitment_detail',args=[row.pk]),{'action':'take','revision':row.revision})

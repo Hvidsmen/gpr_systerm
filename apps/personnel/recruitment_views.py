@@ -164,7 +164,11 @@ def pool_import(request):
 def request_edit(request,pk=None):
     require_roles(request.user,service.DISPATCH)
     row=get_object_or_404(RecruitmentRequest,company=request.user.company,pk=pk) if pk else None
-    initial={key:request.GET[key] for key in ('construction_object','position') if key in request.GET}
+    initial={key:request.GET[key] for key in ('construction_object',) if key in request.GET}
+    if request.GET.get('position'):
+        from apps.resources.models import Position
+        matches=list(Position.objects.filter(company=request.user.company,name__iexact=request.GET['position'].strip())[:2])
+        if len(matches)==1:initial['position_ref']=matches[0].pk
     form=RequestForm(request.POST if request.method=='POST' else None,company=request.user.company,instance=row,initial=initial)
     if request.method=='POST' and form.is_valid():
         try:saved=service.save_request(request.user,form.cleaned_data,pk,form.cleaned_data['revision'])

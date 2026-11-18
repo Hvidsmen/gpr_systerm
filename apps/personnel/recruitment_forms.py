@@ -22,12 +22,17 @@ class RequestForm(forms.ModelForm):
     revision = forms.IntegerField(min_value=0, widget=forms.HiddenInput, initial=0)
     class Meta:
         model = RecruitmentRequest
-        fields = ['construction_object','position','quantity','required_on','requirements']
+        fields = ['construction_object','position_ref','quantity','required_on','requirements']
         widgets = {'required_on':forms.DateInput(format='%Y-%m-%d', attrs={'type':'date'}),'requirements':forms.Textarea(attrs={'rows':3})}
     def __init__(self,*args,company,**kwargs):
         super().__init__(*args,**kwargs)
         self.instance.company=company
         self.fields['construction_object'].queryset=ConstructionObject.objects.filter(company=company).order_by('name')
+        self.fields['position_ref'].queryset=Position.objects.filter(company=company).order_by('name','pk')
+        self.fields['position_ref'].label='Должность';self.fields['position_ref'].empty_label='Выберите должность'
+        self.fields['position_ref'].required=True
+        if self.instance.pk and not self.instance.position_ref_id and self.instance.position:
+            self.fields['position_ref'].help_text=format_html('В старой заявке указано: <strong>{}</strong>. Выберите соответствующую должность из справочника.',self.instance.position)
         self.fields['quantity'].min_value=1
         self.fields['quantity'].widget.attrs['min']=1
         if self.instance.pk:self.initial['revision']=self.instance.revision

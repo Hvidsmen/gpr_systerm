@@ -69,9 +69,17 @@ def progress(row):
 def save_request(user, values, pk=None, revision=None):
     serialize(user,DISPATCH)
     row=current(user,pk,revision) if pk else RecruitmentRequest(company=user.company,created_by=user)
-    for field in ('construction_object','position','quantity','required_on','requirements'):setattr(row,field,values[field])
-    row.position=' '.join(row.position.split())
-    if not row.position:raise ValidationError('Укажите должность.')
+    position=values.get('position_ref')
+    if position is None:
+        raw=values.get('position')
+        from apps.resources.models import Position
+        if isinstance(raw,Position):position=raw
+        elif raw:
+            matches=list(Position.objects.filter(company=user.company,name__iexact=' '.join(str(raw).split()))[:2])
+            if len(matches)==1:position=matches[0]
+    if position is None or position.company_id!=user.company_id:raise ValidationError('Выберите должность из справочника.')
+    for field in ('construction_object','quantity','required_on','requirements'):setattr(row,field,values[field])
+    row.position_ref=position;row.position=position.name
     # Changing the destination after handing candidates off would strand preparations.
     if pk and ArrivalPreparation.objects.filter(candidate__request=row).exists():
         before=RecruitmentRequest.objects.get(pk=pk)
@@ -131,10 +139,8 @@ def ensure_pool_candidate(user,row,candidate,chosen=None):
         if pool_identity==identity or identity[0] and not identity[1] and pool_identity[0]==identity[0]:matches.append(pool)
     if len(matches)>1:raise ValidationError('Найдено несколько карточек с таким ФИО. Выберите кандидата из пула вручную.')
     if matches:return matches[0]
-    from apps.resources.models import Position
-    positions=list(Position.objects.filter(company=user.company,name__iexact=row.position)[:2])
     return TalentPoolCandidate.objects.create(company=user.company,full_name=candidate.full_name,phone=candidate.phone,
-        notes='',stage=candidate.status,created_by=user,position=positions[0] if len(positions)==1 else None,
+        notes='',stage=candidate.status,created_by=user,position=row.position_ref,
         construction_object=row.construction_object,ready_for_arrival=bool(candidate.ready_on),ready_for_arrival_on=candidate.ready_on,source_data={
             'position':row.position,'construction_site':row.construction_object.name,'origin':'recruitment',
         })
@@ -155,9 +161,7 @@ def sync_pool_candidate(candidate,stage=None):
     pool.source_data=source
     if not pool.construction_object_id:pool.construction_object=candidate.request.construction_object
     if not pool.position_id:
-        from apps.resources.models import Position
-        positions=list(Position.objects.filter(company=candidate.company,name__iexact=candidate.request.position)[:2])
-        if len(positions)==1:pool.position=positions[0]
+        pool.position=candidate.request.position_ref
     if candidate.ready_on:
         pool.ready_for_arrival=True;pool.ready_for_arrival_on=candidate.ready_on
     arrival=getattr(candidate,'arrival',None)
