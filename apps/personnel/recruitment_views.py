@@ -7,6 +7,7 @@ from django.db.models import Count,Q, Prefetch
 from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils import timezone
 from django.views.decorators.http import require_http_methods, require_POST, require_GET
 from core.permissions import require_roles, role_code
 from apps.projects.models import ConstructionObject
@@ -84,7 +85,8 @@ def requests_for(user):
 
 def context(user):
     role=role_code(user)
-    return {'personnel_section':'recruitment','can_dispatch':role in service.DISPATCH,'can_recruit':role in service.RECRUIT}
+    return {'personnel_section':'recruitment','can_dispatch':role in service.DISPATCH,'can_recruit':role in service.RECRUIT,
+        'can_administer_pool':role=='ADMIN'}
 
 
 def error(form,exc):form.add_error(None,'; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Данные изменились одновременно с вашим вводом. Обновите страницу.')
@@ -174,6 +176,12 @@ def request_list(request,recruitment_page='bank'):
         candidates=candidates.filter(Q(construction_object_id__in=selected_object_ids)|
             Q(vacancy_candidates__request__construction_object_id__in=selected_object_ids)).distinct()
     if selected_camp_ids:candidates=candidates.filter(camp_id__in=selected_camp_ids)
+    pool_state=request.GET.get('pool_state','active')
+    pool_state=pool_state if pool_state in {'active','archived','all'} else 'active'
+    if recruitment_page=='bank':
+        if pool_state=='archived':candidates=candidates.filter(archived_at__isnull=False)
+        elif pool_state!='all':candidates=candidates.filter(archived_at__isnull=True)
+    else:candidates=candidates.filter(archived_at__isnull=True)
     if recruitment_page=='ready':candidates=candidates.filter(stage='TRANSFERRED')
     candidate_rows=list(candidates.values('pk','full_name','stage','position_id','position__name','construction_object__name','source_data'))
     candidate_ids=[row['pk'] for row in candidate_rows]
@@ -228,7 +236,8 @@ def request_list(request,recruitment_page='bank'):
         'candidate_total':candidate_total,'candidate_position_count':candidate_position_count,'position_summary':position_summary,
         'candidate_stage_choices':TalentPoolCandidate._meta.get_field('stage').choices,'position_options':position_options,
         'camp_options':camp_options,'object_options':object_options,'selected_position_ids':selected_position_ids,
-        'selected_camp_ids':selected_camp_ids,'selected_object_ids':selected_object_ids,'funnel_query':funnel_params.urlencode()})
+        'selected_camp_ids':selected_camp_ids,'selected_object_ids':selected_object_ids,'funnel_query':funnel_params.urlencode(),
+        'pool_state':pool_state})
 
 
 @login_required
@@ -236,7 +245,7 @@ def request_list(request,recruitment_page='bank'):
 def pool_list(request):
     require_roles(request.user,service.READ)
     applications=RecruitmentCandidate.objects.select_related('request__construction_object','arrival__movement_request').order_by('-created_at','-pk')
-    rows=TalentPoolCandidate.objects.filter(company=request.user.company).select_related(
+    rows=TalentPoolCandidate.objects.filter(company=request.user.company,archived_at__isnull=True).select_related(
         'position','construction_object','camp','base_city','responsible_hr').prefetch_related(
             Prefetch('vacancy_candidates',queryset=applications))
     query=request.GET.get('q','').strip()
@@ -290,7 +299,7 @@ def candidate_inline(request,pk):
         for field in form.fields.values():field.disabled=True
     status=422 if request.method=='POST' and not saved else 200
     return render(request,'personnel/_recruitment_candidate_inline.html',{
-        'row':row,'form':form,'can_edit':can_edit,'saved':saved},status=status)
+        'row':row,'form':form,'can_edit':can_edit,'can_administer_pool':role_code(request.user)=='ADMIN','saved':saved},status=status)
 
 
 @login_required
@@ -453,6 +462,42 @@ def ready_arrival_handoff(request):
         return redirect('personnel:recruitment_ready')
     messages.success(request,f'Создан черновик заявки на заезд: {len(requests)} сотрудников. Заполните обязательные данные.')
     return redirect(f'{reverse("personnel:recruitment_arrival_bulk_edit",args=[batch])}?back=ready')
+
+
+@login_required
+@require_POST
+def pool_bulk_action(request):
+    if role_code(request.user)!='ADMIN':raise PermissionDenied('Архивом и удалением карточек управляет только администратор.')
+    try:ids=sorted({int(value) for value in request.POST.getlist('selected')})
+    except (TypeError,ValueError):ids=[]
+    action=request.POST.get('action','')
+    if not ids:messages.error(request,'Выберите хотя бы одного сотрудника.')
+    elif action not in {'archive','restore','delete'}:messages.error(request,'Неизвестное действие с карточками.')
+    else:
+        with transaction.atomic():
+            rows=list(TalentPoolCandidate.objects.select_for_update().filter(company=request.user.company,pk__in=ids))
+            if len(rows)!=len(ids):raise PermissionDenied('Одна из выбранных карточек недоступна.')
+            if action=='archive':
+                now=timezone.now()
+                TalentPoolCandidate.objects.filter(company=request.user.company,pk__in=ids).update(
+                    archived_at=now,archived_by=request.user,is_active=False)
+                messages.success(request,f'В архив перенесено карточек: {len(rows)}.')
+            elif action=='restore':
+                for row in rows:
+                    row.archived_at=None;row.archived_by=None;row.is_active=row.stage not in POOL_UNAVAILABLE_STAGES
+                    row.save(update_fields=['archived_at','archived_by','is_active','updated_at'])
+                messages.success(request,f'Из архива восстановлено карточек: {len(rows)}.')
+            else:
+                deleted=blocked=0
+                for row in rows:
+                    if row.vacancy_candidates.exists() or row.movement_requests.exists():blocked+=1;continue
+                    row.delete();deleted+=1
+                if deleted:messages.success(request,f'Удалено карточек: {deleted}.')
+                if blocked:messages.warning(request,f'Не удалено связанных карточек: {blocked}. Перенесите их в архив.')
+    return_state=request.POST.get('return_state','')
+    target=reverse('personnel:recruitment_list')
+    if return_state in {'archived','all'}:target+=f'?pool_state={return_state}'
+    return redirect(target)
 
 
 @login_required

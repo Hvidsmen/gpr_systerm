@@ -104,6 +104,9 @@ class TalentPoolCandidate(PersonnelModel):
         related_name='candidates',verbose_name='Ответственный HR')
     stage=models.CharField('Этап воронки',max_length=24,choices=RECRUITMENT_STAGES,default='NEW')
     is_active=models.BooleanField('Доступен для вакансий',default=True)
+    archived_at=models.DateTimeField('Перенесён в архив',null=True,blank=True)
+    archived_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,blank=True,
+        related_name='+',verbose_name='Перенёс в архив')
     created_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='talent_pool_candidates')
     class Meta:ordering=['full_name','pk']
     def __str__(self):return self.full_name

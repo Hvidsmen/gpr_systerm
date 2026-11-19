@@ -146,7 +146,9 @@ def ensure_pool_candidate(user,row,candidate,chosen=None):
         pool_identity=normalized_candidate_identity(pool.full_name,pool.phone)
         if pool_identity==identity or identity[0] and not identity[1] and pool_identity[0]==identity[0]:matches.append(pool)
     if len(matches)>1:raise ValidationError('Найдено несколько карточек с таким ФИО. Выберите кандидата из пула вручную.')
-    if matches:return matches[0]
+    if matches:
+        if matches[0].archived_at:raise ValidationError('Карточка кандидата находится в архиве. Сначала восстановите её.')
+        return matches[0]
     return TalentPoolCandidate.objects.create(company=user.company,full_name=candidate.full_name,phone=candidate.phone,
         notes='',stage=candidate.status,created_by=user,position=row.position_ref,
         construction_object=row.construction_object,ready_for_arrival=bool(candidate.ready_on),ready_for_arrival_on=candidate.ready_on,source_data={

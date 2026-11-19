@@ -36,6 +36,7 @@ class RecruitmentTests(TestCase):
         cls.recruiter=User.objects.create_user(username='recruiter',company=cls.company,role=Role.objects.get(code='RECRUITER'))
         cls.recruiter2=User.objects.create_user(username='recruiter2',company=cls.company,role=Role.objects.get(code='RECRUITER'))
         cls.recruitment_head=User.objects.create_user(username='recruitment-head',company=cls.company,role=Role.objects.get(code='RECRUITMENT_HEAD'))
+        cls.admin=User.objects.create_user(username='recruitment-admin',company=cls.company,role=Role.objects.get(code='ADMIN'))
         cls.foreign=User.objects.create_user(username='recruit-foreign',company=cls.other,role=Role.objects.get(code='RECRUITER'))
         cls.foreign_hr_head=User.objects.create_user(username='hr-head-foreign',company=cls.other,role=Role.objects.get(code='HR_HEAD'))
         cls.employee=Employee.objects.create(company=cls.company,last_name='Оформленный',first_name='Сотрудник',employee_number='R-001')
@@ -630,6 +631,40 @@ class RecruitmentTests(TestCase):
         self.assertContains(recruiter_page,'recruitment-section-tab-pool',html=False)
         self.assertContains(recruiter_page,reverse('personnel:recruitment_ready'))
         self.assertNotContains(recruiter_page,'Создать заявку')
+
+    def test_admin_can_archive_restore_and_bulk_delete_unlinked_pool_cards(self):
+        from .models import TalentPoolCandidate
+        free=TalentPoolCandidate.objects.create(company=self.company,full_name='Свободная карточка для удаления',
+            position=self.position,construction_object=self.obj,created_by=self.recruiter)
+        linked=self.candidate().pool_candidate
+        foreign=TalentPoolCandidate.objects.create(company=self.other,full_name='Чужая карточка для удаления',created_by=self.foreign)
+        bulk_url=reverse('personnel:recruitment_pool_bulk_action')
+        self.client.force_login(self.recruiter)
+        recruiter_page=self.client.get(reverse('personnel:recruitment_list'))
+        self.assertNotContains(recruiter_page,bulk_url);self.assertNotContains(recruiter_page,'Удалить выбранных')
+        self.assertEqual(self.client.post(bulk_url,{'action':'archive','selected':[free.pk]}).status_code,403)
+        self.client.force_login(self.admin)
+        page=self.client.get(reverse('personnel:recruitment_list'))
+        self.assertContains(page,bulk_url);self.assertContains(page,'Удалить выбранных');self.assertContains(page,'В архив')
+        archived=self.client.post(bulk_url,{'action':'archive','selected':[free.pk,linked.pk]})
+        self.assertRedirects(archived,reverse('personnel:recruitment_list'),fetch_redirect_response=False)
+        free.refresh_from_db();linked.refresh_from_db()
+        self.assertIsNotNone(free.archived_at);self.assertEqual(free.archived_by,self.admin);self.assertFalse(free.is_active)
+        self.assertIsNotNone(linked.archived_at);self.assertFalse(linked.is_active)
+        active_page=self.client.get(reverse('personnel:recruitment_list'))
+        self.assertNotContains(active_page,free.full_name);self.assertNotContains(active_page,linked.full_name)
+        archive_page=self.client.get(reverse('personnel:recruitment_list'),{'pool_state':'archived'})
+        self.assertContains(archive_page,free.full_name);self.assertContains(archive_page,linked.full_name)
+        self.assertContains(archive_page,'Восстановить из архива')
+        restored=self.client.post(bulk_url,{'action':'restore','selected':[free.pk],'return_state':'archived'})
+        self.assertRedirects(restored,reverse('personnel:recruitment_list')+'?pool_state=archived',fetch_redirect_response=False)
+        free.refresh_from_db();self.assertIsNone(free.archived_at);self.assertTrue(free.is_active)
+        deleted=self.client.post(bulk_url,{'action':'delete','selected':[free.pk,linked.pk]},follow=True)
+        self.assertFalse(TalentPoolCandidate.objects.filter(pk=free.pk).exists())
+        self.assertTrue(TalentPoolCandidate.objects.filter(pk=linked.pk).exists())
+        self.assertContains(deleted,'Не удалено связанных карточек: 1')
+        self.assertEqual(self.client.post(bulk_url,{'action':'archive','selected':[foreign.pk]}).status_code,403)
+        self.assertTrue(TalentPoolCandidate.objects.filter(pk=foreign.pk).exists())
 
     def test_ready_for_arrival_tab_contains_only_transferred_candidates(self):
         from .models import TalentPoolCandidate
