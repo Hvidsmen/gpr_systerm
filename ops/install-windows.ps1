@@ -111,11 +111,12 @@ try {
     $start.Delay='PT15S'
     $action=New-ScheduledTaskAction -Execute $python -Argument ('"{0}" supervise --root "{1}"' -f $bootstrap,$Root) -WorkingDirectory $Root
     Register-ScheduledTask -TaskName 'YDS Portal' -Action $action -Trigger $start -Principal $principal -Settings $settings -Description 'ЯДС портал: фоновый сервер при включении компьютера, без входа пользователя.' | Out-Null
-    $update=New-ScheduledTaskTrigger -AtStartup
-    $update.Delay='PT60S'
+    $updateAtStartup=New-ScheduledTaskTrigger -AtStartup
+    $updateAtStartup.Delay='PT60S'
+    $updateDaily=New-ScheduledTaskTrigger -Daily -At '20:00'
     $updateSettings=New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 35) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 5) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
     $updateAction=New-ScheduledTaskAction -Execute $python -Argument ('"{0}" update --root "{1}"' -f $bootstrap,$Root) -WorkingDirectory $Root
-    Register-ScheduledTask -TaskName 'YDS Portal Update' -Action $updateAction -Trigger $update -Principal $principal -Settings $updateSettings -Description 'Проверить main и безопасно обновить ЯДС портал при запуске компьютера.' | Out-Null
+    Register-ScheduledTask -TaskName 'YDS Portal Update' -Action $updateAction -Trigger @($updateAtStartup,$updateDaily) -Principal $principal -Settings $updateSettings -Description 'Проверять main и безопасно обновлять ЯДС портал ежедневно в 20:00 и при запуске компьютера.' | Out-Null
     if(-not (Get-NetFirewallRule -Name 'YDS-Portal' -ErrorAction SilentlyContinue)){
         New-NetFirewallRule -Name 'YDS-Portal' -DisplayName 'ЯДС портал' -Direction Inbound -Action Allow -Protocol TCP -LocalPort $Port -Profile Domain,Private | Out-Null
     }

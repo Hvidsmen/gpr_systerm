@@ -21,6 +21,7 @@ import zipfile
 
 REPOSITORY='Hvidsmen/gpr_systerm'
 CONTROL_FILES=('SET_GPR_PORTAL_ACCOUNT.cmd','ops/set-windows-portal-account.ps1',
+               'INSTALL_GPR_DAILY_UPDATE.cmd','ops/configure-update-schedule.ps1',
                'CHECK_GPR_MSSQL.cmd','ops/check-mssql.ps1',
                'PREPARE_GPR_MSSQL_COPY.cmd','ops/prepare-mssql-copy.ps1',
                'SWITCH_GPR_TO_MSSQL.cmd','ops/switch-to-mssql.ps1',

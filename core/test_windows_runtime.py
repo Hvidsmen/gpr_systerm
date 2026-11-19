@@ -129,6 +129,8 @@ class WindowsRuntimeTests(SimpleTestCase):
         code=self.root/'release';(code/'ops').mkdir(parents=True);(code/'ops/windows_runtime.py').write_text('new bootstrap')
         (code/'SET_GPR_PORTAL_ACCOUNT.cmd').write_text('new launcher')
         (code/'ops/set-windows-portal-account.ps1').write_text('new account tool')
+        (code/'INSTALL_GPR_DAILY_UPDATE.cmd').write_text('daily launcher')
+        (code/'ops/configure-update-schedule.ps1').write_text('daily schedule tool')
         (code/'CHECK_GPR_MSSQL.cmd').write_text('mssql launcher')
         (code/'ops/check-mssql.ps1').write_text('mssql check')
         (code/'PREPARE_GPR_MSSQL_COPY.cmd').write_text('copy launcher')
@@ -144,6 +146,8 @@ class WindowsRuntimeTests(SimpleTestCase):
         self.assertEqual((self.state/'bootstrap.py').read_text(),'new bootstrap')
         self.assertEqual((self.root/'SET_GPR_PORTAL_ACCOUNT.cmd').read_text(),'new launcher')
         self.assertEqual((self.root/'ops/set-windows-portal-account.ps1').read_text(),'new account tool')
+        self.assertEqual((self.root/'INSTALL_GPR_DAILY_UPDATE.cmd').read_text(),'daily launcher')
+        self.assertEqual((self.root/'ops/configure-update-schedule.ps1').read_text(),'daily schedule tool')
         self.assertEqual((self.root/'CHECK_GPR_MSSQL.cmd').read_text(),'mssql launcher')
         self.assertEqual((self.root/'ops/check-mssql.ps1').read_text(),'mssql check')
         self.assertEqual((self.root/'PREPARE_GPR_MSSQL_COPY.cmd').read_text(),'copy launcher')
@@ -152,6 +156,17 @@ class WindowsRuntimeTests(SimpleTestCase):
         self.assertEqual((self.root/'ops/switch-to-mssql.ps1').read_text(),'cutover tool')
         self.assertEqual((self.root/'SWITCH_GPR_TEST_TO_MSSQL.cmd').read_text(),'test cutover launcher')
         self.assertEqual((self.root/'ops/switch-test-to-mssql.ps1').read_text(),'test cutover tool')
+
+    def test_windows_install_and_reconfigure_scripts_schedule_main_update_at_20(self):
+        repository=Path(__file__).resolve().parents[1]
+        installer=(repository/'ops/install-windows.ps1').read_text(encoding='utf-8-sig')
+        configure=(repository/'ops/configure-update-schedule.ps1').read_text(encoding='utf-8-sig')
+        for script in (installer,configure):
+            self.assertIn("New-ScheduledTaskTrigger -Daily -At '20:00'",script)
+            self.assertIn('New-ScheduledTaskTrigger -AtStartup',script)
+        self.assertIn("Set-ScheduledTask -TaskName $taskName",configure)
+        self.assertIn("Get-ScheduledTask -TaskName $taskName",configure)
+        self.assertIn("T20:00:00",configure)
 
     def test_mssql_bridge_migration_exposes_tool_on_its_first_update(self):
         migration=importlib.import_module('apps.accounts.migrations.0032_publish_mssql_check')
