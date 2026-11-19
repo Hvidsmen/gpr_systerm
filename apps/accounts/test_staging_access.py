@@ -67,12 +67,18 @@ class StagingAccessTests(TestCase):
 
     def test_real_updates_integrations_registration_and_training_are_blocked(self):
         guard = StagingGuard(lambda request: HttpResponse())
-        for name in ['one_c', 'one_c_jobs', 'invitation_settings', 'user_invite', 'register', 'training_enter', 'training_consume']:
+        for name in ['one_c', 'one_c_jobs', 'one_c_report', 'invitation_settings', 'user_invite', 'register', 'training_enter', 'training_consume']:
             request = SimpleNamespace(resolver_match=SimpleNamespace(namespaces=['accounts'], namespace='accounts', url_name=name))
+            request.GET={}
             self.assertEqual(guard.process_view(request, None, (), {}).status_code, 403)
         for name in ['portal_updates', 'portal_update_status', 'impersonation_start', 'impersonation_stop', 'login', 'logout', 'settings']:
             request = SimpleNamespace(resolver_match=SimpleNamespace(namespaces=['accounts'], namespace='accounts', url_name=name))
+            request.GET={}
             self.assertIsNone(guard.process_view(request, None, (), {}))
+        uat=SimpleNamespace(resolver_match=SimpleNamespace(namespaces=['accounts'],namespace='accounts',url_name='uat'),GET={})
+        self.assertIsNone(guard.process_view(uat,None,(),{}))
+        report=SimpleNamespace(resolver_match=SimpleNamespace(namespaces=['accounts'],namespace='accounts',url_name='one_c_report'),GET={'uat':'1'})
+        self.assertIsNone(guard.process_view(report,None,(),{}))
 
     def test_preparation_is_forbidden_on_normal_portal(self):
         with self.assertRaises(CommandError):call_command('prepare_staging_copy')

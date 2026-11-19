@@ -41,7 +41,11 @@ def discovery(request):
         return redirect('accounts:uat')
 
     runs = connection.runs.filter(database=database, report__uat_discovery=True).order_by('-created_at', '-pk')
+    last = runs.first()
     latest = runs.filter(status='DONE').first()
+    if last:
+        from .one_c_jobs import error_help
+        last.error_help = error_help(last.error, last.server, last.database)
     report = latest.report if latest else {}
     labels = report.get('metadata_labels', {})
     all_rows, type_counts, total = catalogue(report, labels)
@@ -59,7 +63,8 @@ def discovery(request):
         groups[-1]['rows'].append(row)
     params = request.GET.copy();params.pop('page', None)
     return render(request, 'accounts/uat.html', {
-        'connection': connection, 'database': database, 'latest': latest, 'pending': runs.filter(status__in=['QUEUED', 'RUNNING']).exists(),
+        'connection': connection, 'database': database, 'last': last, 'latest': latest,
+        'pending': runs.filter(status__in=['QUEUED', 'RUNNING']).exists(),
         'recommended': recommended[:100], 'catalogue_groups': groups, 'catalogue_page': page,
         'catalogue_total': total, 'catalogue_query': query, 'catalogue_type': kind,
         'type_counts': type_counts, 'catalogue_params': params.urlencode(),

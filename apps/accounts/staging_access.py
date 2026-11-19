@@ -80,7 +80,7 @@ class OwnerBackend(ModelBackend):
 
 
 class StagingGuard:
-    blocked = {'register', 'add_from_ad', 'ad_group_search', 'one_c', 'one_c_jobs', 'one_c_report', 'one_c_table', 'uat',
+    blocked = {'register', 'add_from_ad', 'ad_group_search', 'one_c', 'one_c_jobs', 'one_c_report', 'one_c_table',
                'user_invite', 'user_invite_bulk', 'invitation_list',
                'invitation_detail', 'invitation_status', 'invitation_settings', 'training_list', 'training_edit',
                'training_reset', 'training_invite', 'training_enter', 'training_consume', 'training_health'}
@@ -100,6 +100,10 @@ class StagingGuard:
 
     def process_view(self, request, view, args, kwargs):
         match = request.resolver_match
+        # Acceptance may inspect the read-only UAT source. The shared report
+        # endpoint is allowed only for an explicitly selected UAT structure.
+        if match.namespace == 'accounts' and match.url_name == 'one_c_report' and request.GET.get('uat') == '1':
+            return None
         if 'admin' in match.namespaces or match.namespace == 'accounts' and match.url_name in self.blocked:
             return HttpResponse('На тестовом портале отключены внешние обмены, отправка приглашений, учебные копии и обновление рабочего сервера.', status=403)
         return None
