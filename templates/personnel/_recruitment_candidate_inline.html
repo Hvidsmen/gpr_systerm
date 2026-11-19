@@ -1,5 +1,5 @@
 <section class="candidate-inline-card" data-candidate-inline-card="{{ row.pk }}"{% if saved %} data-save-success="true"{% endif %}>
-<form method="post" action="{% url 'personnel:recruitment_candidate_inline' row.pk %}" data-candidate-inline-form data-candidate-id="{{ row.pk }}">
+<form method="post" action="{% url 'personnel:recruitment_candidate_inline' row.pk %}{% if inline_source %}?source={{ inline_source|urlencode }}{% endif %}" data-candidate-inline-form data-candidate-id="{{ row.pk }}">
 {% csrf_token %}
 <div class="candidate-inline-toolbar">
   <div class="candidate-inline-identity"><strong>{{ row.full_name }}</strong><span class="recruitment-status recruitment-stage-{{ row.stage|lower }}">{{ row.get_stage_display }}</span></div>

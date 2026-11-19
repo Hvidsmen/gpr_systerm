@@ -301,6 +301,7 @@ def candidate_card(request,pk):
 def candidate_inline(request,pk):
     require_roles(request.user,service.READ)
     row=get_object_or_404(TalentPoolCandidate,company=request.user.company,pk=pk)
+    inline_source=request.GET.get('source','')
     can_edit=role_code(request.user) in service.RECRUIT
     if request.method=='POST':require_roles(request.user,service.RECRUIT)
     previous_stage=row.stage
@@ -319,7 +320,9 @@ def candidate_inline(request,pk):
         for field in form.fields.values():field.disabled=True
     status=422 if request.method=='POST' and not saved else 200
     return render(request,'personnel/_recruitment_candidate_inline.html',{
-        'row':row,'form':form,'can_edit':can_edit,'can_administer_pool':role_code(request.user)=='ADMIN','saved':saved},status=status)
+        'row':row,'form':form,'can_edit':can_edit,
+        'can_administer_pool':role_code(request.user)=='ADMIN' and inline_source!='ready',
+        'inline_source':inline_source,'saved':saved},status=status)
 
 
 @login_required
