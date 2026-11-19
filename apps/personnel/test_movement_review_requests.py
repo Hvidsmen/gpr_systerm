@@ -159,7 +159,7 @@ class MovementReviewRequestTests(TestCase):
 
     def test_admin_personnel_sections_are_in_sidebar_not_page_tabs(self):
         self.client.force_login(self.admin);page=self.client.get(reverse('personnel:housing'))
-        self.assertContains(page,'Диспетчерская');self.assertContains(page,'Перевахта');self.assertContains(page,'Магазин подбора')
+        self.assertContains(page,'Диспетчерская');self.assertContains(page,'Перевахта');self.assertContains(page,'Банк сотрудников')
         self.assertNotContains(page,'data-personnel-sections')
 
     def test_request_is_cancelled_with_reason_and_admin_can_delete_it(self):

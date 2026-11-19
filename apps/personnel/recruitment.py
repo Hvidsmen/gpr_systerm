@@ -279,10 +279,10 @@ def prepare_arrival(user, pk, revision, values, *, confirm=False, workflow=False
             position_name=prep.employee.display_position if prep.employee_id else row.position,construction_object=row.construction_object,site_object=row.construction_object,
             site=row.construction_object.name,base_city=(prep.candidate.pool_candidate.base_city.name if prep.candidate.pool_candidate_id and prep.candidate.pool_candidate.base_city_id else ''),
             phone=(prep.employee.phone if prep.employee_id else '') or prep.candidate.phone,travel_status='Ожидается',
-            approval_batch=approval_batch,note=f'Кандидат из Магазина подбора. Заявка №{row.pk}. '+prep.notes)
+            approval_batch=approval_batch,note=f'Кандидат из Банка сотрудников. Заявка №{row.pk}. '+prep.notes)
         prep.movement_request=request
         from .departure_workflow import create_approval,log
-        create_approval(request);log(request,user,'Кандидат из Магазина подбора отправлен на согласование руководителю')
+        create_approval(request);log(request,user,'Кандидат из Банка сотрудников отправлен на согласование руководителю')
     elif confirm:
         if not prep.employee_id or not prep.camp_id:raise ValidationError('Укажите оформленного сотрудника и ВЖГ. Кандидат сам по себе не является сотрудником.')
         day=values.get('actual_on')
@@ -335,7 +335,7 @@ def bulk_prepare_arrivals(user, candidate_ids):
             planning_position_name=row.position,position_name=row.position,construction_object=row.construction_object,
             site_object=row.construction_object,site=row.construction_object.name,base_city=base_city,
             phone=(prep.employee.phone if prep.employee_id else '') or candidate.phone,travel_status='Черновик',
-            note=f'Кандидат из Магазина подбора. Заявка №{row.pk}. '+prep.notes)
+            note=f'Кандидат из Банка сотрудников. Заявка №{row.pk}. '+prep.notes)
         prep.movement_request=request;prep.save(update_fields=['movement_request','updated_at']);prepared.append(prep)
         audit(user,row,'Создан черновик пакетной заявки на заезд.',candidate)
     return batch,prepared
