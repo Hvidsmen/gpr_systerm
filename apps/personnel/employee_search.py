@@ -8,6 +8,7 @@ from django import forms
 
 from apps.resources.models import Employee
 from core.permissions import ROLES, require_roles
+from .models import DISPATCHER_BULK_CLEANUP_REASON
 
 
 @login_required
@@ -33,7 +34,14 @@ def search(request):
             query = query.filter(pk__in=present.values('person__employee_id'))
     elif request.GET.get('active', '1') != '0':
         query = query.filter(is_active=True)
-    query = query.exclude(personnel_card__dispatcher_removed_at__isnull=False)
+    if request.GET.get('scope') == 'assignment':
+        query = query.filter(
+            Q(personnel_card__isnull=True) |
+            Q(personnel_card__dispatcher_removed_at__isnull=True) |
+            Q(personnel_card__dispatcher_removal_reason=DISPATCHER_BULK_CLEANUP_REASON)
+        )
+    else:
+        query = query.exclude(personnel_card__dispatcher_removed_at__isnull=False)
     for term in request.GET.get('q', '').strip().split()[:6]:
         query = query.filter(
             Q(last_name__icontains=term) | Q(first_name__icontains=term) |

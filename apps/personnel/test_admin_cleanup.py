@@ -4,7 +4,7 @@ from django.utils import timezone
 
 from apps.accounts.models import Company,Role,User
 from apps.audit.models import AuditLog
-from .models import Board,Camp,CampStay,MovementReviewRequest,Person,StaffingGroup,StaffingSlot
+from .models import DISPATCHER_BULK_CLEANUP_REASON,Board,Camp,CampStay,MovementReviewRequest,Person,StaffingGroup,StaffingSlot
 from .recruitment_models import TalentPoolCandidate
 
 
@@ -49,6 +49,7 @@ class PersonnelAdminCleanupTests(TestCase):
         self.assertIsNone(self.person.schedule_slot_id)
         self.assertIsNotNone(self.person.dispatcher_removed_at)
         self.assertEqual(self.person.dispatcher_removed_by,self.admin)
+        self.assertEqual(self.person.dispatcher_removal_reason,DISPATCHER_BULK_CLEANUP_REASON)
         self.assertEqual(AuditLog.objects.filter(user=self.admin,entity_type='personnel.DemoCleanup').count(),3)
 
     def test_assignment_cleanup_also_hides_card_kept_only_by_wjg_history(self):

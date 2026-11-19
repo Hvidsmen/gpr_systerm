@@ -5,6 +5,9 @@ from django.core.exceptions import ValidationError
 from core.models import BaseCompanyModel
 
 
+DISPATCHER_BULK_CLEANUP_REASON = 'Административная массовая очистка диспетчерской'
+
+
 class PersonnelModel(BaseCompanyModel):
     class Meta:
         abstract = True

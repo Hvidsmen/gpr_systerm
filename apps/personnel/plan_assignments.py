@@ -13,7 +13,7 @@ from django.views.decorators.http import require_http_methods
 from apps.accounts.models import Company
 from apps.resources.models import Employee, Brigade
 from apps.projects.models import ConstructionObject
-from .models import Board, Person, StaffingGroup, StaffingSlot, ShiftPattern, Camp, CampStay, HousingEvent
+from .models import DISPATCHER_BULK_CLEANUP_REASON,Board, Person, StaffingGroup, StaffingSlot, ShiftPattern, Camp, CampStay, HousingEvent
 from core.fact_history import history_actor
 from . import housing
 from .views import access
@@ -115,7 +115,7 @@ def initialize_state(user,row,data):
 
 
 class AssignmentForm(forms.Form):
-    employee=forms.ModelChoiceField(label='Сотрудник',queryset=Employee.objects.none(),widget=InitialEmployeeSelect)
+    employee=forms.ModelChoiceField(label='Сотрудник',queryset=Employee.objects.none(),widget=InitialEmployeeSelect(attrs={'data-remote-scope':'assignment'}))
     planning_position=forms.ModelChoiceField(label='Должность из СМГ / ГПР',queryset=Brigade.objects.none())
     construction_object=forms.ModelChoiceField(label='Объект назначения',queryset=ConstructionObject.objects.none())
     housing_camp=forms.ModelChoiceField(label='ВЖГ назначения',queryset=Camp.objects.none(),help_text='Выберите ВЖГ, обслуживающий этот объект или его подобъекты. Начальные заезд / выезд ниже относятся к этому ВЖГ.')
@@ -132,7 +132,9 @@ class AssignmentForm(forms.Form):
         self.fields['pattern'].widget=forms.HiddenInput()
         self.company=company;self.row=row
         history=Person.objects.filter(company=company,employee_id=OuterRef('pk')).filter(Q(stays__isnull=False)|Q(housing_events__isnull=False))
-        employees=Employee.objects.filter(company=company).exclude(personnel_card__dispatcher_removed_at__isnull=False)
+        available_card=(Q(personnel_card__isnull=True)|Q(personnel_card__dispatcher_removed_at__isnull=True)|
+            Q(personnel_card__dispatcher_removal_reason=DISPATCHER_BULK_CLEANUP_REASON))
+        employees=Employee.objects.filter(company=company).filter(available_card)
         if row:
             employees=employees.filter(pk=row.person.employee_id)
         else:
@@ -153,7 +155,8 @@ class AssignmentForm(forms.Form):
                 try:selected_employee=forms.IntegerField(min_value=1).clean(self.data.get('employee'))
                 except ValidationError:selected_employee=None
                 if selected_employee:
-                    employees=Employee.objects.filter(company=company,is_active=True).filter(Q(pk=selected_employee)|Q(pk__in=employees.values('pk')))
+                    employees=(Employee.objects.filter(company=company,is_active=True).filter(available_card)
+                        .filter(Q(pk=selected_employee)|Q(pk__in=employees.values('pk'))))
         self.fields['employee'].queryset=employees.annotate(has_personnel_history=Exists(history)).select_related('position').order_by('last_name','first_name','pk')
         self.fields['employee'].label_from_instance=lambda e:e.display_name+(' · '+str(e.position) if e.position_id else '')+(' · № '+e.employee_number if e.employee_number else '')
         self.fields['employee'].help_text='Показаны действующие сотрудники без другого назначения на выбранный период. Штатная должность не изменится.'
@@ -190,6 +193,13 @@ def save_assignment(user,data,row_id=None,initial_state=None,previous=None):
     camp=Camp.objects.get(company=user.company,is_active=True,pk=data['housing_camp'].pk)
     if not camp.object_links.filter(company=user.company,construction_object_id__in=object_scope(obj)).exists():raise ValidationError('ВЖГ не обслуживает объект назначения.')
     person=housing.person_for(employee)
+    if person.dispatcher_removed_at:
+        if person.dispatcher_removal_reason!=DISPATCHER_BULK_CLEANUP_REASON:
+            raise ValidationError('Сотрудник вручную удалён из диспетчерской. Сначала восстановите его карточку.')
+        person.dispatcher_removed_at=None
+        person.dispatcher_removed_by=None
+        person.dispatcher_removal_reason=''
+        person.save(update_fields=['dispatcher_removed_at','dispatcher_removed_by','dispatcher_removal_reason','updated_at'])
     row=StaffingSlot.objects.select_for_update().get(pk=row_id,company=user.company,person=person,planning_position__isnull=False) if row_id else None
     if row and row.cancelled_at:raise ValidationError('Назначение удалено. Создайте новое назначение сотрудника.')
     if row and row.replaced_on:raise ValidationError('Назначение уже заменено. Откройте действующее назначение сотрудника.')

@@ -1,10 +1,12 @@
 from django import forms
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from apps.accounts.models import Company, Role, User
 from apps.resources.models import Employee, Position
 from .employee_widgets import RemoteEmployeeSelect
+from .models import DISPATCHER_BULK_CLEANUP_REASON,Person
 
 
 class EmployeeRemoteSearchTests(TestCase):
@@ -59,4 +61,19 @@ class EmployeeRemoteSearchTests(TestCase):
         self.assertIn('Поиск104 Иван', html)
         self.assertNotIn('Поиск000', html)
         self.assertIn('data-remote-search-url', html)
+
+    def test_assignment_scope_restores_only_cards_hidden_by_bulk_cleanup(self):
+        bulk_employee=Employee.objects.get(company=self.company,employee_number='R-104')
+        manual_employee=Employee.objects.get(company=self.company,employee_number='R-103')
+        Person.objects.create(company=self.company,employee=bulk_employee,full_name=bulk_employee.display_name,
+            dispatcher_removed_at=timezone.now(),dispatcher_removed_by=self.user,
+            dispatcher_removal_reason=DISPATCHER_BULK_CLEANUP_REASON)
+        Person.objects.create(company=self.company,employee=manual_employee,full_name=manual_employee.display_name,
+            dispatcher_removed_at=timezone.now(),dispatcher_removed_by=self.user,
+            dispatcher_removal_reason='Удалён вручную')
+        url=reverse('personnel:employee_search')
+        self.assertEqual(self.client.get(url,{'q':'R-104'}).json()['items'],[])
+        available=self.client.get(url,{'q':'R-104','scope':'assignment'}).json()['items']
+        self.assertEqual([item['id'] for item in available],[bulk_employee.pk])
+        self.assertEqual(self.client.get(url,{'q':'R-103','scope':'assignment'}).json()['items'],[])
 

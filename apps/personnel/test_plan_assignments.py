@@ -7,8 +7,8 @@ from apps.accounts.models import Company, User, Role
 from apps.resources.models import Brigade, Employee
 from apps.projects.models import ConstructionObject
 from .test_housing import HousingTests
-from .models import Person,StaffingSlot,CampStay,HousingEvent,Camp,CampObjectLink
-from .plan_assignments import save_assignment
+from .models import DISPATCHER_BULK_CLEANUP_REASON,Person,StaffingSlot,CampStay,HousingEvent,Camp,CampObjectLink
+from .plan_assignments import AssignmentForm,save_assignment
 from .rotation import rotation_rows
 from .housing_plan import position_headers, monthly_plan
 
@@ -131,6 +131,21 @@ class PlanAssignmentTests(TestCase):
         slot=self.assigned();slot.assigned_from=self.day-timedelta(days=2);slot.assigned_until=self.day-timedelta(days=1);slot.save()
         response=self.client.get(self.url,{'assigned_from':self.day})
         self.assertTrue(response.context['form'].fields['employee'].queryset.filter(pk=self.second_employee.pk).exists())
+
+    def test_bulk_cleaned_employee_can_be_assigned_and_card_is_restored(self):
+        self.second_person.dispatcher_removed_at=timezone.now()
+        self.second_person.dispatcher_removed_by=self.hr
+        self.second_person.dispatcher_removal_reason=DISPATCHER_BULK_CLEANUP_REASON
+        self.second_person.save(update_fields=['dispatcher_removed_at','dispatcher_removed_by','dispatcher_removal_reason','updated_at'])
+        form=AssignmentForm(company=self.company)
+        self.assertEqual(form.fields['employee'].widget.attrs['data-remote-scope'],'assignment')
+        self.assertTrue(form.fields['employee'].queryset.filter(pk=self.second_employee.pk).exists())
+        assignment_data={**self.data,'initial-state':'MO','initial-departure_date':str(self.day)}
+        self.assertEqual(self.client.post(self.url,assignment_data).status_code,302)
+        self.second_person.refresh_from_db()
+        self.assertIsNone(self.second_person.dispatcher_removed_at)
+        self.assertIsNone(self.second_person.dispatcher_removed_by)
+        self.assertEqual(self.second_person.dispatcher_removal_reason,'')
 
     def test_bound_form_keeps_stale_selected_employee_for_clear_overlap_error(self):
         self.client.post(self.url,self.data)

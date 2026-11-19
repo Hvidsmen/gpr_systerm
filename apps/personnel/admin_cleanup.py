@@ -9,7 +9,7 @@ from django.views.decorators.http import require_http_methods
 
 from core.permissions import role_code
 from apps.audit.models import AuditLog
-from .models import MovementRecommendationOverride,MovementReviewEvent,MovementReviewRequest,Person,ScheduleChangeRequest,StaffingSlot
+from .models import DISPATCHER_BULK_CLEANUP_REASON,MovementRecommendationOverride,MovementReviewEvent,MovementReviewRequest,Person,ScheduleChangeRequest,StaffingSlot
 from .recruitment_models import ArrivalPreparation,CandidateDocument,RecruitmentCandidate,RecruitmentEvent,RecruitmentRequest,TalentPoolCandidate
 
 
@@ -110,5 +110,5 @@ def clear_assignments(company,user):
     # Keep employee master data and WJG history for audit, but remove every
     # active personnel card from the operational dispatcher roster.
     active_people.update(dispatcher_removed_at=timezone.now(),dispatcher_removed_by=user,
-        dispatcher_removal_reason='Административная массовая очистка диспетчерской')
+        dispatcher_removal_reason=DISPATCHER_BULK_CLEANUP_REASON)
     return total
