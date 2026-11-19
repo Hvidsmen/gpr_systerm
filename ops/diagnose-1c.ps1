@@ -9,6 +9,7 @@ param(
     [switch]$MetadataOnly,
     [switch]$PositionsImport,
     [switch]$EmployeesImport,
+    [switch]$UatDiscovery,
     [string]$PhoneMappingPath='',
     [ValidatePattern('^[a-f0-9]{32}$')][string]$RunId=([guid]::NewGuid().ToString('N')),
     [ValidateRange(1,10000)][int]$SampleLimit=5000
@@ -124,6 +125,7 @@ try {
             if($MetadataOnly){$arguments+=' -MetadataOnly'}
             if($PositionsImport){$arguments+=' -PositionsImport'}
             if($EmployeesImport){$arguments+=' -EmployeesImport'}
+            if($UatDiscovery){$arguments+=' -UatDiscovery'}
             if($PhoneMappingPath){$arguments+=' -PhoneMappingPath "'+$PhoneMappingPath+'"'}
             if($PythonPath){$arguments+=' -PythonPath "'+$PythonPath+'"'}
             if($TrustServerCertificate){$arguments+=' -TrustServerCertificate'}
@@ -437,7 +439,11 @@ JOIN sys.types AS ty ON ty.user_type_id=c.user_type_id
 ORDER BY s.name,t.name,c.column_id
 '@)
         $descriptions=@($columns | Where-Object { $_.table -match '^_Reference\d+$' -and $_.column -eq '_Description' -and $_.type -in @('nvarchar','varchar','nchar','char') })
-        $terms=@('должност','машинист','водител','инженер','монтажник','электромонтер','электромонтёр','сварщик','директор','начальник','бухгалтер','мастер','руководител','слесар')
+        $terms=if($UatDiscovery){
+            @('путев','ремонт','транспорт','автомоб','техник','водител','гараж','маршрут','топлив','пробег','неисправ','заказ-наряд')
+        }else{
+            @('должност','машинист','водител','инженер','монтажник','электромонтер','электромонтёр','сварщик','директор','начальник','бухгалтер','мастер','руководител','слесар')
+        }
         $candidates=New-Object 'System.Collections.Generic.List[object]'
         $errors=New-Object 'System.Collections.Generic.List[object]'
         $scanTables=if($MetadataOnly){@()}else{$descriptions}
@@ -461,7 +467,7 @@ ORDER BY s.name,t.name,c.column_id
             $metadataNames=$decoded.labels;$metadataRead=$decoded.objects_read;$metadataErrors=@($decoded.errors)
             $metadataStatus=if(@($metadataNames.PSObject.Properties).Count -gt 0){'decoded'}else{'unrecognized'}
         } catch {$metadataErrors=@([pscustomobject]@{error=$_.Exception.Message})}
-        $report=[ordered]@{metadata_labels=$metadataNames;metadata_status=$metadataStatus;metadata_objects_read=$metadataRead;metadata_errors=$metadataErrors;created_utc=[DateTime]::UtcNow.ToString('o');windows_identity=$identity.Name;connection=$who;reference_tables_checked=@($scanTables).Count;sample_limit=$SampleLimit;search_terms=$terms;candidates=@($candidates | Sort-Object matched_rows -Descending);metadata_tables=$metadata;schema=$columns;scan_errors=$errors.ToArray();notice='Candidates are hints, not a confirmed 1C metadata mapping. No source descriptions, employee rows, binary metadata, or passwords are exported.'}
+        $report=[ordered]@{uat_discovery=[bool]$UatDiscovery;metadata_labels=$metadataNames;metadata_status=$metadataStatus;metadata_objects_read=$metadataRead;metadata_errors=$metadataErrors;created_utc=[DateTime]::UtcNow.ToString('o');windows_identity=$identity.Name;connection=$who;reference_tables_checked=@($scanTables).Count;sample_limit=$SampleLimit;search_terms=$terms;candidates=@($candidates | Sort-Object matched_rows -Descending);metadata_tables=$metadata;schema=$columns;scan_errors=$errors.ToArray();notice='Candidates are hints, not a confirmed 1C metadata mapping. No source descriptions, employee rows, binary metadata, or passwords are exported.'}
         Write-Json $reportPath $report
         Write-Json $statusPath @{ok=$true;report=$reportPath}
         Write-Host ('DONE. Report: '+$reportPath) -ForegroundColor Green

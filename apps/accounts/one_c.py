@@ -40,14 +40,18 @@ class ConnectionForm(forms.ModelForm):
         return value
 
 
-def enqueue(connection, actor=None, metadata_only=False, positions=False, employees=False):
+def enqueue(connection, actor=None, metadata_only=False, positions=False, employees=False,
+            *, database=None, uat_discovery=False):
     # Conditional update is the cross-process claim, including SQLite deployments.
     now=timezone.now()
     from django.db import transaction
     with transaction.atomic():
         claimed=OneCConnection.objects.filter(pk=connection.pk).filter(active_until__isnull=True).update(active_until=now+timedelta(minutes=20))
         if not claimed:return None
-        return OneCDiagnosticRun.objects.create(connection=connection,created_by=actor,server=connection.server,database=connection.database,trust_certificate=connection.trust_certificate,report={'employees_import':True} if employees else {'positions_import':True} if positions else {'metadata_only':True} if metadata_only else {})
+        report=({'employees_import':True} if employees else {'positions_import':True} if positions else
+            {'uat_discovery':True} if uat_discovery else {'metadata_only':True} if metadata_only else {})
+        return OneCDiagnosticRun.objects.create(connection=connection,created_by=actor,server=connection.server,
+            database=database or connection.database,trust_certificate=connection.trust_certificate,report=report)
 
 
 def process_queue():
@@ -58,17 +62,19 @@ def process_queue():
     from .one_c_schedules import enqueue_due_imports
     enqueue_due_imports(now)
     for connection in OneCConnection.objects.filter(diagnostic_interval_minutes__gt=0,active_until__isnull=True):
-        last=connection.runs.exclude(report__has_key='positions_import').exclude(report__has_key='employees_import').order_by('-created_at').first()
+        last=connection.runs.exclude(report__has_key='positions_import').exclude(report__has_key='employees_import').exclude(report__has_key='uat_discovery').order_by('-created_at').first()
         if last is None or last.created_at+timedelta(minutes=connection.diagnostic_interval_minutes)<=now:enqueue(connection)
     for run in OneCDiagnosticRun.objects.filter(status='QUEUED').order_by('created_at'):
         if not OneCDiagnosticRun.objects.filter(pk=run.pk,status='QUEUED').update(status='RUNNING'):continue
         employees_import=bool(run.report.get('employees_import'))
+        uat_discovery=bool(run.report.get('uat_discovery'))
         try:
             if os.name!='nt':raise RuntimeError('Диагностика MS SQL с Windows-аутентификацией доступна на Windows-сервере портала.')
             root=Path(settings.CONFIG_DIR)
             command=['powershell.exe','-NoProfile','-ExecutionPolicy','Bypass','-File',str(Path(settings.BASE_DIR)/'ops/diagnose-1c.ps1'),'-Root',str(root),'-RunHere','-PythonPath',__import__('sys').executable,'-Server',run.server,'-Database',run.database,'-RunId',run.pk.hex]
             metadata_only=bool(run.report.get('metadata_only'))
             if metadata_only:command.append('-MetadataOnly')
+            if uat_discovery:command.append('-UatDiscovery')
             positions_import=bool(run.report.get('positions_import'))
             if positions_import:
                 from .one_c_positions import source_confirmed
@@ -90,6 +96,7 @@ def process_queue():
             status=json.loads((directory/'status.json').read_text(encoding='utf-8-sig'))
             if not status.get('ok'):raise RuntimeError(status.get('error','Ошибка диагностики.'))
             run.report=json.loads((directory/'report.json').read_text(encoding='utf-8-sig'))
+            if uat_discovery:run.report['uat_discovery']=True
             if positions_import:
                 if run.report.get('positions_snapshot_version')!=2 or run.report.get('position_source',{}).get('table')!='dbo._Reference394':raise ValidationError('Обработчик вернул прежний источник должностей. Обновите проект и фоновый портал: должности загружаются только из штатного расписания.')
                 from .one_c_positions import apply_names
@@ -111,6 +118,7 @@ def process_queue():
             run.status='DONE'
         except Exception as exc:
             if employees_import:run.report={'employees_import':True}
+            elif uat_discovery:run.report={'uat_discovery':True}
             run.status='ERROR';run.error=str(exc)[:4000]
         finally:
             run.finished_at=timezone.now();run.save(update_fields=['status','error','report','finished_at'])

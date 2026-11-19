@@ -127,6 +127,7 @@ LOGIN_URL = '/accounts/login/'
 
 # Production navigation for administrators; no shared login ticket.
 STAGING_PORTAL_URL = os.getenv('STAGING_PORTAL_URL', 'http://192.168.70.9:8002/').strip()
+UAT_DATABASE = os.getenv('UAT_DATABASE', 'uat01_ivanov').strip()
 
 
 # Corporate LDAP: service credentials are provided only by the server environment.

@@ -2,7 +2,7 @@
 {% load static %}
 {% block title %}Задания 1С — ЯДС ОС{% endblock %}
 {% block content %}
-<nav><a href="{% url 'accounts:one_c' %}">Интеграция с 1С</a> / Задания</nav>
+<nav><a href="{% url 'accounts:one_c' %}">Интеграция с 1С</a> · <a href="{% url 'accounts:uat' %}">УАТ</a> / Задания</nav>
 <h1>Задания 1С</h1>
 <div class="row g-3 my-1">
 {% for job in import_jobs %}<div class="col-12 col-xl-6"><section class="card p-3 h-100" data-import-job="{{ job.kind }}">

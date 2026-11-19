@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 {% block content %}
-<h1>Интеграция с 1С</h1><p><a href="{% url 'accounts:one_c_jobs' %}">Задания</a></p>
+<h1>Интеграция с 1С</h1><p><a href="{% url 'accounts:one_c_jobs' %}">Задания</a> · <a href="{% url 'accounts:uat' %}">УАТ: путевые и ремонтные листы</a></p>
 <p>MS SQL · Windows-аутентификация под учётной записью фонового портала.</p>
 <div class="card p-3 mb-3"><h2>Подключение и расписание</h2><form method="post">{% csrf_token %}<input type="hidden" name="action" value="save">{% include 'forms/fields.html' %}<button class="btn btn-primary">Сохранить настройки</button></form></div>
 <p>Сейчас доступны диагностика структуры и чтение названий таблиц и полей 1С. Загрузка актуальных наименований должностей запускается на странице «Справочник.Должности». Расписание относится только к диагностике.</p>

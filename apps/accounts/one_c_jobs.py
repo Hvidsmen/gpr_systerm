@@ -12,7 +12,7 @@ from core.permissions import require_roles
 from .models import OneCDiagnosticRun, OneCConnection
 from .one_c_schedules import WEEKDAYS
 
-KINDS = [('diagnostic', 'Диагностика структуры'), ('metadata', 'Чтение названий'), ('positions', 'Загрузка должностей'), ('employees', 'Загрузка сотрудников')]
+KINDS = [('diagnostic', 'Диагностика структуры'), ('uat', 'Диагностика УАТ'), ('metadata', 'Чтение названий'), ('positions', 'Загрузка должностей'), ('employees', 'Загрузка сотрудников')]
 
 
 def _sql_identifier(value):
@@ -177,15 +177,17 @@ def jobs(request):
         query = query.filter(report__employees_import=True)
     elif kind == 'positions':
         query = query.filter(report__positions_import=True)
+    elif kind == 'uat':
+        query = query.filter(report__uat_discovery=True)
     elif kind == 'metadata':
         query = query.filter(report__metadata_only=True).exclude(report__has_key='positions_import').exclude(report__has_key='employees_import')
     elif kind == 'diagnostic':
-        query = query.exclude(report__has_key='positions_import').exclude(report__has_key='employees_import').exclude(report__has_key='metadata_only')
+        query = query.exclude(report__has_key='positions_import').exclude(report__has_key='employees_import').exclude(report__has_key='metadata_only').exclude(report__has_key='uat_discovery')
     else:
         kind = ''
     page = Paginator(query, 50).get_page(request.GET.get('page'))
     for run in page:
-        run.kind_label = 'Загрузка сотрудников' if run.report.get('employees_import') else 'Загрузка должностей' if run.report.get('positions_import') else 'Чтение названий' if run.report.get('metadata_only') else 'Диагностика структуры'
+        run.kind_label = 'Загрузка сотрудников' if run.report.get('employees_import') else 'Загрузка должностей' if run.report.get('positions_import') else 'Диагностика УАТ' if run.report.get('uat_discovery') else 'Чтение названий' if run.report.get('metadata_only') else 'Диагностика структуры'
         run.error_help=error_help(run.error,run.server,run.database)
     params = request.GET.copy()
     params.pop('page', None)

@@ -7,6 +7,7 @@ from . import impersonation_views
 from .one_c import integration, table_structure
 from .one_c_jobs import jobs
 from .one_c_report import download_report
+from .uat import discovery as uat_discovery
 from .portal_updates import updates, update_status
 from .user_archive import bulk_archive
 from . import invitation_views, training_views
@@ -33,6 +34,7 @@ urlpatterns = [
     path('admin/update/status/',update_status,name='portal_update_status'),
     path('users/archive/', bulk_archive, name='user_bulk_archive'),
     path('integrations/1c/report/', download_report, name='one_c_report'),
+    path('integrations/uat/', uat_discovery, name='uat'),
     path('integrations/1c/jobs/', jobs, name='one_c_jobs'),
     path('integrations/1c/', integration, name='one_c'),
     path('integrations/1c/tables/<str:schema>/<str:table>/', table_structure, name='one_c_table'),

@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1>Интеграция с УАТ</h1>
+<p><a href="{% url 'accounts:one_c' %}">← Подключение ЗУП</a> · <a href="{% url 'accounts:one_c_jobs' %}">Задания обмена</a></p>
+<section class="card p-3 mb-3">
+<h2>Источник</h2>
+<p class="mb-1">SQL-сервер: <strong>{{ connection.server }}</strong></p>
+<p class="mb-1">База: <strong>{{ database }}</strong></p>
+<p class="text-muted">Используется та же Windows-учётная запись фонового портала, что и для ЗУП. Пароль не хранится. Выполняются только SELECT-запросы.</p>
+<form method="post">{% csrf_token %}<button class="btn btn-primary" name="action" value="diagnose" {% if pending %}disabled{% endif %}>Прочитать структуру УАТ</button></form>
+{% if pending %}<p class="mt-2" role="status">Диагностика ожидает запуска или выполняется.</p><script>setTimeout(function(){window.location.reload()},10000)</script>{% endif %}
+</section>
+{% if latest %}
+<section class="card p-3 mb-3">
+<h2>Результат диагностики</h2>
+<p>{{ latest.created_at }} · {{ latest.server }} / {{ latest.database }}</p>
+<p><a class="btn btn-primary" href="{% url 'accounts:one_c_report' %}?uat=1&amp;format=zip">Скачать структуру УАТ (ZIP)</a></p>
+{% if recommended %}<h3>Вероятные источники путевых и ремонтных листов</h3><ul>{% for table in recommended %}<li><strong>{{ table.name|default:'Название не расшифровано' }}</strong> · <code>{{ table.key }}</code></li>{% endfor %}</ul>{% else %}<p class="alert alert-warning">По названиям объекты УАТ пока не определены. Скачайте ZIP-отчёт для точной карты полей.</p>{% endif %}
+</section>
+{% endif %}
+<section class="card p-3" id="uat-schema"><h2>Таблицы УАТ</h2>
+<form method="get" class="d-flex gap-2 mb-3 flex-wrap"><label>Название или SQL-имя<input class="form-control" name="q" value="{{ catalogue_query }}" placeholder="Путевой лист или _Document123"></label><label>Тип<select class="form-select" name="type"><option value="">Все типы</option>{% for value,label,count in type_counts %}<option value="{{ value }}" {% if catalogue_type == value %}selected{% endif %}>{{ label }} ({{ count }})</option>{% endfor %}</select></label><button class="btn btn-primary">Найти</button><a class="btn btn-outline-secondary" href="{% url 'accounts:uat' %}#uat-schema">Сбросить</a></form>
+<p>Найдено: {{ catalogue_page.paginator.count }} из {{ catalogue_total }}.</p>
+{% for group in catalogue_groups %}<h3>{{ group.label }}</h3><table class="table"><thead><tr><th>Название 1С</th><th>SQL-таблица</th><th>Поля</th></tr></thead><tbody>{% for table in group.rows %}<tr><td>{{ table.name|default:'Название пока не определено' }}{% if table.table_part %}<div class="small text-muted">Табличная часть</div>{% endif %}</td><td><code>{{ table.key }}</code></td><td>{% include 'accounts/_one_c_columns.html' with columns=table.columns %}</td></tr>{% endfor %}</tbody></table>{% empty %}<p>Выполните диагностику или измените фильтр.</p>{% endfor %}
+{% if catalogue_page.has_other_pages %}<nav class="d-flex gap-3">{% if catalogue_page.has_previous %}<a href="?{{ catalogue_params }}&amp;page={{ catalogue_page.previous_page_number }}#uat-schema">Назад</a>{% endif %}<span>{{ catalogue_page.number }} / {{ catalogue_page.paginator.num_pages }}</span>{% if catalogue_page.has_next %}<a href="?{{ catalogue_params }}&amp;page={{ catalogue_page.next_page_number }}#uat-schema">Далее</a>{% endif %}</nav>{% endif %}
+</section>
+{% endblock %}

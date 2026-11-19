@@ -1,4 +1,5 @@
 """Portable structure-only report for analysing a company's 1C database."""
+from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.http import Http404, JsonResponse, HttpResponse
 from django.utils import timezone
@@ -97,10 +98,14 @@ def download_report(request):
     connection = OneCConnection.objects.filter(company_id=request.user.company_id).first()
     if connection is None:
         raise Http404('Сначала настройте подключение и выполните диагностику 1С.')
-    run = connection.runs.filter(status='DONE', server=connection.server, database=connection.database).exclude(
-        report__has_key='positions_import').exclude(report__has_key='employees_import').order_by('-created_at', '-pk').first()
+    uat = request.GET.get('uat') == '1'
+    database = settings.UAT_DATABASE if uat else connection.database
+    runs = connection.runs.filter(status='DONE', server=connection.server, database=database)
+    if uat:runs = runs.filter(report__uat_discovery=True)
+    else:runs = runs.exclude(report__has_key='uat_discovery')
+    run = runs.exclude(report__has_key='positions_import').exclude(report__has_key='employees_import').order_by('-created_at', '-pk').first()
     if run is None or not run.report.get('schema'):
         raise Http404('Нет структуры для текущего подключения. Выполните диагностику 1С и повторите скачивание.')
     data = structure_report(connection, run)
-    filename = f'1c-structure-{run.pk.hex}'
+    filename = f'uat-structure-{run.pk.hex}' if uat else f'1c-structure-{run.pk.hex}'
     return _download_response(data, filename, zipped=request.GET.get('format') == 'zip')
