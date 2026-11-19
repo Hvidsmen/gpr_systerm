@@ -81,6 +81,7 @@ urlpatterns += [
     path('recruitment/ready/arrivals/',recruitment.ready_arrival_handoff,name='recruitment_ready_arrival_bulk'),
     path('recruitment/pool/bulk-action/',recruitment.pool_bulk_action,name='recruitment_pool_bulk_action'),
     path('recruitment/specialists/',recruitment.specialist_list,name='recruitment_specialists'),
+    path('recruitment/specialists/bulk-delete/',recruitment.specialist_bulk_delete,name='recruitment_specialist_bulk_delete'),
     path('recruitment/specialists/add/',recruitment.specialist_edit,name='recruitment_specialist_create'),
     path('recruitment/specialists/<int:pk>/delete/',recruitment.specialist_delete,name='recruitment_specialist_delete'),
     path('recruitment/specialists/<int:pk>/',recruitment.specialist_edit,name='recruitment_specialist_edit'),

@@ -139,6 +139,26 @@ def specialist_delete(request,pk):
 
 
 @login_required
+@require_POST
+def specialist_bulk_delete(request):
+    require_roles(request.user,service.ASSIGN)
+    try:ids=sorted({int(value) for value in request.POST.getlist('selected')})
+    except (TypeError,ValueError):ids=[]
+    if not ids:
+        messages.error(request,'Выберите хотя бы одного рекрутера.')
+        return redirect('personnel:recruitment_specialists')
+    with transaction.atomic():
+        rows=list(RecruitmentSpecialist.objects.select_for_update().filter(company=request.user.company,pk__in=ids))
+        if len(rows)!=len(ids):raise PermissionDenied('Одна из выбранных записей рекрутеров недоступна.')
+        candidate_count=sum(row.candidates.count() for row in rows)
+        RecruitmentSpecialist.objects.filter(company=request.user.company,pk__in=ids).delete()
+    message=f'Удалено рекрутеров: {len(rows)}.'
+    if candidate_count:message+=f' Назначение очищено в карточках кандидатов: {candidate_count}.'
+    messages.success(request,message)
+    return redirect('personnel:recruitment_specialists')
+
+
+@login_required
 @require_GET
 def request_list(request,recruitment_page='bank'):
     require_roles(request.user,service.READ)

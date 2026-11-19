@@ -918,6 +918,34 @@ class RecruitmentTests(TestCase):
         self.assertEqual(self.client.post(create,{'name':'Нельзя добавить','is_active':'on'}).status_code,403)
         self.assertEqual(self.client.post(reverse('personnel:recruitment_specialist_delete',args=[saved.pk])).status_code,403)
 
+    def test_recruitment_specialists_support_company_scoped_bulk_selection_and_delete(self):
+        from .models import RecruitmentSpecialist,TalentPoolCandidate
+        first=RecruitmentSpecialist.objects.create(company=self.company,name='Первый рекрутер',user=self.recruiter)
+        second=RecruitmentSpecialist.objects.create(company=self.company,name='Второй рекрутер',user=self.recruiter2)
+        foreign=RecruitmentSpecialist.objects.create(company=self.other,name='Чужой рекрутер',user=self.foreign)
+        first_candidate=TalentPoolCandidate.objects.create(company=self.company,full_name='Первый кандидат',
+            responsible_hr=first,created_by=self.recruiter)
+        second_candidate=TalentPoolCandidate.objects.create(company=self.company,full_name='Второй кандидат',
+            responsible_hr=second,created_by=self.recruiter)
+        url=reverse('personnel:recruitment_specialists')
+        bulk_url=reverse('personnel:recruitment_specialist_bulk_delete')
+        self.client.force_login(self.hr_head)
+        page=self.client.get(url)
+        self.assertContains(page,'select-all-specialists',html=False)
+        self.assertContains(page,'class="form-check-input specialist-selection"',count=2,html=False)
+        self.assertContains(page,'Удалить выбранных')
+        self.assertEqual(self.client.get(bulk_url).status_code,405)
+        self.assertEqual(self.client.post(bulk_url,{'selected':[first.pk,foreign.pk]}).status_code,403)
+        self.assertTrue(RecruitmentSpecialist.objects.filter(pk=first.pk).exists())
+        response=self.client.post(bulk_url,{'selected':[first.pk,second.pk]})
+        self.assertRedirects(response,url)
+        self.assertFalse(RecruitmentSpecialist.objects.filter(pk__in=[first.pk,second.pk]).exists())
+        first_candidate.refresh_from_db();second_candidate.refresh_from_db()
+        self.assertIsNone(first_candidate.responsible_hr_id);self.assertIsNone(second_candidate.responsible_hr_id)
+        self.assertEqual(User.objects.filter(pk__in=[self.recruiter.pk,self.recruiter2.pk]).count(),2)
+        self.client.force_login(self.recruiter)
+        self.assertEqual(self.client.post(bulk_url,{'selected':[foreign.pk]}).status_code,403)
+
     def test_pool_confirmation_flags_require_dates_and_can_add_base_city(self):
         from .models import TalentPoolCandidate
         pool=TalentPoolCandidate.objects.create(company=self.company,full_name='Проверка дат',stage='SCREENING',
