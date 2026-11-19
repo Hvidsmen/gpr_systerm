@@ -79,6 +79,14 @@ class StagingUpdateViewTests(TestCase):
         self.assertEqual(payload['status']['stage_total'],7)
         self.assertNotIn('Location',response)
 
+    @patch('ops.staging_updates.subprocess.Popen')
+    def test_staging_uat_worker_is_restricted_to_uat_discovery(self,spawn):
+        worker=staging_updates.start_uat_worker(self.root)
+        self.assertIs(worker,spawn.return_value)
+        command=spawn.call_args.args[0]
+        self.assertEqual(command[-2:],['process_1c','--uat-only'])
+        self.assertEqual(spawn.call_args.kwargs['cwd'],self.config['code'])
+
     def test_refresh_rejects_tampered_wrong_instance_and_replayed_generation(self):
         self.refresh_ready()
         with singleton(self.root / '.runtime/staging-supervisor.lock'):

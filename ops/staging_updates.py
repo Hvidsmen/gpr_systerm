@@ -265,6 +265,16 @@ def start_http(root):
                              'http', '--root', str(root)], env=env, stdin=subprocess.PIPE)
 
 
+def start_uat_worker(root):
+    """Run only read-only UAT discovery in the otherwise isolated TEST portal."""
+    from ops.staging import manifest, environment
+    current=manifest(root)
+    log=runtime(root)/'1c-worker.log'
+    with log.open('ab') as output:
+        return subprocess.Popen([current['python'],str(Path(current['code'])/'manage.py'),'process_1c','--uat-only'],
+            cwd=current['code'],env=environment(root),stdout=output,stderr=subprocess.STDOUT)
+
+
 def reconcile_installed_update(root, *, timeout=5):
     """Finish a code-update journal when the selected release proves it is healthy.
 
@@ -484,9 +494,10 @@ def supervise(root, parent_gone):
         if previous.get('state') in BUSY - {'queued'}:
             atomic_json(runtime(root) / 'staging-update.json', {**previous, 'state': 'error'})
         atomic_json(runtime(root) / 'staging-supervisor.json',
-                    {'pid': os.getpid(), 'features': ['refresh-data'],
+                    {'pid': os.getpid(), 'features': ['refresh-data','uat-discovery'],
                      'revision': manifest(root)['revision']})
         child = start_http(root)
+        uat_worker=None;uat_tick=0
         try:
             wait_http(root, child, parent_gone)
             while not parent_gone.is_set() and not stop.exists():
@@ -494,13 +505,21 @@ def supervise(root, parent_gone):
                     raise RuntimeError('HTTP-процесс теста завершился.')
                 job = read_json(runtime(root) / 'staging-update.json', {})
                 if job.get('state') == 'queued':
+                    if uat_worker is not None and uat_worker.poll() is None:
+                        parent_gone.wait(.5);continue
                     result=(process_refresh if job.get('kind') == 'refresh' else process_job)(root,child,job,parent_gone)
                     if result is SUPERVISOR_RESTART:
                         child=None;restart=True;break
                     child=result
+                if time.monotonic()>=uat_tick and (uat_worker is None or uat_worker.poll() is not None):
+                    uat_tick=time.monotonic()+60
+                    try:uat_worker=start_uat_worker(root)
+                    except OSError:logging.exception('Could not start TEST UAT worker.')
                 parent_gone.wait(.5)
         finally:
             try:
+                if uat_worker is not None and uat_worker.poll() is None:
+                    uat_worker.terminate();uat_worker.wait(timeout=15)
                 if child is not None:stop_http(child)
             finally:
                 (runtime(root) / 'staging-supervisor.json').unlink(missing_ok=True)

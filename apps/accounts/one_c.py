@@ -54,17 +54,25 @@ def enqueue(connection, actor=None, metadata_only=False, positions=False, employ
             database=database or connection.database,trust_certificate=connection.trust_certificate,report=report)
 
 
-def process_queue():
+def process_queue(*,uat_only=False):
     now=timezone.now()
-    stale=OneCConnection.objects.filter(active_until__lt=now)
-    OneCDiagnosticRun.objects.filter(connection__in=stale,status__in=['QUEUED','RUNNING']).update(status='ERROR',error='Запуск прерван или превышено время ожидания.',finished_at=now)
-    stale.update(active_until=None)
-    from .one_c_schedules import enqueue_due_imports
-    enqueue_due_imports(now)
-    for connection in OneCConnection.objects.filter(diagnostic_interval_minutes__gt=0,active_until__isnull=True):
-        last=connection.runs.exclude(report__has_key='positions_import').exclude(report__has_key='employees_import').exclude(report__has_key='uat_discovery').order_by('-created_at').first()
-        if last is None or last.created_at+timedelta(minutes=connection.diagnostic_interval_minutes)<=now:enqueue(connection)
-    for run in OneCDiagnosticRun.objects.filter(status='QUEUED').order_by('created_at'):
+    if uat_only:
+        stale_runs=OneCDiagnosticRun.objects.filter(report__uat_discovery=True,status__in=['QUEUED','RUNNING'],connection__active_until__lt=now)
+        stale_ids=list(stale_runs.values_list('connection_id',flat=True).distinct())
+        stale_runs.update(status='ERROR',error='Запуск прерван или превышено время ожидания.',finished_at=now)
+        OneCConnection.objects.filter(pk__in=stale_ids).update(active_until=None)
+        queue=OneCDiagnosticRun.objects.filter(status='QUEUED',report__uat_discovery=True)
+    else:
+        stale=OneCConnection.objects.filter(active_until__lt=now)
+        OneCDiagnosticRun.objects.filter(connection__in=stale,status__in=['QUEUED','RUNNING']).update(status='ERROR',error='Запуск прерван или превышено время ожидания.',finished_at=now)
+        stale.update(active_until=None)
+        from .one_c_schedules import enqueue_due_imports
+        enqueue_due_imports(now)
+        for connection in OneCConnection.objects.filter(diagnostic_interval_minutes__gt=0,active_until__isnull=True):
+            last=connection.runs.exclude(report__has_key='positions_import').exclude(report__has_key='employees_import').exclude(report__has_key='uat_discovery').order_by('-created_at').first()
+            if last is None or last.created_at+timedelta(minutes=connection.diagnostic_interval_minutes)<=now:enqueue(connection)
+        queue=OneCDiagnosticRun.objects.filter(status='QUEUED')
+    for run in queue.order_by('created_at'):
         if not OneCDiagnosticRun.objects.filter(pk=run.pk,status='QUEUED').update(status='RUNNING'):continue
         employees_import=bool(run.report.get('employees_import'))
         uat_discovery=bool(run.report.get('uat_discovery'))

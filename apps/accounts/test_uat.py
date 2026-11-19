@@ -59,6 +59,23 @@ class UatDiscoveryTests(TestCase):
         self.assertContains(page,'Документ.ПутевойЛист')
         self.assertContains(page,'dbo._Document123')
 
+    @patch('apps.accounts.one_c.os.name','nt')
+    @patch('apps.accounts.one_c.subprocess.run')
+    def test_uat_only_worker_leaves_other_1c_jobs_queued(self,execute):
+        self.client.post(self.url,{'action':'diagnose'})
+        uat=OneCDiagnosticRun.objects.get()
+        other=OneCDiagnosticRun.objects.create(connection=self.connection,server='shared-sql',database='zup01')
+        with tempfile.TemporaryDirectory() as directory:
+            target=PosixPath(directory)/'.runtime/1c-diagnostics'/uat.pk.hex
+            target.mkdir(parents=True)
+            (target/'status.json').write_text(json.dumps({'ok':True}))
+            (target/'report.json').write_text(json.dumps({'schema':SCHEMA,'metadata_labels':LABELS}))
+            with override_settings(CONFIG_DIR=directory),patch('apps.accounts.one_c.Path',PosixPath),patch('apps.accounts.one_c.subprocess.CREATE_NO_WINDOW',0,create=True):
+                process_queue(uat_only=True)
+        uat.refresh_from_db();other.refresh_from_db()
+        self.assertEqual(uat.status,'DONE')
+        self.assertEqual(other.status,'QUEUED')
+
     def test_download_selects_only_uat_structure(self):
         OneCDiagnosticRun.objects.create(connection=self.connection,server='shared-sql',database='zup01',status='DONE',report={'schema':[]})
         run=OneCDiagnosticRun.objects.create(connection=self.connection,server='shared-sql',database='uat01_ivanov',status='DONE',report={'uat_discovery':True,'schema':SCHEMA,'metadata_labels':LABELS})
