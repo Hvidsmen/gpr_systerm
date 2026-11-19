@@ -177,18 +177,18 @@ def request_list(request,recruitment_page='bank'):
     if recruitment_page=='ready':candidates=candidates.filter(stage='TRANSFERRED')
     candidate_rows=list(candidates.values('pk','full_name','stage','position_id','position__name','construction_object__name','source_data'))
     candidate_ids=[row['pk'] for row in candidate_rows]
-    active_arrivals=MovementReviewRequest.objects.filter(company=request.user.company,kind='ARRIVAL').exclude(
-        status='CANCELLED').filter(Q(pool_candidate_id__in=candidate_ids)|
-            Q(recruitment_arrival__candidate__pool_candidate_id__in=candidate_ids)).order_by('-created_at','-pk').values(
-                'pk','pool_candidate_id','status','recruitment_arrival__candidate__pool_candidate_id')
-    arrival_by_pool={}
-    for arrival in active_arrivals:
-        pool_id=arrival['pool_candidate_id'] or arrival['recruitment_arrival__candidate__pool_candidate_id']
-        arrival_by_pool.setdefault(pool_id,arrival)
-    for row in candidate_rows:
-        arrival=arrival_by_pool.get(row['pk'])
-        if arrival:row.update(arrival_request_id=arrival['pk'],arrival_status=arrival['status'])
     if recruitment_page=='ready':
+        active_arrivals=MovementReviewRequest.objects.filter(company=request.user.company,kind='ARRIVAL').exclude(
+            status='CANCELLED').filter(Q(pool_candidate_id__in=candidate_ids)|
+                Q(recruitment_arrival__candidate__pool_candidate_id__in=candidate_ids)).order_by('-created_at','-pk').values(
+                    'pk','pool_candidate_id','status','recruitment_arrival__candidate__pool_candidate_id')
+        arrival_by_pool={}
+        for arrival in active_arrivals:
+            pool_id=arrival['pool_candidate_id'] or arrival['recruitment_arrival__candidate__pool_candidate_id']
+            arrival_by_pool.setdefault(pool_id,arrival)
+        for row in candidate_rows:
+            arrival=arrival_by_pool.get(row['pk'])
+            if arrival:row.update(arrival_request_id=arrival['pk'],arrival_status=arrival['status'])
         plan_rows=list(rows.filter(candidates__pool_candidate_id__in=candidate_ids).distinct().values(
             'position_ref_id','position_ref__name','position','quantity'))
     application_rows=list(RecruitmentCandidate.objects.filter(company=request.user.company,pool_candidate_id__in=candidate_ids).order_by(
