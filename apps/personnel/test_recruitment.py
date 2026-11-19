@@ -630,27 +630,28 @@ class RecruitmentTests(TestCase):
         self.assertContains(recruiter_page,reverse('personnel:recruitment_ready'))
         self.assertNotContains(recruiter_page,'Создать заявку')
 
-    def test_ready_for_arrival_tab_filters_by_pool_card_checkbox(self):
+    def test_ready_for_arrival_tab_contains_only_transferred_candidates(self):
         from .models import TalentPoolCandidate
-        ready=TalentPoolCandidate.objects.create(company=self.company,full_name='Готовый к заезду',stage='SCREENING',
-            position=self.position,construction_object=self.obj,camp=self.camp,ready_for_arrival=True,ready_for_arrival_on=self.day,
+        ready=TalentPoolCandidate.objects.create(company=self.company,full_name='Поставленный на заезд',stage='TRANSFERRED',
+            position=self.position,construction_object=self.obj,camp=self.camp,created_by=self.recruiter)
+        waiting=TalentPoolCandidate.objects.create(company=self.company,full_name='Готов, но ещё не поставлен',stage='READY',
+            position=self.position,construction_object=self.obj,ready_for_arrival=True,ready_for_arrival_on=self.day,
             created_by=self.recruiter)
-        waiting=TalentPoolCandidate.objects.create(company=self.company,full_name='Ещё не готов',stage='SCREENING',
-            position=self.position,construction_object=self.obj,created_by=self.recruiter)
         other_project=Project.objects.create(company=self.company,name='Другой проект готовности')
         other_object=ConstructionObject.objects.create(company=self.company,project=other_project,name='Другой объект готовности')
         other_position=Position.objects.create(company=self.company,name='Другая должность готовности')
-        other_ready=TalentPoolCandidate.objects.create(company=self.company,full_name='Другой готовый сотрудник',stage='SCREENING',
-            position=other_position,construction_object=other_object,camp=self.unlinked,ready_for_arrival=True,
-            ready_for_arrival_on=self.day,created_by=self.recruiter)
+        other_ready=TalentPoolCandidate.objects.create(company=self.company,full_name='Другой поставленный сотрудник',stage='TRANSFERRED',
+            position=other_position,construction_object=other_object,camp=self.unlinked,created_by=self.recruiter)
         self.client.force_login(self.recruiter)
         page=self.client.get(reverse('personnel:recruitment_ready'),{
-            'project':[self.obj.pk],'camp':[self.camp.pk],'q':'Готовый','position':[self.position.pk]})
+            'project':[self.obj.pk],'camp':[self.camp.pk],'q':'Поставленный','position':[self.position.pk]})
         self.assertEqual(page.status_code,200);self.assertEqual(page.context['recruitment_page'],'ready')
         self.assertEqual(page.context['candidate_total'],1)
-        self.assertContains(page,'Карточки банка сотрудников, в которых установлен флажок «Готов к заезду»')
+        self.assertContains(page,'Сотрудники, переведённые на этап «Поставлен на заезд»')
         self.assertContains(page,ready.full_name);self.assertNotContains(page,waiting.full_name);self.assertNotContains(page,other_ready.full_name)
-        self.assertContains(page,'Все готовые');self.assertContains(page,'data-candidate-inline-target',html=False)
+        self.assertContains(page,'Показаны только сотрудники, которые уже поставлены на заезд')
+        self.assertContains(page,'data-candidate-inline-target',html=False)
+        self.assertNotContains(page,'candidate_stage=',html=False)
         self.assertContains(page,'aria-label="Фильтры готовых к заезду"',html=False)
         self.assertNotContains(page,'id="request-state"',html=False)
         content=page.content.decode()

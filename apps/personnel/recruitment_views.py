@@ -172,7 +172,7 @@ def request_list(request,recruitment_page='bank'):
         candidates=candidates.filter(Q(construction_object_id__in=selected_object_ids)|
             Q(vacancy_candidates__request__construction_object_id__in=selected_object_ids)).distinct()
     if selected_camp_ids:candidates=candidates.filter(camp_id__in=selected_camp_ids)
-    if recruitment_page=='ready':candidates=candidates.filter(ready_for_arrival=True)
+    if recruitment_page=='ready':candidates=candidates.filter(stage='TRANSFERRED')
     candidate_rows=list(candidates.values('pk','full_name','stage','position_id','position__name','construction_object__name','source_data'))
     candidate_ids=[row['pk'] for row in candidate_rows]
     if recruitment_page=='ready':
@@ -183,7 +183,7 @@ def request_list(request,recruitment_page='bank'):
             'request__position','request__construction_object__name'))
     position_summary,candidate_position_count,group_position_counts=_position_funnel_summary(candidate_rows,plan_rows,application_rows)
     candidate_total=len(candidate_rows)
-    selected_group=request.GET.get('candidate_stage','')
+    selected_group='' if recruitment_page=='ready' else request.GET.get('candidate_stage','')
     selected_stages=next((stages for value,_,stages in FUNNEL_GROUPS if value==selected_group),None)
     opened_people=False
     for position in position_summary:
