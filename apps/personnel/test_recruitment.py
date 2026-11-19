@@ -818,9 +818,11 @@ class RecruitmentTests(TestCase):
         self.assertEqual(TalentPoolCandidate.objects.filter(company=self.company).count(),1)
 
     def test_recruitment_specialist_directory_navigation_crud_and_scope(self):
-        from .models import RecruitmentSpecialist
+        from .models import RecruitmentSpecialist,TalentPoolCandidate
         existing=RecruitmentSpecialist.objects.create(company=self.company,name='Дарина Н.',user=self.recruiter)
         foreign=RecruitmentSpecialist.objects.create(company=self.other,name='Чужой рекрутер',user=self.foreign)
+        candidate=TalentPoolCandidate.objects.create(company=self.company,full_name='Кандидат рекрутера',position=self.position,
+            construction_object=self.obj,responsible_hr=existing,created_by=self.recruiter,source_data={'responsible_hr':'Дарина Н.'})
         url=reverse('personnel:recruitment_specialists')
         self.client.force_login(self.hr_head)
         bank=self.client.get(reverse('personnel:recruitment_list'))
@@ -829,6 +831,7 @@ class RecruitmentTests(TestCase):
         page=self.client.get(url)
         self.assertContains(page,'Справочник рекрутеров');self.assertContains(page,'Дарина Н.')
         self.assertContains(page,self.recruiter.username);self.assertNotContains(page,foreign.name)
+        self.assertContains(page,reverse('personnel:recruitment_specialist_delete',args=[existing.pk]));self.assertContains(page,'Удалить')
         create=reverse('personnel:recruitment_specialist_create')
         response=self.client.post(create,{'name':'Новый рекрутер','user':self.recruiter2.pk,'is_active':'on'})
         self.assertRedirects(response,url)
@@ -842,10 +845,18 @@ class RecruitmentTests(TestCase):
         self.assertRedirects(self.client.post(edit,{'name':'Дарина Николаевна','user':self.recruiter.pk}),url)
         existing.refresh_from_db();self.assertEqual(existing.name,'Дарина Николаевна');self.assertFalse(existing.is_active)
         self.assertEqual(self.client.get(reverse('personnel:recruitment_specialist_edit',args=[foreign.pk])).status_code,404)
+        delete=reverse('personnel:recruitment_specialist_delete',args=[existing.pk])
+        self.assertEqual(self.client.get(delete).status_code,405)
+        self.assertRedirects(self.client.post(delete),url)
+        self.assertFalse(RecruitmentSpecialist.objects.filter(pk=existing.pk).exists())
+        candidate.refresh_from_db();self.assertIsNone(candidate.responsible_hr_id);self.assertEqual(candidate.source_data['responsible_hr'],'Дарина Н.')
+        self.assertTrue(User.objects.filter(pk=self.recruiter.pk).exists())
+        self.assertEqual(self.client.post(reverse('personnel:recruitment_specialist_delete',args=[foreign.pk])).status_code,404)
         self.client.force_login(self.recruiter)
         readonly=self.client.get(url)
-        self.assertEqual(readonly.status_code,200);self.assertNotContains(readonly,'Добавить рекрутера')
+        self.assertEqual(readonly.status_code,200);self.assertNotContains(readonly,'Добавить рекрутера');self.assertNotContains(readonly,'Удалить')
         self.assertEqual(self.client.post(create,{'name':'Нельзя добавить','is_active':'on'}).status_code,403)
+        self.assertEqual(self.client.post(reverse('personnel:recruitment_specialist_delete',args=[saved.pk])).status_code,403)
 
     def test_pool_confirmation_flags_require_dates_and_can_add_base_city(self):
         from .models import TalentPoolCandidate

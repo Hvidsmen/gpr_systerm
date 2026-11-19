@@ -122,6 +122,19 @@ def specialist_edit(request,pk=None):
 
 
 @login_required
+@require_POST
+def specialist_delete(request,pk):
+    require_roles(request.user,service.ASSIGN)
+    row=get_object_or_404(RecruitmentSpecialist,company=request.user.company,pk=pk)
+    name=row.name;candidate_count=row.candidates.count()
+    row.delete()
+    message=f'Рекрутер «{name}» удалён.'
+    if candidate_count:message+=f' Назначение очищено в карточках кандидатов: {candidate_count}.'
+    messages.success(request,message)
+    return redirect('personnel:recruitment_specialists')
+
+
+@login_required
 @require_GET
 def request_list(request,recruitment_page='bank'):
     require_roles(request.user,service.READ)
