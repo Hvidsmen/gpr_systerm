@@ -40,7 +40,7 @@ class RecruitmentSpecialistForm(forms.ModelForm):
                 is_active=True,archived_at__isnull=True,role__code='RECRUITER'))
         self.fields['user'].queryset=users.select_related('role').order_by('last_name','first_name','username','pk')
         self.fields['user'].empty_label='Не связан с пользователем'
-        self.fields['user'].help_text='Необязательно. Свяжите запись с учётной записью, имеющей роль «Подбор персонала».'
+        self.fields['user'].help_text='Необязательно. Свяжите запись с учётной записью, имеющей роль «Рекрутер».'
         self.fields['is_active'].help_text='Неактивный рекрутер остаётся в истории, но не предлагается в новых карточках кандидатов.'
         self.fields['user'].label_from_instance=lambda user:user.get_full_name() or user.username
     def clean_name(self):

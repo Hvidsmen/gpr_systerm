@@ -35,7 +35,8 @@ def index(request):
         # Titles, section names, action labels and examples are all searchable.
         return all(term in str(guide).casefold() for term in terms)
     guides=[g for g in GUIDES if matches(g)]
-    recommended=next((g for g in GUIDES if g['kind']=='role' and g['role']==role_code(request.user)),None)
+    recommended_role='RECRUITER' if role_code(request.user)=='RECRUITMENT_HEAD' else role_code(request.user)
+    recommended=next((g for g in GUIDES if g['kind']=='role' and g['role']==recommended_role),None)
     return render(request,'instructions/index.html',{'section_guides':[g for g in guides if g['kind']=='section'],'role_guides':[g for g in guides if g['kind']=='role'],'recommended':recommended,'query':query,'result_count':len(guides)})
 
 

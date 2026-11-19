@@ -366,7 +366,7 @@ def request_detail(request,pk):
     return render(request,'personnel/recruitment_detail.html',{**context(request.user),'can_dispatch':role in service.DISPATCH and not row.completed_at,
         'row':row,'progress':service.progress(row),'assignment_form':assignment_form,'cancel_form':cancel_form,
         'can_assign_recruiter':role in service.ASSIGN and not row.completed_at and not row.cancelled_at,
-        'can_manage_candidates':not row.completed_at and (role=='ADMIN' or role=='RECRUITER' and row.assigned_to_id==request.user.pk),
+        'can_manage_candidates':not row.completed_at and (role in {'ADMIN','HR_HEAD','RECRUITMENT_HEAD'} or role=='RECRUITER' and row.assigned_to_id==request.user.pk),
         'events':row.events.select_related('actor','candidate')[:100]})
 
 

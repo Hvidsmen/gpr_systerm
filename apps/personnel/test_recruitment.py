@@ -34,6 +34,7 @@ class RecruitmentTests(TestCase):
         cls.hr_head=User.objects.create_user(username='hr-head-recruit',first_name='Ирина',last_name='Руководитель',company=cls.company,role=Role.objects.get(code='HR_HEAD'))
         cls.recruiter=User.objects.create_user(username='recruiter',company=cls.company,role=Role.objects.get(code='RECRUITER'))
         cls.recruiter2=User.objects.create_user(username='recruiter2',company=cls.company,role=Role.objects.get(code='RECRUITER'))
+        cls.recruitment_head=User.objects.create_user(username='recruitment-head',company=cls.company,role=Role.objects.get(code='RECRUITMENT_HEAD'))
         cls.foreign=User.objects.create_user(username='recruit-foreign',company=cls.other,role=Role.objects.get(code='RECRUITER'))
         cls.foreign_hr_head=User.objects.create_user(username='hr-head-foreign',company=cls.other,role=Role.objects.get(code='HR_HEAD'))
         cls.employee=Employee.objects.create(company=cls.company,last_name='Оформленный',first_name='Сотрудник',employee_number='R-001')
@@ -468,11 +469,27 @@ class RecruitmentTests(TestCase):
     def test_unassigned_recruiter_edit_is_403_and_not_server_error(self):
         row=self.row();self.client.force_login(self.recruiter)
         self.assertEqual(self.client.get(reverse('personnel:recruitment_candidate_create',args=[row.pk])).status_code,403)
-    def test_new_role_available_to_admin_account_and_access_group_forms(self):
+    def test_recruitment_roles_available_to_admin_account_and_access_group_forms(self):
         from apps.accounts.access_groups import GroupForm
         from apps.accounts.forms import CompanyUserAccessForm
-        self.assertIn(Role.objects.get(code='RECRUITER'),GroupForm(company=self.company).fields['role'].queryset)
-        self.assertIn(Role.objects.get(code='RECRUITER'),CompanyUserAccessForm(company=self.company).fields['role'].queryset)
+        recruiter=Role.objects.get(code='RECRUITER');head=Role.objects.get(code='RECRUITMENT_HEAD')
+        self.assertEqual(recruiter.name,'Рекрутер');self.assertEqual(head.name,'Руководитель банка сотрудников')
+        for form in (GroupForm(company=self.company),CompanyUserAccessForm(company=self.company)):
+            self.assertIn(recruiter,form.fields['role'].queryset);self.assertIn(head,form.fields['role'].queryset)
+
+    def test_recruitment_head_assigns_recruiter_and_manages_the_bank(self):
+        row=self.row();self.client.force_login(self.recruitment_head)
+        detail=self.client.get(reverse('personnel:recruitment_detail',args=[row.pk]))
+        self.assertEqual(detail.status_code,200);self.assertTrue(detail.context['can_assign_recruiter']);self.assertTrue(detail.context['can_manage_candidates'])
+        assigned=self.client.post(reverse('personnel:recruitment_detail',args=[row.pk]),{
+            'action':'assign','revision':row.revision,'recruiter':self.recruiter.pk})
+        self.assertRedirects(assigned,reverse('personnel:recruitment_detail',args=[row.pk]))
+        row.refresh_from_db();self.assertEqual(row.assigned_to,self.recruiter)
+        self.assertEqual(self.client.get(reverse('personnel:recruitment_candidate_create',args=[row.pk])).status_code,200)
+        specialists=self.client.get(reverse('personnel:recruitment_specialists'))
+        self.assertContains(specialists,'Добавить рекрутера')
+        self.assertEqual(self.client.get(reverse('personnel:recruitment_specialist_create')).status_code,200)
+        self.assertEqual(self.client.get(reverse('personnel:recruitment_create')).status_code,403)
     def test_candidate_multiple_upload_field_and_size_rejection(self):
         from .recruitment_forms import CandidateForm
         row=self.row()

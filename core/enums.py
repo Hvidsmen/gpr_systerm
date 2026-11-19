@@ -10,6 +10,8 @@ class UserRole(models.TextChoices):
     OBSERVER = 'OBSERVER', _('Наблюдатель')
     PRODUCTION_HEAD = 'PRODUCTION_HEAD', _('Руководитель производства')
     HR_HEAD = 'HR_HEAD', _('Руководитель кадровой службы')
+    RECRUITMENT_HEAD = 'RECRUITMENT_HEAD', _('Руководитель банка сотрудников')
+    RECRUITER = 'RECRUITER', _('Рекрутер')
     TECH_HEAD = 'TECH_HEAD', _('Руководитель технической службы')
     SECURITY_HEAD = 'SECURITY_HEAD', _('Служба безопасности')
     SBO_HEAD = 'SBO_HEAD', _('Служба СБО')

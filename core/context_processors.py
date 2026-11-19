@@ -1,4 +1,4 @@
-from core.permissions import role_code, DISPATCHER_ROLES
+from core.permissions import role_code, DISPATCHER_ROLES,RECRUITMENT_ROLES
 
 
 def staging_portal(request):
@@ -16,7 +16,7 @@ def staging_portal(request):
 def planning_tasks(request):
     user=request.user
     if not user.is_authenticated or not user.company_id:return {}
-    role=role_code(user);result={'catalogue_menu_hidden':role in DISPATCHER_ROLES | {'COMMANDANT','RECRUITER'}}
+    role=role_code(user);result={'catalogue_menu_hidden':role in DISPATCHER_ROLES | {'COMMANDANT'} | RECRUITMENT_ROLES}
     from .permissions import ROLES, CATALOG_MANAGER_ROLES
     if role in CATALOG_MANAGER_ROLES | {'ADMIN','PLANNER','MANAGER'}:
         from apps.resources.catalogue_review_views import queue_for
@@ -25,7 +25,7 @@ def planning_tasks(request):
     if role in CATALOG_MANAGER_ROLES:
         from apps.planning.task_services import visible,filter_scope
         result.update(task_inbox_access=True,task_inbox_count=filter_scope(visible(user),user,'all' if role_code(user)=='ADMIN' else 'incoming').filter(status__in=['OPEN','IN_REVIEW']).count())
-    if role in ROLES - CATALOG_MANAGER_ROLES - {'RECRUITER'}:
+    if role in ROLES - CATALOG_MANAGER_ROLES - RECRUITMENT_ROLES:
         from apps.planning.task_services import generate_daily,visible,filter_scope
         generate_daily(user)
         result.update(task_inbox_access=True,task_inbox_count=filter_scope(visible(user),user,'all' if role_code(user)=='ADMIN' else 'incoming').filter(status__in=['OPEN','IN_REVIEW']).count())

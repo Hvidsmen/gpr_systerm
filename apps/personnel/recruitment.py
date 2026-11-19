@@ -12,8 +12,8 @@ from .models import Person
 from .recruitment_models import POOL_UNAVAILABLE_STAGES,RECRUITMENT_SYSTEM_STAGES,RECRUITMENT_TERMINAL_STAGES
 
 DISPATCH = {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'}
-RECRUIT = {'ADMIN','HR_HEAD','RECRUITER'}
-ASSIGN = {'ADMIN','HR_HEAD'}
+RECRUIT = {'ADMIN','HR_HEAD','RECRUITMENT_HEAD','RECRUITER'}
+ASSIGN = {'ADMIN','HR_HEAD','RECRUITMENT_HEAD'}
 READ = DISPATCH | RECRUIT
 EDITABLE_CANDIDATE_STAGES={value for value,_ in RecruitmentCandidate.STATES}-RECRUITMENT_SYSTEM_STAGES
 ACTIVE_CANDIDATE_STAGES={value for value,_ in RecruitmentCandidate.STATES}-RECRUITMENT_TERMINAL_STAGES-{'RESERVE','ARRIVED'}
@@ -96,7 +96,7 @@ def assign_request(user,pk,recruiter,revision):
     from core.permissions import role_code
     if (not recruiter or recruiter.company_id!=user.company_id or not recruiter.is_active or recruiter.archived_at or
             role_code(recruiter)!='RECRUITER'):
-        raise ValidationError('Выберите действующего пользователя с ролью «Подбор персонала».')
+        raise ValidationError('Выберите действующего пользователя с ролью «Рекрутер».')
     previous=row.assigned_to
     row.assigned_to=recruiter;row.save(update_fields=['assigned_to','updated_at']);touch(row)
     description=f'Назначен ответственный рекрутер: {recruiter.get_full_name() or recruiter.username}.'
@@ -108,7 +108,7 @@ def assign_request(user,pk,recruiter,revision):
 
 def owned(user,row):
     from core.permissions import role_code
-    if role_code(user) in {'RECRUITER','HR_HEAD'} and row.assigned_to_id!=user.pk:
+    if role_code(user)=='RECRUITER' and row.assigned_to_id!=user.pk:
         raise ValidationError('Заявку ведёт назначенный ответственный рекрутер.')
 
 

@@ -15,7 +15,10 @@ PLAN_ROLES = {'ADMIN', 'PLANNER'}
 PERSONNEL_CATALOG_MANAGER = 'PERSONNEL_CATALOG_MANAGER'
 EQUIPMENT_CATALOG_MANAGER = 'EQUIPMENT_CATALOG_MANAGER'
 CATALOG_MANAGER_ROLES = {PERSONNEL_CATALOG_MANAGER, EQUIPMENT_CATALOG_MANAGER}
-ROLES |= CATALOG_MANAGER_ROLES | {'RECRUITER'}
+RECRUITER='RECRUITER'
+RECRUITMENT_HEAD='RECRUITMENT_HEAD'
+RECRUITMENT_ROLES={RECRUITER,RECRUITMENT_HEAD}
+ROLES |= CATALOG_MANAGER_ROLES | RECRUITMENT_ROLES
 PERSONNEL_CATALOG_EDIT_ROLES = PLAN_ROLES | {PERSONNEL_CATALOG_MANAGER}
 PERSONNEL_CATALOG_READ_ROLES = READ_ROLES | {PERSONNEL_CATALOG_MANAGER}
 EQUIPMENT_CATALOG_EDIT_ROLES = PLAN_ROLES | {EQUIPMENT_CATALOG_MANAGER}
@@ -137,12 +140,14 @@ def check_route(user, match, method):
         require_roles(user,ROLES)
         if method not in {'GET','HEAD'}:raise PermissionDenied
         return
-    if role == 'RECRUITER':
-        require_roles(user, {'RECRUITER'})
+    if role in RECRUITMENT_ROLES:
+        require_roles(user,RECRUITMENT_ROLES)
         own_account = namespace == 'accounts' and (name in {'settings','logout','password_change','access_pending','impersonation_stop'} or name == 'user_detail' and match.kwargs.get('pk') == user.pk)
         recruitment_routes = namespace == 'personnel' and name in {'recruitment_list','recruitment_ready','recruitment_requests','recruitment_detail','recruitment_candidate_create','recruitment_candidate_edit','recruitment_candidate_card','recruitment_candidate_inline','recruitment_candidate_stage','recruitment_handoff','recruitment_document','recruitment_pool','recruitment_pool_create','recruitment_pool_edit','recruitment_pool_import','recruitment_specialists'}
+        if role==RECRUITMENT_HEAD and namespace=='personnel' and name in {'recruitment_specialist_create','recruitment_specialist_edit'}:
+            return
         if own_account or recruitment_routes or namespace == 'dashboard' and name == 'index' and method in {'GET','HEAD'}:return
-        raise PermissionDenied('Роль «Подбор персонала» работает с заявками и кандидатами.')
+        raise PermissionDenied('Роли банка сотрудников работают только с заявками на подбор, кандидатами и рекрутерами.')
     if namespace == 'personnel' and name.startswith('recruitment_'):
         from apps.personnel.recruitment import ASSIGN,READ, DISPATCH, RECRUIT
         write_roles = ASSIGN if name in {'recruitment_specialist_create','recruitment_specialist_edit'} else DISPATCH if name in {'recruitment_create','recruitment_edit','recruitment_arrival'} else RECRUIT if name in {'recruitment_candidate_create','recruitment_candidate_edit','recruitment_candidate_stage','recruitment_handoff','recruitment_pool_create','recruitment_pool_edit','recruitment_pool_import'} else READ
