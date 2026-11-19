@@ -35,12 +35,13 @@ def require_movement_day(user,day):
 
 def movement_window_context(user,day):
     today=timezone.localdate();editable=can_edit_movement_day(user,day,today=today)
-    if day>today:message='Будущая дата доступна только для просмотра.'
+    if day>today:message='Будущая дата доступна только для просмотра факта. Плановую заявку на заезд, выезд или перевод создать можно.'
     elif editable:
         message=(f'Фактические перемещения доступны за последние {MOVEMENT_BACKDATE_DAYS} дней. '
                  'Для даты старше вчерашней укажите комментарий-основание.')
     else:message=f'Дата старше {MOVEMENT_BACKDATE_DAYS} дней. Доступен только просмотр.'
-    return {'fact_day_editable':editable,'fact_edit_deadline':today,'fact_window_message':message}
+    return {'fact_day_editable':editable,'movement_form_editable':editable or day>today,
+        'fact_edit_deadline':today,'fact_window_message':message}
 
 
 def require_backdate_comment(day,comment):

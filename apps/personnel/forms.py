@@ -162,6 +162,10 @@ class MovementForm(forms.Form):
         from .models import Camp
         from .housing import present_stays
         from apps.resources.models import Employee
+        # A future date is valid for a planned request, never for a factual
+        # movement. Hide the temporary direct-fact switch in that case.
+        from django.utils import timezone
+        allow_direct=allow_direct and day<=timezone.localdate()
         super().__init__(*args,**kwargs)
         self.fields['camp'].queryset=Camp.objects.filter(company=company).order_by('name','pk')
         self.initial.setdefault('camp',camp.pk)

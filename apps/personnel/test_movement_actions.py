@@ -1,4 +1,5 @@
 import json, os, shutil, subprocess
+from datetime import timedelta
 from pathlib import Path
 from unittest import skipUnless
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
@@ -41,6 +42,42 @@ class MovementActionTests(TestCase):
         self.assertContains(page,f'action=DEPARTURE&amp;employee={self.employee.pk}')
         self.assertContains(page,f'action=TRANSFER&amp;employee={self.employee.pk}')
         self.assertNotContains(page,f'action=ARRIVAL&amp;employee={self.employee.pk}')
+
+    def test_unverified_roster_departure_opens_planned_request_and_carries_wjg(self):
+        self.unassigned.housing_camp=self.a;self.unassigned.status='МВ';self.unassigned.save()
+        page=self.client.get(self.url,{'camp':self.a.pk,'date':str(self.day)})
+        roster_day=page.context['day']
+        expected=(reverse('personnel:movements')+f'?camp={self.a.pk}&amp;date={roster_day}'
+            f'&amp;action=DEPARTURE&amp;employee={self.second_employee.pk}#movement')
+        self.assertContains(page,expected)
+        self.assertNotContains(page,reverse('personnel:initial_departure',args=[self.second_person.pk]))
+
+        planned_url=reverse('personnel:movements')
+        planned=self.client.get(planned_url,{'camp':self.a.pk,'date':str(roster_day),
+            'action':'DEPARTURE','employee':self.second_employee.pk})
+        self.assertEqual(planned.context['form']['camp'].value(),self.a.pk)
+        self.assertEqual(planned.context['form']['date'].value(),roster_day)
+        self.assertEqual(planned.context['form'].fields['date'].label,'Плановая дата выезда')
+        self.assertContains(planned,'Фактический заезд или выезд фиксируется позже в созданной заявке')
+
+    def test_future_departure_creates_request_without_recording_actual_exit(self):
+        future=self.day+timedelta(days=7)
+        url=(reverse('personnel:movements')+f'?camp={self.a.pk}&date={future}'
+            f'&action=DEPARTURE&employee={self.employee.pk}')
+        page=self.client.get(url)
+        self.assertTrue(page.context['movement_form_editable'])
+        self.assertFalse(page.context['fact_day_editable'])
+        self.assertNotIn('direct_fact',page.context['form'].fields)
+        self.assertContains(page,'data-movement-form')
+        response=self.client.post(url,{'workflow_action':'move','camp':self.a.pk,'kind':'DEPARTURE',
+            'date':future,'employees':[self.employee.pk],
+            f'departure_destination_{self.employee.pk}':'REST',
+            'snapshot':page.context['form'].initial['snapshot']})
+        self.assertRedirects(response,reverse('personnel:my_movement_requests'),fetch_redirect_response=False)
+        request=MovementReviewRequest.objects.get(person=self.person)
+        self.assertEqual((request.movement_date,request.from_camp_id),(future,self.a.pk))
+        self.stay.refresh_from_db();self.assertIsNone(self.stay.departed_on)
+        self.assertFalse(HousingEvent.objects.exists())
 
     def test_arrival_uses_explicit_camp_and_preserves_initial_table(self):
         self.assertEqual(self.client.post(self.url,self.payload('ARRIVAL',employee=self.second_employee.pk,camp=self.b)).status_code,302)
