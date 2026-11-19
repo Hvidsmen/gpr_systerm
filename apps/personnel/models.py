@@ -342,11 +342,12 @@ class MovementReviewRequest(PersonnelModel):
         if self.source=='EXCEL' and self.status=='COMPLETED':return f'Завершена по Excel: {self.travel_status or "Прибыл / убыл"}'
         if self.status=='OPEN' and self.source=='DISPATCHER':return 'Черновик диспетчера'
         if self.status=='PENDING_APPROVAL':
-            from .departure_workflow import PARALLEL,ROLE_LABELS,route_for
+            from .departure_workflow import FIRST_GATE,PARALLEL,ROLE_LABELS,route_for
             route=route_for(self);pending=[code for code,data in route.items() if data.get('status')=='PENDING']
             if any(code in PARALLEL for code in pending):
                 approved=sum(route[code].get('status')=='APPROVED' for code in PARALLEL)
                 return f'Параллельное согласование: {approved} из {len(PARALLEL)}'
+            if all(code in pending for code in FIRST_GATE):return 'Согласование: руководитель проекта или начальник участка'
             if pending:return 'Согласование: '+ROLE_LABELS[pending[0]]
             return 'На согласовании'
         if self.status=='RETURNED':return 'Возвращена на доработку'

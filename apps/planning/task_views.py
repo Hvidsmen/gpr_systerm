@@ -183,7 +183,7 @@ class TaskDetail(View):
                         from apps.personnel.departure_workflow import decide
                         row=get_object_or_404(MovementReviewRequest,pk=int(task.key.rsplit(':',1)[1]),company=request.user.company)
                         decide(request.user,row,action=='approve',text)
-                        messages.success(request,'Выезд согласован и передан в перевахту.' if action=='approve' else 'Заявка возвращена диспетчеру на доработку.')
+                        messages.success(request,'Решение сохранено; заявка передана на следующий этап.' if action=='approve' else 'Решение сохранено. Если доступен альтернативный согласующий, заявка останется у него.')
                         return redirect('planning:task_detail',pk=pk)
                     from core.plan_approval import ROLE_ACTIONS
                     commands={**ROLE_ACTIONS,'CEO':'approve'}

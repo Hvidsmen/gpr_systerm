@@ -19,16 +19,29 @@ ROUTE=[
     ('LABOR_ECONOMIST','Эксперт по экономике труда и заработной плате'),
 ]
 PARALLEL={code for code,_ in ROUTE[3:]}
+FIRST_GATE=('MANAGER','SITE_CHIEF')
 ROLE_LABELS=dict(ROUTE)
 
 def initial_route():
-    return {code:{'status':'PENDING' if code=='MANAGER' else 'WAITING','comment':'','actor':'','at':''} for code,_ in ROUTE}
+    return {code:{'status':'PENDING' if code in FIRST_GATE else 'WAITING','comment':'','actor':'','at':''} for code,_ in ROUTE}
+
+def normalize_first_gate(route):
+    """Keep legacy active routes compatible with the manager OR site-chief gate."""
+    if any(route[code].get('status')=='APPROVED' for code in FIRST_GATE):
+        for code in FIRST_GATE:
+            if route[code].get('status') in {'PENDING','WAITING'}:route[code]['status']='SKIPPED'
+        if route['PEREVAKHTA_SPECIALIST'].get('status')=='WAITING':route['PEREVAKHTA_SPECIALIST']['status']='PENDING'
+    else:
+        for code in FIRST_GATE:
+            if route[code].get('status')=='WAITING':route[code]['status']='PENDING'
+    return route
 
 def route_for(row):
     route=initial_route()
     if not row.approval_route and row.status not in {'PENDING_APPROVAL','RETURNED'}:
         for code in route:route[code]['status']='APPROVED'
     route.update(row.approval_route or {})
+    if row.status in {'PENDING_APPROVAL','RETURNED'}:normalize_first_gate(route)
     return route
 
 def active_route_roles(row):
@@ -168,14 +181,14 @@ def create_approval(row):
         description=(f'{names}\nВЖГ: {(row.to_camp if row.kind in {"ARRIVAL","TRANSFER"} else row.from_camp) or "—"}\n'
                      f'Плановая дата: {row.movement_date:%d.%m.%Y}\n'
                      f'Вид: {"Заезд" if row.kind=="ARRIVAL" else "Перевод" if row.kind=="TRANSFER" else "Выезд с увольнением" if row.departure_destination=="DISMISSAL" else "Выезд на межвахтовый отдых"}'),
-        target_role='MANAGER',created_by=row.requested_by,due_date=timezone.localdate()+timedelta(days=1),
+        target_role='MOVEMENT_PARALLEL',created_by=row.requested_by,due_date=timezone.localdate()+timedelta(days=1),
         construction_object=row.construction_object)
     for item in rows:
         if not item.approval_route:
             item.approval_route=initial_route();item.save(update_fields=['approval_route','updated_at'])
     title=package+(f'Согласовать {direction}: {count} сотрудник' if count==1 else f'Согласовать {direction}: {count} сотрудников')
     description=(f'{names}\nВЖГ: {(row.to_camp if row.kind in {"ARRIVAL","TRANSFER"} else row.from_camp) or "—"}\nПлановая дата: {row.movement_date:%d.%m.%Y}\n\n'
-                 'Маршрут: Руководитель проекта → Начальник участка → Специалист перевахты → '
+                 'Маршрут: Руководитель проекта ИЛИ Начальник участка → Специалист перевахты → '
                  'параллельно: Руководитель ОП Дудинка, безопасность, главный механик, фельдшер, персонал, эксперт по труду и заработной плате.')
     if task.title!=title or task.description!=description:
         task.title=title;task.description=description;task.save(update_fields=['title','description','updated_at'])
@@ -189,23 +202,30 @@ def decide(user,row,approved,comment='',sync_task=True):
     pending=active_route_roles(row)
     if actor_role!='ADMIN' and actor_role not in pending:raise PermissionDenied('Сейчас решение ожидается от другого участника маршрута.')
     if row.status not in {'PENDING_APPROVAL','RETURNED'}:raise ValidationError('Заявка уже обработана или находится на другом этапе.')
-    if not approved and not comment.strip():raise ValidationError('При возврате укажите причину.')
-    step=actor_role if actor_role!='ADMIN' else next(iter(pending),None)
+    if not approved and not comment.strip():raise ValidationError('При несогласовании укажите причину.')
+    step=actor_role if actor_role!='ADMIN' else next((code for code,_ in ROUTE if code in pending),None)
     if not step:raise ValidationError('В маршруте нет этапа, ожидающего решения.')
     if step=='PEREVAKHTA_SPECIALIST' and approved and not travel_details_complete(row):
         raise ValidationError('Сначала заполните обязательные первичные данные поездки. Только после этого можно запустить параллельные согласования.')
     route[step]={'status':'APPROVED' if approved else 'CANCELLED','comment':comment.strip(),'actor':user.full_name,'at':timezone.now().isoformat()}
+    terminal_rejection=not approved
     if approved:
-        if step=='MANAGER':route['SITE_CHIEF']['status']='PENDING'
-        elif step=='SITE_CHIEF':route['PEREVAKHTA_SPECIALIST']['status']='PENDING'
+        if step in FIRST_GATE:
+            for code in FIRST_GATE:
+                if code!=step and route[code]['status'] in {'PENDING','WAITING'}:route[code]['status']='SKIPPED'
+            route['PEREVAKHTA_SPECIALIST']['status']='PENDING'
         elif step=='PEREVAKHTA_SPECIALIST':
             for code in PARALLEL:
                 if route[code]['status']=='WAITING':route[code]['status']='PENDING'
+    elif step in FIRST_GATE:
+        alternative=next(code for code in FIRST_GATE if code!=step)
+        if route[alternative]['status'] in {'PENDING','WAITING'}:
+            route[alternative]['status']='PENDING';terminal_rejection=False
     complete=all(route[code]['status']=='APPROVED' for code in PARALLEL)
-    row.status=('OPEN' if row.kind=='TRANSFER' else 'PEREVAKHTA') if complete else 'CANCELLED' if not approved else 'PENDING_APPROVAL'
+    row.status=('OPEN' if row.kind=='TRANSFER' else 'PEREVAKHTA') if complete else 'CANCELLED' if terminal_rejection else 'PENDING_APPROVAL'
     row.approval_route=route;row.approved_by=user if complete else None;row.approved_at=timezone.now() if complete else None;row.approval_comment=comment.strip()
     fields=['status','approval_route','approved_by','approved_at','approval_comment','updated_at']
-    if not approved:
+    if terminal_rejection:
         role_label=ROLE_LABELS[step];actor=user.full_name or user.username
         row.cancellation_reason=f'Отменено согласующим: {role_label} — {actor}. Причина: {comment.strip()}'
         row.cancelled_by=user;row.cancelled_at=timezone.now();row.travel_status='Отменено согласующим'
@@ -220,8 +240,9 @@ def decide(user,row,approved,comment='',sync_task=True):
             from .recruitment import sync_pool_candidate
             sync_pool_candidate(candidate)
         set_pool_stage(row,'ARRIVAL_APPROVED')
-    if not approved:restore_recommendation(row)
-    log(row,user,('Согласовано: ' if approved else 'Отменено согласующим: ')+ROLE_LABELS[step],comment)
+    if terminal_rejection:restore_recommendation(row)
+    action=('Согласовано: ' if approved else 'Отменено согласующим: ' if terminal_rejection else 'Не согласовано, ожидается альтернативное согласование: ')+ROLE_LABELS[step]
+    log(row,user,action,comment)
     task=WorkTask.objects.filter(company=row.company,key=approval_task_key(row)).first()
     if task and sync_task:
         sync_approval_task(row,user)
@@ -243,10 +264,10 @@ def decide_many(user,task,ids,approved,comment='',all_pending=False):
         query=query.filter(pk__in=selected)
     rows=[row for row in query.order_by('pk') if role_code(user)=='ADMIN' or role_code(user) in active_route_roles(row)]
     if not rows:raise ValidationError('Выбранные заявки уже обработаны или недоступны.')
-    if not approved and not comment.strip():raise ValidationError('При возврате укажите причину.')
+    if not approved and not comment.strip():raise ValidationError('При несогласовании укажите причину.')
     for row in rows:decide(user,row,approved,comment,sync_task=False)
     sync_approval_task(rows[0],user)
-    task_event(task,user,('Согласовано' if approved else 'Возвращено')+f' сотрудников: {len(rows)}',comment)
+    task_event(task,user,('Согласовано' if approved else 'Не согласовано')+f' сотрудников: {len(rows)}',comment)
     return len(rows)
 
 

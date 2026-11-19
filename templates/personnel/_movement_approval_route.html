@@ -4,9 +4,10 @@
     <a class="btn btn-sm {% if row.travel_details_complete %}btn-outline-success{% else %}btn-primary{% endif %} text-nowrap" href="{% url 'personnel:movement_review_accept' row.pk %}{% if not row.travel_details_complete %}?edit=1{% endif %}">{% if row.travel_details_complete %}Открыть заявку{% else %}Открыть и заполнить заявку{% endif %}</a>
   </div>{% endif %}
   <div class="d-flex flex-wrap gap-1 mb-2">
+    <span class="small text-muted align-self-center me-1">1 или 2 — достаточно одного:</span>
     {% for step in row.route_steps|slice:':3' %}
       <span class="badge rounded-pill {% if step.status == 'APPROVED' %}bg-success{% elif step.status == 'PENDING' %}bg-primary{% elif step.status == 'RETURNED' or step.status == 'CANCELLED' %}bg-danger{% else %}bg-light text-dark border{% endif %}" title="{{ step.actor }}{% if step.comment %} · {{ step.comment }}{% endif %}">
-        {{ forloop.counter }}. {{ step.label }} · {% if step.status == 'APPROVED' %}готово{% elif step.status == 'PENDING' %}ожидает{% elif step.status == 'RETURNED' or step.status == 'CANCELLED' %}отменено{% else %}позже{% endif %}
+        {{ forloop.counter }}. {{ step.label }} · {% if step.status == 'APPROVED' %}готово{% elif step.status == 'PENDING' %}ожидает{% elif step.status == 'SKIPPED' %}не требуется{% elif step.status == 'RETURNED' or step.status == 'CANCELLED' %}не согласовано{% else %}позже{% endif %}
       </span>
     {% endfor %}
   </div>

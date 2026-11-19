@@ -54,11 +54,60 @@ class MovementReviewRequestTests(TestCase):
         row.status='EN_ROUTE';row.hub_departed_on=day;row.save(update_fields=['status','hub_departed_on','updated_at'])
         with self.assertRaises(PermissionDenied):arrive_camp(manager,row,day)
 
-    def test_future_approver_cannot_open_request_before_own_stage(self):
+    def test_site_chief_can_approve_first_gate_without_manager(self):
+        from .departure_workflow import decide
         site_chief=User.objects.create_user(username='future-site-chief',company=self.company,role=Role.objects.get(code='SITE_CHIEF'))
         housing.request_moves(self.personnel,'ARRIVAL',self.camp,timezone.localdate(),[self.person])
         row=MovementReviewRequest.objects.get();self.client.force_login(site_chief)
-        self.assertEqual(self.client.get(reverse('personnel:movement_review_accept',args=[row.pk])).status_code,403)
+        self.assertEqual(self.client.get(reverse('personnel:movement_review_accept',args=[row.pk])).status_code,200)
+        decide(site_chief,row,True,'Согласовано начальником участка');row.refresh_from_db()
+        self.assertEqual(row.approval_route['SITE_CHIEF']['status'],'APPROVED')
+        self.assertEqual(row.approval_route['MANAGER']['status'],'SKIPPED')
+        self.assertEqual(row.approval_route['PEREVAKHTA_SPECIALIST']['status'],'PENDING')
+
+    def test_first_gate_waits_for_second_role_after_one_rejection(self):
+        from .departure_workflow import active_route_roles,decide
+        manager=User.objects.create_user(username='or-manager',company=self.company,role=Role.objects.get(code='MANAGER'))
+        site_chief=User.objects.create_user(username='or-site-chief',company=self.company,role=Role.objects.get(code='SITE_CHIEF'))
+        housing.request_moves(self.personnel,'ARRIVAL',self.camp,timezone.localdate(),[self.person])
+        row=MovementReviewRequest.objects.get()
+        decide(manager,row,False,'Не согласовано руководителем');row.refresh_from_db()
+        self.assertEqual(row.status,'PENDING_APPROVAL');self.assertEqual(active_route_roles(row),{'SITE_CHIEF'})
+        self.assertEqual(row.approval_route['MANAGER']['status'],'CANCELLED')
+        self.assertFalse(row.cancellation_reason);self.assertIsNone(row.cancelled_at)
+        decide(site_chief,row,True,'Согласовано начальником');row.refresh_from_db()
+        self.assertEqual(row.status,'PENDING_APPROVAL')
+        self.assertEqual(row.approval_route['PEREVAKHTA_SPECIALIST']['status'],'PENDING')
+
+    def test_first_gate_cancels_only_after_both_roles_reject(self):
+        from .departure_workflow import decide
+        manager=User.objects.create_user(username='reject-or-manager',company=self.company,role=Role.objects.get(code='MANAGER'))
+        site_chief=User.objects.create_user(username='reject-or-site-chief',company=self.company,role=Role.objects.get(code='SITE_CHIEF'))
+        housing.request_moves(self.personnel,'ARRIVAL',self.camp,timezone.localdate(),[self.person])
+        row=MovementReviewRequest.objects.get()
+        decide(manager,row,False,'Отказ руководителя');row.refresh_from_db()
+        decide(site_chief,row,False,'Отказ начальника');row.refresh_from_db()
+        self.assertEqual(row.status,'CANCELLED');self.assertIn('Начальник участка',row.cancellation_reason)
+
+    def test_or_gate_migration_advances_legacy_manager_approval(self):
+        from importlib import import_module
+        from django.apps import apps
+        from apps.planning.models import WorkTask
+        housing.request_moves(self.personnel,'ARRIVAL',self.camp,timezone.localdate(),[self.person])
+        row=MovementReviewRequest.objects.get();task=WorkTask.objects.get(key=f'personnel-movement-approval:{row.pk}')
+        legacy={
+            'MANAGER':{'status':'APPROVED','comment':'','actor':'','at':''},
+            'SITE_CHIEF':{'status':'PENDING','comment':'','actor':'','at':''},
+            'PEREVAKHTA_SPECIALIST':{'status':'WAITING','comment':'','actor':'','at':''},
+        }
+        row.approval_route=legacy;row.save(update_fields=['approval_route','updated_at'])
+        task.target_role='MANAGER';task.save(update_fields=['target_role','updated_at'])
+        migration=import_module('apps.personnel.migrations.0054_movement_first_approval_or')
+        migration.activate_or_gate(apps,None)
+        row.refresh_from_db();task.refresh_from_db()
+        self.assertEqual(row.approval_route['SITE_CHIEF']['status'],'SKIPPED')
+        self.assertEqual(row.approval_route['PEREVAKHTA_SPECIALIST']['status'],'PENDING')
+        self.assertEqual(task.target_role,'PEREVAKHTA_SPECIALIST')
 
     def finish_approval(self,row):
         from .departure_workflow import active_route_roles,decide
@@ -252,6 +301,9 @@ class MovementReviewRequestTests(TestCase):
         self.assertEqual(rows[0].status,'PENDING_APPROVAL');self.assertEqual(rows[1].status,'PENDING_APPROVAL');self.assertEqual(task.status,'OPEN')
         self.client.post(url,{'action':'movement_reject_all','text':'Перенести дату'})
         rows[0].refresh_from_db();rows[1].refresh_from_db();task.refresh_from_db()
+        self.assertEqual(rows[0].status,'CANCELLED');self.assertEqual(rows[1].status,'PENDING_APPROVAL')
+        self.client.post(url,{'action':'movement_reject_all','text':'Перенести дату'})
+        rows[0].refresh_from_db();rows[1].refresh_from_db();task.refresh_from_db()
         self.assertEqual(rows[0].status,'CANCELLED');self.assertEqual(rows[1].status,'CANCELLED')
         self.assertEqual(rows[1].approval_comment,'Перенести дату');self.assertIn('Отменено согласующим',rows[1].cancellation_reason)
         self.assertEqual(task.status,'SUPERSEDED')
@@ -296,7 +348,6 @@ class MovementReviewRequestTests(TestCase):
         self.assertFalse(form.fields['planned_hub_departure_time'].required)
         self.assertNotIn('travel_status',form.fields)
         row.travel_status='';row.save(update_fields=['travel_status','updated_at'])
-        decide(self.admin,row,True);row.refresh_from_db()
         decide(self.admin,row,True);row.refresh_from_db()
         task=WorkTask.objects.get(key=f'personnel-movement-batch:{batch}')
         self.client.force_login(self.admin);url=reverse('planning:task_detail',args=[task.pk])
@@ -392,9 +443,8 @@ class MovementReviewRequestTests(TestCase):
         row=MovementReviewRequest.objects.get(kind='DEPARTURE')
         self.assertEqual(row.status,'PENDING_APPROVAL')
         task=WorkTask.objects.get(key=f'personnel-movement-approval:{row.pk}')
-        self.assertEqual(task.target_role,'MANAGER')
+        self.assertEqual(task.target_role,'MOVEMENT_PARALLEL')
         decide(manager,row,True,'Согласовано');row.refresh_from_db()
-        decide(self.admin,row,True);row.refresh_from_db()
         with self.assertRaisesMessage(ValidationError,'Сначала заполните обязательные первичные данные'):decide(self.admin,row,True)
         self.finish_approval(row)
         self.assertEqual(row.status,'PEREVAKHTA')
@@ -471,7 +521,7 @@ class MovementReviewRequestTests(TestCase):
         from .departure_workflow import active_route_roles,decide,resubmit
         day=timezone.localdate();batch=uuid4();housing.request_moves(self.personnel,'ARRIVAL',self.camp,day,[self.person],approval_batch=batch)
         row=MovementReviewRequest.objects.get();self.complete_trip_details(row)
-        for code in ['MANAGER','SITE_CHIEF','PEREVAKHTA_SPECIALIST']:
+        for code in ['MANAGER','PEREVAKHTA_SPECIALIST']:
             user=User.objects.create_user(username='route-'+code.lower(),company=self.company,role=Role.objects.get(code=code))
             decide(user,row,True);row.refresh_from_db()
         approved=User.objects.create_user(username='route-mechanic',company=self.company,role=Role.objects.get(code='CHIEF_MECHANIC'))
