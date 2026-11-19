@@ -62,7 +62,7 @@ class EmployeeRemoteSearchTests(TestCase):
         self.assertNotIn('Поиск000', html)
         self.assertIn('data-remote-search-url', html)
 
-    def test_assignment_scope_restores_only_cards_hidden_by_bulk_cleanup(self):
+    def test_assignment_scope_offers_removed_cards_for_explicit_restoration(self):
         bulk_employee=Employee.objects.get(company=self.company,employee_number='R-104')
         manual_employee=Employee.objects.get(company=self.company,employee_number='R-103')
         Person.objects.create(company=self.company,employee=bulk_employee,full_name=bulk_employee.display_name,
@@ -75,5 +75,7 @@ class EmployeeRemoteSearchTests(TestCase):
         self.assertEqual(self.client.get(url,{'q':'R-104'}).json()['items'],[])
         available=self.client.get(url,{'q':'R-104','scope':'assignment'}).json()['items']
         self.assertEqual([item['id'] for item in available],[bulk_employee.pk])
-        self.assertEqual(self.client.get(url,{'q':'R-103','scope':'assignment'}).json()['items'],[])
+        manual=self.client.get(url,{'q':'R-103','scope':'assignment'}).json()['items']
+        self.assertEqual([item['id'] for item in manual],[manual_employee.pk])
+        self.assertIn('будет восстановлен в диспетчерской',manual[0]['text'])
 

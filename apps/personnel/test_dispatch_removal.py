@@ -29,7 +29,8 @@ class DispatchRemovalTests(TestCase):
         self.assertEqual(self.person.stays.count(),stay_count)
         self.assertFalse(any(row.get('person_id')==self.person.pk for row in rotation_rows(self.company,[self.a],self.day)[0]))
         assignment=AssignmentForm(company=self.company)
-        self.assertFalse(assignment.fields['employee'].queryset.filter(pk=self.employee.pk).exists())
+        self.assertTrue(assignment.fields['employee'].queryset.filter(pk=self.employee.pk).exists())
+        self.assertIn('будет восстановлен в диспетчерской',assignment.fields['employee'].label_from_instance(self.employee))
         movement=MovementForm(company=self.company,camp=self.a,day=self.day)
         self.assertFalse(movement.fields['employees'].queryset.filter(pk=self.employee.pk).exists())
 

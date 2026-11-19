@@ -8,7 +8,6 @@ from django import forms
 
 from apps.resources.models import Employee
 from core.permissions import ROLES, require_roles
-from .models import DISPATCHER_BULK_CLEANUP_REASON
 
 
 @login_required
@@ -16,7 +15,7 @@ from .models import DISPATCHER_BULK_CLEANUP_REASON
 def search(request):
     """Small, company-scoped employee pages for remote form selects."""
     require_roles(request.user, ROLES)
-    query = Employee.objects.filter(company=request.user.company).select_related('position')
+    query = Employee.objects.filter(company=request.user.company).select_related('position','personnel_card')
     if request.GET.get('scope') == 'movement':
         kind = request.GET.get('kind', 'ARRIVAL')
         if kind == 'ARRIVAL':
@@ -34,13 +33,7 @@ def search(request):
             query = query.filter(pk__in=present.values('person__employee_id'))
     elif request.GET.get('active', '1') != '0':
         query = query.filter(is_active=True)
-    if request.GET.get('scope') == 'assignment':
-        query = query.filter(
-            Q(personnel_card__isnull=True) |
-            Q(personnel_card__dispatcher_removed_at__isnull=True) |
-            Q(personnel_card__dispatcher_removal_reason=DISPATCHER_BULK_CLEANUP_REASON)
-        )
-    else:
+    if request.GET.get('scope') != 'assignment':
         query = query.exclude(personnel_card__dispatcher_removed_at__isnull=False)
     for term in request.GET.get('q', '').strip().split()[:6]:
         query = query.filter(
@@ -59,6 +52,8 @@ def search(request):
             label += f' · {employee.position}'
         if not employee.is_active:
             label += ' · архивный'
+        if request.GET.get('scope') == 'assignment' and hasattr(employee,'personnel_card') and employee.personnel_card.dispatcher_removed_at:
+            label += ' · будет восстановлен в диспетчерской'
         items.append({'id': employee.pk, 'text': label})
     return JsonResponse({
         'items': items,

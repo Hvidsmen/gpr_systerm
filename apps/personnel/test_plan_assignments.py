@@ -8,7 +8,7 @@ from apps.resources.models import Brigade, Employee
 from apps.projects.models import ConstructionObject
 from .test_housing import HousingTests
 from .models import DISPATCHER_BULK_CLEANUP_REASON,Person,StaffingSlot,CampStay,HousingEvent,Camp,CampObjectLink
-from .plan_assignments import AssignmentForm,save_assignment
+from .plan_assignments import AssignmentForm,remove_assignment,save_assignment
 from .rotation import rotation_rows
 from .housing_plan import position_headers, monthly_plan
 
@@ -146,6 +146,33 @@ class PlanAssignmentTests(TestCase):
         self.assertIsNone(self.second_person.dispatcher_removed_at)
         self.assertIsNone(self.second_person.dispatcher_removed_by)
         self.assertEqual(self.second_person.dispatcher_removal_reason,'')
+
+    def test_manually_removed_employee_is_restored_by_explicit_assignment(self):
+        from apps.audit.models import AuditLog
+        self.second_person.dispatcher_removed_at=timezone.now()
+        self.second_person.dispatcher_removed_by=self.hr
+        self.second_person.dispatcher_removal_reason='Удалён пользователем по ошибке'
+        self.second_person.save(update_fields=['dispatcher_removed_at','dispatcher_removed_by','dispatcher_removal_reason','updated_at'])
+        form=AssignmentForm(company=self.company)
+        self.assertTrue(form.fields['employee'].queryset.filter(pk=self.second_employee.pk).exists())
+        assignment_data={**self.data,'initial-state':'MO','initial-departure_date':str(self.day)}
+        self.assertEqual(self.client.post(self.url,assignment_data).status_code,302)
+        self.second_person.refresh_from_db()
+        self.assertIsNone(self.second_person.dispatcher_removed_at)
+        audit=AuditLog.objects.get(entity_type='personnel.Person',entity_id=str(self.second_person.pk))
+        self.assertEqual(audit.old_value['reason'],'Удалён пользователем по ошибке')
+        self.assertIn('восстановлена',audit.comment)
+
+    def test_deleting_assignment_keeps_employee_available_for_reassignment(self):
+        assignment_data={**self.data,'initial-state':'MO','initial-departure_date':str(self.day)}
+        self.assertEqual(self.client.post(self.url,assignment_data).status_code,302)
+        row=self.assigned()
+        remove_assignment(self.hr,row.pk,{'version':row.updated_at.isoformat(),'reason':'Нужно назначить заново'})
+        self.second_person.refresh_from_db()
+        self.assertIsNone(self.second_person.dispatcher_removed_at)
+        search=self.client.get(reverse('personnel:employee_search'),{
+            'scope':'assignment','q':self.second_employee.employee_number}).json()
+        self.assertEqual([item['id'] for item in search['items']],[self.second_employee.pk])
 
     def test_bound_form_keeps_stale_selected_employee_for_clear_overlap_error(self):
         self.client.post(self.url,self.data)
