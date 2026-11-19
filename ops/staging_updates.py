@@ -413,12 +413,11 @@ def process_job(root, child, job, parent_gone):
         stopped = False
         wait_http(root, child, parent_gone)
         progress('done')
-        # Keep the verified HTTP child alive under the already running
-        # supervisor.  A Windows process-tree handoff can make Task Scheduler
-        # consider the persistent task finished even though the release was
-        # installed successfully, leaving port 8002 down.  The supervisor code
-        # itself is refreshed on the next ordinary task restart; serving the
-        # selected release does not require stopping this healthy child.
+        if needs_supervisor_handoff():
+            # The bridge keeps Task Scheduler attached to one persistent process
+            # tree while the newly selected release replaces this supervisor.
+            stop_http(child);child=None
+            return SUPERVISOR_RESTART
     except Exception as error:
         logging.exception('Acceptance web update failed')
         record_failure(root, job, error)

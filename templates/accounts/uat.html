@@ -7,6 +7,7 @@
 <p class="mb-1">SQL-сервер: <strong>{{ connection.server }}</strong></p>
 <p class="mb-1">База: <strong>{{ database }}</strong></p>
 <p class="text-muted">Используется та же Windows-учётная запись фонового портала, что и для ЗУП. Пароль не хранится. Выполняются только SELECT-запросы.</p>
+{% if not worker_ready %}<div class="alert alert-warning">Веб-версия обновлена, но фоновый обработчик УАТ ещё не запущен. Один раз перезапустите задание <strong>YDS Portal Test</strong>, затем повторите диагностику.</div>{% endif %}
 <form method="post">{% csrf_token %}<button class="btn btn-primary" name="action" value="diagnose" {% if pending %}disabled{% endif %}>Прочитать структуру УАТ</button></form>
 {% if pending %}<p class="mt-2" role="status">Диагностика ожидает запуска или выполняется.</p><script>setTimeout(function(){window.location.reload()},10000)</script>{% endif %}
 {% if last %}<p class="mt-2">Последний запуск: {{ last.created_at }} · {{ last.get_status_display }}.</p>{% if last.error %}{% include 'accounts/_one_c_error.html' with run=last %}{% endif %}{% endif %}

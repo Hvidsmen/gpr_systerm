@@ -91,6 +91,15 @@ class UatDiscoveryTests(TestCase):
         self.admin.role=planner;self.admin.save(update_fields=['role'])
         self.assertEqual(self.client.get(self.url).status_code,403)
 
+    def test_staging_page_reports_old_supervisor_until_uat_worker_is_ready(self):
+        with tempfile.TemporaryDirectory() as directory,override_settings(
+                CONFIG_DIR=directory,STAGING_CONFIG={'revision':'a'*40}):
+            self.assertContains(self.client.get(self.url),'перезапустите задание')
+            runtime=PosixPath(directory)/'.runtime';runtime.mkdir()
+            (runtime/'staging-supervisor.json').write_text(json.dumps(
+                {'revision':'a'*40,'features':['uat-discovery']}),encoding='utf-8')
+            self.assertNotContains(self.client.get(self.url),'перезапустите задание')
+
     def test_script_keeps_integrated_security_and_uat_terms(self):
         script=(PosixPath(__file__).resolve().parents[2]/'ops/diagnose-1c.ps1').read_text(encoding='utf-8-sig')
         self.assertIn("$builder['Integrated Security']=$true",script)

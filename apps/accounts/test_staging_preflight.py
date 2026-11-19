@@ -90,6 +90,24 @@ class StagingPreflightTests(TestCase):
         self.assertEqual(self.value(),'before preparation');self.assertEqual(staging.manifest(self.root)['revision'],self.old)
         self.assertFalse((self.root/'.runtime/releases'/self.new).exists());self.assertEqual(list((self.root/'.runtime').glob('candidate-*.json')),[])
 
+    def test_successful_windows_update_hands_control_to_new_supervisor(self):
+        child=Mock();replacement=Mock();job=self.job()
+        archive=self.root/'handoff.zip';archive.write_bytes(self.archive.read_bytes())
+        candidate=self.root/'.runtime/handoff-candidate.json';candidate.write_text('{}')
+        def apply(*args,**kwargs):
+            state=staging.manifest(self.root);state['revision']=self.new
+            atomic_json(self.root/'staging.json',state)
+        with patch.object(staging_updates,'download',return_value=archive),\
+             patch.object(staging,'prepare_update',return_value={'candidate_file':str(candidate)}),\
+             patch.object(staging,'update',side_effect=apply),\
+             patch.object(staging_updates,'stop_http') as stop,\
+             patch.object(staging_updates,'start_http',return_value=replacement),\
+             patch.object(staging_updates,'wait_http'),\
+             patch.object(staging_updates,'needs_supervisor_handoff',return_value=True):
+            result=staging_updates.process_job(self.root,child,job,threading.Event())
+        self.assertIs(result,staging_updates.SUPERVISOR_RESTART)
+        self.assertEqual([call.args[0] for call in stop.call_args_list],[child,replacement])
+
     def test_mssql_backup_and_restore_use_selected_test_release(self):
         state={**staging.manifest(self.root),'database_engine':'mssql','mssql':{'host':'MSK-DB2','name':'YDS_PORTAL_TEST'}}
         folder=self.root/'.runtime/backups/mssql'

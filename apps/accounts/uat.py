@@ -1,5 +1,6 @@
 """Read-only discovery of the 1C UAT source using the existing ZUP identity."""
 import re
+from pathlib import Path
 
 from django.conf import settings
 from django.contrib import messages
@@ -17,6 +18,15 @@ from .one_c_catalog import catalogue, TYPES
 KEYWORDS = ('путев', 'ремонт', 'транспорт', 'автомоб', 'техник', 'водител', 'маршрут', 'топлив', 'пробег', 'неисправ')
 
 
+def staging_worker_ready():
+    config=getattr(settings,'STAGING_CONFIG',None)
+    if not config:return True
+    from ops.windows_runtime import read_json
+    supervisor=read_json(Path(settings.CONFIG_DIR)/'.runtime/staging-supervisor.json',{})
+    return ('uat-discovery' in supervisor.get('features',[]) and
+        supervisor.get('revision')==config.get('revision'))
+
+
 def database_name():
     value = settings.UAT_DATABASE
     if not re.fullmatch(r'[\w\-]+', value):
@@ -30,6 +40,7 @@ def discovery(request):
     require_roles(request.user, {'ADMIN'})
     connection, _ = OneCConnection.objects.get_or_create(company=request.user.company)
     database = database_name()
+    worker_ready=staging_worker_ready()
     if request.method == 'POST':
         if request.POST.get('action') != 'diagnose':
             from django.http import HttpResponseBadRequest
@@ -67,5 +78,5 @@ def discovery(request):
         'pending': runs.filter(status__in=['QUEUED', 'RUNNING']).exists(),
         'recommended': recommended[:100], 'catalogue_groups': groups, 'catalogue_page': page,
         'catalogue_total': total, 'catalogue_query': query, 'catalogue_type': kind,
-        'type_counts': type_counts, 'catalogue_params': params.urlencode(),
+        'type_counts': type_counts, 'catalogue_params': params.urlencode(),'worker_ready':worker_ready,
     })
