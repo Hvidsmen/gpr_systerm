@@ -39,7 +39,7 @@ def _position_funnel_summary(candidate_rows,request_rows,application_rows):
     def ensure(key,label):
         if key not in result:
             result[key]={'position':label or 'Должность не указана','request_count':0,'required':0,'candidate_count':0,
-                'counts':{value:0 for value,_,_ in FUNNEL_GROUPS},'people':[]}
+                'counts':{value:0 for value,_,_ in FUNNEL_GROUPS},'people':[],'matched':key[0]=='position'}
         return result[key]
     for row in request_rows:
         label=_position_name(row['position_ref__name'] or row['position'])
@@ -72,6 +72,7 @@ def _position_funnel_summary(candidate_rows,request_rows,application_rows):
     rows=[]
     for item in result.values():
         item['groups']=[{'value':value,'count':item['counts'][value]} for value,_,_ in FUNNEL_GROUPS]
+        item['gap']=max(0,item['required']-item['candidate_count'])
         item['people'].sort(key=lambda person:person['full_name'].casefold())
         rows.append(item)
     rows.sort(key=lambda item:(item['position']=='Должность не указана',item['position'].casefold()))
@@ -85,8 +86,13 @@ def requests_for(user):
 
 def context(user):
     role=role_code(user)
+    pool=TalentPoolCandidate.objects.filter(company=user.company,archived_at__isnull=True).aggregate(
+        all=Count('pk'),ready=Count('pk',filter=Q(stage='TRANSFERRED')))
+    counts={'requests':RecruitmentRequest.objects.filter(company=user.company,cancelled_at__isnull=True,completed_at__isnull=True).count(),
+        'funnel':pool['all'],'ready':pool['ready'],
+        'specialists':RecruitmentSpecialist.objects.filter(company=user.company,is_active=True).count()}
     return {'personnel_section':'recruitment','can_dispatch':role in service.DISPATCH,'can_recruit':role in service.RECRUIT,
-        'can_administer_pool':role=='ADMIN'}
+        'can_administer_pool':role=='ADMIN','recruitment_counts':counts}
 
 
 def error(form,exc):form.add_error(None,'; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Данные изменились одновременно с вашим вводом. Обновите страницу.')
@@ -102,11 +108,20 @@ def specialist_list(request):
     if query:
         rows=rows.filter(Q(name__icontains=query)|Q(user__username__icontains=query)|
             Q(user__first_name__icontains=query)|Q(user__last_name__icontains=query))
-    state=request.GET.get('state','all')
+    state=request.GET.get('state','active')
     if state=='active':rows=rows.filter(is_active=True)
     elif state=='inactive':rows=rows.filter(is_active=False)
-    return render(request,'personnel/recruitment_specialists.html',{**context(request.user),'rows':rows,
-        'query':query,'state':state,'can_manage_specialists':role_code(request.user) in service.ASSIGN})
+    linked=request.GET.get('linked','all')
+    if linked=='yes':rows=rows.filter(user__isnull=False)
+    elif linked=='no':rows=rows.filter(user__isnull=True)
+    sort=request.GET.get('sort','name')
+    if sort=='candidates':rows=rows.order_by('-candidate_count','name','pk')
+    else:sort='name';rows=rows.order_by('name','pk')
+    page=Paginator(rows,50).get_page(request.GET.get('page'))
+    params=request.GET.copy();params.pop('page',None)
+    return render(request,'personnel/recruitment_specialists.html',{**context(request.user),'rows':page.object_list,'page':page,
+        'pagination_query':params.urlencode(),'query':query,'state':state,'linked':linked,'sort':sort,
+        'can_manage_specialists':role_code(request.user) in service.ASSIGN})
 
 
 @login_required
@@ -131,9 +146,11 @@ def specialist_delete(request,pk):
     require_roles(request.user,service.ASSIGN)
     row=get_object_or_404(RecruitmentSpecialist,company=request.user.company,pk=pk)
     name=row.name;candidate_count=row.candidates.count()
-    row.delete()
-    message=f'Рекрутер «{name}» удалён.'
-    if candidate_count:message+=f' Назначение очищено в карточках кандидатов: {candidate_count}.'
+    if candidate_count:
+        row.is_active=False;row.save(update_fields=['is_active','updated_at'])
+        message=f'Рекрутер «{name}» перенесён в неактивные: с ним связано карточек кандидатов — {candidate_count}.'
+    else:
+        row.delete();message=f'Рекрутер «{name}» удалён.'
     messages.success(request,message)
     return redirect('personnel:recruitment_specialists')
 
@@ -150,10 +167,20 @@ def specialist_bulk_delete(request):
     with transaction.atomic():
         rows=list(RecruitmentSpecialist.objects.select_for_update().filter(company=request.user.company,pk__in=ids))
         if len(rows)!=len(ids):raise PermissionDenied('Одна из выбранных записей рекрутеров недоступна.')
-        candidate_count=sum(row.candidates.count() for row in rows)
-        RecruitmentSpecialist.objects.filter(company=request.user.company,pk__in=ids).delete()
-    message=f'Удалено рекрутеров: {len(rows)}.'
-    if candidate_count:message+=f' Назначение очищено в карточках кандидатов: {candidate_count}.'
+        action=request.POST.get('action','delete')
+        selected=RecruitmentSpecialist.objects.filter(company=request.user.company,pk__in=ids)
+        if action in {'activate','deactivate'}:
+            selected.update(is_active=action=='activate',updated_at=timezone.now())
+            message=('Активировано' if action=='activate' else 'Перенесено в неактивные')+f' рекрутеров: {len(rows)}.'
+        elif action=='delete':
+            used_ids=set(TalentPoolCandidate.objects.filter(company=request.user.company,responsible_hr_id__in=ids).values_list(
+                'responsible_hr_id',flat=True))
+            unused=[row.pk for row in rows if row.pk not in used_ids]
+            if used_ids:selected.filter(pk__in=used_ids).update(is_active=False,updated_at=timezone.now())
+            if unused:selected.filter(pk__in=unused).delete()
+            message=f'Удалено неиспользуемых рекрутеров: {len(unused)}.'
+            if used_ids:message+=f' Используемые записи перенесены в неактивные: {len(used_ids)}.'
+        else:raise ValidationError('Неизвестное массовое действие.')
     messages.success(request,message)
     return redirect('personnel:recruitment_specialists')
 
@@ -167,6 +194,13 @@ def request_list(request,recruitment_page='bank'):
         return sorted({int(value) for value in request.GET.getlist(name) if value.isdigit()})
     selected_position_ids=selected_ids('position');selected_camp_ids=selected_ids('camp')
     selected_object_ids=selected_ids('project')
+    company_requests=RecruitmentRequest.objects.filter(company=request.user.company)
+    request_stats=company_requests.aggregate(
+        active=Count('pk',filter=Q(cancelled_at__isnull=True,completed_at__isnull=True)),
+        unassigned=Count('pk',filter=Q(cancelled_at__isnull=True,completed_at__isnull=True,assigned_to__isnull=True)),
+        overdue=Count('pk',filter=Q(cancelled_at__isnull=True,completed_at__isnull=True,required_on__lt=timezone.localdate())),
+        completed=Count('pk',filter=Q(completed_at__isnull=False)),
+    )
     rows=requests_for(request.user)
     query=request.GET.get('q','').strip()
     if query:rows=rows.filter(Q(position__icontains=query)|Q(construction_object__name__icontains=query)|Q(candidates__full_name__icontains=query)).distinct()
@@ -226,19 +260,29 @@ def request_list(request,recruitment_page='bank'):
     candidate_total=len(candidate_rows)
     selected_group='' if recruitment_page=='ready' else request.GET.get('candidate_stage','')
     selected_stages=next((stages for value,_,stages in FUNNEL_GROUPS if value==selected_group),None)
+    if selected_stages is not None:position_summary=[position for position in position_summary if any(person['stage'] in selected_stages for person in position['people'])]
+    position_sort=request.GET.get('position_sort','name')
+    if position_sort=='need':position_summary.sort(key=lambda item:(-item['gap'],item['position'].casefold()))
+    elif position_sort=='activity':position_summary.sort(key=lambda item:(-item['candidate_count'],item['position'].casefold()))
+    else:position_sort='name';position_summary.sort(key=lambda item:(item['position']=='Должность не указана',item['position'].casefold()))
+    unmatched_position_count=sum(not position['matched'] for position in position_summary)
+    position_paginator=Paginator(position_summary,25)
+    position_page=position_paginator.get_page(request.GET.get('position_page'))
+    position_summary=list(position_page.object_list)
     opened_people=False
     for position in position_summary:
         position['visible_people']=[person for person in position['people'] if selected_stages is None or person['stage'] in selected_stages]
         position['visible_count']=len(position['visible_people'])
         position['open_people']=bool(position['visible_people']) and not opened_people
         if position['open_people']:opened_people=True
-    if selected_stages is not None:position_summary=[position for position in position_summary if position['visible_people']]
     groups=[]
     for value,label,stages in FUNNEL_GROUPS:
         groups.append({'value':value,'label':label,'count':sum(row['stage'] in stages for row in candidate_rows),
             'position_count':group_position_counts[value],'active':selected_group==value})
     params=request.GET.copy();params.pop('page',None)
-    funnel_params=request.GET.copy();funnel_params.pop('candidate_stage',None);funnel_params.pop('candidate_page',None);funnel_params.pop('page',None)
+    funnel_params=request.GET.copy();funnel_params.pop('candidate_stage',None);funnel_params.pop('candidate_page',None);funnel_params.pop('position_page',None);funnel_params.pop('page',None)
+    position_params=request.GET.copy();position_params.pop('position_page',None);position_params.pop('page',None)
+    position_sort_params=request.GET.copy();position_sort_params.pop('position_sort',None);position_sort_params.pop('position_page',None);position_sort_params.pop('page',None)
     position_options=Position.objects.filter(company=request.user.company).order_by('name','pk')
     camp_options=Camp.objects.filter(company=request.user.company).order_by('name','pk')
     object_rows=list(ConstructionObject.objects.filter(company=request.user.company).select_related('project','parent').order_by('project__name','name','pk'))
@@ -250,8 +294,11 @@ def request_list(request,recruitment_page='bank'):
         object_options.append({'pk':row.pk,'label':f'{row.project.name} → {" → ".join(reversed(names))}'})
     return render(request,'personnel/recruitment_list.html',{**context(request.user),'page':page,'filter_query':query,'filter_state':state,
         'recruitment_page':recruitment_page,
+        'request_stats':request_stats,
         'pagination_query':params.urlencode(),'funnel_groups':groups,'candidate_stage':selected_group,
         'candidate_total':candidate_total,'candidate_position_count':candidate_position_count,'position_summary':position_summary,
+        'position_page':position_page,'position_query':position_params.urlencode(),'position_sort':position_sort,
+        'position_sort_query':position_sort_params.urlencode(),'unmatched_position_count':unmatched_position_count,
         'position_options':position_options,
         'camp_options':camp_options,'object_options':object_options,'selected_position_ids':selected_position_ids,
         'selected_camp_ids':selected_camp_ids,'selected_object_ids':selected_object_ids,'funnel_query':funnel_params.urlencode(),
@@ -270,11 +317,21 @@ def pool_list(request):
     if query:rows=rows.filter(Q(full_name__icontains=query)|Q(phone__icontains=query))
     stage=request.GET.get('stage','')
     if stage in dict(TalentPoolCandidate._meta.get_field('stage').choices):rows=rows.filter(stage=stage)
+    def selected_ids(name):return sorted({int(value) for value in request.GET.getlist(name) if value.isdigit()})
+    selected_position_ids=selected_ids('position');selected_camp_ids=selected_ids('camp');selected_object_ids=selected_ids('project')
+    if selected_position_ids:rows=rows.filter(position_id__in=selected_position_ids)
+    if selected_camp_ids:rows=rows.filter(camp_id__in=selected_camp_ids)
+    if selected_object_ids:rows=rows.filter(construction_object_id__in=selected_object_ids)
     page=Paginator(rows,50).get_page(request.GET.get('page'))
     params=request.GET.copy();params.pop('page',None)
+    object_rows=list(ConstructionObject.objects.filter(company=request.user.company).select_related('project').order_by('project__name','name','pk'))
+    object_options=[{'pk':row.pk,'label':f'{row.project.name} → {row.name}'} for row in object_rows]
     return render(request,'personnel/recruitment_pool.html',{**context(request.user),'rows':page.object_list,'page':page,
         'pagination_query':params.urlencode(),'query':query,'stage':stage,
-        'stage_choices':TalentPoolCandidate._meta.get_field('stage').choices})
+        'stage_choices':TalentPoolCandidate._meta.get_field('stage').choices,
+        'position_options':Position.objects.filter(company=request.user.company).order_by('name','pk'),
+        'camp_options':Camp.objects.filter(company=request.user.company).order_by('name','pk'),'object_options':object_options,
+        'selected_position_ids':selected_position_ids,'selected_camp_ids':selected_camp_ids,'selected_object_ids':selected_object_ids})
 
 
 @login_required

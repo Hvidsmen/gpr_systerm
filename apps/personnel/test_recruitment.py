@@ -517,7 +517,7 @@ class RecruitmentTests(TestCase):
         from .models import RecruitmentSpecialist,TalentPoolCandidate
         from .talent_pool_import import HEADERS,import_sheet
         workbook=Workbook();sheet=workbook.active;sheet.title='Магазин 2026';sheet.append(HEADERS)
-        sheet.append([1,'  Иванов   Иван Иванович ','Монтажник','КТП',None,'1234 567890',89991234567,None,None,None,None,None,'Уфа','готов',None,'Петров',None,'Комментарий','Иванов Иван Иванович'])
+        sheet.append([1,'  Иванов   Иван Иванович ','Монтажник (КТП)','КТП',None,'1234 567890',89991234567,None,None,None,None,None,'Уфа','готов',None,'Петров',None,'Комментарий','Иванов Иван Иванович'])
         payload=BytesIO();workbook.save(payload);payload.seek(0)
         self.assertEqual(import_sheet(self.recruiter,payload),{'created':1,'updated':0,'skipped':0})
         row=TalentPoolCandidate.objects.get();self.assertEqual(row.full_name,'Иванов Иван Иванович');self.assertEqual(row.phone,'89991234567')
@@ -525,7 +525,7 @@ class RecruitmentTests(TestCase):
         self.assertEqual(row.responsible_hr.name,'Петров')
         self.assertEqual(RecruitmentSpecialist.objects.count(),1)
         self.assertEqual(row.position,self.position);self.assertEqual(row.construction_object,self.obj);self.assertEqual(row.base_city,self.base_city)
-        self.assertEqual(row.source_data['position'],'Монтажник');self.assertEqual(row.source_data['base_city'],'Уфа')
+        self.assertEqual(row.source_data['position'],'Монтажник (КТП)');self.assertEqual(row.source_data['base_city'],'Уфа')
         payload.seek(0);self.assertEqual(import_sheet(self.recruiter,payload),{'created':0,'updated':0,'skipped':1})
         self.client.force_login(self.recruiter);page=self.client.get(reverse('personnel:recruitment_pool'))
         self.assertContains(page,'Монтажник');self.assertContains(page,'КТП');self.assertContains(page,'Уфа')
@@ -547,18 +547,56 @@ class RecruitmentTests(TestCase):
         self.assertEqual(len(second.context['rows']),5)
         self.assertEqual(second.context['rows'][0].full_name,'Кандидат страницы 051')
         self.assertContains(second,'Страница 2 из 2')
+    def test_funnel_positions_are_paginated_without_hiding_candidate_cards(self):
+        from .models import TalentPoolCandidate
+        positions=Position.objects.bulk_create([
+            Position(company=self.company,name=f'Должность страницы {number:03d}',code=f'page-{number:03d}')
+            for number in range(1,31)
+        ])
+        TalentPoolCandidate.objects.bulk_create([
+            TalentPoolCandidate(company=self.company,full_name=f'Сотрудник страницы {number:03d}',position=position,
+                construction_object=self.obj,stage='NEW',created_by=self.recruiter)
+            for number,position in enumerate(positions,1)
+        ])
+        self.client.force_login(self.recruiter);url=reverse('personnel:recruitment_list')
+        first=self.client.get(url)
+        self.assertEqual(first.context['position_page'].paginator.count,30)
+        self.assertEqual(len(first.context['position_summary']),25)
+        self.assertContains(first,'Страница 1 из 2')
+        self.assertContains(first,'data-candidate-inline-target',html=False)
+        second=self.client.get(url,{'position_page':2})
+        self.assertEqual(len(second.context['position_summary']),5)
+        self.assertEqual(second.context['position_summary'][0]['position'],'Должность страницы 026')
+        self.assertContains(second,'Страница 2 из 2')
+        self.assertContains(second,'Сотрудник страницы 026')
+    def test_recruiter_directory_is_paginated_and_preserves_filters(self):
+        from .models import RecruitmentSpecialist
+        RecruitmentSpecialist.objects.bulk_create([
+            RecruitmentSpecialist(company=self.company,name=f'Рекрутер страницы {number:03d}')
+            for number in range(1,56)
+        ])
+        self.client.force_login(self.hr_head);url=reverse('personnel:recruitment_specialists')
+        first=self.client.get(url,{'linked':'no','sort':'candidates'})
+        self.assertEqual(first.context['page'].paginator.count,55)
+        self.assertEqual(len(first.context['rows']),50)
+        self.assertContains(first,'Страница 1 из 2')
+        self.assertContains(first,'sort=candidates&amp;page=2',html=False)
+        second=self.client.get(url,{'linked':'no','sort':'candidates','page':2})
+        self.assertEqual(len(second.context['rows']),5)
+        self.assertContains(second,'Страница 2 из 2')
     def test_import_discards_dates_and_excel_errors_from_responsible_hr(self):
         from datetime import date
         from openpyxl import Workbook
         from .models import RecruitmentSpecialist,TalentPoolCandidate
         from .talent_pool_import import HEADERS,import_sheet
         workbook=Workbook();sheet=workbook.active;sheet.title='Магазин 2026';sheet.append(HEADERS)
-        for number,name,responsible in ((1,'Кандидат с датой',date(2026,1,30)),(2,'Кандидат с ошибкой','#REF!')):
+        for number,name,responsible in ((1,'Кандидат с датой',date(2026,1,30)),(2,'Кандидат с ошибкой','#REF!'),
+                (3,'Кандидат со статусом','готов после 14.12'),(4,'Кандидат с отказом','КАНДИДАТ ОТКАЗАЛСЯ')):
             values=['']*len(HEADERS)
             values[0]=number;values[1]=name;values[2]='Монтажник';values[3]='КТП';values[15]=responsible
             sheet.append(values)
         payload=BytesIO();workbook.save(payload);payload.seek(0)
-        self.assertEqual(import_sheet(self.recruiter,payload),{'created':2,'updated':0,'skipped':0})
+        self.assertEqual(import_sheet(self.recruiter,payload),{'created':4,'updated':0,'skipped':0})
         self.assertFalse(RecruitmentSpecialist.objects.exists())
         for candidate in TalentPoolCandidate.objects.all():
             self.assertIsNone(candidate.responsible_hr)
@@ -580,6 +618,34 @@ class RecruitmentTests(TestCase):
         self.assertEqual(candidate.source_data['responsible_hr'],'')
         self.assertEqual(candidate.source_data['funnel_sources'][0]['data']['responsible_hr'],'')
         self.assertFalse(RecruitmentSpecialist.objects.exists())
+    def test_directory_cleanup_deactivates_statuses_and_matches_position_base(self):
+        from importlib import import_module
+        from django.apps import apps
+        from .models import RecruitmentSpecialist,TalentPoolCandidate
+        specialist=RecruitmentSpecialist(company=self.company,name='готов после увольнения')
+        RecruitmentSpecialist.objects.bulk_create([specialist])
+        candidate=TalentPoolCandidate.objects.create(company=self.company,full_name='Кандидат для очистки',
+            responsible_hr=specialist,created_by=self.recruiter,source_data={'position':'Монтажник (КТП)'})
+        migration=import_module('apps.personnel.migrations.0053_recruitment_directory_cleanup')
+        migration.clean_directories(apps,None)
+        specialist.refresh_from_db();candidate.refresh_from_db()
+        self.assertFalse(specialist.is_active)
+        self.assertEqual(candidate.responsible_hr_id,specialist.pk)
+        self.assertEqual(candidate.position_id,self.position.pk)
+    def test_directory_cleanup_merges_case_only_recruiter_duplicates(self):
+        from importlib import import_module
+        from django.apps import apps
+        from .models import RecruitmentSpecialist,TalentPoolCandidate
+        first=RecruitmentSpecialist.objects.create(company=self.company,name='Дарьина')
+        duplicate=RecruitmentSpecialist.objects.create(company=self.company,name='дарьина',user=self.recruiter)
+        candidate=TalentPoolCandidate.objects.create(company=self.company,full_name='Кандидат с дублем',responsible_hr=duplicate,
+            created_by=self.recruiter)
+        migration=import_module('apps.personnel.migrations.0053_recruitment_directory_cleanup')
+        migration.clean_directories(apps,None)
+        first.refresh_from_db();candidate.refresh_from_db()
+        self.assertFalse(RecruitmentSpecialist.objects.filter(pk=duplicate.pk).exists())
+        self.assertEqual(first.user_id,self.recruiter.pk)
+        self.assertEqual(candidate.responsible_hr_id,first.pk)
     def test_workbook_import_unifies_all_funnel_sheets_and_history(self):
         from datetime import datetime
         from openpyxl import Workbook
@@ -949,8 +1015,8 @@ class RecruitmentTests(TestCase):
         delete=reverse('personnel:recruitment_specialist_delete',args=[existing.pk])
         self.assertEqual(self.client.get(delete).status_code,405)
         self.assertRedirects(self.client.post(delete),url)
-        self.assertFalse(RecruitmentSpecialist.objects.filter(pk=existing.pk).exists())
-        candidate.refresh_from_db();self.assertIsNone(candidate.responsible_hr_id);self.assertEqual(candidate.source_data['responsible_hr'],'Дарина Н.')
+        existing.refresh_from_db();self.assertFalse(existing.is_active)
+        candidate.refresh_from_db();self.assertEqual(candidate.responsible_hr_id,existing.pk);self.assertEqual(candidate.source_data['responsible_hr'],'Дарина Н.')
         self.assertTrue(User.objects.filter(pk=self.recruiter.pk).exists())
         self.assertEqual(self.client.post(reverse('personnel:recruitment_specialist_delete',args=[foreign.pk])).status_code,404)
         self.client.force_login(self.recruiter)
@@ -974,15 +1040,15 @@ class RecruitmentTests(TestCase):
         page=self.client.get(url)
         self.assertContains(page,'select-all-specialists',html=False)
         self.assertContains(page,'class="form-check-input specialist-selection"',count=2,html=False)
-        self.assertContains(page,'Удалить выбранных')
+        self.assertContains(page,'Удалить неиспользуемых')
         self.assertEqual(self.client.get(bulk_url).status_code,405)
         self.assertEqual(self.client.post(bulk_url,{'selected':[first.pk,foreign.pk]}).status_code,403)
         self.assertTrue(RecruitmentSpecialist.objects.filter(pk=first.pk).exists())
         response=self.client.post(bulk_url,{'selected':[first.pk,second.pk]})
         self.assertRedirects(response,url)
-        self.assertFalse(RecruitmentSpecialist.objects.filter(pk__in=[first.pk,second.pk]).exists())
+        self.assertEqual(RecruitmentSpecialist.objects.filter(pk__in=[first.pk,second.pk],is_active=False).count(),2)
         first_candidate.refresh_from_db();second_candidate.refresh_from_db()
-        self.assertIsNone(first_candidate.responsible_hr_id);self.assertIsNone(second_candidate.responsible_hr_id)
+        self.assertEqual(first_candidate.responsible_hr_id,first.pk);self.assertEqual(second_candidate.responsible_hr_id,second.pk)
         self.assertEqual(User.objects.filter(pk__in=[self.recruiter.pk,self.recruiter2.pk]).count(),2)
         self.client.force_login(self.recruiter)
         self.assertEqual(self.client.post(bulk_url,{'selected':[foreign.pk]}).status_code,403)

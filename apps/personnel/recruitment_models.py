@@ -33,6 +33,11 @@ RECRUITMENT_SYSTEM_STAGES={'TRANSFERRED','ARRIVAL_APPROVED','ARRIVED'}
 POOL_UNAVAILABLE_STAGES=RECRUITMENT_TERMINAL_STAGES|RECRUITMENT_SYSTEM_STAGES
 
 INVALID_RECRUITMENT_SPECIALIST_NAMES={'нет','не назначен','ответственный hr','фио','nan','none','null'}
+INVALID_RECRUITMENT_SPECIALIST_FRAGMENTS=(
+    'отказ','кандидат ','готов после','готов к ','готов с ','готово ','по готовности','не готов',
+    'билет','уволь','обстоятель','уточн','узнаю','другую компанию','агентств','штат ',
+    'семейн','не выходит на работу','попросил отменить','причину сообщит',
+)
 RECRUITMENT_SPECIALIST_DATE_RE=re.compile(
     r'(?:\d{4}[-./]\d{1,2}[-./]\d{1,2}|\d{1,2}[-./]\d{1,2}[-./]\d{4})(?:[ t]\d{1,2}:\d{2}(?::\d{2})?)?'
 )
@@ -42,7 +47,8 @@ def normalize_recruitment_specialist_name(value):
     """Return a human HR name, discarding spreadsheet errors, dates and placeholders."""
     name=' '.join(str(value or '').split())
     folded=name.casefold()
-    if (not name or folded in INVALID_RECRUITMENT_SPECIALIST_NAMES or name.startswith('#')
+    if (not name or folded in INVALID_RECRUITMENT_SPECIALIST_NAMES or folded=='готов'
+            or any(fragment in folded for fragment in INVALID_RECRUITMENT_SPECIALIST_FRAGMENTS) or name.startswith('#')
             or RECRUITMENT_SPECIALIST_DATE_RE.fullmatch(name) or not any(character.isalpha() for character in name)):
         return ''
     return name

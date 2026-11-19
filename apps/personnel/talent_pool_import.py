@@ -1,6 +1,7 @@
 """Import the recruiting workbook into unified candidate cards."""
 from collections import defaultdict
 from datetime import date,datetime,time
+import re
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from apps.projects.models import ConstructionObject
@@ -63,6 +64,12 @@ def _catalogue_match(model,company,name):
     name=_name(name)
     if not name:return None
     matches=list(model.objects.filter(company=company,name__iexact=name)[:2])
+    if len(matches)==1:return matches[0]
+    # Excel often appends an object or work area in parentheses to a valid
+    # catalogue position.  Use the base only when it resolves unambiguously.
+    base=re.sub(r'(?:\s*\([^()]*(?:\)|$))+\s*$','',name).strip(' ,;-/')
+    if not base or base.casefold()==name.casefold():return None
+    matches=list(model.objects.filter(company=company,name__iexact=base)[:2])
     return matches[0] if len(matches)==1 else None
 
 
