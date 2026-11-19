@@ -43,9 +43,9 @@ class InstructionsBrowserTests(StaticLiveServerTestCase):
             user.last_name='Учебный';user.first_name='Пользователь';user.save(update_fields=['last_name','first_name'])
             client=Client();client.force_login(user);return client.cookies['sessionid'].value
         from urllib.parse import urlencode
-        config={'base':self.live_server_url,'chromium':shutil.which('chromium'),'images':str(Path(__file__).resolve().parents[1]/'static/instructions'),'production_only':os.environ.get('INSTRUCTIONS_PRODUCTION_ONLY')=='1',
+        config={'base':self.live_server_url,'chromium':shutil.which('chromium'),'images':os.environ.get('INSTRUCTIONS_IMAGES_DIR',str(Path(__file__).resolve().parents[1]/'static/instructions')),'production_only':os.environ.get('INSTRUCTIONS_PRODUCTION_ONLY')=='1','rotation_only':os.environ.get('INSTRUCTIONS_ROTATION_ONLY')=='1',
             'production':{'cookie':actor(demo.users['DISPATCHER']),'url':reverse('production:fact_day_workspace')+'?'+urlencode({'construction_object':demo.obj.pk,'date':str(demo.day),'section':'works'})},
-            'rotation':{'cookie':actor(home.hr),'url':reverse('personnel:housing')+'?'+urlencode({'camp':home.a.pk,'date':str(home.day)})},
+            'rotation':{'cookie':actor(home.hr),'url':reverse('personnel:housing')+'?'+urlencode({'camp':home.a.pk}),'movement_url':reverse('personnel:movements')+'?'+urlencode({'camp':home.a.pk})},
             'lodging':{'cookie':actor(home.commandant),'url':reverse('personnel:lodging')+'?'+urlencode({'camp':home.a.pk,'date':str(home.day)})},
             'fuel':{'cookie':actor(fuel),'url':reverse('production:camp_fuel')+'?'+urlencode({'camp':demo.camp.pk,'date':str(demo.day)})},
             'transport':{'cookie':actor(demo.operator),'url':reverse('production:transport_board')+'?'+urlencode({'camp':demo.camp.pk,'date':str(demo.day)}),'machine':demo.machine.pk},

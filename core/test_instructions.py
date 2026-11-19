@@ -38,3 +38,5 @@ class InstructionsTests(TestCase):
         content=lambda slug:' '.join([*(step for chapter in next(g for g in GUIDES if g['slug']==slug)['chapters'] for step in chapter.get('steps',())),*(point for chapter in next(g for g in GUIDES if g['slug']==slug)['chapters'] for point in chapter.get('bullets',()))])
         production=content('production');self.assertIn('многие ко многим',production);self.assertIn('фактическим объёмом больше нуля',production);self.assertIn('только кнопка «Удалить работу»',production);self.assertIn('Ctrl+Z',production);self.assertIn('до 20 действий',production)
         self.assertIn('по 50 записей',content('lodging'));self.assertIn('журнал загружается только при раскрытии',content('fuel'));self.assertIn('группы техники сначала свёрнуты',content('transport'))
+        rotation=content('rotation');self.assertIn('Дата в заявке плановая',rotation);self.assertIn('нажмите «Создать заявку»',rotation);self.assertNotIn('Сохранить перемещение',rotation)
+        personnel=content('role-personnel');self.assertIn('руководитель проекта ИЛИ начальник участка',personnel);self.assertIn('шесть параллельных согласований',personnel)
