@@ -4,7 +4,7 @@ from django.utils import timezone
 
 from apps.accounts.models import Company,Role,User
 from apps.audit.models import AuditLog
-from .models import Board,MovementReviewRequest,Person,StaffingGroup,StaffingSlot
+from .models import Board,Camp,CampStay,MovementReviewRequest,Person,StaffingGroup,StaffingSlot
 from .recruitment_models import TalentPoolCandidate
 
 
@@ -45,4 +45,21 @@ class PersonnelAdminCleanupTests(TestCase):
         self.client.post(self.url,{'cleanup_action':'assignments','confirmation':'ОЧИСТИТЬ'})
         self.slot.refresh_from_db();self.person.refresh_from_db()
         self.assertIsNone(self.slot.person_id);self.assertEqual(self.slot.status,'');self.assertIsNone(self.person.schedule_slot_id)
+        self.assertIsNotNone(self.person.dispatcher_removed_at)
+        self.assertEqual(self.person.dispatcher_removed_by,self.admin)
         self.assertEqual(AuditLog.objects.filter(user=self.admin,entity_type='personnel.DemoCleanup').count(),3)
+
+    def test_assignment_cleanup_also_hides_card_kept_only_by_wjg_history(self):
+        historical=Person.objects.create(company=self.company,full_name='Сотрудник только с историей')
+        camp=Camp.objects.create(company=self.company,name='ОП Дудинка')
+        stay=CampStay.objects.create(company=self.company,person=historical,camp=camp,
+            arrived_on=timezone.localdate(),departed_on=timezone.localdate())
+        self.client.force_login(self.admin)
+        page=self.client.get(self.url)
+        self.assertEqual(page.context['cleanup_counts']['assignments'],2)
+        self.client.post(self.url,{'cleanup_action':'assignments','confirmation':'ОЧИСТИТЬ'})
+        historical.refresh_from_db();self.person.refresh_from_db()
+        self.assertIsNotNone(historical.dispatcher_removed_at)
+        self.assertIsNotNone(self.person.dispatcher_removed_at)
+        self.assertTrue(CampStay.objects.filter(pk=stay.pk).exists())
+        self.assertEqual(self.client.get(self.url).context['cleanup_counts']['assignments'],0)

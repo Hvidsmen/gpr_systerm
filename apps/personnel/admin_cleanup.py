@@ -4,6 +4,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.shortcuts import redirect,render
+from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 
 from core.permissions import role_code
@@ -21,6 +22,9 @@ def require_admin(user):
 
 
 def counts(company):
+    active_people=Person.objects.filter(company=company,dispatcher_removed_at=None)
+    assigned_removed_people=StaffingSlot.objects.filter(company=company,person__isnull=False,
+        person__dispatcher_removed_at__isnull=False)
     return {
         'pool':TalentPoolCandidate.objects.filter(company=company).count(),
         'requests':(
@@ -28,7 +32,9 @@ def counts(company):
             MovementReviewRequest.objects.filter(company=company).count()+
             ScheduleChangeRequest.objects.filter(company=company).count()
         ),
-        'assignments':StaffingSlot.objects.filter(company=company,person__isnull=False).count(),
+        # The action removes the whole dispatcher roster, not only links in
+        # staffing rows. Include cards retained solely by WJG history too.
+        'assignments':active_people.count()+assigned_removed_people.count(),
     }
 
 
@@ -49,7 +55,8 @@ def cleanup(request):
         handlers={'pool':clear_pool,'requests':clear_requests,'assignments':clear_assignments}
         if action not in handlers:raise PermissionDenied('Неизвестная операция очистки.')
         with transaction.atomic():
-            deleted=handlers[action](request.user.company)
+            deleted=(handlers[action](request.user.company,request.user) if action=='assignments'
+                else handlers[action](request.user.company))
             audit(request.user,action,deleted)
         messages.success(request,f'Очистка завершена. Обработано записей: {deleted}.')
         return redirect('personnel:admin_cleanup')
@@ -86,9 +93,12 @@ def clear_requests(company):
     return total
 
 
-def clear_assignments(company):
+def clear_assignments(company,user):
     assigned=StaffingSlot.objects.filter(company=company,person__isnull=False)
-    total=assigned.count()
+    active_people=Person.objects.filter(company=company,dispatcher_removed_at=None)
+    # A removed card can still have an old staffing link after an interrupted
+    # cleanup. Count it separately so the cleanup action remains available.
+    total=active_people.count()+assigned.filter(person__dispatcher_removed_at__isnull=False).count()
     Person.objects.filter(company=company).update(schedule_slot=None)
     StaffingSlot.objects.filter(company=company).update(previous_assignment=None)
     # Rows created by the assignment workflow are not staffing-table rows and
@@ -97,4 +107,8 @@ def clear_assignments(company):
     StaffingSlot.objects.filter(company=company,person__isnull=False).update(person=None,construction_object=None,assigned_from=None,assigned_until=None,
         initial_movement=None,replaced_on=None,assigned_by=None,cancelled_at=None,cancelled_by=None,cancellation_reason='',
         status='',departure_date=None,arrival_date=None,comment='')
+    # Keep employee master data and WJG history for audit, but remove every
+    # active personnel card from the operational dispatcher roster.
+    active_people.update(dispatcher_removed_at=timezone.now(),dispatcher_removed_by=user,
+        dispatcher_removal_reason='Административная массовая очистка диспетчерской')
     return total
