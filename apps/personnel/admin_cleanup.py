@@ -25,6 +25,7 @@ def counts(company):
     active_people=Person.objects.filter(company=company,dispatcher_removed_at=None)
     assigned_removed_people=StaffingSlot.objects.filter(company=company,person__isnull=False,
         person__dispatcher_removed_at__isnull=False)
+    vacancies=StaffingSlot.objects.filter(company=company,person__isnull=True)
     return {
         'pool':TalentPoolCandidate.objects.filter(company=company).count(),
         'requests':(
@@ -32,9 +33,9 @@ def counts(company):
             MovementReviewRequest.objects.filter(company=company).count()+
             ScheduleChangeRequest.objects.filter(company=company).count()
         ),
-        # The action removes the whole dispatcher roster, not only links in
-        # staffing rows. Include cards retained solely by WJG history too.
-        'assignments':active_people.count()+assigned_removed_people.count(),
+        # Count both roster cards and empty staffing rows. This keeps the
+        # action available after an earlier cleanup left only vacancies.
+        'assignments':active_people.count()+assigned_removed_people.count()+vacancies.count(),
     }
 
 
@@ -96,17 +97,16 @@ def clear_requests(company):
 def clear_assignments(company,user):
     assigned=StaffingSlot.objects.filter(company=company,person__isnull=False)
     active_people=Person.objects.filter(company=company,dispatcher_removed_at=None)
+    vacancies=StaffingSlot.objects.filter(company=company,person__isnull=True)
     # A removed card can still have an old staffing link after an interrupted
     # cleanup. Count it separately so the cleanup action remains available.
-    total=active_people.count()+assigned.filter(person__dispatcher_removed_at__isnull=False).count()
+    total=(active_people.count()+assigned.filter(person__dispatcher_removed_at__isnull=False).count()+
+        vacancies.count())
     Person.objects.filter(company=company).update(schedule_slot=None)
     StaffingSlot.objects.filter(company=company).update(previous_assignment=None)
-    # Rows created by the assignment workflow are not staffing-table rows and
-    # can be removed entirely.  Imported staffing rows stay as vacancies.
-    StaffingSlot.objects.filter(company=company,planning_position__isnull=False).delete()
-    StaffingSlot.objects.filter(company=company,person__isnull=False).update(person=None,construction_object=None,assigned_from=None,assigned_until=None,
-        initial_movement=None,replaced_on=None,assigned_by=None,cancelled_at=None,cancelled_by=None,cancellation_reason='',
-        status='',departure_date=None,arrival_date=None,comment='')
+    # Remove both assignment history and imported empty staffing rows. GPR/SMG
+    # plans and position groups are separate records and remain untouched.
+    StaffingSlot.objects.filter(company=company).delete()
     # Keep employee master data and WJG history for audit, but remove every
     # active personnel card from the operational dispatcher roster.
     active_people.update(dispatcher_removed_at=timezone.now(),dispatcher_removed_by=user,
