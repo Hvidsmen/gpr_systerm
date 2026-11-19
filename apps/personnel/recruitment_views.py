@@ -270,7 +270,10 @@ def pool_list(request):
     if query:rows=rows.filter(Q(full_name__icontains=query)|Q(phone__icontains=query))
     stage=request.GET.get('stage','')
     if stage in dict(TalentPoolCandidate._meta.get_field('stage').choices):rows=rows.filter(stage=stage)
-    return render(request,'personnel/recruitment_pool.html',{**context(request.user),'rows':rows,'query':query,'stage':stage,
+    page=Paginator(rows,50).get_page(request.GET.get('page'))
+    params=request.GET.copy();params.pop('page',None)
+    return render(request,'personnel/recruitment_pool.html',{**context(request.user),'rows':page.object_list,'page':page,
+        'pagination_query':params.urlencode(),'query':query,'stage':stage,
         'stage_choices':TalentPoolCandidate._meta.get_field('stage').choices})
 
 

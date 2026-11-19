@@ -530,6 +530,23 @@ class RecruitmentTests(TestCase):
         self.client.force_login(self.recruiter);page=self.client.get(reverse('personnel:recruitment_pool'))
         self.assertContains(page,'Монтажник');self.assertContains(page,'КТП');self.assertContains(page,'Уфа')
         self.assertContains(page,reverse('personnel:recruitment_pool_import'))
+    def test_all_candidates_is_paginated_and_filters_are_kept_in_page_links(self):
+        from .models import TalentPoolCandidate
+        TalentPoolCandidate.objects.bulk_create([
+            TalentPoolCandidate(company=self.company,full_name=f'Кандидат страницы {number:03d}',phone=f'900{number:03d}',
+                stage='NEW',created_by=self.recruiter)
+            for number in range(1,56)
+        ])
+        self.client.force_login(self.recruiter);url=reverse('personnel:recruitment_pool')
+        first=self.client.get(url,{'q':'Кандидат страницы','stage':'NEW'})
+        self.assertEqual(first.context['page'].paginator.count,55)
+        self.assertEqual(len(first.context['rows']),50)
+        self.assertContains(first,'Страница 1 из 2')
+        self.assertContains(first,'stage=NEW&amp;page=2',html=False)
+        second=self.client.get(url,{'q':'Кандидат страницы','stage':'NEW','page':2})
+        self.assertEqual(len(second.context['rows']),5)
+        self.assertEqual(second.context['rows'][0].full_name,'Кандидат страницы 051')
+        self.assertContains(second,'Страница 2 из 2')
     def test_import_discards_dates_and_excel_errors_from_responsible_hr(self):
         from datetime import date
         from openpyxl import Workbook
