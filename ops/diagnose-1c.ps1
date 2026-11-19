@@ -21,11 +21,15 @@ $directory=Join-Path $Root ('.runtime\1c-diagnostics\'+$RunId)
 New-Item -ItemType Directory -Path $directory -Force | Out-Null
 $statusPath=Join-Path $directory 'status.json'
 $reportPath=Join-Path $directory 'report.json'
+$progressPath=Join-Path $directory 'progress.json'
 $identity=[Security.Principal.WindowsIdentity]::GetCurrent()
 function Write-Json($Path,$Value){
     $temporary=$Path+'.'+[guid]::NewGuid().ToString('N')+'.tmp'
     ConvertTo-Json -InputObject $Value -Depth 12 | Set-Content -LiteralPath $temporary -Encoding UTF8
     Move-Item -LiteralPath $temporary -Destination $Path -Force
+}
+function Write-ProgressState([string]$stage){
+    if($UatDiscovery){Write-Json $progressPath @{stage=$stage;updated_utc=[DateTime]::UtcNow.ToString('o')}}
 }
 function Quote-Identifier([string]$value){return '['+$value.Replace(']',']]')+']'}
 function Query($connection,[string]$sql,$parameters=@{},[int]$timeout=15){
@@ -173,7 +177,9 @@ try {
     $builder['ApplicationIntent']='ReadOnly'
     $connection=New-Object System.Data.SqlClient.SqlConnection($builder.ConnectionString)
     try {
+        Write-ProgressState 'connecting'
         $connection.Open()
+        Write-ProgressState 'schema'
         if($EmployeesImport){
             $offsetRows=@(Query $connection 'SELECT DISTINCT [Offset] AS date_offset FROM [dbo].[_YearOffset]')
             if($offsetRows.Count -ne 1 -or [int]$offsetRows[0].date_offset -notin @(0,2000)){throw 'Unsupported or ambiguous 1C date offset.'}
@@ -460,6 +466,7 @@ ORDER BY s.name,t.name,c.column_id
                 }
             } catch {$errors.Add([pscustomobject]@{schema=$table.schema;table=$table.table;error=$_.Exception.Message})}
         }
+        Write-ProgressState 'metadata'
         $metadata=@($columns | Where-Object {$_.table -in @('Config','ConfigSave','Params','DBSchema','IBVersion','Files')} | Select-Object -Property @('schema','table') -Unique)
         $metadataNames=@{};$metadataStatus='unavailable';$metadataErrors=@();$metadataRead=0
         try {
@@ -467,6 +474,7 @@ ORDER BY s.name,t.name,c.column_id
             $metadataNames=$decoded.labels;$metadataRead=$decoded.objects_read;$metadataErrors=@($decoded.errors)
             $metadataStatus=if(@($metadataNames.PSObject.Properties).Count -gt 0){'decoded'}else{'unrecognized'}
         } catch {$metadataErrors=@([pscustomobject]@{error=$_.Exception.Message})}
+        Write-ProgressState 'saving'
         $report=[ordered]@{uat_discovery=[bool]$UatDiscovery;metadata_labels=$metadataNames;metadata_status=$metadataStatus;metadata_objects_read=$metadataRead;metadata_errors=$metadataErrors;created_utc=[DateTime]::UtcNow.ToString('o');windows_identity=$identity.Name;connection=$who;reference_tables_checked=@($scanTables).Count;sample_limit=$SampleLimit;search_terms=$terms;candidates=@($candidates | Sort-Object matched_rows -Descending);metadata_tables=$metadata;schema=$columns;scan_errors=$errors.ToArray();notice='Candidates are hints, not a confirmed 1C metadata mapping. No source descriptions, employee rows, binary metadata, or passwords are exported.'}
         Write-Json $reportPath $report
         Write-Json $statusPath @{ok=$true;report=$reportPath}

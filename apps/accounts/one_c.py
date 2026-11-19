@@ -56,10 +56,13 @@ def enqueue(connection, actor=None, metadata_only=False, positions=False, employ
 
 def process_queue(*,uat_only=False):
     now=timezone.now()
+    processed=0
     if uat_only:
         stale_runs=OneCDiagnosticRun.objects.filter(report__uat_discovery=True,status__in=['QUEUED','RUNNING'],connection__active_until__lt=now)
         stale_ids=list(stale_runs.values_list('connection_id',flat=True).distinct())
-        stale_runs.update(status='ERROR',error='Запуск прерван или превышено время ожидания.',finished_at=now)
+        # A queued UAT read is still safe to execute after its claim expired. Only a
+        # worker that actually entered RUNNING is considered interrupted.
+        stale_runs.filter(status='RUNNING').update(status='ERROR',error='Запуск прерван или превышено время ожидания.',finished_at=now)
         OneCConnection.objects.filter(pk__in=stale_ids).update(active_until=None)
         queue=OneCDiagnosticRun.objects.filter(status='QUEUED',report__uat_discovery=True)
     else:
@@ -74,6 +77,7 @@ def process_queue(*,uat_only=False):
         queue=OneCDiagnosticRun.objects.filter(status='QUEUED')
     for run in queue.order_by('created_at'):
         if not OneCDiagnosticRun.objects.filter(pk=run.pk,status='QUEUED').update(status='RUNNING'):continue
+        processed+=1
         employees_import=bool(run.report.get('employees_import'))
         uat_discovery=bool(run.report.get('uat_discovery'))
         try:
@@ -131,6 +135,7 @@ def process_queue(*,uat_only=False):
         finally:
             run.finished_at=timezone.now();run.save(update_fields=['status','error','report','finished_at'])
             OneCConnection.objects.filter(pk=run.connection_id).update(active_until=None)
+    return processed
 
 
 @login_required

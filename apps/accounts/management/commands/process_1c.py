@@ -6,4 +6,5 @@ class Command(BaseCommand):
     def add_arguments(self,parser):
         parser.add_argument('--uat-only',action='store_true',help='Обработать только безопасную диагностику УАТ.')
     def handle(self,*args,**options):
-        process_queue(uat_only=options['uat_only'])
+        processed=process_queue(uat_only=options['uat_only'])
+        self.stdout.write(f'Processed 1C jobs: {processed}')

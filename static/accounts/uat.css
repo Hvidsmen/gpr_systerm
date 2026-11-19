@@ -1,0 +1,18 @@
+.uat-progress{border:1px solid #cfdfed;border-radius:.5rem;padding:1rem;background:#f8fbfe}
+.uat-progress-heading{display:flex;justify-content:space-between;align-items:baseline;gap:.75rem;flex-wrap:wrap;margin-bottom:.65rem}
+.uat-progress-heading span{font-size:.85rem;color:#52677b}
+.uat-progress .progress{height:14px;background:#e4eaf0}
+.uat-progress .progress-bar{transition:width .3s ease}
+.uat-steps{display:grid;grid-template-columns:repeat(6,minmax(115px,1fr));gap:.6rem;padding:0;margin:1rem 0;list-style:none}
+.uat-step{display:flex;align-items:flex-start;gap:.45rem;color:#637487;font-size:.8rem;min-width:0}
+.uat-step-marker{width:1.5rem;height:1.5rem;display:grid;place-items:center;flex:0 0 1.5rem;border:1px solid #cad6e0;border-radius:50%;background:#fff;font-size:.75rem}
+.uat-step>span:last-child{padding-top:.16rem;overflow-wrap:anywhere}
+.uat-step.is-current{font-weight:600;color:#006985}
+.uat-step.is-current .uat-step-marker{border-color:#087f9d;background:#e0f2f7}
+.uat-step.is-complete{color:#176c47}
+.uat-step.is-complete .uat-step-marker{background:#e0f1e8;border-color:#a8cdb7}
+.uat-step.is-failed{color:#a92938;font-weight:600}
+.uat-step.is-failed .uat-step-marker{background:#fbe9ec;border-color:#e0a9b1}
+@media(max-width:1000px){.uat-steps{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:575px){.uat-progress{padding:.75rem}.uat-steps{grid-template-columns:repeat(2,minmax(0,1fr));gap:.65rem}}
+@media(prefers-reduced-motion:reduce){.uat-progress .progress-bar{transition:none;animation:none}}

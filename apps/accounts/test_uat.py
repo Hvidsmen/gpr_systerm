@@ -1,10 +1,12 @@
 import json
 import tempfile
+from datetime import timedelta
 from pathlib import PosixPath
 from unittest.mock import patch
 
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 
 from .models import Company, OneCConnection, OneCDiagnosticRun, Role, User
 from .one_c import process_queue
@@ -38,7 +40,6 @@ class UatDiscoveryTests(TestCase):
         self.assertEqual(run.report,{'uat_discovery':True})
         self.connection.refresh_from_db();self.assertEqual(self.connection.database,'zup01')
 
-    @patch('apps.accounts.one_c.os.name','nt')
     @patch('apps.accounts.one_c.subprocess.run')
     def test_worker_marks_uat_report_and_passes_discovery_switch(self,execute):
         self.client.post(self.url,{'action':'diagnose'})
@@ -48,7 +49,7 @@ class UatDiscoveryTests(TestCase):
             target.mkdir(parents=True)
             (target/'status.json').write_text(json.dumps({'ok':True}))
             (target/'report.json').write_text(json.dumps({'schema':SCHEMA,'metadata_labels':LABELS}))
-            with override_settings(CONFIG_DIR=directory),patch('apps.accounts.one_c.Path',PosixPath),patch('apps.accounts.one_c.subprocess.CREATE_NO_WINDOW',0,create=True):
+            with override_settings(CONFIG_DIR=directory),patch('apps.accounts.one_c.os.name','nt'),patch('apps.accounts.one_c.Path',PosixPath),patch('apps.accounts.one_c.subprocess.CREATE_NO_WINDOW',0,create=True):
                 process_queue()
         run.refresh_from_db();self.assertEqual(run.status,'DONE',run.error)
         self.assertTrue(run.report['uat_discovery'])
@@ -59,22 +60,54 @@ class UatDiscoveryTests(TestCase):
         self.assertContains(page,'Документ.ПутевойЛист')
         self.assertContains(page,'dbo._Document123')
 
-    @patch('apps.accounts.one_c.os.name','nt')
     @patch('apps.accounts.one_c.subprocess.run')
     def test_uat_only_worker_leaves_other_1c_jobs_queued(self,execute):
         self.client.post(self.url,{'action':'diagnose'})
         uat=OneCDiagnosticRun.objects.get()
         other=OneCDiagnosticRun.objects.create(connection=self.connection,server='shared-sql',database='zup01')
+        self.connection.active_until=timezone.now()-timedelta(minutes=1)
+        self.connection.save(update_fields=['active_until'])
         with tempfile.TemporaryDirectory() as directory:
             target=PosixPath(directory)/'.runtime/1c-diagnostics'/uat.pk.hex
             target.mkdir(parents=True)
             (target/'status.json').write_text(json.dumps({'ok':True}))
             (target/'report.json').write_text(json.dumps({'schema':SCHEMA,'metadata_labels':LABELS}))
-            with override_settings(CONFIG_DIR=directory),patch('apps.accounts.one_c.Path',PosixPath),patch('apps.accounts.one_c.subprocess.CREATE_NO_WINDOW',0,create=True):
+            with override_settings(CONFIG_DIR=directory),patch('apps.accounts.one_c.os.name','nt'),patch('apps.accounts.one_c.Path',PosixPath),patch('apps.accounts.one_c.subprocess.CREATE_NO_WINDOW',0,create=True):
                 process_queue(uat_only=True)
         uat.refresh_from_db();other.refresh_from_db()
         self.assertEqual(uat.status,'DONE')
         self.assertEqual(other.status,'QUEUED')
+
+    @patch('apps.accounts.uat.subprocess.Popen')
+    def test_staging_click_starts_dedicated_worker_and_can_retry_queued_job(self,spawn):
+        with tempfile.TemporaryDirectory() as directory,override_settings(
+                CONFIG_DIR=directory,STAGING_CONFIG={'revision':'a'*40}):
+            response=self.client.post(self.url,{'action':'diagnose'})
+            self.assertEqual(response.status_code,302)
+            command=spawn.call_args.args[0]
+            self.assertEqual(command[-2:],['process_1c','--uat-only'])
+            self.assertTrue((PosixPath(directory)/'.runtime/1c-worker.log').exists())
+            page=self.client.get(self.url)
+            self.assertContains(page,'Запустить ожидающую диагностику')
+            self.client.post(self.url,{'action':'run_pending'})
+            self.assertEqual(spawn.call_count,2)
+
+    def test_progress_endpoint_reports_real_powershell_checkpoint(self):
+        run=OneCDiagnosticRun.objects.create(connection=self.connection,server='shared-sql',
+            database='uat01_ivanov',status='RUNNING',report={'uat_discovery':True})
+        with tempfile.TemporaryDirectory() as directory,override_settings(CONFIG_DIR=directory):
+            target=PosixPath(directory)/'.runtime/1c-diagnostics'/run.pk.hex
+            target.mkdir(parents=True)
+            (target/'progress.json').write_text(json.dumps({'stage':'metadata'}),encoding='utf-8')
+            response=self.client.get(reverse('accounts:uat_status'))
+            self.assertEqual(response.status_code,200)
+            payload=response.json()
+            self.assertEqual(payload['stage_number'],5)
+            self.assertEqual(payload['stage'],'Расшифровка метаданных')
+            self.assertTrue(payload['busy'])
+            page=self.client.get(self.url)
+            self.assertContains(page,'Этап 5 из 6')
+            self.assertContains(page,'data-uat-progress')
 
     def test_download_selects_only_uat_structure(self):
         OneCDiagnosticRun.objects.create(connection=self.connection,server='shared-sql',database='zup01',status='DONE',report={'schema':[]})
@@ -91,18 +124,11 @@ class UatDiscoveryTests(TestCase):
         self.admin.role=planner;self.admin.save(update_fields=['role'])
         self.assertEqual(self.client.get(self.url).status_code,403)
 
-    def test_staging_page_reports_old_supervisor_until_uat_worker_is_ready(self):
-        with tempfile.TemporaryDirectory() as directory,override_settings(
-                CONFIG_DIR=directory,STAGING_CONFIG={'revision':'a'*40}):
-            self.assertContains(self.client.get(self.url),'перезапустите задание')
-            runtime=PosixPath(directory)/'.runtime';runtime.mkdir()
-            (runtime/'staging-supervisor.json').write_text(json.dumps(
-                {'revision':'a'*40,'features':['uat-discovery']}),encoding='utf-8')
-            self.assertNotContains(self.client.get(self.url),'перезапустите задание')
-
     def test_script_keeps_integrated_security_and_uat_terms(self):
         script=(PosixPath(__file__).resolve().parents[2]/'ops/diagnose-1c.ps1').read_text(encoding='utf-8-sig')
         self.assertIn("$builder['Integrated Security']=$true",script)
         self.assertIn('[switch]$UatDiscovery',script)
+        self.assertIn("Write-ProgressState 'connecting'",script)
+        self.assertIn("Write-ProgressState 'metadata'",script)
         self.assertIn("'путев'",script)
         self.assertIn("'ремонт'",script)
