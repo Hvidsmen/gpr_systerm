@@ -77,5 +77,5 @@ class EmployeeRemoteSearchTests(TestCase):
         self.assertEqual([item['id'] for item in available],[bulk_employee.pk])
         manual=self.client.get(url,{'q':'R-103','scope':'assignment'}).json()['items']
         self.assertEqual([item['id'] for item in manual],[manual_employee.pk])
-        self.assertIn('будет восстановлен в диспетчерской',manual[0]['text'])
+        self.assertNotIn('восстановлен',manual[0]['text'])
 

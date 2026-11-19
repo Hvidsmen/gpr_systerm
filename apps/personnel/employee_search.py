@@ -15,7 +15,7 @@ from core.permissions import ROLES, require_roles
 def search(request):
     """Small, company-scoped employee pages for remote form selects."""
     require_roles(request.user, ROLES)
-    query = Employee.objects.filter(company=request.user.company).select_related('position','personnel_card')
+    query = Employee.objects.filter(company=request.user.company).select_related('position')
     if request.GET.get('scope') == 'movement':
         kind = request.GET.get('kind', 'ARRIVAL')
         if kind == 'ARRIVAL':
@@ -52,8 +52,6 @@ def search(request):
             label += f' · {employee.position}'
         if not employee.is_active:
             label += ' · архивный'
-        if request.GET.get('scope') == 'assignment' and hasattr(employee,'personnel_card') and employee.personnel_card.dispatcher_removed_at:
-            label += ' · будет восстановлен в диспетчерской'
         items.append({'id': employee.pk, 'text': label})
     return JsonResponse({
         'items': items,

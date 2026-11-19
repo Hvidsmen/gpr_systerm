@@ -168,9 +168,9 @@ class AssignmentForm(forms.Form):
                 if selected_employee:
                     employees=(Employee.objects.filter(company=company,is_active=True)
                         .filter(Q(pk=selected_employee)|Q(pk__in=employees.values('pk'))))
-        self.fields['employee'].queryset=employees.annotate(has_personnel_history=Exists(history)).select_related('position','personnel_card').order_by('last_name','first_name','pk')
-        self.fields['employee'].label_from_instance=lambda e:e.display_name+(' · '+str(e.position) if e.position_id else '')+(' · № '+e.employee_number if e.employee_number else '')+(' · будет восстановлен в диспетчерской' if hasattr(e,'personnel_card') and e.personnel_card.dispatcher_removed_at else '')
-        self.fields['employee'].help_text='Показаны действующие сотрудники без другого назначения на выбранный период. Удалённая карточка будет восстановлена при назначении. Штатная должность не изменится.'
+        self.fields['employee'].queryset=employees.annotate(has_personnel_history=Exists(history)).select_related('position').order_by('last_name','first_name','pk')
+        self.fields['employee'].label_from_instance=lambda e:e.display_name+(' · '+str(e.position) if e.position_id else '')+(' · № '+e.employee_number if e.employee_number else '')
+        self.fields['employee'].help_text='Показаны действующие сотрудники без другого назначения на выбранный период. Штатная должность не изменится.'
         self.fields['planning_position'].queryset=Brigade.objects.filter(company=company).order_by('name','pk')
         self.fields['construction_object'].queryset=ConstructionObject.objects.filter(company=company).select_related('project').order_by('project__name','name','pk')
         self.fields['construction_object'].label_from_instance=lambda obj:f'{obj.project.name} · {obj.name}'
