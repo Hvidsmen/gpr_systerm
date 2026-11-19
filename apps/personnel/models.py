@@ -262,6 +262,8 @@ class MovementReviewRequest(PersonnelModel):
     EMPLOYMENT_KINDS=[('STAFF','Штат'),('NEW','Новый'),('TRANSFER','Перевод'),('BUSINESS_TRIP','Командировка')]
     event=models.OneToOneField(HousingEvent,on_delete=models.PROTECT,related_name='review_request',null=True,blank=True)
     person=models.ForeignKey(Person,on_delete=models.PROTECT,related_name='movement_review_requests')
+    pool_candidate=models.ForeignKey('personnel.TalentPoolCandidate',on_delete=models.PROTECT,null=True,blank=True,
+        related_name='movement_requests',verbose_name='Карточка кандидата')
     kind=models.CharField('Действие',max_length=12,choices=HousingEvent.KINDS)
     movement_date=models.DateField('Дата заезда / выезда')
     requested_movement_date=models.DateField('Плановая дата, указанная в заявке',null=True,blank=True,editable=False)

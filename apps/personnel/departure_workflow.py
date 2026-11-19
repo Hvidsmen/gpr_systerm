@@ -63,6 +63,16 @@ def log(row,actor,action,comment=''):
 def validate_fact_day(day):
     if day>timezone.localdate():raise ValidationError('Фактическая дата не может быть в будущем.')
 
+
+def set_pool_stage(row,stage):
+    if not row.pool_candidate_id:return
+    from .models import TalentPoolCandidate
+    from .recruitment_models import POOL_UNAVAILABLE_STAGES
+    pool=TalentPoolCandidate.objects.select_for_update().get(pk=row.pool_candidate_id,company=row.company)
+    pool.stage=stage;pool.is_active=stage not in POOL_UNAVAILABLE_STAGES
+    pool.save(update_fields=['stage','is_active','updated_at'])
+
+
 def restore_recommendation(row):
     if row.recommendation_planned_on:
         camp_id=row.to_camp_id if row.kind=='ARRIVAL' else row.from_camp_id
@@ -78,6 +88,7 @@ def restore_recommendation(row):
             candidate.status='READY';candidate.revision+=1;candidate.save(update_fields=['status','revision','updated_at'])
             from .recruitment import sync_pool_candidate
             sync_pool_candidate(candidate)
+    set_pool_stage(row,'READY')
 
 
 def approval_task_key(row):
@@ -208,6 +219,7 @@ def decide(user,row,approved,comment='',sync_task=True):
             candidate.save(update_fields=['status','revision','updated_at'])
             from .recruitment import sync_pool_candidate
             sync_pool_candidate(candidate)
+        set_pool_stage(row,'ARRIVAL_APPROVED')
     if not approved:restore_recommendation(row)
     log(row,user,('Согласовано: ' if approved else 'Отменено согласующим: ')+ROLE_LABELS[step],comment)
     task=WorkTask.objects.filter(company=row.company,key=approval_task_key(row)).first()
@@ -365,4 +377,5 @@ def arrive_camp(user,row,day):
         from .recruitment import sync_pool_candidate
         sync_pool_candidate(candidate)
         touch(recruitment);audit(user,recruitment,'Фактический заезд в ВЖГ подтверждён.',prep.candidate)
+    set_pool_stage(row,'ARRIVED')
     log(row,user,'Прибыл в ВЖГ','Фактический заезд зафиксирован. Заявка завершена.')

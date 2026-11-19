@@ -6,6 +6,7 @@ from django.db import IntegrityError,transaction
 from django.db.models import Count,Q, Prefetch
 from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.views.decorators.http import require_http_methods, require_POST, require_GET
 from core.permissions import require_roles, role_code
 from apps.projects.models import ConstructionObject
@@ -59,7 +60,8 @@ def _position_funnel_summary(candidate_rows,request_rows,application_rows):
                 row['construction_object__name'] or (row['source_data'] or {}).get('construction_site','')),
             'request_id':application['request_id'] if application else None,
             'request_position':application['request__position'] if application else '',
-            'request_object':application['request__construction_object__name'] if application else ''})
+            'request_object':application['request__construction_object__name'] if application else '',
+            'arrival_request_id':row.get('arrival_request_id'),'arrival_status':row.get('arrival_status','')})
         if label:all_positions.add(key)
         for value,_,stages in FUNNEL_GROUPS:
             if row['stage'] in stages:
@@ -175,6 +177,17 @@ def request_list(request,recruitment_page='bank'):
     if recruitment_page=='ready':candidates=candidates.filter(stage='TRANSFERRED')
     candidate_rows=list(candidates.values('pk','full_name','stage','position_id','position__name','construction_object__name','source_data'))
     candidate_ids=[row['pk'] for row in candidate_rows]
+    active_arrivals=MovementReviewRequest.objects.filter(company=request.user.company,kind='ARRIVAL').exclude(
+        status='CANCELLED').filter(Q(pool_candidate_id__in=candidate_ids)|
+            Q(recruitment_arrival__candidate__pool_candidate_id__in=candidate_ids)).order_by('-created_at','-pk').values(
+                'pk','pool_candidate_id','status','recruitment_arrival__candidate__pool_candidate_id')
+    arrival_by_pool={}
+    for arrival in active_arrivals:
+        pool_id=arrival['pool_candidate_id'] or arrival['recruitment_arrival__candidate__pool_candidate_id']
+        arrival_by_pool.setdefault(pool_id,arrival)
+    for row in candidate_rows:
+        arrival=arrival_by_pool.get(row['pk'])
+        if arrival:row.update(arrival_request_id=arrival['pk'],arrival_status=arrival['status'])
     if recruitment_page=='ready':
         plan_rows=list(rows.filter(candidates__pool_candidate_id__in=candidate_ids).distinct().values(
             'position_ref_id','position_ref__name','position','quantity'))
@@ -430,6 +443,19 @@ def bulk_arrival_handoff(request):
 
 
 @login_required
+@require_POST
+def ready_arrival_handoff(request):
+    require_roles(request.user,service.DISPATCH)
+    try:
+        batch,requests=service.bulk_prepare_pool_arrivals(request.user,request.POST.getlist('selected'))
+    except (ValidationError,IntegrityError) as exc:
+        messages.error(request,'; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Данные изменились. Обновите страницу.')
+        return redirect('personnel:recruitment_ready')
+    messages.success(request,f'Создан черновик заявки на заезд: {len(requests)} сотрудников. Заполните обязательные данные.')
+    return redirect(f'{reverse("personnel:recruitment_arrival_bulk_edit",args=[batch])}?back=ready')
+
+
+@login_required
 @require_http_methods(['GET','POST'])
 def bulk_arrival_edit(request,batch):
     require_roles(request.user,service.DISPATCH)
@@ -437,13 +463,15 @@ def bulk_arrival_edit(request,batch):
         approval_batch=batch,kind='ARRIVAL').select_related('person','construction_object','to_camp').order_by('person__full_name','pk'))
     if not rows:raise Http404('Черновик пакетной заявки не найден.')
     submitted=any(row.status!='OPEN' for row in rows)
+    return_to=request.GET.get('back') or request.POST.get('back')
+    return_to='ready' if return_to=='ready' else ''
     action=request.POST.get('action') if request.method=='POST' else ''
     if request.method=='POST' and action=='cancel' and not submitted:
         try:service.cancel_bulk_arrival_draft(request.user,batch,request.POST.get('reason',''))
         except ValidationError as exc:messages.error(request,'; '.join(exc.messages))
         else:
             messages.success(request,'Пакетный черновик отменён. Сотрудники возвращены в рекомендации.')
-            return redirect('personnel:new_employee_arrivals')
+            return redirect('personnel:recruitment_ready' if return_to=='ready' else 'personnel:new_employee_arrivals')
     confirm=action=='submit'
     initial_object=rows[0].construction_object_id if len({row.construction_object_id for row in rows})==1 else None
     initial_camp=rows[0].to_camp_id if len({row.to_camp_id for row in rows})==1 else None
@@ -481,7 +509,8 @@ def bulk_arrival_edit(request,batch):
     approval_task=WorkTask.objects.filter(company=request.user.company,key=f'personnel-movement-batch:{batch}').first()
     return render(request,'personnel/recruitment_arrival_bulk.html',{**context(request.user),'personnel_section':'movements',
         'batch':batch,'rows':rows,'common_form':common,'row_forms':row_forms,'submitted':submitted,
-        'project_camps':{key:sorted(value) for key,value in project_camps.items()},'approval_task':approval_task})
+        'project_camps':{key:sorted(value) for key,value in project_camps.items()},'approval_task':approval_task,
+        'return_to':return_to})
 
 
 @login_required

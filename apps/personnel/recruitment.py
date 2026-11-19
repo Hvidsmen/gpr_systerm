@@ -329,6 +329,7 @@ def bulk_prepare_arrivals(user, candidate_ids):
         base_city=candidate.pool_candidate.base_city.name if candidate.pool_candidate_id and candidate.pool_candidate.base_city_id else source.get('base_city','')
         request=MovementReviewRequest.objects.create(company=user.company,person=person,kind='ARRIVAL',movement_date=prep.expected_on,
             to_camp=prep.camp,requested_by=user,source='DISPATCHER',status='OPEN',employment_kind='NEW',approval_batch=batch,
+            pool_candidate=candidate.pool_candidate,
             planning_position_name=row.position,position_name=row.position,construction_object=row.construction_object,
             site_object=row.construction_object,site=row.construction_object.name,base_city=base_city,
             phone=(prep.employee.phone if prep.employee_id else '') or candidate.phone,travel_status='Черновик',
@@ -336,6 +337,51 @@ def bulk_prepare_arrivals(user, candidate_ids):
         prep.movement_request=request;prep.save(update_fields=['movement_request','updated_at']);prepared.append(prep)
         audit(user,row,'Создан черновик пакетной заявки на заезд.',candidate)
     return batch,prepared
+
+
+@transaction.atomic
+def bulk_prepare_pool_arrivals(user,pool_candidate_ids):
+    """Create one editable arrival batch directly from transferred pool cards."""
+    serialize(user,DISPATCH)
+    try:ids=list(dict.fromkeys(int(value) for value in pool_candidate_ids))
+    except (TypeError,ValueError):raise ValidationError('Некорректный список сотрудников.')
+    if not ids:raise ValidationError('Выберите хотя бы одного сотрудника.')
+    pools=list(TalentPoolCandidate.objects.select_for_update().select_related(
+        'position','construction_object','camp','base_city').filter(company=user.company,pk__in=ids))
+    if len(pools)!=len(ids):raise ValidationError('Один из выбранных сотрудников больше недоступен.')
+    by_id={row.pk:row for row in pools}
+    active_pool_ids=set(MovementReviewRequest.objects.filter(company=user.company,kind='ARRIVAL').exclude(
+        status='CANCELLED').filter(pool_candidate_id__in=ids).values_list('pool_candidate_id',flat=True))
+    active_pool_ids.update(MovementReviewRequest.objects.filter(company=user.company,kind='ARRIVAL').exclude(
+        status='CANCELLED').filter(recruitment_arrival__candidate__pool_candidate_id__in=ids).values_list(
+            'recruitment_arrival__candidate__pool_candidate_id',flat=True))
+    batch=uuid4();requests=[]
+    for pool_id in ids:
+        pool=by_id[pool_id]
+        if pool.stage!='TRANSFERRED':raise ValidationError(f'{pool.full_name}: сотрудник ещё не поставлен на заезд.')
+        if pool.pk in active_pool_ids:raise ValidationError(f'{pool.full_name}: заявка на заезд уже создана.')
+        application=RecruitmentCandidate.objects.select_for_update().select_related(
+            'request__construction_object','arrival__movement_request').filter(company=user.company,pool_candidate=pool).order_by(
+                '-created_at','-pk').first()
+        prep=getattr(application,'arrival',None) if application else None
+        if prep and (prep.status=='CANCELLED' or prep.movement_request_id):prep=None
+        construction_object=pool.construction_object or (application.request.construction_object if application else None)
+        position=(pool.position.name if pool.position_id else
+            application.request.position if application else (pool.source_data or {}).get('position',''))
+        camp=pool.camp or (prep.camp if prep else None)
+        movement_date=pool.ready_for_arrival_on or (application.ready_on if application else None) or timezone.localdate()
+        person=Person.objects.create(company=user.company,full_name=pool.full_name,phone=pool.phone)
+        request=MovementReviewRequest.objects.create(company=user.company,person=person,pool_candidate=pool,kind='ARRIVAL',
+            movement_date=movement_date,to_camp=camp,requested_by=user,source='DISPATCHER',status='OPEN',employment_kind='NEW',
+            approval_batch=batch,planning_position_name=position,position_name=position,construction_object=construction_object,
+            site_object=construction_object,site=construction_object.name if construction_object else '',
+            base_city=pool.base_city.name if pool.base_city_id else (pool.source_data or {}).get('base_city',''),phone=pool.phone,
+            travel_status='Черновик',note='Сотрудник из Банка сотрудников. '+pool.notes)
+        if prep:
+            prep.movement_request=request;prep.save(update_fields=['movement_request','updated_at'])
+            audit(user,application.request,'Создан черновик пакетной заявки на заезд.',application)
+        requests.append(request)
+    return batch,requests
 
 
 @transaction.atomic

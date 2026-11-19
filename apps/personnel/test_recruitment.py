@@ -12,7 +12,8 @@ from apps.accounts.models import Company, Role, User
 from apps.projects.models import Project, ConstructionObject
 from apps.resources.models import Employee,Position
 from .models import (Camp, CampObjectLink, CampStay, Person, RecruitmentRequest,
-                     RecruitmentCandidate, ArrivalPreparation, CandidateDocument, HousingEvent,BaseCity)
+                     RecruitmentCandidate, ArrivalPreparation, CandidateDocument, HousingEvent,BaseCity,
+                     MovementReviewRequest)
 from . import recruitment as service
 
 
@@ -658,6 +659,29 @@ class RecruitmentTests(TestCase):
         self.assertLess(content.index('>Проект</label>'),content.index('>ВЖГ</label>'))
         self.assertLess(content.index('>ВЖГ</label>'),content.index('>Сотрудник</label>'))
         self.assertLess(content.index('>Сотрудник</label>'),content.index('>Должность</label>'))
+        self.assertNotContains(page,'Оформить заявку на заезд')
+        self.client.force_login(self.dispatch)
+        dispatcher_page=self.client.get(reverse('personnel:recruitment_ready'),{
+            'project':[self.obj.pk],'camp':[self.camp.pk],'q':'Поставленный','position':[self.position.pk]})
+        self.assertContains(dispatcher_page,'Оформить заявку на заезд')
+        self.assertContains(dispatcher_page,'Оформить выбранных одной заявкой')
+        response=self.client.post(reverse('personnel:recruitment_ready_arrival_bulk'),{
+            'selected':[ready.pk,other_ready.pk]})
+        arrivals=list(MovementReviewRequest.objects.filter(pool_candidate_id__in=[ready.pk,other_ready.pk]).order_by('pk'))
+        self.assertEqual(len(arrivals),2);self.assertEqual(len({row.approval_batch for row in arrivals}),1)
+        self.assertTrue(response.url.startswith(reverse('personnel:recruitment_arrival_bulk_edit',args=[arrivals[0].approval_batch])))
+        refreshed=self.client.get(reverse('personnel:recruitment_ready'),{
+            'project':[self.obj.pk],'camp':[self.camp.pk],'q':'Поставленный','position':[self.position.pk]})
+        self.assertContains(refreshed,'Заявка на заезд оформлена');self.assertContains(refreshed,'Открыть заявку')
+        self.assertNotContains(refreshed,'Оформить заявку на заезд')
+        duplicate=self.client.post(reverse('personnel:recruitment_ready_arrival_bulk'),{'selected':[ready.pk]})
+        self.assertRedirects(duplicate,reverse('personnel:recruitment_ready'),fetch_redirect_response=False)
+        self.assertEqual(MovementReviewRequest.objects.filter(pool_candidate_id__in=[ready.pk,other_ready.pk]).count(),2)
+        service.cancel_bulk_arrival_draft(self.dispatch,arrivals[0].approval_batch,'Изменился план')
+        ready.refresh_from_db();other_ready.refresh_from_db()
+        self.assertEqual(ready.stage,'READY');self.assertEqual(other_ready.stage,'READY')
+        self.client.force_login(self.recruiter)
+        self.assertEqual(self.client.post(reverse('personnel:recruitment_ready_arrival_bulk'),{'selected':[ready.pk]}).status_code,403)
 
     def test_shop_compares_position_plan_with_every_funnel_tab_and_exact_request(self):
         from .models import TalentPoolCandidate

@@ -150,7 +150,7 @@ def check_route(user, match, method):
         raise PermissionDenied('Роли банка сотрудников работают только с заявками на подбор, кандидатами и рекрутерами.')
     if namespace == 'personnel' and name.startswith('recruitment_'):
         from apps.personnel.recruitment import ASSIGN,READ, DISPATCH, RECRUIT
-        write_roles = ASSIGN if name in {'recruitment_specialist_create','recruitment_specialist_edit','recruitment_specialist_delete'} else DISPATCH if name in {'recruitment_create','recruitment_edit','recruitment_arrival'} else RECRUIT if name in {'recruitment_candidate_create','recruitment_candidate_edit','recruitment_candidate_stage','recruitment_handoff','recruitment_pool_create','recruitment_pool_edit','recruitment_pool_import'} else READ
+        write_roles = ASSIGN if name in {'recruitment_specialist_create','recruitment_specialist_edit','recruitment_specialist_delete'} else DISPATCH if name in {'recruitment_create','recruitment_edit','recruitment_arrival','recruitment_ready_arrival_bulk'} else RECRUIT if name in {'recruitment_candidate_create','recruitment_candidate_edit','recruitment_candidate_stage','recruitment_handoff','recruitment_pool_create','recruitment_pool_edit','recruitment_pool_import'} else READ
         require_roles(user, write_roles)
         return
     if role == FUEL_WAREHOUSE:
