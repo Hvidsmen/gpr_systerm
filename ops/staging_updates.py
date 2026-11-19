@@ -106,6 +106,15 @@ def record_detail(root,job,label):
         output.write((now()+' TEST update: '+label+'\n').encode('utf-8'))
 
 
+def record_failure(root, job, error):
+    """Persist the actionable exception before the terminal state hides detail."""
+    detail = ' '.join(str(error).split()) or error.__class__.__name__
+    detail = detail[:1000]
+    job['detail'] = detail
+    with (runtime(root) / 'prepare.log').open('ab', buffering=0) as output:
+        output.write((now() + ' TEST update: FAILED ' + detail + '\n').encode('utf-8'))
+
+
 def now():
     return datetime.now(timezone.utc).isoformat()
 
@@ -163,7 +172,10 @@ def state(root):
     detail=job.get('detail') if phase in {'preparing','applying'} else None
     message = detail or STAGES.get(phase, messages.get(phase, messages['idle']))
     if phase=='error' and job.get('failed_stage')=='preparing':
-        message='Подготовка новой версии не завершена; установленная версия не изменена. Подробности: .runtime/prepare.log.'
+        message='Подготовка новой версии не завершена; установленная версия не изменена.'
+        if job.get('failed_detail'):
+            message += ' Причина: ' + job['failed_detail']
+        message += ' Подробности: .runtime/prepare.log.'
     if phase == 'done' and job.get('kind') == 'refresh':
         message = 'Данные теста обновлены.'
     if not ready and phase == 'idle':
@@ -397,8 +409,9 @@ def process_job(root, child, job, parent_gone):
         # installed successfully, leaving port 8002 down.  The supervisor code
         # itself is refreshed on the next ordinary task restart; serving the
         # selected release does not require stopping this healthy child.
-    except Exception:
+    except Exception as error:
         logging.exception('Acceptance web update failed')
+        record_failure(root, job, error)
         recovery = (runtime(root) / 'staging-recovery.json').exists()
         progress('recovery' if recovery else 'error')
         if recovery:

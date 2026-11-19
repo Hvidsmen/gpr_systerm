@@ -83,6 +83,10 @@ class StagingPreflightTests(TestCase):
         self.manage.assert_called_once()
         stored=json.loads((self.root/'.runtime/staging-update.json').read_text(encoding='utf-8'))
         self.assertEqual(stored['state'],'error');self.assertEqual(stored['failed_stage'],'preparing')
+        self.assertEqual(stored['failed_detail'],'synthetic stalled check')
+        self.assertIn('TEST update: FAILED synthetic stalled check',(self.root/'.runtime/prepare.log').read_text(encoding='utf-8'))
+        with singleton(self.root/'.runtime/staging-supervisor.lock'):
+            self.assertIn('Причина: synthetic stalled check',staging_updates.state(self.root)['message'])
         self.assertEqual(self.value(),'before preparation');self.assertEqual(staging.manifest(self.root)['revision'],self.old)
         self.assertFalse((self.root/'.runtime/releases'/self.new).exists());self.assertEqual(list((self.root/'.runtime').glob('candidate-*.json')),[])
 
