@@ -1,5 +1,8 @@
+from datetime import datetime
+
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 from .test_user_filters import UserFilterTests
 from .forms import CompanyUserAccessForm, CompanyUserCreateForm
 from .models import User, Role
@@ -8,6 +11,25 @@ from apps.projects.models import Project, ConstructionObject
 
 class UserAdminUITests(TestCase):
     setUp = UserFilterTests.setUp
+
+    def test_user_list_shows_last_login_in_table_and_groups(self):
+        self.user.last_login = timezone.make_aware(
+            datetime(2026, 11, 19, 7, 45),
+            timezone.get_current_timezone(),
+        )
+        self.user.save(update_fields=['last_login'])
+        User.objects.create_user(
+            username='never-logged-in',
+            company=self.company,
+            role=self.role,
+        )
+
+        for params in ({}, {'view': 'tree'}):
+            with self.subTest(params=params):
+                page = self.client.get(self.url, params)
+                self.assertContains(page, 'Последний вход')
+                self.assertContains(page, '19.11.2026 07:45')
+                self.assertContains(page, 'Не входил')
 
     def test_ad_is_primary_and_local_form_shows_access_preview(self):
         page = self.client.get(self.url)
