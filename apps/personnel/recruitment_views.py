@@ -237,8 +237,6 @@ def request_list(request,recruitment_page='bank'):
     for value,label,stages in FUNNEL_GROUPS:
         groups.append({'value':value,'label':label,'count':sum(row['stage'] in stages for row in candidate_rows),
             'position_count':group_position_counts[value],'active':selected_group==value})
-    if selected_stages is not None:candidates=candidates.filter(stage__in=selected_stages)
-    candidate_page=Paginator(candidates.order_by('-updated_at','full_name','pk'),30).get_page(request.GET.get('candidate_page'))
     params=request.GET.copy();params.pop('page',None)
     funnel_params=request.GET.copy();funnel_params.pop('candidate_stage',None);funnel_params.pop('candidate_page',None);funnel_params.pop('page',None)
     position_options=Position.objects.filter(company=request.user.company).order_by('name','pk')
@@ -252,9 +250,9 @@ def request_list(request,recruitment_page='bank'):
         object_options.append({'pk':row.pk,'label':f'{row.project.name} → {" → ".join(reversed(names))}'})
     return render(request,'personnel/recruitment_list.html',{**context(request.user),'page':page,'filter_query':query,'filter_state':state,
         'recruitment_page':recruitment_page,
-        'pagination_query':params.urlencode(),'candidate_page':candidate_page,'funnel_groups':groups,'candidate_stage':selected_group,
+        'pagination_query':params.urlencode(),'funnel_groups':groups,'candidate_stage':selected_group,
         'candidate_total':candidate_total,'candidate_position_count':candidate_position_count,'position_summary':position_summary,
-        'candidate_stage_choices':TalentPoolCandidate._meta.get_field('stage').choices,'position_options':position_options,
+        'position_options':position_options,
         'camp_options':camp_options,'object_options':object_options,'selected_position_ids':selected_position_ids,
         'selected_camp_ids':selected_camp_ids,'selected_object_ids':selected_object_ids,'funnel_query':funnel_params.urlencode(),
         'pool_state':pool_state})

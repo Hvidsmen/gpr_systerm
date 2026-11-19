@@ -606,8 +606,8 @@ class RecruitmentTests(TestCase):
         self.assertContains(shop,reverse('personnel:recruitment_pool_create'))
         self.assertContains(shop,'Добавить кандидата')
         self.assertContains(shop,'Согласование руководителя');self.assertContains(shop,reverse('personnel:recruitment_candidate_card',args=[pool.pk]))
-        self.assertContains(shop,reverse('personnel:recruitment_candidate_stage',args=[pool.pk]))
-        self.assertContains(shop,'data-candidate-stage-form')
+        self.assertContains(shop,reverse('personnel:recruitment_candidate_inline',args=[pool.pk]))
+        self.assertNotContains(shop,'data-candidate-row=',html=False)
         requests=self.client.get(reverse('personnel:recruitment_requests'))
         self.assertContains(requests,'Заявки на подбор');self.assertContains(requests,'План найма · заявки на подбор')
         self.assertNotContains(requests,'Кандидаты по этапам')
@@ -617,18 +617,21 @@ class RecruitmentTests(TestCase):
         self.assertContains(card,f'Заявка №{candidate.request_id}');self.assertContains(card,'Кандидат: Согласование руководителя.')
         rejected=self.client.get(reverse('personnel:recruitment_list'),{'candidate_stage':'rejected'})
         self.assertNotContains(rejected,pool.full_name)
+        self.assertContains(rejected,'recruitment-funnel-card active',count=1,html=False)
 
     def test_recruitment_tabs_show_available_workspaces_and_actions(self):
         self.client.force_login(self.hr_head)
         page=self.client.get(reverse('personnel:recruitment_list'))
-        for label in ('Заявки на подбор','Готовы к заезду','Банк сотрудников','Добавить кандидата','Создать заявку','Пул кандидатов'):
+        for label in ('Заявки на подбор','Воронка кандидатов','Готовы к заезду','Все кандидаты','Рекрутеры','Добавить кандидата','Создать заявку'):
             self.assertContains(page,label)
+        self.assertContains(page,'class="recruitment-section-actions"',html=False)
+        self.assertNotContains(page,'recruitment-section-tab-action',html=False)
         self.assertContains(page,reverse('personnel:recruitment_ready'))
         self.assertNotContains(page,f'href="{reverse("personnel:new_employee_arrivals")}"',html=False)
         self.assertContains(page,reverse('personnel:recruitment_requests'))
         self.client.force_login(self.recruiter)
         recruiter_page=self.client.get(reverse('personnel:recruitment_list'))
-        self.assertContains(recruiter_page,'recruitment-section-tab-pool',html=False)
+        self.assertContains(recruiter_page,'Все кандидаты')
         self.assertContains(recruiter_page,reverse('personnel:recruitment_ready'))
         self.assertNotContains(recruiter_page,'Создать заявку')
 
@@ -646,12 +649,14 @@ class RecruitmentTests(TestCase):
         self.client.force_login(self.admin)
         page=self.client.get(reverse('personnel:recruitment_list'))
         self.assertContains(page,bulk_url);self.assertContains(page,'Удалить выбранных');self.assertContains(page,'В архив')
+        self.assertContains(page,'id="pool-admin-selected-count"',html=False)
         linked.stage='TRANSFERRED';linked.save(update_fields=['stage','updated_at'])
         ready_page=self.client.get(reverse('personnel:recruitment_ready'))
         self.assertNotContains(ready_page,bulk_url)
         self.assertNotContains(ready_page,'Выбрать все показанные карточки')
         self.assertNotContains(ready_page,'Выбрать для действий администратора')
         self.assertContains(ready_page,'Выбрать для заезда')
+        self.assertContains(ready_page,'id="ready-arrival-selected-count"',html=False)
         ready_inline=self.client.get(reverse('personnel:recruitment_candidate_inline',args=[linked.pk]),{'source':'ready'})
         self.assertNotContains(ready_inline,bulk_url)
         bank_inline=self.client.get(reverse('personnel:recruitment_candidate_inline',args=[linked.pk]),{'source':'bank'})
@@ -745,7 +750,7 @@ class RecruitmentTests(TestCase):
         self.assertEqual(summary['Водитель']['counts']['rejected'],1)
         groups={row['value']:row for row in shop.context['funnel_groups']}
         self.assertEqual((shop.context['candidate_position_count'],groups['work']['position_count'],groups['rejected']['position_count']),(2,1,1))
-        self.assertContains(shop,'План и воронка по должностям');self.assertContains(shop,'Последняя заявка:')
+        self.assertContains(shop,'План и воронка по должностям')
         self.assertContains(shop,'data-position-details-action="expand"',html=False);self.assertContains(shop,'data-position-details-action="collapse"',html=False)
         self.assertContains(shop,'data-position-toggle',html=False);self.assertContains(shop,'aria-expanded="true"',html=False)
         self.assertContains(shop,'data-candidate-inline-target',html=False)
@@ -803,8 +808,17 @@ class RecruitmentTests(TestCase):
         self.assertContains(response,'name="construction_object"',html=False)
         self.assertContains(response,'name="responsible_hr"',html=False)
         self.assertContains(response,'candidate-inline-compact-grid',html=False)
+        self.assertContains(response,'candidate-inline-form-row-primary',html=False)
+        self.assertContains(response,'candidate-inline-form-row-contact',html=False)
+        self.assertContains(response,'candidate-inline-form-row-readiness',html=False)
+        self.assertContains(response,'data-save-state="clean"',html=False)
+        self.assertContains(response,'data-candidate-save disabled',html=False)
         self.assertNotContains(response,'Свернуть')
         self.assertContains(response,'>Сохранить<',html=False)
+        invalid=self.client.post(url,{'full_name':'','stage':'SCREENING','phone':'','notes':''})
+        self.assertEqual(invalid.status_code,422)
+        self.assertContains(invalid,'data-save-state="error"',html=False,status_code=422)
+        self.assertContains(invalid,'Исправьте ошибки и сохраните.',status_code=422)
         response=self.client.post(url,{
             'full_name':'Изменённый кандидат','stage':'SCREENING','stage_reason':'Повторная проверка',
             'position':self.position.pk,'construction_object':self.obj.pk,'camp':self.camp.pk,
@@ -812,7 +826,7 @@ class RecruitmentTests(TestCase):
             'base_city':self.base_city.pk,'new_base_city':'','ready_for_arrival_on':'',
             'manager_approved_on':'','security_approved_on':'','medical_exam_on':'','skzi_until':'',
             'pass_documents':'','responsible_hr':'','agency':'','notes':'Изменено на главной'})
-        self.assertEqual(response.status_code,200);self.assertContains(response,'Карточка сохранена.')
+        self.assertEqual(response.status_code,200);self.assertContains(response,'Сохранено.')
         pool.refresh_from_db()
         self.assertEqual((pool.full_name,pool.stage,pool.phone, pool.notes),
             ('Изменённый кандидат','SCREENING','89990000000','Изменено на главной'))

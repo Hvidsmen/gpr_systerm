@@ -20,6 +20,17 @@
   function initializeInlineForm(root){
     if(!root||root.dataset.inlineInitialized==='true')return;
     root.dataset.inlineInitialized='true';
+    const form=root.querySelector('[data-candidate-inline-form]');
+    const card=root.querySelector('[data-candidate-inline-card]');
+    const status=form?.querySelector('[data-candidate-inline-status]');
+    const save=form?.querySelector('[data-candidate-save]');
+    const markDirty=function(){
+      if(!form||!card||card.dataset.saveState==='saving')return;
+      card.dataset.saveState='dirty';card.classList.add('is-dirty');card.classList.remove('is-save-error');
+      if(status)status.textContent='Есть несохранённые изменения';
+      if(save)save.disabled=false;
+    };
+    if(form){form.addEventListener('input',markDirty);form.addEventListener('change',markDirty);}
     [
       ['ready_for_arrival','ready_for_arrival_on'],
       ['manager_approved','manager_approved_on'],
@@ -86,6 +97,7 @@
     if(positionRow){setPositionOpen(positionRow,positionRow.getAttribute('aria-expanded')!=='true');return;}
     const link=event.target.closest('[data-recruitment-stage-link]');
     if(!link||event.button!==0||event.ctrlKey||event.metaKey||event.shiftKey||event.altKey)return;
+    if(document.querySelector('[data-candidate-inline-card][data-save-state="dirty"]')&&!window.confirm('Есть несохранённые изменения в карточке. Перейти без сохранения?'))return;
     event.preventDefault();replaceFunnel(link.href,true);
   });
   document.addEventListener('keydown',function(event){
@@ -99,7 +111,8 @@
       event.preventDefault();
       const button=inlineForm.querySelector('button[type="submit"]');const status=inlineForm.querySelector('[data-candidate-inline-status]');
       const target=inlineForm.closest('[data-candidate-inline-target]');
-      if(button)button.disabled=true;if(status)status.textContent='Сохраняем…';error('');
+      const card=inlineForm.closest('[data-candidate-inline-card]');
+      if(card)card.dataset.saveState='saving';if(button)button.disabled=true;if(status)status.textContent='Сохраняется…';error('');
       try{
         const response=await fetch(inlineForm.action,{method:'POST',body:new FormData(inlineForm),credentials:'same-origin',headers:{'X-Requested-With':'XMLHttpRequest'}});
         const html=await response.text();
@@ -111,9 +124,9 @@
         if(refreshedTarget){
           const people=refreshedTarget.closest('.position-people-row');if(people)setPositionOpen(people.previousElementSibling,true);
           await loadInlineTarget(refreshedTarget,true);
-          const refreshedStatus=refreshedTarget.querySelector('[data-candidate-inline-status]');if(refreshedStatus)refreshedStatus.textContent='Карточка сохранена.';
+          const refreshedStatus=refreshedTarget.querySelector('[data-candidate-inline-status]');if(refreshedStatus)refreshedStatus.textContent='Сохранено.';
         }
-      }catch(reason){if(button)button.disabled=false;if(status)status.textContent='';error(reason.message||'Не удалось сохранить карточку.');}
+      }catch(reason){if(card){card.dataset.saveState='dirty';card.classList.add('is-dirty');}if(button)button.disabled=false;if(status)status.textContent='Не сохранено. Повторите.';error(reason.message||'Не удалось сохранить карточку.');}
       return;
     }
     const form=event.target.closest('[data-candidate-stage-form]');if(!form)return;
@@ -126,6 +139,10 @@
       if(!response.ok)throw new Error(payload.error||'Не удалось изменить этап.');
       status.textContent='Сохранено';await replaceFunnel(location.href,false);
     }catch(reason){button.disabled=false;status.textContent='';error(reason.message||'Не удалось изменить этап.');}
+  });
+  window.addEventListener('beforeunload',function(event){
+    if(!document.querySelector('[data-candidate-inline-card][data-save-state="dirty"]'))return;
+    event.preventDefault();event.returnValue='';
   });
   window.addEventListener('popstate',function(){if(funnel())replaceFunnel(location.href,false);});
   observeInlineCards(funnel());

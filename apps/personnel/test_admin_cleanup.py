@@ -28,7 +28,7 @@ class PersonnelAdminCleanupTests(TestCase):
         self.client.force_login(self.admin)
         response=self.client.get(self.url)
         self.assertContains(response,'Администрирование персонала')
-        self.assertContains(response,'Пул кандидатов')
+        self.assertContains(response,'Все кандидаты')
 
     def test_confirmation_is_required(self):
         self.client.force_login(self.admin)
