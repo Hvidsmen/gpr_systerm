@@ -1,6 +1,7 @@
 """Plan-role assignments with an explicit actual employee state."""
 from django import forms
 from datetime import timedelta
+from urllib.parse import urlencode
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError, ObjectDoesNotExist
@@ -13,13 +14,25 @@ from django.views.decorators.http import require_http_methods
 from apps.accounts.models import Company
 from apps.resources.models import Employee, Brigade
 from apps.projects.models import ConstructionObject
-from .models import Board, Person, StaffingGroup, StaffingSlot, ShiftPattern, Camp, CampStay, HousingEvent
+from .models import CAMP_STAY_OVERLAP_ERROR, Board, Person, StaffingGroup, StaffingSlot, ShiftPattern, Camp, CampStay, HousingEvent
 from core.fact_history import history_actor
 from . import housing
 from .views import access
 from .employee_widgets import RemoteEmployeeSelect
 
 REMOVED_ASSIGNMENT_SCHEDULE_COMMENT='График сохранён при удалении назначения.'
+
+
+def conflict_employee_links(company,employee):
+    """Direct a failed assignment to the employee's dispatcher records."""
+    person=Person.objects.filter(company=company,employee=employee).first()
+    if not person:return None
+    stay=person.stays.filter(cancelled_at=None).select_related('camp').order_by('-arrived_on','-pk').first()
+    dispatcher_url=''
+    if stay:
+        query=urlencode({'camp':stay.camp_id,'q':employee.employee_number or employee.display_name})
+        dispatcher_url=reverse('personnel:housing')+'?'+query+'#roster'
+    return {'dispatcher_url':dispatcher_url,'history_url':reverse('personnel:housing_history',args=[person.pk])}
 
 
 def object_scope(obj):
@@ -332,15 +345,19 @@ def edit(request,pk=None):
             valid=initial_form.is_valid() and valid
         elif request.POST.get('initial-state'):
             form.add_error(None,'Начальное состояние уже введено. Используйте историю и заезд / выезд.');valid=False
+    conflict_links=None
     if request.method=='POST' and valid:
         try:saved=save_assignment(request.user,form.cleaned_data,pk,initial_form.cleaned_data if initial_form else None)
-        except (ValidationError,IntegrityError,ObjectDoesNotExist) as exc:form.add_error(None,'; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Данные изменились одновременно. Обновите страницу.')
+        except (ValidationError,IntegrityError,ObjectDoesNotExist) as exc:
+            form.add_error(None,'; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Данные изменились одновременно. Обновите страницу.')
+            if isinstance(exc,ValidationError) and CAMP_STAY_OVERLAP_ERROR in exc.messages:
+                conflict_links=conflict_employee_links(request.user.company,form.cleaned_data['employee'])
         else:
             messages.success(request,'Назначение и начальное состояние сохранены.' if initial_form and initial_form.cleaned_data.get('state') else 'Сотрудник назначен. Фактический заезд оформляется отдельно.')
             return redirect(reverse('personnel:housing')+f'?camp={saved.housing_camp_id}#roster')
     if historical:
         for field in form.fields.values():field.disabled=True
-    return render(request,'personnel/plan_assignment.html',{'form':form,'initial_form':initial_form,'row':row,'historical':historical,'personnel_section':'management','title':'Удалённое назначение' if row and row.cancelled_at else 'Прежнее назначение' if historical else 'Изменить назначение' if row else 'Назначить сотрудника'})
+    return render(request,'personnel/plan_assignment.html',{'form':form,'initial_form':initial_form,'row':row,'historical':historical,'conflict_links':conflict_links,'personnel_section':'management','title':'Удалённое назначение' if row and row.cancelled_at else 'Прежнее назначение' if historical else 'Изменить назначение' if row else 'Назначить сотрудника'})
 
 
 @login_required

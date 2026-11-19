@@ -5,7 +5,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 from apps.resources.models import Brigade
-from .models import StaffingSlot,CampStay,HousingEvent,ShiftPattern
+from .models import CAMP_STAY_OVERLAP_ERROR,StaffingSlot,CampStay,HousingEvent,ShiftPattern
 from .rotation import rotation_rows
 
 
@@ -93,6 +93,19 @@ class AssignmentInitialStateTests(TestCase):
         with patch('apps.personnel.plan_assignments.HousingEvent.objects.create',side_effect=ValidationError('event failed')):
             self.assertContains(self.post('MV',self.day),'event failed')
         self.assertFalse(StaffingSlot.objects.filter(planning_position=self.role).exists());self.assertFalse(CampStay.objects.filter(person=self.second_person).exists())
+
+    def test_overlapping_stay_error_links_to_employee_in_dispatcher(self):
+        existing=CampStay.objects.create(company=self.company,person=self.second_person,camp=self.b,
+            arrived_on=self.day-timedelta(days=10),comment='Текущее размещение')
+        with patch('apps.personnel.plan_assignments.save_assignment',side_effect=ValidationError(CAMP_STAY_OVERLAP_ERROR)):
+            response=self.post('MV',self.day)
+        links=response.context['conflict_links']
+        self.assertIn(f'camp={existing.camp_id}',links['dispatcher_url'])
+        self.assertIn('q=002',links['dispatcher_url'])
+        self.assertEqual(links['history_url'],reverse('personnel:housing_history',args=[self.second_person.pk]))
+        self.assertContains(response,'Открыть сотрудника в диспетчерской')
+        self.assertContains(response,'Открыть историю размещений')
+        self.assertContains(self.client.get(links['dispatcher_url']),self.second_employee.display_name)
 
     def test_normal_next_arrival_after_initial_rest_works_and_does_not_reseed(self):
         from . import housing

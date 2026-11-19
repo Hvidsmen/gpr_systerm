@@ -6,6 +6,7 @@ from core.models import BaseCompanyModel
 
 
 DISPATCHER_BULK_CLEANUP_REASON = 'Административная массовая очистка диспетчерской'
+CAMP_STAY_OVERLAP_ERROR = 'У сотрудника уже есть размещение на этот период. Оформите перевод или исправьте историю.'
 
 
 class PersonnelModel(BaseCompanyModel):
@@ -215,7 +216,7 @@ class CampStay(ActualHistoryMixin, PersonnelModel):
         if not self.cancelled_at and self.arrived_on and self.departed_on != self.arrived_on:
             overlapping=type(self).objects.filter(company_id=self.company_id,person_id=self.person_id,cancelled_at=None).exclude(pk=self.pk).exclude(departed_on=models.F('arrived_on')).filter(models.Q(departed_on=None)|models.Q(departed_on__gt=self.arrived_on))
             if self.departed_on:overlapping=overlapping.filter(arrived_on__lt=self.departed_on)
-            if overlapping.exists():raise ValidationError('У сотрудника уже есть размещение на этот период. Оформите перевод или исправьте историю.')
+            if overlapping.exists():raise ValidationError(CAMP_STAY_OVERLAP_ERROR)
     def __str__(self):return f'{self.person} · {self.camp} · {self.arrived_on}'
 
 
