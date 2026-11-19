@@ -14,7 +14,8 @@ from .recruitment_models import POOL_UNAVAILABLE_STAGES,RECRUITMENT_SYSTEM_STAGE
 DISPATCH = {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'}
 RECRUIT = {'ADMIN','HR_HEAD','RECRUITMENT_HEAD','RECRUITER'}
 ASSIGN = {'ADMIN','HR_HEAD','RECRUITMENT_HEAD'}
-READ = DISPATCH | RECRUIT
+ARRIVAL_PROCESSORS = DISPATCH | {'PEREVAKHTA_SPECIALIST'}
+READ = DISPATCH | RECRUIT | {'PEREVAKHTA_SPECIALIST'}
 EDITABLE_CANDIDATE_STAGES={value for value,_ in RecruitmentCandidate.STATES}-RECRUITMENT_SYSTEM_STAGES
 ACTIVE_CANDIDATE_STAGES={value for value,_ in RecruitmentCandidate.STATES}-RECRUITMENT_TERMINAL_STAGES-{'RESERVE','ARRIVED'}
 
@@ -344,7 +345,7 @@ def bulk_prepare_arrivals(user, candidate_ids):
 @transaction.atomic
 def bulk_prepare_pool_arrivals(user,pool_candidate_ids):
     """Create one editable arrival batch directly from transferred pool cards."""
-    serialize(user,DISPATCH)
+    serialize(user,ARRIVAL_PROCESSORS)
     try:ids=list(dict.fromkeys(int(value) for value in pool_candidate_ids))
     except (TypeError,ValueError):raise ValidationError('Некорректный список сотрудников.')
     if not ids:raise ValidationError('Выберите хотя бы одного сотрудника.')
@@ -388,7 +389,7 @@ def bulk_prepare_pool_arrivals(user,pool_candidate_ids):
 
 @transaction.atomic
 def save_bulk_arrival_draft(user,batch,construction_object,camp,row_values,submit=False):
-    serialize(user,DISPATCH)
+    serialize(user,ARRIVAL_PROCESSORS)
     requests=list(MovementReviewRequest.objects.select_for_update().filter(company=user.company,requested_by=user,
         approval_batch=batch,kind='ARRIVAL').select_related('person').order_by('pk'))
     if not requests:raise ValidationError('Черновик пакетной заявки не найден.')
@@ -415,7 +416,7 @@ def save_bulk_arrival_draft(user,batch,construction_object,camp,row_values,submi
 
 @transaction.atomic
 def cancel_bulk_arrival_draft(user,batch,reason):
-    serialize(user,DISPATCH);reason=reason.strip()
+    serialize(user,ARRIVAL_PROCESSORS);reason=reason.strip()
     if not reason:raise ValidationError('Укажите причину отмены черновика.')
     requests=list(MovementReviewRequest.objects.select_for_update().filter(company=user.company,requested_by=user,
         approval_batch=batch,kind='ARRIVAL').order_by('pk'))

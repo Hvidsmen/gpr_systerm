@@ -376,7 +376,7 @@ def leave_hub(user,row,day):
 
 @transaction.atomic
 def arrive_camp(user,row,day):
-    if role_code(user) not in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'}:raise PermissionDenied('Прибытие в ВЖГ фиксирует диспетчер по персоналу.')
+    if role_code(user) not in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER','PEREVAKHTA_SPECIALIST'}:raise PermissionDenied('Прибытие в ВЖГ фиксирует диспетчер по персоналу или специалист перевахты.')
     row=MovementReviewRequest.objects.select_for_update().select_related('person__employee','to_camp').get(pk=row.pk,company=user.company)
     if row.kind!='ARRIVAL' or row.status!='EN_ROUTE':raise ValidationError('Фактический заезд доступен после отправления сотрудника из ОП Дудинка.')
     from . import housing

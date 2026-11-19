@@ -92,6 +92,7 @@ def context(user):
         'funnel':pool['all'],'ready':pool['ready'],
         'specialists':RecruitmentSpecialist.objects.filter(company=user.company,is_active=True).count()}
     return {'personnel_section':'recruitment','can_dispatch':role in service.DISPATCH,'can_recruit':role in service.RECRUIT,
+        'can_prepare_arrivals':role in service.ARRIVAL_PROCESSORS,
         'can_administer_pool':role=='ADMIN','recruitment_counts':counts}
 
 
@@ -535,7 +536,7 @@ def bulk_arrival_handoff(request):
 @login_required
 @require_POST
 def ready_arrival_handoff(request):
-    require_roles(request.user,service.DISPATCH)
+    require_roles(request.user,service.ARRIVAL_PROCESSORS)
     try:
         batch,requests=service.bulk_prepare_pool_arrivals(request.user,request.POST.getlist('selected'))
     except (ValidationError,IntegrityError) as exc:
@@ -584,7 +585,7 @@ def pool_bulk_action(request):
 @login_required
 @require_http_methods(['GET','POST'])
 def bulk_arrival_edit(request,batch):
-    require_roles(request.user,service.DISPATCH)
+    require_roles(request.user,service.ARRIVAL_PROCESSORS)
     rows=list(MovementReviewRequest.objects.filter(company=request.user.company,requested_by=request.user,
         approval_batch=batch,kind='ARRIVAL').select_related('person','construction_object','to_camp').order_by('person__full_name','pk'))
     if not rows:raise Http404('Черновик пакетной заявки не найден.')

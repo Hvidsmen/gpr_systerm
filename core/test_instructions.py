@@ -11,9 +11,9 @@ class InstructionsTests(TestCase):
     def setUpTestData(cls):
         cls.company=Company.objects.create(name='Учебная компания');project=Project.objects.create(company=cls.company,name='Учебный проект');cls.obj=ConstructionObject.objects.create(company=cls.company,project=project,name='Учебный объект');cls.camp=Camp.objects.create(company=cls.company,name='Учебный ВЖГ');CampObjectLink.objects.create(company=cls.company,camp=cls.camp,construction_object=cls.obj)
         cls.users={}
-        for code in ['ADMIN','DISPATCHER','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER','COMMANDANT','FUEL_WAREHOUSE','OBSERVER']:
+        for code in ['ADMIN','DISPATCHER','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER','COMMANDANT','FUEL_WAREHOUSE','OBSERVER','RECRUITER','RECRUITMENT_HEAD','PEREVAKHTA_SPECIALIST']:
             user=User.objects.create_user(username='help-'+code,company=cls.company,role=Role.objects.get(code=code));user.assigned_objects.add(cls.obj);cls.users[code]=user
-    def test_all_requested_roles_can_read_all_ten_guides_and_search_in_russian(self):
+    def test_all_requested_roles_can_read_all_guides_and_search_in_russian(self):
         for user in self.users.values():
             self.client.force_login(user);self.assertContains(self.client.get(reverse('instructions:index')),'По ролям')
             for guide in GUIDES:
@@ -40,3 +40,11 @@ class InstructionsTests(TestCase):
         self.assertIn('по 50 записей',content('lodging'));self.assertIn('журнал загружается только при раскрытии',content('fuel'));self.assertIn('группы техники сначала свёрнуты',content('transport'))
         rotation=content('rotation');self.assertIn('Дата в заявке плановая',rotation);self.assertIn('нажмите «Создать заявку»',rotation);self.assertNotIn('Сохранить перемещение',rotation)
         personnel=content('role-personnel');self.assertIn('руководитель проекта ИЛИ начальник участка',personnel);self.assertIn('шесть параллельных согласований',personnel)
+        self.assertIn('назначьте рекрутера',content('role-recruitment-head'))
+        self.assertIn('Поставлены на заезд',content('role-recruiter'))
+        perevakhta=content('role-perevakhta-recruitment');self.assertIn('участие диспетчера',perevakhta);self.assertIn('Оформить выбранных одной заявкой',perevakhta)
+
+    def test_bank_roles_receive_their_own_recommended_instructions(self):
+        for role,slug in [('RECRUITMENT_HEAD','role-recruitment-head'),('RECRUITER','role-recruiter'),('PEREVAKHTA_SPECIALIST','role-perevakhta-recruitment')]:
+            self.client.force_login(self.users[role]);page=self.client.get(reverse('instructions:index'))
+            self.assertEqual(page.context['recommended']['slug'],slug)

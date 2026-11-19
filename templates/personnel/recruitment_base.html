@@ -1,4 +1,4 @@
 {% extends 'base.html' %}{% load static %}
 {% block extra_css %}<link rel="stylesheet" href="{% static 'personnel/recruitment.css' %}?v=20261119-pagination-ux">{% endblock %}
-{% block content %}<h1>Банк сотрудников</h1>{% include 'personnel/_personnel_sections.html' %}{% include 'personnel/_recruitment_tabs.html' %}{% block recruitment_content %}{% endblock %}{% endblock %}
+{% block content %}<div class="fact-page-heading"><h1>Банк сотрудников</h1>{% include 'core/_fact_help.html' with guide_slug='recruitment' guide_label='Банк сотрудников' %}</div>{% include 'personnel/_personnel_sections.html' %}{% include 'personnel/_recruitment_tabs.html' %}{% block recruitment_content %}{% endblock %}{% endblock %}
 {% block extra_js %}<script src="{% static 'personnel/recruitment_funnel.js' %}?v=20261119-bank-ux" defer></script>{% endblock %}

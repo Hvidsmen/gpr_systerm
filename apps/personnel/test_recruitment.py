@@ -36,6 +36,7 @@ class RecruitmentTests(TestCase):
         cls.recruiter=User.objects.create_user(username='recruiter',company=cls.company,role=Role.objects.get(code='RECRUITER'))
         cls.recruiter2=User.objects.create_user(username='recruiter2',company=cls.company,role=Role.objects.get(code='RECRUITER'))
         cls.recruitment_head=User.objects.create_user(username='recruitment-head',company=cls.company,role=Role.objects.get(code='RECRUITMENT_HEAD'))
+        cls.perevakhta=User.objects.create_user(username='recruitment-perevakhta',company=cls.company,role=Role.objects.get(code='PEREVAKHTA_SPECIALIST'))
         cls.admin=User.objects.create_user(username='recruitment-admin',company=cls.company,role=Role.objects.get(code='ADMIN'))
         cls.foreign=User.objects.create_user(username='recruit-foreign',company=cls.other,role=Role.objects.get(code='RECRUITER'))
         cls.foreign_hr_head=User.objects.create_user(username='hr-head-foreign',company=cls.other,role=Role.objects.get(code='HR_HEAD'))
@@ -818,6 +819,22 @@ class RecruitmentTests(TestCase):
         self.assertEqual(ready.stage,'READY');self.assertEqual(other_ready.stage,'READY')
         self.client.force_login(self.recruiter)
         self.assertEqual(self.client.post(reverse('personnel:recruitment_ready_arrival_bulk'),{'selected':[ready.pk]}).status_code,403)
+
+    def test_perevakhta_can_prepare_ready_candidate_without_dispatcher(self):
+        from .models import TalentPoolCandidate
+        ready=TalentPoolCandidate.objects.create(company=self.company,full_name='Готовый для перевахты',stage='TRANSFERRED',
+            position=self.position,construction_object=self.obj,camp=self.camp,base_city=self.base_city,phone='89990007766',created_by=self.recruiter)
+        self.client.force_login(self.perevakhta)
+        page=self.client.get(reverse('personnel:recruitment_ready'))
+        self.assertEqual(page.status_code,200);self.assertContains(page,ready.full_name)
+        self.assertContains(page,'Оформить заявку на заезд');self.assertContains(page,'Оформить выбранных одной заявкой')
+        response=self.client.post(reverse('personnel:recruitment_ready_arrival_bulk'),{'selected':[ready.pk]})
+        arrival=MovementReviewRequest.objects.get(pool_candidate=ready)
+        edit_url=reverse('personnel:recruitment_arrival_bulk_edit',args=[arrival.approval_batch])
+        self.assertTrue(response.url.startswith(edit_url));self.assertEqual(arrival.requested_by,self.perevakhta)
+        self.assertContains(self.client.get(edit_url),'Общие данные для всех сотрудников')
+        self.assertContains(self.client.get(reverse('personnel:my_movement_requests')),'Готовый для перевахты')
+        self.assertEqual(self.client.get(reverse('personnel:recruitment_create')).status_code,403)
 
     def test_shop_compares_position_plan_with_every_funnel_tab_and_exact_request(self):
         from .models import TalentPoolCandidate

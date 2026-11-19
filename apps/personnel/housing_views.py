@@ -973,7 +973,9 @@ def new_employee_arrivals(request):
 
 @login_required
 def my_movement_requests(request):
-    access(request)
+    from core.permissions import require_roles,role_code
+    require_roles(request.user,{'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER','PEREVAKHTA_SPECIALIST'})
+    request_role=role_code(request.user)
     from collections import OrderedDict
     from django.db.models import Prefetch
     from django.core.paginator import Paginator
@@ -1022,7 +1024,7 @@ def my_movement_requests(request):
         history_page=None
     grouped=OrderedDict();filtered_rows=[]
     for row in rows_for_groups:
-        row.can_cancel=not row.has_approved_stage() and row.status not in {'AT_HUB','EN_ROUTE','COMPLETED','CANCELLED'} and not row.event_id and not row.hub_arrived_on
+        row.can_cancel=request_role in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'} and not row.has_approved_stage() and row.status not in {'AT_HUB','EN_ROUTE','COMPLETED','CANCELLED'} and not row.event_id and not row.hub_arrived_on
         row.can_delete=False
         filtered_rows.append(row)
         key=str(row.approval_batch) if row.approval_batch else f'row-{row.pk}'

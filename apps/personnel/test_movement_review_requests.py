@@ -54,6 +54,17 @@ class MovementReviewRequestTests(TestCase):
         row.status='EN_ROUTE';row.hub_departed_on=day;row.save(update_fields=['status','hub_departed_on','updated_at'])
         with self.assertRaises(PermissionDenied):arrive_camp(manager,row,day)
 
+    def test_perevakhta_can_confirm_final_arrival_without_dispatcher(self):
+        from .departure_workflow import arrive_camp
+        perevakhta=User.objects.create_user(username='final-arrival-perevakhta',company=self.company,
+            role=Role.objects.get(code='PEREVAKHTA_SPECIALIST'))
+        day=timezone.localdate();housing.request_moves(self.personnel,'ARRIVAL',self.camp,day,[self.person])
+        row=MovementReviewRequest.objects.get();row.status='EN_ROUTE';row.hub_departed_on=day
+        row.save(update_fields=['status','hub_departed_on','updated_at'])
+        arrive_camp(perevakhta,row,day);row.refresh_from_db()
+        self.assertEqual(row.status,'COMPLETED');self.assertEqual(row.final_arrived_on,day)
+        self.assertEqual(self.person.stays.get().camp,self.camp)
+
     def test_site_chief_can_approve_first_gate_without_manager(self):
         from .departure_workflow import decide
         site_chief=User.objects.create_user(username='future-site-chief',company=self.company,role=Role.objects.get(code='SITE_CHIEF'))
