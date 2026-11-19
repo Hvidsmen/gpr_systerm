@@ -144,6 +144,20 @@ class RuntimeRetentionTests(TestCase):
             retain_directories(parent,protected=[folders[0]])
             self.assertEqual({path.name for path in parent.iterdir()},{'0','3','4','5','6'})
 
+    def test_locked_old_directory_does_not_fail_runtime_rotation(self):
+        with TemporaryDirectory() as directory:
+            parent=Path(directory);folders=[]
+            for index in range(7):
+                folder=parent/str(index);folder.mkdir();os.utime(folder,(index,index));folders.append(folder)
+            original=__import__('shutil').rmtree
+            def remove(path,*args,**kwargs):
+                if Path(path)==folders[0]:raise PermissionError('synthetic locked python.exe')
+                return original(path,*args,**kwargs)
+            with patch('ops.windows_runtime.shutil.rmtree',side_effect=remove):
+                removed=retain_directories(parent)
+            self.assertTrue(folders[0].exists())
+            self.assertEqual(len(removed),1)
+
     def test_disk_preflight_has_clear_error(self):
         usage=Mock(free=0)
         with patch('ops.windows_runtime.shutil.disk_usage',return_value=usage):

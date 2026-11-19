@@ -122,7 +122,13 @@ def retain_directories(parent,keep=RUNTIME_HISTORY,protected=()):
     removed=[]
     for path in folders:
         if path.resolve() not in retained:
-            shutil.rmtree(path);removed.append(path)
+            try:shutil.rmtree(path)
+            except OSError:
+                # Rotation is best-effort housekeeping. A locked old Windows
+                # executable must not turn a completed portal update into a
+                # failed installation; the next rotation will retry it.
+                logging.warning('Could not remove old runtime directory %s; retaining it.',path,exc_info=True)
+            else:removed.append(path)
     return removed
 
 

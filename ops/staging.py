@@ -385,7 +385,9 @@ def update(root, archive, revision, *, prepared=None, progress=lambda label:None
                 raise
         finally:candidate_file.unlink(missing_ok=True)
         retain_directories(runtime/'backups')
-        retain_directories(runtime/'releases',protected=[release])
+        # The supervisor that applies this release still executes from the
+        # previously selected venv until the verified handoff completes.
+        retain_directories(runtime/'releases',protected=[release,Path(previous['code']).parent])
         print('Updated TEST only. Revision: '+revision+'. Start its separate scheduled task.')
 
 

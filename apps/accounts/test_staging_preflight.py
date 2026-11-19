@@ -1,6 +1,7 @@
 """Prepare/check a TEST release before its HTTP worker or latest data is stopped."""
 import json
 from contextlib import closing
+import os
 from pathlib import Path
 import sqlite3
 import sys
@@ -63,11 +64,17 @@ class StagingPreflightTests(TestCase):
         self.assertFalse(Path(prepared['candidate_file']).exists())
 
     def test_success_applies_once_without_recreating_environment_or_rechecking(self):
+        current=Path(staging.manifest(self.root)['code']).parent
+        os.utime(current,(1,1))
+        for index in range(4):
+            stale=self.root/'.runtime/releases'/('c'*39+str(index));stale.mkdir(parents=True)
+            os.utime(stale,(10+index,10+index))
         prepared=staging.prepare_update(self.root,self.archive,self.new)
         staging.update(self.root,self.archive,self.new,prepared=prepared)
         self.assertEqual([c.args[1][0] for c in self.manage.call_args_list],['check','migrate','collectstatic'])
         self.venv.assert_called_once();self.assertEqual(staging.manifest(self.root)['revision'],self.new)
         self.assertEqual(self.value(),'before preparation')
+        self.assertTrue(current.exists())
 
     def test_changed_or_forged_prepared_candidate_is_rejected_before_backup(self):
         prepared=staging.prepare_update(self.root,self.archive,self.new)
