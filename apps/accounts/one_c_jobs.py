@@ -1,5 +1,8 @@
 """Administrator's company-scoped queue and history of 1C jobs."""
 import re
+from datetime import timedelta
+
+from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.shortcuts import render
@@ -82,6 +85,7 @@ def history_report_summaries(run_ids):
     diagnostic_ids = [pk for pk in run_ids if pk not in import_ids]
     merge(employee_ids, ('employees_result',))
     merge(position_ids, ('positions_result', 'position_source', 'position_flags'))
+    merge(uat_ids, ('from_date', 'to_date', 'sync_result'))
     merge(diagnostic_ids, ('metadata_objects_read', 'metadata_errors', 'position_source', 'position_flags'))
     return summaries
 
@@ -122,6 +126,21 @@ class PositionScheduleForm(forms.Form):
         return values
 
 
+class UatScheduleForm(forms.Form):
+    enabled = forms.BooleanField(
+        label='Автозагрузка включена', required=False,
+        widget=forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+    )
+    time = forms.TimeField(
+        label='Время запуска, МСК', input_formats=['%H:%M'],
+        widget=forms.TimeInput(format='%H:%M', attrs={'type': 'time', 'class': 'form-control'}),
+    )
+    lookback = forms.IntegerField(
+        label='Повторно читать, дней', min_value=1, max_value=366,
+        widget=forms.NumberInput(attrs={'class': 'form-control'}),
+    )
+
+
 @login_required
 @require_http_methods(['GET','POST'])
 def jobs(request):
@@ -140,24 +159,82 @@ def jobs(request):
         'positions': positions_source_confirmed(connection, diagnostic),
     }
     schedule_forms={item['kind']:PositionScheduleForm(initial=schedule_initial(connection,item['kind']),auto_id=item['kind']+'_%s') for item in CATALOGUES}
+    from .uat_sync import next_scheduled_slot, source_ready as uat_source_ready
+    uat_ready = uat_source_ready(connection)
+    uat_form = UatScheduleForm(initial={
+        'enabled': connection.uat_sync_enabled,
+        'time': connection.uat_sync_time,
+        'lookback': connection.uat_sync_lookback_days,
+    }, auto_id='uat_%s')
     if request.method=='POST':
         action=request.POST.get('action')
         actions={item['kind']+'_'+command:(item,command) for item in CATALOGUES for command in ('run','schedule')}
-        if action not in actions:
+        if action == 'uat_run':
+            if not uat_ready:
+                messages.error(request, 'Сначала прочитайте и подтвердите структуру УАТ.')
+            else:
+                run = enqueue(
+                    connection, request.user, database=settings.UAT_DATABASE,
+                    uat_import_from=timezone.localdate()-timedelta(days=connection.uat_sync_lookback_days),
+                    trust_certificate=True,
+                )
+                if run and getattr(settings, 'STAGING_CONFIG', None):
+                    try:
+                        from .uat import launch_staging_worker
+                        launch_staging_worker()
+                    except (OSError, RuntimeError) as exc:
+                        messages.error(request, f'Не удалось запустить обработчик УАТ: {exc}')
+                        return redirect('accounts:one_c_jobs')
+                messages.success(request, 'Синхронизация УАТ поставлена в очередь.' if run else 'Уже выполняется задание 1С. Дождитесь его окончания и повторите запуск.')
+            return redirect('accounts:one_c_jobs')
+        if action == 'uat_schedule':
+            uat_form = UatScheduleForm(request.POST, auto_id='uat_%s')
+            if uat_form.is_valid():
+                from apps.audit.models import AuditLog
+                from django.db import transaction
+                with transaction.atomic():
+                    current = OneCConnection.objects.select_for_update().get(pk=connection.pk)
+                    old = {
+                        'uat_sync_enabled': current.uat_sync_enabled,
+                        'uat_sync_time': current.uat_sync_time.strftime('%H:%M'),
+                        'uat_sync_lookback_days': current.uat_sync_lookback_days,
+                    }
+                    current.uat_sync_enabled = uat_form.cleaned_data['enabled']
+                    current.uat_sync_time = uat_form.cleaned_data['time']
+                    current.uat_sync_lookback_days = uat_form.cleaned_data['lookback']
+                    current.save(update_fields=['uat_sync_enabled', 'uat_sync_time', 'uat_sync_lookback_days'])
+                    AuditLog.objects.create(
+                        user=request.user, action='UPDATE', entity_type='accounts.OneCConnection',
+                        entity_id=str(connection.pk), old_value=old,
+                        new_value={
+                            'uat_sync_enabled': current.uat_sync_enabled,
+                            'uat_sync_time': current.uat_sync_time.strftime('%H:%M'),
+                            'uat_sync_lookback_days': current.uat_sync_lookback_days,
+                        }, comment='Расписание синхронизации УАТ',
+                    )
+                messages.success(request, 'Расписание синхронизации УАТ сохранено.')
+                return redirect('accounts:one_c_jobs')
+            # Keep rendering the invalid UAT form together with the complete job page.
+        elif action not in actions:
             from django.http import HttpResponseBadRequest
             return HttpResponseBadRequest('Неизвестное действие.')
-        item,command=actions[action]
-        kind=item['kind'];label=item['label']
-        unconfirmed=f'Сначала подтвердите источник {label} диагностикой текущего подключения.'
-        if command=='run':
-            if not readiness[kind]:messages.error(request,unconfirmed)
-            else:
-                run=enqueue(connection,request.user,**{kind:True})
-                messages.success(request,f'Загрузка {label} поставлена в очередь.' if run else 'Уже выполняется задание 1С. Дождитесь его окончания и повторите запуск.')
-            return redirect('accounts:one_c_jobs')
-        form=PositionScheduleForm(request.POST,auto_id=kind+'_%s')
-        schedule_forms[kind]=form
-        if form.is_valid():
+        if action == 'uat_schedule':
+            # Validation errors are rendered below; catalogue actions are skipped.
+            item = command = None
+        else:
+            item,command=actions[action]
+        if item is not None:
+            kind=item['kind'];label=item['label']
+            unconfirmed=f'Сначала подтвердите источник {label} диагностикой текущего подключения.'
+            if command=='run':
+                if not readiness[kind]:messages.error(request,unconfirmed)
+                else:
+                    run=enqueue(connection,request.user,**{kind:True})
+                    messages.success(request,f'Загрузка {label} поставлена в очередь.' if run else 'Уже выполняется задание 1С. Дождитесь его окончания и повторите запуск.')
+                return redirect('accounts:one_c_jobs')
+            form=PositionScheduleForm(request.POST,auto_id=kind+'_%s')
+            schedule_forms[kind]=form
+        if item is not None and form.is_valid():
             frequency = form.cleaned_data['frequency']
             interval = {'manual': 0, 'daily': 1440, 'weekly': 10080}.get(frequency, form.cleaned_data['interval'])
             if interval and not readiness[kind]:form.add_error(None,unconfirmed)
@@ -200,6 +277,16 @@ def jobs(request):
         next_run = scheduled_deadline(connection, kind, now, last)
         import_jobs.append({**item,'ready':readiness[kind],'form':schedule_forms[kind],'interval':interval,
                            'schedule_label':schedule_label(connection,kind),'last':last,'next':next_run,'due':bool(next_run and next_run<=now)})
+    uat_last = connection.runs.filter(
+        database=settings.UAT_DATABASE, report__uat_import=True,
+    ).order_by('-created_at', '-pk').first()
+    if uat_last:
+        uat_last.error_help = error_help(uat_last.error, uat_last.server, uat_last.database)
+    uat_job = {
+        'ready': uat_ready, 'form': uat_form, 'last': uat_last,
+        'next': next_scheduled_slot(connection, now) if connection.uat_sync_enabled else None,
+        'database': settings.UAT_DATABASE,
+    }
     query = OneCDiagnosticRun.objects.filter(connection__company=request.user.company).select_related('created_by').order_by('-created_at', '-pk')
     pending = query.filter(status__in=['QUEUED', 'RUNNING']).exists()
     status = request.GET.get('status', '')
@@ -228,9 +315,10 @@ def jobs(request):
         # In particular, old UAT runs may contain thousands of source documents.
         run.report = summaries.get(run.pk, {})
         run.kind_label = 'Загрузка данных УАТ' if run.report.get('uat_import') else 'Загрузка сотрудников' if run.report.get('employees_import') else 'Загрузка должностей' if run.report.get('positions_import') else 'Диагностика УАТ' if run.report.get('uat_discovery') else 'Чтение названий' if run.report.get('metadata_only') else 'Диагностика структуры'
+        run.system_label = 'УАТ 1С' if run.report.get('uat_import') or run.report.get('uat_discovery') else 'ЗУП 1С'
         run.error_help=error_help(run.error,run.server,run.database)
     params = request.GET.copy()
     params.pop('page', None)
     return render(request, 'accounts/one_c_jobs.html', {'page': page, 'pending': pending, 'statuses': statuses,
-                  'connection':connection,'import_jobs':import_jobs,'schedule_timezone':str(timezone.get_default_timezone()),'busy':bool(connection.active_until and connection.active_until>now),
+                  'connection':connection,'import_jobs':import_jobs,'uat_job':uat_job,'schedule_timezone':str(timezone.get_default_timezone()),'busy':bool(connection.active_until and connection.active_until>now),
                   'kinds': KINDS, 'selected_status': status, 'selected_kind': kind, 'params': params.urlencode()})

@@ -1,0 +1,5 @@
+<nav class="d-flex flex-wrap gap-2 mb-3" aria-label="Интеграции 1С">
+  <a class="btn btn-sm {% if active == 'zup' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{% url 'accounts:one_c' %}">Интеграция ЗУП 1С</a>
+  <a class="btn btn-sm {% if active == 'uat' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{% url 'accounts:uat' %}">Интеграция УАТ 1С</a>
+  <a class="btn btn-sm {% if active == 'jobs' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{% url 'accounts:one_c_jobs' %}">Задания обмена 1С</a>
+</nav>

@@ -1,5 +1,6 @@
 from django.test import TestCase
 from django.urls import reverse
+from unittest.mock import patch
 from .models import Company, Role, User, OneCConnection, OneCDiagnosticRun
 from .one_c import compact_uat_import_report
 from .one_c_jobs import error_help
@@ -45,14 +46,51 @@ class OneCJobTests(TestCase):
     def test_history_reads_only_small_report_summary(self):
         run = self.run_record(report={
             'uat_import': True,
+            'from_date': '2026-11-01',
+            'to_date': '2026-11-20',
+            'sync_result': {'vehicles': {'total': 12}, 'waybills': 8, 'repair_sheets': 3,
+                            'facts_created': 7, 'pending': 1},
             'waybills': [{'source_id': str(index), 'payload': 'x' * 1000} for index in range(200)],
             'waybill_tasks': [{'parent_id': str(index)} for index in range(200)],
         }, status='DONE')
         response = self.client.get(self.url)
         history_run = next(item for item in response.context['page'] if item.pk == run.pk)
-        self.assertEqual(history_run.report, {'uat_import': True})
+        self.assertEqual(history_run.report, {
+            'uat_import': True, 'from_date': '2026-11-01', 'to_date': '2026-11-20',
+            'sync_result': {'vehicles': {'total': 12}, 'waybills': 8, 'repair_sheets': 3,
+                            'facts_created': 7, 'pending': 1},
+        })
         self.assertContains(response, 'Загрузка данных УАТ')
+        self.assertContains(response, 'УАТ 1С')
+        self.assertContains(response, 'путевых: 8')
+        self.assertContains(response, 'фактов: 7')
         self.assertNotContains(response, 'x' * 1000)
+
+    def test_three_admin_sections_and_uat_job_are_visible(self):
+        response = self.client.get(self.url)
+        for label in ['Интеграция ЗУП 1С', 'Интеграция УАТ 1С', 'Задания обмена 1С']:
+            self.assertContains(response, label)
+        self.assertContains(response, 'data-import-job="uat"')
+        self.assertContains(response, 'value="uat_run"')
+        self.assertContains(response, 'value="uat_schedule"')
+
+    @patch('apps.accounts.uat_sync.source_ready', return_value=True)
+    def test_uat_schedule_and_manual_launch_are_managed_from_jobs(self, _source_ready):
+        response = self.client.post(self.url, {
+            'action': 'uat_schedule', 'enabled': 'on', 'time': '02:15', 'lookback': '14',
+        })
+        self.assertRedirects(response, self.url)
+        self.connection.refresh_from_db()
+        self.assertTrue(self.connection.uat_sync_enabled)
+        self.assertEqual(self.connection.uat_sync_time.strftime('%H:%M'), '02:15')
+        self.assertEqual(self.connection.uat_sync_lookback_days, 14)
+
+        response = self.client.post(self.url, {'action': 'uat_run'})
+        self.assertRedirects(response, self.url)
+        run = self.connection.runs.get(report__uat_import=True)
+        self.assertEqual(run.created_by, self.admin)
+        self.assertEqual(run.database, 'uat01_ivanov')
+        self.assertTrue(run.trust_certificate)
 
     def test_successful_uat_report_is_compacted_but_keeps_page_preview(self):
         report = {

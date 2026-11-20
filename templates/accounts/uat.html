@@ -1,10 +1,10 @@
 {% extends 'base.html' %}{% load static %}
-{% block title %}Интеграция с УАТ — ЯДС ОС{% endblock %}
+{% block title %}Интеграция УАТ 1С — ЯДС ОС{% endblock %}
 {% block extra_css %}<link rel="stylesheet" href="{% static 'accounts/uat.css' %}?v=20261120-work-scope">{% endblock %}
 {% block content %}
-<h1>Интеграция с УАТ</h1>
+<h1>Интеграция УАТ 1С</h1>
+{% if not request.staging %}{% include 'accounts/_one_c_admin_nav.html' with active='uat' %}{% endif %}
 {% include 'accounts/_uat_sync_tabs.html' with uat_tab='integration' %}
-{% if not request.staging %}<p><a href="{% url 'accounts:one_c' %}">← Подключение ЗУП</a> · <a href="{% url 'accounts:one_c_jobs' %}">Задания обмена</a></p>{% endif %}
 <section class="card p-3 mb-3">
 <h2>Источник</h2>
 <p class="mb-1">SQL-сервер: <strong>{{ connection.server }}</strong></p>

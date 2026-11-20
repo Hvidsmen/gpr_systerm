@@ -466,7 +466,17 @@ def apply_uat_report(run, report):
 def source_ready(connection):
     from .uat_sources import status
     database = settings.UAT_DATABASE
-    run = connection.runs.filter(database=database, status='DONE', report__uat_discovery=True).order_by('-created_at', '-pk').first()
+    runs = connection.runs.filter(
+        database=database, status='DONE', report__uat_discovery=True,
+    ).order_by('-created_at', '-pk')
+    summary = runs.values('report__uat_source_ready').first()
+    if not summary:
+        return False
+    ready = summary.get('report__uat_source_ready')
+    if ready is not None:
+        return bool(ready)
+    # Compatibility with diagnostics created before the compact readiness flag.
+    run = runs.first()
     return bool(run and status(run.report)['ready'])
 
 

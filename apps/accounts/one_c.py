@@ -143,7 +143,10 @@ def process_queue(*,uat_only=False):
             status=json.loads((directory/'status.json').read_text(encoding='utf-8-sig'))
             if not status.get('ok'):raise RuntimeError(status.get('error','Ошибка диагностики.'))
             run.report=json.loads((directory/'report.json').read_text(encoding='utf-8-sig'))
-            if uat_discovery:run.report['uat_discovery']=True
+            if uat_discovery:
+                from .uat_sources import status as uat_source_status
+                run.report['uat_discovery'] = True
+                run.report['uat_source_ready'] = bool(uat_source_status(run.report)['ready'])
             if uat_import:
                 run.report['uat_import']=True
                 run.report['from_date']=run.report.get('from_date') or command[command.index('-UatFromDate')+1]

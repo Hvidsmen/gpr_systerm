@@ -4,5 +4,5 @@
 <a class="btn btn-sm {% if uat_tab == 'repairs' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{% url 'accounts:uat_repairs' %}">Ремонтные листы</a>
 <a class="btn btn-sm {% if uat_tab == 'vehicles' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{% url 'accounts:uat_vehicles' %}">Сопоставление техники</a>
 <a class="btn btn-sm {% if uat_tab == 'departments' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{% url 'accounts:uat_departments' %}">Сопоставление подразделений</a>
-<a class="btn btn-sm {% if uat_tab == 'journal' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{% url 'accounts:uat_journal' %}">Журнал синхронизации</a>
+{% if request.staging %}<a class="btn btn-sm {% if uat_tab == 'journal' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{% url 'accounts:uat_journal' %}">Журнал синхронизации</a>{% elif request.user|may:'accounts:one_c_jobs' %}<a class="btn btn-sm btn-outline-primary" href="{% url 'accounts:one_c_jobs' %}?kind=uat">Задания и история</a>{% endif %}
 </nav>
