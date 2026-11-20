@@ -118,14 +118,27 @@ class StagingPreflightTests(TestCase):
     def test_bridge_restarts_selected_release_after_one_unexpected_crash(self):
         crashed=Mock(returncode=3221225477);crashed.poll.return_value=3221225477
         crashed.stdin=Mock(closed=False)
-        healthy=Mock(returncode=0);healthy.poll.return_value=0;healthy.stdin=Mock(closed=False)
-        parent=Mock();parent.is_set.return_value=False;parent.wait.return_value=False
+        healthy=Mock(returncode=None);healthy.poll.return_value=None;healthy.stdin=Mock(closed=False)
+        parent=Mock();parent.is_set.side_effect=[False,False,True];parent.wait.return_value=False
         with patch.object(staging_updates.subprocess,'Popen',side_effect=[crashed,healthy]) as spawn,\
-                patch.object(staging_updates.logging,'error') as logged:
+                patch.object(staging_updates.logging,'error') as logged,patch.object(staging_updates,'stop_http') as stop:
             staging_updates.bridge_supervisor(self.root,parent)
         self.assertEqual(spawn.call_count,2)
+        stop.assert_called_once_with(healthy,graceful_timeout=150)
         logged.assert_called_once_with(
             'TEST supervisor exited with code %s; restarting selected release in %ss.',3221225477,1)
+
+    def test_bridge_restarts_after_unexpected_clean_exit(self):
+        exited=Mock(returncode=0);exited.poll.return_value=0;exited.stdin=Mock(closed=False)
+        running=Mock(returncode=None);running.poll.return_value=None;running.stdin=Mock(closed=False)
+        parent=Mock();parent.is_set.side_effect=[False,False,True];parent.wait.return_value=False
+        with patch.object(staging_updates.subprocess,'Popen',side_effect=[exited,running]) as spawn,\
+                patch.object(staging_updates.logging,'error') as logged,patch.object(staging_updates,'stop_http') as stop:
+            staging_updates.bridge_supervisor(self.root,parent)
+        self.assertEqual(spawn.call_count,2)
+        stop.assert_called_once_with(running,graceful_timeout=150)
+        logged.assert_called_once_with(
+            'TEST supervisor exited with code %s; restarting selected release in %ss.',0,1)
 
     def test_mssql_backup_and_restore_use_selected_test_release(self):
         state={**staging.manifest(self.root),'database_engine':'mssql','mssql':{'host':'MSK-DB2','name':'YDS_PORTAL_TEST'}}

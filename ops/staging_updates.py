@@ -366,15 +366,15 @@ def bridge_supervisor(root, parent_gone):
         code=child.returncode
         if child.stdin and not child.stdin.closed:child.stdin.close()
         if code==SUPERVISOR_RESTART_EXIT:continue
-        if code:
-            stamp=time.monotonic();failures=[seen for seen in failures if stamp-seen<60];failures.append(stamp)
-            if len(failures)>=4:
-                raise RuntimeError(f'Обработчик тестового портала четырежды завершился с кодом {code}.')
-            delay=min(2**(len(failures)-1),8)
-            logging.error('TEST supervisor exited with code %s; restarting selected release in %ss.',code,delay)
-            if parent_gone.wait(delay):return
-            continue
-        return
+        # A persistent portal supervisor must not exit on its own.  Exit code 0
+        # is still unexpected here: treating it as success would end the
+        # scheduled task and leave port 8002 without a listener.
+        stamp=time.monotonic();failures=[seen for seen in failures if stamp-seen<60];failures.append(stamp)
+        if len(failures)>=4:
+            raise RuntimeError(f'Обработчик тестового портала четырежды завершился с кодом {code}.')
+        delay=min(2**(len(failures)-1),8)
+        logging.error('TEST supervisor exited with code %s; restarting selected release in %ss.',code,delay)
+        if parent_gone.wait(delay):return
 
 
 def stop_http(child, *, graceful_timeout=115, terminate_timeout=15, kill_timeout=15):
