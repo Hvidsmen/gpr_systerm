@@ -193,6 +193,23 @@ try {
             $storedUntil=[DateTime]::Today.AddDays(1).AddYears($dateOffset)
             $period=@{'@dateOffset'=$dateOffset;'@storedFrom'=$storedFrom;'@storedUntil'=$storedUntil}
             Write-ProgressState 'metadata'
+            $sourceStats=@(Query $connection @'
+SELECT N'waybills' AS source,COUNT_BIG(*) AS total_rows,
+ COALESCE(SUM(CASE WHEN [_Marked]=0x00 THEN 1 ELSE 0 END),0) AS active_rows,
+ COALESCE(SUM(CASE WHEN [_Marked]=0x00 AND [_Date_Time]>=@storedFrom AND [_Date_Time]<@storedUntil THEN 1 ELSE 0 END),0) AS period_rows,
+ COALESCE(SUM(CASE WHEN [_Marked]=0x00 AND [_Posted]=0x01 AND [_Date_Time]>=@storedFrom AND [_Date_Time]<@storedUntil THEN 1 ELSE 0 END),0) AS posted_period_rows,
+ CONVERT(char(10),DATEADD(year,-@dateOffset,MIN(CASE WHEN [_Marked]=0x00 THEN [_Date_Time] END)),23) AS first_date,
+ CONVERT(char(10),DATEADD(year,-@dateOffset,MAX(CASE WHEN [_Marked]=0x00 THEN [_Date_Time] END)),23) AS last_date
+FROM [dbo].[_Document173]
+UNION ALL
+SELECT N'repair_sheets',COUNT_BIG(*),
+ COALESCE(SUM(CASE WHEN [_Marked]=0x00 THEN 1 ELSE 0 END),0),
+ COALESCE(SUM(CASE WHEN [_Marked]=0x00 AND [_Date_Time]>=@storedFrom AND [_Date_Time]<@storedUntil THEN 1 ELSE 0 END),0),
+ COALESCE(SUM(CASE WHEN [_Marked]=0x00 AND [_Posted]=0x01 AND [_Date_Time]>=@storedFrom AND [_Date_Time]<@storedUntil THEN 1 ELSE 0 END),0),
+ CONVERT(char(10),DATEADD(year,-@dateOffset,MIN(CASE WHEN [_Marked]=0x00 THEN [_Date_Time] END)),23),
+ CONVERT(char(10),DATEADD(year,-@dateOffset,MAX(CASE WHEN [_Marked]=0x00 THEN [_Date_Time] END)),23)
+FROM [dbo].[_Document178]
+'@ $period 120)
             $waybills=@(Query $connection @'
 SELECT TOP (5000)
  CONVERT(varchar(32),p.[_IDRRef],2) AS source_id,
@@ -214,7 +231,7 @@ LEFT JOIN [dbo].[_Reference61] d2 ON d2.[_IDRRef]=p.[_Fld996RRef]
 LEFT JOIN [dbo].[_Reference49] o ON o.[_IDRRef]=p.[_Fld1019RRef]
 LEFT JOIN [dbo].[_Reference55] dep ON dep.[_IDRRef]=p.[_Fld1023RRef]
 LEFT JOIN [dbo].[_Reference4650] obj ON obj.[_IDRRef]=p.[_Fld11747RRef]
-WHERE p.[_Marked]=0x00 AND p.[_Posted]=0x01 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
+WHERE p.[_Marked]=0x00 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
 ORDER BY p.[_Date_Time] DESC,p.[_Number] DESC
 '@ $period 120)
             $waybillTasks=@(Query $connection @'
@@ -229,7 +246,7 @@ JOIN [dbo].[_Document173] p ON p.[_IDRRef]=x.[_Document173_IDRRef]
 LEFT JOIN [dbo].[_Reference90] leavePoint ON leavePoint.[_IDRRef]=x.[_Fld1059_RRRef]
 LEFT JOIN [dbo].[_Reference90] arrivePoint ON arrivePoint.[_IDRRef]=x.[_Fld1058_RRRef]
 LEFT JOIN [dbo].[_Reference4650] obj ON obj.[_IDRRef]=x.[_Fld11758RRef]
-WHERE p.[_Marked]=0x00 AND p.[_Posted]=0x01 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
+WHERE p.[_Marked]=0x00 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
 ORDER BY p.[_Date_Time] DESC,x.[_LineNo1057]
 '@ $period 120)
             $waybillFuel=@(Query $connection @'
@@ -240,7 +257,7 @@ SELECT TOP (20000) CONVERT(varchar(32),x.[_Document173_IDRRef],2) AS parent_id,x
 FROM [dbo].[_Document173_VT1102] x
 JOIN [dbo].[_Document173] p ON p.[_IDRRef]=x.[_Document173_IDRRef]
 LEFT JOIN [dbo].[_Reference46] f ON f.[_IDRRef]=x.[_Fld1108RRef]
-WHERE p.[_Marked]=0x00 AND p.[_Posted]=0x01 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
+WHERE p.[_Marked]=0x00 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
 ORDER BY p.[_Date_Time] DESC,x.[_LineNo1103]
 '@ $period 120)
             $repairSheets=@(Query $connection @'
@@ -270,7 +287,7 @@ LEFT JOIN [dbo].[_Reference90] place ON place.[_IDRRef]=p.[_Fld11822RRef]
 LEFT JOIN [dbo].[_Reference60] ownWarehouse ON ownWarehouse.[_IDRRef]=p.[_Fld1258RRef]
 LEFT JOIN [dbo].[_Reference60] senderWarehouse ON senderWarehouse.[_IDRRef]=p.[_Fld1256RRef]
 LEFT JOIN [dbo].[_Reference60] receiverWarehouse ON receiverWarehouse.[_IDRRef]=p.[_Fld1257RRef]
-WHERE p.[_Marked]=0x00 AND p.[_Posted]=0x01 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
+WHERE p.[_Marked]=0x00 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
 ORDER BY p.[_Date_Time] DESC,p.[_Number] DESC
 '@ $period 120)
             $repairWorks=@(Query $connection @'
@@ -280,7 +297,7 @@ SELECT TOP (20000) CONVERT(varchar(32),x.[_Document178_IDRRef],2) AS parent_id,x
 FROM [dbo].[_Document178_VT1294] x
 JOIN [dbo].[_Document178] p ON p.[_IDRRef]=x.[_Document178_IDRRef]
 LEFT JOIN [dbo].[_Reference91] w ON w.[_IDRRef]=x.[_Fld1298RRef]
-WHERE p.[_Marked]=0x00 AND p.[_Posted]=0x01 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
+WHERE p.[_Marked]=0x00 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
 ORDER BY p.[_Date_Time] DESC,x.[_LineNo1295]
 '@ $period 120)
             $repairMaterials=@(Query $connection @'
@@ -290,7 +307,7 @@ SELECT TOP (20000) CONVERT(varchar(32),x.[_Document178_IDRRef],2) AS parent_id,x
 FROM [dbo].[_Document178_VT1281] x
 JOIN [dbo].[_Document178] p ON p.[_IDRRef]=x.[_Document178_IDRRef]
 LEFT JOIN [dbo].[_Reference46] n ON n.[_IDRRef]=x.[_Fld1285RRef]
-WHERE p.[_Marked]=0x00 AND p.[_Posted]=0x01 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
+WHERE p.[_Marked]=0x00 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
 ORDER BY p.[_Date_Time] DESC,x.[_LineNo1282]
 '@ $period 120)
             $repairExecutors=@(Query $connection @'
@@ -300,11 +317,11 @@ SELECT TOP (20000) CONVERT(varchar(32),x.[_Document178_IDRRef],2) AS parent_id,x
 FROM [dbo].[_Document178_VT1276] x
 JOIN [dbo].[_Document178] p ON p.[_IDRRef]=x.[_Document178_IDRRef]
 LEFT JOIN [dbo].[_Reference61] e ON e.[_IDRRef]=x.[_Fld1280RRef]
-WHERE p.[_Marked]=0x00 AND p.[_Posted]=0x01 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
+WHERE p.[_Marked]=0x00 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
 ORDER BY p.[_Date_Time] DESC,x.[_LineNo1277]
 '@ $period 120)
             Write-ProgressState 'saving'
-            Write-Json $reportPath @{uat_import=$true;from_date=$UatFromDate;to_date=[DateTime]::Today.ToString('yyyy-MM-dd');waybill_count=$waybills.Count;repair_sheet_count=$repairSheets.Count;limited=($waybills.Count -ge 5000 -or $repairSheets.Count -ge 5000 -or $waybillTasks.Count -ge 20000 -or $waybillFuel.Count -ge 20000 -or $repairWorks.Count -ge 20000 -or $repairMaterials.Count -ge 20000 -or $repairExecutors.Count -ge 20000);waybills=$waybills;waybill_tasks=$waybillTasks;waybill_fuel=$waybillFuel;repair_sheets=$repairSheets;repair_works=$repairWorks;repair_materials=$repairMaterials;repair_executors=$repairExecutors}
+            Write-Json $reportPath @{uat_import=$true;from_date=$UatFromDate;to_date=[DateTime]::Today.ToString('yyyy-MM-dd');waybill_count=$waybills.Count;repair_sheet_count=$repairSheets.Count;source_stats=$sourceStats;limited=($waybills.Count -ge 5000 -or $repairSheets.Count -ge 5000 -or $waybillTasks.Count -ge 20000 -or $waybillFuel.Count -ge 20000 -or $repairWorks.Count -ge 20000 -or $repairMaterials.Count -ge 20000 -or $repairExecutors.Count -ge 20000);waybills=$waybills;waybill_tasks=$waybillTasks;waybill_fuel=$waybillFuel;repair_sheets=$repairSheets;repair_works=$repairWorks;repair_materials=$repairMaterials;repair_executors=$repairExecutors}
             Write-Json $statusPath @{ok=$true;report=$reportPath}
             return
         }
