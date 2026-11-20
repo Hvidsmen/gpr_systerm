@@ -102,6 +102,23 @@ def list_url(query=''):
     return reverse('resources:equipment_unit_list') + ('?' + query if query else '')
 
 
+def unit_summary_counts(queryset):
+    """Return fleet totals without aggregating over state subqueries.
+
+    SQL Server rejects an aggregate whose argument contains a subquery.  The
+    ``unit_state`` annotation is built from the latest transport and assignment
+    rows, so repair and unknown totals must be filtered before ``COUNT(*)`` is
+    applied instead of using filtered ``Count`` expressions.
+    """
+    counts = queryset.aggregate(
+        total=Count('pk'),
+        available=Count('pk', filter=Q(is_active=True)),
+    )
+    counts['repair'] = queryset.filter(unit_state='REPAIR').count()
+    counts['unknown'] = queryset.filter(unit_state='UNKNOWN').count()
+    return counts
+
+
 def units(request,pk=None,create=False):
     require_roles(request.user,EQUIPMENT_CATALOG_READ_ROLES if request.method=='GET' and not (pk or create) else EQUIPMENT_CATALOG_EDIT_ROLES)
     instance=get_object_or_404(Equipment,pk=pk,company=request.user.company) if pk else None
@@ -134,8 +151,7 @@ def units(request,pk=None,create=False):
             return HttpResponse('Некорректные фильтры. Исправьте значения и повторите экспорт.',status=400)
         from core.catalogue_excel import catalogue_response
         return catalogue_response(request, units_queryset)
-    counts = units_queryset.aggregate(total=Count('pk'), available=Count('pk',filter=Q(is_active=True)),
-        repair=Count('pk',filter=Q(unit_state='REPAIR')), unknown=Count('pk',filter=Q(unit_state='UNKNOWN')))
+    counts = unit_summary_counts(units_queryset)
     page = Paginator(units_queryset, 25).get_page(request.GET.get('page'))
     page.object_list = [present_unit(unit) for unit in page.object_list]
     params = request.GET.copy();params.pop('page',None);params.pop('export',None)

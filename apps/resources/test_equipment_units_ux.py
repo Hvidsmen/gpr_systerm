@@ -8,7 +8,7 @@ from apps.accounts.models import Company, User, Role
 from apps.projects.models import Project, ConstructionObject
 from apps.production.equipment_operations_models import EquipmentAssignment, EquipmentStateChange
 from .models import Equipment, EquipmentType, EquipmentCategory
-from .equipment_units import UnitForm
+from .equipment_units import UnitForm, unit_summary_counts
 
 
 class EquipmentUnitsUXTests(TestCase):
@@ -63,6 +63,11 @@ class EquipmentUnitsUXTests(TestCase):
         self.assertEqual(self.response(state='REPAIR',is_active='False').context['counts']['total'],0)
         self.assignment.cancelled_at=timezone.now();self.assignment.save(update_fields=['cancelled_at'])
         self.assertEqual(self.response(state='REPAIR').context['counts']['total'],0)
+
+    def test_summary_counts_filter_state_before_counting(self):
+        from .equipment_unit_catalogue import unit_queryset
+        counts=unit_summary_counts(unit_queryset(self.company,date(2026,1,7)))
+        self.assertEqual(counts,{'total':2,'available':1,'repair':1,'unknown':1})
 
     def test_parent_model_group_and_site_filters_and_invalid_inputs(self):
         self.assertEqual(self.response(parent=self.root.pk).context['counts']['total'],2)
