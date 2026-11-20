@@ -116,7 +116,9 @@ class UatDiscoveryTests(TestCase):
             (target/'report.json').write_text(json.dumps({'uat_import':True,'from_date':'2026-10-01',
                 'waybill_count':1,'repair_sheet_count':1,
                 'source_stats':[{'source':'waybills','total_rows':10,'active_rows':9,'period_rows':2,'posted_period_rows':1,'first_date':'2024-01-01','last_date':'2026-11-20'}],
-                'waybills':[{'number':'PL-1','vehicle':'KAMAZ'}],
+                'waybills':[{'source_id':'A1','number':'PL-1','document_date':'2026-11-20','vehicle':'KAMAZ','plate':'A001AA'}],
+                'waybill_tasks':[{'parent_id':'A1','line_number':1,'object_grandparent':'КТП-1 Нефтепровод','object_parent':'Участок КТП','department':'УМиТ',
+                    'construction_object':'Мостовые переходы','construction_object_code':'MP-01','trips':2,'hours':8}],
                 'repair_sheets':[{'number':'RL-1','vehicle':'GAZ'}]}))
             with override_settings(CONFIG_DIR=directory),patch('apps.accounts.one_c.os.name','nt'),patch('apps.accounts.one_c.Path',PosixPath),patch('apps.accounts.one_c.subprocess.CREATE_NO_WINDOW',0,create=True):
                 process_queue(uat_only=True)
@@ -127,6 +129,9 @@ class UatDiscoveryTests(TestCase):
         page=self.client.get(self.url)
         self.assertContains(page,'PL-1');self.assertContains(page,'RL-1')
         self.assertContains(page,'Проверка исходных таблиц УАТ')
+        self.assertContains(page,'Работа техники по проектам и участкам')
+        self.assertContains(page,'КТП-1 Нефтепровод');self.assertContains(page,'Участок КТП')
+        self.assertContains(page,'Мостовые переходы');self.assertContains(page,'MP-01');self.assertContains(page,'УМиТ')
 
     @patch('apps.accounts.uat.subprocess.Popen')
     def test_staging_click_starts_dedicated_worker_and_can_retry_queued_job(self,spawn):
@@ -216,3 +221,7 @@ class UatDiscoveryTests(TestCase):
         self.assertIn("CASE WHEN p.[_Posted]=0x01 THEN 1 ELSE 0 END AS posted",import_block)
         self.assertIn("source_stats=$sourceStats",import_block)
         self.assertIn("AS posted_period_rows",import_block)
+        self.assertIn("AS object_grandparent",import_block)
+        self.assertIn("AS object_parent",import_block)
+        self.assertIn("AS department",import_block)
+        self.assertIn("obj.[_ParentIDRRef]",import_block)

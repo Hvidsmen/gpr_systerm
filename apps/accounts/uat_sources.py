@@ -24,7 +24,7 @@ REPAIR_SHEET = {
 }
 
 PARTS = (
-    ('dbo._Document173_VT1056X1', 'Задания путевого листа', {'_Document173_IDRRef', '_LineNo1057', '_Fld1058_S', '_Fld1058_RRRef', '_Fld1059_S', '_Fld1059_RRRef', '_Fld1062', '_Fld1063', '_Fld1064', '_Fld1065', '_Fld1073', '_Fld1074', '_Fld11758RRef'}),
+    ('dbo._Document173_VT1056X1', 'Задания путевого листа', {'_Document173_IDRRef', '_LineNo1057', '_Fld1058_S', '_Fld1058_RRRef', '_Fld1059_S', '_Fld1059_RRRef', '_Fld1062', '_Fld1063', '_Fld1064', '_Fld1065', '_Fld1073', '_Fld1074', '_Fld1081RRef', '_Fld11758RRef'}),
     ('dbo._Document173_VT1102X1', 'Расход ГСМ', {'_Document173_IDRRef', '_LineNo1103', '_Fld1107', '_Fld1108RRef', '_Fld1109', '_Fld1110', '_Fld1111', '_Fld1112', '_Fld1113', '_Fld1114'}),
     ('dbo._Document178_VT1294X1', 'Работы по ремонту', {'_Document178_IDRRef', '_LineNo1295', '_Fld1297', '_Fld1298RRef', '_Fld1300', '_Fld1302', '_Fld7743'}),
     ('dbo._Document178_VT1281X1', 'Материалы', {'_Document178_IDRRef', '_LineNo1282', '_Fld1284', '_Fld1285RRef', '_Fld1287', '_Fld1289'}),
@@ -39,7 +39,7 @@ LOOKUPS = (
     ('dbo._Reference71X1', 'Виды ремонта', {'_IDRRef', '_Description'}),
     ('dbo._Reference60X1', 'Склады УАТ', {'_IDRRef', '_Description'}),
     ('dbo._Reference49', 'Организации УАТ', {'_IDRRef', '_Description'}),
-    ('dbo._Reference4650', 'Объекты строительства УАТ', {'_IDRRef', '_Description'}),
+    ('dbo._Reference4650', 'Объекты строительства УАТ', {'_IDRRef', '_ParentIDRRef', '_Folder', '_Code', '_Description'}),
     ('dbo._Reference90', 'Пункты назначения УАТ', {'_IDRRef', '_Description'}),
     ('dbo._Reference91', 'Работы по ремонту УАТ', {'_IDRRef', '_Description', '_Fld4205'}),
 )

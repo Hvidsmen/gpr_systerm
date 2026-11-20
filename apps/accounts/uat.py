@@ -75,6 +75,42 @@ def staging_update_busy():
     return read_json(runtime/'staging-update.json',{}).get('state') in BUSY
 
 
+def waybill_work_rows(report, limit=200):
+    """Attach each UAT work assignment to its waybill and resolved work scope."""
+    headers = {row.get('source_id'): row for row in report.get('waybills', []) if row.get('source_id')}
+    result = []
+    for task in report.get('waybill_tasks', [])[:limit]:
+        header = headers.get(task.get('parent_id'), {})
+        result.append({
+            **task,
+            'number': header.get('number', ''),
+            'document_date': header.get('document_date', ''),
+            'vehicle': header.get('vehicle', ''),
+            'plate': header.get('plate', ''),
+            'driver_1': header.get('driver_1', ''),
+            # UAT stores work scope as a hierarchy in the construction-object
+            # directory: project -> site -> object. Department is an independent
+            # document field and must not be used as a substitute for the site.
+            'project': task.get('object_grandparent') or header.get('object_grandparent', ''),
+            'work_site': task.get('object_parent') or header.get('object_parent', ''),
+            'department': task.get('department') or header.get('department', ''),
+            'construction_object': task.get('construction_object') or header.get('construction_object', ''),
+            'construction_object_code': task.get('construction_object_code') or header.get('construction_object_code', ''),
+        })
+    return result
+
+
+def waybill_rows(report, limit=50):
+    result = []
+    for header in report.get('waybills', [])[:limit]:
+        result.append({
+            **header,
+            'project': header.get('object_grandparent', ''),
+            'work_site': header.get('object_parent', ''),
+        })
+    return result
+
+
 def _progress_file(run):
     if not run:
         return {}
@@ -210,7 +246,9 @@ def discovery(request):
     return render(request, 'accounts/uat.html', {
         'connection': connection, 'database': database, 'last': last, 'latest': latest,
         'latest_import': latest_import, 'import_report': import_report,
-        'waybills': import_report.get('waybills', [])[:50],
+        'waybills': waybill_rows(import_report),
+        'waybill_work': waybill_work_rows(import_report),
+        'waybill_work_total': len(import_report.get('waybill_tasks', [])),
         'repair_sheets': import_report.get('repair_sheets', [])[:50],
         'source_status': source, 'import_from': date.today() - timedelta(days=30),
         'queued': bool(last and last.status == 'QUEUED'),

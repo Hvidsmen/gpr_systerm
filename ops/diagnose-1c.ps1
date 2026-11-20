@@ -222,7 +222,9 @@ SELECT TOP (5000)
  CASE WHEN YEAR(p.[_Fld1005])>@dateOffset+1 THEN CONVERT(varchar(19),DATEADD(year,-@dateOffset,p.[_Fld1005]),126) END AS departure,
  CASE WHEN YEAR(p.[_Fld1004])>@dateOffset+1 THEN CONVERT(varchar(19),DATEADD(year,-@dateOffset,p.[_Fld1004]),126) END AS returned,
  COALESCE(o.[_Description],N'') AS organisation,COALESCE(dep.[_Description],N'') AS department,
- COALESCE(obj.[_Description],N'') AS construction_object,p.[_Fld1037] AS odometer_departure,
+ COALESCE(grandparentObj.[_Description],N'') AS object_grandparent,COALESCE(parentObj.[_Description],N'') AS object_parent,
+ COALESCE(obj.[_Description],N'') AS construction_object,
+ LTRIM(RTRIM(obj.[_Code])) AS construction_object_code,p.[_Fld1037] AS odometer_departure,
  p.[_Fld1036] AS odometer_return,p.[_Fld1009] AS comment
 FROM [dbo].[_Document173X1] p
 LEFT JOIN [dbo].[_Reference107X1] v ON v.[_IDRRef]=p.[_Fld1039RRef]
@@ -231,6 +233,8 @@ LEFT JOIN [dbo].[_Reference61X1] d2 ON d2.[_IDRRef]=p.[_Fld996RRef]
 LEFT JOIN [dbo].[_Reference49] o ON o.[_IDRRef]=p.[_Fld1019RRef]
 LEFT JOIN [dbo].[_Reference55X1] dep ON dep.[_IDRRef]=p.[_Fld1023RRef]
 LEFT JOIN [dbo].[_Reference4650] obj ON obj.[_IDRRef]=p.[_Fld11747RRef]
+LEFT JOIN [dbo].[_Reference4650] parentObj ON parentObj.[_IDRRef]=obj.[_ParentIDRRef]
+LEFT JOIN [dbo].[_Reference4650] grandparentObj ON grandparentObj.[_IDRRef]=parentObj.[_ParentIDRRef]
 WHERE p.[_Marked]=0x00 AND p.[_Posted]=0x01 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
 ORDER BY p.[_Date_Time] DESC,p.[_Number] DESC
 '@ $period 120)
@@ -240,12 +244,17 @@ SELECT TOP (20000) CONVERT(varchar(32),x.[_Document173_IDRRef],2) AS parent_id,x
  COALESCE(NULLIF(LTRIM(RTRIM(x.[_Fld1058_S])),N''),arrivePoint.[_Description],N'') AS arrival_address,
  CASE WHEN x.[_Fld1062]=0x01 THEN 1 ELSE 0 END AS completed,x.[_Fld1063] AS trips,
  x.[_Fld1064] AS loaded_km,x.[_Fld1065] AS empty_km,x.[_Fld1073] AS tonnes,x.[_Fld1074] AS hours,
- COALESCE(obj.[_Description],N'') AS construction_object
+ COALESCE(grandparentObj.[_Description],N'') AS object_grandparent,COALESCE(parentObj.[_Description],N'') AS object_parent,
+ COALESCE(dep.[_Description],N'') AS department,
+ COALESCE(obj.[_Description],N'') AS construction_object,LTRIM(RTRIM(obj.[_Code])) AS construction_object_code
 FROM [dbo].[_Document173_VT1056X1] x
 JOIN [dbo].[_Document173X1] p ON p.[_IDRRef]=x.[_Document173_IDRRef]
 LEFT JOIN [dbo].[_Reference90] leavePoint ON leavePoint.[_IDRRef]=x.[_Fld1059_RRRef]
 LEFT JOIN [dbo].[_Reference90] arrivePoint ON arrivePoint.[_IDRRef]=x.[_Fld1058_RRRef]
 LEFT JOIN [dbo].[_Reference4650] obj ON obj.[_IDRRef]=x.[_Fld11758RRef]
+LEFT JOIN [dbo].[_Reference4650] parentObj ON parentObj.[_IDRRef]=obj.[_ParentIDRRef]
+LEFT JOIN [dbo].[_Reference4650] grandparentObj ON grandparentObj.[_IDRRef]=parentObj.[_ParentIDRRef]
+LEFT JOIN [dbo].[_Reference55X1] dep ON dep.[_IDRRef]=x.[_Fld1081RRef]
 WHERE p.[_Marked]=0x00 AND p.[_Posted]=0x01 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
 ORDER BY p.[_Date_Time] DESC,x.[_LineNo1057]
 '@ $period 120)

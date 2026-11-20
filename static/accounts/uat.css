@@ -13,6 +13,8 @@
 .uat-step.is-complete .uat-step-marker{background:#e0f1e8;border-color:#a8cdb7}
 .uat-step.is-failed{color:#a92938;font-weight:600}
 .uat-step.is-failed .uat-step-marker{background:#fbe9ec;border-color:#e0a9b1}
+.uat-work-table{min-width:1450px}
+.uat-work-table td,.uat-work-table th{vertical-align:top}
 @media(max-width:1000px){.uat-steps{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:575px){.uat-progress{padding:.75rem}.uat-steps{grid-template-columns:repeat(2,minmax(0,1fr));gap:.65rem}}
 @media(prefers-reduced-motion:reduce){.uat-progress .progress-bar{transition:none;animation:none}}
