@@ -16,7 +16,8 @@ def search(request):
     """Small, company-scoped employee pages for remote form selects."""
     require_roles(request.user, ROLES)
     query = Employee.objects.filter(company=request.user.company).select_related('position')
-    if request.GET.get('scope') == 'movement':
+    scope = request.GET.get('scope')
+    if scope == 'movement':
         kind = request.GET.get('kind', 'ARRIVAL')
         if kind == 'ARRIVAL':
             query = query.filter(is_active=True)
@@ -31,9 +32,23 @@ def search(request):
             if camp and camp.isdigit():
                 present = present.filter(camp_id=camp)
             query = query.filter(pk__in=present.values('person__employee_id'))
+    elif scope == 'lodging':
+        from .lodging import present
+        try:
+            day = forms.DateField().clean(request.GET.get('date')) or timezone.localdate()
+        except forms.ValidationError:
+            day = timezone.localdate()
+        residents = present(request.user.company, day)
+        camp = request.GET.get('camp')
+        if camp and camp.isdigit():
+            residents = residents.filter(camp_id=camp)
+        if request.GET.get('kind', 'CHECKIN') == 'CHECKIN':
+            query = query.filter(is_active=True).exclude(pk__in=present(request.user.company, day).values('employee_id'))
+        else:
+            query = query.filter(pk__in=residents.values('employee_id'))
     elif request.GET.get('active', '1') != '0':
         query = query.filter(is_active=True)
-    if request.GET.get('scope') != 'assignment':
+    if scope != 'assignment':
         query = query.exclude(personnel_card__dispatcher_removed_at__isnull=False)
     for term in request.GET.get('q', '').strip().split()[:6]:
         query = query.filter(

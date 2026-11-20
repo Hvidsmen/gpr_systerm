@@ -147,12 +147,29 @@ class LodgingTests(TestCase):
         page=self.client.get(reverse('personnel:lodging_sync'),data);self.assertContains(page,'Заезд требует подтверждения')
 
     def test_commandant_can_load_company_employee_choices(self):
-        response=self.client.get(reverse('personnel:employee_search'),{'q':self.second_employee.employee_number,'active':'0'})
+        search=reverse('personnel:employee_search')
+        params={'scope':'lodging','kind':'CHECKIN','camp':self.a.pk,'date':str(self.day)}
+        response=self.client.get(search,{**params,'q':self.second_employee.employee_number})
         self.assertEqual(response.status_code,200)
         self.assertEqual([item['id'] for item in response.json()['items']],[self.second_employee.pk])
-        foreign=self.client.get(reverse('personnel:employee_search'),{'q':'Secret','active':'0'})
+        self.edit(employee=self.second_employee)
+        self.second_employee.is_active=False;self.second_employee.save(update_fields=['is_active','updated_at'])
+        self.assertEqual(self.client.get(search,{**params,'q':self.second_employee.employee_number}).json()['items'],[])
+        checkout=self.client.get(search,{**params,'kind':'CHECKOUT','q':self.second_employee.employee_number})
+        self.assertEqual([item['id'] for item in checkout.json()['items']],[self.second_employee.pk])
+        self.assertEqual(self.client.get(search,{**params,'q':self.second_employee.employee_number}).json()['items'],[])
+        foreign=self.client.get(search,{**params,'q':'Secret'})
         self.assertEqual(foreign.status_code,200)
         self.assertEqual(foreign.json()['items'],[])
+
+    def test_lodging_employee_widget_sends_action_camp_and_day(self):
+        response=self.client.get(reverse('personnel:lodging'),{'camp':self.a.pk,'date':str(self.day)})
+        attrs=response.context['form'].fields['employee'].widget.attrs
+        self.assertEqual(attrs['data-remote-scope'],'lodging')
+        self.assertEqual(attrs['data-remote-kind-field'],'kind')
+        self.assertEqual(attrs['data-remote-camp-field'],'camp')
+        self.assertEqual(attrs['data-remote-date-field'],'date')
+        self.assertNotIn('data-remote-include-archived',attrs)
 
     def test_sync_confirmation_api_uses_source_revision_and_permission(self):
         self.edit();row=self.issue(self.second_employee)

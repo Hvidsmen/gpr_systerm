@@ -23,7 +23,10 @@ class LodgingFilter(StyledForm):
 
 class LodgingMovementForm(StyledForm):
     kind=forms.ChoiceField(label='Действие',choices=[('CHECKIN','Заселить'),('MOVE','Переселить'),('CHECKOUT','Выселить'),('UPDATE','Изменить сведения')])
-    employee=forms.ModelChoiceField(label='Сотрудник',queryset=Employee.objects.none(),widget=RemoteEmployeeSelect(attrs={'data-remote-include-archived':'true'}))
+    employee=forms.ModelChoiceField(label='Сотрудник',queryset=Employee.objects.none(),widget=RemoteEmployeeSelect(attrs={
+        'data-remote-scope':'lodging','data-remote-kind-field':'kind',
+        'data-remote-camp-field':'camp','data-remote-date-field':'date',
+    }))
     bed=forms.ModelChoiceField(label='Новое место',queryset=LodgingBed.objects.none(),required=False)
     date=forms.DateField(label='Фактическая дата',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
     planned_departure=forms.DateField(label='Плановая дата выселения',required=False,help_text='Необязательно. Ожидаемая дата; место освобождается только после оформления выселения.',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
