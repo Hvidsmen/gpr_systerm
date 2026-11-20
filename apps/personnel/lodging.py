@@ -7,7 +7,6 @@ from django.db import transaction
 from django.db.models import Q,F
 from django.utils import timezone
 from core.permissions import require_roles,READ_ROLES
-from core.fact_edit_window import require_fact_day
 from core.fact_history import with_history_actor
 from apps.accounts.models import Company
 from apps.resources.models import Employee
@@ -87,7 +86,7 @@ def bed_versions(user,keys):return {str(b.pk):b.updated_at.isoformat() for b in 
 
 @transaction.atomic
 def claim(user,camp,day,employee,bed,session,action='acquire'):
-    require_roles(user,OPERATORS);require_fact_day(user,day);session=session_id(session)
+    require_roles(user,OPERATORS);session=session_id(session)
     if camp.company_id!=user.company_id or bed and bed.building.camp_id!=camp.pk:raise ValidationError('Место другого местонахождения.')
     mutex(user);keys=resources(user,employee,bed,day);rows=controls(user,keys)
     if action in {'acquire','renew'}:
@@ -128,7 +127,7 @@ def bump(rows):
 @with_history_actor
 @transaction.atomic
 def move(user,kind,camp,day,employee,*,bed=None,session=None,signed=None,planned_departure=None,keys_issued=False,key_number='',pass_number='',comment=''):
-    require_roles(user,OPERATORS);require_fact_day(user,day)
+    require_roles(user,OPERATORS)
     if kind not in {'CHECKIN','MOVE','CHECKOUT','UPDATE'}:raise ValidationError('Выберите действие с проживанием.')
     if camp.company_id!=user.company_id:raise ValidationError('Местонахождение другой компании.')
     mutex(user);employee=Employee.objects.select_for_update().get(company=user.company,pk=employee.pk)
@@ -155,7 +154,7 @@ def move(user,kind,camp,day,employee,*,bed=None,session=None,signed=None,planned
         current.planned_departure=planned_departure;current.keys_issued=keys_issued;current.key_number=key_number;current.pass_number=pass_number;current.comment=comment;current.save();stay=current
     else:stay=current
     LodgingEvent.objects.create(company=user.company,camp=camp,employee=employee,date=day,kind=kind,from_bed=old_bed,to_bed=bed if kind in {'CHECKIN','MOVE'} else None,stay=stay,comment=comment,recorded_by=user)
-    require_fact_day(user,day);bump(rows)
+    bump(rows)
     return stay
 
 
@@ -164,8 +163,6 @@ def move(user,kind,camp,day,employee,*,bed=None,session=None,signed=None,planned
 def cancel(user,stay,reason,updated):
     require_roles(user,OPERATORS);mutex(user)
     stay=LodgingStay.objects.select_for_update().get(pk=stay.pk,company=user.company)
-    require_fact_day(user,stay.arrived_on)
-    if stay.departed_on:require_fact_day(user,stay.departed_on)
     if not reason.strip():raise ValidationError('Укажите причину отмены.')
     if stay.updated_at.isoformat()!=updated or stay.cancelled_at:raise ValidationError('Запись уже изменена. Откройте историю заново.')
     rows=controls(user,[('bed',stay.bed_id),('employee',stay.employee_id)])
@@ -183,7 +180,6 @@ def correct(user,stay,values,updated,reason):
         stay=LodgingStay.objects.select_for_update().get(pk=stay.pk,company=user.company)
         if not reason.strip():raise ValidationError('Укажите причину исправления.')
         if stay.updated_at.isoformat()!=updated or stay.cancelled_at:raise ValidationError('Запись уже изменена. Откройте её заново.')
-        for day in {stay.arrived_on,stay.departed_on,values['arrived_on'],values.get('departed_on')} - {None}:require_fact_day(user,day)
         rows=controls(user,[('bed',stay.bed_id),('employee',stay.employee_id)])
         for row in rows:locked_elsewhere(row,user,None)
         for name in ('arrived_on','departed_on','planned_departure','keys_issued','pass_number','comment'):setattr(stay,name,values.get(name))

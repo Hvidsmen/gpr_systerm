@@ -14,7 +14,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_GET,require_POST,require_http_methods
 from core.permissions import require_roles,role_code
-from core.fact_edit_window import can_edit_fact_day,window_context
+from core.fact_edit_window import can_edit_fact_day
 from apps.resources.models import Employee
 from .models import Camp,LodgingBuilding,LodgingBed,LodgingStay,LodgingEvent,LodgingControl
 from . import lodging,lodging_sync
@@ -103,7 +103,7 @@ def building_places(request,pk):
     building=get_object_or_404(LodgingBuilding,company=request.user.company,camp=camp,pk=pk)
     group={'building':building,'places':filtered_place_rows(request,camp,day,building)}
     return render(request,'personnel/_lodging_building_places.html',{'group':group,'camp':camp,'day':day,
-        'editable':role_code(request.user) in lodging.OPERATORS and can_edit_fact_day(request.user,day),
+        'editable':role_code(request.user) in lodging.OPERATORS,
         'catalogue_editable':role_code(request.user) in lodging.OPERATORS})
 
 
@@ -140,7 +140,10 @@ def board(request):
     selector=LodgingFilter(raw,company=request.user.company)
     if not selector.is_valid():return render(request,'personnel/lodging.html',{'selector':selector,'has_camps':camps.exists()})
     camp=selector.cleaned_data['camp'];day=selector.cleaned_data['date']
-    editable=role_code(request.user) in lodging.OPERATORS and can_edit_fact_day(request.user,day)
+    # Accommodation is primary operational data. Commandants may enter or
+    # correct it for any date; the general fact closing window applies
+    # to production/personnel facts, not to lodging history.
+    editable=role_code(request.user) in lodging.OPERATORS
     initial={'date':day,'session':uuid4(),'kind':'CHECKIN'}
     if request.GET.get('employee','').isdigit():initial['employee']=int(request.GET['employee'])
     if request.GET.get('kind') in {'CHECKIN','MOVE','CHECKOUT','UPDATE'}:initial['kind']=request.GET['kind']
@@ -175,7 +178,7 @@ def board(request):
         'quick_bed_form':QuickBedForm(company=request.user.company,camp=camp),
         'movement_open':request.method=='POST' or bool(request.GET.get('employee')),
         'roster_data':[{'employee':s.employee_id,'bed':s.bed_id,'planned_departure':str(s.planned_departure or ''),'keys_issued':s.keys_issued,'key_number':s.key_number,'pass_number':s.pass_number,'comment':s.comment} for s in lodging.present(request.user.company,day).filter(camp=camp)],
-        **summary_context(request.user,camp,day),**window_context(request.user,day)}
+        **summary_context(request.user,camp,day)}
     return render(request,'personnel/lodging.html',context)
 
 
@@ -309,7 +312,7 @@ def sync(request):
     rows=lodging_sync.issues(request.user.company,selected,day,include_resolved=request.GET.get('resolved')=='1')
     for row in rows:row['signed']=lodging_sync.signed_issue(request.user,row)
     return render(request,'personnel/lodging_sync.html',{'camp':camp,'day':day,'issues':rows,'error':error,'arrival_camps':Camp.objects.filter(company=request.user.company,is_active=True),'can_explain':role_code(request.user) in lodging.OPERATORS|lodging_sync.HR_OPERATORS and can_edit_fact_day(request.user,day),
-        'can_confirm':role_code(request.user) in lodging_sync.HR_OPERATORS and can_edit_fact_day(request.user,day),'can_lodge':role_code(request.user) in lodging.OPERATORS and can_edit_fact_day(request.user,day),'can_hr':role_code(request.user) in lodging_sync.HR_OPERATORS,
+        'can_confirm':role_code(request.user) in lodging_sync.HR_OPERATORS and can_edit_fact_day(request.user,day),'can_lodge':role_code(request.user) in lodging.OPERATORS,'can_hr':role_code(request.user) in lodging_sync.HR_OPERATORS,
         **summary_context(request.user,camp,day)})
 
 

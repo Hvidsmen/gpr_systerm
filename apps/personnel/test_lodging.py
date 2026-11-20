@@ -121,9 +121,19 @@ class LodgingTests(TestCase):
         self.assertFalse(lodging.present(self.company,self.day).exists());self.assertTrue(LodgingEvent.objects.filter(kind='CANCEL').exists())
 
     def test_role_date_and_company_boundaries(self):
-        with self.assertRaises(ValidationError):self.edit(day=self.day-timedelta(days=1))
-        with self.assertRaises(ValidationError):self.edit(day=timezone.localdate()+timedelta(days=1))
-        self.edit(user=self.admin,day=timezone.localdate()+timedelta(days=2))
+        historical=self.day-timedelta(days=30)
+        stay=self.edit(day=historical)
+        self.assertEqual(stay.arrived_on,historical)
+        self.edit('CHECKOUT',day=historical+timedelta(days=1))
+        future=timezone.localdate()+timedelta(days=2)
+        stay=self.edit(day=future)
+        self.assertEqual(stay.arrived_on,future)
+        page=self.client.get(reverse('personnel:lodging'),{'camp':self.a.pk,'date':str(historical)})
+        self.assertContains(page,'Ввод доступен')
+        self.assertContains(page,'Оформить проживание')
+        self.assertNotContains(page,'закрыты с')
+        places=self.client.get(reverse('personnel:lodging_building_places',args=[self.building.pk]),{'camp':self.a.pk,'date':str(historical)})
+        self.assertContains(places,'Выселить')
         with self.assertRaises(ValidationError):lodging.claim(self.commandant,self.a,self.day,self.employee,self.foreign_bed,str(uuid4()))
         self.assertEqual(self.client.get(reverse('personnel:lodging'),{'camp':self.foreign_camp.pk,'date':str(self.day)}).status_code,200)
         # The selector reports a scoped invalid choice without disclosing data.
