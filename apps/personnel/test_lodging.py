@@ -146,6 +146,14 @@ class LodgingTests(TestCase):
         self.client.force_login(self.hr);page=self.client.get(reverse('personnel:housing'),data);self.assertContains(page,'data-lodging-sync-summary')
         page=self.client.get(reverse('personnel:lodging_sync'),data);self.assertContains(page,'Заезд требует подтверждения')
 
+    def test_commandant_can_load_company_employee_choices(self):
+        response=self.client.get(reverse('personnel:employee_search'),{'q':self.second_employee.employee_number,'active':'0'})
+        self.assertEqual(response.status_code,200)
+        self.assertEqual([item['id'] for item in response.json()['items']],[self.second_employee.pk])
+        foreign=self.client.get(reverse('personnel:employee_search'),{'q':'Secret','active':'0'})
+        self.assertEqual(foreign.status_code,200)
+        self.assertEqual(foreign.json()['items'],[])
+
     def test_sync_confirmation_api_uses_source_revision_and_permission(self):
         self.edit();row=self.issue(self.second_employee)
         data={'camp':self.a.pk,'date':str(self.day),'action':'arrival','actual_date':str(self.day),'signed':lodging_sync.signed_issue(self.commandant,row)}

@@ -253,6 +253,11 @@ def check_route(user, match, method):
         return
     if namespace=='personnel' and name=='camps' and method in {'GET','HEAD'}:
         require_roles(user,READ_ROLES|{'HR_HEAD','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER','ALL_FACT_DISPATCHER','COMMANDANT'});return
+    if namespace=='personnel' and name=='employee_search' and method in {'GET','HEAD'}:
+        # The lodging screen uses the same company-scoped remote employee
+        # selector as personnel forms.  Commandants may search employees for
+        # accommodation without receiving access to personnel administration.
+        require_roles(user,{'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER','COMMANDANT'});return
     if namespace=='personnel' and name=='movements':
         require_roles(user,{'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'});return
     if namespace=='personnel' and name=='movement_review_accept':
