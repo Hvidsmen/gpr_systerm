@@ -1,3 +1,4 @@
+import json
 from datetime import timedelta
 from uuid import uuid4
 from unittest.mock import patch
@@ -9,7 +10,7 @@ from apps.accounts.models import User,Role
 from apps.resources.models import Employee
 from apps.production.history_models import FactRevision
 from . import test_housing as housing_fixtures
-from .models import LodgingBuilding,LodgingBed,LodgingStay,LodgingEvent,LodgingControl,LodgingResolution,CampStay
+from .models import LodgingBuilding,LodgingBed,LodgingStay,LodgingEvent,LodgingControl,LodgingPresence,LodgingResolution,CampStay
 from . import lodging,lodging_sync,housing
 
 
@@ -28,10 +29,17 @@ class LodgingTests(TestCase):
         cls.foreign_building=LodgingBuilding.objects.create(company=cls.other,camp=cls.foreign_camp,name='Secret')
         cls.foreign_bed=LodgingBed.objects.create(company=cls.other,building=cls.foreign_building,number='1')
     def setUp(self):self.client.force_login(self.commandant)
+    def activate_editor(self,user=None,camp=None):
+        user=user or self.commandant;camp=camp or self.a
+        LodgingPresence.objects.filter(company=self.company,camp=camp).delete()
+        LodgingControl.objects.filter(company=self.company,resource='camp',resource_id=camp.pk).update(locked_by=None,session=None,expires_at=None)
+        session=str(uuid4());state=lodging.presence(user,camp,session)
+        self.assertTrue(state['editor'])
+        return session
     def edit(self,kind='CHECKIN',*,user=None,employee=None,bed=None,day=None,**kwargs):
         user=user or self.commandant;employee=employee or self.second_employee;day=day or self.day
         bed=(bed or self.bed) if kind in {'CHECKIN','MOVE'} else None
-        session=str(uuid4());signed=lodging.claim(user,self.a,day,employee,bed,session)
+        session=self.activate_editor(user);signed=lodging.claim(user,self.a,day,employee,bed,session)
         try:return lodging.move(user,kind,self.a,day,employee,bed=bed,session=session,signed=signed,**kwargs)
         except Exception:
             lodging.claim(user,self.a,day,employee,bed,session,'release')
@@ -66,17 +74,22 @@ class LodgingTests(TestCase):
         self.edit('CHECKOUT');self.assertEqual(self.issue(self.second_employee)['code'],'AFTER_CHECKOUT')
         self.assertTrue(housing.present_stays(self.company,self.day).filter(person=self.second_person).exists())
 
-    def test_unsaved_employee_and_bed_leases_block_colleague_and_other_tab(self):
-        key=str(uuid4());signed=lodging.claim(self.commandant,self.a,self.day,self.employee,self.bed,key)
+    def test_one_editor_per_location_and_live_viewers(self):
+        key=self.activate_editor(self.commandant);signed=lodging.claim(self.commandant,self.a,self.day,self.employee,self.bed,key)
+        viewer=str(uuid4());state=lodging.presence(self.colleague,self.a,viewer)
+        self.assertFalse(state['editor']);self.assertEqual(state['editor_name'],'commandant')
         with self.assertRaises(ValidationError):lodging.claim(self.colleague,self.a,self.day,self.employee,self.bed2,str(uuid4()))
         with self.assertRaises(ValidationError):lodging.claim(self.colleague,self.a,self.day,self.second_employee,self.bed,str(uuid4()))
-        with self.assertRaises(ValidationError):lodging.claim(self.commandant,self.a,self.day,self.employee,self.bed,str(uuid4()))
-        self.edit(user=self.colleague,bed=self.bed2)
+        self.assertIn('commandant-two',lodging.presence(self.commandant,self.a,key)['viewers'])
+        # Another tab of the same operator keeps the same user-level editing session.
+        lodging.claim(self.commandant,self.a,self.day,self.employee,self.bed,str(uuid4()))
         lodging.move(self.commandant,'CHECKIN',self.a,self.day,self.employee,bed=self.bed,session=key,signed=signed)
-        self.assertEqual(lodging.present(self.company,self.day).count(),2)
+        LodgingPresence.objects.filter(user=self.commandant,camp=self.a).update(expires_at=timezone.now()-timedelta(seconds=1))
+        LodgingControl.objects.filter(company=self.company).update(expires_at=timezone.now()-timedelta(seconds=1))
+        self.assertTrue(lodging.presence(self.colleague,self.a,viewer)['editor'])
 
     def test_expired_renew_and_stale_signed_form_rejected(self):
-        key=str(uuid4());signed=lodging.claim(self.commandant,self.a,self.day,self.employee,self.bed,key)
+        key=self.activate_editor();signed=lodging.claim(self.commandant,self.a,self.day,self.employee,self.bed,key)
         LodgingControl.objects.filter(company=self.company).update(expires_at=timezone.now()-timedelta(seconds=1))
         with self.assertRaises(ValidationError):lodging.claim(self.commandant,self.a,self.day,self.employee,self.bed,key,'renew')
         self.edit(user=self.colleague,employee=self.employee)
@@ -112,11 +125,14 @@ class LodgingTests(TestCase):
     def test_correction_by_colleague_keeps_original_author_and_stale_edit_rejected(self):
         stay=self.edit(keys_issued=True,pass_number='P1');stamp=stay.updated_at.isoformat()
         values={'arrived_on':stay.arrived_on,'departed_on':None,'planned_departure':None,'keys_issued':False,'pass_number':'P2','comment':'Уточнён пропуск'}
+        self.activate_editor(self.colleague)
         lodging.correct(self.colleague,stay,values,stamp,'Исправлен пропуск')
         stay.refresh_from_db();self.assertEqual(stay.recorded_by,self.commandant);self.assertEqual(stay.pass_number,'P2')
         revision=FactRevision.objects.filter(entity_type='personnel.lodgingstay',entity_id=str(stay.pk),operation='UPDATE').latest('pk')
         self.assertEqual(revision.actor,self.colleague);self.assertEqual(revision.before['fields']['pass_number'],'P1');self.assertEqual(revision.after['fields']['pass_number'],'P2')
+        self.activate_editor(self.commandant)
         with self.assertRaises(ValidationError):lodging.correct(self.commandant,stay,values,stamp,'Старая форма')
+        self.activate_editor(self.colleague)
         lodging.cancel(self.colleague,stay,'Ошибочная запись',stay.updated_at.isoformat())
         self.assertFalse(lodging.present(self.company,self.day).exists());self.assertTrue(LodgingEvent.objects.filter(kind='CANCEL').exists())
 
@@ -219,10 +235,29 @@ class LodgingTests(TestCase):
         self.assertContains(self.client.post(url,values),'Место уже изменено')
         bed.refresh_from_db();self.assertEqual(bed.state,'RESERVED')
         with self.assertRaises(ValidationError):self.edit(bed=bed)
-        key=str(uuid4());lodging.claim(self.colleague,self.a,self.day,self.employee,self.bed,key)
+        viewer=str(uuid4());state=lodging.presence(self.colleague,self.a,viewer);self.assertFalse(state['editor'])
         url=reverse('personnel:lodging_bed_edit',args=[self.building.pk,self.bed.pk])
         values.update(version=self.bed.updated_at.isoformat())
-        self.assertContains(self.client.post(url,values),'оформляет')
+        other=Client();other.force_login(self.colleague)
+        self.assertEqual(other.post(url,values).status_code,403)
+
+    def test_board_names_editor_and_viewers_then_promotes_after_timeout(self):
+        scope={'camp':self.a.pk,'date':str(self.day)}
+        page=self.client.get(reverse('personnel:lodging'),scope)
+        self.assertContains(page,'Вы редактируете')
+        other=Client();other.force_login(self.colleague)
+        viewer_page=other.get(reverse('personnel:lodging'),scope)
+        self.assertContains(viewer_page,'Только просмотр')
+        self.assertContains(viewer_page,'commandant')
+        self.assertNotContains(viewer_page,'data-lodging-movement')
+        denied=other.post(reverse('personnel:lodging_claims'),json.dumps({'camp':self.a.pk,'date':str(self.day),'employee':self.second_employee.pk,'bed':self.bed.pk,'session':viewer_page.context['presence_session']}),content_type='application/json')
+        self.assertEqual(denied.status_code,409);self.assertIn('редактирует commandant',denied.json()['error'])
+        page=self.client.get(reverse('personnel:lodging'),scope)
+        self.assertContains(page,'commandant-two')
+        LodgingPresence.objects.filter(user=self.commandant,camp=self.a).update(expires_at=timezone.now()-timedelta(seconds=1))
+        LodgingControl.objects.filter(company=self.company,resource='camp',resource_id=self.a.pk).update(expires_at=timezone.now()-timedelta(seconds=1))
+        promoted=other.post(reverse('personnel:lodging_presence'),data='{"camp":%s,"session":"%s"}'%(self.a.pk,uuid4()),content_type='application/json')
+        self.assertTrue(promoted.json()['editor'])
 
     def test_shared_sync_scope_includes_multiple_camps_and_never_other_company(self):
         from .lodging_views import summary_context

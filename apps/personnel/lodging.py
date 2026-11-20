@@ -6,16 +6,17 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Q,F
 from django.utils import timezone
-from core.permissions import require_roles,READ_ROLES
+from core.permissions import require_roles,role_code,READ_ROLES
 from core.fact_history import with_history_actor
 from apps.accounts.models import Company
 from apps.resources.models import Employee
-from .models import Camp,LodgingBuilding,LodgingBed,LodgingStay,LodgingEvent,LodgingControl
+from .models import Camp,LodgingBuilding,LodgingBed,LodgingStay,LodgingEvent,LodgingControl,LodgingPresence
 
 OPERATORS={'ADMIN','COMMANDANT','ALL_FACT_DISPATCHER'}
 READERS=OPERATORS|READ_ROLES|{'HR_HEAD','PERSONNEL_DISPATCHER'}
 SALT='lodging-edit-v1'
 TTL=timedelta(minutes=5)
+PRESENCE_TTL=timedelta(seconds=90)
 
 
 def present(company,day):
@@ -24,9 +25,7 @@ def present(company,day):
 
 def available_beds(company,camp,day,*,user=None,session=None):
     occupied=present(company,day).filter(camp=camp).values('bed_id')
-    leases=LodgingControl.objects.filter(company=company,resource='bed',expires_at__gt=timezone.now())
-    if user and session:leases=leases.exclude(locked_by=user,session=session)
-    return LodgingBed.objects.filter(company=company,building__camp=camp,building__camp__is_active=True,building__is_active=True,state='AVAILABLE').exclude(pk__in=occupied).exclude(pk__in=leases.values('resource_id')).select_related('building')
+    return LodgingBed.objects.filter(company=company,building__camp=camp,building__camp__is_active=True,building__is_active=True,state='AVAILABLE').exclude(pk__in=occupied).select_related('building')
 
 
 def building_title(building):
@@ -55,6 +54,54 @@ def mutex(user):
     Company.objects.filter(pk=user.company_id).update(name=F('name'))
 
 
+def display_user(user):
+    return user.get_full_name() or user.username
+
+
+def editor_control(user,camp):
+    row,_=LodgingControl.objects.get_or_create(company=user.company,resource='camp',resource_id=camp.pk)
+    return LodgingControl.objects.select_for_update().select_related('locked_by').get(pk=row.pk)
+
+
+def editor_state(user,camp):
+    now=timezone.now()
+    row=LodgingControl.objects.filter(company=user.company,resource='camp',resource_id=camp.pk,expires_at__gt=now).select_related('locked_by').first()
+    return bool(row and row.locked_by_id==user.pk),display_user(row.locked_by) if row and row.locked_by_id else ''
+
+
+def require_editor(user,camp):
+    require_roles(user,OPERATORS)
+    mine,owner=editor_state(user,camp)
+    if not mine:raise ValidationError(f'Местонахождение сейчас редактирует {owner}.' if owner else 'Откройте местонахождение, чтобы получить право редактирования.')
+
+
+@transaction.atomic
+def presence(user,camp,session,action='touch'):
+    require_roles(user,READERS);session=session_id(session)
+    if camp.company_id!=user.company_id:raise ValidationError('Местонахождение другой компании.')
+    mutex(user);now=timezone.now();Camp.objects.select_for_update().get(pk=camp.pk,company=user.company)
+    LodgingPresence.objects.filter(company=user.company,camp=camp,expires_at__lte=now).delete()
+    control=editor_control(user,camp)
+    active=LodgingPresence.objects.filter(company=user.company,camp=camp,expires_at__gt=now)
+    if control.locked_by_id and (not control.expires_at or control.expires_at<=now or not active.filter(user_id=control.locked_by_id).exists()):
+        control.locked_by=None;control.session=None;control.expires_at=None;control.save(update_fields=['locked_by','session','expires_at','updated_at'])
+    if action=='release':
+        LodgingPresence.objects.filter(company=user.company,camp=camp,user=user,session=session).delete()
+        if control.locked_by_id==user.pk and not active.filter(user=user).exists():
+            control.locked_by=None;control.session=None;control.expires_at=None;control.save(update_fields=['locked_by','session','expires_at','updated_at'])
+    elif action=='touch':
+        LodgingPresence.objects.update_or_create(company=user.company,camp=camp,session=session,defaults={'user':user,'expires_at':now+PRESENCE_TTL})
+        if role_code(user) in OPERATORS and (not control.locked_by_id or control.locked_by_id==user.pk):
+            control.locked_by=user;control.session=session;control.expires_at=now+PRESENCE_TTL;control.save(update_fields=['locked_by','session','expires_at','updated_at'])
+    else:raise ValidationError('Неизвестное действие присутствия.')
+    active=LodgingPresence.objects.filter(company=user.company,camp=camp,expires_at__gt=now).select_related('user').order_by('user__last_name','user__first_name','user__username','pk')
+    viewers=[];seen=set()
+    for item in active:
+        if item.user_id==control.locked_by_id or item.user_id==user.pk or item.user_id in seen:continue
+        seen.add(item.user_id);viewers.append(display_user(item.user))
+    return {'editor':control.locked_by_id==user.pk,'editor_name':display_user(control.locked_by) if control.locked_by_id else '','viewers':viewers,'expires_seconds':int(PRESENCE_TTL.total_seconds())}
+
+
 def resources(user,employee,bed,day):
     if employee.company_id!=user.company_id or bed and bed.company_id!=user.company_id:raise ValidationError('Выберите сотрудника и место своей компании.')
     keys={('employee',employee.pk)}
@@ -76,7 +123,7 @@ def version(rows):return {f'{row.resource}:{row.resource_id}':row.revision for r
 
 
 def locked_elsewhere(row,user,session):
-    if row.expires_at and row.expires_at>timezone.now() and (row.locked_by_id!=user.pk or row.session!=session):
+    if row.expires_at and row.expires_at>timezone.now() and row.locked_by_id!=user.pk:
         owner=row.locked_by.get_full_name() or row.locked_by.username if row.locked_by else 'другой комендант'
         raise ValidationError(f'{"Сотрудника" if row.resource=="employee" else "Место"} сейчас оформляет {owner}.')
 
@@ -86,22 +133,22 @@ def bed_versions(user,keys):return {str(b.pk):b.updated_at.isoformat() for b in 
 
 @transaction.atomic
 def claim(user,camp,day,employee,bed,session,action='acquire'):
-    require_roles(user,OPERATORS);session=session_id(session)
+    require_editor(user,camp);session=session_id(session)
     if camp.company_id!=user.company_id or bed and bed.building.camp_id!=camp.pk:raise ValidationError('Место другого местонахождения.')
     mutex(user);keys=resources(user,employee,bed,day);rows=controls(user,keys)
     if action in {'acquire','renew'}:
         for row in rows:locked_elsewhere(row,user,session)
-        if action=='renew' and any(row.locked_by_id!=user.pk or row.session!=session or not row.expires_at or row.expires_at<=timezone.now() for row in rows):raise ValidationError('Срок проверки истёк. Проверьте свежие данные и повторите сохранение.')
+        if action=='renew' and any(row.locked_by_id!=user.pk or not row.expires_at or row.expires_at<=timezone.now() for row in rows):raise ValidationError('Срок проверки истёк. Проверьте свежие данные и повторите сохранение.')
         if bed:
             if bed.state!='AVAILABLE' or not bed.building.is_active:raise ValidationError('Место недоступно для заселения.')
             occupant=present(user.company,day).filter(bed=bed).exclude(employee=employee).first()
             if occupant:raise ValidationError('Место уже занято другим сотрудником.')
         # Selection changes release only this browser tab's previous leases.
-        for old in LodgingControl.objects.select_for_update().filter(company=user.company,locked_by=user,session=session):
+        for old in LodgingControl.objects.select_for_update().filter(company=user.company,locked_by=user,session=session,resource__in=['employee','bed']):
             if (old.resource,old.resource_id) not in keys:old.locked_by=None;old.session=None;old.expires_at=None;old.save()
         for row in rows:row.locked_by=user;row.session=session;row.expires_at=timezone.now()+TTL;row.save()
     elif action=='release':
-        for row in LodgingControl.objects.select_for_update().filter(company=user.company,locked_by=user,session=session):
+        for row in LodgingControl.objects.select_for_update().filter(company=user.company,locked_by=user,session=session,resource__in=['employee','bed']):
             row.locked_by=None;row.session=None;row.expires_at=None;row.save()
     else:raise ValidationError('Неизвестное действие блокировки.')
     return signing.dumps({'user':user.pk,'company':user.company_id,'camp':camp.pk,'day':str(day),'session':str(session),'versions':version(rows),'beds':bed_versions(user,keys)},salt=SALT,compress=True)
@@ -115,7 +162,7 @@ def check(user,camp,day,employee,bed,session,signed):
     if payload.get('versions')!=version(rows) or payload.get('beds')!=bed_versions(user,keys):raise ValidationError('Проживание или место уже изменены. Обновите данные и повторите сохранение.')
     for row in rows:
         locked_elsewhere(row,user,session)
-        if row.locked_by_id!=user.pk or row.session!=session or not row.expires_at or row.expires_at<=timezone.now():raise ValidationError('Срок проверки истёк. Повторите сохранение сотрудника и места.')
+        if row.locked_by_id!=user.pk or not row.expires_at or row.expires_at<=timezone.now():raise ValidationError('Срок проверки истёк. Повторите сохранение сотрудника и места.')
     return rows
 
 
@@ -127,7 +174,7 @@ def bump(rows):
 @with_history_actor
 @transaction.atomic
 def move(user,kind,camp,day,employee,*,bed=None,session=None,signed=None,planned_departure=None,keys_issued=False,key_number='',pass_number='',comment=''):
-    require_roles(user,OPERATORS)
+    require_editor(user,camp)
     if kind not in {'CHECKIN','MOVE','CHECKOUT','UPDATE'}:raise ValidationError('Выберите действие с проживанием.')
     if camp.company_id!=user.company_id:raise ValidationError('Местонахождение другой компании.')
     mutex(user);employee=Employee.objects.select_for_update().get(company=user.company,pk=employee.pk)
@@ -161,7 +208,7 @@ def move(user,kind,camp,day,employee,*,bed=None,session=None,signed=None,planned
 @with_history_actor
 @transaction.atomic
 def cancel(user,stay,reason,updated):
-    require_roles(user,OPERATORS);mutex(user)
+    require_editor(user,stay.camp);mutex(user)
     stay=LodgingStay.objects.select_for_update().get(pk=stay.pk,company=user.company)
     if not reason.strip():raise ValidationError('Укажите причину отмены.')
     if stay.updated_at.isoformat()!=updated or stay.cancelled_at:raise ValidationError('Запись уже изменена. Откройте историю заново.')
@@ -175,7 +222,7 @@ def cancel(user,stay,reason,updated):
 @transaction.atomic
 def correct(user,stay,values,updated,reason):
     from core.fact_history import history_actor
-    require_roles(user,OPERATORS);mutex(user)
+    require_editor(user,stay.camp);mutex(user)
     with history_actor(user,reason):
         stay=LodgingStay.objects.select_for_update().get(pk=stay.pk,company=user.company)
         if not reason.strip():raise ValidationError('Укажите причину исправления.')

@@ -50,6 +50,7 @@ urlpatterns += [
     path('lodging/',lodging_views.board,name='lodging'),
     path('lodging/employees/<int:pk>/gender/',lodging_views.employee_gender,name='lodging_employee_gender'),
     path('lodging/claims/',lodging_views.claims,name='lodging_claims'),
+    path('lodging/presence/',lodging_views.presence,name='lodging_presence'),
     path('lodging/available-beds/',lodging_views.available_beds,name='lodging_available_beds'),
     path('lodging/buildings/<int:pk>/places/',lodging_views.building_places,name='lodging_building_places'),
     path('lodging/events/',lodging_views.event_history,name='lodging_event_history'),

@@ -1,7 +1,7 @@
 {% if row.stay %}
   {% if catalogue_editable %}
   <details class="lodging-gender"><summary>{{ row.gender }}</summary>
-    <form method="post" action="{% url 'personnel:lodging_employee_gender' row.stay.employee_id %}">{% csrf_token %}
+    <form method="post" action="{% url 'personnel:lodging_employee_gender' row.stay.employee_id %}">{% csrf_token %}<input type="hidden" name="presence_session" value="{{ presence_session }}">
       <input type="hidden" name="camp" value="{{ camp.pk }}"><input type="hidden" name="date" value="{{ day|date:'Y-m-d' }}">
       <label class="small" for="gender-{{ row.bed.pk }}">Пол сотрудника</label>
       <select class="form-select form-select-sm" id="gender-{{ row.bed.pk }}" name="gender">

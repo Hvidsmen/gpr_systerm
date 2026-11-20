@@ -1,0 +1,5 @@
+<section class="alert {% if editable %}alert-success{% else %}alert-warning{% endif %} lodging-presence" data-lodging-presence data-url="{% url 'personnel:lodging_presence' %}" data-camp="{{ camp.pk }}" data-session="{{ presence_session }}" data-editor="{% if editable %}1{% else %}0{% endif %}">
+  <form hidden data-presence-csrf>{% csrf_token %}</form>
+  <strong data-presence-mode>{% if editable %}Вы редактируете «{{ camp.name }}».{% elif presence_state.editor_name %}Только просмотр: «{{ camp.name }}» сейчас редактирует {{ presence_state.editor_name }}.{% else %}Только просмотр: редактор «{{ camp.name }}» пока не открыт.{% endif %}</strong>
+  <span data-presence-viewers{% if not editable %} hidden{% endif %}>{% if presence_state.viewers %} Сейчас смотрят: {{ presence_state.viewers|join:', ' }}.{% else %} Сейчас никто не смотрит.{% endif %}</span>
+</section>

@@ -14,6 +14,7 @@ from .models import LodgingBed,LodgingBuilding,LodgingControl,LodgingStay
 class LodgingMetadataTests(TestCase):
     setUpTestData=classmethod(fixtures.LodgingTests.setUpTestData.__func__)
     edit=fixtures.LodgingTests.edit
+    activate_editor=fixtures.LodgingTests.activate_editor
     def setUp(self):
         self.client.force_login(self.commandant)
         self.scope={'camp':self.a.pk,'date':str(self.day)}
@@ -50,12 +51,14 @@ class LodgingMetadataTests(TestCase):
         self.assertIn('указанного вагона',invalid.errors['bed'][0])
 
     def test_temporary_reservations_excluded_but_own_post_can_save(self):
-        session=str(uuid4());signed=lodging.claim(self.commandant,self.a,self.day,self.second_employee,self.bed,session)
+        session=self.activate_editor();signed=lodging.claim(self.commandant,self.a,self.day,self.second_employee,self.bed,session)
         scope={**self.scope,'session':session}
         endpoint=reverse('personnel:lodging_available_beds')
         self.assertIn(self.bed.pk,[r['id'] for r in self.client.get(endpoint,scope).json()['beds']])
         self.client.force_login(self.colleague)
-        self.assertNotIn(self.bed.pk,[r['id'] for r in self.client.get(endpoint,scope).json()['beds']])
+        self.assertIn(self.bed.pk,[r['id'] for r in self.client.get(endpoint,scope).json()['beds']])
+        blocked=self.client.post(reverse('personnel:lodging'),{**scope,'kind':'CHECKIN','employee':self.second_employee.pk,'bed':self.bed.pk,'signed':signed})
+        self.assertEqual(blocked.status_code,302);self.assertFalse(LodgingStay.objects.exists())
         self.client.force_login(self.commandant)
         payload={**self.scope,'kind':'CHECKIN','employee':self.second_employee.pk,'bed':self.bed.pk,'session':session,'signed':signed,'key_number':'КЛЮЧ 2/19','keys_issued':'on','pass_number':'P-19'}
         self.assertEqual(self.client.post(reverse('personnel:lodging'),payload).status_code,302)

@@ -10,6 +10,7 @@ from .lodging_forms import LodgingMovementForm,BuildingForm
 
 class LodgingBuildingGenderTests(TestCase):
     setUpTestData=classmethod(fixtures.LodgingTests.setUpTestData.__func__)
+    activate_editor=fixtures.LodgingTests.activate_editor
     def setUp(self):
         self.client.force_login(self.commandant)
         self.scope={'camp':self.a.pk,'date':str(self.day)}

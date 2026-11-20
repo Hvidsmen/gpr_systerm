@@ -96,13 +96,23 @@ class LodgingEvent(ActualHistoryMixin,PersonnelModel):
 
 
 class LodgingControl(PersonnelModel):
-    resource=models.CharField(max_length=10,choices=[('employee','Сотрудник'),('bed','Место')])
+    resource=models.CharField(max_length=10,choices=[('employee','Сотрудник'),('bed','Место'),('camp','Местонахождение')])
     resource_id=models.PositiveBigIntegerField()
     revision=models.PositiveIntegerField(default=0)
     locked_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,blank=True,related_name='+')
     session=models.UUIDField(null=True,blank=True)
     expires_at=models.DateTimeField(null=True,blank=True)
     class Meta:constraints=[models.UniqueConstraint(fields=['company','resource','resource_id'],name='unique_lodging_resource_control')]
+
+
+class LodgingPresence(PersonnelModel):
+    camp=models.ForeignKey('personnel.Camp',on_delete=models.CASCADE,related_name='lodging_presence')
+    user=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.CASCADE,related_name='+')
+    session=models.UUIDField()
+    expires_at=models.DateTimeField()
+    class Meta:
+        constraints=[models.UniqueConstraint(fields=['company','camp','session'],name='unique_lodging_camp_presence')]
+        indexes=[models.Index(fields=['company','camp','expires_at'],name='lodging_presence_scope')]
 
 
 class LodgingResolution(ActualHistoryMixin,PersonnelModel):
