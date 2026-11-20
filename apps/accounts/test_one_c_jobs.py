@@ -1,6 +1,7 @@
 from django.test import TestCase
 from django.urls import reverse
 from .models import Company, Role, User, OneCConnection, OneCDiagnosticRun
+from .one_c import compact_uat_import_report
 from .one_c_jobs import error_help
 
 
@@ -40,6 +41,37 @@ class OneCJobTests(TestCase):
         page = self.client.get(self.url, {'page':2}).context['page']
         self.assertEqual(page.number,2)
         self.assertEqual(page.paginator.count,54)
+
+    def test_history_reads_only_small_report_summary(self):
+        run = self.run_record(report={
+            'uat_import': True,
+            'waybills': [{'source_id': str(index), 'payload': 'x' * 1000} for index in range(200)],
+            'waybill_tasks': [{'parent_id': str(index)} for index in range(200)],
+        }, status='DONE')
+        response = self.client.get(self.url)
+        history_run = next(item for item in response.context['page'] if item.pk == run.pk)
+        self.assertEqual(history_run.report, {'uat_import': True})
+        self.assertContains(response, 'Загрузка данных УАТ')
+        self.assertNotContains(response, 'x' * 1000)
+
+    def test_successful_uat_report_is_compacted_but_keeps_page_preview(self):
+        report = {
+            'from_date': '2026-10-01', 'to_date': '2026-11-20', 'limited': True,
+            'source_stats': [{'source': 'waybills', 'total_rows': 1000}],
+            'waybills': [{'source_id': f'W{index}', 'number': str(index)} for index in range(300)],
+            'waybill_tasks': [{'parent_id': f'W{index}', 'line_number': 1} for index in range(300)],
+            'repair_sheets': [{'source_id': f'R{index}'} for index in range(80)],
+        }
+        compact = compact_uat_import_report(report, {'waybills': 300})
+        self.assertEqual(compact['waybill_count'], 300)
+        self.assertEqual(compact['waybill_task_count'], 300)
+        self.assertEqual(compact['repair_sheet_count'], 80)
+        self.assertEqual(len(compact['waybill_tasks']), 200)
+        self.assertEqual(len(compact['repair_sheets']), 50)
+        self.assertTrue({row['parent_id'] for row in compact['waybill_tasks']}.issubset(
+            {row['source_id'] for row in compact['waybills']}
+        ))
+        self.assertEqual(compact['sync_result'], {'waybills': 300})
 
     def test_non_admin_denied(self):
         role,_=Role.objects.get_or_create(code='PLANNER',defaults={'name':'Planner'})

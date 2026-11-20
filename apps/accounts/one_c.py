@@ -41,6 +41,31 @@ class ConnectionForm(forms.ModelForm):
         return value
 
 
+def compact_uat_import_report(report, sync_result):
+    """Keep job history small while retaining the bounded preview used by the UAT page."""
+    tasks = list(report.get('waybill_tasks', []))
+    task_preview = tasks[:200]
+    parent_ids = {row.get('parent_id') for row in task_preview}
+    waybills = list(report.get('waybills', []))
+    preview = list(waybills[:50])
+    preview_ids = {row.get('source_id') for row in preview}
+    preview.extend(row for row in waybills if row.get('source_id') in parent_ids - preview_ids)
+    result = {
+        'uat_import': True,
+        'from_date': report.get('from_date', ''),
+        'to_date': report.get('to_date', ''),
+        'limited': bool(report.get('limited')),
+        'waybill_count': report.get('waybill_count', len(waybills)),
+        'waybill_task_count': len(tasks),
+        'repair_sheet_count': report.get('repair_sheet_count', len(report.get('repair_sheets', []))),
+        'source_stats': report.get('source_stats', []),
+        'waybills': preview,
+        'waybill_tasks': task_preview,
+        'repair_sheets': list(report.get('repair_sheets', []))[:50],
+        'sync_result': sync_result,
+    }
+    return result
+
 def enqueue(connection, actor=None, metadata_only=False, positions=False, employees=False,
             *, database=None, uat_discovery=False, uat_import_from=None, trust_certificate=None):
     # Conditional update is the cross-process claim, including SQLite deployments.
@@ -123,7 +148,8 @@ def process_queue(*,uat_only=False):
                 run.report['uat_import']=True
                 run.report['from_date']=run.report.get('from_date') or command[command.index('-UatFromDate')+1]
                 from .uat_sync import apply_uat_report
-                run.report['sync_result']=apply_uat_report(run,run.report)
+                sync_result=apply_uat_report(run,run.report)
+                run.report=compact_uat_import_report(run.report,sync_result)
             if positions_import:
                 if run.report.get('positions_snapshot_version')!=2 or run.report.get('position_source',{}).get('table')!='dbo._Reference394':raise ValidationError('Обработчик вернул прежний источник должностей. Обновите проект и фоновый портал: должности загружаются только из штатного расписания.')
                 from .one_c_positions import apply_names

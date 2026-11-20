@@ -248,7 +248,7 @@ def discovery(request):
         'latest_import': latest_import, 'import_report': import_report,
         'waybills': waybill_rows(import_report),
         'waybill_work': waybill_work_rows(import_report),
-        'waybill_work_total': len(import_report.get('waybill_tasks', [])),
+        'waybill_work_total': import_report.get('waybill_task_count', len(import_report.get('waybill_tasks', []))),
         'repair_sheets': import_report.get('repair_sheets', [])[:50],
         'source_status': source, 'import_from': date.today() - timedelta(days=30),
         'queued': bool(last and last.status == 'QUEUED'),

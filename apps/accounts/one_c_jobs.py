@@ -14,6 +14,7 @@ from .models import OneCDiagnosticRun, OneCConnection
 from .one_c_schedules import WEEKDAYS
 
 KINDS = [('diagnostic', 'Диагностика структуры'), ('uat', 'УАТ: структура и данные'), ('metadata', 'Чтение названий'), ('positions', 'Загрузка должностей'), ('employees', 'Загрузка сотрудников')]
+HISTORY_KIND_KEYS = ('uat_import', 'uat_discovery', 'metadata_only', 'employees_import', 'positions_import')
 
 
 def _sql_identifier(value):
@@ -59,6 +60,32 @@ def error_help(error, server='', database=''):
     }
 
 
+def history_report_summaries(run_ids):
+    """Read only the small JSON fragments rendered by the history table."""
+    summaries = {run_id: {} for run_id in run_ids}
+
+    def merge(ids, keys):
+        if not ids:
+            return
+        fields = [f'report__{key}' for key in keys]
+        for values in OneCDiagnosticRun.objects.filter(pk__in=ids).values('pk', *fields):
+            summaries[values['pk']].update({
+                key: values.get(f'report__{key}') for key in keys
+                if values.get(f'report__{key}') is not None
+            })
+
+    merge(run_ids, HISTORY_KIND_KEYS)
+    employee_ids = [pk for pk, report in summaries.items() if report.get('employees_import')]
+    position_ids = [pk for pk, report in summaries.items() if report.get('positions_import')]
+    uat_ids = [pk for pk, report in summaries.items() if report.get('uat_import') or report.get('uat_discovery')]
+    import_ids = {*employee_ids, *position_ids, *uat_ids}
+    diagnostic_ids = [pk for pk in run_ids if pk not in import_ids]
+    merge(employee_ids, ('employees_result',))
+    merge(position_ids, ('positions_result', 'position_source', 'position_flags'))
+    merge(diagnostic_ids, ('metadata_objects_read', 'metadata_errors', 'position_source', 'position_flags'))
+    return summaries
+
+
 class PositionScheduleForm(forms.Form):
     frequency = forms.ChoiceField(label='Периодичность', choices=[('manual', 'Только вручную'),
         ('daily', 'Ежедневно'), ('weekly', 'Еженедельно'), ('interval', 'Через интервал')],
@@ -99,11 +126,19 @@ class PositionScheduleForm(forms.Form):
 @require_http_methods(['GET','POST'])
 def jobs(request):
     require_roles(request.user, {'ADMIN'})
-    from .one_c_schedules import (CATALOGUES, source_ready, last_run, schedule_initial,
+    from .one_c_schedules import (CATALOGUES, last_run, schedule_initial,
                                  first_launch, schedule_label, scheduled_deadline)
     from .one_c import enqueue
     connection,_=OneCConnection.objects.get_or_create(company=request.user.company)
-    readiness={item['kind']:source_ready(connection,item['kind']) for item in CATALOGUES}
+    diagnostic = connection.runs.filter(
+        status='DONE', server=connection.server, database=connection.database,
+    ).exclude(report__has_key='positions_import').exclude(report__has_key='employees_import').order_by('-created_at').first()
+    from .one_c_employees import source_confirmed as employees_source_confirmed
+    from .one_c_positions import source_confirmed as positions_source_confirmed
+    readiness = {
+        'employees': employees_source_confirmed(connection, diagnostic),
+        'positions': positions_source_confirmed(connection, diagnostic),
+    }
     schedule_forms={item['kind']:PositionScheduleForm(initial=schedule_initial(connection,item['kind']),auto_id=item['kind']+'_%s') for item in CATALOGUES}
     if request.method=='POST':
         action=request.POST.get('action')
@@ -186,8 +221,12 @@ def jobs(request):
         query = query.exclude(report__has_key='positions_import').exclude(report__has_key='employees_import').exclude(report__has_key='metadata_only').exclude(report__has_key='uat_discovery').exclude(report__has_key='uat_import')
     else:
         kind = ''
-    page = Paginator(query, 50).get_page(request.GET.get('page'))
+    page = Paginator(query.defer('report'), 50).get_page(request.GET.get('page'))
+    summaries = history_report_summaries([run.pk for run in page.object_list])
     for run in page:
+        # Keep the template API stable without fetching the complete JSON field.
+        # In particular, old UAT runs may contain thousands of source documents.
+        run.report = summaries.get(run.pk, {})
         run.kind_label = 'Загрузка данных УАТ' if run.report.get('uat_import') else 'Загрузка сотрудников' if run.report.get('employees_import') else 'Загрузка должностей' if run.report.get('positions_import') else 'Диагностика УАТ' if run.report.get('uat_discovery') else 'Чтение названий' if run.report.get('metadata_only') else 'Диагностика структуры'
         run.error_help=error_help(run.error,run.server,run.database)
     params = request.GET.copy()
