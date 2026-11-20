@@ -14,7 +14,10 @@ from .models import (
     Company, OneCConnection, OneCDiagnosticRun, Role, UatDepartment,
     UatRepairSheet, UatVehicle, UatWaybill, User,
 )
-from .uat_sync import apply_uat_report, next_scheduled_slot, rebuild_facts, scheduled_slot
+from .uat_sync import (
+    apply_uat_report, auto_match_vehicles_by_vin, next_scheduled_slot,
+    rebuild_facts, scheduled_slot,
+)
 
 
 @override_settings(UAT_DATABASE='uat01_ivanov', TIME_ZONE='Europe/Moscow')
@@ -119,6 +122,65 @@ class UatSynchronizationTests(TestCase):
         apply_uat_report(self.run, limited)
         self.assertTrue(UatWaybill.objects.get(source_id='W1').is_active)
         self.assertTrue(UatRepairSheet.objects.get(source_id='R1').is_active)
+
+    def test_vin_match_is_saved_automatically_and_manual_mapping_is_preserved(self):
+        automatic = UatVehicle.objects.create(
+            company=self.company, source_id='AUTO', name='Техника УАТ',
+            vin='vin exact 001', match_status='UNMATCHED',
+        )
+        self.assertEqual(auto_match_vehicles_by_vin(self.company), 1)
+        automatic.refresh_from_db()
+        self.assertEqual(
+            (automatic.equipment, automatic.match_status, automatic.match_basis),
+            (self.machine, 'MATCHED', 'VIN'),
+        )
+
+        other = Equipment.objects.create(
+            company=self.company, type=self.kind, name='Другая машина',
+            plate_number='В111ВВ00', vin='OTHER-VIN',
+        )
+        automatic.equipment = other
+        automatic.match_status = 'MATCHED'
+        automatic.match_basis = 'MANUAL'
+        automatic.save(update_fields=['equipment', 'match_status', 'match_basis'])
+        self.assertEqual(auto_match_vehicles_by_vin(self.company), 0)
+        automatic.refresh_from_db()
+        self.assertEqual((automatic.equipment, automatic.match_basis), (other, 'MANUAL'))
+
+    def test_created_uat_placeholder_is_replaced_by_real_portal_vehicle_with_same_vin(self):
+        report = self.report()
+        report['vehicles'] = [{
+            'source_id': 'V3', 'name': 'Техника УАТ', 'plate': '',
+            'vin': 'REPLACE-ME-001', 'garage_number': '',
+        }]
+        report['waybills'] = []
+        report['waybill_tasks'] = []
+        report['repair_sheets'] = []
+        apply_uat_report(self.run, report)
+        source = UatVehicle.objects.get(source_id='V3')
+        placeholder = source.equipment
+        self.assertEqual(source.match_status, 'CREATED')
+
+        real = Equipment.objects.create(
+            company=self.company, type=self.kind, name='Настоящая техника портала',
+            plate_number='С222СС00', vin='REPLACE ME 001',
+        )
+        self.assertEqual(auto_match_vehicles_by_vin(self.company), 1)
+        source.refresh_from_db()
+        self.assertEqual((source.equipment, source.match_status, source.match_basis), (real, 'MATCHED', 'VIN'))
+        self.assertNotEqual(source.equipment, placeholder)
+
+    def test_vehicle_mapping_page_saves_existing_unique_vin_match(self):
+        source = UatVehicle.objects.create(
+            company=self.company, source_id='PAGE', name='Техника со страницы',
+            vin='VIN EXACT 001', match_status='UNMATCHED',
+        )
+        self.client.force_login(self.admin)
+        response = self.client.get(reverse('accounts:uat_vehicles'))
+        self.assertEqual(response.status_code, 200)
+        source.refresh_from_db()
+        self.assertEqual((source.equipment, source.match_basis), (self.machine, 'VIN'))
+        self.assertContains(response, 'Сохранено автоматически по VIN')
 
     def test_manual_fact_is_not_overwritten(self):
         apply_uat_report(self.run, self.report())

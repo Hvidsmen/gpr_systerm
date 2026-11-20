@@ -108,6 +108,59 @@ def match_vehicle(row, indexes):
     return None, 'UNMATCHED', ''
 
 
+@transaction.atomic
+def auto_match_vehicles_by_vin(company):
+    """Persist every unambiguous VIN match without waiting for a manual save."""
+    vin_index = equipment_indexes(company)['vin']
+    rows = UatVehicle.objects.select_for_update().filter(company=company).exclude(vin='').exclude(match_basis='MANUAL')
+    changed = 0
+    for row in rows:
+        token = normalized(row.vin)
+        if not token:
+            continue
+        candidates = list(vin_index.get(token, []))
+        # A machine created for this very UAT row is only a placeholder.  Do
+        # not confirm it by matching it to its own copied VIN; if a real portal
+        # machine has since appeared, prefer that machine instead.
+        generated_key = ('uat:' + row.source_id)[:80]
+        candidates = [
+            machine for machine in candidates
+            if not (
+                row.match_status == 'CREATED'
+                and machine.pk == row.equipment_id
+                and machine.import_key == generated_key
+            )
+        ]
+        if not candidates:
+            continue
+        candidate_ids = [machine.pk for machine in candidates]
+        occupied = set(
+            UatVehicle.objects.filter(company=company, equipment_id__in=candidate_ids)
+            .exclude(pk=row.pk)
+            .values_list('equipment_id', flat=True)
+        )
+        available = [machine for machine in candidates if machine.pk not in occupied]
+        if len(available) != 1:
+            if not row.equipment_id and (len(candidates) > 1 or occupied):
+                fields = []
+                if row.match_status != 'AMBIGUOUS':
+                    row.match_status = 'AMBIGUOUS';fields.append('match_status')
+                if row.match_basis != 'VIN':
+                    row.match_basis = 'VIN';fields.append('match_basis')
+                if fields:
+                    row.save(update_fields=fields + ['updated_at'])
+            continue
+        machine = available[0]
+        if row.equipment_id == machine.pk and row.match_status == 'MATCHED' and row.match_basis == 'VIN':
+            continue
+        row.equipment = machine
+        row.match_status = 'MATCHED'
+        row.match_basis = 'VIN'
+        row.save(update_fields=['equipment', 'match_status', 'match_basis', 'updated_at'])
+        changed += 1
+    return changed
+
+
 def unclassified_type(company):
     row = EquipmentType.objects.filter(company=company, name=UNCLASSIFIED, parent=None).first()
     if row:
@@ -197,6 +250,7 @@ def upsert_vehicles(company, rows, now, *, complete=True):
         created += was_created;matched += status in {'MATCHED', 'CREATED'};ambiguous += status == 'AMBIGUOUS';updated += bool(changed and not was_created)
     if complete and seen:
         UatVehicle.objects.filter(company=company).exclude(source_id__in=seen).update(is_active=False)
+    auto_match_vehicles_by_vin(company)
     return {'created': created, 'updated': updated, 'matched': matched, 'ambiguous': ambiguous, 'total': len(seen)}
 
 

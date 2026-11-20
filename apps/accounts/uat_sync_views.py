@@ -15,7 +15,7 @@ from apps.personnel.models import Camp
 from apps.projects.models import ConstructionObject
 from apps.resources.models import Equipment
 from .models import OneCConnection, OneCDiagnosticRun, UatDepartment, UatRepairSheet, UatVehicle, UatWaybill
-from .uat_sync import next_scheduled_slot, rebuild_facts, source_ready
+from .uat_sync import auto_match_vehicles_by_vin, next_scheduled_slot, rebuild_facts, source_ready
 
 
 READERS = {'ADMIN', 'MECHANIZATION_DISPATCHER', 'ALL_FACT_DISPATCHER', 'PLANNER', 'MANAGER', 'OBSERVER'}
@@ -94,6 +94,13 @@ def vehicles(request):
             source.save(update_fields=['equipment', 'match_status', 'match_basis', 'updated_at']);rebuild_facts(request.user.company)
             messages.success(request, 'Сопоставление техники сохранено.')
         return redirect('accounts:uat_vehicles')
+    automatically_matched = auto_match_vehicles_by_vin(request.user.company)
+    if automatically_matched:
+        rebuild_facts(request.user.company)
+        messages.success(
+            request,
+            f'По VIN автоматически сопоставлено и сохранено: {automatically_matched}.',
+        )
     rows = UatVehicle.objects.filter(company=request.user.company).select_related('equipment__type')
     query = ' '.join(request.GET.get('q', '').split())[:200]
     if query:rows = rows.filter(Q(name__icontains=query)|Q(plate__icontains=query)|Q(vin__icontains=query)|Q(garage_number__icontains=query)|Q(equipment__name__icontains=query)|Q(equipment__plate_number__icontains=query))
