@@ -11,6 +11,7 @@ from django.utils import timezone
 
 from .models import Company, OneCConnection, OneCDiagnosticRun, Role, User
 from .one_c import process_queue
+from .uat_sources import PARTS, REPAIR_SHEET, WAYBILL
 
 
 SCHEMA = [
@@ -18,6 +19,19 @@ SCHEMA = [
     {'schema':'dbo','table':'_Document123','column':'_Number','type':'nvarchar','max_length':18,'is_nullable':False},
 ]
 LABELS = {'dbo._Document123': {'name':'Документ.ПутевойЛист','columns':{'_Number':'Номер'}}}
+UAT_SCHEMA = [
+    {'schema': key.split('.')[0], 'table': key.split('.')[1], 'column': column,
+     'type': 'binary', 'max_length': 16, 'is_nullable': False}
+    for source in (WAYBILL, REPAIR_SHEET) for key in (source['key'],) for column in source['columns']
+] + [
+    {'schema': key.split('.')[0], 'table': key.split('.')[1], 'column': column,
+     'type': 'binary', 'max_length': 16, 'is_nullable': False}
+    for key, _label, columns in PARTS for column in columns
+]
+UAT_LABELS = {
+    WAYBILL['key']: {'name': WAYBILL['name'], 'columns': {}},
+    REPAIR_SHEET['key']: {'name': REPAIR_SHEET['name'], 'columns': {}},
+}
 
 
 @override_settings(UAT_DATABASE='uat01_ivanov')
@@ -80,6 +94,33 @@ class UatDiscoveryTests(TestCase):
         uat.refresh_from_db();other.refresh_from_db()
         self.assertEqual(uat.status,'DONE')
         self.assertEqual(other.status,'QUEUED')
+
+    @patch('apps.accounts.one_c.subprocess.run')
+    def test_confirmed_structure_can_load_waybills_and_repair_sheets(self,execute):
+        OneCDiagnosticRun.objects.create(connection=self.connection,server='shared-sql',database='uat01_ivanov',
+            status='DONE',report={'uat_discovery':True,'schema':UAT_SCHEMA,'metadata_labels':UAT_LABELS})
+        page=self.client.get(self.url)
+        self.assertContains(page,'Структура подходит')
+        response=self.client.post(self.url,{'action':'import','from_date':'2026-10-01'})
+        self.assertEqual(response.status_code,302)
+        run=OneCDiagnosticRun.objects.filter(report__uat_import=True).get()
+        self.assertEqual(run.report['from_date'],'2026-10-01')
+        with tempfile.TemporaryDirectory() as directory:
+            target=PosixPath(directory)/'.runtime/1c-diagnostics'/run.pk.hex
+            target.mkdir(parents=True)
+            (target/'status.json').write_text(json.dumps({'ok':True}))
+            (target/'report.json').write_text(json.dumps({'uat_import':True,'from_date':'2026-10-01',
+                'waybill_count':1,'repair_sheet_count':1,
+                'waybills':[{'number':'PL-1','vehicle':'KAMAZ'}],
+                'repair_sheets':[{'number':'RL-1','vehicle':'GAZ'}]}))
+            with override_settings(CONFIG_DIR=directory),patch('apps.accounts.one_c.os.name','nt'),patch('apps.accounts.one_c.Path',PosixPath),patch('apps.accounts.one_c.subprocess.CREATE_NO_WINDOW',0,create=True):
+                process_queue(uat_only=True)
+        run.refresh_from_db();self.assertEqual(run.status,'DONE',run.error)
+        command=execute.call_args.args[0]
+        self.assertIn('-UatImport',command)
+        self.assertEqual(command[command.index('-UatFromDate')+1],'2026-10-01')
+        page=self.client.get(self.url)
+        self.assertContains(page,'PL-1');self.assertContains(page,'RL-1')
 
     @patch('apps.accounts.uat.subprocess.Popen')
     def test_staging_click_starts_dedicated_worker_and_can_retry_queued_job(self,spawn):
@@ -152,6 +193,9 @@ class UatDiscoveryTests(TestCase):
         script=(PosixPath(__file__).resolve().parents[2]/'ops/diagnose-1c.ps1').read_text(encoding='utf-8-sig')
         self.assertIn("$builder['Integrated Security']=$true",script)
         self.assertIn('[switch]$UatDiscovery',script)
+        self.assertIn('[switch]$UatImport',script)
+        self.assertIn('[dbo].[_Document173]',script)
+        self.assertIn('[dbo].[_Document178]',script)
         self.assertIn("Write-ProgressState 'connecting'",script)
         self.assertIn("Write-ProgressState 'metadata'",script)
         self.assertIn("'путев'",script)

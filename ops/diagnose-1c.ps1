@@ -10,6 +10,8 @@ param(
     [switch]$PositionsImport,
     [switch]$EmployeesImport,
     [switch]$UatDiscovery,
+    [switch]$UatImport,
+    [ValidatePattern('^\d{4}-\d{2}-\d{2}$')][string]$UatFromDate='',
     [string]$PhoneMappingPath='',
     [ValidatePattern('^[a-f0-9]{32}$')][string]$RunId=([guid]::NewGuid().ToString('N')),
     [ValidateRange(1,10000)][int]$SampleLimit=5000
@@ -29,7 +31,7 @@ function Write-Json($Path,$Value){
     Move-Item -LiteralPath $temporary -Destination $Path -Force
 }
 function Write-ProgressState([string]$stage){
-    if($UatDiscovery){Write-Json $progressPath @{stage=$stage;updated_utc=[DateTime]::UtcNow.ToString('o')}}
+    if($UatDiscovery -or $UatImport){Write-Json $progressPath @{stage=$stage;updated_utc=[DateTime]::UtcNow.ToString('o')}}
 }
 function Quote-Identifier([string]$value){return '['+$value.Replace(']',']]')+']'}
 function Query($connection,[string]$sql,$parameters=@{},[int]$timeout=15){
@@ -130,6 +132,7 @@ try {
             if($PositionsImport){$arguments+=' -PositionsImport'}
             if($EmployeesImport){$arguments+=' -EmployeesImport'}
             if($UatDiscovery){$arguments+=' -UatDiscovery'}
+            if($UatImport){$arguments+=' -UatImport -UatFromDate '+$UatFromDate}
             if($PhoneMappingPath){$arguments+=' -PhoneMappingPath "'+$PhoneMappingPath+'"'}
             if($PythonPath){$arguments+=' -PythonPath "'+$PythonPath+'"'}
             if($TrustServerCertificate){$arguments+=' -TrustServerCertificate'}
@@ -180,6 +183,131 @@ try {
         Write-ProgressState 'connecting'
         $connection.Open()
         Write-ProgressState 'schema'
+        if($UatImport){
+            if(-not $UatFromDate){throw 'UAT import start date is required.'}
+            $offsetRows=@(Query $connection 'SELECT DISTINCT [Offset] AS date_offset FROM [dbo].[_YearOffset]')
+            if($offsetRows.Count -ne 1 -or [int]$offsetRows[0].date_offset -notin @(0,2000)){throw 'Unsupported or ambiguous 1C date offset.'}
+            $dateOffset=[int]$offsetRows[0].date_offset
+            $from=[DateTime]::ParseExact($UatFromDate,'yyyy-MM-dd',[Globalization.CultureInfo]::InvariantCulture)
+            $storedFrom=$from.AddYears($dateOffset)
+            $storedUntil=[DateTime]::Today.AddDays(1).AddYears($dateOffset)
+            $period=@{'@dateOffset'=$dateOffset;'@storedFrom'=$storedFrom;'@storedUntil'=$storedUntil}
+            Write-ProgressState 'metadata'
+            $waybills=@(Query $connection @'
+SELECT TOP (5000)
+ CONVERT(varchar(32),p.[_IDRRef],2) AS source_id,
+ LTRIM(RTRIM(p.[_Number])) AS number,
+ CONVERT(char(10),DATEADD(year,-@dateOffset,p.[_Date_Time]),23) AS document_date,
+ CASE WHEN p.[_Posted]=0x01 THEN 1 ELSE 0 END AS posted,
+ COALESCE(v.[_Description],N'') AS vehicle,COALESCE(v.[_Fld4334],N'') AS plate,
+ CONVERT(varchar(32),p.[_Fld1039RRef],2) AS vehicle_ref,
+ COALESCE(d1.[_Description],N'') AS driver_1,COALESCE(d2.[_Description],N'') AS driver_2,
+ CASE WHEN YEAR(p.[_Fld1005])>@dateOffset+1 THEN CONVERT(varchar(19),DATEADD(year,-@dateOffset,p.[_Fld1005]),126) END AS departure,
+ CASE WHEN YEAR(p.[_Fld1004])>@dateOffset+1 THEN CONVERT(varchar(19),DATEADD(year,-@dateOffset,p.[_Fld1004]),126) END AS returned,
+ COALESCE(o.[_Description],N'') AS organisation,COALESCE(dep.[_Description],N'') AS department,
+ COALESCE(obj.[_Description],N'') AS construction_object,p.[_Fld1037] AS odometer_departure,
+ p.[_Fld1036] AS odometer_return,p.[_Fld1009] AS comment
+FROM [dbo].[_Document173] p
+LEFT JOIN [dbo].[_Reference107] v ON v.[_IDRRef]=p.[_Fld1039RRef]
+LEFT JOIN [dbo].[_Reference61] d1 ON d1.[_IDRRef]=p.[_Fld995RRef]
+LEFT JOIN [dbo].[_Reference61] d2 ON d2.[_IDRRef]=p.[_Fld996RRef]
+LEFT JOIN [dbo].[_Reference49] o ON o.[_IDRRef]=p.[_Fld1019RRef]
+LEFT JOIN [dbo].[_Reference55] dep ON dep.[_IDRRef]=p.[_Fld1023RRef]
+LEFT JOIN [dbo].[_Reference4650] obj ON obj.[_IDRRef]=p.[_Fld11747RRef]
+WHERE p.[_Marked]=0x00 AND p.[_Posted]=0x01 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
+ORDER BY p.[_Date_Time] DESC,p.[_Number] DESC
+'@ $period 120)
+            $waybillTasks=@(Query $connection @'
+SELECT TOP (20000) CONVERT(varchar(32),x.[_Document173_IDRRef],2) AS parent_id,x.[_LineNo1057] AS line_number,
+ COALESCE(NULLIF(LTRIM(RTRIM(x.[_Fld1059_S])),N''),leavePoint.[_Description],N'') AS departure_address,
+ COALESCE(NULLIF(LTRIM(RTRIM(x.[_Fld1058_S])),N''),arrivePoint.[_Description],N'') AS arrival_address,
+ CASE WHEN x.[_Fld1062]=0x01 THEN 1 ELSE 0 END AS completed,x.[_Fld1063] AS trips,
+ x.[_Fld1064] AS loaded_km,x.[_Fld1065] AS empty_km,x.[_Fld1073] AS tonnes,x.[_Fld1074] AS hours,
+ COALESCE(obj.[_Description],N'') AS construction_object
+FROM [dbo].[_Document173_VT1056] x
+JOIN [dbo].[_Document173] p ON p.[_IDRRef]=x.[_Document173_IDRRef]
+LEFT JOIN [dbo].[_Reference90] leavePoint ON leavePoint.[_IDRRef]=x.[_Fld1059_RRRef]
+LEFT JOIN [dbo].[_Reference90] arrivePoint ON arrivePoint.[_IDRRef]=x.[_Fld1058_RRRef]
+LEFT JOIN [dbo].[_Reference4650] obj ON obj.[_IDRRef]=x.[_Fld11758RRef]
+WHERE p.[_Marked]=0x00 AND p.[_Posted]=0x01 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
+ORDER BY p.[_Date_Time] DESC,x.[_LineNo1057]
+'@ $period 120)
+            $waybillFuel=@(Query $connection @'
+SELECT TOP (20000) CONVERT(varchar(32),x.[_Document173_IDRRef],2) AS parent_id,x.[_LineNo1103] AS line_number,
+ COALESCE(f.[_Description],N'') AS fuel,x.[_Fld1107] AS issued,x.[_Fld1110] AS departure_balance,
+ x.[_Fld1109] AS return_balance,x.[_Fld1111] AS mileage,x.[_Fld1112] AS norm_consumption,
+ x.[_Fld1113] AS actual_consumption,x.[_Fld1114] AS returned
+FROM [dbo].[_Document173_VT1102] x
+JOIN [dbo].[_Document173] p ON p.[_IDRRef]=x.[_Document173_IDRRef]
+LEFT JOIN [dbo].[_Reference46] f ON f.[_IDRRef]=x.[_Fld1108RRef]
+WHERE p.[_Marked]=0x00 AND p.[_Posted]=0x01 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
+ORDER BY p.[_Date_Time] DESC,x.[_LineNo1103]
+'@ $period 120)
+            $repairSheets=@(Query $connection @'
+SELECT TOP (5000)
+ CONVERT(varchar(32),p.[_IDRRef],2) AS source_id,LTRIM(RTRIM(p.[_Number])) AS number,
+ CONVERT(char(10),DATEADD(year,-@dateOffset,p.[_Date_Time]),23) AS document_date,
+ CASE WHEN p.[_Posted]=0x01 THEN 1 ELSE 0 END AS posted,CASE WHEN p.[_Fld6808]=0x01 THEN 1 ELSE 0 END AS completed,
+ COALESCE(v.[_Description],N'') AS vehicle,COALESCE(v.[_Fld4334],N'') AS plate,
+ CONVERT(varchar(32),p.[_Fld1264RRef],2) AS vehicle_ref,COALESCE(service.[_Description],N'') AS service_kind,
+ CONVERT(varchar(32),p.[_Fld1260RRef],2) AS repair_method_ref,
+ CASE WHEN YEAR(p.[_Fld1237])>@dateOffset+1 THEN CONVERT(varchar(19),DATEADD(year,-@dateOffset,p.[_Fld1237]),126) END AS started,
+ CASE WHEN YEAR(p.[_Fld1238])>@dateOffset+1 THEN CONVERT(varchar(19),DATEADD(year,-@dateOffset,p.[_Fld1238]),126) END AS finished,
+ p.[_Fld1234] AS operating_value,COALESCE(master.[_Description],N'') AS master,
+ COALESCE(o.[_Description],N'') AS organisation,COALESCE(dep.[_Description],N'') AS department,
+ COALESCE(place.[_Description],N'') AS repair_place,
+ COALESCE(ownWarehouse.[_Description],N'') AS own_materials_warehouse,
+ COALESCE(senderWarehouse.[_Description],N'') AS sender_warehouse,
+ COALESCE(receiverWarehouse.[_Description],N'') AS receiver_warehouse,
+ p.[_Fld1255] AS reason,p.[_Fld1242] AS comment
+FROM [dbo].[_Document178] p
+LEFT JOIN [dbo].[_Reference107] v ON v.[_IDRRef]=p.[_Fld1264RRef]
+LEFT JOIN [dbo].[_Reference71] service ON service.[_IDRRef]=p.[_Fld1230RRef]
+LEFT JOIN [dbo].[_Reference61] master ON master.[_IDRRef]=p.[_Fld11816RRef]
+LEFT JOIN [dbo].[_Reference49] o ON o.[_IDRRef]=p.[_Fld1246RRef]
+LEFT JOIN [dbo].[_Reference55] dep ON dep.[_IDRRef]=p.[_Fld1252RRef]
+LEFT JOIN [dbo].[_Reference90] place ON place.[_IDRRef]=p.[_Fld11822RRef]
+LEFT JOIN [dbo].[_Reference60] ownWarehouse ON ownWarehouse.[_IDRRef]=p.[_Fld1258RRef]
+LEFT JOIN [dbo].[_Reference60] senderWarehouse ON senderWarehouse.[_IDRRef]=p.[_Fld1256RRef]
+LEFT JOIN [dbo].[_Reference60] receiverWarehouse ON receiverWarehouse.[_IDRRef]=p.[_Fld1257RRef]
+WHERE p.[_Marked]=0x00 AND p.[_Posted]=0x01 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
+ORDER BY p.[_Date_Time] DESC,p.[_Number] DESC
+'@ $period 120)
+            $repairWorks=@(Query $connection @'
+SELECT TOP (20000) CONVERT(varchar(32),x.[_Document178_IDRRef],2) AS parent_id,x.[_LineNo1295] AS line_number,
+ COALESCE(w.[_Fld4205],w.[_Description],N'') AS work,x.[_Fld1297] AS quantity,x.[_Fld7743] AS fault,
+ x.[_Fld1302] AS price,x.[_Fld1300] AS amount
+FROM [dbo].[_Document178_VT1294] x
+JOIN [dbo].[_Document178] p ON p.[_IDRRef]=x.[_Document178_IDRRef]
+LEFT JOIN [dbo].[_Reference91] w ON w.[_IDRRef]=x.[_Fld1298RRef]
+WHERE p.[_Marked]=0x00 AND p.[_Posted]=0x01 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
+ORDER BY p.[_Date_Time] DESC,x.[_LineNo1295]
+'@ $period 120)
+            $repairMaterials=@(Query $connection @'
+SELECT TOP (20000) CONVERT(varchar(32),x.[_Document178_IDRRef],2) AS parent_id,x.[_LineNo1282] AS line_number,
+ COALESCE(n.[_Description],N'') AS material,COALESCE(n.[_Code],N'') AS article,x.[_Fld1284] AS quantity,
+ x.[_Fld1289] AS price,x.[_Fld1287] AS amount
+FROM [dbo].[_Document178_VT1281] x
+JOIN [dbo].[_Document178] p ON p.[_IDRRef]=x.[_Document178_IDRRef]
+LEFT JOIN [dbo].[_Reference46] n ON n.[_IDRRef]=x.[_Fld1285RRef]
+WHERE p.[_Marked]=0x00 AND p.[_Posted]=0x01 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
+ORDER BY p.[_Date_Time] DESC,x.[_LineNo1282]
+'@ $period 120)
+            $repairExecutors=@(Query $connection @'
+SELECT TOP (20000) CONVERT(varchar(32),x.[_Document178_IDRRef],2) AS parent_id,x.[_LineNo1277] AS line_number,
+ COALESCE(e.[_Description],N'') AS employee,CONVERT(char(8),x.[_Fld1278],108) AS work_time,
+ CASE WHEN YEAR(x.[_Fld1279])>@dateOffset+1 THEN CONVERT(varchar(19),DATEADD(year,-@dateOffset,x.[_Fld1279]),126) END AS started
+FROM [dbo].[_Document178_VT1276] x
+JOIN [dbo].[_Document178] p ON p.[_IDRRef]=x.[_Document178_IDRRef]
+LEFT JOIN [dbo].[_Reference61] e ON e.[_IDRRef]=x.[_Fld1280RRef]
+WHERE p.[_Marked]=0x00 AND p.[_Posted]=0x01 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
+ORDER BY p.[_Date_Time] DESC,x.[_LineNo1277]
+'@ $period 120)
+            Write-ProgressState 'saving'
+            Write-Json $reportPath @{uat_import=$true;from_date=$UatFromDate;to_date=[DateTime]::Today.ToString('yyyy-MM-dd');waybill_count=$waybills.Count;repair_sheet_count=$repairSheets.Count;limited=($waybills.Count -ge 5000 -or $repairSheets.Count -ge 5000 -or $waybillTasks.Count -ge 20000 -or $waybillFuel.Count -ge 20000 -or $repairWorks.Count -ge 20000 -or $repairMaterials.Count -ge 20000 -or $repairExecutors.Count -ge 20000);waybills=$waybills;waybill_tasks=$waybillTasks;waybill_fuel=$waybillFuel;repair_sheets=$repairSheets;repair_works=$repairWorks;repair_materials=$repairMaterials;repair_executors=$repairExecutors}
+            Write-Json $statusPath @{ok=$true;report=$reportPath}
+            return
+        }
         if($EmployeesImport){
             $offsetRows=@(Query $connection 'SELECT DISTINCT [Offset] AS date_offset FROM [dbo].[_YearOffset]')
             if($offsetRows.Count -ne 1 -or [int]$offsetRows[0].date_offset -notin @(0,2000)){throw 'Unsupported or ambiguous 1C date offset.'}

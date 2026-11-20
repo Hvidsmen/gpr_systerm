@@ -8,11 +8,12 @@ from django import forms
 from django.contrib import messages
 from django.shortcuts import redirect
 from django.utils import timezone
+from django.db.models import Q
 from core.permissions import require_roles
 from .models import OneCDiagnosticRun, OneCConnection
 from .one_c_schedules import WEEKDAYS
 
-KINDS = [('diagnostic', 'Диагностика структуры'), ('uat', 'Диагностика УАТ'), ('metadata', 'Чтение названий'), ('positions', 'Загрузка должностей'), ('employees', 'Загрузка сотрудников')]
+KINDS = [('diagnostic', 'Диагностика структуры'), ('uat', 'УАТ: структура и данные'), ('metadata', 'Чтение названий'), ('positions', 'Загрузка должностей'), ('employees', 'Загрузка сотрудников')]
 
 
 def _sql_identifier(value):
@@ -178,16 +179,16 @@ def jobs(request):
     elif kind == 'positions':
         query = query.filter(report__positions_import=True)
     elif kind == 'uat':
-        query = query.filter(report__uat_discovery=True)
+        query = query.filter(Q(report__uat_discovery=True) | Q(report__uat_import=True))
     elif kind == 'metadata':
         query = query.filter(report__metadata_only=True).exclude(report__has_key='positions_import').exclude(report__has_key='employees_import')
     elif kind == 'diagnostic':
-        query = query.exclude(report__has_key='positions_import').exclude(report__has_key='employees_import').exclude(report__has_key='metadata_only').exclude(report__has_key='uat_discovery')
+        query = query.exclude(report__has_key='positions_import').exclude(report__has_key='employees_import').exclude(report__has_key='metadata_only').exclude(report__has_key='uat_discovery').exclude(report__has_key='uat_import')
     else:
         kind = ''
     page = Paginator(query, 50).get_page(request.GET.get('page'))
     for run in page:
-        run.kind_label = 'Загрузка сотрудников' if run.report.get('employees_import') else 'Загрузка должностей' if run.report.get('positions_import') else 'Диагностика УАТ' if run.report.get('uat_discovery') else 'Чтение названий' if run.report.get('metadata_only') else 'Диагностика структуры'
+        run.kind_label = 'Загрузка данных УАТ' if run.report.get('uat_import') else 'Загрузка сотрудников' if run.report.get('employees_import') else 'Загрузка должностей' if run.report.get('positions_import') else 'Диагностика УАТ' if run.report.get('uat_discovery') else 'Чтение названий' if run.report.get('metadata_only') else 'Диагностика структуры'
         run.error_help=error_help(run.error,run.server,run.database)
     params = request.GET.copy()
     params.pop('page', None)

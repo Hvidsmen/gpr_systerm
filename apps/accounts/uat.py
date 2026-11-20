@@ -4,6 +4,7 @@ import os
 import re
 import subprocess
 import sys
+from datetime import date, timedelta
 from pathlib import Path
 
 from django.conf import settings
@@ -11,6 +12,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ImproperlyConfigured
 from django.core.paginator import Paginator
+from django.db.models import Q
 from django.http import HttpResponseBadRequest, JsonResponse
 from django.shortcuts import redirect, render
 from django.views.decorators.http import require_http_methods
@@ -28,6 +30,14 @@ UAT_STAGES = (
     ('schema', 'Чтение SQL-структуры'),
     ('metadata', 'Расшифровка метаданных'),
     ('saving', 'Сохранение результата'),
+)
+UAT_IMPORT_STAGES = (
+    ('queued', 'Задание принято'),
+    ('starting', 'Запуск обработчика'),
+    ('connecting', 'Подключение к УАТ'),
+    ('schema', 'Проверка источников и периода'),
+    ('metadata', 'Чтение документов'),
+    ('saving', 'Сохранение снимка'),
 )
 
 
@@ -77,27 +87,28 @@ def _progress_file(run):
 
 def progress_status(run):
     """Return UI progress based on the database claim and PowerShell checkpoints."""
+    stages = UAT_IMPORT_STAGES if run and run.report.get('uat_import') else UAT_STAGES
     if not run:
         return {
             'state': 'idle', 'busy': False, 'progress': 0, 'stage_number': None,
-            'stage_total': len(UAT_STAGES), 'stage': 'Диагностика не запущена',
+            'stage_total': len(stages), 'stage': 'Диагностика не запущена',
             'steps': [{'code': code, 'label': label, 'state': 'pending', 'number': number}
-                      for number, (code, label) in enumerate(UAT_STAGES, 1)],
+                      for number, (code, label) in enumerate(stages, 1)],
         }
     checkpoint = _progress_file(run)
-    codes = [code for code, _ in UAT_STAGES]
+    codes = [code for code, _ in stages]
     if run.status == 'DONE':
-        current = len(UAT_STAGES) - 1
-        state, stage, progress = 'done', 'Структура УАТ прочитана', 100
+        current = len(stages) - 1
+        state, stage, progress = 'done', 'Данные УАТ загружены' if run.report.get('uat_import') else 'Структура УАТ прочитана', 100
     else:
         fallback = 'queued' if run.status == 'QUEUED' else 'starting'
         code = checkpoint.get('stage') if checkpoint.get('stage') in codes else fallback
         current = codes.index(code)
         state = 'error' if run.status == 'ERROR' else 'running'
-        stage = run.error if run.status == 'ERROR' and run.error else UAT_STAGES[current][1]
-        progress = round(current * 100 / len(UAT_STAGES))
+        stage = run.error if run.status == 'ERROR' and run.error else stages[current][1]
+        progress = round(current * 100 / len(stages))
     steps = []
-    for number, (code, label) in enumerate(UAT_STAGES, 1):
+    for number, (code, label) in enumerate(stages, 1):
         if run.status == 'DONE' or number - 1 < current:
             step_state = 'complete'
         elif number - 1 == current:
@@ -107,7 +118,7 @@ def progress_status(run):
         steps.append({'code': code, 'label': label, 'state': step_state, 'number': number})
     return {
         'state': state, 'busy': run.status in {'QUEUED', 'RUNNING'}, 'progress': progress,
-        'stage_number': current + 1, 'stage_total': len(UAT_STAGES), 'stage': stage,
+        'stage_number': current + 1, 'stage_total': len(stages), 'stage': stage,
         'run_id': str(run.pk), 'run_status': run.status, 'steps': steps,
     }
 
@@ -120,7 +131,7 @@ def discovery(request):
     database = database_name()
     if request.method == 'POST':
         action = request.POST.get('action')
-        if action not in {'diagnose', 'run_pending'}:
+        if action not in {'diagnose', 'import', 'run_pending'}:
             return HttpResponseBadRequest('Неизвестное действие.')
         if staging_update_busy():
             messages.error(request,'Сначала дождитесь завершения обновления тестового портала.')
@@ -132,9 +143,29 @@ def discovery(request):
             # encryption, but accept that configured internal certificate for UAT.
             run = enqueue(connection, request.user, database=database, uat_discovery=True,
                           trust_certificate=True)
+        elif action == 'import':
+            from .one_c import enqueue
+            from .uat_sources import status as source_status
+            structure = connection.runs.filter(
+                database=database, report__uat_discovery=True, status='DONE',
+            ).order_by('-created_at', '-pk').first()
+            if not structure or not source_status(structure.report)['ready']:
+                messages.error(request, 'Сначала прочитайте и подтвердите структуру УАТ.')
+                return redirect('accounts:uat')
+            try:
+                since = date.fromisoformat(request.POST.get('from_date', ''))
+            except ValueError:
+                messages.error(request, 'Укажите корректную начальную дату загрузки.')
+                return redirect('accounts:uat')
+            if since > date.today() or since < date.today() - timedelta(days=366):
+                messages.error(request, 'Начальная дата должна быть в пределах последнего года и не позднее сегодня.')
+                return redirect('accounts:uat')
+            run = enqueue(connection, request.user, database=database, uat_import_from=since,
+                          trust_certificate=True)
         else:
             run = connection.runs.filter(
-                database=database, report__uat_discovery=True, status='QUEUED',
+                Q(report__uat_discovery=True) | Q(report__uat_import=True),
+                database=database, status='QUEUED',
             ).order_by('created_at', 'pk').first()
         if not run:
             messages.warning(request, 'Нет ожидающей диагностики. Обновите страницу и запустите её заново.')
@@ -145,16 +176,21 @@ def discovery(request):
             except (OSError,RuntimeError) as exc:
                 messages.error(request, f'Не удалось запустить обработчик УАТ: {exc}')
                 return redirect('accounts:uat')
-        messages.success(request, 'Диагностика УАТ запущена. Статус обновится автоматически.')
+        messages.success(request, 'Задание УАТ запущено. Статус обновится автоматически.')
         return redirect('accounts:uat')
 
-    runs = connection.runs.filter(database=database, report__uat_discovery=True).order_by('-created_at', '-pk')
+    runs = connection.runs.filter(
+        Q(report__uat_discovery=True) | Q(report__uat_import=True), database=database,
+    ).order_by('-created_at', '-pk')
     last = runs.first()
-    latest = runs.filter(status='DONE').first()
+    latest = runs.filter(report__uat_discovery=True, status='DONE').first()
+    latest_import = runs.filter(report__uat_import=True, status='DONE').first()
     if last:
         from .one_c_jobs import error_help
         last.error_help = error_help(last.error, last.server, last.database)
     report = latest.report if latest else {}
+    from .uat_sources import status as source_status
+    source = source_status(report)
     labels = report.get('metadata_labels', {})
     all_rows, type_counts, total = catalogue(report, labels)
     recommended = [row for row in all_rows if any(word in (row['name'] + ' ' + row['key']).casefold() for word in KEYWORDS)]
@@ -170,8 +206,13 @@ def discovery(request):
             groups.append({'type': row['type'], 'label': row['type_label'], 'rows': []})
         groups[-1]['rows'].append(row)
     params = request.GET.copy();params.pop('page', None)
+    import_report = latest_import.report if latest_import else {}
     return render(request, 'accounts/uat.html', {
         'connection': connection, 'database': database, 'last': last, 'latest': latest,
+        'latest_import': latest_import, 'import_report': import_report,
+        'waybills': import_report.get('waybills', [])[:50],
+        'repair_sheets': import_report.get('repair_sheets', [])[:50],
+        'source_status': source, 'import_from': date.today() - timedelta(days=30),
         'queued': bool(last and last.status == 'QUEUED'),
         'running': bool(last and last.status == 'RUNNING'),
         'uat_progress': progress_status(last),
@@ -187,6 +228,6 @@ def status(request):
     require_roles(request.user, {'ADMIN'})
     connection, _ = OneCConnection.objects.get_or_create(company=request.user.company)
     run = connection.runs.filter(
-        database=database_name(), report__uat_discovery=True,
+        Q(report__uat_discovery=True) | Q(report__uat_import=True), database=database_name(),
     ).order_by('-created_at', '-pk').first()
     return JsonResponse(progress_status(run))

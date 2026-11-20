@@ -10,6 +10,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
+from django.db.models import Q
 from django.shortcuts import redirect, render
 from django.utils import timezone
 from core.permissions import require_roles
@@ -41,7 +42,7 @@ class ConnectionForm(forms.ModelForm):
 
 
 def enqueue(connection, actor=None, metadata_only=False, positions=False, employees=False,
-            *, database=None, uat_discovery=False, trust_certificate=None):
+            *, database=None, uat_discovery=False, uat_import_from=None, trust_certificate=None):
     # Conditional update is the cross-process claim, including SQLite deployments.
     now=timezone.now()
     from django.db import transaction
@@ -49,6 +50,7 @@ def enqueue(connection, actor=None, metadata_only=False, positions=False, employ
         claimed=OneCConnection.objects.filter(pk=connection.pk).filter(active_until__isnull=True).update(active_until=now+timedelta(minutes=20))
         if not claimed:return None
         report=({'employees_import':True} if employees else {'positions_import':True} if positions else
+            {'uat_import':True,'from_date':uat_import_from.isoformat()} if uat_import_from else
             {'uat_discovery':True} if uat_discovery else {'metadata_only':True} if metadata_only else {})
         return OneCDiagnosticRun.objects.create(connection=connection,created_by=actor,server=connection.server,
             database=database or connection.database,
@@ -60,13 +62,14 @@ def process_queue(*,uat_only=False):
     now=timezone.now()
     processed=0
     if uat_only:
-        stale_runs=OneCDiagnosticRun.objects.filter(report__uat_discovery=True,status__in=['QUEUED','RUNNING'],connection__active_until__lt=now)
+        uat_jobs=Q(report__uat_discovery=True)|Q(report__uat_import=True)
+        stale_runs=OneCDiagnosticRun.objects.filter(uat_jobs,status__in=['QUEUED','RUNNING'],connection__active_until__lt=now)
         stale_ids=list(stale_runs.values_list('connection_id',flat=True).distinct())
         # A queued UAT read is still safe to execute after its claim expired. Only a
         # worker that actually entered RUNNING is considered interrupted.
         stale_runs.filter(status='RUNNING').update(status='ERROR',error='Запуск прерван или превышено время ожидания.',finished_at=now)
         OneCConnection.objects.filter(pk__in=stale_ids).update(active_until=None)
-        queue=OneCDiagnosticRun.objects.filter(status='QUEUED',report__uat_discovery=True)
+        queue=OneCDiagnosticRun.objects.filter(uat_jobs,status='QUEUED')
     else:
         stale=OneCConnection.objects.filter(active_until__lt=now)
         OneCDiagnosticRun.objects.filter(connection__in=stale,status__in=['QUEUED','RUNNING']).update(status='ERROR',error='Запуск прерван или превышено время ожидания.',finished_at=now)
@@ -82,6 +85,7 @@ def process_queue(*,uat_only=False):
         processed+=1
         employees_import=bool(run.report.get('employees_import'))
         uat_discovery=bool(run.report.get('uat_discovery'))
+        uat_import=bool(run.report.get('uat_import'))
         try:
             if os.name!='nt':raise RuntimeError('Диагностика MS SQL с Windows-аутентификацией доступна на Windows-сервере портала.')
             root=Path(settings.CONFIG_DIR)
@@ -89,6 +93,8 @@ def process_queue(*,uat_only=False):
             metadata_only=bool(run.report.get('metadata_only'))
             if metadata_only:command.append('-MetadataOnly')
             if uat_discovery:command.append('-UatDiscovery')
+            if uat_import:
+                command.extend(['-UatImport','-UatFromDate',run.report['from_date']])
             positions_import=bool(run.report.get('positions_import'))
             if positions_import:
                 from .one_c_positions import source_confirmed
@@ -111,6 +117,9 @@ def process_queue(*,uat_only=False):
             if not status.get('ok'):raise RuntimeError(status.get('error','Ошибка диагностики.'))
             run.report=json.loads((directory/'report.json').read_text(encoding='utf-8-sig'))
             if uat_discovery:run.report['uat_discovery']=True
+            if uat_import:
+                run.report['uat_import']=True
+                run.report['from_date']=run.report.get('from_date') or command[command.index('-UatFromDate')+1]
             if positions_import:
                 if run.report.get('positions_snapshot_version')!=2 or run.report.get('position_source',{}).get('table')!='dbo._Reference394':raise ValidationError('Обработчик вернул прежний источник должностей. Обновите проект и фоновый портал: должности загружаются только из штатного расписания.')
                 from .one_c_positions import apply_names
@@ -133,6 +142,7 @@ def process_queue(*,uat_only=False):
         except Exception as exc:
             if employees_import:run.report={'employees_import':True}
             elif uat_discovery:run.report={'uat_discovery':True}
+            elif uat_import:run.report={'uat_import':True,'from_date':run.report.get('from_date','')}
             run.status='ERROR';run.error=str(exc)[:4000]
         finally:
             run.finished_at=timezone.now();run.save(update_fields=['status','error','report','finished_at'])
