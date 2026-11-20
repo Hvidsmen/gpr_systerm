@@ -127,7 +127,11 @@ def discovery(request):
             return redirect('accounts:uat')
         if action == 'diagnose':
             from .one_c import enqueue
-            run = enqueue(connection, request.user, database=database, uat_discovery=True)
+            # The internal SQL Server presents a certificate whose issuing CA is
+            # not installed in the portal account's Windows trust store. Keep TLS
+            # encryption, but accept that configured internal certificate for UAT.
+            run = enqueue(connection, request.user, database=database, uat_discovery=True,
+                          trust_certificate=True)
         else:
             run = connection.runs.filter(
                 database=database, report__uat_discovery=True, status='QUEUED',

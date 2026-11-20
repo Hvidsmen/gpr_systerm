@@ -39,6 +39,7 @@ class UatDiscoveryTests(TestCase):
         run=OneCDiagnosticRun.objects.get()
         self.assertEqual((run.server,run.database),('shared-sql','uat01_ivanov'))
         self.assertEqual(run.report,{'uat_discovery':True})
+        self.assertTrue(run.trust_certificate)
         self.connection.refresh_from_db();self.assertEqual(self.connection.database,'zup01')
 
     @patch('apps.accounts.one_c.subprocess.run')
@@ -56,6 +57,7 @@ class UatDiscoveryTests(TestCase):
         self.assertTrue(run.report['uat_discovery'])
         command=execute.call_args.args[0]
         self.assertIn('-UatDiscovery',command)
+        self.assertIn('-TrustServerCertificate',command)
         self.assertEqual(command[command.index('-Database')+1],'uat01_ivanov')
         page=self.client.get(self.url)
         self.assertContains(page,'Документ.ПутевойЛист')

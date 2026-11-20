@@ -41,7 +41,7 @@ class ConnectionForm(forms.ModelForm):
 
 
 def enqueue(connection, actor=None, metadata_only=False, positions=False, employees=False,
-            *, database=None, uat_discovery=False):
+            *, database=None, uat_discovery=False, trust_certificate=None):
     # Conditional update is the cross-process claim, including SQLite deployments.
     now=timezone.now()
     from django.db import transaction
@@ -51,7 +51,9 @@ def enqueue(connection, actor=None, metadata_only=False, positions=False, employ
         report=({'employees_import':True} if employees else {'positions_import':True} if positions else
             {'uat_discovery':True} if uat_discovery else {'metadata_only':True} if metadata_only else {})
         return OneCDiagnosticRun.objects.create(connection=connection,created_by=actor,server=connection.server,
-            database=database or connection.database,trust_certificate=connection.trust_certificate,report=report)
+            database=database or connection.database,
+            trust_certificate=connection.trust_certificate if trust_certificate is None else trust_certificate,
+            report=report)
 
 
 def process_queue(*,uat_only=False):
