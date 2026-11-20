@@ -58,7 +58,7 @@ class InitialEmployeeSelect(RemoteEmployeeSelect):
 
 class InitialStateForm(forms.Form):
     state=forms.ChoiceField(label='Статус сотрудника',required=True,choices=[('','Выберите статус'),('MV','На вахте'),('MO','МО — межвахтовый отдых')],widget=forms.Select(attrs={'data-initial-state':'','data-compact-select':''}))
-    arrival_date=forms.DateField(label='Дата заезда',required=False,widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date','data-initial-arrival':''}),help_text='При МО можно указать известную дату предыдущего заезда. Если она неизвестна, оставьте поле пустым.')
+    arrival_date=forms.DateField(label='Дата заезда',required=False,widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date','data-initial-arrival':''}),help_text='Для перехода с МО на вахту укажите дату нового заезда после последнего выезда. При МО можно указать известную дату предыдущего заезда.')
     departure_date=forms.DateField(label='Дата выезда на МО',required=False,widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date','data-initial-departure':''}))
 
     def __init__(self,*args,as_of=None,**kwargs):
@@ -113,8 +113,15 @@ def initialize_state(user,row,data,*,enforce_assignment_start=True):
     if has_movements(row.person):
         fact_day=arrival if state=='MV' else departure
         current=housing.present_stays(user.company,fact_day).filter(person=row.person).select_related('camp').first()
+        current_today=housing.present_stays(user.company,timezone.localdate()).filter(person=row.person).select_related('camp').first()
+        if state=='MV' and current_today and current_today.camp_id==row.housing_camp_id:return False
+        if state=='MV' and current and current.departed_on and current.departed_on<=timezone.localdate():
+            raise ValidationError(f'После выбранной даты сотрудник выехал {current.departed_on:%d.%m.%Y}. Для статуса «На вахте» укажите дату нового заезда после {current.departed_on:%d.%m.%Y}.')
         if state=='MV' and current and current.camp_id==row.housing_camp_id:return False
-        if state=='MO' and not current:return False
+        if state=='MO' and not current:
+            if current_today:
+                raise ValidationError(f'Сотрудник заехал {current_today.arrived_on:%d.%m.%Y} позже выбранной даты. Для статуса «МО» укажите дату выезда не раньше {current_today.arrived_on:%d.%m.%Y}.')
+            return False
         if state=='MV':
             kind='TRANSFER' if current else 'ARRIVAL'
             housing.move(user,kind,current.camp if current else row.housing_camp,fact_day,[row.person],target=row.housing_camp if current else None,comment=comment,setup_direct=True)

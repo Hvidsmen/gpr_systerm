@@ -136,7 +136,18 @@ class AssignmentInitialStateTests(TestCase):
             departure_destination='REST',recorded_by=self.hr,
         )
 
-        response=self.client.post(reverse('personnel:plan_assignment_edit',args=[slot.pk]),{
+        url=reverse('personnel:plan_assignment_edit',args=[slot.pk])
+        invalid=self.client.post(url,{
+            **self.data,'version':slot.updated_at.isoformat(),
+            'initial-state':'MV','initial-arrival_date':str(old_arrival),'initial-departure_date':'',
+        })
+        self.assertContains(invalid,f'сотрудник выехал {old_departure:%d.%m.%Y}')
+        self.assertContains(invalid,'укажите дату нового заезда')
+        self.assertFalse(CampStay.objects.filter(
+            person=self.second_person,camp=self.a,arrived_on=self.day,departed_on=None,
+        ).exists())
+
+        response=self.client.post(url,{
             **self.data,'version':slot.updated_at.isoformat(),
             'initial-state':'MV','initial-arrival_date':str(self.day),'initial-departure_date':'',
         })
@@ -149,6 +160,27 @@ class AssignmentInitialStateTests(TestCase):
         self.assertTrue(CampStay.objects.filter(
             person=self.second_person,camp=self.a,arrived_on=self.day,departed_on=None,
         ).exists())
+
+    def test_rest_date_before_current_arrival_is_rejected_instead_of_silent_noop(self):
+        slot=StaffingSlot.objects.create(
+            company=self.company,group=self.group,person=self.second_person,
+            planning_position=self.role,construction_object=self.obj,housing_camp=self.a,
+            assigned_from=self.day-timedelta(days=90),assigned_by=self.hr,
+        )
+        arrival=self.day-timedelta(days=5)
+        CampStay.objects.create(
+            company=self.company,person=self.second_person,camp=self.a,
+            arrived_on=arrival,recorded_by=self.hr,
+        )
+
+        response=self.client.post(reverse('personnel:plan_assignment_edit',args=[slot.pk]),{
+            **self.data,'version':slot.updated_at.isoformat(),
+            'initial-state':'MO','initial-arrival_date':'',
+            'initial-departure_date':str(arrival-timedelta(days=1)),
+        })
+
+        self.assertContains(response,f'Сотрудник заехал {arrival:%d.%m.%Y}')
+        self.assertIsNone(CampStay.objects.get(person=self.second_person).departed_on)
 
     def test_admin_can_record_initial_arrival_for_testing(self):
         HousingEvent.objects.create(
