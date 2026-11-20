@@ -39,7 +39,6 @@ class LodgingMovementForm(StyledForm):
     building=forms.ModelChoiceField(label='Вагон / корпус',queryset=LodgingBuilding.objects.none(),required=False,empty_label='Все вагоны / корпуса')
     bed=forms.ModelChoiceField(label='Новое место',queryset=LodgingBed.objects.none(),required=False,widget=LodgingBedSelect)
     date=forms.DateField(label='Фактическая дата',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
-    planned_departure=forms.DateField(label='Плановая дата выселения',required=False,help_text='Необязательно. Ожидаемая дата; место освобождается только после оформления выселения.',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
     keys_issued=forms.BooleanField(label='Ключи выданы',required=False)
     key_number=forms.CharField(label='Номер ключа',max_length=80,required=False)
     pass_number=forms.CharField(label='Номер пропуска',max_length=80,required=False)
@@ -69,7 +68,6 @@ class LodgingMovementForm(StyledForm):
         data=super().clean()
         if data.get('kind') in {'CHECKIN','MOVE'} and not data.get('bed'):self.add_error('bed','Выберите новое место.')
         if data.get('building') and data.get('bed') and data['bed'].building_id!=data['building'].pk:self.add_error('bed','Выберите место указанного вагона.')
-        if data.get('planned_departure') and data.get('date') and data['planned_departure']<data['date']:self.add_error('planned_departure','Укажите дату не раньше заселения.')
         return data
 
 

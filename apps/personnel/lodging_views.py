@@ -188,7 +188,7 @@ def board(request):
             data=form.cleaned_data
             try:
                 lodging.move(request.user,data['kind'],camp,data['date'],data['employee'],bed=data.get('bed') if data['kind'] in {'CHECKIN','MOVE'} else None,
-                    session=data['session'],signed=data['signed'],planned_departure=data.get('planned_departure'),keys_issued=data['keys_issued'],key_number=data['key_number'],pass_number=data['pass_number'],comment=data['comment'])
+                    session=data['session'],signed=data['signed'],keys_issued=data['keys_issued'],key_number=data['key_number'],pass_number=data['pass_number'],comment=data['comment'])
             except ValidationError as exc:form.add_error(None,exc)
             else:messages.success(request,'Проживание сохранено. Сверка с перевахтой обновлена.');return redirect(board_url(camp,data['date']))
     all_rows=place_rows(request.user.company,camp,day);stats=Counter(row['status'] for row in all_rows)
@@ -212,7 +212,7 @@ def board(request):
         'presence_state':presence_state,'presence_session':presence_session,
         'quick_bed_form':QuickBedForm(company=request.user.company,camp=camp),
         'movement_open':request.method=='POST' or bool(request.GET.get('employee')),
-        'roster_data':[{'employee':s.employee_id,'bed':s.bed_id,'planned_departure':str(s.planned_departure or ''),'keys_issued':s.keys_issued,'key_number':s.key_number,'pass_number':s.pass_number,'comment':s.comment} for s in lodging.present(request.user.company,day).filter(camp=camp)],
+        'roster_data':[{'employee':s.employee_id,'bed':s.bed_id,'keys_issued':s.keys_issued,'key_number':s.key_number,'pass_number':s.pass_number,'comment':s.comment} for s in lodging.present(request.user.company,day).filter(camp=camp)],
         **summary_context(request.user,camp,day)}
     return render(request,'personnel/lodging.html',context)
 

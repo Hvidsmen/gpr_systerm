@@ -136,6 +136,14 @@ class LodgingTests(TestCase):
         lodging.cancel(self.colleague,stay,'Ошибочная запись',stay.updated_at.isoformat())
         self.assertFalse(lodging.present(self.company,self.day).exists());self.assertTrue(LodgingEvent.objects.filter(kind='CANCEL').exists())
 
+    def test_update_without_removed_planned_departure_field_preserves_old_value(self):
+        planned = self.day + timedelta(days=14)
+        stay = self.edit(planned_departure=planned)
+        self.edit('UPDATE', employee=self.second_employee, pass_number='P-20')
+        stay.refresh_from_db()
+        self.assertEqual(stay.planned_departure, planned)
+        self.assertEqual(stay.pass_number, 'P-20')
+
     def test_role_date_and_company_boundaries(self):
         historical=self.day-timedelta(days=30)
         stay=self.edit(day=historical)

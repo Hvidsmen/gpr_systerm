@@ -171,9 +171,12 @@ def bump(rows):
         row.revision+=1;row.locked_by=None;row.session=None;row.expires_at=None;row.save()
 
 
+PLANNED_DEPARTURE_UNSET = object()
+
+
 @with_history_actor
 @transaction.atomic
-def move(user,kind,camp,day,employee,*,bed=None,session=None,signed=None,planned_departure=None,keys_issued=False,key_number='',pass_number='',comment=''):
+def move(user,kind,camp,day,employee,*,bed=None,session=None,signed=None,planned_departure=PLANNED_DEPARTURE_UNSET,keys_issued=False,key_number='',pass_number='',comment=''):
     require_editor(user,camp)
     if kind not in {'CHECKIN','MOVE','CHECKOUT','UPDATE'}:raise ValidationError('Выберите действие с проживанием.')
     if camp.company_id!=user.company_id:raise ValidationError('Местонахождение другой компании.')
@@ -192,13 +195,14 @@ def move(user,kind,camp,day,employee,*,bed=None,session=None,signed=None,planned
     if kind in {'MOVE','CHECKOUT'}:
         current.departed_on=day;current.save(update_fields=['departed_on','updated_at'])
     if kind in {'CHECKIN','MOVE'}:
-        stay=LodgingStay(company=user.company,camp=camp,employee=employee,bed=bed,arrived_on=day,planned_departure=planned_departure,keys_issued=keys_issued,key_number=key_number,pass_number=pass_number,comment=comment,recorded_by=user)
+        stay=LodgingStay(company=user.company,camp=camp,employee=employee,bed=bed,arrived_on=day,planned_departure=None if planned_departure is PLANNED_DEPARTURE_UNSET else planned_departure,keys_issued=keys_issued,key_number=key_number,pass_number=pass_number,comment=comment,recorded_by=user)
         stay.organization_snapshot=employee.zup_organisation or str(employee.company)
         stay.position_snapshot=employee.display_position
         stay.department_snapshot=employee.display_department
         stay.save()
     elif kind=='UPDATE':
-        current.planned_departure=planned_departure;current.keys_issued=keys_issued;current.key_number=key_number;current.pass_number=pass_number;current.comment=comment;current.save();stay=current
+        if planned_departure is not PLANNED_DEPARTURE_UNSET:current.planned_departure=planned_departure
+        current.keys_issued=keys_issued;current.key_number=key_number;current.pass_number=pass_number;current.comment=comment;current.save();stay=current
     else:stay=current
     LodgingEvent.objects.create(company=user.company,camp=camp,employee=employee,date=day,kind=kind,from_bed=old_bed,to_bed=bed if kind in {'CHECKIN','MOVE'} else None,stay=stay,comment=comment,recorded_by=user)
     bump(rows)

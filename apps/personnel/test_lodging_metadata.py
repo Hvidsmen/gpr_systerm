@@ -23,6 +23,7 @@ class LodgingMetadataTests(TestCase):
         self.edit()
         self.bed2.state='RESERVED';self.bed2.save()
         form=LodgingMovementForm(company=self.company,camp=self.a,day=self.day)
+        self.assertNotIn('planned_departure', form.fields)
         self.assertEqual(list(form.fields['bed'].queryset),[self.bed3])
         # Planned checkout does not free a place; an actual departure does.
         stay=LodgingStay.objects.get();stay.planned_departure=self.day;stay.departed_on=self.day+timedelta(days=1);stay.save()
@@ -70,7 +71,7 @@ class LodgingMetadataTests(TestCase):
         self.second_employee.position=position_for(brigade);self.second_employee.gender='F';self.second_employee.save()
         self.edit(keys_issued=True,key_number='КЛЮЧ 2/19',pass_number='P-19')
         endpoint=reverse('personnel:lodging');page=self.client.get(endpoint,self.scope)
-        self.assertContains(page,'Плановая дата выселения')
+        self.assertNotContains(page,'Плановая дата выселения')
         places=self.client.get(reverse('personnel:lodging_building_places',args=[self.building.pk]),self.scope)
         for text in ['Группа / должность','Женский','ИТР Состав','КЛЮЧ 2/19','Пропуск: P-19']:self.assertContains(places,text)
         self.assertNotContains(page,'Организация / должность')
