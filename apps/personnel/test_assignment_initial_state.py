@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import date, timedelta
 from unittest.mock import patch
 from django.core.exceptions import ValidationError
 from django.test import TestCase
@@ -156,6 +156,45 @@ class AssignmentInitialStateTests(TestCase):
         self.assertTrue(row['verified'])
         self.assertEqual(row['arrived_on'],old_arrival)
         self.assertEqual(CampStay.objects.filter(person=self.second_person,camp=self.a).count(),1)
+
+    def test_admin_can_reopen_exact_old_arrival_and_preserve_departure_audit(self):
+        slot=StaffingSlot.objects.create(
+            company=self.company,group=self.group,person=self.second_person,
+            planning_position=self.role,construction_object=self.obj,housing_camp=self.a,
+            assigned_from=date(2026,7,26),assigned_by=self.hr,
+        )
+        stay=CampStay.objects.create(
+            company=self.company,person=self.second_person,camp=self.a,
+            arrived_on=date(2026,7,26),departed_on=date(2026,11,5),recorded_by=self.hr,
+        )
+        arrival=HousingEvent.objects.create(
+            company=self.company,person=self.second_person,date=date(2026,7,26),
+            kind='ARRIVAL',to_camp=self.a,stay=stay,recorded_by=self.hr,
+        )
+        departure=HousingEvent.objects.create(
+            company=self.company,person=self.second_person,date=date(2026,11,5),
+            kind='DEPARTURE',from_camp=self.a,stay=stay,
+            departure_destination='REST',recorded_by=self.hr,
+        )
+        self.client.force_login(self.admin)
+
+        response=self.client.post(reverse('personnel:plan_assignment_edit',args=[slot.pk]),{
+            **self.data,'version':slot.updated_at.isoformat(),
+            'initial-state':'MV','initial-arrival_date':'2026-07-26','initial-departure_date':'',
+        })
+
+        self.assertEqual(response.status_code,302)
+        stay.refresh_from_db();slot.refresh_from_db()
+        self.assertIsNone(stay.departed_on)
+        self.assertEqual(slot.initial_movement,arrival)
+        self.assertTrue(HousingEvent.objects.filter(pk=departure.pk,date=date(2026,11,5),kind='DEPARTURE').exists())
+        cancellation=HousingEvent.objects.get(person=self.second_person,kind='CANCEL',stay=stay)
+        self.assertEqual(cancellation.recorded_by,self.admin)
+        self.assertIn('05.11.2026',cancellation.comment)
+        from apps.production.history_models import FactRevision
+        self.assertTrue(FactRevision.objects.filter(
+            actor=self.admin,reason__contains='Отменён ошибочный выезд 05.11.2026',
+        ).exists())
 
     def test_rest_date_before_current_arrival_is_rejected_instead_of_silent_noop(self):
         slot=StaffingSlot.objects.create(
