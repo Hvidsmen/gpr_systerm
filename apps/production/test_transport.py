@@ -167,6 +167,38 @@ class TransportTests(TestCase):
         self.assertEqual(ws.max_row,3);self.assertIn('VIN',[cell.value for cell in ws[1]])
         self.assertEqual(self.client.get(reverse('production:fact_day_workspace')).status_code,302)
 
+    def test_transport_navigation_separates_work_from_maintenance_and_reuses_catalogue(self):
+        self.client.force_login(self.operator)
+        scope={'camp':self.camp.pk,'date':self.day}
+        work=self.client.get(self.board,scope)
+        self.assertEqual(work.status_code,200)
+        self.assertEqual(work.context['transport_area'],'work')
+        work_tabs=work.content.decode().split('<nav class="nav nav-tabs transport-tabs"',1)[1].split('</nav>',1)[0]
+        self.assertIn('Работа за день',work_tabs);self.assertIn('Календарь',work_tabs)
+        self.assertNotIn('Состояние и ремонт',work_tabs);self.assertNotIn('Перемещения техники',work_tabs)
+
+        maintenance_url=reverse('production:transport_maintenance')
+        maintenance=self.client.get(maintenance_url,scope)
+        self.assertEqual(maintenance.status_code,200)
+        self.assertEqual(maintenance.context['transport_area'],'maintenance')
+        self.assertEqual(maintenance.context['tab'],'state')
+        maintenance_tabs=maintenance.content.decode().split('<nav class="nav nav-tabs transport-tabs"',1)[1].split('</nav>',1)[0]
+        self.assertIn('Состояние и ремонт',maintenance_tabs);self.assertIn('Перемещения техники',maintenance_tabs)
+        self.assertNotIn('Работа за день',maintenance_tabs);self.assertNotIn('Календарь',maintenance_tabs)
+        self.assertContains(maintenance,'data-transport-action="ARRIVAL"')
+
+        legacy=self.client.get(self.board,{**scope,'tab':'state'})
+        self.assertEqual(legacy.status_code,200)
+        self.assertEqual(legacy.context['transport_area'],'maintenance')
+
+        sidebar=work.content.decode().split('<aside class="sidebar"',1)[1].split('</aside>',1)[0]
+        self.assertIn('>Транспорт</span>',sidebar)
+        self.assertIn(f'href="{maintenance_url}"',sidebar)
+        catalogue_url=reverse('resources:equipment_unit_list')
+        self.assertEqual(sidebar.count(f'href="{catalogue_url}"'),1)
+        self.assertIn('Справочник техники',sidebar)
+        self.assertNotIn('Транспорт · Местонахождение',sidebar)
+
     def test_board_post_validates_optional_target_and_roles_csrf(self):
         self.receive();self.client.force_login(self.operator)
         payload={'camp':self.camp.pk,'date':str(self.day),'action':'DAY','equipment':[self.machine.pk],'status':'WORKED','target':f'work:{self.work.pk}:0','signed':self.sign(),'session':str(uuid4())}

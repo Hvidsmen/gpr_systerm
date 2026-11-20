@@ -219,9 +219,9 @@ def check_route(user, match, method):
     if namespace == 'production' and name == 'camp_fuel':
         from apps.production.fuel_access import OPERATORS, READERS
         require_roles(user, READERS if method in {'GET', 'HEAD'} else OPERATORS); return
-    if namespace == 'production' and name in {'transport_board','transport_claims','transport_create','transport_history','transport_details','transport_cell','transport_employee_choices','transport_status_create','transport_copy_previous','transport_type_propose'}:
+    if namespace == 'production' and name in {'transport_board','transport_maintenance','transport_claims','transport_create','transport_history','transport_details','transport_cell','transport_employee_choices','transport_status_create','transport_copy_previous','transport_type_propose'}:
         from apps.production.transport import OPERATORS,READERS
-        require_roles(user,READERS if method in {'GET','HEAD'} and name in {'transport_board','transport_history','transport_details'} else OPERATORS)
+        require_roles(user,READERS if method in {'GET','HEAD'} and name in {'transport_board','transport_maintenance','transport_history','transport_details'} else OPERATORS)
         return
     if namespace == 'production' and name in {'equipment_assignment_list', 'equipment_history_detail'}:
         require_roles(user, READ_ROLES | {'MECHANIZATION_DISPATCHER', 'ALL_FACT_DISPATCHER'} if method in {'GET', 'HEAD'} else {'ADMIN', 'MECHANIZATION_DISPATCHER', 'ALL_FACT_DISPATCHER'});return

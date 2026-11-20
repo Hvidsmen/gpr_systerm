@@ -237,17 +237,21 @@ def _excel(camp,day,rows):
 
 @login_required
 @require_http_methods(['GET','POST'])
-def board(request):
+def board(request, area='work'):
     require_roles(request.user,service.OPERATORS if request.method=='POST' else service.READERS)
     raw=request.POST if request.method=='POST' else request.GET
     default_camp=service.camps_for(request.user).filter(is_active=True).first() or service.camps_for(request.user).first()
     selector_data={**{'camp':str(default_camp.pk) if default_camp else '', 'date':timezone.localdate().isoformat()},**raw.dict()}
     selector=Selector(selector_data,user=request.user)
-    tab=request.GET.get('tab','day')
-    if tab not in {'day','state','calendar','events','report','smg'}:tab='day'
+    default_tab='state' if area=='maintenance' else 'day'
+    tab=request.GET.get('tab',default_tab)
+    if tab not in {'day','state','calendar','events','report','smg'}:tab=default_tab
+    transport_area='maintenance' if tab in {'state','events'} else 'work'
+    transport_route='production:transport_maintenance' if transport_area=='maintenance' else 'production:transport_board'
     day_view='list' if request.GET.get('view')=='list' else 'plan'
     from core.permissions import EQUIPMENT_CATALOG_READ_ROLES
-    context={'can_view_catalogue':role_code(request.user) in EQUIPMENT_CATALOG_READ_ROLES,'day_view':day_view,'selector':selector,'editable':role_code(request.user) in service.OPERATORS,'tab':tab,'can_create':role_code(request.user) in service.OPERATORS}
+    context={'can_view_catalogue':role_code(request.user) in EQUIPMENT_CATALOG_READ_ROLES,'day_view':day_view,'selector':selector,'editable':role_code(request.user) in service.OPERATORS,'tab':tab,'can_create':role_code(request.user) in service.OPERATORS,
+        'transport_area':transport_area,'transport_work_url':reverse('production:transport_board'),'transport_maintenance_url':reverse('production:transport_maintenance')}
     if not selector.is_valid():return render(request,'production/transport_board.html',context,status=400 if raw else 200)
     camp,day=selector.cleaned_data['camp'],selector.cleaned_data['date'];service.authorize(request.user,camp,False)
     context.update(window_context(request.user,day))
@@ -267,7 +271,7 @@ def board(request):
             elif action=='CONDITION':count=service.set_condition(request.user,camp,day,ids,values['condition'],**common)
             else:count=service.move(request.user,camp,day,ids,action,target=values['target_camp'],condition=values['condition'] or 'READY',**common)
             messages.success(request,f'Сохранено машин: {count}.')
-            return redirect(reverse('production:transport_board')+'?'+urlencode({'camp':camp.pk,'date':str(day),'tab':tab,'view':day_view}))
+            return redirect(reverse(transport_route)+'?'+urlencode({'camp':camp.pk,'date':str(day),'tab':tab,'view':day_view}))
         except ValidationError as exc:form.add_error(None,ValidationError('; '.join(exc.messages)))
     data=selector.cleaned_data
     filtered=[r for r in rows if (not data['condition'] or r['condition']==data['condition']) and (tab=='state' or not data['use'] or ((r['status'] or 'EMPTY')==data['use'])) and all(term.casefold() in ' '.join(str(value or '') for value in [r['machine'],r['machine'].vin,r['machine'].inventory_number,r['machine'].brand_model,r['planning_type'].name]).casefold() for term in data['q'].split())]

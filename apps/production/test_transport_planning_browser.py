@@ -2,6 +2,7 @@ import json,os,shutil,subprocess
 from pathlib import Path
 from unittest import skipUnless
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
+from django.urls import reverse
 from .test_transport_planning import setup_data
 
 
@@ -14,7 +15,7 @@ class TransportPlanningBrowserTests(StaticLiveServerTestCase):
         for machine in [self.machine,self.second,self.bus]:
             transport.move(self.operator,self.camp,self.day,[machine.pk],'ARRIVAL',condition='READY',signed=transport.snapshot(self.operator,self.camp,self.day))
         self.client.force_login(self.operator)
-        config={'base':self.live_server_url,'url':self.board,'cookie':self.client.cookies['sessionid'].value,'chromium':shutil.which('chromium'),'camp':self.camp.pk,'day':str(self.day),'type':self.type.pk,'machine':self.machine.pk,'second':self.second.pk,'employee':self.employee.pk,'bus':self.bus.pk,'bus_type':self.bus_type.pk,'object':self.obj.pk}
+        config={'base':self.live_server_url,'url':self.board,'maintenance':reverse('production:transport_maintenance'),'cookie':self.client.cookies['sessionid'].value,'chromium':shutil.which('chromium'),'camp':self.camp.pk,'day':str(self.day),'type':self.type.pk,'machine':self.machine.pk,'second':self.second.pk,'employee':self.employee.pk,'bus':self.bus.pk,'bus_type':self.bus_type.pk,'object':self.obj.pk}
         script=Path(__file__).resolve().parents[2]/'tests/browser/transport_planning.js'
         result=subprocess.run(['node',str(script)],capture_output=True,text=True,env=dict(os.environ,TRANSPORT_PLANNING_CONFIG=json.dumps(config)),timeout=120)
         self.assertEqual(result.returncode,0,result.stdout+'\n'+result.stderr)

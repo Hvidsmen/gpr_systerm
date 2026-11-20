@@ -49,7 +49,7 @@ class FuelWarehouseTests(TestCase):
         self.assertEqual(self.client.post(url,data).status_code,302)
         self.assertEqual(CampFuelDay.objects.get().actual_balance,110)
         self.assertEqual(self.client.get(url, params | {'export':'xlsx'}).status_code,200)
-        for route in ['production:transport_board','accounts:user_list','resources:equipment_type_list','planning:workspace_list']:
+        for route in ['production:transport_board','production:transport_maintenance','accounts:user_list','resources:equipment_type_list','planning:workspace_list']:
             self.assertEqual(self.client.get(reverse(route)).status_code,403)
         hidden = Camp.objects.create(company=self.company,name='Другое местонахождение')
         CampObjectLink.objects.create(company=self.company,camp=hidden,construction_object=self.other)

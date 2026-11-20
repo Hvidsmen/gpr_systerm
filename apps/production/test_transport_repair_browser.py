@@ -2,6 +2,7 @@ import json,os,shutil,subprocess
 from pathlib import Path
 from unittest import skipUnless
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
+from django.urls import reverse
 
 
 @skipUnless(os.environ.get('TRANSPORT_REPAIR_BROWSER_TESTS')=='1','Optional transport repair workflow Chromium scenario')
@@ -21,7 +22,7 @@ class TransportRepairBrowserTests(StaticLiveServerTestCase):
         self.client.force_login(self.operator)
         from datetime import timedelta
         corrected_date=self.day-timedelta(days=1)
-        config={'base':self.live_server_url,'url':self.board,'cookie':self.client.cookies['sessionid'].value,'chromium':shutil.which('chromium'),'camp':self.camp.pk,'day':str(self.day),'machine':self.machine.pk,'employee':driver.pk,'corrected_date':str(corrected_date)}
+        config={'base':self.live_server_url,'url':self.board,'maintenance':reverse('production:transport_maintenance'),'cookie':self.client.cookies['sessionid'].value,'chromium':shutil.which('chromium'),'camp':self.camp.pk,'day':str(self.day),'machine':self.machine.pk,'employee':driver.pk,'corrected_date':str(corrected_date)}
         script=Path(__file__).resolve().parents[2]/'tests/browser/transport_repair.js'
         result=subprocess.run(['node',str(script)],capture_output=True,text=True,env=dict(os.environ,TRANSPORT_REPAIR_CONFIG=json.dumps(config)),timeout=120)
         self.assertEqual(result.returncode,0,result.stdout+'\n'+result.stderr)
