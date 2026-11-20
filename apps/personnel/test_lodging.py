@@ -149,6 +149,7 @@ class LodgingTests(TestCase):
         self.assertNotContains(response,'data-lodging-bed');self.assertContains(response,'data-lazy-url')
         places=self.client.get(reverse('personnel:lodging_building_places',args=[self.building.pk]),data)
         self.assertContains(places,'data-lodging-bed',count=3);self.assertContains(places,self.second_employee.display_name)
+        self.assertContains(places,'data-employee-label=',count=3)
         history=self.client.get(reverse('personnel:lodging_event_history'),data);self.assertEqual(history.status_code,200)
         self.assertContains(response,'Сверка перевахты и проживания');self.assertContains(response,'Комендант · проживание')
         self.assertEqual(self.client.get(url,{**data,'export':'xlsx'})['Content-Type'],'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
@@ -190,6 +191,7 @@ class LodgingTests(TestCase):
         self.assertEqual(attrs['data-remote-kind-field'],'kind')
         self.assertEqual(attrs['data-remote-camp-field'],'camp')
         self.assertEqual(attrs['data-remote-date-field'],'date')
+        self.assertEqual(attrs['data-remote-preserve-selection-fields'],'kind,date')
         self.assertNotIn('data-remote-include-archived',attrs)
 
     def test_sync_confirmation_api_uses_source_revision_and_permission(self):

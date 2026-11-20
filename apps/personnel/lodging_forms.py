@@ -26,6 +26,7 @@ class LodgingMovementForm(StyledForm):
     employee=forms.ModelChoiceField(label='Сотрудник',queryset=Employee.objects.none(),widget=RemoteEmployeeSelect(attrs={
         'data-remote-scope':'lodging','data-remote-kind-field':'kind',
         'data-remote-camp-field':'camp','data-remote-date-field':'date',
+        'data-remote-preserve-selection-fields':'kind,date',
     }))
     bed=forms.ModelChoiceField(label='Новое место',queryset=LodgingBed.objects.none(),required=False)
     date=forms.DateField(label='Фактическая дата',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
