@@ -54,9 +54,13 @@ try {
     if($LASTEXITCODE -ne 0){throw 'Test preparation failed. See the error above; .runtime\prepare.log is available if database preparation started. Production was not changed.'}
     $action=New-ScheduledTaskAction -Execute $python -Argument ('"{0}" serve --root "{1}"' -f (Join-Path $Root 'ops\staging.py'),$Root) -WorkingDirectory $Root
     $servicePrincipal=New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
-    $trigger=New-ScheduledTaskTrigger -AtStartup
-    $settings=New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
-    Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $servicePrincipal -Settings $settings -Description 'Separate persistent acceptance portal. Explicit releases only, no automatic updates.' | Out-Null
+    $startup=New-ScheduledTaskTrigger -AtStartup
+    $startup.Delay='PT90S'
+    # A logon trigger is a fallback when Windows started before the domain or
+    # network was ready. MultipleInstances=IgnoreNew prevents a duplicate.
+    $logon=New-ScheduledTaskTrigger -AtLogOn
+    $settings=New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+    Register-ScheduledTask -TaskName $taskName -Action $action -Trigger @($startup,$logon) -Principal $servicePrincipal -Settings $settings -Description 'Separate persistent acceptance portal. Explicit releases only, no automatic updates.' | Out-Null
     if(-not (Get-NetFirewallRule -Name 'YDS-Portal-Test' -ErrorAction SilentlyContinue)){
         New-NetFirewallRule -Name 'YDS-Portal-Test' -DisplayName 'YDS portal TEST' -Direction Inbound -Action Allow -Protocol TCP -LocalPort $Port -Profile Domain,Private -RemoteAddress LocalSubnet | Out-Null
     }

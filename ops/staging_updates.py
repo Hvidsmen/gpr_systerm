@@ -370,9 +370,11 @@ def bridge_supervisor(root, parent_gone):
         # is still unexpected here: treating it as success would end the
         # scheduled task and leave port 8002 without a listener.
         stamp=time.monotonic();failures=[seen for seen in failures if stamp-seen<60];failures.append(stamp)
-        if len(failures)>=4:
-            raise RuntimeError(f'Обработчик тестового портала четырежды завершился с кодом {code}.')
-        delay=min(2**(len(failures)-1),8)
+        # Network services, the domain controller and MSSQL can become available
+        # several minutes after Windows starts.  The bridge is the persistent
+        # scheduled-task process, so it must keep retrying instead of exhausting
+        # a small crash limit and leaving port 8002 down until a manual start.
+        delay=min(2**(len(failures)-1),30)
         logging.error('TEST supervisor exited with code %s; restarting selected release in %ss.',code,delay)
         if parent_gone.wait(delay):return
 

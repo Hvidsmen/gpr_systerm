@@ -140,6 +140,20 @@ class StagingPreflightTests(TestCase):
         logged.assert_called_once_with(
             'TEST supervisor exited with code %s; restarting selected release in %ss.',0,1)
 
+    def test_bridge_keeps_retrying_until_dependencies_are_available(self):
+        exited=[]
+        for code in (1,2,3,4,5):
+            child=Mock(returncode=code);child.poll.return_value=code;child.stdin=Mock(closed=False)
+            exited.append(child)
+        running=Mock(returncode=None);running.poll.return_value=None;running.stdin=Mock(closed=False)
+        parent=Mock();parent.is_set.side_effect=[False]*6+[True];parent.wait.return_value=False
+        with patch.object(staging_updates.subprocess,'Popen',side_effect=exited+[running]) as spawn,\
+                patch.object(staging_updates.logging,'error') as logged,patch.object(staging_updates,'stop_http') as stop:
+            staging_updates.bridge_supervisor(self.root,parent)
+        self.assertEqual(spawn.call_count,6)
+        self.assertEqual([item.args[-1] for item in logged.call_args_list],[1,2,4,8,16])
+        stop.assert_called_once_with(running,graceful_timeout=150)
+
     def test_mssql_backup_and_restore_use_selected_test_release(self):
         state={**staging.manifest(self.root),'database_engine':'mssql','mssql':{'host':'MSK-DB2','name':'YDS_PORTAL_TEST'}}
         folder=self.root/'.runtime/backups/mssql'
