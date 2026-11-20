@@ -352,7 +352,7 @@ def needs_supervisor_handoff():
 def bridge_supervisor(root, parent_gone):
     """Keep the scheduled task alive while selected releases replace its worker."""
     from ops.staging import manifest, environment
-    root=Path(root).resolve();stop=runtime(root)/'server.stop'
+    root=Path(root).resolve();stop=runtime(root)/'server.stop';failures=[]
     while not parent_gone.is_set() and not stop.exists():
         current=manifest(root);env=environment(root)
         env.update(GPR_STAGING_PARENT_PIPE='1',GPR_STAGING_HANDOFF_PARENT='1')
@@ -366,7 +366,14 @@ def bridge_supervisor(root, parent_gone):
         code=child.returncode
         if child.stdin and not child.stdin.closed:child.stdin.close()
         if code==SUPERVISOR_RESTART_EXIT:continue
-        if code:raise RuntimeError(f'Обработчик тестового портала завершился с кодом {code}.')
+        if code:
+            stamp=time.monotonic();failures=[seen for seen in failures if stamp-seen<60];failures.append(stamp)
+            if len(failures)>=4:
+                raise RuntimeError(f'Обработчик тестового портала четырежды завершился с кодом {code}.')
+            delay=min(2**(len(failures)-1),8)
+            logging.error('TEST supervisor exited with code %s; restarting selected release in %ss.',code,delay)
+            if parent_gone.wait(delay):return
+            continue
         return
 
 
