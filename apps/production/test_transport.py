@@ -193,6 +193,10 @@ class TransportTests(TestCase):
 
         sidebar=work.content.decode().split('<aside class="sidebar"',1)[1].split('</aside>',1)[0]
         self.assertIn('>Транспорт</span>',sidebar)
+        self.assertEqual(sidebar.count(f'href="{self.board}"'),2)
+        fact_group=sidebar.split('<span>Внесение факта</span>',1)[1].split('</details>',1)[0]
+        self.assertIn(f'href="{self.board}"',fact_group)
+        self.assertIn('Работа техники',fact_group)
         self.assertIn(f'href="{maintenance_url}"',sidebar)
         catalogue_url=reverse('resources:equipment_unit_list')
         self.assertEqual(sidebar.count(f'href="{catalogue_url}"'),1)
