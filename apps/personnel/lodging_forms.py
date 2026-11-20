@@ -6,6 +6,14 @@ from . import lodging
 from .employee_widgets import RemoteEmployeeSelect
 
 
+class LodgingBedSelect(forms.Select):
+    def create_option(self,name,value,label,selected,index,subindex=None,attrs=None):
+        option=super().create_option(name,value,label,selected,index,subindex=subindex,attrs=attrs)
+        instance=getattr(value,'instance',None)
+        if instance is not None:option['attrs']['data-building']=str(instance.building_id)
+        return option
+
+
 class StyledForm(forms.Form):
     def style(self):
         for field in self.fields.values():
@@ -28,7 +36,8 @@ class LodgingMovementForm(StyledForm):
         'data-remote-camp-field':'camp','data-remote-date-field':'date',
         'data-remote-preserve-selection-fields':'kind,date',
     }))
-    bed=forms.ModelChoiceField(label='Новое место',queryset=LodgingBed.objects.none(),required=False)
+    building=forms.ModelChoiceField(label='Вагон / корпус',queryset=LodgingBuilding.objects.none(),required=False,empty_label='Все вагоны / корпуса')
+    bed=forms.ModelChoiceField(label='Новое место',queryset=LodgingBed.objects.none(),required=False,widget=LodgingBedSelect)
     date=forms.DateField(label='Фактическая дата',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
     planned_departure=forms.DateField(label='Плановая дата выселения',required=False,help_text='Необязательно. Ожидаемая дата; место освобождается только после оформления выселения.',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
     keys_issued=forms.BooleanField(label='Ключи выданы',required=False)
@@ -43,6 +52,8 @@ class LodgingMovementForm(StyledForm):
         from apps.resources.group_order import ordered
         self.fields['employee'].queryset=ordered(Employee.objects.filter(company=company).select_related('position__planning_mapping__brigade__group'),group_path='position__planning_mapping__brigade__group',within=('position__name','last_name','first_name','pk'))
         self.fields['employee'].label_from_instance=lambda e:e.display_name+(' · архивный' if not e.is_active else '')+(' · № '+e.employee_number if e.employee_number else '')+(' · '+str(e.position) if e.position_id else '')
+        self.fields['building'].queryset=LodgingBuilding.objects.filter(company=company,camp=camp,is_active=True)
+        self.fields['building'].label_from_instance=lodging.building_label
         selected_day=day
         if self.is_bound:
             try:selected_day=self.fields['date'].clean(self.data.get('date'))
@@ -57,6 +68,7 @@ class LodgingMovementForm(StyledForm):
     def clean(self):
         data=super().clean()
         if data.get('kind') in {'CHECKIN','MOVE'} and not data.get('bed'):self.add_error('bed','Выберите новое место.')
+        if data.get('building') and data.get('bed') and data['bed'].building_id!=data['building'].pk:self.add_error('bed','Выберите место указанного вагона.')
         if data.get('planned_departure') and data.get('date') and data['planned_departure']<data['date']:self.add_error('planned_departure','Укажите дату не раньше заселения.')
         return data
 

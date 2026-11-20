@@ -8,7 +8,7 @@ const {chromium}=require('playwright'),fs=require('fs'),assert=require('node:ass
   await page.goto(c.base+c.url+`?camp=${c.camp}&date=${c.day}`);const originalUrl=page.url();
   await page.locator('#movement').evaluate(el=>el.open=true);
   const form=page.locator('[data-lodging-movement]');
-  await form.locator('[name=employee]').selectOption(String(c.employee));await form.locator('[name=bed]').selectOption(String(c.bed));
+  await form.locator('[name=employee]').evaluate((select,value)=>{select.add(new Option('Тестовый сотрудник',value,false,true));select.dispatchEvent(new Event('change',{bubbles:true}));},String(c.employee));await form.locator('[name=bed]').selectOption(String(c.bed));
   await form.locator('[data-lodging-take]').click();await form.locator('[data-lodging-lock-label]').filter({hasText:'Вы оформляете'}).waitFor();
   await form.locator('[name=pass_number]').fill('PASS-KEEP');await form.locator('[name=comment]').fill('Сохранить введённое');
   const quick=page.locator('[data-lodging-quick-bed]');await quick.locator('summary').click();
@@ -21,11 +21,15 @@ const {chromium}=require('playwright'),fs=require('fs'),assert=require('node:ass
   await page.waitForFunction(()=>document.querySelector('[data-lodging-quick-bed]').open===false);
   assert.equal(page.url(),originalUrl);assert((await form.locator('[name=bed] option:checked').textContent()).includes('Вагон новый · Жилой вагон на 8 мест · комн. 3 · место 7'));
   assert((await form.locator('[name=bed] option:checked').textContent()).includes('Пол вагона: Женский'));
+  const wagon=form.locator('#id_building'),newBuilding=await wagon.inputValue();assert(newBuilding);assert(await form.locator(`[name=bed] option[value="${c.bed}"]`).isDisabled());
+  await wagon.selectOption('');assert(!await form.locator(`[name=bed] option[value="${c.bed}"]`).isDisabled());
+  await wagon.selectOption(newBuilding);assert(await form.locator(`[name=bed] option[value="${c.bed}"]`).isDisabled());
   assert.equal(await form.locator('[name=employee]').inputValue(),String(c.employee));
   assert.equal(await form.locator('[name=pass_number]').inputValue(),'PASS-KEEP');assert.equal(await form.locator('[name=comment]').inputValue(),'Сохранить введённое');
   await form.locator('[data-lodging-take]').click();await form.locator('[data-lodging-lock-label]').filter({hasText:'Вы оформляете'}).waitFor();
   assert(await form.evaluate(el=>el.checkValidity()));
   await Promise.all([page.waitForNavigation(),page.locator('[data-lodging-save]').click()]);
+  await page.locator('#places details').evaluateAll(async items=>{for(const item of items){item.open=true;const response=await fetch(item.dataset.lazyUrl,{credentials:'same-origin',headers:{'X-Requested-With':'XMLHttpRequest'}});item.querySelector('[data-lazy-content]').innerHTML=await response.text();item.dataset.lazyLoaded='1';}});
   assert((await page.locator('[data-lodging-bed][data-employee="'+c.employee+'"]').textContent()).includes('PASS-KEEP'));
   assert((await page.locator('.lodging-building').filter({hasText:'Вагон новый'}).locator('[data-building-gender]').textContent()).includes('Женский'));await page.screenshot({path:'/tmp/lodging-building-gender-desktop.png',fullPage:true});
   await page.setViewportSize({width:390,height:844});await page.locator('#movement').evaluate(el=>el.open=true);await quick.locator('summary').click();

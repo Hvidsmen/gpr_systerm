@@ -64,7 +64,7 @@ def available_beds(request):
     try:session=lodging.session_id(request.GET.get('session')) if request.GET.get('session') else None
     except ValidationError:return JsonResponse({'error':'Обновите форму оформления.'},status=400)
     beds=lodging.available_beds(request.user.company,camp,day,user=request.user,session=session)
-    return JsonResponse({'beds':[{'id':bed.pk,'label':lodging.bed_label(bed),'building_gender':bed.building.gender} for bed in beds]})
+    return JsonResponse({'beds':[{'id':bed.pk,'label':lodging.bed_label(bed),'building_id':bed.building_id,'building_gender':bed.building.gender} for bed in beds]})
 
 
 def place_rows(company,camp,day,building=None):

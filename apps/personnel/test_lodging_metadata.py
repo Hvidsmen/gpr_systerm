@@ -8,7 +8,7 @@ from apps.resources.models import Brigade,BrigadeGroup
 from apps.resources.position_catalog import position_for
 from . import test_lodging as fixtures,lodging,lodging_import
 from .lodging_forms import LodgingMovementForm
-from .models import LodgingBed,LodgingControl,LodgingStay
+from .models import LodgingBed,LodgingBuilding,LodgingControl,LodgingStay
 
 
 class LodgingMetadataTests(TestCase):
@@ -32,6 +32,23 @@ class LodgingMetadataTests(TestCase):
         self.bed3.building.is_active=False;self.bed3.building.save()
         self.assertEqual(self.client.get(endpoint,self.scope).json()['beds'],[])
 
+    def test_wagon_filter_metadata_and_server_validation(self):
+        other=LodgingBuilding.objects.create(company=self.company,camp=self.a,name='Вагон 2')
+        other_bed=LodgingBed.objects.create(company=self.company,building=other,number='1')
+        form=LodgingMovementForm(company=self.company,camp=self.a,day=self.day)
+        self.assertEqual(set(form.fields['building'].queryset.values_list('pk',flat=True)),{self.building.pk,other.pk})
+        html=str(form['bed'])
+        self.assertIn(f'data-building="{self.building.pk}"',html)
+        self.assertIn(f'data-building="{other.pk}"',html)
+        rows=self.client.get(reverse('personnel:lodging_available_beds'),self.scope).json()['beds']
+        self.assertEqual(next(row for row in rows if row['id']==other_bed.pk)['building_id'],other.pk)
+        invalid=LodgingMovementForm(data={
+            **self.scope,'kind':'CHECKIN','employee':self.second_employee.pk,
+            'building':self.building.pk,'bed':other_bed.pk,'session':uuid4(),
+        },company=self.company,camp=self.a,day=self.day)
+        self.assertFalse(invalid.is_valid())
+        self.assertIn('указанного вагона',invalid.errors['bed'][0])
+
     def test_temporary_reservations_excluded_but_own_post_can_save(self):
         session=str(uuid4());signed=lodging.claim(self.commandant,self.a,self.day,self.second_employee,self.bed,session)
         scope={**self.scope,'session':session}
@@ -50,7 +67,9 @@ class LodgingMetadataTests(TestCase):
         self.second_employee.position=position_for(brigade);self.second_employee.gender='F';self.second_employee.save()
         self.edit(keys_issued=True,key_number='КЛЮЧ 2/19',pass_number='P-19')
         endpoint=reverse('personnel:lodging');page=self.client.get(endpoint,self.scope)
-        for text in ['Группа / должность','Женский','ИТР Состав','КЛЮЧ 2/19','Пропуск: P-19','Плановая дата выселения']:self.assertContains(page,text)
+        self.assertContains(page,'Плановая дата выселения')
+        places=self.client.get(reverse('personnel:lodging_building_places',args=[self.building.pk]),self.scope)
+        for text in ['Группа / должность','Женский','ИТР Состав','КЛЮЧ 2/19','Пропуск: P-19']:self.assertContains(places,text)
         self.assertNotContains(page,'Организация / должность')
         export=self.client.get(endpoint,{**self.scope,'export':'xlsx'})
         book=load_workbook(BytesIO(export.content));values=list(book.active.values);header=values[0];row=values[1]
