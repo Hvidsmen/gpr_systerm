@@ -89,6 +89,30 @@ class AssignmentInitialStateTests(TestCase):
         slot=self.assigned();url=reverse('personnel:plan_assignment_edit',args=[slot.pk])
         self.assertNotContains(self.client.get(url),'data-assignment-initial')
 
+    def test_old_assignment_can_record_later_arrival_from_rest(self):
+        assigned_from=self.day-timedelta(days=90)
+        slot=StaffingSlot.objects.create(
+            company=self.company,group=self.group,person=self.second_person,
+            planning_position=self.role,construction_object=self.obj,housing_camp=self.a,
+            assigned_from=assigned_from,assigned_by=self.hr,
+        )
+        HousingEvent.objects.create(
+            company=self.company,person=self.second_person,date=self.day-timedelta(days=10),
+            kind='DEPARTURE',from_camp=self.a,departure_destination='REST',recorded_by=self.hr,
+        )
+        url=reverse('personnel:plan_assignment_edit',args=[slot.pk])
+        page=self.client.get(url)
+        self.assertEqual(page.context['initial_form'].fields['arrival_date'].widget.attrs['max'],str(timezone.localdate()))
+        response=self.client.post(url,{
+            **self.data,'version':slot.updated_at.isoformat(),
+            'initial-state':'MV','initial-arrival_date':str(self.day),'initial-departure_date':'',
+        })
+        self.assertEqual(response.status_code,302)
+        slot.refresh_from_db()
+        self.assertEqual(slot.initial_movement.kind,'ARRIVAL')
+        self.assertEqual(slot.initial_movement.date,self.day)
+        self.assertTrue(CampStay.objects.filter(person=self.second_person,camp=self.a,arrived_on=self.day,departed_on=None).exists())
+
     def test_event_failure_rolls_back_assignment_and_created_stay(self):
         with patch('apps.personnel.plan_assignments.HousingEvent.objects.create',side_effect=ValidationError('event failed')):
             self.assertContains(self.post('MV',self.day),'event failed')

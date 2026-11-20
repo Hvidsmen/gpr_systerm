@@ -21,4 +21,4 @@
 <div class="d-flex flex-wrap gap-2 border-top pt-3">{% if not historical %}<button class="btn btn-primary">{% if row %}Сохранить изменения{% else %}Назначить сотрудника{% endif %}</button>{% endif %}<a class="btn btn-outline-secondary" href="{% url 'personnel:housing' %}">Отмена</a></div>
 </form>
 {% endblock %}
-{% block extra_js %}<script src="{% static 'personnel/assignment_initial.js' %}?v=20261109-required-status" defer></script>{% endblock %}
+{% block extra_js %}<script src="{% static 'personnel/assignment_initial.js' %}?v=20261120-existing-movement" defer></script>{% endblock %}

@@ -86,7 +86,7 @@ def has_movements(person):
     return person.stays.exists() or person.housing_events.exists()
 
 
-def initialize_state(user,row,data):
+def initialize_state(user,row,data,*,enforce_assignment_start=True):
     """Record the selected actual state without duplicating an existing state."""
     if not data or not data.get('state'):return False
     state,arrival,departure=data['state'],data.get('arrival_date'),data.get('departure_date')
@@ -100,7 +100,14 @@ def initialize_state(user,row,data):
         raise ValidationError('Начальное состояние уже введено. Для изменений используйте историю и заезд / выезд.')
     # Opening balances can predate the daily edit window.
     # Validate again inside the transaction for callers outside the HTTP form.
-    check=InitialStateForm({'state':state,'arrival_date':arrival or '', 'departure_date':departure or ''},as_of=row.assigned_from)
+    # A newly created assignment describes its opening balance, so its fact
+    # cannot be later than the assignment start.  An existing assignment may
+    # have been created before actual movements were introduced in the portal;
+    # editing it must allow recording a later real arrival/departure.
+    check=InitialStateForm(
+        {'state':state,'arrival_date':arrival or '', 'departure_date':departure or ''},
+        as_of=row.assigned_from if enforce_assignment_start else None,
+    )
     if not check.is_valid():raise ValidationError(check.errors.as_text())
     comment='Начальное состояние при первом назначении на должность плана.'
     if has_movements(row.person):
@@ -248,7 +255,7 @@ def save_assignment(user,data,row_id=None,initial_state=None,previous=None):
     row.group=group;row.planning_position=role;row.construction_object=obj;row.housing_camp=camp
     row.assigned_from=start;row.assigned_until=end;row.pattern=pattern
     row.save()
-    initialize_state(user,row,initial_state)
+    initialize_state(user,row,initial_state,enforce_assignment_start=not bool(row_id))
     person.schedule_slot=row;person.save(update_fields=['schedule_slot','updated_at'])
     return row
 
@@ -341,7 +348,7 @@ def edit(request,pk=None):
         valid=form.is_valid()
         if historical:form.add_error(None,'Назначение удалено.' if row.cancelled_at else 'Прежнее назначение сохранено в истории. Изменяйте действующее назначение.');valid=False
         if initial_form:
-            initial_form.as_of=form.cleaned_data.get('assigned_from')
+            initial_form.as_of=None if row else form.cleaned_data.get('assigned_from')
             valid=initial_form.is_valid() and valid
         elif request.POST.get('initial-state'):
             form.add_error(None,'Начальное состояние уже введено. Используйте историю и заезд / выезд.');valid=False
