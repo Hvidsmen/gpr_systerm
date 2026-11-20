@@ -197,6 +197,10 @@ class TransportTests(TestCase):
         catalogue_url=reverse('resources:equipment_unit_list')
         self.assertEqual(sidebar.count(f'href="{catalogue_url}"'),1)
         self.assertIn('Справочник техники',sidebar)
+        smg_url=reverse('production:equipment_report')
+        self.assertEqual(sidebar.count(f'href="{smg_url}"'),2)
+        plan_fact_group=sidebar.split('<span>План и факт</span>',1)[1].split('</details>',1)[0]
+        self.assertIn(f'href="{smg_url}"',plan_fact_group)
         self.assertNotIn('Транспорт · Местонахождение',sidebar)
 
     def test_board_post_validates_optional_target_and_roles_csrf(self):
