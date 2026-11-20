@@ -255,11 +255,24 @@ class MovementRecommendationTests(TestCase):
     def test_admin_is_redirected_to_my_requests_after_creating_request(self):
         self.client.force_login(self.admin);today=timezone.localdate();url=reverse('personnel:movements')
         page=self.client.get(url,{'camp':self.a.pk})
+        self.assertIn('direct_fact',page.context['form'].fields)
+        self.assertContains(page,'администратор или диспетчер по персоналу может провести факт сразу')
         self.assertEqual(page.context['form'].fields['date'].label,'Плановая дата заезда')
         self.assertContains(page,'Плановая дата заезда')
         response=self.client.post(url,{'workflow_action':'move','camp':self.a.pk,'kind':'ARRIVAL','date':today,
             'employees':[self.second_employee.pk],'snapshot':page.context['form'].initial['snapshot']})
         self.assertRedirects(response,reverse('personnel:my_movement_requests'),fetch_redirect_response=False)
+
+    def test_admin_can_temporarily_record_direct_fact_for_testing(self):
+        self.client.force_login(self.admin);today=timezone.localdate();url=reverse('personnel:movements')
+        page=self.client.get(url,{'camp':self.a.pk})
+        response=self.client.post(url,{
+            'workflow_action':'move','direct_fact':'on','camp':self.a.pk,'kind':'ARRIVAL','date':today,
+            'employees':[self.second_employee.pk],'snapshot':page.context['form'].initial['snapshot'],
+        })
+        self.assertEqual(response.status_code,302)
+        self.assertTrue(self.second_person.stays.filter(camp=self.a,arrived_on=today,departed_on=None).exists())
+        self.assertFalse(MovementReviewRequest.objects.exists())
 
     def test_movement_date_label_follows_kind_and_direct_fact_mode(self):
         from pathlib import Path

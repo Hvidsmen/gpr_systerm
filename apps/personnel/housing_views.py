@@ -14,6 +14,7 @@ from django.shortcuts import get_object_or_404,redirect,render
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
+from core.permissions import role_code
 from .views import access,scoped
 from .models import Camp,CampObjectLink,CampStay,HousingEvent,MovementReviewRequest,Person,Board,StaffingGroup,StaffingSlot
 from .forms import CampForm,MovementForm,MovementRecommendationForm,MovementReviewForm,NewEmployeeRegistrationForm,PersonScheduleForm,ZupScheduleChangeForm
@@ -163,7 +164,8 @@ def workspace(request, movements=False, movement_page='new'):
     camp=get_object_or_404(camps,pk=camp_id) if camp_id else selected_camps.first()
     if camp is None:return render(request,template,{**extra,'rotation_filter':selector,'camps':camps,'day':day,'no_camp_match':True})
     workflow_action=request.POST.get('workflow_action','move') if request.method=='POST' else ''
-    setup_direct=request.method=='POST' and workflow_action=='move' and request.user.role.code=='PERSONNEL_DISPATCHER' and request.POST.get('direct_fact') in {'1','on','true'}
+    direct_role=role_code(request.user) in {'ADMIN','PERSONNEL_DISPATCHER'}
+    setup_direct=request.method=='POST' and workflow_action=='move' and direct_role and request.POST.get('direct_fact') in {'1','on','true'}
     if setup_direct:
         try:
             housing.require_movement_day(request.user,day)
@@ -243,7 +245,7 @@ def workspace(request, movements=False, movement_page='new'):
             return recommendation_redirect('arrivals' if recommendation_kind!='DEPARTURE' else 'departures')
     prefill_employees=recommendation_prefill.get('employees',[]) if recommendation_prefill else []
     prefill_scope=recommendation_prefill.get('scope','') if recommendation_prefill else ''
-    form=MovementForm(request.POST if request.method=='POST' and workflow_action=='move' else None,company=request.user.company,camp=camp,day=day,fixed_employee=fixed_employee,allow_direct=request.user.role.code=='PERSONNEL_DISPATCHER',
+    form=MovementForm(request.POST if request.method=='POST' and workflow_action=='move' else None,company=request.user.company,camp=camp,day=day,fixed_employee=fixed_employee,allow_direct=direct_role,
         initial={'personal_scope':personal_token,'recommendation_scope':prefill_scope,'kind':kind,'date':day,'camp':None if request.GET.get('choose_camp')=='1' and kind=='ARRIVAL' else camp.pk,'snapshot':housing.movement_snapshot(request.user),'employees':prefill_employees or ([selected_employee] if selected_employee.isdigit() else [])})
     movement_exclusions=[]
     if request.method=='POST' and workflow_action=='move' and form.is_valid():

@@ -172,7 +172,8 @@ def move(user,kind,camp,day,people,employees=(),target=None,comment='',snapshot=
         pass
     elif setup_direct:
         from core.permissions import role_code
-        if role_code(user)!='PERSONNEL_DISPATCHER':raise ValidationError('Прямой ввод доступен только диспетчеру по персоналу.')
+        if role_code(user) not in {'ADMIN','PERSONNEL_DISPATCHER'}:
+            raise ValidationError('Прямой ввод доступен только администратору или диспетчеру по персоналу.')
         require_movement_day(user,day)
     else:require_movement_day(user,day)
     require_backdate_comment(day,comment)

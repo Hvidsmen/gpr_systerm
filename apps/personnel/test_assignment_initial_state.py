@@ -113,6 +113,19 @@ class AssignmentInitialStateTests(TestCase):
         self.assertEqual(slot.initial_movement.date,self.day)
         self.assertTrue(CampStay.objects.filter(person=self.second_person,camp=self.a,arrived_on=self.day,departed_on=None).exists())
 
+    def test_admin_can_record_initial_arrival_for_testing(self):
+        HousingEvent.objects.create(
+            company=self.company,person=self.second_person,date=self.day-timedelta(days=10),
+            kind='DEPARTURE',from_camp=self.a,departure_destination='REST',recorded_by=self.hr,
+        )
+        self.client.force_login(self.admin)
+        response=self.post('MV',self.day)
+        self.assertEqual(response.status_code,302)
+        slot=self.assigned()
+        self.assertEqual(slot.initial_movement.kind,'ARRIVAL')
+        self.assertEqual(slot.initial_movement.recorded_by,self.admin)
+        self.assertTrue(CampStay.objects.filter(person=self.second_person,camp=self.a,arrived_on=self.day,departed_on=None).exists())
+
     def test_event_failure_rolls_back_assignment_and_created_stay(self):
         with patch('apps.personnel.plan_assignments.HousingEvent.objects.create',side_effect=ValidationError('event failed')):
             self.assertContains(self.post('MV',self.day),'event failed')
