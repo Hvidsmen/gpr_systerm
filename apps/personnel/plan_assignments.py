@@ -58,7 +58,7 @@ class InitialEmployeeSelect(RemoteEmployeeSelect):
 
 class InitialStateForm(forms.Form):
     state=forms.ChoiceField(label='Статус сотрудника',required=True,choices=[('','Выберите статус'),('MV','На вахте'),('MO','МО — межвахтовый отдых')],widget=forms.Select(attrs={'data-initial-state':'','data-compact-select':''}))
-    arrival_date=forms.DateField(label='Дата заезда',required=False,widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date','data-initial-arrival':''}),help_text='Для перехода с МО на вахту укажите дату нового заезда после последнего выезда. При МО можно указать известную дату предыдущего заезда.')
+    arrival_date=forms.DateField(label='Дата заезда',required=False,widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date','data-initial-arrival':''}),help_text='Укажите фактическую дату заезда. Если после этого заезда ошибочно оформлен выезд и более поздних перемещений нет, портал отменит этот выезд. При МО можно указать известную дату предыдущего заезда.')
     departure_date=forms.DateField(label='Дата выезда на МО',required=False,widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date','data-initial-departure':''}))
 
     def __init__(self,*args,as_of=None,**kwargs):
@@ -94,8 +94,8 @@ def initialize_state(user,row,data,*,enforce_assignment_start=True):
         event=row.initial_movement
         saved_arrival=event.date if event.kind=='ARRIVAL' else event.stay.arrived_on if event.stay_id else None
         saved_departure=event.date if event.kind=='DEPARTURE' else None
-        saved_state='MV' if event.kind=='ARRIVAL' else 'MO'
-        saved_camp=event.to_camp_id if event.kind=='ARRIVAL' else event.from_camp_id
+        saved_state='MV' if event.kind in {'ARRIVAL','TRANSFER'} else 'MO'
+        saved_camp=event.to_camp_id if event.kind in {'ARRIVAL','TRANSFER'} else event.from_camp_id
         if (saved_state,saved_arrival,saved_departure,saved_camp)==(state,arrival,departure,row.housing_camp_id):return False
         raise ValidationError('Начальное состояние уже введено. Для изменений используйте историю и заезд / выезд.')
     # Opening balances can predate the daily edit window.
@@ -115,8 +115,22 @@ def initialize_state(user,row,data,*,enforce_assignment_start=True):
         current=housing.present_stays(user.company,fact_day).filter(person=row.person).select_related('camp').first()
         current_today=housing.present_stays(user.company,timezone.localdate()).filter(person=row.person).select_related('camp').first()
         if state=='MV' and current_today and current_today.camp_id==row.housing_camp_id:return False
-        if state=='MV' and current and current.departed_on and current.departed_on<=timezone.localdate():
-            raise ValidationError(f'После выбранной даты сотрудник выехал {current.departed_on:%d.%m.%Y}. Для статуса «На вахте» укажите дату нового заезда после {current.departed_on:%d.%m.%Y}.')
+        if state=='MV' and current and current.camp_id==row.housing_camp_id and current.departed_on and current.departed_on<=timezone.localdate():
+            if not housing.can_setup_direct_movement(user):raise ValidationError('Исправлять фактический статус может администратор или диспетчер по персоналу.')
+            later_stays=CampStay.objects.filter(company=user.company,person=row.person,cancelled_at=None,arrived_on__gte=current.departed_on).exclude(pk=current.pk)
+            later_events=HousingEvent.objects.filter(company=user.company,person=row.person,kind__in=['ARRIVAL','DEPARTURE','TRANSFER']).filter(Q(date__gt=current.departed_on)|Q(date=current.departed_on,kind__in=['ARRIVAL','TRANSFER']))
+            if later_stays.exists() or later_events.exists():
+                raise ValidationError(f'После выезда {current.departed_on:%d.%m.%Y} есть более поздние перемещения. Исправьте их в истории размещений или оформите новый заезд отдельной датой.')
+            old_departure=current.departed_on
+            correction=f'Отменён ошибочный выезд {old_departure:%d.%m.%Y}; подтверждён статус «На вахте» с {current.arrived_on:%d.%m.%Y} через назначение.'
+            with history_actor(user,correction):
+                current.departed_on=None;current.save(update_fields=['departed_on','updated_at'])
+                HousingEvent.objects.create(company=user.company,person=row.person,date=timezone.localdate(),kind='CANCEL',from_camp=current.camp,stay=current,comment=correction,recorded_by=user)
+                arrival_event=HousingEvent.objects.filter(company=user.company,person=row.person,stay=current,date=current.arrived_on,kind__in=['ARRIVAL','TRANSFER']).order_by('-pk').first()
+                if arrival_event is None:
+                    arrival_event=HousingEvent.objects.create(company=user.company,person=row.person,date=current.arrived_on,kind='ARRIVAL',to_camp=current.camp,stay=current,comment='Восстановлена запись фактического заезда при исправлении статуса.',recorded_by=user)
+                row.initial_movement=arrival_event;row.save(update_fields=['initial_movement','updated_at'])
+            return True
         if state=='MV' and current and current.camp_id==row.housing_camp_id:return False
         if state=='MO' and not current:
             if current_today:

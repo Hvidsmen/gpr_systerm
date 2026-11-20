@@ -137,29 +137,25 @@ class AssignmentInitialStateTests(TestCase):
         )
 
         url=reverse('personnel:plan_assignment_edit',args=[slot.pk])
-        invalid=self.client.post(url,{
+        response=self.client.post(url,{
             **self.data,'version':slot.updated_at.isoformat(),
             'initial-state':'MV','initial-arrival_date':str(old_arrival),'initial-departure_date':'',
         })
-        self.assertContains(invalid,f'сотрудник выехал {old_departure:%d.%m.%Y}')
-        self.assertContains(invalid,'укажите дату нового заезда')
-        self.assertFalse(CampStay.objects.filter(
-            person=self.second_person,camp=self.a,arrived_on=self.day,departed_on=None,
-        ).exists())
-
-        response=self.client.post(url,{
-            **self.data,'version':slot.updated_at.isoformat(),
-            'initial-state':'MV','initial-arrival_date':str(self.day),'initial-departure_date':'',
-        })
 
         self.assertEqual(response.status_code,302)
+        old_stay.refresh_from_db();slot.refresh_from_db()
+        self.assertIsNone(old_stay.departed_on)
+        self.assertEqual(slot.initial_movement.kind,'ARRIVAL')
+        self.assertEqual(slot.initial_movement.date,old_arrival)
+        self.assertTrue(HousingEvent.objects.filter(person=self.second_person,kind='DEPARTURE',date=old_departure,stay=old_stay).exists())
+        cancellation=HousingEvent.objects.get(person=self.second_person,kind='CANCEL',stay=old_stay)
+        self.assertIn(f'выезд {old_departure:%d.%m.%Y}',cancellation.comment)
+        self.assertEqual(cancellation.recorded_by,self.hr)
         row=self.roster_row()
         self.assertEqual(row['state'],'MV')
         self.assertTrue(row['verified'])
-        self.assertEqual(row['arrived_on'],self.day)
-        self.assertTrue(CampStay.objects.filter(
-            person=self.second_person,camp=self.a,arrived_on=self.day,departed_on=None,
-        ).exists())
+        self.assertEqual(row['arrived_on'],old_arrival)
+        self.assertEqual(CampStay.objects.filter(person=self.second_person,camp=self.a).count(),1)
 
     def test_rest_date_before_current_arrival_is_rejected_instead_of_silent_noop(self):
         slot=StaffingSlot.objects.create(
@@ -181,6 +177,31 @@ class AssignmentInitialStateTests(TestCase):
 
         self.assertContains(response,f'Сотрудник заехал {arrival:%d.%m.%Y}')
         self.assertIsNone(CampStay.objects.get(person=self.second_person).departed_on)
+
+    def test_reopening_old_arrival_refuses_to_erase_a_later_stay(self):
+        slot=StaffingSlot.objects.create(
+            company=self.company,group=self.group,person=self.second_person,
+            planning_position=self.role,construction_object=self.obj,housing_camp=self.a,
+            assigned_from=self.day-timedelta(days=120),assigned_by=self.hr,
+        )
+        old_arrival,old_departure=self.day-timedelta(days=110),self.day-timedelta(days=30)
+        old_stay=CampStay.objects.create(
+            company=self.company,person=self.second_person,camp=self.a,
+            arrived_on=old_arrival,departed_on=old_departure,recorded_by=self.hr,
+        )
+        CampStay.objects.create(
+            company=self.company,person=self.second_person,camp=self.b,
+            arrived_on=self.day-timedelta(days=20),departed_on=self.day-timedelta(days=5),recorded_by=self.hr,
+        )
+
+        response=self.client.post(reverse('personnel:plan_assignment_edit',args=[slot.pk]),{
+            **self.data,'version':slot.updated_at.isoformat(),
+            'initial-state':'MV','initial-arrival_date':str(old_arrival),'initial-departure_date':'',
+        })
+
+        self.assertContains(response,'есть более поздние перемещения')
+        old_stay.refresh_from_db();self.assertEqual(old_stay.departed_on,old_departure)
+        self.assertFalse(HousingEvent.objects.filter(person=self.second_person,kind='CANCEL').exists())
 
     def test_admin_can_record_initial_arrival_for_testing(self):
         HousingEvent.objects.create(
