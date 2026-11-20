@@ -39,9 +39,15 @@ def waybills(request):
     require_roles(request.user, READERS)
     start, end = period(request);rows = UatWaybill.objects.filter(company=request.user.company, document_date__range=(start, end)).select_related(
         'vehicle__equipment', 'department__construction_object', 'department__camp', 'driver_1', 'driver_2').prefetch_related('tasks__department__construction_object', 'tasks__department__camp', 'tasks__fact')
+    department_choices = UatDepartment.objects.filter(company=request.user.company, is_active=True).order_by('name', 'code', 'pk')
     query = ' '.join(request.GET.get('q', '').split())[:200]
     if query:
         rows = rows.filter(Q(number__icontains=query)|Q(vehicle_name__icontains=query)|Q(plate__icontains=query)|Q(vehicle__vin__icontains=query)|Q(vehicle__garage_number__icontains=query)|Q(driver_1_name__icontains=query)|Q(driver_1_number__icontains=query)|Q(driver_2_name__icontains=query)|Q(driver_2_number__icontains=query)|Q(department_name__icontains=query)|Q(object_name__icontains=query)|Q(site_name__icontains=query)|Q(project_name__icontains=query))
+    department = request.GET.get('department', '')
+    if department.isdigit() and department_choices.filter(pk=department).exists():
+        rows = rows.filter(Q(department_id=department)|Q(tasks__department_id=department)).distinct()
+    else:
+        department = ''
     posted = request.GET.get('posted', '')
     if posted in {'0', '1'}:rows = rows.filter(posted=posted == '1')
     status = request.GET.get('status', '')
@@ -51,10 +57,10 @@ def waybills(request):
     elif mapping == 'pending':rows = rows.filter(Q(vehicle__equipment__isnull=True)|Q(fact_status__in=['PENDING','CONFLICT'])).distinct()
     page = Paginator(rows, 50).get_page(request.GET.get('page'))
     for row in page.object_list:
-        departments = [task.department for task in row.tasks.all() if task.department_id]
-        if row.department_id:departments.append(row.department)
-        row.mapping_department = next((item for item in departments if not item.construction_object_id or not item.camp_id), None)
-    context = {**common(request, 'waybills'), 'page': page, 'from_day': start, 'to_day': end, 'q': query, 'posted': posted, 'status': status, 'mapping': mapping, 'fact_statuses': UatWaybill._meta.get_field('fact_status').choices}
+        row_departments = [task.department for task in row.tasks.all() if task.department_id]
+        if row.department_id:row_departments.append(row.department)
+        row.mapping_department = next((item for item in row_departments if not item.construction_object_id or not item.camp_id), None)
+    context = {**common(request, 'waybills'), 'page': page, 'from_day': start, 'to_day': end, 'q': query, 'department': department, 'departments': department_choices, 'posted': posted, 'status': status, 'mapping': mapping, 'fact_statuses': UatWaybill._meta.get_field('fact_status').choices}
     return render(request, 'accounts/uat_waybills.html', context)
 
 

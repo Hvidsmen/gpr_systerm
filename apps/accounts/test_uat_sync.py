@@ -175,6 +175,34 @@ class UatSynchronizationTests(TestCase):
         self.assertEqual(self.client.get(reverse('accounts:uat_waybills')).status_code, 200)
         self.assertEqual(self.client.post(reverse('accounts:uat_departments'), {'source': 1}).status_code, 403)
 
+    def test_waybills_can_be_filtered_by_header_or_task_department(self):
+        apply_uat_report(self.run, self.report())
+        first = UatDepartment.objects.get(source_id='D1')
+        second = UatDepartment.objects.create(
+            company=self.company, source_id='D2', code='002', name='УМиТ КТП-2',
+        )
+        bill = UatWaybill.objects.get(source_id='W1')
+        bill.tasks.update(department=second, department_name=second.name)
+        UatWaybill.objects.create(
+            company=self.company, source_id='W2', number='PL-2',
+            document_date='2026-11-20', department=first, department_name=first.name,
+        )
+        self.client.force_login(self.admin)
+        url = reverse('accounts:uat_waybills')
+        period = {'from': '2026-11-01', 'to': '2026-11-30'}
+        by_task = self.client.get(url, {**period, 'department': second.pk})
+        self.assertEqual(by_task.context['page'].paginator.count, 1)
+        self.assertContains(by_task, 'PL-1')
+        self.assertNotContains(by_task, 'PL-2')
+        self.assertContains(by_task, f'value="{second.pk}" selected')
+        by_header = self.client.get(url, {**period, 'department': first.pk})
+        self.assertEqual(by_header.context['page'].paginator.count, 2)
+        self.assertContains(by_header, 'PL-1')
+        self.assertContains(by_header, 'PL-2')
+        unfiltered = self.client.get(url, period)
+        self.assertContains(unfiltered, f'value="{first.pk}"')
+        self.assertContains(unfiltered, f'value="{second.pk}"')
+
     def test_daily_clock_uses_moscow_time(self):
         self.connection.uat_sync_time = time(1, 0)
         now = datetime(2026, 11, 20, 0, 30, tzinfo=dt_timezone.utc)
