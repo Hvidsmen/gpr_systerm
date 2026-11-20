@@ -200,7 +200,7 @@ SELECT N'waybills' AS source,COUNT_BIG(*) AS total_rows,
  COALESCE(SUM(CASE WHEN [_Marked]=0x00 AND [_Posted]=0x01 AND [_Date_Time]>=@storedFrom AND [_Date_Time]<@storedUntil THEN 1 ELSE 0 END),0) AS posted_period_rows,
  CONVERT(char(10),DATEADD(year,-@dateOffset,MIN(CASE WHEN [_Marked]=0x00 THEN [_Date_Time] END)),23) AS first_date,
  CONVERT(char(10),DATEADD(year,-@dateOffset,MAX(CASE WHEN [_Marked]=0x00 THEN [_Date_Time] END)),23) AS last_date
-FROM [dbo].[_Document173]
+FROM [dbo].[_Document173X1]
 UNION ALL
 SELECT N'repair_sheets',COUNT_BIG(*),
  COALESCE(SUM(CASE WHEN [_Marked]=0x00 THEN 1 ELSE 0 END),0),
@@ -208,7 +208,7 @@ SELECT N'repair_sheets',COUNT_BIG(*),
  COALESCE(SUM(CASE WHEN [_Marked]=0x00 AND [_Posted]=0x01 AND [_Date_Time]>=@storedFrom AND [_Date_Time]<@storedUntil THEN 1 ELSE 0 END),0),
  CONVERT(char(10),DATEADD(year,-@dateOffset,MIN(CASE WHEN [_Marked]=0x00 THEN [_Date_Time] END)),23),
  CONVERT(char(10),DATEADD(year,-@dateOffset,MAX(CASE WHEN [_Marked]=0x00 THEN [_Date_Time] END)),23)
-FROM [dbo].[_Document178]
+FROM [dbo].[_Document178X1]
 '@ $period 120)
             $waybills=@(Query $connection @'
 SELECT TOP (5000)
@@ -224,12 +224,12 @@ SELECT TOP (5000)
  COALESCE(o.[_Description],N'') AS organisation,COALESCE(dep.[_Description],N'') AS department,
  COALESCE(obj.[_Description],N'') AS construction_object,p.[_Fld1037] AS odometer_departure,
  p.[_Fld1036] AS odometer_return,p.[_Fld1009] AS comment
-FROM [dbo].[_Document173] p
-LEFT JOIN [dbo].[_Reference107] v ON v.[_IDRRef]=p.[_Fld1039RRef]
-LEFT JOIN [dbo].[_Reference61] d1 ON d1.[_IDRRef]=p.[_Fld995RRef]
-LEFT JOIN [dbo].[_Reference61] d2 ON d2.[_IDRRef]=p.[_Fld996RRef]
+FROM [dbo].[_Document173X1] p
+LEFT JOIN [dbo].[_Reference107X1] v ON v.[_IDRRef]=p.[_Fld1039RRef]
+LEFT JOIN [dbo].[_Reference61X1] d1 ON d1.[_IDRRef]=p.[_Fld995RRef]
+LEFT JOIN [dbo].[_Reference61X1] d2 ON d2.[_IDRRef]=p.[_Fld996RRef]
 LEFT JOIN [dbo].[_Reference49] o ON o.[_IDRRef]=p.[_Fld1019RRef]
-LEFT JOIN [dbo].[_Reference55] dep ON dep.[_IDRRef]=p.[_Fld1023RRef]
+LEFT JOIN [dbo].[_Reference55X1] dep ON dep.[_IDRRef]=p.[_Fld1023RRef]
 LEFT JOIN [dbo].[_Reference4650] obj ON obj.[_IDRRef]=p.[_Fld11747RRef]
 WHERE p.[_Marked]=0x00 AND p.[_Posted]=0x01 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
 ORDER BY p.[_Date_Time] DESC,p.[_Number] DESC
@@ -241,8 +241,8 @@ SELECT TOP (20000) CONVERT(varchar(32),x.[_Document173_IDRRef],2) AS parent_id,x
  CASE WHEN x.[_Fld1062]=0x01 THEN 1 ELSE 0 END AS completed,x.[_Fld1063] AS trips,
  x.[_Fld1064] AS loaded_km,x.[_Fld1065] AS empty_km,x.[_Fld1073] AS tonnes,x.[_Fld1074] AS hours,
  COALESCE(obj.[_Description],N'') AS construction_object
-FROM [dbo].[_Document173_VT1056] x
-JOIN [dbo].[_Document173] p ON p.[_IDRRef]=x.[_Document173_IDRRef]
+FROM [dbo].[_Document173_VT1056X1] x
+JOIN [dbo].[_Document173X1] p ON p.[_IDRRef]=x.[_Document173_IDRRef]
 LEFT JOIN [dbo].[_Reference90] leavePoint ON leavePoint.[_IDRRef]=x.[_Fld1059_RRRef]
 LEFT JOIN [dbo].[_Reference90] arrivePoint ON arrivePoint.[_IDRRef]=x.[_Fld1058_RRRef]
 LEFT JOIN [dbo].[_Reference4650] obj ON obj.[_IDRRef]=x.[_Fld11758RRef]
@@ -254,9 +254,9 @@ SELECT TOP (20000) CONVERT(varchar(32),x.[_Document173_IDRRef],2) AS parent_id,x
  COALESCE(f.[_Description],N'') AS fuel,x.[_Fld1107] AS issued,x.[_Fld1110] AS departure_balance,
  x.[_Fld1109] AS return_balance,x.[_Fld1111] AS mileage,x.[_Fld1112] AS norm_consumption,
  x.[_Fld1113] AS actual_consumption,x.[_Fld1114] AS returned
-FROM [dbo].[_Document173_VT1102] x
-JOIN [dbo].[_Document173] p ON p.[_IDRRef]=x.[_Document173_IDRRef]
-LEFT JOIN [dbo].[_Reference46] f ON f.[_IDRRef]=x.[_Fld1108RRef]
+FROM [dbo].[_Document173_VT1102X1] x
+JOIN [dbo].[_Document173X1] p ON p.[_IDRRef]=x.[_Document173_IDRRef]
+LEFT JOIN [dbo].[_Reference46X1] f ON f.[_IDRRef]=x.[_Fld1108RRef]
 WHERE p.[_Marked]=0x00 AND p.[_Posted]=0x01 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
 ORDER BY p.[_Date_Time] DESC,x.[_LineNo1103]
 '@ $period 120)
@@ -277,16 +277,16 @@ SELECT TOP (5000)
  COALESCE(senderWarehouse.[_Description],N'') AS sender_warehouse,
  COALESCE(receiverWarehouse.[_Description],N'') AS receiver_warehouse,
  p.[_Fld1255] AS reason,p.[_Fld1242] AS comment
-FROM [dbo].[_Document178] p
-LEFT JOIN [dbo].[_Reference107] v ON v.[_IDRRef]=p.[_Fld1264RRef]
-LEFT JOIN [dbo].[_Reference71] service ON service.[_IDRRef]=p.[_Fld1230RRef]
-LEFT JOIN [dbo].[_Reference61] master ON master.[_IDRRef]=p.[_Fld11816RRef]
+FROM [dbo].[_Document178X1] p
+LEFT JOIN [dbo].[_Reference107X1] v ON v.[_IDRRef]=p.[_Fld1264RRef]
+LEFT JOIN [dbo].[_Reference71X1] service ON service.[_IDRRef]=p.[_Fld1230RRef]
+LEFT JOIN [dbo].[_Reference61X1] master ON master.[_IDRRef]=p.[_Fld11816RRef]
 LEFT JOIN [dbo].[_Reference49] o ON o.[_IDRRef]=p.[_Fld1246RRef]
-LEFT JOIN [dbo].[_Reference55] dep ON dep.[_IDRRef]=p.[_Fld1252RRef]
+LEFT JOIN [dbo].[_Reference55X1] dep ON dep.[_IDRRef]=p.[_Fld1252RRef]
 LEFT JOIN [dbo].[_Reference90] place ON place.[_IDRRef]=p.[_Fld11822RRef]
-LEFT JOIN [dbo].[_Reference60] ownWarehouse ON ownWarehouse.[_IDRRef]=p.[_Fld1258RRef]
-LEFT JOIN [dbo].[_Reference60] senderWarehouse ON senderWarehouse.[_IDRRef]=p.[_Fld1256RRef]
-LEFT JOIN [dbo].[_Reference60] receiverWarehouse ON receiverWarehouse.[_IDRRef]=p.[_Fld1257RRef]
+LEFT JOIN [dbo].[_Reference60X1] ownWarehouse ON ownWarehouse.[_IDRRef]=p.[_Fld1258RRef]
+LEFT JOIN [dbo].[_Reference60X1] senderWarehouse ON senderWarehouse.[_IDRRef]=p.[_Fld1256RRef]
+LEFT JOIN [dbo].[_Reference60X1] receiverWarehouse ON receiverWarehouse.[_IDRRef]=p.[_Fld1257RRef]
 WHERE p.[_Marked]=0x00 AND p.[_Posted]=0x01 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
 ORDER BY p.[_Date_Time] DESC,p.[_Number] DESC
 '@ $period 120)
@@ -294,8 +294,8 @@ ORDER BY p.[_Date_Time] DESC,p.[_Number] DESC
 SELECT TOP (20000) CONVERT(varchar(32),x.[_Document178_IDRRef],2) AS parent_id,x.[_LineNo1295] AS line_number,
  COALESCE(w.[_Fld4205],w.[_Description],N'') AS work,x.[_Fld1297] AS quantity,x.[_Fld7743] AS fault,
  x.[_Fld1302] AS price,x.[_Fld1300] AS amount
-FROM [dbo].[_Document178_VT1294] x
-JOIN [dbo].[_Document178] p ON p.[_IDRRef]=x.[_Document178_IDRRef]
+FROM [dbo].[_Document178_VT1294X1] x
+JOIN [dbo].[_Document178X1] p ON p.[_IDRRef]=x.[_Document178_IDRRef]
 LEFT JOIN [dbo].[_Reference91] w ON w.[_IDRRef]=x.[_Fld1298RRef]
 WHERE p.[_Marked]=0x00 AND p.[_Posted]=0x01 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
 ORDER BY p.[_Date_Time] DESC,x.[_LineNo1295]
@@ -304,9 +304,9 @@ ORDER BY p.[_Date_Time] DESC,x.[_LineNo1295]
 SELECT TOP (20000) CONVERT(varchar(32),x.[_Document178_IDRRef],2) AS parent_id,x.[_LineNo1282] AS line_number,
  COALESCE(n.[_Description],N'') AS material,COALESCE(n.[_Code],N'') AS article,x.[_Fld1284] AS quantity,
  x.[_Fld1289] AS price,x.[_Fld1287] AS amount
-FROM [dbo].[_Document178_VT1281] x
-JOIN [dbo].[_Document178] p ON p.[_IDRRef]=x.[_Document178_IDRRef]
-LEFT JOIN [dbo].[_Reference46] n ON n.[_IDRRef]=x.[_Fld1285RRef]
+FROM [dbo].[_Document178_VT1281X1] x
+JOIN [dbo].[_Document178X1] p ON p.[_IDRRef]=x.[_Document178_IDRRef]
+LEFT JOIN [dbo].[_Reference46X1] n ON n.[_IDRRef]=x.[_Fld1285RRef]
 WHERE p.[_Marked]=0x00 AND p.[_Posted]=0x01 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
 ORDER BY p.[_Date_Time] DESC,x.[_LineNo1282]
 '@ $period 120)
@@ -314,9 +314,9 @@ ORDER BY p.[_Date_Time] DESC,x.[_LineNo1282]
 SELECT TOP (20000) CONVERT(varchar(32),x.[_Document178_IDRRef],2) AS parent_id,x.[_LineNo1277] AS line_number,
  COALESCE(e.[_Description],N'') AS employee,CONVERT(char(8),x.[_Fld1278],108) AS work_time,
  CASE WHEN YEAR(x.[_Fld1279])>@dateOffset+1 THEN CONVERT(varchar(19),DATEADD(year,-@dateOffset,x.[_Fld1279]),126) END AS started
-FROM [dbo].[_Document178_VT1276] x
-JOIN [dbo].[_Document178] p ON p.[_IDRRef]=x.[_Document178_IDRRef]
-LEFT JOIN [dbo].[_Reference61] e ON e.[_IDRRef]=x.[_Fld1280RRef]
+FROM [dbo].[_Document178_VT1276X1] x
+JOIN [dbo].[_Document178X1] p ON p.[_IDRRef]=x.[_Document178_IDRRef]
+LEFT JOIN [dbo].[_Reference61X1] e ON e.[_IDRRef]=x.[_Fld1280RRef]
 WHERE p.[_Marked]=0x00 AND p.[_Posted]=0x01 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
 ORDER BY p.[_Date_Time] DESC,x.[_LineNo1277]
 '@ $period 120)

@@ -11,7 +11,7 @@ from django.utils import timezone
 
 from .models import Company, OneCConnection, OneCDiagnosticRun, Role, User
 from .one_c import process_queue
-from .uat_sources import PARTS, REPAIR_SHEET, WAYBILL
+from .uat_sources import LOOKUPS, PARTS, REPAIR_SHEET, WAYBILL
 
 
 SCHEMA = [
@@ -27,10 +27,14 @@ UAT_SCHEMA = [
     {'schema': key.split('.')[0], 'table': key.split('.')[1], 'column': column,
      'type': 'binary', 'max_length': 16, 'is_nullable': False}
     for key, _label, columns in PARTS for column in columns
+] + [
+    {'schema': key.split('.')[0], 'table': key.split('.')[1], 'column': column,
+     'type': 'binary', 'max_length': 16, 'is_nullable': False}
+    for key, _label, columns in LOOKUPS for column in columns
 ]
 UAT_LABELS = {
-    WAYBILL['key']: {'name': WAYBILL['name'], 'columns': {}},
-    REPAIR_SHEET['key']: {'name': REPAIR_SHEET['name'], 'columns': {}},
+    WAYBILL['metadata_key']: {'name': WAYBILL['name'], 'columns': {}},
+    REPAIR_SHEET['metadata_key']: {'name': REPAIR_SHEET['name'], 'columns': {}},
 }
 
 
@@ -196,8 +200,10 @@ class UatDiscoveryTests(TestCase):
         self.assertIn("$builder['Integrated Security']=$true",script)
         self.assertIn('[switch]$UatDiscovery',script)
         self.assertIn('[switch]$UatImport',script)
-        self.assertIn('[dbo].[_Document173]',script)
-        self.assertIn('[dbo].[_Document178]',script)
+        self.assertIn('[dbo].[_Document173X1]',script)
+        self.assertIn('[dbo].[_Document178X1]',script)
+        for table in ('_Reference107X1','_Reference61X1','_Reference55X1','_Reference46X1','_Reference71X1','_Reference60X1'):
+            self.assertIn(f'[dbo].[{table}]',script)
         self.assertIn("Write-ProgressState 'connecting'",script)
         self.assertIn("Write-ProgressState 'metadata'",script)
         self.assertIn("'путев'",script)

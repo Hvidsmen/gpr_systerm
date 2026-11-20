@@ -35,7 +35,7 @@ FROM [dbo].[_YearOffset];
 */
 SELECT
     N'Путевые листы' AS source_name,
-    N'dbo._Document173' AS sql_table,
+    N'dbo._Document173X1' AS sql_table,
     COUNT_BIG(*) AS total_rows,
     COALESCE(SUM(CASE WHEN [_Marked] = 0x00 THEN 1 ELSE 0 END), 0) AS not_deleted_rows,
     COALESCE(SUM(CASE WHEN [_Marked] = 0x00 AND [_Posted] = 0x01 THEN 1 ELSE 0 END), 0) AS posted_rows,
@@ -47,11 +47,11 @@ SELECT
                            AND [_Date_Time] < @StoredUntil THEN 1 ELSE 0 END), 0) AS expected_import_rows,
     CONVERT(date, DATEADD(year, -@DateOffset, MIN(CASE WHEN [_Marked] = 0x00 THEN [_Date_Time] END))) AS first_document_date,
     CONVERT(date, DATEADD(year, -@DateOffset, MAX(CASE WHEN [_Marked] = 0x00 THEN [_Date_Time] END))) AS last_document_date
-FROM [dbo].[_Document173]
+FROM [dbo].[_Document173X1]
 UNION ALL
 SELECT
     N'Ремонтные листы',
-    N'dbo._Document178',
+    N'dbo._Document178X1',
     COUNT_BIG(*),
     COALESCE(SUM(CASE WHEN [_Marked] = 0x00 THEN 1 ELSE 0 END), 0),
     COALESCE(SUM(CASE WHEN [_Marked] = 0x00 AND [_Posted] = 0x01 THEN 1 ELSE 0 END), 0),
@@ -63,7 +63,7 @@ SELECT
                            AND [_Date_Time] < @StoredUntil THEN 1 ELSE 0 END), 0),
     CONVERT(date, DATEADD(year, -@DateOffset, MIN(CASE WHEN [_Marked] = 0x00 THEN [_Date_Time] END))),
     CONVERT(date, DATEADD(year, -@DateOffset, MAX(CASE WHEN [_Marked] = 0x00 THEN [_Date_Time] END)))
-FROM [dbo].[_Document178];
+FROM [dbo].[_Document178X1];
 
 /* 3. Show the newest documents that satisfy the exact portal filter. */
 WITH import_candidates AS (
@@ -75,7 +75,7 @@ WITH import_candidates AS (
         CONVERT(int, [_Posted]) AS posted,
         CONVERT(int, [_Marked]) AS marked,
         CONVERT(varchar(32), [_Fld1039RRef], 2) AS vehicle_ref
-    FROM [dbo].[_Document173]
+    FROM [dbo].[_Document173X1]
     WHERE [_Marked] = 0x00
       AND [_Posted] = 0x01
       AND [_Date_Time] >= @StoredFrom
@@ -91,7 +91,7 @@ WITH import_candidates AS (
         CONVERT(int, [_Posted]),
         CONVERT(int, [_Marked]),
         CONVERT(varchar(32), [_Fld1264RRef], 2)
-    FROM [dbo].[_Document178]
+    FROM [dbo].[_Document178X1]
     WHERE [_Marked] = 0x00
       AND [_Posted] = 0x01
       AND [_Date_Time] >= @StoredFrom
