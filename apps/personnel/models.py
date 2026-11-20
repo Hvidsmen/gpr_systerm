@@ -117,8 +117,8 @@ class StaffingSlot(PersonnelModel):
     cancelled_at = models.DateTimeField('Назначение удалено', null=True, blank=True)
     cancelled_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+', verbose_name='Удалил назначение')
     cancellation_reason = models.TextField('Комментарий к удалению назначения', blank=True)
-    camp = models.CharField('ВЖГ из исходного файла', max_length=100, blank=True)
-    housing_camp = models.ForeignKey('Camp', on_delete=models.PROTECT, null=True, blank=True, verbose_name='ВЖГ')
+    camp = models.CharField('Местонахождение из исходного файла', max_length=100, blank=True)
+    housing_camp = models.ForeignKey('Camp', on_delete=models.PROTECT, null=True, blank=True, verbose_name='Местонахождение')
     status = models.CharField('Текущий статус', choices=STATUSES, max_length=10, blank=True)
     departure_date = models.DateField('Дата выезда на межвахтовый отдых', null=True, blank=True)
     arrival_date = models.DateField('Дата заезда на участок', null=True, blank=True)
@@ -138,7 +138,7 @@ class StaffingSlot(PersonnelModel):
         if not self.person_id and self.status: raise ValidationError('У вакансии не может быть фактического статуса.')
         if self.planning_position_id or self.construction_object_id:
             if not all((self.planning_position_id,self.construction_object_id,self.person_id,self.housing_camp_id,self.assigned_from)):
-                raise ValidationError('Для назначения укажите сотрудника, должность плана, объект, ВЖГ и дату начала.')
+                raise ValidationError('Для назначения укажите сотрудника, должность плана, объект, местонахождение и дату начала.')
         if self.assigned_until and (not self.assigned_from or self.assigned_until < self.assigned_from):
             raise ValidationError({'assigned_until':'Дата окончания не может быть раньше начала назначения.'})
         if self.initial_movement_id and self.initial_movement.person_id!=self.person_id:
@@ -167,9 +167,9 @@ class MovementRecommendationOverride(PersonnelModel):
 
 
 class Camp(PersonnelModel):
-    name = models.CharField('Название ВЖГ', max_length=200)
+    name = models.CharField('Название местонахождения', max_length=200)
     address = models.CharField('Расположение / адрес', max_length=300, blank=True)
-    is_active = models.BooleanField('Действующий ВЖГ', default=True)
+    is_active = models.BooleanField('Действующее местонахождение', default=True)
     objects_served = models.ManyToManyField('projects.ConstructionObject', through='CampObjectLink', related_name='housing_camps', verbose_name='Связанные объекты проекта')
     class Meta:
         ordering = ['name','pk']
@@ -177,9 +177,9 @@ class Camp(PersonnelModel):
     def clean(self):
         super().clean()
         self.name = ' '.join(self.name.split())
-        if not self.name:raise ValidationError({'name':'Укажите название ВЖГ.'})
+        if not self.name:raise ValidationError({'name':'Укажите название местонахождения.'})
         if any(' '.join(name.split()).casefold()==self.name.casefold() for name in type(self).objects.filter(company_id=self.company_id).exclude(pk=self.pk).values_list('name',flat=True)):
-            raise ValidationError({'name':'Такой ВЖГ уже существует.'})
+            raise ValidationError({'name':'Такое местонахождение уже существует.'})
     def __str__(self): return self.name
 
 
@@ -191,7 +191,7 @@ class CampObjectLink(PersonnelModel):
     def clean(self):
         super().clean()
         if self.camp.company_id != self.company_id or self.construction_object.company_id != self.company_id:
-            raise ValidationError('Связь ВЖГ и объекта другой компании.')
+            raise ValidationError('Связь местонахождения и объекта другой компании.')
 
 
 class CampStay(ActualHistoryMixin, PersonnelModel):
@@ -222,7 +222,7 @@ class CampStay(ActualHistoryMixin, PersonnelModel):
 
 class HousingEvent(ActualHistoryMixin, PersonnelModel):
     KINDS=[('ARRIVAL','Заезд'),('DEPARTURE','Выезд'),('TRANSFER','Перевод'),('CANCEL','Отмена записи')]
-    departure_destination=models.CharField('Куда выезжает',max_length=10,choices=[('REST','На межвахтовый отдых'),('CAMP','В другой ВЖГ'),('DISMISSAL','По увольнению')],blank=True)
+    departure_destination=models.CharField('Куда выезжает',max_length=10,choices=[('REST','На межвахтовый отдых'),('CAMP','В другое местонахождение'),('DISMISSAL','По увольнению')],blank=True)
     person=models.ForeignKey(Person,on_delete=models.PROTECT,related_name='housing_events')
     date=models.DateField()
     kind=models.CharField(max_length=12,choices=KINDS)
@@ -300,7 +300,7 @@ class MovementReviewRequest(PersonnelModel):
     approval_route=models.JSONField('Маршрут согласования',default=dict,blank=True)
     hub_arrived_on=models.DateField('Прибытие в ОП Дудинка',null=True,blank=True)
     hub_departed_on=models.DateField('Выезд из ОП Дудинка',null=True,blank=True)
-    final_arrived_on=models.DateField('Прибытие в ВЖГ',null=True,blank=True)
+    final_arrived_on=models.DateField('Прибытие в местонахождение',null=True,blank=True)
     tickets_ready=models.BooleanField('Билеты приобретены',default=False)
     tickets_ready_at=models.DateTimeField(null=True,blank=True)
     ticket_cost=models.DecimalField('Стоимость билета',max_digits=12,decimal_places=2,null=True,blank=True)
@@ -362,17 +362,17 @@ class MovementReviewRequest(PersonnelModel):
             if self.kind=='ARRIVAL' and self.employment_kind=='NEW' and not self.person.employee_id:return 'В ОП Дудинка — оформление нового сотрудника в ЗУП'
             if not self.clearance_ready:return 'В ОП Дудинка — ожидается обходной лист' if self.kind=='ARRIVAL' else 'В ОП Дудинка — билеты и обходной лист'
             return 'В ОП Дудинка — документы готовы'
-        if self.status=='EN_ROUTE':return 'В пути в ВЖГ' if self.kind=='ARRIVAL' else 'В пути в базовый город'
-        if self.status=='COMPLETED':return 'Прибыл в ВЖГ' if self.kind=='ARRIVAL' else 'Выбыл из ОП Дудинка'
+        if self.status=='EN_ROUTE':return 'В пути к местонахождению' if self.kind=='ARRIVAL' else 'В пути в базовый город'
+        if self.status=='COMPLETED':return 'Прибыл в местонахождение' if self.kind=='ARRIVAL' else 'Выбыл из ОП Дудинка'
         if self.status=='CANCELLED':return 'Отменена'
         if self.status=='ACCEPTED':return 'Принята'
         return 'Ожидает обработки перевахтой'
     def route_label(self):
         if self.kind=='ARRIVAL':
             origin=self.base_city or 'Базовый город не указан'
-            return f'{origin} → ОП Дудинка → {self.to_camp or "ВЖГ не указан"}'
+            return f'{origin} → ОП Дудинка → {self.to_camp or "Местонахождение не указано"}'
         destination=self.base_city or ('Увольнение' if self.departure_destination=='DISMISSAL' else 'МО')
-        return f'{self.from_camp or "ВЖГ не указан"} → ОП Дудинка → {destination}'
+        return f'{self.from_camp or "Местонахождение не указано"} → ОП Дудинка → {destination}'
     def next_action_label(self):
         if self.status=='OPEN':return 'Диспетчер: заполнить и отправить черновик'
         if self.status=='PENDING_APPROVAL':return self.workflow_status_label()
@@ -383,7 +383,7 @@ class MovementReviewRequest(PersonnelModel):
             if self.kind=='ARRIVAL' and self.employment_kind=='NEW' and not self.person.employee_id:return 'Специалист по персоналу: оформить сотрудника в ЗУП'
             if not self.clearance_ready:return 'Специалист перевахты: подтвердить наличие обходного листа'
             return 'Специалист перевахты: зафиксировать выезд из ОП Дудинка'
-        if self.status=='EN_ROUTE' and self.kind=='ARRIVAL':return 'Диспетчер: подтвердить прибытие в ВЖГ'
+        if self.status=='EN_ROUTE' and self.kind=='ARRIVAL':return 'Диспетчер: подтвердить прибытие в местонахождение'
         if self.status in {'COMPLETED','ACCEPTED'}:return 'Маршрут завершён'
         if self.status=='CANCELLED':return 'Заявка отменена'
         return self.workflow_status_label()

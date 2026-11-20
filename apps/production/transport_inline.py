@@ -94,7 +94,7 @@ def save_cell(user,camp,day,machine,field,value,signed,session):
         if field=='target':
             from .transport_views import target_choices
             _,mapping=target_choices(user,camp,day,current=[current] if current else [])
-            if value not in mapping:raise ValidationError('Работа недоступна для выбранного ВЖГ.')
+            if value not in mapping:raise ValidationError('Работа недоступна для выбранного местонахождения.')
             obj,work,item=mapping[value];target={'construction_object':obj,'work':work,'work_item':item}
         transport.save_day(user,camp,day,[machine.pk],current.status if current else 'WORKED',signed=signed,session=session,comment=str(value) if field=='day_comment' else current.comment if current else '',**target)
     elif field in dict(DETAIL_FIELDS):

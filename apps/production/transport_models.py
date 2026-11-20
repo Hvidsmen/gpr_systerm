@@ -24,7 +24,7 @@ class EquipmentCampStay(ActualHistoryMixin, BaseCompanyModel):
     def clean(self):
         super().clean()
         if self.equipment.company_id != self.company_id or self.camp.company_id != self.company_id:
-            raise ValidationError('Техника или ВЖГ другой компании.')
+            raise ValidationError('Техника или местонахождение другой компании.')
         if self.departed_on and self.departed_on < self.arrived_on:
             raise ValidationError('Выезд не может быть раньше приезда.')
         if not self.cancelled_at and self.arrived_on != self.departed_on:

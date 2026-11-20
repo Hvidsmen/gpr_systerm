@@ -35,7 +35,7 @@ class CorrectionForm(forms.Form):
     def __init__(self,*args,row,**kwargs):
         super().__init__(*args,**kwargs)
         labels=dict(zip(service.FIELDS,service.HEADERS))
-        labels.update(site='ВЖГ',planning_type='Техника для планирования',condition='Техническое состояние',repair_status='Работа / ожидание ремонта за день',in_gpr='Участвует в ГПР · Да / Нет')
+        labels.update(site='Местонахождение',planning_type='Техника для планирования',condition='Техническое состояние',repair_status='Работа / ожидание ремонта за день',in_gpr='Участвует в ГПР · Да / Нет')
         for name in service.FIELDS[1:]:
             self.fields[name]=forms.CharField(label=labels[name],required=name in {'model','planning_type','site','condition','repair_status'},
                 max_length=10000,widget=forms.Textarea(attrs={'rows':2}) if name in {'defects','request_details','request_status','parts_status','maintenance','comment'} else forms.TextInput())

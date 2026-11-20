@@ -20,7 +20,7 @@ class MovementReviewRequestTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.company=Company.objects.create(name='Очередь перевахты')
-        cls.camp=Camp.objects.create(company=cls.company,name='ВЖГ-1')
+        cls.camp=Camp.objects.create(company=cls.company,name='Местонахождение-1')
         cls.project=Project.objects.create(company=cls.company,name='Проект')
         cls.obj=ConstructionObject.objects.create(company=cls.company,project=cls.project,name='Нефтепровод')
         cls.site=ConstructionObject.objects.create(company=cls.company,project=cls.project,parent=cls.obj,name='КТП-1')
@@ -168,7 +168,7 @@ class MovementReviewRequestTests(TestCase):
         self.assertContains(detail,'Должность по справочнику сотрудников')
         self.assertContains(detail,'Выберите проект')
         self.assertContains(detail,'Нефтепровод → КТП-1')
-        self.assertContains(detail,'ВЖГ')
+        self.assertContains(detail,'Местонахождение')
         self.assertNotContains(detail,'name="travel_status"')
         changed_date=timezone.localdate()+timedelta(days=2)
         response=self.client.post(reverse('personnel:movement_review_accept',args=[request_row.pk]),{
@@ -326,7 +326,7 @@ class MovementReviewRequestTests(TestCase):
             planning_position_name=self.position.name,position_name=self.position.name)
         other_project=Project.objects.create(company=self.company,name='Другой проект заявок')
         other_object=ConstructionObject.objects.create(company=self.company,project=other_project,name='Другой объект заявок')
-        other_camp=Camp.objects.create(company=self.company,name='Другой ВЖГ заявок')
+        other_camp=Camp.objects.create(company=self.company,name='Другое местонахождение заявок')
         CampObjectLink.objects.create(company=self.company,camp=other_camp,construction_object=other_object)
         other_position=Position.objects.create(company=self.company,name='Сварщик заявок')
         other_employee=Employee.objects.create(company=self.company,last_name='Петров',first_name='Пётр',employee_number='review-filter-2',position=other_position)
@@ -395,7 +395,7 @@ class MovementReviewRequestTests(TestCase):
         self.assertEqual(WorkTask.objects.filter(key=f'personnel-movement-batch:{arrival_batch}').count(),1)
         self.assertEqual(MovementReviewRequest.objects.filter(approval_batch=arrival_batch,status='PENDING_APPROVAL').count(),2)
         MovementReviewRequest.objects.filter(approval_batch=arrival_batch).delete();WorkTask.objects.filter(key=f'personnel-movement-batch:{arrival_batch}').delete()
-        target=Camp.objects.create(company=self.company,name='ВЖГ-2');housing.move(self.reviewer,'ARRIVAL',self.camp,day,[self.person,second])
+        target=Camp.objects.create(company=self.company,name='Местонахождение-2');housing.move(self.reviewer,'ARRIVAL',self.camp,day,[self.person,second])
         transfer_batch=uuid4();housing.request_moves(self.personnel,'TRANSFER',self.camp,day,[self.person,second],target=target,approval_batch=transfer_batch)
         task=WorkTask.objects.get(key=f'personnel-movement-batch:{transfer_batch}');self.assertEqual(MovementReviewRequest.objects.filter(approval_batch=transfer_batch,status='PENDING_APPROVAL').count(),2)
         for row in MovementReviewRequest.objects.filter(approval_batch=transfer_batch):self.finish_approval(row)
@@ -412,7 +412,7 @@ class MovementReviewRequestTests(TestCase):
         housing.request_moves(self.personnel,'DEPARTURE',self.camp,day,[self.person],departure_destination='REST')
         row=MovementReviewRequest.objects.get(kind='DEPARTURE');self.client.force_login(self.admin)
         content=self.client.get(reverse('personnel:movement_review_accept',args=[row.pk])+'?edit=1').content.decode()
-        self.assertIn('1. Выезд из ВЖГ',content);self.assertIn('2. Выезд из ОП Дудинка',content)
+        self.assertIn('1. Выезд из местонахождения',content);self.assertIn('2. Выезд из ОП Дудинка',content)
         self.assertLess(content.index('name="movement_date"'),content.index('name="travel_time"'))
         self.assertLess(content.index('name="travel_time"'),content.index('name="planned_hub_departure_date"'))
         self.assertLess(content.index('name="planned_hub_departure_date"'),content.index('name="planned_hub_departure_time"'))
@@ -465,7 +465,7 @@ class MovementReviewRequestTests(TestCase):
         self.client.force_login(self.reviewer)
         detail=self.client.get(reverse('personnel:movement_review_accept',args=[row.pk]))
         self.assertContains(detail,'Плановые и фактические даты маршрута')
-        self.assertContains(detail,'1. Выезд из ВЖГ')
+        self.assertContains(detail,'1. Выезд из местонахождения')
         self.assertContains(detail,'2. ОП Дудинка')
         self.assertContains(detail,day.strftime('%d.%m.%Y'))
         self.assertContains(detail,'name="ticket_cost"');self.assertContains(detail,'name="ticket_document"')
@@ -522,7 +522,7 @@ class MovementReviewRequestTests(TestCase):
         self.assertContains(detail,'Плановая дата заезда, указанная диспетчером')
         self.assertContains(detail,'План диспетчера')
         queue=self.client.get(reverse('personnel:movement_reviews'),{'kind':'arrival'})
-        self.assertContains(queue,'Заезд в ВЖГ / ОП Дудинка');self.assertContains(queue,'ОП Дудинка:')
+        self.assertContains(queue,'Заезд в местонахождение / ОП Дудинка');self.assertContains(queue,'ОП Дудинка:')
         row.tickets_ready=False;row.save(update_fields=['tickets_ready','updated_at'])
         later=day+timedelta(days=4)
         update_hub(self.reviewer,row,tickets_ready=True,planned_hub_arrival_date=later)
@@ -615,7 +615,7 @@ class MovementReviewRequestTests(TestCase):
         day=timezone.localdate()
         other_project=Project.objects.create(company=self.company,name='Другой проект')
         other_object=ConstructionObject.objects.create(company=self.company,project=other_project,name='Другой объект')
-        other_camp=Camp.objects.create(company=self.company,name='ВЖГ-2')
+        other_camp=Camp.objects.create(company=self.company,name='Местонахождение-2')
         arrival=MovementReviewRequest.objects.create(company=self.company,person=self.person,kind='ARRIVAL',movement_date=day,
             to_camp=self.camp,construction_object=self.obj,requested_by=self.personnel,request_number='FIND-42')
         MovementReviewRequest.objects.create(company=self.company,person=self.person,kind='ARRIVAL',movement_date=day,
@@ -627,7 +627,7 @@ class MovementReviewRequestTests(TestCase):
             'status':'OPEN','source':'DISPATCHER'})
         self.assertEqual([row.pk for row in page.context['dispatcher_review_requests']],[arrival.pk])
         self.assertEqual(page.context['excel_review_requests'],[])
-        self.assertContains(page,'Фильтры заявок перевахты');self.assertContains(page,'Все проекты');self.assertContains(page,'Все ВЖГ')
+        self.assertContains(page,'Фильтры заявок перевахты');self.assertContains(page,'Все проекты');self.assertContains(page,'Все местонахождения')
         self.assertContains(page,f'q=FIND-42&amp;project={self.project.pk}')
         page=self.client.get(url,{'kind':'departure','project':self.project.pk,'camp':self.camp.pk,
             'status':'PEREVAKHTA','source':'EXCEL'})
@@ -645,7 +645,7 @@ class MovementReviewRequestTests(TestCase):
         self.assertEqual([row.pk for row in page.context['excel_review_requests']],[imported.pk])
         sorted_page=self.client.get(reverse('personnel:movement_reviews'),{'sort':'movement_asc'})
         self.assertEqual(sorted_page.context['review_sort'],'movement_asc');self.assertEqual([row.pk for row in sorted_page.context['dispatcher_review_requests']],[older.pk,newer.pk])
-        self.assertContains(sorted_page,'Заезд в ВЖГ / ОП Дудинка ↑');self.assertContains(sorted_page,'Создана')
+        self.assertContains(sorted_page,'Заезд в местонахождение / ОП Дудинка ↑');self.assertContains(sorted_page,'Создана')
 
     def test_visible_excel_sheets_create_review_requests_without_duplicates(self):
         from openpyxl import Workbook

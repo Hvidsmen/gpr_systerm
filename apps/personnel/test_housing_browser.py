@@ -28,5 +28,5 @@ class HousingBrowserTests(StaticLiveServerTestCase):
         from .models import CampStay,HousingEvent,Camp
         self.assertEqual(self.second_person.stays.count(),2)
         self.assertEqual(HousingEvent.objects.filter(person=self.second_person).count(),3)
-        self.assertEqual(Camp.objects.get(name='Новый физический ВЖГ').objects_served.count(),2)
+        self.assertEqual(Camp.objects.get(name='Новое физическое местонахождение').objects_served.count(),2)
         print(result.stdout.strip())

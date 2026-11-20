@@ -25,7 +25,7 @@
     else if (code) description = 'Эта роль имеет доступ ко всем объектам своей компании в разрешённых ей разделах. Выбранный список объектов не ограничивает её доступ.';
     const production = ['DISPATCHER','ALL_FACT_DISPATCHER'].includes(code);
     if (production) description = 'По обоим спискам можно смотреть и изменять производственный факт. Ежедневные задания создаются только по основным объектам; по дополнительным — без заданий.';
-    if (code === 'FUEL_WAREHOUSE') description += ' Ввод ГСМ за день; ВЖГ доступны по связям с назначенными объектами. Работы, люди и техника недоступны.';
+    if (code === 'FUEL_WAREHOUSE') description += ' Ввод ГСМ за день; местонахождения доступны по связям с назначенными объектами. Работы, люди и техника недоступны.';
     if (hint) {
       hint.textContent = description;
       hint.classList.toggle('is-warning', limited && !selectedObjects().length && !(production && selectedAdditional().length));

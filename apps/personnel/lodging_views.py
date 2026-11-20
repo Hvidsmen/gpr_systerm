@@ -23,7 +23,7 @@ from .lodging_forms import LodgingFilter,LodgingMovementForm,BuildingForm,BedFor
 
 def parameters(request):
     source=request.POST if request.method=='POST' else request.GET
-    if not str(source.get('camp','')).isdigit():raise Http404('Укажите ВЖГ.')
+    if not str(source.get('camp','')).isdigit():raise Http404('Укажите местонахождение.')
     camp=get_object_or_404(Camp,company=request.user.company,pk=source.get('camp'))
     try:day=date.fromisoformat(source.get('date',''))
     except (ValueError,TypeError):day=timezone.localdate()
@@ -42,7 +42,7 @@ def employee_gender(request,pk):
     if value not in dict(Employee._meta.get_field('gender').choices):return JsonResponse({'error':'Выберите пол из списка.'},status=400)
     with transaction.atomic():
         employee=get_object_or_404(Employee.objects.select_for_update(),company=request.user.company,pk=pk)
-        if not lodging.present(request.user.company,day).filter(camp=camp,employee=employee).exists():raise Http404('Сотрудник не проживает в выбранном ВЖГ.')
+        if not lodging.present(request.user.company,day).filter(camp=camp,employee=employee).exists():raise Http404('Сотрудник не проживает в выбранном местонахождении.')
         if employee.gender!=value:
             from apps.audit.models import AuditLog
             previous=employee.gender;employee.gender=value;employee.save(update_fields=['gender','updated_at'])
@@ -160,7 +160,7 @@ def board(request):
     rows=[r for r in all_rows if (not state or r['status']==state) and all(term in ' '.join([str(r['bed']),lodging.building_title(r['bed'].building),r['stay'].employee.display_name if r['stay'] else '',r['stay'].employee.employee_number if r['stay'] else '',r['organization']]).casefold() for term in q)]
     from .housing_views import workbook_response
     if request.GET.get('export')=='xlsx':
-        values=[['ВЖГ','Вагон / корпус','Инвентарный номер','Сведения о вагоне','Тип','Комната','Место','Состояние','ФИО','Табельный номер','Пол','Группа должностей','Должность','Подразделение','Ключи','Номер ключа','Заселение','Плановая дата выселения','Выселение','Пропуск','Примечание','Пол вагона']]
+        values=[['Местонахождение','Вагон / корпус','Инвентарный номер','Сведения о вагоне','Тип','Комната','Место','Состояние','ФИО','Табельный номер','Пол','Группа должностей','Должность','Подразделение','Ключи','Номер ключа','Заселение','Плановая дата выселения','Выселение','Пропуск','Примечание','Пол вагона']]
         for row in rows:
             b=row['bed'];s=row['stay'];e=s.employee if s else None
             values.append([camp.name,b.building.name,b.building.inventory_number,b.building.description,b.building.kind,b.room,b.number,row['status_label'],e.display_name if e else '',e.employee_number if e else '',row['gender'],row['position_group'],row['position'],row['department'],('Да' if s.keys_issued else 'Нет') if s else '',s.key_number if s else '',s.arrived_on if s else '',s.planned_departure if s else '',s.departed_on if s else '',s.pass_number if s else '',s.comment if s else b.note,b.building.get_gender_display()])
@@ -212,7 +212,7 @@ def claims(request):
     try:
         data=json.loads(request.body)
         if not isinstance(data,dict):raise ValidationError('Некорректные данные.')
-        if not str(data.get('camp','')).isdigit() or not str(data.get('employee','')).isdigit() or data.get('bed') and not str(data['bed']).isdigit():raise ValidationError('Выберите ВЖГ, сотрудника и место.')
+        if not str(data.get('camp','')).isdigit() or not str(data.get('employee','')).isdigit() or data.get('bed') and not str(data['bed']).isdigit():raise ValidationError('Выберите местонахождение, сотрудника и место.')
         camp=get_object_or_404(Camp,company=request.user.company,pk=data.get('camp'));day=date.fromisoformat(data.get('date',''))
         employee=get_object_or_404(Employee,company=request.user.company,pk=data.get('employee'))
         bed=get_object_or_404(LodgingBed.objects.select_related('building'),company=request.user.company,pk=data['bed']) if data.get('bed') else None
@@ -278,9 +278,9 @@ def sync_status(request):
 
 def sync_camps(request,camp):
     ids=request.GET.getlist('camps') or [str(camp.pk)]
-    if any(not str(pk).isdigit() for pk in ids):raise Http404('Некорректный список ВЖГ.')
+    if any(not str(pk).isdigit() for pk in ids):raise Http404('Некорректный список местонахождений.')
     selected=list(Camp.objects.filter(company=request.user.company,pk__in=ids))
-    if len(selected)!=len(set(ids)):raise Http404('Выберите ВЖГ своей компании.')
+    if len(selected)!=len(set(ids)):raise Http404('Выберите местонахождение своей компании.')
     return selected
 
 
@@ -296,7 +296,7 @@ def sync(request):
                 lodging_sync.confirm_arrival(request.user,camp,day,request.POST.get('signed'),actual,request.POST.get('reason',''))
                 messages.success(request,'Заезд подтверждён. Сверка обновлена.')
             elif request.POST.get('action')=='production_arrival':
-                if not str(request.POST.get('target_camp','')).isdigit():raise ValidationError('Выберите фактический ВЖГ.')
+                if not str(request.POST.get('target_camp','')).isdigit():raise ValidationError('Выберите фактическое местонахождение.')
                 target=get_object_or_404(Camp,company=request.user.company,is_active=True,pk=request.POST['target_camp'])
                 actual=date.fromisoformat(request.POST.get('actual_date',''))
                 lodging_sync.confirm_production_arrival(request.user,camp,day,request.POST.get('signed'),target,actual)

@@ -20,7 +20,7 @@ class LodgingBuilding(ActualHistoryMixin,PersonnelModel):
         ordering=['camp__name','name','pk']
         constraints=[models.UniqueConstraint(fields=['camp','name'],name='unique_camp_lodging_building')]
     def clean(self):
-        if self.camp_id and self.camp.company_id!=self.company_id:raise ValidationError('ВЖГ другой компании.')
+        if self.camp_id and self.camp.company_id!=self.company_id:raise ValidationError('Местонахождение другой компании.')
     def __str__(self):return self.name
 
 
@@ -65,7 +65,7 @@ class LodgingStay(ActualHistoryMixin,PersonnelModel):
         for name in ('employee','camp','bed'):
             obj=getattr(self,name,None)
             if obj and obj.company_id!=self.company_id:raise ValidationError('Данные другой компании.')
-        if self.bed_id and self.bed.building.camp_id!=self.camp_id:raise ValidationError('Место находится в другом ВЖГ.')
+        if self.bed_id and self.bed.building.camp_id!=self.camp_id:raise ValidationError('Место находится в другом местонахождении.')
         if self.departed_on and self.arrived_on and self.departed_on<self.arrived_on:raise ValidationError('Выселение не может быть раньше заселения.')
         if self.planned_departure and self.arrived_on and self.planned_departure<self.arrived_on:raise ValidationError('Плановое освобождение не может быть раньше заселения.')
         if self.cancelled_at or not self.arrived_on or self.departed_on==self.arrived_on:return

@@ -62,7 +62,7 @@ def camps(request):
     query=request.GET.get('q','').strip()
     if query:qs=qs.filter(Q(name__icontains=query)|Q(address__icontains=query)|Q(objects_served__name__icontains=query)).distinct()
     if request.GET.get('export')=='xlsx':
-        return workbook_response('camps.xlsx','ВЖГ',[['ВЖГ','Расположение','Действующий','Связанные объекты'],*[[c.name,c.address,'Да' if c.is_active else 'Нет','; '.join(o.name for o in c.objects_served.all())] for c in qs]])
+        return workbook_response('camps.xlsx','Местонахождение',[['Местонахождение','Расположение','Действующий','Связанные объекты'],*[[c.name,c.address,'Да' if c.is_active else 'Нет','; '.join(o.name for o in c.objects_served.all())] for c in qs]])
     return render(request,'personnel/camps.html',{'camps':qs,'query':query})
 
 
@@ -85,16 +85,16 @@ def camp_edit(request,pk=None):
                 list(ConstructionObject.objects.select_for_update().filter(company=request.user.company,pk__in=object_ids).order_by('pk'))
                 if obj.pk:
                     current=Camp.objects.select_for_update().get(pk=obj.pk)
-                    if current.updated_at.isoformat()!=form.cleaned_data['version']:raise ValidationError('ВЖГ или связи уже изменены другим пользователем. Обновите форму.')
+                    if current.updated_at.isoformat()!=form.cleaned_data['version']:raise ValidationError('Местонахождение или связи уже изменены другим пользователем. Обновите форму.')
                 saved=form.save();selected={o.pk for o in form.cleaned_data['objects_served']}
                 saved.object_links.exclude(construction_object_id__in=selected).delete()
                 for object_id in selected:
                     CampObjectLink.objects.get_or_create(company=request.user.company,camp=saved,construction_object_id=object_id)
-        except IntegrityError:form.add_error('name','Такой ВЖГ уже существует. Обновите справочник.')
+        except IntegrityError:form.add_error('name','Такое местонахождение уже существует. Обновите справочник.')
         except ValidationError as exc:form.add_error(None,'; '.join(exc.messages))
         else:
-            messages.success(request,'ВЖГ и связи с объектами сохранены.');return redirect('personnel:camps')
-    return render(request,'personnel/form.html',{'form':form,'title':'Изменить ВЖГ' if pk else 'Новый ВЖГ'})
+            messages.success(request,'Местонахождение и связи с объектами сохранены.');return redirect('personnel:camps')
+    return render(request,'personnel/form.html',{'form':form,'title':'Изменить местонахождение' if pk else 'Новое местонахождение'})
 
 
 def roster_rows(company,camp,day,query='',position=''):
@@ -139,7 +139,7 @@ def workspace(request, movements=False, movement_page='new'):
     raw=normalize_rotation_filter_data(raw,request.user.company)
     selector=RotationFilter(raw,company=request.user.company)
     if not selector.is_valid():
-        if raw.get('camp'):raise Http404('ВЖГ не найден.')
+        if raw.get('camp'):raise Http404('Местонахождение не найдено.')
         return render(request,template,{**extra,'rotation_filter':selector,'day':day},status=400)
     selected_camps=selector.selected_camps(request.user.company)
     extra['rotation_filter']=selector
@@ -221,7 +221,7 @@ def workspace(request, movements=False, movement_page='new'):
                 if len(camps_found)>1:
                     from .movement_recommendations import create_requests
                     count=create_requests(request.user,tokens,request.POST)
-                    messages.success(request,f'Создан единый пакет заявок: сотрудников {count}, ВЖГ {len(camps_found)}. Заявки разделены по своим ВЖГ и датам.')
+                    messages.success(request,f'Создан единый пакет заявок: сотрудников {count}, местонахождений {len(camps_found)}. Заявки разделены по своим местонахождениям и датам.')
                     return redirect('personnel:my_movement_requests')
                 dates=[]
                 for route_kind,person,item_camp,planned_on in decoded:
@@ -555,7 +555,7 @@ def movement_review_accept(request,pk):
                 register_new_employee(request.user,row,**registration.cleaned_data)
             else:raise ValidationError('Неизвестное действие по заявке.')
         except ValidationError as exc:messages.error(request,'; '.join(exc.messages))
-        else:messages.success(request,{'resubmit':'Заявка повторно отправлена руководителю.','arrive_hub':'Прибытие в ОП Дудинка зафиксировано.','hub_documents':'Данные по билетам и обходному листу сохранены.','leave_hub':'Выезд из ОП Дудинка зафиксирован.','arrive_camp':'Фактический заезд в ВЖГ подтверждён. Заявка завершена.','register_new_employee':'Сотрудник оформлен. Данные будут связаны с карточкой ЗУП при следующей синхронизации.'}[workflow_action])
+        else:messages.success(request,{'resubmit':'Заявка повторно отправлена руководителю.','arrive_hub':'Прибытие в ОП Дудинка зафиксировано.','hub_documents':'Данные по билетам и обходному листу сохранены.','leave_hub':'Выезд из ОП Дудинка зафиксирован.','arrive_camp':'Фактический заезд в местонахождение подтверждён. Заявка завершена.','register_new_employee':'Сотрудник оформлен. Данные будут связаны с карточкой ЗУП при следующей синхронизации.'}[workflow_action])
         return redirect('personnel:movement_review_accept',pk=row.pk)
     from .departure_workflow import approval_task_key,travel_details_complete
     details_complete=travel_details_complete(row)
@@ -767,16 +767,16 @@ def schedule(request,pk):
                 if slot and slot.group.board.import_digest:
                     # Personal changes must not rewrite the imported opening balance.
                     from .models import ShiftPattern
-                    board=Board.objects.filter(company=person.company,name='Графики сотрудников ВЖГ',import_digest='').order_by('pk').first()
-                    if board is None:board=Board.objects.create(company=person.company,name='Графики сотрудников ВЖГ')
+                    board=Board.objects.filter(company=person.company,name='Графики сотрудников по местонахождениям',import_digest='').order_by('pk').first()
+                    if board is None:board=Board.objects.create(company=person.company,name='Графики сотрудников по местонахождениям')
                     position=str(person.employee.position) if person.employee_id and person.employee.position_id else slot.group.position
                     group=board.groups.filter(position=position).first() or StaffingGroup.objects.create(company=person.company,board=board,position=position)
                     original=slot
                     if pattern and not form.cleaned_data.get('on_days'):pattern=ShiftPattern.objects.create(company=person.company,board=board,name=pattern.name,kind=pattern.kind,calendar=pattern.calendar,on_days=pattern.on_days,off_days=pattern.off_days,cycle_codes=pattern.cycle_codes)
                     slot=StaffingSlot(company=person.company,group=group,person=person,housing_camp=original.housing_camp,camp=original.camp,status=original.status,arrival_date=original.arrival_date,departure_date=original.departure_date,calendar=dict(original.calendar),comment='Личный график; начальные данные сохранены в исходной таблице.')
                 if not slot:
-                    board=pattern.board if pattern else Board.objects.filter(company=person.company,name='Графики сотрудников ВЖГ',import_digest='').order_by('pk').first()
-                    if board is None:board=Board.objects.create(company=person.company,name='Графики сотрудников ВЖГ')
+                    board=pattern.board if pattern else Board.objects.filter(company=person.company,name='Графики сотрудников по местонахождениям',import_digest='').order_by('pk').first()
+                    if board is None:board=Board.objects.create(company=person.company,name='Графики сотрудников по местонахождениям')
                     position=str(person.employee.position) if person.employee_id and person.employee.position_id else 'Без должности'
                     group=board.groups.filter(position=position).first() or StaffingGroup.objects.create(company=person.company,board=board,position=position)
                     slot=StaffingSlot(company=person.company,group=group,person=person)
@@ -800,7 +800,7 @@ def schedule(request,pk):
                         d+=timedelta(days=1)
                     slot.calendar=calendar
                 slot.save();person.schedule_slot=slot;person.save(update_fields=['schedule_slot','updated_at'])
-                messages.success(request,'График сотрудника сохранён. Размещение в ВЖГ не изменено.');return redirect('personnel:housing_history',pk=person.pk)
+                messages.success(request,'График сотрудника сохранён. Размещение по местонахождению не изменено.');return redirect('personnel:housing_history',pk=person.pk)
     pending=person.schedule_change_requests.filter(status='PENDING').select_related('requested_schedule','requested_by').first()
     return render(request,'personnel/person_schedule.html',{'form':form,'request_form':request_form,'person':person,'pending_schedule_change':pending,'manual_allowed':manual_allowed,'title':'График: '+person.display_name})
 
@@ -831,7 +831,7 @@ def roster_export(request):
     if not selector.is_valid():raise Http404('Некорректные фильтры перевахты.')
     camps=selector.selected_camps(request.user.company);data=selector.cleaned_data;day=data['date']
     rows,days,_=rotation_rows(request.user.company,list(camps),day,query=data.get('q',''),position=data.get('position'),state=data.get('state',''),include_unassigned=not data.get('construction_object') and not data.get('camps'))
-    values=[['ВЖГ','Дата','Сотрудник / вакансия','Табельный номер','Должность','Вахта / отдых','Заезд','Выезд','Выезд по графику','Возвращение по графику','Дней на вахте / МО','Начало текущей вахты / МО','Источник начала периода','График',*[d.strftime('%d.%m.%Y') for d in days]]]
+    values=[['Местонахождение','Дата','Сотрудник / вакансия','Табельный номер','Должность','Вахта / отдых','Заезд','Выезд','Выезд по графику','Возвращение по графику','Дней на вахте / МО','Начало текущей вахты / МО','Источник начала периода','График',*[d.strftime('%d.%m.%Y') for d in days]]]
     for row in rows:
         person=row['person'];fmt=lambda value:value.isoformat() if value else ''
         values.append([str(row['camp'] or ''),str(day),person.display_name if person else 'Вакансия',person.display_employee_number if person else '',row['position_label'],row['state_label'],fmt(row.get('arrived_on')),fmt(row.get('last_departure')),fmt(row.get('planned_departure_display')),fmt(row.get('planned_return')),row.get('state_days'),fmt(row.get('state_since')),row.get('state_days_source',''),row.get('schedule_label',''),*row['codes']])

@@ -66,7 +66,7 @@ def require_available(employee,obj,day,lock=False):
         camp_ids=present_stays(obj.company,day).filter(person__employee=employee).values('camp_id')
         list(Camp.objects.select_for_update().filter(company=obj.company,pk__in=camp_ids).order_by('pk'))
     if not available_employee_ids(obj,day).filter(person__employee=employee).exists():
-        raise ValidationError(f'{employee.display_name}: нет фактического размещения в ВЖГ, связанном с этим объектом, на {day:%d.%m.%Y}. Заезд и выезд оформляет диспетчер по персоналу.')
+        raise ValidationError(f'{employee.display_name}: нет фактического размещения в местонахождении, связанном с этим объектом, на {day:%d.%m.%Y}. Заезд и выезд оформляет диспетчер по персоналу.')
 
 
 def matching_employee(person):
@@ -167,7 +167,7 @@ def request_object_pair(person,day,camp):
 @transaction.atomic
 @with_history_actor
 def move(user,kind,camp,day,people,employees=(),target=None,comment='',snapshot=None,departure_destination='REST',setup_direct=False,allow_future=False):
-    if camp.company_id!=user.company_id or target and target.company_id!=user.company_id:raise ValidationError('ВЖГ другой компании.')
+    if camp.company_id!=user.company_id or target and target.company_id!=user.company_id:raise ValidationError('Местонахождение другой компании.')
     if allow_future:
         pass
     elif setup_direct:
@@ -178,8 +178,8 @@ def move(user,kind,camp,day,people,employees=(),target=None,comment='',snapshot=
     require_backdate_comment(day,comment)
     if kind not in {'ARRIVAL','DEPARTURE','TRANSFER'}:raise ValidationError('Неизвестное действие.')
     if kind=='DEPARTURE' and departure_destination not in {'REST','DISMISSAL'}:raise ValidationError('Выберите причину выезда.')
-    if kind=='TRANSFER' and (not target or target.pk==camp.pk):raise ValidationError('Выберите другой ВЖГ для перевода.')
-    if kind=='ARRIVAL' and not camp.is_active or target and not target.is_active:raise ValidationError('Для заезда выберите действующий ВЖГ.')
+    if kind=='TRANSFER' and (not target or target.pk==camp.pk):raise ValidationError('Выберите другое местонахождение для перевода.')
+    if kind=='ARRIVAL' and not camp.is_active or target and not target.is_active:raise ValidationError('Для заезда выберите действующее местонахождение.')
     from apps.accounts.models import Company
     Company.objects.filter(pk=user.company_id).update(name=F('name'))
     selected={p.pk:p for p in people}
@@ -196,7 +196,7 @@ def move(user,kind,camp,day,people,employees=(),target=None,comment='',snapshot=
     if snapshot is not None:check_snapshot(user,snapshot,locked)
     locked_camps={row.pk:row for row in Camp.objects.select_for_update().filter(company=user.company,pk__in=[camp.pk]+([target.pk] if target else [])).order_by('pk')}
     camp=locked_camps[camp.pk];target=locked_camps[target.pk] if target else None
-    if kind=='ARRIVAL' and not camp.is_active or target and not target.is_active:raise ValidationError('Для заезда выберите действующий ВЖГ.')
+    if kind=='ARRIVAL' and not camp.is_active or target and not target.is_active:raise ValidationError('Для заезда выберите действующее местонахождение.')
     for person in locked:
         if not setup_direct and not allow_future:require_movement_day(user,day)
         current=present_stays(user.company,day).filter(person=person).first()
@@ -204,7 +204,7 @@ def move(user,kind,camp,day,people,employees=(),target=None,comment='',snapshot=
             if current:raise ValidationError(f'{person}: уже находится в {current.camp}. Используйте перевод.')
             stay=CampStay.objects.create(company=user.company,person=person,camp=camp,arrived_on=day,comment=comment,recorded_by=user)
         else:
-            if not current or current.camp_id!=camp.pk:raise ValidationError(f'{person}: на эту дату не находится в выбранном ВЖГ.')
+            if not current or current.camp_id!=camp.pk:raise ValidationError(f'{person}: на эту дату не находится в выбранном местонахождении.')
             current.departed_on=day;current.save(update_fields=['departed_on','updated_at'])
             stay=current
             if kind=='TRANSFER':stay=CampStay.objects.create(company=user.company,person=person,camp=target,arrived_on=day,comment=comment,recorded_by=user)
@@ -215,13 +215,13 @@ def move(user,kind,camp,day,people,employees=(),target=None,comment='',snapshot=
 
 @transaction.atomic
 def request_moves(user,kind,camp,day,people,employees=(),target=None,comment='',snapshot=None,departure_destination='REST',approval_batch=None):
-    if camp.company_id!=user.company_id or target and target.company_id!=user.company_id:raise ValidationError('ВЖГ другой компании.')
+    if camp.company_id!=user.company_id or target and target.company_id!=user.company_id:raise ValidationError('Местонахождение другой компании.')
     # A request contains a planned movement date, so it may be in the future.
     # The fact-editing window applies only to today and historical dates.
     if day<=timezone.localdate():
         require_movement_day(user,day);require_backdate_comment(day,comment)
     if kind not in {'ARRIVAL','DEPARTURE','TRANSFER'}:raise ValidationError('Неизвестное действие.')
-    if kind=='TRANSFER' and (not target or target.pk==camp.pk):raise ValidationError('Выберите другой ВЖГ для перевода.')
+    if kind=='TRANSFER' and (not target or target.pk==camp.pk):raise ValidationError('Выберите другое местонахождение для перевода.')
     selected={p.pk:p for p in people}
     for employee in employees:
         if employee.company_id!=user.company_id or not employee.is_active:raise ValidationError('Выберите действующего сотрудника своей компании.')
@@ -233,7 +233,7 @@ def request_moves(user,kind,camp,day,people,employees=(),target=None,comment='',
     for person in locked:
         current=present_stays(user.company,day).filter(person=person).first()
         if kind=='ARRIVAL' and current:raise ValidationError(f'{person}: уже находится в {current.camp}. Используйте перевод.')
-        if kind!='ARRIVAL' and (not current or current.camp_id!=camp.pk):raise ValidationError(f'{person}: на эту дату не находится в выбранном ВЖГ.')
+        if kind!='ARRIVAL' and (not current or current.camp_id!=camp.pk):raise ValidationError(f'{person}: на эту дату не находится в выбранном местонахождении.')
         employee=person.employee
         request_camp=target if kind=='TRANSFER' else camp
         construction_object,site_object=request_object_pair(person,day,request_camp)

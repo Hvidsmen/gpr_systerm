@@ -11,7 +11,7 @@ def configure_access(form, company, objects_name):
     form.fields['role'].empty_label = 'Выберите роль'
     form.fields['role'].help_text = 'Определяет доступные разделы и действия.'
     form.fields[objects_name].label = 'Основные объекты · с ежедневными заданиями'
-    form.fields[objects_name].help_text = 'По этим объектам диспетчер заполняет факт и получает ежедневные задания. Для других ограниченных ролей — область работы; ВЖГ доступны по связям с объектами.'
+    form.fields[objects_name].help_text = 'По этим объектам диспетчер заполняет факт и получает ежедневные задания. Для других ограниченных ролей — область работы; местонахождения доступны по связям с объектами.'
     form.fields['production_additional_objects'].help_text = 'Для диспетчеров производства и всех направлений: можно просматривать и изменять факт, сотрудников, связи и акты, но ежедневные задания по этим объектам не создаются. Основные объекты уже доступны; повторять их не нужно.'
     form.group_options = {
         'groups': [{'id': group.pk, 'role': group.role_id, 'objects': [obj.pk for obj in group.assigned_objects.all()], 'production_additional_objects': [obj.pk for obj in group.production_additional_objects.all()]} for group in groups],

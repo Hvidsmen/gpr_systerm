@@ -32,7 +32,7 @@ def camps_for(user):
 def authorize(user, camp, write=True):
     require_roles(user, OPERATORS if write else READERS)
     if not camps_for(user).filter(pk=camp.pk).exists():
-        raise PermissionDenied('ВЖГ не связан с доступными вам объектами.')
+        raise PermissionDenied('Местонахождение не связано с доступными вам объектами.')
 
 
 def present(company, day):
@@ -83,7 +83,7 @@ def _payload(user, camp, day, signed):
     except (signing.BadSignature, TypeError):
         raise ValidationError('Форма устарела. Обновите страницу; сохранённые данные останутся на месте.')
     if (values.get('company'), values.get('user'), values.get('camp'), values.get('date')) != (user.company_id, user.pk, camp.pk, day.isoformat()):
-        raise ValidationError('Форма другого пользователя, ВЖГ или даты. Откройте нужный день заново.')
+        raise ValidationError('Форма относится к другому пользователю, местонахождению или дате. Откройте нужный день заново.')
     return values['versions']
 
 
@@ -133,7 +133,7 @@ def _bump(control):
 
 def audit(user, record, action, values):
     from apps.audit.models import AuditLog
-    AuditLog.objects.create(user=user, action=action, entity_type=record._meta.label, entity_id=str(record.pk), new_value=values, comment='Учёт техники по ВЖГ')
+    AuditLog.objects.create(user=user, action=action, entity_type=record._meta.label, entity_id=str(record.pk), new_value=values, comment='Учёт техники по местонахождениям')
 
 
 def _valid_timeline(machine, since):
@@ -153,14 +153,14 @@ def move(user, camp, day, ids, kind, *, target=None, condition='READY', comment=
         raise ValidationError('Выберите действие с техникой.')
     if kind == 'TRANSFER':
         if not target or target.pk == camp.pk:
-            raise ValidationError('Выберите другой ВЖГ для перевода.')
+            raise ValidationError('Выберите другое местонахождение для перевода.')
         authorize(user, target)
     versions = _payload(user, camp, day, signed); session = _session(session)
     machines, controls = _lock(user, ids)
     locked_camps = {c.pk: c for c in Camp.objects.select_for_update().filter(company=user.company, pk__in=[camp.pk] + ([target.pk] if target else [])).order_by('pk')}
     camp = locked_camps[camp.pk]; target = locked_camps[target.pk] if target else None
     if (kind == 'ARRIVAL' and not camp.is_active) or (target and not target.is_active):
-        raise ValidationError('Для приезда выберите действующий ВЖГ.')
+        raise ValidationError('Для приезда выберите действующее местонахождение.')
     for machine in machines:
         require_fact_day(user,day)
         _check(user, machine, controls[machine.pk], versions, session)
@@ -174,12 +174,12 @@ def move(user, camp, day, ids, kind, *, target=None, condition='READY', comment=
             if not machine.is_active:
                 raise ValidationError(f'{machine}: отключена в справочнике.')
             if current:
-                raise ValidationError(f'{machine}: уже числится в ВЖГ. Используйте перевод.')
+                raise ValidationError(f'{machine}: уже числится в местонахождении. Используйте перевод.')
             resulting = EquipmentCampStay(company=user.company, equipment=machine, camp=camp, arrived_on=day)
             resulting.full_clean(); resulting.save()
         else:
             if not current or current.camp_id != camp.pk:
-                raise ValidationError(f'{machine}: на эту дату не находится в выбранном ВЖГ.')
+                raise ValidationError(f'{machine}: на эту дату не находится в выбранном местонахождении.')
             previous = current; current.departed_on = day; current.full_clean(); current.save()
             if kind == 'TRANSFER':
                 resulting = EquipmentCampStay(company=user.company, equipment=machine, camp=target, arrived_on=day)
@@ -218,7 +218,7 @@ def set_condition(user, camp, day, ids, condition, *, comment='', signed, sessio
         require_fact_day(user,day)
         _check(user, machine, controls[machine.pk], versions, session)
         if not present(user.company, day).filter(camp=camp, equipment=machine).exists():
-            raise ValidationError(f'{machine}: нет в выбранном ВЖГ на эту дату.')
+            raise ValidationError(f'{machine}: нет в выбранном местонахождении на эту дату.')
         event = EquipmentTransportEvent.objects.create(company=user.company, equipment=machine, date=day, kind='CONDITION', condition=condition, to_camp=camp, recorded_by=user, comment=comment.strip())
         _valid_timeline(machine,day)
         _bump(controls[machine.pk]); audit(user, event, 'CREATE', {'condition': condition, 'date': str(day)})
@@ -235,7 +235,7 @@ def _project(user, record, previous_activity):
         affected.add(previous_activity.construction_object_id)
     others = EquipmentActivity.objects.filter(company=user.company, equipment=record.equipment, date=record.date).exclude(pk=previous_activity.pk if previous_activity else None)
     if others.exists():
-        raise ValidationError('За этот день техника уже внесена в прежней форме факта. Исправьте прежнюю запись перед вводом по ВЖГ.')
+        raise ValidationError('За этот день техника уже внесена в прежней форме факта. Исправьте прежнюю запись перед вводом по местонахождениям.')
     if not record.construction_object_id:
         if previous_activity:
             record.activity = None; record.save(update_fields=['activity', 'updated_at']); previous_activity.delete()
@@ -245,7 +245,7 @@ def _project(user, record, previous_activity):
         row = previous_activity or EquipmentActivity(company=user.company, equipment=record.equipment, date=record.date, shift=1)
         row.construction_object = obj; row.state = 'WORKING' if record.status == 'WORKED' else 'IDLE'
         row.work = record.work; row.work_item = record.work_item; row.general = not record.work_id
-        row.activity = record.comment or ('Работала без привязки к работе · учёт ВЖГ' if record.status == 'WORKED' else 'Простой · учёт ВЖГ')
+        row.activity = record.comment or ('Работала без привязки к работе · учёт по местонахождению' if record.status == 'WORKED' else 'Простой · учёт по местонахождению')
         row._transport_day_id=record.pk
         row.full_clean(); row.save(); record.activity = row; record.save(update_fields=['activity', 'updated_at'])
     for obj in ConstructionObject.objects.filter(company=user.company, pk__in=affected).order_by('pk'):
@@ -276,10 +276,10 @@ def save_day(user, camp, day, ids, status, *, construction_object=None, work=Non
         record = EquipmentDayRecord.objects.filter(company=user.company, equipment=machine, date=day).first()
         inside=present(user.company, day).filter(equipment=machine, camp=camp).exists()
         if not inside and not allow_external and not (record and not record.presence_required):
-            raise ValidationError(f'{machine}: нет в выбранном ВЖГ на эту дату.')
+            raise ValidationError(f'{machine}: нет в выбранном местонахождении на эту дату.')
         if not record and not machine.is_active:raise ValidationError(f'{machine}: отключена в справочнике.')
         if record and record.camp_id != camp.pk:
-            raise ValidationError('Сохранённая запись относится к другому ВЖГ.')
+            raise ValidationError('Сохранённая запись относится к другому местонахождению.')
         old_activity = record.activity if record else None
         if status == 'CLEAR':
             if record:
@@ -298,7 +298,7 @@ def save_day(user, camp, day, ids, status, *, construction_object=None, work=Non
             if not scope_queryset(ConstructionObject.objects.all(), user).filter(pk=obj.pk).exists():
                 raise ValidationError('Объект не доступен этому диспетчеру.')
             if not retained and not camp.object_links.filter(company=user.company, construction_object=obj).exists():
-                raise ValidationError('Объект не связан с выбранным ВЖГ.')
+                raise ValidationError('Объект не связан с выбранным местонахождением.')
         existed = record is not None
         record = record or EquipmentDayRecord(company=user.company, equipment=machine, camp=camp, date=day)
         if not existed:record.presence_required=inside
@@ -363,7 +363,7 @@ def claim(user, camp, day, ids, action, session, *, purpose='movement'):
             if action in {'acquire', 'renew'} and (mine or not active):
                 # Only present machines, or an unplaced machine being received, can be reserved here.
                 stays = present(user.company, day).filter(equipment_id=control.equipment_id)
-                if purpose!='day' and stays.exists() and not stays.filter(camp=camp).exists(): raise ValidationError('Техника находится в другом ВЖГ.')
+                if purpose!='day' and stays.exists() and not stays.filter(camp=camp).exists(): raise ValidationError('Техника находится в другом местонахождении.')
                 control.locked_by = user; control.session_key = session; control.expires_at = timezone.now() + TTL; control.save()
             elif action == 'release' and mine:
                 control.locked_by = None; control.session_key = None; control.expires_at = None; control.save()

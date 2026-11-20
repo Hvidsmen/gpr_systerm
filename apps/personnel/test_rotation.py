@@ -207,7 +207,7 @@ class RotationTests(TestCase):
         self.assertEqual([g['name'] for g in page.context['roster_sections']],['Без группы'])
         empty=self.client.get(reverse('personnel:housing'),{**data,'q':'нет совпадений'})
         self.assertEqual(empty.context['roster_sections'],[])
-        self.assertContains(empty,'По выбранным объектам, ВЖГ и фильтрам сотрудников и вакансий нет.')
+        self.assertContains(empty,'По выбранным объектам, местонахождениям и фильтрам сотрудников и вакансий нет.')
         invalid=self.client.get(reverse('personnel:housing'),{**data,'roster_view':'invalid'})
         self.assertEqual(invalid.context['roster_view'],'positions')
         self.assertNotContains(invalid,'data-roster-labor-group=')

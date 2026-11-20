@@ -18,13 +18,13 @@ from . import housing
 class HousingTests(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.company=Company.objects.create(name='ВЖГ test')
+        cls.company=Company.objects.create(name='Местонахождение test')
         cls.project=Project.objects.create(company=cls.company,name='Проект')
         cls.obj=ConstructionObject.objects.create(company=cls.company,project=cls.project,name='КТП-1')
         cls.obj2=ConstructionObject.objects.create(company=cls.company,project=cls.project,name='КТП-2')
         cls.obj3=ConstructionObject.objects.create(company=cls.company,project=cls.project,name='КТП-3')
-        cls.a=Camp.objects.create(company=cls.company,name='ВЖГ КТП-1')
-        cls.b=Camp.objects.create(company=cls.company,name='Базовый ВЖГ')
+        cls.a=Camp.objects.create(company=cls.company,name='Местонахождение КТП-1')
+        cls.b=Camp.objects.create(company=cls.company,name='Базовое местонахождение')
         for camp,obj in [(cls.a,cls.obj),(cls.a,cls.obj2),(cls.b,cls.obj2),(cls.b,cls.obj3)]:CampObjectLink.objects.create(company=cls.company,camp=camp,construction_object=obj)
         cls.position=position_for(Brigade.objects.create(company=cls.company,name='Монтажник'))
         cls.employee=Employee.objects.create(company=cls.company,last_name='Иванов',first_name='Иван',position=cls.position,employee_number='001')
@@ -190,6 +190,12 @@ class HousingTests(TestCase):
         import openpyxl
         for name,args in [('housing',[]),('camps',[]),('housing_history',[self.person.pk]),('person_schedule',[self.person.pk])]:
             self.assertEqual(self.client.get(reverse('personnel:'+name,args=args)).status_code,200,name)
+        self.client.force_login(self.admin)
+        directory=self.client.get(reverse('personnel:camps'))
+        self.assertContains(directory,'Справочник местонахождений')
+        self.assertContains(directory,'Добавить местонахождение')
+        self.assertNotContains(directory,'ВЖГ')
+        self.client.force_login(self.hr)
         response=self.client.get(reverse('personnel:housing_export'),{'camp':self.a.pk,'date':str(self.day),'q':'Иванов'})
         book=openpyxl.load_workbook(BytesIO(response.content));self.assertEqual(book.active.max_row,2)
         self.assertEqual(book.active['C2'].value,self.person.full_name)
@@ -201,12 +207,12 @@ class HousingTests(TestCase):
         board=Board.objects.create(company=self.company,name='Legacy')
         group=StaffingGroup.objects.create(company=self.company,board=board,position='Сварщик')
         p=Person.objects.create(company=self.company,full_name='Неоднозначный Работник')
-        for name in ['Старый ВЖГ','Другой ВЖГ']:
+        for name in ['Старое местонахождение','Другое местонахождение']:
             StaffingSlot.objects.create(company=self.company,group=group,person=p,camp=name,status='МВ',arrival_date=self.day)
         housing.bootstrap_legacy(self.company,StaffingSlot.objects.filter(group=group))
         self.assertEqual(StaffingSlot.objects.filter(group=group,housing_camp__isnull=False).count(),2)
         self.assertFalse(p.stays.exists())
-        self.assertEqual(list(StaffingSlot.objects.filter(group=group).values_list('camp',flat=True)),['Старый ВЖГ','Другой ВЖГ'])
+        self.assertEqual(list(StaffingSlot.objects.filter(group=group).values_list('camp',flat=True)),['Старое местонахождение','Другое местонахождение'])
 
     def test_schedule_and_camp_edits_reject_stale_versions(self):
         self.client.force_login(self.admin)

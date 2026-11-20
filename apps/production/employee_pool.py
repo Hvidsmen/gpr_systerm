@@ -54,11 +54,11 @@ def prepare(obj,day,employee_ids=None):
         staffing_group=(mapping.brigade.group.name if mapping and mapping.brigade.group_id else 'Без группы')
         group=0 if stay and stay.camp_id in linked else 1 if stay else 2
         rest=bool(not stay and (previous and previous.departed_on and previous.departed_on<=day or not previous and legacy.get(employee.pk)=={'МО'}))
-        text=(('ВЖГ: '+stay.camp.name) if stay else 'Нахождение в ВЖГ не оформлено'+(' · межвахтовый отдых' if rest else ''))+(' · архив — уже есть в факте дня' if not employee.is_active else '')
+        text=(('Местонахождение: '+stay.camp.name) if stay else 'Нахождение в местонахождении не оформлено'+(' · межвахтовый отдых' if rest else ''))+(' · архив — уже есть в факте дня' if not employee.is_active else '')
         locations[str(employee.pk)]={'text':text,'camp':stay.camp.name if stay else '', 'camp_id':stay.camp_id if stay else None,'group':group,'rest':rest,'archived':not employee.is_active,'position':employee.position_id,'name':employee.display_name,'number':employee.employee_number,'position_label':employee.display_position,'staff_group':staffing_group}
         label=' · '.join(filter(None,[employee.display_name,'№ '+employee.employee_number if employee.employee_number else '',employee.display_position or 'Должность не указана',text]))
         groups[group].append((employee.pk,label))
-    return {'locations':locations,'groups':[(label,values) for label,values in zip(['ВЖГ, связанные с объектом','Другие ВЖГ','Без оформленного нахождения в ВЖГ'],groups) if values]}
+    return {'locations':locations,'groups':[(label,values) for label,values in zip(['Местонахождения, связанные с объектом','Другие местонахождения','Без оформленного местонахождения'],groups) if values]}
 
 
 def apply(field,pool,retained=None):

@@ -46,7 +46,7 @@ class PersonForm(StyledModelForm):
         self.fields['employee'].queryset=Employee.objects.filter(company=self.instance.company).filter(Q(is_active=True)|Q(pk=current)).select_related('position').order_by('last_name','first_name','middle_name','employee_number','pk')
         self.fields['employee'].label_from_instance=lambda e:e.display_name+(' · № '+e.employee_number if e.employee_number else '')+(' · '+str(e.position) if e.position_id else '')+(' · Архивный, сохранённая связь' if not e.is_active else '')
         self.fields['full_name'].required=False
-        self.fields['employee'].help_text='Для новой связи доступны только активные сотрудники. После заезда в подходящий ВЖГ сотрудник станет доступен в производственном факте.'
+        self.fields['employee'].help_text='Для новой связи доступны только активные сотрудники. После заезда в подходящее местонахождение сотрудник станет доступен в производственном факте.'
     def clean(self):
         data=super().clean();employee=data.get('employee')
         if self.instance.pk and self.instance.employee_id and self.instance.employee_id!=(employee.pk if employee else None) and self.instance.stays.exists():self.add_error('employee','У карточки уже есть история размещения. Связь сотрудника с историей нельзя заменить.')
@@ -75,8 +75,8 @@ class SlotForm(StyledModelForm):
         super().__init__(*args, **kwargs)
         from .models import Camp
         self.fields['housing_camp'].queryset=Camp.objects.filter(company_id=board.company_id)
-        self.fields['housing_camp'].label='ВЖГ в строке графика'
-        self.fields['housing_camp'].help_text='Фактические заезды, выезды и переводы оформляются в «Размещении в ВЖГ».'
+        self.fields['housing_camp'].label='Местонахождение в строке графика'
+        self.fields['housing_camp'].help_text='Фактические заезды, выезды и переводы оформляются в разделе «Местонахождения».'
         self.fields['person'].queryset = Person.objects.filter(company_id=board.company_id)
         self.fields['pattern'].queryset = board.patterns.all()
 
@@ -125,7 +125,7 @@ class PatternForm(forms.Form):
 
 class CampForm(StyledModelForm):
     version=forms.CharField(widget=forms.HiddenInput,required=False)
-    objects_served=forms.ModelMultipleChoiceField(label='Объекты проекта, доступные сотрудникам этого ВЖГ',queryset=None,required=False,widget=forms.SelectMultiple(attrs={'size':8}))
+    objects_served=forms.ModelMultipleChoiceField(label='Объекты проекта, доступные сотрудникам этого местонахождения',queryset=None,required=False,widget=forms.SelectMultiple(attrs={'size':8}))
     class Meta:
         from .models import Camp
         model=Camp
@@ -138,22 +138,22 @@ class CampForm(StyledModelForm):
         if self.instance.pk:
             self.initial['objects_served']=self.instance.objects_served.values_list('pk',flat=True)
             self.initial['version']=self.instance.updated_at.isoformat();self.fields['version'].required=True
-        self.fields['objects_served'].help_text='Один ВЖГ может обслуживать несколько объектов, один объект — несколько ВЖГ.'
+        self.fields['objects_served'].help_text='Одно местонахождение может обслуживать несколько объектов, один объект — несколько местонахождений.'
         self.fields['is_active'].widget=forms.CheckboxInput(attrs={'class':'form-check-input'})
 
 
 class MovementForm(forms.Form):
     personal_scope=forms.CharField(required=False,widget=forms.HiddenInput)
     recommendation_scope=forms.CharField(required=False,widget=forms.HiddenInput)
-    kind=forms.ChoiceField(label='Вид заявки',choices=[('ARRIVAL','Заезд'),('DEPARTURE','Выезд'),('TRANSFER','Перевод в другой ВЖГ')])
+    kind=forms.ChoiceField(label='Вид заявки',choices=[('ARRIVAL','Заезд'),('DEPARTURE','Выезд'),('TRANSFER','Перевод в другое местонахождение')])
     date=forms.DateField(label='Плановая дата поездки',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
-    camp=forms.ModelChoiceField(label='ВЖГ заезда / исходный ВЖГ',queryset=None)
+    camp=forms.ModelChoiceField(label='Местонахождение заезда / исходное местонахождение',queryset=None)
     employees=forms.ModelMultipleChoiceField(label='Сотрудники',queryset=None,widget=RemoteEmployeeSelectMultiple(attrs={
         'size':8,'data-personnel-searchable':'','data-remote-scope':'movement',
         'data-remote-kind-field':'kind','data-remote-camp-field':'camp','data-remote-date-field':'date',
         'data-remote-preserve-selection-fields':'date',
     }))
-    target=forms.ModelChoiceField(label='ВЖГ назначения',queryset=None,required=False)
+    target=forms.ModelChoiceField(label='Местонахождение назначения',queryset=None,required=False)
     comment=forms.CharField(label='Комментарий',required=False,widget=forms.Textarea(attrs={'rows':2}),max_length=4000)
     direct_fact=forms.BooleanField(label='Временный режим: провести факт сразу, без заявки',required=False,
         help_text='Используйте только на этапе настройки рабочих мест. Дата может быть сегодняшней или прошедшей; будущий факт запрещён.')
@@ -186,7 +186,7 @@ class MovementForm(forms.Form):
             by_camp.setdefault(str(camp_id),[]).append(str(employee_id))
         self.fields['employees'].widget.attrs['data-present-by-camp']=json.dumps(by_camp)
         self.fields['employees'].widget.attrs['data-active-employees']=','.join(str(pk) for pk in employees.filter(is_active=True).values_list('pk',flat=True))
-        self.fields['employees'].label_from_instance=lambda e:e.display_name+(' · '+str(e.position) if e.position_id else '')+(' · № '+e.employee_number if e.employee_number else '')+(' · архивный, находится в ВЖГ' if not e.is_active else '')
+        self.fields['employees'].label_from_instance=lambda e:e.display_name+(' · '+str(e.position) if e.position_id else '')+(' · № '+e.employee_number if e.employee_number else '')+(' · архивный, находится в местонахождении' if not e.is_active else '')
         self.personal=bool(fixed_employee)
         if fixed_employee:
             self.initial['employees']=[fixed_employee]
@@ -205,13 +205,13 @@ class MovementForm(forms.Form):
         if employees:
             if data.get('kind')=='ARRIVAL' and employees.filter(is_active=False).exists():
                 self.add_error('employees','Для заезда выберите активных сотрудников.')
-        if data.get('kind')=='TRANSFER' and not data.get('target'):self.add_error('target','Выберите ВЖГ назначения.')
+        if data.get('kind')=='TRANSFER' and not data.get('target'):self.add_error('target','Выберите местонахождение назначения.')
         return data
 
 
 class MovementRecommendationForm(forms.Form):
     employees=forms.ModelMultipleChoiceField(label='Сотрудники',queryset=None,widget=RemoteEmployeeSelectMultiple(attrs={'size':6,'data-personnel-searchable':''}))
-    camp=forms.ModelChoiceField(label='ВЖГ',queryset=None)
+    camp=forms.ModelChoiceField(label='Местонахождение',queryset=None)
     planned_on=forms.DateField(label='Рекомендуемая дата',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
     def __init__(self,*args,company,day,kind,**kwargs):
         from apps.resources.models import Employee
@@ -229,7 +229,7 @@ class MovementRecommendationForm(forms.Form):
 
 
 class MovementReviewForm(StyledModelForm):
-    camp=forms.ModelChoiceField(label='ВЖГ',queryset=None,required=False,empty_label='Выберите ВЖГ')
+    camp=forms.ModelChoiceField(label='Местонахождение',queryset=None,required=False,empty_label='Выберите местонахождение')
     departure_destination=forms.ChoiceField(label='Причина выезда',choices=[('REST','На межвахтовый отдых'),('DISMISSAL','Увольнение')],required=False)
     base_city_choice=forms.ModelChoiceField(label='Базовый город',queryset=BaseCity.objects.none(),required=False,empty_label='Выберите город')
     new_base_city=forms.CharField(label='Добавить новый базовый город',max_length=150,required=False,
@@ -245,8 +245,8 @@ class MovementReviewForm(StyledModelForm):
             employee=self.instance.person.employee
             directory_phone=(employee.phone if employee else '') or self.instance.person.phone
             if directory_phone:self.initial['phone']=directory_phone
-        self.fields['movement_date'].label='Дата заезда' if self.instance.kind=='ARRIVAL' else 'Плановая дата выезда из ВЖГ'
-        self.fields['travel_time'].label='Время прибытия' if self.instance.kind=='ARRIVAL' else 'Плановое время выезда из ВЖГ'
+        self.fields['movement_date'].label='Дата заезда' if self.instance.kind=='ARRIVAL' else 'Плановая дата выезда из местонахождения'
+        self.fields['travel_time'].label='Время прибытия' if self.instance.kind=='ARRIVAL' else 'Плановое время выезда из местонахождения'
         from apps.projects.models import ConstructionObject
         objects=ConstructionObject.objects.filter(company=self.instance.company).select_related('parent').order_by('name')
         self.fields['construction_object'].queryset=objects
@@ -275,10 +275,10 @@ class MovementReviewForm(StyledModelForm):
             self.fields['employment_kind'].widget=forms.HiddenInput()
         else:self.fields.pop('departure_destination')
         self.fields['planning_position_name'].group_heading='Сотрудник и назначение'
-        self.fields['planning_position_name'].group_help='Проверьте должности, проект и обслуживающий ВЖГ.'
+        self.fields['planning_position_name'].group_help='Проверьте должности, проект и обслуживающее местонахождение.'
         self.fields['base_city_choice'].group_heading='Контакты и заявка'
         self.fields['base_city_choice'].group_help='Город назначения и телефон. Номер заявки присваивается автоматически.'
-        self.fields['movement_date'].group_heading='1. '+('Прибытие в ОП Дудинка' if self.instance.kind=='ARRIVAL' else 'Выезд из ВЖГ')
+        self.fields['movement_date'].group_heading='1. '+('Прибытие в ОП Дудинка' if self.instance.kind=='ARRIVAL' else 'Выезд из местонахождения')
         self.fields['movement_date'].group_help='Плановые дата и время первого участка маршрута.'
         self.fields['planned_hub_departure_date'].group_heading='2. Выезд из ОП Дудинка'
         self.fields['planned_hub_departure_date'].group_help='Плановые дата и время второго участка маршрута.'
@@ -299,14 +299,14 @@ class MovementReviewForm(StyledModelForm):
         if new and selected:self.add_error('new_base_city','Выберите город из списка или добавьте новый, но не оба варианта.')
         if self.confirm and not (new or selected):self.add_error('base_city_choice','Выберите базовый город или добавьте новый.')
         if data.get('movement_date') and data.get('planned_hub_departure_date') and data['planned_hub_departure_date']<data['movement_date']:
-            self.add_error('planned_hub_departure_date','Выезд из ОП Дудинка не может быть запланирован раньше выезда из ВЖГ.')
+            self.add_error('planned_hub_departure_date','Выезд из ОП Дудинка не может быть запланирован раньше выезда из местонахождения.')
         obj,camp=data.get('construction_object'),data.get('camp')
         if obj and camp:
             from apps.projects.models import ConstructionObject
             ids={obj.pk};front={obj.pk};pairs=list(ConstructionObject.objects.filter(company=self.instance.company,project=obj.project).values_list('pk','parent_id'))
             while front:
                 children={pk for pk,parent in pairs if parent in front};ids|=children;front=children
-            if not camp.object_links.filter(company=self.instance.company,construction_object_id__in=ids).exists():self.add_error('camp','Выберите ВЖГ выбранного проекта.')
+            if not camp.object_links.filter(company=self.instance.company,construction_object_id__in=ids).exists():self.add_error('camp','Выберите местонахождение выбранного проекта.')
         data['new_base_city']=new
         return data
 
@@ -336,7 +336,7 @@ class PersonScheduleForm(forms.Form):
         if slot:self.initial.update(slot=slot.pk,pattern=slot.pattern_id)
         from .rotation_calendar import description
         from django.utils import timezone
-        self.fields['pattern'].help_text=description(slot,timezone.localdate(),person=person)+' Личный график имеет приоритет. Без него используется вахтовый цикл из ЗУП, например 60х30. Фактический заезд начинает вахту, выезд на МО — отдых; перевод между ВЖГ сохраняет цикл.'
+        self.fields['pattern'].help_text=description(slot,timezone.localdate(),person=person)+' Личный график имеет приоритет. Без него используется вахтовый цикл из ЗУП, например 60х30. Фактический заезд начинает вахту, выезд на МО — отдых; перевод между местонахождениями сохраняет цикл.'
         for f in self.fields.values():f.widget.attrs['class']='form-select' if isinstance(f.widget,forms.Select) else 'form-control'
     def clean(self):
         data=super().clean();start,end=data.get('start'),data.get('end')

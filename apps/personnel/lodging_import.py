@@ -86,7 +86,7 @@ def parse(raw):
 
 
 class UploadForm(forms.Form):
-    camp=forms.ModelChoiceField(label='ВЖГ',queryset=Camp.objects.none())
+    camp=forms.ModelChoiceField(label='Местонахождение',queryset=Camp.objects.none())
     file=forms.FileField(label=f'Книга Excel с листом «{SHEET}»',widget=forms.FileInput(attrs={'accept':'.xlsx'}))
     def __init__(self,*args,company,**kwargs):
         super().__init__(*args,**kwargs);self.fields['camp'].queryset=Camp.objects.filter(company=company)
@@ -184,7 +184,7 @@ def upload(request):
         try:
             file=form.cleaned_data['file'];raw=file.read();parsed=parse(raw);camp=form.cleaned_data['camp']
             camp_number=re.search(r'ктп[\s№-]*(\d+)',key(camp.name))
-            if camp_number and int(camp_number.group(1))!=1:raise ValidationError('Лист «Шахматка КТП 1» относится к КТП-1. Выберите соответствующий ВЖГ.')
+            if camp_number and int(camp_number.group(1))!=1:raise ValidationError('Лист «Шахматка КТП 1» относится к КТП-1. Выберите соответствующее местонахождение.')
             with transaction.atomic():
                 lodging.mutex(request.user)
                 batch,created=LodgingImportBatch.objects.get_or_create(company=request.user.company,camp=camp,digest=sha256(raw).hexdigest(),defaults={'filename':file.name,'snapshot_date':date.fromisoformat(parsed['snapshot']),'created_by':request.user})

@@ -95,7 +95,7 @@ class TalentPoolCandidate(PersonnelModel):
     construction_object=models.ForeignKey('projects.ConstructionObject',on_delete=models.SET_NULL,null=True,blank=True,
         related_name='talent_pool_candidates',verbose_name='Объект / проект')
     camp=models.ForeignKey('personnel.Camp',on_delete=models.SET_NULL,null=True,blank=True,
-        related_name='talent_pool_candidates',verbose_name='ВЖГ')
+        related_name='talent_pool_candidates',verbose_name='Местонахождение')
     base_city=models.ForeignKey('personnel.BaseCity',on_delete=models.SET_NULL,null=True,blank=True,
         related_name='talent_pool_candidates',verbose_name='Базовый город')
     ready_for_arrival=models.BooleanField('Готов к заезду',default=False)
@@ -221,7 +221,7 @@ class ArrivalPreparation(PersonnelModel):
     STATES = [('EXPECTED','Ожидается'), ('ARRIVED','Заезд подтверждён'), ('CANCELLED','Подготовка отменена')]
     candidate = models.OneToOneField(RecruitmentCandidate, on_delete=models.PROTECT, related_name='arrival')
     expected_on = models.DateField('Плановая дата заезда')
-    camp = models.ForeignKey('personnel.Camp', on_delete=models.PROTECT, null=True, blank=True, verbose_name='ВЖГ')
+    camp = models.ForeignKey('personnel.Camp', on_delete=models.PROTECT, null=True, blank=True, verbose_name='Местонахождение')
     employee = models.ForeignKey('resources.Employee', on_delete=models.PROTECT, null=True, blank=True, verbose_name='Оформленный сотрудник')
     status = models.CharField(max_length=12, choices=STATES, default='EXPECTED')
     actual_stay = models.OneToOneField('personnel.CampStay', on_delete=models.PROTECT, null=True, blank=True, related_name='recruitment_arrival')
@@ -241,7 +241,7 @@ class ArrivalPreparation(PersonnelModel):
         if self.candidate_id and self.candidate.ready_on and self.expected_on < self.candidate.ready_on:
             raise ValidationError({'expected_on':'Дата заезда раньше готовности кандидата.'})
         if self.actual_stay_id and (not self.employee_id or self.actual_stay.person.employee_id != self.employee_id or self.actual_stay.camp_id != self.camp_id):
-            raise ValidationError('Подтверждённое размещение не соответствует сотруднику или ВЖГ.')
+            raise ValidationError('Подтверждённое размещение не соответствует сотруднику или местонахождению.')
 
 
 class CandidateDocument(PersonnelModel):

@@ -113,7 +113,7 @@ class MovementActionTests(TestCase):
 
     def test_dismissal_without_current_presence_does_not_create_exit(self):
         response=self.client.post(self.url,self.payload('DISMISSAL',employee=self.second_employee.pk))
-        self.assertContains(response,'находящихся в этом ВЖГ')
+        self.assertContains(response,'не находится в выбранном местонахождении')
         self.assertFalse(HousingEvent.objects.exists())
         self.assertFalse(CampStay.objects.filter(person=self.second_person).exists())
 

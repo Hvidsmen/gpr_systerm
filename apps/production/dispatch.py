@@ -334,7 +334,7 @@ class DispatcherDayView(CompanyRequiredMixin,View):
     @sqlite_serialized
     def display(self,request,bound=False):
         if role_code(request.user)=='FUEL_WAREHOUSE' or (request.POST if bound else request.GET).get('section')=='fuel':
-            if bound:raise PermissionDenied('Учёт ГСМ ведётся по ВЖГ.')
+            if bound:raise PermissionDenied('Учёт ГСМ ведётся по местонахождениям.')
             return redirect('production:camp_fuel')
         selector=ObjectDateForm(request.POST if bound else request.GET or None,user=request.user,initial={'date':timezone.localdate()})
         allowed=sections_for(request.user)
@@ -396,7 +396,7 @@ class DispatcherDayView(CompanyRequiredMixin,View):
         from .production_positions import plan_positions
         planned_positions=plan_positions(obj,day) if section=='works' else None
         if section=='fuel':
-            if bound:raise PermissionDenied('Учёт ГСМ ведётся по ВЖГ.')
+            if bound:raise PermissionDenied('Учёт ГСМ ведётся по местонахождениям.')
             return redirect('production:camp_fuel')
         definitions=[('works',DailyFact,WorkForm),('labor',EmployeeActivity,ProductionPersonForm)] if section=='works' else [('labor',EmployeeActivity,PersonForm)] if section=='labor' else [('fuel',FuelFact,FuelForm)] if section=='fuel' else [('equipment',EquipmentActivity,MachineForm)]
         groups=[]
@@ -623,7 +623,7 @@ class DispatcherDayView(CompanyRequiredMixin,View):
                             fs=group['formset'];rows=fs.save(commit=False)
                             for row in [*fs.deleted_objects,*rows]:
                                 if isinstance(row,EquipmentActivity) and row.pk and hasattr(row,'transport_record'):
-                                    raise ValidationError('Эта техника учтена в журнале ВЖГ. Измените её через «Техника на ВЖГ».')
+                                    raise ValidationError('Эта техника учтена в журнале местонахождений. Измените её через «Техника по местонахождению».')
                             for row in fs.deleted_objects:
                                 if isinstance(row,DailyFact):
                                     original=DailyFact.objects.get(pk=row.pk,company=obj.company)

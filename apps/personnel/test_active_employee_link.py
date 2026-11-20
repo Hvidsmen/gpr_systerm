@@ -47,7 +47,7 @@ class ActiveEmployeeLinkTests(TestCase):
 
     def test_existing_inactive_link_and_housing_history_are_preserved(self):
         self.person.employee=self.inactive;self.person.save(update_fields=['employee'])
-        camp=Camp.objects.create(company=self.company,name='ВЖГ')
+        camp=Camp.objects.create(company=self.company,name='Местонахождение')
         stay=CampStay.objects.create(company=self.company,camp=camp,person=self.person,arrived_on=timezone.localdate())
         form=PersonForm({'full_name':self.person.full_name,'employee':self.inactive.pk,'phone':'123'},instance=self.person)
         self.assertTrue(form.is_valid(),form.errors);form.save()

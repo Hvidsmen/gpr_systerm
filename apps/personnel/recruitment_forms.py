@@ -169,7 +169,7 @@ class TalentPoolForm(forms.ModelForm):
         camps=Camp.objects.filter(company=company,is_active=True)
         if self.instance.camp_id:camps=Camp.objects.filter(company=company).filter(Q(is_active=True)|Q(pk=self.instance.camp_id))
         self.fields['camp'].queryset=camps.order_by('name','pk');self.fields['camp'].empty_label='Не выбран'
-        self.fields['camp'].required=False;self.fields['camp'].help_text='Необязательно. Выберите ВЖГ, если он уже известен.'
+        self.fields['camp'].required=False;self.fields['camp'].help_text='Необязательно. Выберите местонахождение, если оно уже известно.'
         self.fields['base_city'].queryset=BaseCity.objects.filter(company=company).order_by('name','pk')
         self.fields['base_city'].empty_label='Выберите базовый город';self.fields['base_city'].required=False
         specialists=RecruitmentSpecialist.objects.filter(company=company,is_active=True)
@@ -235,7 +235,7 @@ class TalentPoolForm(forms.ModelForm):
             if data.get(date_field) and not data.get(flag):self.add_error(flag,'Установите флажок для указанной даты.')
         obj,camp=data.get('construction_object'),data.get('camp')
         if obj and camp and not allowed_camps(self.instance.company,obj).filter(pk=camp.pk).exists():
-            self.add_error('camp','Выберите ВЖГ, связанный с указанным объектом.')
+            self.add_error('camp','Выберите местонахождение, связанное с указанным объектом.')
         from .recruitment import normalized_candidate_identity
         identity=normalized_candidate_identity(data.get('full_name'),data.get('phone'))
         if identity[0]:
@@ -253,7 +253,7 @@ class ArrivalForm(RevisionForm):
     candidate_name=forms.CharField(label='ФИО кандидата',disabled=True)
     project_name=forms.CharField(label='Проект',disabled=True)
     expected_on=forms.DateField(label='Плановая дата заезда',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
-    camp=forms.ModelChoiceField(label='ВЖГ',queryset=None,required=False)
+    camp=forms.ModelChoiceField(label='Местонахождение',queryset=None,required=False)
     employee=forms.ModelChoiceField(label='Оформленный сотрудник',queryset=None,required=False,widget=RemoteEmployeeSelect,
         help_text='Выберите сотрудника после оформления и появления в реестре. Совпадение ФИО само по себе не связывает кандидата с сотрудником.')
     actual_on=forms.DateField(required=False,widget=forms.HiddenInput())
@@ -277,7 +277,7 @@ class ArrivalForm(RevisionForm):
 
 class BulkArrivalCommonForm(forms.Form):
     construction_object=forms.ModelChoiceField(label='Проект',queryset=ConstructionObject.objects.none(),required=False)
-    camp=forms.ModelChoiceField(label='ВЖГ',queryset=Camp.objects.none(),required=False)
+    camp=forms.ModelChoiceField(label='Местонахождение',queryset=Camp.objects.none(),required=False)
     def __init__(self,*args,company,required=False,**kwargs):
         super().__init__(*args,**kwargs)
         self.fields['construction_object'].queryset=ConstructionObject.objects.filter(company=company).order_by('name','pk')

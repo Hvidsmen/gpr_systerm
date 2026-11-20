@@ -93,11 +93,11 @@ def add(user,kind,employees,camp,planned_on):
     present=housing.present_stays(user.company,planned_on)
     if kind=='DEPARTURE':
         allowed=set(present.filter(camp=camp).values_list('person__employee_id',flat=True))
-        if any(employee.pk not in allowed for employee in employees):raise ValidationError('Для рекомендации к выезду выберите сотрудников, находящихся в этом ВЖГ на указанную дату.')
+        if any(employee.pk not in allowed for employee in employees):raise ValidationError('Для рекомендации к выезду выберите сотрудников, находящихся в этом местонахождении на указанную дату.')
     count=0
     for employee in employees:
         person=housing.person_for(employee)
-        if kind=='ARRIVAL' and present.filter(person=person).exists():raise ValidationError(f'{employee.display_name} уже находится в ВЖГ на указанную дату.')
+        if kind=='ARRIVAL' and present.filter(person=person).exists():raise ValidationError(f'{employee.display_name} уже находится в местонахождении на указанную дату.')
         MovementRecommendationOverride.objects.update_or_create(company=user.company,person=person,camp=camp,kind=kind,planned_on=planned_on,
             defaults={'action':'ADD','recorded_by':user})
         count+=1

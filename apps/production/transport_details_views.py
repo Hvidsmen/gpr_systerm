@@ -26,11 +26,11 @@ def details(request,pk):
     selector=Selector(request.POST if request.method=='POST' else request.GET,user=request.user)
     if not selector.is_valid():
         from django.http import HttpResponseBadRequest
-        return HttpResponseBadRequest('Укажите ВЖГ и дату.')
+        return HttpResponseBadRequest('Укажите местонахождение и дату.')
     camp,day=selector.cleaned_data['camp'],selector.cleaned_data['date'];transport.authorize(request.user,camp,False)
     if not (transport.present(request.user.company,day).filter(equipment=machine,camp=camp).exists() or machine.transport_days.filter(company=request.user.company,camp=camp,date=day,presence_required=False).exists()):
         from django.http import Http404
-        raise Http404('Машина не находится в выбранном ВЖГ на эту дату.')
+        raise Http404('Машина не находится в выбранном местонахождении на эту дату.')
     current=EquipmentDayDetails.objects.filter(company=request.user.company,equipment=machine,date=day).first()
     previous=EquipmentDayDetails.objects.filter(company=request.user.company,equipment=machine,date__lt=day).first()
     initial={name:getattr(previous,name) for name,_ in DETAIL_FIELDS if name not in EMPLOYEE_FIELDS} if previous and not current else {}

@@ -138,7 +138,7 @@ def catalogue_response(request, queryset):
         from django.utils import timezone
         day=request.GET.get('as_of') or timezone.localdate()
         children=EquipmentDayDetails.objects.filter(company=request.user.company,equipment_id__in=queryset.values('pk'),date__lte=day).select_related('equipment','camp').order_by('equipment_id','date')
-        detail_columns=[('Дата','date'),('Машина','equipment'),('ВЖГ','camp.name'),*[(label,name) for name,label in DETAIL_FIELDS]]
+        detail_columns=[('Дата','date'),('Машина','equipment'),('Местонахождение','camp.name'),*[(label,name) for name,label in DETAIL_FIELDS]]
         sheets.append(('Ремонт и обслуживание',[label for label,path in detail_columns],sheet_rows(children,detail_columns)))
     elif label == 'works.ProjectWork':
         from apps.works.models import ProjectWorkItem

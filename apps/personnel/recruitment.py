@@ -264,13 +264,13 @@ def prepare_arrival(user, pk, revision, values, *, confirm=False, workflow=False
     if prep.status=='CANCELLED':raise ValidationError('Подготовка заезда отменена.')
     if prep.revision!=revision:raise ValidationError('Подготовку заезда уже изменили. Обновите страницу.')
     for field in ('expected_on','camp','employee','notes'):setattr(prep,field,values[field])
-    if prep.camp_id and not allowed_camps(user.company,row.construction_object).filter(pk=prep.camp_id).exists():raise ValidationError('ВЖГ не связан с объектом заявки.')
+    if prep.camp_id and not allowed_camps(user.company,row.construction_object).filter(pk=prep.camp_id).exists():raise ValidationError('Местонахождение не связано с объектом заявки.')
     if prep.employee_id and (prep.employee.company_id!=user.company_id or not prep.employee.is_active):raise ValidationError('Выберите действующего сотрудника своей компании.')
     if prep.employee_id and ArrivalPreparation.objects.filter(company=user.company,employee=prep.employee,status='EXPECTED').exclude(pk=pk).exists():raise ValidationError('Этот сотрудник уже привязан к другому ожидаемому заезду.')
     # A cancelled actual stay can be corrected without keeping an obsolete binding.
     if prep.actual_stay_id and prep.actual_stay.cancelled_at:prep.actual_stay=None;prep.status='EXPECTED'
     if workflow:
-        if not prep.camp_id:raise ValidationError('Укажите ВЖГ заезда.')
+        if not prep.camp_id:raise ValidationError('Укажите местонахождение заезда.')
         if prep.movement_request_id:raise ValidationError('Заявка на заезд уже отправлена. Следите за её этапами в перевахте.')
         from . import housing
         person=housing.person_for(prep.employee) if prep.employee_id else Person.objects.create(company=user.company,
@@ -285,7 +285,7 @@ def prepare_arrival(user, pk, revision, values, *, confirm=False, workflow=False
         from .departure_workflow import create_approval,log
         create_approval(request);log(request,user,'Кандидат из Банка сотрудников отправлен на согласование руководителю')
     elif confirm:
-        if not prep.employee_id or not prep.camp_id:raise ValidationError('Укажите оформленного сотрудника и ВЖГ. Кандидат сам по себе не является сотрудником.')
+        if not prep.employee_id or not prep.camp_id:raise ValidationError('Укажите оформленного сотрудника и местонахождение. Кандидат сам по себе не является сотрудником.')
         day=values.get('actual_on')
         if not day:raise ValidationError('Укажите фактическую дату заезда.')
         if day<prep.candidate.ready_on:raise ValidationError('Фактический заезд раньше готовности кандидата.')
@@ -395,7 +395,7 @@ def save_bulk_arrival_draft(user,batch,construction_object,camp,row_values,submi
     if not requests:raise ValidationError('Черновик пакетной заявки не найден.')
     if any(row.status!='OPEN' for row in requests):raise ValidationError('Заявка уже отправлена на согласование.')
     if construction_object and camp and not allowed_camps(user.company,construction_object).filter(pk=camp.pk).exists():
-        raise ValidationError('Выбранный ВЖГ не относится к указанному проекту.')
+        raise ValidationError('Выбранное местонахождение не относится к указанному проекту.')
     for row in requests:
         values=row_values[row.pk]
         row.construction_object=construction_object;row.site_object=construction_object

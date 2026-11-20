@@ -7,7 +7,7 @@ const {chromium}=require('playwright'),fs=require('fs'),assert=require('node:ass
  assert.equal(await p.locator('.transport-summary,[data-new-machine],[data-transport-action=ARRIVAL],[data-transport-action=TRANSFER],[data-transport-action=DEPARTURE],[data-transport-action=WRITEOFF],[data-transport-view]').count(),0);
  const card=id=>p.locator(`[data-transport-type="${id}"]`);
  await card(c.type).locator('[data-type-add]').click();let picker=card(c.type).locator('[data-type-picker]');
- assert.deepEqual(await picker.locator('optgroup').evaluateAll(groups=>groups.map(g=>g.label)),['Нужный тип · этот ВЖГ','Нужный тип · другие ВЖГ','Нужный тип · без оформленного ВЖГ','Остальная техника · этот ВЖГ']);
+ assert.deepEqual(await picker.locator('optgroup').evaluateAll(groups=>groups.map(g=>g.label)),['Нужный тип · это местонахождение','Нужный тип · другие местонахождения','Нужный тип · без оформленного нахождения','Остальная техника · это местонахождение']);
  assert.equal(await picker.locator(`option[value="${c.remote}"]`).count(),1);assert.equal(await picker.locator(`option[value="${c.bus}"]`).count(),1);
  await picker.locator('[name=equipment]').selectOption(String(c.remote));await Promise.all([p.waitForNavigation(),picker.getByRole('button',{name:'Добавить в факт',exact:true}).click()]);
  await card(c.empty).locator('[data-type-add]').click();picker=card(c.empty).locator('[data-type-picker]');await picker.locator('[name=equipment]').selectOption(String(c.second));await Promise.all([p.waitForNavigation(),picker.getByRole('button',{name:'Добавить в факт',exact:true}).click()]);

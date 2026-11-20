@@ -99,7 +99,7 @@ def missing_formula_result(name,row):
 
 def validate(data):
     errors=[message for name,message in data.get('_formula_errors',{}).items() if not data.get(name)]
-    for field,label,limit in [('model','Марка / модель',150),('planning_type','Техника для планирования',100),('site','ВЖГ',150)]:
+    for field,label,limit in [('model','Марка / модель',150),('planning_type','Техника для планирования',100),('site','Местонахождение',150)]:
         if not data.get(field):errors.append(f'Не заполнено: {label}.')
         elif len(data[field])>limit:errors.append(f'{label}: слишком длинное значение.')
     for field,limit in [('plate',50),('inventory',50),('vin',100)]:
@@ -175,10 +175,10 @@ def preview(user,files,day):
 
 def _camp(user,site):
     candidates=[c for c in Camp.objects.filter(company=user.company) if key(c.name)==key(site)]
-    if len(candidates)>1:raise ValidationError('Неоднозначное название ВЖГ. Уточните справочник ВЖГ.')
+    if len(candidates)>1:raise ValidationError('Неоднозначное название местонахождения. Уточните справочник местонахождений.')
     camp=candidates[0] if candidates else None
     if camp is None:
-        if role_code(user)!='ADMIN':raise ValidationError('ВЖГ не найден. Администратор должен создать городок и связать его с объектами.')
+        if role_code(user)!='ADMIN':raise ValidationError('Местонахождение не найдено. Администратор должен создать городок и связать его с объектами.')
         camp=Camp.objects.create(company=user.company,name=site)
     transport.authorize(user,camp)
     return camp

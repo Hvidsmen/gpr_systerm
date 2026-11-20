@@ -17,7 +17,7 @@ from .camp_fuel_models import CampFuelDay,FUEL_CHOICES,mass_tonnes
 
 
 class Selector(forms.Form):
-    camp=forms.ModelChoiceField(label='ВЖГ',queryset=None)
+    camp=forms.ModelChoiceField(label='Местонахождение',queryset=None)
     date=forms.DateField(label='Дата',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
     def __init__(self,*args,user,**kwargs):
         super().__init__(*args,**kwargs);self.fields['camp'].queryset=fuel_access.camps_for(user)
@@ -44,8 +44,8 @@ class DayForm(forms.Form):
 def excel(camp,fuel_type,rows):
     from openpyxl import Workbook
     from openpyxl.styles import Font
-    book=Workbook();sheet=book.active;sheet.title='ГСМ ВЖГ'
-    sheet.append(['Дата','ВЖГ','Начальный остаток, м³','Приход, м³','Расход, м³','Конечный остаток, м³','Комментарий','Первоначальный автор','Плотность на начало, т/м³','Плотность на конец, т/м³','Остаток на начало, т','Остаток на конец, т'])
+    book=Workbook();sheet=book.active;sheet.title='ГСМ местонахождения'
+    sheet.append(['Дата','Местонахождение','Начальный остаток, м³','Приход, м³','Расход, м³','Конечный остаток, м³','Комментарий','Первоначальный автор','Плотность на начало, т/м³','Плотность на конец, т/м³','Остаток на начало, т','Остаток на конец, т'])
     for row in rows:
         sheet.append([row.date,camp.name,row.opening_balance,row.received_liters,row.actual_liters,row.actual_balance,row.comment,str(row.recorded_by or ''),row.opening_density,row.closing_density,row.opening_tonnes,row.closing_tonnes])
         sheet.cell(sheet.max_row,1).number_format='DD.MM.YYYY'

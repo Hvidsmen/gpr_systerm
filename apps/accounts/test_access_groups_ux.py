@@ -20,6 +20,7 @@ class GroupUxTests(TestCase):
     def test_commandant_role_is_selectable_in_group_and_has_existing_lodging_rights(self):
         from .forms import CompanyUserAccessForm
         role=Role.objects.get(code='COMMANDANT');self.assertEqual(role.name,'Комендант участка')
+        self.assertNotIn('ВЖГ', role.description)
         page=self.client.get(self.url);self.assertIn(role,page.context['form'].fields['role'].queryset)
         form=CompanyUserAccessForm(company=self.company,instance=self.user);self.assertIn(role,form.fields['role'].queryset)
         self.client.post(reverse('accounts:access_group_edit',args=[self.group.pk]),{'name':self.group.name,'role':role.pk,'members':[self.user.pk]})
@@ -27,3 +28,8 @@ class GroupUxTests(TestCase):
         self.client.force_login(self.user)
         self.assertEqual(self.client.get(reverse('personnel:lodging')).status_code,200)
         self.assertEqual(self.client.get(self.url).status_code,403)
+
+    def test_role_descriptions_use_location_terminology(self):
+        for code in ('COMMANDANT', 'FUEL_WAREHOUSE'):
+            with self.subTest(code=code):
+                self.assertNotIn('ВЖГ', Role.objects.get(code=code).description)

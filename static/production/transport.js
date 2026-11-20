@@ -10,7 +10,7 @@
   const field=name=>form.elements[name], wrapper=name=>form.querySelector(`[data-transport-field="${name}"]`);
   const rows=[...root.querySelectorAll('[data-transport-row]')],checks=[...root.querySelectorAll('[data-select-machine]')];
   let reserved=[],submitting=false,pending=false;
-  const titles={ARRIVAL:'Оформить приезд',DAY:'Отметить работу за день',CONDITION:'Изменить техническое состояние',TRANSFER:'Перевести в другой ВЖГ',DEPARTURE:'Оформить выезд',WRITEOFF:'Списать технику'};
+  const titles={ARRIVAL:'Оформить приезд',DAY:'Отметить работу за день',CONDITION:'Изменить техническое состояние',TRANSFER:'Перевести в другое местонахождение',DEPARTURE:'Оформить выезд',WRITEOFF:'Списать технику'};
   const selected=()=>checks.filter(c=>c.checked).map(c=>c.value);
   const error=(message,inside=false)=>{const box=root.querySelector(inside?'[data-dialog-error]':'[data-transport-error]');box.textContent=message;box.hidden=!message;};
   function counts(){const ids=selected();root.querySelector('[data-selection-count]').textContent=`Выбрано: ${ids.length}`;root.querySelectorAll('[data-needs-selection]').forEach(b=>b.disabled=!ids.length);}

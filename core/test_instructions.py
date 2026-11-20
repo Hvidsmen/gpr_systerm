@@ -9,7 +9,7 @@ from .instructions_content import GUIDES
 class InstructionsTests(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.company=Company.objects.create(name='Учебная компания');project=Project.objects.create(company=cls.company,name='Учебный проект');cls.obj=ConstructionObject.objects.create(company=cls.company,project=project,name='Учебный объект');cls.camp=Camp.objects.create(company=cls.company,name='Учебный ВЖГ');CampObjectLink.objects.create(company=cls.company,camp=cls.camp,construction_object=cls.obj)
+        cls.company=Company.objects.create(name='Учебная компания');project=Project.objects.create(company=cls.company,name='Учебный проект');cls.obj=ConstructionObject.objects.create(company=cls.company,project=project,name='Учебный объект');cls.camp=Camp.objects.create(company=cls.company,name='Учебное местонахождение');CampObjectLink.objects.create(company=cls.company,camp=cls.camp,construction_object=cls.obj)
         cls.users={}
         for code in ['ADMIN','DISPATCHER','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER','COMMANDANT','FUEL_WAREHOUSE','OBSERVER','RECRUITER','RECRUITMENT_HEAD','PEREVAKHTA_SPECIALIST']:
             user=User.objects.create_user(username='help-'+code,company=cls.company,role=Role.objects.get(code=code));user.assigned_objects.add(cls.obj);cls.users[code]=user

@@ -18,4 +18,4 @@ def camps_for(user):
 def authorize(user, camp, write=True):
     require_roles(user, OPERATORS if write else READERS)
     if not camps_for(user).filter(pk=camp.pk).exists():
-        raise PermissionDenied('ВЖГ не связан с доступными вам объектами.')
+        raise PermissionDenied('Местонахождение не связано с доступными вам объектами.')

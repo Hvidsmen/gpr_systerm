@@ -9,7 +9,7 @@ from core.fact_history import ActualHistoryMixin
 from core.models import BaseCompanyModel
 
 # Historical type rows remain as source records; the current ledger is TOTAL.
-FUEL_CHOICES=[('TOTAL','ГСМ ВЖГ'),('DIESEL','Дизельное топливо'),('PETROL_92','Бензин АИ-92'),('PETROL_95','Бензин АИ-95'),
+FUEL_CHOICES=[('TOTAL','ГСМ местонахождения'),('DIESEL','Дизельное топливо'),('PETROL_92','Бензин АИ-92'),('PETROL_95','Бензин АИ-95'),
     ('PETROL_98','Бензин АИ-98'),('GAS','Газ'),('OIL','Моторное масло'),('OTHER','Другое')]
 
 
@@ -18,7 +18,7 @@ def mass_tonnes(volume,density):
 
 
 class CampFuelDay(ActualHistoryMixin,BaseCompanyModel):
-    camp=models.ForeignKey('personnel.Camp',on_delete=models.PROTECT,related_name='fuel_days',verbose_name='ВЖГ')
+    camp=models.ForeignKey('personnel.Camp',on_delete=models.PROTECT,related_name='fuel_days',verbose_name='Местонахождение')
     date=models.DateField('Дата')
     fuel_type=models.CharField('ГСМ',max_length=20,choices=FUEL_CHOICES,default='TOTAL')
     opening_balance=models.DecimalField('Остаток на начало, м³',max_digits=15,decimal_places=3,default=0)
@@ -45,6 +45,6 @@ class CampFuelDay(ActualHistoryMixin,BaseCompanyModel):
 
     def clean(self):
         super().clean()
-        if self.camp_id and self.camp.company_id!=self.company_id:raise ValidationError('ВЖГ другой компании.')
+        if self.camp_id and self.camp.company_id!=self.company_id:raise ValidationError('Местонахождение другой компании.')
 
     def __str__(self):return f'{self.camp} · {self.get_fuel_type_display()} · {self.date}'

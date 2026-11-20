@@ -14,7 +14,7 @@ const {chromium}=require('playwright'),fs=require('fs'),assert=require('node:ass
   await form().locator('[name=camp]').selectOption(String(c.camp));
   await Promise.all([page.waitForNavigation(),page.getByRole('button',{name:'Сохранить перемещение',exact:true}).click()]);
   const row=()=>page.locator(`[data-housing-person="${c.person}"]`);
-  assert((await row().textContent()).includes('Базовый ВЖГ'));
+  assert((await row().textContent()).includes('Базовое местонахождение'));
   await row().getByRole('link',{name:'Выезд',exact:true}).click();
   await form().locator('[name=kind]').selectOption('DISMISSAL');
   assert.equal(await form().locator('[name=employees]').evaluate(el=>el.selectedOptions.length),1);

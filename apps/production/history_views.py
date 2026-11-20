@@ -14,11 +14,11 @@ TITLES={
  'production.workopeningbalance':'Входящий остаток работы',
  'production.dailyfact':'Работа', 'production.employeeactivity':'Сотрудник за смену',
  'production.employeeworklink':'Связь сотрудника и работы', 'production.equipmentactivity':'Техника на объекте',
- 'production.equipmentdayrecord':'Техника на ВЖГ за день','production.equipmentcampstay':'Пребывание машины в ВЖГ',
+ 'production.equipmentdayrecord':'Техника по местонахождению за день','production.equipmentcampstay':'Пребывание машины в местонахождении',
  'production.equipmenttransportevent':'Событие транспорта','production.equipmentassignment':'Назначение техники',
  'production.equipmentstatechange':'Состояние техники','production.laborfact':'Итог по должности',
- 'production.equipmentfact':'Итог по технике','resources.transportimportrow':'Строка импорта техники','production.equipmentdaydetails':'Сведения по технике','production.campfuelday':'Баланс ГСМ на ВЖГ','production.fuelfact':'ГСМ','production.dayactuation':'Актировка',
- 'personnel.campstay':'Пребывание сотрудника в ВЖГ','personnel.housingevent':'Событие персонала',
+ 'production.equipmentfact':'Итог по технике','resources.transportimportrow':'Строка импорта техники','production.equipmentdaydetails':'Сведения по технике','production.campfuelday':'Баланс ГСМ в местонахождении','production.fuelfact':'ГСМ','production.dayactuation':'Актировка',
+ 'personnel.campstay':'Пребывание сотрудника в местонахождении','personnel.housingevent':'Событие персонала',
 }
 TITLES.update({'personnel.lodgingstay':'Проживание','personnel.lodgingevent':'Событие коменданта','personnel.lodgingbuilding':'Вагон / корпус','personnel.lodgingbed':'Жилое место','personnel.lodgingresolution':'Объяснение сверки'})
 DIRECTIONS=[('lodging','Комендант'),('works','Производство'),('labor','Персонал'),('mechanization','Транспорт и ГСМ (прежний учёт)'),('fuel','ГСМ')]
@@ -31,7 +31,7 @@ FIELD_LABELS={'gender':'Пол проживающих в вагоне','actuatio
  'comment':'Примечание','activity':'Занятость / пояснение','date':'Дата','shift':'Смена','general':'Без привязки к работе',
  'work_id':'Работа','project_work_id':'Работа','work_item_id':'Работа в комплексе','employee_id':'Сотрудник',
  'equipment_id':'Машина','position_id':'Должность','brigade_id':'Должность','equipment_type_id':'Техника для планирования',
- 'construction_object_id':'Объект','camp_id':'ВЖГ','from_camp_id':'Из ВЖГ','to_camp_id':'В ВЖГ',
+ 'construction_object_id':'Объект','camp_id':'Местонахождение','from_camp_id':'Из местонахождения','to_camp_id':'В местонахождение',
  'state':'Состояние','condition':'Техническое состояние','status':'Отметка за день','kind':'Событие',
  'arrived_on':'Приезд / заезд','departed_on':'Выезд','effective_date':'Состояние действует с','start_date':'Начало','end_date':'Окончание',
  'cancelled_at':'Дата отмены','cancelled_by_id':'Кто отменил','cancellation_reason':'Причина отмены','cancel_reason':'Причина отмены',

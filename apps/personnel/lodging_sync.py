@@ -11,7 +11,7 @@ from . import housing,lodging
 from .models import CampStay,LodgingStay,LodgingResolution,CampObjectLink,Camp
 
 HR_OPERATORS={'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'}
-TITLES={'PRODUCTION':'Есть производственный факт, нахождение в ВЖГ не оформлено','ARRIVAL':'Заезд требует подтверждения','WAITING':'Ожидает размещения','DEPARTED_OPEN':'Выезд оформлен, проживание не закрыто','AFTER_CHECKOUT':'Проживание завершено — уточнить нахождение','CAMP':'Различаются ВЖГ','DATES':'Различаются даты заезда и заселения'}
+TITLES={'PRODUCTION':'Есть производственный факт, нахождение в местонахождении не оформлено','ARRIVAL':'Заезд требует подтверждения','WAITING':'Ожидает размещения','DEPARTED_OPEN':'Выезд оформлен, проживание не закрыто','AFTER_CHECKOUT':'Проживание завершено — уточнить нахождение','CAMP':'Различаются местонахождения','DATES':'Различаются даты заезда и заселения'}
 
 
 def version(row):return [row.pk,row.updated_at.isoformat()] if row else None
@@ -116,5 +116,5 @@ def confirm_production_arrival(user,camp,day,signed,target,actual_date,comment='
     from apps.resources.models import Employee
     Employee.objects.select_for_update().get(company=user.company,pk=row['employee'].pk)
     row=verify_issue(user,[camp],day,signed)
-    if target.company_id!=user.company_id or not target.is_active:raise ValidationError('Выберите действующий ВЖГ своей компании.')
+    if target.company_id!=user.company_id or not target.is_active:raise ValidationError('Выберите действующее местонахождение своей компании.')
     housing.move(user,'ARRIVAL',target,actual_date,[],employees=[row['employee']],comment=comment or 'Нахождение уточнено по производственному факту',snapshot=housing.movement_snapshot(user))

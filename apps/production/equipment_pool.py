@@ -18,7 +18,7 @@ def prepare(company,camp,day):
     for machine in machines:
         root=machine.type.parent if machine.type.parent_id else machine.type
         stay=stays.get(machine.pk);location=0 if stay and stay.camp_id==camp.pk else 1 if stay else 2
-        whereabouts='ВЖГ: '+stay.camp.name if stay else 'Нахождение в ВЖГ не оформлено'
+        whereabouts='Местонахождение: '+stay.camp.name if stay else 'Нахождение в местонахождении не оформлено'
         numbers=' · '.join(filter(None,[machine.plate_number,machine.inventory_number,machine.vin]))
         label=' · '.join(filter(None,[root.name,machine.name,numbers,dict(CONDITIONS).get(conditions[machine.pk,day],'Состояние не указано'),whereabouts]))
         result.append({'id':machine.pk,'type':root.pk,'type_name':root.name,'location':location,'whereabouts':whereabouts,'label':label})

@@ -11,7 +11,7 @@ class LodgingImportBatch(PersonnelModel):
     snapshot_date=models.DateField()
     created_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT)
     def clean(self):
-        if self.camp_id and self.camp.company_id!=self.company_id:raise ValidationError('ВЖГ другой компании.')
+        if self.camp_id and self.camp.company_id!=self.company_id:raise ValidationError('Местонахождение другой компании.')
         if self.created_by_id and self.created_by.company_id!=self.company_id:raise ValidationError('Автор другой компании.')
     class Meta:
         constraints=[models.UniqueConstraint(fields=['company','camp','digest'],name='unique_lodging_import_file')]

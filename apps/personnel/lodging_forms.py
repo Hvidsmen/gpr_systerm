@@ -13,7 +13,7 @@ class StyledForm(forms.Form):
 
 
 class LodgingFilter(StyledForm):
-    camp=forms.ModelChoiceField(label='ВЖГ',queryset=Camp.objects.none())
+    camp=forms.ModelChoiceField(label='Местонахождение',queryset=Camp.objects.none())
     date=forms.DateField(label='На дату',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
     q=forms.CharField(label='Поиск',required=False,widget=forms.TextInput(attrs={'placeholder':'Сотрудник, табельный номер, вагон или место'}))
     state=forms.ChoiceField(label='Места',required=False,choices=[('','Все'),('OCCUPIED','Занятые'),('FREE','Свободные'),('RESERVED','Зарезервированные'),('UNAVAILABLE','Недоступные')])

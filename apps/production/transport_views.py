@@ -29,7 +29,7 @@ DATE_INPUT = forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'})
 
 
 class Selector(forms.Form):
-    camp = forms.ModelChoiceField(label='ВЖГ', queryset=Camp.objects.none())
+    camp = forms.ModelChoiceField(label='Местонахождение', queryset=Camp.objects.none())
     date = forms.DateField(label='Дата', widget=DATE_INPUT)
     q = forms.CharField(label='Поиск техники', required=False, max_length=150, widget=forms.TextInput(attrs={'type':'search','placeholder':'Номер, VIN, название или модель'}))
     condition = forms.ChoiceField(label='Состояние', required=False, choices=[('', 'Все состояния'), *CONDITIONS])
@@ -77,7 +77,7 @@ def target_choices(user, camp, day, current=(), resource_plans=None):
 class ActionForm(forms.Form):
     action = forms.ChoiceField(widget=forms.HiddenInput, choices=[('ARRIVAL','Приезд'),('DEPARTURE','Выезд'),('TRANSFER','Перевод'),('WRITEOFF','Списание'),('CONDITION','Состояние'),('DAY','Отметка за день')])
     equipment = forms.ModelMultipleChoiceField(label='Техника', queryset=Equipment.objects.none())
-    target_camp = forms.ModelChoiceField(label='ВЖГ назначения', queryset=Camp.objects.none(), required=False)
+    target_camp = forms.ModelChoiceField(label='Местонахождение назначения', queryset=Camp.objects.none(), required=False)
     condition = forms.ChoiceField(label='Техническое состояние',choices=CONDITIONS,required=False,initial='READY')
     status = forms.ChoiceField(label='Работа за день',choices=[*USES,('CLEAR','Очистить отметку за день')],required=False,initial='WORKED')
     target = forms.ChoiceField(label='Где работала — объект / работа (необязательно)',required=False)
@@ -117,7 +117,7 @@ class ActionForm(forms.Form):
 def equipment_choices(request):
     require_roles(request.user,service.OPERATORS)
     selector=Selector({'camp':request.GET.get('camp'),'date':request.GET.get('date')},user=request.user)
-    if not selector.is_valid():return JsonResponse({'error':'Выберите доступный ВЖГ и дату.'},status=400)
+    if not selector.is_valid():return JsonResponse({'error':'Выберите доступное местонахождение и дату.'},status=400)
     camp,day=selector.cleaned_data['camp'],selector.cleaned_data['date'];service.authorize(request.user,camp,False)
     query=Equipment.objects.filter(company=request.user.company,is_active=True).select_related('type__parent')
     action=request.GET.get('kind')
@@ -151,7 +151,7 @@ def _rows(user, camp, day, *, include_external=False):
         owner=control.locked_by if control and control.expires_at and control.expires_at>timezone.now() else None
         actual=machine.type.parent if machine.type.parent_id else machine.type
         rows.append({'machine':machine,'stay':stay,'record':record,'condition':condition,'condition_label':dict(CONDITIONS).get(condition,'Не указано'),
-            'at_camp':bool(stay and stay.camp_id==camp.pk),'whereabouts':'ВЖГ: '+stay.camp.name if stay else 'Нахождение в ВЖГ не оформлено',
+            'at_camp':bool(stay and stay.camp_id==camp.pk),'whereabouts':'Местонахождение: '+stay.camp.name if stay else 'Нахождение в местонахождении не оформлено',
             'status':status,'status_label':dict(USES).get(status,'Не заполнено'),'owner':owner,
             'planning_type':record.planning_type if include_external and record and record.planning_type_id else actual,'actual_planning_type':actual,
             'target':f'work:{record.work_id}:{record.work_item_id or 0}' if record and record.work_id else f'object:{record.construction_object_id}' if record and record.construction_object_id else '',
@@ -207,7 +207,7 @@ def _excel(camp,day,rows):
     from openpyxl import Workbook
     from openpyxl.styles import Font,PatternFill
     workbook=Workbook();ws=workbook.active;ws.title='Техника за день'
-    ws.append(['Дата','ВЖГ','Техника для планирования','Название','Госномер','Инвентарный номер','VIN','Состояние','За день','Объект','Работа','Работа в комплексе','Комментарий','Кто внёс','Фактический тип','Нахождение'])
+    ws.append(['Дата','Местонахождение','Техника для планирования','Название','Госномер','Инвентарный номер','VIN','Состояние','За день','Объект','Работа','Работа в комплексе','Комментарий','Кто внёс','Фактический тип','Нахождение'])
     for row in rows:
         m=row['machine'];r=row['record']
         values=[day.isoformat(),camp.name,row['planning_type'].name,m.name,m.plate_number,m.inventory_number,m.vin,row['condition_label'],row['status_label'],r.construction_object.name if r and r.construction_object_id else '',r.work.name if r and r.work_id else '',r.work_item.name if r and r.work_item_id else '',r.comment if r else '',(r.recorded_by.get_full_name() or r.recorded_by.username) if r and r.recorded_by_id else '',row['actual_planning_type'].name,row['whereabouts']]
@@ -222,7 +222,7 @@ def _excel(camp,day,rows):
     ids=[r['machine'].pk for r in rows]
     details=EquipmentDayDetails.objects.filter(company=camp.company,equipment_id__in=ids,date__lte=day)
     latest=EquipmentDayDetails.objects.filter(company=camp.company,equipment_id=OuterRef('equipment_id'),date__lte=day).order_by('-date','-pk').values('pk')[:1]
-    notes=workbook.create_sheet('Ремонт и обслуживание');notes.append(['Дата сведений','Машина','ВЖГ',*[label for name,label in DETAIL_FIELDS]])
+    notes=workbook.create_sheet('Ремонт и обслуживание');notes.append(['Дата сведений','Машина','Местонахождение',*[label for name,label in DETAIL_FIELDS]])
     for detail in details.filter(pk=Subquery(latest)).select_related('equipment','camp'):
         notes.append([detail.date.isoformat(),str(detail.equipment),detail.camp.name,*[str(getattr(detail,name)) if hasattr(getattr(detail,name),'_meta') else getattr(detail,'get_repair_stage_display')() if name=='repair_stage' else getattr(detail,name) for name,label in DETAIL_FIELDS]])
         for cell in notes[notes.max_row]:
@@ -410,7 +410,7 @@ class NewMachineForm(UnitForm):
         if data.get('model'):data['brand_model']=data['model'].brand_model or data['model'].name
         if selected:self.instance.name=(selected.brand_model if selected.parent_id else '') or data.get('brand_model') or selected.name
         return data
-    receive=forms.BooleanField(label='Сразу оформить приезд в выбранный ВЖГ',required=False,initial=True)
+    receive=forms.BooleanField(label='Сразу оформить приезд в выбранное местонахождение',required=False,initial=True)
     condition=forms.ChoiceField(label='Техническое состояние при приезде',choices=CONDITIONS,initial='READY')
 
 
@@ -438,7 +438,7 @@ def create_machine(request):
                 proposal=CatalogueReviewRequest.objects.create(company=request.user.company,kind='machine',machine=machine,created_by=request.user,origin_label='Транспорт · '+camp.name)
                 sync_task(proposal)
             if ajax:return JsonResponse({'saved':True,'id':machine.pk,'received':form.cleaned_data['receive'],'review':'PENDING','request':proposal.pk})
-            messages.success(request,'Машина добавлена в справочник'+(' и принята в ВЖГ.' if form.cleaned_data['receive'] else '. Приезд можно оформить позднее.'))
+            messages.success(request,'Машина добавлена в справочник'+(' и добавлена в местонахождение.' if form.cleaned_data['receive'] else '. Приезд можно оформить позднее.'))
             return redirect(reverse('production:transport_board')+'?'+urlencode({'camp':camp.pk,'date':str(day)}))
         except ValidationError as exc:form.add_error(None,ValidationError('; '.join(exc.messages)))
     if ajax:return JsonResponse({'errors':form.errors},status=400)

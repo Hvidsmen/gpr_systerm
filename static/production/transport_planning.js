@@ -6,7 +6,7 @@
  function reload(){remember();location.reload();}
  try{const saved=JSON.parse(sessionStorage.getItem(key)||'null');sessionStorage.removeItem(key);if(saved&&saved.url===location.href&&Date.now()-saved.at<60000)requestAnimationFrame(()=>{root.querySelectorAll('[data-transport-group]').forEach(el=>el.open=!saved.closed.includes(groupKey(el)));const outside=root.querySelector('[data-outside-facts]');if(outside)outside.open=Boolean(saved.outside);root.querySelector('[data-transport-table-scroll]').scrollLeft=saved.x;scrollTo(0,saved.y);if(saved.outsideType)root.querySelector('[data-transport-type="'+saved.outsideType+'"]')?.scrollIntoView({block:'center'});});}catch{}
  const pool=JSON.parse(document.getElementById('transport-machine-pool')?.textContent||'[]');
- const labels=['Нужный тип · этот ВЖГ','Нужный тип · другие ВЖГ','Нужный тип · без оформленного ВЖГ','Остальная техника · этот ВЖГ','Остальная техника · другие ВЖГ','Остальная техника · без оформленного ВЖГ'];
+ const labels=['Нужный тип · это местонахождение','Нужный тип · другие местонахождения','Нужный тип · без оформленного нахождения','Остальная техника · это местонахождение','Остальная техника · другие местонахождения','Остальная техника · без оформленного нахождения'];
  function fillMachines(form,typeId){
   const select=form.elements.equipment;select.replaceChildren(new Option('Выберите фактически работавшую машину',''));
   const groups=Array.from({length:6},()=>[]);

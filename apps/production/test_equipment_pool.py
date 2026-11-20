@@ -36,7 +36,7 @@ class EquipmentPoolTests(TestCase):
         self.assertEqual(self.assign(self.second,self.planned_only).status_code,200)
         self.assertFalse(self.second.camp_stays.exists())
         self.assertEqual(self.client.get(reverse('production:transport_history',args=[self.second.pk])).status_code,200)
-        page=self.page();self.assertEqual(len(page.context['rows']),2);self.assertContains(page,'Нахождение в ВЖГ не оформлено')
+        page=self.page();self.assertEqual(len(page.context['rows']),2);self.assertContains(page,'Нахождение в местонахождении не оформлено')
         row=next(r for r in page.context['planning_types'] if r['id']==self.planned_only.pk)
         self.assertEqual((row['worked'],row['available']),(1,0))
         payload=dict(camp=self.camp.pk,date=str(self.day),equipment=self.machine.pk,field='status',value='IDLE',signed=transport.snapshot(self.operator,self.camp,self.day),session=str(uuid4()))

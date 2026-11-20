@@ -15,7 +15,7 @@ from .views import access
 
 class DepartureForm(forms.Form):
     date=forms.DateField(label='Фактическая дата выезда',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
-    camp=forms.ModelChoiceField(label='Из какого ВЖГ выехал',queryset=Camp.objects.none())
+    camp=forms.ModelChoiceField(label='Из какого местонахождения выехал',queryset=Camp.objects.none())
     comment=forms.CharField(label='Основание уточнения',max_length=4000,widget=forms.Textarea(attrs={'rows':2}))
     version=forms.CharField(required=False,widget=forms.HiddenInput)
     def __init__(self,*args,company,**kwargs):

@@ -199,12 +199,12 @@ class SmgPeriodReportTests(TestCase):
         self.assertEqual(report['warehouse'][0]['unit'], 'м³')
         self.assertContains(self.request(), 'Расход, м³')
         self.assertContains(self.request(), 'data-resource-total="fuel"')
-        self.assertContains(self.request(), 'Факт расхода ВЖГ')
+        self.assertContains(self.request(), 'Факт расхода местонахождений')
         response = self.request(export=True)
         self.assertEqual(response.status_code, 200)
         book = load_workbook(BytesIO(b''.join(response.streaming_content)))
         self.assertEqual(book['ГСМ · план объекта']['C5'].value, 5000)
-        self.assertEqual(book['ГСМ · факт ВЖГ']['D5'].value, 1.25)
+        self.assertEqual(book['ГСМ · факт местонахождения']['D5'].value, 1.25)
 
     def test_read_requests_do_not_change_catalogues_or_facts(self):
         from apps.resources.models import PositionPlanningBrigade

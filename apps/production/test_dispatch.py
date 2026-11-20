@@ -27,7 +27,7 @@ class DispatcherTests(TestCase):
         cls.reason=DeviationReason.objects.create(company=cls.company,name='Материалы')
         cls.day=timezone.localdate()-timedelta(days=1)
         from apps.personnel.models import Camp,CampObjectLink,CampStay,Person
-        cls.housing_camp=Camp.objects.create(company=cls.company,name='ВЖГ Dispatcher')
+        cls.housing_camp=Camp.objects.create(company=cls.company,name='Местонахождение Dispatcher')
         CampObjectLink.objects.create(company=cls.company,camp=cls.housing_camp,construction_object=cls.obj)
         cls.housing_person=Person.objects.create(company=cls.company,full_name=cls.employee.display_name,employee=cls.employee)
         CampStay.objects.create(company=cls.company,person=cls.housing_person,camp=cls.housing_camp,arrived_on=cls.day)

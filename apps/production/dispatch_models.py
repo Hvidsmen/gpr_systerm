@@ -49,16 +49,16 @@ class EquipmentActivity(ShiftActivity):
         if self.equipment_id and self.date and EquipmentTransportEvent.objects.filter(equipment_id=self.equipment_id,cancelled_at=None,date__lte=self.date).exclude(kind='CONDITION').exists():
             from .transport import present,condition_on
             location=present(self.company,self.date).filter(equipment_id=self.equipment_id).first()
-            if not location:raise ValidationError({'equipment':'Техника не находится на ВЖГ на эту дату. Проверьте журнал транспорта.'})
+            if not location:raise ValidationError({'equipment':'Техника не находится в местонахождении на эту дату. Проверьте журнал транспорта.'})
             if self.state in {'WORKING','IDLE'} and condition_on(self.equipment,self.date)!='READY':
                 # A confirmed transport day is independent of the latest technical state.
                 # Legacy forms cannot create this exception from posted model fields.
                 from .transport_models import EquipmentDayRecord
                 confirmed=EquipmentDayRecord.objects.filter(pk=getattr(self,'_transport_day_id',None),company_id=self.company_id,equipment_id=self.equipment_id,date=self.date,construction_object_id=self.construction_object_id,status='WORKED' if self.state=='WORKING' else 'IDLE').exists()
-                if not confirmed:raise ValidationError({'state':'Техника не исправна по журналу ВЖГ. Внесите фактическую работу за день через учёт транспорта.'})
+                if not confirmed:raise ValidationError({'state':'Техника не исправна по журналу перемещений. Внесите фактическую работу за день через учёт транспорта.'})
             previous=type(self).objects.filter(pk=self.pk).values('construction_object_id').first() if self.pk else None
             if (not previous or previous['construction_object_id']!=self.construction_object_id) and not location.camp.object_links.filter(company=self.company,construction_object_id=self.construction_object_id).exists():
-                raise ValidationError({'construction_object':'Объект не связан с ВЖГ, на котором находится машина.'})
+                raise ValidationError({'construction_object':'Объект не связан с местонахождением, в котором находится машина.'})
         from .equipment_operations_models import EquipmentAssignment
         if self.equipment_id and self.date and EquipmentAssignment.objects.filter(equipment_id=self.equipment_id,shift=self.shift,start_date__lte=self.date,cancelled_at__isnull=True).filter(models.Q(end_date__isnull=True)|models.Q(end_date__gte=self.date)).exclude(construction_object_id=self.construction_object_id).exists():
             raise ValidationError({'equipment':'На эту дату и смену техника назначена другому объекту. Сначала завершите прежнее назначение.'})

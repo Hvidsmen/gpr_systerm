@@ -175,5 +175,5 @@ def equipment(request):
             except ValidationError as exc:warn(output,f'{old.equipment}: '+ '; '.join(exc.messages))
         require_fact_day(request.user,day)
         return JsonResponse(output)
-    except (ValueError,TypeError,AttributeError):return JsonResponse({'error':'Выберите ВЖГ, дату и корректный сеанс.'},status=400)
+    except (ValueError,TypeError,AttributeError):return JsonResponse({'error':'Выберите местонахождение, дату и корректный сеанс.'},status=400)
     except ValidationError as exc:return JsonResponse({'error':'; '.join(exc.messages)},status=409)

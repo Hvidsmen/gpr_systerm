@@ -62,7 +62,7 @@ def save_day(user,camp,day,fuel_type,*,received,consumed,opening=None,comment=''
     try:payload=signing.loads(signed,salt=SALT,max_age=12*3600)
     except (signing.BadSignature,TypeError):raise ValidationError('Форма устарела. Обновите страницу.')
     if (payload.get('user'),payload.get('company'),payload.get('camp'),payload.get('date'),payload.get('fuel'))!=(user.pk,user.company_id,camp.pk,str(day),fuel_type):
-        raise ValidationError('Форма другого пользователя, ВЖГ, дня или вида ГСМ.')
+        raise ValidationError('Форма относится к другому пользователю, местонахождению, дню или виду ГСМ.')
     rows=list(ledger(camp,fuel_type).select_for_update())
     if payload.get('version')!=_version(camp,fuel_type):raise ValidationError('Баланс уже изменил другой диспетчер. Обновите страницу и проверьте новые значения перед сохранением.')
     if rows and day<rows[0].date:raise ValidationError(f'Учёт этого ГСМ начат {rows[0].date:%d.%m.%Y}. Более раннюю дату нельзя добавить перед начальным остатком.')

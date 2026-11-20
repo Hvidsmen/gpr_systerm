@@ -28,7 +28,7 @@ def review(company,camp,day):
         elif not on_shift:reason='В таблице отмечен отдых или не задан статус вахты'
         elif not person.employee_id:reason='Не связан со справочником сотрудников'
         elif not person.employee.is_active:reason='Сотрудник неактивен в справочнике'
-        elif not eligible:reason='Другой ВЖГ или не указан ВЖГ. Уточните источник и размещение'
+        elif not eligible:reason='Другое местонахождение или местонахождение не указано. Уточните источник и размещение'
         elif person.stays.exists():reason='Есть история размещения. Старый статус таблицы не заменяет новый фактический заезд'
         else:
             dates={s.arrival_date for s in eligible if s.arrival_date and s.arrival_date<=day}

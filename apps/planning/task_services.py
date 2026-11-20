@@ -206,7 +206,7 @@ def sync_company(company):
 def generate_daily(user,*,today=None):
     if not user.is_active or not user.company_id or role_code(user) not in DISPATCHER_ROLES:return 0
     if role_code(user)=='FUEL_WAREHOUSE':
-        for task in WorkTask.objects.filter(company=user.company,assigned_to=user,kind='FACT',status__in=ACTIVE):state(task,'SUPERSEDED',text='ГСМ ведётся по ВЖГ. Учёт по объектам отключён.')
+        for task in WorkTask.objects.filter(company=user.company,assigned_to=user,kind='FACT',status__in=ACTIVE):state(task,'SUPERSEDED',text='ГСМ ведётся по местонахождениям. Учёт по объектам отключён.')
         return 0
     today=today or timezone.localdate();yesterday=today-timedelta(days=1);count=0
     User.objects.select_for_update().only('pk').get(pk=user.pk)

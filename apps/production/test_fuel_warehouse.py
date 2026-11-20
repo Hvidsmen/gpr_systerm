@@ -51,7 +51,7 @@ class FuelWarehouseTests(TestCase):
         self.assertEqual(self.client.get(url, params | {'export':'xlsx'}).status_code,200)
         for route in ['production:transport_board','accounts:user_list','resources:equipment_type_list','planning:workspace_list']:
             self.assertEqual(self.client.get(reverse(route)).status_code,403)
-        hidden = Camp.objects.create(company=self.company,name='Другой ВЖГ')
+        hidden = Camp.objects.create(company=self.company,name='Другое местонахождение')
         CampObjectLink.objects.create(company=self.company,camp=hidden,construction_object=self.other)
         self.assertEqual(self.client.post(url, data | {'camp':hidden.pk}).status_code,400)
         self.fuel_user.assigned_objects.clear()

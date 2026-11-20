@@ -20,9 +20,9 @@ class TransportTests(TestCase):
     def setUpTestData(cls):
         fixtures.DispatcherTests.setUpTestData.__func__(cls)
         cls.operator=cls.users['MECHANIZATION_DISPATCHER'];cls.admin=cls.users['ADMIN'];cls.camp=cls.housing_camp
-        cls.target=Camp.objects.create(company=cls.company,name='ВЖГ 2')
+        cls.target=Camp.objects.create(company=cls.company,name='Местонахождение 2')
         CampObjectLink.objects.create(company=cls.company,camp=cls.target,construction_object=cls.obj)
-        cls.unrelated=Camp.objects.create(company=cls.company,name='Недоступный ВЖГ')
+        cls.unrelated=Camp.objects.create(company=cls.company,name='Недоступное местонахождение')
         CampObjectLink.objects.create(company=cls.company,camp=cls.unrelated,construction_object=cls.other)
         cls.second=Equipment.objects.create(company=cls.company,type=cls.type,name='Second crane',inventory_number='INV-2',vin='TEST-002')
         cls.colleague=User.objects.create_user(username='transport-colleague',company=cls.company,role=Role.objects.get(code='MECHANIZATION_DISPATCHER'))

@@ -6,7 +6,7 @@
 <h2 class="h4">Удалить назначение</h2>
 <dl class="row"><dt class="col-sm-4">Сотрудник</dt><dd class="col-sm-8">{{ row.person.display_name }}</dd>
 <dt class="col-sm-4">Должность плана</dt><dd class="col-sm-8">{{ row.planning_position }}</dd>
-<dt class="col-sm-4">Объект / ВЖГ</dt><dd class="col-sm-8">{{ row.construction_object }} · {{ row.housing_camp }}</dd>
+<dt class="col-sm-4">Объект / Местонахождение</dt><dd class="col-sm-8">{{ row.construction_object }} · {{ row.housing_camp }}</dd>
 <dt class="col-sm-4">Период</dt><dd class="col-sm-8">С {{ row.assigned_from|date:'d.m.Y' }}{% if row.assigned_until %} по {{ row.assigned_until|date:'d.m.Y' }}{% else %}, без даты окончания{% endif %}</dd></dl>
 {% if row.cancelled_at %}<div class="alert alert-info">Назначение уже удалено. Запись сохранена в истории.</div>
 {% else %}<p>Связь сотрудника с этой должностью и объектом будет исключена из состава и расчётов за весь период назначения. Запись с автором удаления останется в истории.</p>

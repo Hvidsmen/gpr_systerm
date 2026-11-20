@@ -18,7 +18,7 @@ STATUS_HELP={
     'DEPARTURE_PENDING':'Сотрудник на вахте; выезд по графику сегодня или в ближайшие 14 дней включительно.',
     'ARRIVAL_OVERDUE':'Плановая дата возвращения прошла, а сотрудник пока на МО или со статусом, который нужно уточнить. Фактический заезд не подтверждён.',
     'ARRIVING':'На выбранную дату указан фактический или исходный заезд, запланировано возвращение либо в графике стоит входящий день пути.',
-    'DEPARTING':'На выбранную дату указан фактический или исходный выезд либо выезд по графику. Включает дни пути на выезд и переводы из выбранного ВЖГ.',
+    'DEPARTING':'На выбранную дату указан фактический или исходный выезд либо выезд по графику. Включает дни пути на выезд и переводы из выбранного местонахождения.',
     'MV':'Сотрудник числится на вахте по фактическим перемещениям; если их нет — по начальным данным. Это не означает, что сегодня у него рабочий день.',
     'MO':'Сотрудник на межвахтовом отдыхе по фактическому выезду; если перемещений нет — по начальным данным.',
     'TRAVEL':'В индивидуальном графике на выбранную дату стоит ДП — день пути. Направление поездки может быть на вахту или с вахты.',
@@ -38,7 +38,7 @@ class RotationStatusSelect(forms.Select):
 
 class RotationFilter(forms.Form):
     construction_object=forms.ModelChoiceField(label='Проект',queryset=ConstructionObject.objects.none(),required=True,empty_label=None)
-    camps=forms.ModelMultipleChoiceField(label='ВЖГ',queryset=Camp.objects.none(),required=True,
+    camps=forms.ModelMultipleChoiceField(label='Местонахождение',queryset=Camp.objects.none(),required=True,
         widget=forms.SelectMultiple(attrs={'size':6,'data-personnel-searchable':''}))
     date=forms.DateField(label='На дату',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
     q=forms.CharField(label='Сотрудник',required=False,widget=forms.TextInput(attrs={'placeholder':'ФИО, должность или табельный номер'}))
@@ -61,7 +61,7 @@ class RotationFilter(forms.Form):
                 if children<=ids:break
                 ids.update(children)
             invalid=camps.exclude(object_links__company=self.company,object_links__construction_object_id__in=ids).distinct()
-            if invalid.exists():self.add_error('camps','Выберите только ВЖГ, относящиеся к выбранному проекту.')
+            if invalid.exists():self.add_error('camps','Выберите только местонахождения, относящиеся к выбранному проекту.')
         return data
     def selected_camps(self,company):
         return self.cleaned_data['camps'].order_by('name','pk')
@@ -326,12 +326,12 @@ def filter_position(rows,position):
 
 def status_indicator(row):
     if row.get('movement_route_status')=='AT_HUB':return 'blue','В ОП Дудинка','Сотрудник прибыл в ОП Дудинка. Билеты и обходной лист оформляются параллельно.'
-    if row.get('movement_route_status')=='EN_ROUTE':return 'blue','В пути в ВЖГ','Сотрудник выехал из ОП Дудинка и ещё не прибыл в ВЖГ.'
-    if row.get('future_arrival'):return 'blue',f"Ожидается заезд {row['planned_arrival'].strftime('%d.%m.%Y')}",'Заезд подтверждён будущей датой. До этой даты сотрудник не входит в фактическую численность ВЖГ.'
+    if row.get('movement_route_status')=='EN_ROUTE':return 'blue','В пути к местонахождению','Сотрудник выехал из ОП Дудинка и ещё не прибыл в местонахождение.'
+    if row.get('future_arrival'):return 'blue',f"Ожидается заезд {row['planned_arrival'].strftime('%d.%m.%Y')}",'Заезд подтверждён будущей датой. До этой даты сотрудник не входит в фактическую численность местонахождения.'
     if row.get('departure_warning')=='overdue':return 'red','Выезд просрочен',STATUS_HELP['DEPARTURE_OVERDUE']
     if row.get('arrival_overdue'):return 'red','Заезд просрочен',STATUS_HELP['ARRIVAL_OVERDUE']
     if row.get('departure_warning')=='soon':return 'yellow','Ожидает выезда',STATUS_HELP['DEPARTURE_PENDING']
-    if row.get('legacy_only'):return 'yellow','Заезд не оформлен','На вахте по начальным данным. Оформите фактический заезд, проверив дату и ВЖГ.'
+    if row.get('legacy_only'):return 'yellow','Заезд не оформлен','На вахте по начальным данным. Оформите фактический заезд, проверив дату и местонахождение.'
     if row.get('state')=='MO' and row.get('actual_rest_started'):return 'muted','Межвахтовый отдых',STATUS_HELP['MO']
     if row.get('today_code')=='ДП':return 'blue','В пути',STATUS_HELP['TRAVEL']
     if row.get('state')=='MV':return 'green','На вахте',STATUS_HELP['MV']

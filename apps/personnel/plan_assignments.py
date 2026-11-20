@@ -131,7 +131,7 @@ class AssignmentForm(forms.Form):
     employee=forms.ModelChoiceField(label='Сотрудник',queryset=Employee.objects.none(),widget=InitialEmployeeSelect(attrs={'data-remote-scope':'assignment'}))
     planning_position=forms.ModelChoiceField(label='Должность из СМГ / ГПР',queryset=Brigade.objects.none())
     construction_object=forms.ModelChoiceField(label='Объект назначения',queryset=ConstructionObject.objects.none())
-    housing_camp=forms.ModelChoiceField(label='ВЖГ назначения',queryset=Camp.objects.none(),help_text='Выберите ВЖГ, обслуживающий этот объект или его подобъекты. Начальные заезд / выезд ниже относятся к этому ВЖГ.')
+    housing_camp=forms.ModelChoiceField(label='Местонахождение назначения',queryset=Camp.objects.none(),help_text='Выберите местонахождение, обслуживающее этот объект или его подобъекты. Начальные заезд / выезд ниже относятся к этому местонахождению.')
     assigned_from=forms.DateField(label='Назначить с',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
     assigned_until=forms.DateField(label='По дату включительно',required=False,widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}),help_text='Оставьте пустым для назначения без даты окончания.')
     pattern=forms.ModelChoiceField(label='График',queryset=ShiftPattern.objects.none(),required=False,empty_label='Без личного графика — вахтовый цикл из ЗУП, если задан',help_text='Личный график имеет приоритет над вахтовым циклом из кадровых данных.')
@@ -189,7 +189,7 @@ class AssignmentForm(forms.Form):
         if end and start and end<start:self.add_error('assigned_until','Дата окончания раньше начала назначения.')
         obj,camp=data.get('construction_object'),data.get('housing_camp')
         if obj and camp and not camp.object_links.filter(company=self.company,construction_object_id__in=object_scope(obj)).exists():
-            self.add_error('housing_camp','Этот ВЖГ не обслуживает выбранный объект или его подобъекты.')
+            self.add_error('housing_camp','Это местонахождение не обслуживает выбранный объект или его подобъекты.')
         return data
 
 
@@ -202,7 +202,7 @@ def save_assignment(user,data,row_id=None,initial_state=None,previous=None):
     role=Brigade.objects.get(company=user.company,pk=data['planning_position'].pk)
     obj=ConstructionObject.objects.get(company=user.company,pk=data['construction_object'].pk)
     camp=Camp.objects.get(company=user.company,is_active=True,pk=data['housing_camp'].pk)
-    if not camp.object_links.filter(company=user.company,construction_object_id__in=object_scope(obj)).exists():raise ValidationError('ВЖГ не обслуживает объект назначения.')
+    if not camp.object_links.filter(company=user.company,construction_object_id__in=object_scope(obj)).exists():raise ValidationError('Местонахождение не обслуживает объект назначения.')
     person=housing.person_for(employee)
     if person.dispatcher_removed_at:
         removal={'removed_at':person.dispatcher_removed_at.isoformat(),'removed_by':person.dispatcher_removed_by_id,
@@ -268,7 +268,7 @@ def change_assignment(user,source_id,data):
     if source.updated_at.isoformat()!=data['version']:raise ValidationError('Назначение уже изменено другим пользователем. Обновите страницу.')
     if source.replaced_on:raise ValidationError('Это назначение уже заменено.')
     if data['assigned_from']<source.assigned_from:raise ValidationError('Дата смены не может быть раньше начала прежнего назначения.')
-    if (source.planning_position_id,source.construction_object_id,source.housing_camp_id)==values[:3]:raise ValidationError('Выберите новую должность, объект или ВЖГ. Для исправления дат используйте «Назначение».')
+    if (source.planning_position_id,source.construction_object_id,source.housing_camp_id)==values[:3]:raise ValidationError('Выберите новую должность, объект или местонахождение. Для исправления дат используйте «Назначение».')
     source.replaced_on=data['assigned_from'];source.save(update_fields=['replaced_on','updated_at'])
     # The surrounding transaction rolls this boundary back if the new period conflicts.
     return save_assignment(user,{**data,'pattern':source.pattern},previous=source)
@@ -368,7 +368,7 @@ def change(request,pk):
     if source.cancelled_at and request.method=='GET':return redirect('personnel:plan_assignment_edit',pk=source.pk)
     form=AssignmentForm(request.POST if request.method=='POST' else None,company=request.user.company,row=source)
     form.fields.pop('pattern');form.fields['assigned_from'].label='Сменить с'
-    form.fields['housing_camp'].help_text='ВЖГ планового назначения. Фактический перевод оформляется в «Заезд / выезд».'
+    form.fields['housing_camp'].help_text='Местонахождение планового назначения. Фактический перевод оформляется в «Заезд / выезд».'
     form.fields['employee'].help_text='Меняется назначение этого сотрудника. Штатная должность в справочнике сохраняется.'
     if request.method=='GET':
         try:when=forms.DateField().clean(request.GET.get('date') or timezone.localdate())

@@ -88,7 +88,7 @@ def bed_versions(user,keys):return {str(b.pk):b.updated_at.isoformat() for b in 
 @transaction.atomic
 def claim(user,camp,day,employee,bed,session,action='acquire'):
     require_roles(user,OPERATORS);require_fact_day(user,day);session=session_id(session)
-    if camp.company_id!=user.company_id or bed and bed.building.camp_id!=camp.pk:raise ValidationError('Место другого ВЖГ.')
+    if camp.company_id!=user.company_id or bed and bed.building.camp_id!=camp.pk:raise ValidationError('Место другого местонахождения.')
     mutex(user);keys=resources(user,employee,bed,day);rows=controls(user,keys)
     if action in {'acquire','renew'}:
         for row in rows:locked_elsewhere(row,user,session)
@@ -111,7 +111,7 @@ def claim(user,camp,day,employee,bed,session,action='acquire'):
 def check(user,camp,day,employee,bed,session,signed):
     try:payload=signing.loads(signed,salt=SALT,max_age=3600)
     except (signing.BadSignature,TypeError):raise ValidationError('Возьмите сотрудника и место в оформление заново.')
-    if any(payload.get(k)!=v for k,v in {'user':user.pk,'company':user.company_id,'camp':camp.pk,'day':str(day),'session':str(session)}.items()):raise ValidationError('Форма относится к другому пользователю, ВЖГ или дате.')
+    if any(payload.get(k)!=v for k,v in {'user':user.pk,'company':user.company_id,'camp':camp.pk,'day':str(day),'session':str(session)}.items()):raise ValidationError('Форма относится к другому пользователю, местонахождению или дате.')
     keys=resources(user,employee,bed,day);rows=controls(user,keys)
     if payload.get('versions')!=version(rows) or payload.get('beds')!=bed_versions(user,keys):raise ValidationError('Проживание или место уже изменены. Обновите данные и начните оформление заново.')
     for row in rows:
@@ -130,17 +130,17 @@ def bump(rows):
 def move(user,kind,camp,day,employee,*,bed=None,session=None,signed=None,planned_departure=None,keys_issued=False,key_number='',pass_number='',comment=''):
     require_roles(user,OPERATORS);require_fact_day(user,day)
     if kind not in {'CHECKIN','MOVE','CHECKOUT','UPDATE'}:raise ValidationError('Выберите действие с проживанием.')
-    if camp.company_id!=user.company_id:raise ValidationError('ВЖГ другой компании.')
+    if camp.company_id!=user.company_id:raise ValidationError('Местонахождение другой компании.')
     mutex(user);employee=Employee.objects.select_for_update().get(company=user.company,pk=employee.pk)
     if bed:bed=LodgingBed.objects.select_for_update().select_related('building').get(company=user.company,pk=bed.pk)
     rows=check(user,camp,day,employee,bed,session_id(session),signed)
     current=present(user.company,day).select_for_update().filter(employee=employee).first()
     if kind in {'CHECKIN','MOVE'}:
         if not employee.is_active:raise ValidationError('Для нового заселения выберите активного сотрудника.')
-        if not bed or bed.building.camp_id!=camp.pk:raise ValidationError('Выберите место в этом ВЖГ.')
+        if not bed or bed.building.camp_id!=camp.pk:raise ValidationError('Выберите место в этом местонахождении.')
         if not camp.is_active or not bed.building.is_active or bed.state!='AVAILABLE':raise ValidationError('Место недоступно. Снимите резерв или измените доступность в справочнике.')
         if kind=='CHECKIN' and current:raise ValidationError('Сотрудник уже заселён. Оформите переселение.')
-    if kind!='CHECKIN' and (not current or current.camp_id!=camp.pk):raise ValidationError('На эту дату сотрудник не проживает в выбранном ВЖГ.')
+    if kind!='CHECKIN' and (not current or current.camp_id!=camp.pk):raise ValidationError('На эту дату сотрудник не проживает в выбранном местонахождении.')
     if kind=='MOVE' and current.bed_id==bed.pk:raise ValidationError('Выберите другое место.')
     old_bed=current.bed if current else None
     if kind in {'MOVE','CHECKOUT'}:

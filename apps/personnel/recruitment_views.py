@@ -514,7 +514,7 @@ def candidate_handoff(request,pk):
         try:prep=service.handoff(request.user,pk,form.cleaned_data['revision'])
         except (ValidationError,IntegrityError) as exc:messages.error(request,'; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Данные изменились. Обновите страницу.')
         else:
-            messages.success(request,'Создана подготовка заезда. Заполните ВЖГ и плановую дату, затем отправьте заявку на согласование.')
+            messages.success(request,'Создана подготовка заезда. Заполните местонахождение и плановую дату, затем отправьте заявку на согласование.')
             if role_code(request.user) in service.DISPATCH:return redirect('personnel:recruitment_arrival',pk=prep.pk)
     else:messages.error(request,'Форма передачи устарела. Обновите страницу.')
     return redirect('personnel:recruitment_detail',pk=c.request_id)

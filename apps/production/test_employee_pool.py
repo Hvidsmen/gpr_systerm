@@ -20,7 +20,7 @@ class ProductionEmployeePoolTests(TestCase):
         self.operator=self.users['DISPATCHER'];self.client.force_login(self.operator)
         from apps.personnel.models import CampObjectLink
         self.home=Camp.objects.filter(company=self.company,object_links__construction_object=self.obj).first()
-        self.other=Camp.objects.create(company=self.company,name='Другой ВЖГ')
+        self.other=Camp.objects.create(company=self.company,name='Другое местонахождение')
         self.away=Employee.objects.create(company=self.company,last_name='Андреев',first_name='Другой',employee_number='AWAY',position=self.employee.position)
         self.unknown=Employee.objects.create(company=self.company,last_name='Алексеев',first_name='Не размещён',employee_number='UNKNOWN',position=self.employee.position)
         self.missing_role=Employee.objects.create(company=self.company,last_name='Без',first_name='Должности',employee_number='NO-ROLE')
@@ -77,7 +77,7 @@ class ProductionEmployeePoolTests(TestCase):
         row=self.save_employee(self.unknown);hr=self.users['PERSONNEL_DISPATCHER']
         issue=next(r for r in lodging_sync.issues(self.company,[self.home],self.day) if r['employee'].pk==self.unknown.pk)
         signed=lodging_sync.signed_issue(hr,issue)
-        lodging_sync.explain(hr,self.home,self.day,signed,'Проживает вне ВЖГ')
+        lodging_sync.explain(hr,self.home,self.day,signed,'Проживает вне местонахождения')
         self.assertFalse(any(r['employee'].pk==self.unknown.pk for r in lodging_sync.issues(self.company,[self.home],self.day)))
         row.activity='Уточнён факт';row.save()
         with self.assertRaises(ValidationError):lodging_sync.confirm_production_arrival(hr,self.home,self.day,signed,self.other,self.day)
