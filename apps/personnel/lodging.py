@@ -91,7 +91,7 @@ def claim(user,camp,day,employee,bed,session,action='acquire'):
     mutex(user);keys=resources(user,employee,bed,day);rows=controls(user,keys)
     if action in {'acquire','renew'}:
         for row in rows:locked_elsewhere(row,user,session)
-        if action=='renew' and any(row.locked_by_id!=user.pk or row.session!=session or not row.expires_at or row.expires_at<=timezone.now() for row in rows):raise ValidationError('Срок оформления истёк. Проверьте свежие данные и начните оформление заново.')
+        if action=='renew' and any(row.locked_by_id!=user.pk or row.session!=session or not row.expires_at or row.expires_at<=timezone.now() for row in rows):raise ValidationError('Срок проверки истёк. Проверьте свежие данные и повторите сохранение.')
         if bed:
             if bed.state!='AVAILABLE' or not bed.building.is_active:raise ValidationError('Место недоступно для заселения.')
             occupant=present(user.company,day).filter(bed=bed).exclude(employee=employee).first()
@@ -109,13 +109,13 @@ def claim(user,camp,day,employee,bed,session,action='acquire'):
 
 def check(user,camp,day,employee,bed,session,signed):
     try:payload=signing.loads(signed,salt=SALT,max_age=3600)
-    except (signing.BadSignature,TypeError):raise ValidationError('Возьмите сотрудника и место в оформление заново.')
+    except (signing.BadSignature,TypeError):raise ValidationError('Повторите сохранение сотрудника и места.')
     if any(payload.get(k)!=v for k,v in {'user':user.pk,'company':user.company_id,'camp':camp.pk,'day':str(day),'session':str(session)}.items()):raise ValidationError('Форма относится к другому пользователю, местонахождению или дате.')
     keys=resources(user,employee,bed,day);rows=controls(user,keys)
-    if payload.get('versions')!=version(rows) or payload.get('beds')!=bed_versions(user,keys):raise ValidationError('Проживание или место уже изменены. Обновите данные и начните оформление заново.')
+    if payload.get('versions')!=version(rows) or payload.get('beds')!=bed_versions(user,keys):raise ValidationError('Проживание или место уже изменены. Обновите данные и повторите сохранение.')
     for row in rows:
         locked_elsewhere(row,user,session)
-        if row.locked_by_id!=user.pk or row.session!=session or not row.expires_at or row.expires_at<=timezone.now():raise ValidationError('Срок оформления истёк. Возьмите сотрудника и место заново.')
+        if row.locked_by_id!=user.pk or row.session!=session or not row.expires_at or row.expires_at<=timezone.now():raise ValidationError('Срок проверки истёк. Повторите сохранение сотрудника и места.')
     return rows
 
 

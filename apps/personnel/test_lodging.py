@@ -146,6 +146,13 @@ class LodgingTests(TestCase):
         self.edit()
         url=reverse('personnel:lodging');data={'camp':self.a.pk,'date':str(self.day)}
         response=self.client.get(url,data);self.assertEqual(response.status_code,200)
+        self.assertContains(response,'class="lodging-primary-row"')
+        self.assertContains(response,'class="lodging-secondary-row"')
+        self.assertContains(response,'data-lodging-save',count=1)
+        self.assertContains(response,'>Сохранить</button>')
+        self.assertNotContains(response,'data-lodging-take')
+        self.assertNotContains(response,'Начать оформление')
+        self.assertNotContains(response,'data-lodging-details disabled')
         self.assertNotContains(response,'data-lodging-bed');self.assertContains(response,'data-lazy-url')
         places=self.client.get(reverse('personnel:lodging_building_places',args=[self.building.pk]),data)
         self.assertContains(places,'data-lodging-bed',count=3);self.assertContains(places,self.second_employee.display_name)

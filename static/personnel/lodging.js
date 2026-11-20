@@ -1,11 +1,11 @@
-(()=>{'use strict';const form=document.querySelector('[data-lodging-movement]');if(!form)return;const field=name=>form.elements.namedItem(name),kind=field('kind'),employee=field('employee'),building=field('building'),bed=field('bed'),day=field('date'),signed=field('signed'),session=field('session').value,csrf=field('csrfmiddlewaretoken').value,take=form.querySelector('[data-lodging-take]'),release=form.querySelector('[data-lodging-release]'),save=form.querySelector('[data-lodging-save]'),details=form.querySelector('[data-lodging-details]'),label=form.querySelector('[data-lodging-lock-label]'),roster=JSON.parse(document.getElementById('lodging-roster-data').textContent);let claimed=false,busy=false,posting=false,held=null,bedsLoading=false,bedsRequest=0;
+(()=>{'use strict';const form=document.querySelector('[data-lodging-movement]');if(!form)return;const field=name=>form.elements.namedItem(name),kind=field('kind'),employee=field('employee'),building=field('building'),bed=field('bed'),day=field('date'),signed=field('signed'),session=field('session').value,csrf=field('csrfmiddlewaretoken').value,save=form.querySelector('[data-lodging-save]'),label=form.querySelector('[data-lodging-lock-label]'),roster=JSON.parse(document.getElementById('lodging-roster-data').textContent);let claimed=false,busy=false,posting=false,held=null,bedsLoading=false,bedsRequest=0;
  const payload=action=>({camp:form.dataset.camp,date:day.value,employee:employee.value,bed:['CHECKIN','MOVE'].includes(kind.value)?bed.value:'',session,action});
- async function request(action){const response=await fetch(form.dataset.claimUrl,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRFToken':csrf},body:JSON.stringify(action==='release'&&held?{...held,action}:payload(action))});const result=await response.json();if(!response.ok)throw new Error(result.error||'Не удалось начать оформление.');return result;}
+ async function request(action){const response=await fetch(form.dataset.claimUrl,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRFToken':csrf},body:JSON.stringify(action==='release'&&held?{...held,action}:payload(action))});const result=await response.json();if(!response.ok)throw new Error(result.error||'Не удалось сохранить проживание.');return result;}
  function say(message,failed=false){label.textContent=message;label.toggleAttribute('data-failed',failed);}
- function setClaim(value){claimed=value;save.disabled=!value;details.disabled=!value;release.hidden=!value;take.disabled=value;if(!value)signed.value='';}
+ function setClaim(value){claimed=value;if(!value)signed.value='';}
  async function releaseClaim(){if(!claimed)return;busy=true;setClaim(false);try{await request('release');}catch(error){say(error.message,true);}finally{held=null;busy=false;}}
- function refresh(){const needsBed=['CHECKIN','MOVE'].includes(kind.value);form.querySelectorAll('[data-new-bed]').forEach(node=>node.hidden=!needsBed);take.disabled=busy||bedsLoading||!employee.value||(needsBed&&!bed.value)||claimed;}
- async function changed(){await releaseClaim();refresh();say('Выбор изменён. Начните оформление заново.');}
+ function refresh(){const needsBed=['CHECKIN','MOVE'].includes(kind.value);form.querySelectorAll('[data-new-bed]').forEach(node=>node.hidden=!needsBed);save.disabled=busy||bedsLoading||!day.value||!employee.value||(needsBed&&!bed.value);}
+ async function changed(){await releaseClaim();refresh();say('Изменения готовы к сохранению.');}
  function filterBeds(){const selectedBuilding=building.value;let visible=0;[...bed.options].forEach(option=>{if(!option.value)return;const shown=!selectedBuilding||option.dataset.building===selectedBuilding;option.hidden=!shown;option.disabled=!shown;if(shown)visible++;});if(bed.value&&bed.selectedOptions[0]?.disabled)bed.value='';bed.dispatchEvent(new Event('work-options-updated',{bubbles:true}));refresh();return visible;}
  async function loadBeds(){
   const requestId=++bedsRequest,selected=bed.value;bedsLoading=true;bed.disabled=true;refresh();
@@ -18,11 +18,15 @@
  building.addEventListener('change',async()=>{filterBeds();await changed();say(building.value?'Показаны свободные места выбранного вагона.':'Показаны все свободные места.');});
  day.addEventListener('change',async()=>{await releaseClaim();if(!['CHECKIN','MOVE'].includes(kind.value)){refresh();say('Фактическая дата изменена. Выбранный сотрудник и сведения сохранены.');return;}if(day.value)loadBeds();else{bed.replaceChildren(new Option('Укажите дату',''));refresh();}});
  employee.addEventListener('change',()=>{const row=roster.find(r=>String(r.employee)===employee.value);if(row){field('planned_departure').value=row.planned_departure;field('keys_issued').checked=row.keys_issued;field('key_number').value=row.key_number||'';field('pass_number').value=row.pass_number;field('comment').value=row.comment;}else{field('planned_departure').value='';field('keys_issued').checked=false;field('key_number').value='';field('pass_number').value='';field('comment').value='';}});
- take.addEventListener('click',async()=>{if(busy)return;busy=true;take.disabled=true;[kind,employee,building,bed,day].forEach(node=>node.disabled=true);say('Резервируем сотрудника и место…');try{const result=await request('acquire');signed.value=result.signed;held=payload('acquire');setClaim(true);say('Вы оформляете сотрудника и место. Резерв продлевается, пока страница открыта.');}catch(error){setClaim(false);say(error.message,true);refresh();}finally{busy=false;[kind,employee,building,bed,day].forEach(node=>node.disabled=false);filterBeds();refresh();}});
- release.addEventListener('click',async()=>{await releaseClaim();refresh();say('Оформление освобождено.');});
  document.addEventListener('click',async event=>{const button=event.target.closest('[data-lodging-action]');if(!button)return;await releaseClaim();kind.value=button.dataset.lodgingAction;const employeeId=button.dataset.employee||'';if(employeeId&&!([...employee.options].some(option=>option.value===employeeId)))employee.add(new Option(button.dataset.employeeLabel||'Выбранный сотрудник',employeeId));employee.value=employeeId;building.value=button.dataset.building||'';filterBeds();bed.value=button.dataset.bed||'';employee.dispatchEvent(new Event('change',{bubbles:true}));kind.dispatchEvent(new Event('change',{bubbles:true}));building.dispatchEvent(new Event('work-options-updated',{bubbles:true}));bed.dispatchEvent(new Event('change',{bubbles:true}));const panel=document.getElementById('movement');panel.open=true;panel.scrollIntoView({block:'center',behavior:'smooth'});refresh();});
  document.querySelector('[data-open-lodging-movement]')?.addEventListener('click',()=>{document.getElementById('movement').open=true;});
- form.addEventListener('submit',e=>{if(!claimed||!signed.value){e.preventDefault();say('Сначала начните оформление сотрудника и места.',true);return;}posting=true;save.disabled=true;});
+ form.addEventListener('submit',async e=>{
+  e.preventDefault();if(posting||busy)return;if(!form.reportValidity())return;
+  busy=true;refresh();say('Проверяем сотрудника и место…');
+  try{const result=await request('acquire');signed.value=result.signed;held=payload('acquire');setClaim(true);posting=true;say('Сохраняем…');HTMLFormElement.prototype.submit.call(form);}
+  catch(error){setClaim(false);held=null;say(error.message,true);}
+  finally{busy=false;if(!posting)refresh();}
+ });
  const quickForm=document.querySelector('[data-quick-bed-form]'),quickPanel=document.querySelector('[data-lodging-quick-bed]');
  quickForm?.addEventListener('submit',async event=>{
   event.preventDefault();const button=quickPanel.querySelector('button[type=submit]'),message=quickPanel.querySelector('[data-quick-bed-message]');
@@ -38,7 +42,7 @@
    const place=new Option(result.label,String(result.id),false,true);place.dataset.building=buildingId;bed.add(place);filterBeds();bed.value=String(result.id);bed.dispatchEvent(new Event('change',{bubbles:true}));building.dispatchEvent(new Event('work-options-updated',{bubbles:true}));
    const buildings=quickForm.elements.namedItem('building');
    if(![...buildings.options].some(option=>option.value===buildingId))buildings.add(new Option(buildingLabel,buildingId));
-   quickForm.reset();quickPanel.open=false;refresh();say('Новое место выбрано. Начните оформление сотрудника и места.');message.textContent='';
+   quickForm.reset();quickPanel.open=false;refresh();say('Новое место выбрано. Нажмите «Сохранить».');message.textContent='';
   }catch(error){message.textContent=error.message;message.classList.add('text-danger');}
   finally{button.disabled=false;}
  });
