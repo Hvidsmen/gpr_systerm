@@ -81,7 +81,7 @@ SCHEMAS = {
         ('ID','pk'), ('Госномер', 'plate_number'), ('Название', 'name'), ('Техника или модель', 'type.name'),
         ('Техника для планирования', 'planning_type_name'), ('Группа техники', 'group_name'), ('Марка / модель', 'brand_model'),
         ('Год выпуска', 'manufacture_year'), ('Инвентарный номер', 'inventory_number'),
-        ('VIN / заводской номер', 'vin'), ('Участок', 'site_name'),
+        ('VIN / заводской номер', 'vin'), ('Местонахождение', 'transport_camp_name'),
         ('Должность машиниста', 'operator_position.name'), ('Доступна для назначения', 'is_active'),
         ('Последнее состояние', 'unit_state_label'), ('Дата состояния', 'unit_state_date'), ('Смена состояния', 'unit_state_shift')],
         ['type__parent', 'operator_position']),

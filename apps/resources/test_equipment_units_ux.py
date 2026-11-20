@@ -7,6 +7,8 @@ from openpyxl import load_workbook
 from apps.accounts.models import Company, User, Role
 from apps.projects.models import Project, ConstructionObject
 from apps.production.equipment_operations_models import EquipmentAssignment, EquipmentStateChange
+from apps.production.transport_models import EquipmentCampStay
+from apps.personnel.models import Camp
 from .models import Equipment, EquipmentType, EquipmentCategory
 from .equipment_units import UnitForm, unit_summary_counts
 
@@ -22,10 +24,12 @@ class EquipmentUnitsUXTests(TestCase):
         cls.model=EquipmentType.objects.create(company=cls.company,name='Экскаватор / CAT 320',brand_model='CAT 320',parent=cls.root)
         cls.other=EquipmentType.objects.create(company=cls.company,name='Кран')
         cls.other_model=EquipmentType.objects.create(company=cls.company,name='Кран / X',parent=cls.other)
-        cls.machine=Equipment.objects.create(company=cls.company,type=cls.model,name='Экскаватор первый',plate_number='А001АА',inventory_number='0001',vin='VIN-001',site_name='Дудинка')
+        cls.machine=Equipment.objects.create(company=cls.company,type=cls.model,name='Экскаватор первый',plate_number='А001АА',inventory_number='0001',vin='VIN-001',site_name='Старый участок из импорта')
         cls.plain=Equipment.objects.create(company=cls.company,type=cls.root,name='Экскаватор второй',plate_number='Б002ББ',inventory_number='0002',vin='VIN-002',is_active=False)
         project=Project.objects.create(company=cls.company,name='Project')
         cls.obj=ConstructionObject.objects.create(company=cls.company,project=project,name='КТП')
+        cls.camp=Camp.objects.create(company=cls.company,name='Пайяха')
+        EquipmentCampStay.objects.create(company=cls.company,equipment=cls.machine,camp=cls.camp,arrived_on=date(2026,1,1))
         cls.user.assigned_objects.add(cls.obj)
         cls.assignment=EquipmentAssignment.objects.create(company=cls.company,equipment=cls.machine,construction_object=cls.obj,start_date=date(2026,1,1),shift=1,activity='Работа',general=True)
         EquipmentStateChange.objects.create(company=cls.company,equipment=cls.machine,assignment=cls.assignment,effective_date=date(2026,1,1),state='WORKING',shift=1)
@@ -71,7 +75,8 @@ class EquipmentUnitsUXTests(TestCase):
 
     def test_parent_model_group_and_site_filters_and_invalid_inputs(self):
         self.assertEqual(self.response(parent=self.root.pk).context['counts']['total'],2)
-        self.assertEqual(self.response(model=self.model.pk,category=self.group.pk,site='ДУДИНКА').context['counts']['total'],1)
+        self.assertEqual(self.response(model=self.model.pk,category=self.group.pk,site='ПАЙЯХА').context['counts']['total'],1)
+        self.assertEqual(self.response(site='Старый участок из импорта').context['counts']['total'],0)
         self.assertEqual(self.response(parent=self.other.pk,model=self.model.pk).context['counts']['total'],0)
         response=self.response(parent=self.foreign_unit.type_id)
         self.assertIn('parent',response.context['filter_form'].errors)
@@ -91,9 +96,20 @@ class EquipmentUnitsUXTests(TestCase):
         machine=next(row for row in values if row['Госномер']=='А001АА')
         self.assertEqual(machine['Инвентарный номер'],'0001')
         self.assertEqual(machine['Последнее состояние'],'В ремонте')
+        self.assertEqual(machine['Местонахождение'],'Пайяха')
         self.assertEqual(machine['Дата состояния'].date(),date(2026,1,5))
         self.assertTrue(all(row['Техника для планирования']=='Экскаватор' for row in values))
         workbook.close()
+
+    def test_location_comes_from_portal_transport_history(self):
+        response=self.response()
+        self.assertContains(response,'<th>Местонахождение</th>',html=True)
+        self.assertContains(response,'Пайяха')
+        self.assertNotContains(response,'Старый участок из импорта')
+        self.assertEqual(response.context['filter_form'].fields['site'].label,'Местонахождение')
+        detail=self.client.get(reverse('resources:equipment_unit_detail',args=[self.machine.pk]))
+        self.assertContains(detail,'<dt>Местонахождение</dt>',html=True)
+        self.assertContains(detail,'Пайяха')
 
     def test_create_prefills_model_and_saves_explicit_model_identity(self):
         url=reverse('resources:equipment_unit_create')

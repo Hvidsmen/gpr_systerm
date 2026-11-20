@@ -281,7 +281,7 @@ class Equipment(BaseCompanyModel):
     brand_model = models.CharField('Марка / модель',max_length=150,blank=True)
     inventory_number = models.CharField('Инвентарный номер',max_length=50,blank=True)
     vin = models.CharField('VIN / заводской номер',max_length=100,blank=True)
-    site_name = models.CharField('Участок',max_length=150,blank=True)
+    site_name = models.CharField('Исходное местонахождение (импорт)',max_length=150,blank=True)
     operator_position = models.ForeignKey('Position',null=True,blank=True,on_delete=models.SET_NULL,related_name='equipment_units',verbose_name='Должность водителя / машиниста')
     import_key = models.CharField(max_length=80,blank=True,editable=False)
     operator_positions = models.ManyToManyField('resources.Position',blank=True,related_name='crewed_equipment',verbose_name='Должности экипажа')

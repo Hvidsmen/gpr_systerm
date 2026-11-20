@@ -17,7 +17,7 @@ class UnitForm(forms.ModelForm):
         empty_label='Без отдельной модели')
     class Meta:
         model=Equipment
-        fields=['type','catalogue_group','plate_number','name','brand_model','manufacture_year','inventory_number','vin','site_name','operator_positions','is_active']
+        fields=['type','catalogue_group','plate_number','name','brand_model','manufacture_year','inventory_number','vin','operator_positions','is_active']
         labels={'type':'Техника для планирования','plate_number':'Госномер / регистрационный знак','name':'Название машины','is_active':'Доступна для назначения'}
     def __init__(self,*args,company,**kwargs):
         super().__init__(*args,**kwargs)
@@ -60,7 +60,7 @@ class UnitForm(forms.ModelForm):
         self.fields['type'].help_text = 'Например, «Экскаватор». По этой позиции считается потребность в ГПР и СМГ.'
         self.fields['model'].help_text = 'Например, «CAT 320». Модель должна относиться к выбранной технике для планирования.'
         self.fields['is_active'].help_text = 'Отключённая машина сохраняет историю и не предлагается для новых назначений.'
-        self.order_fields(['type','catalogue_group','model','name','brand_model','manufacture_year','plate_number','inventory_number','vin','site_name','operator_positions','is_active'])
+        self.order_fields(['type','catalogue_group','model','name','brand_model','manufacture_year','plate_number','inventory_number','vin','operator_positions','is_active'])
     def clean_type(self):
         category = self.cleaned_data['type']
         # Keep the existing model link and its history when the category is unchanged.

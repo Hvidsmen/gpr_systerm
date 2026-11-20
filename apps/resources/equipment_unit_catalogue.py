@@ -18,7 +18,7 @@ class UnitFilterForm(forms.Form):
     category = forms.ModelChoiceField(label='Группа техники', queryset=EquipmentCategory.objects.none(), required=False, empty_label='Все группы')
     state = forms.ChoiceField(label='Последнее состояние', choices=[('', 'Все состояния'), *STATES], required=False)
     is_active = forms.ChoiceField(label='Доступность', choices=[('', 'Все машины'), ('True', 'Доступна для назначения'), ('False', 'Отключена')], required=False)
-    site = forms.CharField(label='Участок', required=False, max_length=150)
+    site = forms.CharField(label='Местонахождение', required=False, max_length=150)
     as_of = forms.DateField(label='Состояние на дату', required=False,
         widget=forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'))
 
@@ -96,7 +96,7 @@ def filter_units(queryset, form):
         queryset = queryset.filter(match)
     if data['site']:
         value = re.escape(data['site']) if lookup == 'iregex' else data['site']
-        queryset = queryset.filter(**{f'site_name__{lookup}': value})
+        queryset = queryset.filter(**{f'transport_camp_name__{lookup}': value})
     return queryset
 
 
