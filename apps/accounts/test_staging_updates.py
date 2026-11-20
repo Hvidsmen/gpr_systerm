@@ -2,15 +2,16 @@ import json
 from pathlib import Path
 import sys
 from tempfile import TemporaryDirectory
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 import uuid
 
 from django.conf import settings
 from django.core import signing
 from django.test import TestCase, Client, override_settings
 from django.urls import reverse
+from django.utils import timezone
 
-from apps.accounts.models import Company, Role, User
+from apps.accounts.models import Company, OneCConnection, OneCDiagnosticRun, Role, User
 from apps.accounts.staging_updates import SALT, REFRESH_SALT
 from ops import staging, staging_updates
 from ops.windows_runtime import atomic_json, singleton
@@ -50,6 +51,9 @@ class StagingUpdateViewTests(TestCase):
 
     def test_refresh_requires_confirmation_and_uses_same_queue_as_code_updates(self):
         self.refresh_ready();self.latest()
+        connection=OneCConnection.objects.create(company=self.company,active_until=timezone.now())
+        uat=OneCDiagnosticRun.objects.create(connection=connection,server='msk-db',database='uat01',
+                                             status='RUNNING',report={'uat_discovery':True})
         with singleton(self.root / '.runtime/staging-supervisor.lock'):
             response=self.client.get(self.url)
             self.assertContains(response,'Тестовая база, загруженные документы и акты будут заменены')
@@ -60,6 +64,9 @@ class StagingUpdateViewTests(TestCase):
             job=json.loads((self.root/'.runtime/staging-update.json').read_text())
             self.assertEqual(job['kind'],'refresh')
             self.assertEqual(job['data_generation'],self.config['instance'])
+            uat.refresh_from_db();connection.refresh_from_db()
+            self.assertEqual(uat.status,'ERROR');self.assertIn('прервана',uat.error)
+            self.assertIsNone(connection.active_until)
             self.client.post(self.url,{'action':'refresh','refresh_token':token,'confirm_replace':'yes'})
             self.client.post(self.url,{'action':'update','version_token':response.context['version_token']})
             self.assertEqual(json.loads((self.root/'.runtime/staging-update.json').read_text())['id'],job['id'])
@@ -86,6 +93,27 @@ class StagingUpdateViewTests(TestCase):
         command=spawn.call_args.args[0]
         self.assertEqual(command[-2:],['process_1c','--uat-only'])
         self.assertEqual(spawn.call_args.kwargs['cwd'],self.config['code'])
+
+    def test_queued_update_stops_owned_uat_worker_before_continuing(self):
+        worker=Mock();worker.poll.return_value=None
+        marker=self.root/'.runtime/uat-worker.json'
+        atomic_json(marker,{'pid':12345})
+        with singleton(self.root/'.runtime/uat-worker.lock'):
+            self.assertTrue(staging_updates.uat_worker_running(self.root))
+            self.assertIsNone(staging_updates.stop_uat_worker(self.root,worker))
+        worker.terminate.assert_called_once_with();worker.wait.assert_called_once_with(timeout=15)
+        self.assertFalse(marker.exists())
+
+    def test_windows_uat_stop_kills_only_published_worker_process_tree(self):
+        result=Mock(returncode=0)
+        folder=self.root/'.runtime'
+        with patch.object(staging_updates,'runtime',return_value=folder),\
+                patch.object(staging_updates,'uat_worker_running',return_value=True),\
+                patch.object(staging_updates,'read_json',return_value={'pid':4321}),\
+                patch.object(staging_updates.os,'name','nt'),\
+                patch.object(staging_updates.subprocess,'run',return_value=result) as execute:
+            staging_updates.stop_uat_worker(self.root)
+        self.assertEqual(execute.call_args.args[0],['taskkill','/PID','4321','/T','/F'])
 
     def test_refresh_rejects_tampered_wrong_instance_and_replayed_generation(self):
         self.refresh_ready()
@@ -229,6 +257,10 @@ class StagingUpdateViewTests(TestCase):
             self.assertEqual(status['stage_total'],7);self.assertEqual(status['stage_number'],7);self.assertEqual(status['progress'],85)
             self.assertEqual(status['elapsed_seconds'],30);self.assertEqual(status['stage_elapsed_seconds'],10)
             self.assertEqual(status['steps'][2]['code'],'backing_up')
+            job.update(state='queued',detail='Остановка диагностики УАТ')
+            atomic_json(self.root/'.runtime/staging-update.json',job)
+            status=self.client.get(self.status_url).json()
+            self.assertEqual(status['stage'],'Остановка диагностики УАТ')
 
     def test_failure_keeps_failed_stage_and_never_looks_finished(self):
         job={'state':'error','failed_stage':'applying','created_at':'2026-11-04T07:00:00Z','phase_started_at':'2026-11-04T07:01:00Z','finished_at':'2026-11-04T07:01:20Z'}

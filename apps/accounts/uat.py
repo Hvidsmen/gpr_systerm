@@ -42,6 +42,8 @@ def launch_staging_worker():
     """Start one short-lived UAT worker under the portal Windows identity."""
     runtime = Path(settings.CONFIG_DIR) / '.runtime'
     runtime.mkdir(parents=True, exist_ok=True)
+    if staging_update_busy():
+        raise RuntimeError('Сначала дождитесь завершения обновления тестового портала.')
     command = [sys.executable, str(Path(settings.BASE_DIR) / 'manage.py'), 'process_1c', '--uat-only']
     with (runtime / '1c-worker.log').open('ab') as output:
         return subprocess.Popen(
@@ -53,6 +55,14 @@ def launch_staging_worker():
             stderr=subprocess.STDOUT,
             creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
         )
+
+
+def staging_update_busy():
+    if not getattr(settings,'STAGING_CONFIG',None):return False
+    from ops.staging_updates import BUSY
+    from ops.windows_runtime import read_json
+    runtime=Path(settings.CONFIG_DIR)/'.runtime'
+    return read_json(runtime/'staging-update.json',{}).get('state') in BUSY
 
 
 def _progress_file(run):
@@ -112,6 +122,9 @@ def discovery(request):
         action = request.POST.get('action')
         if action not in {'diagnose', 'run_pending'}:
             return HttpResponseBadRequest('Неизвестное действие.')
+        if staging_update_busy():
+            messages.error(request,'Сначала дождитесь завершения обновления тестового портала.')
+            return redirect('accounts:uat')
         if action == 'diagnose':
             from .one_c import enqueue
             run = enqueue(connection, request.user, database=database, uat_discovery=True)
@@ -125,7 +138,7 @@ def discovery(request):
         if getattr(settings, 'STAGING_CONFIG', None):
             try:
                 launch_staging_worker()
-            except OSError as exc:
+            except (OSError,RuntimeError) as exc:
                 messages.error(request, f'Не удалось запустить обработчик УАТ: {exc}')
                 return redirect('accounts:uat')
         messages.success(request, 'Диагностика УАТ запущена. Статус обновится автоматически.')

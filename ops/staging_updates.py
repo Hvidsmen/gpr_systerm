@@ -169,7 +169,7 @@ def state(root):
                 'done': 'Тестовый портал обновлён и доступен.',
                 'error': 'Обновление не завершено. Подробности в журнале тестовой установки.',
                 'recovery': 'Тест остановлен: требуется проверка восстановления базы администратором сервера.'}
-    detail=job.get('detail') if phase in {'preparing','applying'} else None
+    detail=job.get('detail') if phase in BUSY else None
     message = detail or STAGES.get(phase, messages.get(phase, messages['idle']))
     if phase=='error' and job.get('failed_stage')=='preparing':
         message='Подготовка новой версии не завершена; установленная версия не изменена.'
@@ -273,6 +273,40 @@ def start_uat_worker(root):
     with log.open('ab') as output:
         return subprocess.Popen([current['python'],str(Path(current['code'])/'manage.py'),'process_1c','--uat-only'],
             cwd=current['code'],env=environment(root),stdout=output,stderr=subprocess.STDOUT)
+
+
+def uat_worker_running(root):
+    try:
+        with singleton(runtime(root)/'uat-worker.lock'):
+            return False
+    except OSError as exc:
+        if exc.errno in {errno.EACCES,errno.EAGAIN,errno.EDEADLK}:return True
+        raise
+
+
+def stop_uat_worker(root, worker=None):
+    """Stop only the owned TEST UAT worker and its PowerShell descendants."""
+    running=uat_worker_running(root)
+    marker_path=runtime(root)/'uat-worker.json'
+    pid=read_json(marker_path,{}).get('pid')
+    for _ in range(20):
+        if not running or isinstance(pid,int) and pid>0:break
+        time.sleep(.05);pid=read_json(marker_path,{}).get('pid')
+    if running and os.name=='nt':
+        if not isinstance(pid,int) or pid<=0:
+            raise RuntimeError('Обработчик УАТ не опубликовал PID; обновление безопасно отменено.')
+        result=subprocess.run(['taskkill','/PID',str(pid),'/T','/F'],timeout=30,
+                              stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,check=False)
+        if result.returncode not in {0,128}:
+            raise RuntimeError(f'Не удалось остановить обработчик УАТ: taskkill {result.returncode}.')
+    elif worker is not None and worker.poll() is None:
+        worker.terminate()
+    if worker is not None and worker.poll() is None:
+        try:worker.wait(timeout=15)
+        except subprocess.TimeoutExpired:
+            worker.kill();worker.wait(timeout=15)
+    marker_path.unlink(missing_ok=True)
+    return None
 
 
 def reconcile_installed_update(root, *, timeout=5):
@@ -504,8 +538,9 @@ def supervise(root, parent_gone):
                     raise RuntimeError('HTTP-процесс теста завершился.')
                 job = read_json(runtime(root) / 'staging-update.json', {})
                 if job.get('state') == 'queued':
-                    if uat_worker is not None and uat_worker.poll() is None:
-                        parent_gone.wait(.5);continue
+                    if ((uat_worker is not None and uat_worker.poll() is None) or uat_worker_running(root)):
+                        record_detail(root,job,'Остановка диагностики УАТ перед обновлением')
+                        uat_worker=stop_uat_worker(root,uat_worker)
                     result=(process_refresh if job.get('kind') == 'refresh' else process_job)(root,child,job,parent_gone)
                     if result is SUPERVISOR_RESTART:
                         child=None;restart=True;break
@@ -517,8 +552,8 @@ def supervise(root, parent_gone):
                 parent_gone.wait(.5)
         finally:
             try:
-                if uat_worker is not None and uat_worker.poll() is None:
-                    uat_worker.terminate();uat_worker.wait(timeout=15)
+                if ((uat_worker is not None and uat_worker.poll() is None) or uat_worker_running(root)):
+                    stop_uat_worker(root,uat_worker)
                 if child is not None:stop_http(child)
             finally:
                 (runtime(root) / 'staging-supervisor.json').unlink(missing_ok=True)

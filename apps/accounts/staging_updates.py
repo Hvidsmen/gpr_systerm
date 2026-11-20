@@ -8,12 +8,24 @@ from django.core import signing
 from django.core.exceptions import PermissionDenied
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
+from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
 from ops import staging_updates as updater
 
 SALT = 'gpr-staging-update-v1'
 REFRESH_SALT = 'gpr-staging-refresh-v1'
+
+
+def cancel_uat_for_update(request):
+    """An acceptance update has priority over disposable UAT discovery."""
+    from .models import OneCConnection,OneCDiagnosticRun
+    runs=OneCDiagnosticRun.objects.filter(connection__company=request.user.company,
+        report__uat_discovery=True,status__in=['QUEUED','RUNNING'])
+    connection_ids=list(runs.values_list('connection_id',flat=True).distinct())
+    runs.update(status='ERROR',error='Диагностика УАТ прервана для обновления тестового портала.',
+                finished_at=timezone.now())
+    if connection_ids:OneCConnection.objects.filter(pk__in=connection_ids).update(active_until=None)
 
 
 def owner_root(request):
@@ -42,6 +54,7 @@ def updates(request):
                     raise ValueError('Выбранная версия относится к другой тестовой установке.')
                 updater.enqueue(root, revision=selected['revision'], from_revision=selected['from_revision'],
                                 owner_id=request.user.pk)
+                cancel_uat_for_update(request)
                 response_message = 'Обновление тестового портала принято. Можно закрыть страницу.'
             elif action == 'refresh':
                 if request.POST.get('confirm_replace') != 'yes':
@@ -51,6 +64,7 @@ def updates(request):
                     raise ValueError('Подтверждение относится к другой тестовой установке.')
                 updater.enqueue_refresh(root, from_revision=selected['revision'],
                                         data_generation=selected['data_generation'], owner_id=request.user.pk)
+                cancel_uat_for_update(request)
                 response_message = 'Обновление данных принято. После завершения войдите с прежним тестовым паролем.'
             else:
                 raise ValueError('Выберите действие на странице обновления теста.')

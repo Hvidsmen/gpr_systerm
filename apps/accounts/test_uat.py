@@ -4,6 +4,7 @@ from datetime import timedelta
 from pathlib import PosixPath
 from unittest.mock import patch
 
+from django.core.management import call_command
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -91,6 +92,27 @@ class UatDiscoveryTests(TestCase):
             self.assertContains(page,'Запустить ожидающую диагностику')
             self.client.post(self.url,{'action':'run_pending'})
             self.assertEqual(spawn.call_count,2)
+
+    def test_staging_uat_command_publishes_owned_process_marker(self):
+        with tempfile.TemporaryDirectory() as directory:
+            marker=PosixPath(directory)/'.runtime/uat-worker.json'
+            def inspect_worker(**_kwargs):
+                self.assertEqual(json.loads(marker.read_text())['pid'],__import__('os').getpid())
+                return 0
+            with override_settings(CONFIG_DIR=directory,STAGING_MODE=True),\
+                    patch('apps.accounts.management.commands.process_1c.process_queue',side_effect=inspect_worker):
+                call_command('process_1c','--uat-only')
+            self.assertFalse(marker.exists())
+
+    @patch('apps.accounts.uat.subprocess.Popen')
+    def test_uat_cannot_start_during_test_data_refresh(self,spawn):
+        with tempfile.TemporaryDirectory() as directory,override_settings(
+                CONFIG_DIR=directory,STAGING_CONFIG={'revision':'a'*40}):
+            runtime=PosixPath(directory)/'.runtime';runtime.mkdir()
+            (runtime/'staging-update.json').write_text(json.dumps({'state':'copying'}),encoding='utf-8')
+            response=self.client.post(self.url,{'action':'diagnose'},follow=True)
+            self.assertContains(response,'Сначала дождитесь завершения обновления')
+            spawn.assert_not_called()
 
     def test_progress_endpoint_reports_real_powershell_checkpoint(self):
         run=OneCDiagnosticRun.objects.create(connection=self.connection,server='shared-sql',
