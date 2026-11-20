@@ -171,6 +171,37 @@ def _summary(rows):
     return list(groups.values())
 
 
+def _smg_equipment_context(request, camp, day):
+    """Embed the canonical SMG equipment report for an object served by this camp."""
+    objects = scope_queryset(ConstructionObject.objects.filter(
+        pk__in=camp.object_links.filter(company=request.user.company).values('construction_object_id'),
+    ), request.user).distinct().order_by('name', 'pk')
+    selected = None
+    raw = request.GET.get('construction_object', '')
+    if raw.isdigit():selected = objects.filter(pk=int(raw)).first()
+    if selected is None:selected = objects.first()
+    links = []
+    for obj in objects:
+        query = {'camp': camp.pk, 'date': day.isoformat(), 'tab': 'smg', 'construction_object': obj.pk}
+        if request.GET.get('by_day') == '1':
+            query['by_day'] = '1'
+        links.append({'object': obj, 'active': bool(selected and obj.pk == selected.pk), 'url': '?' + urlencode(query)})
+    if selected is None:return {'smg_objects': links}
+    from .smg_period_report import build
+    from .report_grouping import day_matrix
+    report = build(selected, day, request.GET.get('schedule'), equipment_only=True, include_fuel=False)
+    report['show_days'] = request.GET.get('by_day') == '1'
+    if report['show_days']:report['day_matrix'] = day_matrix(report)
+    query = {'construction_object': selected.pk, 'date': day.isoformat(), 'scope': 'period',
+             'equipment_only': '1', 'include_fuel': '0'}
+    if report['schedule']:query['schedule'] = report['schedule'].pk
+    if report['show_days']:query['by_day'] = '1'
+    report['export_url'] = reverse('production:smg_period_export') + '?' + urlencode(query)
+    report.update(smg_objects=links, smg_object=selected,
+        smg_full_url=reverse('production:equipment_report') + '?' + urlencode({**query, 'equipment_only': '0'}))
+    return report
+
+
 def _excel(camp,day,rows):
     from io import BytesIO
     from openpyxl import Workbook
@@ -213,7 +244,7 @@ def board(request):
     selector_data={**{'camp':str(default_camp.pk) if default_camp else '', 'date':timezone.localdate().isoformat()},**raw.dict()}
     selector=Selector(selector_data,user=request.user)
     tab=request.GET.get('tab','day')
-    if tab not in {'day','state','calendar','events','report'}:tab='day'
+    if tab not in {'day','state','calendar','events','report','smg'}:tab='day'
     day_view='list' if request.GET.get('view')=='list' else 'plan'
     from core.permissions import EQUIPMENT_CATALOG_READ_ROLES
     context={'can_view_catalogue':role_code(request.user) in EQUIPMENT_CATALOG_READ_ROLES,'day_view':day_view,'selector':selector,'editable':role_code(request.user) in service.OPERATORS,'tab':tab,'can_create':role_code(request.user) in service.OPERATORS}
@@ -302,9 +333,10 @@ def board(request):
         total=len(rows),unknown=sum(r['condition'] not in {'READY','REPAIR','SCRAP'} for r in rows),ready=sum(r['condition']=='READY' for r in rows),worked=sum(r['status']=='WORKED' for r in rows),idle=sum(r['status']=='IDLE' for r in rows),
         missing=sum(not r['status'] for r in rows),repair=sum(r['condition']=='REPAIR' for r in rows),scrap=sum(r['condition']=='SCRAP' for r in rows),
         query=urlencode({'camp':camp.pk,'date':str(day),'view':day_view}),export_query=urlencode({'camp':camp.pk,'date':str(day),'q':data['q'],'condition':data['condition'],'use':data['use'],'tab':tab,'view':day_view}),error_open=request.method=='POST',can_create=role_code(request.user) in service.OPERATORS)
-    if tab!='day':
+    if tab not in {'day','smg'}:
         from apps.resources.transport_import_models import TransportImportRow
         context['import_errors']=TransportImportRow.objects.filter(company=request.user.company,status='PENDING',batch__applied_at__isnull=False).count()
+    if tab=='smg':context.update(_smg_equipment_context(request,camp,day))
     if tab=='events':context['events']=EquipmentTransportEvent.objects.filter(company=request.user.company).filter(Q(from_camp=camp)|Q(to_camp=camp)).filter(date__lte=day).select_related('equipment','from_camp','to_camp','recorded_by','cancelled_by')[:100]
     if context['tab']=='calendar':
         start=day.replace(day=1);end=day.replace(day=monthrange(day.year,day.month)[1]);days=[start+timedelta(days=i) for i in range(end.day)]

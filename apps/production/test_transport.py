@@ -156,7 +156,7 @@ class TransportTests(TestCase):
     def test_day_page_tabs_excel_filter_and_admin_only_legacy_marker_remain_safe(self):
         self.receive();self.receive(self.second,condition='REPAIR');self.save()
         self.client.force_login(self.operator)
-        for tab in ['day','calendar','events','report']:
+        for tab in ['day','smg','calendar','events','report']:
             response=self.client.get(self.board,{'camp':self.camp.pk,'date':self.day,'tab':tab});self.assertEqual(response.status_code,200)
             self.assertNotContains(response,'data-legacy-structure')
         response=self.client.get(self.board,{'camp':self.camp.pk,'date':self.day,'use':'EMPTY','view':'list'});self.assertEqual(len(response.context['rows']),1)

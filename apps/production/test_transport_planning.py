@@ -86,6 +86,21 @@ class TransportPlanningTests(TestCase):
         with patch('apps.production.dispatch.plans',side_effect=AssertionError('Technical view must not calculate daily plans')):
             self.assertEqual(self.page(tab='state').status_code,200)
 
+    def test_smg_equipment_tab_embeds_the_canonical_plan_fact_for_camp_object(self):
+        response=self.page(tab='smg')
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(response.context['smg_object'],self.obj)
+        self.assertTrue(response.context['equipment_only'])
+        self.assertContains(response,'Техника · план-факт СМГ')
+        self.assertContains(response,'data-transport-smg')
+        self.assertContains(response,'data-period-tab="equipment"')
+        self.assertContains(response,self.planned_only.name)
+        self.assertNotContains(response,'data-period-tab="works"')
+        self.assertNotContains(response,'data-period-tab="labor"')
+        self.assertNotContains(response,'Поиск техники')
+        inaccessible=self.page(tab='smg',construction_object=self.other.pk)
+        self.assertEqual(inaccessible.context['smg_object'],self.obj)
+
     def test_model_is_counted_under_parent_and_inaccessible_object_plan_is_ignored(self):
         from apps.personnel.models import CampObjectLink
         model=EquipmentType.objects.create(company=self.company,name='Модель крана',parent=self.type,brand_model='Модель крана')
