@@ -26,6 +26,18 @@ class ConstructionObjectForm(forms.ModelForm):
         self.fields['parent'].queryset = ConstructionObject.objects.filter(
             company_id=self.instance.company_id, project_id=self.instance.project_id,
         ).exclude(pk=self.instance.pk)
+        from apps.accounts.models import UatDepartment
+        self.fields['uat_departments'] = forms.ModelMultipleChoiceField(
+            queryset=UatDepartment.objects.filter(
+                company_id=self.instance.company_id, is_active=True,
+            ).order_by('name', 'pk'),
+            required=False,
+            label='Подразделения УАТ',
+            help_text='Можно выбрать несколько. Путевые листы этих подразделений попадут в факт объекта.',
+            widget=forms.SelectMultiple(attrs={'class': 'form-select', 'size': 8}),
+        )
+        if self.instance.pk:
+            self.fields['uat_departments'].initial = self.instance.uat_departments.filter(is_active=True)
 
     def clean_parent(self):
         parent = self.cleaned_data.get('parent')
@@ -37,6 +49,32 @@ class ConstructionObjectForm(forms.ModelForm):
             seen.add(ancestor.pk)
             ancestor = ancestor.parent
         return parent
+
+    def save(self, commit=True):
+        obj = super().save(commit=commit)
+        selected = self.cleaned_data.get('uat_departments')
+
+        def save_departments():
+            from apps.accounts.models import UatDepartment
+            selected_ids = list(selected.values_list('pk', flat=True)) if selected is not None else []
+            UatDepartment.objects.filter(
+                company=obj.company, construction_object=obj,
+            ).exclude(pk__in=selected_ids).update(construction_object=None)
+            UatDepartment.objects.filter(
+                company=obj.company, pk__in=selected_ids,
+            ).update(construction_object=obj)
+
+        if commit:
+            save_departments()
+        else:
+            original_save_m2m = self.save_m2m
+
+            def save_m2m():
+                original_save_m2m()
+                save_departments()
+
+            self.save_m2m = save_m2m
+        return obj
 
     class Meta:
         model = ConstructionObject

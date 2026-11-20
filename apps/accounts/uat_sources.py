@@ -32,9 +32,9 @@ PARTS = (
 )
 
 LOOKUPS = (
-    ('dbo._Reference107X1', 'Транспортные средства', {'_IDRRef', '_Description', '_Fld4334'}),
-    ('dbo._Reference61X1', 'Сотрудники УАТ', {'_IDRRef', '_Description'}),
-    ('dbo._Reference55X1', 'Подразделения УАТ', {'_IDRRef', '_Description'}),
+    ('dbo._Reference107X1', 'Транспортные средства', {'_IDRRef', '_Marked', '_Folder', '_Description', '_Fld4322', '_Fld4332', '_Fld4334'}),
+    ('dbo._Reference61X1', 'Сотрудники УАТ', {'_IDRRef', '_Code', '_Description'}),
+    ('dbo._Reference55X1', 'Подразделения УАТ', {'_IDRRef', '_Marked', '_Code', '_Description'}),
     ('dbo._Reference46X1', 'Номенклатура УАТ', {'_IDRRef', '_Code', '_Description'}),
     ('dbo._Reference71X1', 'Виды ремонта', {'_IDRRef', '_Description'}),
     ('dbo._Reference60X1', 'Склады УАТ', {'_IDRRef', '_Description'}),

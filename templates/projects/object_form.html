@@ -25,6 +25,7 @@
                             {% if field.errors %}
                                 <div class="text-danger small mt-1">{{ field.errors }}</div>
                             {% endif %}
+                            {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
                         </div>
                     {% endfor %}
                     <button type="submit" class="btn btn-primary">

@@ -1,0 +1,151 @@
+"""Searchable UAT document journals and explicit mapping screens."""
+from datetime import date, timedelta, time
+
+from django.conf import settings
+from django.contrib import messages
+from django.contrib.auth.decorators import login_required
+from django.core.paginator import Paginator
+from django.db.models import Q
+from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
+from django.views.decorators.http import require_http_methods
+
+from core.permissions import require_roles, role_code
+from apps.projects.models import ConstructionObject
+from apps.resources.models import Equipment
+from .models import OneCConnection, OneCDiagnosticRun, UatDepartment, UatRepairSheet, UatVehicle, UatWaybill
+from .uat_sync import next_scheduled_slot, rebuild_facts, source_ready
+
+
+READERS = {'ADMIN', 'MECHANIZATION_DISPATCHER', 'ALL_FACT_DISPATCHER', 'PLANNER', 'MANAGER', 'OBSERVER'}
+
+
+def period(request):
+    today = timezone.localdate()
+    try:start = date.fromisoformat(request.GET.get('from', ''))
+    except ValueError:start = today - timedelta(days=30)
+    try:end = date.fromisoformat(request.GET.get('to', ''))
+    except ValueError:end = today
+    return start, end
+
+
+def common(request, active):
+    return {'uat_tab': active, 'uat_query': request.GET.urlencode()}
+
+
+@login_required
+def waybills(request):
+    require_roles(request.user, READERS)
+    start, end = period(request);rows = UatWaybill.objects.filter(company=request.user.company, document_date__range=(start, end)).select_related(
+        'vehicle__equipment', 'department__construction_object', 'driver_1', 'driver_2').prefetch_related('tasks__department__construction_object', 'tasks__fact')
+    query = ' '.join(request.GET.get('q', '').split())[:200]
+    if query:
+        rows = rows.filter(Q(number__icontains=query)|Q(vehicle_name__icontains=query)|Q(plate__icontains=query)|Q(vehicle__vin__icontains=query)|Q(vehicle__garage_number__icontains=query)|Q(driver_1_name__icontains=query)|Q(driver_1_number__icontains=query)|Q(driver_2_name__icontains=query)|Q(driver_2_number__icontains=query)|Q(department_name__icontains=query)|Q(object_name__icontains=query)|Q(site_name__icontains=query)|Q(project_name__icontains=query))
+    posted = request.GET.get('posted', '')
+    if posted in {'0', '1'}:rows = rows.filter(posted=posted == '1')
+    status = request.GET.get('status', '')
+    if status in dict(UatWaybill._meta.get_field('fact_status').choices):rows = rows.filter(fact_status=status)
+    mapping = request.GET.get('mapping', '')
+    if mapping == 'ready':rows = rows.filter(vehicle__equipment__isnull=False).filter(Q(department__construction_object__isnull=False)|Q(tasks__department__construction_object__isnull=False)).distinct()
+    elif mapping == 'pending':rows = rows.filter(Q(vehicle__equipment__isnull=True)|Q(fact_status__in=['PENDING','CONFLICT'])).distinct()
+    page = Paginator(rows, 50).get_page(request.GET.get('page'))
+    context = {**common(request, 'waybills'), 'page': page, 'from_day': start, 'to_day': end, 'q': query, 'posted': posted, 'status': status, 'mapping': mapping, 'fact_statuses': UatWaybill._meta.get_field('fact_status').choices}
+    return render(request, 'accounts/uat_waybills.html', context)
+
+
+@login_required
+def repairs(request):
+    require_roles(request.user, READERS)
+    start, end = period(request);rows = UatRepairSheet.objects.filter(company=request.user.company, document_date__range=(start, end)).select_related('vehicle__equipment', 'department__construction_object')
+    query = ' '.join(request.GET.get('q', '').split())[:200]
+    if query:rows = rows.filter(Q(number__icontains=query)|Q(vehicle_name__icontains=query)|Q(plate__icontains=query)|Q(vehicle__vin__icontains=query)|Q(vehicle__garage_number__icontains=query)|Q(service_kind__icontains=query)|Q(reason__icontains=query)|Q(master__icontains=query)|Q(department_name__icontains=query))
+    posted = request.GET.get('posted', '')
+    if posted in {'0', '1'}:rows = rows.filter(posted=posted == '1')
+    completed = request.GET.get('completed', '')
+    if completed in {'0', '1'}:rows = rows.filter(completed=completed == '1')
+    mapping = request.GET.get('mapping', '')
+    if mapping == 'ready':rows = rows.filter(vehicle__equipment__isnull=False)
+    elif mapping == 'pending':rows = rows.filter(vehicle__equipment__isnull=True)
+    page = Paginator(rows, 50).get_page(request.GET.get('page'))
+    return render(request, 'accounts/uat_repairs.html', {**common(request, 'repairs'), 'page': page, 'from_day': start, 'to_day': end, 'q': query, 'posted': posted, 'completed': completed, 'mapping': mapping})
+
+
+@login_required
+@require_http_methods(['GET','POST'])
+def vehicles(request):
+    require_roles(request.user, READERS if request.method == 'GET' else {'ADMIN'})
+    if request.method == 'POST':
+        source = get_object_or_404(UatVehicle, company=request.user.company, pk=request.POST.get('source'))
+        equipment = get_object_or_404(Equipment, company=request.user.company, pk=request.POST.get('equipment')) if request.POST.get('equipment') else None
+        if equipment and UatVehicle.objects.filter(company=request.user.company, equipment=equipment).exclude(pk=source.pk).exists():messages.error(request, 'Эта техника портала уже связана с другой записью УАТ.')
+        else:
+            source.equipment = equipment;source.match_status = 'MATCHED' if equipment else 'UNMATCHED';source.match_basis = 'MANUAL' if equipment else ''
+            source.save(update_fields=['equipment', 'match_status', 'match_basis', 'updated_at']);rebuild_facts(request.user.company)
+            messages.success(request, 'Сопоставление техники сохранено.')
+        return redirect('accounts:uat_vehicles')
+    rows = UatVehicle.objects.filter(company=request.user.company).select_related('equipment__type')
+    query = ' '.join(request.GET.get('q', '').split())[:200]
+    if query:rows = rows.filter(Q(name__icontains=query)|Q(plate__icontains=query)|Q(vin__icontains=query)|Q(garage_number__icontains=query)|Q(equipment__name__icontains=query)|Q(equipment__plate_number__icontains=query))
+    status = request.GET.get('status', '')
+    if status in dict(UatVehicle._meta.get_field('match_status').choices):rows = rows.filter(match_status=status)
+    page = Paginator(rows, 50).get_page(request.GET.get('page'))
+    equipment = Equipment.objects.filter(company=request.user.company).select_related('type').order_by('plate_number','inventory_number','name')
+    return render(request, 'accounts/uat_vehicles.html', {**common(request, 'vehicles'), 'page': page, 'q': query, 'status': status, 'statuses': UatVehicle._meta.get_field('match_status').choices, 'equipment_choices': equipment, 'can_map': role_code(request.user) == 'ADMIN'})
+
+
+@login_required
+@require_http_methods(['GET','POST'])
+def departments(request):
+    require_roles(request.user, READERS if request.method == 'GET' else {'ADMIN'})
+    if request.method == 'POST':
+        source = get_object_or_404(UatDepartment, company=request.user.company, pk=request.POST.get('source'))
+        target = get_object_or_404(ConstructionObject, company=request.user.company, pk=request.POST.get('construction_object')) if request.POST.get('construction_object') else None
+        source.construction_object = target;source.save(update_fields=['construction_object', 'updated_at']);rebuild_facts(request.user.company)
+        messages.success(request, 'Связь подразделения УАТ с объектом сохранена.');return redirect('accounts:uat_departments')
+    rows = UatDepartment.objects.filter(company=request.user.company).select_related('construction_object__project')
+    query = ' '.join(request.GET.get('q', '').split())[:200]
+    if query:rows = rows.filter(Q(name__icontains=query)|Q(code__icontains=query)|Q(construction_object__name__icontains=query)|Q(construction_object__project__name__icontains=query))
+    mapping = request.GET.get('mapping', '')
+    if mapping == 'ready':rows = rows.exclude(construction_object=None)
+    elif mapping == 'pending':rows = rows.filter(construction_object=None)
+    page = Paginator(rows, 75).get_page(request.GET.get('page'))
+    objects = ConstructionObject.objects.filter(company=request.user.company).select_related('project').order_by('project__name','name')
+    return render(request, 'accounts/uat_departments.html', {**common(request, 'departments'), 'page': page, 'q': query, 'mapping': mapping, 'objects': objects, 'can_map': role_code(request.user) == 'ADMIN'})
+
+
+@login_required
+@require_http_methods(['GET','POST'])
+def journal(request):
+    require_roles(request.user, READERS if request.method == 'GET' else {'ADMIN'})
+    connection, _ = OneCConnection.objects.get_or_create(company=request.user.company)
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        if action == 'schedule':
+            enabled = request.POST.get('enabled') == 'on'
+            try:clock = time.fromisoformat(request.POST.get('time', '01:00'));lookback = int(request.POST.get('lookback', '7'))
+            except (ValueError, TypeError):messages.error(request, 'Укажите корректное время и период.')
+            else:
+                if not 1 <= lookback <= 366:messages.error(request, 'Период повторного чтения — от 1 до 366 дней.')
+                else:
+                    connection.uat_sync_enabled = enabled;connection.uat_sync_time = clock;connection.uat_sync_lookback_days = lookback
+                    connection.save(update_fields=['uat_sync_enabled','uat_sync_time','uat_sync_lookback_days']);messages.success(request, 'Расписание УАТ сохранено.')
+        elif action == 'run':
+            if not source_ready(connection):messages.error(request, 'Сначала прочитайте и подтвердите структуру УАТ.')
+            else:
+                from .one_c import enqueue
+                run = enqueue(connection, request.user, database=settings.UAT_DATABASE, uat_import_from=timezone.localdate()-timedelta(days=connection.uat_sync_lookback_days), trust_certificate=True)
+                if run and getattr(settings, 'STAGING_CONFIG', None):
+                    from .uat import launch_staging_worker
+                    launch_staging_worker(run)
+                messages.success(request, 'Синхронизация поставлена в очередь.' if run else 'Другое задание уже ожидает или выполняется.')
+        else:messages.error(request, 'Неизвестное действие.')
+        return redirect('accounts:uat_journal')
+    runs = OneCDiagnosticRun.objects.filter(connection=connection, database=settings.UAT_DATABASE, report__uat_import=True).select_related('created_by').order_by('-created_at','-pk')
+    page = Paginator(runs, 50).get_page(request.GET.get('page'));last = runs.first()
+    last_success = runs.filter(status='DONE').first()
+    return render(request, 'accounts/uat_journal.html', {
+        **common(request, 'journal'), 'connection': connection, 'page': page,
+        'last': last, 'last_success': last_success, 'ready': source_ready(connection),
+        'next_run': next_scheduled_slot(connection) if connection.uat_sync_enabled else None,
+        'can_manage': role_code(request.user) == 'ADMIN',
+    })

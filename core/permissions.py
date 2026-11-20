@@ -235,6 +235,13 @@ def check_route(user, match, method):
         require_roles(user, {'ADMIN', 'HR_HEAD', 'PLANNER'});return
     if namespace == 'accounts' and name in {'password_change','access_pending','impersonation_stop'}:
         return
+    if namespace == 'accounts' and name in {'uat_waybills', 'uat_repairs', 'uat_vehicles', 'uat_departments', 'uat_journal'}:
+        require_roles(
+            user,
+            READ_ROLES | {'MECHANIZATION_DISPATCHER', ALL_FACT_DISPATCHER}
+            if method in {'GET', 'HEAD'} else {'ADMIN'},
+        )
+        return
     if namespace == 'planning' and name in {'resource_replace_gpr','resource_replace_smg'}:
         require_roles(user, PLAN_ROLES | {'MANAGER'}); return
     if namespace == 'planning' and name in {'workspace_edit','workspace_months'}:

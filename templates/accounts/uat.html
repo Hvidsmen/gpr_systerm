@@ -3,6 +3,7 @@
 {% block extra_css %}<link rel="stylesheet" href="{% static 'accounts/uat.css' %}?v=20261120-work-scope">{% endblock %}
 {% block content %}
 <h1>Интеграция с УАТ</h1>
+{% include 'accounts/_uat_sync_tabs.html' with uat_tab='integration' %}
 {% if not request.staging %}<p><a href="{% url 'accounts:one_c' %}">← Подключение ЗУП</a> · <a href="{% url 'accounts:one_c_jobs' %}">Задания обмена</a></p>{% endif %}
 <section class="card p-3 mb-3">
 <h2>Источник</h2>
@@ -28,7 +29,7 @@
 <ul>{% for source in source_status.sources %}<li><strong>{{ source.label }}</strong> · {{ source.name }} · <code>{{ source.key }}</code></li>{% endfor %}</ul>
 <p class="alert alert-success">Структура подходит для безопасной загрузки путевых и ремонтных листов.</p>
 <form method="post" class="d-flex gap-2 align-items-end flex-wrap">{% csrf_token %}<input type="hidden" name="action" value="import"><label>Загрузить документы начиная с<input class="form-control" type="date" name="from_date" value="{{ import_from|date:'Y-m-d' }}" required></label><button class="btn btn-primary" {% if uat_progress.busy %}disabled{% endif %}>Загрузить данные УАТ</button></form>
-<p class="small text-muted mt-2">Загрузка выполняет только SELECT-запросы и сохраняет отдельный снимок. Диспетчерская и производственные факты пока не изменяются.</p>
+<p class="small text-muted mt-2">Загрузка выполняет только SELECT-запросы. Исходные документы сохраняются отдельно, а сопоставленные путевые листы формируют факт техники.</p>
 {% else %}<div class="alert alert-warning"><p>Структура ещё не готова к загрузке данных.</p>{% if source_status.missing %}<ul>{% for item in source_status.missing %}<li>{{ item }}</li>{% endfor %}</ul>{% endif %}</div>{% endif %}
 {% if recommended %}<h3>Вероятные источники путевых и ремонтных листов</h3><ul>{% for table in recommended %}<li><strong>{{ table.name|default:'Название не расшифровано' }}</strong> · <code>{{ table.key }}</code></li>{% endfor %}</ul>{% else %}<p class="alert alert-warning">По названиям объекты УАТ пока не определены. Скачайте ZIP-отчёт для точной карты полей.</p>{% endif %}
 </section>

@@ -1,3 +1,5 @@
+from datetime import time
+
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils.translation import gettext_lazy as _
@@ -176,6 +178,9 @@ class OneCConnection(models.Model):
     employees_interval_minutes = models.PositiveIntegerField(default=0)
     positions_schedule = models.JSONField(default=dict, blank=True)
     employees_schedule = models.JSONField(default=dict, blank=True)
+    uat_sync_enabled = models.BooleanField(default=True)
+    uat_sync_time = models.TimeField(default=time(1, 0))
+    uat_sync_lookback_days = models.PositiveSmallIntegerField(default=7)
     active_until = models.DateTimeField(null=True, blank=True)
 
 
@@ -195,3 +200,4 @@ class OneCDiagnosticRun(models.Model):
 
 from .invitation_models import CompanyMailSettings,InvitationBatch,UserInvitation
 from .training_models import TrainingCopy, TrainingResetRun, TrainingTicketUse
+from .uat_sync_models import UatDepartment,UatVehicle,UatWaybill,UatWaybillTask,UatRepairSheet

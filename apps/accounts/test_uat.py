@@ -214,10 +214,11 @@ class UatDiscoveryTests(TestCase):
         self.assertIn("'путев'",script)
         self.assertIn("'ремонт'",script)
 
-    def test_uat_import_reports_source_counts_and_keeps_posted_filter(self):
+    def test_uat_import_reports_source_counts_and_loads_posted_and_unposted(self):
         script=(PosixPath(__file__).resolve().parents[2]/'ops/diagnose-1c.ps1').read_text(encoding='utf-8-sig')
         import_block=script.rsplit('if($UatImport){',1)[1].split('if($EmployeesImport){',1)[0]
-        self.assertEqual(import_block.count("WHERE p.[_Marked]=0x00 AND p.[_Posted]=0x01 AND p.[_Date_Time]>=@storedFrom"),7)
+        self.assertEqual(import_block.count("WHERE p.[_Marked]=0x00 AND p.[_Date_Time]>=@storedFrom"),7)
+        self.assertNotIn("WHERE p.[_Marked]=0x00 AND p.[_Posted]=0x01 AND p.[_Date_Time]>=@storedFrom",import_block)
         self.assertIn("CASE WHEN p.[_Posted]=0x01 THEN 1 ELSE 0 END AS posted",import_block)
         self.assertIn("source_stats=$sourceStats",import_block)
         self.assertIn("AS posted_period_rows",import_block)
@@ -225,3 +226,6 @@ class UatDiscoveryTests(TestCase):
         self.assertIn("AS object_parent",import_block)
         self.assertIn("AS department",import_block)
         self.assertIn("obj.[_ParentIDRRef]",import_block)
+        self.assertIn("vehicles=$vehicles",import_block)
+        self.assertIn("departments=$departments",import_block)
+        self.assertIn("AS driver_1_number",import_block)

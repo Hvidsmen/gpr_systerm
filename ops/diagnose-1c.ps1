@@ -210,6 +210,21 @@ SELECT N'repair_sheets',COUNT_BIG(*),
  CONVERT(char(10),DATEADD(year,-@dateOffset,MAX(CASE WHEN [_Marked]=0x00 THEN [_Date_Time] END)),23)
 FROM [dbo].[_Document178X1]
 '@ $period 120)
+            $vehicles=@(Query $connection @'
+SELECT CONVERT(varchar(32),[_IDRRef],2) AS source_id,
+ COALESCE([_Description],N'') AS name,COALESCE([_Fld4322],N'') AS vin,
+ COALESCE([_Fld4332],N'') AS garage_number,COALESCE([_Fld4334],N'') AS plate
+FROM [dbo].[_Reference107X1]
+WHERE [_Marked]=0x00 AND [_Folder]=0x00
+ORDER BY [_Description]
+'@ @{} 120)
+            $departments=@(Query $connection @'
+SELECT CONVERT(varchar(32),[_IDRRef],2) AS source_id,LTRIM(RTRIM([_Code])) AS code,
+ COALESCE([_Description],N'') AS name
+FROM [dbo].[_Reference55X1]
+WHERE [_Marked]=0x00
+ORDER BY [_Description]
+'@ @{} 120)
             $waybills=@(Query $connection @'
 SELECT TOP (5000)
  CONVERT(varchar(32),p.[_IDRRef],2) AS source_id,
@@ -217,11 +232,13 @@ SELECT TOP (5000)
  CONVERT(char(10),DATEADD(year,-@dateOffset,p.[_Date_Time]),23) AS document_date,
  CASE WHEN p.[_Posted]=0x01 THEN 1 ELSE 0 END AS posted,
  COALESCE(v.[_Description],N'') AS vehicle,COALESCE(v.[_Fld4334],N'') AS plate,
+ COALESCE(v.[_Fld4322],N'') AS vin,COALESCE(v.[_Fld4332],N'') AS garage_number,
  CONVERT(varchar(32),p.[_Fld1039RRef],2) AS vehicle_ref,
- COALESCE(d1.[_Description],N'') AS driver_1,COALESCE(d2.[_Description],N'') AS driver_2,
+ CONVERT(varchar(32),p.[_Fld995RRef],2) AS driver_1_ref,LTRIM(RTRIM(d1.[_Code])) AS driver_1_number,COALESCE(d1.[_Description],N'') AS driver_1,
+ CONVERT(varchar(32),p.[_Fld996RRef],2) AS driver_2_ref,LTRIM(RTRIM(d2.[_Code])) AS driver_2_number,COALESCE(d2.[_Description],N'') AS driver_2,
  CASE WHEN YEAR(p.[_Fld1005])>@dateOffset+1 THEN CONVERT(varchar(19),DATEADD(year,-@dateOffset,p.[_Fld1005]),126) END AS departure,
  CASE WHEN YEAR(p.[_Fld1004])>@dateOffset+1 THEN CONVERT(varchar(19),DATEADD(year,-@dateOffset,p.[_Fld1004]),126) END AS returned,
- COALESCE(o.[_Description],N'') AS organisation,COALESCE(dep.[_Description],N'') AS department,
+ COALESCE(o.[_Description],N'') AS organisation,CONVERT(varchar(32),p.[_Fld1023RRef],2) AS department_ref,COALESCE(dep.[_Description],N'') AS department,
  COALESCE(grandparentObj.[_Description],N'') AS object_grandparent,COALESCE(parentObj.[_Description],N'') AS object_parent,
  COALESCE(obj.[_Description],N'') AS construction_object,
  LTRIM(RTRIM(obj.[_Code])) AS construction_object_code,p.[_Fld1037] AS odometer_departure,
@@ -235,7 +252,7 @@ LEFT JOIN [dbo].[_Reference55X1] dep ON dep.[_IDRRef]=p.[_Fld1023RRef]
 LEFT JOIN [dbo].[_Reference4650] obj ON obj.[_IDRRef]=p.[_Fld11747RRef]
 LEFT JOIN [dbo].[_Reference4650] parentObj ON parentObj.[_IDRRef]=obj.[_ParentIDRRef]
 LEFT JOIN [dbo].[_Reference4650] grandparentObj ON grandparentObj.[_IDRRef]=parentObj.[_ParentIDRRef]
-WHERE p.[_Marked]=0x00 AND p.[_Posted]=0x01 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
+WHERE p.[_Marked]=0x00 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
 ORDER BY p.[_Date_Time] DESC,p.[_Number] DESC
 '@ $period 120)
             $waybillTasks=@(Query $connection @'
@@ -245,7 +262,7 @@ SELECT TOP (20000) CONVERT(varchar(32),x.[_Document173_IDRRef],2) AS parent_id,x
  CASE WHEN x.[_Fld1062]=0x01 THEN 1 ELSE 0 END AS completed,x.[_Fld1063] AS trips,
  x.[_Fld1064] AS loaded_km,x.[_Fld1065] AS empty_km,x.[_Fld1073] AS tonnes,x.[_Fld1074] AS hours,
  COALESCE(grandparentObj.[_Description],N'') AS object_grandparent,COALESCE(parentObj.[_Description],N'') AS object_parent,
- COALESCE(dep.[_Description],N'') AS department,
+ CONVERT(varchar(32),x.[_Fld1081RRef],2) AS department_ref,COALESCE(dep.[_Description],N'') AS department,
  COALESCE(obj.[_Description],N'') AS construction_object,LTRIM(RTRIM(obj.[_Code])) AS construction_object_code
 FROM [dbo].[_Document173_VT1056X1] x
 JOIN [dbo].[_Document173X1] p ON p.[_IDRRef]=x.[_Document173_IDRRef]
@@ -255,7 +272,7 @@ LEFT JOIN [dbo].[_Reference4650] obj ON obj.[_IDRRef]=x.[_Fld11758RRef]
 LEFT JOIN [dbo].[_Reference4650] parentObj ON parentObj.[_IDRRef]=obj.[_ParentIDRRef]
 LEFT JOIN [dbo].[_Reference4650] grandparentObj ON grandparentObj.[_IDRRef]=parentObj.[_ParentIDRRef]
 LEFT JOIN [dbo].[_Reference55X1] dep ON dep.[_IDRRef]=x.[_Fld1081RRef]
-WHERE p.[_Marked]=0x00 AND p.[_Posted]=0x01 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
+WHERE p.[_Marked]=0x00 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
 ORDER BY p.[_Date_Time] DESC,x.[_LineNo1057]
 '@ $period 120)
             $waybillFuel=@(Query $connection @'
@@ -266,7 +283,7 @@ SELECT TOP (20000) CONVERT(varchar(32),x.[_Document173_IDRRef],2) AS parent_id,x
 FROM [dbo].[_Document173_VT1102X1] x
 JOIN [dbo].[_Document173X1] p ON p.[_IDRRef]=x.[_Document173_IDRRef]
 LEFT JOIN [dbo].[_Reference46X1] f ON f.[_IDRRef]=x.[_Fld1108RRef]
-WHERE p.[_Marked]=0x00 AND p.[_Posted]=0x01 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
+WHERE p.[_Marked]=0x00 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
 ORDER BY p.[_Date_Time] DESC,x.[_LineNo1103]
 '@ $period 120)
             $repairSheets=@(Query $connection @'
@@ -275,12 +292,13 @@ SELECT TOP (5000)
  CONVERT(char(10),DATEADD(year,-@dateOffset,p.[_Date_Time]),23) AS document_date,
  CASE WHEN p.[_Posted]=0x01 THEN 1 ELSE 0 END AS posted,CASE WHEN p.[_Fld6808]=0x01 THEN 1 ELSE 0 END AS completed,
  COALESCE(v.[_Description],N'') AS vehicle,COALESCE(v.[_Fld4334],N'') AS plate,
+ COALESCE(v.[_Fld4322],N'') AS vin,COALESCE(v.[_Fld4332],N'') AS garage_number,
  CONVERT(varchar(32),p.[_Fld1264RRef],2) AS vehicle_ref,COALESCE(service.[_Description],N'') AS service_kind,
  CONVERT(varchar(32),p.[_Fld1260RRef],2) AS repair_method_ref,
  CASE WHEN YEAR(p.[_Fld1237])>@dateOffset+1 THEN CONVERT(varchar(19),DATEADD(year,-@dateOffset,p.[_Fld1237]),126) END AS started,
  CASE WHEN YEAR(p.[_Fld1238])>@dateOffset+1 THEN CONVERT(varchar(19),DATEADD(year,-@dateOffset,p.[_Fld1238]),126) END AS finished,
  p.[_Fld1234] AS operating_value,COALESCE(master.[_Description],N'') AS master,
- COALESCE(o.[_Description],N'') AS organisation,COALESCE(dep.[_Description],N'') AS department,
+ COALESCE(o.[_Description],N'') AS organisation,CONVERT(varchar(32),p.[_Fld1252RRef],2) AS department_ref,COALESCE(dep.[_Description],N'') AS department,
  COALESCE(place.[_Description],N'') AS repair_place,
  COALESCE(ownWarehouse.[_Description],N'') AS own_materials_warehouse,
  COALESCE(senderWarehouse.[_Description],N'') AS sender_warehouse,
@@ -296,7 +314,7 @@ LEFT JOIN [dbo].[_Reference90] place ON place.[_IDRRef]=p.[_Fld11822RRef]
 LEFT JOIN [dbo].[_Reference60X1] ownWarehouse ON ownWarehouse.[_IDRRef]=p.[_Fld1258RRef]
 LEFT JOIN [dbo].[_Reference60X1] senderWarehouse ON senderWarehouse.[_IDRRef]=p.[_Fld1256RRef]
 LEFT JOIN [dbo].[_Reference60X1] receiverWarehouse ON receiverWarehouse.[_IDRRef]=p.[_Fld1257RRef]
-WHERE p.[_Marked]=0x00 AND p.[_Posted]=0x01 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
+WHERE p.[_Marked]=0x00 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
 ORDER BY p.[_Date_Time] DESC,p.[_Number] DESC
 '@ $period 120)
             $repairWorks=@(Query $connection @'
@@ -306,7 +324,7 @@ SELECT TOP (20000) CONVERT(varchar(32),x.[_Document178_IDRRef],2) AS parent_id,x
 FROM [dbo].[_Document178_VT1294X1] x
 JOIN [dbo].[_Document178X1] p ON p.[_IDRRef]=x.[_Document178_IDRRef]
 LEFT JOIN [dbo].[_Reference91] w ON w.[_IDRRef]=x.[_Fld1298RRef]
-WHERE p.[_Marked]=0x00 AND p.[_Posted]=0x01 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
+WHERE p.[_Marked]=0x00 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
 ORDER BY p.[_Date_Time] DESC,x.[_LineNo1295]
 '@ $period 120)
             $repairMaterials=@(Query $connection @'
@@ -316,7 +334,7 @@ SELECT TOP (20000) CONVERT(varchar(32),x.[_Document178_IDRRef],2) AS parent_id,x
 FROM [dbo].[_Document178_VT1281X1] x
 JOIN [dbo].[_Document178X1] p ON p.[_IDRRef]=x.[_Document178_IDRRef]
 LEFT JOIN [dbo].[_Reference46X1] n ON n.[_IDRRef]=x.[_Fld1285RRef]
-WHERE p.[_Marked]=0x00 AND p.[_Posted]=0x01 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
+WHERE p.[_Marked]=0x00 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
 ORDER BY p.[_Date_Time] DESC,x.[_LineNo1282]
 '@ $period 120)
             $repairExecutors=@(Query $connection @'
@@ -326,11 +344,11 @@ SELECT TOP (20000) CONVERT(varchar(32),x.[_Document178_IDRRef],2) AS parent_id,x
 FROM [dbo].[_Document178_VT1276X1] x
 JOIN [dbo].[_Document178X1] p ON p.[_IDRRef]=x.[_Document178_IDRRef]
 LEFT JOIN [dbo].[_Reference61X1] e ON e.[_IDRRef]=x.[_Fld1280RRef]
-WHERE p.[_Marked]=0x00 AND p.[_Posted]=0x01 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
+WHERE p.[_Marked]=0x00 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
 ORDER BY p.[_Date_Time] DESC,x.[_LineNo1277]
 '@ $period 120)
             Write-ProgressState 'saving'
-            Write-Json $reportPath @{uat_import=$true;from_date=$UatFromDate;to_date=[DateTime]::Today.ToString('yyyy-MM-dd');waybill_count=$waybills.Count;repair_sheet_count=$repairSheets.Count;source_stats=$sourceStats;limited=($waybills.Count -ge 5000 -or $repairSheets.Count -ge 5000 -or $waybillTasks.Count -ge 20000 -or $waybillFuel.Count -ge 20000 -or $repairWorks.Count -ge 20000 -or $repairMaterials.Count -ge 20000 -or $repairExecutors.Count -ge 20000);waybills=$waybills;waybill_tasks=$waybillTasks;waybill_fuel=$waybillFuel;repair_sheets=$repairSheets;repair_works=$repairWorks;repair_materials=$repairMaterials;repair_executors=$repairExecutors}
+            Write-Json $reportPath @{uat_import=$true;from_date=$UatFromDate;to_date=[DateTime]::Today.ToString('yyyy-MM-dd');waybill_count=$waybills.Count;repair_sheet_count=$repairSheets.Count;source_stats=$sourceStats;limited=($waybills.Count -ge 5000 -or $repairSheets.Count -ge 5000 -or $waybillTasks.Count -ge 20000 -or $waybillFuel.Count -ge 20000 -or $repairWorks.Count -ge 20000 -or $repairMaterials.Count -ge 20000 -or $repairExecutors.Count -ge 20000);vehicles=$vehicles;departments=$departments;waybills=$waybills;waybill_tasks=$waybillTasks;waybill_fuel=$waybillFuel;repair_sheets=$repairSheets;repair_works=$repairWorks;repair_materials=$repairMaterials;repair_executors=$repairExecutors}
             Write-Json $statusPath @{ok=$true;report=$reportPath}
             return
         }

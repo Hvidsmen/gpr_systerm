@@ -76,6 +76,8 @@ def process_queue(*,uat_only=False):
         stale.update(active_until=None)
         from .one_c_schedules import enqueue_due_imports
         enqueue_due_imports(now)
+        from .uat_sync import enqueue_due_uat
+        enqueue_due_uat(now)
         for connection in OneCConnection.objects.filter(diagnostic_interval_minutes__gt=0,active_until__isnull=True):
             last=connection.runs.exclude(report__has_key='positions_import').exclude(report__has_key='employees_import').exclude(report__has_key='uat_discovery').order_by('-created_at').first()
             if last is None or last.created_at+timedelta(minutes=connection.diagnostic_interval_minutes)<=now:enqueue(connection)
@@ -120,6 +122,8 @@ def process_queue(*,uat_only=False):
             if uat_import:
                 run.report['uat_import']=True
                 run.report['from_date']=run.report.get('from_date') or command[command.index('-UatFromDate')+1]
+                from .uat_sync import apply_uat_report
+                run.report['sync_result']=apply_uat_report(run,run.report)
             if positions_import:
                 if run.report.get('positions_snapshot_version')!=2 or run.report.get('position_source',{}).get('table')!='dbo._Reference394':raise ValidationError('Обработчик вернул прежний источник должностей. Обновите проект и фоновый портал: должности загружаются только из штатного расписания.')
                 from .one_c_positions import apply_names

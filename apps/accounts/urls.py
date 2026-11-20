@@ -12,6 +12,7 @@ from .portal_updates import updates, update_status
 from .user_archive import bulk_archive
 from . import invitation_views, training_views
 from .fact_period_views import periods as fact_open_periods
+from . import uat_sync_views
 
 app_name = 'accounts'
 
@@ -36,6 +37,11 @@ urlpatterns = [
     path('integrations/1c/report/', download_report, name='one_c_report'),
     path('integrations/uat/', uat_discovery, name='uat'),
     path('integrations/uat/status/', uat_status, name='uat_status'),
+    path('integrations/uat/waybills/', uat_sync_views.waybills, name='uat_waybills'),
+    path('integrations/uat/repairs/', uat_sync_views.repairs, name='uat_repairs'),
+    path('integrations/uat/vehicles/', uat_sync_views.vehicles, name='uat_vehicles'),
+    path('integrations/uat/departments/', uat_sync_views.departments, name='uat_departments'),
+    path('integrations/uat/journal/', uat_sync_views.journal, name='uat_journal'),
     path('integrations/1c/jobs/', jobs, name='one_c_jobs'),
     path('integrations/1c/', integration, name='one_c'),
     path('integrations/1c/tables/<str:schema>/<str:table>/', table_structure, name='one_c_table'),

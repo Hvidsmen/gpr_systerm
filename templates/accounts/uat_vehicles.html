@@ -1,0 +1,19 @@
+{% extends 'base.html' %}
+{% block title %}Сопоставление техники УАТ — ЯДС ОС{% endblock %}
+{% block content %}
+<h1>Сопоставление техники УАТ</h1>
+{% include 'accounts/_uat_sync_tabs.html' %}
+<p>Автоматический поиск идёт по VIN, нормализованному госномеру и гаражному номеру. Новая техника создаётся с типом «Не классифицировано — УАТ».</p>
+<form method="get" class="card card-body mb-3">
+  <div class="row g-2 align-items-end">
+    <div class="col-md-5"><label class="form-label">Поиск</label><input class="form-control" name="q" value="{{ q }}" placeholder="Название, госномер, VIN, гаражный номер"></div>
+    <div class="col-md-3"><label class="form-label">Статус</label><select class="form-select" name="status"><option value="">Все</option>{% for value,label in statuses %}<option value="{{ value }}"{% if status == value %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+    <div class="col-auto"><button class="btn btn-primary">Найти</button></div>
+  </div>
+</form>
+<p>Найдено: <strong>{{ page.paginator.count }}</strong>.</p>
+<div class="table-responsive"><table class="table align-middle"><thead><tr><th>Техника УАТ</th><th>Идентификаторы</th><th>Статус</th><th>Техника портала</th></tr></thead><tbody>
+{% for row in page %}<tr><td><strong>{{ row.name }}</strong><br><small>{{ row.source_id }}</small></td><td>Госномер: {{ row.plate|default:'—' }}<br>VIN: {{ row.vin|default:'—' }}<br>Гаражный: {{ row.garage_number|default:'—' }}</td><td>{{ row.get_match_status_display }}{% if row.match_basis %}<br><small>{{ row.match_basis }}</small>{% endif %}</td><td>{% if can_map %}<form method="post" class="d-flex gap-2">{% csrf_token %}<input type="hidden" name="source" value="{{ row.pk }}"><select class="form-select" name="equipment"><option value="">— Не сопоставлено —</option>{% for item in equipment_choices %}<option value="{{ item.pk }}"{% if row.equipment_id == item.pk %} selected{% endif %}>{{ item }}</option>{% endfor %}</select><button class="btn btn-outline-primary">Сохранить</button></form>{% else %}{{ row.equipment|default:'Не сопоставлено' }}{% endif %}</td></tr>
+{% empty %}<tr><td colspan="4">Техника УАТ ещё не загружена.</td></tr>{% endfor %}</tbody></table></div>
+{% include 'accounts/_uat_pagination.html' %}
+{% endblock %}
