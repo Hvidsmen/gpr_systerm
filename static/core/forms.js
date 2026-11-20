@@ -223,6 +223,7 @@
           if (Object.hasOwn(item, 'staff_group')) option.dataset.employeeStaffGroup = item.staff_group || 'Без группы';
           if (Object.hasOwn(item, 'position_label')) option.dataset.employeePositionLabel = item.position_label || 'Должность не указана';
           if (Object.hasOwn(item, 'position')) option.dataset.employeePosition = item.position || '';
+          if (Object.hasOwn(item, 'disabled')) option.disabled = Boolean(item.disabled);
           option.selected = selected.has(value);
         });
         this.remotePage = Number(payload.page || page);

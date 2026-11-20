@@ -153,6 +153,12 @@ class LodgingTests(TestCase):
         self.assertEqual(response.status_code,200)
         self.assertEqual([item['id'] for item in response.json()['items']],[self.second_employee.pk])
         self.edit(employee=self.second_employee)
+        occupied=self.client.get(search,{**params,'q':self.second_employee.employee_number}).json()['items']
+        self.assertEqual([item['id'] for item in occupied],[self.second_employee.pk])
+        self.assertTrue(occupied[0]['disabled'])
+        self.assertIn('уже заселён:',occupied[0]['text'])
+        self.assertIn(str(self.a),occupied[0]['text'])
+        self.assertIn(str(self.bed),occupied[0]['text'])
         self.second_employee.is_active=False;self.second_employee.save(update_fields=['is_active','updated_at'])
         self.assertEqual(self.client.get(search,{**params,'q':self.second_employee.employee_number}).json()['items'],[])
         checkout=self.client.get(search,{**params,'kind':'CHECKOUT','q':self.second_employee.employee_number})

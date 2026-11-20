@@ -17,6 +17,8 @@ def search(request):
     require_roles(request.user, ROLES)
     query = Employee.objects.filter(company=request.user.company).select_related('position')
     scope = request.GET.get('scope')
+    lodging_checkin = False
+    lodging_residents = None
     if scope == 'movement':
         kind = request.GET.get('kind', 'ARRIVAL')
         if kind == 'ARRIVAL':
@@ -38,12 +40,14 @@ def search(request):
             day = forms.DateField().clean(request.GET.get('date')) or timezone.localdate()
         except forms.ValidationError:
             day = timezone.localdate()
-        residents = present(request.user.company, day)
+        lodging_residents = present(request.user.company, day)
+        residents = lodging_residents
         camp = request.GET.get('camp')
         if camp and camp.isdigit():
             residents = residents.filter(camp_id=camp)
         if request.GET.get('kind', 'CHECKIN') == 'CHECKIN':
-            query = query.filter(is_active=True).exclude(pk__in=present(request.user.company, day).values('employee_id'))
+            lodging_checkin = True
+            query = query.filter(is_active=True)
         else:
             query = query.filter(pk__in=residents.values('employee_id'))
     elif request.GET.get('active', '1') != '0':
@@ -58,6 +62,13 @@ def search(request):
         )
     query = query.distinct().order_by('last_name', 'first_name', 'middle_name', 'employee_number', 'pk')
     page = Paginator(query, 50).get_page(request.GET.get('page'))
+    resident_by_employee = {}
+    if lodging_checkin:
+        resident_by_employee = {
+            stay.employee_id: stay
+            for stay in lodging_residents.filter(employee_id__in=[employee.pk for employee in page.object_list])
+                .select_related('camp', 'bed__building')
+        }
     items = []
     for employee in page.object_list:
         label = employee.display_name
@@ -67,7 +78,12 @@ def search(request):
             label += f' · {employee.position}'
         if not employee.is_active:
             label += ' · архивный'
-        items.append({'id': employee.pk, 'text': label})
+        item = {'id': employee.pk, 'text': label}
+        resident = resident_by_employee.get(employee.pk)
+        if resident:
+            item['text'] += f' · уже заселён: {resident.camp} · {resident.bed}'
+            item['disabled'] = True
+        items.append(item)
     return JsonResponse({
         'items': items,
         'page': page.number,
