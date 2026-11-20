@@ -17,7 +17,8 @@ def search(request):
     require_roles(request.user, ROLES)
     query = Employee.objects.filter(company=request.user.company).select_related('position')
     scope = request.GET.get('scope')
-    lodging_checkin = False
+    lodging_kind = ''
+    lodging_camp_id = None
     lodging_residents = None
     if scope == 'movement':
         kind = request.GET.get('kind', 'ARRIVAL')
@@ -41,18 +42,25 @@ def search(request):
         except forms.ValidationError:
             day = timezone.localdate()
         lodging_residents = present(request.user.company, day)
-        residents = lodging_residents
         camp = request.GET.get('camp')
         if camp and camp.isdigit():
-            residents = residents.filter(camp_id=camp)
-        if request.GET.get('kind', 'CHECKIN') == 'CHECKIN':
-            lodging_checkin = True
+            lodging_camp_id = int(camp)
+        lodging_kind = request.GET.get('kind', 'CHECKIN')
+        if lodging_kind == 'CHECKIN':
             query = query.filter(is_active=True)
         else:
-            query = query.filter(pk__in=residents.values('employee_id'))
+            # Active employees remain searchable so the form can explain that
+            # they have not been lodged yet.  Archived employees are retained
+            # only while they have an actual open accommodation record.
+            query = query.filter(Q(is_active=True)|Q(pk__in=lodging_residents.values('employee_id')))
     elif request.GET.get('active', '1') != '0':
         query = query.filter(is_active=True)
-    if scope != 'assignment':
+    if scope == 'lodging':
+        query = query.filter(
+            Q(personnel_card__dispatcher_removed_at__isnull=True) |
+            Q(pk__in=lodging_residents.values('employee_id'))
+        )
+    elif scope != 'assignment':
         query = query.exclude(personnel_card__dispatcher_removed_at__isnull=False)
     for term in request.GET.get('q', '').strip().split()[:6]:
         query = query.filter(
@@ -63,7 +71,7 @@ def search(request):
     query = query.distinct().order_by('last_name', 'first_name', 'middle_name', 'employee_number', 'pk')
     page = Paginator(query, 50).get_page(request.GET.get('page'))
     resident_by_employee = {}
-    if lodging_checkin:
+    if lodging_residents is not None:
         resident_by_employee = {
             stay.employee_id: stay
             for stay in lodging_residents.filter(employee_id__in=[employee.pk for employee in page.object_list])
@@ -80,8 +88,14 @@ def search(request):
             label += ' · архивный'
         item = {'id': employee.pk, 'text': label}
         resident = resident_by_employee.get(employee.pk)
-        if resident:
+        if lodging_kind == 'CHECKIN' and resident:
             item['text'] += f' · уже заселён: {resident.camp} · {resident.bed}'
+            item['disabled'] = True
+        elif lodging_kind and lodging_kind != 'CHECKIN' and resident is None:
+            item['text'] += ' · ещё не заселён'
+            item['disabled'] = True
+        elif lodging_kind and lodging_kind != 'CHECKIN' and lodging_camp_id and resident.camp_id != lodging_camp_id:
+            item['text'] += f' · заселён в другом местонахождении: {resident.camp} · {resident.bed}'
             item['disabled'] = True
         items.append(item)
     return JsonResponse({
