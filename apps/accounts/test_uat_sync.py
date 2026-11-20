@@ -5,6 +5,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from apps.production.models import EquipmentFact
+from apps.personnel.models import Camp
 from apps.projects.forms import ConstructionObjectForm
 from apps.projects.models import ConstructionObject, Project
 from apps.resources.models import Employee, Equipment, EquipmentType
@@ -35,6 +36,7 @@ class UatSynchronizationTests(TestCase):
         self.obj = ConstructionObject.objects.create(
             company=self.company, project=self.project, name='КТП-1 Нефтепровод',
         )
+        self.camp = Camp.objects.create(company=self.company, name='ВЖГ КТП-1')
         self.kind = EquipmentType.objects.create(
             company=self.company, name='Самосвал', brand_model='Камаз',
         )
@@ -96,6 +98,13 @@ class UatSynchronizationTests(TestCase):
         department.save(update_fields=['construction_object'])
         rebuild_facts(self.company)
         bill.refresh_from_db()
+        self.assertEqual(bill.fact_status, 'PENDING')
+        self.assertIn('местонахождением', bill.fact_message)
+        self.assertFalse(EquipmentFact.objects.exists())
+        department.camp = self.camp
+        department.save(update_fields=['camp'])
+        rebuild_facts(self.company)
+        bill.refresh_from_db()
         fact = EquipmentFact.objects.get()
         self.assertEqual(bill.fact_status, 'CREATED')
         self.assertEqual(fact.machine_hours, Decimal('7.13'))
@@ -115,7 +124,8 @@ class UatSynchronizationTests(TestCase):
         apply_uat_report(self.run, self.report())
         department = UatDepartment.objects.get(source_id='D1')
         department.construction_object = self.obj
-        department.save(update_fields=['construction_object'])
+        department.camp = self.camp
+        department.save(update_fields=['construction_object', 'camp'])
         EquipmentFact.objects.create(
             company=self.company, construction_object=self.obj, date='2026-11-20',
             equipment_type=self.kind, equipment_number='А090АА00', planned_count=0,
@@ -143,6 +153,20 @@ class UatSynchronizationTests(TestCase):
         response = self.client.get(reverse('accounts:uat_waybills'), {'q': 'PL-1', 'from': '2026-11-01', 'to': '2026-11-30'})
         self.assertContains(response, 'PL-1')
         self.assertContains(response, 'Сотрудник не найден')
+        department = UatDepartment.objects.get(source_id='D1')
+        mapping_url = reverse('accounts:uat_departments') + f'?focus={department.pk}#uat-department-{department.pk}'
+        self.assertContains(response, mapping_url)
+        focused = self.client.get(reverse('accounts:uat_departments'), {'focus': department.pk})
+        self.assertEqual(focused.context['page'].paginator.count, 1)
+        self.assertContains(focused, 'Открыто подразделение из документа УАТ')
+        saved = self.client.post(reverse('accounts:uat_departments'), {
+            'source': department.pk,
+            'construction_object': self.obj.pk,
+            'camp': self.camp.pk,
+        })
+        self.assertRedirects(saved, mapping_url, fetch_redirect_response=False)
+        department.refresh_from_db()
+        self.assertEqual((department.construction_object, department.camp), (self.obj, self.camp))
         self.assertContains(self.client.get(reverse('accounts:uat_repairs'), {'q': 'RL-1', 'from': '2026-11-01', 'to': '2026-11-30'}), 'RL-1')
         self.assertContains(self.client.get(reverse('accounts:uat_journal')), 'Следующий запуск')
         dispatcher_role, _ = Role.objects.get_or_create(code='MECHANIZATION_DISPATCHER', defaults={'name': 'Механизация'})

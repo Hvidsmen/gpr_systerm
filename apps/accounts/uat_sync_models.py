@@ -32,6 +32,10 @@ class UatDepartment(BaseCompanyModel):
         'projects.ConstructionObject', on_delete=models.PROTECT, null=True, blank=True,
         related_name='uat_departments', verbose_name='Строительный объект портала',
     )
+    camp = models.ForeignKey(
+        'personnel.Camp', on_delete=models.PROTECT, null=True, blank=True,
+        related_name='uat_departments', verbose_name='Местонахождение портала',
+    )
     is_active = models.BooleanField(default=True)
     last_seen_at = models.DateTimeField(null=True, blank=True)
 

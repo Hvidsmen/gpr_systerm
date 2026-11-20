@@ -224,7 +224,7 @@ def fact_number(machine, source):
 
 def create_facts(company, waybills):
     groups = defaultdict(list);bill_states = defaultdict(list)
-    for bill in waybills.select_related('vehicle__equipment', 'department__construction_object').prefetch_related('tasks__department__construction_object'):
+    for bill in waybills.select_related('vehicle__equipment', 'department__construction_object', 'department__camp').prefetch_related('tasks__department__construction_object', 'tasks__department__camp'):
         tasks = list(bill.tasks.all())
         if not bill.is_active or not bill.posted:
             bill.fact_status = 'NOT_POSTED';bill.fact_message = 'Документ не проведён в УАТ.';bill.save(update_fields=['fact_status', 'fact_message', 'updated_at']);continue
@@ -234,9 +234,13 @@ def create_facts(company, waybills):
         for task in tasks:
             department = task.department or bill.department
             obj = department.construction_object if department and department.construction_object_id else None
-            if not machine or not obj:
-                reason = 'не сопоставлена техника' if not machine else 'не сопоставлено подразделение УАТ'
-                bill_states[bill.pk].append(('PENDING', reason));continue
+            camp = department.camp if department and department.camp_id else None
+            if not machine or not obj or not camp:
+                reasons = []
+                if not machine:reasons.append('не сопоставлена техника')
+                if not obj:reasons.append('не сопоставлено подразделение УАТ с объектом')
+                if not camp:reasons.append('не сопоставлено подразделение УАТ с местонахождением')
+                bill_states[bill.pk].extend(('PENDING', reason) for reason in reasons);continue
             groups[(bill.document_date, machine.pk, obj.pk)].append((bill, task, machine, obj, department))
     for (_day, _machine, _obj), rows in groups.items():
         bill, _task, machine, obj, _department = rows[0]
@@ -253,9 +257,11 @@ def create_facts(company, waybills):
         bills = sorted({source.number or source.source_id for source, *_ in rows})
         drivers = sorted({name for source, *_ in rows for name in (source.driver_1_name, source.driver_2_name) if name})
         departments = sorted({department.name for *_, department in rows if department})
+        camps = sorted({department.camp.name for *_, department in rows if department and department.camp_id})
         comment = '[УАТ] Путевые листы: ' + ', '.join(bills)
         if drivers:comment += '. Водители: ' + ', '.join(drivers)
         if departments:comment += '. Подразделения УАТ: ' + ', '.join(departments)
+        if camps:comment += '. Местонахождения: ' + ', '.join(camps)
         fact = EquipmentFact(**lookup, planned_count=0, actual_count=1, machine_hours=hours or None, comment=comment)
         fact.full_clean();fact.save()
         for source, task, *_rest in rows:
