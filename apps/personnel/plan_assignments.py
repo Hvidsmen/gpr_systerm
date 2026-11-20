@@ -360,8 +360,16 @@ def edit(request,pk=None):
             if isinstance(exc,ValidationError) and CAMP_STAY_OVERLAP_ERROR in exc.messages:
                 conflict_links=conflict_employee_links(request.user.company,form.cleaned_data['employee'])
         else:
-            messages.success(request,'Назначение и начальное состояние сохранены.' if initial_form and initial_form.cleaned_data.get('state') else 'Сотрудник назначен. Фактический заезд оформляется отдельно.')
-            return redirect(reverse('personnel:housing')+f'?camp={saved.housing_camp_id}#roster')
+            state=initial_form.cleaned_data.get('state') if initial_form else ''
+            fact_day=(initial_form.cleaned_data.get('arrival_date') if state=='MV' else initial_form.cleaned_data.get('departure_date')) if state else None
+            if state:
+                label='На вахте' if state=='MV' else 'МО — межвахтовый отдых'
+                action='Фактический заезд' if state=='MV' else 'Фактический выезд на МО'
+                messages.success(request,f'Назначение сохранено. Статус: «{label}». {action} оформлен на {fact_day:%d.%m.%Y}.')
+            else:messages.success(request,'Сотрудник назначен. Фактический заезд оформляется отдельно.')
+            query={'camp':saved.housing_camp_id}
+            if fact_day:query['date']=fact_day.isoformat()
+            return redirect(reverse('personnel:housing')+'?'+urlencode(query)+'#roster')
     if historical:
         for field in form.fields.values():field.disabled=True
     return render(request,'personnel/plan_assignment.html',{'form':form,'initial_form':initial_form,'row':row,'historical':historical,'conflict_links':conflict_links,'personnel_section':'management','title':'Удалённое назначение' if row and row.cancelled_at else 'Прежнее назначение' if historical else 'Изменить назначение' if row else 'Назначить сотрудника'})

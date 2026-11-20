@@ -33,6 +33,15 @@ def require_movement_day(user,day):
     raise ValidationError(f'Обычный диспетчер может оформить перемещение не более чем за {MOVEMENT_BACKDATE_DAYS} дней назад.')
 
 
+def can_setup_direct_movement(user):
+    """Allow the real administrator to test facts while acting as a portal role."""
+    from core.permissions import role_code
+    if role_code(user) in {'ADMIN','PERSONNEL_DISPATCHER'}:return True
+    from core.impersonation import context as acting_context
+    acting=acting_context.get();actor=acting.get('actor') if acting else None
+    return bool(actor and actor.company_id==user.company_id and role_code(actor)=='ADMIN')
+
+
 def movement_window_context(user,day):
     today=timezone.localdate();editable=can_edit_movement_day(user,day,today=today)
     if day>today:message='Будущая дата доступна только для просмотра факта. Плановую заявку на заезд, выезд или перевод создать можно.'
@@ -171,8 +180,7 @@ def move(user,kind,camp,day,people,employees=(),target=None,comment='',snapshot=
     if allow_future:
         pass
     elif setup_direct:
-        from core.permissions import role_code
-        if role_code(user) not in {'ADMIN','PERSONNEL_DISPATCHER'}:
+        if not can_setup_direct_movement(user):
             raise ValidationError('Прямой ввод доступен только администратору или диспетчеру по персоналу.')
         require_movement_day(user,day)
     else:require_movement_day(user,day)

@@ -113,6 +113,43 @@ class AssignmentInitialStateTests(TestCase):
         self.assertEqual(slot.initial_movement.date,self.day)
         self.assertTrue(CampStay.objects.filter(person=self.second_person,camp=self.a,arrived_on=self.day,departed_on=None).exists())
 
+    def test_existing_closed_stay_can_be_changed_from_rest_to_on_shift(self):
+        assigned_from=self.day-timedelta(days=90)
+        slot=StaffingSlot.objects.create(
+            company=self.company,group=self.group,person=self.second_person,
+            planning_position=self.role,construction_object=self.obj,housing_camp=self.a,
+            assigned_from=assigned_from,assigned_by=self.hr,
+        )
+        old_arrival=self.day-timedelta(days=117)
+        old_departure=self.day-timedelta(days=15)
+        old_stay=CampStay.objects.create(
+            company=self.company,person=self.second_person,camp=self.a,
+            arrived_on=old_arrival,departed_on=old_departure,recorded_by=self.hr,
+        )
+        HousingEvent.objects.create(
+            company=self.company,person=self.second_person,date=old_arrival,
+            kind='ARRIVAL',to_camp=self.a,stay=old_stay,recorded_by=self.hr,
+        )
+        HousingEvent.objects.create(
+            company=self.company,person=self.second_person,date=old_departure,
+            kind='DEPARTURE',from_camp=self.a,stay=old_stay,
+            departure_destination='REST',recorded_by=self.hr,
+        )
+
+        response=self.client.post(reverse('personnel:plan_assignment_edit',args=[slot.pk]),{
+            **self.data,'version':slot.updated_at.isoformat(),
+            'initial-state':'MV','initial-arrival_date':str(self.day),'initial-departure_date':'',
+        })
+
+        self.assertEqual(response.status_code,302)
+        row=self.roster_row()
+        self.assertEqual(row['state'],'MV')
+        self.assertTrue(row['verified'])
+        self.assertEqual(row['arrived_on'],self.day)
+        self.assertTrue(CampStay.objects.filter(
+            person=self.second_person,camp=self.a,arrived_on=self.day,departed_on=None,
+        ).exists())
+
     def test_admin_can_record_initial_arrival_for_testing(self):
         HousingEvent.objects.create(
             company=self.company,person=self.second_person,date=self.day-timedelta(days=10),
@@ -124,6 +161,24 @@ class AssignmentInitialStateTests(TestCase):
         slot=self.assigned()
         self.assertEqual(slot.initial_movement.kind,'ARRIVAL')
         self.assertEqual(slot.initial_movement.recorded_by,self.admin)
+        self.assertTrue(CampStay.objects.filter(person=self.second_person,camp=self.a,arrived_on=self.day,departed_on=None).exists())
+
+    def test_admin_acting_as_hr_head_can_record_initial_arrival_for_testing(self):
+        from apps.accounts.models import Role
+        self.hr.role=Role.objects.get(code='HR_HEAD');self.hr.save(update_fields=['role'])
+        HousingEvent.objects.create(
+            company=self.company,person=self.second_person,date=self.day-timedelta(days=10),
+            kind='DEPARTURE',from_camp=self.a,departure_destination='REST',recorded_by=self.hr,
+        )
+        self.client.force_login(self.admin)
+        self.assertEqual(self.client.post(reverse('accounts:impersonation_start',args=[self.hr.pk])).status_code,302)
+
+        response=self.post('MV',self.day)
+
+        self.assertEqual(response.status_code,302)
+        self.assertIn('date='+self.day.isoformat(),response.url)
+        slot=self.assigned()
+        self.assertEqual(slot.initial_movement.kind,'ARRIVAL')
         self.assertTrue(CampStay.objects.filter(person=self.second_person,camp=self.a,arrived_on=self.day,departed_on=None).exists())
 
     def test_event_failure_rolls_back_assignment_and_created_stay(self):
