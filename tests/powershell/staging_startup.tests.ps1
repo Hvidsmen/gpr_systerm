@@ -18,8 +18,14 @@ function Reset-Fixture {
         Actions=@([pscustomobject]@{WorkingDirectory=$folder;Execute=(Join-Path $folder '.venv/Scripts/python.exe');Arguments=('"{0}" serve --root "{1}"' -f (Join-Path $folder 'ops/staging.py'),$folder)})
     }
     $script:originalPrincipal=$principal;$script:calls=New-Object 'System.Collections.Generic.List[string]'
+    $script:setUser='';$script:setPasswordProvided=$false;$script:credentialRequests=0
 }
 function Test-StagingStartupAdministrator{return $true}
+function Get-StagingStartupCredential{param($Task)
+    $script:credentialRequests++
+    $secure=ConvertTo-SecureString 'synthetic-current-password' -AsPlainText -Force
+    return New-Object Management.Automation.PSCredential($Task.Principal.UserId,$secure)
+}
 function Get-ScheduledTask{[CmdletBinding()]param($TaskName,$TaskPath)
     if($TaskName -ne 'YDS Portal Test' -or $TaskPath -ne '\'){throw 'A non-TEST task was accessed.'};return $script:task
 }
@@ -31,9 +37,10 @@ function New-ScheduledTaskTrigger{param([switch]$AtStartup,[switch]$AtLogOn)
 function New-ScheduledTaskSettingsSet{param($MultipleInstances,$ExecutionTimeLimit,$RestartCount,$RestartInterval,[switch]$StartWhenAvailable,[switch]$AllowStartIfOnBatteries,[switch]$DontStopIfGoingOnBatteries)
     return [pscustomobject]@{Enabled=$true;MultipleInstances=$MultipleInstances;RestartCount=$RestartCount;RestartInterval=$RestartInterval;StartWhenAvailable=[bool]$StartWhenAvailable}
 }
-function Set-ScheduledTask{param($TaskName,$TaskPath,$Trigger,$Settings)
+function Set-ScheduledTask{param($TaskName,$TaskPath,$Trigger,$Settings,$User,$Password)
     if($TaskName -ne 'YDS Portal Test' -or $TaskPath -ne '\'){throw 'A non-TEST task was changed.'}
-    $script:calls.Add('set');$script:task.Triggers=$Trigger;$script:task.Settings=$Settings;return $script:task
+    $script:calls.Add('set');$script:setUser=[string]$User;$script:setPasswordProvided=-not [string]::IsNullOrEmpty([string]$Password)
+    $script:task.Triggers=$Trigger;$script:task.Settings=$Settings;return $script:task
 }
 function Enable-ScheduledTask{param($TaskName,$TaskPath)
     if($TaskName -ne 'YDS Portal Test' -or $TaskPath -ne '\'){throw 'A non-TEST task was enabled.'};$script:calls.Add('enable');return $script:task
@@ -48,6 +55,8 @@ try {
     Reset-Fixture;Repair-StagingStartup
     Assert-True (($script:calls -join ',') -eq 'set,enable,start') 'Unexpected scheduled-task sequence.'
     Assert-True ([object]::ReferenceEquals($script:task.Principal,$script:originalPrincipal)) 'The stored TEST principal was replaced.'
+    Assert-True ($script:credentialRequests -eq 1) 'The password-logon TEST task did not request its current credential.'
+    Assert-True ($script:setUser -eq 'YAMALGAZPROM\dvivanov' -and $script:setPasswordProvided) 'The TEST credential was not passed to Task Scheduler.'
     Assert-True ($script:task.Settings.RestartCount -eq 999) 'Persistent retries were not configured.'
     Assert-True (@($script:task.Triggers).Count -eq 2) 'Startup and logon fallback triggers were not configured.'
     Assert-True (@($script:task.Triggers)[0].Delay -eq 'PT90S') 'Startup delay was not configured.';$passed++
@@ -55,6 +64,9 @@ try {
     Assert-Fails {Repair-StagingStartup};Assert-True ($script:calls.Count -eq 0) 'Production marker was ignored.';$passed++
     Reset-Fixture;$script:task.TaskName='YDS Portal'
     Assert-Fails {Repair-StagingStartup};Assert-True ($script:calls.Count -eq 0) 'Production task was accepted.';$passed++
+    Reset-Fixture;$script:task.Principal=[pscustomobject]@{UserId='SYSTEM';LogonType='ServiceAccount'}
+    Repair-StagingStartup
+    Assert-True ($script:credentialRequests -eq 0 -and -not $script:setPasswordProvided) 'A service-account TEST task requested a password.';$passed++
     Write-Host "PASS: $passed TEST startup recovery isolation scenarios."
 } finally {
     if(Test-Path -LiteralPath $folder){Remove-Item -LiteralPath $folder -Recurse -Force}

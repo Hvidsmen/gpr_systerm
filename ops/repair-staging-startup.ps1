@@ -8,6 +8,26 @@ function Test-StagingStartupAdministrator {
     return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
+function Test-StagingStartupAccount([string]$Expected,[string]$Provided) {
+    if([string]::IsNullOrWhiteSpace($Expected) -or [string]::IsNullOrWhiteSpace($Provided)){return $false}
+    if($Expected.Equals($Provided,[StringComparison]::OrdinalIgnoreCase)){return $true}
+    try {
+        $sidType=[Security.Principal.SecurityIdentifier]
+        $expectedSid=(New-Object Security.Principal.NTAccount($Expected)).Translate($sidType).Value
+        $providedSid=(New-Object Security.Principal.NTAccount($Provided)).Translate($sidType).Value
+        return $expectedSid -eq $providedSid
+    } catch {return $false}
+}
+
+function Get-StagingStartupCredential($Task) {
+    $account=[string]$Task.Principal.UserId
+    $credential=Get-Credential -UserName $account -Message "Введите текущий пароль Windows для задания YDS Portal Test ($account)"
+    if($null -eq $credential -or -not (Test-StagingStartupAccount $account $credential.UserName)){
+        throw 'Нужна та же Windows-учётная запись, под которой запускается YDS Portal Test.'
+    }
+    return $credential
+}
+
 function Assert-StagingStartupTask($Task) {
     if($Task.TaskName -ne 'YDS Portal Test' -or $Task.TaskPath -ne '\' -or @($Task.Actions).Count -ne 1){
         throw 'Only the separate YDS Portal Test task is supported.'
@@ -48,9 +68,19 @@ function Repair-StagingStartup {
     $startup.Delay=('PT{0}S' -f $StartupDelaySeconds)
     $logon=New-ScheduledTaskTrigger -AtLogOn
     $settings=New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
-    # Set-ScheduledTask changes only triggers/settings and preserves the action,
-    # principal and the password already stored by Task Scheduler.
-    Set-ScheduledTask -TaskName 'YDS Portal Test' -TaskPath '\' -Trigger @($startup,$logon) -Settings $settings | Out-Null
+    # Task Scheduler never reveals a stored password. Updating a task that uses
+    # LogonType=Password therefore requires the same account's current password.
+    # It is requested securely and passed directly to the Windows API; it is not
+    # written to a file or log. Service-account tasks need no credential prompt.
+    if([string]$task.Principal.LogonType -eq 'Password'){
+        $credential=Get-StagingStartupCredential $task
+        try {
+            Set-ScheduledTask -TaskName 'YDS Portal Test' -TaskPath '\' -Trigger @($startup,$logon) -Settings $settings `
+                -User ([string]$task.Principal.UserId) -Password ($credential.GetNetworkCredential().Password) | Out-Null
+        } finally {$credential=$null}
+    } else {
+        Set-ScheduledTask -TaskName 'YDS Portal Test' -TaskPath '\' -Trigger @($startup,$logon) -Settings $settings | Out-Null
+    }
     Enable-ScheduledTask -TaskName 'YDS Portal Test' -TaskPath '\' | Out-Null
     $state=(Get-ScheduledTask -TaskName 'YDS Portal Test' -TaskPath '\').State
     if($state -notin @('Running','Queued')){Start-ScheduledTask -TaskName 'YDS Portal Test' -TaskPath '\'}
