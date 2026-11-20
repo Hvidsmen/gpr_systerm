@@ -18,7 +18,7 @@ SELECT
     @@SERVERNAME AS sql_server,
     DB_NAME() AS [database],
     ORIGINAL_LOGIN() AS original_login,
-    SYSTEM_USER AS system_user,
+    SYSTEM_USER AS [system_user_name],
     GETDATE() AS sql_server_time,
     @DateOffset AS date_offset,
     @FromDate AS requested_from,
