@@ -21,7 +21,7 @@
   const value=field.value;if(value===field.dataset.saved)return;
   row.queue=row.queue.catch(()=>{}).then(async()=>{row.classList.add('transport-cell-saving');say(row,'Сохранение…');try{
    await (row.reservation||acquire(row));
-   const result=await request(root.dataset.inlineUrl,{camp:root.dataset.camp,date:root.dataset.date,equipment:row.dataset.transportRow,field:field.dataset.detailField,value,signed:row.signed,session});
+   const result=await request(root.dataset.inlineUrl,{project:root.dataset.project,camp:root.dataset.camp,date:root.dataset.date,equipment:row.dataset.transportRow,field:field.dataset.detailField,value,signed:row.signed,session});
    updateCounts(row,result);row.signed=result.signed;field.dataset.saved=value;row.dataset.condition=result.condition;row.dataset.status=result.status;if(active===row){active=null;activeReservation=null;}row.reservation=null;
    const condition=row.querySelector('[data-detail-field=condition]'),status=row.querySelector('[data-detail-field=status]'),target=row.querySelector('[data-detail-field=target]'),comment=row.querySelector('[data-detail-field=day_comment]');if(condition){condition.value=result.condition;condition.dataset.saved=condition.value;}
    if(status){status.value=result.status;status.disabled=false;status.dataset.saved=status.value;}

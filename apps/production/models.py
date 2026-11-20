@@ -366,6 +366,9 @@ class EquipmentPlan(ObjectResourceRecord):
 class EquipmentFact(ActualHistoryMixin, ObjectResourceRecord):
     """Факт по механизмам и технике."""
 
+    project = models.ForeignKey('projects.Project',on_delete=models.PROTECT,null=True,blank=True,related_name='equipment_facts')
+    construction_object = models.ForeignKey('projects.ConstructionObject',on_delete=models.PROTECT,null=True,blank=True,verbose_name='Строительный объект',related_name='equipmentfact_records')
+    equipment = models.ForeignKey('resources.Equipment',on_delete=models.PROTECT,null=True,blank=True,related_name='summary_facts')
     date = models.DateField(_("дата"))
     equipment_type = models.ForeignKey(  # ← ИЗМЕНИЛИ на ForeignKey
         "resources.EquipmentType",
@@ -390,16 +393,25 @@ class EquipmentFact(ActualHistoryMixin, ObjectResourceRecord):
     comment = models.TextField(_("комментарий"), blank=True)
 
     class Meta:
-        unique_together = [
-            ["construction_object", "date", "equipment_type", "equipment_number"]
-        ]
+        constraints=[models.UniqueConstraint(fields=['project','construction_object','date','equipment_type','equipment_number'],name='unique_project_equipment_fact')]
         verbose_name = _("факт по технике")
         verbose_name_plural = _("факты по технике")
         ordering = ["-date", "equipment_type__name"]
 
     def __str__(self):
-        work_name = self.construction_object.name
+        work_name = self.construction_object.name if self.construction_object_id else self.project.name if self.project_id else 'Без проекта'
         return f"{self.equipment_type.name} — {self.date}: {self.machine_hours} м/ч ({work_name})"
+
+    def clean(self):
+        if self.construction_object_id:
+            if not self.project_id:self.project=self.construction_object.project
+            elif self.construction_object.project_id!=self.project_id:raise ValidationError({'construction_object':'Объект относится к другому проекту.'})
+        if not self.project_id:raise ValidationError({'project':'Выберите проект.'})
+        super().clean()
+
+    def save(self,*args,**kwargs):
+        if self.construction_object_id and not self.project_id:self.project_id=self.construction_object.project_id
+        return super().save(*args,**kwargs)
 
 
 class FuelFact(ActualHistoryMixin, ObjectResourceRecord):
@@ -527,7 +539,7 @@ class DayActuation(ActualHistoryMixin, BaseCompanyModel):
 
 from .dispatch_models import EmployeeActivity, EquipmentActivity, FactSectionDay
 from .equipment_operations_models import EquipmentAssignment, EquipmentStateChange
-from .transport_models import EquipmentCampStay, EquipmentTransportEvent, EquipmentDayRecord, EquipmentTransportControl
+from .transport_models import EquipmentCampStay, EquipmentTransportEvent, EquipmentDayRecord, EquipmentDayAllocation, EquipmentTransportControl
 
 from .history_models import FactRevision
 from .camp_fuel_models import CampFuelDay

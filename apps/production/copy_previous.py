@@ -160,7 +160,7 @@ def equipment(request):
                         state=FactSectionDay.objects.filter(company=request.user.company,construction_object_id=old.construction_object_id,date=day,section='mechanization').first()
                         if (not state or state.revision==0) and not EquipmentActivity.objects.filter(company=request.user.company,construction_object_id=old.construction_object_id,date=day).exists() and EquipmentFact.objects.filter(company=request.user.company,construction_object_id=old.construction_object_id,date=day).exists():
                             raise ValidationError('На объекте уже есть сводный факт техники. Сначала проверьте его замену детализацией.')
-                    transport.save_day(request.user,camp,day,[old.equipment_id],old.status,construction_object=old.construction_object,work=old.work,work_item=old.work_item,comment=old.comment,signed=signed,session=session,planning_type=old.planning_type,allow_external=not old.presence_required)
+                    transport.save_day(request.user,camp,day,[old.equipment_id],old.status,project=old.project,construction_object=old.construction_object,work=old.work,work_item=old.work_item,comment=old.comment,signed=signed,session=session,planning_type=old.planning_type,allow_external=not old.presence_required)
                     prior=details.get(old.equipment_id)
                     current=EquipmentDayDetails.objects.filter(company=request.user.company,equipment_id=old.equipment_id,date=day).first()
                     for field in ['shift_one_employee','shift_two_employee']:
@@ -170,7 +170,7 @@ def equipment(request):
                             if len(output['warnings'])<50:output['warnings'].append(f'{old.equipment}: водитель смены неактивен, выберите другого.')
                             continue
                         fresh=transport.snapshot(request.user,camp,day)
-                        save_cell(request.user,camp,day,old.equipment,field,employee,fresh,str(session))
+                        save_cell(request.user,camp,day,old.equipment,field,employee,fresh,str(session),project=old.project)
                     output['added']+=1
             except ValidationError as exc:warn(output,f'{old.equipment}: '+ '; '.join(exc.messages))
         require_fact_day(request.user,day)

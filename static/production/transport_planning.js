@@ -31,7 +31,7 @@
    await Promise.all([...root.querySelectorAll('[data-transport-row]')].map(row=>row.queue));
    if(root.querySelector('.transport-cell-failed'))throw new Error('Проверьте несохранённые поля машин перед добавлением.');
    await locks.claim('acquire',[equipment]);
-   const response=await fetch(root.dataset.inlineUrl,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRFToken':csrf},body:JSON.stringify({camp:root.dataset.camp,date:root.dataset.date,equipment,field:'assign',value:typeId,signed:root.dataset.inlineSigned,session:locks.session})});
+   const response=await fetch(root.dataset.inlineUrl,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRFToken':csrf},body:JSON.stringify({project:root.dataset.project,camp:root.dataset.camp,date:root.dataset.date,equipment,field:'assign',value:typeId,signed:root.dataset.inlineSigned,session:locks.session})});
    const result=await response.json();if(!response.ok)throw new Error(result.error||'Не удалось добавить машину.');
    saved=true;
   }catch(error){status.classList.add('text-danger');status.textContent=error.message;}

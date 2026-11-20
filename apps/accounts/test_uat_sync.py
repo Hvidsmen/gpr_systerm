@@ -5,7 +5,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from apps.production.models import EquipmentFact
-from apps.personnel.models import Camp
+from apps.personnel.models import Camp, CampObjectLink
 from apps.projects.forms import ConstructionObjectForm
 from apps.projects.models import ConstructionObject, Project
 from apps.resources.models import Employee, Equipment, EquipmentType
@@ -40,6 +40,7 @@ class UatSynchronizationTests(TestCase):
             company=self.company, project=self.project, name='КТП-1 Нефтепровод',
         )
         self.camp = Camp.objects.create(company=self.company, name='ВЖГ КТП-1')
+        CampObjectLink.objects.create(company=self.company,camp=self.camp,construction_object=self.obj)
         self.kind = EquipmentType.objects.create(
             company=self.company, name='Самосвал', brand_model='Камаз',
         )

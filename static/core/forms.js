@@ -81,7 +81,7 @@
       if (this.remoteUrl) {
         const form = select.form;
         const preserveSelection = new Set((select.dataset.remotePreserveSelectionFields || '').split(',').map(value => value.trim()).filter(Boolean));
-        const contextFields = ['kind', 'camp', 'date', 'shift'].map(key => {
+        const contextFields = ['kind', 'project', 'camp', 'date', 'shift'].map(key => {
           const name = select.dataset['remote' + key[0].toUpperCase() + key.slice(1) + 'Field'];
           const field = name && form?.elements.namedItem(name);
           return field ? {key, field} : null;
@@ -202,7 +202,7 @@
       if (this.select.dataset.remoteIncludeArchived === 'true') url.searchParams.set('active', '0');
       if (this.select.dataset.remoteScope) url.searchParams.set('scope', this.select.dataset.remoteScope);
       const form = this.select.form;
-      for (const key of ['kind', 'camp', 'date', 'shift']) {
+      for (const key of ['kind', 'project', 'camp', 'date', 'shift']) {
         const fieldName = this.select.dataset['remote' + key[0].toUpperCase() + key.slice(1) + 'Field'];
         const field = fieldName && form?.elements.namedItem(fieldName);
         if (field?.value) url.searchParams.set(key, field.value);

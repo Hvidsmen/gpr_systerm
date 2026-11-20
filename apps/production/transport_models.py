@@ -73,12 +73,13 @@ class EquipmentDayRecord(ActualHistoryMixin, BaseCompanyModel):
     status = models.CharField(max_length=12, choices=USES)
     planning_type = models.ForeignKey('resources.EquipmentType',on_delete=models.PROTECT,null=True,blank=True,related_name='+',verbose_name='Плановая потребность')
     presence_required = models.BooleanField(default=True,editable=False)
+    project = models.ForeignKey('projects.Project', on_delete=models.PROTECT, null=True, blank=True, related_name='equipment_days')
     construction_object = models.ForeignKey('projects.ConstructionObject', on_delete=models.PROTECT, null=True, blank=True)
     work = models.ForeignKey('works.ProjectWork', on_delete=models.PROTECT, null=True, blank=True)
     work_item = models.ForeignKey('works.ProjectWorkItem', on_delete=models.PROTECT, null=True, blank=True)
     comment = models.TextField(blank=True, max_length=4000)
     activity = models.OneToOneField('production.EquipmentActivity', on_delete=models.PROTECT, null=True, blank=True, related_name='transport_record', editable=False)
-    recorded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='+')
+    recorded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['equipment', 'date'], name='one_transport_equipment_day')]
@@ -86,11 +87,14 @@ class EquipmentDayRecord(ActualHistoryMixin, BaseCompanyModel):
 
     def clean(self):
         super().clean()
-        for field in ('equipment', 'camp', 'construction_object', 'work', 'work_item', 'planning_type'):
+        for field in ('equipment', 'camp', 'project', 'construction_object', 'work', 'work_item', 'planning_type'):
             value = getattr(self, field, None)
             if value and value.company_id != self.company_id:
                 raise ValidationError('Дневная запись другой компании.')
         if self.planning_type_id and self.planning_type.parent_id:raise ValidationError('Выберите технику для планирования, а не модель.')
+        if self.construction_object_id:
+            if not self.project_id:self.project = self.construction_object.project
+            elif self.construction_object.project_id != self.project_id:raise ValidationError('Объект относится к другому проекту.')
         if self.work_id and (not self.construction_object_id or self.work.section.construction_object_id != self.construction_object_id):
             raise ValidationError('Работа другого объекта.')
         if self.work_item_id and (not self.work_id or self.work_item.project_work_id != self.work_id):
@@ -99,6 +103,44 @@ class EquipmentDayRecord(ActualHistoryMixin, BaseCompanyModel):
             raise ValidationError('Выберите работу в составе комплекса.')
         if self.status != 'WORKED' and (self.work_id or self.work_item_id):
             raise ValidationError('При простое выполненная работа не указывается.')
+
+
+class EquipmentDayAllocation(ActualHistoryMixin, BaseCompanyModel):
+    """One project/object share of a physical machine's confirmed day."""
+    day_record = models.ForeignKey(EquipmentDayRecord, on_delete=models.CASCADE, related_name='allocations')
+    project = models.ForeignKey('projects.Project', on_delete=models.PROTECT, related_name='equipment_day_allocations')
+    construction_object = models.ForeignKey('projects.ConstructionObject', on_delete=models.PROTECT, null=True, blank=True, related_name='equipment_day_allocations')
+    work = models.ForeignKey('works.ProjectWork', on_delete=models.PROTECT, null=True, blank=True, related_name='+')
+    work_item = models.ForeignKey('works.ProjectWorkItem', on_delete=models.PROTECT, null=True, blank=True, related_name='+')
+    driver = models.ForeignKey('resources.Employee', on_delete=models.PROTECT, null=True, blank=True, related_name='equipment_day_allocations')
+    driver_name = models.CharField(max_length=300, blank=True)
+    waybill_number = models.CharField(max_length=80, blank=True)
+    department_name = models.CharField(max_length=300, blank=True)
+    route = models.CharField(max_length=1000, blank=True)
+    trips = models.DecimalField(max_digits=14, decimal_places=3, null=True, blank=True)
+    loaded_km = models.DecimalField(max_digits=14, decimal_places=3, null=True, blank=True)
+    empty_km = models.DecimalField(max_digits=14, decimal_places=3, null=True, blank=True)
+    tonnes = models.DecimalField(max_digits=16, decimal_places=3, null=True, blank=True)
+    machine_hours = models.DecimalField(max_digits=12, decimal_places=3, null=True, blank=True)
+    warning = models.CharField(max_length=300, blank=True)
+    source_kind = models.CharField(max_length=20, choices=[('PORTAL','Портал'),('UAT','УАТ')], default='PORTAL')
+    source_key = models.CharField(max_length=100, blank=True)
+    activity = models.OneToOneField('production.EquipmentActivity', on_delete=models.SET_NULL, null=True, blank=True, related_name='day_allocation')
+
+    class Meta:
+        ordering = ['day_record_id', 'pk']
+        constraints = [models.UniqueConstraint(fields=['company','source_key'], condition=models.Q(source_key__gt=''), name='unique_equipment_allocation_source')]
+
+    def clean(self):
+        super().clean()
+        for value in (self.day_record, self.project, self.construction_object, self.work, self.work_item, self.driver):
+            if value and value.company_id != self.company_id:raise ValidationError('Распределение техники другой компании.')
+        # One physical machine/day can be distributed across several projects
+        # by UAT. The project on the parent is only its primary UI context.
+        if self.construction_object_id and self.construction_object.project_id != self.project_id:raise ValidationError('Объект относится к другому проекту.')
+        if self.work_id and (not self.construction_object_id or self.work.section.construction_object_id != self.construction_object_id):raise ValidationError('Работа относится к другому объекту.')
+        if self.work_item_id and (not self.work_id or self.work_item.project_work_id != self.work_id):raise ValidationError('Работа не входит в выбранный комплекс.')
+        if self.work_id and self.work.kind == 'COMPOSITE' and not self.work_item_id:raise ValidationError('Выберите работу в составе комплекса.')
 
 
 class EquipmentTransportControl(BaseCompanyModel):

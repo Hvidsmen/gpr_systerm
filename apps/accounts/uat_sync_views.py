@@ -12,7 +12,7 @@ from django.views.decorators.http import require_http_methods
 
 from core.permissions import require_roles, role_code
 from apps.personnel.models import Camp
-from apps.projects.models import ConstructionObject
+from apps.projects.models import ConstructionObject, Project
 from apps.resources.models import Equipment
 from .models import OneCConnection, OneCDiagnosticRun, UatDepartment, UatRepairSheet, UatVehicle, UatWaybill
 from .uat_sync import auto_match_vehicles_by_vin, next_scheduled_slot, rebuild_facts, source_ready
@@ -38,7 +38,8 @@ def common(request, active):
 def waybills(request):
     require_roles(request.user, READERS)
     start, end = period(request);rows = UatWaybill.objects.filter(company=request.user.company, document_date__range=(start, end)).select_related(
-        'vehicle__equipment', 'department__construction_object', 'department__camp', 'driver_1', 'driver_2').prefetch_related('tasks__department__construction_object', 'tasks__department__camp', 'tasks__fact')
+        'vehicle__equipment', 'department__project', 'department__construction_object', 'department__camp', 'driver_1', 'driver_2').prefetch_related(
+            'tasks__department__project','tasks__department__construction_object','tasks__department__camp','tasks__allocation','tasks__fact')
     department_choices = UatDepartment.objects.filter(company=request.user.company, is_active=True).order_by('name', 'code', 'pk')
     query = ' '.join(request.GET.get('q', '').split())[:200]
     if query:
@@ -53,13 +54,13 @@ def waybills(request):
     status = request.GET.get('status', '')
     if status in dict(UatWaybill._meta.get_field('fact_status').choices):rows = rows.filter(fact_status=status)
     mapping = request.GET.get('mapping', '')
-    if mapping == 'ready':rows = rows.filter(vehicle__equipment__isnull=False).filter(Q(department__construction_object__isnull=False, department__camp__isnull=False)|Q(tasks__department__construction_object__isnull=False, tasks__department__camp__isnull=False)).distinct()
-    elif mapping == 'pending':rows = rows.filter(Q(vehicle__equipment__isnull=True)|Q(fact_status__in=['PENDING','CONFLICT'])).distinct()
+    if mapping == 'ready':rows = rows.filter(vehicle__equipment__isnull=False).filter(Q(department__project__isnull=False, department__camp__isnull=False)|Q(tasks__department__project__isnull=False, tasks__department__camp__isnull=False)).distinct()
+    elif mapping == 'pending':rows = rows.filter(Q(vehicle__equipment__isnull=True)|Q(fact_status__in=['PENDING','PARTIAL','FAILED','CONFLICT'])).distinct()
     page = Paginator(rows, 50).get_page(request.GET.get('page'))
     for row in page.object_list:
         row_departments = [task.department for task in row.tasks.all() if task.department_id]
         if row.department_id:row_departments.append(row.department)
-        row.mapping_department = next((item for item in row_departments if not item.construction_object_id or not item.camp_id), None)
+        row.mapping_department = next((item for item in row_departments if not item.project_id or not item.camp_id), None)
     context = {**common(request, 'waybills'), 'page': page, 'from_day': start, 'to_day': end, 'q': query, 'department': department, 'departments': department_choices, 'posted': posted, 'status': status, 'mapping': mapping, 'fact_statuses': UatWaybill._meta.get_field('fact_status').choices}
     return render(request, 'accounts/uat_waybills.html', context)
 
@@ -118,22 +119,31 @@ def departments(request):
     if request.method == 'POST':
         source = get_object_or_404(UatDepartment, company=request.user.company, pk=request.POST.get('source'))
         target = get_object_or_404(ConstructionObject, company=request.user.company, pk=request.POST.get('construction_object')) if request.POST.get('construction_object') else None
+        project = get_object_or_404(Project, company=request.user.company, pk=request.POST.get('project')) if request.POST.get('project') else target.project if target else None
         camp = get_object_or_404(Camp, company=request.user.company, pk=request.POST.get('camp')) if request.POST.get('camp') else None
-        source.construction_object = target;source.camp = camp;source.save(update_fields=['construction_object', 'camp', 'updated_at']);rebuild_facts(request.user.company)
-        messages.success(request, 'Связи подразделения УАТ с объектом и местонахождением сохранены.')
+        if not project:messages.error(request, 'Выберите проект.')
+        elif target and target.project_id != project.pk:messages.error(request, 'Объект относится к другому проекту.')
+        elif camp and not camp.object_links.filter(company=request.user.company, construction_object__project=project).exists():messages.error(request, 'Местонахождение не связано с выбранным проектом.')
+        else:
+            source.project = project;source.construction_object = target;source.camp = camp
+            source.save(update_fields=['project', 'construction_object', 'camp', 'updated_at']);rebuild_facts(request.user.company)
+            messages.success(request, 'Связи подразделения УАТ с проектом, объектом и местонахождением сохранены.')
         return redirect(f'{request.path}?focus={source.pk}#uat-department-{source.pk}')
-    rows = UatDepartment.objects.filter(company=request.user.company).select_related('construction_object__project', 'camp')
+    rows = UatDepartment.objects.filter(company=request.user.company).select_related('project', 'construction_object__project', 'camp')
     query = ' '.join(request.GET.get('q', '').split())[:200]
-    if query:rows = rows.filter(Q(name__icontains=query)|Q(code__icontains=query)|Q(construction_object__name__icontains=query)|Q(construction_object__project__name__icontains=query)|Q(camp__name__icontains=query))
+    if query:rows = rows.filter(Q(name__icontains=query)|Q(code__icontains=query)|Q(project__name__icontains=query)|Q(construction_object__name__icontains=query)|Q(construction_object__project__name__icontains=query)|Q(camp__name__icontains=query))
     focus = request.GET.get('focus', '')
     if focus.isdigit():rows = rows.filter(pk=focus)
     mapping = request.GET.get('mapping', '')
-    if mapping == 'ready':rows = rows.exclude(construction_object=None).exclude(camp=None)
-    elif mapping == 'pending':rows = rows.filter(Q(construction_object=None)|Q(camp=None))
+    if mapping == 'ready':rows = rows.exclude(project=None).exclude(camp=None)
+    elif mapping == 'pending':rows = rows.filter(Q(project=None)|Q(camp=None))
     page = Paginator(rows, 75).get_page(request.GET.get('page'))
     objects = ConstructionObject.objects.filter(company=request.user.company).select_related('project').order_by('project__name','name')
     camps = Camp.objects.filter(company=request.user.company).order_by('-is_active', 'name', 'pk')
-    return render(request, 'accounts/uat_departments.html', {**common(request, 'departments'), 'page': page, 'q': query, 'focus': int(focus) if focus.isdigit() else None, 'mapping': mapping, 'objects': objects, 'camps': camps, 'can_map': role_code(request.user) == 'ADMIN'})
+    for camp in camps:
+        camp.uat_project_ids = ','.join(str(value) for value in camp.object_links.filter(company=request.user.company).values_list('construction_object__project_id', flat=True).distinct())
+    projects = Project.objects.filter(company=request.user.company).order_by('name','pk')
+    return render(request, 'accounts/uat_departments.html', {**common(request, 'departments'), 'page': page, 'q': query, 'focus': int(focus) if focus.isdigit() else None, 'mapping': mapping, 'projects': projects, 'objects': objects, 'camps': camps, 'can_map': role_code(request.user) == 'ADMIN'})
 
 
 @login_required

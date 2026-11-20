@@ -9,7 +9,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
-from apps.production.models import EquipmentFact
+from apps.production.models import EquipmentActivity, EquipmentDayAllocation, EquipmentDayRecord, EquipmentFact
 from apps.resources.models import Employee, Equipment, EquipmentType
 from .models import Company, OneCConnection, UatDepartment, UatRepairSheet, UatVehicle, UatWaybill, UatWaybillTask
 
@@ -264,9 +264,16 @@ def vehicle_for(company, raw, cache, now):
 
 
 def clear_old_facts(waybills):
+    company_ids=set(waybills.values_list('company_id',flat=True))
     tasks = UatWaybillTask.objects.filter(waybill__in=waybills)
     fact_ids = set(tasks.exclude(fact=None).values_list('fact_id', flat=True))
-    tasks.update(fact=None)
+    allocation_ids = set(tasks.exclude(allocation=None).values_list('allocation_id', flat=True))
+    activity_ids = set(EquipmentDayAllocation.objects.filter(pk__in=allocation_ids).exclude(activity=None).values_list('activity_id', flat=True))
+    tasks.update(fact=None, allocation=None)
+    EquipmentDayAllocation.objects.filter(pk__in=allocation_ids).delete()
+    EquipmentActivity.objects.filter(pk__in=activity_ids, source_kind='UAT').delete()
+    EquipmentDayRecord.objects.filter(company_id__in=company_ids,
+        presence_required=False,activity=None,allocations__isnull=True,comment__startswith='[УАТ]').delete()
     for fact in EquipmentFact.objects.filter(pk__in=fact_ids):
         if not fact.uat_tasks.exists() and fact.comment.startswith('[УАТ]'):
             fact.delete()
@@ -276,9 +283,37 @@ def fact_number(machine, source):
     return text(machine.plate_number or machine.inventory_number or machine.vin or ('UAT-' + source.source_id), 50)
 
 
+def _create_uat_allocation(company,bill,task,machine,project,obj,camp,department):
+    day_record = EquipmentDayRecord.objects.filter(company=company,equipment=machine,date=bill.document_date).first()
+    if day_record and day_record.camp_id != camp.pk:
+        raise ValueError('машина уже относится к другому местонахождению')
+    if not day_record:
+        day_record=EquipmentDayRecord(company=company,equipment=machine,camp=camp,date=bill.document_date,status='WORKED',presence_required=False)
+    day_record.status='WORKED';day_record.comment=f'[УАТ] Путевой лист {bill.number or bill.source_id}'
+    allocated_projects=set(day_record.allocations.values_list('project_id',flat=True)) if day_record.pk else set()
+    day_record.project=project if not allocated_projects or allocated_projects=={project.pk} else None
+    day_record.full_clean();day_record.save()
+    warning='Работа подтверждена, машино-часы не указаны' if not task.hours else ''
+    route=' → '.join(filter(None,[task.departure_address,task.arrival_address]))
+    allocation=EquipmentDayAllocation(company=company,day_record=day_record,project=project,construction_object=obj,
+        driver=bill.driver_1,driver_name=bill.driver_1_name,waybill_number=bill.number,
+        department_name=department.name if department else task.department_name,route=route,trips=task.trips,
+        loaded_km=task.loaded_km,empty_km=task.empty_km,tonnes=task.tonnes,machine_hours=task.hours or Decimal('0'),
+        warning=warning,source_kind='UAT',source_key=f'uat-task:{task.pk}')
+    allocation.full_clean();allocation.save()
+    description=f'[УАТ] Путевой лист {bill.number or bill.source_id}'+(f'. {warning}' if warning else '')
+    activity=EquipmentActivity(company=company,project=project,construction_object=obj,equipment=machine,driver=bill.driver_1,
+        date=bill.document_date,shift=1,state='WORKING',general=True,activity=description,machine_hours=allocation.machine_hours,
+        trips=task.trips,loaded_km=task.loaded_km,empty_km=task.empty_km,tonnes=task.tonnes,route=route,
+        source_kind='UAT',source_reference=f'{bill.source_id}:{task.line_number}')
+    activity.full_clean();activity.save();allocation.activity=activity;allocation.save(update_fields=['activity','updated_at'])
+    task.allocation=allocation;task.save(update_fields=['allocation','updated_at'])
+    return allocation,warning
+
+
 def create_facts(company, waybills):
-    groups = defaultdict(list);bill_states = defaultdict(list)
-    for bill in waybills.select_related('vehicle__equipment', 'department__construction_object', 'department__camp').prefetch_related('tasks__department__construction_object', 'tasks__department__camp'):
+    summary_groups = defaultdict(list);bill_states = defaultdict(list)
+    for bill in waybills.select_related('vehicle__equipment', 'department__project', 'department__construction_object', 'department__camp', 'driver_1').prefetch_related('tasks__department__project', 'tasks__department__construction_object', 'tasks__department__camp'):
         tasks = list(bill.tasks.all())
         if not bill.is_active or not bill.posted:
             bill.fact_status = 'NOT_POSTED';bill.fact_message = 'Документ не проведён в УАТ.';bill.save(update_fields=['fact_status', 'fact_message', 'updated_at']);continue
@@ -288,42 +323,52 @@ def create_facts(company, waybills):
         for task in tasks:
             department = task.department or bill.department
             obj = department.construction_object if department and department.construction_object_id else None
+            project = department.project if department and department.project_id else obj.project if obj else None
             camp = department.camp if department and department.camp_id else None
-            if not machine or not obj or not camp:
+            if not machine or not project or not camp:
                 reasons = []
                 if not machine:reasons.append('не сопоставлена техника')
-                if not obj:reasons.append('не сопоставлено подразделение УАТ с объектом')
+                if not project:reasons.append('не сопоставлено подразделение УАТ с проектом')
                 if not camp:reasons.append('не сопоставлено подразделение УАТ с местонахождением')
                 bill_states[bill.pk].extend(('PENDING', reason) for reason in reasons);continue
-            groups[(bill.document_date, machine.pk, obj.pk)].append((bill, task, machine, obj, department))
-    for (_day, _machine, _obj), rows in groups.items():
-        bill, _task, machine, obj, _department = rows[0]
+            try:
+                with transaction.atomic():
+                    allocation,warning=_create_uat_allocation(company,bill,task,machine,project,obj,camp,department)
+                summary_groups[(bill.document_date, machine.pk, project.pk, obj.pk if obj else None)].append((bill,task,machine,project,obj,department,allocation))
+                bill_states[bill.pk].append(('CREATED', f'детальная запись №{allocation.pk}'+(f' · {warning}' if warning else '')))
+            except Exception as exc:
+                bill_states[bill.pk].append(('FAILED', f'строка {task.line_number}: {str(exc)[:180]}'))
+    for (_day, _machine, _project, _obj), rows in summary_groups.items():
+        bill, _task, machine, project, obj, _department, _allocation = rows[0]
         equipment_type = machine.type.parent if machine.type.parent_id else machine.type
         number = fact_number(machine, bill)
-        lookup = dict(company=company, construction_object=obj, date=bill.document_date, equipment_type=equipment_type, equipment_number=number)
+        lookup = dict(company=company, project=project, construction_object=obj, date=bill.document_date, equipment_type=equipment_type, equipment_number=number)
         existing = EquipmentFact.objects.filter(**lookup).first()
         if existing:
-            for source, *_rest in rows:bill_states[source.pk].append(('CONFLICT', 'за эту дату уже есть ручной факт'))
+            for source, task, *_rest in rows:
+                task.fact=existing;task.save(update_fields=['fact','updated_at'])
+                if not existing.comment.startswith('[УАТ]'):bill_states[source.pk].append(('CONFLICT', 'за эту дату уже есть ручной сводный факт'))
             continue
-        hours = sum((task.hours or Decimal('0')) for _, task, *_ in rows).quantize(
+        hours = sum((allocation.machine_hours or Decimal('0')) for *_, allocation in rows).quantize(
             Decimal('0.01'), rounding=ROUND_HALF_UP,
         )
         bills = sorted({source.number or source.source_id for source, *_ in rows})
         drivers = sorted({name for source, *_ in rows for name in (source.driver_1_name, source.driver_2_name) if name})
-        departments = sorted({department.name for *_, department in rows if department})
-        camps = sorted({department.camp.name for *_, department in rows if department and department.camp_id})
+        departments = sorted({department.name for *_, department, _allocation in rows if department})
+        camps = sorted({department.camp.name for *_, department, _allocation in rows if department and department.camp_id})
         comment = '[УАТ] Путевые листы: ' + ', '.join(bills)
         if drivers:comment += '. Водители: ' + ', '.join(drivers)
         if departments:comment += '. Подразделения УАТ: ' + ', '.join(departments)
         if camps:comment += '. Местонахождения: ' + ', '.join(camps)
-        fact = EquipmentFact(**lookup, planned_count=0, actual_count=1, machine_hours=hours or None, comment=comment)
+        fact = EquipmentFact(**lookup, equipment=machine, planned_count=0, actual_count=1, machine_hours=hours, comment=comment)
         fact.full_clean();fact.save()
         for source, task, *_rest in rows:
             task.fact = fact;task.save(update_fields=['fact', 'updated_at']);bill_states[source.pk].append(('CREATED', ''))
     for bill in waybills:
         states = bill_states.get(bill.pk, [])
         if not states:continue
-        status = 'CONFLICT' if any(item[0] == 'CONFLICT' for item in states) else 'PENDING' if any(item[0] == 'PENDING' for item in states) else 'CREATED'
+        created=bill.tasks.exclude(allocation=None).count();expected=bill.tasks.count()
+        status = 'CONFLICT' if any(item[0]=='CONFLICT' for item in states) else 'CREATED' if expected and created>=expected else 'PARTIAL' if created else 'FAILED' if any(item[0]=='FAILED' for item in states) else 'PENDING'
         messages = sorted({item[1] for item in states if item[1]})
         bill.fact_status = status;bill.fact_message = '; '.join(messages)[:500]
         bill.save(update_fields=['fact_status', 'fact_message', 'updated_at'])

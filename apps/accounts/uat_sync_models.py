@@ -10,7 +10,9 @@ MATCH_STATES = [
     ('AMBIGUOUS', 'Несколько совпадений'),
 ]
 FACT_STATES = [
-    ('CREATED', 'Добавлено в факт'),
+    ('CREATED', 'Добавлен в детальный факт'),
+    ('PARTIAL', 'Добавлен частично'),
+    ('FAILED', 'Ошибка формирования факта'),
     ('PENDING', 'Требует сопоставления'),
     ('CONFLICT', 'Конфликт с ручным фактом'),
     ('NOT_POSTED', 'Не проведён'),
@@ -28,6 +30,10 @@ class UatDepartment(BaseCompanyModel):
     source_id = models.CharField(max_length=64)
     code = models.CharField(max_length=80, blank=True)
     name = models.CharField(max_length=300)
+    project = models.ForeignKey(
+        'projects.Project', on_delete=models.PROTECT, null=True, blank=True,
+        related_name='uat_departments', verbose_name='Проект портала',
+    )
     construction_object = models.ForeignKey(
         'projects.ConstructionObject', on_delete=models.PROTECT, null=True, blank=True,
         related_name='uat_departments', verbose_name='Строительный объект портала',
@@ -131,6 +137,7 @@ class UatWaybillTask(BaseCompanyModel):
     tonnes = models.DecimalField(max_digits=16, decimal_places=3, null=True, blank=True)
     hours = models.DecimalField(max_digits=12, decimal_places=3, null=True, blank=True)
     fact = models.ForeignKey('production.EquipmentFact', on_delete=models.SET_NULL, null=True, blank=True, related_name='uat_tasks')
+    allocation = models.OneToOneField('production.EquipmentDayAllocation', on_delete=models.SET_NULL, null=True, blank=True, related_name='uat_task')
 
     class Meta:
         ordering = ['waybill_id', 'line_number']

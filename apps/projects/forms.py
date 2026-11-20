@@ -1,4 +1,5 @@
 from django import forms
+from django.db.models import Q
 from django.utils.translation import gettext_lazy as _
 
 from .models import Project, ConstructionObject, Section
@@ -30,7 +31,7 @@ class ConstructionObjectForm(forms.ModelForm):
         self.fields['uat_departments'] = forms.ModelMultipleChoiceField(
             queryset=UatDepartment.objects.filter(
                 company_id=self.instance.company_id, is_active=True,
-            ).order_by('name', 'pk'),
+            ).filter(Q(project=None)|Q(project_id=self.instance.project_id)).order_by('name', 'pk'),
             required=False,
             label='Подразделения УАТ',
             help_text='Можно выбрать несколько. Путевые листы этих подразделений попадут в факт объекта.',
@@ -62,7 +63,7 @@ class ConstructionObjectForm(forms.ModelForm):
             ).exclude(pk__in=selected_ids).update(construction_object=None)
             UatDepartment.objects.filter(
                 company=obj.company, pk__in=selected_ids,
-            ).update(construction_object=obj)
+            ).update(project=obj.project, construction_object=obj)
 
         if commit:
             save_departments()

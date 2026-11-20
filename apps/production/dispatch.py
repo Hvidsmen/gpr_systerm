@@ -294,14 +294,27 @@ def project_resources(obj,day,section):
         counts={}
         for row in rows:
             key=(row.equipment.type.parent_id or row.equipment.type_id,(row.equipment.plate_number or row.equipment.inventory_number or row.equipment.vin)[:50])
-            working=counts.setdefault(key,set())
-            if row.state=='WORKING':working.add(row.equipment_id)
+            value=counts.setdefault(key,{'machines':set(),'hours':Decimal('0'),'has_hours':False})
+            if row.state=='WORKING':
+                value['machines'].add(row.equipment_id)
+                if row.machine_hours is not None:
+                    value['hours']+=row.machine_hours;value['has_hours']=True
         required=plans(obj,day)[1]['equipment']
         present_types={key[0] for key in counts}
         for type_id in EquipmentType.objects.filter(company=company,pk__in=required).values_list('pk',flat=True):
-            if type_id not in present_types:counts[(type_id,'')]=set()
+            if type_id not in present_types:counts[(type_id,'')]={'machines':set(),'hours':Decimal('0'),'has_hours':False}
         EquipmentFact.objects.filter(company=company,construction_object=obj,date=day).delete()
-        for (equipment_type_id,number),machines in counts.items():EquipmentFact.objects.create(company=company,construction_object=obj,date=day,equipment_type_id=equipment_type_id,equipment_number=number,actual_count=len(machines))
+        for (equipment_type_id,number),value in counts.items():
+            equipment_id=next(iter(value['machines'])) if len(value['machines'])==1 else None
+            EquipmentFact.objects.create(company=company,project=obj.project,construction_object=obj,date=day,equipment_type_id=equipment_type_id,
+                equipment_number=number,equipment_id=equipment_id,actual_count=len(value['machines']),machine_hours=value['hours'] if value['has_hours'] else None)
+
+
+def project_equipment_totals(company,project,day):
+    """Count each machine once in a project and sum all allocation hours."""
+    rows=EquipmentActivity.objects.filter(company=company,project=project,date=day,state='WORKING')
+    return {'actual_count':rows.values('equipment_id').distinct().count(),
+            'machine_hours':rows.aggregate(value=Sum('machine_hours'))['value'] or Decimal('0')}
 
 
 def dispatcher_response(request,context,status=200):

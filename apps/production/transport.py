@@ -12,9 +12,9 @@ from django.utils import timezone
 from core.permissions import READ_ROLES, require_roles, role_code, scope_queryset
 from apps.accounts.models import Company
 from apps.personnel.models import Camp
-from apps.projects.models import ConstructionObject
+from apps.projects.models import ConstructionObject, Project
 from apps.resources.models import Equipment
-from .transport_models import EquipmentCampStay, EquipmentTransportEvent, EquipmentDayRecord, EquipmentTransportControl, CONDITIONS
+from .transport_models import EquipmentCampStay, EquipmentTransportEvent, EquipmentDayRecord, EquipmentDayAllocation, EquipmentTransportControl, CONDITIONS
 
 OPERATORS = {'ADMIN', 'MECHANIZATION_DISPATCHER', 'ALL_FACT_DISPATCHER'}
 READERS = READ_ROLES | OPERATORS
@@ -227,27 +227,45 @@ def set_condition(user, camp, day, ids, condition, *, comment='', signed, sessio
 
 
 def _project(user, record, previous_activity):
-    """Reuse existing actual totals for the optional project attribution."""
-    from .models import EquipmentActivity, FactSectionDay
+    """Project a portal day into one allocation and one detailed activity."""
+    from .models import EquipmentActivity, EquipmentFact, FactSectionDay
     from .dispatch import project_resources
     affected = set()
-    if previous_activity:
+    previous_project_only = previous_activity.project_id if previous_activity and not previous_activity.construction_object_id else None
+    if previous_activity and previous_activity.construction_object_id:
         affected.add(previous_activity.construction_object_id)
+    allocation = record.allocations.filter(source_kind='PORTAL').first()
     others = EquipmentActivity.objects.filter(company=user.company, equipment=record.equipment, date=record.date).exclude(pk=previous_activity.pk if previous_activity else None)
     if others.exists():
         raise ValidationError('За этот день техника уже внесена в прежней форме факта. Исправьте прежнюю запись перед вводом по местонахождениям.')
-    if not record.construction_object_id:
+    if not record.project_id:
+        if allocation:
+            allocation.delete()
         if previous_activity:
             record.activity = None; record.save(update_fields=['activity', 'updated_at']); previous_activity.delete()
     else:
         obj = record.construction_object
-        affected.add(obj.pk)
+        if obj:affected.add(obj.pk)
         row = previous_activity or EquipmentActivity(company=user.company, equipment=record.equipment, date=record.date, shift=1)
-        row.construction_object = obj; row.state = 'WORKING' if record.status == 'WORKED' else 'IDLE'
+        row.project = record.project; row.construction_object = obj; row.state = 'WORKING' if record.status == 'WORKED' else 'IDLE'
         row.work = record.work; row.work_item = record.work_item; row.general = not record.work_id
+        row.source_kind = 'TRANSPORT'; row.source_reference = f'transport-day:{record.pk}'
         row.activity = record.comment or ('Работала без привязки к работе · учёт по местонахождению' if record.status == 'WORKED' else 'Простой · учёт по местонахождению')
         row._transport_day_id=record.pk
         row.full_clean(); row.save(); record.activity = row; record.save(update_fields=['activity', 'updated_at'])
+        allocation = allocation or EquipmentDayAllocation(company=user.company, day_record=record, source_kind='PORTAL', source_key=f'transport-day:{record.pk}')
+        allocation.project=record.project;allocation.construction_object=obj;allocation.source_key=f'transport-day:{record.pk}'
+        allocation.work=record.work;allocation.work_item=record.work_item;allocation.activity=row
+        allocation.full_clean();allocation.save()
+    if previous_project_only:
+        EquipmentFact.objects.filter(company=user.company,project_id=previous_project_only,construction_object=None,
+            date=record.date,equipment=record.equipment,comment__startswith='[Работа техники]').delete()
+    if record.project_id and not record.construction_object_id:
+        root_type=record.equipment.type.parent or record.equipment.type
+        number=(record.equipment.plate_number or record.equipment.inventory_number or record.equipment.vin)[:50]
+        EquipmentFact.objects.update_or_create(company=user.company,project=record.project,construction_object=None,date=record.date,
+            equipment_type=root_type,equipment_number=number,defaults={'equipment':record.equipment,'actual_count':1 if record.status=='WORKED' else 0,
+                'machine_hours':None,'comment':'[Работа техники] Проект целиком'})
     for obj in ConstructionObject.objects.filter(company=user.company, pk__in=affected).order_by('pk'):
         FactSectionDay.objects.get_or_create(company=user.company, construction_object=obj, date=record.date, section='mechanization')
         FactSectionDay.objects.filter(company=user.company, construction_object=obj, date=record.date, section='mechanization').update(revision=F('revision') + 1, confirmed_at=None, confirmed_by=None)
@@ -256,11 +274,16 @@ def _project(user, record, previous_activity):
 
 @transaction.atomic
 @with_history_actor
-def save_day(user, camp, day, ids, status, *, construction_object=None, work=None, work_item=None, comment='', repeat=False, signed, session=None, planning_type=None, allow_external=False):
+def save_day(user, camp, day, ids, status, *, project=None, construction_object=None, work=None, work_item=None, comment='', repeat=False, signed, session=None, planning_type=None, allow_external=False):
     authorize(user, camp); require_fact_day(user,day)
     if status not in {'WORKED', 'IDLE', 'CLEAR'}:
         raise ValidationError('Выберите «Работала», «Простой» или очистку дня.')
     versions = _payload(user, camp, day, signed); session = _session(session)
+    if project is None and construction_object:
+        project=construction_object.project
+    if project is None:
+        linked=Project.objects.filter(company=user.company,construction_objects__camp_links__camp=camp).distinct()
+        if linked.count()==1:project=linked.first()
     # Project locks precede equipment locks, matching the old actual-entry writer.
     project_ids = set(EquipmentDayRecord.objects.filter(company=user.company, equipment_id__in=ids, date=day).exclude(construction_object=None).values_list('construction_object_id', flat=True))
     if construction_object: project_ids.add(construction_object.pk)
@@ -270,6 +293,11 @@ def save_day(user, camp, day, ids, status, *, construction_object=None, work=Non
     list(ConstructionObject.objects.select_for_update().filter(company=user.company, pk__in=project_ids).order_by('pk'))
     machines, controls = _lock(user, ids)
     Camp.objects.select_for_update().get(pk=camp.pk, company=user.company)
+    if status != 'CLEAR':
+        if not project or project.company_id != user.company_id:raise ValidationError('Выберите проект.')
+        if not scope_queryset(Project.objects.all(), user).filter(pk=project.pk).exists():raise ValidationError('Проект недоступен этому диспетчеру.')
+        if not camp.object_links.filter(company=user.company,construction_object__project=project).exists():raise ValidationError('Выбранное местонахождение не связано с проектом.')
+        if construction_object and construction_object.project_id != project.pk:raise ValidationError('Объект относится к другому проекту.')
     for machine in machines:
         require_fact_day(user,day)
         _check(user, machine, controls[machine.pk], versions, session)
@@ -285,14 +313,14 @@ def save_day(user, camp, day, ids, status, *, construction_object=None, work=Non
             if record:
                 audit(user, record, 'DELETE', {'date': str(day), 'status': record.status, 'comment': record.comment, 'object': record.construction_object_id, 'work': record.work_id, 'item': record.work_item_id})
                 # Remove its projection through the same service and invalidate totals.
-                record.construction_object = None; _project(user, record, old_activity); record.delete()
+                record.project = None;record.construction_object = None; _project(user, record, old_activity); record.delete()
             _bump(controls[machine.pk]); continue
         if written_off(machine, day):
             raise ValidationError(f'{machine}: техника списана на выбранную дату.')
-        obj, selected_work, selected_item = construction_object, work, work_item
+        selected_project,obj, selected_work, selected_item = project,construction_object, work, work_item
         if repeat:
             previous = machine.transport_days.filter(date__lt=day, status='WORKED').select_related('construction_object', 'work', 'work_item').order_by('-date').first()
-            if previous: obj, selected_work, selected_item = previous.construction_object, previous.work, previous.work_item
+            if previous and previous.project_id==project.pk:obj, selected_work, selected_item = previous.construction_object, previous.work, previous.work_item
         if obj:
             retained = record and record.construction_object_id == obj.pk
             if not scope_queryset(ConstructionObject.objects.all(), user).filter(pk=obj.pk).exists():
@@ -303,12 +331,12 @@ def save_day(user, camp, day, ids, status, *, construction_object=None, work=Non
         record = record or EquipmentDayRecord(company=user.company, equipment=machine, camp=camp, date=day)
         if not existed:record.presence_required=inside
         if planning_type is not None:record.planning_type=planning_type
-        record.status = status; record.construction_object = obj
+        record.status = status;record.project=selected_project; record.construction_object = obj
         record.work = selected_work if status == 'WORKED' else None; record.work_item = selected_item if status == 'WORKED' else None
         record.comment = comment.strip()
         if not existed and not record.recorded_by_id: record.recorded_by = user
         record.full_clean(); record.save(); _project(user, record, old_activity)
-        _bump(controls[machine.pk]); audit(user, record, 'UPDATE' if existed else 'CREATE', {'date': str(day), 'status': status, 'camp': camp.pk, 'object': obj.pk if obj else None, 'work': record.work_id, 'item': record.work_item_id})
+        _bump(controls[machine.pk]); audit(user, record, 'UPDATE' if existed else 'CREATE', {'date': str(day), 'status': status, 'camp': camp.pk, 'project':selected_project.pk,'object': obj.pk if obj else None, 'work': record.work_id, 'item': record.work_item_id})
     require_fact_day(user,day)
     return len(machines)
 

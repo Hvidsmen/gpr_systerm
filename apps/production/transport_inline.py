@@ -62,7 +62,14 @@ def add_status(request):
 
 @with_history_actor
 @transaction.atomic
-def save_cell(user,camp,day,machine,field,value,signed,session):
+def save_cell(user,camp,day,machine,field,value,signed,session,project=None):
+    if project is None:
+        current=machine.transport_days.filter(company=user.company,date=day).select_related('project').first()
+        project=current.project if current and current.project_id else None
+    if project is None:
+        from apps.projects.models import Project
+        choices=Project.objects.filter(company=user.company,construction_objects__camp_links__camp=camp).distinct()
+        if choices.count()==1:project=choices.first()
     transport.authorize(user,camp);require_fact_day(user,day)
     versions=transport._payload(user,camp,day,signed)
     machines,controls=transport._lock(user,[machine.pk]);machine=machines[0]
@@ -75,28 +82,27 @@ def save_cell(user,camp,day,machine,field,value,signed,session):
         planning_type=EquipmentType.objects.filter(company=user.company,parent=None,pk=int(value)).first()
         if not planning_type:raise ValidationError('Техника для планирования недоступна.')
         if machine.transport_days.filter(company=user.company,date=day).exists():raise ValidationError('Машина уже добавлена в факт за этот день. Обновите страницу.')
-        transport.save_day(user,camp,day,[machine.pk],'WORKED',signed=signed,session=session,planning_type=planning_type,allow_external=True)
+        transport.save_day(user,camp,day,[machine.pk],'WORKED',project=project,signed=signed,session=session,planning_type=planning_type,allow_external=True)
     elif field=='condition':
         previous_condition = transport.condition_on(machine, day)
         transport.set_condition(user,camp,day,[machine.pk],str(value),signed=signed,session=session)
         if value == 'REPAIR' and previous_condition != 'REPAIR':
             # Save the default date in the same transaction using the typed detail
             # writer, retaining repair information and today's shift assignments.
-            return save_cell(user, camp, day, machine, 'repair_started_on', str(day),
-                             transport.snapshot(user, camp, day), session)
+            return save_cell(user,camp,day,machine,'repair_started_on',str(day),transport.snapshot(user,camp,day),session,project=project)
     elif field=='status':
         current=machine.transport_days.filter(date=day).first()
         target={'construction_object':current.construction_object,'work':current.work,'work_item':current.work_item} if current and value=='WORKED' else {}
-        transport.save_day(user,camp,day,[machine.pk],str(value),signed=signed,session=session,**target)
+        transport.save_day(user,camp,day,[machine.pk],str(value),project=project,signed=signed,session=session,**target)
     elif field in {'target','day_comment'}:
         current=machine.transport_days.filter(date=day).first()
         target={'construction_object':current.construction_object,'work':current.work,'work_item':current.work_item} if current and current.status=='WORKED' else {}
         if field=='target':
             from .transport_views import target_choices
-            _,mapping=target_choices(user,camp,day,current=[current] if current else [])
+            _,mapping=target_choices(user,project,camp,day,current=[current] if current else [])
             if value not in mapping:raise ValidationError('Работа недоступна для выбранного местонахождения.')
             obj,work,item=mapping[value];target={'construction_object':obj,'work':work,'work_item':item}
-        transport.save_day(user,camp,day,[machine.pk],current.status if current else 'WORKED',signed=signed,session=session,comment=str(value) if field=='day_comment' else current.comment if current else '',**target)
+        transport.save_day(user,camp,day,[machine.pk],current.status if current else 'WORKED',project=project,signed=signed,session=session,comment=str(value) if field=='day_comment' else current.comment if current else '',**target)
     elif field in dict(DETAIL_FIELDS):
         current=EquipmentDayDetails.objects.filter(company=user.company,equipment=machine,date=day).first()
         previous=EquipmentDayDetails.objects.filter(company=user.company,equipment=machine,date__lt=day).first()
@@ -124,9 +130,18 @@ def update(request):
     try:
         from datetime import date
         data=json.loads(request.body)
+        from apps.projects.models import Project
         camp=get_object_or_404(transport.camps_for(request.user),pk=data.get('camp'))
         machine=get_object_or_404(Equipment,company=request.user.company,pk=data.get('equipment'))
-        signed=save_cell(request.user,camp,date.fromisoformat(data.get('date','')),machine,data.get('field'),data.get('value'),data.get('signed'),data.get('session'))
+        project=Project.objects.filter(company=request.user.company,pk=data.get('project')).first()
+        if project is None:
+            current=machine.transport_days.filter(company=request.user.company,date=date.fromisoformat(data.get('date',''))).select_related('project').first()
+            project=current.project if current and current.project_id else None
+        if project is None:
+            choices=Project.objects.filter(company=request.user.company,construction_objects__camp_links__camp=camp).distinct()
+            if choices.count()==1:project=choices.first()
+        if project is None:raise ValidationError('Выберите проект.')
+        signed=save_cell(request.user,camp,date.fromisoformat(data.get('date','')),machine,data.get('field'),data.get('value'),data.get('signed'),data.get('session'),project=project)
         record=machine.transport_days.filter(company=request.user.company,date=date.fromisoformat(data['date'])).first()
         condition=transport.condition_on(machine,date.fromisoformat(data['date']))
         repair_date = None

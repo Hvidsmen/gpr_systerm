@@ -1,4 +1,5 @@
 from datetime import timedelta
+from decimal import Decimal
 from io import BytesIO
 from uuid import uuid4
 from unittest.mock import patch
@@ -13,6 +14,7 @@ from . import test_dispatch as fixtures
 from . import transport as service
 from .transport_models import EquipmentCampStay,EquipmentTransportEvent,EquipmentDayRecord,EquipmentTransportControl
 from .models import EquipmentActivity,EquipmentFact,FactSectionDay
+from .dispatch import project_equipment_totals
 
 
 class TransportTests(TestCase):
@@ -43,8 +45,19 @@ class TransportTests(TestCase):
         self.assertTrue(service.present(self.company,tomorrow).filter(equipment=self.machine,camp=self.camp).exists())
         self.assertEqual(service.condition_on(self.machine,tomorrow),'READY')
         self.assertFalse(EquipmentDayRecord.objects.filter(equipment=self.machine,date=tomorrow).exists())
-        self.assertFalse(EquipmentActivity.objects.exists())
+        activity=EquipmentActivity.objects.get()
+        self.assertEqual((activity.project_id,activity.construction_object_id,activity.source_kind),(self.obj.project_id,None,'TRANSPORT'))
+        self.assertEqual(EquipmentFact.objects.get().actual_count,1)
         self.assertEqual(EquipmentDayRecord.objects.get().status,'WORKED')
+
+    def test_project_total_counts_one_machine_across_two_objects_and_sums_hours(self):
+        other=fixtures.ConstructionObject.objects.create(company=self.company,project=self.obj.project,name='Второй объект')
+        for obj,hours,line in ((self.obj,'2.500','1'),(other,'3.750','2')):
+            EquipmentActivity.objects.create(company=self.company,project=self.obj.project,construction_object=obj,
+                equipment=self.machine,date=self.day,shift=1,state='WORKING',general=True,activity='УАТ',
+                machine_hours=Decimal(hours),source_kind='UAT',source_reference=line)
+        self.assertEqual(project_equipment_totals(self.company,self.obj.project,self.day),
+            {'actual_count':1,'machine_hours':Decimal('6.250')})
 
     def test_movement_equipment_picker_searches_on_server(self):
         Equipment.objects.bulk_create([Equipment(company=self.company,type=self.type,name=f'Поисковая машина {index:03}',inventory_number=f'SRV-{index:03}',vin=f'VIN-SRV-{index:03}') for index in range(75)])

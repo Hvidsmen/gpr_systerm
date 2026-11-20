@@ -132,5 +132,5 @@ class EquipmentCopyTests(TestCase):
         EquipmentFact.objects.create(company=self.company,construction_object=self.obj,date=self.day,equipment_type=self.type,actual_count=8)
         response=self.copy();self.assertEqual(response.status_code,200,response.content)
         self.assertFalse(self.machine.transport_days.filter(date=self.day).exists())
-        self.assertEqual(EquipmentFact.objects.get(date=self.day).actual_count,8)
+        self.assertEqual(EquipmentFact.objects.get(date=self.day,construction_object=self.obj).actual_count,8)
         self.assertEqual(response.json()['added'],1);self.assertTrue(response.json()['warnings'])
