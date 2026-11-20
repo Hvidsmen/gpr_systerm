@@ -112,8 +112,8 @@ class UatDiscoveryTests(TestCase):
             (target/'report.json').write_text(json.dumps({'uat_import':True,'from_date':'2026-10-01',
                 'waybill_count':1,'repair_sheet_count':1,
                 'source_stats':[{'source':'waybills','total_rows':10,'active_rows':9,'period_rows':2,'posted_period_rows':1,'first_date':'2024-01-01','last_date':'2026-11-20'}],
-                'waybills':[{'number':'PL-1','vehicle':'KAMAZ','posted':False}],
-                'repair_sheets':[{'number':'RL-1','vehicle':'GAZ','posted':True}]}))
+                'waybills':[{'number':'PL-1','vehicle':'KAMAZ'}],
+                'repair_sheets':[{'number':'RL-1','vehicle':'GAZ'}]}))
             with override_settings(CONFIG_DIR=directory),patch('apps.accounts.one_c.os.name','nt'),patch('apps.accounts.one_c.Path',PosixPath),patch('apps.accounts.one_c.subprocess.CREATE_NO_WINDOW',0,create=True):
                 process_queue(uat_only=True)
         run.refresh_from_db();self.assertEqual(run.status,'DONE',run.error)
@@ -123,7 +123,6 @@ class UatDiscoveryTests(TestCase):
         page=self.client.get(self.url)
         self.assertContains(page,'PL-1');self.assertContains(page,'RL-1')
         self.assertContains(page,'Проверка исходных таблиц УАТ')
-        self.assertContains(page,'Не проведён');self.assertContains(page,'Проведён')
 
     @patch('apps.accounts.uat.subprocess.Popen')
     def test_staging_click_starts_dedicated_worker_and_can_retry_queued_job(self,spawn):
@@ -204,11 +203,10 @@ class UatDiscoveryTests(TestCase):
         self.assertIn("'путев'",script)
         self.assertIn("'ремонт'",script)
 
-    def test_uat_import_keeps_unposted_non_deleted_documents(self):
+    def test_uat_import_reports_source_counts_and_keeps_posted_filter(self):
         script=(PosixPath(__file__).resolve().parents[2]/'ops/diagnose-1c.ps1').read_text(encoding='utf-8-sig')
         import_block=script.rsplit('if($UatImport){',1)[1].split('if($EmployeesImport){',1)[0]
-        self.assertNotIn("WHERE p.[_Marked]=0x00 AND p.[_Posted]=0x01",import_block)
-        self.assertEqual(import_block.count("WHERE p.[_Marked]=0x00 AND p.[_Date_Time]>=@storedFrom"),7)
+        self.assertEqual(import_block.count("WHERE p.[_Marked]=0x00 AND p.[_Posted]=0x01 AND p.[_Date_Time]>=@storedFrom"),7)
         self.assertIn("CASE WHEN p.[_Posted]=0x01 THEN 1 ELSE 0 END AS posted",import_block)
         self.assertIn("source_stats=$sourceStats",import_block)
         self.assertIn("AS posted_period_rows",import_block)

@@ -231,7 +231,7 @@ LEFT JOIN [dbo].[_Reference61] d2 ON d2.[_IDRRef]=p.[_Fld996RRef]
 LEFT JOIN [dbo].[_Reference49] o ON o.[_IDRRef]=p.[_Fld1019RRef]
 LEFT JOIN [dbo].[_Reference55] dep ON dep.[_IDRRef]=p.[_Fld1023RRef]
 LEFT JOIN [dbo].[_Reference4650] obj ON obj.[_IDRRef]=p.[_Fld11747RRef]
-WHERE p.[_Marked]=0x00 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
+WHERE p.[_Marked]=0x00 AND p.[_Posted]=0x01 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
 ORDER BY p.[_Date_Time] DESC,p.[_Number] DESC
 '@ $period 120)
             $waybillTasks=@(Query $connection @'
@@ -246,7 +246,7 @@ JOIN [dbo].[_Document173] p ON p.[_IDRRef]=x.[_Document173_IDRRef]
 LEFT JOIN [dbo].[_Reference90] leavePoint ON leavePoint.[_IDRRef]=x.[_Fld1059_RRRef]
 LEFT JOIN [dbo].[_Reference90] arrivePoint ON arrivePoint.[_IDRRef]=x.[_Fld1058_RRRef]
 LEFT JOIN [dbo].[_Reference4650] obj ON obj.[_IDRRef]=x.[_Fld11758RRef]
-WHERE p.[_Marked]=0x00 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
+WHERE p.[_Marked]=0x00 AND p.[_Posted]=0x01 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
 ORDER BY p.[_Date_Time] DESC,x.[_LineNo1057]
 '@ $period 120)
             $waybillFuel=@(Query $connection @'
@@ -257,7 +257,7 @@ SELECT TOP (20000) CONVERT(varchar(32),x.[_Document173_IDRRef],2) AS parent_id,x
 FROM [dbo].[_Document173_VT1102] x
 JOIN [dbo].[_Document173] p ON p.[_IDRRef]=x.[_Document173_IDRRef]
 LEFT JOIN [dbo].[_Reference46] f ON f.[_IDRRef]=x.[_Fld1108RRef]
-WHERE p.[_Marked]=0x00 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
+WHERE p.[_Marked]=0x00 AND p.[_Posted]=0x01 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
 ORDER BY p.[_Date_Time] DESC,x.[_LineNo1103]
 '@ $period 120)
             $repairSheets=@(Query $connection @'
@@ -287,7 +287,7 @@ LEFT JOIN [dbo].[_Reference90] place ON place.[_IDRRef]=p.[_Fld11822RRef]
 LEFT JOIN [dbo].[_Reference60] ownWarehouse ON ownWarehouse.[_IDRRef]=p.[_Fld1258RRef]
 LEFT JOIN [dbo].[_Reference60] senderWarehouse ON senderWarehouse.[_IDRRef]=p.[_Fld1256RRef]
 LEFT JOIN [dbo].[_Reference60] receiverWarehouse ON receiverWarehouse.[_IDRRef]=p.[_Fld1257RRef]
-WHERE p.[_Marked]=0x00 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
+WHERE p.[_Marked]=0x00 AND p.[_Posted]=0x01 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
 ORDER BY p.[_Date_Time] DESC,p.[_Number] DESC
 '@ $period 120)
             $repairWorks=@(Query $connection @'
@@ -297,7 +297,7 @@ SELECT TOP (20000) CONVERT(varchar(32),x.[_Document178_IDRRef],2) AS parent_id,x
 FROM [dbo].[_Document178_VT1294] x
 JOIN [dbo].[_Document178] p ON p.[_IDRRef]=x.[_Document178_IDRRef]
 LEFT JOIN [dbo].[_Reference91] w ON w.[_IDRRef]=x.[_Fld1298RRef]
-WHERE p.[_Marked]=0x00 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
+WHERE p.[_Marked]=0x00 AND p.[_Posted]=0x01 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
 ORDER BY p.[_Date_Time] DESC,x.[_LineNo1295]
 '@ $period 120)
             $repairMaterials=@(Query $connection @'
@@ -307,7 +307,7 @@ SELECT TOP (20000) CONVERT(varchar(32),x.[_Document178_IDRRef],2) AS parent_id,x
 FROM [dbo].[_Document178_VT1281] x
 JOIN [dbo].[_Document178] p ON p.[_IDRRef]=x.[_Document178_IDRRef]
 LEFT JOIN [dbo].[_Reference46] n ON n.[_IDRRef]=x.[_Fld1285RRef]
-WHERE p.[_Marked]=0x00 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
+WHERE p.[_Marked]=0x00 AND p.[_Posted]=0x01 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
 ORDER BY p.[_Date_Time] DESC,x.[_LineNo1282]
 '@ $period 120)
             $repairExecutors=@(Query $connection @'
@@ -317,7 +317,7 @@ SELECT TOP (20000) CONVERT(varchar(32),x.[_Document178_IDRRef],2) AS parent_id,x
 FROM [dbo].[_Document178_VT1276] x
 JOIN [dbo].[_Document178] p ON p.[_IDRRef]=x.[_Document178_IDRRef]
 LEFT JOIN [dbo].[_Reference61] e ON e.[_IDRRef]=x.[_Fld1280RRef]
-WHERE p.[_Marked]=0x00 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
+WHERE p.[_Marked]=0x00 AND p.[_Posted]=0x01 AND p.[_Date_Time]>=@storedFrom AND p.[_Date_Time]<@storedUntil
 ORDER BY p.[_Date_Time] DESC,x.[_LineNo1277]
 '@ $period 120)
             Write-ProgressState 'saving'
