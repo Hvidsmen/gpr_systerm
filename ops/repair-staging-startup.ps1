@@ -21,9 +21,9 @@ function Test-StagingStartupAccount([string]$Expected,[string]$Provided) {
 
 function Get-StagingStartupCredential($Task) {
     $account=[string]$Task.Principal.UserId
-    $credential=Get-Credential -UserName $account -Message "Введите текущий пароль Windows для задания YDS Portal Test ($account)"
+    $credential=Get-Credential -UserName $account -Message "Enter the current Windows password for YDS Portal Test ($account)"
     if($null -eq $credential -or -not (Test-StagingStartupAccount $account $credential.UserName)){
-        throw 'Нужна та же Windows-учётная запись, под которой запускается YDS Portal Test.'
+        throw 'Use the same Windows account that runs YDS Portal Test.'
     }
     return $credential
 }

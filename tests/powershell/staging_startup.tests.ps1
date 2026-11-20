@@ -1,7 +1,9 @@
 param([string]$RepositoryRoot='')
 $ErrorActionPreference='Stop'
 if(-not $RepositoryRoot){$RepositoryRoot=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))}
-. (Join-Path $RepositoryRoot 'ops/repair-staging-startup.ps1') -StartupDelaySeconds 90 -HealthTimeoutSeconds 30
+$startupScript=Join-Path $RepositoryRoot 'ops/repair-staging-startup.ps1'
+if([IO.File]::ReadAllBytes($startupScript) | Where-Object {$_ -gt 127}){throw 'The Windows PowerShell 5.1 startup repair script must remain ASCII-safe.'}
+. $startupScript -StartupDelaySeconds 90 -HealthTimeoutSeconds 30
 $folder=Join-Path ([IO.Path]::GetTempPath()) ('yds-test-startup-checks-'+[Guid]::NewGuid().ToString('N'))
 $revision='a'*40;$passed=0
 function Assert-True($Value,[string]$Message){if(-not $Value){throw $Message}}
