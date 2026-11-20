@@ -82,6 +82,8 @@ SCHEMAS = {
         ('Техника для планирования', 'planning_type_name'), ('Группа техники', 'group_name'), ('Марка / модель', 'brand_model'),
         ('Год выпуска', 'manufacture_year'), ('Инвентарный номер', 'inventory_number'),
         ('VIN / заводской номер', 'vin'), ('Местонахождение', 'transport_camp_name'),
+        ('Сопоставлено с УАТ', 'is_uat_matched'), ('Техника УАТ', 'uat_source_name'),
+        ('Основание сопоставления УАТ', 'uat_match_basis'),
         ('Должность машиниста', 'operator_position.name'), ('Доступна для назначения', 'is_active'),
         ('Последнее состояние', 'unit_state_label'), ('Дата состояния', 'unit_state_date'), ('Смена состояния', 'unit_state_shift')],
         ['type__parent', 'operator_position']),

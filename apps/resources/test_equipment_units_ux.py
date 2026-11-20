@@ -4,7 +4,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 from openpyxl import load_workbook
-from apps.accounts.models import Company, User, Role
+from apps.accounts.models import Company, User, Role, UatVehicle
 from apps.projects.models import Project, ConstructionObject
 from apps.production.equipment_operations_models import EquipmentAssignment, EquipmentStateChange
 from apps.production.transport_models import EquipmentCampStay
@@ -25,6 +25,7 @@ class EquipmentUnitsUXTests(TestCase):
         cls.other=EquipmentType.objects.create(company=cls.company,name='Кран')
         cls.other_model=EquipmentType.objects.create(company=cls.company,name='Кран / X',parent=cls.other)
         cls.machine=Equipment.objects.create(company=cls.company,type=cls.model,name='Экскаватор первый',plate_number='А001АА',inventory_number='0001',vin='VIN-001',site_name='Старый участок из импорта')
+        UatVehicle.objects.create(company=cls.company,source_id='UAT-1',name='Экскаватор УАТ',vin='VIN-001',equipment=cls.machine,match_status='MATCHED',match_basis='MANUAL')
         cls.plain=Equipment.objects.create(company=cls.company,type=cls.root,name='Экскаватор второй',plate_number='Б002ББ',inventory_number='0002',vin='VIN-002',is_active=False)
         project=Project.objects.create(company=cls.company,name='Project')
         cls.obj=ConstructionObject.objects.create(company=cls.company,project=project,name='КТП')
@@ -97,6 +98,9 @@ class EquipmentUnitsUXTests(TestCase):
         self.assertEqual(machine['Инвентарный номер'],'0001')
         self.assertEqual(machine['Последнее состояние'],'В ремонте')
         self.assertEqual(machine['Местонахождение'],'Пайяха')
+        self.assertEqual(machine['Сопоставлено с УАТ'],'Да')
+        self.assertEqual(machine['Техника УАТ'],'Экскаватор УАТ')
+        self.assertEqual(machine['Основание сопоставления УАТ'],'MANUAL')
         self.assertEqual(machine['Дата состояния'].date(),date(2026,1,5))
         self.assertTrue(all(row['Техника для планирования']=='Экскаватор' for row in values))
         workbook.close()
@@ -110,6 +114,15 @@ class EquipmentUnitsUXTests(TestCase):
         detail=self.client.get(reverse('resources:equipment_unit_detail',args=[self.machine.pk]))
         self.assertContains(detail,'<dt>Местонахождение</dt>',html=True)
         self.assertContains(detail,'Пайяха')
+
+    def test_uat_mapping_badge_is_visible_in_catalogue_and_machine_card(self):
+        response=self.response()
+        self.assertContains(response,'Сопоставлено с УАТ')
+        self.assertContains(response,'Экскаватор УАТ')
+        self.assertContains(response,'вручную')
+        detail=self.client.get(reverse('resources:equipment_unit_detail',args=[self.machine.pk]))
+        self.assertContains(detail,'Сопоставление с УАТ')
+        self.assertContains(detail,'Экскаватор УАТ')
 
     def test_create_prefills_model_and_saves_explicit_model_identity(self):
         url=reverse('resources:equipment_unit_create')

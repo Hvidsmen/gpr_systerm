@@ -2,7 +2,7 @@
 import re
 from django import forms
 from django.db import connections
-from django.db.models import Case, CharField, OuterRef, Q, Subquery, Value, When
+from django.db.models import Case, CharField, Exists, OuterRef, Q, Subquery, Value, When
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 from .models import Equipment, EquipmentCategory, EquipmentType
@@ -44,6 +44,7 @@ class UnitFilterForm(forms.Form):
 
 
 def with_unit_state(queryset, company, day=None):
+    from apps.accounts.models import UatVehicle
     from apps.production.equipment_operations_models import EquipmentStateChange
     day = day or timezone.localdate()
     history = EquipmentStateChange.objects.filter(company=company, equipment_id=OuterRef('pk'),
@@ -53,8 +54,12 @@ def with_unit_state(queryset, company, day=None):
     technical=EquipmentTransportEvent.objects.filter(company=company,equipment_id=OuterRef('pk'),kind='CONDITION',cancelled_at=None,date__lte=day).order_by('-date','-pk')
     disposal=EquipmentTransportEvent.objects.filter(company=company,equipment_id=OuterRef('pk'),kind='WRITEOFF',cancelled_at=None,date__lte=day).order_by('-date','-pk')
     stays=EquipmentCampStay.objects.filter(company=company,equipment_id=OuterRef('pk'),cancelled_at=None,arrived_on__lte=day).filter(Q(departed_on=None)|Q(departed_on__gt=day)).order_by('-arrived_on','-pk')
+    uat_sources=UatVehicle.objects.filter(company=company,equipment_id=OuterRef('pk')).order_by('-is_active','pk')
     return queryset.annotate(
         transport_camp_name=Subquery(stays.values('camp__name')[:1]),
+        is_uat_matched=Exists(uat_sources),
+        uat_source_name=Subquery(uat_sources.values('name')[:1]),
+        uat_match_basis=Subquery(uat_sources.values('match_basis')[:1]),
         _transport_condition=Subquery(technical.values('condition')[:1]),
         _transport_condition_date=Subquery(technical.values('date')[:1]),
         _transport_disposal_date=Subquery(disposal.values('date')[:1]),
@@ -106,4 +111,8 @@ def present_unit(unit):
     unit.display_model = unit.brand_model or (unit.type.brand_model or unit.type.name if unit.type.parent_id else unit.name)
     unit.identifier = unit.plate_number or unit.inventory_number or unit.vin or 'Номер не указан'
     unit.state_colour = {'READY':'success','SCRAP':'warning','WRITTEN_OFF':'secondary','WORKING': 'success', 'IDLE': 'warning', 'REPAIR': 'danger'}.get(unit.unit_state, 'secondary')
+    unit.uat_match_basis_label = {
+        'VIN': 'по VIN', 'PLATE': 'по госномеру', 'INVENTORY': 'по гаражному номеру',
+        'MANUAL': 'вручную', 'CREATED': 'создано из УАТ', 'SOURCE_ID': 'по идентификатору УАТ',
+    }.get(unit.uat_match_basis, unit.uat_match_basis or '')
     return unit
