@@ -1,8 +1,10 @@
 from datetime import timedelta
 from io import BytesIO
 from uuid import uuid4
+from django.core.exceptions import ValidationError
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 from openpyxl import load_workbook
 from apps.resources.models import Brigade,BrigadeGroup
 from apps.resources.position_catalog import position_for
@@ -29,8 +31,14 @@ class LodgingMetadataTests(TestCase):
         stay=LodgingStay.objects.get();stay.planned_departure=self.day;stay.departed_on=self.day+timedelta(days=1);stay.save()
         endpoint=reverse('personnel:lodging_available_beds')
         self.assertEqual([r['id'] for r in self.client.get(endpoint,self.scope).json()['beds']],[self.bed3.pk])
+        future=LodgingStay.objects.create(company=self.company,camp=self.a,employee=self.employee,bed=self.bed3,arrived_on=self.day+timedelta(days=3),recorded_by=self.admin)
+        self.assertEqual(self.client.get(endpoint,self.scope).json()['beds'],[])
+        session=self.activate_editor()
+        with self.assertRaisesMessage(ValidationError,'Место занято начиная с'):
+            lodging.claim(self.commandant,self.a,self.day,self.employee,self.bed3,session)
         tomorrow={**self.scope,'date':str(self.day+timedelta(days=1))}
         self.assertIn(self.bed.pk,[r['id'] for r in self.client.get(endpoint,tomorrow).json()['beds']])
+        future.cancelled_at=timezone.now();future.save(update_fields=['cancelled_at','updated_at'])
         self.bed3.building.is_active=False;self.bed3.building.save()
         self.assertEqual(self.client.get(endpoint,self.scope).json()['beds'],[])
 

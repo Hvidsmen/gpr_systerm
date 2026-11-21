@@ -223,6 +223,11 @@ class LodgingTests(TestCase):
     def test_commandant_can_load_company_employee_choices(self):
         search=reverse('personnel:employee_search')
         params={'scope':'lodging','kind':'CHECKIN','camp':self.a.pk,'date':str(self.day)}
+        LodgingStay.objects.create(company=self.company,camp=self.a,employee=self.employee,bed=self.bed3,arrived_on=self.day+timedelta(days=3),recorded_by=self.admin)
+        future=self.client.get(search,{**params,'q':self.employee.employee_number}).json()['items']
+        self.assertEqual([item['id'] for item in future],[self.employee.pk])
+        self.assertTrue(future[0]['disabled'])
+        self.assertIn('уже есть заселение с',future[0]['text'])
         response=self.client.get(search,{**params,'q':self.second_employee.employee_number})
         self.assertEqual(response.status_code,200)
         self.assertEqual([item['id'] for item in response.json()['items']],[self.second_employee.pk])

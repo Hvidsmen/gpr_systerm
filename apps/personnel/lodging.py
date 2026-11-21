@@ -19,12 +19,22 @@ TTL=timedelta(minutes=5)
 PRESENCE_TTL=timedelta(seconds=90)
 
 
+def overlapping_from(company, day):
+    """Stays conflicting with a new open-ended stay beginning on ``day``."""
+    return LodgingStay.objects.filter(company=company, cancelled_at=None).filter(
+        Q(departed_on=None) | Q(departed_on__gt=day)
+    ).exclude(departed_on=F('arrived_on'))
+
+
 def present(company,day):
-    return LodgingStay.objects.filter(company=company,cancelled_at=None,arrived_on__lte=day).filter(Q(departed_on=None)|Q(departed_on__gt=day)).exclude(departed_on=F('arrived_on'))
+    return overlapping_from(company,day).filter(arrived_on__lte=day)
 
 
 def available_beds(company,camp,day,*,user=None,session=None):
-    occupied=present(company,day).filter(camp=camp).values('bed_id')
+    # A new stay has no planned end date.  A bed occupied later is therefore
+    # not available: otherwise it looks free in the selector but fails while
+    # saving because the two accommodation periods overlap.
+    occupied=overlapping_from(company,day).filter(camp=camp).values('bed_id')
     return LodgingBed.objects.filter(company=company,building__camp=camp,building__camp__is_active=True,building__is_active=True,state='AVAILABLE').exclude(pk__in=occupied).select_related('building')
 
 
@@ -141,8 +151,10 @@ def claim(user,camp,day,employee,bed,session,action='acquire'):
         if action=='renew' and any(row.locked_by_id!=user.pk or not row.expires_at or row.expires_at<=timezone.now() for row in rows):raise ValidationError('Срок проверки истёк. Проверьте свежие данные и повторите сохранение.')
         if bed:
             if bed.state!='AVAILABLE' or not bed.building.is_active:raise ValidationError('Место недоступно для заселения.')
-            occupant=present(user.company,day).filter(bed=bed).exclude(employee=employee).first()
-            if occupant:raise ValidationError('Место уже занято другим сотрудником.')
+            occupant=overlapping_from(user.company,day).filter(bed=bed).select_related('employee').order_by('arrived_on','pk').first()
+            if occupant:
+                if occupant.arrived_on>day:raise ValidationError(f'Место занято начиная с {occupant.arrived_on:%d.%m.%Y}. Обновите список свободных мест.')
+                raise ValidationError('Место уже занято другим сотрудником.')
         # Selection changes release only this browser tab's previous leases.
         for old in LodgingControl.objects.select_for_update().filter(company=user.company,locked_by=user,session=session,resource__in=['employee','bed']):
             if (old.resource,old.resource_id) not in keys:old.locked_by=None;old.session=None;old.expires_at=None;old.save()

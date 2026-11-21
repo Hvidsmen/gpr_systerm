@@ -36,16 +36,16 @@ def search(request):
                 present = present.filter(camp_id=camp)
             query = query.filter(pk__in=present.values('person__employee_id'))
     elif scope == 'lodging':
-        from .lodging import present
+        from .lodging import overlapping_from, present
         try:
             day = forms.DateField().clean(request.GET.get('date')) or timezone.localdate()
         except forms.ValidationError:
             day = timezone.localdate()
-        lodging_residents = present(request.user.company, day)
+        lodging_kind = request.GET.get('kind', 'CHECKIN')
+        lodging_residents = overlapping_from(request.user.company, day) if lodging_kind == 'CHECKIN' else present(request.user.company, day)
         camp = request.GET.get('camp')
         if camp and camp.isdigit():
             lodging_camp_id = int(camp)
-        lodging_kind = request.GET.get('kind', 'CHECKIN')
         if lodging_kind == 'CHECKIN':
             query = query.filter(is_active=True)
         else:
@@ -72,11 +72,11 @@ def search(request):
     page = Paginator(query, 50).get_page(request.GET.get('page'))
     resident_by_employee = {}
     if lodging_residents is not None:
-        resident_by_employee = {
-            stay.employee_id: stay
-            for stay in lodging_residents.filter(employee_id__in=[employee.pk for employee in page.object_list])
-                .select_related('camp', 'bed__building')
-        }
+        residents = lodging_residents.filter(
+            employee_id__in=[employee.pk for employee in page.object_list]
+        ).select_related('camp', 'bed__building').order_by('arrived_on', 'pk')
+        for stay in residents:
+            resident_by_employee.setdefault(stay.employee_id, stay)
     items = []
     for employee in page.object_list:
         label = employee.display_name
@@ -89,7 +89,10 @@ def search(request):
         item = {'id': employee.pk, 'text': label}
         resident = resident_by_employee.get(employee.pk)
         if lodging_kind == 'CHECKIN' and resident:
-            item['text'] += f' · уже заселён: {resident.camp} · {resident.bed}'
+            if resident.arrived_on > day:
+                item['text'] += f' · уже есть заселение с {resident.arrived_on:%d.%m.%Y}: {resident.camp} · {resident.bed}'
+            else:
+                item['text'] += f' · уже заселён: {resident.camp} · {resident.bed}'
             item['disabled'] = True
         elif lodging_kind and lodging_kind != 'CHECKIN' and resident is None:
             item['text'] += ' · ещё не заселён'
