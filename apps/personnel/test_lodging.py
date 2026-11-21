@@ -348,6 +348,7 @@ class LodgingTests(TestCase):
         with patch('apps.personnel.lodging_views.place_rows',side_effect=AssertionError('default board must use aggregates')):
             page=self.client.get(reverse('personnel:lodging'),{'camp':self.a.pk})
         self.assertEqual(page.status_code,200);self.assertIn('Server-Timing',page)
+        html=page.content.decode();self.assertLess(html.index('aria-label="Учёт проживания"'),html.index('data-lodging-result'));self.assertLess(html.index('data-lodging-result'),html.index('id="movement"'))
 
     def test_ajax_save_is_one_request_and_returns_partial_updates(self):
         page=self.client.get(reverse('personnel:lodging'),{'camp':self.a.pk})
