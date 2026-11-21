@@ -2,8 +2,8 @@ from django import forms
 from django.db.models import Q
 from django.forms.models import ModelChoiceIteratorValue
 from django.urls import reverse
-from apps.resources.models import Employee
-from .models import Camp,LodgingBuilding,LodgingBed,LodgingStay
+from apps.resources.models import Employee,Position
+from .models import Camp,LodgingOrganization,LodgingGuest,LodgingBuilding,LodgingBed,LodgingStay
 from . import lodging
 from .employee_widgets import RemoteEmployeeSelect
 
@@ -83,13 +83,49 @@ class LodgingReportFilter(StyledForm):
         self.style()
 
 
+class LodgingCompositionFilter(StyledForm):
+    date=forms.DateField(label='На дату',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
+    mode=forms.ChoiceField(label='Расчёт',choices=[('PORTAL','По истории портала'),('FACTUAL','По указанным датам')])
+    camps=forms.ModelMultipleChoiceField(label='ВЖГ / местонахождения',queryset=Camp.objects.none())
+    view=forms.ChoiceField(label='Группировка',choices=[('POSITION','По должностям'),('CAMP','По ВЖГ и организациям')])
+    organizations=forms.MultipleChoiceField(label='Организации',required=False,choices=[])
+    positions=forms.MultipleChoiceField(label='Должности',required=False,choices=[])
+    buildings=forms.ModelMultipleChoiceField(label='Вагоны / корпуса',queryset=LodgingBuilding.objects.none(),required=False)
+    room=forms.CharField(label='Комната',required=False)
+    resident_kind=forms.ChoiceField(label='Тип проживающего',required=False,choices=[('','Все'),('employee','Сотрудники из справочника'),('guest','Временные проживающие')])
+    q=forms.CharField(label='Поиск',required=False,widget=forms.TextInput(attrs={'placeholder':'ФИО или табельный номер'}))
+    def __init__(self,*args,company,**kwargs):
+        super().__init__(*args,**kwargs);self.fields['camps'].queryset=Camp.objects.filter(company=company)
+        selected=self.data.getlist('camps') if self.is_bound else [str(getattr(value,'pk',value)) for value in self.initial.get('camps',[])]
+        camp_ids=[value for value in selected if str(value).isdigit()]
+        buildings=LodgingBuilding.objects.filter(company=company)
+        if camp_ids:buildings=buildings.filter(camp_id__in=camp_ids)
+        self.fields['buildings'].queryset=buildings
+        stays=LodgingStay.objects.filter(company=company)
+        organizations=set(stays.exclude(organization_snapshot='').values_list('organization_snapshot',flat=True))
+        organizations.update(str(row) for row in LodgingOrganization.objects.filter(company=company,is_active=True))
+        positions=set(stays.exclude(position_snapshot='').values_list('position_snapshot',flat=True))
+        positions.update(Position.objects.filter(company=company).values_list('name',flat=True))
+        self.fields['organizations'].choices=[(value,value) for value in sorted(organizations,key=str.casefold)]
+        self.fields['positions'].choices=[(value,value) for value in sorted(positions,key=str.casefold)]
+        self.style()
+
+
 class LodgingMovementForm(StyledForm):
     kind=forms.ChoiceField(label='Действие',choices=[('CHECKIN','Заселить'),('MOVE','Переселить'),('CHECKOUT','Выселить'),('UPDATE','Изменить сведения')])
-    employee=forms.ModelChoiceField(label='Сотрудник',queryset=Employee.objects.none(),widget=RemoteEmployeeSelect(attrs={
+    employee=forms.ModelChoiceField(label='Сотрудник',queryset=Employee.objects.none(),required=False,widget=RemoteEmployeeSelect(attrs={
         'data-remote-scope':'lodging','data-remote-kind-field':'kind',
         'data-remote-camp-field':'camp','data-remote-date-field':'date',
         'data-remote-preserve-selection-fields':'kind,date',
     }))
+    temporary=forms.BooleanField(label='Сотрудника нет в справочнике',required=False)
+    guest=forms.ModelChoiceField(label='Ранее добавленный временный проживающий',queryset=LodgingGuest.objects.none(),required=False,empty_label='Добавить нового')
+    guest_full_name=forms.CharField(label='ФИО',max_length=250,required=False)
+    guest_organization=forms.ModelChoiceField(label='Организация',queryset=LodgingOrganization.objects.none(),required=False,empty_label='Выберите организацию')
+    guest_position=forms.ModelChoiceField(label='Должность из справочника',queryset=Position.objects.none(),required=False,empty_label='Выберите должность')
+    guest_position_text=forms.CharField(label='Другая должность',max_length=250,required=False)
+    guest_employee_number=forms.CharField(label='Табельный номер',max_length=60,required=False)
+    guest_note=forms.CharField(label='Примечание к карточке',max_length=1000,required=False)
     building=forms.ModelChoiceField(label='Вагон / корпус',queryset=LodgingBuilding.objects.none(),required=False,empty_label='Все вагоны / корпуса')
     bed=forms.ModelChoiceField(label='Новое место',queryset=LodgingBed.objects.none(),required=False,widget=LodgingBedSelect)
     date=forms.DateField(label='Фактическая дата',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
@@ -106,6 +142,11 @@ class LodgingMovementForm(StyledForm):
         self.fields['employee'].queryset=ordered(Employee.objects.filter(company=company).select_related('position__planning_mapping__brigade__group'),group_path='position__planning_mapping__brigade__group',within=('position__name','last_name','first_name','pk'))
         self.fields['employee'].label_from_instance=lambda e:e.display_name+(' · архивный' if not e.is_active else '')+(' · № '+e.employee_number if e.employee_number else '')+(' · '+str(e.position) if e.position_id else '')
         self.fields['building'].queryset=LodgingBuilding.objects.filter(company=company,camp=camp,is_active=True)
+        self.fields['guest'].queryset=LodgingGuest.objects.filter(company=company,is_active=True).select_related('organization')
+        self.fields['guest'].label_from_instance=lambda guest:f'{guest.full_name} · {guest.organization} · {guest.position_name}'+(f' · № {guest.employee_number}' if guest.employee_number else '')
+        self.fields['guest_organization'].queryset=LodgingOrganization.objects.filter(company=company,is_active=True)
+        self.fields['guest_organization'].label_from_instance=lambda organization:f'{organization}'+(' · требует проверки' if organization.status=='REVIEW' else '')
+        self.fields['guest_position'].queryset=Position.objects.filter(company=company).order_by('name','pk')
         self.fields['building'].label_from_instance=lodging.building_label
         selected_day=day
         if self.is_bound:
@@ -120,9 +161,33 @@ class LodgingMovementForm(StyledForm):
         self.style()
     def clean(self):
         data=super().clean()
+        if data.get('temporary'):
+            data['employee']=None
+            if not data.get('guest'):
+                if data.get('kind')!='CHECKIN':self.add_error('guest','Выберите временного проживающего.')
+                if not data.get('guest_full_name'):self.add_error('guest_full_name','Укажите ФИО.')
+                if not data.get('guest_organization'):self.add_error('guest_organization','Выберите организацию.')
+                if not data.get('guest_position') and not data.get('guest_position_text'):self.add_error('guest_position','Выберите или укажите должность.')
+        elif not data.get('employee'):
+            self.add_error('employee','Выберите сотрудника или установите отметку «Сотрудника нет в справочнике».')
         if data.get('kind') in {'CHECKIN','MOVE'} and not data.get('bed'):self.add_error('bed','Выберите новое место.')
         if data.get('building') and data.get('bed') and data['bed'].building_id!=data['building'].pk:self.add_error('bed','Выберите место указанного вагона.')
         return data
+
+
+class QuickOrganizationForm(StyledForm):
+    name=forms.CharField(label='Название организации',max_length=250)
+    short_name=forms.CharField(label='Сокращённое название',max_length=120,required=False)
+    note=forms.CharField(label='Примечание',max_length=1000,required=False,widget=forms.Textarea(attrs={'rows':2}))
+    def __init__(self,*args,company,**kwargs):
+        super().__init__(*args,**kwargs);self.company=company;self.style()
+        for field in self.fields.values():field.widget.attrs['form']='lodging-quick-organization-form'
+    def clean_name(self):
+        value=' '.join(self.cleaned_data['name'].split())
+        duplicate=LodgingOrganization.objects.filter(company=self.company)
+        if any(' '.join(name.split()).casefold()==value.casefold() for name in duplicate.values_list('name',flat=True)):
+            raise forms.ValidationError('Такая организация уже есть. Выберите её в списке.')
+        return value
 
 
 class BuildingForm(forms.ModelForm):

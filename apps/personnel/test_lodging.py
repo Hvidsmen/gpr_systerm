@@ -12,7 +12,7 @@ from apps.accounts.models import User,Role
 from apps.resources.models import Employee
 from apps.production.history_models import FactRevision
 from . import test_housing as housing_fixtures
-from .models import LodgingBuilding,LodgingBed,LodgingStay,LodgingEvent,LodgingControl,LodgingPresence,LodgingResolution,CampStay
+from .models import LodgingOrganization,LodgingGuest,LodgingBuilding,LodgingBed,LodgingStay,LodgingEvent,LodgingControl,LodgingPresence,LodgingResolution,CampStay
 from . import lodging,lodging_sync,housing
 
 
@@ -238,7 +238,9 @@ class LodgingTests(TestCase):
         self.assertNotContains(response,'data-lodging-bed');self.assertContains(response,'data-lazy-url')
         places=self.client.get(reverse('personnel:lodging_building_places',args=[self.building.pk]),data)
         self.assertContains(places,'data-lodging-bed',count=3);self.assertContains(places,self.second_employee.display_name)
-        self.assertContains(places,'data-employee-label=',count=3)
+        self.assertContains(places,'data-resident-label=',count=3)
+        self.assertContains(places,'data-lodging-room',count=2);self.assertContains(places,'Комната 2')
+        self.assertContains(response,'data-lodging-expand="all"');self.assertContains(response,'data-lodging-expand="none"')
         history=self.client.get(reverse('personnel:lodging_event_history'),data);self.assertEqual(history.status_code,200)
         self.assertContains(response,'Сверка перевахты и проживания');self.assertContains(response,'Комендант · проживание')
         self.assertEqual(self.client.get(url,{**data,'export':'xlsx'})['Content-Type'],'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
@@ -279,6 +281,55 @@ class LodgingTests(TestCase):
         self.assertEqual([item['id'] for item in results],[second_bed.pk])
         self.assertIn('Корпус 2',results[0]['label'])
         self.assertEqual(self.client.get(search_url,{'camp':self.a.pk,'building':[self.foreign_building.pk]}).json()['items'],[])
+
+    def test_commandant_adds_organization_and_manages_temporary_resident(self):
+        organization_response=self.client.post(reverse('personnel:lodging_quick_organization'),{
+            'name':'ООО Северный Монтаж','short_name':'Северный Монтаж','note':'Добавлено при заселении'})
+        self.assertEqual(organization_response.status_code,201)
+        organization=LodgingOrganization.objects.get(pk=organization_response.json()['id'])
+        self.assertEqual(organization.status,'REVIEW');self.assertEqual(organization.created_by,self.commandant)
+        duplicate=self.client.post(reverse('personnel:lodging_quick_organization'),{'name':'  ооо северный монтаж  '})
+        self.assertEqual(duplicate.status_code,400)
+        directory=self.client.get(reverse('personnel:lodging_organizations'));self.assertContains(directory,organization.name);self.assertNotContains(directory,'>Подтвердить</button>')
+
+        def submit(kind,bed=None,guest=None):
+            session=self.activate_editor();payload={'camp':self.a.pk,'date':str(self.day),'kind':kind,'temporary':'on','session':session,'signed':''}
+            if guest:payload['guest']=guest.pk
+            else:payload.update({'guest_full_name':'Сидоров Семён Сергеевич','guest_organization':organization.pk,'guest_position_text':'Сварщик','guest_employee_number':'ВР-17','guest_note':'Командировка'})
+            if bed:payload.update({'building':bed.building_id,'bed':bed.pk})
+            return self.client.post(reverse('personnel:lodging'),payload,HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+
+        checkin=submit('CHECKIN',self.bed)
+        self.assertEqual(checkin.status_code,200,checkin.content)
+        guest=LodgingGuest.objects.get();stay=LodgingStay.objects.get(guest=guest,departed_on=None)
+        self.assertIsNone(stay.employee_id);self.assertEqual(stay.organization_snapshot,'Северный Монтаж');self.assertEqual(stay.position_snapshot,'Сварщик')
+        self.assertEqual(checkin.json()['resident_kind'],'guest')
+        places=self.client.get(reverse('personnel:lodging_building_places',args=[self.building.pk]),{'camp':self.a.pk})
+        self.assertContains(places,guest.full_name);self.assertContains(places,'Временный проживающий');self.assertContains(places,'data-guest=')
+
+        moved=submit('MOVE',self.bed2,guest);self.assertEqual(moved.status_code,200,moved.content)
+        self.assertEqual(lodging.present(self.company).get(guest=guest).bed,self.bed2)
+        checkout=submit('CHECKOUT',guest=guest);self.assertEqual(checkout.status_code,200,checkout.content)
+        self.assertFalse(lodging.present(self.company).filter(guest=guest).exists())
+        self.assertEqual(list(LodgingEvent.objects.filter(guest=guest).values_list('kind',flat=True)),['CHECKOUT','MOVE','CHECKIN'])
+
+    def test_composition_report_groups_registered_and_temporary_residents_and_exports_two_sheets(self):
+        self.edit()
+        organization=LodgingOrganization.objects.create(company=self.company,name='Подрядчик',status='VERIFIED',created_by=self.admin)
+        guest=LodgingGuest.objects.create(company=self.company,full_name='Временный Работник',organization=organization,position_name='Сварщик',created_by=self.commandant)
+        self.edit(employee=self.employee,bed=self.bed2)
+        self.edit('CHECKOUT',employee=self.employee)
+        session=self.activate_editor();lodging.move(self.commandant,'CHECKIN',self.a,self.day,guest=guest,bed=self.bed2,session=session)
+        params={'date':str(self.day),'mode':'FACTUAL','view':'POSITION','camps':[self.a.pk]}
+        response=self.client.get(reverse('personnel:lodging_composition'),params)
+        self.assertEqual(response.status_code,200)
+        self.assertContains(response,'Состав проживающих');self.assertContains(response,'Сварщик');self.assertContains(response,guest.full_name)
+        self.assertEqual(response.context['stats']['GUEST'],1)
+        export=self.client.get(reverse('personnel:lodging_composition'),{**params,'export':'xlsx'})
+        book=load_workbook(BytesIO(export.content),read_only=True)
+        self.assertEqual(book.sheetnames,['Сводка','Список сотрудников'])
+        self.assertEqual(book['Список сотрудников'].max_row,3)
+        book.close()
 
     def test_commandant_can_load_company_employee_choices(self):
         search=reverse('personnel:employee_search')

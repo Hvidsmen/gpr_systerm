@@ -1,0 +1,8 @@
+<details class="lodging-quick-organization" data-lodging-quick-organization>
+  <summary>Добавить организацию</summary>
+  <div class="lodging-quick-organization-fields">
+    {% for field in quick_organization_form %}<div>{{ field.label_tag }}{{ field }}{{ field.errors }}</div>{% endfor %}
+    <div><button class="btn btn-sm btn-outline-primary" type="submit" form="lodging-quick-organization-form">Добавить</button></div>
+  </div>
+  <p class="small mb-0" data-quick-organization-message></p>
+</details>

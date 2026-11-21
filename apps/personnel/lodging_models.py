@@ -6,6 +6,54 @@ from core.fact_history import ActualHistoryMixin
 from .models import PersonnelModel
 
 
+class LodgingOrganization(ActualHistoryMixin,PersonnelModel):
+    STATUSES=[('VERIFIED','Подтверждена'),('REVIEW','Требует проверки')]
+    name=models.CharField('Название организации',max_length=250)
+    short_name=models.CharField('Сокращённое название',max_length=120,blank=True)
+    note=models.TextField('Примечание',max_length=1000,blank=True)
+    status=models.CharField('Статус',max_length=10,choices=STATUSES,default='REVIEW')
+    is_active=models.BooleanField('Доступна для выбора',default=True)
+    created_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,blank=True,related_name='+')
+    class Meta:
+        ordering=['name','pk']
+        constraints=[models.UniqueConstraint(fields=['company','name'],name='unique_lodging_organization')]
+    def clean(self):
+        super().clean();self.name=' '.join(self.name.split());self.short_name=' '.join(self.short_name.split())
+        if not self.name:raise ValidationError({'name':'Укажите название организации.'})
+        duplicate=type(self).objects.filter(company_id=self.company_id).exclude(pk=self.pk)
+        if any(' '.join(value.split()).casefold()==self.name.casefold() for value in duplicate.values_list('name',flat=True)):
+            raise ValidationError({'name':'Такая организация уже есть в справочнике.'})
+        if self.created_by_id and self.created_by.company_id!=self.company_id:raise ValidationError('Пользователь другой компании.')
+    def __str__(self):return self.short_name or self.name
+
+
+class LodgingGuest(ActualHistoryMixin,PersonnelModel):
+    full_name=models.CharField('ФИО',max_length=250)
+    organization=models.ForeignKey(LodgingOrganization,on_delete=models.PROTECT,related_name='guests',verbose_name='Организация')
+    position_name=models.CharField('Должность',max_length=250)
+    employee_number=models.CharField('Табельный номер',max_length=60,blank=True)
+    note=models.TextField('Примечание',max_length=1000,blank=True)
+    linked_employee=models.ForeignKey('resources.Employee',on_delete=models.PROTECT,null=True,blank=True,related_name='linked_lodging_guests',verbose_name='Связанный сотрудник ЗУП')
+    is_active=models.BooleanField('Доступен для выбора',default=True)
+    created_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,blank=True,related_name='+')
+    class Meta:
+        ordering=['full_name','pk']
+        indexes=[models.Index(fields=['company','full_name'],name='lodging_guest_name')]
+    def clean(self):
+        super().clean();self.full_name=' '.join(self.full_name.split());self.position_name=' '.join(self.position_name.split());self.employee_number=' '.join(self.employee_number.split())
+        if not self.full_name:raise ValidationError({'full_name':'Укажите ФИО.'})
+        if not self.position_name:raise ValidationError({'position_name':'Укажите должность.'})
+        for value in (self.organization,self.linked_employee,self.created_by):
+            if value and value.company_id!=self.company_id:raise ValidationError('Данные другой компании.')
+    @property
+    def display_name(self):return self.full_name
+    @property
+    def display_position(self):return self.position_name
+    @property
+    def display_organization(self):return str(self.organization)
+    def __str__(self):return self.full_name
+
+
 class LodgingBuilding(ActualHistoryMixin,PersonnelModel):
     GENDERS=[('', 'Не указан'),('M','Мужской'),('F','Женский'),('MIXED','Смешанный')]
     camp=models.ForeignKey('personnel.Camp',on_delete=models.PROTECT,related_name='lodging_buildings')
@@ -39,7 +87,8 @@ class LodgingBed(ActualHistoryMixin,PersonnelModel):
 
 
 class LodgingStay(ActualHistoryMixin,PersonnelModel):
-    employee=models.ForeignKey('resources.Employee',on_delete=models.PROTECT,related_name='lodging_stays')
+    employee=models.ForeignKey('resources.Employee',on_delete=models.PROTECT,null=True,blank=True,related_name='lodging_stays')
+    guest=models.ForeignKey(LodgingGuest,on_delete=models.PROTECT,null=True,blank=True,related_name='lodging_stays',verbose_name='Временный проживающий')
     camp=models.ForeignKey('personnel.Camp',on_delete=models.PROTECT,related_name='lodging_stays')
     bed=models.ForeignKey(LodgingBed,on_delete=models.PROTECT,related_name='stays')
     arrived_on=models.DateField('Дата заселения')
@@ -62,24 +111,37 @@ class LodgingStay(ActualHistoryMixin,PersonnelModel):
             models.Index(fields=['company','employee','arrived_on','departed_on'],name='lodging_employee_period'),
             models.Index(fields=['company','camp'],condition=models.Q(departed_on=None,cancelled_at=None),name='lodging_open_camp'),
             models.Index(fields=['company','employee'],condition=models.Q(departed_on=None,cancelled_at=None),name='lodging_open_employee'),
+            models.Index(fields=['company','guest'],condition=models.Q(departed_on=None,cancelled_at=None),name='lodging_open_guest'),
             models.Index(fields=['company','bed'],condition=models.Q(departed_on=None,cancelled_at=None),name='lodging_open_bed'),
         ]
+        constraints=[models.CheckConstraint(condition=(models.Q(employee__isnull=False,guest__isnull=True)|models.Q(employee__isnull=True,guest__isnull=False)),name='lodging_stay_one_resident')]
     def clean(self):
-        for name in ('employee','camp','bed'):
+        for name in ('employee','guest','camp','bed'):
             obj=getattr(self,name,None)
             if obj and obj.company_id!=self.company_id:raise ValidationError('Данные другой компании.')
+        if bool(self.employee_id)==bool(self.guest_id):raise ValidationError('Выберите сотрудника или временного проживающего.')
         if self.bed_id and self.bed.building.camp_id!=self.camp_id:raise ValidationError('Место находится в другом местонахождении.')
         if self.planned_departure and self.arrived_on and self.planned_departure<self.arrived_on:raise ValidationError('Плановое освобождение не может быть раньше заселения.')
         if self.cancelled_at or self.departed_on is not None:return
         current=type(self).objects.filter(company_id=self.company_id,cancelled_at=None,departed_on=None).exclude(pk=self.pk)
         if current.filter(bed_id=self.bed_id).exists():raise ValidationError('Место уже занято другим сотрудником.')
-        if current.filter(employee_id=self.employee_id).exists():raise ValidationError('Сотрудник уже заселён. Оформите переселение.')
-    def __str__(self):return f'{self.employee} · {self.bed} · {self.arrived_on}'
+        resident=current.filter(employee_id=self.employee_id) if self.employee_id else current.filter(guest_id=self.guest_id)
+        if resident.exists():raise ValidationError('Этот человек уже заселён. Оформите переселение.')
+    @property
+    def resident(self):return self.employee or self.guest
+    @property
+    def resident_name(self):return self.resident.display_name
+    @property
+    def resident_number(self):return self.employee.employee_number if self.employee_id else self.guest.employee_number
+    @property
+    def resident_kind(self):return 'employee' if self.employee_id else 'guest'
+    def __str__(self):return f'{self.resident} · {self.bed} · {self.arrived_on}'
 
 
 class LodgingEvent(ActualHistoryMixin,PersonnelModel):
     KINDS=[('CHECKIN','Заселение'),('MOVE','Переселение'),('CHECKOUT','Выселение'),('UPDATE','Изменение сведений'),('CANCEL','Отмена записи')]
-    employee=models.ForeignKey('resources.Employee',on_delete=models.PROTECT,related_name='+')
+    employee=models.ForeignKey('resources.Employee',on_delete=models.PROTECT,null=True,blank=True,related_name='+')
+    guest=models.ForeignKey(LodgingGuest,on_delete=models.PROTECT,null=True,blank=True,related_name='+',verbose_name='Временный проживающий')
     camp=models.ForeignKey('personnel.Camp',on_delete=models.PROTECT,related_name='lodging_events')
     date=models.DateField()
     kind=models.CharField(max_length=12,choices=KINDS)
@@ -94,15 +156,21 @@ class LodgingEvent(ActualHistoryMixin,PersonnelModel):
             models.Index(fields=['company','camp','date'],name='lodging_event_camp_day'),
             models.Index(fields=['company','camp','created_at'],name='lodging_event_camp_time'),
         ]
+        constraints=[models.CheckConstraint(condition=(models.Q(employee__isnull=False,guest__isnull=True)|models.Q(employee__isnull=True,guest__isnull=False)),name='lodging_event_one_resident')]
     def clean(self):
-        for name in ('employee','camp','from_bed','to_bed','stay'):
+        for name in ('employee','guest','camp','from_bed','to_bed','stay'):
             obj=getattr(self,name,None)
             if obj and obj.company_id!=self.company_id:raise ValidationError('Событие другой компании.')
-    def __str__(self):return f'{self.employee} · {self.get_kind_display()} · {self.date}'
+        if bool(self.employee_id)==bool(self.guest_id):raise ValidationError('Событие должно относиться к одному проживающему.')
+    @property
+    def resident(self):return self.employee or self.guest
+    @property
+    def resident_name(self):return self.resident.display_name
+    def __str__(self):return f'{self.resident} · {self.get_kind_display()} · {self.date}'
 
 
 class LodgingControl(PersonnelModel):
-    resource=models.CharField(max_length=10,choices=[('employee','Сотрудник'),('bed','Место'),('camp','Местонахождение')])
+    resource=models.CharField(max_length=10,choices=[('employee','Сотрудник'),('guest','Временный проживающий'),('bed','Место'),('camp','Местонахождение')])
     resource_id=models.PositiveBigIntegerField()
     revision=models.PositiveIntegerField(default=0)
     locked_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,blank=True,related_name='+')

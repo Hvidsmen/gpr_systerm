@@ -5,6 +5,7 @@ import subprocess
 import sys
 from collections import Counter
 from datetime import date,datetime,time
+from io import BytesIO
 from pathlib import Path
 from time import perf_counter
 from uuid import uuid4
@@ -14,7 +15,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied,ValidationError
 from django.db import transaction,IntegrityError
 from django.db.models import Count,Q
-from django.http import JsonResponse,Http404
+from django.http import JsonResponse,Http404,HttpResponse
 from django.core.paginator import Paginator
 from django.shortcuts import get_object_or_404,render,redirect
 from django.urls import reverse
@@ -25,9 +26,9 @@ from django.views.decorators.http import require_GET,require_POST,require_http_m
 from core.permissions import require_roles,role_code
 from core.fact_edit_window import can_edit_fact_day
 from apps.resources.models import Employee
-from .models import Camp,LodgingBuilding,LodgingBed,LodgingStay,LodgingEvent
+from .models import Camp,LodgingOrganization,LodgingGuest,LodgingBuilding,LodgingBed,LodgingStay,LodgingEvent
 from . import lodging,lodging_sync
-from .lodging_forms import LodgingFilter,LodgingMovementForm,LodgingReportFilter,BuildingForm,BedForm,CorrectionForm,QuickBedForm
+from .lodging_forms import LodgingFilter,LodgingMovementForm,LodgingReportFilter,LodgingCompositionFilter,BuildingForm,BedForm,CorrectionForm,QuickBedForm,QuickOrganizationForm
 
 PERFORMANCE=logging.getLogger('gpr.performance')
 
@@ -64,8 +65,8 @@ def lodging_place_label(bed):
     return f'{lodging.building_title(bed.building)} · {place}'
 
 
-def movement_success(kind, employee, camp, day, old_bed=None, new_bed=None):
-    name = employee.display_name
+def movement_success(kind, resident, camp, day, old_bed=None, new_bed=None):
+    name = resident.display_name
     if kind == 'CHECKIN':
         place = format_html('<a href="{}">Показать место: {}</a>', lodging_place_url(camp, day, new_bed), lodging_place_label(new_bed))
         return format_html('Заселение сотрудника <strong>{}</strong> выполнено успешно. {}', name, place)
@@ -166,7 +167,7 @@ def place_rows(company,camp,day,building=None,bed_ids=None):
     occupied_query=lodging.present(company,day).filter(camp=camp)
     if building is not None:occupied_query=occupied_query.filter(bed__building=building)
     if bed_ids is not None:occupied_query=occupied_query.filter(bed_id__in=bed_ids)
-    occupied={stay.bed_id:stay for stay in occupied_query.select_related('employee__position__planning_mapping__brigade__group','employee__company','bed__building','recorded_by')}
+    occupied={stay.bed_id:stay for stay in occupied_query.select_related('employee__position__planning_mapping__brigade__group','employee__company','guest__organization','bed__building','recorded_by')}
     from apps.resources.group_order import position_group
     rows=[]
     beds=LodgingBed.objects.filter(company=company,building__camp=camp)
@@ -176,11 +177,12 @@ def place_rows(company,camp,day,building=None,bed_ids=None):
     for bed in bed_rows:
         stay=occupied.get(bed.pk);status='OCCUPIED' if stay else 'UNAVAILABLE' if not bed.building.is_active else 'FREE' if bed.state=='AVAILABLE' else bed.state
         rows.append({'bed':bed,'stay':stay,'status':status,'status_label':{'OCCUPIED':'Занято','FREE':'Свободно','RESERVED':'Зарезервировано','UNAVAILABLE':'Недоступно'}[status],
-            'organization':(stay.organization_snapshot or employee_company(stay.employee)) if stay else '',
-            'position':(stay.position_snapshot if stay.organization_snapshot else stay.employee.display_position) if stay else '',
-            'gender':stay.employee.get_gender_display() if stay else '',
-            'position_group':position_group(stay.employee.position) if stay else '',
-            'department':(stay.department_snapshot if stay.organization_snapshot else stay.employee.display_department) if stay else '',
+            'resident_name':stay.resident_name if stay else '','resident_number':stay.resident_number if stay else '',
+            'organization':(stay.organization_snapshot or employee_company(stay.employee)) if stay and stay.employee_id else (stay.organization_snapshot or str(stay.guest.organization)) if stay else '',
+            'position':(stay.position_snapshot or stay.employee.display_position) if stay and stay.employee_id else (stay.position_snapshot or stay.guest.position_name) if stay else '',
+            'gender':stay.employee.get_gender_display() if stay and stay.employee_id else '',
+            'position_group':position_group(stay.employee.position) if stay and stay.employee_id else 'Временные проживающие' if stay else '',
+            'department':(stay.department_snapshot or stay.employee.display_department) if stay and stay.employee_id else '',
             'overdue':bool(stay and stay.planned_departure and stay.planned_departure<day)})
     return rows
 
@@ -189,7 +191,7 @@ def filtered_place_rows(request,camp,day,building=None):
     bed_ids=[value for value in request.GET.getlist('beds') if value.isdigit()]
     rows=place_rows(request.user.company,camp,day,building,bed_ids or None)
     q=request.GET.get('q','').casefold().split();state=request.GET.get('state','')
-    return [r for r in rows if (not state or r['status']==state) and all(term in ' '.join([str(r['bed']),lodging.building_title(r['bed'].building),r['stay'].employee.display_name if r['stay'] else '',r['stay'].employee.employee_number if r['stay'] else '',r['organization']]).casefold() for term in q)]
+    return [r for r in rows if (not state or r['status']==state) and all(term in ' '.join([str(r['bed']),lodging.building_title(r['bed'].building),r['resident_name'],r['resident_number'],r['organization'],r['position']]).casefold() for term in q)]
 
 
 def aggregate_place_counts(company,camp,building_ids=None):
@@ -241,7 +243,7 @@ def event_history(request):
     started=perf_counter()
     require_roles(request.user,lodging.READERS)
     camp,day=parameters(request)
-    events=LodgingEvent.objects.filter(company=request.user.company,camp=camp).select_related('employee','from_bed__building','to_bed__building','recorded_by','stay')
+    events=LodgingEvent.objects.filter(company=request.user.company,camp=camp).select_related('employee','guest','from_bed__building','to_bed__building','recorded_by','stay')
     page=Paginator(events,50).get_page(request.GET.get('page'))
     return measured(render(request,'personnel/_lodging_event_history.html',{'events':page.object_list,'page_obj':page,'camp':camp,'day':day,
         'catalogue_editable':lodging.editor_state(request.user,camp)[0]}),'lodging history',started)
@@ -250,16 +252,17 @@ def event_history(request):
 def historical_occupancy(company,camp,day,mode):
     if mode=='FACTUAL':
         stays=LodgingStay.objects.filter(company=company,camp=camp,cancelled_at=None,arrived_on__lte=day).filter(Q(departed_on=None)|Q(departed_on__gt=day))
-        return list(stays.select_related('employee','bed__building','recorded_by')),{}
+        return list(stays.select_related('employee','guest__organization','bed__building','recorded_by')),{}
     cutoff=timezone.make_aware(datetime.combine(day,time.max),timezone.get_current_timezone())
     events=LodgingEvent.objects.filter(company=company,camp=camp,created_at__lte=cutoff).select_related('stay').order_by('created_at','pk')
     current={};applied={}
     for event in events:
         applied[event.stay_id]=event.created_at
-        if event.kind in {'CHECKIN','MOVE'} and event.to_bed_id:current[event.employee_id]=event.stay_id
-        elif event.kind=='CHECKOUT':current.pop(event.employee_id,None)
-        elif event.kind=='CANCEL' and current.get(event.employee_id)==event.stay_id:current.pop(event.employee_id,None)
-    stays=LodgingStay.objects.filter(company=company,pk__in=current.values()).select_related('employee','bed__building','recorded_by')
+        resident=('employee',event.employee_id) if event.employee_id else ('guest',event.guest_id)
+        if event.kind in {'CHECKIN','MOVE'} and event.to_bed_id:current[resident]=event.stay_id
+        elif event.kind=='CHECKOUT':current.pop(resident,None)
+        elif event.kind=='CANCEL' and current.get(resident)==event.stay_id:current.pop(resident,None)
+    stays=LodgingStay.objects.filter(company=company,pk__in=current.values()).select_related('employee','guest__organization','bed__building','recorded_by')
     return list(stays),applied
 
 
@@ -287,16 +290,84 @@ def historical_report(request):
             for stay in occupants:
                 row={'bed':bed,'stay':stay,'status':status,'status_label':{'OCCUPIED':'Занято','FREE':'Свободно','RESERVED':'Зарезервировано','UNAVAILABLE':'Недоступно'}[status],
                     'applied_at':applied.get(stay.pk) if stay else None,'overlap':len(by_bed.get(bed.pk,[]))>1}
-                haystack=' '.join([str(bed),lodging.building_title(bed.building),stay.employee.display_name if stay else '',stay.employee.employee_number if stay else '']).casefold()
+                haystack=' '.join([str(bed),lodging.building_title(bed.building),stay.resident_name if stay else '',stay.resident_number if stay else '',stay.organization_snapshot if stay else '',stay.position_snapshot if stay else '']).casefold()
                 if (not state or status==state) and all(term in haystack for term in terms):rows.append(row);stats[status]+=1
         if request.GET.get('export')=='xlsx':
             from .housing_views import workbook_response
             values=[['Дата отчёта','Режим','Местонахождение','Вагон / корпус','Комната','Место','Состояние','Сотрудник','Табельный номер','Дата заселения','Дата выселения','Сохранено в портале','Автор','Примечание']]
             for row in rows:
-                stay=row['stay'];values.append([day,form.fields['mode'].choices[0][1] if mode=='PORTAL' else form.fields['mode'].choices[1][1],camp.name,row['bed'].building.name,row['bed'].room,row['bed'].number,row['status_label'],stay.employee.display_name if stay else '',stay.employee.employee_number if stay else '',stay.arrived_on if stay else '',stay.departed_on if stay else '',row['applied_at'] or '',(stay.recorded_by.get_full_name() or stay.recorded_by.username) if stay and stay.recorded_by else '',stay.comment if stay else row['bed'].note])
+                stay=row['stay'];values.append([day,form.fields['mode'].choices[0][1] if mode=='PORTAL' else form.fields['mode'].choices[1][1],camp.name,row['bed'].building.name,row['bed'].room,row['bed'].number,row['status_label'],stay.resident_name if stay else '',stay.resident_number if stay else '',stay.arrived_on if stay else '',stay.departed_on if stay else '',row['applied_at'] or '',(stay.recorded_by.get_full_name() or stay.recorded_by.username) if stay and stay.recorded_by else '',stay.comment if stay else row['bed'].note])
             return measured(workbook_response(f'lodging-{day}.xlsx','Состояние проживания',values),'lodging historical report export',started)
     response=render(request,'personnel/lodging_report.html',{'form':form,'rows':rows,'stats':stats,'camp':camp,'day':day,'mode':mode,'warning':warning})
     return measured(response,'lodging historical report',started)
+
+
+def composition_workbook(day,view,camps,summary_rows,rows):
+    from openpyxl import Workbook
+    from openpyxl.styles import Font,PatternFill
+    book=Workbook();summary=book.active;summary.title='Сводка'
+    if view=='POSITION':
+        summary.append(['Должность',*[camp.name for camp in camps],'Всего'])
+        for item in summary_rows:summary.append([item['position'],*[item['counts'].get(camp.pk,0) for camp in camps],item['total']])
+    else:
+        summary.append(['ВЖГ','Организация','Должность','Количество'])
+        for item in summary_rows:summary.append([item['camp'].name,item['organization'],item['position'],item['total']])
+    details=book.create_sheet('Список сотрудников');details.append(['Дата отчёта','ВЖГ','Вагон / корпус','Комната','Место','ФИО','Табельный номер','Организация','Должность','Тип записи','Дата заселения'])
+    for row in rows:details.append([day,row['camp'].name,row['building'].name,row['bed'].room,row['bed'].number,row['name'],row['number'],row['organization'],row['position'],row['kind_label'],row['stay'].arrived_on])
+    for sheet in (summary,details):
+        for cell in sheet[1]:cell.font=Font(bold=True);cell.fill=PatternFill('solid',fgColor='DDEBF7')
+        sheet.freeze_panes='A2';sheet.auto_filter.ref=sheet.dimensions
+        for column in sheet.columns:
+            letter=column[0].column_letter;sheet.column_dimensions[letter].width=min(45,max(12,max(len(str(cell.value or '')) for cell in column)+2))
+    stream=BytesIO();book.save(stream);book.close();stream.seek(0)
+    response=HttpResponse(stream.getvalue(),content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    response['Content-Disposition']=f'attachment; filename="lodging-composition-{day}.xlsx"';return response
+
+
+@login_required
+@require_GET
+def composition_report(request):
+    started=perf_counter();require_roles(request.user,lodging.READERS)
+    available=Camp.objects.filter(company=request.user.company)
+    initial={'date':timezone.localdate(),'mode':'PORTAL','view':'POSITION','camps':list(available[:1])}
+    form=LodgingCompositionFilter(request.GET or None,company=request.user.company,initial=initial)
+    rows=[];summary_rows=[];stats=Counter();camps=[];day=initial['date'];view='POSITION';mode='PORTAL'
+    if form.is_valid():
+        data=form.cleaned_data;camps=list(data['camps']);day=data['date'];view=data['view'];mode=data['mode']
+        selected_organizations=set(data['organizations']);selected_positions=set(data['positions']);selected_buildings=set(data['buildings'].values_list('pk',flat=True));terms=data['q'].casefold().split()
+        for camp in camps:
+            stays,_=historical_occupancy(request.user.company,camp,day,mode)
+            for stay in stays:
+                organization=stay.organization_snapshot or (employee_company(stay.employee) if stay.employee_id else str(stay.guest.organization))
+                position=stay.position_snapshot or (stay.employee.display_position if stay.employee_id else stay.guest.position_name) or 'Должность не указана'
+                item={'stay':stay,'camp':camp,'bed':stay.bed,'building':stay.bed.building,'name':stay.resident_name,'number':stay.resident_number,
+                    'organization':organization or 'Организация не указана','position':position,'kind':stay.resident_kind,
+                    'kind_label':'Сотрудник из справочника' if stay.employee_id else 'Временный проживающий'}
+                haystack=' '.join([item['name'],item['number'],item['organization'],item['position'],lodging.building_title(item['building']),stay.bed.room,stay.bed.number]).casefold()
+                if selected_organizations and item['organization'] not in selected_organizations:continue
+                if selected_positions and item['position'] not in selected_positions:continue
+                if selected_buildings and item['building'].pk not in selected_buildings:continue
+                if data['room'] and data['room'].casefold() not in stay.bed.room.casefold():continue
+                if data['resident_kind'] and item['kind']!=data['resident_kind']:continue
+                if not all(term in haystack for term in terms):continue
+                rows.append(item);stats['TOTAL']+=1;stats[item['kind'].upper()]+=1;stats['NO_POSITION']+=item['position']=='Должность не указана'
+        stats['ORGANIZATIONS']=len({row['organization'] for row in rows})
+        if view=='POSITION':
+            grouped={}
+            for row in rows:
+                item=grouped.setdefault(row['position'],{'position':row['position'],'counts':Counter(),'people':[],'total':0})
+                item['counts'][row['camp'].pk]+=1;item['people'].append(row);item['total']+=1
+            summary_rows=sorted(grouped.values(),key=lambda item:item['position'].casefold())
+            for item in summary_rows:item['camp_counts']=[item['counts'].get(camp.pk,0) for camp in camps]
+        else:
+            grouped={}
+            for row in rows:
+                key=(row['camp'].pk,row['organization'],row['position']);item=grouped.setdefault(key,{'camp':row['camp'],'organization':row['organization'],'position':row['position'],'people':[],'total':0})
+                item['people'].append(row);item['total']+=1
+            summary_rows=sorted(grouped.values(),key=lambda item:(item['camp'].name.casefold(),item['organization'].casefold(),item['position'].casefold()))
+        rows.sort(key=lambda row:(row['camp'].name.casefold(),row['building'].name.casefold(),row['bed'].room,row['bed'].number,row['name'].casefold()))
+        if request.GET.get('export')=='xlsx':return measured(composition_workbook(day,view,camps,summary_rows,rows),'lodging composition export',started)
+    return measured(render(request,'personnel/lodging_composition.html',{'form':form,'rows':rows,'summary_rows':summary_rows,'stats':stats,'camps':camps,'day':day,'view':view,'mode':mode}),'lodging composition',started)
 
 
 def summary_context(user,camp,day,*,camps=None):
@@ -354,18 +425,27 @@ def board(request):
         if form.is_valid():
             data=form.cleaned_data
             try:
-                previous=lodging.present(request.user.company,data['date']).filter(employee=data['employee']).select_related('bed__building').first()
-                stay=lodging.move(request.user,data['kind'],camp,data['date'],data['employee'],bed=data.get('bed') if data['kind'] in {'CHECKIN','MOVE'} else None,
-                    session=data['session'],signed=data['signed'],keys_issued=data['keys_issued'],key_number=data['key_number'],pass_number=data['pass_number'],comment=data['comment'])
+                with transaction.atomic():
+                    guest=data.get('guest')
+                    if data.get('temporary') and not guest:
+                        position=data['guest_position'].name if data.get('guest_position') else data['guest_position_text']
+                        duplicate=LodgingGuest.objects.filter(company=request.user.company,organization=data['guest_organization'],full_name__iexact=data['guest_full_name'].strip(),is_active=True).first()
+                        if duplicate:raise ValidationError(f'{duplicate.full_name} уже есть в списке временных проживающих. Выберите существующую карточку.')
+                        guest=LodgingGuest(company=request.user.company,full_name=data['guest_full_name'],organization=data['guest_organization'],position_name=position,
+                            employee_number=data['guest_employee_number'],note=data['guest_note'],created_by=request.user);guest.save()
+                    employee=data.get('employee');resident=employee or guest
+                    previous=lodging.resident_query(lodging.present(request.user.company,data['date']),employee,guest).select_related('bed__building').first()
+                    stay=lodging.move(request.user,data['kind'],camp,data['date'],employee,guest=guest,bed=data.get('bed') if data['kind'] in {'CHECKIN','MOVE'} else None,
+                        session=data['session'],signed=data['signed'],keys_issued=data['keys_issued'],key_number=data['key_number'],pass_number=data['pass_number'],comment=data['comment'])
             except ValidationError as exc:form.add_error(None,exc)
             else:
-                result_message=movement_success(data['kind'],data['employee'],camp,data['date'],previous.bed if previous else None,stay.bed if data['kind'] in {'CHECKIN','MOVE'} else None)
+                result_message=movement_success(data['kind'],resident,camp,data['date'],previous.bed if previous else None,stay.bed if data['kind'] in {'CHECKIN','MOVE'} else None)
                 if ajax:
                     stats,group_counts=aggregate_place_counts(request.user.company,camp)
                     affected={bed.building_id for bed in (previous.bed if previous else None,stay.bed if data['kind'] in {'CHECKIN','MOVE'} else None) if bed}
                     return measured(JsonResponse({'ok':True,'message_html':str(result_message),'affected_buildings':sorted(affected),
-                        'kind':data['kind'],'employee':data['employee'].pk,
-                        'stay':None if data['kind']=='CHECKOUT' else {'employee':data['employee'].pk,'bed':stay.bed_id,'keys_issued':stay.keys_issued,'key_number':stay.key_number,'pass_number':stay.pass_number,'comment':stay.comment},
+                        'kind':data['kind'],'resident_kind':'employee' if employee else 'guest','resident':resident.pk,
+                        'stay':None if data['kind']=='CHECKOUT' else {'resident_kind':'employee' if employee else 'guest','resident':resident.pk,'employee':employee.pk if employee else None,'guest':guest.pk if guest else None,'bed':stay.bed_id,'keys_issued':stay.keys_issued,'key_number':stay.key_number,'pass_number':stay.pass_number,'comment':stay.comment},
                         'stats':{key:stats[key] for key in ('OCCUPIED','FREE','RESERVED','UNAVAILABLE')},
                         'groups':{str(pk):{key:value[key] for key in ('TOTAL','OCCUPIED','FREE','RESERVED','UNAVAILABLE')} for pk,value in group_counts.items()}}),'lodging save',started)
                 messages.success(request,result_message)
@@ -380,7 +460,7 @@ def board(request):
         all_rows=place_rows(request.user.company,camp,day,bed_ids=bed_ids or None)
         if building_ids:all_rows=[row for row in all_rows if row['bed'].building_id in building_ids]
         stats=Counter(row['status'] for row in all_rows)
-        rows=[r for r in all_rows if (not state or r['status']==state) and all(term in ' '.join([str(r['bed']),lodging.building_title(r['bed'].building),r['stay'].employee.display_name if r['stay'] else '',r['stay'].employee.employee_number if r['stay'] else '',r['organization']]).casefold() for term in q)]
+        rows=[r for r in all_rows if (not state or r['status']==state) and all(term in ' '.join([str(r['bed']),lodging.building_title(r['bed'].building),r['resident_name'],r['resident_number'],r['organization'],r['position']]).casefold() for term in q)]
         counts={}
         for row in rows:
             item=counts.setdefault(row['bed'].building_id,Counter());item[row['status']]+=1;item['TOTAL']+=1
@@ -391,8 +471,8 @@ def board(request):
     if request.GET.get('export')=='xlsx':
         values=[['Местонахождение','Вагон / корпус','Инвентарный номер','Сведения о вагоне','Тип','Комната','Место','Состояние','ФИО','Табельный номер','Пол','Группа должностей','Должность','Подразделение','Ключи','Номер ключа','Заселение','Плановая дата выселения','Выселение','Пропуск','Примечание','Пол вагона']]
         for row in rows:
-            b=row['bed'];s=row['stay'];e=s.employee if s else None
-            values.append([camp.name,b.building.name,b.building.inventory_number,b.building.description,b.building.kind,b.room,b.number,row['status_label'],e.display_name if e else '',e.employee_number if e else '',row['gender'],row['position_group'],row['position'],row['department'],('Да' if s.keys_issued else 'Нет') if s else '',s.key_number if s else '',s.arrived_on if s else '',s.planned_departure if s else '',s.departed_on if s else '',s.pass_number if s else '',s.comment if s else b.note,b.building.get_gender_display()])
+            b=row['bed'];s=row['stay']
+            values.append([camp.name,b.building.name,b.building.inventory_number,b.building.description,b.building.kind,b.room,b.number,row['status_label'],row['resident_name'],row['resident_number'],row['gender'],row['position_group'],row['position'],row['department'],('Да' if s.keys_issued else 'Нет') if s else '',s.key_number if s else '',s.arrived_on if s else '',s.planned_departure if s else '',s.departed_on if s else '',s.pass_number if s else '',s.comment if s else b.note,b.building.get_gender_display()])
         return workbook_response('lodging.xlsx','Проживание',values)
     buildings=LodgingBuilding.objects.filter(company=request.user.company,camp=camp)
     if building_ids:buildings=buildings.filter(pk__in=building_ids)
@@ -404,8 +484,9 @@ def board(request):
     context={'groups':groups,'selector':selector,'has_camps':camps.exists(),'camp':camp,'day':day,'form':form,'stats':dict(stats),'editable':editable,'catalogue_editable':editable,'history_url':history_url,
         'presence_state':presence_state,'presence_session':presence_session,
         'quick_bed_form':QuickBedForm(company=request.user.company,camp=camp),
+        'quick_organization_form':QuickOrganizationForm(company=request.user.company),
         'movement_open':request.method=='POST' or bool(request.GET.get('employee')),
-        'roster_data':[{'employee':s.employee_id,'bed':s.bed_id,'keys_issued':s.keys_issued,'key_number':s.key_number,'pass_number':s.pass_number,'comment':s.comment} for s in lodging.present(request.user.company,day).filter(camp=camp)],
+        'roster_data':[{'resident_kind':s.resident_kind,'resident':s.employee_id or s.guest_id,'employee':s.employee_id,'guest':s.guest_id,'bed':s.bed_id,'keys_issued':s.keys_issued,'key_number':s.key_number,'pass_number':s.pass_number,'comment':s.comment} for s in lodging.present(request.user.company,day).filter(camp=camp)],
         **summary_context(request.user,camp,day)}
     timings['context']=(perf_counter()-started)*1000-sum(timings.values());response=render(request,'personnel/lodging.html',context)
     timings['render']=(perf_counter()-started)*1000-sum(timings.values());response['Server-Timing']=', '.join(f'{name};dur={value:.1f}' for name,value in timings.items())
@@ -446,18 +527,61 @@ def quick_bed(request):
 
 @login_required
 @require_POST
+def quick_organization(request):
+    require_roles(request.user,lodging.OPERATORS)
+    form=QuickOrganizationForm(request.POST,company=request.user.company)
+    if not form.is_valid():return JsonResponse({'errors':form.errors.get_json_data()},status=400)
+    data=form.cleaned_data;words=[word for word in data['name'].split() if len(word)>2]
+    similar=LodgingOrganization.objects.filter(company=request.user.company,is_active=True)
+    if words:
+        match=Q()
+        for word in words[:3]:match|=Q(name__icontains=word)|Q(short_name__icontains=word)
+        similar=similar.filter(match)[:5]
+    else:similar=similar.none()
+    if similar and request.POST.get('confirm_similar')!='1':
+        return JsonResponse({'requires_confirmation':True,'similar':[{'id':row.pk,'label':str(row),'name':row.name} for row in similar],
+            'error':'Найдены похожие организации. Проверьте список перед созданием.'},status=409)
+    organization=LodgingOrganization(company=request.user.company,name=data['name'],short_name=data['short_name'],note=data['note'],status='REVIEW',created_by=request.user)
+    try:organization.save()
+    except ValidationError as exc:return JsonResponse({'error':'; '.join(exc.messages)},status=400)
+    return JsonResponse({'id':organization.pk,'label':str(organization),'name':organization.name,'status':'REVIEW'},status=201)
+
+
+@login_required
+@require_http_methods(['GET','POST'])
+def organization_directory(request):
+    require_roles(request.user,lodging.READERS)
+    if request.method=='POST':
+        require_roles(request.user,{'ADMIN'})
+        organization=get_object_or_404(LodgingOrganization,company=request.user.company,pk=request.POST.get('organization'))
+        action=request.POST.get('action')
+        from core.fact_history import history_actor
+        with history_actor(request.user):
+            if action=='verify':organization.status='VERIFIED';organization.save(update_fields=['status','updated_at']);messages.success(request,'Организация подтверждена.')
+            elif action=='toggle':organization.is_active=not organization.is_active;organization.save(update_fields=['is_active','updated_at']);messages.success(request,'Доступность организации изменена.')
+            else:messages.error(request,'Выберите действие со справочником.')
+        return redirect(reverse('personnel:lodging_organizations'))
+    organizations=LodgingOrganization.objects.filter(company=request.user.company).select_related('created_by').annotate(residents=Count('guests'))
+    query=' '.join(request.GET.get('q','').split())
+    if query:organizations=organizations.filter(Q(name__icontains=query)|Q(short_name__icontains=query)|Q(note__icontains=query))
+    return render(request,'personnel/lodging_organizations.html',{'organizations':organizations,'query':query,'can_verify':role_code(request.user)=='ADMIN'})
+
+
+@login_required
+@require_POST
 def claims(request):
     require_roles(request.user,lodging.OPERATORS)
     try:
         data=json.loads(request.body)
         if not isinstance(data,dict):raise ValidationError('Некорректные данные.')
-        if not str(data.get('camp','')).isdigit() or not str(data.get('employee','')).isdigit() or data.get('bed') and not str(data['bed']).isdigit():raise ValidationError('Выберите местонахождение, сотрудника и место.')
+        if not str(data.get('camp','')).isdigit() or not (str(data.get('employee','')).isdigit() ^ str(data.get('guest','')).isdigit()) or data.get('bed') and not str(data['bed']).isdigit():raise ValidationError('Выберите местонахождение, одного проживающего и место.')
         camp=get_object_or_404(Camp,company=request.user.company,pk=data.get('camp'));day=date.fromisoformat(data.get('date',''))
         state,_=touch_presence(request,camp,data.get('session'))
         if not state['editor']:raise ValidationError(editor_error(state))
-        employee=get_object_or_404(Employee,company=request.user.company,pk=data.get('employee'))
+        employee=get_object_or_404(Employee,company=request.user.company,pk=data.get('employee')) if str(data.get('employee','')).isdigit() else None
+        guest=get_object_or_404(LodgingGuest,company=request.user.company,pk=data.get('guest')) if str(data.get('guest','')).isdigit() else None
         bed=get_object_or_404(LodgingBed.objects.select_related('building'),company=request.user.company,pk=data['bed']) if data.get('bed') else None
-        signed=lodging.claim(request.user,camp,day,employee,bed,data.get('session'),data.get('action','acquire'))
+        signed=lodging.claim(request.user,camp,day,employee,bed,data.get('session'),data.get('action','acquire'),guest=guest)
         return JsonResponse({'signed':signed,'owner':request.user.get_full_name() or request.user.username,'expires_seconds':int(lodging.TTL.total_seconds())})
     except (json.JSONDecodeError,ValidationError,ValueError,TypeError) as exc:return JsonResponse({'error':'; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Некорректные данные.'},status=409)
 
@@ -592,7 +716,7 @@ def sync(request):
 @require_http_methods(['GET','POST'])
 def stay_edit(request,pk):
     require_roles(request.user,lodging.OPERATORS)
-    stay=get_object_or_404(LodgingStay.objects.select_related('bed__building','employee','camp'),company=request.user.company,pk=pk)
+    stay=get_object_or_404(LodgingStay.objects.select_related('bed__building','employee','guest__organization','camp'),company=request.user.company,pk=pk)
     access=editor_presence(request,stay.camp,request.POST.get('presence_session'))
     # Form validation uses a separate model instance; service rereads the locked original.
     form=CorrectionForm(request.POST if request.method=='POST' else None,instance=stay,initial={'version':stay.updated_at.isoformat()})

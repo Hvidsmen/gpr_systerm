@@ -132,7 +132,7 @@ def issues(company,camps,day,*,include_resolved=False,progress=None):
     # Accommodation is an operational register: open rows are current even
     # when their documentary date is in the past or future.
     progress('lodging','Чтение проживания',60)
-    living=list(LodgingStay.objects.filter(company=company,cancelled_at=None).select_related('employee__position__planning_mapping__brigade__group','camp','bed__building','recorded_by').order_by('-pk'))
+    living=list(LodgingStay.objects.filter(company=company,cancelled_at=None,employee__isnull=False).select_related('employee__position__planning_mapping__brigade__group','camp','bed__building','recorded_by').order_by('-pk'))
     hr={};last_hr={};rooms={};last_room={};chains={}
     for row in hr_all:
         pk=row.person.employee_id;last_hr.setdefault(pk,row)
