@@ -86,7 +86,7 @@ def require_editor(user,camp):
 def presence(user,camp,session,action='touch'):
     require_roles(user,READERS);session=session_id(session)
     if camp.company_id!=user.company_id:raise ValidationError('Местонахождение другой компании.')
-    mutex(user);now=timezone.now();Camp.objects.select_for_update().get(pk=camp.pk,company=user.company)
+    now=timezone.now()
     LodgingPresence.objects.filter(company=user.company,camp=camp,expires_at__lte=now).delete()
     control=editor_control(user,camp)
     active=LodgingPresence.objects.filter(company=user.company,camp=camp,expires_at__gt=now)
@@ -142,7 +142,7 @@ def bed_versions(user,keys):return {str(b.pk):b.updated_at.isoformat() for b in 
 def claim(user,camp,day,employee,bed,session,action='acquire'):
     require_editor(user,camp);session=session_id(session)
     if camp.company_id!=user.company_id or bed and bed.building.camp_id!=camp.pk:raise ValidationError('Место другого местонахождения.')
-    mutex(user);keys=resources(user,employee,bed,day);rows=controls(user,keys)
+    keys=resources(user,employee,bed,day);rows=controls(user,keys)
     if action in {'acquire','renew'}:
         for row in rows:locked_elsewhere(row,user,session)
         if action=='renew' and any(row.locked_by_id!=user.pk or not row.expires_at or row.expires_at<=timezone.now() for row in rows):raise ValidationError('Срок проверки истёк. Проверьте свежие данные и повторите сохранение.')
@@ -188,9 +188,15 @@ def move(user,kind,camp,day,employee,*,bed=None,session=None,signed=None,planned
     require_editor(user,camp)
     if kind not in {'CHECKIN','MOVE','CHECKOUT','UPDATE'}:raise ValidationError('Выберите действие с проживанием.')
     if camp.company_id!=user.company_id:raise ValidationError('Местонахождение другой компании.')
-    mutex(user);employee=Employee.objects.select_for_update().get(company=user.company,pk=employee.pk)
+    employee=Employee.objects.select_for_update().get(company=user.company,pk=employee.pk)
     if bed:bed=LodgingBed.objects.select_for_update().select_related('building').get(company=user.company,pk=bed.pk)
-    rows=check(user,camp,day,employee,bed,session_id(session),signed)
+    if signed:
+        rows=check(user,camp,day,employee,bed,session_id(session),signed)
+    else:
+        session=session_id(session);rows=controls(user,resources(user,employee,bed,day))
+        for row in rows:locked_elsewhere(row,user,session)
+        for row in rows:
+            row.locked_by=user;row.session=session;row.expires_at=timezone.now()+TTL;row.save()
     current=present(user.company,day).select_for_update().filter(employee=employee).first()
     if kind in {'CHECKIN','MOVE'}:
         if not employee.is_active:raise ValidationError('Для нового заселения выберите активного сотрудника.')
@@ -220,7 +226,7 @@ def move(user,kind,camp,day,employee,*,bed=None,session=None,signed=None,planned
 @with_history_actor
 @transaction.atomic
 def cancel(user,stay,reason,updated):
-    require_editor(user,stay.camp);mutex(user)
+    require_editor(user,stay.camp)
     stay=LodgingStay.objects.select_for_update().get(pk=stay.pk,company=user.company)
     if not reason.strip():raise ValidationError('Укажите причину отмены.')
     if stay.updated_at.isoformat()!=updated or stay.cancelled_at:raise ValidationError('Запись уже изменена. Откройте историю заново.')
@@ -234,7 +240,7 @@ def cancel(user,stay,reason,updated):
 @transaction.atomic
 def correct(user,stay,values,updated,reason):
     from core.fact_history import history_actor
-    require_editor(user,stay.camp);mutex(user)
+    require_editor(user,stay.camp)
     with history_actor(user,reason):
         stay=LodgingStay.objects.select_for_update().get(pk=stay.pk,company=user.company)
         if not reason.strip():raise ValidationError('Укажите причину исправления.')

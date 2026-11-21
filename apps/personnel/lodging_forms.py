@@ -1,5 +1,6 @@
 from django import forms
 from django.db.models import Q
+from django.forms.models import ModelChoiceIteratorValue
 from apps.resources.models import Employee
 from .models import Camp,LodgingBuilding,LodgingBed,LodgingStay
 from . import lodging
@@ -7,6 +8,14 @@ from .employee_widgets import RemoteEmployeeSelect
 
 
 class LodgingBedSelect(forms.Select):
+    """Render only a retained value; free places are loaded when the form opens."""
+    def optgroups(self,name,value,attrs=None):
+        field=getattr(self.choices,'field',None)
+        if field is None:return super().optgroups(name,value,attrs)
+        selected={str(item) for item in value if str(item)};options=[self.create_option(name,'',field.empty_label or 'Выберите свободное место',not selected,0)]
+        for index,obj in enumerate(field.queryset.filter(pk__in=selected),1):
+            options.append(self.create_option(name,ModelChoiceIteratorValue(obj.pk,obj),field.label_from_instance(obj),True,index))
+        return [(None,options,0)]
     def create_option(self,name,value,label,selected,index,subindex=None,attrs=None):
         option=super().create_option(name,value,label,selected,index,subindex=subindex,attrs=attrs)
         instance=getattr(value,'instance',None)
@@ -26,6 +35,21 @@ class LodgingFilter(StyledForm):
     state=forms.ChoiceField(label='Места',required=False,choices=[('','Все'),('OCCUPIED','Занятые'),('FREE','Свободные'),('RESERVED','Зарезервированные'),('UNAVAILABLE','Недоступные')])
     def __init__(self,*args,company,**kwargs):
         super().__init__(*args,**kwargs);self.fields['camp'].queryset=Camp.objects.filter(company=company);self.style()
+
+
+class LodgingReportFilter(StyledForm):
+    camp=forms.ModelChoiceField(label='Местонахождение',queryset=Camp.objects.none())
+    date=forms.DateField(label='На дату',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
+    mode=forms.ChoiceField(label='Режим',choices=[('PORTAL','По состоянию портала'),('FACTUAL','По указанным фактическим датам')])
+    building=forms.ModelChoiceField(label='Вагон / корпус',queryset=LodgingBuilding.objects.none(),required=False,empty_label='Все вагоны / корпуса')
+    state=forms.ChoiceField(label='Состояние',required=False,choices=[('','Все'),('OCCUPIED','Занято'),('FREE','Свободно'),('RESERVED','Зарезервировано'),('UNAVAILABLE','Недоступно')])
+    q=forms.CharField(label='Поиск',required=False,widget=forms.TextInput(attrs={'placeholder':'Сотрудник, табельный номер, вагон или место'}))
+    def __init__(self,*args,company,**kwargs):
+        super().__init__(*args,**kwargs);self.fields['camp'].queryset=Camp.objects.filter(company=company)
+        camp_id=(self.data.get('camp') if self.is_bound else self.initial.get('camp'))
+        if hasattr(camp_id,'pk'):camp_id=camp_id.pk
+        self.fields['building'].queryset=LodgingBuilding.objects.filter(company=company,camp_id=camp_id) if str(camp_id or '').isdigit() else LodgingBuilding.objects.none()
+        self.style()
 
 
 class LodgingMovementForm(StyledForm):

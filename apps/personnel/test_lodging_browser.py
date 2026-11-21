@@ -1,9 +1,18 @@
 import json,os,shutil,subprocess
 from pathlib import Path
+from tempfile import gettempdir
 from unittest import skipUnless
+from django.conf import settings
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
 from django.test import Client
 from django.urls import reverse
+
+
+# A live server uses request threads. Django's shared in-memory SQLite
+# connection cannot model those concurrent requests reliably, so optional
+# browser runs use a temporary file with normal per-thread connections.
+if os.environ.get('LODGING_BROWSER_TESTS')=='1' and settings.DATABASES['default']['ENGINE']=='django.db.backends.sqlite3':
+    settings.DATABASES['default'].setdefault('TEST',{})['NAME']=str(Path(gettempdir())/'gpr-lodging-browser-test.sqlite3')
 
 
 @skipUnless(os.environ.get('LODGING_BROWSER_TESTS')=='1','Optional commandant accommodation Chromium scenario')

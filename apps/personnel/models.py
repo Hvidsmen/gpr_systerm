@@ -441,7 +441,7 @@ class ScheduleChangeRequest(PersonnelModel):
         for value in (self.person,self.requested_schedule,self.requested_by):
             if value and value.company_id!=self.company_id:raise ValidationError('Запрос графика другой компании.')
 
-from .lodging_models import LodgingBuilding,LodgingBed,LodgingStay,LodgingEvent,LodgingControl,LodgingPresence,LodgingResolution
+from .lodging_models import LodgingBuilding,LodgingBed,LodgingStay,LodgingEvent,LodgingControl,LodgingPresence,LodgingResolution,LodgingSyncState
 
 from .lodging_import_models import LodgingImportBatch,LodgingImportRow
 

@@ -1,17 +1,114 @@
 """One live reconciliation for both roles; source records remain independent."""
-import hashlib,json
+import hashlib,json,logging
+from datetime import date,timedelta
+from time import perf_counter
 from django.core import signing
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.db.models import F
 from django.utils import timezone
 from core.fact_history import with_history_actor
 from core.fact_edit_window import require_fact_day
 from core.permissions import require_roles
 from . import housing,lodging
-from .models import CampStay,LodgingStay,LodgingResolution,CampObjectLink,Camp
+from .models import CampStay,LodgingStay,LodgingResolution,CampObjectLink,Camp,LodgingSyncState
 
 HR_OPERATORS={'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'}
 TITLES={'PRODUCTION':'Есть производственный факт, нахождение в местонахождении не оформлено','ARRIVAL':'Заезд требует подтверждения','WAITING':'Ожидает размещения','DEPARTED_OPEN':'Выезд оформлен, проживание не закрыто','AFTER_CHECKOUT':'Проживание завершено — уточнить нахождение','CAMP':'Различаются местонахождения','DATES':'Различаются даты заезда и заселения'}
+SYNC_STAGES=[('queued','Задание принято',5),('personnel','Чтение перевахты',20),('lodging','Чтение проживания',40),('production','Чтение производственного факта',60),('compare','Сопоставление сотрудников',80),('saving','Сохранение результата',95),('done','Сверка готова',100)]
+
+
+def state_for(company,camp,day):
+    state,_=LodgingSyncState.objects.get_or_create(company=company,camp=camp,day=day)
+    return state
+
+
+def mark_dirty(company_id,camp_ids):
+    ids={int(pk) for pk in camp_ids if pk}
+    if ids:LodgingSyncState.objects.filter(company_id=company_id,camp_id__in=ids).update(source_version=F('source_version')+1)
+
+
+def state_payload(state):
+    busy=state.status in {'QUEUED','RUNNING'}
+    return {'id':state.pk,'status':state.status,'busy':busy,'stage':state.stage or state.get_status_display(),
+        'progress':state.progress,'source_version':state.source_version,'calculated_version':state.calculated_version,
+        'current':state.current,'dirty':state.calculated_version!=state.source_version,'count':state.issue_count,
+        'calculated_at':state.calculated_at.isoformat() if state.calculated_at else None,'error':state.error}
+
+
+def enqueue(user,camp,day):
+    with transaction.atomic():
+        state=state_for(user.company,camp,day)
+        state=LodgingSyncState.objects.select_for_update().get(pk=state.pk)
+        if state.status in {'QUEUED','RUNNING'} and state.updated_at>=timezone.now()-timedelta(minutes=10):return state,False
+        if state.current:return state,False
+        state.status='QUEUED';state.stage='Задание принято';state.progress=5;state.error='';state.requested_by=user
+        state.started_at=None;state.finished_at=None;state.save(update_fields=['status','stage','progress','error','requested_by','started_at','finished_at','updated_at'])
+        return state,True
+
+
+def _date(value):return value.isoformat() if value else None
+
+
+def serialize_issue(row):
+    return {'employee':row['employee'].pk,'code':row['code'],'camp':row['camp'].pk,
+        'living':row['living'].pk if row['living'] else None,'personnel':row['personnel'].pk if row['personnel'] else None,
+        'last_hr':row['last_hr'].pk if row['last_hr'] else None,'last_room':row['last_room'].pk if row['last_room'] else None,
+        'arrival':_date(row['arrival']),'suggested_date':_date(row['suggested_date']),'fingerprint':row['fingerprint'],
+        'resolved':row['resolved'].pk if row['resolved'] else None,'production':[item.pk for item in row['production']]}
+
+
+def hydrate(company,payload):
+    from apps.resources.models import Employee
+    from apps.production.dispatch_models import EmployeeActivity
+    employees=Employee.objects.filter(company=company,pk__in=[row['employee'] for row in payload]).select_related('position')
+    rooms=LodgingStay.objects.filter(company=company,pk__in={pk for row in payload for pk in (row.get('living'),row.get('last_room')) if pk}).select_related('employee','camp','bed__building','recorded_by')
+    personnel=CampStay.objects.filter(company=company,pk__in={pk for row in payload for pk in (row.get('personnel'),row.get('last_hr')) if pk}).select_related('person__employee','camp','recorded_by')
+    productions=EmployeeActivity.objects.filter(company=company,pk__in={pk for row in payload for pk in row.get('production',[])}).select_related('construction_object','reported_by')
+    resolutions=LodgingResolution.objects.filter(company=company,pk__in={row['resolved'] for row in payload if row.get('resolved')}).select_related('recorded_by')
+    camps=Camp.objects.filter(company=company,pk__in={row['camp'] for row in payload})
+    maps=[{item.pk:item for item in query} for query in (employees,rooms,personnel,productions,resolutions,camps)]
+    employee_map,room_map,personnel_map,production_map,resolution_map,camp_map=maps
+    rows=[]
+    for item in payload:
+        if item['employee'] not in employee_map or item['camp'] not in camp_map:continue
+        rows.append({'employee':employee_map[item['employee']],'code':item['code'],'title':TITLES[item['code']],
+            'camp':camp_map[item['camp']],'living':room_map.get(item.get('living')),'personnel':personnel_map.get(item.get('personnel')),
+            'last_hr':personnel_map.get(item.get('last_hr')),'last_room':room_map.get(item.get('last_room')),
+            'arrival':date.fromisoformat(item['arrival']) if item.get('arrival') else None,
+            'suggested_date':date.fromisoformat(item['suggested_date']) if item.get('suggested_date') else None,
+            'fingerprint':item['fingerprint'],'resolved':resolution_map.get(item.get('resolved')),
+            'production':[production_map[pk] for pk in item.get('production',[]) if pk in production_map]})
+    return rows
+
+
+def snapshot_rows(state,include_resolved=False):
+    payload=state.result if include_resolved else [row for row in state.result if not row.get('resolved')]
+    return hydrate(state.company,payload)
+
+
+def calculate_state(pk):
+    started=perf_counter()
+    with transaction.atomic():
+        state=LodgingSyncState.objects.select_for_update().select_related('company','camp').get(pk=pk)
+        if state.status not in {'QUEUED','RUNNING'}:return state
+        target=state.source_version;state.status='RUNNING';state.stage='Чтение перевахты';state.progress=20;state.started_at=timezone.now();state.error=''
+        state.save(update_fields=['status','stage','progress','started_at','error','updated_at'])
+    def progress(code,label,percent):LodgingSyncState.objects.filter(pk=pk).update(stage=label,progress=percent)
+    try:
+        rows=issues(state.company,[state.camp],state.day,include_resolved=True,progress=progress)
+        progress('saving','Сохранение результата',95);result=[serialize_issue(row) for row in rows]
+        with transaction.atomic():
+            state=LodgingSyncState.objects.select_for_update().get(pk=pk)
+            state.result=result;state.issue_count=sum(1 for row in result if not row.get('resolved'));state.calculated_version=target
+            state.status='DONE';state.stage='Сверка готова';state.progress=100;state.calculated_at=timezone.now();state.finished_at=state.calculated_at;state.error=''
+            state.save(update_fields=['result','issue_count','calculated_version','status','stage','progress','calculated_at','finished_at','error','updated_at'])
+    except Exception as exc:
+        LodgingSyncState.objects.filter(pk=pk).update(status='ERROR',stage='Ошибка расчёта',error=str(exc)[:4000],finished_at=timezone.now())
+        raise
+    elapsed=(perf_counter()-started)*1000
+    if elapsed>=1000:logging.getLogger('gpr.performance').warning('lodging reconciliation state=%s %.0f ms',pk,elapsed)
+    return state
 
 
 def version(row):return [row.pk,row.updated_at.isoformat()] if row else None
@@ -20,18 +117,22 @@ def version(row):return [row.pk,row.updated_at.isoformat()] if row else None
 def digest(rows):return hashlib.sha256(json.dumps(sorted(row['fingerprint'] for row in rows)).encode()).hexdigest()
 
 
-def issues(company,camps,day,*,include_resolved=False):
+def issues(company,camps,day,*,include_resolved=False,progress=None):
+    progress=progress or (lambda *args:None)
     selected=list(camps);ids={c.pk for c in selected}
     from apps.production.dispatch_models import EmployeeActivity
     from apps.production.employee_pool import activity_direction
-    facts={};object_camps={}
+    facts={};object_camps={};progress('personnel','Чтение перевахты',20)
     for object_id,camp_id in CampObjectLink.objects.filter(company=company).values_list('construction_object_id','camp_id'):object_camps.setdefault(object_id,set()).add(camp_id)
+    progress('production','Чтение производственного факта',35)
     for fact in EmployeeActivity.objects.filter(company=company,date=day,assignment_reviewed=True).select_related('employee__position__planning_mapping__brigade__group','reported_by__role','construction_object'):
         if activity_direction(fact)=='works':facts.setdefault(fact.employee_id,[]).append(fact)
-    hr_all=list(CampStay.objects.filter(company=company,cancelled_at=None,arrived_on__lte=day,person__employee__isnull=False).select_related('person__employee__position__planning_mapping__brigade__group','camp').order_by('-arrived_on','-pk'))
+    progress('personnel','Чтение перевахты',45)
+    hr_all=list(CampStay.objects.filter(company=company,cancelled_at=None,arrived_on__lte=day,person__employee__isnull=False).select_related('person__employee__position__planning_mapping__brigade__group','camp','recorded_by').order_by('-arrived_on','-pk'))
     # Accommodation is an operational register: open rows are current even
     # when their documentary date is in the past or future.
-    living=list(LodgingStay.objects.filter(company=company,cancelled_at=None).select_related('employee__position__planning_mapping__brigade__group','camp','bed__building').order_by('-pk'))
+    progress('lodging','Чтение проживания',60)
+    living=list(LodgingStay.objects.filter(company=company,cancelled_at=None).select_related('employee__position__planning_mapping__brigade__group','camp','bed__building','recorded_by').order_by('-pk'))
     hr={};last_hr={};rooms={};last_room={};chains={}
     for row in hr_all:
         pk=row.person.employee_id;last_hr.setdefault(pk,row)
@@ -39,7 +140,7 @@ def issues(company,camps,day,*,include_resolved=False):
     for row in living:
         last_room.setdefault(row.employee_id,row);chains.setdefault(row.employee_id,[]).append(row)
         if row.departed_on is None:rooms.setdefault(row.employee_id,row)
-    result=[]
+    progress('compare','Сопоставление сотрудников',75);result=[]
     acknowledgments={(r.employee_id,r.fingerprint):r for r in LodgingResolution.objects.filter(company=company).select_related('recorded_by')}
     for pk in sorted(set(hr)|set(rooms)|set(facts)):
         resident=rooms.get(pk);personnel=hr.get(pk);old_hr=last_hr.get(pk);old_room=last_room.get(pk)

@@ -58,7 +58,12 @@ class LodgingStay(ActualHistoryMixin,PersonnelModel):
     cancellation_reason=models.CharField(max_length=500,blank=True)
     class Meta:
         ordering=['-arrived_on','-pk']
-        indexes=[models.Index(fields=['company','employee','arrived_on','departed_on'],name='lodging_employee_period')]
+        indexes=[
+            models.Index(fields=['company','employee','arrived_on','departed_on'],name='lodging_employee_period'),
+            models.Index(fields=['company','camp'],condition=models.Q(departed_on=None,cancelled_at=None),name='lodging_open_camp'),
+            models.Index(fields=['company','employee'],condition=models.Q(departed_on=None,cancelled_at=None),name='lodging_open_employee'),
+            models.Index(fields=['company','bed'],condition=models.Q(departed_on=None,cancelled_at=None),name='lodging_open_bed'),
+        ]
     def clean(self):
         for name in ('employee','camp','bed'):
             obj=getattr(self,name,None)
@@ -83,7 +88,12 @@ class LodgingEvent(ActualHistoryMixin,PersonnelModel):
     stay=models.ForeignKey(LodgingStay,on_delete=models.PROTECT,related_name='events')
     comment=models.TextField(max_length=4000,blank=True)
     recorded_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,related_name='+')
-    class Meta:ordering=['-date','-pk']
+    class Meta:
+        ordering=['-date','-pk']
+        indexes=[
+            models.Index(fields=['company','camp','date'],name='lodging_event_camp_day'),
+            models.Index(fields=['company','camp','created_at'],name='lodging_event_camp_time'),
+        ]
     def clean(self):
         for name in ('employee','camp','from_bed','to_bed','stay'):
             obj=getattr(self,name,None)
@@ -122,3 +132,26 @@ class LodgingResolution(ActualHistoryMixin,PersonnelModel):
     def clean(self):
         if self.employee.company_id!=self.company_id or self.camp.company_id!=self.company_id:raise ValidationError('Сверка другой компании.')
     def __str__(self):return f'{self.employee} · Сверка · {self.date}'
+
+
+class LodgingSyncState(PersonnelModel):
+    STATUSES=[('IDLE','Ожидает расчёта'),('QUEUED','Задание принято'),('RUNNING','Выполняется'),('DONE','Завершено'),('ERROR','Ошибка')]
+    camp=models.ForeignKey('personnel.Camp',on_delete=models.CASCADE,related_name='lodging_sync_states')
+    day=models.DateField()
+    source_version=models.PositiveBigIntegerField(default=1)
+    calculated_version=models.PositiveBigIntegerField(default=0)
+    issue_count=models.PositiveIntegerField(default=0)
+    status=models.CharField(max_length=10,choices=STATUSES,default='IDLE')
+    stage=models.CharField(max_length=80,blank=True)
+    progress=models.PositiveSmallIntegerField(default=0)
+    error=models.TextField(blank=True)
+    result=models.JSONField(default=list,blank=True)
+    requested_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,blank=True,related_name='+')
+    calculated_at=models.DateTimeField(null=True,blank=True)
+    started_at=models.DateTimeField(null=True,blank=True)
+    finished_at=models.DateTimeField(null=True,blank=True)
+    class Meta:
+        constraints=[models.UniqueConstraint(fields=['company','camp','day'],name='unique_lodging_sync_state')]
+        indexes=[models.Index(fields=['company','camp','day'],name='lodging_sync_scope')]
+    @property
+    def current(self):return bool(self.calculated_version and self.calculated_version==self.source_version and self.status=='DONE')

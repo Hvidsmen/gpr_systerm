@@ -330,6 +330,8 @@ class LodgingTests(TestCase):
     def test_shared_sync_scope_includes_multiple_camps_and_never_other_company(self):
         from .lodging_views import summary_context
         housing.move(self.hr,'ARRIVAL',self.b,self.day,[self.second_person])
+        for camp in (self.a,self.b):
+            state=lodging_sync.state_for(self.company,camp,self.day);state.status='QUEUED';state.save(update_fields=['status','updated_at']);lodging_sync.calculate_state(state.pk)
         result=summary_context(self.hr,self.a,self.day,camps=[self.a,self.b])
         self.assertEqual(result['lodging_sync_count'],2)
         self.client.force_login(self.hr)
@@ -337,6 +339,41 @@ class LodgingTests(TestCase):
         response=self.client.get(reverse('personnel:lodging_sync_status'),data);self.assertEqual(response.json()['count'],2)
         data['camps'].append(self.foreign_camp.pk)
         self.assertEqual(self.client.get(reverse('personnel:lodging_sync_status'),data).status_code,404)
+
+    def test_board_uses_saved_sync_state_and_aggregate_counts(self):
+        from .lodging_views import summary_context
+        with patch('apps.personnel.lodging_views.lodging_sync.issues',side_effect=AssertionError('full sync must stay off the board')):
+            summary=summary_context(self.commandant,self.a,self.day)
+        self.assertFalse(summary['lodging_sync_current'])
+        with patch('apps.personnel.lodging_views.place_rows',side_effect=AssertionError('default board must use aggregates')):
+            page=self.client.get(reverse('personnel:lodging'),{'camp':self.a.pk})
+        self.assertEqual(page.status_code,200);self.assertIn('Server-Timing',page)
+
+    def test_ajax_save_is_one_request_and_returns_partial_updates(self):
+        page=self.client.get(reverse('personnel:lodging'),{'camp':self.a.pk})
+        form=page.context['form'];day=page.context['day']
+        response=self.client.post(reverse('personnel:lodging'),{'camp':self.a.pk,'kind':'CHECKIN','date':str(day),
+            'employee':self.second_employee.pk,'building':self.building.pk,'bed':self.bed.pk,
+            'session':form.initial['session'],'signed':'','key_number':'12','keys_issued':'on'},HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(response.status_code,200);payload=response.json();self.assertTrue(payload['ok'])
+        self.assertEqual(payload['stay']['bed'],self.bed.pk);self.assertIn(self.building.pk,payload['affected_buildings'])
+        self.assertEqual(lodging.present(self.company).get(employee=self.second_employee).key_number,'12')
+
+    def test_historical_report_has_portal_and_factual_modes(self):
+        self.edit(employee=self.second_employee,day=self.day)
+        url=reverse('personnel:lodging_report')
+        portal=self.client.get(url,{'camp':self.a.pk,'date':str(timezone.localdate()),'mode':'PORTAL'})
+        self.assertEqual(portal.status_code,200);self.assertContains(portal,'По состоянию портала')
+        self.assertContains(portal,self.second_employee.display_name)
+        factual=self.client.get(url,{'camp':self.a.pk,'date':str(self.day),'mode':'FACTUAL'})
+        self.assertContains(factual,'По фактическим датам');self.assertContains(factual,self.second_employee.display_name)
+        export=self.client.get(url,{'camp':self.a.pk,'date':str(self.day),'mode':'FACTUAL','export':'xlsx'})
+        self.assertEqual(export['Content-Type'],'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+    def test_presence_does_not_take_company_wide_mutex(self):
+        with patch('apps.personnel.lodging.mutex',side_effect=AssertionError('presence must be camp scoped')):
+            state=lodging.presence(self.commandant,self.a,str(uuid4()))
+        self.assertTrue(state['editor'])
 
     def test_other_direction_cannot_change_lodging_or_read_its_history(self):
         self.edit()

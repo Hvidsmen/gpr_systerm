@@ -56,7 +56,7 @@ class QuickBedBrowserTests(StaticLiveServerTestCase):
     def test_create_place_without_losing_movement_input(self):
         LodgingTests.setUpTestData.__func__(type(self))
         self.client.force_login(self.commandant)
-        config={'base':self.live_server_url,'url':reverse('personnel:lodging'),'cookie':self.client.cookies['sessionid'].value,'chromium':shutil.which('chromium'),'camp':self.a.pk,'day':str(self.day),'employee':self.second_employee.pk,'bed':self.bed.pk}
+        config={'base':self.live_server_url,'url':reverse('personnel:lodging'),'cookie':self.client.cookies['sessionid'].value,'chromium':shutil.which('chromium'),'camp':self.a.pk,'day':str(self.day),'employee':self.second_employee.pk,'bed':self.bed.pk,'building':self.building.pk}
         script=Path(__file__).resolve().parents[2]/'tests/browser/lodging_quick_bed.js'
         result=subprocess.run(['node',str(script)],capture_output=True,text=True,env=dict(os.environ,QUICK_BED_CONFIG=json.dumps(config)),timeout=90)
         self.assertEqual(result.returncode,0,result.stdout+'\n'+result.stderr)

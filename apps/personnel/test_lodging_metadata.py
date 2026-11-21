@@ -49,8 +49,7 @@ class LodgingMetadataTests(TestCase):
         form=LodgingMovementForm(company=self.company,camp=self.a,day=self.day)
         self.assertEqual(set(form.fields['building'].queryset.values_list('pk',flat=True)),{self.building.pk,other.pk})
         html=str(form['bed'])
-        self.assertIn(f'data-building="{self.building.pk}"',html)
-        self.assertIn(f'data-building="{other.pk}"',html)
+        self.assertNotIn('data-building=',html)
         rows=self.client.get(reverse('personnel:lodging_available_beds'),self.scope).json()['beds']
         self.assertEqual(next(row for row in rows if row['id']==other_bed.pk)['building_id'],other.pk)
         invalid=LodgingMovementForm(data={

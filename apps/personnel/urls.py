@@ -54,6 +54,7 @@ urlpatterns += [
     path('lodging/available-beds/',lodging_views.available_beds,name='lodging_available_beds'),
     path('lodging/buildings/<int:pk>/places/',lodging_views.building_places,name='lodging_building_places'),
     path('lodging/events/',lodging_views.event_history,name='lodging_event_history'),
+    path('lodging/report/',lodging_views.historical_report,name='lodging_report'),
     path('lodging/beds/quick-create/',lodging_views.quick_bed,name='lodging_quick_bed'),
     path('lodging/sync/',lodging_views.sync,name='lodging_sync'),
     path('lodging/sync/status/',lodging_views.sync_status,name='lodging_sync_status'),
