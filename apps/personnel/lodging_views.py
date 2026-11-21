@@ -12,6 +12,7 @@ from django.core.paginator import Paginator
 from django.shortcuts import get_object_or_404,render,redirect
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.html import format_html
 from django.views.decorators.http import require_GET,require_POST,require_http_methods
 from core.permissions import require_roles,role_code
 from core.fact_edit_window import can_edit_fact_day
@@ -31,6 +32,34 @@ def parameters(request):
 
 
 def board_url(camp,day):return reverse('personnel:lodging')+'?'+urlencode({'camp':camp.pk,'date':str(day)})
+
+
+def lodging_place_url(camp, day, bed):
+    query = urlencode({
+        'camp': camp.pk, 'date': str(day),
+        'focus_building': bed.building_id, 'focus_bed': bed.pk,
+    })
+    return f'{reverse("personnel:lodging")}?{query}#lodging-bed-{bed.pk}'
+
+
+def lodging_place_label(bed):
+    place = (f'комн. {bed.room} · ' if bed.room else '') + f'место {bed.number}'
+    return f'{lodging.building_title(bed.building)} · {place}'
+
+
+def movement_success(kind, employee, camp, day, old_bed=None, new_bed=None):
+    name = employee.display_name
+    if kind == 'CHECKIN':
+        place = format_html('<a href="{}">Показать место: {}</a>', lodging_place_url(camp, day, new_bed), lodging_place_label(new_bed))
+        return format_html('Заселение сотрудника <strong>{}</strong> выполнено успешно. {}', name, place)
+    if kind == 'CHECKOUT':
+        place = format_html('<a href="{}">Освободившееся место: {}</a>', lodging_place_url(camp, day, old_bed), lodging_place_label(old_bed))
+        return format_html('Выселение сотрудника <strong>{}</strong> выполнено успешно. {}', name, place)
+    if kind == 'MOVE':
+        previous = format_html('<a href="{}">Старое место: {}</a>', lodging_place_url(camp, day, old_bed), lodging_place_label(old_bed))
+        current = format_html('<a href="{}">Новое место: {}</a>', lodging_place_url(camp, day, new_bed), lodging_place_label(new_bed))
+        return format_html('Переселение сотрудника <strong>{}</strong> выполнено успешно. {} · {}', name, previous, current)
+    return format_html('Сведения сотрудника <strong>{}</strong> сохранены.', name)
 
 
 def presence_session(request,camp,provided=None):
@@ -187,10 +216,13 @@ def board(request):
         if form.is_valid():
             data=form.cleaned_data
             try:
-                lodging.move(request.user,data['kind'],camp,data['date'],data['employee'],bed=data.get('bed') if data['kind'] in {'CHECKIN','MOVE'} else None,
+                previous=lodging.present(request.user.company,data['date']).filter(employee=data['employee']).select_related('bed__building').first()
+                stay=lodging.move(request.user,data['kind'],camp,data['date'],data['employee'],bed=data.get('bed') if data['kind'] in {'CHECKIN','MOVE'} else None,
                     session=data['session'],signed=data['signed'],keys_issued=data['keys_issued'],key_number=data['key_number'],pass_number=data['pass_number'],comment=data['comment'])
             except ValidationError as exc:form.add_error(None,exc)
-            else:messages.success(request,'Проживание сохранено. Сверка с перевахтой обновлена.');return redirect(board_url(camp,data['date']))
+            else:
+                messages.success(request,movement_success(data['kind'],data['employee'],camp,data['date'],previous.bed if previous else None,stay.bed if data['kind'] in {'CHECKIN','MOVE'} else None))
+                return redirect(board_url(camp,data['date']))
     all_rows=place_rows(request.user.company,camp,day);stats=Counter(row['status'] for row in all_rows)
     organizations=Counter(row['organization'] for row in all_rows if row['stay'])
     q=selector.cleaned_data['q'].casefold().split();state=selector.cleaned_data['state']

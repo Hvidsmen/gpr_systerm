@@ -144,6 +144,37 @@ class LodgingTests(TestCase):
         self.assertEqual(stay.planned_departure, planned)
         self.assertEqual(stay.pass_number, 'P-20')
 
+    def test_movement_success_links_open_occupied_and_freed_places(self):
+        def submit(kind, bed=None):
+            session = self.activate_editor()
+            signed = lodging.claim(self.commandant, self.a, self.day, self.second_employee, bed, session)
+            payload = {
+                'camp': self.a.pk, 'date': str(self.day), 'kind': kind,
+                'employee': self.second_employee.pk, 'session': session, 'signed': signed,
+            }
+            if bed:
+                payload.update({'building': bed.building_id, 'bed': bed.pk})
+            return self.client.post(reverse('personnel:lodging'), payload, follow=True)
+
+        checkin = submit('CHECKIN', self.bed)
+        self.assertContains(checkin, f'Заселение сотрудника <strong>{self.second_employee.display_name}</strong> выполнено успешно')
+        self.assertContains(checkin, 'Показать место:')
+        self.assertContains(checkin, 'Вагон 1 · место 1')
+        self.assertContains(checkin, f'focus_bed={self.bed.pk}')
+
+        moved = submit('MOVE', self.bed2)
+        self.assertContains(moved, 'Переселение сотрудника')
+        self.assertContains(moved, 'Старое место:')
+        self.assertContains(moved, 'Новое место:')
+        self.assertContains(moved, f'focus_bed={self.bed.pk}')
+        self.assertContains(moved, f'focus_bed={self.bed2.pk}')
+
+        checkout = submit('CHECKOUT')
+        self.assertContains(checkout, 'Выселение сотрудника')
+        self.assertContains(checkout, 'Освободившееся место:')
+        self.assertContains(checkout, f'focus_bed={self.bed2.pk}')
+        self.assertContains(checkout, f'data-lodging-building="{self.building.pk}"')
+
     def test_role_date_and_company_boundaries(self):
         historical=self.day-timedelta(days=30)
         stay=self.edit(day=historical)

@@ -65,6 +65,8 @@
   finally{delete panel.dataset.lazyLoading;}
  }
  document.querySelectorAll('details[data-lazy-url]').forEach(panel=>panel.addEventListener('toggle',()=>{if(panel.open)load(panel);}));
+ async function focusPlace(){const query=new URLSearchParams(location.search),building=query.get('focus_building'),bed=query.get('focus_bed');if(!building||!bed)return;const panel=document.querySelector('[data-lodging-building="'+CSS.escape(building)+'"]');if(!panel)return;await load(panel);panel.open=true;const row=panel.querySelector('[data-lodging-bed="'+CSS.escape(bed)+'"]');if(!row)return;row.classList.add('lodging-focus-place');requestAnimationFrame(()=>row.scrollIntoView({block:'center',behavior:'smooth'}));}
+ focusPlace();
  document.addEventListener('click',async event=>{const button=event.target.closest('[data-lodging-history-more]');if(!button)return;button.disabled=true;const panel=button.closest('details'),host=panel.querySelector('[data-lazy-content]');try{const response=await fetch(button.dataset.url,{credentials:'same-origin'});if(!response.ok)throw new Error('Не удалось загрузить историю.');const wrapper=document.createElement('div');wrapper.innerHTML=await response.text();const rows=wrapper.querySelectorAll('tbody tr'),body=host.querySelector('tbody');rows.forEach(row=>body.append(row));button.replaceWith(wrapper.querySelector('[data-lodging-history-more]')||document.createTextNode(''));}catch(error){button.disabled=false;button.textContent=error.message+' Повторить';}});
  if(location.hash==='#history'){const history=document.getElementById('history');if(history){history.open=true;load(history);}}
 })();
