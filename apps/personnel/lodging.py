@@ -50,6 +50,11 @@ def bed_label(bed):
     return f'{building_title(bed.building)} · {place} · Пол вагона: {bed.building.get_gender_display()} — Свободно'
 
 
+def bed_filter_label(bed):
+    place=(f'комн. {bed.room} · ' if bed.room else '')+f'место {bed.number}'
+    return f'{building_title(bed.building)} · {place}'
+
+
 
 def session_id(value):
     try:return UUID(str(value))

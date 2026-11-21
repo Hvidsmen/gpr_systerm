@@ -52,6 +52,7 @@ urlpatterns += [
     path('lodging/claims/',lodging_views.claims,name='lodging_claims'),
     path('lodging/presence/',lodging_views.presence,name='lodging_presence'),
     path('lodging/available-beds/',lodging_views.available_beds,name='lodging_available_beds'),
+    path('lodging/filter-beds/',lodging_views.filter_beds,name='lodging_filter_beds'),
     path('lodging/buildings/<int:pk>/places/',lodging_views.building_places,name='lodging_building_places'),
     path('lodging/events/',lodging_views.event_history,name='lodging_event_history'),
     path('lodging/report/',lodging_views.historical_report,name='lodging_report'),

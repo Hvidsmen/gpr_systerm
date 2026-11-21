@@ -9,4 +9,8 @@
 
 .lodging-building-gender{flex:none;border:1px solid #c7dce9;border-radius:6px;background:#fff;color:#315a72;font-size:12px;padding:4px 8px;line-height:1.4}.lodging-building>summary .lodging-building-gender{display:inline-block;width:fit-content;max-width:100%;overflow-wrap:anywhere}
 .lodging-table tr.lodging-focus-place>td{background:#fff4cc;transition:background-color .8s ease}
+.lodging-selector{grid-template-columns:minmax(180px,1fr) minmax(250px,1.4fr) minmax(145px,.65fr) minmax(210px,1fr) minmax(210px,1fr) auto auto}
+@media(max-width:1550px){.lodging-selector{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(max-width:1100px){.lodging-selector{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:700px){.lodging-selector{grid-template-columns:1fr 1fr}.lodging-selector>div:nth-child(2){grid-column:1/-1}}
 .lodging-sync-steps{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;font-size:12px;color:#61798f}.lodging-sync-steps span{padding:7px;border-radius:5px;background:#f2f6f9;text-align:center}@media(max-width:700px){.lodging-sync-steps{grid-template-columns:1fr 1fr}}

@@ -145,14 +145,33 @@ def available_beds(request):
     return measured(JsonResponse({'beds':[{'id':bed.pk,'label':lodging.bed_label(bed),'building_id':bed.building_id,'building_gender':bed.building.gender} for bed in beds]}),'lodging available beds',started)
 
 
-def place_rows(company,camp,day,building=None):
+@login_required
+@require_GET
+def filter_beds(request):
+    """Search places for the board filters without rendering the full catalogue."""
+    require_roles(request.user,lodging.READERS)
+    if not str(request.GET.get('camp','')).isdigit():return JsonResponse({'items':[],'page':1,'pages':1})
+    camp=get_object_or_404(Camp,company=request.user.company,pk=request.GET['camp'])
+    beds=LodgingBed.objects.filter(company=request.user.company,building__camp=camp).select_related('building')
+    building_ids=[value for value in request.GET.getlist('building') if value.isdigit()]
+    if building_ids:beds=beds.filter(building_id__in=building_ids)
+    for term in request.GET.get('q','').split():
+        beds=beds.filter(Q(building__name__icontains=term)|Q(building__description__icontains=term)|Q(building__inventory_number__icontains=term)|Q(room__icontains=term)|Q(number__icontains=term))
+    page=Paginator(beds.order_by('building__name','room','number','pk'),100).get_page(request.GET.get('page'))
+    return JsonResponse({'items':[{'id':bed.pk,'label':lodging.bed_filter_label(bed),'building_id':bed.building_id} for bed in page.object_list],
+        'page':page.number,'pages':page.paginator.num_pages})
+
+
+def place_rows(company,camp,day,building=None,bed_ids=None):
     occupied_query=lodging.present(company,day).filter(camp=camp)
     if building is not None:occupied_query=occupied_query.filter(bed__building=building)
+    if bed_ids is not None:occupied_query=occupied_query.filter(bed_id__in=bed_ids)
     occupied={stay.bed_id:stay for stay in occupied_query.select_related('employee__position__planning_mapping__brigade__group','employee__company','bed__building','recorded_by')}
     from apps.resources.group_order import position_group
     rows=[]
     beds=LodgingBed.objects.filter(company=company,building__camp=camp)
     if building is not None:beds=beds.filter(building=building)
+    if bed_ids is not None:beds=beds.filter(pk__in=bed_ids)
     bed_rows=list(beds.select_related('building'))
     for bed in bed_rows:
         stay=occupied.get(bed.pk);status='OCCUPIED' if stay else 'UNAVAILABLE' if not bed.building.is_active else 'FREE' if bed.state=='AVAILABLE' else bed.state
@@ -167,15 +186,21 @@ def place_rows(company,camp,day,building=None):
 
 
 def filtered_place_rows(request,camp,day,building=None):
-    rows=place_rows(request.user.company,camp,day,building)
+    bed_ids=[value for value in request.GET.getlist('beds') if value.isdigit()]
+    rows=place_rows(request.user.company,camp,day,building,bed_ids or None)
     q=request.GET.get('q','').casefold().split();state=request.GET.get('state','')
     return [r for r in rows if (not state or r['status']==state) and all(term in ' '.join([str(r['bed']),lodging.building_title(r['bed'].building),r['stay'].employee.display_name if r['stay'] else '',r['stay'].employee.employee_number if r['stay'] else '',r['organization']]).casefold() for term in q)]
 
 
-def aggregate_place_counts(company,camp):
+def aggregate_place_counts(company,camp,building_ids=None):
     """Two grouped SQL queries; no place or employee rows are materialised."""
-    catalogue=LodgingBed.objects.filter(company=company,building__camp=camp).values('building_id','building__is_active','state').annotate(total=Count('pk'))
-    occupied=lodging.present(company).filter(camp=camp).values('bed__building_id','bed__building__is_active','bed__state').annotate(total=Count('pk'))
+    catalogue=LodgingBed.objects.filter(company=company,building__camp=camp)
+    occupied=lodging.present(company).filter(camp=camp)
+    if building_ids:
+        catalogue=catalogue.filter(building_id__in=building_ids)
+        occupied=occupied.filter(bed__building_id__in=building_ids)
+    catalogue=catalogue.values('building_id','building__is_active','state').annotate(total=Count('pk'))
+    occupied=occupied.values('bed__building_id','bed__building__is_active','bed__state').annotate(total=Count('pk'))
     groups={}
     for row in catalogue:
         item=groups.setdefault(row['building_id'],Counter());item['TOTAL']+=row['total']
@@ -347,16 +372,20 @@ def board(request):
                 return redirect(board_url(camp,data['date']))
         if ajax:return JsonResponse({'error':'Исправьте данные формы.','errors':form.errors.get_json_data()},status=400)
     q=selector.cleaned_data['q'].casefold().split();state=selector.cleaned_data['state']
+    building_ids=set(selector.cleaned_data['buildings'].values_list('pk',flat=True))
+    bed_ids=set(selector.cleaned_data['beds'].values_list('pk',flat=True))
     timings['presence_form']=(perf_counter()-started)*1000
     rows=None
-    if q or state or request.GET.get('export')=='xlsx':
-        all_rows=place_rows(request.user.company,camp,day);stats=Counter(row['status'] for row in all_rows)
+    if q or state or bed_ids or request.GET.get('export')=='xlsx':
+        all_rows=place_rows(request.user.company,camp,day,bed_ids=bed_ids or None)
+        if building_ids:all_rows=[row for row in all_rows if row['bed'].building_id in building_ids]
+        stats=Counter(row['status'] for row in all_rows)
         rows=[r for r in all_rows if (not state or r['status']==state) and all(term in ' '.join([str(r['bed']),lodging.building_title(r['bed'].building),r['stay'].employee.display_name if r['stay'] else '',r['stay'].employee.employee_number if r['stay'] else '',r['organization']]).casefold() for term in q)]
         counts={}
         for row in rows:
             item=counts.setdefault(row['bed'].building_id,Counter());item[row['status']]+=1;item['TOTAL']+=1
     else:
-        stats,counts=aggregate_place_counts(request.user.company,camp)
+        stats,counts=aggregate_place_counts(request.user.company,camp,building_ids or None)
     timings['places']=(perf_counter()-started)*1000-timings['presence_form']
     from .housing_views import workbook_response
     if request.GET.get('export')=='xlsx':
@@ -365,8 +394,12 @@ def board(request):
             b=row['bed'];s=row['stay'];e=s.employee if s else None
             values.append([camp.name,b.building.name,b.building.inventory_number,b.building.description,b.building.kind,b.room,b.number,row['status_label'],e.display_name if e else '',e.employee_number if e else '',row['gender'],row['position_group'],row['position'],row['department'],('Да' if s.keys_issued else 'Нет') if s else '',s.key_number if s else '',s.arrived_on if s else '',s.planned_departure if s else '',s.departed_on if s else '',s.pass_number if s else '',s.comment if s else b.note,b.building.get_gender_display()])
         return workbook_response('lodging.xlsx','Проживание',values)
-    groups=[{'building':b,'counts':dict(counts.get(b.pk,{})),'load_url':reverse('personnel:lodging_building_places',args=[b.pk])+'?'+urlencode({'camp':camp.pk,'date':str(day),'q':selector.cleaned_data['q'],'state':state})} for b in LodgingBuilding.objects.filter(company=request.user.company,camp=camp)]
-    if q or state:groups=[g for g in groups if g['counts'].get('TOTAL')]
+    buildings=LodgingBuilding.objects.filter(company=request.user.company,camp=camp)
+    if building_ids:buildings=buildings.filter(pk__in=building_ids)
+    filter_query={'camp':camp.pk,'date':str(day),'q':selector.cleaned_data['q'],'state':state,
+        'buildings':sorted(building_ids),'beds':sorted(bed_ids)}
+    groups=[{'building':b,'counts':dict(counts.get(b.pk,{})),'load_url':reverse('personnel:lodging_building_places',args=[b.pk])+'?'+urlencode(filter_query,doseq=True)} for b in buildings]
+    if q or state or bed_ids:groups=[g for g in groups if g['counts'].get('TOTAL')]
     history_url=reverse('personnel:lodging_event_history')+'?'+urlencode({'camp':camp.pk,'date':str(day)})
     context={'groups':groups,'selector':selector,'has_camps':camps.exists(),'camp':camp,'day':day,'form':form,'stats':dict(stats),'editable':editable,'catalogue_editable':editable,'history_url':history_url,
         'presence_state':presence_state,'presence_session':presence_session,

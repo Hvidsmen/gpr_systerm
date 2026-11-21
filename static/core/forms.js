@@ -81,7 +81,7 @@
       if (this.remoteUrl) {
         const form = select.form;
         const preserveSelection = new Set((select.dataset.remotePreserveSelectionFields || '').split(',').map(value => value.trim()).filter(Boolean));
-        const contextFields = ['kind', 'project', 'camp', 'date', 'shift'].map(key => {
+        const contextFields = ['kind', 'project', 'camp', 'date', 'shift', 'building'].map(key => {
           const name = select.dataset['remote' + key[0].toUpperCase() + key.slice(1) + 'Field'];
           const field = name && form?.elements.namedItem(name);
           return field ? {key, field} : null;
@@ -202,10 +202,13 @@
       if (this.select.dataset.remoteIncludeArchived === 'true') url.searchParams.set('active', '0');
       if (this.select.dataset.remoteScope) url.searchParams.set('scope', this.select.dataset.remoteScope);
       const form = this.select.form;
-      for (const key of ['kind', 'project', 'camp', 'date', 'shift']) {
+      for (const key of ['kind', 'project', 'camp', 'date', 'shift', 'building']) {
         const fieldName = this.select.dataset['remote' + key[0].toUpperCase() + key.slice(1) + 'Field'];
         const field = fieldName && form?.elements.namedItem(fieldName);
-        if (field?.value) url.searchParams.set(key, field.value);
+        const values = field instanceof HTMLSelectElement && field.multiple
+          ? [...field.selectedOptions].map(option => option.value).filter(Boolean)
+          : field?.value ? [field.value] : [];
+        values.forEach(value => url.searchParams.append(key, value));
       }
       this.search.setAttribute('aria-busy', 'true');
       try {
@@ -234,7 +237,7 @@
         if (sequence === this.remoteSequence) {
           this.options.replaceChildren();
           const message = document.createElement('div'); message.className = 'search-select-empty';
-          message.setAttribute('role', 'alert'); message.textContent = 'Не удалось загрузить сотрудников. Повторите поиск.';
+          message.setAttribute('role', 'alert'); message.textContent = 'Не удалось загрузить список. Повторите поиск.';
           this.options.append(message);
         }
       } finally {

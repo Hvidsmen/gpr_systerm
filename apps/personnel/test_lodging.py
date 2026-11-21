@@ -1,7 +1,9 @@
 import json
 from datetime import timedelta
+from io import BytesIO
 from uuid import uuid4
 from unittest.mock import patch
+from openpyxl import load_workbook
 from django.test import TestCase,Client
 from django.core.exceptions import ValidationError
 from django.urls import reverse
@@ -243,6 +245,40 @@ class LodgingTests(TestCase):
         self.assertEqual(self.client.get(reverse('production:fact_history'),{'direction':'lodging'}).status_code,200)
         self.client.force_login(self.hr);page=self.client.get(reverse('personnel:housing'),data);self.assertContains(page,'data-lodging-sync-summary')
         page=self.client.get(reverse('personnel:lodging_sync'),data);self.assertContains(page,'Заезд требует подтверждения')
+
+    def test_board_has_linked_multiple_building_and_bed_filters(self):
+        second_building=LodgingBuilding.objects.create(company=self.company,camp=self.a,name='Корпус 2',description='Северный')
+        second_bed=LodgingBed.objects.create(company=self.company,building=second_building,room='А',number='10')
+        url=reverse('personnel:lodging')
+
+        page=self.client.get(url,{'camp':self.a.pk,'buildings':[second_building.pk]})
+        self.assertEqual(page.status_code,200)
+        self.assertContains(page,'name="buildings"',count=1)
+        self.assertContains(page,'name="beds"',count=1)
+        self.assertContains(page,'data-remote-building-field="buildings"')
+        self.assertContains(page,'multiple')
+        self.assertEqual([group['building'].pk for group in page.context['groups']],[second_building.pk])
+        self.assertEqual(page.context['stats']['FREE'],1)
+
+        filtered=self.client.get(url,{'camp':self.a.pk,'buildings':[self.building.pk],'beds':[self.bed2.pk]})
+        self.assertEqual([group['building'].pk for group in filtered.context['groups']],[self.building.pk])
+        self.assertEqual(filtered.context['groups'][0]['counts']['TOTAL'],1)
+        self.assertIn(f'beds={self.bed2.pk}',filtered.context['groups'][0]['load_url'])
+        places=self.client.get(reverse('personnel:lodging_building_places',args=[self.building.pk]),{'camp':self.a.pk,'beds':[self.bed2.pk]})
+        self.assertContains(places,'data-lodging-bed',count=1)
+        self.assertContains(places,f'id="lodging-bed-{self.bed2.pk}"')
+        self.assertNotContains(places,f'id="lodging-bed-{self.bed.pk}"')
+        export=self.client.get(url,{'camp':self.a.pk,'beds':[self.bed2.pk],'export':'xlsx'})
+        self.assertEqual(export['Content-Type'],'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        sheet=load_workbook(BytesIO(export.content),read_only=True).active
+        self.assertEqual(sheet.max_row,2)
+        self.assertEqual(sheet.cell(2,7).value,self.bed2.number)
+
+        search_url=reverse('personnel:lodging_filter_beds')
+        results=self.client.get(search_url,{'camp':self.a.pk,'building':[second_building.pk],'q':'А 10'}).json()['items']
+        self.assertEqual([item['id'] for item in results],[second_bed.pk])
+        self.assertIn('Корпус 2',results[0]['label'])
+        self.assertEqual(self.client.get(search_url,{'camp':self.a.pk,'building':[self.foreign_building.pk]}).json()['items'],[])
 
     def test_commandant_can_load_company_employee_choices(self):
         search=reverse('personnel:employee_search')

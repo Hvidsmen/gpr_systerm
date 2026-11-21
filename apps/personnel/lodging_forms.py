@@ -1,6 +1,7 @@
 from django import forms
 from django.db.models import Q
 from django.forms.models import ModelChoiceIteratorValue
+from django.urls import reverse
 from apps.resources.models import Employee
 from .models import Camp,LodgingBuilding,LodgingBed,LodgingStay
 from . import lodging
@@ -23,6 +24,21 @@ class LodgingBedSelect(forms.Select):
         return option
 
 
+class LodgingFilterBedSelect(forms.SelectMultiple):
+    """Keep selected places in HTML; the searchable list is loaded remotely."""
+    def optgroups(self,name,value,attrs=None):
+        field=getattr(self.choices,'field',None)
+        if field is None:return super().optgroups(name,value,attrs)
+        selected={str(item) for item in value if str(item)};options=[]
+        for index,obj in enumerate(field.queryset.filter(pk__in=selected).select_related('building')):
+            options.append(self.create_option(name,ModelChoiceIteratorValue(obj.pk,obj),field.label_from_instance(obj),True,index))
+        return [(None,options,0)]
+
+
+class LodgingBedMultipleChoiceField(forms.ModelMultipleChoiceField):
+    def label_from_instance(self,bed):return lodging.bed_filter_label(bed)
+
+
 class StyledForm(forms.Form):
     def style(self):
         for field in self.fields.values():
@@ -32,9 +48,24 @@ class StyledForm(forms.Form):
 class LodgingFilter(StyledForm):
     camp=forms.ModelChoiceField(label='Местонахождение',queryset=Camp.objects.none())
     q=forms.CharField(label='Поиск',required=False,widget=forms.TextInput(attrs={'placeholder':'Сотрудник, табельный номер, вагон или место'}))
-    state=forms.ChoiceField(label='Места',required=False,choices=[('','Все'),('OCCUPIED','Занятые'),('FREE','Свободные'),('RESERVED','Зарезервированные'),('UNAVAILABLE','Недоступные')])
+    state=forms.ChoiceField(label='Состояние мест',required=False,choices=[('','Все'),('OCCUPIED','Занятые'),('FREE','Свободные'),('RESERVED','Зарезервированные'),('UNAVAILABLE','Недоступные')])
+    buildings=forms.ModelMultipleChoiceField(label='Вагоны / корпуса',queryset=LodgingBuilding.objects.none(),required=False)
+    beds=LodgingBedMultipleChoiceField(label='Места',queryset=LodgingBed.objects.none(),required=False,widget=LodgingFilterBedSelect)
     def __init__(self,*args,company,**kwargs):
-        super().__init__(*args,**kwargs);self.fields['camp'].queryset=Camp.objects.filter(company=company);self.style()
+        super().__init__(*args,**kwargs);self.fields['camp'].queryset=Camp.objects.filter(company=company)
+        camp_id=(self.data.get('camp') if self.is_bound else self.initial.get('camp'))
+        if hasattr(camp_id,'pk'):camp_id=camp_id.pk
+        if str(camp_id or '').isdigit():
+            self.fields['buildings'].queryset=LodgingBuilding.objects.filter(company=company,camp_id=camp_id)
+            self.fields['beds'].queryset=LodgingBed.objects.filter(company=company,building__camp_id=camp_id).select_related('building')
+        self.fields['buildings'].widget.attrs['data-placeholder']='Все вагоны / корпуса'
+        self.fields['beds'].widget.attrs.update({
+            'data-placeholder':'Все места',
+            'data-remote-search-url':reverse('personnel:lodging_filter_beds'),
+            'data-remote-camp-field':'camp',
+            'data-remote-building-field':'buildings',
+        })
+        self.style()
 
 
 class LodgingReportFilter(StyledForm):
