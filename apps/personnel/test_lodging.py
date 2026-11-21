@@ -62,7 +62,7 @@ class LodgingTests(TestCase):
         self.edit('MOVE',employee=self.employee,bed=self.bed2)
         self.assertFalse(any(r['employee'].pk==self.employee.pk for r in lodging_sync.issues(self.company,[self.a],self.day)))
         self.assertEqual(lodging.present(self.company,self.day).get(employee=self.employee).bed,self.bed2)
-        self.assertEqual(lodging.present(self.company,self.day-timedelta(days=1)).get(employee=self.employee).bed,self.bed)
+        self.assertEqual(lodging.present(self.company,self.day-timedelta(days=1)).get(employee=self.employee).bed,self.bed2)
 
     def test_departures_independent_and_discrepancies_resolve(self):
         self.edit(user=self.admin,employee=self.employee,day=self.stay.arrived_on)
@@ -198,6 +198,30 @@ class LodgingTests(TestCase):
         self.assertEqual(self.client.get(reverse('personnel:lodging'),{'camp':self.a.pk,'date':str(self.day)}).status_code,200)
         self.assertEqual(self.client.post(reverse('personnel:lodging_claims'),{},content_type='application/json').status_code,403)
 
+    def test_recorded_dates_never_delay_current_checkin_move_or_checkout(self):
+        future=self.day+timedelta(days=30);past=self.day-timedelta(days=30)
+        stay=self.edit(day=future)
+        self.assertEqual(stay.arrived_on,future)
+        self.assertEqual(lodging.present(self.company,past).get(employee=self.second_employee).bed,self.bed)
+
+        page=self.client.get(reverse('personnel:lodging'),{'camp':self.a.pk,'date':str(past)})
+        self.assertNotContains(page,'>На дату<')
+        self.assertNotContains(page,'data-fact-shortcuts')
+        self.assertContains(page,'<small>Сегодня</small>',html=True)
+        places=self.client.get(reverse('personnel:lodging_building_places',args=[self.building.pk]),{'camp':self.a.pk,'date':str(past)})
+        self.assertContains(places,self.second_employee.display_name)
+
+        moved=self.edit('MOVE',bed=self.bed2,day=past)
+        stay.refresh_from_db()
+        self.assertEqual(stay.departed_on,past)
+        self.assertEqual(moved.arrived_on,past)
+        self.assertEqual(lodging.present(self.company,future).get(employee=self.second_employee).bed,self.bed2)
+
+        self.edit('CHECKOUT',day=future+timedelta(days=1))
+        self.assertFalse(lodging.present(self.company,past).filter(employee=self.second_employee).exists())
+        self.assertTrue(lodging.available_beds(self.company,self.a,past).filter(pk=self.bed2.pk).exists())
+        self.assertEqual(list(LodgingEvent.objects.filter(employee=self.second_employee).values_list('date',flat=True)),[future+timedelta(days=1),future,past])
+
     def test_board_catalogue_export_and_shared_sync_strip(self):
         self.edit()
         url=reverse('personnel:lodging');data={'camp':self.a.pk,'date':str(self.day)}
@@ -227,7 +251,7 @@ class LodgingTests(TestCase):
         future=self.client.get(search,{**params,'q':self.employee.employee_number}).json()['items']
         self.assertEqual([item['id'] for item in future],[self.employee.pk])
         self.assertTrue(future[0]['disabled'])
-        self.assertIn('уже есть заселение с',future[0]['text'])
+        self.assertIn('уже заселён:',future[0]['text'])
         response=self.client.get(search,{**params,'q':self.second_employee.employee_number})
         self.assertEqual(response.status_code,200)
         self.assertEqual([item['id'] for item in response.json()['items']],[self.second_employee.pk])
@@ -240,8 +264,7 @@ class LodgingTests(TestCase):
         self.assertIn(str(self.bed),occupied[0]['text'])
         not_lodged=self.client.get(search,{**params,'kind':'CHECKOUT','q':self.employee.employee_number}).json()['items']
         self.assertEqual([item['id'] for item in not_lodged],[self.employee.pk])
-        self.assertTrue(not_lodged[0]['disabled'])
-        self.assertIn('ещё не заселён',not_lodged[0]['text'])
+        self.assertFalse(not_lodged[0].get('disabled',False))
         self.second_employee.is_active=False;self.second_employee.save(update_fields=['is_active','updated_at'])
         self.assertEqual(self.client.get(search,{**params,'q':self.second_employee.employee_number}).json()['items'],[])
         checkout=self.client.get(search,{**params,'kind':'CHECKOUT','q':self.second_employee.employee_number})

@@ -31,12 +31,12 @@ def parameters(request):
     return camp,day
 
 
-def board_url(camp,day):return reverse('personnel:lodging')+'?'+urlencode({'camp':camp.pk,'date':str(day)})
+def board_url(camp,day=None):return reverse('personnel:lodging')+'?'+urlencode({'camp':camp.pk})
 
 
 def lodging_place_url(camp, day, bed):
     query = urlencode({
-        'camp': camp.pk, 'date': str(day),
+        'camp': camp.pk,
         'focus_building': bed.building_id, 'focus_bed': bed.pk,
     })
     return f'{reverse("personnel:lodging")}?{query}#lodging-bed-{bed.pk}'
@@ -171,7 +171,7 @@ def building_places(request,pk):
 def event_history(request):
     require_roles(request.user,lodging.READERS)
     camp,day=parameters(request)
-    events=LodgingEvent.objects.filter(company=request.user.company,camp=camp,date__lte=day).select_related('employee','from_bed__building','to_bed__building','recorded_by','stay')
+    events=LodgingEvent.objects.filter(company=request.user.company,camp=camp).select_related('employee','from_bed__building','to_bed__building','recorded_by','stay')
     page=Paginator(events,50).get_page(request.GET.get('page'))
     return render(request,'personnel/_lodging_event_history.html',{'events':page.object_list,'page_obj':page,'camp':camp,'day':day,
         'catalogue_editable':lodging.editor_state(request.user,camp)[0]})
@@ -193,12 +193,11 @@ def board(request):
     require_roles(request.user,lodging.READERS)
     camps=Camp.objects.filter(company=request.user.company)
     raw=request.GET.copy()
-    if request.method=='POST':raw.update({k:request.POST[k] for k in ('camp','date') if k in request.POST})
-    raw.setdefault('date',str(timezone.localdate()))
+    if request.method=='POST':raw.update({k:request.POST[k] for k in ('camp',) if k in request.POST})
     if not raw.get('camp') and camps.exists():raw['camp']=str(camps.first().pk)
     selector=LodgingFilter(raw,company=request.user.company)
     if not selector.is_valid():return render(request,'personnel/lodging.html',{'selector':selector,'has_camps':camps.exists()})
-    camp=selector.cleaned_data['camp'];day=selector.cleaned_data['date']
+    camp=selector.cleaned_data['camp'];day=timezone.localdate()
     # One operator edits the whole location; everybody else remains a live viewer.
     provided=request.POST.get('session') if request.method=='POST' else None
     try:presence_state,presence_session=touch_presence(request,camp,provided)

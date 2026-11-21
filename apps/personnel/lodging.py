@@ -4,7 +4,7 @@ from uuid import UUID
 from django.core import signing
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import Q,F
+from django.db.models import F
 from django.utils import timezone
 from core.permissions import require_roles,role_code,READ_ROLES
 from core.fact_history import with_history_actor
@@ -19,22 +19,19 @@ TTL=timedelta(minutes=5)
 PRESENCE_TTL=timedelta(seconds=90)
 
 
-def overlapping_from(company, day):
-    """Stays conflicting with a new open-ended stay beginning on ``day``."""
-    return LodgingStay.objects.filter(company=company, cancelled_at=None).filter(
-        Q(departed_on=None) | Q(departed_on__gt=day)
-    ).exclude(departed_on=F('arrived_on'))
+def present(company, day=None):
+    """Operationally current accommodation, independent of recorded dates.
 
-
-def present(company,day):
-    return overlapping_from(company,day).filter(arrived_on__lte=day)
+    Arrival and departure dates are documentary attributes in the commandant
+    workflow.  An open stay means that the employee lives there now; closing
+    it frees the place now, even when the entered date is in the past or the
+    future.
+    """
+    return LodgingStay.objects.filter(company=company, cancelled_at=None, departed_on=None)
 
 
 def available_beds(company,camp,day,*,user=None,session=None):
-    # A new stay has no planned end date.  A bed occupied later is therefore
-    # not available: otherwise it looks free in the selector but fails while
-    # saving because the two accommodation periods overlap.
-    occupied=overlapping_from(company,day).filter(camp=camp).values('bed_id')
+    occupied=present(company).filter(camp=camp).values('bed_id')
     return LodgingBed.objects.filter(company=company,building__camp=camp,building__camp__is_active=True,building__is_active=True,state='AVAILABLE').exclude(pk__in=occupied).select_related('building')
 
 
@@ -151,9 +148,8 @@ def claim(user,camp,day,employee,bed,session,action='acquire'):
         if action=='renew' and any(row.locked_by_id!=user.pk or not row.expires_at or row.expires_at<=timezone.now() for row in rows):raise ValidationError('Срок проверки истёк. Проверьте свежие данные и повторите сохранение.')
         if bed:
             if bed.state!='AVAILABLE' or not bed.building.is_active:raise ValidationError('Место недоступно для заселения.')
-            occupant=overlapping_from(user.company,day).filter(bed=bed).select_related('employee').order_by('arrived_on','pk').first()
+            occupant=present(user.company).filter(bed=bed).select_related('employee').order_by('pk').first()
             if occupant:
-                if occupant.arrived_on>day:raise ValidationError(f'Место занято начиная с {occupant.arrived_on:%d.%m.%Y}. Обновите список свободных мест.')
                 raise ValidationError('Место уже занято другим сотрудником.')
         # Selection changes release only this browser tab's previous leases.
         for old in LodgingControl.objects.select_for_update().filter(company=user.company,locked_by=user,session=session,resource__in=['employee','bed']):
@@ -201,7 +197,7 @@ def move(user,kind,camp,day,employee,*,bed=None,session=None,signed=None,planned
         if not bed or bed.building.camp_id!=camp.pk:raise ValidationError('Выберите место в этом местонахождении.')
         if not camp.is_active or not bed.building.is_active or bed.state!='AVAILABLE':raise ValidationError('Место недоступно. Снимите резерв или измените доступность в справочнике.')
         if kind=='CHECKIN' and current:raise ValidationError('Сотрудник уже заселён. Оформите переселение.')
-    if kind!='CHECKIN' and (not current or current.camp_id!=camp.pk):raise ValidationError('На эту дату сотрудник не проживает в выбранном местонахождении.')
+    if kind!='CHECKIN' and (not current or current.camp_id!=camp.pk):raise ValidationError('Сотрудник сейчас не проживает в выбранном местонахождении.')
     if kind=='MOVE' and current.bed_id==bed.pk:raise ValidationError('Выберите другое место.')
     old_bed=current.bed if current else None
     if kind in {'MOVE','CHECKOUT'}:

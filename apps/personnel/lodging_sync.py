@@ -29,14 +29,16 @@ def issues(company,camps,day,*,include_resolved=False):
     for fact in EmployeeActivity.objects.filter(company=company,date=day,assignment_reviewed=True).select_related('employee__position__planning_mapping__brigade__group','reported_by__role','construction_object'):
         if activity_direction(fact)=='works':facts.setdefault(fact.employee_id,[]).append(fact)
     hr_all=list(CampStay.objects.filter(company=company,cancelled_at=None,arrived_on__lte=day,person__employee__isnull=False).select_related('person__employee__position__planning_mapping__brigade__group','camp').order_by('-arrived_on','-pk'))
-    living=list(LodgingStay.objects.filter(company=company,cancelled_at=None,arrived_on__lte=day).select_related('employee__position__planning_mapping__brigade__group','camp','bed__building').order_by('-arrived_on','-pk'))
+    # Accommodation is an operational register: open rows are current even
+    # when their documentary date is in the past or future.
+    living=list(LodgingStay.objects.filter(company=company,cancelled_at=None).select_related('employee__position__planning_mapping__brigade__group','camp','bed__building').order_by('-pk'))
     hr={};last_hr={};rooms={};last_room={};chains={}
     for row in hr_all:
         pk=row.person.employee_id;last_hr.setdefault(pk,row)
         if row.arrived_on!=row.departed_on and (row.departed_on is None or row.departed_on>day):hr.setdefault(pk,row)
     for row in living:
         last_room.setdefault(row.employee_id,row);chains.setdefault(row.employee_id,[]).append(row)
-        if row.arrived_on!=row.departed_on and (row.departed_on is None or row.departed_on>day):rooms.setdefault(row.employee_id,row)
+        if row.departed_on is None:rooms.setdefault(row.employee_id,row)
     result=[]
     acknowledgments={(r.employee_id,r.fingerprint):r for r in LodgingResolution.objects.filter(company=company).select_related('recorded_by')}
     for pk in sorted(set(hr)|set(rooms)|set(facts)):

@@ -21,20 +21,21 @@ class LodgingMetadataTests(TestCase):
         self.client.force_login(self.commandant)
         self.scope={'camp':self.a.pk,'date':str(self.day)}
 
-    def test_only_free_available_places_on_selected_date_are_offered(self):
+    def test_only_operationally_free_available_places_are_offered(self):
         self.edit()
         self.bed2.state='RESERVED';self.bed2.save()
         form=LodgingMovementForm(company=self.company,camp=self.a,day=self.day)
         self.assertNotIn('planned_departure', form.fields)
         self.assertEqual(list(form.fields['bed'].queryset),[self.bed3])
-        # Planned checkout does not free a place; an actual departure does.
+        # Actual checkout frees a place immediately, regardless of its
+        # documentary date. Planned checkout still does not free it.
         stay=LodgingStay.objects.get();stay.planned_departure=self.day;stay.departed_on=self.day+timedelta(days=1);stay.save()
         endpoint=reverse('personnel:lodging_available_beds')
-        self.assertEqual([r['id'] for r in self.client.get(endpoint,self.scope).json()['beds']],[self.bed3.pk])
+        self.assertEqual([r['id'] for r in self.client.get(endpoint,self.scope).json()['beds']],[self.bed.pk,self.bed3.pk])
         future=LodgingStay.objects.create(company=self.company,camp=self.a,employee=self.employee,bed=self.bed3,arrived_on=self.day+timedelta(days=3),recorded_by=self.admin)
-        self.assertEqual(self.client.get(endpoint,self.scope).json()['beds'],[])
+        self.assertEqual([r['id'] for r in self.client.get(endpoint,self.scope).json()['beds']],[self.bed.pk])
         session=self.activate_editor()
-        with self.assertRaisesMessage(ValidationError,'Место занято начиная с'):
+        with self.assertRaisesMessage(ValidationError,'Место уже занято другим сотрудником'):
             lodging.claim(self.commandant,self.a,self.day,self.employee,self.bed3,session)
         tomorrow={**self.scope,'date':str(self.day+timedelta(days=1))}
         self.assertIn(self.bed.pk,[r['id'] for r in self.client.get(endpoint,tomorrow).json()['beds']])

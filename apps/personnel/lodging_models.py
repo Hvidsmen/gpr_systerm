@@ -2,7 +2,6 @@
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.db.models import Q,F
 from core.fact_history import ActualHistoryMixin
 from .models import PersonnelModel
 
@@ -60,19 +59,16 @@ class LodgingStay(ActualHistoryMixin,PersonnelModel):
     class Meta:
         ordering=['-arrived_on','-pk']
         indexes=[models.Index(fields=['company','employee','arrived_on','departed_on'],name='lodging_employee_period')]
-        constraints=[models.CheckConstraint(condition=Q(departed_on=None)|Q(departed_on__gte=F('arrived_on')),name='lodging_departure_after_arrival')]
     def clean(self):
         for name in ('employee','camp','bed'):
             obj=getattr(self,name,None)
             if obj and obj.company_id!=self.company_id:raise ValidationError('Данные другой компании.')
         if self.bed_id and self.bed.building.camp_id!=self.camp_id:raise ValidationError('Место находится в другом местонахождении.')
-        if self.departed_on and self.arrived_on and self.departed_on<self.arrived_on:raise ValidationError('Выселение не может быть раньше заселения.')
         if self.planned_departure and self.arrived_on and self.planned_departure<self.arrived_on:raise ValidationError('Плановое освобождение не может быть раньше заселения.')
-        if self.cancelled_at or not self.arrived_on or self.departed_on==self.arrived_on:return
-        overlapping=type(self).objects.filter(company_id=self.company_id,cancelled_at=None).exclude(pk=self.pk).exclude(departed_on=F('arrived_on')).filter(Q(departed_on=None)|Q(departed_on__gt=self.arrived_on))
-        if self.departed_on:overlapping=overlapping.filter(arrived_on__lt=self.departed_on)
-        if overlapping.filter(bed_id=self.bed_id).exists():raise ValidationError('Место уже занято на этот период.')
-        if overlapping.filter(employee_id=self.employee_id).exists():raise ValidationError('У сотрудника уже есть проживание на этот период. Оформите переселение.')
+        if self.cancelled_at or self.departed_on is not None:return
+        current=type(self).objects.filter(company_id=self.company_id,cancelled_at=None,departed_on=None).exclude(pk=self.pk)
+        if current.filter(bed_id=self.bed_id).exists():raise ValidationError('Место уже занято другим сотрудником.')
+        if current.filter(employee_id=self.employee_id).exists():raise ValidationError('Сотрудник уже заселён. Оформите переселение.')
     def __str__(self):return f'{self.employee} · {self.bed} · {self.arrived_on}'
 
 

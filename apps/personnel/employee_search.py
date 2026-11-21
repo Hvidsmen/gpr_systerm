@@ -36,13 +36,9 @@ def search(request):
                 present = present.filter(camp_id=camp)
             query = query.filter(pk__in=present.values('person__employee_id'))
     elif scope == 'lodging':
-        from .lodging import overlapping_from, present
-        try:
-            day = forms.DateField().clean(request.GET.get('date')) or timezone.localdate()
-        except forms.ValidationError:
-            day = timezone.localdate()
+        from .lodging import present
         lodging_kind = request.GET.get('kind', 'CHECKIN')
-        lodging_residents = overlapping_from(request.user.company, day) if lodging_kind == 'CHECKIN' else present(request.user.company, day)
+        lodging_residents = present(request.user.company)
         camp = request.GET.get('camp')
         if camp and camp.isdigit():
             lodging_camp_id = int(camp)
@@ -89,10 +85,7 @@ def search(request):
         item = {'id': employee.pk, 'text': label}
         resident = resident_by_employee.get(employee.pk)
         if lodging_kind == 'CHECKIN' and resident:
-            if resident.arrived_on > day:
-                item['text'] += f' · уже есть заселение с {resident.arrived_on:%d.%m.%Y}: {resident.camp} · {resident.bed}'
-            else:
-                item['text'] += f' · уже заселён: {resident.camp} · {resident.bed}'
+            item['text'] += f' · уже заселён: {resident.camp} · {resident.bed}'
             item['disabled'] = True
         elif lodging_kind and lodging_kind != 'CHECKIN' and resident is None:
             item['text'] += ' · ещё не заселён'

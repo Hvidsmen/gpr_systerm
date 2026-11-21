@@ -67,7 +67,7 @@ class LodgingImportTests(TestCase):
         raw=workbook(self.day,[None,self.employee.display_name])
         self.client.post(reverse('personnel:lodging_import'),{'camp':self.a.pk,'file':SimpleUploadedFile('Другая.xlsx',raw)})
         self.assertEqual(LodgingStay.objects.count(),1);stay.refresh_from_db();self.assertEqual(stay.updated_at,original)
-        self.assertTrue(LodgingImportRow.objects.filter(state='PENDING',warning__icontains='уже есть проживание').exists())
+        self.assertTrue(LodgingImportRow.objects.filter(state='PENDING',warning__icontains='уже заселён').exists())
     def test_failure_after_stay_save_rolls_back_occupancy_but_keeps_review_row(self):
         with patch('apps.personnel.lodging_import.LodgingEvent.objects.create',side_effect=ValidationError('Конфликт записи события')):
             self.send([self.employee.display_name])
