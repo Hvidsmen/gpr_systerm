@@ -33,7 +33,7 @@
         {% if chapter.table %}<div class="help-table-scroll"><table class="table"><thead><tr>{% for head in chapter.table.headers %}<th scope="col">{{ head }}</th>{% endfor %}</tr></thead><tbody>{% for row in chapter.table.rows %}<tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div>{% endif %}
         {% if chapter.image %}
         <figure class="help-figure">
-          <a href="{% static 'instructions/' %}{{ chapter.image }}.png?v=20261119-dispatcher-flow" target="_blank" rel="noopener" aria-label="Увеличить картинку: {{ chapter.title }}"><img src="{% static 'instructions/' %}{{ chapter.image }}.png?v=20261119-dispatcher-flow" alt="Учебный экран. {{ chapter.title }}" loading="lazy" decoding="async"></a>
+          <a href="{% static 'instructions/' %}{{ chapter.image }}.png?v=20261121-lodging-current" target="_blank" rel="noopener" aria-label="Увеличить картинку: {{ chapter.title }}"><img src="{% static 'instructions/' %}{{ chapter.image }}.png?v=20261121-lodging-current" alt="Учебный экран. {{ chapter.title }}" loading="lazy" decoding="async"></a>
           <figcaption>{{ chapter.title }}. Нажмите на картинку, чтобы рассмотреть крупнее.</figcaption>
         </figure>
         {% endif %}
