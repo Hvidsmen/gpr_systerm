@@ -221,7 +221,8 @@ def request_list(request,recruitment_page='bank'):
         active=Count('pk',filter=Q(cancelled_at__isnull=True,completed_at__isnull=True,closed_at__isnull=True)),
         unassigned=Count('pk',filter=Q(cancelled_at__isnull=True,completed_at__isnull=True,closed_at__isnull=True,assigned_to__isnull=True)),
         overdue=Count('pk',filter=Q(cancelled_at__isnull=True,completed_at__isnull=True,closed_at__isnull=True,required_on__lt=timezone.localdate())),
-        completed=Count('pk',filter=Q(closed_at__isnull=False)),
+        completed=Count('pk',filter=Q(cancelled_at__isnull=True)&(
+            Q(completed_at__isnull=False)|Q(closed_at__isnull=False)),distinct=True),
     )
     rows=requests_for(request.user)
     query=request.GET.get('q','').strip()
@@ -234,7 +235,8 @@ def request_list(request,recruitment_page='bank'):
     if request.GET.get('mine')=='1':rows=rows.filter(assigned_to=request.user)
     state=request.GET.get('state','active')
     if state=='cancelled':rows=rows.filter(cancelled_at__isnull=False)
-    elif state=='completed':rows=rows.filter(closed_at__isnull=False)
+    elif state=='completed':rows=rows.filter(cancelled_at__isnull=True).filter(
+        Q(completed_at__isnull=False)|Q(closed_at__isnull=False)).distinct()
     elif state!='all':rows=rows.filter(cancelled_at__isnull=True,completed_at__isnull=True,closed_at__isnull=True)
     plan_rows=list(rows.values('position_ref_id','position_ref__name','position','quantity'))
     page=Paginator(rows,30).get_page(request.GET.get('page'))

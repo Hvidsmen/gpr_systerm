@@ -467,6 +467,30 @@ class RecruitmentTests(TestCase):
         self.assertEqual(service.progress(row)['label'],'В работе')
         self.assertTrue(row.events.filter(description__contains='Автоматическое закрытие снято').exists())
 
+    def test_completed_closed_card_combines_both_request_results_without_duplicates(self):
+        now=timezone.now()
+        completed=self.row()
+        RecruitmentRequest.objects.filter(pk=completed.pk).update(completed_at=now)
+        closed=self.row()
+        RecruitmentRequest.objects.filter(pk=closed.pk).update(
+            closed_at=now,close_kind='FORCED',close_reason='Потребность закрыта')
+        completed_and_closed=self.row()
+        RecruitmentRequest.objects.filter(pk=completed_and_closed.pk).update(
+            completed_at=now,closed_at=now,close_kind='AUTO',close_reason='Все сотрудники найдены')
+        cancelled=self.row()
+        RecruitmentRequest.objects.filter(pk=cancelled.pk).update(
+            cancelled_at=now,closed_at=now,close_kind='FORCED',close_reason='Заявка отменена')
+
+        self.client.force_login(self.recruiter)
+        response=self.client.get(reverse('personnel:recruitment_requests'),{'state':'completed'})
+
+        self.assertEqual(response.context['request_stats']['completed'],3)
+        self.assertEqual(response.context['page'].paginator.count,3)
+        self.assertContains(response,'Выполненные / закрытые')
+        for row in (completed,closed,completed_and_closed):
+            self.assertContains(response,f'№{row.pk} ·')
+        self.assertNotContains(response,f'№{cancelled.pk} ·')
+
     def test_dispatcher_or_any_recruiter_can_force_close_with_required_reason(self):
         row=self.row()
         self.assertValidation(service.close_request,self.recruiter2,row.pk,row.revision,'  ')

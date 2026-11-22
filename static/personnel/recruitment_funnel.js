@@ -3,7 +3,7 @@
   function funnel(){return document.querySelector('[data-recruitment-funnel]');}
   function updateRequestLabels(){
     const closed=document.querySelector('#request-state option[value="completed"]');
-    if(closed)closed.textContent='Закрытые';
+    if(closed)closed.textContent='Выполненные / закрытые';
   }
   function simplifyDemandColumns(root){
     (root||document).querySelectorAll('.position-funnel-table').forEach(function(table){
