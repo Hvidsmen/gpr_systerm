@@ -387,7 +387,7 @@ def arrive_camp(user,row,day):
     prep=getattr(row,'recruitment_arrival',None)
     if prep:
         prep.actual_stay=event.stay;prep.status='ARRIVED';prep.revision+=1;prep.save(update_fields=['actual_stay','status','revision','updated_at'])
-        from .recruitment import audit,touch
+        from .recruitment import audit,touch,sync_auto_closure
         recruitment=prep.candidate.request
         arrived=ArrivalPreparation.objects.filter(candidate__request=recruitment,status='ARRIVED',actual_stay__isnull=False,
             actual_stay__cancelled_at__isnull=True).count()
@@ -397,6 +397,7 @@ def arrive_camp(user,row,day):
         candidate.save(update_fields=['status','revision','updated_at'])
         from .recruitment import sync_pool_candidate
         sync_pool_candidate(candidate)
-        touch(recruitment);audit(user,recruitment,'Фактический заезд в местонахождение подтверждён.',prep.candidate)
+        if not sync_auto_closure(user,recruitment):touch(recruitment)
+        audit(user,recruitment,'Фактический заезд в местонахождение подтверждён.',prep.candidate)
     set_pool_stage(row,'ARRIVED')
     log(row,user,'Прибыл в местонахождение','Фактический заезд зафиксирован. Заявка завершена.')

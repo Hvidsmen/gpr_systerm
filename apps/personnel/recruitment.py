@@ -30,7 +30,7 @@ def current(user, pk, revision=None):
     row = RecruitmentRequest.objects.select_for_update().get(company=user.company, pk=pk)
     if revision is not None and row.revision != revision:raise ValidationError('Заявка уже изменена. Обновите страницу.')
     if row.cancelled_at:raise ValidationError('Заявка отменена.')
-    if row.completed_at:raise ValidationError('Заявка выполнена. Требуемое количество сотрудников уже прибыло.')
+    if row.completed_at:raise ValidationError('Заявка выполнена.')
     return row
 
 
@@ -62,15 +62,42 @@ def progress(row):
         prep=getattr(c,'arrival',None)
         if prep and prep.actually_arrived:arrived.append(c)
         if c.status in {'READY','TRANSFERRED','ARRIVAL_APPROVED','ARRIVED'} and not (prep and prep.status=='CANCELLED'):ready.append(c)
-    state=('Отменена' if row.cancelled_at else 'Выполнена' if row.completed_at or len(arrived)>=row.quantity else
+    state=('Отменена' if row.cancelled_at else
+           'Закрыта автоматически' if row.closed_at and row.close_kind=='AUTO' else
+           'Закрыта принудительно' if row.closed_at else
+           'Выполнена' if row.completed_at or len(arrived)>=row.quantity else
            'Кандидаты готовы' if len(ready)>=row.quantity else 'В работе' if row.assigned_to_id or candidates else 'Новая')
     return {'required':row.quantity,'shortlisted':len(shortlisted),'ready':len(ready),'arrived':len(arrived),'label':state}
+
+
+def found_count(row):
+    return RecruitmentCandidate.objects.filter(request=row).exclude(status__in=RECRUITMENT_TERMINAL_STAGES|{'RESERVE'}).count()
+
+
+def sync_auto_closure(user,row):
+    """Close a filled request, or reopen it when an automatically selected candidate drops out."""
+    found=found_count(row)
+    if not row.closed_at and found>=row.quantity:
+        row.closed_at=timezone.now();row.closed_by=user;row.close_kind='AUTO'
+        row.close_reason=f'Подобрано требуемое количество сотрудников: {found} из {row.quantity}.'
+        row.revision+=1
+        row.save(update_fields=['closed_at','closed_by','close_kind','close_reason','revision','updated_at'])
+        audit(user,row,row.close_reason)
+        return True
+    if row.closed_at and row.close_kind=='AUTO' and found<row.quantity and not row.completed_at:
+        old_reason=row.close_reason
+        row.closed_at=None;row.closed_by=None;row.close_kind='';row.close_reason='';row.revision+=1
+        row.save(update_fields=['closed_at','closed_by','close_kind','close_reason','revision','updated_at'])
+        audit(user,row,f'Автоматическое закрытие снято: подобрано {found} из {row.quantity}. {old_reason}')
+        return True
+    return False
 
 
 @transaction.atomic
 def save_request(user, values, pk=None, revision=None):
     serialize(user,DISPATCH)
     row=current(user,pk,revision) if pk else RecruitmentRequest(company=user.company,created_by=user)
+    if row.closed_at:raise ValidationError('Подбор по заявке уже закрыт.')
     position=values.get('position_ref')
     if position is None:
         raw=values.get('position')
@@ -94,6 +121,7 @@ def save_request(user, values, pk=None, revision=None):
 @transaction.atomic
 def assign_request(user,pk,recruiter,revision):
     serialize(user,ASSIGN);row=current(user,pk,revision)
+    if row.closed_at:raise ValidationError('Подбор по заявке уже закрыт.')
     from core.permissions import role_code
     if (not recruiter or recruiter.company_id!=user.company_id or not recruiter.is_active or recruiter.archived_at or
             role_code(recruiter)!='RECRUITER'):
@@ -121,6 +149,18 @@ def cancel_request(user, pk, revision, reason):
     for prep in ArrivalPreparation.objects.select_for_update().filter(candidate__request=row,status='EXPECTED'):
         prep.status='CANCELLED';prep.revision+=1;prep.save()
     audit(user,row,'Заявка отменена: '+reason.strip())
+    return row
+
+
+@transaction.atomic
+def close_request(user,pk,revision,reason):
+    serialize(user,DISPATCH|RECRUIT);row=current(user,pk,revision)
+    if row.closed_at:raise ValidationError('Подбор по заявке уже закрыт.')
+    reason=' '.join((reason or '').split())
+    if not reason:raise ValidationError('Укажите причину закрытия.')
+    row.closed_at=timezone.now();row.closed_by=user;row.close_kind='FORCED';row.close_reason=reason;row.revision+=1
+    row.save(update_fields=['closed_at','closed_by','close_kind','close_reason','revision','updated_at'])
+    audit(user,row,'Заявка закрыта принудительно. Причина: '+reason)
     return row
 
 
@@ -188,6 +228,8 @@ def save_candidate(user, request_id, values, pk=None, revision=None, files=()):
     try:
         with transaction.atomic():
             serialize(user,RECRUIT);row=current(user,request_id);owned(user,row)
+            if row.closed_at and (not pk or row.close_kind=='FORCED'):
+                raise ValidationError('Подбор по заявке закрыт. Новых кандидатов добавлять нельзя.')
             c=RecruitmentCandidate.objects.select_for_update().get(company=user.company,request=row,pk=pk) if pk else RecruitmentCandidate(company=user.company,request=row,created_by=user)
             if pk and c.revision!=revision:raise ValidationError('Кандидата уже изменили. Обновите страницу.')
             if pk and ArrivalPreparation.objects.filter(candidate=c).exists():raise ValidationError('Кандидат уже передан. Изменения заезда оформляет диспетчер.')
@@ -226,7 +268,8 @@ def save_candidate(user, request_id, values, pk=None, revision=None, files=()):
             for file in files:
                 doc=CandidateDocument(company=user.company,candidate=c,uploaded_by=user,original_name=Path(file.name.replace('\\','/')).name[:255],size=file.size)
                 doc.file.save(file.name,file,save=False);written.append(doc.file);doc.save()
-            touch(row);audit(user,row,f'Кандидат: {c.get_status_display()}.',c)
+            audit(user,row,f'Кандидат: {c.get_status_display()}.',c)
+            if not sync_auto_closure(user,row):touch(row)
             return c
     except Exception:
         for file in written:file.storage.delete(file.name)
@@ -238,6 +281,7 @@ def handoff(user, candidate_id, revision):
     serialize(user,RECRUIT|DISPATCH)
     c=RecruitmentCandidate.objects.get(company=user.company,pk=candidate_id)
     row=current(user,c.request_id);owned(user,row)
+    if row.closed_at and row.close_kind=='FORCED':raise ValidationError('Подбор по заявке закрыт принудительно.')
     c=RecruitmentCandidate.objects.select_for_update().get(pk=c.pk)
     if c.pool_candidate_id and c.pool_candidate.employed_employee_id:
         raise ValidationError('Кандидат уже найден среди трудоустроенных сотрудников ЗУП.')

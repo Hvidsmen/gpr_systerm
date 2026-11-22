@@ -16,7 +16,8 @@ from .models import (RecruitmentRequest,RecruitmentCandidate,RecruitmentSpeciali
     TalentPoolCandidate,TalentPoolStageEvent,MovementReviewRequest,Camp)
 from . import recruitment as service
 from .recruitment_forms import (RequestForm,CandidateForm,ArrivalForm,RevisionForm,ReasonForm,TalentPoolForm,
-    TalentPoolImportForm,BulkArrivalCommonForm,BulkArrivalRowForm,RecruiterAssignmentForm,RecruitmentSpecialistForm)
+    TalentPoolImportForm,BulkArrivalCommonForm,BulkArrivalRowForm,RecruiterAssignmentForm,RecruitmentSpecialistForm,
+    ClosureReasonForm)
 from .recruitment_models import (POOL_UNAVAILABLE_STAGES,RECRUITMENT_SYSTEM_STAGES,RECRUITMENT_TERMINAL_STAGES,
     RECRUITMENT_APPROVAL_FLOW)
 from .recruitment_stage_flow import (WorkingDayCalendar,advance as advance_approval_stage,
@@ -107,7 +108,8 @@ def context(user):
     role=role_code(user)
     pool=TalentPoolCandidate.objects.filter(company=user.company,archived_at__isnull=True).aggregate(
         all=Count('pk'),ready=Count('pk',filter=Q(stage='TRANSFERRED')))
-    counts={'requests':RecruitmentRequest.objects.filter(company=user.company,cancelled_at__isnull=True,completed_at__isnull=True).count(),
+    counts={'requests':RecruitmentRequest.objects.filter(company=user.company,cancelled_at__isnull=True,
+        completed_at__isnull=True,closed_at__isnull=True).count(),
         'funnel':pool['all'],'ready':pool['ready'],
         'specialists':RecruitmentSpecialist.objects.filter(company=user.company,is_active=True).count()}
     return {'personnel_section':'recruitment','can_dispatch':role in service.DISPATCH,'can_recruit':role in service.RECRUIT,
@@ -216,10 +218,10 @@ def request_list(request,recruitment_page='bank'):
     selected_object_ids=selected_ids('project')
     company_requests=RecruitmentRequest.objects.filter(company=request.user.company)
     request_stats=company_requests.aggregate(
-        active=Count('pk',filter=Q(cancelled_at__isnull=True,completed_at__isnull=True)),
-        unassigned=Count('pk',filter=Q(cancelled_at__isnull=True,completed_at__isnull=True,assigned_to__isnull=True)),
-        overdue=Count('pk',filter=Q(cancelled_at__isnull=True,completed_at__isnull=True,required_on__lt=timezone.localdate())),
-        completed=Count('pk',filter=Q(completed_at__isnull=False)),
+        active=Count('pk',filter=Q(cancelled_at__isnull=True,completed_at__isnull=True,closed_at__isnull=True)),
+        unassigned=Count('pk',filter=Q(cancelled_at__isnull=True,completed_at__isnull=True,closed_at__isnull=True,assigned_to__isnull=True)),
+        overdue=Count('pk',filter=Q(cancelled_at__isnull=True,completed_at__isnull=True,closed_at__isnull=True,required_on__lt=timezone.localdate())),
+        completed=Count('pk',filter=Q(closed_at__isnull=False)),
     )
     rows=requests_for(request.user)
     query=request.GET.get('q','').strip()
@@ -232,8 +234,8 @@ def request_list(request,recruitment_page='bank'):
     if request.GET.get('mine')=='1':rows=rows.filter(assigned_to=request.user)
     state=request.GET.get('state','active')
     if state=='cancelled':rows=rows.filter(cancelled_at__isnull=False)
-    elif state=='completed':rows=rows.filter(completed_at__isnull=False)
-    elif state!='all':rows=rows.filter(cancelled_at__isnull=True,completed_at__isnull=True)
+    elif state=='completed':rows=rows.filter(closed_at__isnull=False)
+    elif state!='all':rows=rows.filter(cancelled_at__isnull=True,completed_at__isnull=True,closed_at__isnull=True)
     plan_rows=list(rows.values('position_ref_id','position_ref__name','position','quantity'))
     page=Paginator(rows,30).get_page(request.GET.get('page'))
     for row in page:row.progress=service.progress(row)
@@ -533,30 +535,34 @@ def request_detail(request,pk):
     require_roles(request.user,service.READ)
     row=get_object_or_404(requests_for(request.user),pk=pk)
     assignment_form=RecruiterAssignmentForm(initial={'revision':row.revision},company=request.user.company,current=row.assigned_to)
-    cancel_form=ReasonForm(initial={'revision':row.revision})
+    close_form=ClosureReasonForm(initial={'revision':row.revision})
     if request.method=='POST':
         action=request.POST.get('action')
         if action=='assign':
             require_roles(request.user,service.ASSIGN)
             bound=RecruiterAssignmentForm(request.POST,company=request.user.company,current=row.assigned_to)
-        elif action=='cancel':
-            require_roles(request.user,service.DISPATCH)
-            bound=ReasonForm(request.POST)
+        elif action=='close':
+            require_roles(request.user,service.DISPATCH|service.RECRUIT)
+            bound=ClosureReasonForm(request.POST)
         else:
             raise PermissionDenied('Неизвестное действие.')
         if bound.is_valid():
             try:
                 if action=='assign':service.assign_request(request.user,pk,bound.cleaned_data['recruiter'],bound.cleaned_data['revision'])
-                else:service.cancel_request(request.user,pk,bound.cleaned_data['revision'],bound.cleaned_data['reason'])
+                else:service.close_request(request.user,pk,bound.cleaned_data['revision'],bound.cleaned_data['reason'])
             except (ValidationError,IntegrityError) as exc:error(bound,exc)
             else:return redirect('personnel:recruitment_detail',pk=pk)
         if action=='assign':assignment_form=bound
-        else:cancel_form=bound
+        else:close_form=bound
     role=role_code(request.user)
+    can_manage=not row.completed_at and not row.cancelled_at and (not row.closed_at or row.close_kind=='AUTO') and (
+        role in {'ADMIN','HR_HEAD','RECRUITMENT_HEAD'} or role=='RECRUITER' and row.assigned_to_id==request.user.pk)
     return render(request,'personnel/recruitment_detail.html',{**context(request.user),'can_dispatch':role in service.DISPATCH and not row.completed_at,
-        'row':row,'progress':service.progress(row),'assignment_form':assignment_form,'cancel_form':cancel_form,
-        'can_assign_recruiter':role in service.ASSIGN and not row.completed_at and not row.cancelled_at,
-        'can_manage_candidates':not row.completed_at and (role in {'ADMIN','HR_HEAD','RECRUITMENT_HEAD'} or role=='RECRUITER' and row.assigned_to_id==request.user.pk),
+        'row':row,'progress':service.progress(row),'assignment_form':assignment_form,'close_form':close_form,
+        'can_edit_request':role in service.DISPATCH and not row.completed_at and not row.cancelled_at and not row.closed_at,
+        'can_close_request':role in service.DISPATCH|service.RECRUIT and not row.completed_at and not row.cancelled_at and not row.closed_at,
+        'can_assign_recruiter':role in service.ASSIGN and not row.completed_at and not row.cancelled_at and not row.closed_at,
+        'can_manage_candidates':can_manage,'can_add_candidates':can_manage and not row.closed_at,
         'events':row.events.select_related('actor','candidate')[:100]})
 
 
@@ -565,6 +571,7 @@ def request_detail(request,pk):
 def candidate_edit(request,request_pk,pk=None):
     require_roles(request.user,service.RECRUIT)
     row=get_object_or_404(RecruitmentRequest,company=request.user.company,pk=request_pk)
+    if row.closed_at and (pk is None or row.close_kind=='FORCED'):raise PermissionDenied('Подбор по заявке закрыт.')
     try:service.owned(request.user,row)
     except ValidationError as exc:raise PermissionDenied('; '.join(exc.messages))
     c=get_object_or_404(RecruitmentCandidate,company=request.user.company,request=row,pk=pk) if pk else None

@@ -21,6 +21,10 @@ class ReasonForm(RevisionForm):
     reason = forms.CharField(label='Причина отмены', max_length=2000, widget=forms.Textarea(attrs={'rows':2}))
 
 
+class ClosureReasonForm(RevisionForm):
+    reason=forms.CharField(label='Причина закрытия',max_length=2000,widget=forms.Textarea(attrs={'rows':2}))
+
+
 class RecruiterAssignmentForm(RevisionForm):
     recruiter=forms.ModelChoiceField(label='Ответственный рекрутер',queryset=User.objects.none(),empty_label='Выберите рекрутера',widget=forms.Select(attrs={'class':'form-select'}))
     def __init__(self,*args,company,current=None,**kwargs):

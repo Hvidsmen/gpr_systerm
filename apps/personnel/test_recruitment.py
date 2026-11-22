@@ -305,7 +305,7 @@ class RecruitmentTests(TestCase):
         active=self.client.get(reverse('personnel:recruitment_requests'))
         self.assertNotContains(active,f'№{row.pk} · {row.construction_object}')
         completed=self.client.get(reverse('personnel:recruitment_requests'),{'state':'completed'})
-        self.assertContains(completed,f'№{row.pk} ·');self.assertContains(completed,'Выполнена')
+        self.assertContains(completed,f'№{row.pk} ·');self.assertContains(completed,'Закрыта автоматически')
         with self.assertRaisesMessage(ValidationError,'Заявка выполнена'):
             service.handoff(self.dispatch,RecruitmentCandidate.objects.create(company=self.company,request=row,
                 full_name='Резерв',status='READY',ready_on=self.day,created_by=self.recruiter).pk,0)
@@ -444,6 +444,47 @@ class RecruitmentTests(TestCase):
         waiting.refresh_from_db();self.assertEqual(waiting.status,'CANCELLED');self.assertEqual(CampStay.objects.filter(cancelled_at__isnull=True).count(),1)
         row.refresh_from_db();self.assertEqual(service.progress(row)['arrived'],1)
         self.assertValidation(service.save_candidate,self.recruiter,row.pk,{'full_name':'Лишний','phone':'','status':'NEW','ready_on':None,'notes':''})
+
+    def test_request_closes_when_required_candidates_are_found_and_reopens_after_rejection(self):
+        row=self.row();service.assign_request(self.hr_head,row.pk,self.recruiter,row.revision)
+        first=service.save_candidate(self.recruiter,row.pk,{'full_name':'Первый найденный','phone':'1',
+            'status':'SCREENING','ready_on':None,'notes':''})
+        row.refresh_from_db();self.assertIsNone(row.closed_at)
+        second=service.save_candidate(self.recruiter,row.pk,{'full_name':'Второй найденный','phone':'2',
+            'status':'SCREENING','ready_on':None,'notes':''})
+        row.refresh_from_db();self.assertIsNotNone(row.closed_at);self.assertEqual(row.close_kind,'AUTO')
+        self.assertEqual(row.closed_by,self.recruiter);self.assertIn('2 из 2',row.close_reason)
+        self.assertEqual(service.progress(row)['label'],'Закрыта автоматически')
+        self.client.force_login(self.recruiter)
+        self.assertNotContains(self.client.get(reverse('personnel:recruitment_requests')),f'№{row.pk} ·')
+        closed_page=self.client.get(reverse('personnel:recruitment_requests'),{'state':'completed'})
+        self.assertContains(closed_page,f'№{row.pk} ·');self.assertContains(closed_page,'Закрыта автоматически')
+        self.assertValidation(service.save_candidate,self.recruiter,row.pk,{'full_name':'Третий','phone':'3',
+            'status':'NEW','ready_on':None,'notes':''})
+        service.save_candidate(self.recruiter,row.pk,{'pool_candidate':second.pool_candidate,'full_name':second.full_name,
+            'phone':second.phone,'status':'REJECTED','ready_on':None,'notes':'Отказ'},second.pk,second.revision)
+        row.refresh_from_db();self.assertIsNone(row.closed_at);self.assertEqual(row.close_kind,'')
+        self.assertEqual(service.progress(row)['label'],'В работе')
+        self.assertTrue(row.events.filter(description__contains='Автоматическое закрытие снято').exists())
+
+    def test_dispatcher_or_any_recruiter_can_force_close_with_required_reason(self):
+        row=self.row()
+        self.assertValidation(service.close_request,self.recruiter2,row.pk,row.revision,'  ')
+        closed=service.close_request(self.recruiter2,row.pk,row.revision,'Потребность снята заказчиком')
+        self.assertEqual(closed.close_kind,'FORCED');self.assertEqual(closed.closed_by,self.recruiter2)
+        self.assertEqual(closed.close_reason,'Потребность снята заказчиком')
+        self.assertValidation(service.save_candidate,self.recruiter,row.pk,{'full_name':'Лишний','phone':'',
+            'status':'NEW','ready_on':None,'notes':''})
+        second=self.row();service.close_request(self.dispatch,second.pk,second.revision,'Закрыто диспетчером')
+        second.refresh_from_db();self.assertEqual(second.closed_by,self.dispatch)
+        self.client.force_login(self.recruiter)
+        third=self.row();url=reverse('personnel:recruitment_detail',args=[third.pk])
+        detail=self.client.get(url);self.assertContains(detail,'Закрыть заявку принудительно')
+        response=self.client.post(url,{'action':'close','revision':third.revision,'reason':'Закрыто рекрутером'})
+        self.assertRedirects(response,url,fetch_redirect_response=False)
+        third.refresh_from_db();self.assertEqual(third.close_kind,'FORCED');self.assertEqual(third.closed_by,self.recruiter)
+        detail=self.client.get(url);self.assertContains(detail,'Закрыто рекрутером')
+        self.assertNotContains(detail,reverse('personnel:recruitment_candidate_create',args=[third.pk]))
     def test_cancel_preparation_and_rejected_candidates_not_ready(self):
         prep=self.preparation();service.cancel_preparation(self.dispatch,prep.pk,prep.revision,'Отказался')
         row=RecruitmentRequest.objects.get(pk=prep.candidate.request_id)
@@ -528,7 +569,7 @@ class RecruitmentTests(TestCase):
         prep=ArrivalPreparation.objects.get();self.client.force_login(self.dispatch)
         response=self.client.post(reverse('personnel:recruitment_arrival',args=[prep.pk]),{'revision':prep.revision,'expected_on':str(self.day),'camp':self.camp.pk,'employee':self.employee.pk,'actual_on':str(self.day),'notes':'','action':'confirm'})
         self.assertRedirects(response,reverse('personnel:movements'));prep.refresh_from_db();self.assertTrue(prep.actually_arrived)
-        row.refresh_from_db();self.assertEqual(service.progress(row)['label'],'Выполнена')
+        row.refresh_from_db();self.assertEqual(service.progress(row)['label'],'Закрыта автоматически')
     def test_queue_includes_expected_not_confirmed_or_cancelled(self):
         prep=self.preparation();self.client.force_login(self.dispatch)
         page=self.client.get(reverse('personnel:movements'));self.assertEqual(page.context['arrival_queue'].paginator.count,1)

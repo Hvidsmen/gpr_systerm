@@ -195,6 +195,7 @@ class TalentPoolStageEvent(PersonnelModel):
 
 
 class RecruitmentRequest(PersonnelModel):
+    CLOSE_KINDS=[('AUTO','Автоматически'),('FORCED','Принудительно')]
     construction_object = models.ForeignKey('projects.ConstructionObject', on_delete=models.PROTECT, verbose_name='Объект')
     position = models.CharField('Должность', max_length=250)
     position_ref=models.ForeignKey('resources.Position',on_delete=models.PROTECT,null=True,blank=True,
@@ -206,6 +207,11 @@ class RecruitmentRequest(PersonnelModel):
     assigned_to = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='recruitment_assignments', null=True, blank=True)
     cancelled_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
+    closed_at=models.DateTimeField('Подбор закрыт',null=True,blank=True,db_index=True)
+    closed_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,blank=True,
+        related_name='closed_recruitment_requests',verbose_name='Кто закрыл подбор')
+    close_kind=models.CharField('Способ закрытия',max_length=8,choices=CLOSE_KINDS,blank=True)
+    close_reason=models.TextField('Причина закрытия',blank=True)
     revision = models.PositiveIntegerField(default=0)
     class Meta:
         ordering = ['required_on', 'pk']
@@ -213,7 +219,7 @@ class RecruitmentRequest(PersonnelModel):
     def __str__(self):return f'Заявка №{self.pk} · {self.position}'
     def clean(self):
         super().clean()
-        for field in ('construction_object','position_ref','created_by','assigned_to'):
+        for field in ('construction_object','position_ref','created_by','assigned_to','closed_by'):
             if getattr(self, field+'_id') and getattr(self, field).company_id != self.company_id:
                 raise ValidationError({field:'Выберите запись своей компании.'})
         if not self.quantity:raise ValidationError({'quantity':'Укажите хотя бы одного человека.'})

@@ -1,6 +1,10 @@
 (function(){
   let cardObserver;
   function funnel(){return document.querySelector('[data-recruitment-funnel]');}
+  function updateRequestLabels(){
+    const closed=document.querySelector('#request-state option[value="completed"]');
+    if(closed)closed.textContent='Закрытые';
+  }
   function simplifyDemandColumns(root){
     (root||document).querySelectorAll('.position-funnel-table').forEach(function(table){
       const headers=Array.from(table.querySelectorAll(':scope > thead > tr > th'));
@@ -182,5 +186,5 @@
     event.preventDefault();event.returnValue='';
   });
   window.addEventListener('popstate',function(){if(funnel())replaceFunnel(location.href,false);});
-  simplifyDemandColumns(funnel());observeInlineCards(funnel());
+  updateRequestLabels();simplifyDemandColumns(funnel());observeInlineCards(funnel());
 })();

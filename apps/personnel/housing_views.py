@@ -1014,7 +1014,8 @@ def recruitment_dispatch_data(company):
     from django.db.models import Prefetch
     from .models import RecruitmentRequest,RecruitmentCandidate
     candidates=RecruitmentCandidate.objects.select_related('request__construction_object','request__position_ref','pool_candidate__camp','arrival__movement_request','arrival__camp').order_by('created_at','pk')
-    requests=list(RecruitmentRequest.objects.filter(company=company,cancelled_at__isnull=True,completed_at__isnull=True).select_related(
+    requests=list(RecruitmentRequest.objects.filter(company=company,cancelled_at__isnull=True,completed_at__isnull=True).filter(
+        Q(closed_at__isnull=True)|Q(close_kind='AUTO')).select_related(
         'construction_object','assigned_to').prefetch_related(Prefetch('candidates',queryset=candidates)).order_by('required_on','pk'))
     for row in requests:
         row.arrival_started_count=sum(1 for candidate in row.candidates.all()
