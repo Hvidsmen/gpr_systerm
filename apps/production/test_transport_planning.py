@@ -48,6 +48,7 @@ class TransportPlanningTests(TestCase):
         self.assertEqual(EquipmentDayRecord.objects.count(),0)
         self.assertContains(response,'data-type-add');self.assertNotContains(response,'data-transport-row=')
         self.assertContains(response,'План: <b>4</b>',html=True);self.assertContains(response,'Факт: <b>0</b>',html=True)
+        self.assertContains(response,'<details open class="transport-planning-type"',count=2)
         self.assertContains(self.page(view='list'),'data-transport-row=',count=3)
     def test_assign_adds_only_daily_work_and_keeps_independent_condition_and_counts(self):
         transport.set_condition(self.operator,self.camp,self.day,[self.machine.pk],'REPAIR',signed=transport.snapshot(self.operator,self.camp,self.day))
