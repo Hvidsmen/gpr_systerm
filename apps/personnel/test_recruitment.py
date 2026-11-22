@@ -97,14 +97,48 @@ class RecruitmentTests(TestCase):
         self.assertEqual(response.status_code,400);candidate.refresh_from_db();self.assertEqual(candidate.stage,'EMPLOYED')
 
     def test_zup_employment_does_not_guess_between_duplicate_candidate_cards(self):
-        from .recruitment_employment import reconcile_company
+        from .recruitment_employment import REVIEW_KEY,reconcile_company
+        candidates=[]
         for suffix in ('А','Б'):
-            TalentPoolCandidate.objects.create(company=self.company,full_name='Петров Пётр Петрович',phone='',stage='SELECTED',
-                position=self.position,construction_object=self.obj,created_by=self.recruiter,notes=suffix)
-        Employee.objects.create(company=self.company,zup_full_name='Петров Пётр Петрович',employee_number='Z-200',
+            candidates.append(TalentPoolCandidate.objects.create(company=self.company,full_name='Петров Пётр Петрович',phone='',stage='SELECTED',
+                position=self.position,construction_object=self.obj,created_by=self.recruiter,notes=suffix))
+        employee=Employee.objects.create(company=self.company,zup_full_name='Петров Пётр Петрович',employee_number='Z-200',
             zup_ref='b'*32,zup_server='mssql',zup_database='zup',zup_synced_at=timezone.now())
         self.assertEqual(reconcile_company(self.company,self.recruiter),{'linked':0,'ambiguous':1})
         self.assertFalse(TalentPoolCandidate.objects.filter(employed_employee__isnull=False).exists())
+        for candidate in candidates:
+            candidate.refresh_from_db();self.assertEqual(candidate.stage,'SELECTED')
+            self.assertEqual(candidate.source_data[REVIEW_KEY]['employee_ids'],[employee.pk])
+        self.client.force_login(self.recruiter)
+        page=self.client.get(reverse('personnel:recruitment_list'),{'candidate_stage':'employed'})
+        groups={row['label']:row['count'] for row in page.context['funnel_groups']}
+        self.assertEqual(groups['Магазин'],2);self.assertEqual(groups['Трудоустроены'],2)
+        review=self.client.get(reverse('personnel:recruitment_candidate_inline',args=[candidates[0].pk]))
+        self.assertContains(review,'Проверить соответствие и связать');self.assertContains(review,'Z-200')
+        self.client.force_login(self.dispatch)
+        forbidden=self.client.post(reverse('personnel:recruitment_candidate_employment',args=[candidates[0].pk]),{'employee':employee.pk})
+        self.assertEqual(forbidden.status_code,403)
+        self.client.force_login(self.recruiter)
+        response=self.client.post(reverse('personnel:recruitment_candidate_employment',args=[candidates[0].pk]),
+            {'employee':employee.pk},follow=True)
+        self.assertContains(response,'связан с сотрудником ЗУП')
+        candidates[0].refresh_from_db();candidates[1].refresh_from_db()
+        self.assertEqual(candidates[0].stage,'EMPLOYED');self.assertEqual(candidates[0].employed_employee,employee)
+        self.assertNotIn(REVIEW_KEY,candidates[1].source_data);self.assertEqual(candidates[1].stage,'SELECTED')
+
+    def test_zup_employment_review_offers_same_name_employees_for_manual_choice(self):
+        from .recruitment_employment import REVIEW_KEY,reconcile_company
+        candidate=TalentPoolCandidate.objects.create(company=self.company,full_name='Сидоров Семён Сергеевич',stage='SELECTED',
+            position=self.position,construction_object=self.obj,created_by=self.recruiter)
+        employees=[Employee.objects.create(company=self.company,zup_full_name='Сидоров Семён Сергеевич',employee_number=f'Z-30{index}',
+            zup_ref=str(index)*32,zup_server='mssql',zup_database='zup',zup_synced_at=timezone.now()) for index in (1,2)]
+        self.assertEqual(reconcile_company(self.company,self.recruiter),{'linked':0,'ambiguous':1})
+        candidate.refresh_from_db();self.assertEqual(candidate.stage,'SELECTED')
+        self.assertEqual(candidate.source_data[REVIEW_KEY]['employee_ids'],[row.pk for row in employees])
+        self.client.force_login(self.recruiter)
+        self.client.post(reverse('personnel:recruitment_candidate_employment',args=[candidate.pk]),{'employee':employees[1].pk})
+        candidate.refresh_from_db();self.assertEqual(candidate.stage,'EMPLOYED');self.assertEqual(candidate.employed_employee,employees[1])
+        self.assertTrue(TalentPoolStageEvent.objects.filter(candidate=candidate,to_stage='EMPLOYED',note__contains='ручной проверки').exists())
     def test_candidate_can_be_sent_from_vacancy_into_arrival_workflow(self):
         from apps.planning.models import WorkTask
         prep=self.preparation()

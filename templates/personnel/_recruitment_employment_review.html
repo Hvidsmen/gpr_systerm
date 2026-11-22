@@ -1,0 +1,24 @@
+{% if employment_review and not row.employed_employee_id %}
+<section class="alert alert-warning mt-3 mb-2" aria-label="Проверка соответствия с ЗУП">
+  <h4 class="h6 mb-1">Требуется проверить соответствие с ЗУП</h4>
+  <p class="small mb-2">{{ employment_review.reason }} Карточка не переведена автоматически. Сравните данные и выберите правильного сотрудника.</p>
+  {% if employment_candidates %}
+    <form method="post" action="{% url 'personnel:recruitment_candidate_employment' row.pk %}">
+      {% csrf_token %}<input type="hidden" name="return_to" value="{{ employment_return_to }}">
+      <div class="list-group mb-2">
+        {% for employee in employment_candidates %}
+          <label class="list-group-item d-flex gap-2 align-items-start">
+            {% if employment_can_link %}<input class="form-check-input mt-1" type="radio" name="employee" value="{{ employee.pk }}" required>{% endif %}
+            <span><strong>{{ employee.display_name }}</strong> · табельный № {{ employee.employee_number|default:'не указан' }}
+              <span class="d-block small text-muted">Организация: {{ employee.zup_organisation|default:'не указана' }} · должность: {{ employee.position|default:'не указана' }} · телефон: {{ employee.phone|default:'не указан' }}</span>
+            </span>
+          </label>
+        {% endfor %}
+      </div>
+      {% if employment_can_link %}<button class="btn btn-warning" type="submit">Проверить соответствие и связать</button>{% else %}<p class="small mb-0">Связать карточку может сотрудник с правами подбора персонала.</p>{% endif %}
+    </form>
+  {% else %}
+    <p class="small mb-0">Доступных вариантов больше нет. Они могли быть связаны с другими карточками; результат обновится при следующей синхронизации ЗУП.</p>
+  {% endif %}
+</section>
+{% endif %}

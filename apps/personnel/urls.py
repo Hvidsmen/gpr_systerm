@@ -99,6 +99,7 @@ urlpatterns += [
     path('recruitment/candidates/<int:pk>/',recruitment.candidate_card,name='recruitment_candidate_card'),
     path('recruitment/candidates/<int:pk>/inline/',recruitment.candidate_inline,name='recruitment_candidate_inline'),
     path('recruitment/candidates/<int:pk>/stage/',recruitment.candidate_stage_update,name='recruitment_candidate_stage'),
+    path('recruitment/candidates/<int:pk>/employment/',recruitment.candidate_employment_link,name='recruitment_candidate_employment'),
     path('recruitment/create/', recruitment.request_edit, name='recruitment_create'),
     path('recruitment/<int:pk>/', recruitment.request_detail, name='recruitment_detail'),
     path('recruitment/<int:pk>/edit/', recruitment.request_edit, name='recruitment_edit'),

@@ -43,5 +43,6 @@
 </div>
 {% if not can_edit %}<p class="small text-muted mb-0">Для изменения карточки нужна роль подбора персонала.</p>{% endif %}
 </form>
+{% include 'personnel/_recruitment_employment_review.html' %}
 {% if can_administer_pool %}<form method="post" action="{% url 'personnel:recruitment_pool_bulk_action' %}" class="d-flex justify-content-end mt-2">{% csrf_token %}<input type="hidden" name="selected" value="{{ row.pk }}"><input type="hidden" name="return_state" value="{% if row.archived_at %}archived{% else %}active{% endif %}"><button class="btn btn-sm {% if row.archived_at %}btn-outline-success{% else %}btn-outline-secondary{% endif %}" type="submit" name="action" value="{% if row.archived_at %}restore{% else %}archive{% endif %}">{% if row.archived_at %}Восстановить из архива{% else %}В архив{% endif %}</button></form>{% endif %}
 </section>

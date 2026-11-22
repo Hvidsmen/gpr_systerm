@@ -11,13 +11,14 @@ from django.utils import timezone
 from django.views.decorators.http import require_http_methods, require_POST, require_GET
 from core.permissions import require_roles, role_code
 from apps.projects.models import ConstructionObject
-from apps.resources.models import Position
+from apps.resources.models import Employee,Position
 from .models import (RecruitmentRequest,RecruitmentCandidate,RecruitmentSpecialist,ArrivalPreparation,CandidateDocument,
     TalentPoolCandidate,TalentPoolStageEvent,MovementReviewRequest,Camp)
 from . import recruitment as service
 from .recruitment_forms import (RequestForm,CandidateForm,ArrivalForm,RevisionForm,ReasonForm,TalentPoolForm,
     TalentPoolImportForm,BulkArrivalCommonForm,BulkArrivalRowForm,RecruiterAssignmentForm,RecruitmentSpecialistForm)
 from .recruitment_models import POOL_UNAVAILABLE_STAGES,RECRUITMENT_SYSTEM_STAGES,RECRUITMENT_TERMINAL_STAGES
+from .recruitment_employment import REVIEW_KEY,link_candidate,remove_employee_from_other_reviews,review_employee_ids,review_employees
 
 
 FUNNEL_GROUPS=[
@@ -29,6 +30,15 @@ FUNNEL_GROUPS=[
     ('employed','Трудоустроены',{'EMPLOYED'}),
     ('rejected','Отказники',RECRUITMENT_TERMINAL_STAGES),
 ]
+
+
+def _needs_employment_review(row):
+    source=row.get('source_data') if isinstance(row,dict) else row.source_data
+    return bool((source or {}).get(REVIEW_KEY,{}).get('employee_ids'))
+
+
+def _in_funnel_group(row,value,stages):
+    return row['stage'] in stages or (value=='employed' and _needs_employment_review(row))
 
 
 def _position_name(value):return ' '.join((value or '').split())
@@ -58,6 +68,7 @@ def _position_funnel_summary(candidate_rows,request_rows,application_rows):
         key=('position',position_id) if position_id else canonical_by_name.get(label.casefold(),('name',label.casefold()))
         item=ensure(key,label);item['candidate_count']+=1
         item['people'].append({'pk':row['pk'],'full_name':row['full_name'],'stage':row['stage'],'stage_label':stage_labels[row['stage']],
+            'source_data':row['source_data'],
             'construction_object':(application['request__construction_object__name'] if application else
                 row['construction_object__name'] or (row['source_data'] or {}).get('construction_site','')),
             'request_id':application['request_id'] if application else None,
@@ -66,10 +77,9 @@ def _position_funnel_summary(candidate_rows,request_rows,application_rows):
             'arrival_request_id':row.get('arrival_request_id'),'arrival_status':row.get('arrival_status','')})
         if label:all_positions.add(key)
         for value,_,stages in FUNNEL_GROUPS:
-            if row['stage'] in stages:
+            if _in_funnel_group(row,value,stages):
                 item['counts'][value]+=1
                 if label:group_positions[value].add(key)
-                break
     rows=[]
     for item in result.values():
         item['groups']=[{'value':value,'count':item['counts'][value]} for value,_,_ in FUNNEL_GROUPS]
@@ -261,8 +271,9 @@ def request_list(request,recruitment_page='bank'):
     position_summary,candidate_position_count,group_position_counts=_position_funnel_summary(candidate_rows,plan_rows,application_rows)
     candidate_total=len(candidate_rows)
     selected_group='' if recruitment_page=='ready' else request.GET.get('candidate_stage','')
-    selected_stages=next((stages for value,_,stages in FUNNEL_GROUPS if value==selected_group),None)
-    if selected_stages is not None:position_summary=[position for position in position_summary if any(person['stage'] in selected_stages for person in position['people'])]
+    selected_definition=next(((value,stages) for value,_,stages in FUNNEL_GROUPS if value==selected_group),None)
+    if selected_definition is not None:
+        position_summary=[position for position in position_summary if any(_in_funnel_group(person,*selected_definition) for person in position['people'])]
     position_sort=request.GET.get('position_sort','name')
     if position_sort=='need':position_summary.sort(key=lambda item:(-item['gap'],item['position'].casefold()))
     elif position_sort=='activity':position_summary.sort(key=lambda item:(-item['candidate_count'],item['position'].casefold()))
@@ -273,13 +284,13 @@ def request_list(request,recruitment_page='bank'):
     position_summary=list(position_page.object_list)
     opened_people=False
     for position in position_summary:
-        position['visible_people']=[person for person in position['people'] if selected_stages is None or person['stage'] in selected_stages]
+        position['visible_people']=[person for person in position['people'] if selected_definition is None or _in_funnel_group(person,*selected_definition)]
         position['visible_count']=len(position['visible_people'])
         position['open_people']=bool(position['visible_people']) and not opened_people
         if position['open_people']:opened_people=True
     groups=[]
     for value,label,stages in FUNNEL_GROUPS:
-        groups.append({'value':value,'label':label,'count':sum(row['stage'] in stages for row in candidate_rows),
+        groups.append({'value':value,'label':label,'count':sum(_in_funnel_group(row,value,stages) for row in candidate_rows),
             'position_count':group_position_counts[value],'active':selected_group==value})
     params=request.GET.copy();params.pop('page',None)
     funnel_params=request.GET.copy();funnel_params.pop('candidate_stage',None);funnel_params.pop('candidate_page',None);funnel_params.pop('position_page',None);funnel_params.pop('page',None)
@@ -351,16 +362,19 @@ def candidate_card(request,pk):
     source_events=(row.source_data or {}).get('funnel_sources',[])
     source_applications=[event for event in source_events if event.get('sheet')=='План найма']
     stage_events=row.stage_events.select_related('actor')[:200]
+    employment_candidates=review_employees(row)
     return render(request,'personnel/recruitment_candidate_card.html',{**context(request.user),'row':row,'events':events,
         'source_events':source_events,'source_applications':source_applications,'stage_events':stage_events,
-        'has_applications':bool(row.vacancy_candidates.all())})
+        'has_applications':bool(row.vacancy_candidates.all()),'employment_candidates':employment_candidates,
+        'employment_review':(row.source_data or {}).get(REVIEW_KEY),'employment_return_to':'card',
+        'employment_can_link':role_code(request.user) in service.RECRUIT})
 
 
 @login_required
 @require_http_methods(['GET','POST'])
 def candidate_inline(request,pk):
     require_roles(request.user,service.READ)
-    row=get_object_or_404(TalentPoolCandidate,company=request.user.company,pk=pk)
+    row=get_object_or_404(TalentPoolCandidate.objects.select_related('employed_employee'),company=request.user.company,pk=pk)
     inline_source=request.GET.get('source','')
     can_edit=role_code(request.user) in service.RECRUIT
     if request.method=='POST':require_roles(request.user,service.RECRUIT)
@@ -382,7 +396,31 @@ def candidate_inline(request,pk):
     return render(request,'personnel/_recruitment_candidate_inline.html',{
         'row':row,'form':form,'can_edit':can_edit,
         'can_administer_pool':role_code(request.user)=='ADMIN' and inline_source!='ready',
-        'inline_source':inline_source,'saved':saved},status=status)
+        'inline_source':inline_source,'saved':saved,'employment_candidates':review_employees(row),
+        'employment_review':(row.source_data or {}).get(REVIEW_KEY),'employment_return_to':'list',
+        'employment_can_link':can_edit},status=status)
+
+
+@login_required
+@require_POST
+def candidate_employment_link(request,pk):
+    require_roles(request.user,service.RECRUIT)
+    employee_id=request.POST.get('employee')
+    if not employee_id or not employee_id.isdigit():
+        messages.error(request,'Выберите сотрудника ЗУП для связи.');return redirect('personnel:recruitment_list')
+    try:
+        with transaction.atomic():
+            row=get_object_or_404(TalentPoolCandidate.objects.select_for_update(),company=request.user.company,pk=pk)
+            employee=get_object_or_404(Employee.objects.select_for_update(),company=request.user.company,pk=int(employee_id),is_active=True)
+            if employee.pk not in review_employee_ids(row):raise ValidationError('Выбранный сотрудник не входит в варианты проверки.')
+            link_candidate(row,employee,request.user,'ручная проверка соответствия')
+            remove_employee_from_other_reviews(request.user.company,employee.pk,row.pk)
+    except ValidationError as exc:messages.error(request,'; '.join(exc.messages))
+    except ValueError as exc:messages.error(request,str(exc))
+    except IntegrityError:messages.error(request,'Связь уже была изменена другим пользователем. Обновите страницу.')
+    else:messages.success(request,f'{row.full_name} связан с сотрудником ЗУП {employee.display_name}.')
+    if request.POST.get('return_to')=='card':return redirect('personnel:recruitment_candidate_card',pk=pk)
+    return redirect(f"{reverse('personnel:recruitment_list')}?candidate_stage=employed")
 
 
 @login_required

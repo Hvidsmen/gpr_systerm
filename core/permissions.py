@@ -144,14 +144,14 @@ def check_route(user, match, method):
     if role in RECRUITMENT_ROLES:
         require_roles(user,RECRUITMENT_ROLES)
         own_account = namespace == 'accounts' and (name in {'settings','logout','password_change','access_pending','impersonation_stop'} or name == 'user_detail' and match.kwargs.get('pk') == user.pk)
-        recruitment_routes = namespace == 'personnel' and name in {'recruitment_list','recruitment_ready','recruitment_requests','recruitment_detail','recruitment_candidate_create','recruitment_candidate_edit','recruitment_candidate_card','recruitment_candidate_inline','recruitment_candidate_stage','recruitment_handoff','recruitment_document','recruitment_pool','recruitment_pool_create','recruitment_pool_edit','recruitment_pool_import','recruitment_specialists'}
+        recruitment_routes = namespace == 'personnel' and name in {'recruitment_list','recruitment_ready','recruitment_requests','recruitment_detail','recruitment_candidate_create','recruitment_candidate_edit','recruitment_candidate_card','recruitment_candidate_inline','recruitment_candidate_stage','recruitment_candidate_employment','recruitment_handoff','recruitment_document','recruitment_pool','recruitment_pool_create','recruitment_pool_edit','recruitment_pool_import','recruitment_specialists'}
         if role==RECRUITMENT_HEAD and namespace=='personnel' and name in {'recruitment_specialist_create','recruitment_specialist_edit','recruitment_specialist_delete'}:
             return
         if own_account or recruitment_routes or namespace == 'dashboard' and name == 'index' and method in {'GET','HEAD'}:return
         raise PermissionDenied('Роли банка сотрудников работают только с заявками на подбор, кандидатами и рекрутерами.')
     if namespace == 'personnel' and name.startswith('recruitment_'):
         from apps.personnel.recruitment import ARRIVAL_PROCESSORS,ASSIGN,READ,DISPATCH,RECRUIT
-        write_roles = ASSIGN if name in {'recruitment_specialist_create','recruitment_specialist_edit','recruitment_specialist_delete'} else ARRIVAL_PROCESSORS if name in {'recruitment_ready_arrival_bulk','recruitment_arrival_bulk_edit'} else DISPATCH if name in {'recruitment_create','recruitment_edit','recruitment_arrival'} else RECRUIT if name in {'recruitment_candidate_create','recruitment_candidate_edit','recruitment_candidate_stage','recruitment_handoff','recruitment_pool_create','recruitment_pool_edit','recruitment_pool_import'} else READ
+        write_roles = ASSIGN if name in {'recruitment_specialist_create','recruitment_specialist_edit','recruitment_specialist_delete'} else ARRIVAL_PROCESSORS if name in {'recruitment_ready_arrival_bulk','recruitment_arrival_bulk_edit'} else DISPATCH if name in {'recruitment_create','recruitment_edit','recruitment_arrival'} else RECRUIT if name in {'recruitment_candidate_create','recruitment_candidate_edit','recruitment_candidate_stage','recruitment_candidate_employment','recruitment_handoff','recruitment_pool_create','recruitment_pool_edit','recruitment_pool_import'} else READ
         require_roles(user, write_roles)
         return
     if namespace=='personnel' and name=='my_movement_requests':
