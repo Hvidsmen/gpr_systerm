@@ -17,7 +17,7 @@ from django.http import HttpResponseBadRequest, JsonResponse
 from django.shortcuts import redirect, render
 from django.views.decorators.http import require_http_methods
 
-from core.permissions import require_roles
+from core.permissions import require_roles, UAT_INTEGRATION_ROLES
 from .models import OneCConnection
 from .one_c_catalog import catalogue, TYPES
 
@@ -162,7 +162,7 @@ def progress_status(run):
 @login_required
 @require_http_methods(['GET', 'POST'])
 def discovery(request):
-    require_roles(request.user, {'ADMIN'})
+    require_roles(request.user, UAT_INTEGRATION_ROLES)
     connection, _ = OneCConnection.objects.get_or_create(company=request.user.company)
     database = database_name()
     if request.method == 'POST':
@@ -263,7 +263,7 @@ def discovery(request):
 @login_required
 @require_http_methods(['GET'])
 def status(request):
-    require_roles(request.user, {'ADMIN'})
+    require_roles(request.user, UAT_INTEGRATION_ROLES)
     connection, _ = OneCConnection.objects.get_or_create(company=request.user.company)
     run = connection.runs.filter(
         Q(report__uat_discovery=True) | Q(report__uat_import=True), database=database_name(),

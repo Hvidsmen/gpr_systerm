@@ -45,6 +45,14 @@ class ActAsTests(TestCase):
             self.assertContains(response,'Вернуться к администратору',status_code=403)
         self.assertEqual(self.client.post(self.stop).status_code,302)
 
+    def test_uat_work_pages_remain_available_during_role_impersonation(self):
+        self.target.role=Role.objects.get(code='MECHANIZATION_DISPATCHER');self.target.save()
+        self.client.post(self.start)
+        for name in ['uat','uat_status','uat_waybills','uat_repairs','uat_vehicles','uat_departments','uat_journal']:
+            self.assertEqual(self.client.get(reverse(f'accounts:{name}')).status_code,200)
+        self.assertEqual(self.client.get(reverse('accounts:one_c_report')).status_code,403)
+        self.assertEqual(self.client.get(reverse('accounts:user_list')).status_code,403)
+
     def test_no_cross_company_privileged_disabled_or_nested_switches(self):
         for changes in [dict(company=Company.objects.create(name='Other')),dict(is_superuser=True),dict(is_staff=True),dict(is_active=False),dict(role=Role.objects.get(code='ADMIN'))]:
             user=User.objects.create_user(username='blocked-'+str(User.objects.count()),company=changes.pop('company',self.company),**changes)

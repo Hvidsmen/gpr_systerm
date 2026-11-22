@@ -10,6 +10,11 @@ from django.utils import timezone
 
 context=ContextVar('gpr_act_as',default=None)
 KEY='gpr_act_as'
+ROLE_ACCOUNT_PAGES={
+    'settings','user_detail','access_pending',
+    'uat','uat_status','uat_waybills','uat_repairs','uat_vehicles','uat_departments','uat_journal',
+    'one_c_report',
+}
 
 
 def record(actor,target,comment,**data):
@@ -51,7 +56,7 @@ class ActAsMiddleware:
         request.acting_admin=actor
         request.user=target;request._cached_user=target
         request._act_as_token=context.set(dict(actor=actor,target=target,path=request.path))
-        if 'admin' in match.namespaces or match.namespace=='accounts' and match.url_name not in {'settings','user_detail','access_pending'}:
+        if 'admin' in match.namespaces or match.namespace=='accounts' and match.url_name not in ROLE_ACCOUNT_PAGES:
             raise PermissionDenied('Вернитесь в учетную запись администратора для управления пользователями и входом.')
 
 

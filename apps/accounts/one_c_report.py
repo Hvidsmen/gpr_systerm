@@ -4,7 +4,7 @@ from django.contrib.auth.decorators import login_required
 from django.http import Http404, JsonResponse, HttpResponse
 from django.utils import timezone
 from django.views.decorators.http import require_GET
-from core.permissions import require_roles
+from core.permissions import require_roles, UAT_INTEGRATION_ROLES
 from .models import OneCConnection
 from .one_c_catalog import catalogue, TYPES
 
@@ -78,7 +78,7 @@ def structure_report(connection, run):
 @login_required
 @require_GET
 def download_report(request):
-    require_roles(request.user, {'ADMIN'})
+    require_roles(request.user, UAT_INTEGRATION_ROLES if request.GET.get('uat') else {'ADMIN'})
     if request.GET.get('employee_run'):
         from .models import OneCDiagnosticRun
         from django.shortcuts import get_object_or_404

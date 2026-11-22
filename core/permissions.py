@@ -4,6 +4,7 @@ from django.core.exceptions import PermissionDenied
 from .plan_approval import DEPARTMENT_ROLES, ACTION_ROLES
 GLOBAL_APPROVAL_ROLES = DEPARTMENT_ROLES | {'CEO'}
 ALL_FACT_DISPATCHER = 'ALL_FACT_DISPATCHER'
+UAT_INTEGRATION_ROLES = {'ADMIN', 'MECHANIZATION_DISPATCHER', ALL_FACT_DISPATCHER}
 FUEL_WAREHOUSE = 'FUEL_WAREHOUSE'
 TRANSPORT_DISPATCHER='TRANSPORT_DISPATCHER'
 DISPATCHER_ROLES = {FUEL_WAREHOUSE,'DISPATCHER','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER',ALL_FACT_DISPATCHER}
@@ -241,6 +242,12 @@ def check_route(user, match, method):
             READ_ROLES | {'MECHANIZATION_DISPATCHER', ALL_FACT_DISPATCHER}
             if method in {'GET', 'HEAD'} else {'ADMIN'},
         )
+        return
+    if namespace == 'accounts' and name in {'uat', 'uat_status'}:
+        require_roles(user, UAT_INTEGRATION_ROLES)
+        return
+    if namespace == 'accounts' and name == 'one_c_report' and method in {'GET', 'HEAD'}:
+        require_roles(user, UAT_INTEGRATION_ROLES)
         return
     if namespace == 'planning' and name in {'resource_replace_gpr','resource_replace_smg'}:
         require_roles(user, PLAN_ROLES | {'MANAGER'}); return
