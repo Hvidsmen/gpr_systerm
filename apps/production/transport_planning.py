@@ -41,3 +41,17 @@ def day_types(company,rows,resource_plans,*,query=''):
         item['remaining']=max(0,item['plan']-item['worked']) if item['has_plan'] else None
         output.append(item)
     return sorted(output,key=lambda item:(equipment_group_order(item['group']),item['name'].casefold(),item['id']))
+
+
+def add_group_totals(types):
+    """Attach full (not page-only) plan/fact totals to each catalogue group."""
+    groups={}
+    for item in types:
+        total=groups.setdefault(item['group'],{'types':0,'has_plan':False,'plan':0,'fact':0,'idle':0})
+        total['types']+=1
+        total['has_plan']=total['has_plan'] or item['has_plan']
+        if item['has_plan']:total['plan']+=item['plan'] or 0
+        total['fact']+=item['worked']
+        total['idle']+=item['idle']
+    for item in types:item['group_total']=groups[item['group']]
+    return types

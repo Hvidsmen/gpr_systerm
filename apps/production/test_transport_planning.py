@@ -40,12 +40,14 @@ class TransportPlanningTests(TestCase):
         items={row['id']:row for row in response.context['planning_types']}
         self.assertEqual([row['group'] for row in response.context['planning_types']],['Специализированная техника','Специализированная техника'])
         self.assertEqual(items[self.type.pk]['plan'],3);self.assertEqual(items[self.type.pk]['remaining'],3)
+        self.assertEqual(items[self.type.pk]['group_total'],{'types':2,'has_plan':True,'plan':4,'fact':0,'idle':0})
         self.assertEqual(len(items[self.type.pk]['choices']),2);self.assertEqual(items[self.type.pk]['rows'],[])
         self.assertEqual(items[self.planned_only.pk]['available'],0);self.assertNotIn(self.bus_type.pk,items)
         self.assertEqual([item['id'] for item in response.context['outside_choices']],[self.bus_type.pk])
         self.assertTrue(items[self.type.pk]['choices'][0]['label'].startswith(self.type.name+' · '))
         self.assertEqual(EquipmentDayRecord.objects.count(),0)
         self.assertContains(response,'data-type-add');self.assertNotContains(response,'data-transport-row=')
+        self.assertContains(response,'План: <b>4</b>',html=True);self.assertContains(response,'Факт: <b>0</b>',html=True)
         self.assertContains(self.page(view='list'),'data-transport-row=',count=3)
     def test_assign_adds_only_daily_work_and_keeps_independent_condition_and_counts(self):
         transport.set_condition(self.operator,self.camp,self.day,[self.machine.pk],'REPAIR',signed=transport.snapshot(self.operator,self.camp,self.day))

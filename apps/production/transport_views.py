@@ -303,14 +303,14 @@ def board(request, area='work'):
     from .transport_detail_values import ROSTER_DETAIL_FIELDS,REPAIR_FIELD_GROUPS
     from django.core.paginator import Paginator
     if tab=='day' and day_view=='plan':
-        from .transport_planning import day_types
+        from .transport_planning import add_group_totals,day_types
         from .equipment_pool import prepare as equipment_pool
         pool=equipment_pool(request.user.company,camp,day) if context['editable'] else []
         context['machine_pool']=pool
         type_rows=day_types(request.user.company,filtered,form.resource_plans,query=data['q'])
-        planned=[item for item in type_rows if item['in_plan']]
+        planned=add_group_totals([item for item in type_rows if item['in_plan']])
         outside=[item for item in type_rows if not item['in_plan']]
-        outside_facts=[item for item in outside if item['rows']]
+        outside_facts=add_group_totals([item for item in outside if item['rows']])
         outside_options={item['type']:{'id':item['type'],'name':item['type_name']} for item in pool if item['type'] not in {t['id'] for t in type_rows if t['in_plan']}}
         page=Paginator(planned,25).get_page(request.GET.get('page'))
         outside_page=Paginator(outside_facts,25).get_page(request.GET.get('outside_page'))
