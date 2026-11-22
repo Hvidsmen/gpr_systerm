@@ -1,6 +1,22 @@
 (function(){
   let cardObserver;
   function funnel(){return document.querySelector('[data-recruitment-funnel]');}
+  function simplifyDemandColumns(root){
+    (root||document).querySelectorAll('.position-funnel-table').forEach(function(table){
+      const headers=Array.from(table.querySelectorAll(':scope > thead > tr > th'));
+      const requestsIndex=headers.findIndex(function(cell){return cell.textContent.trim()==='Заявок';});
+      const required=headers.find(function(cell){return cell.textContent.trim()==='Требуется';});
+      if(required)required.textContent='Требуется по заявкам';
+      if(requestsIndex<0)return;
+      headers[requestsIndex].remove();
+      table.querySelectorAll(':scope > tbody > .position-summary-row').forEach(function(row){
+        if(row.children[requestsIndex])row.children[requestsIndex].remove();
+      });
+      table.querySelectorAll(':scope > tbody > .position-people-row > td[colspan]').forEach(function(cell){
+        cell.colSpan=Math.max(1,cell.colSpan-1);
+      });
+    });
+  }
   function error(message){
     const node=funnel()?.querySelector('[data-recruitment-funnel-error]');
     if(!node)return;
@@ -78,7 +94,7 @@
       const page=new DOMParser().parseFromString(await response.text(),'text/html');
       const replacement=page.querySelector('[data-recruitment-funnel]');
       if(!replacement)throw new Error('Сервер вернул страницу без воронки.');
-      current.replaceWith(replacement);observeInlineCards(replacement);
+      current.replaceWith(replacement);simplifyDemandColumns(replacement);observeInlineCards(replacement);
       if(push)history.pushState({recruitmentFunnel:true},'',url);
       return true;
     }catch(reason){current.removeAttribute('aria-busy');error(reason.message||'Не удалось обновить воронку.');return false;}
@@ -166,5 +182,5 @@
     event.preventDefault();event.returnValue='';
   });
   window.addEventListener('popstate',function(){if(funnel())replaceFunnel(location.href,false);});
-  observeInlineCards(funnel());
+  simplifyDemandColumns(funnel());observeInlineCards(funnel());
 })();
