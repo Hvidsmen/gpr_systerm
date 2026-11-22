@@ -369,7 +369,7 @@ def composition_report(request):
             summary_rows=sorted(grouped.values(),key=lambda item:(item['camp'].name.casefold(),item['organization'].casefold(),item['position'].casefold()))
         rows.sort(key=lambda row:(row['camp'].name.casefold(),row['building'].name.casefold(),row['bed'].room,row['bed'].number,row['name'].casefold()))
         if request.GET.get('export')=='xlsx':return measured(composition_workbook(day,view,camps,summary_rows,rows),'lodging composition export',started)
-    return measured(render(request,'personnel/lodging_composition.html',{'form':form,'rows':rows,'summary_rows':summary_rows,'stats':stats,'camps':camps,'day':day,'view':view,'mode':mode}),'lodging composition',started)
+    return measured(render(request,'personnel/lodging_composition.html',{'form':form,'rows':rows,'summary_rows':summary_rows,'stats':stats,'camps':camps,'camp':camps[0] if camps else None,'day':day,'view':view,'mode':mode}),'lodging composition',started)
 
 
 def summary_context(user,camp,day,*,camps=None):
