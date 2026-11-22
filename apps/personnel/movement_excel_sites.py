@@ -16,10 +16,23 @@ def request_values(mapping,kind):
 @transaction.atomic
 def apply_to_pending(mapping):
     """Apply a saved rule to matching, not-yet-processed Excel requests."""
-    candidates=MovementReviewRequest.objects.filter(company=mapping.company,source='EXCEL',status__in=['OPEN','RETURNED']).values_list('pk','site','kind')
-    matched=[(pk,kind) for pk,site,kind in candidates if MovementExcelSiteMapping.normalize(site)==mapping.source_site_normalized]
+    return apply_many_to_pending([mapping])
+
+
+@transaction.atomic
+def apply_many_to_pending(mappings):
+    """Apply several saved rules after scanning pending Excel requests once."""
+    mappings=list(mappings)
+    if not mappings:return 0
+    company=mappings[0].company
+    by_source={mapping.source_site_normalized:mapping for mapping in mappings}
+    candidates=MovementReviewRequest.objects.filter(company=company,source='EXCEL',status__in=['OPEN','RETURNED']).values_list('pk','site','kind')
+    matched={key:{kind:[] for kind in ('ARRIVAL','DEPARTURE','TRANSFER')} for key in by_source}
+    for pk,site,kind in candidates:
+        key=MovementExcelSiteMapping.normalize(site)
+        if key in matched and kind in matched[key]:matched[key][kind].append(pk)
     changed=0
-    for kind in ('ARRIVAL','DEPARTURE','TRANSFER'):
-        ids=[pk for pk,row_kind in matched if row_kind==kind]
-        if ids:changed+=MovementReviewRequest.objects.filter(pk__in=ids).update(**request_values(mapping,kind))
+    for key,mapping in by_source.items():
+        for kind,ids in matched[key].items():
+            if ids:changed+=MovementReviewRequest.objects.filter(pk__in=ids).update(**request_values(mapping,kind))
     return changed

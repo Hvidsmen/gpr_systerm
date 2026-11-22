@@ -349,6 +349,37 @@ class MovementExcelSiteMappingForm(StyledModelForm):
         return value
 
 
+class MovementExcelSiteBulkMappingForm(forms.Form):
+    construction_object=forms.ModelChoiceField(label='Строительный объект',queryset=None)
+    camp=forms.ModelChoiceField(label='Местонахождение',queryset=None)
+    def __init__(self,*args,company,**kwargs):
+        super().__init__(*args,**kwargs);self.company=company
+        from apps.projects.models import ConstructionObject
+        from .models import Camp
+        object_rows=ConstructionObject.objects.filter(company=company).select_related('project','parent').order_by(
+            'project__name','name','pk')
+        objects=list(object_rows);self.fields['construction_object'].queryset=object_rows
+        by_id={row.pk:row for row in objects}
+        def object_label(row):
+            names=[row.name];parent_id=row.parent_id;seen={row.pk}
+            while parent_id and parent_id not in seen and parent_id in by_id:
+                seen.add(parent_id);parent=by_id[parent_id];names.append(parent.name);parent_id=parent.parent_id
+            return f'{row.project.name} → {" → ".join(reversed(names))}'
+        self.fields['construction_object'].label_from_instance=object_label
+        self.fields['camp'].queryset=Camp.objects.filter(company=company,is_active=True).order_by('name','pk')
+        for field in self.fields.values():field.widget.attrs['class']='form-select'
+    def clean(self):
+        data=super().clean();obj=data.get('construction_object');camp=data.get('camp')
+        if obj and camp:
+            probe=MovementExcelSiteMapping(company=self.company,source_site='Массовое назначение',
+                construction_object=obj,camp=camp)
+            try:probe.clean()
+            except forms.ValidationError as exc:
+                for field,messages in getattr(exc,'error_dict',{}).items():
+                    for message in messages:self.add_error(field if field in self.fields else None,message)
+        return data
+
+
 class PersonScheduleForm(forms.Form):
     version=forms.CharField(widget=forms.HiddenInput)
     slot=forms.ModelChoiceField(label='Использовать строку существующей таблицы',queryset=StaffingSlot.objects.none(),required=False)

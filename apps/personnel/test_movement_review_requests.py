@@ -701,3 +701,22 @@ class MovementReviewRequestTests(TestCase):
         MovementExcelSiteMapping.objects.create(company=self.company,source_site='Участок №1',construction_object=self.site,camp=self.camp)
         response=self.client.post(url,{'source_site':'  УЧАСТОК   №1 ','construction_object':self.site.pk,'camp':self.camp.pk})
         self.assertContains(response,'Для этого участка соответствие уже настроено')
+
+    def test_excel_site_mappings_can_be_assigned_in_bulk(self):
+        rows=[]
+        for number,site in enumerate(('Участок А','Участок Б','Участок В'),start=1):
+            rows.append(MovementReviewRequest.objects.create(company=self.company,person=self.person,kind='ARRIVAL',
+                movement_date=timezone.localdate(),requested_by=self.reviewer,source='EXCEL',site=site,
+                request_number=f'bulk-{number}'))
+        self.client.force_login(self.reviewer);url=reverse('personnel:movement_excel_sites')
+        page=self.client.get(url)
+        self.assertContains(page,'Массовое назначение');self.assertContains(page,'Выбрать ненастроенные')
+        response=self.client.post(url,{'action':'bulk_assign','selected_sites':['Участок А','Участок Б'],
+            'construction_object':self.site.pk,'camp':self.camp.pk},follow=True)
+        self.assertContains(response,'Назначено соответствий: 2 (новых: 2)')
+        self.assertContains(response,'Обновлено необработанных Excel-заявок: 2')
+        self.assertEqual(MovementExcelSiteMapping.objects.count(),2)
+        for row in rows[:2]:
+            row.refresh_from_db();self.assertEqual(row.site_object,self.site);self.assertEqual(row.construction_object,self.obj)
+            self.assertEqual(row.to_camp,self.camp)
+        rows[2].refresh_from_db();self.assertIsNone(rows[2].site_object);self.assertIsNone(rows[2].to_camp)

@@ -19,7 +19,7 @@ from django.views.decorators.http import require_http_methods
 from core.permissions import role_code
 from .views import access,scoped
 from .models import Camp,CampObjectLink,CampStay,HousingEvent,MovementExcelSiteMapping,MovementReviewRequest,Person,Board,StaffingGroup,StaffingSlot
-from .forms import CampForm,MovementForm,MovementExcelSiteMappingForm,MovementRecommendationForm,MovementReviewForm,NewEmployeeRegistrationForm,PersonScheduleForm,ZupScheduleChangeForm
+from .forms import CampForm,MovementForm,MovementExcelSiteBulkMappingForm,MovementExcelSiteMappingForm,MovementRecommendationForm,MovementReviewForm,NewEmployeeRegistrationForm,PersonScheduleForm,ZupScheduleChangeForm
 from . import housing
 from .services import calendar_for,departure_days
 
@@ -532,12 +532,46 @@ def movement_reviews(request):
 def movement_excel_sites(request):
     from core.permissions import require_roles
     require_roles(request.user,{'ADMIN','HR_HEAD'})
+    action=request.POST.get('action','') if request.method=='POST' else ''
     mapping_id=((request.POST.get('mapping_id') if request.method=='POST' else request.GET.get('edit','')) or '').strip()
+    if action=='bulk_assign':mapping_id=''
     instance=get_object_or_404(MovementExcelSiteMapping,company=request.user.company,pk=mapping_id) if mapping_id.isdigit() else None
     initial={'source_site':' '.join(request.GET.get('site','').split())} if not instance else None
-    form=MovementExcelSiteMappingForm(request.POST if request.method=='POST' else None,company=request.user.company,
+    form=MovementExcelSiteMappingForm(request.POST if request.method=='POST' and action!='bulk_assign' else None,company=request.user.company,
         instance=instance or MovementExcelSiteMapping(company=request.user.company),initial=initial)
-    if request.method=='POST' and form.is_valid():
+    bulk_form=MovementExcelSiteBulkMappingForm(request.POST if action=='bulk_assign' else None,company=request.user.company)
+    selected_bulk_sites=[' '.join(value.split()) for value in request.POST.getlist('selected_sites') if value.strip()] if action=='bulk_assign' else []
+    if action=='bulk_assign':
+        valid=bulk_form.is_valid()
+        selected_by_key={MovementExcelSiteMapping.normalize(value):value for value in selected_bulk_sites if len(value)<=250}
+        if any(len(value)>250 for value in selected_bulk_sites):
+            bulk_form.add_error(None,'Название одного из выбранных участков длиннее 250 символов. Настройте его отдельно.');valid=False
+        if not selected_by_key:bulk_form.add_error(None,'Выберите хотя бы один участок в таблице.')
+        if valid and selected_by_key:
+            with transaction.atomic():
+                existing={row.source_site_normalized:row for row in MovementExcelSiteMapping.objects.select_for_update().filter(
+                    company=request.user.company,source_site_normalized__in=selected_by_key)}
+                saved_rows=[];created=0;old_values=[]
+                for key,source_site in selected_by_key.items():
+                    mapping=existing.get(key)
+                    old_values.append({'id':mapping.pk,'source_site':mapping.source_site,
+                        'construction_object_id':mapping.construction_object_id,'camp_id':mapping.camp_id} if mapping else None)
+                    if mapping is None:
+                        mapping=MovementExcelSiteMapping(company=request.user.company,source_site=source_site);created+=1
+                    mapping.construction_object=bulk_form.cleaned_data['construction_object']
+                    mapping.camp=bulk_form.cleaned_data['camp'];mapping.full_clean();mapping.save();saved_rows.append(mapping)
+                from .movement_excel_sites import apply_many_to_pending
+                changed=apply_many_to_pending(saved_rows)
+                from apps.audit.models import AuditLog
+                AuditLog.objects.create(user=request.user,action='UPDATE',entity_type='personnel.MovementExcelSiteMapping',
+                    entity_id='bulk',old_value={'mappings':old_values},new_value={
+                        'mapping_ids':[row.pk for row in saved_rows],
+                        'construction_object_id':bulk_form.cleaned_data['construction_object'].pk,
+                        'camp_id':bulk_form.cleaned_data['camp'].pk,'pending_requests_updated':changed},
+                    comment='Массово настроены соответствия участков Excel')
+            messages.success(request,f'Назначено соответствий: {len(saved_rows)} (новых: {created}). Обновлено необработанных Excel-заявок: {changed}.')
+            return redirect('personnel:movement_excel_sites')
+    if request.method=='POST' and action!='bulk_assign' and form.is_valid():
         with transaction.atomic():
             saved=form.save()
             from .movement_excel_sites import apply_to_pending
@@ -569,7 +603,8 @@ def movement_excel_sites(request):
              needle in MovementExcelSiteMapping.normalize(row['mapping'].camp.name))]
     rows.sort(key=lambda row:MovementExcelSiteMapping.normalize(row['source_site']))
     return render(request,'personnel/movement_excel_sites.html',{'personnel_section':'reviews','rows':rows,'form':form,
-        'editing_mapping':instance,'query':query,'unmapped_count':sum(row['mapping'] is None for row in rows)})
+        'bulk_form':bulk_form,'selected_bulk_sites':selected_bulk_sites,'editing_mapping':instance,'query':query,
+        'unmapped_count':sum(row['mapping'] is None for row in rows)})
 
 
 @login_required
