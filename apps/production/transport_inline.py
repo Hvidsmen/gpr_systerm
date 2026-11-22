@@ -12,7 +12,7 @@ from django.core.paginator import Paginator
 from django.db.models import Q
 from core.fact_edit_window import require_fact_day
 from core.fact_history import with_history_actor
-from core.permissions import require_roles
+from core.permissions import require_roles,scope_queryset
 from apps.resources.models import Equipment,Employee
 from . import transport
 from .transport_details_models import EquipmentDayDetails,EquipmentServiceStatus,DETAIL_FIELDS
@@ -62,7 +62,8 @@ def add_status(request):
 
 @with_history_actor
 @transaction.atomic
-def save_cell(user,camp,day,machine,field,value,signed,session,project=None):
+def save_cell(user,camp,day,machine,field,value,signed,session,project=None,construction_object=None):
+    if construction_object is not None:project=construction_object.project
     if project is None:
         current=machine.transport_days.filter(company=user.company,date=day).select_related('project').first()
         project=current.project if current and current.project_id else None
@@ -82,7 +83,7 @@ def save_cell(user,camp,day,machine,field,value,signed,session,project=None):
         planning_type=EquipmentType.objects.filter(company=user.company,parent=None,pk=int(value)).first()
         if not planning_type:raise ValidationError('Техника для планирования недоступна.')
         if machine.transport_days.filter(company=user.company,date=day).exists():raise ValidationError('Машина уже добавлена в факт за этот день. Обновите страницу.')
-        transport.save_day(user,camp,day,[machine.pk],'WORKED',project=project,signed=signed,session=session,planning_type=planning_type,allow_external=True)
+        transport.save_day(user,camp,day,[machine.pk],'WORKED',project=project,construction_object=construction_object,signed=signed,session=session,planning_type=planning_type,allow_external=True)
     elif field=='condition':
         previous_condition = transport.condition_on(machine, day)
         transport.set_condition(user,camp,day,[machine.pk],str(value),signed=signed,session=session)
@@ -92,14 +93,14 @@ def save_cell(user,camp,day,machine,field,value,signed,session,project=None):
             return save_cell(user,camp,day,machine,'repair_started_on',str(day),transport.snapshot(user,camp,day),session,project=project)
     elif field=='status':
         current=machine.transport_days.filter(date=day).first()
-        target={'construction_object':current.construction_object,'work':current.work,'work_item':current.work_item} if current and value=='WORKED' else {}
+        target={'construction_object':current.construction_object,'work':current.work,'work_item':current.work_item} if current and value=='WORKED' else {'construction_object':construction_object} if value=='WORKED' and construction_object else {}
         transport.save_day(user,camp,day,[machine.pk],str(value),project=project,signed=signed,session=session,**target)
     elif field in {'target','day_comment'}:
         current=machine.transport_days.filter(date=day).first()
         target={'construction_object':current.construction_object,'work':current.work,'work_item':current.work_item} if current and current.status=='WORKED' else {}
         if field=='target':
             from .transport_views import target_choices
-            _,mapping=target_choices(user,project,camp,day,current=[current] if current else [])
+            _,mapping=target_choices(user,project,camp,day,current=[current] if current else [],construction_object=construction_object)
             if value not in mapping:raise ValidationError('Работа недоступна для выбранного местонахождения.')
             obj,work,item=mapping[value];target={'construction_object':obj,'work':work,'work_item':item}
         transport.save_day(user,camp,day,[machine.pk],current.status if current else 'WORKED',project=project,signed=signed,session=session,comment=str(value) if field=='day_comment' else current.comment if current else '',**target)
@@ -130,10 +131,12 @@ def update(request):
     try:
         from datetime import date
         data=json.loads(request.body)
-        from apps.projects.models import Project
+        from apps.projects.models import ConstructionObject,Project
         camp=get_object_or_404(transport.camps_for(request.user),pk=data.get('camp'))
         machine=get_object_or_404(Equipment,company=request.user.company,pk=data.get('equipment'))
-        project=Project.objects.filter(company=request.user.company,pk=data.get('project')).first()
+        construction_object=scope_queryset(ConstructionObject.objects.filter(company=request.user.company,pk=data.get('construction_object'),camp_links__camp=camp),request.user).first()
+        if data.get('construction_object') and construction_object is None:raise ValidationError('Выбранный строительный объект недоступен для этого местонахождения.')
+        project=construction_object.project if construction_object else Project.objects.filter(company=request.user.company,pk=data.get('project')).first()
         if project is None:
             current=machine.transport_days.filter(company=request.user.company,date=date.fromisoformat(data.get('date',''))).select_related('project').first()
             project=current.project if current and current.project_id else None
@@ -141,7 +144,7 @@ def update(request):
             choices=Project.objects.filter(company=request.user.company,construction_objects__camp_links__camp=camp).distinct()
             if choices.count()==1:project=choices.first()
         if project is None:raise ValidationError('Выберите проект.')
-        signed=save_cell(request.user,camp,date.fromisoformat(data.get('date','')),machine,data.get('field'),data.get('value'),data.get('signed'),data.get('session'),project=project)
+        signed=save_cell(request.user,camp,date.fromisoformat(data.get('date','')),machine,data.get('field'),data.get('value'),data.get('signed'),data.get('session'),project=project,construction_object=construction_object)
         record=machine.transport_days.filter(company=request.user.company,date=date.fromisoformat(data['date'])).first()
         condition=transport.condition_on(machine,date.fromisoformat(data['date']))
         repair_date = None

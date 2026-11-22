@@ -1,9 +1,9 @@
 (() => {
   'use strict';
-  const form=document.querySelector('[data-project-location-selector]');
+  const form=document.querySelector('[data-object-location-selector]');
   if(!form)return;
-  const project=form.elements.project,camp=form.elements.camp;
-  project?.addEventListener('change',()=>{
+  const constructionObject=form.elements.construction_object,camp=form.elements.camp;
+  constructionObject?.addEventListener('change',()=>{
     if(camp)camp.value='';
     form.requestSubmit();
   });

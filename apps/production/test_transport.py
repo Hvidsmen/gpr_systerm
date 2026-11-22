@@ -180,6 +180,19 @@ class TransportTests(TestCase):
         self.assertEqual(ws.max_row,3);self.assertIn('VIN',[cell.value for cell in ws[1]])
         self.assertEqual(self.client.get(reverse('production:fact_day_workspace')).status_code,302)
 
+    def test_board_is_scoped_by_construction_object_and_keeps_old_camp_links_working(self):
+        self.client.force_login(self.operator)
+        response=self.client.get(self.board,{'construction_object':self.obj.pk,'camp':self.camp.pk,'date':self.day})
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(response.context['construction_object'],self.obj)
+        self.assertEqual(response.context['project'],self.obj.project)
+        self.assertIn('construction_object',response.context['selector'].fields)
+        self.assertNotIn('project',response.context['selector'].fields)
+        self.assertContains(response,'Строительный объект')
+        legacy=self.client.get(self.board,{'project':self.obj.project_id,'camp':self.camp.pk,'date':self.day})
+        self.assertEqual(legacy.status_code,200)
+        self.assertEqual(legacy.context['construction_object'],self.obj)
+
     def test_transport_navigation_separates_work_from_maintenance_and_reuses_catalogue(self):
         self.client.force_login(self.operator)
         scope={'camp':self.camp.pk,'date':self.day}

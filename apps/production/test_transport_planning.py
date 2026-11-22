@@ -34,7 +34,7 @@ class TransportPlanningTests(TestCase):
     def page(self,**values):return self.client.get(self.board,{'camp':self.camp.pk,'date':str(self.day),**values})
     def assign(self,machine=None,kind=None,**extra):
         machine=machine or self.machine
-        return self.client.post(reverse('production:transport_cell'),{'camp':self.camp.pk,'date':str(self.day),'equipment':machine.pk,'field':'assign','value':(kind or self.type).pk,'signed':transport.snapshot(self.operator,self.camp,self.day),'session':str(uuid4()),**extra},content_type='application/json')
+        return self.client.post(reverse('production:transport_cell'),{'construction_object':self.obj.pk,'camp':self.camp.pk,'date':str(self.day),'equipment':machine.pk,'field':'assign','value':(kind or self.type).pk,'signed':transport.snapshot(self.operator,self.camp,self.day),'session':str(uuid4()),**extra},content_type='application/json')
     def test_default_hierarchy_includes_plan_only_and_available_without_creating_facts(self):
         response=self.page();self.assertEqual(response.status_code,200)
         items={row['id']:row for row in response.context['planning_types']}
@@ -50,7 +50,7 @@ class TransportPlanningTests(TestCase):
     def test_assign_adds_only_daily_work_and_keeps_independent_condition_and_counts(self):
         transport.set_condition(self.operator,self.camp,self.day,[self.machine.pk],'REPAIR',signed=transport.snapshot(self.operator,self.camp,self.day))
         self.assertEqual(self.assign().status_code,200)
-        record=EquipmentDayRecord.objects.get();self.assertEqual(record.status,'WORKED');self.assertIsNone(record.work_id)
+        record=EquipmentDayRecord.objects.get();self.assertEqual(record.status,'WORKED');self.assertEqual(record.construction_object,self.obj);self.assertIsNone(record.work_id)
         self.assertEqual(transport.condition_on(self.machine,self.day),'REPAIR')
         row=next(row for row in self.page().context['planning_types'] if row['id']==self.type.pk)
         self.assertEqual((row['worked'],row['remaining'],len(row['rows']),len(row['choices'])),(1,2,1,1))

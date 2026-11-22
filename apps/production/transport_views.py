@@ -29,7 +29,7 @@ DATE_INPUT = forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'})
 
 
 class Selector(forms.Form):
-    project = forms.ModelChoiceField(label='Проект', queryset=Project.objects.none(), required=True, empty_label='Выберите проект')
+    construction_object = forms.ModelChoiceField(label='Строительный объект', queryset=ConstructionObject.objects.none(), required=True, empty_label='Выберите строительный объект')
     camp = forms.ModelChoiceField(label='Местонахождение', queryset=Camp.objects.none())
     date = forms.DateField(label='Дата', widget=DATE_INPUT)
     q = forms.CharField(label='Поиск техники', required=False, max_length=150, widget=forms.TextInput(attrs={'type':'search','placeholder':'Номер, VIN, название или модель'}))
@@ -38,24 +38,26 @@ class Selector(forms.Form):
     def __init__(self, *args, user, **kwargs):
         super().__init__(*args, **kwargs)
         available_camps=service.camps_for(user)
-        self.fields['project'].queryset=Project.objects.filter(company=user.company,construction_objects__camp_links__camp__in=available_camps).distinct().order_by('name','pk')
-        raw_project=self.data.get(self.add_prefix('project')) if self.is_bound else self.initial.get('project')
-        self.fields['camp'].queryset = available_camps.filter(object_links__construction_object__project_id=raw_project).distinct() if str(raw_project or '').isdigit() else available_camps.none()
+        self.fields['construction_object'].queryset=scope_queryset(ConstructionObject.objects.filter(company=user.company,camp_links__camp__in=available_camps),user).distinct().order_by('name','pk')
+        raw_object=self.data.get(self.add_prefix('construction_object')) if self.is_bound else self.initial.get('construction_object')
+        self.fields['camp'].queryset = available_camps.filter(object_links__construction_object_id=raw_object).distinct() if str(raw_object or '').isdigit() else available_camps.none()
         for field in self.fields.values(): field.widget.attrs['class'] = 'form-select' if isinstance(field.widget, forms.Select) else 'form-control'
 
 
-def target_choices(user, project, camp, day, current=(), resource_plans=None):
+def target_choices(user, project, camp, day, current=(), resource_plans=None, construction_object=None):
     """Plans and previously recorded actual work, with a retained saved selection."""
     from .dispatch import plans
     from .models import DailyFact
     objects = scope_queryset(ConstructionObject.objects.filter(project=project,pk__in=camp.object_links.filter(company=user.company).values('construction_object_id')), user)
+    if construction_object is not None:objects=objects.filter(pk=construction_object.pk)
     objects = list(objects.order_by('name', 'pk'))
     retained = [r for r in current if r.construction_object_id]
     known = {o.pk for o in objects};linked_ids=set(known)
     for row in retained:
         if row.construction_object_id not in known and scope_queryset(ConstructionObject.objects.all(),user).filter(pk=row.construction_object_id).exists():
             objects.append(row.construction_object); known.add(row.construction_object_id)
-    result = [('', 'Проект целиком · без объекта и работы')]; mapping = {'': (None, None, None)}
+    default_object=construction_object if construction_object and construction_object.pk in known else None
+    result = [('', 'Строительный объект целиком · без работы')]; mapping = {'': (default_object, None, None)}
     for obj in objects:
         planned, resources = plans(obj, day)
         if resource_plans is not None and obj.pk in linked_ids:
@@ -89,7 +91,7 @@ class ActionForm(forms.Form):
     comment = forms.CharField(label='Примечание / причина (необязательно)',required=False,max_length=4000,widget=forms.Textarea(attrs={'rows':2}))
     signed = forms.CharField(widget=forms.HiddenInput)
     session = forms.UUIDField(widget=forms.HiddenInput,required=False)
-    def __init__(self,*args,user,project,camp,day,current=(),load_targets=True,**kwargs):
+    def __init__(self,*args,user,project,camp,day,current=(),load_targets=True,construction_object=None,**kwargs):
         super().__init__(*args,**kwargs)
         full_equipment=Equipment.objects.filter(company=user.company).select_related('type__parent').order_by('type__name','plate_number','inventory_number','pk')
         selected=[]
@@ -99,10 +101,10 @@ class ActionForm(forms.Form):
             selected=[value for value in raw if str(value).isdigit()]
         self.fields['equipment'].queryset=full_equipment.filter(pk__in=selected)
         self.fields['equipment'].label_from_instance=lambda e:f'{e.plate_number or e.inventory_number or e.vin} · {e.type.parent.name if e.type.parent_id else e.type.name} · {e.name}'
-        self.fields['equipment'].widget.attrs.update({'data-remote-search-url':reverse('production:transport_equipment_choices'),'data-remote-kind-field':'action','data-remote-project-field':'project','data-remote-camp-field':'camp','data-remote-date-field':'date'})
+        self.fields['equipment'].widget.attrs.update({'data-remote-search-url':reverse('production:transport_equipment_choices'),'data-remote-kind-field':'action','data-remote-object-field':'construction_object','data-remote-camp-field':'camp','data-remote-date-field':'date'})
         self.fields['target_camp'].queryset=service.camps_for(user).filter(is_active=True).exclude(pk=camp.pk)
         self.resource_plans={}
-        options,self.targets=target_choices(user,project,camp,day,current,resource_plans=self.resource_plans) if load_targets else ([('','Проект целиком · без объекта и работы')],{'':(None,None,None)})
+        options,self.targets=target_choices(user,project,camp,day,current,resource_plans=self.resource_plans,construction_object=construction_object) if load_targets else ([('','Строительный объект целиком · без работы')],{'':(construction_object,None,None)})
         self.fields['target'].choices=options
         for field in self.fields.values():
             field.widget.attrs['class']='form-check-input' if isinstance(field.widget,forms.CheckboxInput) else 'form-select' if isinstance(field.widget,forms.Select) else 'form-control'
@@ -120,10 +122,10 @@ class ActionForm(forms.Form):
 @require_GET
 def equipment_choices(request):
     require_roles(request.user,service.OPERATORS)
-    project_id=request.GET.get('project')
-    if not str(project_id or '').isdigit() and str(request.GET.get('camp','')).isdigit():
-        project_id=Project.objects.filter(company=request.user.company,construction_objects__camp_links__camp_id=request.GET.get('camp')).values_list('pk',flat=True).first()
-    selector=Selector({'project':project_id,'camp':request.GET.get('camp'),'date':request.GET.get('date')},user=request.user)
+    object_id=request.GET.get('construction_object')
+    if not str(object_id or '').isdigit() and str(request.GET.get('camp','')).isdigit():
+        object_id=scope_queryset(ConstructionObject.objects.filter(company=request.user.company,camp_links__camp_id=request.GET.get('camp')),request.user).values_list('pk',flat=True).first()
+    selector=Selector({'construction_object':object_id,'camp':request.GET.get('camp'),'date':request.GET.get('date')},user=request.user)
     if not selector.is_valid():return JsonResponse({'error':'Выберите доступное местонахождение и дату.'},status=400)
     camp,day=selector.cleaned_data['camp'],selector.cleaned_data['date'];service.authorize(request.user,camp,False)
     query=Equipment.objects.filter(company=request.user.company,is_active=True).select_related('type__parent')
@@ -178,18 +180,15 @@ def _summary(rows):
     return list(groups.values())
 
 
-def _smg_equipment_context(request, project, camp, day):
+def _smg_equipment_context(request, project, construction_object, camp, day):
     """Embed the canonical SMG equipment report for an object served by this camp."""
     objects = scope_queryset(ConstructionObject.objects.filter(
         project=project,pk__in=camp.object_links.filter(company=request.user.company).values('construction_object_id'),
     ), request.user).distinct().order_by('name', 'pk')
-    selected = None
-    raw = request.GET.get('construction_object', '')
-    if raw.isdigit():selected = objects.filter(pk=int(raw)).first()
-    if selected is None:selected = objects.first()
+    selected = objects.filter(pk=construction_object.pk).first()
     links = []
     for obj in objects:
-        query = {'project':project.pk,'camp': camp.pk, 'date': day.isoformat(), 'tab': 'smg', 'construction_object': obj.pk}
+        query = {'construction_object': obj.pk, 'camp': camp.pk, 'date': day.isoformat(), 'tab': 'smg'}
         if request.GET.get('by_day') == '1':
             query['by_day'] = '1'
         links.append({'object': obj, 'active': bool(selected and obj.pk == selected.pk), 'url': '?' + urlencode(query)})
@@ -248,15 +247,21 @@ def board(request, area='work'):
     require_roles(request.user,service.OPERATORS if request.method=='POST' else service.READERS)
     raw=request.POST if request.method=='POST' else request.GET
     default_camp=service.camps_for(request.user).filter(is_active=True).first() or service.camps_for(request.user).first()
-    default_project=Project.objects.filter(company=request.user.company,construction_objects__camp_links__camp=default_camp).first() if default_camp else None
+    available_objects=scope_queryset(ConstructionObject.objects.filter(company=request.user.company,camp_links__camp__in=service.camps_for(request.user)),request.user).distinct().order_by('name','pk')
+    default_object=available_objects.filter(camp_links__camp=default_camp).first() if default_camp else available_objects.first()
     raw_values=raw.dict()
-    if not raw_values.get('project') and str(raw_values.get('camp','')).isdigit():
-        inferred=Project.objects.filter(company=request.user.company,construction_objects__camp_links__camp_id=raw_values['camp']).order_by('name','pk').first()
-        if inferred:raw_values['project']=str(inferred.pk)
-    selector_data={**{'project':str(default_project.pk) if default_project else '', 'camp':str(default_camp.pk) if default_camp else '', 'date':timezone.localdate().isoformat()},**raw_values}
-    raw_project=selector_data.get('project','')
-    if str(raw_project).isdigit():
-        linked_camps=service.camps_for(request.user).filter(object_links__construction_object__project_id=raw_project).distinct()
+    if str(raw_values.get('construction_object','')).isdigit() and not available_objects.filter(pk=raw_values['construction_object']).exists():
+        raw_values.pop('construction_object',None)
+    if not raw_values.get('construction_object') and str(raw_values.get('camp','')).isdigit():
+        inferred=available_objects.filter(camp_links__camp_id=raw_values['camp'])
+        # Compatibility with links saved before the selector became object-first.
+        if str(raw_values.get('project','')).isdigit():inferred=inferred.filter(project_id=raw_values['project'])
+        inferred=inferred.first()
+        if inferred:raw_values['construction_object']=str(inferred.pk)
+    selector_data={**{'construction_object':str(default_object.pk) if default_object else '', 'camp':str(default_camp.pk) if default_camp else '', 'date':timezone.localdate().isoformat()},**raw_values}
+    raw_object=selector_data.get('construction_object','')
+    if str(raw_object).isdigit():
+        linked_camps=service.camps_for(request.user).filter(object_links__construction_object_id=raw_object).distinct()
         if not str(selector_data.get('camp','')).isdigit() or not linked_camps.filter(pk=selector_data.get('camp')).exists():
             first=linked_camps.first();selector_data['camp']=str(first.pk) if first else ''
     selector=Selector(selector_data,user=request.user)
@@ -270,14 +275,14 @@ def board(request, area='work'):
     context={'can_view_catalogue':role_code(request.user) in EQUIPMENT_CATALOG_READ_ROLES,'day_view':day_view,'selector':selector,'editable':role_code(request.user) in service.OPERATORS,'tab':tab,'can_create':role_code(request.user) in service.OPERATORS,
         'transport_area':transport_area,'transport_work_url':reverse('production:transport_board'),'transport_maintenance_url':reverse('production:transport_maintenance')}
     if not selector.is_valid():return render(request,'production/transport_board.html',context,status=400 if raw else 200)
-    project,camp,day=selector.cleaned_data['project'],selector.cleaned_data['camp'],selector.cleaned_data['date'];service.authorize(request.user,camp,False)
+    construction_object,camp,day=selector.cleaned_data['construction_object'],selector.cleaned_data['camp'],selector.cleaned_data['date'];project=construction_object.project;service.authorize(request.user,camp,False)
     context.update(window_context(request.user,day))
     context['editable']=context['editable'] and context['fact_day_editable']
     if request.method=='POST':
         try:require_fact_day(request.user,day)
         except ValidationError as exc:raise PermissionDenied('; '.join(exc.messages))
     rows=_rows(request.user,camp,day,include_external=tab=='day' and day_view=='plan');current=[r['record'] for r in rows if r['record']]
-    form=ActionForm(request.POST if request.method=='POST' else None,user=request.user,project=project,camp=camp,day=day,current=current,load_targets=tab=='day' or request.method=='POST' and request.POST.get('action')=='DAY',initial={'signed':service.snapshot(request.user,camp,day),'session':uuid4()})
+    form=ActionForm(request.POST if request.method=='POST' else None,user=request.user,project=project,construction_object=construction_object,camp=camp,day=day,current=current,load_targets=tab=='day' or request.method=='POST' and request.POST.get('action')=='DAY',initial={'signed':service.snapshot(request.user,camp,day),'session':uuid4()})
     if request.method=='POST' and form.is_valid():
         values=form.cleaned_data;common={'signed':values['signed'],'session':values['session'],'comment':values['comment']};ids=list(values['equipment'].values_list('pk',flat=True))
         try:
@@ -288,7 +293,7 @@ def board(request, area='work'):
             elif action=='CONDITION':count=service.set_condition(request.user,camp,day,ids,values['condition'],**common)
             else:count=service.move(request.user,camp,day,ids,action,target=values['target_camp'],condition=values['condition'] or 'READY',**common)
             messages.success(request,f'Сохранено машин: {count}.')
-            return redirect(reverse(transport_route)+'?'+urlencode({'project':project.pk,'camp':camp.pk,'date':str(day),'tab':tab,'view':day_view}))
+            return redirect(reverse(transport_route)+'?'+urlencode({'construction_object':construction_object.pk,'camp':camp.pk,'date':str(day),'tab':tab,'view':day_view}))
         except ValidationError as exc:form.add_error(None,ValidationError('; '.join(exc.messages)))
     data=selector.cleaned_data
     filtered=[r for r in rows if (not data['condition'] or r['condition']==data['condition']) and (tab=='state' or not data['use'] or ((r['status'] or 'EMPTY')==data['use'])) and all(term.casefold() in ' '.join(str(value or '') for value in [r['machine'],r['machine'].vin,r['machine'].inventory_number,r['machine'].brand_model,r['planning_type'].name]).casefold() for term in data['q'].split())]
@@ -350,16 +355,16 @@ def board(request, area='work'):
     new_form=NewMachineForm(company=request.user.company,prefix='new-machine')
     new_form.fields.pop('site_name',None);new_form.fields.pop('is_active',None)
     context['new_machine_form']=new_form
-    context.update(project=project,camp=camp,day=day,rows=display_rows,summary=_summary([r for r in rows if r['at_camp']]),action_form=form,conditions=CONDITIONS,uses=USES,
+    context.update(project=project,construction_object=construction_object,camp=camp,day=day,rows=display_rows,summary=_summary([r for r in rows if r['at_camp']]),action_form=form,conditions=CONDITIONS,uses=USES,
         total=len(rows),unknown=sum(r['condition'] not in {'READY','REPAIR','SCRAP'} for r in rows),ready=sum(r['condition']=='READY' for r in rows),worked=sum(r['status']=='WORKED' for r in rows),idle=sum(r['status']=='IDLE' for r in rows),
         missing=sum(not r['status'] for r in rows),repair=sum(r['condition']=='REPAIR' for r in rows),scrap=sum(r['condition']=='SCRAP' for r in rows),
-        query=urlencode({'project':project.pk,'camp':camp.pk,'date':str(day),'view':day_view}),export_query=urlencode({'project':project.pk,'camp':camp.pk,'date':str(day),'q':data['q'],'condition':data['condition'],'use':data['use'],'tab':tab,'view':day_view}),error_open=request.method=='POST',can_create=role_code(request.user) in service.OPERATORS)
+        query=urlencode({'construction_object':construction_object.pk,'camp':camp.pk,'date':str(day),'view':day_view}),export_query=urlencode({'construction_object':construction_object.pk,'camp':camp.pk,'date':str(day),'q':data['q'],'condition':data['condition'],'use':data['use'],'tab':tab,'view':day_view}),error_open=request.method=='POST',can_create=role_code(request.user) in service.OPERATORS)
     from .dispatch import project_equipment_totals
     context['project_actual']=project_equipment_totals(request.user.company,project,day)
     if tab not in {'day','smg'}:
         from apps.resources.transport_import_models import TransportImportRow
         context['import_errors']=TransportImportRow.objects.filter(company=request.user.company,status='PENDING',batch__applied_at__isnull=False).count()
-    if tab=='smg':context.update(_smg_equipment_context(request,project,camp,day))
+    if tab=='smg':context.update(_smg_equipment_context(request,project,construction_object,camp,day))
     if tab=='events':context['events']=EquipmentTransportEvent.objects.filter(company=request.user.company).filter(Q(from_camp=camp)|Q(to_camp=camp)).filter(date__lte=day).select_related('equipment','from_camp','to_camp','recorded_by','cancelled_by')[:100]
     if context['tab']=='calendar':
         start=day.replace(day=1);end=day.replace(day=monthrange(day.year,day.month)[1]);days=[start+timedelta(days=i) for i in range(end.day)]
