@@ -1057,6 +1057,26 @@ class RecruitmentTests(TestCase):
         self.assertEqual(only_second.context['candidate_total'],1)
         self.assertContains(only_second,second.full_name);self.assertNotContains(only_second,first.full_name)
 
+    def test_shop_filters_candidates_by_multiple_exact_stages(self):
+        first=self.candidate(status='MANAGER_APPROVAL',ready_on=None)
+        second_request=service.save_request(self.dispatch,self.values(position='Сварщик этапов',quantity=1))
+        second=self.candidate(second_request,status='SECURITY_CHECK',ready_on=None)
+        third_request=service.save_request(self.dispatch,self.values(position='Водитель этапов',quantity=1))
+        third=self.candidate(third_request,status='MEDICAL_DOCUMENTS',ready_on=None)
+        self.client.force_login(self.recruiter);url=reverse('personnel:recruitment_list')
+        response=self.client.get(url,{'stage':['MANAGER_APPROVAL','SECURITY_CHECK']})
+        self.assertEqual(response.context['candidate_total'],2)
+        self.assertEqual(response.context['selected_stage_values'],['MANAGER_APPROVAL','SECURITY_CHECK'])
+        self.assertContains(response,'name="stage" multiple',html=False)
+        self.assertContains(response,'Этап кандидата');self.assertContains(response,'Этапов: 2')
+        self.assertContains(response,first.full_name);self.assertContains(response,second.full_name)
+        self.assertNotContains(response,third.full_name)
+        self.assertIn('stage=MANAGER_APPROVAL',response.context['position_query'])
+        self.assertIn('stage=SECURITY_CHECK',response.context['position_query'])
+        invalid=self.client.get(url,{'stage':'UNKNOWN'})
+        self.assertEqual(invalid.context['selected_stage_values'],[])
+        self.assertEqual(invalid.context['candidate_total'],3)
+
     def test_full_candidate_card_can_be_loaded_and_saved_inline(self):
         from .models import TalentPoolStageEvent
         candidate=self.candidate(status='MANAGER_APPROVAL',ready_on=None);pool=candidate.pool_candidate

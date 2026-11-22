@@ -254,6 +254,11 @@ def request_list(request,recruitment_page='bank'):
         candidates=candidates.filter(Q(construction_object_id__in=selected_object_ids)|
             Q(vacancy_candidates__request__construction_object_id__in=selected_object_ids)).distinct()
     if selected_camp_ids:candidates=candidates.filter(camp_id__in=selected_camp_ids)
+    stage_options=list(TalentPoolCandidate._meta.get_field('stage').choices)
+    valid_stages={value for value,_ in stage_options}
+    selected_stage_values=sorted({value for value in request.GET.getlist('stage') if value in valid_stages})
+    if recruitment_page!='bank':selected_stage_values=[]
+    if selected_stage_values:candidates=candidates.filter(stage__in=selected_stage_values)
     pool_state=request.GET.get('pool_state','active')
     pool_state=pool_state if pool_state in {'active','archived','all'} else 'active'
     if recruitment_page=='bank':
@@ -330,6 +335,7 @@ def request_list(request,recruitment_page='bank'):
         'position_options':position_options,
         'camp_options':camp_options,'object_options':object_options,'selected_position_ids':selected_position_ids,
         'selected_camp_ids':selected_camp_ids,'selected_object_ids':selected_object_ids,'funnel_query':funnel_params.urlencode(),
+        'stage_options':stage_options,'selected_stage_values':selected_stage_values,
         'pool_state':pool_state,'funnel_table_colspan':4+len(groups)})
 
 
