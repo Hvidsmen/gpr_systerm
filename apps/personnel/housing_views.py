@@ -153,7 +153,8 @@ def workspace(request, movements=False, movement_page='new'):
     if movements:
         from .movement_recommendations import build as build_recommendations
         recommendation_rows=rotation_rows(request.user.company,list(selected_camps),timezone.localdate(),
-            query=selector.cleaned_data.get('q',''),position=selector.cleaned_data.get('position'),include_unassigned=True)[0]
+            construction_object=selector.cleaned_data.get('construction_object'),query=selector.cleaned_data.get('q',''),
+            position=selector.cleaned_data.get('position'),include_unassigned=True)[0]
         prepared_recommendations=filter_recommendations(
             build_recommendations(request.user.company,timezone.localdate(),camps=selected_camps,rows=recommendation_rows),
             selector.cleaned_data.get('q',''),selector.cleaned_data.get('position'))
@@ -307,7 +308,7 @@ def workspace(request, movements=False, movement_page='new'):
             'arrival_recommendation_form':arrival_recommendation_form,'departure_recommendation_form':departure_recommendation_form,**housing.movement_window_context(request.user,day)})
     values=selector.cleaned_data
     selected_camp_list=list(selected_camps)
-    rows,days,rotation_stats=rotation_rows(request.user.company,selected_camp_list,day,query=values.get('q',''),state=values.get('state',''),include_unassigned=not values.get('construction_object') and not values.get('camps'))
+    rows,days,rotation_stats=rotation_rows(request.user.company,selected_camp_list,day,construction_object=values.get('construction_object'),query=values.get('q',''),state=values.get('state',''),include_unassigned=not values.get('construction_object') and not values.get('camps'))
     from .rotation import positions_in_rows,filter_position,rotation_stats as count_rotation
     available=positions_in_rows(request.user.company,rows)
     selector.fields['position'].queryset=available
@@ -316,13 +317,13 @@ def workspace(request, movements=False, movement_page='new'):
         messages.info(request,'Фильтр должности сброшен: её нет в текущей выборке.')
     rows=filter_position(rows,values.get('position'));rotation_stats=count_rotation(rows)
     if values.get('state'):
-        summary_rows,_,summary_stats=rotation_rows(request.user.company,selected_camp_list,day,query=values.get('q',''),include_unassigned=not values.get('construction_object') and not values.get('camps'))
+        summary_rows,_,summary_stats=rotation_rows(request.user.company,selected_camp_list,day,construction_object=values.get('construction_object'),query=values.get('q',''),include_unassigned=not values.get('construction_object') and not values.get('camps'))
         summary_rows=filter_position(summary_rows,values.get('position'));summary_stats=count_rotation(summary_rows)
     else:
         summary_rows=rows;summary_stats=rotation_stats.copy()
     # Same-day transfers out are absent from the current-camp roster but still
     # belong in the selected day's departures card.
-    departing_rows,_,_=rotation_rows(request.user.company,selected_camp_list,day,query=values.get('q',''),state='DEPARTING',include_unassigned=not values.get('construction_object') and not values.get('camps'))
+    departing_rows,_,_=rotation_rows(request.user.company,selected_camp_list,day,construction_object=values.get('construction_object'),query=values.get('q',''),state='DEPARTING',include_unassigned=not values.get('construction_object') and not values.get('camps'))
     summary_stats['departing']=len(filter_position(departing_rows,values.get('position')))
     from .rotation import status_indicator
     for row in rows:row['status_tone'],row['status_caption'],row['status_help']=status_indicator(row)
@@ -415,7 +416,9 @@ def workspace(request, movements=False, movement_page='new'):
     # Recommendation tabs keep the roster's current project/VZhG scope.  Their
     # counters must describe that same destination so the number in navigation
     # matches the rows shown after the user opens a tab.
-    navigation_recommendations=build_recommendations(request.user.company,recommendation_day,camps=selected_camps)
+    navigation_rows=rotation_rows(request.user.company,selected_camp_list,recommendation_day,
+        construction_object=values.get('construction_object'),include_unassigned=True)[0]
+    navigation_recommendations=build_recommendations(request.user.company,recommendation_day,camps=selected_camps,rows=navigation_rows)
     people_counts=Person.objects.filter(company=request.user.company).aggregate(
         unknown=Count('pk',filter=Q(stays__isnull=True,housing_events__isnull=True),distinct=True),
         unlinked=Count('pk',filter=Q(employee=None),distinct=True))
@@ -832,7 +835,7 @@ def roster_export(request):
     selector=RotationFilter(raw,company=request.user.company)
     if not selector.is_valid():raise Http404('Некорректные фильтры перевахты.')
     camps=selector.selected_camps(request.user.company);data=selector.cleaned_data;day=data['date']
-    rows,days,_=rotation_rows(request.user.company,list(camps),day,query=data.get('q',''),position=data.get('position'),state=data.get('state',''),include_unassigned=not data.get('construction_object') and not data.get('camps'))
+    rows,days,_=rotation_rows(request.user.company,list(camps),day,construction_object=data.get('construction_object'),query=data.get('q',''),position=data.get('position'),state=data.get('state',''),include_unassigned=not data.get('construction_object') and not data.get('camps'))
     values=[['Местонахождение','Дата','Сотрудник / вакансия','Табельный номер','Должность','Вахта / отдых','Заезд','Выезд','Выезд по графику','Возвращение по графику','Дней на вахте / МО','Начало текущей вахты / МО','Источник начала периода','График',*[d.strftime('%d.%m.%Y') for d in days]]]
     for row in rows:
         person=row['person'];fmt=lambda value:value.isoformat() if value else ''

@@ -61,6 +61,27 @@ class RotationTests(TestCase):
         response=self.client.get(reverse('personnel:housing_export'),data);self.assertEqual(response.status_code,200)
         self.assertEqual(self.client.get(reverse('personnel:housing'),{'camp':self.foreign_camp.pk}).status_code,404)
 
+    def test_project_filter_excludes_assignment_from_another_project_in_shared_wjg(self):
+        # One WJG may serve several projects.  A formal KTP-1 assignment must
+        # not leak into KTP-2 merely because both projects use that WJG.
+        self.slot.planning_position=self.position.planning_mapping.brigade
+        self.slot.construction_object=self.obj
+        self.slot.assigned_from=self.day-timedelta(days=5)
+        self.slot.full_clean();self.slot.save()
+        StaffingSlot.objects.create(company=self.company,group=self.group,person=self.person,housing_camp=self.a,status='МО')
+        own=rotation_rows(self.company,[self.a],self.day,construction_object=self.obj)[0]
+        other=rotation_rows(self.company,[self.a],self.day,construction_object=self.obj2)[0]
+        self.assertEqual([row['person'] for row in own if row.get('person')],[self.person])
+        self.assertEqual([row['person'] for row in other if row.get('person')],[])
+        data={'camps':[self.a.pk],'construction_object':self.obj2.pk,'state':'MO'}
+        page=self.client.get(reverse('personnel:housing'),data)
+        self.assertEqual(page.status_code,200)
+        self.assertFalse(any(row.get('person')==self.person for row in page.context['rows']))
+        from openpyxl import load_workbook
+        from io import BytesIO
+        exported=self.client.get(reverse('personnel:housing_export'),data)
+        self.assertEqual(load_workbook(BytesIO(exported.content),read_only=True).active.max_row,1)
+
     def test_page_defaults_to_one_object_and_all_its_camps(self):
         page=self.client.get(reverse('personnel:housing'))
         self.assertEqual(page.status_code,200)

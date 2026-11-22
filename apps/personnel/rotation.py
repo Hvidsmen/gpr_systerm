@@ -36,6 +36,17 @@ class RotationStatusSelect(forms.Select):
         return option
 
 
+def object_scope_ids(company,obj):
+    """Return the selected object and every descendant in its project tree."""
+    if not obj:return set()
+    ids={obj.pk}
+    pairs=list(ConstructionObject.objects.filter(company=company,project=obj.project).values_list('pk','parent_id'))
+    while True:
+        children={pk for pk,parent in pairs if parent in ids}
+        if children<=ids:return ids
+        ids.update(children)
+
+
 class RotationFilter(forms.Form):
     construction_object=forms.ModelChoiceField(label='Проект',queryset=ConstructionObject.objects.none(),required=True,empty_label=None)
     camps=forms.ModelMultipleChoiceField(label='Местонахождение',queryset=Camp.objects.none(),required=True,
@@ -55,11 +66,7 @@ class RotationFilter(forms.Form):
     def clean(self):
         data=super().clean();obj=data.get('construction_object');camps=data.get('camps')
         if obj and camps:
-            ids={obj.pk};pairs=list(ConstructionObject.objects.filter(company=self.company,project=obj.project).values_list('pk','parent_id'))
-            while True:
-                children={pk for pk,parent in pairs if parent in ids}
-                if children<=ids:break
-                ids.update(children)
+            ids=object_scope_ids(self.company,obj)
             invalid=camps.exclude(object_links__company=self.company,object_links__construction_object_id__in=ids).distinct()
             if invalid.exists():self.add_error('camps','Выберите только местонахождения, относящиеся к выбранному проекту.')
         return data
@@ -83,11 +90,7 @@ def normalize_rotation_filter_data(data,company):
         try:obj=ConstructionObject.objects.get(company=company,pk=object_id)
         except (ConstructionObject.DoesNotExist,ValueError,TypeError):obj=None
         if obj:
-            ids={obj.pk};pairs=list(ConstructionObject.objects.filter(company=company,project=obj.project).values_list('pk','parent_id'))
-            while True:
-                children={pk for pk,parent in pairs if parent in ids}
-                if children<=ids:break
-                ids.update(children)
+            ids=object_scope_ids(company,obj)
             allowed=list(CampObjectLink.objects.filter(company=company,construction_object_id__in=ids,camp__is_active=True).order_by('camp__name','pk').values_list('camp_id',flat=True).distinct())
             # A project change can submit the WJG selection left by the previous
             # project. Treat that as a dependent-filter change and select every
@@ -97,11 +100,7 @@ def normalize_rotation_filter_data(data,company):
         link=CampObjectLink.objects.filter(company=company,camp__is_active=True).order_by('construction_object__name','camp__name','pk').first()
         if link:
             object_id=link.construction_object_id
-            obj=link.construction_object;ids={obj.pk};pairs=list(ConstructionObject.objects.filter(company=company,project=obj.project).values_list('pk','parent_id'))
-            while True:
-                children={pk for pk,parent in pairs if parent in ids}
-                if children<=ids:break
-                ids.update(children)
+            obj=link.construction_object;ids=object_scope_ids(company,obj)
             camp_ids=list(CampObjectLink.objects.filter(company=company,construction_object_id__in=ids,camp__is_active=True).order_by('camp__name','pk').values_list('camp_id',flat=True).distinct())
     if object_id:values['construction_object']=str(object_id)
     if camp_ids:
@@ -164,19 +163,26 @@ def rotation_stats(rows):
         'vacancies':sum(not row.get('person') for row in rows),'unknown':sum(row['state']=='UNKNOWN' for row in people)}
 
 
-def rotation_rows(company,camps,day,*,query='',position=None,state='',include_unassigned=False):
+def rotation_rows(company,camps,day,*,construction_object=None,query='',position=None,state='',include_unassigned=False):
     from .rotation_calendar import stays_by_person,anchor_for,description,cycle_definition,effective_schedule,schedule_label
     camp_ids={camp.pk for camp in camps};camp_names={camp.name.strip().casefold():camp for camp in camps}
     from .plan_assignments import active_on
     slots=list(StaffingSlot.objects.filter(company=company).filter(Q(person=None)|Q(person__dispatcher_removed_at=None)).filter(active_on(day)).select_related('group__board','housing_camp','planning_position__group','construction_object','person__employee__position__planning_mapping__brigade__group','person__schedule_slot').prefetch_related('pattern','person__schedule_slot__pattern'))
-    removed_people=set(StaffingSlot.objects.filter(company=company,planning_position__isnull=False,cancelled_at__isnull=False,person__isnull=False).values_list('person_id',flat=True))
+    object_ids=object_scope_ids(company,construction_object) if construction_object else set()
+    formal_people={slot.person_id for slot in slots if slot.person_id and slot.construction_object_id}
+    scoped_formal_people={slot.person_id for slot in slots if slot.person_id and slot.construction_object_id in object_ids}
+    def person_in_scope(person_id):return not object_ids or person_id not in formal_people or person_id in scoped_formal_people
+    scoped_slots=[slot for slot in slots if not object_ids or not slot.construction_object_id or slot.construction_object_id in object_ids]
+    removed=StaffingSlot.objects.filter(company=company,planning_position__isnull=False,cancelled_at__isnull=False,person__isnull=False)
+    if object_ids:removed=removed.filter(construction_object_id__in=object_ids)
+    removed_people=set(removed.values_list('person_id',flat=True))
     all_assignments=defaultdict(list)
-    for slot in slots:
+    for slot in scoped_slots:
         if slot.person_id:all_assignments[slot.person_id].append(slot)
     def slot_camp(slot):return slot.housing_camp or camp_names.get(slot.camp.strip().casefold())
     def belongs(slot):return (slot_camp(slot) and slot_camp(slot).pk in camp_ids) or include_unassigned and not slot.housing_camp_id and not slot.camp
-    relevant=[slot for slot in slots if belongs(slot)];boards={slot.group.board_id for slot in relevant}
-    vacant=[slot for slot in slots if not slot.person_id and (belongs(slot) or slot.group.board_id in boards and not slot.housing_camp_id and not slot.camp)]
+    relevant=[slot for slot in scoped_slots if belongs(slot) and (not slot.person_id or person_in_scope(slot.person_id))];boards={slot.group.board_id for slot in relevant}
+    vacant=[slot for slot in scoped_slots if not slot.person_id and (belongs(slot) or slot.group.board_id in boards and not slot.housing_camp_id and not slot.camp)]
     by_person=defaultdict(list)
     for slot in relevant:
         if slot.person_id:by_person[slot.person_id].append(slot)
@@ -202,12 +208,14 @@ def rotation_rows(company,camps,day,*,query='',position=None,state='',include_un
     initial={row.person_id:row for row in HousingEvent.objects.filter(company=company,person__dispatcher_removed_at=None,kind='DEPARTURE',stay=None,date__lte=day).select_related('person__employee__position__planning_mapping__brigade__group','from_camp').order_by('date','pk')}
     people={slot.person_id:slot.person for slot in relevant if slot.person_id}
     for person_id,event in initial.items():
-        if event.from_camp_id in camp_ids:people[person_id]=event.person
+        if event.from_camp_id in camp_ids and person_in_scope(person_id):people[person_id]=event.person
     for person_id,stay in {**last,**current}.items():
-        if stay.camp_id in camp_ids:people[person_id]=stay.person
-    for person_id,stay in future_stays.items():people.setdefault(person_id,stay.person)
+        if stay.camp_id in camp_ids and person_in_scope(person_id):people[person_id]=stay.person
+    for person_id,stay in future_stays.items():
+        if person_in_scope(person_id):people.setdefault(person_id,stay.person)
     if state=='DEPARTING':
-        for person_id,stay in departures.items():people[person_id]=stay.person
+        for person_id,stay in departures.items():
+            if person_in_scope(person_id):people[person_id]=stay.person
     # Full movement history is needed only for people that survived the camp,
     # assignment and state preselection above.
     schedule_stays=stays_by_person(company,people.keys())
