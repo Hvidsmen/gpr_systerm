@@ -459,6 +459,10 @@ class LodgingTests(TestCase):
     def test_historical_report_has_portal_and_factual_modes(self):
         self.edit(employee=self.second_employee,day=self.day)
         url=reverse('personnel:lodging_report')
+        default=self.client.get(url,{'camp':self.a.pk,'date':str(self.day)})
+        self.assertEqual(default.status_code,200)
+        self.assertEqual((default.context['mode'],default.context['view']),('FACTUAL','TABLE'))
+        self.assertContains(default,'По фактическим датам')
         portal=self.client.get(url,{'camp':self.a.pk,'date':str(timezone.localdate()),'mode':'PORTAL'})
         self.assertEqual(portal.status_code,200);self.assertContains(portal,'По состоянию портала')
         self.assertContains(portal,'data-lodging-nav-active="report"')

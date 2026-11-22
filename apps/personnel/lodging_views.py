@@ -272,12 +272,13 @@ def historical_report(request):
     started=perf_counter()
     require_roles(request.user,lodging.READERS)
     camps=Camp.objects.filter(company=request.user.company)
-    initial={'date':timezone.localdate(),'mode':'PORTAL','view':'TABLE'}
+    initial={'date':timezone.localdate(),'mode':'FACTUAL','view':'TABLE'}
     if not request.GET and camps.exists():initial['camp']=camps.first()
     query=request.GET.copy()
+    if query and not query.get('mode'):query['mode']='FACTUAL'
     if query and not query.get('view'):query['view']='TABLE'
     form=LodgingReportFilter(query or None,company=request.user.company,initial=initial)
-    rows=[];grouped_rows=[];stats=Counter();warning='';camp=None;day=initial['date'];mode='PORTAL';view='TABLE'
+    rows=[];grouped_rows=[];stats=Counter();warning='';camp=None;day=initial['date'];mode='FACTUAL';view='TABLE'
     if form.is_valid():
         camp=form.cleaned_data['camp'];day=form.cleaned_data['date'];mode=form.cleaned_data['mode'];view=form.cleaned_data['view'];building=form.cleaned_data['building'];state=form.cleaned_data['state'];terms=form.cleaned_data['q'].casefold().split()
         stays,applied=historical_occupancy(request.user.company,camp,day,mode);by_bed={}
