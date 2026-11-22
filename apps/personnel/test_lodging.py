@@ -473,6 +473,12 @@ class LodgingTests(TestCase):
             self.assertEqual(sum(group['total'] for group in grouped.context['grouped_rows']),1)
         export=self.client.get(url,{'camp':self.a.pk,'date':str(self.day),'mode':'FACTUAL','export':'xlsx'})
         self.assertEqual(export['Content-Type'],'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        portal_export=self.client.get(url,{'camp':self.a.pk,'date':str(timezone.localdate()),'mode':'PORTAL','view':'POSITION','export':'xlsx'})
+        self.assertEqual(portal_export.status_code,200)
+        book=load_workbook(BytesIO(portal_export.content));sheet=book.active
+        self.assertEqual(sheet['L1'].value,'Сохранено в портале')
+        self.assertIsNotNone(sheet['L2'].value)
+        book.close()
 
     def test_presence_does_not_take_company_wide_mutex(self):
         with patch('apps.personnel.lodging.mutex',side_effect=AssertionError('presence must be camp scoped')):

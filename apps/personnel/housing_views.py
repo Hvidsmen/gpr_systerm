@@ -1,5 +1,5 @@
 from calendar import monthrange
-from datetime import date,timedelta
+from datetime import date,datetime,timedelta
 from io import BytesIO
 from urllib.parse import urlencode
 from django import forms
@@ -821,7 +821,11 @@ def workbook_response(filename,title,rows):
     from openpyxl import Workbook
     from openpyxl.styles import Font,PatternFill
     book=Workbook();sheet=book.active;sheet.title=title
-    for row in rows:sheet.append(["'"+v if isinstance(v,str) and v.startswith(('=','+','-','@')) else v for v in row])
+    def cell_value(value):
+        if isinstance(value,datetime) and timezone.is_aware(value):
+            value=timezone.localtime(value).replace(tzinfo=None)
+        return "'"+value if isinstance(value,str) and value.startswith(('=','+','-','@')) else value
+    for row in rows:sheet.append([cell_value(value) for value in row])
     sheet.freeze_panes='A2';sheet.auto_filter.ref=sheet.dimensions
     for cell in sheet[1]:cell.font=Font(bold=True,color='FFFFFF');cell.fill=PatternFill('solid',fgColor='167A94')
     for col in sheet.columns:sheet.column_dimensions[col[0].column_letter].width=26
