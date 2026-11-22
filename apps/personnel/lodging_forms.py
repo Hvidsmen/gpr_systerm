@@ -72,6 +72,7 @@ class LodgingReportFilter(StyledForm):
     camp=forms.ModelChoiceField(label='Местонахождение',queryset=Camp.objects.none())
     date=forms.DateField(label='На дату',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
     mode=forms.ChoiceField(label='Режим',choices=[('PORTAL','По состоянию портала'),('FACTUAL','По указанным фактическим датам')])
+    view=forms.ChoiceField(label='Вид',choices=[('TABLE','Таблица мест'),('ORGANIZATION','По организациям'),('POSITION','По должностям')])
     building=forms.ModelChoiceField(label='Вагон / корпус',queryset=LodgingBuilding.objects.none(),required=False,empty_label='Все вагоны / корпуса')
     state=forms.ChoiceField(label='Состояние',required=False,choices=[('','Все'),('OCCUPIED','Занято'),('FREE','Свободно'),('RESERVED','Зарезервировано'),('UNAVAILABLE','Недоступно')])
     q=forms.CharField(label='Поиск',required=False,widget=forms.TextInput(attrs={'placeholder':'Сотрудник, табельный номер, вагон или место'}))

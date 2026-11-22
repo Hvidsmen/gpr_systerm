@@ -272,12 +272,14 @@ def historical_report(request):
     started=perf_counter()
     require_roles(request.user,lodging.READERS)
     camps=Camp.objects.filter(company=request.user.company)
-    initial={'date':timezone.localdate(),'mode':'PORTAL'}
+    initial={'date':timezone.localdate(),'mode':'PORTAL','view':'TABLE'}
     if not request.GET and camps.exists():initial['camp']=camps.first()
-    form=LodgingReportFilter(request.GET or None,company=request.user.company,initial=initial)
-    rows=[];stats=Counter();warning='';camp=None;day=initial['date'];mode='PORTAL'
+    query=request.GET.copy()
+    if query and not query.get('view'):query['view']='TABLE'
+    form=LodgingReportFilter(query or None,company=request.user.company,initial=initial)
+    rows=[];grouped_rows=[];stats=Counter();warning='';camp=None;day=initial['date'];mode='PORTAL';view='TABLE'
     if form.is_valid():
-        camp=form.cleaned_data['camp'];day=form.cleaned_data['date'];mode=form.cleaned_data['mode'];building=form.cleaned_data['building'];state=form.cleaned_data['state'];terms=form.cleaned_data['q'].casefold().split()
+        camp=form.cleaned_data['camp'];day=form.cleaned_data['date'];mode=form.cleaned_data['mode'];view=form.cleaned_data['view'];building=form.cleaned_data['building'];state=form.cleaned_data['state'];terms=form.cleaned_data['q'].casefold().split()
         stays,applied=historical_occupancy(request.user.company,camp,day,mode);by_bed={}
         for stay in stays:by_bed.setdefault(stay.bed_id,[]).append(stay)
         if any(len(items)>1 for items in by_bed.values()):warning='По введённым фактическим датам обнаружены пересечения. Они показаны в отчёте и требуют проверки.'
@@ -288,17 +290,27 @@ def historical_report(request):
             status='OCCUPIED' if occupants else 'UNAVAILABLE' if not bed.building.is_active else 'FREE' if bed.state=='AVAILABLE' else bed.state
             occupants=occupants or [None]
             for stay in occupants:
+                organization=(stay.organization_snapshot or (employee_company(stay.employee) if stay.employee_id else str(stay.guest.organization))) if stay else ''
+                position=(stay.position_snapshot or (stay.employee.display_position if stay.employee_id else stay.guest.position_name)) if stay else ''
                 row={'bed':bed,'stay':stay,'status':status,'status_label':{'OCCUPIED':'Занято','FREE':'Свободно','RESERVED':'Зарезервировано','UNAVAILABLE':'Недоступно'}[status],
-                    'applied_at':applied.get(stay.pk) if stay else None,'overlap':len(by_bed.get(bed.pk,[]))>1}
-                haystack=' '.join([str(bed),lodging.building_title(bed.building),stay.resident_name if stay else '',stay.resident_number if stay else '',stay.organization_snapshot if stay else '',stay.position_snapshot if stay else '']).casefold()
+                    'applied_at':applied.get(stay.pk) if stay else None,'overlap':len(by_bed.get(bed.pk,[]))>1,
+                    'organization':organization or 'Организация не указана','position':position or 'Должность не указана'}
+                haystack=' '.join([str(bed),lodging.building_title(bed.building),stay.resident_name if stay else '',stay.resident_number if stay else '',organization,position]).casefold()
                 if (not state or status==state) and all(term in haystack for term in terms):rows.append(row);stats[status]+=1
+        if view!='TABLE':
+            grouped={};field='organization' if view=='ORGANIZATION' else 'position'
+            for row in rows:
+                if not row['stay']:continue
+                item=grouped.setdefault(row[field],{'label':row[field],'people':[],'total':0})
+                item['people'].append(row);item['total']+=1
+            grouped_rows=sorted(grouped.values(),key=lambda item:item['label'].casefold())
         if request.GET.get('export')=='xlsx':
             from .housing_views import workbook_response
             values=[['Дата отчёта','Режим','Местонахождение','Вагон / корпус','Комната','Место','Состояние','Сотрудник','Табельный номер','Дата заселения','Дата выселения','Сохранено в портале','Автор','Примечание']]
             for row in rows:
                 stay=row['stay'];values.append([day,form.fields['mode'].choices[0][1] if mode=='PORTAL' else form.fields['mode'].choices[1][1],camp.name,row['bed'].building.name,row['bed'].room,row['bed'].number,row['status_label'],stay.resident_name if stay else '',stay.resident_number if stay else '',stay.arrived_on if stay else '',stay.departed_on if stay else '',row['applied_at'] or '',(stay.recorded_by.get_full_name() or stay.recorded_by.username) if stay and stay.recorded_by else '',stay.comment if stay else row['bed'].note])
             return measured(workbook_response(f'lodging-{day}.xlsx','Состояние проживания',values),'lodging historical report export',started)
-    response=render(request,'personnel/lodging_report.html',{'form':form,'rows':rows,'stats':stats,'camp':camp,'day':day,'mode':mode,'warning':warning})
+    response=render(request,'personnel/lodging_report.html',{'form':form,'rows':rows,'grouped_rows':grouped_rows,'stats':stats,'camp':camp,'day':day,'mode':mode,'view':view,'warning':warning})
     return measured(response,'lodging historical report',started)
 
 

@@ -461,9 +461,15 @@ class LodgingTests(TestCase):
         url=reverse('personnel:lodging_report')
         portal=self.client.get(url,{'camp':self.a.pk,'date':str(timezone.localdate()),'mode':'PORTAL'})
         self.assertEqual(portal.status_code,200);self.assertContains(portal,'По состоянию портала')
+        self.assertContains(portal,'data-lodging-nav-active="report"')
         self.assertContains(portal,self.second_employee.display_name)
         factual=self.client.get(url,{'camp':self.a.pk,'date':str(self.day),'mode':'FACTUAL'})
         self.assertContains(factual,'По фактическим датам');self.assertContains(factual,self.second_employee.display_name)
+        for view,title in [('ORGANIZATION','По организациям'),('POSITION','По должностям')]:
+            grouped=self.client.get(url,{'camp':self.a.pk,'date':str(self.day),'mode':'FACTUAL','view':view})
+            self.assertEqual(grouped.status_code,200);self.assertEqual(grouped.context['view'],view)
+            self.assertContains(grouped,title);self.assertContains(grouped,self.second_employee.display_name)
+            self.assertEqual(sum(group['total'] for group in grouped.context['grouped_rows']),1)
         export=self.client.get(url,{'camp':self.a.pk,'date':str(self.day),'mode':'FACTUAL','export':'xlsx'})
         self.assertEqual(export['Content-Type'],'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
