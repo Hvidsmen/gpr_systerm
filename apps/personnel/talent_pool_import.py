@@ -9,6 +9,7 @@ from apps.resources.models import Position
 from .models import BaseCity,RecruitmentSpecialist,TalentPoolCandidate
 from .recruitment_models import (POOL_UNAVAILABLE_STAGES,RECRUITMENT_STAGES,RECRUITMENT_SYSTEM_STAGES,RECRUITMENT_TERMINAL_STAGES,
     normalize_recruitment_specialist_name)
+from .recruitment_stage_flow import stage_from_confirmation_values
 
 STORE_SHEET='Магазин 2026'
 PLAN_SHEET='План найма'
@@ -222,9 +223,9 @@ def import_sheet(user,file):
             _profile_date(source,'pass_documents_sent_on','pass_submitted','pass_documents'))
         pass_ready_on=(row.pass_ready_on if row and row.pass_ready_on else
             _profile_date(source,'pass_ready_on','pass_received','pass_approved_on'))
-        approvals_complete=all((manager_on,security_on,medical_on,pass_documents_on,pass_ready_on))
-        if approvals_complete and stage not in RECRUITMENT_SYSTEM_STAGES|RECRUITMENT_TERMINAL_STAGES:
-            stage='READY';ready_on=ready_on or pass_ready_on
+        if stage in {'MANAGER_APPROVAL','SECURITY_CHECK','MEDICAL_DOCUMENTS','PASS_PROCESSING','READY'}:
+            stage=stage_from_confirmation_values(manager_on,security_on,medical_on,pass_documents_on,pass_ready_on)
+        if stage=='READY':ready_on=ready_on or pass_ready_on
         defaults={'phone':phone_value,'notes':notes,'source_data':source,'stage':stage,'is_active':active,'responsible_hr':responsible_hr,
             'position':position,'construction_object':construction_object,'base_city':base_city,
             'ready_for_arrival':bool(ready_on),'ready_for_arrival_on':ready_on,

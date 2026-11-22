@@ -6,11 +6,6 @@
     if(!node)return;
     node.textContent=message||'';node.classList.toggle('d-none',!message);
   }
-  function candidateTarget(candidateId){
-    return Array.from(funnel()?.querySelectorAll('[data-candidate-inline-target]')||[]).find(function(target){
-      return target.dataset.candidateId===String(candidateId);
-    });
-  }
   function setPositionOpen(row,open){
     const people=row.nextElementSibling;
     if(!people||!people.classList.contains('position-people-row'))return;
@@ -88,6 +83,17 @@
       return true;
     }catch(reason){current.removeAttribute('aria-busy');error(reason.message||'Не удалось обновить воронку.');return false;}
   }
+  async function refreshFunnelNavigation(){
+    const current=funnel();if(!current)return;
+    try{
+      const response=await fetch(location.href,{credentials:'same-origin',headers:{'X-Requested-With':'XMLHttpRequest'}});
+      if(!response.ok||response.redirected)return;
+      const page=new DOMParser().parseFromString(await response.text(),'text/html');
+      const fresh=page.querySelector('[data-recruitment-funnel] .recruitment-funnel-cards');
+      const existing=current.querySelector('.recruitment-funnel-cards');
+      if(fresh&&existing)existing.replaceWith(fresh);
+    }catch(reason){/* The saved card stays usable even if counters cannot be refreshed. */}
+  }
   document.addEventListener('click',function(event){
     const detailsAction=event.target.closest('[data-position-details-action]');
     if(detailsAction){
@@ -120,15 +126,28 @@
         const html=await response.text();
         if(response.redirected||(!response.ok&&response.status!==422))throw new Error('Не удалось сохранить карточку.');
         if(response.status===422){target.innerHTML=html;target.dataset.loaded='true';delete target.dataset.inlineInitialized;initializeInlineForm(target);return;}
-        const candidateId=inlineForm.dataset.candidateId;
-        if(!await replaceFunnel(location.href,false))throw new Error('Карточка сохранена, но список не удалось обновить. Обновите страницу.');
-        const refreshedTarget=candidateTarget(candidateId);
-        if(refreshedTarget){
-          const people=refreshedTarget.closest('.position-people-row');if(people)setPositionOpen(people.previousElementSibling,true);
-          await loadInlineTarget(refreshedTarget,true);
-          const refreshedStatus=refreshedTarget.querySelector('[data-candidate-inline-status]');if(refreshedStatus)refreshedStatus.textContent='Сохранено.';
-        }
+        if(!target)throw new Error('Карточка сохранена, но её не удалось обновить на странице.');
+        target.innerHTML=html;target.dataset.loaded='true';delete target.dataset.inlineInitialized;initializeInlineForm(target);
+        const refreshedStatus=target.querySelector('[data-candidate-inline-status]');if(refreshedStatus)refreshedStatus.textContent='Сохранено.';
+        refreshFunnelNavigation();
       }catch(reason){if(card){card.dataset.saveState='dirty';card.classList.add('is-dirty');}if(button)button.disabled=false;if(status)status.textContent='Не сохранено. Повторите.';error(reason.message||'Не удалось сохранить карточку.');}
+      return;
+    }
+    const advanceForm=event.target.closest('[data-candidate-stage-advance]');
+    if(advanceForm){
+      const target=advanceForm.closest('[data-candidate-inline-target]');
+      if(!target)return;
+      event.preventDefault();
+      const button=advanceForm.querySelector('button[type="submit"]');
+      const status=advanceForm.querySelector('[data-candidate-stage-advance-status]');
+      if(button)button.disabled=true;if(status)status.textContent='Сохраняем…';error('');
+      try{
+        const response=await fetch(advanceForm.action,{method:'POST',body:new FormData(advanceForm),credentials:'same-origin',headers:{'X-Requested-With':'XMLHttpRequest'}});
+        const payload=await response.json().catch(function(){return {};});
+        if(!response.ok)throw new Error(payload.error||'Не удалось завершить этап.');
+        await loadInlineTarget(target,true);refreshFunnelNavigation();
+        const refreshedStatus=target.querySelector('[data-candidate-inline-status]');if(refreshedStatus)refreshedStatus.textContent='Этап сохранён.';
+      }catch(reason){if(button)button.disabled=false;if(status)status.textContent=reason.message||'Не удалось завершить этап.';error(reason.message||'Не удалось завершить этап.');}
       return;
     }
     const form=event.target.closest('[data-candidate-stage-form]');if(!form)return;

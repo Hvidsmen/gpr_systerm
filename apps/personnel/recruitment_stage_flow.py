@@ -22,6 +22,20 @@ STAGE_RULES={
 NEXT_STAGE=dict(zip(RECRUITMENT_APPROVAL_FLOW,RECRUITMENT_APPROVAL_FLOW[1:]))
 
 
+def stage_from_confirmation_values(manager,security,medical,pass_documents,pass_ready):
+    """Return the first approval step that has not been confirmed yet."""
+    if not manager:return 'MANAGER_APPROVAL'
+    if not security:return 'SECURITY_CHECK'
+    if not medical:return 'MEDICAL_DOCUMENTS'
+    if not pass_documents or not pass_ready:return 'PASS_PROCESSING'
+    return 'READY'
+
+
+def stage_from_confirmations(candidate):
+    return stage_from_confirmation_values(candidate.manager_approved,candidate.security_approved,
+        candidate.medical_exam_passed,candidate.pass_documents_sent,candidate.pass_ready)
+
+
 class WorkingDayCalendar:
     """Company production calendar with a weekday fallback for missing dates."""
     def __init__(self,company_id):
@@ -109,6 +123,11 @@ def allowed_manual_stage(current,target):
 @transaction.atomic
 def advance(candidate_id,company,actor,note=''):
     candidate=TalentPoolCandidate.objects.select_for_update().get(pk=candidate_id,company=company)
+    if candidate.stage in RECRUITMENT_APPROVAL_FLOW:
+        confirmed_stage=stage_from_confirmations(candidate)
+        if confirmed_stage!=candidate.stage:
+            candidate.stage=confirmed_stage
+            candidate.save(update_fields=['stage','updated_at'])
     next_stage=NEXT_STAGE.get(candidate.stage)
     if not next_stage:
         if candidate.stage=='READY':raise ValidationError('Кандидат уже готов к заезду: маршрут согласования завершён.')

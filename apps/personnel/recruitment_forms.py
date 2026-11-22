@@ -9,6 +9,7 @@ from .models import BaseCity,RecruitmentRequest, RecruitmentCandidate,Recruitmen
 from .recruitment_models import (RECRUITMENT_STAGES,POOL_UNAVAILABLE_STAGES,RECRUITMENT_SYSTEM_STAGES,
     RECRUITMENT_TERMINAL_STAGES,RECRUITMENT_APPROVAL_FLOW)
 from .recruitment import allowed_camps, validate_documents
+from .recruitment_stage_flow import stage_from_confirmations
 from .employee_widgets import RemoteEmployeeSelect
 
 
@@ -234,10 +235,13 @@ class TalentPoolForm(forms.ModelForm):
         source['position']=instance.position.name if instance.position_id else source.get('position','')
         source['construction_site']=instance.construction_object.name if instance.construction_object_id else source.get('construction_site','')
         source['base_city']=instance.base_city.name if instance.base_city_id else source.get('base_city','')
-        approvals_complete=all((instance.manager_approved,instance.security_approved,instance.medical_exam_passed,
-            instance.pass_documents_sent,instance.pass_ready))
-        if approvals_complete and instance.stage not in RECRUITMENT_SYSTEM_STAGES|RECRUITMENT_TERMINAL_STAGES:
-            instance.stage='READY';instance.ready_for_arrival=True;instance.ready_for_arrival_on=instance.pass_ready_on
+        confirmed_stage=stage_from_confirmations(instance)
+        if (instance.stage in RECRUITMENT_APPROVAL_FLOW or
+                confirmed_stage=='READY' and instance.stage not in RECRUITMENT_SYSTEM_STAGES|RECRUITMENT_TERMINAL_STAGES):
+            instance.stage=confirmed_stage
+        if instance.stage=='READY' and all((instance.manager_approved,instance.security_approved,
+                instance.medical_exam_passed,instance.pass_documents_sent,instance.pass_ready)):
+            instance.ready_for_arrival=True;instance.ready_for_arrival_on=instance.pass_ready_on
         source['readiness']=instance.ready_for_arrival_on.isoformat() if instance.ready_for_arrival else source.get('readiness','')
         source['manager_approval']=instance.manager_approved_on.isoformat() if instance.manager_approved else source.get('manager_approval','')
         source['security_approval']=instance.security_approved_on.isoformat() if instance.security_approved else source.get('security_approval','')

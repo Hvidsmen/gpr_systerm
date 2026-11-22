@@ -1079,6 +1079,34 @@ class RecruitmentTests(TestCase):
         self.assertEqual(pool.ready_for_arrival_on,date(2026,11,23));self.assertTrue(pool.pass_documents_sent);self.assertTrue(pool.pass_ready)
         self.assertTrue(TalentPoolStageEvent.objects.filter(candidate=pool,from_stage='PASS_PROCESSING',to_stage='READY').exists())
 
+    def test_inline_save_returns_managed_stage_to_first_unconfirmed_step(self):
+        from .models import TalentPoolStageEvent
+        candidate=self.candidate(status='MEDICAL_DOCUMENTS',ready_on=None);pool=candidate.pool_candidate
+        self.client.force_login(self.recruiter)
+        response=self.client.post(reverse('personnel:recruitment_candidate_inline',args=[pool.pk]),{
+            'full_name':pool.full_name,'stage':'MEDICAL_DOCUMENTS','position':self.position.pk,
+            'construction_object':self.obj.pk,'phone':pool.phone,'base_city':'','new_base_city':'',
+            'ready_for_arrival_on':'','manager_approved_on':'','security_approved_on':'',
+            'medical_exam_on':'','pass_documents_sent_on':'','pass_ready_on':'',
+            'responsible_hr':'','notes':''})
+        self.assertEqual(response.status_code,200)
+        pool.refresh_from_db();self.assertEqual(pool.stage,'MANAGER_APPROVAL')
+        self.assertContains(response,'Направлен на согласование Заказчику')
+        event=TalentPoolStageEvent.objects.get(candidate=pool)
+        self.assertEqual((event.from_stage,event.to_stage),('MEDICAL_DOCUMENTS','MANAGER_APPROVAL'))
+
+    def test_approval_stage_advance_supports_inline_ajax_without_redirect(self):
+        candidate=self.candidate(status='MANAGER_APPROVAL',ready_on=None);pool=candidate.pool_candidate
+        self.client.force_login(self.recruiter)
+        inline=self.client.get(reverse('personnel:recruitment_candidate_inline',args=[pool.pk]))
+        self.assertContains(inline,'data-candidate-stage-advance',html=False)
+        response=self.client.post(reverse('personnel:recruitment_candidate_stage_advance',args=[pool.pk]),
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(response.json()['stage'],'SECURITY_CHECK')
+        self.assertNotIn('Location',response)
+        pool.refresh_from_db();self.assertTrue(pool.manager_approved)
+
     def test_approval_route_prevents_skipping_and_marks_overdue_stage(self):
         from .recruitment_stage_flow import stage_status
         candidate=self.candidate(status='MANAGER_APPROVAL',ready_on=None);pool=candidate.pool_candidate

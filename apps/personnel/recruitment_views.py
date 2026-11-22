@@ -457,12 +457,15 @@ def candidate_stage_update(request,pk):
 @require_POST
 def candidate_stage_advance(request,pk):
     require_roles(request.user,service.RECRUIT)
+    ajax=request.headers.get('X-Requested-With')=='XMLHttpRequest'
     try:
         row=advance_approval_stage(pk,request.user.company,request.user,request.POST.get('note',''))
     except TalentPoolCandidate.DoesNotExist:raise Http404
     except ValidationError as exc:
+        if ajax:return JsonResponse({'error':'; '.join(exc.messages)},status=422)
         messages.error(request,'; '.join(exc.messages))
     else:
+        if ajax:return JsonResponse({'id':row.pk,'stage':row.stage,'stage_label':row.get_stage_display()})
         messages.success(request,f'{row.full_name}: установлен этап «{row.get_stage_display()}».')
     if request.POST.get('return_to')=='card':return redirect('personnel:recruitment_candidate_card',pk=pk)
     return redirect('personnel:recruitment_list')
