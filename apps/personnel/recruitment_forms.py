@@ -140,8 +140,7 @@ class TalentPoolForm(forms.ModelForm):
         help_text='Заполняется автоматически из заявки на заезд: по билету, затем заменяется фактической датой.')
     responsible_hr=forms.ModelChoiceField(label='Ответственный HR',required=False,
         queryset=RecruitmentSpecialist.objects.none(),empty_label='Не назначен')
-    agency=forms.CharField(label='Название агентства',required=False)
-    source_fields=('birth_date','passport','skzi_until','agency')
+    source_fields=('birth_date','passport','skzi_until')
     class Meta:
         model=TalentPoolCandidate
         fields=['full_name','stage','position','construction_object','camp','phone','base_city','ready_for_arrival','ready_for_arrival_on',
@@ -222,7 +221,7 @@ class TalentPoolForm(forms.ModelForm):
             'base_city','new_base_city','ready_for_arrival','ready_for_arrival_on','dudinka_arrival','manager_approved','manager_approved_on',
             'security_approved','security_approved_on','skzi_until','medical_exam_passed','medical_exam_on',
             'pass_documents_sent','pass_documents_sent_on','pass_ready','pass_ready_on',
-            'responsible_hr','agency','notes'])
+            'responsible_hr','notes'])
     def save(self,commit=True):
         instance=super().save(commit=False);source=dict(instance.source_data or {})
         new_city=self.cleaned_data.get('new_base_city','')

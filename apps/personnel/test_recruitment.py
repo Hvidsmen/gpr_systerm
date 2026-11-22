@@ -995,6 +995,8 @@ class RecruitmentTests(TestCase):
     def test_full_candidate_card_can_be_loaded_and_saved_inline(self):
         from .models import TalentPoolStageEvent
         candidate=self.candidate(status='MANAGER_APPROVAL',ready_on=None);pool=candidate.pool_candidate
+        pool.source_data={**(pool.source_data or {}),'agency':'Историческое агентство'}
+        pool.save(update_fields=['source_data','updated_at'])
         self.client.force_login(self.recruiter)
         url=reverse('personnel:recruitment_candidate_inline',args=[pool.pk])
         response=self.client.get(url)
@@ -1004,6 +1006,8 @@ class RecruitmentTests(TestCase):
         self.assertContains(response,'name="position"',html=False)
         self.assertContains(response,'name="construction_object"',html=False)
         self.assertContains(response,'name="responsible_hr"',html=False)
+        self.assertNotContains(response,'name="agency"',html=False)
+        self.assertNotContains(response,'Название агентства')
         self.assertContains(response,'candidate-inline-compact-grid',html=False)
         self.assertContains(response,'candidate-inline-form-row-primary',html=False)
         self.assertContains(response,'candidate-inline-form-row-contact',html=False)
@@ -1027,6 +1031,7 @@ class RecruitmentTests(TestCase):
         pool.refresh_from_db()
         self.assertEqual((pool.full_name,pool.stage,pool.phone, pool.notes),
             ('Изменённый кандидат','SCREENING','89990000000','Изменено на главной'))
+        self.assertEqual(pool.source_data['agency'],'Историческое агентство')
         self.assertEqual(pool.position,self.position);self.assertEqual(pool.construction_object,self.obj)
         event=TalentPoolStageEvent.objects.get(candidate=pool)
         self.assertEqual((event.from_stage,event.to_stage,event.note),
