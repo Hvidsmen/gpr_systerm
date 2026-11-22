@@ -160,6 +160,7 @@ def ensure_pool_candidate(user,row,candidate,chosen=None):
 def sync_pool_candidate(candidate,stage=None):
     if not candidate.pool_candidate_id:return
     pool=candidate.pool_candidate;stage=stage or candidate.status
+    if pool.employed_employee_id:stage='EMPLOYED'
     pool.stage=stage
     pool.full_name=candidate.full_name
     if candidate.phone:pool.phone=candidate.phone
@@ -238,6 +239,8 @@ def handoff(user, candidate_id, revision):
     c=RecruitmentCandidate.objects.get(company=user.company,pk=candidate_id)
     row=current(user,c.request_id);owned(user,row)
     c=RecruitmentCandidate.objects.select_for_update().get(pk=c.pk)
+    if c.pool_candidate_id and c.pool_candidate.employed_employee_id:
+        raise ValidationError('Кандидат уже найден среди трудоустроенных сотрудников ЗУП.')
     existing=ArrivalPreparation.objects.filter(candidate=c).first()
     if existing:return existing
     if c.revision!=revision:raise ValidationError('Кандидата уже изменили. Обновите страницу.')

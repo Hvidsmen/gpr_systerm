@@ -17,15 +17,16 @@ from .models import (RecruitmentRequest,RecruitmentCandidate,RecruitmentSpeciali
 from . import recruitment as service
 from .recruitment_forms import (RequestForm,CandidateForm,ArrivalForm,RevisionForm,ReasonForm,TalentPoolForm,
     TalentPoolImportForm,BulkArrivalCommonForm,BulkArrivalRowForm,RecruiterAssignmentForm,RecruitmentSpecialistForm)
-from .recruitment_models import POOL_UNAVAILABLE_STAGES, RECRUITMENT_TERMINAL_STAGES
+from .recruitment_models import POOL_UNAVAILABLE_STAGES,RECRUITMENT_SYSTEM_STAGES,RECRUITMENT_TERMINAL_STAGES
 
 
 FUNNEL_GROUPS=[
     ('work','В работе',{'NEW','SCREENING','HR_INTERVIEW','MANAGER_APPROVAL','SECURITY_CHECK','MEDICAL_DOCUMENTS'}),
-    ('selected','Отобраны',{'SELECTED','READY','RESERVE'}),
+    ('selected','Магазин',{'SELECTED','READY','RESERVE'}),
     ('transferred','Поставлены на заезд',{'TRANSFERRED'}),
     ('approved','Не заехали',{'ARRIVAL_APPROVED'}),
     ('arrived','Заехали',{'ARRIVED'}),
+    ('employed','Трудоустроены',{'EMPLOYED'}),
     ('rejected','Отказники',RECRUITMENT_TERMINAL_STAGES),
 ]
 
@@ -220,7 +221,7 @@ def request_list(request,recruitment_page='bank'):
     for row in page:row.progress=service.progress(row)
     applications=RecruitmentCandidate.objects.select_related('request__construction_object','arrival__movement_request').order_by('-created_at','-pk')
     candidates=TalentPoolCandidate.objects.filter(company=request.user.company).select_related(
-        'position','construction_object','camp','base_city','responsible_hr').prefetch_related(
+        'position','construction_object','camp','base_city','responsible_hr','employed_employee').prefetch_related(
         Prefetch('vacancy_candidates',queryset=applications))
     if query:candidates=candidates.filter(Q(full_name__icontains=query)|Q(phone__icontains=query)|
         Q(vacancy_candidates__request__position__icontains=query)|Q(vacancy_candidates__request__construction_object__name__icontains=query)).distinct()
@@ -303,7 +304,7 @@ def request_list(request,recruitment_page='bank'):
         'position_options':position_options,
         'camp_options':camp_options,'object_options':object_options,'selected_position_ids':selected_position_ids,
         'selected_camp_ids':selected_camp_ids,'selected_object_ids':selected_object_ids,'funnel_query':funnel_params.urlencode(),
-        'pool_state':pool_state})
+        'pool_state':pool_state,'funnel_table_colspan':4+len(groups)})
 
 
 @login_required
@@ -312,7 +313,7 @@ def pool_list(request):
     require_roles(request.user,service.READ)
     applications=RecruitmentCandidate.objects.select_related('request__construction_object','arrival__movement_request').order_by('-created_at','-pk')
     rows=TalentPoolCandidate.objects.filter(company=request.user.company,archived_at__isnull=True).select_related(
-        'position','construction_object','camp','base_city','responsible_hr').prefetch_related(
+        'position','construction_object','camp','base_city','responsible_hr','employed_employee').prefetch_related(
             Prefetch('vacancy_candidates',queryset=applications))
     query=request.GET.get('q','').strip()
     if query:rows=rows.filter(Q(full_name__icontains=query)|Q(phone__icontains=query))
@@ -342,7 +343,7 @@ def candidate_card(request,pk):
     applications=RecruitmentCandidate.objects.select_related(
         'request__construction_object','request__assigned_to','arrival__movement_request','arrival__actual_stay').prefetch_related('documents').order_by('-created_at','-pk')
     row=get_object_or_404(TalentPoolCandidate.objects.filter(company=request.user.company).select_related(
-        'position','construction_object','camp','base_city','responsible_hr').prefetch_related(
+        'position','construction_object','camp','base_city','responsible_hr','employed_employee').prefetch_related(
         Prefetch('vacancy_candidates',queryset=applications)),pk=pk)
     from .models import RecruitmentEvent
     events=RecruitmentEvent.objects.filter(company=request.user.company,candidate__pool_candidate=row).select_related(
@@ -391,9 +392,11 @@ def candidate_stage_update(request,pk):
     choices=dict(TalentPoolCandidate._meta.get_field('stage').choices)
     stage=request.POST.get('stage','')
     if stage not in choices:return JsonResponse({'error':'Выберите этап воронки.'},status=400)
+    if stage in RECRUITMENT_SYSTEM_STAGES:return JsonResponse({'error':'Системный этап изменяется автоматически.'},status=400)
     note=request.POST.get('note','').strip()
     with transaction.atomic():
         row=get_object_or_404(TalentPoolCandidate.objects.select_for_update(),company=request.user.company,pk=pk)
+        if row.stage in RECRUITMENT_SYSTEM_STAGES:return JsonResponse({'error':'Системный этап изменяется автоматически.'},status=400)
         previous=row.stage
         if previous!=stage:
             row.stage=stage;row.is_active=stage not in POOL_UNAVAILABLE_STAGES

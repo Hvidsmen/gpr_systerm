@@ -6,7 +6,7 @@ from apps.projects.models import ConstructionObject
 from apps.resources.models import Employee,Position
 from apps.accounts.models import User
 from .models import BaseCity,RecruitmentRequest, RecruitmentCandidate,RecruitmentSpecialist,TalentPoolCandidate,Camp
-from .recruitment_models import POOL_UNAVAILABLE_STAGES,RECRUITMENT_SYSTEM_STAGES,RECRUITMENT_TERMINAL_STAGES
+from .recruitment_models import RECRUITMENT_STAGES,POOL_UNAVAILABLE_STAGES,RECRUITMENT_SYSTEM_STAGES,RECRUITMENT_TERMINAL_STAGES
 from .recruitment import allowed_camps, validate_documents
 from .employee_widgets import RemoteEmployeeSelect
 
@@ -154,6 +154,12 @@ class TalentPoolForm(forms.ModelForm):
     def __init__(self,*args,company,user,**kwargs):
         super().__init__(*args,**kwargs);self.instance.company=company
         if not self.instance.pk:self.instance.created_by=user
+        editable_stages=[choice for choice in self.fields['stage'].choices if choice[0] not in RECRUITMENT_SYSTEM_STAGES]
+        if self.instance.stage in RECRUITMENT_SYSTEM_STAGES:
+            current=(self.instance.stage,dict(RECRUITMENT_STAGES)[self.instance.stage])
+            self.fields['stage'].choices=[current,*editable_stages];self.fields['stage'].disabled=True
+            self.fields['stage'].help_text='Системный этап изменяется автоматически по данным портала и ЗУП.'
+        else:self.fields['stage'].choices=editable_stages
         self.fields['position'].queryset=Position.objects.filter(company=company).order_by('name','pk')
         self.fields['position'].empty_label='Выберите должность';self.fields['position'].required=True
         objects=ConstructionObject.objects.filter(company=company).select_related('parent').order_by('name','pk')

@@ -13,7 +13,7 @@ from apps.projects.models import Project, ConstructionObject
 from apps.resources.models import Employee,Position
 from .models import (Camp, CampObjectLink, CampStay, Person, RecruitmentRequest,
                      RecruitmentCandidate, ArrivalPreparation, CandidateDocument, HousingEvent,BaseCity,
-                     MovementReviewRequest)
+                     MovementReviewRequest,TalentPoolCandidate,TalentPoolStageEvent)
 from . import recruitment as service
 
 
@@ -79,6 +79,32 @@ class RecruitmentTests(TestCase):
         self.assertTrue(prep.actually_arrived);self.assertEqual(prep.actual_stay.person.employee_id,self.employee.pk)
         self.assertEqual(HousingEvent.objects.get().kind,'ARRIVAL');self.assertEqual(service.progress(RecruitmentRequest.objects.get(pk=row.pk))['arrived'],1)
         self.assertEqual(Employee.objects.count(),before)
+
+    def test_zup_employee_moves_unique_candidate_from_store_to_employed(self):
+        from .recruitment_employment import reconcile_company
+        candidate=TalentPoolCandidate.objects.create(company=self.company,full_name='Иванов Иван Иванович',phone='8 999 123-45-67',
+            stage='SELECTED',position=self.position,construction_object=self.obj,created_by=self.recruiter)
+        employee=Employee.objects.create(company=self.company,zup_full_name='Иванов Иван Иванович',phone='+7 999 123-45-67',
+            employee_number='Z-100',zup_ref='a'*32,zup_server='mssql',zup_database='zup',zup_synced_at=timezone.now())
+        self.assertEqual(reconcile_company(self.company,self.recruiter),{'linked':1,'ambiguous':0})
+        candidate.refresh_from_db()
+        self.assertEqual(candidate.stage,'EMPLOYED');self.assertEqual(candidate.employed_employee,employee);self.assertFalse(candidate.is_active)
+        self.assertTrue(TalentPoolStageEvent.objects.filter(candidate=candidate,from_stage='SELECTED',to_stage='EMPLOYED').exists())
+        self.client.force_login(self.recruiter);page=self.client.get(reverse('personnel:recruitment_list'))
+        groups={row['label']:row['count'] for row in page.context['funnel_groups']}
+        self.assertEqual(groups['Магазин'],0);self.assertEqual(groups['Трудоустроены'],1)
+        response=self.client.post(reverse('personnel:recruitment_candidate_stage',args=[candidate.pk]),{'stage':'SCREENING'})
+        self.assertEqual(response.status_code,400);candidate.refresh_from_db();self.assertEqual(candidate.stage,'EMPLOYED')
+
+    def test_zup_employment_does_not_guess_between_duplicate_candidate_cards(self):
+        from .recruitment_employment import reconcile_company
+        for suffix in ('А','Б'):
+            TalentPoolCandidate.objects.create(company=self.company,full_name='Петров Пётр Петрович',phone='',stage='SELECTED',
+                position=self.position,construction_object=self.obj,created_by=self.recruiter,notes=suffix)
+        Employee.objects.create(company=self.company,zup_full_name='Петров Пётр Петрович',employee_number='Z-200',
+            zup_ref='b'*32,zup_server='mssql',zup_database='zup',zup_synced_at=timezone.now())
+        self.assertEqual(reconcile_company(self.company,self.recruiter),{'linked':0,'ambiguous':1})
+        self.assertFalse(TalentPoolCandidate.objects.filter(employed_employee__isnull=False).exists())
     def test_candidate_can_be_sent_from_vacancy_into_arrival_workflow(self):
         from apps.planning.models import WorkTask
         prep=self.preparation()

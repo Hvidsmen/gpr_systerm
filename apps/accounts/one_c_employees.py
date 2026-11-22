@@ -352,6 +352,8 @@ def apply_employees(run, report):
     # main employee card and subsequent movement requests receive it.
     from apps.personnel.housing import link_people
     counts['personnel_cards_linked']=link_people(connection.company)
+    from apps.personnel.recruitment_employment import reconcile_company as reconcile_recruitment
+    counts['talent_pool_employed']=reconcile_recruitment(connection.company,run.created_by)
     from apps.personnel.schedule_changes import reconcile_company
     counts['schedule_changes_applied']=reconcile_company(connection.company)
     from apps.audit.models import AuditLog

@@ -22,6 +22,7 @@ RECRUITMENT_STAGES = [
     ('TRANSFERRED','Поставлен на заезд'),
     ('ARRIVAL_APPROVED','Заезд согласован'),
     ('ARRIVED','Заехал'),
+    ('EMPLOYED','Трудоустроен'),
     ('RESERVE','Резерв'),
     ('REJECTED','Отказ работодателя'),
     ('WITHDRAWN','Отказ кандидата'),
@@ -29,7 +30,7 @@ RECRUITMENT_STAGES = [
     ('NO_SHOW','Не заехал'),
 ]
 RECRUITMENT_TERMINAL_STAGES={'REJECTED','WITHDRAWN','NOT_REQUIRED','NO_SHOW'}
-RECRUITMENT_SYSTEM_STAGES={'TRANSFERRED','ARRIVAL_APPROVED','ARRIVED'}
+RECRUITMENT_SYSTEM_STAGES={'TRANSFERRED','ARRIVAL_APPROVED','ARRIVED','EMPLOYED'}
 POOL_UNAVAILABLE_STAGES=RECRUITMENT_TERMINAL_STAGES|RECRUITMENT_SYSTEM_STAGES
 
 INVALID_RECRUITMENT_SPECIALIST_NAMES={'нет','не назначен','ответственный hr','фио','nan','none','null'}
@@ -108,17 +109,22 @@ class TalentPoolCandidate(PersonnelModel):
     medical_exam_on=models.DateField('Дата медицинского осмотра',null=True,blank=True)
     responsible_hr=models.ForeignKey(RecruitmentSpecialist,on_delete=models.SET_NULL,null=True,blank=True,
         related_name='candidates',verbose_name='Ответственный HR')
+    employed_employee=models.ForeignKey('resources.Employee',on_delete=models.PROTECT,null=True,blank=True,
+        related_name='talent_pool_sources',verbose_name='Сотрудник ЗУП')
+    employed_at=models.DateTimeField('Подтверждено трудоустройство',null=True,blank=True)
     stage=models.CharField('Этап воронки',max_length=24,choices=RECRUITMENT_STAGES,default='NEW')
     is_active=models.BooleanField('Доступен для вакансий',default=True)
     archived_at=models.DateTimeField('Перенесён в архив',null=True,blank=True)
     archived_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,blank=True,
         related_name='+',verbose_name='Перенёс в архив')
     created_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='talent_pool_candidates')
-    class Meta:ordering=['full_name','pk']
+    class Meta:
+        ordering=['full_name','pk']
+        constraints=[models.UniqueConstraint(fields=['company','employed_employee'],condition=models.Q(employed_employee__isnull=False),name='talent_pool_one_zup_employee')]
     def __str__(self):return self.full_name
     def clean(self):
         super().clean()
-        for field in ('responsible_hr','position','construction_object','camp','base_city'):
+        for field in ('responsible_hr','position','construction_object','camp','base_city','employed_employee'):
             value=getattr(self,field,None)
             if value and value.company_id!=self.company_id:raise ValidationError({field:'Выберите значение своей компании.'})
         pairs=(('ready_for_arrival','ready_for_arrival_on'),('manager_approved','manager_approved_on'),
