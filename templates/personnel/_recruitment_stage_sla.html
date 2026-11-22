@@ -7,6 +7,7 @@
   <ol class="recruitment-stage-flow">
     {% for step in stage_sla.flow %}<li class="is-{{ step.state }}"><span>{{ step.number }}</span>{{ step.label }}</li>{% endfor %}
   </ol>
-  {% if can_edit and stage_sla.next_stage %}<form method="post" action="{% url 'personnel:recruitment_candidate_stage_advance' row.pk %}" class="recruitment-stage-advance">{% csrf_token %}<input type="hidden" name="return_to" value="{{ stage_return_to|default:'list' }}"><button class="btn btn-sm btn-primary" type="submit">Этап выполнен → {{ stage_sla.next_label }}</button></form>{% endif %}
+  {% if stage_sla.auto_complete %}<p class="small text-muted mb-2">После отметки «Пропуск сделан» и заполнения всех дат кандидат автоматически перейдёт в «Готов к заезду».</p>{% endif %}
+  {% if can_edit and stage_sla.next_stage and stage_sla.can_advance %}<form method="post" action="{% url 'personnel:recruitment_candidate_stage_advance' row.pk %}" class="recruitment-stage-advance">{% csrf_token %}<input type="hidden" name="return_to" value="{{ stage_return_to|default:'list' }}"><button class="btn btn-sm btn-primary" type="submit">Этап выполнен → {{ stage_sla.next_label }}</button></form>{% endif %}
 </section>
 {% endif %}

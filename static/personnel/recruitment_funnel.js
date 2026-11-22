@@ -35,7 +35,9 @@
       ['ready_for_arrival','ready_for_arrival_on'],
       ['manager_approved','manager_approved_on'],
       ['security_approved','security_approved_on'],
-      ['medical_exam_passed','medical_exam_on']
+      ['medical_exam_passed','medical_exam_on'],
+      ['pass_documents_sent','pass_documents_sent_on'],
+      ['pass_ready','pass_ready_on']
     ].forEach(function(names){
       const flag=root.querySelector('[name="'+names[0]+'"]');
       const date=root.querySelector('[name="'+names[1]+'"]');

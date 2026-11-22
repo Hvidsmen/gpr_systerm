@@ -7,7 +7,7 @@ from django.db import transaction
 from apps.projects.models import ConstructionObject
 from apps.resources.models import Position
 from .models import BaseCity,RecruitmentSpecialist,TalentPoolCandidate
-from .recruitment_models import (POOL_UNAVAILABLE_STAGES,RECRUITMENT_STAGES,
+from .recruitment_models import (POOL_UNAVAILABLE_STAGES,RECRUITMENT_STAGES,RECRUITMENT_SYSTEM_STAGES,RECRUITMENT_TERMINAL_STAGES,
     normalize_recruitment_specialist_name)
 
 STORE_SHEET='Магазин 2026'
@@ -103,8 +103,7 @@ def _plan_stage(data):
         return 'REJECTED'
     if data.get('actual_arrival'):return 'ARRIVED'
     if data.get('planned_arrival') or data.get('tickets_requested'):return 'TRANSFERRED'
-    if data.get('pass_received'):return 'READY'
-    if data.get('pass_submitted'):return 'PASS_PROCESSING'
+    if data.get('pass_received') or data.get('pass_submitted'):return 'PASS_PROCESSING'
     if any(data.get(key) for key in ('medical_result','medical_sent')):return 'MEDICAL_DOCUMENTS'
     if any(data.get(key) for key in ('security_result','security_sent')):return 'SECURITY_CHECK'
     if any(data.get(key) for key in ('customer_approval','sent_to_customer')):return 'MANAGER_APPROVAL'
@@ -219,12 +218,21 @@ def import_sheet(user,file):
         manager_on=(row.manager_approved_on if row and row.manager_approved_on else _profile_date(source,'manager_approved_on','manager_approval','customer_approval'))
         security_on=(row.security_approved_on if row and row.security_approved_on else _profile_date(source,'security_approved_on','security_approval','security_result'))
         medical_on=(row.medical_exam_on if row and row.medical_exam_on else _profile_date(source,'medical_exam_on','medical_exam','medical_result'))
+        pass_documents_on=(row.pass_documents_sent_on if row and row.pass_documents_sent_on else
+            _profile_date(source,'pass_documents_sent_on','pass_submitted','pass_documents'))
+        pass_ready_on=(row.pass_ready_on if row and row.pass_ready_on else
+            _profile_date(source,'pass_ready_on','pass_received','pass_approved_on'))
+        approvals_complete=all((manager_on,security_on,medical_on,pass_documents_on,pass_ready_on))
+        if approvals_complete and stage not in RECRUITMENT_SYSTEM_STAGES|RECRUITMENT_TERMINAL_STAGES:
+            stage='READY';ready_on=ready_on or pass_ready_on
         defaults={'phone':phone_value,'notes':notes,'source_data':source,'stage':stage,'is_active':active,'responsible_hr':responsible_hr,
             'position':position,'construction_object':construction_object,'base_city':base_city,
             'ready_for_arrival':bool(ready_on),'ready_for_arrival_on':ready_on,
             'manager_approved':bool(manager_on),'manager_approved_on':manager_on,
             'security_approved':bool(security_on),'security_approved_on':security_on,
-            'medical_exam_passed':bool(medical_on),'medical_exam_on':medical_on}
+            'medical_exam_passed':bool(medical_on),'medical_exam_on':medical_on,
+            'pass_documents_sent':bool(pass_documents_on),'pass_documents_sent_on':pass_documents_on,
+            'pass_ready':bool(pass_ready_on),'pass_ready_on':pass_ready_on}
         if row:
             changed=[]
             for field,value in defaults.items():

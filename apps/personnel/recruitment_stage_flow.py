@@ -70,7 +70,8 @@ def stage_status(candidate,*,today=None,calendar=None):
         'flow':[{'number':number,'code':code,'label':labels[code],
             'state':'done' if number<step else 'current' if number==step else 'upcoming'}
             for number,code in enumerate(RECRUITMENT_APPROVAL_FLOW,1)],
-        'is_final':stage=='READY'}
+        'is_final':stage=='READY','can_advance':stage not in {'PASS_PROCESSING','READY'},
+        'auto_complete':stage=='PASS_PROCESSING'}
     if limit is None:
         result.update(label='Маршрут согласования завершён',css='success')
         return result
@@ -125,10 +126,13 @@ def advance(candidate_id,company,actor,note=''):
         candidate.medical_exam_passed=True;candidate.medical_exam_on=today
         update_fields+=['medical_exam_passed','medical_exam_on']
     elif previous=='PASS_PROCESSING':
-        source=dict(candidate.source_data or {})
-        source['pass_approved_on']=today.isoformat()
-        candidate.source_data=source;candidate.ready_for_arrival=True;candidate.ready_for_arrival_on=today
-        update_fields+=['source_data','ready_for_arrival','ready_for_arrival_on']
+        required=(('согласование Заказчика',candidate.manager_approved),('согласование СЭБ',candidate.security_approved),
+            ('медкомиссия',candidate.medical_exam_passed),('направление документов на пропуск',candidate.pass_documents_sent),
+            ('готовый пропуск',candidate.pass_ready))
+        missing=[label for label,complete in required if not complete]
+        if missing:raise ValidationError('Не заполнено: '+', '.join(missing)+'.')
+        candidate.ready_for_arrival=True;candidate.ready_for_arrival_on=candidate.pass_ready_on
+        update_fields+=['ready_for_arrival','ready_for_arrival_on']
     candidate.stage=next_stage
     candidate.save(update_fields=update_fields)
     TalentPoolStageEvent.objects.create(company=company,candidate=candidate,from_stage=previous,

@@ -110,6 +110,10 @@ class TalentPoolCandidate(PersonnelModel):
     security_approved_on=models.DateField('Дата согласования СБ',null=True,blank=True)
     medical_exam_passed=models.BooleanField('Медицинский осмотр пройден',default=False)
     medical_exam_on=models.DateField('Дата медицинского осмотра',null=True,blank=True)
+    pass_documents_sent=models.BooleanField('Документы направлены на пропуск',default=False)
+    pass_documents_sent_on=models.DateField('Дата направления документов на пропуск',null=True,blank=True)
+    pass_ready=models.BooleanField('Пропуск сделан',default=False)
+    pass_ready_on=models.DateField('Дата готовности пропуска',null=True,blank=True)
     responsible_hr=models.ForeignKey(RecruitmentSpecialist,on_delete=models.SET_NULL,null=True,blank=True,
         related_name='candidates',verbose_name='Ответственный HR')
     employed_employee=models.ForeignKey('resources.Employee',on_delete=models.PROTECT,null=True,blank=True,
@@ -148,9 +152,12 @@ class TalentPoolCandidate(PersonnelModel):
             value=getattr(self,field,None)
             if value and value.company_id!=self.company_id:raise ValidationError({field:'Выберите значение своей компании.'})
         pairs=(('ready_for_arrival','ready_for_arrival_on'),('manager_approved','manager_approved_on'),
-            ('security_approved','security_approved_on'),('medical_exam_passed','medical_exam_on'))
+            ('security_approved','security_approved_on'),('medical_exam_passed','medical_exam_on'),
+            ('pass_documents_sent','pass_documents_sent_on'),('pass_ready','pass_ready_on'))
         errors={date_field:'Укажите дату подтверждения.' for flag,date_field in pairs if getattr(self,flag) and not getattr(self,date_field)}
         errors.update({date_field:'Сначала установите соответствующий флажок.' for flag,date_field in pairs if not getattr(self,flag) and getattr(self,date_field)})
+        if self.pass_ready and not self.pass_documents_sent:
+            errors['pass_documents_sent']='Сначала отметьте, что документы направлены на пропуск.'
         if errors:raise ValidationError(errors)
     @cached_property
     def dudinka_arrival(self):

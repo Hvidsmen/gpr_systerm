@@ -133,7 +133,6 @@ class TalentPoolForm(forms.ModelForm):
     birth_date=forms.DateField(label='Дата рождения',required=False,widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
     passport=forms.CharField(label='Серия и номер паспорта',required=False)
     skzi_until=forms.DateField(label='СКЗИ действует до',required=False,widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
-    pass_documents=forms.CharField(label='Документы направлены на пропуск',required=False)
     new_base_city=forms.CharField(label='Добавить базовый город',required=False,max_length=150,
         help_text='Заполните, только если нужного города нет в справочнике.')
     dudinka_arrival=forms.CharField(label='Прибытие в ОП Дудинка',required=False,disabled=True,
@@ -141,17 +140,20 @@ class TalentPoolForm(forms.ModelForm):
     responsible_hr=forms.ModelChoiceField(label='Ответственный HR',required=False,
         queryset=RecruitmentSpecialist.objects.none(),empty_label='Не назначен')
     agency=forms.CharField(label='Название агентства',required=False)
-    source_fields=('birth_date','passport','skzi_until','pass_documents','agency')
+    source_fields=('birth_date','passport','skzi_until','agency')
     class Meta:
         model=TalentPoolCandidate
         fields=['full_name','stage','position','construction_object','camp','phone','base_city','ready_for_arrival','ready_for_arrival_on',
             'manager_approved','manager_approved_on','security_approved','security_approved_on','medical_exam_passed','medical_exam_on',
+            'pass_documents_sent','pass_documents_sent_on','pass_ready','pass_ready_on',
             'responsible_hr','notes']
         widgets={'notes':forms.Textarea(attrs={'rows':3}),
             'ready_for_arrival_on':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}),
             'manager_approved_on':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}),
             'security_approved_on':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}),
-            'medical_exam_on':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'})}
+            'medical_exam_on':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}),
+            'pass_documents_sent_on':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}),
+            'pass_ready_on':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'})}
     def __init__(self,*args,company,user,**kwargs):
         super().__init__(*args,**kwargs);self.instance.company=company
         if not self.instance.pk:self.instance.created_by=user
@@ -217,7 +219,8 @@ class TalentPoolForm(forms.ModelForm):
                 self.fields[field].help_text=format_html('{}: <strong>{}</strong>. Подтвердите флажком и датой.',label,raw)
         self.order_fields(['full_name','stage','stage_reason','position','construction_object','camp','phone','birth_date','passport',
             'base_city','new_base_city','ready_for_arrival','ready_for_arrival_on','dudinka_arrival','manager_approved','manager_approved_on',
-            'security_approved','security_approved_on','skzi_until','medical_exam_passed','medical_exam_on','pass_documents',
+            'security_approved','security_approved_on','skzi_until','medical_exam_passed','medical_exam_on',
+            'pass_documents_sent','pass_documents_sent_on','pass_ready','pass_ready_on',
             'responsible_hr','agency','notes'])
     def save(self,commit=True):
         instance=super().save(commit=False);source=dict(instance.source_data or {})
@@ -231,12 +234,20 @@ class TalentPoolForm(forms.ModelForm):
         source['position']=instance.position.name if instance.position_id else source.get('position','')
         source['construction_site']=instance.construction_object.name if instance.construction_object_id else source.get('construction_site','')
         source['base_city']=instance.base_city.name if instance.base_city_id else source.get('base_city','')
+        approvals_complete=all((instance.manager_approved,instance.security_approved,instance.medical_exam_passed,
+            instance.pass_documents_sent,instance.pass_ready))
+        if approvals_complete and instance.stage not in RECRUITMENT_SYSTEM_STAGES|RECRUITMENT_TERMINAL_STAGES:
+            instance.stage='READY';instance.ready_for_arrival=True;instance.ready_for_arrival_on=instance.pass_ready_on
         source['readiness']=instance.ready_for_arrival_on.isoformat() if instance.ready_for_arrival else source.get('readiness','')
         source['manager_approval']=instance.manager_approved_on.isoformat() if instance.manager_approved else source.get('manager_approval','')
         source['security_approval']=instance.security_approved_on.isoformat() if instance.security_approved else source.get('security_approval','')
         source['medical_exam']=instance.medical_exam_on.isoformat() if instance.medical_exam_passed else source.get('medical_exam','')
+        source['pass_documents']=instance.pass_documents_sent_on.isoformat() if instance.pass_documents_sent else ''
+        source['pass_submitted']=source['pass_documents']
+        source['pass_received']=instance.pass_ready_on.isoformat() if instance.pass_ready else ''
         source['responsible_hr']=instance.responsible_hr.name if instance.responsible_hr_id else ''
         source['full_name']=instance.full_name;source['phone']=instance.phone;source['notes']=instance.notes
+        source['funnel_stage']=instance.stage
         instance.source_data=source;instance.is_active=instance.stage not in POOL_UNAVAILABLE_STAGES
         if commit:instance.save()
         return instance
@@ -246,10 +257,13 @@ class TalentPoolForm(forms.ModelForm):
         if new_city and selected_city:self.add_error('new_base_city','Выберите город из списка или добавьте новый, но не оба варианта.')
         data['new_base_city']=new_city
         pairs=(('ready_for_arrival','ready_for_arrival_on'),('manager_approved','manager_approved_on'),
-            ('security_approved','security_approved_on'),('medical_exam_passed','medical_exam_on'))
+            ('security_approved','security_approved_on'),('medical_exam_passed','medical_exam_on'),
+            ('pass_documents_sent','pass_documents_sent_on'),('pass_ready','pass_ready_on'))
         for flag,date_field in pairs:
             if data.get(flag) and not data.get(date_field):self.add_error(date_field,'Укажите дату подтверждения.')
             if data.get(date_field) and not data.get(flag):self.add_error(flag,'Установите флажок для указанной даты.')
+        if data.get('pass_ready') and not data.get('pass_documents_sent'):
+            self.add_error('pass_documents_sent','Сначала отметьте, что документы направлены на пропуск.')
         obj,camp=data.get('construction_object'),data.get('camp')
         if obj and camp and not allowed_camps(self.instance.company,obj).filter(pk=camp.pk).exists():
             self.add_error('camp','Выберите местонахождение, связанное с указанным объектом.')

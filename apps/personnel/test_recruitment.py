@@ -682,6 +682,22 @@ class RecruitmentTests(TestCase):
         self.assertEqual(candidate.source_data['responsible_hr'],'')
         self.assertEqual(candidate.source_data['funnel_sources'][0]['data']['responsible_hr'],'')
         self.assertFalse(RecruitmentSpecialist.objects.exists())
+
+    def test_pass_date_migration_backfills_flags_and_ready_stage(self):
+        from importlib import import_module
+        from django.apps import apps
+        candidate=TalentPoolCandidate.objects.create(company=self.company,full_name='Кандидат со старым пропуском',
+            stage='PASS_PROCESSING',manager_approved=True,manager_approved_on=date(2026,11,10),
+            security_approved=True,security_approved_on=date(2026,11,11),medical_exam_passed=True,
+            medical_exam_on=date(2026,11,12),created_by=self.recruiter,
+            source_data={'pass_submitted':'2026-11-13','pass_received':'2026-11-20'})
+        migration=import_module('apps.personnel.migrations.0063_recruitment_pass_dates')
+        migration.backfill_pass_dates(apps,None)
+        candidate.refresh_from_db()
+        self.assertTrue(candidate.pass_documents_sent);self.assertEqual(candidate.pass_documents_sent_on,date(2026,11,13))
+        self.assertTrue(candidate.pass_ready);self.assertEqual(candidate.pass_ready_on,date(2026,11,20))
+        self.assertEqual(candidate.stage,'READY');self.assertTrue(candidate.ready_for_arrival)
+        self.assertEqual(candidate.ready_for_arrival_on,date(2026,11,20))
     def test_directory_cleanup_deactivates_statuses_and_matches_position_base(self):
         from importlib import import_module
         from django.apps import apps
@@ -1043,16 +1059,25 @@ class RecruitmentTests(TestCase):
             ('SECURITY_CHECK','manager_approved'),
             ('MEDICAL_DOCUMENTS','security_approved'),
             ('PASS_PROCESSING','medical_exam_passed'),
-            ('READY','ready_for_arrival'),
         ]
         for stage,flag in expected:
             response=self.client.post(url)
             self.assertRedirects(response,reverse('personnel:recruitment_list'),fetch_redirect_response=False)
             pool.refresh_from_db();self.assertEqual(pool.stage,stage);self.assertTrue(getattr(pool,flag))
-        self.assertEqual(TalentPoolStageEvent.objects.filter(candidate=pool).count(),4)
-        response=self.client.post(url,{'return_to':'card'})
-        self.assertRedirects(response,reverse('personnel:recruitment_candidate_card',args=[pool.pk]),fetch_redirect_response=False)
-        pool.refresh_from_db();self.assertEqual(pool.stage,'READY')
+        self.assertEqual(TalentPoolStageEvent.objects.filter(candidate=pool).count(),3)
+        inline=reverse('personnel:recruitment_candidate_inline',args=[pool.pk])
+        response=self.client.post(inline,{
+            'full_name':pool.full_name,'stage':'PASS_PROCESSING','position':self.position.pk,
+            'construction_object':self.obj.pk,'phone':pool.phone,'base_city':'','new_base_city':'',
+            'ready_for_arrival_on':'','manager_approved':'1','manager_approved_on':pool.manager_approved_on.isoformat(),
+            'security_approved':'1','security_approved_on':pool.security_approved_on.isoformat(),
+            'medical_exam_passed':'1','medical_exam_on':pool.medical_exam_on.isoformat(),
+            'pass_documents_sent':'1','pass_documents_sent_on':'2026-11-22',
+            'pass_ready':'1','pass_ready_on':'2026-11-23','responsible_hr':'','notes':''})
+        self.assertEqual(response.status_code,200)
+        pool.refresh_from_db();self.assertEqual(pool.stage,'READY');self.assertTrue(pool.ready_for_arrival)
+        self.assertEqual(pool.ready_for_arrival_on,date(2026,11,23));self.assertTrue(pool.pass_documents_sent);self.assertTrue(pool.pass_ready)
+        self.assertTrue(TalentPoolStageEvent.objects.filter(candidate=pool,from_stage='PASS_PROCESSING',to_stage='READY').exists())
 
     def test_approval_route_prevents_skipping_and_marks_overdue_stage(self):
         from .recruitment_stage_flow import stage_status
@@ -1074,6 +1099,26 @@ class RecruitmentTests(TestCase):
         status=stage_status(pool,today=date(2026,11,23))
         self.assertEqual(status['deadline'].isoformat(),'2026-12-07')
         self.assertEqual((status['limit'],status['unit']),(10,'рабочих дней'))
+
+    def test_ready_pass_requires_sent_documents_and_date(self):
+        candidate=self.candidate(status='PASS_PROCESSING',ready_on=None);pool=candidate.pool_candidate
+        pool.manager_approved=True;pool.manager_approved_on=date(2026,11,18)
+        pool.security_approved=True;pool.security_approved_on=date(2026,11,19)
+        pool.medical_exam_passed=True;pool.medical_exam_on=date(2026,11,20)
+        pool.save(update_fields=['manager_approved','manager_approved_on','security_approved','security_approved_on',
+            'medical_exam_passed','medical_exam_on','updated_at'])
+        self.client.force_login(self.recruiter)
+        response=self.client.post(reverse('personnel:recruitment_candidate_inline',args=[pool.pk]),{
+            'full_name':pool.full_name,'stage':'PASS_PROCESSING','position':self.position.pk,
+            'construction_object':self.obj.pk,'phone':pool.phone,'base_city':'','new_base_city':'',
+            'ready_for_arrival_on':'','manager_approved':'1','manager_approved_on':'2026-11-18',
+            'security_approved':'1','security_approved_on':'2026-11-19',
+            'medical_exam_passed':'1','medical_exam_on':'2026-11-20',
+            'pass_ready':'1','pass_ready_on':'2026-11-23','responsible_hr':'','notes':''})
+        self.assertEqual(response.status_code,422)
+        self.assertContains(response,'Сначала отметьте, что документы направлены на пропуск.',status_code=422)
+        pool.refresh_from_db();self.assertEqual(pool.stage,'PASS_PROCESSING');self.assertFalse(pool.pass_ready)
+
     def test_manual_pool_card_saves_store_fields(self):
         from .models import RecruitmentSpecialist,TalentPoolCandidate
         specialist=RecruitmentSpecialist.objects.create(company=self.company,name='Петрова',user=self.recruiter)
@@ -1087,7 +1132,8 @@ class RecruitmentTests(TestCase):
             'birth_date':'1990-02-03','passport':'1234 567890','base_city':self.base_city.pk,'new_base_city':'',
             'ready_for_arrival':'1','ready_for_arrival_on':'2026-11-20','manager_approved':'1','manager_approved_on':'2026-11-18',
             'security_approved':'1','security_approved_on':'2026-11-19','medical_exam_passed':'1','medical_exam_on':'2026-11-19',
-            'skzi_until':'2027-01-01','pass_documents':'Направлены',
+            'skzi_until':'2027-01-01','pass_documents_sent':'1','pass_documents_sent_on':'2026-11-20',
+            'pass_ready':'1','pass_ready_on':'2026-11-21',
             'responsible_hr':specialist.pk,'agency':'Агентство','stage':'NEW','notes':'Комментарий'})
         self.assertRedirects(response,reverse('personnel:recruitment_pool'),fetch_redirect_response=False)
         row=TalentPoolCandidate.objects.get(full_name='Ручной Кандидат')
@@ -1095,8 +1141,9 @@ class RecruitmentTests(TestCase):
         self.assertEqual(row.source_data['position'],'Электромонтажник');self.assertEqual(row.source_data['construction_site'],'КТП')
         self.assertEqual(row.source_data['birth_date'],'1990-02-03');self.assertEqual(row.source_data['base_city'],'Уфа')
         self.assertEqual(row.responsible_hr,specialist);self.assertEqual(row.source_data['responsible_hr'],'Петрова')
-        self.assertTrue(row.ready_for_arrival);self.assertEqual(row.ready_for_arrival_on.isoformat(),'2026-11-20')
+        self.assertTrue(row.ready_for_arrival);self.assertEqual(row.ready_for_arrival_on.isoformat(),'2026-11-21')
         self.assertTrue(row.manager_approved);self.assertTrue(row.security_approved);self.assertTrue(row.medical_exam_passed)
+        self.assertTrue(row.pass_documents_sent);self.assertTrue(row.pass_ready);self.assertEqual(row.stage,'READY')
         page=self.client.get(reverse('personnel:recruitment_pool'))
         self.assertContains(page,'Электромонтажник');self.assertContains(page,'Все данные кандидата')
         duplicate=self.client.post(reverse('personnel:recruitment_pool_create'),{
