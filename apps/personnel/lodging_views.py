@@ -280,12 +280,12 @@ def historical_report(request):
     form=LodgingReportFilter(query or None,company=request.user.company,initial=initial)
     rows=[];grouped_rows=[];stats=Counter();warning='';camp=None;day=initial['date'];mode='FACTUAL';view='TABLE'
     if form.is_valid():
-        camp=form.cleaned_data['camp'];day=form.cleaned_data['date'];mode=form.cleaned_data['mode'];view=form.cleaned_data['view'];building=form.cleaned_data['building'];state=form.cleaned_data['state'];terms=form.cleaned_data['q'].casefold().split()
+        camp=form.cleaned_data['camp'];day=form.cleaned_data['date'];mode=form.cleaned_data['mode'];view=form.cleaned_data['view'];buildings=form.cleaned_data['building'];state=form.cleaned_data['state'];terms=form.cleaned_data['q'].casefold().split()
         stays,applied=historical_occupancy(request.user.company,camp,day,mode);by_bed={}
         for stay in stays:by_bed.setdefault(stay.bed_id,[]).append(stay)
         if any(len(items)>1 for items in by_bed.values()):warning='По введённым фактическим датам обнаружены пересечения. Они показаны в отчёте и требуют проверки.'
         beds=LodgingBed.objects.filter(company=request.user.company,building__camp=camp).select_related('building')
-        if building:beds=beds.filter(building=building)
+        if buildings:beds=beds.filter(building__in=buildings)
         for bed in beds:
             occupants=by_bed.get(bed.pk,[])
             status='OCCUPIED' if occupants else 'UNAVAILABLE' if not bed.building.is_active else 'FREE' if bed.state=='AVAILABLE' else bed.state

@@ -73,7 +73,7 @@ class LodgingReportFilter(StyledForm):
     date=forms.DateField(label='На дату',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
     mode=forms.ChoiceField(label='Режим',choices=[('PORTAL','По состоянию портала'),('FACTUAL','По указанным фактическим датам')])
     view=forms.ChoiceField(label='Вид',choices=[('TABLE','Таблица мест'),('ORGANIZATION','По организациям'),('POSITION','По должностям')])
-    building=forms.ModelChoiceField(label='Вагон / корпус',queryset=LodgingBuilding.objects.none(),required=False,empty_label='Все вагоны / корпуса')
+    building=forms.ModelMultipleChoiceField(label='Вагоны / корпуса',queryset=LodgingBuilding.objects.none(),required=False)
     state=forms.ChoiceField(label='Состояние',required=False,choices=[('','Все'),('OCCUPIED','Занято'),('FREE','Свободно'),('RESERVED','Зарезервировано'),('UNAVAILABLE','Недоступно')])
     q=forms.CharField(label='Поиск',required=False,widget=forms.TextInput(attrs={'placeholder':'Сотрудник, табельный номер, вагон или место'}))
     def __init__(self,*args,company,**kwargs):
@@ -81,6 +81,7 @@ class LodgingReportFilter(StyledForm):
         camp_id=(self.data.get('camp') if self.is_bound else self.initial.get('camp'))
         if hasattr(camp_id,'pk'):camp_id=camp_id.pk
         self.fields['building'].queryset=LodgingBuilding.objects.filter(company=company,camp_id=camp_id) if str(camp_id or '').isdigit() else LodgingBuilding.objects.none()
+        self.fields['building'].widget.attrs['data-placeholder']='Все вагоны / корпуса'
         self.style()
 
 

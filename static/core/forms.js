@@ -127,7 +127,8 @@
       const selected = [...this.select.selectedOptions];
       const text = selected.map(option => option.dataset.objectPath || (!option.value && /^[-–—]+$/.test(option.textContent.trim()) ? 'Выберите значение' : option.textContent.trim()));
       const label = this.select.labels?.[0]?.textContent.trim() || this.select.getAttribute('aria-label') || 'Выбор значения';
-      const value = this.select.multiple ? (text.length ? text.slice(0, 2).join(', ') + (text.length > 2 ? ` · ещё ${text.length - 2}` : '') : 'Выберите значения') : (text[0] || 'Выберите значение');
+      const placeholder = this.select.dataset.placeholder || (this.select.multiple ? 'Выберите значения' : 'Выберите значение');
+      const value = this.select.multiple ? (text.length ? text.slice(0, 2).join(', ') + (text.length > 2 ? ` · ещё ${text.length - 2}` : '') : placeholder) : (text[0] || placeholder);
       if (this.label.textContent !== value) this.label.textContent = value;
       this.button.title = text.join(', ') || label;
       this.button.setAttribute('aria-label', label + ': ' + value);
